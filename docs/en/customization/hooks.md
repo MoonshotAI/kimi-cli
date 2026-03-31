@@ -66,16 +66,42 @@ command = "osascript -e 'display notification \"Kimi needs attention\" with titl
 [[hooks]]
 event = "Stop"
 command = ".kimi/hooks/check-complete.sh"
+
+# Inject context on every user prompt (simpler alternative to shell command)
+[[hooks]]
+event = "UserPromptSubmit"
+inject_prompt = "Always write tests first."
+timeout = 5
+
+# Or load from file
+[[hooks]]
+event = "UserPromptSubmit"
+inject_prompt = "~/.kimi/prompts/coding-guidelines.md"
+timeout = 5
 ```
+
+### The `inject_prompt` Field
+
+For simple use cases where you just want to inject static text or file content into the conversation context, use `inject_prompt` instead of `command`:
+
+- **Static text**: Write the content directly as a string
+- **File path**: Specify a path ending with `.md` or `.txt`, or containing `/` or `\`. The file content will be read and injected
+- **Path expansion**: `~` is expanded to the user's home directory
+- **Relative paths**: Resolved relative to current working directory
+
+The content is injected as a system reminder message before processing each matching user prompt.
 
 ### Configuration Fields
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `event` | Yes | — | Event type, must be one of the 13 supported events |
-| `command` | Yes | — | Shell command to execute, receives JSON via stdin |
+| `command` | Yes* | — | Shell command to execute, receives JSON via stdin |
+| `inject_prompt` | Yes* | — | Static prompt content or file path to inject as context |
 | `matcher` | No | `""` | Regex filter, empty string matches all |
 | `timeout` | No | `30` | Timeout in seconds, fail-open on timeout |
+
+*Either `command` or `inject_prompt` must be specified, but not both.
 
 ## Communication Protocol
 
@@ -116,6 +142,25 @@ When exiting with code 0, you can output structured JSON for more detailed infor
 ```
 
 When `permissionDecision` is `deny`, the operation is blocked and `permissionDecisionReason` is fed back to the LLM.
+
+### Injecting Additional Context
+
+Hooks can also return `additionalContext` to inject content into the conversation as a system reminder:
+
+```json
+{
+  "hookSpecificOutput": {
+    "additionalContext": "Remember to check the documentation before making changes."
+  }
+}
+```
+
+This is useful for:
+- Dynamically loading skill content based on the current task
+- Injecting project-specific guidelines
+- Reminding the AI of coding standards
+
+When using `inject_prompt` (instead of `command`), the content is automatically injected without needing to return JSON.
 
 ## Hook Script Examples
 
