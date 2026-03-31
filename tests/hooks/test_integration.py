@@ -1,3 +1,4 @@
+import os
 import tempfile
 from pathlib import Path
 
@@ -6,6 +7,60 @@ import tomlkit
 
 from kimi_cli.hooks.config import HookDef
 from kimi_cli.hooks.engine import HookEngine
+
+
+@pytest.mark.asyncio
+async def test_inject_prompt_text():
+    """inject_prompt with text content returns additional_context."""
+    hooks = [HookDef(event="UserPromptSubmit", inject_prompt="use TDD")]
+    engine = HookEngine(hooks)
+    results = await engine.trigger("UserPromptSubmit", input_data={"prompt": "hello"})
+    assert len(results) == 1
+    assert results[0].action == "allow"
+    assert results[0].additional_context == "use TDD"
+
+
+@pytest.mark.asyncio
+async def test_inject_prompt_file():
+    """inject_prompt with file path reads content from file."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write("skill content from file")
+        temp_path = f.name
+    try:
+        hooks = [HookDef(event="UserPromptSubmit", inject_prompt=temp_path)]
+        engine = HookEngine(hooks)
+        results = await engine.trigger("UserPromptSubmit", input_data={"prompt": "hello"})
+        assert len(results) == 1
+        assert results[0].action == "allow"
+        assert results[0].additional_context == "skill content from file"
+    finally:
+        os.unlink(temp_path)
+
+
+@pytest.mark.asyncio
+async def test_inject_prompt_file_not_found():
+    """inject_prompt with non-existent file logs warning but allows."""
+    hooks = [HookDef(event="UserPromptSubmit", inject_prompt="/nonexistent/path/prompt.md")]
+    engine = HookEngine(hooks)
+    results = await engine.trigger("UserPromptSubmit", input_data={"prompt": "hello"})
+    assert len(results) == 1
+    assert results[0].action == "allow"
+    assert results[0].additional_context == ""
+
+
+@pytest.mark.asyncio
+async def test_multiple_hooks_inject_prompt():
+    """Multiple inject_prompt hooks return combined contexts."""
+    hooks = [
+        HookDef(event="UserPromptSubmit", inject_prompt="context one"),
+        HookDef(event="UserPromptSubmit", inject_prompt="context two"),
+    ]
+    engine = HookEngine(hooks)
+    results = await engine.trigger("UserPromptSubmit", input_data={"prompt": "hello"})
+    assert len(results) == 2
+    contexts = [r.additional_context for r in results]
+    assert "context one" in contexts
+    assert "context two" in contexts
 
 
 @pytest.mark.asyncio

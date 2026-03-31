@@ -18,6 +18,7 @@ class HookResult:
     stderr: str = ""
     exit_code: int = 0
     timed_out: bool = False
+    additional_context: str = ""
 
 
 async def run_hook(
@@ -75,6 +76,9 @@ async def run_hook(
             if isinstance(raw, dict):
                 parsed = cast(dict[str, Any], raw)
                 hook_output = cast(dict[str, Any], parsed.get("hookSpecificOutput", {}))
+                additional_context = ""
+                if "additionalContext" in hook_output:
+                    additional_context = str(hook_output.get("additionalContext", ""))
                 if hook_output.get("permissionDecision") == "deny":
                     return HookResult(
                         action="block",
@@ -82,7 +86,15 @@ async def run_hook(
                         stdout=stdout,
                         stderr=stderr,
                         exit_code=0,
+                        additional_context="",
                     )
+                return HookResult(
+                    action="allow",
+                    stdout=stdout,
+                    stderr=stderr,
+                    exit_code=exit_code,
+                    additional_context=additional_context,
+                )
         except (json.JSONDecodeError, TypeError):
             pass
 

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from kimi_cli import logger
@@ -180,13 +182,19 @@ class HookEngine:
 
         # --- Match server-side hooks ---
         seen_commands: set[str] = set()
+        seen_inject_prompts: set[str] = set()
         server_matched: list[HookDef] = []
         for h in self._by_event.get(event, []):
             if not self._match_regex(h.matcher, matcher_value):
                 continue
-            if h.command in seen_commands:
-                continue
-            seen_commands.add(h.command)
+            if h.command:
+                if h.command in seen_commands:
+                    continue
+                seen_commands.add(h.command)
+            elif h.inject_prompt:
+                if h.inject_prompt in seen_inject_prompts:
+                    continue
+                seen_inject_prompts.add(h.inject_prompt)
             server_matched.append(h)
 
         # --- Match wire subscriptions ---
@@ -238,11 +246,18 @@ class HookEngine:
 
         # Server-side: run shell commands
         for h in server_matched:
-            tasks.append(
-                asyncio.create_task(
-                    run_hook(h.command, input_data, timeout=h.timeout, cwd=self._cwd)
+            if h.inject_prompt:
+                tasks.append(
+                    asyncio.create_task(
+                        self._run_inject_prompt_hook(h)
+                    )
                 )
-            )
+            else:
+                tasks.append(
+                    asyncio.create_task(
+                        run_hook(h.command, input_data, timeout=h.timeout, cwd=self._cwd)
+                    )
+                )
 
         # Wire-side: send request to client, wait for response
         for s in wire_matched:
@@ -308,3 +323,37 @@ class HookEngine:
             hook_task.cancel()
             logger.warning("Wire hook failed: {} {}: {}", event, target, e)
             return HookResult(action="allow")
+
+    async def _run_inject_prompt_hook(self, hook: HookDef) -> HookResult:
+        try:
+            content = self._resolve_inject_prompt(hook.inject_prompt)
+            return HookResult(
+                action="allow",
+                stdout="",
+                stderr="",
+                exit_code=0,
+                additional_context=content,
+            )
+        except FileNotFoundError as e:
+            logger.warning(str(e))
+            return HookResult(action="allow", exit_code=0)
+        except Exception as e:
+            logger.warning("inject_prompt hook failed: {}", e)
+            return HookResult(action="allow", exit_code=0)
+
+    def _resolve_inject_prompt(self, inject_prompt: str) -> str:
+        expanded = os.path.expanduser(inject_prompt)
+        is_likely_path = (
+            expanded.endswith((".md", ".txt"))
+            or "/" in expanded
+            or (len(expanded) > 2 and expanded[1] == ":" and expanded[2] == "\\")
+        )
+        if is_likely_path:
+            path = Path(expanded)
+            if not path.is_absolute():
+                path = Path(self._cwd or ".") / path
+            if path.exists() and path.is_file():
+                return path.read_text(encoding="utf-8")
+            else:
+                raise FileNotFoundError(f"Hook inject_prompt file not found: {inject_prompt}")
+        return inject_prompt
