@@ -162,3 +162,37 @@ async def test_cancel_session(
 
     # cancel should not raise
     await conn.cancel(session_id=session_resp.session_id)
+
+
+@pytest.mark.asyncio
+async def test_set_session_mode_rejects_non_default_mode(acp_client, tmp_path):
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    session = await conn.new_session(cwd=str(work_dir))
+
+    with pytest.raises(acp.RequestError) as exc_info:
+        await conn.set_session_mode(
+            mode_id="non-default",
+            session_id=session.session_id,
+        )
+
+    assert exc_info.value.code == -32602
+    assert exc_info.value.data == {"mode_id": "Only default mode is supported"}
+
+
+@pytest.mark.asyncio
+async def test_set_session_mode_rejects_unknown_session(acp_client):
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    with pytest.raises(acp.RequestError) as exc_info:
+        await conn.set_session_mode(
+            mode_id="default",
+            session_id="missing-session",
+        )
+
+    assert exc_info.value.code == -32602
+    assert exc_info.value.data == {"session_id": "Session not found"}
