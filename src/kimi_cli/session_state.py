@@ -97,13 +97,18 @@ def load_session_state(session_dir: Path) -> SessionState:
             logger.warning("Corrupted state file, using defaults: {path}", path=state_file)
             state = SessionState()
 
-    # One-time migration from legacy metadata.json
+    # One-time migration from legacy metadata.json (best-effort)
     migration = _migrate_legacy_metadata(session_dir, state)
-    if migration == "migrated":
-        save_session_state(state, session_dir)
-        (session_dir / _LEGACY_METADATA_FILENAME).unlink(missing_ok=True)
-    elif migration == "no_change":
-        (session_dir / _LEGACY_METADATA_FILENAME).unlink(missing_ok=True)
+    if migration in ("migrated", "no_change"):
+        try:
+            if migration == "migrated":
+                save_session_state(state, session_dir)
+            (session_dir / _LEGACY_METADATA_FILENAME).unlink(missing_ok=True)
+        except OSError:
+            logger.warning(
+                "Failed to persist migration for {path}, will retry next load",
+                path=session_dir,
+            )
 
     return state
 
