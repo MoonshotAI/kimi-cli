@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.29.0 (2026-04-01)
+
 - Core: Support hierarchical `AGENTS.md` loading — the CLI now discovers and merges `AGENTS.md` files from the git project root down to the working directory, including `.kimi/AGENTS.md` at each level; deeper files take priority under a 32 KiB budget cap, ensuring the most specific instructions are never truncated
 - Core: Fix empty sessions lingering on disk after exit — sessions created but never used are now cleaned up on all exit paths (failure exit, session switch, unexpected errors), not just on successful exit
 - Shell: Add `KIMI_CLI_PASTE_CHAR_THRESHOLD` and `KIMI_CLI_PASTE_LINE_THRESHOLD` environment variables to control when pasted text is folded into a placeholder — lowering these thresholds works around CJK input method breakage after multiline paste on some terminals (e.g., XShell over SSH)
