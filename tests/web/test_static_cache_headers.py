@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
+import pytest
 from starlette.testclient import TestClient
 
-from kimi_cli.web.app import create_app
+from kimi_cli.web.app import STATIC_DIR, create_app
+
+_needs_static = pytest.mark.skipif(not STATIC_DIR.exists(), reason="web static assets not built")
 
 
 def _make_client() -> TestClient:
@@ -14,6 +19,7 @@ def _make_client() -> TestClient:
     return client
 
 
+@_needs_static
 def test_index_html_has_no_cache_header() -> None:
     """index.html must not be heuristically cached by browsers.
 
@@ -30,18 +36,13 @@ def test_index_html_has_no_cache_header() -> None:
     )
 
 
+@_needs_static
 def test_hashed_asset_has_immutable_cache_header() -> None:
     """Hashed assets under /assets/ should be cached aggressively."""
     client = _make_client()
-    # Pick any hashed asset that exists in the static dir
-    import os
-    from pathlib import Path
-
-    assets_dir = (
-        Path(__file__).resolve().parents[2] / "src" / "kimi_cli" / "web" / "static" / "assets"
-    )
+    assets_dir = STATIC_DIR / "assets"
     if not assets_dir.exists():
-        return  # skip if assets not built
+        pytest.skip("assets directory not found")
     # Find a JS or CSS file
     for entry in os.listdir(assets_dir):
         if entry.endswith((".js", ".css")):
