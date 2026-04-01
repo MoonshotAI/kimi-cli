@@ -114,13 +114,15 @@ Markdown files named `AGENTS.md` usually contain the background, structure, codi
 > - Keep `README`s concise and focused on human contributors.
 > - Provide precise, agent-focused guidance that complements existing `README` and docs.
 
-The project level `${KIMI_WORK_DIR}/AGENTS.md`:
+The `AGENTS.md` instructions (merged from all applicable directories):
 
 `````````
 ${KIMI_AGENTS_MD}
 `````````
 
-If the above `AGENTS.md` is empty or insufficient, you may check `README`/`README.md` files or `AGENTS.md` files in subdirectories for more information about specific parts of the project.
+`AGENTS.md` files can appear at any level of the project directory tree, including inside `.kimi/` directories. Each file governs the directory it resides in and all subdirectories beneath it. When multiple `AGENTS.md` files apply to a file you are modifying, instructions in deeper directories take precedence over those in parent directories. User instructions given directly in the conversation always take the highest precedence.
+
+When working on files in subdirectories, always check whether those directories contain their own `AGENTS.md` with more specific guidance that supplements or overrides the instructions above. You may also check `README`/`README.md` files for more information about the project.
 
 If you modified any files/styles/structures/configurations/workflows/... mentioned in `AGENTS.md` files, you MUST update the corresponding `AGENTS.md` files to keep them up-to-date.
 
