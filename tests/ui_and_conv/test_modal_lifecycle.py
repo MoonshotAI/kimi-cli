@@ -1133,7 +1133,7 @@ async def test_clear_active_approval_sink_requeues_pending_requests(
     assert len(shell._pending_approval_requests) == 0  # type: ignore[attr-defined]
 
     # Now the live view closes
-    shell._clear_active_approval_sink()  # type: ignore[attr-defined]
+    shell._clear_active_view()  # type: ignore[attr-defined]
 
     # The pending request should have been re-queued
     pending_ids = [r.id for r in shell._pending_approval_requests]  # type: ignore[attr-defined]
@@ -1142,5 +1142,5 @@ async def test_clear_active_approval_sink_requeues_pending_requests(
     # Already-resolved requests should NOT be re-queued
     runtime.approval_runtime.resolve("sink-r1", "approve")
     shell._pending_approval_requests.clear()  # type: ignore[attr-defined]
-    shell._clear_active_approval_sink()  # type: ignore[attr-defined]
+    shell._clear_active_view()  # type: ignore[attr-defined]
     assert len(shell._pending_approval_requests) == 0  # type: ignore[attr-defined]

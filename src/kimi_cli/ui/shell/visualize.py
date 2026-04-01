@@ -65,6 +65,8 @@ from kimi_cli.wire.types import (
     ApprovalResponse,
     BackgroundTaskDisplayBlock,
     BriefDisplayBlock,
+    BtwBegin,
+    BtwEnd,
     CompactionBegin,
     CompactionEnd,
     ContentPart,
@@ -97,6 +99,59 @@ MAX_LIVE_NOTIFICATIONS = 4
 EXTERNAL_MESSAGE_GRACE_S = 0.1
 
 
+BtwRunner = Callable[[str, Callable[[str], None] | None], Awaitable[tuple[str | None, str | None]]]
+"""async (question, on_text_chunk) -> (response, error). Used for direct btw execution."""
+
+
+# ---------------------------------------------------------------------------
+# Unified input routing
+# ---------------------------------------------------------------------------
+# All user input — whether idle or streaming — passes through
+# ``classify_input`` to decide what to do with it.  This is the single
+# place where btw / queue / steer / send decisions are made.
+# ---------------------------------------------------------------------------
+
+
+class InputAction:
+    """The result of classifying user input."""
+
+    __slots__ = ("kind", "args")
+
+    # Action kinds
+    BTW = "btw"
+    """Run a side question locally (never reaches the wire)."""
+    QUEUE = "queue"
+    """Hold and send as a new turn after the current turn ends."""
+    SEND = "send"
+    """Send to the soul immediately (idle default)."""
+    IGNORED = "ignored"
+    """Input was recognized but invalid (e.g. /btw without question). ``args`` has a reason."""
+
+    def __init__(self, kind: str, args: str = "") -> None:
+        self.kind = kind
+        self.args = args
+
+
+def classify_input(text: str, *, is_streaming: bool) -> InputAction:
+    """Classify user input into an action.
+
+    This is the **single routing decision point** for all user input
+    (except Ctrl+S steer, which is key-level, not submission-level).
+    To add a new local command, add a branch here.
+    """
+    from kimi_cli.utils.slashcmd import parse_slash_command_call
+
+    if (cmd := parse_slash_command_call(text.strip())) and cmd.name == "btw":
+        if cmd.args.strip():
+            return InputAction(InputAction.BTW, cmd.args.strip())
+        return InputAction(InputAction.IGNORED, "Usage: /btw <question>")
+
+    # During streaming, default is queue; otherwise send to soul
+    if is_streaming:
+        return InputAction(InputAction.QUEUE)
+    return InputAction(InputAction.SEND)
+
+
 async def visualize(
     wire: WireUISide,
     *,
@@ -104,6 +159,7 @@ async def visualize(
     cancel_event: asyncio.Event | None = None,
     prompt_session: CustomPromptSession | None = None,
     steer: Callable[[str | list[ContentPart]], None] | None = None,
+    btw_runner: BtwRunner | None = None,
     bind_running_input: Callable[[Callable[[UserInput], None], Callable[[], None]], None]
     | None = None,
     unbind_running_input: Callable[[], None] | None = None,
@@ -123,6 +179,7 @@ async def visualize(
             initial_status,
             prompt_session=prompt_session,
             steer=steer,
+            btw_runner=btw_runner,
             cancel_event=cancel_event,
         )
         prompt_session.attach_running_prompt(view)
@@ -683,6 +740,8 @@ class _LiveView:
         self._mooning_spinner: Spinner | None = None
         self._compacting_spinner: Spinner | None = None
         self._mcp_loading_spinner: Spinner | None = None
+        self._btw_spinner: Spinner | None = None
+        self._btw_question: str | None = None
 
         self._current_content_block: _ContentBlock | None = None
         self._tool_call_blocks: dict[str, _ToolCallBlock] = {}
@@ -886,6 +945,8 @@ class _LiveView:
         if self._current_question_panel:
             blocks.append(self._current_question_panel.render())
         # Spinners or content + tool calls.
+        if self._btw_spinner is not None:
+            blocks.append(self._btw_spinner)
         if self._mcp_loading_spinner is not None:
             blocks.append(self._mcp_loading_spinner)
         elif self._mooning_spinner is not None:
@@ -944,6 +1005,35 @@ class _LiveView:
                 self.refresh_soon()
             case MCPLoadingEnd():
                 self._mcp_loading_spinner = None
+                self.refresh_soon()
+            case BtwBegin(question=question):
+                truncated = (question[:40] + "...") if len(question) > 40 else question
+                self._btw_question = question
+                self._btw_spinner = Spinner("dots", f"Side question: {truncated}")
+                self.refresh_soon()
+            case BtwEnd(response=response, error=error):
+                self._btw_spinner = None
+                q = self._btw_question or ""
+                truncated_q = (q[:50] + "...") if len(q) > 50 else q
+                self._btw_question = None
+                if response:
+                    console.print(
+                        Panel(
+                            Markdown(response),
+                            title=f"[dim]btw: {truncated_q}[/dim]",
+                            border_style="grey50",
+                            padding=(0, 1),
+                        )
+                    )
+                elif error:
+                    console.print(
+                        Panel(
+                            Text(error, style="red"),
+                            title="[dim]btw (error)[/dim]",
+                            border_style="red",
+                            padding=(0, 1),
+                        )
+                    )
                 self.refresh_soon()
             case StatusUpdate():
                 self._status_block.update(msg)
@@ -1099,6 +1189,12 @@ class _LiveView:
         self._last_tool_call_block = None
         self.flush_finished_tool_calls()
         self.flush_notifications()
+
+        # Clear transient spinners to prevent visual residuals after interrupts
+        self._mooning_spinner = None
+        self._compacting_spinner = None
+        self._mcp_loading_spinner = None
+        self._btw_spinner = None
 
         while self._approval_request_queue:
             # should not happen, but just in case
@@ -1298,7 +1394,101 @@ class _LiveView:
                 pass
 
 
+class _BtwModalDelegate:
+    """Modal delegate that fully replaces the prompt line with a /btw panel.
+
+    Attached via ``prompt_session.attach_modal()`` so that the prompt message
+    renderer skips the separator and prompt label, showing only the btw panel.
+    """
+
+    modal_priority = 5  # above running prompt (0), below question (10) and approval (20)
+
+    def __init__(self, *, on_dismiss: Callable[[], None]) -> None:
+        self._on_dismiss = on_dismiss
+        self._question: str = ""
+        self._response: str | None = None
+        self._error: str | None = None
+        self._is_loading: bool = True
+        self._spinner: Spinner = Spinner("dots", "Answering...", style="yellow")
+        self._streaming_text: str = ""  # accumulated text during streaming
+
+    def append_text(self, chunk: str) -> None:
+        """Append a streaming text chunk (called from the btw runner)."""
+        self._streaming_text += chunk
+
+    def set_result(self, response: str | None, error: str | None) -> None:
+        self._response = response
+        self._error = error
+        self._is_loading = False
+
+    def render_running_prompt_body(self, columns: int) -> ANSI:
+        parts: list[RenderableType] = []
+        parts.append(Text(self._question, style="dim"))
+        if self._is_loading:
+            parts.append(Text(""))
+            if self._streaming_text:
+                # Show streaming text as it arrives
+                parts.append(Markdown(self._streaming_text))
+                parts.append(Text(""))
+                parts.append(self._spinner)
+            else:
+                parts.append(self._spinner)
+        elif self._error:
+            parts.append(Text(""))
+            parts.append(Text(self._error, style="red"))
+            parts.append(Text(""))
+            parts.append(Text("Escape to dismiss", style="dim"))
+        elif self._response:
+            parts.append(Text(""))
+            parts.append(Markdown(self._response))
+            parts.append(Text(""))
+            parts.append(Text("Escape to dismiss", style="dim"))
+        else:
+            parts.append(Text(""))
+            parts.append(Text("No response received.", style="dim"))
+            parts.append(Text(""))
+            parts.append(Text("Escape to dismiss", style="dim"))
+        panel = Panel(
+            Group(*parts),
+            title="[bold]btw[/bold]",
+            border_style="grey50",
+            padding=(0, 1),
+        )
+        body = render_to_ansi(panel, columns=columns).rstrip("\n")
+        return ANSI(body)
+
+    def running_prompt_placeholder(self) -> str | None:
+        return None
+
+    def running_prompt_allows_text_input(self) -> bool:
+        return False
+
+    def running_prompt_hides_input_buffer(self) -> bool:
+        return True
+
+    def running_prompt_accepts_submission(self) -> bool:
+        return False
+
+    def should_handle_running_prompt_key(self, key: str) -> bool:
+        if self._is_loading:
+            return key in {"escape", "c-c", "c-d"}
+        return key in {"escape", "enter", "space", "c-c", "c-d"}
+
+    def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
+        self._on_dismiss()
+
+
 class _PromptLiveView(_LiveView):
+    """Interactive prompt view: renders agent output above the input buffer.
+
+    Supports two modes for user input during streaming:
+    - **Queue (Enter)**: message is held and sent as a new turn after the
+      current turn completes.  Queued messages are shown above the input and
+      can be recalled with ↑.
+    - **Steer (Ctrl+S)**: message is injected immediately into the running
+      turn's context.  Shown permanently in the conversation flow.
+    """
+
     modal_priority = 0
 
     def __init__(
@@ -1307,14 +1497,102 @@ class _PromptLiveView(_LiveView):
         *,
         prompt_session: CustomPromptSession,
         steer: Callable[[str | list[ContentPart]], None],
+        btw_runner: BtwRunner | None = None,
         cancel_event: asyncio.Event | None = None,
     ) -> None:
         super().__init__(initial_status, cancel_event)
         self._prompt_session = prompt_session
         self._steer = steer
-        self._pending_local_steers: deque[str | list[ContentPart]] = deque()
+        self._btw_runner = btw_runner
+        self._pending_local_steer_keys: deque[str] = deque()
         self._turn_ended = False
         self._question_modal: QuestionPromptDelegate | None = None
+        # -- Queue: messages waiting to be sent after the turn ends ----------
+        self._queued_messages: list[UserInput] = []
+        # -- BTW modal (replaces prompt line when active) --------------------
+        self._btw_modal: _BtwModalDelegate | None = None
+        self._btw_dismiss_event: asyncio.Event | None = None
+        self._btw_refresh_task: asyncio.Task[None] | None = None
+        self._btw_run_task: asyncio.Task[None] | None = None
+
+    # -- Helpers -------------------------------------------------------------
+
+    @property
+    def _btw_active(self) -> bool:
+        return self._btw_modal is not None
+
+    def _dismiss_btw(self) -> None:
+        if self._btw_modal is not None:
+            self._prompt_session.detach_modal(self._btw_modal)
+            self._btw_modal = None
+        if self._btw_run_task is not None:
+            self._btw_run_task.cancel()
+            self._btw_run_task = None
+        if self._btw_refresh_task is not None:
+            self._btw_refresh_task.cancel()
+            self._btw_refresh_task = None
+        # Wake the visualize_loop if it's waiting for user dismiss
+        if self._btw_dismiss_event is not None:
+            self._btw_dismiss_event.set()
+            self._btw_dismiss_event = None
+        self._prompt_session.invalidate()
+
+    def _start_btw(self, question: str) -> None:
+        """Set up the btw modal and start the LLM task."""
+        # Clear the input buffer so the /btw command text doesn't
+        # reappear when the modal is dismissed.
+        buf = self._prompt_session._session.default_buffer  # pyright: ignore[reportPrivateUsage]
+        if buf.text:
+            buf.set_document(Document(), bypass_readonly=True)
+        modal = _BtwModalDelegate(on_dismiss=self._dismiss_btw)
+        modal._question = question  # pyright: ignore[reportPrivateUsage]
+        self._btw_modal = modal
+        self._prompt_session.attach_modal(modal)
+        self._btw_refresh_task = asyncio.create_task(self._btw_refresh_loop())
+        self._btw_run_task = asyncio.create_task(self._run_btw(question))
+
+    async def _run_btw(self, question: str) -> None:
+        """Execute /btw directly via btw_runner (no wire)."""
+        assert self._btw_runner is not None
+        try:
+
+            def _on_chunk(chunk: str) -> None:
+                if self._btw_modal is not None:
+                    self._btw_modal.append_text(chunk)
+
+            response, error = await self._btw_runner(question, _on_chunk)
+            if self._btw_modal is not None:
+                self._btw_modal.set_result(response, error)
+        except asyncio.CancelledError:
+            pass  # dismiss cancelled us — expected
+        except Exception as e:
+            if self._btw_modal is not None:
+                self._btw_modal.set_result(None, str(e))
+        finally:
+            self._btw_run_task = None  # self-clear so _dismiss_btw won't cancel a done task
+            if self._btw_refresh_task is not None:
+                self._btw_refresh_task.cancel()
+                self._btw_refresh_task = None
+            self._prompt_session.invalidate()
+
+    async def _btw_refresh_loop(self) -> None:
+        """Periodically invalidate prompt so the spinner animates."""
+        try:
+            while True:
+                await asyncio.sleep(0.08)
+                self._prompt_session.invalidate()
+        except asyncio.CancelledError:
+            pass
+
+    # -- Public API: queued messages for the shell to drain ------------------
+
+    def drain_queued_messages(self) -> list[UserInput]:
+        """Return and clear all queued messages (called by shell after turn)."""
+        msgs = list(self._queued_messages)
+        self._queued_messages.clear()
+        return msgs
+
+    # -- Visualize loop ------------------------------------------------------
 
     async def visualize_loop(self, wire: WireUISide):
         try:
@@ -1356,6 +1634,12 @@ class _PromptLiveView(_LiveView):
 
                 self.dispatch_wire_message(msg)
                 self._flush_prompt_refresh()
+
+            # Wire closed — if btw modal is showing a result, keep the loop
+            # alive so the user can read and dismiss it.
+            if self._btw_modal is not None and not self._btw_modal._is_loading:  # pyright: ignore[reportPrivateUsage]
+                self._btw_dismiss_event = asyncio.Event()
+                await self._btw_dismiss_event.wait()
         finally:
             self._external_messages.shutdown(immediate=True)
             for task in (locals().get("wire_task"), locals().get("external_task")):
@@ -1364,39 +1648,96 @@ class _PromptLiveView(_LiveView):
                 task.cancel()
                 with suppress(asyncio.CancelledError, QueueShutDown):
                     await task
-            self._pending_local_steers.clear()
+            self._pending_local_steer_keys.clear()
+            self._dismiss_btw()
             self._turn_ended = False
             if self._question_modal is not None:
                 self._prompt_session.detach_modal(self._question_modal)
                 self._question_modal = None
             self._prompt_session.invalidate()
 
+    # -- Input handling ------------------------------------------------------
+
     def handle_local_input(self, user_input: UserInput) -> None:
+        """Route user input through the unified classifier."""
         if not user_input or self._turn_ended:
             return
+        action = classify_input(user_input.command, is_streaming=True)
+        match action.kind:
+            case InputAction.BTW:
+                if self._btw_runner is not None and not self._btw_active:
+                    self._start_btw(action.args)
+            case InputAction.QUEUE:
+                self._queued_messages.append(user_input)
+                self._flush_prompt_refresh()
+            case InputAction.IGNORED:
+                from kimi_cli.ui.shell.prompt import toast
 
+                toast(action.args, topic="input-ignored", duration=3.0)
+            case _:
+                pass  # SEND and unknown actions are no-ops during streaming
+
+    def handle_immediate_steer(self, user_input: UserInput) -> None:
+        """Ctrl+S: inject immediately into the running turn's context."""
+        if not user_input or self._turn_ended:
+            return
+        # Intercept /btw even on Ctrl+S — it should always run locally
+        action = classify_input(user_input.command, is_streaming=True)
+        if action.kind == InputAction.BTW:
+            if self._btw_runner is not None and not self._btw_active:
+                self._start_btw(action.args)
+            return
+        # Print permanently in conversation flow
         console.print(render_user_echo_text(user_input.command))
-        self._pending_local_steers.append(list(user_input.content))
+        # Store the command text as dedup key (type-safe string comparison)
+        self._pending_local_steer_keys.append(user_input.command)
         self._steer(user_input.content)
         self._flush_prompt_refresh()
 
+    # -- Wire event dispatch -------------------------------------------------
+
     def dispatch_wire_message(self, msg: WireMessage) -> None:
-        if isinstance(msg, SteerInput) and self._pending_local_steers:
-            pending = self._pending_local_steers[0]
-            if pending == msg.user_input:
-                self._pending_local_steers.popleft()
+        # Dedup locally-originated steers: compare by text to avoid
+        # type mismatches (list[ContentPart] vs str).
+        if isinstance(msg, SteerInput) and self._pending_local_steer_keys:
+            wire_text = (
+                msg.user_input
+                if isinstance(msg.user_input, str)
+                else Message(role="user", content=msg.user_input).extract_text(" ")
+            )
+            if self._pending_local_steer_keys[0] == wire_text.strip():
+                self._pending_local_steer_keys.popleft()
                 return
+        # Suppress parent's BtwBegin/BtwEnd spinner — btw is handled via modal
+        if isinstance(msg, (BtwBegin, BtwEnd)):
+            self._btw_spinner = None
+            return
         super().dispatch_wire_message(msg)
 
-    def render_running_prompt_body(self, columns: int) -> ANSI:
-        if (
-            self._turn_ended
-            and self._current_approval_request_panel is None
-            and self._current_question_panel is None
-        ):
+    # -- Running prompt rendering --------------------------------------------
+
+    def render_agent_status(self, columns: int) -> ANSI:
+        """Render agent streaming output — always visible regardless of modal.
+
+        This includes spinners (thinking/composing/compacting), content blocks,
+        tool calls, approval/question panels, notifications.
+        """
+        if self._turn_ended:
             return ANSI("")
-        renderable = self.compose(include_status=False)
-        body = render_to_ansi(renderable, columns=columns).rstrip("\n")
+        body = render_to_ansi(self.compose(include_status=False), columns=columns).rstrip("\n")
+        return ANSI(body if body else "")
+
+    def render_running_prompt_body(self, columns: int) -> ANSI:
+        """Render the interactive part — queued messages."""
+        if not self._queued_messages:
+            return ANSI("")
+
+        blocks: list[RenderableType] = []
+        for qi in self._queued_messages:
+            blocks.append(Text(f"❯ {qi.command}", style="dim cyan"))
+        blocks.append(Text("Press ↑ to edit queued messages", style="dim"))
+
+        body = render_to_ansi(Group(*blocks), columns=columns).rstrip("\n")
         return ANSI(body if body else "")
 
     def running_prompt_placeholder(self) -> str | None:
@@ -1421,6 +1762,8 @@ class _PromptLiveView(_LiveView):
             return True
         return not self._turn_ended
 
+    # -- Key handling --------------------------------------------------------
+
     def should_handle_running_prompt_key(self, key: str) -> bool:
         if key == "c-e":
             return self.has_expandable_panel()
@@ -1430,11 +1773,36 @@ class _PromptLiveView(_LiveView):
             return False
         if key == "escape":
             return self._cancel_event is not None
-        return False
+        # ↑ on empty buffer: recall last queued message
+        if key == "up" and self._queued_messages:
+            return True
+        # Ctrl+S: immediate steer
+        return key == "c-s"
 
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
         if key == "c-e":
             event.app.create_background_task(self._show_panel_in_pager())
+            return
+
+        # ↑ on empty buffer: pop last queued message back to input for editing
+        if key == "up" and self._queued_messages:
+            buf = event.current_buffer
+            if not buf.text.strip():
+                recalled = self._queued_messages.pop()
+                buf.document = Document(recalled.command, len(recalled.command))
+                self._flush_prompt_refresh()
+                return
+
+        # Ctrl+S: send current input as immediate steer (with placeholder resolution)
+        if key == "c-s":
+            buf = event.current_buffer
+            text = buf.text.strip()
+            if text:
+                # Use _build_user_input to properly resolve placeholders
+                # (e.g. [Pasted text #1 +3 lines] → actual content)
+                steer_input = self._prompt_session._build_user_input(text)  # pyright: ignore[reportPrivateUsage]
+                self._clear_buffer(buf)
+                self.handle_immediate_steer(steer_input)
             return
 
         mapped = {

@@ -33,7 +33,7 @@ async def test_visualize_uses_prompt_live_view_when_prompt_session_and_steer_are
             called.append(("detach", delegate, None))
 
     class _DummyPromptLiveView:
-        def __init__(self, initial_status, *, prompt_session, steer, cancel_event):
+        def __init__(self, initial_status, *, prompt_session, steer, btw_runner=None, cancel_event):
             called.append(("init", initial_status, cancel_event))
             assert prompt_session is not None
             assert steer is not None
@@ -67,7 +67,7 @@ async def test_visualize_uses_prompt_live_view_when_prompt_session_and_steer_are
     assert unbound == [True]
 
 
-def test_render_running_prompt_body_omits_internal_status_block() -> None:
+def test_render_agent_status_calls_compose_without_status() -> None:
     view = object.__new__(_PromptLiveView)
     view._turn_ended = False
 
@@ -79,7 +79,7 @@ def test_render_running_prompt_body_omits_internal_status_block() -> None:
 
     view.compose = fake_compose
 
-    rendered = view.render_running_prompt_body(80)
+    rendered = view.render_agent_status(80)
 
     assert calls == [False]
     assert "body" in rendered.value
@@ -90,6 +90,7 @@ def test_running_prompt_hides_placeholder() -> None:
     view._turn_ended = False
     view._current_approval_request_panel = None
     view._current_question_panel = None
+    view._btw_modal = None
 
     assert view.running_prompt_placeholder() is None
     assert view.running_prompt_allows_text_input() is True
@@ -454,7 +455,7 @@ async def test_approval_prompt_delegate_ctrl_c_rejects_current_request() -> None
 
 def test_running_prompt_suppresses_duplicate_steer_echo_from_wire(monkeypatch) -> None:
     view = object.__new__(_PromptLiveView)
-    view._pending_local_steers = deque([[TextPart(text="A steer follow-up")]])
+    view._pending_local_steer_keys = deque(["A steer follow-up"])
 
     forwarded: list[object] = []
     monkeypatch.setattr(
@@ -464,13 +465,13 @@ def test_running_prompt_suppresses_duplicate_steer_echo_from_wire(monkeypatch) -
     )
     view.dispatch_wire_message(SteerInput(user_input=[TextPart(text="A steer follow-up")]))
 
-    assert list(view._pending_local_steers) == []
+    assert list(view._pending_local_steer_keys) == []
     assert forwarded == []
 
 
 def test_running_prompt_forwards_non_matching_steer_echo_from_wire(monkeypatch) -> None:
     view = object.__new__(_PromptLiveView)
-    view._pending_local_steers = deque([[TextPart(text="local steer")]])
+    view._pending_local_steer_keys = deque(["local steer"])
 
     forwarded: list[object] = []
     monkeypatch.setattr(
@@ -481,54 +482,34 @@ def test_running_prompt_forwards_non_matching_steer_echo_from_wire(monkeypatch) 
     wire_msg = SteerInput(user_input=[TextPart(text="remote steer")])
     view.dispatch_wire_message(wire_msg)
 
-    assert list(view._pending_local_steers) == [[TextPart(text="local steer")]]
+    assert list(view._pending_local_steer_keys) == ["local steer"]
     assert forwarded == [wire_msg]
 
 
-def test_handle_local_input_echoes_placeholder_display_text_but_steers_expanded_content(
-    monkeypatch,
-) -> None:
+def test_handle_local_input_queues_message_by_default() -> None:
     view = object.__new__(_PromptLiveView)
     view._turn_ended = False
-    view._pending_local_steers = deque()
-    steered: list[list[TextPart]] = []
-    view._steer = lambda content: steered.append(list(content))
+    view._queued_messages = []
     view._flush_prompt_refresh = lambda: None
 
-    printed: list[str] = []
-    monkeypatch.setattr(
-        shell_visualize.console,
-        "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+    user_in = UserInput(
+        mode=PromptMode.AGENT,
+        command="[Pasted text #1 +3 lines]",
+        resolved_command="line1\nline2\nline3",
+        content=[TextPart(text="line1\nline2\nline3")],
     )
+    view.handle_local_input(user_in)
 
-    view.handle_local_input(
-        UserInput(
-            mode=PromptMode.AGENT,
-            command="[Pasted text #1 +3 lines]",
-            resolved_command="line1\nline2\nline3",
-            content=[TextPart(text="line1\nline2\nline3")],
-        )
-    )
-
-    assert printed == ["✨ [Pasted text #1 +3 lines]"]
-    assert steered == [[TextPart(text="line1\nline2\nline3")]]
-    assert list(view._pending_local_steers) == [[TextPart(text="line1\nline2\nline3")]]
+    # Default Enter queues instead of steering
+    assert len(view._queued_messages) == 1
+    assert view._queued_messages[0].command == "[Pasted text #1 +3 lines]"
 
 
 def test_handle_local_input_ignores_finished_turn(monkeypatch) -> None:
     view = object.__new__(_PromptLiveView)
     view._turn_ended = True
-    view._pending_local_steers = deque()
-    view._steer = lambda _content: (_ for _ in ()).throw(AssertionError("should not steer"))
+    view._queued_messages = []
     view._flush_prompt_refresh = lambda: None
-
-    printed: list[str] = []
-    monkeypatch.setattr(
-        shell_visualize.console,
-        "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
-    )
 
     view.handle_local_input(
         UserInput(
@@ -539,8 +520,8 @@ def test_handle_local_input_ignores_finished_turn(monkeypatch) -> None:
         )
     )
 
-    assert printed == []
-    assert list(view._pending_local_steers) == []
+    # Turn ended — input should be silently ignored, nothing queued
+    assert view._queued_messages == []
 
 
 def test_should_prompt_question_other_for_key_shared_helper() -> None:
@@ -654,6 +635,7 @@ def test_running_prompt_handles_approval_panel_keys_and_clears_buffer() -> None:
     view._turn_ended = False
     view._current_question_panel = None
     view._current_approval_request_panel = object()
+    view._btw_modal = None
 
     dispatched: list[object] = []
     view.dispatch_keyboard_event = lambda event: dispatched.append(event)

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import Enum
 from hashlib import md5
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast, override
+from typing import Any, Literal, Protocol, cast, override, runtime_checkable
 
 from kaos.path import KaosPath
 from prompt_toolkit import PromptSession
@@ -1141,6 +1141,8 @@ class _ToastEntry:
 
 
 class RunningPromptDelegate(Protocol):
+    """Protocol for components that can take over the bottom prompt area."""
+
     modal_priority: int
 
     def render_running_prompt_body(self, columns: int) -> AnyFormattedText: ...
@@ -1156,6 +1158,19 @@ class RunningPromptDelegate(Protocol):
     def should_handle_running_prompt_key(self, key: str) -> bool: ...
 
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None: ...
+
+
+@runtime_checkable
+class AgentStatusProvider(Protocol):
+    """Optional protocol for delegates that render always-visible agent status.
+
+    When the running prompt delegate implements this, ``_render_agent_status``
+    will call ``render_agent_status`` instead of the fallback status block.
+    This ensures spinners, content blocks, and tool calls remain visible
+    even when a modal (approval/question/btw) is active.
+    """
+
+    def render_agent_status(self, columns: int) -> AnyFormattedText: ...
 
 
 _toast_queues: dict[Literal["left", "right"], deque[_ToastEntry]] = {
@@ -1391,6 +1406,14 @@ class CustomPromptSession:
             self._handle_running_prompt_key("space", event)
 
         @_kb.add(
+            "c-s",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("c-s")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("c-s", event)
+
+        @_kb.add(
             "c-e",
             eager=True,
             filter=Condition(lambda: self._should_handle_running_prompt_key("c-e")),
@@ -1600,14 +1623,25 @@ class CustomPromptSession:
         app = get_app_or_none()
         columns = app.output.get_size().columns if app is not None else 80
         fragments: FormattedText = FormattedText()
-        body = self._render_agent_prompt_body(columns)
+
+        # Agent status (always visible)
+        agent_status = self._render_agent_status(columns)
+        if agent_status:
+            fragments.extend(agent_status)
+            if not agent_status[-1][1].endswith("\n"):
+                fragments.append(("", "\n"))
+
+        # Interactive body
+        body = self._render_interactive_body(columns)
         if body:
             fragments.extend(body)
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
+
         if self._active_modal_delegate() is not None:
             return fragments
-        if body:
+        has_content = bool(agent_status or body)
+        if has_content:
             fragments.append(("", "\n"))
             fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
             fragments.append(("", "\n"))
@@ -1722,9 +1756,16 @@ class CustomPromptSession:
         elif (
             old_state == PromptUIState.MODAL_HIDDEN_INPUT
             and new_state != PromptUIState.MODAL_HIDDEN_INPUT
+            and self._suspended_buffer_document is not None
         ):
-            if self._suspended_buffer_document is not None and not buffer.text:
+            if not buffer.text:
                 buffer.set_document(self._suspended_buffer_document, bypass_readonly=True)
+            else:
+                # Buffer was externally modified (e.g. approval inline feedback).
+                # Don't overwrite the new content, but log that the old input is lost.
+                logger.debug(
+                    "Dropping suspended buffer document because buffer was modified externally"
+                )
             self._suspended_buffer_document = None
 
         self._last_ui_state = new_state
@@ -1733,23 +1774,46 @@ class CustomPromptSession:
         app = get_app_or_none()
         columns = app.output.get_size().columns if app is not None else 80
         fragments: FormattedText = FormattedText()
-        body = self._render_agent_prompt_body(columns)
+
+        # 1. Agent status — ALWAYS rendered from running prompt delegate.
+        #    This ensures spinners, content blocks, tool calls etc. stay
+        #    visible even when a modal (btw/approval/question) is active.
+        agent_status = self._render_agent_status(columns)
+        if agent_status:
+            fragments.extend(agent_status)
+            if not agent_status[-1][1].endswith("\n"):
+                fragments.append(("", "\n"))
+
+        # 2. Interactive area — from the active delegate (modal overrides).
+        body = self._render_interactive_body(columns)
         if body:
             fragments.extend(body)
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
+
+        # 3. When a modal is active, skip separator + prompt label.
         if self._active_modal_delegate() is not None:
             return fragments
+
+        # 4. Normal: separator + prompt label
         fragments.append(("", "\n"))
         fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
         fragments.append(("", "\n"))
         fragments.extend(self._render_agent_prompt_label())
         return fragments
 
-    def _render_agent_prompt_body(self, columns: int) -> FormattedText:
+    def _render_agent_status(self, columns: int) -> FormattedText:
+        """Render agent streaming output (always visible, independent of modals)."""
+        running = self._running_prompt_delegate
+        if running is not None and isinstance(running, AgentStatusProvider):
+            return to_formatted_text(running.render_agent_status(columns))
+        return self._render_status_block(columns)
+
+    def _render_interactive_body(self, columns: int) -> FormattedText:
+        """Render the interactive area from the active delegate (modal or running prompt)."""
         delegate = self._active_prompt_delegate()
         if delegate is None:
-            return self._render_status_block(columns)
+            return FormattedText([])
         return to_formatted_text(delegate.render_running_prompt_body(columns))
 
     def _render_status_block(self, columns: int) -> FormattedText:
