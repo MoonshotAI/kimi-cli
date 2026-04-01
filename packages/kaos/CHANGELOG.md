@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix `writetext` converting LF to CRLF on Windows — open files with `newline=""` to disable Python's universal newline translation on write
+
 ## 0.7.0 (2026-02-06)
 
 - Add `env` parameter to `exec()` method for passing environment variables to subprocesses
