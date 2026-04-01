@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Fix file listing crash on macOS when encountering permission-restricted entries (e.g. `.Trash`) — `PermissionError` on `iterdir()` now returns an empty listing, and individual entries that raise `PermissionError` / `OSError` on `stat()` are silently skipped
+
 ## 1.29.0 (2026-04-01)
 
 - Core: Support hierarchical `AGENTS.md` loading — the CLI now discovers and merges `AGENTS.md` files from the git project root down to the working directory, including `.kimi/AGENTS.md` at each level; deeper files take priority under a 32 KiB budget cap, ensuring the most specific instructions are never truncated

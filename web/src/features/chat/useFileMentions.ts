@@ -143,7 +143,13 @@ const crawlWorkspace = async ({
 
     // "." should be treated as undefined for API root
     const path = current === "." ? undefined : current;
-    const entries = await listDirectory(sessionId, path);
+    let entries: SessionFileEntry[];
+    try {
+      entries = await listDirectory(sessionId, path);
+    } catch {
+      // Skip directories that fail (e.g. symlinks outside work_dir)
+      continue;
+    }
 
     for (const entry of entries) {
       const fullPath =

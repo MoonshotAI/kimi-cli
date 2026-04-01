@@ -483,8 +483,12 @@ async def get_session_file(
     requested_path = work_dir / path
     file_path = requested_path.resolve()
 
-    # Check path traversal
+    # Check path traversal — symlinks pointing outside work_dir are not an
+    # attack, but we must not serve their content.  For directories we return
+    # an empty listing so the frontend BFS can continue; for files we 404.
     if not file_path.is_relative_to(work_dir):
+        if requested_path.is_symlink():
+            return Response(content="[]", media_type="application/json")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid path: path traversal not allowed",
@@ -522,21 +526,28 @@ async def get_session_file(
 
     if file_path.is_dir():
         result: list[dict[str, str | int]] = []
-        for subpath in file_path.iterdir():
+        try:
+            entries = list(file_path.iterdir())
+        except PermissionError:
+            entries = []
+        for subpath in entries:
             if restrict_sensitive_apis:
                 rel_subpath = rel_path / subpath.name
                 if _is_sensitive_relative_path(rel_subpath):
                     continue
-            if subpath.is_dir():
-                result.append({"name": subpath.name, "type": "directory"})
-            else:
-                result.append(
-                    {
-                        "name": subpath.name,
-                        "type": "file",
-                        "size": subpath.stat().st_size,
-                    }
-                )
+            try:
+                if subpath.is_dir():
+                    result.append({"name": subpath.name, "type": "directory"})
+                else:
+                    result.append(
+                        {
+                            "name": subpath.name,
+                            "type": "file",
+                            "size": subpath.stat().st_size,
+                        }
+                    )
+            except (PermissionError, OSError):
+                continue
         result.sort(key=lambda x: (cast(str, x["type"]), cast(str, x["name"])))
         return Response(content=json.dumps(result), media_type="application/json")
 

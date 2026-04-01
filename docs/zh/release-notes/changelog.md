@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Web：修复 macOS 上遇到权限受限条目（如 `.Trash`）时文件列表崩溃的问题——`iterdir()` 的 `PermissionError` 现在返回空列表，`stat()` 时抛出 `PermissionError` / `OSError` 的单个条目会被静默跳过
+
 ## 1.29.0 (2026-04-01)
 
 - Core：支持层级化 `AGENTS.md` 加载——CLI 现在会从 git 项目根目录到工作目录逐层发现并合并 `AGENTS.md` 文件，包括每层目录中的 `.kimi/AGENTS.md`；在 32 KiB 预算上限下，更深层目录的文件优先保留，确保最具体的指令不会被截断
