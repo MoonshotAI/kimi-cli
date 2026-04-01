@@ -32,6 +32,7 @@ Only write entries that are worth mentioning to users.
 - Shell: Add `/undo` and `/fork` commands for session forking — `/undo` lets you pick a previous turn and fork a new session with the selected message pre-filled for re-editing; `/fork` duplicates the entire session history into a new session; the original session is always preserved
 - CLI: Add `-r` as a short alias for `--session` and print a resume hint (`kimi -r <session-id>`) whenever a session exits — covers normal exit, Ctrl-C, `/undo`, `/fork`, and `/sessions` switch so users can always find their way back
 - Core: Fix `custom_headers` not being passed to non-Kimi providers — OpenAI, Anthropic, Google GenAI, and Vertex AI providers now correctly forward custom headers configured in `providers.*.custom_headers`
+- Shell: Fix inline diff highlights misaligned on lines containing tabs — raw-code diff offsets are now mapped to rendered positions via expandtabs column tracking so highlight spans land correctly after tab expansion
 
 ## 1.29.0 (2026-04-01)
 
