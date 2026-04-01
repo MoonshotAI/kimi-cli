@@ -95,7 +95,6 @@ def render_to_ansi(renderable: RenderableType, *, columns: int) -> str:
     temp = Console(
         file=buf,
         force_terminal=True,
-        color_system="truecolor",
         width=width,
         theme=NEUTRAL_MARKDOWN_THEME,
         highlight=False,

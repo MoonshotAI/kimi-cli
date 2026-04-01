@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import re
+
+import pytest
 from prompt_toolkit.formatted_text import ANSI, to_formatted_text
 from rich.console import Group
 from rich.style import Style
 from rich.text import Text
 
 from kimi_cli.ui.shell.console import _OSC8_RE, render_to_ansi
+
+# SGR 48;2;R;G;B — truecolor background escape sequence
+_TRUECOLOR_BG_RE = re.compile(r"\x1b\[(?:\d+;)*48;2;\d+;\d+;\d+m")
 
 
 def _visible_text(ansi_str: str) -> str:
@@ -73,6 +79,16 @@ class TestRenderToAnsiOSC8Integration:
     treats them as ZeroWidthEscape and passes them to the terminal via
     write_raw, preserving clickable links for capable terminals.
     """
+
+    @pytest.fixture(autouse=True)
+    def _ensure_color(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Ensure Rich produces colored ANSI output even on CI (TERM=dumb).
+
+        Rich checks ``is_dumb_terminal`` (TERM in {dumb, unknown}) before
+        reading COLORTERM, so both must be set for reliable detection.
+        """
+        monkeypatch.setenv("TERM", "xterm-256color")
+        monkeypatch.setenv("COLORTERM", "truecolor")
 
     def test_link_text_visible_osc8_hidden(self):
         """Visible text preserved; OSC 8 markers not rendered as visible characters."""
@@ -168,3 +184,42 @@ class TestRenderToAnsiOSC8Integration:
         assert r1 == r2
         assert "stable" in r1
         assert "8;id=" not in r1
+
+
+class TestRenderToAnsiColorSystem:
+    """render_to_ansi must respect the terminal's color capability.
+
+    The two tests deliberately use **different** bgcolor values so that Rich's
+    internal LRU caches (``Color.parse``, ``Color.downgrade``, ``Style._add``)
+    never share entries between them — no private cache clearing needed.
+    """
+
+    def test_no_truecolor_when_terminal_lacks_support(self, monkeypatch: pytest.MonkeyPatch):
+        """When COLORTERM is unset and TERM=xterm-256color, output must not
+        contain truecolor (SGR 48;2;R;G;B) sequences — they cause rendering
+        corruption on terminals that don't support 24-bit color."""
+        monkeypatch.delenv("COLORTERM", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.setenv("TERM", "xterm-256color")
+
+        text = Text("hello", style=Style(bgcolor="#2d1214"))
+        result = render_to_ansi(text, columns=80)
+
+        assert _visible_text(result).strip() == "hello"
+        assert not _TRUECOLOR_BG_RE.search(result), (
+            "render_to_ansi emitted truecolor SGR on a 256-color terminal"
+        )
+
+    def test_truecolor_when_terminal_supports_it(self, monkeypatch: pytest.MonkeyPatch):
+        """When COLORTERM=truecolor, 24-bit color sequences are acceptable."""
+        monkeypatch.setenv("TERM", "xterm-256color")
+        monkeypatch.setenv("COLORTERM", "truecolor")
+        monkeypatch.delenv("NO_COLOR", raising=False)
+
+        text = Text("hello", style=Style(bgcolor="#123456"))
+        result = render_to_ansi(text, columns=80)
+
+        assert _visible_text(result).strip() == "hello"
+        assert _TRUECOLOR_BG_RE.search(result), (
+            "render_to_ansi should emit truecolor SGR when terminal supports it"
+        )
