@@ -30,6 +30,7 @@ async def test_environment_detection_windows(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     monkeypatch.setattr(platform, "machine", lambda: "AMD64")
     monkeypatch.setattr(platform, "version", lambda: "10.0.19044")
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
 
     from kimi_cli.utils.environment import Environment
 
@@ -38,4 +39,4 @@ async def test_environment_detection_windows(monkeypatch):
     assert env.os_arch == "AMD64"
     assert env.os_version == "10.0.19044"
     assert env.shell_name == "Windows PowerShell"
-    assert str(env.shell_path) == "powershell.exe"
+    assert str(env.shell_path) == r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
