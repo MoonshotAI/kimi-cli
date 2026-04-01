@@ -104,22 +104,21 @@ class Session:
         await asyncio.to_thread(shutil.rmtree, session_dir, True)
 
     async def refresh(self) -> None:
-        self.title = f"Untitled ({self.id})"
+        self.title = "Untitled"
         self.updated_at = self.context_file.stat().st_mtime if self.context_file.exists() else 0.0
 
         if self.state.custom_title:
-            self.title = f"{self.state.custom_title} ({self.id})"
+            self.title = self.state.custom_title
             return
 
         try:
             async for record in self.wire_file.iter_records():
                 wire_msg = record.to_wire_message()
                 if isinstance(wire_msg, TurnBegin):
-                    title = shorten(
+                    self.title = shorten(
                         Message(role="user", content=wire_msg.user_input).extract_text(" "),
                         width=50,
                     )
-                    self.title = f"{title} ({self.id})"
                     return
         except Exception:
             logger.exception(

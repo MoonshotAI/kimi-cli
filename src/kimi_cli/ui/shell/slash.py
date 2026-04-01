@@ -533,7 +533,7 @@ async def title(app: Shell, args: str):
     save_session_state(fresh, session.dir)
     session.state.custom_title = new_title
     session.state.title_generated = True
-    session.title = f"{new_title} ({session.id})"
+    session.title = new_title
     console.print(f"[green]Session title set to: {new_title}[/green]")
 
 
@@ -558,7 +558,7 @@ async def list_sessions(app: Shell, args: str):
     for session in sessions:
         time_str = format_relative_time(session.updated_at)
         marker = " (current)" if session.id == current_session_id else ""
-        label = f"{session.title}, {time_str}{marker}"
+        label = f"{session.title} ({session.id}), {time_str}{marker}"
         choices.append((session.id, label))
 
     try:

@@ -77,7 +77,7 @@ def _write_context_records(context_file: Path, *records: dict[str, object]) -> N
 
 async def test_create_sets_fallback_title(isolated_share_dir: Path, work_dir: KaosPath):
     session = await Session.create(work_dir)
-    assert session.title.startswith("Untitled (")
+    assert session.title == "Untitled"
     assert session.context_file.exists()
 
 
@@ -87,7 +87,7 @@ async def test_find_uses_wire_title(isolated_share_dir: Path, work_dir: KaosPath
 
     found = await Session.find(work_dir, session.id)
     assert found is not None
-    assert found.title.startswith("hello world from wire file")
+    assert found.title == "hello world from wire file"
 
 
 async def test_list_sorts_by_updated_and_titles(isolated_share_dir: Path, work_dir: KaosPath):
@@ -106,8 +106,8 @@ async def test_list_sorts_by_updated_and_titles(isolated_share_dir: Path, work_d
     sessions = await Session.list(work_dir)
 
     assert [s.id for s in sessions] == [second.id, first.id]
-    assert sessions[0].title.startswith("new session title")
-    assert sessions[1].title.startswith("old session title")
+    assert sessions[0].title == "new session title that is slightly longer"
+    assert sessions[1].title == "old session title"
 
 
 async def test_continue_without_last_returns_none(isolated_share_dir: Path, work_dir: KaosPath):
@@ -186,7 +186,7 @@ async def test_custom_title_overrides_wire_title(isolated_share_dir: Path, work_
     save_session_state(session.state, session.dir)
 
     await session.refresh()
-    assert session.title == f"My Custom Title ({session.id})"
+    assert session.title == "My Custom Title"
 
 
 async def test_custom_title_makes_session_non_empty(isolated_share_dir: Path, work_dir: KaosPath):
@@ -214,7 +214,7 @@ async def test_custom_title_persists_across_find(isolated_share_dir: Path, work_
 
     found = await Session.find(work_dir, session.id)
     assert found is not None
-    assert found.title == f"Persisted Title ({found.id})"
+    assert found.title == "Persisted Title"
 
 
 async def test_save_state_preserves_external_title(isolated_share_dir: Path, work_dir: KaosPath):
@@ -267,3 +267,42 @@ async def test_save_state_preserves_external_archive(isolated_share_dir: Path, w
     assert reloaded.archived is True
     assert reloaded.archived_at == 12345.0
     assert reloaded.approval.yolo is True
+
+
+async def test_title_never_contains_session_id(isolated_share_dir: Path, work_dir: KaosPath):
+    """session.title should be a pure title without the session id suffix."""
+    # Untitled session
+    session = await Session.create(work_dir)
+    assert session.id not in session.title
+    assert session.title == "Untitled"
+
+    # Wire-derived title
+    _write_wire_turn(session.dir, "my wire title")
+    await session.refresh()
+    assert session.id not in session.title
+    assert session.title == "my wire title"
+
+    # Custom title
+    from kimi_cli.session_state import save_session_state
+
+    session.state.custom_title = "My Custom Title"
+    save_session_state(session.state, session.dir)
+    await session.refresh()
+    assert session.id not in session.title
+    assert session.title == "My Custom Title"
+
+
+async def test_list_titles_are_pure(isolated_share_dir: Path, work_dir: KaosPath):
+    """Session.list() should return sessions with pure titles (no id suffix)."""
+    s1 = await Session.create(work_dir)
+    s2 = await Session.create(work_dir)
+
+    _write_context_message(s1.context_file, "msg1")
+    _write_context_message(s2.context_file, "msg2")
+    _write_wire_turn(s1.dir, "first session")
+    _write_wire_turn(s2.dir, "second session")
+
+    sessions = await Session.list(work_dir)
+    for s in sessions:
+        assert s.id not in s.title
+        assert "(" not in s.title

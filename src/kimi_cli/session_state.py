@@ -36,19 +36,22 @@ class SessionState(BaseModel):
 _LEGACY_METADATA_FILENAME = "metadata.json"
 
 
-def _migrate_legacy_metadata(session_dir: Path, state: SessionState) -> bool:
+def _migrate_legacy_metadata(session_dir: Path, state: SessionState) -> str:
     """Migrate fields from legacy metadata.json into SessionState.
 
-    Returns True if migration happened and state was updated.
+    Returns:
+        "migrated" - fields were merged into state, caller should save and delete legacy file
+        "no_change" - legacy file parsed but no fields needed, caller can delete legacy file
+        "skip" - legacy file missing or unreadable, caller should not touch it
     """
     metadata_file = session_dir / _LEGACY_METADATA_FILENAME
     if not metadata_file.exists():
-        return False
+        return "skip"
     try:
         data = json.loads(metadata_file.read_text(encoding="utf-8"))
     except Exception:
         # Leave the file intact for future retry — it may be temporarily unreadable
-        return False
+        return "skip"
 
     changed = False
 
@@ -79,9 +82,7 @@ def _migrate_legacy_metadata(session_dir: Path, state: SessionState) -> bool:
         state.wire_mtime = data["wire_mtime"]
         changed = True
 
-    # Remove legacy file
-    metadata_file.unlink(missing_ok=True)
-    return changed
+    return "migrated" if changed else "no_change"
 
 
 def load_session_state(session_dir: Path) -> SessionState:
@@ -97,8 +98,12 @@ def load_session_state(session_dir: Path) -> SessionState:
             state = SessionState()
 
     # One-time migration from legacy metadata.json
-    if _migrate_legacy_metadata(session_dir, state):
+    migration = _migrate_legacy_metadata(session_dir, state)
+    if migration == "migrated":
         save_session_state(state, session_dir)
+        (session_dir / _LEGACY_METADATA_FILENAME).unlink(missing_ok=True)
+    elif migration == "no_change":
+        (session_dir / _LEGACY_METADATA_FILENAME).unlink(missing_ok=True)
 
     return state
 
