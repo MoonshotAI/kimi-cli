@@ -15,7 +15,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 from starlette.responses import HTMLResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from kimi_cli import logger
 from kimi_cli.utils.server import (
@@ -61,6 +63,41 @@ ENV_ALLOWED_ORIGINS = "KIMI_WEB_ALLOWED_ORIGINS"
 ENV_ENFORCE_ORIGIN = "KIMI_WEB_ENFORCE_ORIGIN"
 ENV_RESTRICT_SENSITIVE_APIS = "KIMI_WEB_RESTRICT_SENSITIVE_APIS"
 ENV_MAX_PUBLIC_PATH_DEPTH = "KIMI_WEB_MAX_PUBLIC_PATH_DEPTH"
+
+# Cache durations
+_IMMUTABLE_MAX_AGE = 365 * 24 * 3600  # 1 year for content-hashed assets
+
+
+class _StaticCacheHeadersMiddleware:
+    """Inject Cache-Control headers for static assets served by Starlette.
+
+    * ``index.html`` (and any non-hashed HTML) → ``no-cache`` so the browser
+      always revalidates, preventing stale references to renamed chunks after a
+      CLI upgrade (see #1602).
+    * Hashed assets under ``/assets/`` → long-lived ``immutable`` cache because
+      the content hash in the filename already guarantees uniqueness.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path: str = scope.get("path", "")
+
+        async def _send_with_cache_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                if path.startswith("/assets/"):
+                    headers["cache-control"] = f"public, max-age={_IMMUTABLE_MAX_AGE}, immutable"
+                elif path == "/" or path.endswith(".html"):
+                    headers["cache-control"] = "no-cache, no-store, must-revalidate"
+            await send(message)
+
+        await self.app(scope, receive, _send_with_cache_headers)
 
 
 def _get_private_addresses(addresses: list[str]) -> list[str]:
@@ -138,6 +175,8 @@ def create_app(
         minimum_size=GZIP_MINIMUM_SIZE,
         compresslevel=GZIP_COMPRESSION_LEVEL,
     )
+
+    application.add_middleware(cast(Any, _StaticCacheHeadersMiddleware))
 
     application.add_middleware(
         cast(Any, AuthMiddleware),
