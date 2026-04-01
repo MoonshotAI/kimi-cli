@@ -306,3 +306,81 @@ async def test_list_titles_are_pure(isolated_share_dir: Path, work_dir: KaosPath
     for s in sessions:
         assert s.id not in s.title
         assert "(" not in s.title
+
+
+async def test_refresh_without_wire_or_custom_title(isolated_share_dir: Path, work_dir: KaosPath):
+    """refresh() with no wire and no custom_title should give 'Untitled'."""
+    session = await Session.create(work_dir)
+    await session.refresh()
+    assert session.title == "Untitled"
+
+
+async def test_refresh_custom_title_takes_priority_over_wire(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """Even with wire content, custom_title wins."""
+    from kimi_cli.session_state import save_session_state
+
+    session = await Session.create(work_dir)
+    _write_wire_turn(session.dir, "wire title should be ignored")
+
+    session.state.custom_title = "User Title"
+    save_session_state(session.state, session.dir)
+    await session.refresh()
+    assert session.title == "User Title"
+
+
+async def test_save_state_reload_does_not_lose_worker_fields(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """save_state() reloads title/archive but preserves worker-owned fields."""
+    from kimi_cli.session_state import load_session_state, save_session_state
+
+    session = await Session.create(work_dir)
+
+    # Worker sets plan_mode and additional_dirs
+    session.state.plan_mode = True
+    session.state.additional_dirs = ["/tmp/extra"]
+    session.state.approval.yolo = True
+
+    # External writes title
+    fresh = load_session_state(session.dir)
+    fresh.custom_title = "External Title"
+    save_session_state(fresh, session.dir)
+
+    # Worker saves
+    session.save_state()
+
+    # Both worker fields and external title should be preserved
+    result = load_session_state(session.dir)
+    assert result.plan_mode is True
+    assert result.additional_dirs == ["/tmp/extra"]
+    assert result.approval.yolo is True
+    assert result.custom_title == "External Title"
+
+
+async def test_is_empty_with_only_metadata_records(
+    isolated_share_dir: Path, work_dir: KaosPath
+) -> None:
+    """Session with only metadata records and no custom_title is empty."""
+    session = await Session.create(work_dir)
+    _write_context_records(
+        session.context_file,
+        {"role": "_system_prompt", "content": "Persisted prompt"},
+        {"role": "_checkpoint", "id": 0},
+    )
+    assert session.is_empty()
+
+
+async def test_new_does_not_delete_titled_session(isolated_share_dir: Path, work_dir: KaosPath):
+    """A session with custom_title but no messages should survive /new cleanup logic."""
+    from kimi_cli.session_state import save_session_state
+
+    session = await Session.create(work_dir)
+    session.state.custom_title = "Keep Me"
+    save_session_state(session.state, session.dir)
+
+    # Simulate what /new does: check is_empty, delete if empty
+    assert not session.is_empty()
+    # Session dir should still exist
+    assert session.dir.exists()

@@ -261,6 +261,8 @@ def run_auto_archive() -> int:
 
     for entry in entries:
         if _should_auto_archive(entry.last_updated, entry.state):
+            if not entry.session_dir.is_dir():
+                continue
             entry.state.archived = True
             entry.state.archived_at = time.time()
             save_session_state(entry.state, entry.session_dir)
