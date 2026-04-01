@@ -187,29 +187,19 @@ class TestRenderToAnsiOSC8Integration:
 
 
 class TestRenderToAnsiColorSystem:
-    """render_to_ansi must respect the terminal's color capability."""
+    """render_to_ansi must respect the terminal's color capability.
 
-    @pytest.fixture(autouse=True)
-    def _clear_rich_caches(self) -> None:
-        """Clear Rich's LRU caches so each test starts with a clean state.
-
-        Rich caches Style combinations (``Style._add``) and color downgrades
-        (``Color.downgrade``) via ``@lru_cache``.  Cached ``Style`` objects
-        carry a baked-in ``_ansi`` field from the first render, so a prior
-        256-color render poisons subsequent truecolor renders and vice versa.
-        """
-        from rich.color import Color
-
-        Color.parse.cache_clear()
-        Color.downgrade.cache_clear()
-        Color.get_ansi_codes.cache_clear()
-        Style._add.cache_clear()
+    The two tests deliberately use **different** bgcolor values so that Rich's
+    internal LRU caches (``Color.parse``, ``Color.downgrade``, ``Style._add``)
+    never share entries between them — no private cache clearing needed.
+    """
 
     def test_no_truecolor_when_terminal_lacks_support(self, monkeypatch: pytest.MonkeyPatch):
         """When COLORTERM is unset and TERM=xterm-256color, output must not
         contain truecolor (SGR 48;2;R;G;B) sequences — they cause rendering
         corruption on terminals that don't support 24-bit color."""
         monkeypatch.delenv("COLORTERM", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
         monkeypatch.setenv("TERM", "xterm-256color")
 
         text = Text("hello", style=Style(bgcolor="#2d1214"))
@@ -224,8 +214,9 @@ class TestRenderToAnsiColorSystem:
         """When COLORTERM=truecolor, 24-bit color sequences are acceptable."""
         monkeypatch.setenv("TERM", "xterm-256color")
         monkeypatch.setenv("COLORTERM", "truecolor")
+        monkeypatch.delenv("NO_COLOR", raising=False)
 
-        text = Text("hello", style=Style(bgcolor="#2d1214"))
+        text = Text("hello", style=Style(bgcolor="#123456"))
         result = render_to_ansi(text, columns=80)
 
         assert _visible_text(result).strip() == "hello"
