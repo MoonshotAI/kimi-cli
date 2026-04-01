@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import typer
+
+if TYPE_CHECKING:
+    from kimi_cli.session import Session
 
 from ._lazy_group import LazySubcommandGroup
 
@@ -14,6 +17,7 @@ class Reload(Exception):
     def __init__(self, session_id: str | None = None):
         super().__init__("reload")
         self.session_id = session_id
+        self.source_session: Session | None = None
 
 
 class SwitchToWeb(Exception):
@@ -612,7 +616,10 @@ def kimi(
             except Reload as e:
                 preserve_background_tasks = True
                 if e.session_id is None:
-                    raise Reload(session_id=session.id) from e
+                    r = Reload(session_id=session.id)
+                    r.source_session = session
+                    raise r from e
+                e.source_session = session
                 raise
             except SwitchToWeb:
                 preserve_background_tasks = True
@@ -644,9 +651,6 @@ def kimi(
             startup_progress.stop()
 
     async def _post_run(last_session: Session, exit_code: int) -> None:
-        if exit_code != ExitCode.SUCCESS:
-            return
-
         metadata = load_metadata()
 
         # Update work_dir metadata with last session
@@ -660,6 +664,7 @@ def kimi(
             work_dir_meta = metadata.new_work_dir_meta(last_session.work_dir)
 
         if last_session.is_empty():
+            # Always clean up empty sessions regardless of exit code
             logger.info(
                 "Session {session_id} has empty context, removing it",
                 session_id=last_session.id,
@@ -667,7 +672,7 @@ def kimi(
             await last_session.delete()
             if work_dir_meta.last_session_id == last_session.id:
                 work_dir_meta.last_session_id = None
-        else:
+        elif exit_code == ExitCode.SUCCESS:
             work_dir_meta.last_session_id = last_session.id
 
         save_metadata(metadata)
@@ -679,27 +684,47 @@ def kimi(
             (switch_target, exit_code) where switch_target is "web", "vis",
             or None if the session ended normally.
         """
-        while True:
-            try:
-                last_session, exit_code = await _run(session_id)
-                break
-            except Reload as e:
-                session_id = e.session_id
-                continue
-            except SwitchToWeb as e:
-                if e.session_id is not None:
-                    session = await Session.find(work_dir, e.session_id)
-                    if session is not None:
-                        await _post_run(session, ExitCode.SUCCESS)
-                return "web", ExitCode.SUCCESS
-            except SwitchToVis as e:
-                if e.session_id is not None:
-                    session = await Session.find(work_dir, e.session_id)
-                    if session is not None:
-                        await _post_run(session, ExitCode.SUCCESS)
-                return "vis", ExitCode.SUCCESS
-        await _post_run(last_session, exit_code)
-        return None, exit_code
+        last_session: Session | None = None
+        try:
+            while True:
+                try:
+                    last_session, exit_code = await _run(session_id)
+                    break
+                except Reload as e:
+                    # Clean up old empty session when switching to a different session
+                    old = e.source_session
+                    if old is not None and old.id != e.session_id and old.is_empty():
+                        logger.info(
+                            "Cleaning up empty session {session_id} after switch",
+                            session_id=old.id,
+                        )
+                        await old.delete()
+                    last_session = e.source_session
+                    session_id = e.session_id
+                    continue
+                except SwitchToWeb as e:
+                    if e.session_id is not None:
+                        session = await Session.find(work_dir, e.session_id)
+                        if session is not None:
+                            await _post_run(session, ExitCode.SUCCESS)
+                    return "web", ExitCode.SUCCESS
+                except SwitchToVis as e:
+                    if e.session_id is not None:
+                        session = await Session.find(work_dir, e.session_id)
+                        if session is not None:
+                            await _post_run(session, ExitCode.SUCCESS)
+                    return "vis", ExitCode.SUCCESS
+            assert last_session is not None
+            await _post_run(last_session, exit_code)
+            return None, exit_code
+        except (SwitchToWeb, SwitchToVis):
+            raise
+        except Exception:
+            # Best-effort cleanup of empty session on unexpected errors
+            if last_session is not None and last_session.is_empty():
+                with contextlib.suppress(Exception):
+                    await last_session.delete()
+            raise
 
     try:
         switch_target, exit_code = asyncio.run(_reload_loop(session_id))
