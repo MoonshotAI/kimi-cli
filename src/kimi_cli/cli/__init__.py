@@ -495,6 +495,10 @@ def kimi(
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
+    # Tracks the most recently created/loaded session so that _reload_loop's
+    # exception handler can clean it up even when _run() fails before returning.
+    _latest_created_session: Session | None = None
+
     async def _run(session_id: str | None) -> tuple[Session, int]:
         """
         Create/load session and run the CLI instance.
@@ -526,6 +530,9 @@ def kimi(
             else:
                 session = await Session.create(work_dir)
                 logger.info("Created new session: {session_id}", session_id=session.id)
+
+            nonlocal _latest_created_session
+            _latest_created_session = session
 
             # Add CLI-provided additional directories to session state
             if local_add_dirs:
@@ -730,10 +737,13 @@ def kimi(
             # so the generic except below never treats them as unexpected errors.
             raise
         except Exception:
-            # Best-effort cleanup of empty session on unexpected errors
-            if last_session is not None and last_session.is_empty():
+            # Best-effort cleanup of empty session on unexpected errors.
+            # Fall back to _latest_created_session to cover the case where
+            # _run() created a session but threw before returning it.
+            target = last_session or _latest_created_session
+            if target is not None and target.is_empty():
                 with contextlib.suppress(Exception):
-                    await last_session.delete()
+                    await target.delete()
             raise
 
     try:

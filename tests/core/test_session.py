@@ -656,6 +656,83 @@ async def test_exception_cleanup_preserves_nonempty_session(
 async def test_exception_cleanup_none_session():
     """On unexpected exception with no session created, should not crash."""
     last_session: Session | None = None
+    _latest_created_session: Session | None = None
     # This must not raise
-    if last_session is not None and last_session.is_empty():
-        await last_session.delete()
+    target: Session | None = last_session or _latest_created_session
+    if target is not None and target.is_empty():
+        await target.delete()
+
+
+# ---------------------------------------------------------------------------
+# Exception cleanup fallback: _latest_created_session covers _run() failures
+# ---------------------------------------------------------------------------
+
+
+async def test_exception_fallback_cleans_empty_session(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """When _run() fails after creating a session, the fallback should clean it up."""
+    session = await Session.create(work_dir)
+    _write_context_records(session.context_file, {"role": "_system_prompt", "content": "p"})
+    session_dir = session.dir
+    assert session.is_empty()
+
+    # Simulate: _run() threw before returning, so last_session is still None
+    last_session: Session | None = None
+    _latest_created_session: Session | None = session  # set by _run() before failure
+
+    target = last_session or _latest_created_session
+    if target is not None and target.is_empty():
+        await target.delete()
+
+    assert not session_dir.exists()
+
+
+async def test_exception_fallback_preserves_nonempty_session(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """Fallback should not delete a non-empty session from a failed _run()."""
+    session = await Session.create(work_dir)
+    _write_context_message(session.context_file, "real work")
+    _write_wire_turn(session.dir, "real")
+    session_dir = session.dir
+    assert not session.is_empty()
+
+    last_session: Session | None = None
+    _latest_created_session: Session | None = session
+
+    target = last_session or _latest_created_session
+    if target is not None and target.is_empty():
+        await target.delete()
+
+    assert session_dir.exists(), "Non-empty session must survive fallback cleanup"
+
+
+async def test_exception_fallback_last_session_takes_priority(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """When both last_session and _latest_created_session are set, last_session wins."""
+    older = await Session.create(work_dir)
+    _write_context_records(older.context_file, {"role": "_system_prompt", "content": "p"})
+    older_dir = older.dir
+    assert older.is_empty()
+
+    newer = await Session.create(work_dir)
+    _write_context_message(newer.context_file, "real work")
+    _write_wire_turn(newer.dir, "real")
+    newer_dir = newer.dir
+    assert not newer.is_empty()
+
+    # last_session points to the older empty one (would be cleaned),
+    # _latest_created_session points to the newer non-empty one
+    last_session: Session | None = older
+    _latest_created_session: Session | None = newer
+
+    target = last_session or _latest_created_session
+    if target is not None and target.is_empty():
+        await target.delete()
+
+    # older (last_session) was empty → deleted
+    assert not older_dir.exists()
+    # newer (_latest_created_session) was not touched
+    assert newer_dir.exists()
