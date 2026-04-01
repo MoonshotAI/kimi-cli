@@ -63,7 +63,9 @@ async def run_worker(session_id: UUID) -> None:
 def main() -> None:
     """Entry point for the worker subprocess."""
     from kimi_cli.utils.proctitle import set_process_title
+    from kimi_cli.utils.proxy import normalize_proxy_env
 
+    normalize_proxy_env()
     set_process_title("kimi-code-worker")
 
     if len(sys.argv) < 2:
