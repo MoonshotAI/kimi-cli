@@ -13,6 +13,9 @@ from kimi_cli.ui.shell.prompt import PromptMode, UserInput
 from kimi_cli.wire.types import ApprovalRequest, StatusUpdate, SteerInput, TextPart
 
 shell_visualize = importlib.import_module("kimi_cli.ui.shell.visualize")
+# Sub-modules for monkeypatching internal names (Live, _keyboard_listener, console)
+_live_view_mod = importlib.import_module("kimi_cli.ui.shell.visualize._live_view")
+_interactive_mod = importlib.import_module("kimi_cli.ui.shell.visualize._interactive")
 _LiveView = shell_visualize._LiveView
 _PromptLiveView = shell_visualize._PromptLiveView
 
@@ -216,8 +219,8 @@ async def test_live_view_processes_external_approval_messages(monkeypatch) -> No
     async def _no_keyboard_listener(*args, **kwargs):
         yield
 
-    monkeypatch.setattr(shell_visualize, "Live", _FakeLive)
-    monkeypatch.setattr(shell_visualize, "_keyboard_listener", _no_keyboard_listener)
+    monkeypatch.setattr(_live_view_mod, "Live", _FakeLive)
+    monkeypatch.setattr(_live_view_mod, "_keyboard_listener", _no_keyboard_listener)
 
     view = _LiveView(StatusUpdate())
     task = asyncio.create_task(view.visualize_loop(cast(Any, _Wire())))

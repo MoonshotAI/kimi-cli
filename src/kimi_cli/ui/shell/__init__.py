@@ -829,7 +829,10 @@ class Shell:
 
         dismiss_event = asyncio.Event()
         modal = _BtwModalDelegate(on_dismiss=lambda: dismiss_event.set())
+        import time
+
         modal._question = question  # pyright: ignore[reportPrivateUsage]
+        modal.set_start_time(time.monotonic())
         prompt_session.attach_modal(modal)
 
         # Refresh loop for spinner animation

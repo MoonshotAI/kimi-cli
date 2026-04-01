@@ -349,7 +349,7 @@ async def test_question_delegate_expands_placeholders_on_submit() -> None:
     placeholders should be expanded to full text via text_expander."""
     from unittest.mock import patch
 
-    from kimi_cli.ui.shell.question_panel import QuestionPromptDelegate, QuestionRequestPanel
+    from kimi_cli.ui.shell.visualize import QuestionPromptDelegate, QuestionRequestPanel
     from kimi_cli.wire.types import QuestionItem, QuestionRequest
 
     full_text = "\n".join([f"line{i}" for i in range(1, 20)])
