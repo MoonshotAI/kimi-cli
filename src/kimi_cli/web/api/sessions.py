@@ -525,21 +525,28 @@ async def get_session_file(
 
     if file_path.is_dir():
         result: list[dict[str, str | int]] = []
-        for subpath in file_path.iterdir():
+        try:
+            entries = list(file_path.iterdir())
+        except PermissionError:
+            entries = []
+        for subpath in entries:
             if restrict_sensitive_apis:
                 rel_subpath = rel_path / subpath.name
                 if _is_sensitive_relative_path(rel_subpath):
                     continue
-            if subpath.is_dir():
-                result.append({"name": subpath.name, "type": "directory"})
-            else:
-                result.append(
-                    {
-                        "name": subpath.name,
-                        "type": "file",
-                        "size": subpath.stat().st_size,
-                    }
-                )
+            try:
+                if subpath.is_dir():
+                    result.append({"name": subpath.name, "type": "directory"})
+                else:
+                    result.append(
+                        {
+                            "name": subpath.name,
+                            "type": "file",
+                            "size": subpath.stat().st_size,
+                        }
+                    )
+            except (PermissionError, OSError):
+                continue
         result.sort(key=lambda x: (cast(str, x["type"]), cast(str, x["name"])))
         return Response(content=json.dumps(result), media_type="application/json")
 
