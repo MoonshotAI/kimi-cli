@@ -699,7 +699,15 @@ def kimi(
                             session_id=old.id,
                         )
                         await old.delete()
-                    last_session = e.source_session
+                        # Clear last_session_id if it pointed to the deleted session
+                        meta = load_metadata()
+                        wdm = meta.get_work_dir_meta(old.work_dir)
+                        if wdm is not None and wdm.last_session_id == old.id:
+                            wdm.last_session_id = None
+                            save_metadata(meta)
+                        last_session = None
+                    else:
+                        last_session = e.source_session
                     session_id = e.session_id
                     continue
                 except SwitchToWeb as e:
@@ -718,6 +726,8 @@ def kimi(
             await _post_run(last_session, exit_code)
             return None, exit_code
         except (SwitchToWeb, SwitchToVis):
+            # Currently handled inside the loop (return), but re-raise explicitly
+            # so the generic except below never treats them as unexpected errors.
             raise
         except Exception:
             # Best-effort cleanup of empty session on unexpected errors
