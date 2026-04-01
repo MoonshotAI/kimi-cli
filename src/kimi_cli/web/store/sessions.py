@@ -24,16 +24,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata
 from kimi_cli.session import Session as KimiCLISession
+from kimi_cli.session_state import SessionState, load_session_state, save_session_state
 from kimi_cli.web.models import Session
 from kimi_cli.wire.file import WireFile
 
 # Cache configuration
 CACHE_TTL = 5.0  # seconds - balance between freshness and performance
-SESSION_METADATA_FILENAME = "metadata.json"
 
 # Auto-archive configuration
 AUTO_ARCHIVE_DAYS = 15  # Sessions older than this will be auto-archived
@@ -65,19 +65,6 @@ class JointSession(Session):
     kimi_cli_session: KimiCLISession = Field(exclude=True)
 
 
-class SessionMetadata(BaseModel):
-    """Session metadata stored in metadata.json."""
-
-    session_id: str
-    title: str = "Untitled"
-    title_generated: bool = False
-    title_generate_attempts: int = 0
-    wire_mtime: float | None = None
-    archived: bool = False
-    archived_at: float | None = None
-    auto_archive_exempt: bool = False  # True if user manually unarchived, exempt from auto-archive
-
-
 @dataclass(slots=True)
 class SessionIndexEntry:
     session_id: UUID
@@ -87,39 +74,7 @@ class SessionIndexEntry:
     work_dir_meta: WorkDirMeta
     last_updated: datetime
     title: str
-    metadata: SessionMetadata | None
-
-
-def load_session_metadata(session_dir: Path, session_id: str) -> SessionMetadata:
-    """Load session metadata from metadata.json, or create default if not exists."""
-    metadata_file = session_dir / SESSION_METADATA_FILENAME
-    if not metadata_file.exists():
-        return SessionMetadata(session_id=session_id)
-    try:
-        import json
-
-        data = json.loads(metadata_file.read_text(encoding="utf-8"))
-        # Ensure session_id is set
-        data["session_id"] = session_id
-        return SessionMetadata.model_validate(data)
-    except Exception:
-        return SessionMetadata(session_id=session_id)
-
-
-def save_session_metadata(session_dir: Path, metadata: SessionMetadata) -> None:
-    """Save session metadata to metadata.json."""
-    if not session_dir.exists():
-        return
-    metadata_file = session_dir / SESSION_METADATA_FILENAME
-    try:
-        import json
-
-        metadata_file.write_text(
-            json.dumps(metadata.model_dump(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except Exception:
-        pass
+    state: SessionState
 
 
 def _derive_title_from_wire(session_dir: Path) -> str:
@@ -174,56 +129,28 @@ def _iter_session_dirs(wd: WorkDirMeta) -> list[tuple[Path, Path]]:
 
 
 def _ensure_title(entry: SessionIndexEntry, *, refresh: bool) -> None:
-    """Ensure session has a title, updating metadata if needed.
+    """Ensure session has a title.
 
-    Logic:
-    - If title exists and is not "Untitled": only update wire_mtime if changed
-    - If title is empty or "Untitled": derive from wire.jsonl, don't touch title_generated
+    Reads title exclusively from SessionState.custom_title (source of truth).
+    Falls back to deriving from wire.jsonl if custom_title is not set.
     """
-    session_id_str = str(entry.session_id)
-    wire_file = entry.session_dir / "wire.jsonl"
-    wire_mtime = wire_file.stat().st_mtime if wire_file.exists() else None
-
-    # Load or create metadata
-    metadata = entry.metadata
-    if metadata is None:
-        metadata = load_session_metadata(entry.session_dir, session_id_str)
-        entry.metadata = metadata
-
-    # Case 1: title exists and is not "Untitled" - only update wire_mtime
-    if metadata.title and metadata.title != "Untitled":
-        entry.title = metadata.title
-        if metadata.wire_mtime != wire_mtime:
-            metadata = metadata.model_copy(update={"wire_mtime": wire_mtime})
-            save_session_metadata(entry.session_dir, metadata)
-            entry.metadata = metadata
+    if entry.state.custom_title:
+        entry.title = entry.state.custom_title
         return
 
-    # Case 2: title is empty or "Untitled"
-    # If not refreshing, just use current title
     if not refresh:
-        entry.title = metadata.title if metadata.title else "Untitled"
+        if entry.title and entry.title != "Untitled":
+            return
+        entry.title = "Untitled"
         return
 
-    # Derive title from wire.jsonl
-    title = _derive_title_from_wire(entry.session_dir)
-    entry.title = title
-
-    # Update metadata: set title and wire_mtime, but keep title_generated unchanged
-    metadata = metadata.model_copy(
-        update={
-            "title": title,
-            "wire_mtime": wire_mtime,
-        }
-    )
-    save_session_metadata(entry.session_dir, metadata)
-    entry.metadata = metadata
+    # Derive title from wire.jsonl (no caching — title will be persisted
+    # to SessionState by the soul layer or generate-title endpoint)
+    entry.title = _derive_title_from_wire(entry.session_dir)
 
 
 def _build_kimi_session(entry: SessionIndexEntry) -> KimiCLISession:
     from kaos.path import KaosPath
-
-    from kimi_cli.session_state import load_session_state
 
     return KimiCLISession(
         id=str(entry.session_id),
@@ -231,7 +158,7 @@ def _build_kimi_session(entry: SessionIndexEntry) -> KimiCLISession:
         work_dir_meta=entry.work_dir_meta,
         context_file=entry.context_file,
         wire_file=WireFile(entry.session_dir / "wire.jsonl"),
-        state=load_session_state(entry.session_dir),
+        state=entry.state,
         title=entry.title,
         updated_at=entry.last_updated.timestamp(),
     )
@@ -239,7 +166,6 @@ def _build_kimi_session(entry: SessionIndexEntry) -> KimiCLISession:
 
 def _build_joint_session(entry: SessionIndexEntry) -> JointSession:
     kimi_session = _build_kimi_session(entry)
-    archived = entry.metadata.archived if entry.metadata else False
     return JointSession(
         session_id=entry.session_id,
         title=entry.title,
@@ -249,21 +175,18 @@ def _build_joint_session(entry: SessionIndexEntry) -> JointSession:
         work_dir=entry.work_dir,
         session_dir=str(entry.session_dir),
         kimi_cli_session=kimi_session,
-        archived=archived,
+        archived=entry.state.archived,
     )
 
 
-def _should_auto_archive(last_updated: datetime, session_metadata: SessionMetadata) -> bool:
+def _should_auto_archive(last_updated: datetime, state: SessionState) -> bool:
     """Check if a session should be auto-archived based on age and exemption status."""
-    # Already archived, no need to auto-archive
-    if session_metadata.archived:
+    if state.archived:
         return False
 
-    # User manually unarchived this session, exempt from auto-archive
-    if session_metadata.auto_archive_exempt:
+    if state.auto_archive_exempt:
         return False
 
-    # Check if session is older than AUTO_ARCHIVE_DAYS
     now = datetime.now(tz=UTC)
     age_days = (now - last_updated).days
     return age_days >= AUTO_ARCHIVE_DAYS
@@ -290,8 +213,8 @@ def _build_sessions_index() -> list[SessionIndexEntry]:
                 continue
 
             last_updated = datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC)
-            session_metadata = load_session_metadata(session_dir, str(session_id))
-            title = session_metadata.title if session_metadata.title else "Untitled"
+            state = load_session_state(session_dir)
+            title = state.custom_title or "Untitled"
 
             entries.append(
                 SessionIndexEntry(
@@ -302,7 +225,7 @@ def _build_sessions_index() -> list[SessionIndexEntry]:
                     work_dir_meta=wd,
                     last_updated=last_updated,
                     title=title,
-                    metadata=session_metadata,
+                    state=state,
                 )
             )
 
@@ -337,17 +260,12 @@ def run_auto_archive() -> int:
     entries = _build_sessions_index()
 
     for entry in entries:
-        if entry.metadata is None:
-            continue
-
-        if _should_auto_archive(entry.last_updated, entry.metadata):
-            updated_metadata = entry.metadata.model_copy(
-                update={
-                    "archived": True,
-                    "archived_at": time.time(),
-                }
-            )
-            save_session_metadata(entry.session_dir, updated_metadata)
+        if _should_auto_archive(entry.last_updated, entry.state):
+            if not entry.session_dir.is_dir():
+                continue
+            entry.state.archived = True
+            entry.state.archived_at = time.time()
+            save_session_state(entry.state, entry.session_dir)
             archived_count += 1
 
     # Invalidate cache if we archived anything
@@ -424,11 +342,9 @@ def load_sessions_page(
 
     # Filter by archived status
     if archived is None or archived is False:
-        # Default: only non-archived sessions
-        entries = [e for e in entries if not (e.metadata and e.metadata.archived)]
+        entries = [e for e in entries if not e.state.archived]
     else:
-        # Only archived sessions
-        entries = [e for e in entries if e.metadata and e.metadata.archived]
+        entries = [e for e in entries if e.state.archived]
 
     if query:
         query_text = query.strip().lower()
@@ -450,7 +366,7 @@ def load_sessions_page(
 
     if not query:
         for entry in page_entries:
-            if entry.metadata is None or not entry.title or entry.title == "Untitled":
+            if not entry.title or entry.title == "Untitled":
                 _ensure_title(entry, refresh=True)
 
     return [_build_joint_session(entry) for entry in page_entries]
@@ -472,8 +388,7 @@ def load_session_by_id(id: UUID) -> JointSession | None:
 
         if context_file.exists():
             last_updated = datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC)
-            session_metadata = load_session_metadata(session_dir, session_id_str)
-            title = session_metadata.title if session_metadata.title else "Untitled"
+            state = load_session_state(session_dir)
             entry = SessionIndexEntry(
                 session_id=id,
                 session_dir=session_dir,
@@ -481,8 +396,8 @@ def load_session_by_id(id: UUID) -> JointSession | None:
                 work_dir=wd.path,
                 work_dir_meta=wd,
                 last_updated=last_updated,
-                title=title,
-                metadata=session_metadata,
+                title="Untitled",
+                state=state,
             )
             _ensure_title(entry, refresh=True)
             return _build_joint_session(entry)
@@ -491,8 +406,7 @@ def load_session_by_id(id: UUID) -> JointSession | None:
         legacy_context = wd.sessions_dir / f"{session_id_str}.jsonl"
         if legacy_context.exists():
             last_updated = datetime.fromtimestamp(legacy_context.stat().st_mtime, tz=UTC)
-            session_metadata = load_session_metadata(session_dir, session_id_str)
-            title = session_metadata.title if session_metadata.title else "Untitled"
+            state = load_session_state(session_dir)
             entry = SessionIndexEntry(
                 session_id=id,
                 session_dir=session_dir,
@@ -500,8 +414,8 @@ def load_session_by_id(id: UUID) -> JointSession | None:
                 work_dir=wd.path,
                 work_dir_meta=wd,
                 last_updated=last_updated,
-                title=title,
-                metadata=session_metadata,
+                title="Untitled",
+                state=state,
             )
             _ensure_title(entry, refresh=True)
             return _build_joint_session(entry)
