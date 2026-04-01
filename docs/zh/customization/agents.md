@@ -78,7 +78,7 @@ agent:
 | `${KIMI_NOW}` | 当前时间（ISO 格式） |
 | `${KIMI_WORK_DIR}` | 工作目录路径 |
 | `${KIMI_WORK_DIR_LS}` | 工作目录文件列表 |
-| `${KIMI_AGENTS_MD}` | AGENTS.md 文件内容（如果存在） |
+| `${KIMI_AGENTS_MD}` | 从项目根目录到工作目录逐层合并的 `AGENTS.md` 内容（包括 `.kimi/AGENTS.md`） |
 | `${KIMI_SKILLS}` | 加载的 Skills 列表 |
 | `${KIMI_ADDITIONAL_DIRS_INFO}` | 通过 `--add-dir` 或 `/add-dir` 添加的额外目录信息 |
 
