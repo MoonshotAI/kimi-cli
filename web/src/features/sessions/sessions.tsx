@@ -53,7 +53,8 @@ import {
   CollapsibleContent,
 } from "@/components/ui/collapsible";
 import { hasPlatformModifier, isMacOS } from "@/hooks/utils";
-import { cn, } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { motion } from "motion/react";
 
 // Top-level regex constants for performance
 const NEWLINE_REGEX = /\r\n|\r|\n/;
@@ -65,6 +66,10 @@ type SessionSummary = {
   updatedAt: string;
   workDir?: string | null;
   lastUpdated: Date;
+  /** Runtime session state: busy, idle, stopped, etc. */
+  statusState?: string | null;
+  /** Whether this session has unread results */
+  isUnread?: boolean;
 };
 
 type ViewMode = "list" | "grouped";
@@ -85,6 +90,38 @@ function shortenPath(path: string, maxLen = 30): string {
   const parts = path.split("/").filter(Boolean);
   if (parts.length <= 2) return path;
   return ".../" + parts.slice(-2).join("/");
+}
+
+/**
+ * Small dot indicator for session status, rendered after the timestamp.
+ * - busy: green dot with outward pulse animation (matches the bottom status indicator)
+ * - unread: static blue dot
+ * - idle/default: no dot
+ */
+function SessionStatusDot({ statusState, isUnread }: { statusState?: string | null; isUnread?: boolean }) {
+  if (statusState === "busy") {
+    return (
+      <span className="relative inline-flex size-3 shrink-0 items-center justify-center" aria-label="Running">
+        <motion.span
+          className="absolute size-2.5 rounded-full bg-green-500/50"
+          animate={{
+            scale: [1, 1.8, 1],
+            opacity: [0.6, 0, 0.6],
+          }}
+          transition={{
+            duration: 1.5,
+            repeat: Number.POSITIVE_INFINITY,
+            ease: "easeInOut",
+          }}
+        />
+        <span className="relative inline-block size-1.5 rounded-full bg-green-500" />
+      </span>
+    );
+  }
+  if (isUnread) {
+    return <span className="inline-block size-1.5 shrink-0 rounded-full bg-blue-500" aria-label="Unread" />;
+  }
+  return null;
 }
 
 type SessionsSidebarProps = {
@@ -936,8 +973,9 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                           </Tooltip>
                                         )}
                                         {!isEditing && (
-                                          <span className="text-[10px] text-muted-foreground mt-1 block">
+                                          <span className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground mt-1">
                                             {session.updatedAt}
+                                            <SessionStatusDot statusState={session.statusState} isUnread={session.isUnread} />
                                           </span>
                                         )}
                                       </button>
@@ -1055,8 +1093,9 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                 {normalizeTitle(session.title)}
                               </TooltipContent>
                             </Tooltip>
-                            <span className="text-[10px] text-muted-foreground shrink-0">
+                            <span className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground shrink-0">
                               {session.updatedAt}
+                              <SessionStatusDot statusState={session.statusState} isUnread={session.isUnread} />
                             </span>
                           </div>
                         )}

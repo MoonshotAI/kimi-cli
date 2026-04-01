@@ -102,6 +102,10 @@ function App() {
 
   const [streamStatus, setStreamStatus] = useState<ChatStatus>("ready");
 
+  // Track sessions with unread results (completed a turn while user wasn't viewing)
+  const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(new Set());
+  const prevSessionStatusRef = useRef<Map<string, string>>(new Map());
+
   useEffect(() => {
     const token = consumeAuthTokenFromUrl();
     if (token) {
@@ -266,9 +270,47 @@ function App() {
     setStreamStatus(nextStatus);
   }, []);
 
+  // Detect busy→idle transitions from API refresh to mark sessions as unread
+  useEffect(() => {
+    const prev = prevSessionStatusRef.current;
+    const next = new Map<string, string>();
+    const newUnread: string[] = [];
+
+    for (const session of sessions) {
+      const state = session.status?.state ?? null;
+      if (state) {
+        next.set(session.sessionId, state);
+      }
+      const prevState = prev.get(session.sessionId);
+      // Detect busy → non-busy (idle, stopped, null/gone) for non-selected sessions
+      if (prevState === "busy" && state !== "busy" && session.sessionId !== selectedSessionId) {
+        newUnread.push(session.sessionId);
+      }
+    }
+
+    prevSessionStatusRef.current = next;
+
+    if (newUnread.length > 0) {
+      setUnreadSessionIds((prev) => {
+        const updated = new Set(prev);
+        for (const id of newUnread) updated.add(id);
+        return updated;
+      });
+    }
+  }, [sessions, selectedSessionId]);
+
   const handleSessionStatus = useCallback(
     (status: SessionStatus) => {
       applySessionStatus(status);
+
+      // Mark as unread when a non-selected session finishes (becomes non-busy)
+      if (status.state !== "busy" && status.sessionId !== selectedSessionId) {
+        setUnreadSessionIds((prev) => {
+          const next = new Set(prev);
+          next.add(status.sessionId);
+          return next;
+        });
+      }
 
       if (status.state !== "idle") {
         return;
@@ -291,7 +333,7 @@ function App() {
       );
       refreshSession(status.sessionId);
     },
-    [applySessionStatus, refreshSession],
+    [applySessionStatus, refreshSession, selectedSessionId],
   );
 
   const handleCreateSession = useCallback(
@@ -319,6 +361,13 @@ function App() {
     (sessionId: string) => {
       selectSession(sessionId);
       setIsMobileSidebarOpen(false);
+      // Clear unread status when user views the session
+      setUnreadSessionIds((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
     },
     [selectSession],
   );
@@ -343,8 +392,10 @@ function App() {
         updatedAt: formatRelativeTime(session.lastUpdated),
         workDir: session.workDir,
         lastUpdated: session.lastUpdated,
+        statusState: session.status?.state ?? null,
+        isUnread: unreadSessionIds.has(session.sessionId),
       })),
-    [sessions],
+    [sessions, unreadSessionIds],
   );
 
   // Transform archived Session[] to SessionSummary[] for sidebar
@@ -356,6 +407,8 @@ function App() {
         updatedAt: formatRelativeTime(session.lastUpdated),
         workDir: session.workDir,
         lastUpdated: session.lastUpdated,
+        statusState: session.status?.state ?? null,
+        isUnread: false,
       })),
     [archivedSessions],
   );
