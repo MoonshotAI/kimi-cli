@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Support `socks://` proxy scheme — proxy tools like V2RayN set `ALL_PROXY=socks://...` which httpx/aiohttp don't recognise; the CLI now normalises `socks://` to `socks5://` at startup so all HTTP clients and subprocesses work correctly behind a SOCKS proxy
 - Shell: Add `/title` (alias `/rename`) command to manually set session titles — titles are now stored in `state.json` alongside other session state; legacy `metadata.json` is automatically migrated on first load
 - Shell: Fix garbled pager output when `MANPAGER` is set (e.g. `bat`) — the console pager now ignores `MANPAGER` and delegates to `pydoc.pager()`, preserving `PAGER` and all platform-specific fallbacks
 - Explore: Enhance explore agent with specialist role, thoroughness levels, and automatic environment context — explore agents now gather repository environment information at launch to improve investigation quality; the main agent is guided to prefer explore for codebase research and plan mode encourages explore-first investigation
