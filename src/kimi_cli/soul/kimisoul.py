@@ -525,6 +525,30 @@ class KimiSoul:
                         break
 
             wire_send(TurnEnd())
+
+            # Auto-set title after first real turn (skip slash commands)
+            if not command_call:
+                session = self._runtime.session
+                if session.state.custom_title is None:
+                    from textwrap import shorten
+
+                    title = shorten(
+                        Message(role="user", content=user_input).extract_text(" "),
+                        width=50,
+                    )
+                    if title:
+                        from kimi_cli.session_state import (
+                            load_session_state,
+                            save_session_state,
+                        )
+
+                        # Read-modify-write: load fresh state to avoid
+                        # overwriting concurrent web changes
+                        fresh = load_session_state(session.dir)
+                        if fresh.custom_title is None:
+                            fresh.custom_title = title
+                            save_session_state(fresh, session.dir)
+                        session.state.custom_title = fresh.custom_title
         finally:
             if approval_source_token is not None:
                 reset_current_approval_source(approval_source_token)

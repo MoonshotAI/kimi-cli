@@ -39,13 +39,10 @@ from kimi_cli.web.runner.messages import new_session_status_message, send_histor
 from kimi_cli.web.runner.process import KimiCLIRunner
 from kimi_cli.web.store.sessions import (
     JointSession,
-    SessionMetadata,
     invalidate_sessions_cache,
     load_session_by_id,
-    load_session_metadata,
     load_sessions_page,
     run_auto_archive,
-    save_session_metadata,
 )
 from kimi_cli.wire.jsonrpc import (
     ErrorCodes,
@@ -596,37 +593,28 @@ async def update_session(
     runner: KimiCLIRunner = Depends(get_runner),
 ) -> Session:
     """Update a session (e.g., rename title or archive/unarchive)."""
+    from kimi_cli.session_state import load_session_state, save_session_state
+
     session = get_editable_session(session_id, runner)
     session_dir = session.kimi_cli_session.dir
-
-    # Load existing metadata
-    metadata = load_session_metadata(session_dir, str(session_id))
+    state = load_session_state(session_dir)
 
     # Update title if provided
     if request.title is not None:
-        metadata = metadata.model_copy(
-            update={
-                "title": request.title,
-                "title_generated": True,  # Prevent auto-title from overwriting manual rename
-            }
-        )
+        state.custom_title = request.title
+        state.title_generated = True
 
     # Update archived status if provided
     if request.archived is not None:
-        updates: dict[str, bool | float | None] = {"archived": request.archived}
+        state.archived = request.archived
         if request.archived:
-            # User manually archived: set archived_at, reset auto_archive_exempt
-            updates["archived_at"] = time.time()
-            updates["auto_archive_exempt"] = False
+            state.archived_at = time.time()
+            state.auto_archive_exempt = False
         else:
-            # User manually unarchived: clear archived_at, set auto_archive_exempt
-            # This prevents the session from being auto-archived again
-            updates["archived_at"] = None
-            updates["auto_archive_exempt"] = True
-        metadata = metadata.model_copy(update=updates)
+            state.archived_at = None
+            state.auto_archive_exempt = True
 
-    # Save metadata
-    save_session_metadata(session_dir, metadata)
+    save_session_state(state, session_dir)
 
     # Invalidate cache to force reload
     invalidate_sessions_cache()
@@ -886,18 +874,19 @@ async def fork_session(
         for line in truncated_context_lines:
             f.write(line + "\n")
 
-    # Build fresh metadata — not inherited from source — so future
-    # SessionMetadata fields get their defaults instead of stale values.
-    source_metadata = load_session_metadata(source_dir, str(session_id))
-    source_title = (
-        source_metadata.title if source_metadata.title != "Untitled" else source_session.title
-    )
-    new_metadata = SessionMetadata(
-        session_id=new_session.id,
-        title=f"Fork: {source_title}",
-        wire_mtime=new_wire_path.stat().st_mtime,
-    )
-    save_session_metadata(new_session_dir, new_metadata)
+    # Read source title from SessionState (source of truth)
+    from kimi_cli.session_state import load_session_state, save_session_state
+
+    source_state = load_session_state(source_dir)
+    source_title = source_state.custom_title or source_session.title
+    fork_title = f"Fork: {source_title}"
+
+    # Write title to new session's SessionState
+    new_state = load_session_state(new_session_dir)
+    new_state.custom_title = fork_title
+    new_state.title_generated = True
+    new_state.wire_mtime = new_wire_path.stat().st_mtime
+    save_session_state(new_state, new_session_dir)
 
     invalidate_sessions_cache()
     invalidate_work_dirs_cache()
@@ -905,7 +894,7 @@ async def fork_session(
     context_file = new_session_dir / "context.jsonl"
     return Session(
         session_id=UUID(new_session.id),
-        title=new_metadata.title,
+        title=fork_title,
         last_updated=datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC),
         is_running=False,
         status=SessionStatus(
@@ -936,12 +925,13 @@ async def generate_session_title(
     session = get_editable_session(session_id, runner)
     session_dir = session.kimi_cli_session.dir
 
-    # Load existing metadata
-    metadata = load_session_metadata(session_dir, str(session_id))
+    from kimi_cli.session_state import load_session_state, save_session_state
+
+    state = load_session_state(session_dir)
 
     # Check if title was already generated (avoid duplicate calls)
-    if metadata.title_generated:
-        return GenerateTitleResponse(title=metadata.title)
+    if state.title_generated:
+        return GenerateTitleResponse(title=state.custom_title or "Untitled")
 
     # Get message content: prefer request parameters, otherwise read from wire.jsonl
     user_message = request.user_message if request else None
@@ -964,14 +954,11 @@ async def generate_session_title(
     fallback_title = shorten(user_text, width=50, placeholder="...") or "Untitled"
 
     # If AI generation failed too many times, use fallback and mark as generated
-    if metadata.title_generate_attempts >= 3:
-        metadata = metadata.model_copy(
-            update={
-                "title": fallback_title,
-                "title_generated": True,
-            }
-        )
-        save_session_metadata(session_dir, metadata)
+    if state.title_generate_attempts >= 3:
+        fresh = load_session_state(session_dir)
+        fresh.custom_title = fallback_title
+        fresh.title_generated = True
+        save_session_state(fresh, session_dir)
         invalidate_sessions_cache()
         return GenerateTitleResponse(title=fallback_title)
 
@@ -1033,24 +1020,15 @@ Title:"""
         logger.warning(f"Failed to generate title using AI: {e}")
         # Keep fallback_title, ai_generated stays False
 
-    # Save the title to metadata
+    # Read-modify-write: reload fresh state to avoid overwriting
+    # worker changes made during the LLM call
+    fresh = load_session_state(session_dir)
+    fresh.custom_title = title
     if ai_generated:
-        # AI succeeded: set title_generated = True
-        metadata = metadata.model_copy(
-            update={
-                "title": title,
-                "title_generated": True,
-            }
-        )
+        fresh.title_generated = True
     else:
-        # AI failed: increment attempts counter
-        metadata = metadata.model_copy(
-            update={
-                "title": title,
-                "title_generate_attempts": metadata.title_generate_attempts + 1,
-            }
-        )
-    save_session_metadata(session_dir, metadata)
+        fresh.title_generate_attempts = fresh.title_generate_attempts + 1
+    save_session_state(fresh, session_dir)
 
     # Invalidate cache
     invalidate_sessions_cache()
