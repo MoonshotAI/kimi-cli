@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：修复空会话在退出后残留在磁盘上的问题——创建但未使用的会话现在会在所有退出路径（失败退出、会话切换、异常错误）中被清理，而不仅限于成功退出
 - Shell：修复不支持 truecolor 的终端（如 Xshell）上 diff 面板渲染异常的问题——`render_to_ansi` 不再硬编码 24 位色；Rich 现在通过 `COLORTERM`/`TERM` 环境变量自动检测终端颜色能力
 - Web：修复 CLI 升级后浏览器缓存旧 `index.html` 导致白屏的问题——服务端现在对 HTML 返回 `Cache-Control: no-cache`，对带 hash 的静态资源返回 `immutable`，防止因 chunk 文件名变更而产生 404
 - Core：修复 Windows 上文件写入时 LF 被转换为 CRLF 的问题——`writetext` 现在以 `newline=""` 打开文件，防止 Python 的通用换行符转换将 `\n` 静默转为 `\r\n`
