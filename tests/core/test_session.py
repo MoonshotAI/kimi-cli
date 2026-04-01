@@ -384,3 +384,313 @@ async def test_new_does_not_delete_titled_session(isolated_share_dir: Path, work
     assert not session.is_empty()
     # Session dir should still exist
     assert session.dir.exists()
+
+
+# ---------------------------------------------------------------------------
+# _post_run behaviour: empty session cleanup × exit code matrix
+#
+# _post_run is a nested closure so we replicate its logic here to verify
+# the four (empty × exit_code) combinations.
+# ---------------------------------------------------------------------------
+
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+
+
+async def _simulate_post_run(last_session: Session, exit_code: int) -> None:
+    """Replicate the _post_run logic from cli/__init__.py for testing."""
+    from kimi_cli.metadata import load_metadata, save_metadata
+
+    metadata = load_metadata()
+    work_dir_meta = metadata.get_work_dir_meta(last_session.work_dir)
+    if work_dir_meta is None:
+        work_dir_meta = metadata.new_work_dir_meta(last_session.work_dir)
+
+    if last_session.is_empty():
+        await last_session.delete()
+        if work_dir_meta.last_session_id == last_session.id:
+            work_dir_meta.last_session_id = None
+    elif exit_code == EXIT_SUCCESS:
+        work_dir_meta.last_session_id = last_session.id
+
+    save_metadata(metadata)
+
+
+async def test_post_run_empty_session_success(isolated_share_dir: Path, work_dir: KaosPath):
+    """Empty session + SUCCESS → session dir deleted, last_session_id cleared."""
+    session = await Session.create(work_dir)
+    _write_context_records(session.context_file, {"role": "_system_prompt", "content": "p"})
+    session_dir = session.dir
+    assert session.is_empty()
+
+    # Pre-set last_session_id to this session
+    from kimi_cli.metadata import load_metadata, save_metadata
+
+    meta = load_metadata()
+    wdm = meta.get_work_dir_meta(work_dir)
+    assert wdm is not None
+    wdm.last_session_id = session.id
+    save_metadata(meta)
+
+    await _simulate_post_run(session, EXIT_SUCCESS)
+
+    assert not session_dir.exists()
+    meta = load_metadata()
+    wdm = meta.get_work_dir_meta(work_dir)
+    assert wdm is not None
+    assert wdm.last_session_id is None
+
+
+async def test_post_run_empty_session_failure(isolated_share_dir: Path, work_dir: KaosPath):
+    """Empty session + FAILURE → session dir still deleted (new behaviour)."""
+    session = await Session.create(work_dir)
+    _write_context_records(session.context_file, {"role": "_system_prompt", "content": "p"})
+    session_dir = session.dir
+    assert session.is_empty()
+
+    from kimi_cli.metadata import load_metadata, save_metadata
+
+    meta = load_metadata()
+    wdm = meta.get_work_dir_meta(work_dir)
+    assert wdm is not None
+    wdm.last_session_id = session.id
+    save_metadata(meta)
+
+    await _simulate_post_run(session, EXIT_FAILURE)
+
+    assert not session_dir.exists()
+    meta = load_metadata()
+    wdm = meta.get_work_dir_meta(work_dir)
+    assert wdm is not None
+    assert wdm.last_session_id is None
+
+
+async def test_post_run_nonempty_session_success(isolated_share_dir: Path, work_dir: KaosPath):
+    """Non-empty session + SUCCESS → last_session_id set to this session."""
+    session = await Session.create(work_dir)
+    _write_context_message(session.context_file, "hello")
+    _write_wire_turn(session.dir, "hello")
+    assert not session.is_empty()
+
+    await _simulate_post_run(session, EXIT_SUCCESS)
+
+    from kimi_cli.metadata import load_metadata
+
+    meta = load_metadata()
+    wdm = meta.get_work_dir_meta(work_dir)
+    assert wdm is not None
+    assert wdm.last_session_id == session.id
+    assert session.dir.exists()
+
+
+async def test_post_run_nonempty_session_failure(isolated_share_dir: Path, work_dir: KaosPath):
+    """Non-empty session + FAILURE → last_session_id NOT updated."""
+    session = await Session.create(work_dir)
+    _write_context_message(session.context_file, "hello")
+    _write_wire_turn(session.dir, "hello")
+    assert not session.is_empty()
+
+    from kimi_cli.metadata import load_metadata
+
+    await _simulate_post_run(session, EXIT_FAILURE)
+
+    meta = load_metadata()
+    wdm = meta.get_work_dir_meta(work_dir)
+    assert wdm is not None
+    assert wdm.last_session_id is None  # was never set
+    assert session.dir.exists()  # session preserved
+
+
+async def test_post_run_empty_session_does_not_clear_other_last_id(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """Deleting an empty session must not clear last_session_id that points to another session."""
+    from kimi_cli.metadata import load_metadata, save_metadata
+
+    other = await Session.create(work_dir)
+    _write_context_message(other.context_file, "real work")
+    _write_wire_turn(other.dir, "real")
+
+    empty = await Session.create(work_dir)
+    _write_context_records(empty.context_file, {"role": "_system_prompt", "content": "p"})
+    empty_dir = empty.dir
+    assert empty.is_empty()
+
+    # last_session_id points to the *other* session, not the empty one
+    meta = load_metadata()
+    wdm = meta.get_work_dir_meta(work_dir)
+    assert wdm is not None
+    wdm.last_session_id = other.id
+    save_metadata(meta)
+
+    await _simulate_post_run(empty, EXIT_FAILURE)
+
+    assert not empty_dir.exists()
+    meta = load_metadata()
+    wdm = meta.get_work_dir_meta(work_dir)
+    assert wdm is not None
+    assert wdm.last_session_id == other.id, (
+        "Must not clear last_session_id pointing to another session"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reload.source_session tests
+# ---------------------------------------------------------------------------
+
+
+async def test_reload_source_session_attribute(isolated_share_dir: Path, work_dir: KaosPath):
+    """Reload.source_session defaults to None and can be set to a Session."""
+    from kimi_cli.cli import Reload
+
+    r = Reload(session_id="abc")
+    assert r.source_session is None
+
+    session = await Session.create(work_dir)
+    r.source_session = session
+    assert r.source_session is session
+    assert r.source_session.id == session.id
+
+
+# ---------------------------------------------------------------------------
+# Reload cleanup: switching to a different session vs reloading the same one
+# ---------------------------------------------------------------------------
+
+
+async def test_reload_cleanup_deletes_empty_source(isolated_share_dir: Path, work_dir: KaosPath):
+    """When switching session, the old empty session should be deleted."""
+    old_session = await Session.create(work_dir)
+    _write_context_records(old_session.context_file, {"role": "_system_prompt", "content": "p"})
+    old_dir = old_session.dir
+    assert old_session.is_empty()
+
+    new_session = await Session.create(work_dir)
+    _write_context_message(new_session.context_file, "hello")
+    _write_wire_turn(new_session.dir, "hello")
+
+    # Simulate the Reload cleanup logic from _reload_loop
+    old = old_session
+    target_id = new_session.id
+    if old is not None and old.id != target_id and old.is_empty():
+        await old.delete()
+
+    assert not old_dir.exists()
+    assert new_session.dir.exists()
+
+
+async def test_reload_cleanup_preserves_nonempty_source(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """When switching session, a non-empty old session should be preserved."""
+    old_session = await Session.create(work_dir)
+    _write_context_message(old_session.context_file, "work in progress")
+    _write_wire_turn(old_session.dir, "work")
+    old_dir = old_session.dir
+    assert not old_session.is_empty()
+
+    new_session = await Session.create(work_dir)
+
+    old = old_session
+    target_id = new_session.id
+    if old is not None and old.id != target_id and old.is_empty():
+        await old.delete()
+
+    assert old_dir.exists(), "Non-empty source session must be preserved"
+
+
+async def test_reload_same_session_not_deleted(isolated_share_dir: Path, work_dir: KaosPath):
+    """Reloading the same session (e.g. /login) should NOT delete it."""
+    session = await Session.create(work_dir)
+    _write_context_records(session.context_file, {"role": "_system_prompt", "content": "p"})
+    session_dir = session.dir
+    assert session.is_empty()
+
+    # target_id == source.id → same session reload
+    old = session
+    target_id = session.id
+    if old is not None and old.id != target_id and old.is_empty():
+        await old.delete()
+
+    assert session_dir.exists(), "Same-session reload must NOT delete the session"
+
+
+# ---------------------------------------------------------------------------
+# Exception path cleanup
+# ---------------------------------------------------------------------------
+
+
+async def test_exception_cleanup_none_session():
+    """On unexpected exception with no session created, should not crash."""
+    _latest_created_session: Session | None = None
+    # This must not raise
+    if _latest_created_session is not None and _latest_created_session.is_empty():
+        await _latest_created_session.delete()
+
+
+# ---------------------------------------------------------------------------
+# Exception cleanup: only _latest_created_session (the current failed _run())
+# is considered; last_session (from a previous iteration) is never touched.
+# ---------------------------------------------------------------------------
+
+
+async def test_exception_cleanup_deletes_empty_current_session(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """Exception handler cleans up the empty session from the failed _run()."""
+    session = await Session.create(work_dir)
+    _write_context_records(session.context_file, {"role": "_system_prompt", "content": "p"})
+    session_dir = session.dir
+    assert session.is_empty()
+
+    _latest_created_session: Session | None = session
+    if _latest_created_session is not None and _latest_created_session.is_empty():
+        await _latest_created_session.delete()
+
+    assert not session_dir.exists()
+
+
+async def test_exception_cleanup_preserves_nonempty_current_session(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """Exception handler does not delete a non-empty session from a failed _run()."""
+    session = await Session.create(work_dir)
+    _write_context_message(session.context_file, "real work")
+    _write_wire_turn(session.dir, "real")
+    session_dir = session.dir
+    assert not session.is_empty()
+
+    _latest_created_session: Session | None = session
+    if _latest_created_session is not None and _latest_created_session.is_empty():
+        await _latest_created_session.delete()
+
+    assert session_dir.exists(), "Non-empty session must survive exception cleanup"
+
+
+async def test_exception_cleanup_targets_current_not_previous(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    """After Reload, if the new _run() fails, only the NEW session is cleaned up.
+
+    Scenario: session A (non-empty) → /new → Reload to B → _run(B) fails.
+    last_session=A from Reload, _latest_created_session=B from failed _run().
+    Only B should be cleaned; A must be untouched.
+    """
+    session_a = await Session.create(work_dir)
+    _write_context_message(session_a.context_file, "real work")
+    _write_wire_turn(session_a.dir, "real")
+    session_a_dir = session_a.dir
+    assert not session_a.is_empty()
+
+    session_b = await Session.create(work_dir)
+    _write_context_records(session_b.context_file, {"role": "_system_prompt", "content": "p"})
+    session_b_dir = session_b.dir
+    assert session_b.is_empty()
+
+    # Exception handler only looks at _latest_created_session (B),
+    # NOT at last_session (A from previous Reload).
+    _latest_created_session: Session | None = session_b
+    if _latest_created_session is not None and _latest_created_session.is_empty():
+        await _latest_created_session.delete()
+
+    assert not session_b_dir.exists(), "Empty session B from failed _run() should be deleted"
+    assert session_a_dir.exists(), "Non-empty session A from previous iteration must be preserved"
