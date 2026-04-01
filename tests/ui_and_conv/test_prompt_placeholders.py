@@ -176,7 +176,7 @@ def test_placeholder_manager_normalizes_crlf_before_threshold_and_resolution() -
     assert resolved.resolved_text == "\n".join([f"line{i}" for i in range(1, 16)])
 
 
-def test_placeholderize_thresholds_respect_env_var_overrides(monkeypatch) -> None:
+def test_placeholderize_thresholds_are_configurable(monkeypatch) -> None:
     monkeypatch.setattr(placeholders, "_TEXT_PASTE_CHAR_THRESHOLD", 50)
     monkeypatch.setattr(placeholders, "_TEXT_PASTE_LINE_THRESHOLD", 3)
 

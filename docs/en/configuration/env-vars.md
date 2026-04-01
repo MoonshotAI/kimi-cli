@@ -159,15 +159,16 @@ In Agent mode, when pasted text reaches this line count, it is folded into a pla
 export KIMI_CLI_PASTE_LINE_THRESHOLD="15"
 ```
 
-::: tip Terminal compatibility
+::: tip
 Some terminals (e.g., XShell over SSH) may break CJK input methods (Chinese/Japanese/Korean IME) after pasting multiline text. Symptoms include the IME candidate window not appearing or input becoming unresponsive until Ctrl+C is pressed.
 
-This happens because multiline text in the input buffer can confuse the terminal's cursor position tracking, which affects IME composition window placement. You can work around this by lowering these thresholds to fold pasted content more aggressively into single-line placeholders:
+This happens because multiline text in the input buffer can confuse the terminal's cursor position tracking, which affects IME composition window placement. You can work around this by lowering the line threshold to fold multiline pastes into single-line placeholders:
 
 ```sh
-export KIMI_CLI_PASTE_CHAR_THRESHOLD="1"
 export KIMI_CLI_PASTE_LINE_THRESHOLD="2"
 ```
 
-With these settings, any paste containing a newline will be automatically folded, preventing multiline text from entering the input buffer.
+With this setting, any paste containing a newline will be automatically folded, preventing multiline text from entering the input buffer. Single-line pastes (URLs, short commands, etc.) are not affected.
+
+Note: The two thresholds use OR logic (character count **or** line count), so lowering only the line threshold is sufficient. Avoid setting the character threshold to a very small value (e.g., `1`), as that would fold all non-empty pastes including single-line short text.
 :::
