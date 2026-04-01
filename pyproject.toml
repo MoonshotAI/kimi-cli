@@ -1,6 +1,6 @@
 [project]
 name = "kimi-cli"
-version = "1.28.0"
+version = "1.29.0"
 description = "Kimi Code CLI is your next CLI agent."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -25,7 +25,7 @@ dependencies = [
     "fastmcp==2.12.5",
     "pydantic==2.12.5",
     "httpx[socks]==0.28.1",
-    "pykaos==0.7.0",
+    "pykaos==0.8.0",
     "batrachian-toad==0.5.23; python_version >= \"3.14\"",
     "tomlkit==0.14.0",
     "jinja2==3.1.6",
