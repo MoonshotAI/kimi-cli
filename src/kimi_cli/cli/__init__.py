@@ -657,32 +657,34 @@ def kimi(
         finally:
             startup_progress.stop()
 
+    async def _delete_empty_session(session: Session) -> None:
+        """Delete an empty session directory and clear last_session_id if it pointed to it."""
+        logger.info(
+            "Session {session_id} has empty context, removing it",
+            session_id=session.id,
+        )
+        await session.delete()
+        meta = load_metadata()
+        wdm = meta.get_work_dir_meta(session.work_dir)
+        if wdm is not None and wdm.last_session_id == session.id:
+            wdm.last_session_id = None
+            save_metadata(meta)
+
     async def _post_run(last_session: Session, exit_code: int) -> None:
-        metadata = load_metadata()
-
-        # Update work_dir metadata with last session
-        work_dir_meta = metadata.get_work_dir_meta(last_session.work_dir)
-
-        if work_dir_meta is None:
-            logger.warning(
-                "Work dir metadata missing when marking last session, recreating: {work_dir}",
-                work_dir=last_session.work_dir,
-            )
-            work_dir_meta = metadata.new_work_dir_meta(last_session.work_dir)
-
         if last_session.is_empty():
             # Always clean up empty sessions regardless of exit code
-            logger.info(
-                "Session {session_id} has empty context, removing it",
-                session_id=last_session.id,
-            )
-            await last_session.delete()
-            if work_dir_meta.last_session_id == last_session.id:
-                work_dir_meta.last_session_id = None
+            await _delete_empty_session(last_session)
         elif exit_code == ExitCode.SUCCESS:
+            metadata = load_metadata()
+            work_dir_meta = metadata.get_work_dir_meta(last_session.work_dir)
+            if work_dir_meta is None:
+                logger.warning(
+                    "Work dir metadata missing when marking last session, recreating: {work_dir}",
+                    work_dir=last_session.work_dir,
+                )
+                work_dir_meta = metadata.new_work_dir_meta(last_session.work_dir)
             work_dir_meta.last_session_id = last_session.id
-
-        save_metadata(metadata)
+            save_metadata(metadata)
 
     async def _reload_loop(session_id: str | None) -> tuple[str | None, int]:
         """Run the main loop, handling Reload/SwitchToWeb/SwitchToVis.
@@ -701,17 +703,7 @@ def kimi(
                     # Clean up old empty session when switching to a different session
                     old = e.source_session
                     if old is not None and old.id != e.session_id and old.is_empty():
-                        logger.info(
-                            "Cleaning up empty session {session_id} after switch",
-                            session_id=old.id,
-                        )
-                        await old.delete()
-                        # Clear last_session_id if it pointed to the deleted session
-                        meta = load_metadata()
-                        wdm = meta.get_work_dir_meta(old.work_dir)
-                        if wdm is not None and wdm.last_session_id == old.id:
-                            wdm.last_session_id = None
-                            save_metadata(meta)
+                        await _delete_empty_session(old)
                         last_session = None
                     else:
                         last_session = e.source_session
@@ -737,13 +729,12 @@ def kimi(
             # so the generic except below never treats them as unexpected errors.
             raise
         except Exception:
-            # Best-effort cleanup of empty session on unexpected errors.
-            # Fall back to _latest_created_session to cover the case where
-            # _run() created a session but threw before returning it.
-            target = last_session or _latest_created_session
-            if target is not None and target.is_empty():
+            # Best-effort cleanup: _latest_created_session is the session from
+            # the most recent _run() call, which may have failed before returning.
+            # last_session is from a *previous* iteration and must not be touched.
+            if _latest_created_session is not None and _latest_created_session.is_empty():
                 with contextlib.suppress(Exception):
-                    await target.delete()
+                    await _delete_empty_session(_latest_created_session)
             raise
 
     try:
