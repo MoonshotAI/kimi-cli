@@ -151,3 +151,96 @@ def test_plugin_flow_skill_uses_flow_runner(runtime: Runtime, tmp_path: Path) ->
     cmd = next(c for c in soul.available_slash_commands if c.name == "plug:flowy")
     # FlowRunner.run is a bound method on a FlowRunner instance
     assert "FlowRunner" in type(cmd.func.__self__).__name__
+
+
+def test_plugin_skill_error_text_uses_namespaced_name(runtime: Runtime, tmp_path: Path) -> None:
+    """When a plugin skill fails to load, the error message must show
+    the real slash command /myplugin:greet, not /skill:myplugin:greet."""
+    import asyncio
+
+    from kimi_cli.soul.kimisoul import KimiSoul
+
+    skill_dir = tmp_path / "broken-skill"
+    skill_dir.mkdir()
+    # Don't create SKILL.md — read_skill_text will return None
+    plugin_skill = Skill(
+        name="myplugin:greet",
+        description="Greet",
+        type="standard",
+        dir=KaosPath.unsafe_from_local_path(skill_dir),
+        is_plugin=True,
+    )
+    runtime.skills = {"myplugin:greet": plugin_skill}
+
+    agent = Agent(
+        name="Test",
+        system_prompt="Test",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "ctx.jsonl"))
+    runner = soul._make_skill_runner(plugin_skill)
+
+    # Capture what wire_send receives
+    sent_parts: list[str] = []
+    import kimi_cli.soul.kimisoul as _mod
+
+    original_wire_send = _mod.wire_send
+
+    def _capture(part: object) -> None:
+        if hasattr(part, "text"):
+            sent_parts.append(part.text)
+
+    _mod.wire_send = _capture  # type: ignore[assignment]
+    try:
+        asyncio.run(runner(soul, ""))
+    finally:
+        _mod.wire_send = original_wire_send
+
+    assert len(sent_parts) == 1
+    assert "/myplugin:greet" in sent_parts[0]
+    assert "/skill:myplugin:greet" not in sent_parts[0]
+
+
+def test_native_skill_error_text_uses_skill_prefix(runtime: Runtime, tmp_path: Path) -> None:
+    """Native skills should still show /skill:name in error text."""
+    import asyncio
+
+    from kimi_cli.soul.kimisoul import KimiSoul
+
+    skill_dir = tmp_path / "broken-native"
+    skill_dir.mkdir()
+    native_skill = Skill(
+        name="my-helper",
+        description="Helper",
+        type="standard",
+        dir=KaosPath.unsafe_from_local_path(skill_dir),
+    )
+    runtime.skills = {"my-helper": native_skill}
+
+    agent = Agent(
+        name="Test",
+        system_prompt="Test",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "ctx.jsonl"))
+    runner = soul._make_skill_runner(native_skill)
+
+    sent_parts: list[str] = []
+    import kimi_cli.soul.kimisoul as _mod
+
+    original_wire_send = _mod.wire_send
+
+    def _capture(part: object) -> None:
+        if hasattr(part, "text"):
+            sent_parts.append(part.text)
+
+    _mod.wire_send = _capture  # type: ignore[assignment]
+    try:
+        asyncio.run(runner(soul, ""))
+    finally:
+        _mod.wire_send = original_wire_send
+
+    assert len(sent_parts) == 1
+    assert "/skill:my-helper" in sent_parts[0]

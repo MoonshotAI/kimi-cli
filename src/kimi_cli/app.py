@@ -283,9 +283,10 @@ class KimiCLI:
                     _claude_plugin_agent_spec = parse_agent_md(agent_file, _pname)
                     break
 
-            # Use the default YAML agent for toolset/subagents, but override
-            # system prompt and name from the plugin agent spec below.
-            agent_file = DEFAULT_AGENT_FILE
+            # Only fall back to DEFAULT_AGENT_FILE when we actually matched
+            # a plugin agent. A non-plugin .md file must be kept as-is.
+            if _claude_plugin_agent_spec is not None:
+                agent_file = DEFAULT_AGENT_FILE
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE

@@ -114,6 +114,64 @@ class TestPluginAgentOverlay:
         assert "Custom plugin prompt." in found_spec.system_prompt
 
 
+class TestNonPluginMdAgentPreserved:
+    def test_non_plugin_md_agent_not_replaced(self, tmp_path: Path) -> None:
+        """A user-provided .md agent file that is NOT inside any plugin root
+        must NOT be replaced with DEFAULT_AGENT_FILE."""
+        from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+        from kimi_cli.claude_plugin.agents import parse_agent_md
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        # Create a plugin
+        plugin_dir = _make_plugin_with_agent(tmp_path)
+        bundle = load_claude_plugins([plugin_dir])
+
+        # Create a non-plugin .md agent file outside any plugin root
+        non_plugin_md = tmp_path / "my-custom-agent.md"
+        non_plugin_md.write_text(
+            "---\nname: custom\ndescription: custom agent\n---\nCustom prompt.",
+            encoding="utf-8",
+        )
+
+        # Simulate app.py logic: detect if agent_file belongs to a plugin
+        agent_file = non_plugin_md
+        _claude_plugin_agent_spec = None
+        for _pname, _prt in bundle.plugins.items():
+            if agent_file.is_relative_to(_prt.root):
+                _claude_plugin_agent_spec = parse_agent_md(agent_file, _pname)
+                break
+
+        # Only replace if matched
+        if _claude_plugin_agent_spec is not None:
+            agent_file = DEFAULT_AGENT_FILE
+
+        # agent_file must NOT have been replaced
+        assert agent_file == non_plugin_md
+        assert _claude_plugin_agent_spec is None
+
+    def test_plugin_md_agent_does_get_replaced(self, tmp_path: Path) -> None:
+        """A .md file inside a plugin root should trigger the fallback."""
+        from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+        from kimi_cli.claude_plugin.agents import parse_agent_md
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        plugin_dir = _make_plugin_with_agent(tmp_path)
+        bundle = load_claude_plugins([plugin_dir])
+
+        agent_file = plugin_dir / "agents" / "reviewer.md"
+        _claude_plugin_agent_spec = None
+        for _pname, _prt in bundle.plugins.items():
+            if agent_file.is_relative_to(_prt.root):
+                _claude_plugin_agent_spec = parse_agent_md(agent_file, _pname)
+                break
+
+        if _claude_plugin_agent_spec is not None:
+            agent_file = DEFAULT_AGENT_FILE
+
+        assert agent_file == DEFAULT_AGENT_FILE
+        assert _claude_plugin_agent_spec is not None
+
+
 class TestSettingsAgentSelection:
     def test_settings_selects_agent(self, tmp_path: Path) -> None:
         plugin_dir = _make_plugin_with_agent(tmp_path)

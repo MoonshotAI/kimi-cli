@@ -655,9 +655,11 @@ class KimiSoul:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
             skill_text = await read_skill_text(_skill)
             if skill_text is None:
-                wire_send(
-                    TextPart(text=f'Failed to load skill "/{SKILL_COMMAND_PREFIX}{_skill.name}".')
+                cmd_name = (
+                    f"/{_skill.name}" if _skill.is_plugin
+                    else f"/{SKILL_COMMAND_PREFIX}{_skill.name}"
                 )
+                wire_send(TextPart(text=f'Failed to load skill "{cmd_name}".'))
                 return
             extra = args.strip()
             if extra:
