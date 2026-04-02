@@ -1250,6 +1250,8 @@ class CustomPromptSession:
         self._attachment_cache = self._placeholder_manager.attachment_cache
         self._last_tip_rotate_time: float = time.monotonic()
         self._last_submission_was_running = False
+        self._last_input_activity_time: float = 0.0
+        self._input_activity_event: asyncio.Event = asyncio.Event()
         self._running_prompt_previous_mode: PromptMode | None = None
         self._running_prompt_delegate: RunningPromptDelegate | None = None
         self._modal_delegates: list[RunningPromptDelegate] = []
@@ -1516,6 +1518,8 @@ class CustomPromptSession:
         # such as when backspace is used to delete text.
         @self._session.default_buffer.on_text_changed.add_handler
         def _(buffer: Buffer) -> None:
+            self._last_input_activity_time = time.monotonic()
+            self._input_activity_event.set()
             if buffer.complete_while_typing():
                 buffer.start_completion()
 
@@ -1890,6 +1894,24 @@ class CustomPromptSession:
     @property
     def last_submission_was_running(self) -> bool:
         return getattr(self, "_last_submission_was_running", False)
+
+    def has_pending_input(self) -> bool:
+        return bool(self._session.default_buffer.text)
+
+    def had_recent_input_activity(self, *, within_s: float) -> bool:
+        if self._last_input_activity_time <= 0:
+            return False
+        return (time.monotonic() - self._last_input_activity_time) <= within_s
+
+    def recent_input_activity_remaining(self, *, within_s: float) -> float:
+        if self._last_input_activity_time <= 0:
+            return 0.0
+        elapsed = time.monotonic() - self._last_input_activity_time
+        return max(0.0, within_s - elapsed)
+
+    async def wait_for_input_activity(self) -> None:
+        await self._input_activity_event.wait()
+        self._input_activity_event.clear()
 
     def attach_running_prompt(self, delegate: RunningPromptDelegate) -> None:
         current = getattr(self, "_running_prompt_delegate", None)

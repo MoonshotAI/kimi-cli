@@ -460,6 +460,8 @@ class KimiSoul:
 
     async def run(self, user_input: str | list[ContentPart]):
         approval_source_token = None
+        turn_started = False
+        turn_finished = False
         if get_current_approval_source_or_none() is None:
             approval_source_token = set_current_approval_source(
                 ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
@@ -489,11 +491,14 @@ class KimiSoul:
             for result in hook_results:
                 if result.action == "block":
                     wire_send(TurnBegin(user_input=user_input))
+                    turn_started = True
                     wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
                     wire_send(TurnEnd())
+                    turn_finished = True
                     return
 
             wire_send(TurnBegin(user_input=user_input))
+            turn_started = True
             user_message = Message(role="user", content=user_input)
             text_input = user_message.extract_text(" ").strip()
 
@@ -535,6 +540,7 @@ class KimiSoul:
                         break
 
             wire_send(TurnEnd())
+            turn_finished = True
 
             # Auto-set title after first real turn (skip slash commands)
             if not command_call:
@@ -560,6 +566,8 @@ class KimiSoul:
                             save_session_state(fresh, session.dir)
                         session.state.custom_title = fresh.custom_title
         finally:
+            if turn_started and not turn_finished:
+                wire_send(TurnEnd())
             if approval_source_token is not None:
                 reset_current_approval_source(approval_source_token)
 
