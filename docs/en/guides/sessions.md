@@ -31,7 +31,7 @@ kimi --session
 Use `--session` (or `--resume`) with a session ID to resume that specific session:
 
 ```sh
-kimi --session abc123
+kimi -r abc123
 ```
 
 If the specified session ID does not exist, a new session is created automatically.
