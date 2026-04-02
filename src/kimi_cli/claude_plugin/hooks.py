@@ -33,7 +33,7 @@ def load_plugin_hooks(runtime: ClaudePluginRuntime) -> None:
         return
 
     try:
-        raw: dict[str, Any] = json.loads(hooks_path.read_text(encoding="utf-8"))
+        raw: Any = json.loads(hooks_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         runtime.warnings.append(f"Invalid hooks/hooks.json: {exc}")
         logger.warning(
@@ -43,7 +43,12 @@ def load_plugin_hooks(runtime: ClaudePluginRuntime) -> None:
         )
         return
 
-    hooks_section = raw.get("hooks", {})
+    if not isinstance(raw, dict):
+        runtime.warnings.append("hooks/hooks.json root is not a JSON object")
+        return
+    raw_dict = cast(dict[str, Any], raw)
+
+    hooks_section = raw_dict.get("hooks", {})
     if not isinstance(hooks_section, dict):
         runtime.warnings.append("hooks/hooks.json 'hooks' key is not a dict")
         return

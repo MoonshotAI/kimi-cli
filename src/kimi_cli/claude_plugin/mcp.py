@@ -25,7 +25,7 @@ def load_plugin_mcp(runtime: ClaudePluginRuntime) -> None:
         return
 
     try:
-        raw: dict[str, Any] = json.loads(mcp_path.read_text(encoding="utf-8"))
+        raw: Any = json.loads(mcp_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         runtime.warnings.append(f"Invalid .mcp.json: {exc}")
         logger.warning(
@@ -35,7 +35,12 @@ def load_plugin_mcp(runtime: ClaudePluginRuntime) -> None:
         )
         return
 
-    servers_raw = raw.get("mcpServers", {})
+    if not isinstance(raw, dict):
+        runtime.warnings.append(".mcp.json root is not a JSON object")
+        return
+    raw_dict = cast(dict[str, Any], raw)
+
+    servers_raw = raw_dict.get("mcpServers", {})
     if not isinstance(servers_raw, dict):
         runtime.warnings.append(".mcp.json 'mcpServers' is not a dict")
         return

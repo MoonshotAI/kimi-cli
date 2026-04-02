@@ -149,6 +149,30 @@ class TestPluginSettings:
         bundle = load_claude_plugins([plugin_dir])
         assert any("Unsupported settings.json" in w for w in bundle.plugins["demo"].warnings)
 
+    def test_settings_json_non_object_root_skips_settings_not_plugin(self, tmp_path: Path) -> None:
+        """settings.json with a non-object root (e.g. []) must not crash
+        the entire plugin load."""
+        plugin_dir = _make_plugin(tmp_path, "demo")
+        (plugin_dir / "settings.json").write_text("[]", encoding="utf-8")
+
+        # Add a skill to verify it survives
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: a skill\n---\nHello",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+
+        assert "demo" in bundle.plugins
+        assert bundle.plugins["demo"].default_agent_file is None
+        assert any("settings" in w.lower() or "not" in w.lower() or "dict" in w.lower()
+                    for w in bundle.plugins["demo"].warnings)
+        assert "demo:hello" in bundle.plugins["demo"].skills
+
 
 class TestCLIOption:
     def test_cli_help_shows_plugin_dir(self) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from kimi_cli.utils.logging import logger
 
@@ -198,7 +198,7 @@ def _load_plugin_settings(runtime: ClaudePluginRuntime) -> None:
         return
 
     try:
-        settings: dict[str, Any] = json.loads(
+        settings: Any = json.loads(
             settings_path.read_text(encoding="utf-8")
         )
     except (json.JSONDecodeError, OSError) as exc:
@@ -210,7 +210,12 @@ def _load_plugin_settings(runtime: ClaudePluginRuntime) -> None:
         )
         return
 
-    agent_name = settings.get("agent")
+    if not isinstance(settings, dict):
+        runtime.warnings.append("settings.json root is not a JSON object")
+        return
+    settings_dict = cast(dict[str, Any], settings)
+
+    agent_name = settings_dict.get("agent")
     if agent_name and isinstance(agent_name, str):
         # Resolve the agent file from the plugin's agents/ directory
         agent_file = runtime.root / "agents" / f"{agent_name}.md"
@@ -229,7 +234,7 @@ def _load_plugin_settings(runtime: ClaudePluginRuntime) -> None:
 
     # Warn about unsupported settings keys
     _SUPPORTED_SETTINGS_KEYS = {"agent"}
-    unsupported = set(settings.keys()) - _SUPPORTED_SETTINGS_KEYS
+    unsupported = set(settings_dict.keys()) - _SUPPORTED_SETTINGS_KEYS
     if unsupported:
         msg = (
             f"Unsupported settings.json keys in plugin "

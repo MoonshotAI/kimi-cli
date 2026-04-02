@@ -203,3 +203,34 @@ class TestHookTranslation:
 
         # Skills are not affected
         assert "demo:hello" in bundle.plugins["demo"].skills
+
+    def test_hooks_json_non_object_root_skips_hooks_not_plugin(self, tmp_path: Path) -> None:
+        """hooks/hooks.json with a non-object root (e.g. []) must not crash
+        the entire plugin load."""
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        hooks_dir = plugin_dir / "hooks"
+        hooks_dir.mkdir()
+        (hooks_dir / "hooks.json").write_text("[]", encoding="utf-8")
+
+        # Add a skill to verify it survives
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: a skill\n---\nHello",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+
+        assert "demo" in bundle.plugins
+        assert len(bundle.plugins["demo"].hooks) == 0
+        assert any("hooks" in w.lower() or "not" in w.lower() or "dict" in w.lower()
+                    for w in bundle.plugins["demo"].warnings)
+        assert "demo:hello" in bundle.plugins["demo"].skills
