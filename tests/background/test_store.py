@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from kimi_cli.background import BackgroundTaskStore, TaskSpec
 
@@ -115,6 +116,7 @@ def test_read_runtime_invalid_json_returns_default(runtime):
 
     assert runtime_state.status == "created"
     assert runtime_state.worker_pid is None
+    assert runtime_state.updated_at == 0
 
 
 def test_list_views_skips_task_with_corrupted_spec(runtime):
@@ -139,3 +141,43 @@ def test_list_views_skips_task_with_corrupted_spec(runtime):
     views = store.list_views()
 
     assert [view.spec.id for view in views] == ["b9999996"]
+
+
+def test_list_views_uses_spec_created_at_when_runtime_is_corrupted(runtime):
+    store = BackgroundTaskStore(runtime.session.context_file.parent / "tasks")
+    older = time.time() - 60
+    newer = time.time() - 10
+    older_spec = TaskSpec(
+        id="b9999994",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="older task",
+        tool_call_id="call-6",
+        created_at=older,
+        command="echo ok",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    newer_spec = TaskSpec(
+        id="b9999995",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="newer task",
+        tool_call_id="call-7",
+        created_at=newer,
+        command="echo ok",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(older_spec)
+    store.create_task(newer_spec)
+    store.runtime_path(older_spec.id).write_text('{"status":"running"', encoding="utf-8")
+    store.runtime_path(newer_spec.id).write_text('{"status":"running"', encoding="utf-8")
+
+    views = store.list_views()
+
+    assert [view.spec.id for view in views] == ["b9999995", "b9999994"]

@@ -40,7 +40,7 @@ class Context:
             return False
 
         messages_after_last_usage: list[Message] = []
-        async with aiofiles.open(self._file_backend, encoding="utf-8") as f:
+        async with aiofiles.open(self._file_backend, encoding="utf-8", errors="replace") as f:
             line_no = 0
             async for line in f:
                 line_no += 1
@@ -168,7 +168,7 @@ class Context:
         self._system_prompt = None
         messages_after_last_usage: list[Message] = []
         async with (
-            aiofiles.open(rotated_file_path, encoding="utf-8") as old_file,
+            aiofiles.open(rotated_file_path, encoding="utf-8", errors="replace") as old_file,
             aiofiles.open(self._file_backend, "w", encoding="utf-8") as new_file,
         ):
             line_no = 0

@@ -110,7 +110,7 @@ class BackgroundTaskStore:
         return _read_json_model(
             path,
             TaskRuntime,
-            fallback=TaskRuntime(),
+            fallback=TaskRuntime(updated_at=0),
             artifact="task runtime",
         )
 
