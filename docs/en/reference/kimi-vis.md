@@ -66,7 +66,7 @@ At the top of the session detail page, you can use `Open Dir` to open the curren
 You can export session data as a ZIP file for offline analysis or sharing.
 
 - **ZIP download**: Click the download button in the session explorer or session detail page to download the session directory as a ZIP file
-- **CLI export**: Use the `kimi export <session_id>` command to export a specified session as a ZIP file
+- **CLI export**: Use `kimi export [<session_id>]` to export a session as a ZIP file; when `<session_id>` is omitted, the CLI previews the previous session for the current working directory and asks for confirmation
 
 ### Session import
 
