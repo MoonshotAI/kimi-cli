@@ -253,6 +253,15 @@ class KimiCLI:
                 if agent_file is None and plugin_rt.default_agent_file is not None:
                     agent_file = plugin_rt.default_agent_file
                     _auto_selected_plugin_agent = plugin_rt.default_agent_file.resolve()
+                elif (
+                    _auto_selected_plugin_agent is not None
+                    and plugin_rt.default_agent_file is not None
+                ):
+                    logger.warning(
+                        "Ignoring default agent from plugin '{plugin}' because "
+                        "a prior plugin default agent is already selected",
+                        plugin=plugin_rt.manifest.name,
+                    )
 
                 # Log any plugin warnings
                 for warning in plugin_rt.warnings:

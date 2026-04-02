@@ -748,7 +748,11 @@ class KimiSoul:
         )
 
         if cap.kind == "flow_skill" and cap.skill is not None and cap.skill.flow is not None:
-            runner = FlowRunner(cap.skill.flow, name=cap.skill.name)
+            runner = FlowRunner(
+                cap.skill.flow,
+                name=cap.skill.name,
+                display_command=f"/{cap.skill.name}",
+            )
             await runner.run(self, "")
             return True
 

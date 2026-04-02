@@ -6,6 +6,11 @@ from typing import Any
 from kaos.path import KaosPath
 from kosong.tooling.empty import EmptyToolset
 
+from kimi_cli.claude_plugin.spec import (
+    ClaudePluginBundle,
+    ClaudePluginManifest,
+    ClaudePluginRuntime,
+)
 from kimi_cli.skill import Skill
 from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode
 from kimi_cli.soul.agent import Agent, Runtime
@@ -205,6 +210,66 @@ def test_plugin_flow_skill_warning_uses_registered_command_name(runtime: Runtime
 
     assert len(captured) == 1
     assert captured[0][1] == "/plug:flowy"
+
+
+def test_bare_plugin_flow_dispatch_uses_registered_command_name(runtime: Runtime, tmp_path: Path) -> None:
+    """Bare plugin flow dispatch should construct FlowRunner with the same
+    registered command name used by slash-command registration."""
+    import asyncio
+
+    import kimi_cli.soul.kimisoul as _mod
+
+    flow = _make_flow()
+    skill_dir = tmp_path / "bare-plug-flow"
+    skill_dir.mkdir()
+    plugin_flow_skill = Skill(
+        name="plug:flowy",
+        description="Plugin flow",
+        type="flow",
+        dir=KaosPath.unsafe_from_local_path(skill_dir),
+        flow=flow,
+        is_plugin=True,
+    )
+    runtime.skills = {"plug:flowy": plugin_flow_skill}
+
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="Test system prompt.",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+    bundle = ClaudePluginBundle(
+        plugins={
+            "plug": ClaudePluginRuntime(
+                manifest=ClaudePluginManifest(name="plug", version="1.0.0"),
+                root=tmp_path,
+            )
+        }
+    )
+    soul.register_plugin_commands(bundle)
+
+    captured: dict[str, object] = {}
+    original_flow_runner = _mod.FlowRunner
+
+    class _FakeFlowRunner:
+        def __init__(self, flow, *, name, display_command=None):
+            captured["name"] = name
+            captured["display_command"] = display_command
+
+        async def run(self, soul_obj, args: str) -> None:
+            captured["args"] = args
+
+    _mod.FlowRunner = _FakeFlowRunner  # type: ignore[assignment]
+    try:
+        result = asyncio.run(soul._dispatch_bare_plugin_invocation("plug:flowy"))
+    finally:
+        _mod.FlowRunner = original_flow_runner  # type: ignore[assignment]
+
+    assert result is True
+    assert captured["name"] == "plug:flowy"
+    assert captured["display_command"] == "/plug:flowy"
+    assert captured["args"] == ""
 
 
 def test_plugin_skill_error_text_uses_namespaced_name(runtime: Runtime, tmp_path: Path) -> None:
