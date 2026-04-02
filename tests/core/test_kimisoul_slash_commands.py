@@ -155,6 +155,58 @@ def test_plugin_flow_skill_uses_flow_runner(runtime: Runtime, tmp_path: Path) ->
     assert "FlowRunner" in type(cmd.func.__self__).__name__
 
 
+def test_plugin_flow_skill_warning_uses_registered_command_name(runtime: Runtime, tmp_path: Path) -> None:
+    """When plugin flow skills are invoked with args, FlowRunner should log the
+    actual registered slash command (/plug:flowy), not /flow:plug:flowy."""
+    import asyncio
+
+    flow = _make_flow()
+    skill_dir = tmp_path / "plug-flow-warning"
+    skill_dir.mkdir()
+    plugin_flow_skill = Skill(
+        name="plug:flowy",
+        description="Plugin flow",
+        type="flow",
+        dir=KaosPath.unsafe_from_local_path(skill_dir),
+        flow=flow,
+        is_plugin=True,
+    )
+    runtime.skills = {"plug:flowy": plugin_flow_skill}
+
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="Test system prompt.",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+    cmd = next(c for c in soul.available_slash_commands if c.name == "plug:flowy")
+
+    import kimi_cli.soul.kimisoul as _mod
+
+    captured: list[tuple[str, str]] = []
+    original_warning = _mod.logger.warning
+
+    def _capture_warning(message: str, *args: object, **kwargs: object) -> None:
+        command = str(kwargs.get("command", ""))
+        captured.append((message, command))
+
+    _mod.logger.warning = _capture_warning  # type: ignore[assignment]
+    try:
+        ret = cmd.func(soul, "extra args")
+        assert ret is not None
+
+        async def _await_runner(awaitable: Any) -> None:
+            await awaitable
+
+        asyncio.run(_await_runner(ret))
+    finally:
+        _mod.logger.warning = original_warning  # type: ignore[assignment]
+
+    assert len(captured) == 1
+    assert captured[0][1] == "/plug:flowy"
+
+
 def test_plugin_skill_error_text_uses_namespaced_name(runtime: Runtime, tmp_path: Path) -> None:
     """When a plugin skill fails to load, the error message must show
     the real slash command /myplugin:greet, not /skill:myplugin:greet."""

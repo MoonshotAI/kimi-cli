@@ -624,7 +624,11 @@ class KimiSoul:
                     name=command_name,
                 )
                 continue
-            runner = FlowRunner(skill.flow, name=skill.name)
+            runner = FlowRunner(
+                skill.flow,
+                name=skill.name,
+                display_command=f"/{command_name}",
+            )
             commands.append(
                 SlashCommand(
                     name=command_name,
@@ -1200,10 +1204,12 @@ class FlowRunner:
         flow: Flow,
         *,
         name: str | None = None,
+        display_command: str | None = None,
         max_moves: int = DEFAULT_MAX_FLOW_MOVES,
     ) -> None:
         self._flow = flow
         self._name = name
+        self._display_command = display_command
         self._max_moves = max_moves
 
     @staticmethod
@@ -1248,7 +1254,11 @@ class FlowRunner:
 
     async def run(self, soul: KimiSoul, args: str) -> None:
         if args.strip():
-            command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
+            command = (
+                self._display_command
+                if self._display_command is not None
+                else (f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow")
+            )
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
 
