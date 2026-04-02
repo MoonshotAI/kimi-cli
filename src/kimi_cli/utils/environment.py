@@ -33,10 +33,21 @@ class Environment:
 
         if os_kind == "Windows":
             shell_name = "Windows PowerShell"
-            system_root = os.environ.get("SystemRoot", r"C:\Windows")
-            shell_path = KaosPath(
-                os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-            )
+            system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
+            possible_paths = [
+                KaosPath(
+                    os.path.join(
+                        system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
+                    )
+                ),
+            ]
+            fallback_path = KaosPath("powershell.exe")
+            for path in possible_paths:
+                if await path.is_file():
+                    shell_path = path
+                    break
+            else:
+                shell_path = fallback_path
         else:
             possible_paths = [
                 KaosPath("/bin/bash"),
