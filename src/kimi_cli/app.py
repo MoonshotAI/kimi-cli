@@ -87,6 +87,7 @@ class KimiCLI:
         agent_file: Path | None = None,
         mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
         skills_dirs: list[KaosPath] | None = None,
+        plugin_dirs: list[Path] | None = None,
         # Loop control
         max_steps_per_turn: int | None = None,
         max_retries_per_step: int | None = None,
@@ -218,17 +219,108 @@ class KimiCLI:
         except Exception:
             logger.debug("Failed to refresh plugin configs, skipping")
 
+        # --- Claude plugin compatibility layer ---
+        _plugin_mcp_extras: list[dict[str, Any]] = []
+        claude_plugin_bundle = None
+        if plugin_dirs:
+            from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+            claude_plugin_bundle = load_claude_plugins(plugin_dirs)
+
+            # Merge plugin skills into runtime (after built-in/user/project skills)
+            _plugin_skills_added = False
+            for plugin_rt in claude_plugin_bundle.plugins.values():
+                for skill_name, skill in plugin_rt.skills.items():
+                    if skill_name not in runtime.skills:
+                        runtime.skills[skill_name] = skill
+                        _plugin_skills_added = True
+
+                # Track plugin skill roots for Glob access
+                plugin_skills_dir = plugin_rt.root / "skills"
+                if plugin_skills_dir.is_dir():
+                    from kimi_cli.utils.path import is_within_directory
+
+                    kaos_dir = KaosPath.unsafe_from_local_path(plugin_skills_dir)
+                    if not is_within_directory(kaos_dir, session.work_dir):
+                        runtime.skills_dirs.append(kaos_dir)
+
+                # Merge plugin MCP configs (session-scoped only, never persisted)
+                for pc in plugin_rt.mcp_configs:
+                    _plugin_mcp_extras.append(pc)
+
+                # Select plugin default agent if no agent_file is specified
+                if agent_file is None and plugin_rt.default_agent_file is not None:
+                    agent_file = plugin_rt.default_agent_file
+
+                # Log any plugin warnings
+                for warning in plugin_rt.warnings:
+                    logger.warning("Claude plugin: {warning}", warning=warning)
+
+            # Rebuild KIMI_SKILLS in system prompt args to include plugin skills
+            if _plugin_skills_added:
+                all_skills = sorted(runtime.skills.values(), key=lambda s: s.name)
+                new_skills_text = "\n".join(
+                    f"- {s.name}\n  - Path: {s.skill_md_file}\n  - Description: {s.description}"
+                    for s in all_skills
+                )
+                runtime.builtin_args = dataclasses.replace(
+                    runtime.builtin_args,
+                    KIMI_SKILLS=new_skills_text or "No skills found.",
+                )
+
+        # Detect if the selected agent_file is a Claude plugin Markdown agent
+        _claude_plugin_agent_spec = None
+        if (
+            agent_file is not None
+            and agent_file.suffix == ".md"
+            and claude_plugin_bundle is not None
+        ):
+            from kimi_cli.claude_plugin.agents import parse_agent_md
+
+            # Identify which plugin owns this agent file
+            for _pname, _prt in claude_plugin_bundle.plugins.items():
+                if agent_file.is_relative_to(_prt.root):
+                    _claude_plugin_agent_spec = parse_agent_md(agent_file, _pname)
+                    break
+
+            # Use the default YAML agent for toolset/subagents, but override
+            # system prompt and name from the plugin agent spec below.
+            agent_file = DEFAULT_AGENT_FILE
+
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
         if startup_progress is not None:
             startup_progress("Loading agent...")
 
+        # Merge plugin MCP configs into the list passed to load_agent
+        _all_mcp: list[Any] = list(mcp_configs or []) + _plugin_mcp_extras
+
         agent = await load_agent(
             agent_file,
             runtime,
-            mcp_configs=mcp_configs or [],
+            mcp_configs=_all_mcp,
             start_mcp_loading=not defer_mcp_loading,
         )
+
+        # If a Claude plugin agent was selected, overlay its system prompt
+        if _claude_plugin_agent_spec is not None:
+            agent = dataclasses.replace(
+                agent,
+                name=_claude_plugin_agent_spec.full_name,
+                system_prompt=_claude_plugin_agent_spec.system_prompt,
+            )
+
+        # Append plugin capability summary to system prompt so the model
+        # can autonomously choose plugin capabilities for goal-oriented requests
+        if claude_plugin_bundle:
+            from kimi_cli.claude_plugin.discovery import build_plugin_capability_summary
+
+            cap_summary = build_plugin_capability_summary(claude_plugin_bundle)
+            if cap_summary:
+                agent = dataclasses.replace(
+                    agent,
+                    system_prompt=agent.system_prompt + "\n\n" + cap_summary,
+                )
 
         if startup_progress is not None:
             startup_progress("Restoring conversation...")
@@ -242,6 +334,10 @@ class KimiCLI:
 
         soul = KimiSoul(agent, context=context)
 
+        # Register plugin commands on soul (before hook engine so hooks can fire)
+        if claude_plugin_bundle:
+            soul.register_plugin_commands(claude_plugin_bundle)
+
         # Activate plan mode if requested (for new sessions or --plan flag)
         if plan_mode and not soul.plan_mode:
             await soul.set_plan_mode_from_manual(True)
@@ -253,6 +349,13 @@ class KimiCLI:
         from kimi_cli.hooks.engine import HookEngine
 
         hook_engine = HookEngine(config.hooks, cwd=str(session.work_dir))
+
+        # Inject plugin hooks (session-scoped only)
+        if claude_plugin_bundle:
+            for plugin_rt in claude_plugin_bundle.plugins.values():
+                if plugin_rt.hooks:
+                    hook_engine.add_hooks(plugin_rt.hooks)
+
         soul.set_hook_engine(hook_engine)
         runtime.hook_engine = hook_engine
 

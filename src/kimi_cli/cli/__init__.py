@@ -321,6 +321,20 @@ def kimi(
             help="Custom skills directories (repeatable). Overrides default discovery.",
         ),
     ] = None,
+    local_plugin_dir: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--plugin-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help=(
+                "Load a local Claude-compatible plugin directory. "
+                "Can be specified multiple times. Session-scoped only."
+            ),
+        ),
+    ] = None,
     # Loop control
     max_steps_per_turn: Annotated[
         int | None,
@@ -600,6 +614,22 @@ def kimi(
             # the saved original stderr fd.
             redirect_stderr_to_logger()
 
+            # Merge explicit --plugin-dir with auto-discovered ~/.kimi/claude-plugins/
+            from kimi_cli.claude_plugin.discovery import discover_default_claude_plugin_dirs
+
+            explicit_plugin_dirs = [Path(p).resolve() for p in local_plugin_dir or []]
+            auto_plugin_dirs = discover_default_claude_plugin_dirs()
+
+            # Explicit dirs first (higher priority for same-name conflicts),
+            # then auto-discovered. Deduplicate by resolved path.
+            seen_paths: set[Path] = set()
+            plugin_dirs: list[Path] = []
+            for d in [*explicit_plugin_dirs, *auto_plugin_dirs]:
+                rd = d.resolve()
+                if rd not in seen_paths:
+                    seen_paths.add(rd)
+                    plugin_dirs.append(rd)
+
             instance = await KimiCLI.create(
                 session,
                 config=config,
@@ -611,6 +641,7 @@ def kimi(
                 agent_file=agent_file,
                 mcp_configs=mcp_configs,
                 skills_dirs=skills_dirs,
+                plugin_dirs=plugin_dirs,
                 max_steps_per_turn=max_steps_per_turn,
                 max_retries_per_step=max_retries_per_step,
                 max_ralph_iterations=max_ralph_iterations,
