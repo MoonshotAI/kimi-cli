@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Refine idle background completion auto-trigger — resumed shell sessions no longer auto-start a foreground turn from stale pending background notifications before the user sends a message, and fresh background completions now wait briefly while the user is actively typing to avoid stealing the prompt or breaking CJK IME composition
+- Core: Fix interrupted foreground turns leaving unbalanced wire events — `TurnEnd` is now emitted even when a turn exits via cancellation or step interruption, preventing dirty session wire logs from accumulating across resume cycles
 - CLI: Add `--session`/`--resume` (`-S`/`-r`) flag to resume sessions — without an argument opens an interactive session picker (shell UI only); with a session ID resumes that specific session; replaces the reverted `--pick-session`/`--list-sessions` design with a unified optional-value flag
 - CLI: Add CJK-safe `shorten()` utility — replaces all `textwrap.shorten` calls so that CJK text without spaces is truncated gracefully instead of collapsing to just the placeholder
 - Core: Fix skills in brand directories (e.g. `~/.kimi/skills/`) silently disappearing when a generic directory (`~/.config/agents/skills/`) exists but is empty — skill directory discovery now searches brand and generic directory groups independently and merges both results, instead of stopping at the first existing directory across all candidates

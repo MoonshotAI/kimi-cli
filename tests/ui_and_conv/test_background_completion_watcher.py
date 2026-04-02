@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
-from kimi_cli.ui.shell import _BackgroundCompletionWatcher, _PromptEvent
+from kimi_cli.soul import Soul
+from kimi_cli.ui.shell import Shell, _BackgroundCompletionWatcher, _PromptEvent
 
 
 def _make_watcher(
@@ -28,13 +31,19 @@ def _make_watcher(
 
 
 @pytest.mark.asyncio
-async def test_pending_notification_and_empty_queue_returns_none():
-    """Pending LLM notification + empty queue → return None (trigger agent)."""
+async def test_pending_notification_and_empty_queue_waits_for_user_input():
+    """Pending LLM notification alone should not auto-trigger the agent."""
     watcher = _make_watcher(has_pending=True)
     queue: asyncio.Queue[_PromptEvent] = asyncio.Queue()
 
-    result = await watcher.wait_for_next(queue)
-    assert result is None
+    task = asyncio.create_task(watcher.wait_for_next(queue))
+    await asyncio.sleep(0)
+    assert task.done() is False
+
+    event = _PromptEvent(kind="input")
+    await queue.put(event)
+    result = await task
+    assert result is event
 
 
 @pytest.mark.asyncio
@@ -68,7 +77,7 @@ async def test_pending_notification_but_eof_queued_returns_eof():
 
 @pytest.mark.asyncio
 async def test_bg_event_fires_with_pending_returns_none():
-    """Background event fires + pending notification → return None."""
+    """A fresh background completion with pending LLM notification should auto-trigger."""
     watcher = _make_watcher()
     queue: asyncio.Queue[_PromptEvent] = asyncio.Queue()
 
@@ -137,3 +146,58 @@ async def test_disabled_watcher_just_awaits_idle():
 
     result = await watcher.wait_for_next(queue)
     assert result is event
+
+
+class _FakePromptActivity:
+    def __init__(self, *, pending: bool = False, recent: bool = False) -> None:
+        self._pending = pending
+        self._recent = recent
+        self._event = asyncio.Event()
+
+    def has_pending_input(self) -> bool:
+        return self._pending
+
+    def had_recent_input_activity(self, *, within_s: float) -> bool:
+        return self._recent
+
+    async def wait_for_input_activity(self) -> None:
+        await self._event.wait()
+        self._event.clear()
+
+
+def test_shell_defers_background_auto_trigger_when_buffer_non_empty() -> None:
+    prompt = _FakePromptActivity(pending=True, recent=False)
+    assert Shell._should_defer_background_auto_trigger(prompt) is True
+
+
+def test_shell_defers_background_auto_trigger_when_recent_input_activity() -> None:
+    prompt = _FakePromptActivity(pending=False, recent=True)
+    assert Shell._should_defer_background_auto_trigger(prompt) is True
+
+
+@pytest.mark.asyncio
+async def test_shell_wait_for_input_or_activity_returns_activity_event() -> None:
+    shell = Shell(cast(Soul, SimpleNamespace(available_slash_commands=[], name="x")), None)
+    prompt = _FakePromptActivity()
+    queue: asyncio.Queue[_PromptEvent] = asyncio.Queue()
+
+    task = asyncio.create_task(shell._wait_for_input_or_activity(prompt, queue))
+    await asyncio.sleep(0)
+    prompt._event.set()
+
+    result = await task
+    assert result.kind == "input_activity"
+
+
+@pytest.mark.asyncio
+async def test_shell_wait_for_input_or_activity_returns_idle_event() -> None:
+    shell = Shell(cast(Soul, SimpleNamespace(available_slash_commands=[], name="x")), None)
+    prompt = _FakePromptActivity()
+    queue: asyncio.Queue[_PromptEvent] = asyncio.Queue()
+    expected = _PromptEvent(kind="input")
+
+    task = asyncio.create_task(shell._wait_for_input_or_activity(prompt, queue))
+    await queue.put(expected)
+
+    result = await task
+    assert result is expected
