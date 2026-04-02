@@ -42,7 +42,17 @@ def discover_default_claude_plugin_dirs() -> list[Path]:
         return []
 
     dirs: list[Path] = []
-    for entry in sorted(base.iterdir()):
+    try:
+        entries = sorted(base.iterdir())
+    except OSError as exc:
+        logger.warning(
+            "Cannot scan Claude plugin directory {path}: {error}",
+            path=base,
+            error=exc,
+        )
+        return []
+
+    for entry in entries:
         if not entry.is_dir():
             continue
         if (entry / ".claude-plugin" / "plugin.json").is_file():

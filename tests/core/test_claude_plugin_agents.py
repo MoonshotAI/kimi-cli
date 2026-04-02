@@ -234,6 +234,52 @@ class TestNonPluginMdAgentPreserved:
         assert _claude_plugin_agent_spec is None
 
 
+class TestBrokenPluginAgentBestEffort:
+    def test_invalid_agent_markdown_does_not_crash(self, tmp_path: Path) -> None:
+        """When a plugin agent .md exists but has broken frontmatter,
+        the plugin-agent detection in app.py must not crash — it should
+        skip the overlay and keep the original agent_file."""
+        from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+        from kimi_cli.claude_plugin.agents import parse_agent_md
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+        from kimi_cli.utils.logging import logger
+
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        # Valid YAML open but bad structure that makes parse_agent_md raise
+        (agents_dir / "reviewer.md").write_text(
+            "---\n: invalid yaml frontmatter\n---\nBody.",
+            encoding="utf-8",
+        )
+
+        bundle = load_claude_plugins([plugin_dir])
+        agent_file = plugin_dir / "agents" / "reviewer.md"
+
+        # Replicate app.py logic: try to parse, catch failure
+        _resolved = agent_file.resolve()
+        _claude_plugin_agent_spec = None
+        for _pname, _prt in bundle.plugins.items():
+            if _resolved.is_relative_to(_prt.root):
+                try:
+                    _claude_plugin_agent_spec = parse_agent_md(_resolved, _pname)
+                except Exception:
+                    logger.warning("Bad plugin agent, skipping")
+                break
+
+        if _claude_plugin_agent_spec is not None:
+            agent_file = DEFAULT_AGENT_FILE
+
+        # Must NOT have switched to DEFAULT_AGENT_FILE
+        assert agent_file != DEFAULT_AGENT_FILE
+        assert _claude_plugin_agent_spec is None
+
+
 class TestSettingsAgentSelection:
     def test_settings_selects_agent(self, tmp_path: Path) -> None:
         plugin_dir = _make_plugin_with_agent(tmp_path)

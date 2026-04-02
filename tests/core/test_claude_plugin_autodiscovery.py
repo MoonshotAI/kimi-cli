@@ -86,6 +86,28 @@ class TestDiscoverDefaultDirs:
             assert p == p.resolve()
 
 
+class TestAutoDiscoveryFailOpen:
+    def test_unreadable_dir_returns_empty(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """When ~/.kimi/claude-plugins/ exists but iterdir() raises OSError,
+        auto-discovery must return [] instead of crashing."""
+        monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+        base = tmp_path / "claude-plugins"
+        base.mkdir()
+
+        from kimi_cli.claude_plugin.discovery import discover_default_claude_plugin_dirs
+
+        # Patch iterdir on this specific path to raise OSError
+        _original_iterdir = base.iterdir
+
+        def _raise_oserror(*_a: object, **_kw: object) -> None:
+            raise OSError("Permission denied")
+
+        monkeypatch.setattr(type(base), "iterdir", lambda self: _raise_oserror())
+
+        result = discover_default_claude_plugin_dirs()
+        assert result == []
+
+
 class TestMergeWithExplicit:
     def test_both_sources_loaded(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Explicit --plugin-dir and auto-discovered dirs should both load."""

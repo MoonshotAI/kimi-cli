@@ -283,7 +283,15 @@ class KimiCLI:
             _resolved_agent = agent_file.resolve()
             for _pname, _prt in claude_plugin_bundle.plugins.items():
                 if _resolved_agent.is_relative_to(_prt.root):
-                    _claude_plugin_agent_spec = parse_agent_md(_resolved_agent, _pname)
+                    try:
+                        _claude_plugin_agent_spec = parse_agent_md(
+                            _resolved_agent, _pname
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to parse plugin agent {path}, skipping overlay",
+                            path=_resolved_agent,
+                        )
                     break
 
             # Only fall back to DEFAULT_AGENT_FILE when we actually matched
