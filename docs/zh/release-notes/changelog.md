@@ -16,6 +16,7 @@
 - CLI：新增 `--plan` 启动参数和 `default_plan_mode` 配置项——通过 `kimi --plan` 或在 `~/.kimi/config.toml` 中设置 `default_plan_mode = true` 可让新会话直接进入计划模式；恢复的会话保留其原有的计划模式状态
 - Shell：新增 `/undo` 和 `/fork` 命令用于会话分支——`/undo` 支持选择一个历史轮次并 fork 出新会话，被选中轮次的用户消息会预填到输入框供重新编辑；`/fork` 将当前完整对话历史复制到新会话；原会话始终保留不丢失
 - CLI：新增 `-r` 作为 `--session` 的简写别名，并在会话退出时输出恢复提示（`kimi -r <session-id>`）——覆盖正常退出、Ctrl-C、`/undo`、`/fork` 和 `/sessions` 切换等场景，确保用户始终能找到回到会话的方式
+- Core：修复 `custom_headers` 未传递给非 Kimi provider 的问题——OpenAI、Anthropic、Google GenAI 和 Vertex AI provider 现在能正确转发 `providers.*.custom_headers` 中配置的自定义请求头
 
 ## 1.29.0 (2026-04-01)
 
