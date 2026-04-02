@@ -34,7 +34,7 @@ Use `--session` (or `--resume`) with a session ID to resume that specific sessio
 kimi --session abc123
 ```
 
-If the specified session ID does not exist, an error is raised instead of creating a new session.
+If the specified session ID does not exist, a new session is created automatically.
 
 **Switch sessions during runtime**
 

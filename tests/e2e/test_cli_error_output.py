@@ -141,43 +141,6 @@ Invalid value for --session: --session without a session ID is only supported fo
     )
 
 
-def test_session_not_found_is_reported(tmp_path: Path) -> None:
-    share_dir = tmp_path / "share"
-    work_dir = tmp_path / "work"
-    work_dir.mkdir(parents=True, exist_ok=True)
-    config_path = tmp_path / "config.json"
-    config_path.write_text(
-        '{"default_model":"","models":{},"providers":{}}',
-        encoding="utf-8",
-    )
-
-    result = _run_kimi(
-        [
-            "--session",
-            "nonexistent-id",
-            "--print",
-            "--yolo",
-            "--prompt",
-            "hello",
-            "--config-file",
-            str(config_path),
-            "--work-dir",
-            str(work_dir),
-        ],
-        share_dir=share_dir,
-    )
-    assert result.returncode == snapshot(2)
-    assert result.stdout == snapshot("")
-    assert _normalize_cli_error_output(result.stderr) == snapshot(
-        """\
-Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
-Try 'python -m kimi_cli.cli -h' for help.
-Error:
-Invalid value for --session: Session 'nonexistent-id' not found for the working directory
-"""
-    )
-
-
 def test_resume_alias_and_continue_conflict_is_reported(tmp_path: Path) -> None:
     share_dir = tmp_path / "share"
     result = _run_kimi(["--resume", "abc", "--continue"], share_dir=share_dir)

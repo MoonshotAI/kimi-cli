@@ -55,7 +55,7 @@ The working directory determines the root directory for file operations. Relativ
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--continue` | `-C` | Continue the previous session in the current working directory |
-| `--session [ID]` / `--resume [ID]` | `-S` / `-r` | Resume a session. With ID: resume that session (errors if not found). Without ID: open interactive session picker (shell mode only) |
+| `--session [ID]` / `--resume [ID]` | `-S` / `-r` | Resume a session. With ID: resume that session (creates new if not found). Without ID: open interactive session picker (shell mode only) |
 
 `--continue` and `--session`/`--resume` are mutually exclusive.
 
