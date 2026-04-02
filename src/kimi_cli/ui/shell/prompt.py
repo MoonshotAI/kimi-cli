@@ -1879,6 +1879,15 @@ class CustomPromptSession:
         event.app.invalidate()
         return bool(parts)
 
+    def set_prefill_text(self, text: str) -> None:
+        """Pre-fill the input buffer with the given text.
+
+        Must be called after the prompt session is created but before the
+        first prompt_async call.  The text will appear as editable default
+        input in the next prompt.
+        """
+        self._prefill_text = text
+
     async def prompt_next(self) -> UserInput:
         return await self._prompt_once(append_history=None)
 
@@ -1949,8 +1958,13 @@ class CustomPromptSession:
         placeholder = None
         if (delegate := self._active_prompt_delegate()) is not None:
             placeholder = delegate.running_prompt_placeholder()
+        # Consume one-shot prefill text if set
+        default = getattr(self, "_prefill_text", None) or ""
+        self._prefill_text = None
         with patch_stdout(raw=True):
-            command = str(await self._session.prompt_async(placeholder=placeholder)).strip()
+            command = str(
+                await self._session.prompt_async(placeholder=placeholder, default=default)
+            ).strip()
             command = command.replace("\x00", "")  # just in case null bytes are somehow inserted
             # Sanitize UTF-16 surrogates that may come from Windows clipboard
             command = sanitize_surrogates(command)

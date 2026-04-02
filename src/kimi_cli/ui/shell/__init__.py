@@ -157,9 +157,15 @@ class _BackgroundAutoTriggerPromptState(Protocol):
 
 
 class Shell:
-    def __init__(self, soul: Soul, welcome_info: list[WelcomeInfoItem] | None = None):
+    def __init__(
+        self,
+        soul: Soul,
+        welcome_info: list[WelcomeInfoItem] | None = None,
+        prefill_text: str | None = None,
+    ):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
+        self._prefill_text = prefill_text
         self._background_tasks: set[asyncio.Task[Any]] = set()
         self._prompt_session: CustomPromptSession | None = None
         self._running_input_handler: Callable[[UserInput], None] | None = None
@@ -373,6 +379,9 @@ class Shell:
             plan_mode_toggle_callback=_plan_mode_toggle,
         ) as prompt_session:
             self._prompt_session = prompt_session
+            if self._prefill_text:
+                prompt_session.set_prefill_text(self._prefill_text)
+                self._prefill_text = None
             if isinstance(self.soul, KimiSoul):
                 kimi_soul = self.soul
                 snapshot = kimi_soul.status.mcp_status
@@ -809,6 +818,10 @@ class Shell:
 
     def _set_active_approval_sink(self, sink: Any) -> None:
         self._active_approval_sink = sink
+        # In interactive mode, approvals are handled by the prompt modal,
+        # not by the live view sink. Don't flush to avoid losing requests.
+        if self._prompt_session is not None:
+            return
         # Flush pending approvals to the newly active sink
         while self._pending_approval_requests:
             request = self._pending_approval_requests.popleft()

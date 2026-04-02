@@ -185,16 +185,17 @@ kimi logout
 
 ### `kimi export`
 
-将指定会话的数据导出为 ZIP 文件。ZIP 中包含会话目录下的所有文件（`context.jsonl`、`wire.jsonl`、`state.json` 等）。
+将会话数据导出为 ZIP 文件。ZIP 中包含会话目录下的所有文件（`context.jsonl`、`wire.jsonl`、`state.json` 等）。
 
 ```sh
-kimi export <session_id> [-o <output_path>]
+kimi export [<session_id>] [-o <output_path>] [--yes]
 ```
 
 | 参数 / 选项 | 说明 |
 |------|------|
-| `<session_id>` | 要导出的会话 ID |
+| `<session_id>` | 要导出的会话 ID。省略时，CLI 会预览并确认当前工作目录的上一个会话，然后再导出 |
 | `--output, -o` | 输出 ZIP 文件路径（默认为当前目录下的 `session-<id>.zip`） |
+| `--yes, -y` | 跳过默认会话的确认提示，直接导出 |
 
 ::: info 新增
 新增于 1.20 版本。

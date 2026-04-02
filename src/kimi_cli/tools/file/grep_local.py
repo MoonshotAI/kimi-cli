@@ -6,6 +6,7 @@ Be cautious that `KaosPath` is not used in this implementation.
 import asyncio
 import os
 import platform
+import re
 import shutil
 import stat
 import tarfile
@@ -23,6 +24,7 @@ from kimi_cli.share import get_share_dir
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.sensitive import is_sensitive_file, sensitive_file_warning
 
 
 class Params(BaseModel):
@@ -120,6 +122,15 @@ class Params(BaseModel):
             "Enable multiline mode where `.` matches newlines and patterns can span "
             "lines (the `-U` and `--multiline-dotall` options). "
             "By default, multiline mode is disabled."
+        ),
+        default=False,
+    )
+    include_ignored: bool = Field(
+        description=(
+            "Include files that are ignored by `.gitignore`, `.ignore`, and other ignore "
+            "rules. Useful for searching gitignored artifacts such as build outputs "
+            "(e.g. `dist/`, `build/`) or `node_modules`. Sensitive files (like `.env`) "
+            "remain filtered by the sensitive-file protection layer. Defaults to false."
         ),
         default=False,
     )
@@ -265,6 +276,8 @@ def _build_rg_args(rg_path: str, params: Params, *, single_threaded: bool = Fals
     if params.output_mode != "content":
         args.extend(["--max-columns", "500"])
     args.append("--hidden")
+    if params.include_ignored:
+        args.append("--no-ignore")
     for vcs_dir in (".git", ".svn", ".hg", ".bzr", ".jj", ".sl"):
         args.extend(["--glob", f"!{vcs_dir}"])
 
@@ -471,7 +484,50 @@ class Grep(CallableTool2[Params]):
                 search_base = os.path.dirname(search_base)
             output = _strip_path_prefix(output, search_base)
 
-            # Step 3: count_matches summary (before pagination, on full results)
+            # Step 3: filter sensitive files from output
+            # Regex for ripgrep content lines: path:linenum:text (match) or
+            # path-linenum-text (context). The separator is `:` or `-` followed
+            # by digits then the same separator again.
+            _RG_LINE_RE = re.compile(r"^(.*?)([:\-])(\d+)\2")
+
+            out_lines = output.split("\n")
+            filtered_paths: list[str] = []
+            kept_lines: list[str] = []
+            sensitive_path_set: set[str] = set()
+            for line in out_lines:
+                if params.output_mode == "content":
+                    # Match lines: "file.py:10:matched text"
+                    # Context lines: "file.py-10-context text"
+                    # Separator: "--"
+                    if line == "--":
+                        kept_lines.append(line)
+                        continue
+                    m = _RG_LINE_RE.match(line)
+                    file_path = m.group(1) if m else line
+                elif params.output_mode == "count_matches":
+                    # Count lines: "file.py:42"
+                    idx = line.rfind(":")
+                    file_path = line[:idx] if idx > 0 else line
+                else:
+                    # files_with_matches: pure path per line
+                    file_path = line
+
+                if file_path and is_sensitive_file(file_path):
+                    if file_path not in sensitive_path_set:
+                        sensitive_path_set.add(file_path)
+                        filtered_paths.append(file_path)
+                else:
+                    kept_lines.append(line)
+
+            if filtered_paths:
+                # Remove trailing "--" separators left after filtering
+                while kept_lines and kept_lines[-1] == "--":
+                    kept_lines.pop()
+                output = "\n".join(kept_lines)
+                warning = sensitive_file_warning(filtered_paths)
+                message = f"{message} {warning}" if message else warning
+
+            # Step 4: count_matches summary (before pagination, on full results)
             lines = output.split("\n")
             if lines and lines[-1] == "":
                 lines = lines[:-1]
@@ -492,7 +548,7 @@ class Grep(CallableTool2[Params]):
                 )
                 message = f"{message} {count_summary}" if message else count_summary
 
-            # Step 4: offset + head_limit pagination
+            # Step 5: offset + head_limit pagination
             if params.offset > 0:
                 lines = lines[params.offset :]
 
@@ -510,7 +566,10 @@ class Grep(CallableTool2[Params]):
                 output = "\n".join(lines)
 
             if not output and not buffer_truncated:
-                return builder.ok(message="No matches found")
+                no_match_msg = "No matches found"
+                if message:
+                    no_match_msg = f"{no_match_msg}. {message}"
+                return builder.ok(message=no_match_msg)
 
             builder.write(output)
             return builder.ok(message=message)
