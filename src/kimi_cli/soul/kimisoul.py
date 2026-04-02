@@ -540,7 +540,7 @@ class KimiSoul:
             if not command_call:
                 session = self._runtime.session
                 if session.state.custom_title is None:
-                    from textwrap import shorten
+                    from kimi_cli.utils.string import shorten
 
                     title = shorten(
                         Message(role="user", content=user_input).extract_text(" "),
