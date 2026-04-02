@@ -183,6 +183,13 @@ def kimi(
             help="Automatically approve all actions. Default: no.",
         ),
     ] = False,
+    plan: Annotated[
+        bool,
+        typer.Option(
+            "--plan",
+            help="Start in plan mode. Default: no.",
+        ),
+    ] = False,
     prompt: Annotated[
         str | None,
         typer.Option(
@@ -510,6 +517,9 @@ def kimi(
         try:
             startup_progress.update("Preparing session...")
 
+            # Track if we're resuming an existing session (vs creating new)
+            resumed = False
+
             if session_id is not None:
                 session = await Session.find(work_dir, session_id)
                 if session is None:
@@ -518,7 +528,9 @@ def kimi(
                         session_id=session_id,
                     )
                     session = await Session.create(work_dir, session_id)
-                logger.info("Switching to session: {session_id}", session_id=session.id)
+                else:
+                    resumed = True  # Session was actually found
+                    logger.info("Switching to session: {session_id}", session_id=session.id)
             elif continue_:
                 session = await Session.continue_(work_dir)
                 if session is None:
@@ -526,6 +538,7 @@ def kimi(
                         "No previous session found for the working directory",
                         param_hint="--continue",
                     )
+                resumed = True  # Continuing previous session
                 logger.info("Continuing previous session: {session_id}", session_id=session.id)
             else:
                 session = await Session.create(work_dir)
@@ -571,6 +584,8 @@ def kimi(
                 model_name=model_name,
                 thinking=thinking,
                 yolo=yolo or (ui == "print"),  # print mode implies yolo
+                plan_mode=plan,
+                resumed=resumed,
                 agent_file=agent_file,
                 mcp_configs=mcp_configs,
                 skills_dirs=skills_dirs,
