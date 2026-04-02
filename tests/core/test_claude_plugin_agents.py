@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 
 def _make_plugin_with_agent(
     tmp_path: Path,
@@ -169,7 +171,67 @@ class TestNonPluginMdAgentPreserved:
             agent_file = DEFAULT_AGENT_FILE
 
         assert agent_file == DEFAULT_AGENT_FILE
+
+    def test_relative_path_plugin_agent_is_recognized(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A relative-path agent_file that resolves inside a plugin root
+        must be recognized as a plugin agent."""
+        from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+        from kimi_cli.claude_plugin.agents import parse_agent_md
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        plugin_dir = _make_plugin_with_agent(tmp_path)
+        bundle = load_claude_plugins([plugin_dir])
+
+        # Simulate: user is cd'd into the plugin dir and passes a relative path
+        monkeypatch.chdir(plugin_dir)
+        agent_file = Path("agents/reviewer.md")  # relative
+
+        # Replicate app.py logic WITH resolve
+        resolved = agent_file.resolve()
+        _claude_plugin_agent_spec = None
+        for _pname, _prt in bundle.plugins.items():
+            if resolved.is_relative_to(_prt.root):
+                _claude_plugin_agent_spec = parse_agent_md(resolved, _pname)
+                break
+
+        if _claude_plugin_agent_spec is not None:
+            agent_file = DEFAULT_AGENT_FILE
+
+        assert agent_file == DEFAULT_AGENT_FILE
         assert _claude_plugin_agent_spec is not None
+        assert _claude_plugin_agent_spec.full_name == "demo:reviewer"
+
+    def test_relative_path_non_plugin_agent_not_misidentified(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A relative-path .md that is NOT inside any plugin root must not
+        be recognized as a plugin agent, even when plugins are loaded."""
+        from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+        from kimi_cli.claude_plugin.agents import parse_agent_md
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        plugin_dir = _make_plugin_with_agent(tmp_path)
+        bundle = load_claude_plugins([plugin_dir])
+
+        # Create a non-plugin .md outside the plugin root
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+        custom_md = other_dir / "custom.md"
+        custom_md.write_text("---\nname: custom\n---\nCustom.", encoding="utf-8")
+
+        monkeypatch.chdir(other_dir)
+        agent_file = Path("custom.md")  # relative
+
+        resolved = agent_file.resolve()
+        _claude_plugin_agent_spec = None
+        for _pname, _prt in bundle.plugins.items():
+            if resolved.is_relative_to(_prt.root):
+                _claude_plugin_agent_spec = parse_agent_md(resolved, _pname)
+                break
+
+        if _claude_plugin_agent_spec is not None:
+            agent_file = DEFAULT_AGENT_FILE
+
+        assert agent_file == Path("custom.md")
+        assert _claude_plugin_agent_spec is None
 
 
 class TestSettingsAgentSelection:

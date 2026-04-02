@@ -277,10 +277,13 @@ class KimiCLI:
         ):
             from kimi_cli.claude_plugin.agents import parse_agent_md
 
-            # Identify which plugin owns this agent file
+            # Identify which plugin owns this agent file.
+            # Resolve to absolute path so relative --agent-file paths
+            # can be compared against absolute plugin roots.
+            _resolved_agent = agent_file.resolve()
             for _pname, _prt in claude_plugin_bundle.plugins.items():
-                if agent_file.is_relative_to(_prt.root):
-                    _claude_plugin_agent_spec = parse_agent_md(agent_file, _pname)
+                if _resolved_agent.is_relative_to(_prt.root):
+                    _claude_plugin_agent_spec = parse_agent_md(_resolved_agent, _pname)
                     break
 
             # Only fall back to DEFAULT_AGENT_FILE when we actually matched
