@@ -376,6 +376,11 @@ def test_grep_params_schema(grep_tool: Grep):
                     "description": "Enable multiline mode where `.` matches newlines and patterns can span lines (the `-U` and `--multiline-dotall` options). By default, multiline mode is disabled.",
                     "type": "boolean",
                 },
+                "include_ignored": {
+                    "default": False,
+                    "description": "Include files that are ignored by `.gitignore`, `.ignore`, and other ignore rules. Useful for searching configuration files like `.env` that are typically gitignored. Defaults to false.",
+                    "type": "boolean",
+                },
             },
             "required": ["pattern"],
             "type": "object",

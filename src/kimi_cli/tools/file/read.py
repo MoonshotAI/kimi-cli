@@ -9,6 +9,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, detect_file_type
 from kimi_cli.tools.utils import load_desc, truncate_line
 from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.utils.sensitive import is_sensitive_file
 
 MAX_LINES = 1000
 MAX_LINE_LENGTH = 2000
@@ -81,9 +82,6 @@ class ReadFile(CallableTool2[Params]):
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
-        # TODO: checks:
-        # - check if the path may contain secrets
-
         if not params.path:
             return ToolError(
                 message="File path cannot be empty.",
@@ -95,6 +93,16 @@ class ReadFile(CallableTool2[Params]):
             if err := await self._validate_path(p):
                 return err
             p = p.canonical()
+
+            if is_sensitive_file(str(p)):
+                return ToolError(
+                    message=(
+                        f"`{params.path}` appears to contain secrets "
+                        "(matched sensitive file pattern). "
+                        "Reading this file is blocked to protect credentials."
+                    ),
+                    brief="Sensitive file",
+                )
 
             if not await p.exists():
                 return ToolError(

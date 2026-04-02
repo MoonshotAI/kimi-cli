@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Grep: Add `include_ignored` parameter to search files excluded by `.gitignore` — when set to `true`, ripgrep's `--no-ignore` flag is enabled, allowing searches in files like `.env` or `node_modules` that are normally gitignored; defaults to `false` to preserve existing behavior
+- Core: Add sensitive file protection to Grep and Read tools — `.env`, SSH private keys (`id_rsa`, `id_ed25519`, `id_ecdsa`), and cloud credentials (`.aws/credentials`, `.gcp/credentials`) are now detected and blocked; Grep filters them from results with a warning, Read rejects them outright; `.env.example`/`.env.sample`/`.env.template` are exempted
+
 ## 1.29.0 (2026-04-01)
 
 - Core: Support hierarchical `AGENTS.md` loading — the CLI now discovers and merges `AGENTS.md` files from the git project root down to the working directory, including `.kimi/AGENTS.md` at each level; deeper files take priority under a 32 KiB budget cap, ensuring the most specific instructions are never truncated

@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Grep：新增 `include_ignored` 参数，支持搜索被 `.gitignore` 排除的文件——设为 `true` 时启用 ripgrep 的 `--no-ignore` 标志，可搜索 `.env` 或 `node_modules` 等通常被忽略的文件；默认 `false`，不影响现有行为
+- Core：为 Grep 和 Read 工具添加敏感文件保护——`.env`、SSH 私钥（`id_rsa`、`id_ed25519`、`id_ecdsa`）和云凭据（`.aws/credentials`、`.gcp/credentials`）会被检测并拦截；Grep 从结果中过滤并显示警告，Read 直接拒绝读取；`.env.example`/`.env.sample`/`.env.template` 不受影响
+
 ## 1.29.0 (2026-04-01)
 
 - Core：支持层级化 `AGENTS.md` 加载——CLI 现在会从 git 项目根目录到工作目录逐层发现并合并 `AGENTS.md` 文件，包括每层目录中的 `.kimi/AGENTS.md`；在 32 KiB 预算上限下，更深层目录的文件优先保留，确保最具体的指令不会被截断
