@@ -228,8 +228,21 @@ def _load_plugin_settings(runtime: ClaudePluginRuntime) -> None:
     agent_name = settings_dict.get("agent")
     if agent_name and isinstance(agent_name, str):
         # Resolve the agent file from the plugin's agents/ directory
-        agent_file = runtime.root / "agents" / f"{agent_name}.md"
-        if agent_file.is_file():
+        agents_dir = (runtime.root / "agents").resolve()
+        agent_file = (agents_dir / f"{agent_name}.md").resolve()
+        if not agent_file.is_relative_to(agents_dir):
+            runtime.warnings.append(
+                f"settings.json references agent '{agent_name}' "
+                "outside plugin agents/ directory"
+            )
+            logger.warning(
+                "Plugin '{plugin}' settings.json references agent outside agents/ dir: {agent}",
+                plugin=runtime.manifest.name,
+                agent=agent_name,
+            )
+            agent_file = None
+
+        if agent_file is not None and agent_file.is_file():
             runtime.default_agent_file = agent_file
             logger.info(
                 "Plugin '{plugin}' selects default agent: {agent}",

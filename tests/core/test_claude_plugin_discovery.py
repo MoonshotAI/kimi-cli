@@ -137,6 +137,28 @@ class TestPluginSettings:
         assert bundle.plugins["demo"].default_agent_file is None
         assert any("nonexistent" in w for w in bundle.plugins["demo"].warnings)
 
+    def test_settings_rejects_agent_path_outside_plugin_agents_dir(self, tmp_path: Path) -> None:
+        plugin_dir = _make_plugin(tmp_path, "demo")
+        (plugin_dir / "agents").mkdir()
+        outside_agent = tmp_path / "outside.md"
+        outside_agent.write_text(
+            "---\nname: outside\ndescription: outside agent\n---\nOutside.",
+            encoding="utf-8",
+        )
+        (plugin_dir / "settings.json").write_text(
+            json.dumps({"agent": "../../outside"}),
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        assert bundle.plugins["demo"].default_agent_file is None
+        assert any(
+            "outside plugin agents" in w.lower() or "outside plugin" in w.lower()
+            for w in bundle.plugins["demo"].warnings
+        )
+
     def test_unsupported_settings_keys_warn(self, tmp_path: Path) -> None:
         plugin_dir = _make_plugin(tmp_path, "demo")
         (plugin_dir / "settings.json").write_text(
