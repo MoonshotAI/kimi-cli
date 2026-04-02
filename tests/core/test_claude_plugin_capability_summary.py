@@ -111,6 +111,29 @@ class TestCapabilitySummary:
         assert "reserved command" not in summary
         assert "/skill:hello" not in summary
 
+    def test_summary_omits_skills_not_in_registered_plugin_skill_set(self, tmp_path: Path) -> None:
+        plugin_dir = _make_plugin(tmp_path, "skill")
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: conflicting skill\n---\nHello",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import (
+            build_plugin_capability_summary,
+            load_claude_plugins,
+        )
+
+        bundle = load_claude_plugins([plugin_dir])
+        summary = build_plugin_capability_summary(
+            bundle,
+            registered_plugin_skill_names=set(),
+        )
+
+        assert "conflicting skill" not in summary
+        assert "skill:hello" not in summary
+
     def test_summary_omits_agents(self, tmp_path: Path) -> None:
         """Agents are not autonomously executable — must not appear."""
         plugin_dir = _make_plugin(tmp_path, "demo")

@@ -543,19 +543,36 @@ class KimiCLI:
             from kimi_cli.soul.slash import registry as soul_slash_registry
 
             reserved_command_names = {cmd.name for cmd in soul_slash_registry.list_commands()}
+            registered_plugin_skill_names: set[str] = set()
             for skill in runtime.skills.values():
                 if skill.type not in ("standard", "flow"):
                     continue
                 if skill.is_plugin:
-                    reserved_command_names.add(skill.name)
+                    if skill.type == "flow" and skill.flow is not None:
+                        continue
+                    if skill.name not in reserved_command_names:
+                        reserved_command_names.add(skill.name)
+                        registered_plugin_skill_names.add(skill.name)
                 else:
                     reserved_command_names.add(f"{SKILL_COMMAND_PREFIX}{skill.name}")
                     if skill.type == "flow":
                         reserved_command_names.add(f"{FLOW_COMMAND_PREFIX}{skill.name}")
+            for skill in runtime.skills.values():
+                if skill.type != "flow":
+                    continue
+                command_name = (
+                    skill.name if skill.is_plugin else f"{FLOW_COMMAND_PREFIX}{skill.name}"
+                )
+                if command_name in reserved_command_names:
+                    continue
+                reserved_command_names.add(command_name)
+                if skill.is_plugin:
+                    registered_plugin_skill_names.add(skill.name)
 
             cap_summary = build_plugin_capability_summary(
                 claude_plugin_bundle,
                 reserved_command_names=reserved_command_names,
+                registered_plugin_skill_names=registered_plugin_skill_names,
             )
             if cap_summary:
                 agent = dataclasses.replace(

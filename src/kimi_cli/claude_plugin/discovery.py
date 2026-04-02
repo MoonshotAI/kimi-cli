@@ -321,6 +321,7 @@ def build_plugin_capability_summary(
     bundle: ClaudePluginBundle,
     *,
     reserved_command_names: set[str] | None = None,
+    registered_plugin_skill_names: set[str] | None = None,
 ) -> str:
     """Build a concise capability summary for model-visible context.
 
@@ -342,6 +343,11 @@ def build_plugin_capability_summary(
 
         # Skills: model can read SKILL.md and follow instructions
         for skill_name, skill in sorted(plugin_rt.skills.items()):
+            if (
+                registered_plugin_skill_names is not None
+                and skill.name not in registered_plugin_skill_names
+            ):
+                continue
             desc = skill.description or "No description"
             lines.append(
                 f"- {skill_name} — {desc} "
