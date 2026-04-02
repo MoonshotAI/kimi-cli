@@ -272,6 +272,44 @@ def test_bare_plugin_flow_dispatch_uses_registered_command_name(runtime: Runtime
     assert captured["args"] == ""
 
 
+def test_conflicting_plugin_skill_is_not_added_to_bare_dispatch_index(
+    runtime: Runtime, tmp_path: Path,
+) -> None:
+    """Plugin skills skipped during slash registration must also be excluded
+    from bare-name dispatch."""
+    skill_dir = tmp_path / "conflict-skill"
+    skill_dir.mkdir()
+    native_skill = Skill(
+        name="hello",
+        description="Native hello",
+        type="standard",
+        dir=KaosPath.unsafe_from_local_path(skill_dir),
+    )
+    plugin_skill = Skill(
+        name="skill:hello",
+        description="Plugin conflicting hello",
+        type="standard",
+        dir=KaosPath.unsafe_from_local_path(skill_dir),
+        is_plugin=True,
+    )
+    runtime.skills = {
+        "hello": native_skill,
+        "skill:hello": plugin_skill,
+    }
+
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="Test system prompt.",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+    soul.register_plugin_commands(ClaudePluginBundle(plugins={}))
+
+    assert soul._plugin_capability_index is not None
+    assert soul._plugin_capability_index.match("hello") is None
+
+
 def test_plugin_skill_error_text_uses_namespaced_name(runtime: Runtime, tmp_path: Path) -> None:
     """When a plugin skill fails to load, the error message must show
     the real slash command /myplugin:greet, not /skill:myplugin:greet."""

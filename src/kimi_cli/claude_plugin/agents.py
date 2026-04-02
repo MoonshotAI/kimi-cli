@@ -60,6 +60,11 @@ def parse_agent_md(path: Path, plugin_name: str) -> ClaudeAgentSpec:
     body = _extract_body(text)
     agent_name = frontmatter.get("name", path.stem)
     full_name = f"{plugin_name}:{agent_name}"
+    allowed_tools = (
+        frontmatter.get("allowed-tools")
+        if "allowed-tools" in frontmatter
+        else frontmatter.get("allowed_tools")
+    )
 
     return ClaudeAgentSpec(
         name=agent_name,
@@ -68,7 +73,7 @@ def parse_agent_md(path: Path, plugin_name: str) -> ClaudeAgentSpec:
         system_prompt=body,
         model=frontmatter.get("model"),
         tools=frontmatter.get("tools"),
-        allowed_tools=frontmatter.get("allowed-tools") or frontmatter.get("allowed_tools"),
+        allowed_tools=allowed_tools,
         file_path=path,
     )
 

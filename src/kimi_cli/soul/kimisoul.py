@@ -168,6 +168,7 @@ class KimiSoul:
         # Bind plan mode state to tools that support it
         self._bind_plan_mode_tools()
 
+        self._registered_plugin_skill_names: set[str] = set()
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
         self._plugin_capability_index: Any = None
@@ -581,6 +582,7 @@ class KimiSoul:
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
         commands: list[SlashCommand[Any]] = list(soul_slash_registry.list_commands())
         seen_names = {cmd.name for cmd in commands}
+        self._registered_plugin_skill_names.clear()
 
         for skill in self._runtime.skills.values():
             if skill.type not in ("standard", "flow"):
@@ -610,6 +612,8 @@ class KimiSoul:
                 )
             )
             seen_names.add(name)
+            if skill.is_plugin:
+                self._registered_plugin_skill_names.add(skill.name)
 
         for skill in self._runtime.skills.values():
             if skill.type != "flow":
@@ -638,6 +642,8 @@ class KimiSoul:
                 )
             )
             seen_names.add(command_name)
+            if skill.is_plugin:
+                self._registered_plugin_skill_names.add(skill.name)
 
         return commands
 
@@ -724,8 +730,13 @@ class KimiSoul:
                 all_plugin_commands[cmd_spec.full_name] = cmd_spec
 
         # Build bare-invocation index for direct name dispatch
+        effective_plugin_skills = {
+            name: skill
+            for name, skill in self._runtime.skills.items()
+            if skill.is_plugin and skill.name in self._registered_plugin_skill_names
+        }
         self._plugin_capability_index = build_plugin_capability_index(
-            self._runtime.skills,
+            effective_plugin_skills,
             commands=all_plugin_commands or None,
         )
 
