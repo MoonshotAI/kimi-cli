@@ -81,9 +81,15 @@ class _BackgroundCompletionWatcher:
     turn.
     """
 
-    def __init__(self, soul: Soul) -> None:
+    def __init__(
+        self,
+        soul: Soul,
+        *,
+        can_auto_trigger_pending: Callable[[], bool] | None = None,
+    ) -> None:
         self._event: asyncio.Event | None = None
         self._notifications: NotificationManager | None = None
+        self._can_auto_trigger_pending = can_auto_trigger_pending or (lambda: True)
         if isinstance(soul, KimiSoul):
             self._event = soul.runtime.background_tasks.completion_event
             self._notifications = soul.runtime.notifications
@@ -106,13 +112,15 @@ class _BackgroundCompletionWatcher:
         """
         if self.enabled and self._has_pending_llm_notifications():
             # Pending notifications already exist (for example after resume).
-            # Do not auto-trigger immediately; only let a queued user action
-            # win eagerly. Otherwise wait for a fresh background completion
-            # signal before starting a foreground run.
+            # Before the user sends the first foreground turn after resume,
+            # pending background notifications should not auto-trigger a run.
+            # Once the shell is armed by a user-triggered turn, pending
+            # notifications can resume the normal auto-follow-up behavior.
             try:
                 return idle_events.get_nowait()
             except asyncio.QueueEmpty:
-                pass
+                if self._can_auto_trigger_pending():
+                    return None
 
         idle_task = asyncio.create_task(idle_events.get())
         if not self.enabled:
@@ -139,7 +147,9 @@ class _BackgroundCompletionWatcher:
         # Only bg fired
         self._event.clear()
         if self._has_pending_llm_notifications():
-            return None
+            if self._can_auto_trigger_pending():
+                return None
+            return _PromptEvent(kind="bg_noop")
         return _PromptEvent(kind="bg_noop")
 
     def _has_pending_llm_notifications(self) -> bool:
@@ -409,7 +419,15 @@ class Shell:
             prompt_task = asyncio.create_task(
                 self._route_prompt_events(prompt_session, idle_events, resume_prompt)
             )
-            bg_watcher = _BackgroundCompletionWatcher(self.soul)
+            background_autotrigger_armed = False
+
+            def _can_auto_trigger_pending() -> bool:
+                return background_autotrigger_armed
+
+            bg_watcher = _BackgroundCompletionWatcher(
+                self.soul,
+                can_auto_trigger_pending=_can_auto_trigger_pending,
+            )
 
             shell_ok = True
             bg_auto_failures = 0
@@ -512,6 +530,7 @@ class Shell:
                             and shell_slash_registry.find_command(slash_cmd_call.name) is None
                         )
                         if is_soul_slash:
+                            background_autotrigger_armed = True
                             resume_prompt.set()
                             await self.run_soul_command(slash_cmd_call.raw_input)
                             console.print()
@@ -523,6 +542,7 @@ class Shell:
                             resume_prompt.set()
                         continue
 
+                    background_autotrigger_armed = True
                     resume_prompt.set()
                     await self.run_soul_command(user_input.content)
                     console.print()
