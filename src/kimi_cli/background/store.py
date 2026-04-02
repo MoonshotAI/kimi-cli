@@ -4,7 +4,10 @@ import os
 import re
 from pathlib import Path
 
+from pydantic import BaseModel, ValidationError
+
 from kimi_cli.utils.io import atomic_json_write
+from kimi_cli.utils.logging import logger
 
 from .models import (
     TaskConsumerState,
@@ -104,7 +107,12 @@ class BackgroundTaskStore:
         path = self.runtime_path(task_id)
         if not path.exists():
             return TaskRuntime()
-        return TaskRuntime.model_validate_json(path.read_text(encoding="utf-8"))
+        return _read_json_model(
+            path,
+            TaskRuntime,
+            fallback=TaskRuntime(updated_at=0),
+            artifact="task runtime",
+        )
 
     def write_control(self, task_id: str, control: TaskControl) -> None:
         atomic_json_write(control.model_dump(mode="json"), self.control_path(task_id))
@@ -113,7 +121,12 @@ class BackgroundTaskStore:
         path = self.control_path(task_id)
         if not path.exists():
             return TaskControl()
-        return TaskControl.model_validate_json(path.read_text(encoding="utf-8"))
+        return _read_json_model(
+            path,
+            TaskControl,
+            fallback=TaskControl(),
+            artifact="task control",
+        )
 
     def write_consumer(self, task_id: str, consumer: TaskConsumerState) -> None:
         atomic_json_write(consumer.model_dump(mode="json"), self.consumer_path(task_id))
@@ -122,7 +135,12 @@ class BackgroundTaskStore:
         path = self.consumer_path(task_id)
         if not path.exists():
             return TaskConsumerState()
-        return TaskConsumerState.model_validate_json(path.read_text(encoding="utf-8"))
+        return _read_json_model(
+            path,
+            TaskConsumerState,
+            fallback=TaskConsumerState(),
+            artifact="task consumer state",
+        )
 
     def merged_view(self, task_id: str) -> TaskView:
         return TaskView(
@@ -133,7 +151,17 @@ class BackgroundTaskStore:
         )
 
     def list_views(self) -> list[TaskView]:
-        views = [self.merged_view(task_id) for task_id in self.list_task_ids()]
+        views: list[TaskView] = []
+        for task_id in self.list_task_ids():
+            try:
+                views.append(self.merged_view(task_id))
+            except (OSError, ValidationError, ValueError, UnicodeDecodeError) as exc:
+                logger.warning(
+                    "Skipping invalid background task {task_id} from {path}: {error}",
+                    task_id=task_id,
+                    path=self.root / task_id / self.SPEC_FILE,
+                    error=exc,
+                )
         views.sort(
             key=lambda view: view.runtime.updated_at or view.spec.created_at,
             reverse=True,
@@ -194,3 +222,16 @@ class BackgroundTaskStore:
         if len(lines) > max_lines:
             lines = lines[-max_lines:]
         return "\n".join(lines)
+
+
+def _read_json_model[T: BaseModel](path: Path, model: type[T], *, fallback: T, artifact: str) -> T:
+    try:
+        return model.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValidationError, ValueError, UnicodeDecodeError) as exc:
+        logger.warning(
+            "Failed to read {artifact} from {path}; using defaults: {error}",
+            artifact=artifact,
+            path=path,
+            error=exc,
+        )
+        return fallback

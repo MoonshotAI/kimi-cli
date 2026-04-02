@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：提升会话启动恢复的鲁棒性——`--continue`/`--resume` 现在可容忍损坏的 `context.jsonl` 记录，以及损坏的子 Agent、后台任务或通知持久化工件；CLI 会尽可能跳过无效状态并继续恢复会话，而不是直接启动失败
 - CLI：改进 `kimi export` 会话导出体验——`kimi export` 现在默认预览并确认当前工作目录的上一个会话，显示会话 ID、标题和最后一条用户消息时间；新增 `--yes` 跳过确认；同时修复显式会话 ID 时 `--output` 放在参数后面会被错误解析为子命令的问题
 - Grep：新增 `include_ignored` 参数，支持搜索被 `.gitignore` 排除的文件——设为 `true` 时启用 ripgrep 的 `--no-ignore` 标志，可搜索构建产物或 `node_modules` 等通常被忽略的文件；敏感文件（如 `.env`）仍由敏感文件保护层过滤；默认 `false`，不影响现有行为
 - Core：为 Grep 和 Read 工具添加敏感文件保护——`.env`、SSH 私钥（`id_rsa`、`id_ed25519`、`id_ecdsa`）和云凭据（`.aws/credentials`、`.gcp/credentials`）会被检测并拦截；Grep 从结果中过滤并显示警告，Read 直接拒绝读取；`.env.example`/`.env.sample`/`.env.template` 不受影响
