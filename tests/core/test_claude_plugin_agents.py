@@ -93,6 +93,37 @@ class TestAgentDiscovery:
         bundle = load_claude_plugins([plugin_dir])
         assert len(bundle.plugins["demo"].agents) == 0
 
+    def test_unreadable_agents_dir_skips_agents_not_plugin(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        plugin_dir = _make_plugin_with_agent(tmp_path)
+        agents_dir = plugin_dir / "agents"
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: say hello\n---\nHello world",
+            encoding="utf-8",
+        )
+
+        original_iterdir = Path.iterdir
+
+        def _fake_iterdir(self: Path):
+            if self == agents_dir:
+                raise OSError("Permission denied")
+            return original_iterdir(self)
+
+        monkeypatch.setattr(Path, "iterdir", _fake_iterdir)
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        assert "demo" in bundle.plugins
+        assert len(bundle.plugins["demo"].agents) == 0
+        assert "demo:hello" in bundle.plugins["demo"].skills
+        assert any("agent" in w.lower() or "permission denied" in w.lower() for w in bundle.plugins["demo"].warnings)
+
 
 class TestPluginAgentOverlay:
     def test_plugin_agent_md_is_detected_as_plugin_relative(self, tmp_path: Path) -> None:

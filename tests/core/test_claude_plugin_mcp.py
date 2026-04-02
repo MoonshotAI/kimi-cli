@@ -164,3 +164,48 @@ class TestMCPTranslation:
         assert any("not" in w.lower() or "dict" in w.lower() or "object" in w.lower()
                     for w in bundle.plugins["demo"].warnings)
         assert "demo:hello" in bundle.plugins["demo"].skills
+
+    def test_invalid_mcp_server_is_skipped_not_plugin(self, tmp_path: Path) -> None:
+        """A structurally invalid MCP server config must not disable the rest
+        of the plugin."""
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        (plugin_dir / ".mcp.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "good": {
+                            "transport": "stdio",
+                            "command": "echo",
+                        },
+                        "bad": {
+                            "transport": "stdio",
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: a skill\n---\nHello",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+
+        assert "demo" in bundle.plugins
+        assert "demo:hello" in bundle.plugins["demo"].skills
+        assert len(bundle.plugins["demo"].mcp_configs) == 1
+        servers = bundle.plugins["demo"].mcp_configs[0]["mcpServers"]
+        assert "demo:good" in servers
+        assert "demo:bad" not in servers
+        assert any("bad" in w.lower() or "invalid mcp" in w.lower() for w in bundle.plugins["demo"].warnings)

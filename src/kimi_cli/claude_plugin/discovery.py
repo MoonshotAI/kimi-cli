@@ -167,7 +167,19 @@ def _load_plugin_skills(runtime: ClaudePluginRuntime) -> None:
         return
 
     plugin_name = runtime.manifest.name
-    for entry in sorted(skills_dir.iterdir()):
+    try:
+        entries = sorted(skills_dir.iterdir())
+    except OSError as exc:
+        runtime.warnings.append(f"Skipping skills directory: {exc}")
+        logger.warning(
+            "Skipping Claude plugin skills directory {plugin}:{path}: {error}",
+            plugin=plugin_name,
+            path=skills_dir,
+            error=exc,
+        )
+        return
+
+    for entry in entries:
         if not entry.is_dir():
             continue
         skill_md = entry / "SKILL.md"

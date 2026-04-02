@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import pydantic
+
 from kimi_cli.utils.logging import logger
 
 from .hooks import expand_plugin_root
@@ -48,6 +50,7 @@ def load_plugin_mcp(runtime: ClaudePluginRuntime) -> None:
 
     plugin_root = runtime.root
     plugin_name = runtime.manifest.name
+    from fastmcp.mcp_config import MCPConfig
 
     expanded_servers: dict[str, Any] = {}
     for server_name, server_config in servers.items():
@@ -59,6 +62,19 @@ def load_plugin_mcp(runtime: ClaudePluginRuntime) -> None:
 
         # Namespace server name to avoid collisions
         namespaced_name = f"{plugin_name}:{server_name}"
+        try:
+            MCPConfig.model_validate({"mcpServers": {namespaced_name: expanded}})
+        except pydantic.ValidationError as exc:
+            runtime.warnings.append(
+                f"Skipping MCP server {server_name}: Invalid MCP config: {exc}"
+            )
+            logger.warning(
+                "Skipping invalid Claude plugin MCP server {plugin}:{server}: {error}",
+                plugin=plugin_name,
+                server=server_name,
+                error=exc,
+            )
+            continue
         expanded_servers[namespaced_name] = expanded
 
     if expanded_servers:

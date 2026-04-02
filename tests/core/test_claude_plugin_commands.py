@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from kosong.tooling.empty import EmptyToolset
 
 from kimi_cli.soul.agent import Agent, Runtime
@@ -101,6 +102,37 @@ class TestCommandDiscovery:
 
         bundle = load_claude_plugins([plugin_dir])
         assert len(bundle.plugins["demo"].commands) == 1
+
+    def test_unreadable_commands_dir_skips_commands_not_plugin(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        plugin_dir = _make_plugin_with_command(tmp_path)
+        commands_dir = plugin_dir / "commands"
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: say hello\n---\nHello world",
+            encoding="utf-8",
+        )
+
+        original_iterdir = Path.iterdir
+
+        def _fake_iterdir(self: Path):
+            if self == commands_dir:
+                raise OSError("Permission denied")
+            return original_iterdir(self)
+
+        monkeypatch.setattr(Path, "iterdir", _fake_iterdir)
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        assert "demo" in bundle.plugins
+        assert len(bundle.plugins["demo"].commands) == 0
+        assert "demo:hello" in bundle.plugins["demo"].skills
+        assert any("command" in w.lower() or "permission denied" in w.lower() for w in bundle.plugins["demo"].warnings)
 
 
 class TestCommandRegistration:

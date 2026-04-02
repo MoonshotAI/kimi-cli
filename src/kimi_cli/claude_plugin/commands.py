@@ -31,7 +31,19 @@ def load_plugin_commands(runtime: ClaudePluginRuntime) -> None:
 
     plugin_name = runtime.manifest.name
     plugin_root = runtime.root
-    for md_file in sorted(commands_dir.iterdir()):
+    try:
+        entries = sorted(commands_dir.iterdir())
+    except OSError as exc:
+        runtime.warnings.append(f"Skipping commands directory: {exc}")
+        logger.warning(
+            "Skipping Claude plugin commands directory {plugin}:{path}: {error}",
+            plugin=plugin_name,
+            path=commands_dir,
+            error=exc,
+        )
+        return
+
+    for md_file in entries:
         if md_file.suffix != ".md" or not md_file.is_file():
             continue
 

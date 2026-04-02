@@ -21,7 +21,19 @@ def load_plugin_agents(runtime: ClaudePluginRuntime) -> None:
         return
 
     plugin_name = runtime.manifest.name
-    for md_file in sorted(agents_dir.iterdir()):
+    try:
+        entries = sorted(agents_dir.iterdir())
+    except OSError as exc:
+        runtime.warnings.append(f"Skipping agents directory: {exc}")
+        logger.warning(
+            "Skipping Claude plugin agents directory {plugin}:{path}: {error}",
+            plugin=plugin_name,
+            path=agents_dir,
+            error=exc,
+        )
+        return
+
+    for md_file in entries:
         if md_file.suffix != ".md" or not md_file.is_file():
             continue
 

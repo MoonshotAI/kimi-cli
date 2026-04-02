@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 
 def _make_plugin(tmp_path: Path, name: str = "demo", *, version: str = "1.0.0") -> Path:
     """Create a minimal Claude plugin directory."""
@@ -103,6 +105,43 @@ class TestPluginSkillDiscovery:
 
         bundle = load_claude_plugins([plugin_dir])
         assert len(bundle.plugins["demo"].skills) == 0
+
+    def test_unreadable_skills_dir_skips_skills_not_plugin(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        plugin_dir = _make_plugin(tmp_path, "demo")
+        skills_dir = plugin_dir / "skills"
+        skills_dir.mkdir()
+        (skills_dir / "hello").mkdir()
+        (skills_dir / "hello" / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: say hello\n---\nHello world",
+            encoding="utf-8",
+        )
+        commands_dir = plugin_dir / "commands"
+        commands_dir.mkdir()
+        (commands_dir / "ping.md").write_text(
+            "---\ndescription: ping command\n---\nPing.",
+            encoding="utf-8",
+        )
+
+        original_iterdir = Path.iterdir
+
+        def _fake_iterdir(self: Path):
+            if self == skills_dir:
+                raise OSError("Permission denied")
+            return original_iterdir(self)
+
+        monkeypatch.setattr(Path, "iterdir", _fake_iterdir)
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        assert "demo" in bundle.plugins
+        assert len(bundle.plugins["demo"].skills) == 0
+        assert "demo:ping" in bundle.plugins["demo"].commands
+        assert any("skills" in w.lower() or "permission denied" in w.lower() for w in bundle.plugins["demo"].warnings)
 
 
 class TestPluginSettings:
