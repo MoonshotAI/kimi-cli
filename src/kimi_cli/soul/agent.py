@@ -239,6 +239,7 @@ class Runtime:
         skills_roots = await resolve_skills_roots(
             session.work_dir,
             skills_dirs=skills_dirs,
+            merge_brands=config.merge_all_available_skills,
         )
         # Canonicalize so symlinked skill directories match resolved paths
         skills_roots_canonical = [r.canonical() for r in skills_roots]

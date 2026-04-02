@@ -27,25 +27,47 @@ def get_builtin_skills_dir() -> Path:
     return Path(__file__).parent.parent / "skills"
 
 
-def get_user_skills_dir_candidates() -> tuple[KaosPath, ...]:
+def _get_user_generic_skills_dir_candidates() -> tuple[KaosPath, ...]:
     """
-    Get user-level skills directory candidates in priority order.
+    Get user-level generic skills directory candidates in priority order.
+
+    Generic group: ``~/.config/agents/skills`` > ``~/.agents/skills``
     """
     return (
         KaosPath.home() / ".config" / "agents" / "skills",
         KaosPath.home() / ".agents" / "skills",
+    )
+
+
+def _get_user_brand_skills_dir_candidates() -> tuple[KaosPath, ...]:
+    """
+    Get user-level brand skills directory candidates in priority order.
+
+    Brand group: ``~/.kimi/skills`` > ``~/.claude/skills`` > ``~/.codex/skills``
+    """
+    return (
         KaosPath.home() / ".kimi" / "skills",
         KaosPath.home() / ".claude" / "skills",
         KaosPath.home() / ".codex" / "skills",
     )
 
 
-def get_project_skills_dir_candidates(work_dir: KaosPath) -> tuple[KaosPath, ...]:
+def _get_project_generic_skills_dir_candidates(work_dir: KaosPath) -> tuple[KaosPath, ...]:
     """
-    Get project-level skills directory candidates in priority order.
+    Get project-level generic skills directory candidates.
+
+    Generic group: ``.agents/skills``
+    """
+    return (work_dir / ".agents" / "skills",)
+
+
+def _get_project_brand_skills_dir_candidates(work_dir: KaosPath) -> tuple[KaosPath, ...]:
+    """
+    Get project-level brand skills directory candidates in priority order.
+
+    Brand group: ``.kimi/skills`` > ``.claude/skills`` > ``.codex/skills``
     """
     return (
-        work_dir / ".agents" / "skills",
         work_dir / ".kimi" / "skills",
         work_dir / ".claude" / "skills",
         work_dir / ".codex" / "skills",
@@ -68,31 +90,80 @@ async def find_first_existing_dir(candidates: Iterable[KaosPath]) -> KaosPath | 
     return None
 
 
-async def find_user_skills_dir() -> KaosPath | None:
+async def find_user_skills_dirs(
+    *,
+    merge_brands: bool = False,
+) -> list[KaosPath]:
     """
-    Return the first existing user-level skills directory.
+    Return user-level skills directories from both brand and generic groups.
+
+    The brand group comes first because brand-specific directories have
+    higher specificity.  When *merge_brands* is ``False`` (default), only the
+    first existing brand directory is used.  When ``True``, all existing brand
+    directories are included (priority order: kimi > claude > codex).
     """
-    return await find_first_existing_dir(get_user_skills_dir_candidates())
+    dirs: list[KaosPath] = []
+    if merge_brands:
+        for candidate in _get_user_brand_skills_dir_candidates():
+            if await candidate.is_dir():
+                dirs.append(candidate)
+    else:
+        if brand := await find_first_existing_dir(
+            _get_user_brand_skills_dir_candidates(),
+        ):
+            dirs.append(brand)
+    if generic := await find_first_existing_dir(
+        _get_user_generic_skills_dir_candidates(),
+    ):
+        dirs.append(generic)
+    return dirs
 
 
-async def find_project_skills_dir(work_dir: KaosPath) -> KaosPath | None:
+async def find_project_skills_dirs(
+    work_dir: KaosPath,
+    *,
+    merge_brands: bool = False,
+) -> list[KaosPath]:
     """
-    Return the first existing project-level skills directory.
+    Return project-level skills directories from both brand and generic groups.
+
+    The brand group comes first because brand-specific directories have
+    higher specificity.  When *merge_brands* is ``False`` (default), only the
+    first existing brand directory is used.  When ``True``, all existing brand
+    directories are included (priority order: kimi > claude > codex).
     """
-    return await find_first_existing_dir(get_project_skills_dir_candidates(work_dir))
+    dirs: list[KaosPath] = []
+    brand_candidates = _get_project_brand_skills_dir_candidates(work_dir)
+    if merge_brands:
+        for candidate in brand_candidates:
+            if await candidate.is_dir():
+                dirs.append(candidate)
+    else:
+        if brand := await find_first_existing_dir(brand_candidates):
+            dirs.append(brand)
+    generic_candidates = _get_project_generic_skills_dir_candidates(work_dir)
+    if generic := await find_first_existing_dir(generic_candidates):
+        dirs.append(generic)
+    return dirs
 
 
 async def resolve_skills_roots(
     work_dir: KaosPath,
     *,
     skills_dirs: Sequence[KaosPath] | None = None,
+    merge_brands: bool = False,
 ) -> list[KaosPath]:
     """
     Resolve layered skill roots in priority order.
 
     Built-in skills load first when supported by the active KAOS backend.
     When custom directories are provided via ``--skills-dir``, they **override**
-    user/project discovery.  Plugins are always discoverable.
+    user/project discovery.  Otherwise, user-level and project-level directories
+    are discovered from two independent groups (brand and generic) whose results
+    are merged — brand dirs come first so their skills take priority.
+    When *merge_brands* is ``True``, all existing brand directories are loaded
+    instead of only the first one found.
+    Plugins are always discoverable.
     """
     from kimi_cli.plugin.manager import get_plugins_dir
 
@@ -102,10 +173,10 @@ async def resolve_skills_roots(
     if skills_dirs:
         roots.extend(skills_dirs)
     else:
-        if user_dir := await find_user_skills_dir():
-            roots.append(user_dir)
-        if project_dir := await find_project_skills_dir(work_dir):
-            roots.append(project_dir)
+        roots.extend(await find_user_skills_dirs(merge_brands=merge_brands))
+        roots.extend(
+            await find_project_skills_dirs(work_dir, merge_brands=merge_brands),
+        )
     # Plugins are always discoverable
     plugins_path = get_plugins_dir()
     if plugins_path.is_dir():

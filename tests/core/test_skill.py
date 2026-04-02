@@ -10,6 +10,8 @@ from kimi_cli.skill import (
     Skill,
     discover_skills,
     discover_skills_from_roots,
+    find_project_skills_dirs,
+    find_user_skills_dirs,
     get_builtin_skills_dir,
     resolve_skills_roots,
 )
@@ -269,3 +271,325 @@ async def test_discover_skills_from_roots_first_wins(tmp_path):
 
     assert len(skills) == 1
     assert skills[0].description == "A"
+
+
+# ---------------------------------------------------------------------------
+# Bug fix tests: empty generic dir should not shadow brand skills
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_empty_generic_does_not_shadow_brand(monkeypatch, tmp_path):
+    """Core bug: empty ~/.config/agents/skills should NOT hide ~/.kimi/skills."""
+    home_dir = tmp_path / "home"
+    generic_dir = home_dir / ".config" / "agents" / "skills"
+    generic_dir.mkdir(parents=True)  # exists but empty
+
+    brand_dir = home_dir / ".kimi" / "skills"
+    brand_dir.mkdir(parents=True)
+    _write_skill(brand_dir / "my-skill", "---\nname: my-skill\ndescription: works\n---\n")
+
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs()
+    # Both dirs should be returned: brand (has skills) + generic (empty)
+    assert len(dirs) == 2
+    assert dirs[0] == KaosPath.unsafe_from_local_path(brand_dir)
+    assert dirs[1] == KaosPath.unsafe_from_local_path(generic_dir)
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_none_exist(monkeypatch, tmp_path):
+    """No skills dirs exist → empty list."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty_home")
+
+    dirs = await find_user_skills_dirs()
+    assert dirs == []
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_only_brand(monkeypatch, tmp_path):
+    """Only brand dir exists → returned alone."""
+    home_dir = tmp_path / "home"
+    brand_dir = home_dir / ".kimi" / "skills"
+    brand_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs()
+    assert dirs == [KaosPath.unsafe_from_local_path(brand_dir)]
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_only_generic(monkeypatch, tmp_path):
+    """Only generic dir exists → returned alone."""
+    home_dir = tmp_path / "home"
+    generic_dir = home_dir / ".agents" / "skills"
+    generic_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs()
+    assert dirs == [KaosPath.unsafe_from_local_path(generic_dir)]
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_brand_wins_over_generic_same_skill(monkeypatch, tmp_path):
+    """When both groups have skills, brand root comes first → its skills win."""
+    home_dir = tmp_path / "home"
+    generic_dir = home_dir / ".config" / "agents" / "skills"
+    generic_dir.mkdir(parents=True)
+    _write_skill(generic_dir / "greet", "---\nname: greet\ndescription: generic version\n---\n")
+
+    brand_dir = home_dir / ".kimi" / "skills"
+    brand_dir.mkdir(parents=True)
+    _write_skill(brand_dir / "greet", "---\nname: greet\ndescription: brand version\n---\n")
+
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs()
+    assert dirs[0] == KaosPath.unsafe_from_local_path(brand_dir)
+    assert dirs[1] == KaosPath.unsafe_from_local_path(generic_dir)
+
+    # Verify discover_skills_from_roots uses brand version
+    skills = await discover_skills_from_roots(dirs)
+    assert len(skills) == 1
+    assert skills[0].description == "brand version"
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_brand_group_prefers_kimi_over_claude(monkeypatch, tmp_path):
+    """Brand group: ~/.kimi/skills takes priority over ~/.claude/skills."""
+    home_dir = tmp_path / "home"
+    kimi_dir = home_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    claude_dir = home_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs()
+    # Only kimi should be selected (first existing in brand group)
+    assert KaosPath.unsafe_from_local_path(kimi_dir) in dirs
+    assert KaosPath.unsafe_from_local_path(claude_dir) not in dirs
+
+
+@pytest.mark.asyncio
+async def test_find_project_skills_dirs_merge(tmp_path):
+    """Project layer: brand + generic dirs both returned."""
+    work_dir = tmp_path / "project"
+    generic_dir = work_dir / ".agents" / "skills"
+    generic_dir.mkdir(parents=True)
+    brand_dir = work_dir / ".kimi" / "skills"
+    brand_dir.mkdir(parents=True)
+
+    dirs = await find_project_skills_dirs(KaosPath.unsafe_from_local_path(work_dir))
+    assert len(dirs) == 2
+    assert dirs[0] == KaosPath.unsafe_from_local_path(brand_dir)
+    assert dirs[1] == KaosPath.unsafe_from_local_path(generic_dir)
+
+
+@pytest.mark.asyncio
+async def test_find_project_skills_dirs_brand_prefers_kimi(tmp_path):
+    """Project layer brand group: .kimi/skills wins over .claude/skills."""
+    work_dir = tmp_path / "project"
+    kimi_dir = work_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    claude_dir = work_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+
+    dirs = await find_project_skills_dirs(KaosPath.unsafe_from_local_path(work_dir))
+    assert len(dirs) == 1
+    assert dirs[0] == KaosPath.unsafe_from_local_path(kimi_dir)
+
+
+@pytest.mark.asyncio
+async def test_resolve_skills_roots_merges_user_and_project(monkeypatch, tmp_path):
+    """Exact ordering: builtin → user_brand → user_generic → proj_brand → proj_generic."""
+    home_dir = tmp_path / "home"
+    user_generic = home_dir / ".config" / "agents" / "skills"
+    user_generic.mkdir(parents=True)
+    user_brand = home_dir / ".kimi" / "skills"
+    user_brand.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    work_dir = tmp_path / "project"
+    proj_generic = work_dir / ".agents" / "skills"
+    proj_generic.mkdir(parents=True)
+    proj_brand = work_dir / ".kimi" / "skills"
+    proj_brand.mkdir(parents=True)
+
+    roots = await resolve_skills_roots(KaosPath.unsafe_from_local_path(work_dir))
+    assert roots == [
+        KaosPath.unsafe_from_local_path(get_builtin_skills_dir()),
+        KaosPath.unsafe_from_local_path(user_brand),
+        KaosPath.unsafe_from_local_path(user_generic),
+        KaosPath.unsafe_from_local_path(proj_brand),
+        KaosPath.unsafe_from_local_path(proj_generic),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_empty_generic_brand_skills_visible_end_to_end(monkeypatch, tmp_path):
+    """Core bug e2e: empty generic dir must not hide brand skills through the full pipeline."""
+    home_dir = tmp_path / "home"
+    generic_dir = home_dir / ".config" / "agents" / "skills"
+    generic_dir.mkdir(parents=True)  # exists but empty
+
+    brand_dir = home_dir / ".kimi" / "skills"
+    brand_dir.mkdir(parents=True)
+    _write_skill(
+        brand_dir / "deploy",
+        "---\nname: deploy\ndescription: Deploy to prod\n---\n",
+    )
+
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    work_dir = tmp_path / "project"
+    roots = await resolve_skills_roots(KaosPath.unsafe_from_local_path(work_dir))
+    skills = await discover_skills_from_roots(roots)
+
+    # The brand skill must be discoverable despite the empty generic dir
+    skill_names = [s.name for s in skills]
+    assert "deploy" in skill_names
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_generic_group_prefers_config_over_agents(
+    monkeypatch, tmp_path
+):
+    """Generic group: ~/.config/agents/skills wins over ~/.agents/skills."""
+    home_dir = tmp_path / "home"
+    config_dir = home_dir / ".config" / "agents" / "skills"
+    config_dir.mkdir(parents=True)
+    agents_dir = home_dir / ".agents" / "skills"
+    agents_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs()
+    assert KaosPath.unsafe_from_local_path(config_dir) in dirs
+    assert KaosPath.unsafe_from_local_path(agents_dir) not in dirs
+
+
+# ---------------------------------------------------------------------------
+# merge_brands tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_merge_brands_kimi_and_claude(monkeypatch, tmp_path):
+    """merge_brands=True: kimi + claude both exist → both returned, kimi first."""
+    home_dir = tmp_path / "home"
+    kimi_dir = home_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    claude_dir = home_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs(merge_brands=True)
+    assert KaosPath.unsafe_from_local_path(kimi_dir) in dirs
+    assert KaosPath.unsafe_from_local_path(claude_dir) in dirs
+    # kimi before claude
+    kimi_idx = dirs.index(KaosPath.unsafe_from_local_path(kimi_dir))
+    claude_idx = dirs.index(KaosPath.unsafe_from_local_path(claude_dir))
+    assert kimi_idx < claude_idx
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_merge_brands_all_three(monkeypatch, tmp_path):
+    """merge_brands=True: all three brand dirs → [kimi, claude, codex]."""
+    home_dir = tmp_path / "home"
+    kimi_dir = home_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    claude_dir = home_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+    codex_dir = home_dir / ".codex" / "skills"
+    codex_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs(merge_brands=True)
+    brand_dirs = dirs  # no generic dirs created
+    assert len(brand_dirs) == 3
+    assert brand_dirs[0] == KaosPath.unsafe_from_local_path(kimi_dir)
+    assert brand_dirs[1] == KaosPath.unsafe_from_local_path(claude_dir)
+    assert brand_dirs[2] == KaosPath.unsafe_from_local_path(codex_dir)
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_merge_brands_only_claude(monkeypatch, tmp_path):
+    """merge_brands=True: only claude exists → [claude]."""
+    home_dir = tmp_path / "home"
+    claude_dir = home_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs(merge_brands=True)
+    assert dirs == [KaosPath.unsafe_from_local_path(claude_dir)]
+
+
+@pytest.mark.asyncio
+async def test_find_user_skills_dirs_merge_brands_same_skill_kimi_wins(monkeypatch, tmp_path):
+    """merge_brands=True + same skill name → kimi version wins via discover."""
+    home_dir = tmp_path / "home"
+    kimi_dir = home_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    _write_skill(
+        kimi_dir / "deploy",
+        "---\nname: deploy\ndescription: kimi deploy\n---\n",
+    )
+    claude_dir = home_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+    _write_skill(
+        claude_dir / "deploy",
+        "---\nname: deploy\ndescription: claude deploy\n---\n",
+    )
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    dirs = await find_user_skills_dirs(merge_brands=True)
+    skills = await discover_skills_from_roots(dirs)
+    assert len(skills) == 1
+    assert skills[0].description == "kimi deploy"
+
+
+@pytest.mark.asyncio
+async def test_find_project_skills_dirs_merge_brands(tmp_path):
+    """Project layer merge_brands=True: all brand dirs returned."""
+    work_dir = tmp_path / "project"
+    kimi_dir = work_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    claude_dir = work_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+
+    dirs = await find_project_skills_dirs(
+        KaosPath.unsafe_from_local_path(work_dir), merge_brands=True
+    )
+    assert KaosPath.unsafe_from_local_path(kimi_dir) in dirs
+    assert KaosPath.unsafe_from_local_path(claude_dir) in dirs
+
+
+@pytest.mark.asyncio
+async def test_resolve_skills_roots_passes_merge_brands(monkeypatch, tmp_path):
+    """resolve_skills_roots forwards merge_brands to finders."""
+    home_dir = tmp_path / "home"
+    kimi_dir = home_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    claude_dir = home_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    work_dir = tmp_path / "project"
+
+    # Without merge_brands: only kimi
+    roots_default = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(work_dir),
+    )
+    assert KaosPath.unsafe_from_local_path(kimi_dir) in roots_default
+    assert KaosPath.unsafe_from_local_path(claude_dir) not in roots_default
+
+    # With merge_brands: both
+    roots_merged = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(work_dir),
+        merge_brands=True,
+    )
+    assert KaosPath.unsafe_from_local_path(kimi_dir) in roots_merged
+    assert KaosPath.unsafe_from_local_path(claude_dir) in roots_merged
