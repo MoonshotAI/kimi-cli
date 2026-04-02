@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Grep：新增 `include_ignored` 参数，支持搜索被 `.gitignore` 排除的文件——设为 `true` 时启用 ripgrep 的 `--no-ignore` 标志，可搜索构建产物或 `node_modules` 等通常被忽略的文件；敏感文件（如 `.env`）仍由敏感文件保护层过滤；默认 `false`，不影响现有行为
+- Core：为 Grep 和 Read 工具添加敏感文件保护——`.env`、SSH 私钥（`id_rsa`、`id_ed25519`、`id_ecdsa`）和云凭据（`.aws/credentials`、`.gcp/credentials`）会被检测并拦截；Grep 从结果中过滤并显示警告，Read 直接拒绝读取；`.env.example`/`.env.sample`/`.env.template` 不受影响
 - Core：修复并行 foreground 子 Agent 审批请求导致会话挂死的问题——在交互式 Shell 模式下，`_set_active_approval_sink` 不再将待处理的审批请求 flush 到 live view sink（该 sink 无法渲染审批弹窗）；请求保留在 pending 队列中由 prompt modal 路径处理；同时为 `wait_for_response` 增加 300 秒超时，确保未被 resolve 的审批请求最终抛出 `ApprovalCancelledError` 而非永久挂起
 - CLI：新增 `--session`/`--resume`（`-S`/`-r`）参数用于恢复会话——不带参数时打开交互式会话选择器（仅 Shell UI）；带会话 ID 时恢复指定会话；以统一的可选值参数设计替代了被回退的 `--pick-session`/`--list-sessions`
 - CLI：新增 CJK 安全的 `shorten()` 工具函数——替换所有 `textwrap.shorten` 调用，使不含空格的中日韩文本能优雅截断，而非被折叠成仅剩省略号

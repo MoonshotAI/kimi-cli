@@ -66,6 +66,31 @@ async def test_iterdir_and_glob(local_kaos: LocalKaos):
     assert set(matched) == {"bravo.txt"}
 
 
+async def test_glob_includes_hidden_files(local_kaos: LocalKaos):
+    """Glob should match dotfiles (hidden files) with * and ** patterns."""
+    tmp_path = local_kaos.getcwd()
+
+    # Create hidden and visible files
+    await local_kaos.writetext(tmp_path / ".gitlab-ci.yml", "stages: [build]")
+    await local_kaos.writetext(tmp_path / "config.yml", "key: value")
+    await local_kaos.mkdir(tmp_path / "src")
+    await local_kaos.mkdir(tmp_path / "src" / ".config")
+    await local_kaos.writetext(tmp_path / "src" / ".config" / "settings.yml", "debug: true")
+    await local_kaos.writetext(tmp_path / "src" / "main.py", "pass")
+
+    # *.yml should match .gitlab-ci.yml
+    matched = {entry.name async for entry in local_kaos.glob(tmp_path, "*.yml")}
+    assert ".gitlab-ci.yml" in matched
+    assert "config.yml" in matched
+
+    # src/**/*.yml should find files in hidden directories
+    deep_matched = [
+        str(entry.relative_to(tmp_path))
+        async for entry in local_kaos.glob(tmp_path, "src/**/*.yml")
+    ]
+    assert any(".config" in p for p in deep_matched)
+
+
 async def test_read_write_and_append_text(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     file_path = tmp_path / "note.txt"
