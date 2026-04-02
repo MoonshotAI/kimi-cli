@@ -316,6 +316,11 @@ def test_max_steps_reached(tmp_path) -> None:
                         },
                     },
                 },
+                {
+                    "method": "event",
+                    "type": "TurnEnd",
+                    "payload": {},
+                },
             ]
         )
     finally:
