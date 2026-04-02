@@ -225,6 +225,7 @@ class KimiCLI:
         _auto_selected_plugin_agent: Path | None = None
         if plugin_dirs:
             from kimi_cli.claude_plugin.discovery import load_claude_plugins
+            from kimi_cli.skill import normalize_skill_name
 
             claude_plugin_bundle = load_claude_plugins(plugin_dirs)
 
@@ -232,8 +233,9 @@ class KimiCLI:
             _plugin_skills_added = False
             for plugin_rt in claude_plugin_bundle.plugins.values():
                 for skill_name, skill in plugin_rt.skills.items():
-                    if skill_name not in runtime.skills:
-                        runtime.skills[skill_name] = skill
+                    normalized_skill_name = normalize_skill_name(skill_name)
+                    if normalized_skill_name not in runtime.skills:
+                        runtime.skills[normalized_skill_name] = skill
                         _plugin_skills_added = True
 
                 # Track plugin skill roots for Glob access

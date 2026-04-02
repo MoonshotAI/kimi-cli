@@ -9,6 +9,9 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from kaos.path import KaosPath
+
+from kimi_cli.skill import Skill
 
 
 def _make_plugin_with_agent(
@@ -33,6 +36,27 @@ def _make_plugin_with_agent(
     fm_text = "\n".join(f"{k}: {v}" for k, v in fm.items())
     (agents_dir / f"{agent_name}.md").write_text(
         f"---\n{fm_text}\n---\n{body}",
+        encoding="utf-8",
+    )
+    return plugin_dir
+
+
+def _make_plugin_with_skill(
+    tmp_path: Path,
+    plugin_name: str = "demo",
+    skill_name: str = "hello",
+) -> Path:
+    plugin_dir = tmp_path / plugin_name
+    (plugin_dir / ".claude-plugin").mkdir(parents=True)
+    (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps({"name": plugin_name, "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+
+    skill_dir = plugin_dir / "skills" / skill_name.lower()
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        f"---\nname: {skill_name}\ndescription: {skill_name} skill\n---\nBody.",
         encoding="utf-8",
     )
     return plugin_dir
@@ -442,6 +466,167 @@ class TestSettingsAgentSelection:
 
         bundle = load_claude_plugins([plugin_dir])
         assert bundle.plugins["demo"].default_agent_file is None
+
+
+class TestPluginSkillMergeNormalization:
+    @pytest.mark.asyncio
+    async def test_plugin_skill_is_inserted_with_normalized_runtime_key(
+        self,
+        session,
+        config,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from kosong.tooling.empty import EmptyToolset
+
+        import kimi_cli.app as app_module
+        from kimi_cli.app import KimiCLI
+        from kimi_cli.skill import normalize_skill_name
+        from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs
+
+        plugin_dir = _make_plugin_with_skill(tmp_path, "Demo", "Hello")
+        fake_runtime = SimpleNamespace(
+            session=session,
+            config=config,
+            llm=None,
+            notifications=SimpleNamespace(recover=lambda: None),
+            background_tasks=SimpleNamespace(reconcile=lambda: None),
+            skills={},
+            skills_dirs=[],
+            builtin_args=BuiltinSystemPromptArgs(
+                KIMI_NOW="now",
+                KIMI_WORK_DIR=session.work_dir,
+                KIMI_WORK_DIR_LS="",
+                KIMI_AGENTS_MD="",
+                KIMI_SKILLS="No skills found.",
+                KIMI_ADDITIONAL_DIRS_INFO="",
+                KIMI_OS="Windows",
+                KIMI_SHELL="powershell",
+            ),
+        )
+        fake_agent = Agent(
+            name="Test Agent",
+            system_prompt="Test system prompt",
+            toolset=EmptyToolset(),
+            runtime=cast(Any, fake_runtime),
+        )
+        fake_context = SimpleNamespace(system_prompt=None)
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return fake_runtime
+
+        async def fake_load_agent(agent_file, *_args, **_kwargs):
+            return fake_agent
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+                self.agent = agent
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+
+        await KimiCLI.create(session, config=config, plugin_dirs=[plugin_dir])
+
+        normalized = normalize_skill_name("Demo:Hello")
+        assert normalized in fake_runtime.skills
+        assert "Demo:Hello" not in fake_runtime.skills
+        assert fake_runtime.skills[normalized].name == "Demo:Hello"
+
+    @pytest.mark.asyncio
+    async def test_plugin_skill_dedup_uses_normalized_runtime_key(
+        self,
+        session,
+        config,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from kosong.tooling.empty import EmptyToolset
+
+        import kimi_cli.app as app_module
+        from kimi_cli.app import KimiCLI
+        from kimi_cli.skill import normalize_skill_name
+        from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs
+
+        plugin_dir = _make_plugin_with_skill(tmp_path, "Demo", "Hello")
+        existing_skill = Skill(
+            name="demo:hello",
+            description="existing",
+            type="standard",
+            dir=KaosPath.unsafe_from_local_path(tmp_path / "existing-skill"),
+        )
+        fake_runtime = SimpleNamespace(
+            session=session,
+            config=config,
+            llm=None,
+            notifications=SimpleNamespace(recover=lambda: None),
+            background_tasks=SimpleNamespace(reconcile=lambda: None),
+            skills={normalize_skill_name(existing_skill.name): existing_skill},
+            skills_dirs=[],
+            builtin_args=BuiltinSystemPromptArgs(
+                KIMI_NOW="now",
+                KIMI_WORK_DIR=session.work_dir,
+                KIMI_WORK_DIR_LS="",
+                KIMI_AGENTS_MD="",
+                KIMI_SKILLS="No skills found.",
+                KIMI_ADDITIONAL_DIRS_INFO="",
+                KIMI_OS="Windows",
+                KIMI_SHELL="powershell",
+            ),
+        )
+        fake_agent = Agent(
+            name="Test Agent",
+            system_prompt="Test system prompt",
+            toolset=EmptyToolset(),
+            runtime=cast(Any, fake_runtime),
+        )
+        fake_context = SimpleNamespace(system_prompt=None)
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return fake_runtime
+
+        async def fake_load_agent(agent_file, *_args, **_kwargs):
+            return fake_agent
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+                self.agent = agent
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+
+        await KimiCLI.create(session, config=config, plugin_dirs=[plugin_dir])
+
+        normalized = normalize_skill_name("Demo:Hello")
+        assert list(fake_runtime.skills.keys()) == [normalized]
+        assert fake_runtime.skills[normalized] is existing_skill
 
     @pytest.mark.asyncio
     async def test_multiple_plugin_default_agents_warn_and_first_wins(
