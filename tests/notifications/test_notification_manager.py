@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -203,3 +204,68 @@ async def test_deliver_pending_leaves_claimed_notification_for_recovery_on_handl
     assert delivered == []
     stored = manager.store.merged_view(event.id)
     assert stored.delivery.sinks["wire"].status == "claimed"
+
+
+def test_list_views_skips_notification_with_corrupted_event(runtime) -> None:
+    manager = runtime.notifications
+    event = manager.publish(
+        NotificationEvent(
+            id=manager.new_id(),
+            category="system",
+            type="system.info",
+            source_kind="test",
+            source_id="source-1",
+            title="Info",
+            body="hello",
+        )
+    )
+    bad_id = "ncorrupt1"
+    bad_dir = manager.store.notification_dir(bad_id)
+    (bad_dir / manager.store.EVENT_FILE).write_text('{"id":"ncorrupt1"', encoding="utf-8")
+
+    views = manager.store.list_views()
+
+    assert [view.event.id for view in views] == [event.event.id]
+
+
+def test_read_delivery_invalid_json_returns_default(runtime) -> None:
+    manager = runtime.notifications
+    event = manager.publish(
+        NotificationEvent(
+            id=manager.new_id(),
+            category="system",
+            type="system.info",
+            source_kind="test",
+            source_id="source-1",
+            title="Info",
+            body="hello",
+        )
+    )
+    manager.store.delivery_path(event.event.id).write_text('{"sinks":', encoding="utf-8")
+
+    delivery = manager.store.read_delivery(event.event.id)
+
+    assert delivery.sinks == {}
+
+
+def test_recover_skips_notification_with_structurally_invalid_event(runtime) -> None:
+    manager = runtime.notifications
+    event = manager.publish(
+        NotificationEvent(
+            id=manager.new_id(),
+            category="system",
+            type="system.info",
+            source_kind="test",
+            source_id="source-1",
+            title="Info",
+            body="hello",
+        )
+    )
+    bad_id = "ncorrupt2"
+    bad_dir = manager.store.notification_dir(bad_id)
+    (bad_dir / manager.store.EVENT_FILE).write_text(json.dumps({"oops": 1}), encoding="utf-8")
+
+    manager.recover()
+
+    views = manager.store.list_views()
+    assert [view.event.id for view in views] == [event.event.id]

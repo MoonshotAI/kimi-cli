@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from kimi_cli.background import BackgroundTaskStore, TaskSpec
 
 
@@ -90,3 +92,50 @@ def test_list_views_skips_invalid_task_directories(runtime):
     views = store.list_views()
     assert len(views) == 1
     assert views[0].spec.id == "b8888888"
+
+
+def test_read_runtime_invalid_json_returns_default(runtime):
+    store = BackgroundTaskStore(runtime.session.context_file.parent / "tasks")
+    spec = TaskSpec(
+        id="b9999998",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="runtime fallback",
+        tool_call_id="call-4",
+        command="echo ok",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(spec)
+    store.runtime_path(spec.id).write_text('{"status":"running"', encoding="utf-8")
+
+    runtime_state = store.read_runtime(spec.id)
+
+    assert runtime_state.status == "created"
+    assert runtime_state.worker_pid is None
+
+
+def test_list_views_skips_task_with_corrupted_spec(runtime):
+    store = BackgroundTaskStore(runtime.session.context_file.parent / "tasks")
+    valid = TaskSpec(
+        id="b9999996",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="valid task",
+        tool_call_id="call-5",
+        command="echo ok",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(valid)
+
+    bad_dir = store.task_dir("b9999997")
+    (bad_dir / store.SPEC_FILE).write_text(json.dumps({"oops": 1}), encoding="utf-8")
+
+    views = store.list_views()
+
+    assert [view.spec.id for view in views] == ["b9999996"]
