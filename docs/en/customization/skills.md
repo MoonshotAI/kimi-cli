@@ -27,22 +27,27 @@ Skills shipped with the package, providing basic capabilities.
 
 **User-level skills**
 
-Stored in the user's home directory, effective across all projects. Kimi Code CLI checks the following directories in priority order and uses the first one that exists:
+Stored in the user's home directory, effective across all projects. Candidate directories are split into two groups; within each group, the first existing directory is selected, and results from both groups are merged independently (brand group has higher specificity and priority):
 
-1. `~/.config/agents/skills/` (recommended)
-2. `~/.agents/skills/`
-3. `~/.kimi/skills/`
-4. `~/.claude/skills/`
-5. `~/.codex/skills/`
+- **Brand group** (mutually exclusive):
+  1. `~/.kimi/skills/`
+  2. `~/.claude/skills/`
+  3. `~/.codex/skills/`
+- **Generic group** (mutually exclusive):
+  1. `~/.config/agents/skills/` (recommended)
+  2. `~/.agents/skills/`
+
+Both groups are searched independently and results are merged. When a skill with the same name exists in both groups, the brand group version takes priority.
 
 **Project-level skills**
 
-Stored in the project directory, only effective within that project's working directory. Kimi Code CLI checks the following directories in priority order and uses the first one that exists:
+Stored in the project directory, only effective within that project's working directory. Similarly split into two groups:
 
-1. `.agents/skills/` (recommended)
-2. `.kimi/skills/`
-3. `.claude/skills/`
-4. `.codex/skills/`
+- **Brand group** (mutually exclusive):
+  1. `.kimi/skills/`
+  2. `.claude/skills/`
+  3. `.codex/skills/`
+- **Generic group**: `.agents/skills/`
 
 You can also append additional skills directories with the `--skills-dir` flag. This flag can be specified multiple times, and the directories are merged with the auto-discovered ones:
 
