@@ -103,6 +103,46 @@ class TestCommandDiscovery:
         bundle = load_claude_plugins([plugin_dir])
         assert len(bundle.plugins["demo"].commands) == 1
 
+    def test_invalid_command_file_name_is_skipped_not_plugin(self, tmp_path: Path) -> None:
+        plugin_dir = _make_plugin_with_command(tmp_path, command_name="build.v2")
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: say hello\n---\nHello world",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        assert "demo" in bundle.plugins
+        assert len(bundle.plugins["demo"].commands) == 0
+        assert "demo:hello" in bundle.plugins["demo"].skills
+        assert any(
+            "invalid slash" in w.lower() or "build.v2" in w
+            for w in bundle.plugins["demo"].warnings
+        )
+
+    def test_invalid_plugin_name_skips_commands_not_plugin(self, tmp_path: Path) -> None:
+        plugin_dir = _make_plugin_with_command(tmp_path, plugin_name="acme.dev")
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: say hello\n---\nHello world",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        assert "acme.dev" in bundle.plugins
+        assert len(bundle.plugins["acme.dev"].commands) == 0
+        assert len(bundle.plugins["acme.dev"].skills) == 0
+        assert any(
+            "invalid slash" in w.lower() or "acme.dev" in w
+            for w in bundle.plugins["acme.dev"].warnings
+        )
+
     def test_unreadable_commands_dir_skips_commands_not_plugin(
         self,
         tmp_path: Path,

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from kimi_cli.utils.frontmatter import parse_frontmatter
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.slashcmd import is_valid_slash_command_name
 
 from .spec import ClaudeCommandSpec
 
@@ -56,6 +57,19 @@ def load_plugin_commands(runtime: ClaudePluginRuntime) -> None:
                 plugin=plugin_name,
                 cmd=md_file.stem,
                 error=exc,
+            )
+            continue
+
+        if not is_valid_slash_command_name(spec.full_name):
+            runtime.warnings.append(
+                f"Skipping command {md_file.name}: invalid slash command name '{spec.full_name}'"
+            )
+            logger.warning(
+                "Skipping Claude plugin command {plugin}:{cmd}: "
+                "invalid slash command name '{name}'",
+                plugin=plugin_name,
+                cmd=md_file.stem,
+                name=spec.full_name,
             )
             continue
 

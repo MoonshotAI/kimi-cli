@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.slashcmd import is_valid_slash_command_name
 
 from .spec import (
     ClaudePluginBundle,
@@ -193,6 +194,18 @@ def _load_plugin_skills(runtime: ClaudePluginRuntime) -> None:
                 dir_path=KaosPath.unsafe_from_local_path(entry),
             )
             namespaced_name = f"{plugin_name}:{raw_skill.name}"
+            if not is_valid_slash_command_name(namespaced_name):
+                runtime.warnings.append(
+                    f"Skipping skill {entry.name}: invalid slash command name '{namespaced_name}'"
+                )
+                logger.warning(
+                    "Skipping Claude plugin skill {plugin}:{skill}: "
+                    "invalid slash command name '{name}'",
+                    plugin=plugin_name,
+                    skill=entry.name,
+                    name=namespaced_name,
+                )
+                continue
             skill = Skill(
                 name=namespaced_name,
                 description=raw_skill.description,

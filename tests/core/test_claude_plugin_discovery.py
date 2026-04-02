@@ -98,6 +98,32 @@ class TestPluginSkillDiscovery:
         # Skill should still be loaded with defaults (name from dir, default description)
         assert "demo:broken" in bundle.plugins["demo"].skills
 
+    def test_skill_with_invalid_slash_name_is_skipped_not_plugin(self, tmp_path: Path) -> None:
+        plugin_dir = _make_plugin(tmp_path, "demo")
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello.world\ndescription: say hello\n---\nHello world",
+            encoding="utf-8",
+        )
+        commands_dir = plugin_dir / "commands"
+        commands_dir.mkdir()
+        (commands_dir / "ping.md").write_text(
+            "---\ndescription: ping command\n---\nPing.",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        assert "demo" in bundle.plugins
+        assert len(bundle.plugins["demo"].skills) == 0
+        assert "demo:ping" in bundle.plugins["demo"].commands
+        assert any(
+            "invalid slash" in w.lower() or "hello.world" in w
+            for w in bundle.plugins["demo"].warnings
+        )
+
     def test_no_skills_dir(self, tmp_path: Path) -> None:
         plugin_dir = _make_plugin(tmp_path, "demo")
 

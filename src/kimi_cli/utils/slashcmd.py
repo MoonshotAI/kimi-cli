@@ -3,6 +3,8 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import overload
 
+_SLASH_COMMAND_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+(?::[a-zA-Z0-9_-]+)*$")
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SlashCommand[F: Callable[..., None | Awaitable[None]]]:
@@ -98,6 +100,11 @@ class SlashCommandCall:
     name: str
     args: str
     raw_input: str
+
+
+def is_valid_slash_command_name(name: str) -> bool:
+    """Return True when *name* is compatible with slash-command parsing."""
+    return bool(_SLASH_COMMAND_NAME_RE.fullmatch(name))
 
 
 def parse_slash_command_call(user_input: str) -> SlashCommandCall | None:
