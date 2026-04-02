@@ -53,6 +53,7 @@ def test_default_config_dump():
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
             "hooks": [],
+            "merge_all_available_skills": False,
         }
     )
 

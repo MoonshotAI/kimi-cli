@@ -90,34 +90,57 @@ async def find_first_existing_dir(candidates: Iterable[KaosPath]) -> KaosPath | 
     return None
 
 
-async def find_user_skills_dirs() -> list[KaosPath]:
+async def find_user_skills_dirs(
+    *,
+    merge_brands: bool = False,
+) -> list[KaosPath]:
     """
     Return user-level skills directories from both brand and generic groups.
 
-    Each group independently picks the first existing directory.  The brand
-    group comes first because brand-specific directories have higher
-    specificity than generic ones.
+    The brand group comes first because brand-specific directories have
+    higher specificity.  When *merge_brands* is ``False`` (default), only the
+    first existing brand directory is used.  When ``True``, all existing brand
+    directories are included (priority order: kimi > claude > codex).
     """
     dirs: list[KaosPath] = []
-    if brand := await find_first_existing_dir(_get_user_brand_skills_dir_candidates()):
-        dirs.append(brand)
-    if generic := await find_first_existing_dir(_get_user_generic_skills_dir_candidates()):
+    if merge_brands:
+        for candidate in _get_user_brand_skills_dir_candidates():
+            if await candidate.is_dir():
+                dirs.append(candidate)
+    else:
+        if brand := await find_first_existing_dir(
+            _get_user_brand_skills_dir_candidates(),
+        ):
+            dirs.append(brand)
+    if generic := await find_first_existing_dir(
+        _get_user_generic_skills_dir_candidates(),
+    ):
         dirs.append(generic)
     return dirs
 
 
-async def find_project_skills_dirs(work_dir: KaosPath) -> list[KaosPath]:
+async def find_project_skills_dirs(
+    work_dir: KaosPath,
+    *,
+    merge_brands: bool = False,
+) -> list[KaosPath]:
     """
     Return project-level skills directories from both brand and generic groups.
 
-    Each group independently picks the first existing directory.  The brand
-    group comes first because brand-specific directories have higher
-    specificity than generic ones.
+    The brand group comes first because brand-specific directories have
+    higher specificity.  When *merge_brands* is ``False`` (default), only the
+    first existing brand directory is used.  When ``True``, all existing brand
+    directories are included (priority order: kimi > claude > codex).
     """
     dirs: list[KaosPath] = []
     brand_candidates = _get_project_brand_skills_dir_candidates(work_dir)
-    if brand := await find_first_existing_dir(brand_candidates):
-        dirs.append(brand)
+    if merge_brands:
+        for candidate in brand_candidates:
+            if await candidate.is_dir():
+                dirs.append(candidate)
+    else:
+        if brand := await find_first_existing_dir(brand_candidates):
+            dirs.append(brand)
     generic_candidates = _get_project_generic_skills_dir_candidates(work_dir)
     if generic := await find_first_existing_dir(generic_candidates):
         dirs.append(generic)
@@ -128,6 +151,7 @@ async def resolve_skills_roots(
     work_dir: KaosPath,
     *,
     skills_dirs: Sequence[KaosPath] | None = None,
+    merge_brands: bool = False,
 ) -> list[KaosPath]:
     """
     Resolve layered skill roots in priority order.
@@ -137,6 +161,8 @@ async def resolve_skills_roots(
     user/project discovery.  Otherwise, user-level and project-level directories
     are discovered from two independent groups (brand and generic) whose results
     are merged — brand dirs come first so their skills take priority.
+    When *merge_brands* is ``True``, all existing brand directories are loaded
+    instead of only the first one found.
     Plugins are always discoverable.
     """
     from kimi_cli.plugin.manager import get_plugins_dir
@@ -147,8 +173,10 @@ async def resolve_skills_roots(
     if skills_dirs:
         roots.extend(skills_dirs)
     else:
-        roots.extend(await find_user_skills_dirs())
-        roots.extend(await find_project_skills_dirs(work_dir))
+        roots.extend(await find_user_skills_dirs(merge_brands=merge_brands))
+        roots.extend(
+            await find_project_skills_dirs(work_dir, merge_brands=merge_brands),
+        )
     # Plugins are always discoverable
     plugins_path = get_plugins_dir()
     if plugins_path.is_dir():

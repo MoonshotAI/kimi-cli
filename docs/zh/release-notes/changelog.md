@@ -5,6 +5,7 @@
 ## 未发布
 
 - Core：修复当通用目录（如 `~/.config/agents/skills/`）存在但为空时，品牌目录（如 `~/.kimi/skills/`）中的 Skills 静默消失的问题——Skill 目录发现现在独立搜索品牌组和通用组目录并合并结果，而非在所有候选目录中找到第一个就停止
+- Core：新增 `merge_all_available_skills` 配置项——启用后，所有存在的品牌目录（`~/.kimi/skills/`、`~/.claude/skills/`、`~/.codex/skills/`）中的 Skills 都会被加载并合并，而非仅使用找到的第一个；同名 Skill 按 kimi > claude > codex 的优先级解析；默认关闭
 
 ## 1.29.0 (2026-04-01)
 
