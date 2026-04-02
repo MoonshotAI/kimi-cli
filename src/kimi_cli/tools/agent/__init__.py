@@ -130,6 +130,7 @@ class AgentTool(CallableTool2[Params]):
             )
         if params.run_in_background:
             return await self._run_in_background(params)
+        timeout = params.effective_timeout
         try:
             runner = ForegroundSubagentRunner(self._runtime)
             req = ForegroundRunRequest(
@@ -139,18 +140,18 @@ class AgentTool(CallableTool2[Params]):
                 model=params.model,
                 resume=params.resume,
             )
-            timeout = params.effective_timeout
             if timeout is not None:
                 return await asyncio.wait_for(runner.run(req), timeout=timeout)
             return await runner.run(req)
         except TimeoutError as exc:
+            # Note: TimeoutError from run_soul internals (e.g. aiohttp) is now caught
+            # by run_soul_checked and converted to SoulRunFailure. This handler mainly
+            # covers wait_for's task-level timeout and pre-run_soul TimeoutErrors.
             if isinstance(exc.__cause__, asyncio.CancelledError):
-                # Task-level timeout from wait_for (it raises TimeoutError from CancelledError)
-                t = params.effective_timeout
-                logger.warning("Foreground agent timed out after {t}s", t=t)
+                logger.warning("Foreground agent timed out after {t}s", t=timeout)
                 return ToolError(
-                    message=f"Agent timed out after {t}s.",
-                    brief=f"Agent timed out ({t}s)",
+                    message=f"Agent timed out after {timeout}s.",
+                    brief=f"Agent timed out ({timeout}s)",
                 )
             # Internal timeout (e.g. aiohttp request) — treat as generic failure
             logger.exception("Foreground agent run failed")

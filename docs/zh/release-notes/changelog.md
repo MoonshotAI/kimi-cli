@@ -6,6 +6,7 @@
 
 - Shell：细化空闲时后台完成的自动触发行为——恢复的 Shell 会话在用户发送消息前，不会因为历史遗留的后台通知而自动启动新的前景轮次；当用户正在输入时，新的后台完成事件也会短暂延后触发，避免抢占提示符或打断 CJK 输入法组合态
 - Core：修复前景轮次在中断后残留不平衡 Wire 事件的问题——轮次因取消或步骤中断退出时，现在也会补发 `TurnEnd`，避免恢复多次后会话 `wire.jsonl` 越来越脏
+- Core：提升会话启动恢复的鲁棒性——`--continue`/`--resume` 现在可容忍损坏的 `context.jsonl` 记录，以及损坏的子 Agent、后台任务或通知持久化工件；CLI 会尽可能跳过无效状态并继续恢复会话，而不是直接启动失败
 - CLI：改进 `kimi export` 会话导出体验——`kimi export` 现在默认预览并确认当前工作目录的上一个会话，显示会话 ID、标题和最后一条用户消息时间；新增 `--yes` 跳过确认；同时修复显式会话 ID 时 `--output` 放在参数后面会被错误解析为子命令的问题
 - Grep：新增 `include_ignored` 参数，支持搜索被 `.gitignore` 排除的文件——设为 `true` 时启用 ripgrep 的 `--no-ignore` 标志，可搜索构建产物或 `node_modules` 等通常被忽略的文件；敏感文件（如 `.env`）仍由敏感文件保护层过滤；默认 `false`，不影响现有行为
 - Core：为 Grep 和 Read 工具添加敏感文件保护——`.env`、SSH 私钥（`id_rsa`、`id_ed25519`、`id_ecdsa`）和云凭据（`.aws/credentials`、`.gcp/credentials`）会被检测并拦截；Grep 从结果中过滤并显示警告，Read 直接拒绝读取；`.env.example`/`.env.sample`/`.env.template` 不受影响
@@ -18,6 +19,7 @@
 - CLI：新增 `--plan` 启动参数和 `default_plan_mode` 配置项——通过 `kimi --plan` 或在 `~/.kimi/config.toml` 中设置 `default_plan_mode = true` 可让新会话直接进入计划模式；恢复的会话保留其原有的计划模式状态
 - Shell：新增 `/undo` 和 `/fork` 命令用于会话分支——`/undo` 支持选择一个历史轮次并 fork 出新会话，被选中轮次的用户消息会预填到输入框供重新编辑；`/fork` 将当前完整对话历史复制到新会话；原会话始终保留不丢失
 - CLI：新增 `-r` 作为 `--session` 的简写别名，并在会话退出时输出恢复提示（`kimi -r <session-id>`）——覆盖正常退出、Ctrl-C、`/undo`、`/fork` 和 `/sessions` 切换等场景，确保用户始终能找到回到会话的方式
+- Core：修复 `custom_headers` 未传递给非 Kimi provider 的问题——OpenAI、Anthropic、Google GenAI 和 Vertex AI provider 现在能正确转发 `providers.*.custom_headers` 中配置的自定义请求头
 
 ## 1.29.0 (2026-04-01)
 
