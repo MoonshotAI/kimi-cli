@@ -12,15 +12,20 @@ import kaos
 from kaos.path import KaosPath
 from pydantic import SecretStr
 
-from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+from kimi_cli.agentspec import DEFAULT_AGENT_FILE, load_agent_spec
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
-from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
+from kimi_cli.llm import (
+    augment_provider_with_env_vars,
+    clone_llm_with_model_alias,
+    create_llm,
+    model_display_name,
+)
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
-from kimi_cli.soul.agent import Runtime, load_agent
+from kimi_cli.soul.agent import Runtime, load_agent, load_agent_from_resolved_spec
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
@@ -31,6 +36,8 @@ from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, ContentPart, 
 
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
+
+    from kimi_cli.claude_plugin.spec import ClaudeAgentSpec
 
 
 def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None:
@@ -275,7 +282,8 @@ class KimiCLI:
                 )
 
         # Detect if the selected agent_file is a Claude plugin Markdown agent
-        _claude_plugin_agent_spec = None
+        _claude_plugin_agent_spec: ClaudeAgentSpec | None = None
+        _selected_plugin_default_candidate_index: int | None = None
         if agent_file is None and _plugin_default_agent_candidates:
             from kimi_cli.claude_plugin.agents import parse_agent_md
 
@@ -299,12 +307,7 @@ class KimiCLI:
                     continue
 
                 agent_file = DEFAULT_AGENT_FILE
-                for _later_plugin_name, _ in _plugin_default_agent_candidates[idx + 1 :]:
-                    logger.warning(
-                        "Ignoring default agent from plugin '{plugin}' because "
-                        "a prior plugin default agent is already selected",
-                        plugin=_later_plugin_name,
-                    )
+                _selected_plugin_default_candidate_index = idx
                 break
 
         if (
@@ -332,6 +335,12 @@ class KimiCLI:
             if _claude_plugin_agent_spec is not None:
                 agent_file = DEFAULT_AGENT_FILE
 
+        _plugin_agent_requires_full_overlay = _claude_plugin_agent_spec is not None and (
+            _claude_plugin_agent_spec.model is not None
+            or _claude_plugin_agent_spec.tools is not None
+            or _claude_plugin_agent_spec.allowed_tools is not None
+        )
+
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
         if startup_progress is not None:
@@ -340,20 +349,134 @@ class KimiCLI:
         # Merge plugin MCP configs into the list passed to load_agent
         _all_mcp: list[Any] = list(mcp_configs or []) + _plugin_mcp_extras
 
-        agent = await load_agent(
-            agent_file,
-            runtime,
-            mcp_configs=_all_mcp,
-            start_mcp_loading=not defer_mcp_loading,
-        )
+        async def _load_plugin_overlay_agent(plugin_agent_spec: ClaudeAgentSpec) -> Any:
+            original_llm = runtime.llm
+            try:
+                base_agent_spec = load_agent_spec(DEFAULT_AGENT_FILE)
+                merged_tools: list[str] = (
+                    plugin_agent_spec.tools
+                    if plugin_agent_spec.tools is not None
+                    else base_agent_spec.tools
+                )
+                merged_allowed_tools: list[str] | None = (
+                    plugin_agent_spec.allowed_tools
+                    if plugin_agent_spec.allowed_tools is not None
+                    else None
+                    if plugin_agent_spec.tools is not None
+                    else base_agent_spec.allowed_tools
+                )
+                merged_agent_spec = dataclasses.replace(
+                    base_agent_spec,
+                    name=plugin_agent_spec.full_name,
+                    model=plugin_agent_spec.model or base_agent_spec.model,
+                    tools=merged_tools,
+                    allowed_tools=merged_allowed_tools,
+                )
 
-        # If a Claude plugin agent was selected, overlay its system prompt
-        if _claude_plugin_agent_spec is not None:
-            agent = dataclasses.replace(
-                agent,
-                name=_claude_plugin_agent_spec.full_name,
-                system_prompt=_claude_plugin_agent_spec.system_prompt,
+                if plugin_agent_spec.model is not None:
+                    cloned_llm = clone_llm_with_model_alias(
+                        runtime.llm,
+                        runtime.config,
+                        plugin_agent_spec.model,
+                        session_id=runtime.session.id,
+                        oauth=runtime.oauth,
+                    )
+                    if cloned_llm is None and original_llm is not None:
+                        raise ValueError(
+                            f"Unable to instantiate model alias: {plugin_agent_spec.model}"
+                        )
+                    runtime.llm = cloned_llm
+
+                return await load_agent_from_resolved_spec(
+                    merged_agent_spec,
+                    runtime,
+                    mcp_configs=_all_mcp,
+                    start_mcp_loading=not defer_mcp_loading,
+                    system_prompt_override=plugin_agent_spec.system_prompt,
+                )
+            except Exception:
+                runtime.llm = original_llm
+                raise
+
+        agent = None
+        _effective_plugin_agent_spec: ClaudeAgentSpec | None = _claude_plugin_agent_spec
+        _effective_plugin_default_candidate_index = _selected_plugin_default_candidate_index
+        if _plugin_agent_requires_full_overlay and _claude_plugin_agent_spec is not None:
+            if _selected_plugin_default_candidate_index is not None:
+                from kimi_cli.claude_plugin.agents import parse_agent_md
+
+                for idx in range(
+                    _selected_plugin_default_candidate_index,
+                    len(_plugin_default_agent_candidates),
+                ):
+                    candidate_spec: ClaudeAgentSpec
+                    if idx == _selected_plugin_default_candidate_index:
+                        candidate_spec = _claude_plugin_agent_spec
+                    else:
+                        plugin_name, plugin_agent_file = _plugin_default_agent_candidates[idx]
+                        resolved_candidate = plugin_agent_file.resolve()
+                        try:
+                            candidate_spec = parse_agent_md(resolved_candidate, plugin_name)
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to parse plugin default agent {plugin}:{path}, "
+                                "trying later plugin defaults or falling back to the default "
+                                "agent: {error}",
+                                plugin=plugin_name,
+                                path=resolved_candidate,
+                                error=exc,
+                            )
+                            continue
+
+                    try:
+                        agent = await _load_plugin_overlay_agent(candidate_spec)
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to load plugin default agent {plugin}:{path}, "
+                            "trying later plugin defaults or falling back to the default agent: "
+                            "{error}",
+                            plugin=_plugin_default_agent_candidates[idx][0],
+                            path=_plugin_default_agent_candidates[idx][1].resolve(),
+                            error=exc,
+                        )
+                        continue
+
+                    _effective_plugin_agent_spec = candidate_spec
+                    _effective_plugin_default_candidate_index = idx
+                    break
+                else:
+                    _effective_plugin_agent_spec = None
+            else:
+                agent = await _load_plugin_overlay_agent(_claude_plugin_agent_spec)
+
+        if agent is None:
+            agent = await load_agent(
+                agent_file,
+                runtime,
+                mcp_configs=_all_mcp,
+                start_mcp_loading=not defer_mcp_loading,
             )
+
+            # If a Claude plugin agent was selected, overlay its system prompt
+            if _effective_plugin_agent_spec is not None:
+                agent = dataclasses.replace(
+                    agent,
+                    name=_effective_plugin_agent_spec.full_name,
+                    system_prompt=_effective_plugin_agent_spec.system_prompt,
+                )
+
+        if (
+            _effective_plugin_agent_spec is not None
+            and _effective_plugin_default_candidate_index is not None
+        ):
+            for _later_plugin_name, _ in _plugin_default_agent_candidates[
+                _effective_plugin_default_candidate_index + 1 :
+            ]:
+                logger.warning(
+                    "Ignoring default agent from plugin '{plugin}' because "
+                    "a prior plugin default agent is already selected",
+                    plugin=_later_plugin_name,
+                )
 
         # Append plugin capability summary to system prompt so the model
         # can autonomously choose plugin capabilities for goal-oriented requests

@@ -467,6 +467,180 @@ class TestSettingsAgentSelection:
         bundle = load_claude_plugins([plugin_dir])
         assert bundle.plugins["demo"].default_agent_file is None
 
+    @pytest.mark.asyncio
+    async def test_plugin_agent_allowed_tools_override_default_toolset(
+        self,
+        session,
+        config,
+        runtime,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import kimi_cli.app as app_module
+        from kimi_cli.app import KimiCLI
+
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "reviewer.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: reviewer",
+                    "description: constrained agent",
+                    "allowed-tools:",
+                    "  - kimi_cli.tools.think:Think",
+                    "---",
+                    "Use only the Think tool.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (plugin_dir / "settings.json").write_text(
+            json.dumps({"agent": "reviewer"}),
+            encoding="utf-8",
+        )
+
+        fake_context = SimpleNamespace(system_prompt=None)
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+                self.agent = agent
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return runtime
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+
+        import kimi_cli.plugin.manager as plugin_manager_module
+        import kimi_cli.plugin.tool as plugin_tool_module
+
+        monkeypatch.setattr(plugin_manager_module, "get_plugins_dir", lambda: tmp_path / "empty")
+        monkeypatch.setattr(
+            plugin_tool_module,
+            "load_plugin_tools",
+            lambda *_args, **_kwargs: [],
+        )
+
+        kimi = await KimiCLI.create(session, config=config, plugin_dirs=[plugin_dir])
+
+        tool_names = [tool.name for tool in kimi.soul.agent.toolset.tools]
+        assert tool_names == ["Think"]
+
+    @pytest.mark.asyncio
+    async def test_plugin_agent_model_override_updates_runtime_llm(
+        self,
+        session,
+        config,
+        runtime,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from kosong.chat_provider.mock import MockChatProvider
+
+        import kimi_cli.app as app_module
+        from kimi_cli.app import KimiCLI
+        from kimi_cli.llm import LLM
+
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "reviewer.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: reviewer",
+                    "description: model override agent",
+                    "model: plugin-model",
+                    "---",
+                    "Use the plugin model.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (plugin_dir / "settings.json").write_text(
+            json.dumps({"agent": "reviewer"}),
+            encoding="utf-8",
+        )
+
+        fake_context = SimpleNamespace(system_prompt=None)
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+        runtime.llm = LLM(
+            chat_provider=MockChatProvider([]),
+            max_context_size=100_000,
+            capabilities=set(),
+        )
+        plugin_llm = LLM(
+            chat_provider=MockChatProvider([]),
+            max_context_size=50_000,
+            capabilities=set(),
+        )
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+                self.agent = agent
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return runtime
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+        monkeypatch.setattr(
+            app_module,
+            "clone_llm_with_model_alias",
+            lambda llm, cfg, model_alias, *, session_id, oauth: plugin_llm,
+        )
+
+        import kimi_cli.plugin.manager as plugin_manager_module
+        import kimi_cli.plugin.tool as plugin_tool_module
+
+        monkeypatch.setattr(plugin_manager_module, "get_plugins_dir", lambda: tmp_path / "empty")
+        monkeypatch.setattr(
+            plugin_tool_module,
+            "load_plugin_tools",
+            lambda *_args, **_kwargs: [],
+        )
+
+        kimi = await KimiCLI.create(session, config=config, plugin_dirs=[plugin_dir])
+
+        assert kimi.soul.agent.runtime.llm is plugin_llm
+
 
 class TestPluginSkillMergeNormalization:
     @pytest.mark.asyncio
