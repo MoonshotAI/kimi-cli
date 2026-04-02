@@ -31,7 +31,7 @@ kimi --session
 使用 `--session`（或 `--resume`）加上会话 ID 可以恢复指定的会话：
 
 ```sh
-kimi --session abc123
+kimi -r abc123
 ```
 
 如果指定的会话 ID 不存在，会自动创建一个新会话。
