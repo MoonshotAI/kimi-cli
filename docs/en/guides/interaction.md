@@ -33,11 +33,14 @@ In plan mode, the AI can only use read-only tools (`Glob`, `Grep`, `ReadFile`) t
 
 ### Entering plan mode
 
-There are three ways to enter plan mode:
+There are four ways to enter plan mode:
 
+- **CLI flag**: Use `kimi --plan` to start a new session directly in plan mode
 - **Keyboard shortcut**: Press `Shift-Tab` to toggle plan mode
 - **Slash command**: Enter `/plan` or `/plan on`
 - **AI-initiated**: When facing complex tasks, the AI may request to enter plan mode via the `EnterPlanMode` tool — you can accept or decline
+
+You can also set `default_plan_mode = true` in the config file to start every new session in plan mode by default. See [Configuration files](../configuration/config-files.md).
 
 When plan mode is active, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
 
