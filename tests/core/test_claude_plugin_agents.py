@@ -407,6 +407,28 @@ class TestSettingsAgentSelection:
         assert bundle.plugins["demo"].default_agent_file is not None
         assert bundle.plugins["demo"].default_agent_file.name == "reviewer.md"
 
+    def test_relative_plugin_dir_keeps_root_resolved_for_agent_ownership(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        plugin_dir = _make_plugin_with_agent(tmp_path)
+        (plugin_dir / "settings.json").write_text(
+            json.dumps({"agent": "reviewer"}),
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        monkeypatch.chdir(tmp_path)
+        bundle = load_claude_plugins([Path("demo")])
+
+        plugin_rt = bundle.plugins["demo"]
+        agent_file = plugin_rt.default_agent_file
+        assert agent_file is not None
+        assert plugin_rt.root.is_absolute()
+        assert agent_file.resolve().is_relative_to(plugin_rt.root)
+
     def test_settings_without_agent_key(self, tmp_path: Path) -> None:
         plugin_dir = _make_plugin_with_agent(tmp_path)
         (plugin_dir / "settings.json").write_text(

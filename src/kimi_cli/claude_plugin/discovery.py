@@ -114,6 +114,7 @@ def _load_single_plugin(plugin_dir: Path) -> ClaudePluginRuntime:
     This function eagerly loads all component types (skills, commands,
     agents, hooks, MCP, settings) available in the directory.
     """
+    plugin_dir = plugin_dir.resolve()
     manifest = _load_manifest(plugin_dir)
     runtime = ClaudePluginRuntime(manifest=manifest, root=plugin_dir)
 
