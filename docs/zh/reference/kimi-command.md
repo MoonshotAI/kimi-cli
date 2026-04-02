@@ -55,9 +55,9 @@ kimi [OPTIONS] COMMAND [ARGS]
 | 选项 | 简写 | 说明 |
 |------|------|------|
 | `--continue` | `-C` | 继续当前工作目录的上一个会话 |
-| `--session ID` | `-S` | 恢复指定 ID 的会话，若不存在则创建新会话 |
+| `--session [ID]` / `--resume [ID]` | `-S` / `-r` | 恢复会话。带 ID 时恢复指定会话（不存在则报错）；不带 ID 时打开交互式会话选择器（仅 Shell 模式） |
 
-`--continue` 和 `--session` 互斥。
+`--continue` 和 `--session`/`--resume` 互斥。
 
 ## 输入与命令
 

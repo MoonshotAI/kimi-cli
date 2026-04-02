@@ -4,6 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- CLI: Add `--session`/`--resume` (`-S`/`-r`) flag to resume sessions — without an argument opens an interactive session picker (shell UI only); with a session ID resumes that specific session; replaces the reverted `--pick-session`/`--list-sessions` design with a unified optional-value flag
+- CLI: Add CJK-safe `shorten()` utility — replaces all `textwrap.shorten` calls so that CJK text without spaces is truncated gracefully instead of collapsing to just the placeholder
+- CLI: **Breaking** — `--session ID` now errors when the session ID is not found instead of silently creating a new session
 - CLI: Add `--plan` flag and `default_plan_mode` config option — start new sessions in plan mode via `kimi --plan` or by setting `default_plan_mode = true` in `~/.kimi/config.toml`; resumed sessions preserve their existing plan mode state
 ## 1.29.0 (2026-04-01)
 

@@ -4,6 +4,13 @@
 
 ## 未发布
 
+### `--session ID` 不再在 ID 不存在时创建新会话
+
+此前，向 `--session` 传递不存在的会话 ID 会静默创建一个新会话。现在会报错：`Session 'xxx' not found for the working directory`。
+
+- **受影响**：依赖 `--session ID` 自动创建会话的脚本或工作流
+- **迁移**：不带 `--session` 启动以创建新会话，或使用不带参数的 `--session` 打开交互式选择器
+
 ## 1.25.0
 
 ### Wire 协议 1.6——子 Agent 与审批字段变更

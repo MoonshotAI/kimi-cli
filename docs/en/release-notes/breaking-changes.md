@@ -4,6 +4,13 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+### `--session ID` no longer creates a new session when ID is not found
+
+Previously, passing a non-existent session ID to `--session` would silently create a new session with that ID. It now raises an error: `Session 'xxx' not found for the working directory`.
+
+- **Affected**: Scripts or workflows that rely on `--session ID` to auto-create sessions
+- **Migration**: Use `kimi` without `--session` to create a new session, or use `--session` without an ID for the interactive picker
+
 ## 1.25.0
 
 ### Wire protocol 1.6 — subagent and approval field changes
