@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.48.0 (2026-04-02)
+
 - Google GenAI: Add `default_headers` parameter to `GoogleGenAI` constructor — custom headers are merged into `HttpOptions` so they are included in all API requests
 
 ## 0.47.0 (2026-03-30)
