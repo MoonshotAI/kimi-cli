@@ -59,6 +59,12 @@ InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
 
 
+def _strip_session_id_suffix(title: str, session_id: str) -> str:
+    """Remove the trailing `` (session_id)`` suffix from a session title, if present."""
+    suffix = f" ({session_id})"
+    return title.rsplit(suffix, 1)[0] if title.endswith(suffix) else title
+
+
 def _version_callback(value: bool) -> None:
     if value:
         from kimi_cli.constant import get_version
@@ -127,8 +133,14 @@ def kimi(
         str | None,
         typer.Option(
             "--session",
+            "--resume",
             "-S",
-            help="Session ID to resume for the working directory. Default: new session.",
+            "-r",
+            help=(
+                "Resume a session. "
+                "With ID: resume that session. "
+                "Without ID: interactively pick a session."
+            ),
         ),
     ] = None,
     continue_: Annotated[
@@ -181,6 +193,13 @@ def kimi(
             "-y",
             "--auto-approve",
             help="Automatically approve all actions. Default: no.",
+        ),
+    ] = False,
+    plan: Annotated[
+        bool,
+        typer.Option(
+            "--plan",
+            help="Start in plan mode. Default: no.",
         ),
     ] = False,
     prompt: Annotated[
@@ -375,10 +394,15 @@ def kimi(
                 return
         typer.echo(message, err=True)
 
+    # session_id states:
+    #   None  → not provided (new session)
+    #   ""    → --session/--resume without value (picker mode)
+    #   "ID"  → --session ID (resume specific session)
+    _picker_mode = session_id == ""
     if session_id is not None:
-        session_id = session_id.strip()
-        if not session_id:
-            raise typer.BadParameter("Session ID cannot be empty", param_hint="--session")
+        session_id = session_id.strip() or None  # treat whitespace-only as picker mode
+        if session_id is None:
+            _picker_mode = True
 
     if quiet:
         if acp_mode or wire_mode:
@@ -407,7 +431,7 @@ def kimi(
         },
         {
             "--continue": continue_,
-            "--session": session_id is not None,
+            "--session": session_id is not None or _picker_mode,
         },
         {
             "--config": config_string is not None,
@@ -456,6 +480,11 @@ def kimi(
         raise typer.BadParameter(
             "Final-message-only output is only supported for print UI",
             param_hint="--final-message-only",
+        )
+    if _picker_mode and ui != "shell":
+        raise typer.BadParameter(
+            "--session without a session ID is only supported for shell UI",
+            param_hint="--session",
         )
 
     config: Config | Path | None = None
@@ -510,6 +539,9 @@ def kimi(
         try:
             startup_progress.update("Preparing session...")
 
+            # Track if we're resuming an existing session (vs creating new)
+            resumed = False
+
             if session_id is not None:
                 session = await Session.find(work_dir, session_id)
                 if session is None:
@@ -518,7 +550,9 @@ def kimi(
                         session_id=session_id,
                     )
                     session = await Session.create(work_dir, session_id)
-                logger.info("Switching to session: {session_id}", session_id=session.id)
+                else:
+                    resumed = True
+                logger.info("Resuming session: {session_id}", session_id=session.id)
             elif continue_:
                 session = await Session.continue_(work_dir)
                 if session is None:
@@ -526,6 +560,7 @@ def kimi(
                         "No previous session found for the working directory",
                         param_hint="--continue",
                     )
+                resumed = True  # Continuing previous session
                 logger.info("Continuing previous session: {session_id}", session_id=session.id)
             else:
                 session = await Session.create(work_dir)
@@ -571,6 +606,8 @@ def kimi(
                 model_name=model_name,
                 thinking=thinking,
                 yolo=yolo or (ui == "print"),  # print mode implies yolo
+                plan_mode=plan,
+                resumed=resumed,
                 agent_file=agent_file,
                 mcp_configs=mcp_configs,
                 skills_dirs=skills_dirs,
@@ -583,7 +620,7 @@ def kimi(
             startup_progress.stop()
 
             # --- SessionStart hook ---
-            _session_source = "resume" if continue_ else "startup"
+            _session_source = "resume" if resumed else "startup"
             await instance.soul.hook_engine.trigger(
                 "SessionStart",
                 matcher_value=_session_source,
@@ -736,6 +773,43 @@ def kimi(
                 with contextlib.suppress(Exception):
                     await _delete_empty_session(_latest_created_session)
             raise
+
+    if _picker_mode:
+        from prompt_toolkit.shortcuts.choice_input import ChoiceInput
+        from rich.console import Console
+
+        from kimi_cli.utils.datetime import format_relative_time
+
+        async def _pick_session() -> str:
+            all_sessions = await Session.list(work_dir)
+            if not all_sessions:
+                Console().print("[yellow]No sessions found for the working directory.[/yellow]")
+                raise typer.Exit(0)
+
+            choices: list[tuple[str, str]] = []
+            for s in all_sessions:
+                time_str = format_relative_time(s.updated_at)
+                short_id = s.id[:8]
+                name = _strip_session_id_suffix(s.title, s.id)
+                label = f"{name} ({short_id}), {time_str}"
+                choices.append((s.id, label))
+
+            try:
+                selection = await ChoiceInput(
+                    message="Select a session to resume"
+                    " (↑↓ navigate, Enter select, Ctrl+C cancel):",
+                    options=choices,
+                    default=choices[0][0],
+                ).prompt_async()
+            except (EOFError, KeyboardInterrupt):
+                raise typer.Exit(0) from None
+
+            if not selection:
+                raise typer.Exit(0)
+
+            return selection
+
+        session_id = asyncio.run(_pick_session())
 
     try:
         switch_target, exit_code = asyncio.run(_reload_loop(session_id))

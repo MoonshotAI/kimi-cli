@@ -343,6 +343,16 @@ class KimiSoul:
         """
         return self._set_plan_mode(enabled, source="manual")
 
+    def schedule_plan_activation_reminder(self) -> None:
+        """Schedule a plan-mode activation reminder for the next turn.
+
+        Use this when plan mode is already active (e.g. restored session with
+        ``--plan`` flag) and ``_set_plan_mode`` would early-return because the
+        state hasn't actually changed.
+        """
+        if self._plan_mode:
+            self._pending_plan_activation_injection = True
+
     def consume_pending_plan_activation_injection(self) -> bool:
         """Consume the next-step activation reminder scheduled by a manual toggle."""
         if not self._plan_mode or not self._pending_plan_activation_injection:
@@ -530,7 +540,7 @@ class KimiSoul:
             if not command_call:
                 session = self._runtime.session
                 if session.state.custom_title is None:
-                    from textwrap import shorten
+                    from kimi_cli.utils.string import shorten
 
                     title = shorten(
                         Message(role="user", content=user_input).extract_text(" "),

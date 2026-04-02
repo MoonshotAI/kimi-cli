@@ -84,9 +84,10 @@ def _derive_title_from_wire(session_dir: Path) -> str:
 
     try:
         import json
-        from textwrap import shorten
 
         from kosong.message import Message
+
+        from kimi_cli.utils.string import shorten
 
         with open(wire_file, encoding="utf-8") as f:
             for line in f:
