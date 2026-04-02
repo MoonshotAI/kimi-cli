@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -45,16 +47,22 @@ async def run_worker(session_id: UUID) -> None:
                 path=default_mcp_file,
             )
 
+    # Resolve agent file from environment (set by `kimi web --agent-file`)
+    agent_file_str = os.environ.get("KIMI_WEB_AGENT_FILE")
+    agent_file = Path(agent_file_str) if agent_file_str else None
+
     # Create KimiCLI instance with MCP configuration
     try:
-        kimi_cli = await KimiCLI.create(session, mcp_configs=mcp_configs or None)
+        kimi_cli = await KimiCLI.create(
+            session, agent_file=agent_file, mcp_configs=mcp_configs or None
+        )
     except MCPConfigError as exc:
         logger.warning(
             "Invalid MCP config in {path}: {error}. Starting without MCP.",
             path=default_mcp_file,
             error=exc,
         )
-        kimi_cli = await KimiCLI.create(session, mcp_configs=None)
+        kimi_cli = await KimiCLI.create(session, agent_file=agent_file, mcp_configs=None)
 
     # Run in wire stdio mode
     await kimi_cli.run_wire_stdio()

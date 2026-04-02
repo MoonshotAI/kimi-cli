@@ -110,6 +110,7 @@ def _load_env_flag(key: str) -> bool:
 
 
 ENV_LAN_ONLY = "KIMI_WEB_LAN_ONLY"
+ENV_AGENT_FILE = "KIMI_WEB_AGENT_FILE"
 
 
 def create_app(
@@ -235,6 +236,7 @@ def run_web_server(
     dangerously_omit_auth: bool = False,
     restrict_sensitive_apis: bool | None = None,
     lan_only: bool = True,
+    agent_file: Path | None = None,
 ) -> None:
     """Run the web server."""
     import sys
@@ -311,6 +313,11 @@ def run_web_server(
     os.environ[ENV_ENFORCE_ORIGIN] = "1" if (public_mode and not lan_only) else "0"
     os.environ[ENV_RESTRICT_SENSITIVE_APIS] = "1" if restrict_sensitive_apis else "0"
     os.environ[ENV_LAN_ONLY] = "1" if lan_only else "0"
+
+    if agent_file is not None:
+        os.environ[ENV_AGENT_FILE] = str(agent_file.resolve())
+    else:
+        os.environ.pop(ENV_AGENT_FILE, None)
 
     # Determine display URLs
     display_hosts: list[tuple[str, str]] = []

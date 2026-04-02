@@ -1,5 +1,6 @@
 """Web UI command for Kimi Code CLI."""
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -55,6 +56,10 @@ def web(
             help="Only allow access from local network (default) or allow public access.",
         ),
     ] = True,
+    agent_file: Annotated[
+        Path | None,
+        typer.Option("--agent-file", help="Path to agent spec YAML file."),
+    ] = None,
 ):
     """Run Kimi Code CLI web interface."""
     from kimi_cli.web.app import run_web_server
@@ -77,4 +82,5 @@ def web(
         dangerously_omit_auth=dangerously_omit_auth,
         restrict_sensitive_apis=restrict_sensitive_apis,
         lan_only=lan_only,
+        agent_file=agent_file,
     )
