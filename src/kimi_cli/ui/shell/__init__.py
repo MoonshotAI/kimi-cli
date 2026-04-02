@@ -738,6 +738,10 @@ class Shell:
 
     def _set_active_approval_sink(self, sink: Any) -> None:
         self._active_approval_sink = sink
+        # In interactive mode, approvals are handled by the prompt modal,
+        # not by the live view sink. Don't flush to avoid losing requests.
+        if self._prompt_session is not None:
+            return
         # Flush pending approvals to the newly active sink
         while self._pending_approval_requests:
             request = self._pending_approval_requests.popleft()
