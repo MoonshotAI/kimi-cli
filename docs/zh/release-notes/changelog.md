@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：修复并行 foreground 子 Agent 审批请求导致会话挂死的问题——在交互式 Shell 模式下，`_set_active_approval_sink` 不再将待处理的审批请求 flush 到 live view sink（该 sink 无法渲染审批弹窗）；请求保留在 pending 队列中由 prompt modal 路径处理；同时为 `wait_for_response` 增加 300 秒超时，确保未被 resolve 的审批请求最终抛出 `ApprovalCancelledError` 而非永久挂起
 - CLI：新增 `--session`/`--resume`（`-S`/`-r`）参数用于恢复会话——不带参数时打开交互式会话选择器（仅 Shell UI）；带会话 ID 时恢复指定会话；以统一的可选值参数设计替代了被回退的 `--pick-session`/`--list-sessions`
 - CLI：新增 CJK 安全的 `shorten()` 工具函数——替换所有 `textwrap.shorten` 调用，使不含空格的中日韩文本能优雅截断，而非被折叠成仅剩省略号
 - Core：修复当通用目录（如 `~/.config/agents/skills/`）存在但为空时，品牌目录（如 `~/.kimi/skills/`）中的 Skills 静默消失的问题——Skill 目录发现现在独立搜索品牌组和通用组目录并合并结果，而非在所有候选目录中找到第一个就停止
