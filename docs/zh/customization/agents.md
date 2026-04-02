@@ -2,6 +2,8 @@
 
 Agent 定义了 AI 的行为方式，包括系统提示词、可用工具和子 Agent。你可以使用内置 Agent，也可以创建自定义 Agent。
 
+如果你想了解如何通过 `AGENTS.md` 文件为 Agent 提供项目上下文，请参阅 [AGENTS.md 项目指南](./agents-md.md)。
+
 ## 内置 Agent
 
 Kimi Code CLI 提供两个内置 Agent。启动时可以通过 `--agent` 参数选择：
