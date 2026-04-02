@@ -24,6 +24,7 @@ def test_default_config_dump():
             "default_model": "",
             "default_thinking": False,
             "default_yolo": False,
+            "default_plan_mode": False,
             "default_editor": "",
             "theme": "dark",
             "models": {},
