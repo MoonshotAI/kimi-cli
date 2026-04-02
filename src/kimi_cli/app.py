@@ -244,10 +244,10 @@ class KimiCLI:
 
         # Activate plan mode if requested (for new sessions or --plan flag)
         if plan_mode and not soul.plan_mode:
-            soul._set_plan_mode(True, source="manual")  # type: ignore[reportPrivateUsage]
+            await soul.set_plan_mode_from_manual(True)
         elif plan_mode and soul.plan_mode:
             # Already in plan mode from restored session, trigger activation reminder
-            soul._pending_plan_activation_injection = True  # type: ignore[reportPrivateUsage]
+            soul.schedule_plan_activation_reminder()
 
         # Create and inject hook engine
         from kimi_cli.hooks.engine import HookEngine
