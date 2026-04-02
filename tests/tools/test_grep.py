@@ -909,6 +909,25 @@ async def test_grep_filters_sensitive_context_lines(grep_tool: Grep):
         assert "sensitive" in result.message.lower()
 
 
+async def test_grep_filters_sensitive_hyphenated_path(grep_tool: Grep):
+    """Sensitive file in a hyphenated directory should be correctly filtered in content mode."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        sub = Path(temp_dir) / "my-project"
+        sub.mkdir()
+        (sub / ".env").write_text("SECRET=leaked\n")
+        (Path(temp_dir) / "safe.txt").write_text("SECRET=ok\n")
+
+        result = await grep_tool(
+            Params.model_validate(
+                {"pattern": "SECRET", "path": temp_dir, "output_mode": "content", "-C": 1}
+            )
+        )
+        assert not result.is_error
+        assert "safe.txt" in result.output
+        assert ".env" not in result.output
+        assert "leaked" not in result.output
+
+
 async def test_grep_all_sensitive_preserves_warning(grep_tool: Grep):
     """When all results are sensitive, warning should not be lost to 'No matches found'."""
     with tempfile.TemporaryDirectory() as temp_dir:

@@ -6,6 +6,7 @@ Be cautious that `KaosPath` is not used in this implementation.
 import asyncio
 import os
 import platform
+import re
 import shutil
 import stat
 import tarfile
@@ -127,8 +128,9 @@ class Params(BaseModel):
     include_ignored: bool = Field(
         description=(
             "Include files that are ignored by `.gitignore`, `.ignore`, and other ignore "
-            "rules. Useful for searching configuration files like `.env` that are "
-            "typically gitignored. Defaults to false."
+            "rules. Useful for searching gitignored artifacts such as build outputs "
+            "(e.g. `dist/`, `build/`) or `node_modules`. Sensitive files (like `.env`) "
+            "remain filtered by the sensitive-file protection layer. Defaults to false."
         ),
         default=False,
     )
@@ -483,6 +485,11 @@ class Grep(CallableTool2[Params]):
             output = _strip_path_prefix(output, search_base)
 
             # Step 3: filter sensitive files from output
+            # Regex for ripgrep content lines: path:linenum:text (match) or
+            # path-linenum-text (context). The separator is `:` or `-` followed
+            # by digits then the same separator again.
+            _RG_LINE_RE = re.compile(r"^(.*?)([:\-])(\d+)\2")
+
             out_lines = output.split("\n")
             filtered_paths: list[str] = []
             kept_lines: list[str] = []
@@ -495,14 +502,8 @@ class Grep(CallableTool2[Params]):
                     if line == "--":
                         kept_lines.append(line)
                         continue
-                    # Try match line format first (path:linenum:text)
-                    idx = line.find(":")
-                    if idx > 0:
-                        file_path = line[:idx]
-                    else:
-                        # Try context line format (path-linenum-text)
-                        idx = line.find("-")
-                        file_path = line[:idx] if idx > 0 else line
+                    m = _RG_LINE_RE.match(line)
+                    file_path = m.group(1) if m else line
                 elif params.output_mode == "count_matches":
                     # Count lines: "file.py:42"
                     idx = line.rfind(":")

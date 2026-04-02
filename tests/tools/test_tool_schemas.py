@@ -378,7 +378,7 @@ def test_grep_params_schema(grep_tool: Grep):
                 },
                 "include_ignored": {
                     "default": False,
-                    "description": "Include files that are ignored by `.gitignore`, `.ignore`, and other ignore rules. Useful for searching configuration files like `.env` that are typically gitignored. Defaults to false.",
+                    "description": "Include files that are ignored by `.gitignore`, `.ignore`, and other ignore rules. Useful for searching gitignored artifacts such as build outputs (e.g. `dist/`, `build/`) or `node_modules`. Sensitive files (like `.env`) remain filtered by the sensitive-file protection layer. Defaults to false.",
                     "type": "boolean",
                 },
             },

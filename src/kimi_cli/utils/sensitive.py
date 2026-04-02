@@ -13,9 +13,10 @@ SENSITIVE_PATTERNS: list[str] = [
     "id_rsa",
     "id_ed25519",
     "id_ecdsa",
-    # Cloud credentials (path-based)
+    # Cloud credentials (path-based, also bare name for stripped-path scenarios)
     ".aws/credentials",
     ".gcp/credentials",
+    "credentials",
 ]
 
 # Template/example files that match .env.* but are not sensitive.

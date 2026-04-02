@@ -52,6 +52,7 @@ def test_is_sensitive_ssh_keys(path: str):
         "/home/user/.gcp/credentials",
         ".aws/credentials",
         ".gcp/credentials",
+        "credentials",
     ],
 )
 def test_is_sensitive_cloud_credentials(path: str):
