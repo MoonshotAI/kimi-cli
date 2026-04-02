@@ -222,6 +222,7 @@ class KimiCLI:
         # --- Claude plugin compatibility layer ---
         _plugin_mcp_extras: list[dict[str, Any]] = []
         claude_plugin_bundle = None
+        _auto_selected_plugin_agent: Path | None = None
         if plugin_dirs:
             from kimi_cli.claude_plugin.discovery import load_claude_plugins
 
@@ -251,6 +252,7 @@ class KimiCLI:
                 # Select plugin default agent if no agent_file is specified
                 if agent_file is None and plugin_rt.default_agent_file is not None:
                     agent_file = plugin_rt.default_agent_file
+                    _auto_selected_plugin_agent = plugin_rt.default_agent_file.resolve()
 
                 # Log any plugin warnings
                 for warning in plugin_rt.warnings:
@@ -283,14 +285,22 @@ class KimiCLI:
             _resolved_agent = agent_file.resolve()
             for _pname, _prt in claude_plugin_bundle.plugins.items():
                 if _resolved_agent.is_relative_to(_prt.root):
-                    try:
+                    if _auto_selected_plugin_agent == _resolved_agent:
+                        try:
+                            _claude_plugin_agent_spec = parse_agent_md(
+                                _resolved_agent, _pname
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to parse plugin default agent {path}, "
+                                "falling back to the default agent: {error}",
+                                path=_resolved_agent,
+                                error=exc,
+                            )
+                            agent_file = None
+                    else:
                         _claude_plugin_agent_spec = parse_agent_md(
                             _resolved_agent, _pname
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Failed to parse plugin agent {path}, skipping overlay",
-                            path=_resolved_agent,
                         )
                     break
 

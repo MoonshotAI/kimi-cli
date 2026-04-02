@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -278,6 +280,86 @@ class TestBrokenPluginAgentBestEffort:
         # Must NOT have switched to DEFAULT_AGENT_FILE
         assert agent_file != DEFAULT_AGENT_FILE
         assert _claude_plugin_agent_spec is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_default_plugin_agent_falls_back_to_default_agent(
+        self,
+        session,
+        config,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A broken settings-selected plugin agent must not leave KimiCLI.create()
+        pointing at the invalid markdown file.
+
+        The plugin default-agent override should fail open and fall back to the
+        default YAML agent instead of crashing startup.
+        """
+        import kimi_cli.app as app_module
+        from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+        from kimi_cli.app import KimiCLI
+
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "reviewer.md").write_text(
+            "---\n: invalid yaml frontmatter\n---\nBody.",
+            encoding="utf-8",
+        )
+        (plugin_dir / "settings.json").write_text(
+            json.dumps({"agent": "reviewer"}),
+            encoding="utf-8",
+        )
+
+        fake_runtime = SimpleNamespace(
+            session=session,
+            config=config,
+            llm=None,
+            notifications=SimpleNamespace(recover=lambda: None),
+            background_tasks=SimpleNamespace(reconcile=lambda: None),
+            skills={},
+            skills_dirs=[],
+            builtin_args=SimpleNamespace(KIMI_SKILLS="No skills found."),
+        )
+        fake_agent = SimpleNamespace(name="Test Agent", system_prompt="Test system prompt")
+        fake_context = SimpleNamespace(system_prompt=None)
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+        captured: dict[str, Path] = {}
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return fake_runtime
+
+        async def fake_load_agent(agent_file, *_args, **_kwargs):
+            captured["agent_file"] = agent_file
+            return fake_agent
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+
+        await KimiCLI.create(session, config=config, plugin_dirs=[plugin_dir])
+
+        assert captured["agent_file"] == DEFAULT_AGENT_FILE
 
 
 class TestSettingsAgentSelection:
