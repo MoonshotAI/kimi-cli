@@ -153,6 +153,8 @@ class _BackgroundAutoTriggerPromptState(Protocol):
 
     def had_recent_input_activity(self, *, within_s: float) -> bool: ...
 
+    def recent_input_activity_remaining(self, *, within_s: float) -> float: ...
+
     async def wait_for_input_activity(self) -> None: ...
 
 
@@ -419,7 +421,11 @@ class Shell:
                     ):
                         result = None
                     elif deferred_bg_trigger:
-                        result = await self._wait_for_input_or_activity(prompt_session, idle_events)
+                        result = await self._wait_for_input_or_activity(
+                            prompt_session,
+                            idle_events,
+                            timeout_s=self._background_auto_trigger_timeout_s(prompt_session),
+                        )
                     else:
                         bg_watcher.clear()
                         if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
@@ -721,21 +727,39 @@ class Shell:
             within_s=_BG_AUTO_TRIGGER_INPUT_GRACE_S
         )
 
+    @staticmethod
+    def _background_auto_trigger_timeout_s(
+        prompt_session: _BackgroundAutoTriggerPromptState | None,
+    ) -> float | None:
+        if prompt_session is None or prompt_session.has_pending_input():
+            return None
+        remaining = prompt_session.recent_input_activity_remaining(
+            within_s=_BG_AUTO_TRIGGER_INPUT_GRACE_S
+        )
+        return remaining if remaining > 0 else None
+
     async def _wait_for_input_or_activity(
         self,
         prompt_session: _BackgroundAutoTriggerPromptState,
         idle_events: asyncio.Queue[_PromptEvent],
+        *,
+        timeout_s: float | None = None,
     ) -> _PromptEvent:
         idle_task = asyncio.create_task(idle_events.get())
         activity_task = asyncio.create_task(prompt_session.wait_for_input_activity())
+        timeout_task = (
+            asyncio.create_task(asyncio.sleep(timeout_s)) if timeout_s is not None else None
+        )
         done: set[asyncio.Task[Any]] = set()
         try:
             done, _ = await asyncio.wait(
-                [idle_task, activity_task],
+                [task for task in (idle_task, activity_task, timeout_task) if task is not None],
                 return_when=asyncio.FIRST_COMPLETED,
             )
         finally:
-            for task in (idle_task, activity_task):
+            for task in (idle_task, activity_task, timeout_task):
+                if task is None:
+                    continue
                 if task.done():
                     continue
                 task.cancel()

@@ -149,9 +149,16 @@ async def test_disabled_watcher_just_awaits_idle():
 
 
 class _FakePromptActivity:
-    def __init__(self, *, pending: bool = False, recent: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        pending: bool = False,
+        recent: bool = False,
+        remaining: float = 0.0,
+    ) -> None:
         self._pending = pending
         self._recent = recent
+        self._remaining = remaining
         self._event = asyncio.Event()
 
     def has_pending_input(self) -> bool:
@@ -159,6 +166,9 @@ class _FakePromptActivity:
 
     def had_recent_input_activity(self, *, within_s: float) -> bool:
         return self._recent
+
+    def recent_input_activity_remaining(self, *, within_s: float) -> float:
+        return self._remaining
 
     async def wait_for_input_activity(self) -> None:
         await self._event.wait()
@@ -173,6 +183,14 @@ def test_shell_defers_background_auto_trigger_when_buffer_non_empty() -> None:
 def test_shell_defers_background_auto_trigger_when_recent_input_activity() -> None:
     prompt = _FakePromptActivity(pending=False, recent=True)
     assert Shell._should_defer_background_auto_trigger(prompt) is True
+
+
+def test_shell_uses_grace_timeout_only_for_recent_activity_without_pending_input() -> None:
+    prompt = _FakePromptActivity(pending=False, recent=True, remaining=0.25)
+    assert Shell._background_auto_trigger_timeout_s(prompt) == pytest.approx(0.25)
+
+    with_pending = _FakePromptActivity(pending=True, recent=True, remaining=0.25)
+    assert Shell._background_auto_trigger_timeout_s(with_pending) is None
 
 
 @pytest.mark.asyncio
@@ -201,3 +219,17 @@ async def test_shell_wait_for_input_or_activity_returns_idle_event() -> None:
 
     result = await task
     assert result is expected
+
+
+@pytest.mark.asyncio
+async def test_shell_wait_for_input_or_activity_times_out_for_recent_activity_only() -> None:
+    shell = Shell(cast(Soul, SimpleNamespace(available_slash_commands=[], name="x")), None)
+    prompt = _FakePromptActivity()
+    queue: asyncio.Queue[_PromptEvent] = asyncio.Queue()
+
+    started = asyncio.get_running_loop().time()
+    result = await shell._wait_for_input_or_activity(prompt, queue, timeout_s=0.05)
+    elapsed = asyncio.get_running_loop().time() - started
+
+    assert result.kind == "input_activity"
+    assert elapsed >= 0.04

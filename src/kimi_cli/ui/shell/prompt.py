@@ -1903,6 +1903,12 @@ class CustomPromptSession:
             return False
         return (time.monotonic() - self._last_input_activity_time) <= within_s
 
+    def recent_input_activity_remaining(self, *, within_s: float) -> float:
+        if self._last_input_activity_time <= 0:
+            return 0.0
+        elapsed = time.monotonic() - self._last_input_activity_time
+        return max(0.0, within_s - elapsed)
+
     async def wait_for_input_activity(self) -> None:
         await self._input_activity_event.wait()
         self._input_activity_event.clear()
