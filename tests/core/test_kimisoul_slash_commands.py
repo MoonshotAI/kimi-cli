@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from kaos.path import KaosPath
 from kosong.tooling.empty import EmptyToolset
@@ -10,6 +11,7 @@ from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.wire.types import TextPart
 
 
 def _make_flow() -> Flow:
@@ -188,12 +190,18 @@ def test_plugin_skill_error_text_uses_namespaced_name(runtime: Runtime, tmp_path
     original_wire_send = _mod.wire_send
 
     def _capture(part: object) -> None:
-        if hasattr(part, "text"):
+        if isinstance(part, TextPart):
             sent_parts.append(part.text)
 
     _mod.wire_send = _capture  # type: ignore[assignment]
     try:
-        asyncio.run(runner(soul, ""))
+        ret = runner(soul, "")
+        assert ret is not None
+
+        async def _await_runner(awaitable: Any) -> None:
+            await awaitable
+
+        asyncio.run(_await_runner(ret))
     finally:
         _mod.wire_send = original_wire_send
 
@@ -233,12 +241,18 @@ def test_native_skill_error_text_uses_skill_prefix(runtime: Runtime, tmp_path: P
     original_wire_send = _mod.wire_send
 
     def _capture(part: object) -> None:
-        if hasattr(part, "text"):
+        if isinstance(part, TextPart):
             sent_parts.append(part.text)
 
     _mod.wire_send = _capture  # type: ignore[assignment]
     try:
-        asyncio.run(runner(soul, ""))
+        ret = runner(soul, "")
+        assert ret is not None
+
+        async def _await_runner(awaitable: Any) -> None:
+            await awaitable
+
+        asyncio.run(_await_runner(ret))
     finally:
         _mod.wire_send = original_wire_send
 
