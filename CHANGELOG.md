@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Grep: Add `include_ignored` parameter to search files excluded by `.gitignore` — when set to `true`, ripgrep's `--no-ignore` flag is enabled, allowing searches in gitignored artifacts such as build outputs or `node_modules`; sensitive files (like `.env`) remain filtered by the sensitive-file protection layer; defaults to `false` to preserve existing behavior
+- Core: Add sensitive file protection to Grep and Read tools — `.env`, SSH private keys (`id_rsa`, `id_ed25519`, `id_ecdsa`), and cloud credentials (`.aws/credentials`, `.gcp/credentials`) are now detected and blocked; Grep filters them from results with a warning, Read rejects them outright; `.env.example`/`.env.sample`/`.env.template` are exempted
+- Core: Fix parallel foreground subagent approval requests hanging the session — in interactive shell mode, `_set_active_approval_sink` no longer flushes pending approval requests to the live view sink (which cannot render approval modals); requests stay in the pending queue for the prompt modal path; also adds a 300-second timeout to `wait_for_response` so that any unresolved approval request eventually raises `ApprovalCancelledError` instead of hanging forever
 - CLI: Add `--session`/`--resume` (`-S`/`-r`) flag to resume sessions — without an argument opens an interactive session picker (shell UI only); with a session ID resumes that specific session; replaces the reverted `--pick-session`/`--list-sessions` design with a unified optional-value flag
 - CLI: Add CJK-safe `shorten()` utility — replaces all `textwrap.shorten` calls so that CJK text without spaces is truncated gracefully instead of collapsing to just the placeholder
 - Core: Fix skills in brand directories (e.g. `~/.kimi/skills/`) silently disappearing when a generic directory (`~/.config/agents/skills/`) exists but is empty — skill directory discovery now searches brand and generic directory groups independently and merges both results, instead of stopping at the first existing directory across all candidates
@@ -18,6 +21,8 @@ Only write entries that are worth mentioning to users.
 
 - CLI: Add `--plan` flag and `default_plan_mode` config option — start new sessions in plan mode via `kimi --plan` or by setting `default_plan_mode = true` in `~/.kimi/config.toml`; resumed sessions preserve their existing plan mode state
 - Core: Fix `custom_headers` not being passed to non-Kimi providers — OpenAI, Anthropic, Google GenAI, and Vertex AI providers now correctly forward custom headers configured in `providers.*.custom_headers`
+- Shell: Add `/undo` and `/fork` commands for session forking — `/undo` lets you pick a previous turn and fork a new session with the selected message pre-filled for re-editing; `/fork` duplicates the entire session history into a new session; the original session is always preserved
+- CLI: Add `-r` as a short alias for `--session` and print a resume hint (`kimi -r <session-id>`) whenever a session exits — covers normal exit, Ctrl-C, `/undo`, `/fork`, and `/sessions` switch so users can always find their way back
 
 ## 1.29.0 (2026-04-01)
 

@@ -438,7 +438,9 @@ class KimiCLI:
                 # wait for the soul task to finish, or raise
                 await soul_task
 
-    async def run_shell(self, command: str | None = None) -> bool:
+    async def run_shell(
+        self, command: str | None = None, *, prefill_text: str | None = None
+    ) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
 
@@ -512,7 +514,7 @@ class KimiCLI:
             )
         )
         async with self._env():
-            shell = Shell(self._soul, welcome_info=welcome_info)
+            shell = Shell(self._soul, welcome_info=welcome_info, prefill_text=prefill_text)
             return await shell.run(command)
 
     async def run_print(

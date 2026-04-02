@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kosong.chat_provider import APIStatusError, ChatProviderError
 from kosong.tooling import ToolError, ToolOk, ToolReturnValue
 
 from kimi_cli.approval_runtime import (
@@ -13,7 +14,7 @@ from kimi_cli.approval_runtime import (
     reset_current_approval_source,
     set_current_approval_source,
 )
-from kimi_cli.soul import MaxStepsReached, UILoopFn, get_wire_or_none, run_soul
+from kimi_cli.soul import MaxStepsReached, RunCancelled, UILoopFn, get_wire_or_none, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.subagents.builder import SubagentBuilder
@@ -21,6 +22,7 @@ from kimi_cli.subagents.core import SubagentRunSpec, prepare_soul
 from kimi_cli.subagents.models import AgentInstanceRecord, AgentLaunchSpec
 from kimi_cli.subagents.output import SubagentOutputWriter
 from kimi_cli.subagents.store import SubagentStore
+from kimi_cli.utils.logging import logger
 from kimi_cli.wire import Wire
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import (
@@ -70,8 +72,9 @@ async def run_soul_checked(
     """Run a single soul turn and validate the result.
 
     Returns a ``SoulRunFailure`` if the run failed or produced an invalid
-    result, or ``None`` on success.  ``MaxStepsReached`` is converted to a
-    failure; ``CancelledError`` and other exceptions are re-raised.
+    result, or ``None`` on success.  Most exceptions (``MaxStepsReached``,
+    ``ChatProviderError``, generic ``Exception``) are converted to failures.
+    Only ``CancelledError`` and ``RunCancelled`` are re-raised.
     """
     try:
         await run_soul(
@@ -89,6 +92,26 @@ async def run_soul_checked(
                 "Please try splitting the task into smaller subtasks."
             ),
             brief="Max steps reached",
+        )
+    except RunCancelled:
+        raise
+    except asyncio.CancelledError:
+        raise
+    except APIStatusError as exc:
+        return SoulRunFailure(
+            message=f"LLM API error (HTTP {exc.status_code}) when {phase}: {exc}",
+            brief=f"API error ({exc.status_code})",
+        )
+    except ChatProviderError as exc:
+        return SoulRunFailure(
+            message=f"LLM provider error when {phase}: {exc}",
+            brief="LLM provider error",
+        )
+    except Exception as exc:
+        logger.exception("Subagent soul run failed when {phase}", phase=phase)
+        return SoulRunFailure(
+            message=f"Unexpected error when {phase}: {exc}",
+            brief="Agent run error",
         )
 
     context = soul.context
@@ -200,28 +223,31 @@ class ForegroundSubagentRunner:
             status="running_foreground",
             description=req.description.strip(),
         )
-        # Propagate hook engine from parent runtime to subagent soul
-        if self._runtime.hook_engine is not None:
-            soul.set_hook_engine(self._runtime.hook_engine)
-        tool_call = get_current_tool_call_or_none()
-        ui_loop_fn = self._make_ui_loop_fn(
-            parent_tool_call_id=tool_call.id if tool_call is not None else None,
-            agent_id=agent_id,
-            subagent_type=actual_type,
-            output_writer=output_writer,
-        )
-
-        # Use a single stable ApprovalSource for the entire run (including summary
-        # continuation).  This ensures cancel_by_source can reliably cancel all
-        # pending approval requests belonging to this foreground subagent execution.
-        approval_source = ApprovalSource(
-            kind="foreground_turn",
-            id=uuid.uuid4().hex,
-            agent_id=agent_id,
-            subagent_type=actual_type,
-        )
-        approval_source_token = set_current_approval_source(approval_source)
+        approval_source: ApprovalSource | None = None
+        approval_source_token = None
         try:
+            # Propagate hook engine from parent runtime to subagent soul
+            if self._runtime.hook_engine is not None:
+                soul.set_hook_engine(self._runtime.hook_engine)
+            tool_call = get_current_tool_call_or_none()
+            ui_loop_fn = self._make_ui_loop_fn(
+                parent_tool_call_id=tool_call.id if tool_call is not None else None,
+                agent_id=agent_id,
+                subagent_type=actual_type,
+                output_writer=output_writer,
+            )
+
+            # Use a single stable ApprovalSource for the entire run (including summary
+            # continuation).  This ensures cancel_by_source can reliably cancel all
+            # pending approval requests belonging to this foreground subagent execution.
+            approval_source = ApprovalSource(
+                kind="foreground_turn",
+                id=uuid.uuid4().hex,
+                agent_id=agent_id,
+                subagent_type=actual_type,
+            )
+            approval_source_token = set_current_approval_source(approval_source)
+
             # --- SubagentStart hook ---
             hook_engine = soul.hook_engine
             from kimi_cli.hooks import events as hook_events
@@ -268,18 +294,29 @@ class ForegroundSubagentRunner:
             self._store.update_instance(agent_id, status="killed")
             output_writer.stage("cancelled")
             raise
+        except RunCancelled as exc:
+            self._store.update_instance(agent_id, status="killed")
+            output_writer.stage("cancelled")
+            raise RunCancelled("Subagent run was cancelled.") from exc
         except Exception:
             self._store.update_instance(agent_id, status="failed")
             output_writer.stage("failed_exception")
             raise
         finally:
-            reset_current_approval_source(approval_source_token)
-            if self._runtime.approval_runtime is not None:
+            if approval_source_token is not None:
+                reset_current_approval_source(approval_source_token)
+            if approval_source is not None and self._runtime.approval_runtime is not None:
                 self._runtime.approval_runtime.cancel_by_source(
                     approval_source.kind, approval_source.id
                 )
 
-        assert final_response is not None
+        if final_response is None:
+            self._store.update_instance(agent_id, status="failed")
+            output_writer.stage("failed: empty output")
+            return ToolError(
+                message="Agent completed but produced no output.",
+                brief="Empty agent output",
+            )
         self._store.update_instance(agent_id, status="idle")
         output_writer.summary(final_response)
         lines = [

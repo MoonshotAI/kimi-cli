@@ -143,6 +143,20 @@ Usage:
 
 After the first conversation turn, the title is automatically derived from the user message; once manually set with this command, auto-generation will no longer overwrite it.
 
+### `/undo`
+
+Roll back to a previous turn and retry. An interactive selector shows all historical turns with the user message (truncated to 80 characters). After selecting a turn, Kimi Code CLI forks a new session containing all conversation history **before** that turn and pre-fills the selected turn's user message into the input box for re-editing. The original session is always preserved.
+
+Use arrow keys to navigate, `Enter` to confirm, `Ctrl-C` to cancel.
+
+::: tip Use case
+When the API returns a truncated or malformed response that breaks the session, use `/undo` to roll back to a turn before the problem and retry without abandoning the entire session.
+:::
+
+### `/fork`
+
+Fork a new session from the current one, copying the entire conversation history. The original session remains unchanged, and the new session becomes the active session. Useful when you want to branch out and try a different direction from the current state.
+
 ### `/export`
 
 Export the current session context to a Markdown file for archiving or sharing.

@@ -185,16 +185,17 @@ kimi logout
 
 ### `kimi export`
 
-Export the data of a specified session as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.).
+Export session data as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.).
 
 ```sh
-kimi export <session_id> [-o <output_path>]
+kimi export [<session_id>] [-o <output_path>] [--yes]
 ```
 
 | Argument / Option | Description |
 |--------|-------------|
-| `<session_id>` | Session ID to export |
+| `<session_id>` | Session ID to export. If omitted, the CLI previews the previous session for the current working directory and asks for confirmation before exporting |
 | `--output, -o` | Output ZIP file path (defaults to `session-<id>.zip` in the current directory) |
+| `--yes, -y` | Skip the confirmation prompt when exporting the default previous session |
 
 ::: info Added
 Added in version 1.20.

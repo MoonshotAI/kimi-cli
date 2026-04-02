@@ -509,16 +509,16 @@ async def test_grep_offset_beyond_results(grep_tool: Grep):
 
 
 async def test_grep_hidden_files(grep_tool: Grep):
-    """Hidden files like .env are searchable."""
+    """Hidden dotfiles (non-sensitive) are searchable."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        (Path(temp_dir) / ".env").write_text("SECRET_KEY=abc123\n")
-        (Path(temp_dir) / "visible.txt").write_text("SECRET_KEY=xyz\n")
+        (Path(temp_dir) / ".eslintrc.json").write_text('{"rule": "marker"}\n')
+        (Path(temp_dir) / "visible.txt").write_text("marker\n")
 
         result = await grep_tool(
-            Params(pattern="SECRET_KEY", path=temp_dir, output_mode="files_with_matches")
+            Params(pattern="marker", path=temp_dir, output_mode="files_with_matches")
         )
         assert not result.is_error
-        assert ".env" in result.output
+        assert ".eslintrc.json" in result.output
         assert "visible.txt" in result.output
 
 
@@ -800,3 +800,155 @@ def test_strip_path_prefix_similar_names():
     lines = result.split("\n")
     assert lines[0] == "/tmp/abc/file.py"  # NOT stripped
     assert lines[1] == "file.py"  # stripped
+
+
+# === Tests for include_ignored feature ===
+
+
+async def test_grep_include_ignored_finds_gitignored_files(grep_tool: Grep):
+    """include_ignored=True should find files that are listed in .gitignore."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Set up a git repo with .gitignore
+        import subprocess
+
+        subprocess.run(["git", "init", "-q", temp_dir], check=True)
+        (Path(temp_dir) / ".git" / "test_marker").write_text("SECRET=leaked\n")
+        # Use a non-sensitive ignored file (build output) to test include_ignored
+        (Path(temp_dir) / ".gitignore").write_text("build.log\n")
+        (Path(temp_dir) / "build.log").write_text("SECRET=in_build_log\n")
+        (Path(temp_dir) / "visible.txt").write_text("SECRET=visible\n")
+
+        # Without include_ignored: build.log should be excluded
+        result = await grep_tool(
+            Params(pattern="SECRET", path=temp_dir, output_mode="files_with_matches")
+        )
+        assert not result.is_error
+        assert "visible.txt" in result.output
+        assert "build.log" not in result.output
+
+        # With include_ignored: build.log should be found
+        result = await grep_tool(
+            Params(
+                pattern="SECRET",
+                path=temp_dir,
+                output_mode="files_with_matches",
+                include_ignored=True,
+            )
+        )
+        assert not result.is_error
+        assert "build.log" in result.output
+        assert "visible.txt" in result.output
+        assert ".git" not in result.output  # VCS directories still excluded
+
+
+async def test_grep_include_ignored_default_false(grep_tool: Grep):
+    """By default, include_ignored should be False (respect .gitignore)."""
+    params = Params(pattern="test", path="/tmp")
+    assert params.include_ignored is False
+
+
+def test_build_rg_args_include_ignored():
+    """include_ignored=True should add --no-ignore flag to rg args."""
+    params = Params(pattern="test", path="/tmp", include_ignored=True)
+    args = _build_rg_args("/usr/bin/rg", params)
+    assert "--no-ignore" in args
+
+    # Default: no --no-ignore
+    params_default = Params(pattern="test", path="/tmp")
+    args_default = _build_rg_args("/usr/bin/rg", params_default)
+    assert "--no-ignore" not in args_default
+
+
+async def test_grep_filters_sensitive_files_always(grep_tool: Grep):
+    """Sensitive files (.env, SSH keys) are always filtered, even without include_ignored."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # No git repo — .env is not gitignored, just a normal dotfile
+        (Path(temp_dir) / ".env").write_text("SECRET=hunter2\n")
+        (Path(temp_dir) / "id_rsa").write_text("SECRET=private_key\n")
+        (Path(temp_dir) / "visible.txt").write_text("SECRET=visible\n")
+
+        result = await grep_tool(
+            Params(pattern="SECRET", path=temp_dir, output_mode="files_with_matches")
+        )
+        assert not result.is_error
+        assert "visible.txt" in result.output
+        assert ".env" not in result.output
+        assert "id_rsa" not in result.output
+        assert "sensitive" in result.message.lower()
+
+
+async def test_grep_filters_sensitive_in_content_mode(grep_tool: Grep):
+    """Sensitive file filtering works in content output mode."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        (Path(temp_dir) / ".env").write_text("SECRET=hunter2\n")
+        (Path(temp_dir) / "visible.txt").write_text("SECRET=visible\n")
+
+        result = await grep_tool(Params(pattern="SECRET", path=temp_dir, output_mode="content"))
+        assert not result.is_error
+        assert "visible.txt" in result.output
+        assert ".env" not in result.output
+        assert "sensitive" in result.message.lower()
+
+
+async def test_grep_filters_sensitive_context_lines(grep_tool: Grep):
+    """Context lines (ripgrep -C) for sensitive files must also be filtered."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        (Path(temp_dir) / ".env").write_text("line1\nSECRET=hunter2\nline3\n")
+        (Path(temp_dir) / "visible.txt").write_text("lineA\nSECRET=visible\nlineC\n")
+
+        result = await grep_tool(
+            Params.model_validate(
+                {"pattern": "SECRET", "path": temp_dir, "output_mode": "content", "-C": 1}
+            )
+        )
+        assert not result.is_error
+        assert "visible.txt" in result.output
+        # Neither match lines nor context lines from .env should appear
+        assert ".env" not in result.output
+        assert "hunter2" not in result.output
+        assert "sensitive" in result.message.lower()
+
+
+async def test_grep_filters_sensitive_hyphenated_path(grep_tool: Grep):
+    """Sensitive file in a hyphenated directory should be correctly filtered in content mode."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        sub = Path(temp_dir) / "my-project"
+        sub.mkdir()
+        (sub / ".env").write_text("SECRET=leaked\n")
+        (Path(temp_dir) / "safe.txt").write_text("SECRET=ok\n")
+
+        result = await grep_tool(
+            Params.model_validate(
+                {"pattern": "SECRET", "path": temp_dir, "output_mode": "content", "-C": 1}
+            )
+        )
+        assert not result.is_error
+        assert "safe.txt" in result.output
+        assert ".env" not in result.output
+        assert "leaked" not in result.output
+
+
+async def test_grep_all_sensitive_preserves_warning(grep_tool: Grep):
+    """When all results are sensitive, warning should not be lost to 'No matches found'."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        (Path(temp_dir) / ".env").write_text("ONLY_IN_ENV=secret\n")
+
+        result = await grep_tool(
+            Params(pattern="ONLY_IN_ENV", path=temp_dir, output_mode="files_with_matches")
+        )
+        assert not result.is_error
+        assert "No matches found" in result.message
+        assert "sensitive" in result.message.lower()
+        assert ".env" in result.message
+
+
+async def test_grep_allows_env_example(grep_tool: Grep):
+    """.env.example is not sensitive and should appear in results."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        (Path(temp_dir) / ".env.example").write_text("API_KEY=placeholder\n")
+
+        result = await grep_tool(
+            Params(pattern="API_KEY", path=temp_dir, output_mode="files_with_matches")
+        )
+        assert not result.is_error
+        assert ".env.example" in result.output
