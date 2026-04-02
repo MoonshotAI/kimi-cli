@@ -722,3 +722,103 @@ class TestPluginSkillMergeNormalization:
         assert kimi.soul.agent.name == "alpha:reviewer"
         assert any("Ignoring default agent from plugin" in warning for warning in warnings)
         assert any("beta" in warning for warning in warnings)
+
+    @pytest.mark.asyncio
+    async def test_broken_first_plugin_default_agent_falls_through_to_next_valid_plugin(
+        self,
+        session,
+        config,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from kosong.tooling.empty import EmptyToolset
+
+        import kimi_cli.app as app_module
+        from kimi_cli.app import KimiCLI
+        from kimi_cli.soul.agent import Agent
+
+        first_plugin = _make_plugin_with_agent(
+            tmp_path,
+            "alpha",
+            "reviewer",
+            frontmatter={": invalid yaml frontmatter": None},
+        )
+        second_plugin = _make_plugin_with_agent(tmp_path, "beta", "writer")
+        (first_plugin / "settings.json").write_text(
+            json.dumps({"agent": "reviewer"}),
+            encoding="utf-8",
+        )
+        (second_plugin / "settings.json").write_text(
+            json.dumps({"agent": "writer"}),
+            encoding="utf-8",
+        )
+
+        fake_runtime = SimpleNamespace(
+            session=session,
+            config=config,
+            llm=None,
+            notifications=SimpleNamespace(recover=lambda: None),
+            background_tasks=SimpleNamespace(reconcile=lambda: None),
+            skills={},
+            skills_dirs=[],
+            builtin_args=SimpleNamespace(KIMI_SKILLS="No skills found."),
+        )
+        fake_agent = Agent(
+            name="Test Agent",
+            system_prompt="Test system prompt",
+            toolset=EmptyToolset(),
+            runtime=cast(Any, fake_runtime),
+        )
+        fake_context = SimpleNamespace(system_prompt=None)
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+        captured: dict[str, Path] = {}
+        warnings: list[str] = []
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return fake_runtime
+
+        async def fake_load_agent(agent_file, *_args, **_kwargs):
+            captured["agent_file"] = agent_file
+            return fake_agent
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+                self.agent = agent
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+        monkeypatch.setattr(
+            app_module.logger,
+            "warning",
+            lambda message, *args, **kwargs: warnings.append(
+                str(message).format(*args, **kwargs)
+                if kwargs
+                else str(message)
+            ),
+        )
+
+        kimi = await KimiCLI.create(
+            session,
+            config=config,
+            plugin_dirs=[first_plugin, second_plugin],
+        )
+
+        from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+
+        assert captured["agent_file"] == DEFAULT_AGENT_FILE
+        assert kimi.soul.agent.name == "beta:writer"
+        assert any("Failed to parse plugin default agent" in warning for warning in warnings)
+        assert any("alpha" in warning for warning in warnings)

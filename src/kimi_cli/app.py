@@ -222,7 +222,7 @@ class KimiCLI:
         # --- Claude plugin compatibility layer ---
         _plugin_mcp_extras: list[dict[str, Any]] = []
         claude_plugin_bundle = None
-        _auto_selected_plugin_agent: Path | None = None
+        _plugin_default_agent_candidates: list[tuple[str, Path]] = []
         if plugin_dirs:
             from kimi_cli.claude_plugin.discovery import load_claude_plugins
             from kimi_cli.skill import normalize_skill_name
@@ -251,18 +251,11 @@ class KimiCLI:
                 for pc in plugin_rt.mcp_configs:
                     _plugin_mcp_extras.append(pc)
 
-                # Select plugin default agent if no agent_file is specified
+                # Collect plugin default-agent candidates in load order.
+                # We choose the first *valid* markdown agent later.
                 if agent_file is None and plugin_rt.default_agent_file is not None:
-                    agent_file = plugin_rt.default_agent_file
-                    _auto_selected_plugin_agent = plugin_rt.default_agent_file.resolve()
-                elif (
-                    _auto_selected_plugin_agent is not None
-                    and plugin_rt.default_agent_file is not None
-                ):
-                    logger.warning(
-                        "Ignoring default agent from plugin '{plugin}' because "
-                        "a prior plugin default agent is already selected",
-                        plugin=plugin_rt.manifest.name,
+                    _plugin_default_agent_candidates.append(
+                        (plugin_rt.manifest.name, plugin_rt.default_agent_file)
                     )
 
                 # Log any plugin warnings
@@ -283,7 +276,40 @@ class KimiCLI:
 
         # Detect if the selected agent_file is a Claude plugin Markdown agent
         _claude_plugin_agent_spec = None
+        if agent_file is None and _plugin_default_agent_candidates:
+            from kimi_cli.claude_plugin.agents import parse_agent_md
+
+            for idx, (_plugin_name, _plugin_agent_file) in enumerate(
+                _plugin_default_agent_candidates
+            ):
+                _resolved_candidate = _plugin_agent_file.resolve()
+                try:
+                    _claude_plugin_agent_spec = parse_agent_md(
+                        _resolved_candidate, _plugin_name
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to parse plugin default agent {plugin}:{path}, "
+                        "trying later plugin defaults or falling back to the default agent: "
+                        "{error}",
+                        plugin=_plugin_name,
+                        path=_resolved_candidate,
+                        error=exc,
+                    )
+                    continue
+
+                agent_file = DEFAULT_AGENT_FILE
+                for _later_plugin_name, _ in _plugin_default_agent_candidates[idx + 1 :]:
+                    logger.warning(
+                        "Ignoring default agent from plugin '{plugin}' because "
+                        "a prior plugin default agent is already selected",
+                        plugin=_later_plugin_name,
+                    )
+                break
+
         if (
+            _claude_plugin_agent_spec is None
+            and
             agent_file is not None
             and agent_file.suffix == ".md"
             and claude_plugin_bundle is not None
@@ -296,23 +322,9 @@ class KimiCLI:
             _resolved_agent = agent_file.resolve()
             for _pname, _prt in claude_plugin_bundle.plugins.items():
                 if _resolved_agent.is_relative_to(_prt.root):
-                    if _auto_selected_plugin_agent == _resolved_agent:
-                        try:
-                            _claude_plugin_agent_spec = parse_agent_md(
-                                _resolved_agent, _pname
-                            )
-                        except Exception as exc:
-                            logger.warning(
-                                "Failed to parse plugin default agent {path}, "
-                                "falling back to the default agent: {error}",
-                                path=_resolved_agent,
-                                error=exc,
-                            )
-                            agent_file = None
-                    else:
-                        _claude_plugin_agent_spec = parse_agent_md(
-                            _resolved_agent, _pname
-                        )
+                    _claude_plugin_agent_spec = parse_agent_md(
+                        _resolved_agent, _pname
+                    )
                     break
 
             # Only fall back to DEFAULT_AGENT_FILE when we actually matched
