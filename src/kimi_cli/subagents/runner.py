@@ -290,10 +290,14 @@ class ForegroundSubagentRunner:
                 )
             )
             _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-        except (asyncio.CancelledError, RunCancelled):
+        except asyncio.CancelledError:
             self._store.update_instance(agent_id, status="killed")
             output_writer.stage("cancelled")
             raise
+        except RunCancelled as exc:
+            self._store.update_instance(agent_id, status="killed")
+            output_writer.stage("cancelled")
+            raise RunCancelled("Subagent run was cancelled.") from exc
         except Exception:
             self._store.update_instance(agent_id, status="failed")
             output_writer.stage("failed_exception")

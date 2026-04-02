@@ -95,11 +95,18 @@ class BackgroundAgentRunner:
                 self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
                 self._manager._mark_task_failed(self._task_id, str(exc))
                 output.error(str(exc))
-        except (asyncio.CancelledError, RunCancelled):
+        except asyncio.CancelledError:
             self._runtime.subagent_store.update_instance(self._agent_id, status="killed")
             self._manager._mark_task_killed(self._task_id, "Stopped by TaskStop")
             output.stage("cancelled")
             raise
+        except RunCancelled:
+            # RunCancelled is Exception (not BaseException), so re-raising it from
+            # an asyncio.create_task would trigger "Task exception was never retrieved".
+            # Just mark killed and return — cleanup is already done.
+            self._runtime.subagent_store.update_instance(self._agent_id, status="killed")
+            self._manager._mark_task_killed(self._task_id, "Run was cancelled")
+            output.stage("cancelled")
         except Exception as exc:
             logger.exception("Background agent runner failed")
             self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
