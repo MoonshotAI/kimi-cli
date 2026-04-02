@@ -159,7 +159,7 @@ class BackgroundTaskStore:
                 logger.warning(
                     "Skipping invalid background task {task_id} from {path}: {error}",
                     task_id=task_id,
-                    path=self.spec_path(task_id),
+                    path=self.root / task_id / self.SPEC_FILE,
                     error=exc,
                 )
         views.sort(

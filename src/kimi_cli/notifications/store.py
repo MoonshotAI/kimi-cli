@@ -111,7 +111,7 @@ class NotificationStore:
                 logger.warning(
                     "Skipping invalid notification {notification_id} from {path}: {error}",
                     notification_id=notification_id,
-                    path=self.event_path(notification_id),
+                    path=self.root / notification_id / self.EVENT_FILE,
                     error=exc,
                 )
         views.sort(key=lambda view: view.event.created_at, reverse=True)

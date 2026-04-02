@@ -146,6 +146,28 @@ def test_list_views_skips_incomplete_notification_directories(runtime) -> None:
     assert views[0].event.id == event.id
 
 
+def test_list_views_skips_invalid_notification_id_directories(runtime) -> None:
+    manager = runtime.notifications
+    event = NotificationEvent(
+        id=manager.new_id(),
+        category="task",
+        type="task.completed",
+        source_kind="background_task",
+        source_id="b7654321",
+        title="Task completed",
+        body="done",
+    )
+    manager.publish(event)
+
+    invalid_dir = manager.store.root / "n-bad!"
+    invalid_dir.mkdir(parents=True, exist_ok=True)
+    (invalid_dir / manager.store.EVENT_FILE).write_text("{}", encoding="utf-8")
+
+    views = manager.store.list_views()
+
+    assert [view.event.id for view in views] == [event.id]
+
+
 @pytest.mark.asyncio
 async def test_deliver_pending_runs_shared_claim_and_ack_flow(runtime) -> None:
     manager = runtime.notifications

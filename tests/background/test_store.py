@@ -95,6 +95,31 @@ def test_list_views_skips_invalid_task_directories(runtime):
     assert views[0].spec.id == "b8888888"
 
 
+def test_list_views_skips_invalid_task_id_directories_with_spec_file(runtime):
+    store = BackgroundTaskStore(runtime.session.context_file.parent / "tasks")
+    valid = TaskSpec(
+        id="b8888887",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="valid task",
+        tool_call_id="call-3b",
+        command="echo ok",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(valid)
+
+    invalid_dir = store.root / "bad-task!"
+    invalid_dir.mkdir(parents=True, exist_ok=True)
+    (invalid_dir / store.SPEC_FILE).write_text("{}", encoding="utf-8")
+
+    views = store.list_views()
+
+    assert [view.spec.id for view in views] == ["b8888887"]
+
+
 def test_read_runtime_invalid_json_returns_default(runtime):
     store = BackgroundTaskStore(runtime.session.context_file.parent / "tasks")
     spec = TaskSpec(

@@ -29,7 +29,7 @@ class _AgentInstanceRecordPayload(BaseModel):
     description: str
     created_at: float
     updated_at: float
-    last_task_id: str | None
+    last_task_id: str | None = None
     launch_spec: _AgentLaunchSpecPayload
 
 

@@ -128,6 +128,36 @@ def test_get_instance_returns_none_for_corrupted_meta(session) -> None:
     assert store.get_instance("a6666666") is None
 
 
+def test_get_instance_allows_missing_last_task_id_for_legacy_meta(session) -> None:
+    store = SubagentStore(session)
+    legacy_dir = store.instance_dir("a6767676", create=True)
+    (legacy_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "agent_id": "a6767676",
+                "subagent_type": "coder",
+                "status": "idle",
+                "description": "legacy task",
+                "created_at": 1.0,
+                "updated_at": 2.0,
+                "launch_spec": {
+                    "agent_id": "a6767676",
+                    "subagent_type": "coder",
+                    "model_override": None,
+                    "effective_model": None,
+                    "created_at": 1.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    record = store.get_instance("a6767676")
+
+    assert record is not None
+    assert record.last_task_id is None
+
+
 def test_list_instances_skips_meta_with_invalid_field_types(session) -> None:
     store = SubagentStore(session)
     store.create_instance(
