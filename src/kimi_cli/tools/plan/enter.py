@@ -76,7 +76,9 @@ class EnterPlanMode(CallableTool2[Params]):
                 output=(
                     f"Plan mode activated (auto-approved in non-interactive mode).\n"
                     f"Plan file: {plan_path}\n"
-                    f"Workflow: explore with Glob/Grep/ReadFile → design approach → "
+                    f"Workflow: identify key questions about the codebase → "
+                    f"use Agent(subagent_type='explore') to investigate if needed → "
+                    f"design approach → "
                     f"modify the plan file with WriteFile or StrReplaceFile "
                     f"(create it with WriteFile first if it does not exist) → "
                     f"call ExitPlanMode.\n"
@@ -156,7 +158,9 @@ class EnterPlanMode(CallableTool2[Params]):
                 output=(
                     f"Plan mode activated. You MUST NOT edit code files — only read and plan.\n"
                     f"Plan file: {plan_path}\n"
-                    f"Workflow: explore with Glob/Grep/ReadFile → design approach → "
+                    f"Workflow: identify key questions about the codebase → "
+                    f"use Agent(subagent_type='explore') to investigate if needed → "
+                    f"design approach → "
                     f"modify the plan file with WriteFile or StrReplaceFile "
                     f"(create it with WriteFile first if it does not exist) → "
                     f"call ExitPlanMode.\n"

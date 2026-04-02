@@ -81,6 +81,29 @@ async def test_read_write_and_append_text(local_kaos: LocalKaos):
     assert "".join(lines) == "line1\nline2"
 
 
+async def test_writetext_preserves_lf_line_endings(local_kaos: LocalKaos):
+    """writetext should not convert LF to CRLF on any platform."""
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "lf.txt"
+
+    await local_kaos.writetext(file_path, "hello\nworld\n")
+
+    # Read back as binary to check actual bytes on disk
+    raw = await local_kaos.readbytes(file_path)
+    assert raw == b"hello\nworld\n", f"Expected LF line endings, got {raw!r}"
+
+
+async def test_writetext_preserves_crlf_line_endings(local_kaos: LocalKaos):
+    """writetext should preserve CRLF if explicitly present in content."""
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "crlf.txt"
+
+    await local_kaos.writetext(file_path, "hello\r\nworld\r\n")
+
+    raw = await local_kaos.readbytes(file_path)
+    assert raw == b"hello\r\nworld\r\n", f"Expected CRLF preserved, got {raw!r}"
+
+
 async def test_mkdir_with_parents(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     nested_dir = tmp_path / "a" / "b" / "c"

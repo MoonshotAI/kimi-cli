@@ -130,6 +130,19 @@ Alias: `/resume`
 
 Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel.
 
+### `/title`
+
+View or set the current session title. The configured title is shown in the `/sessions` list, making it easier to identify and find sessions.
+
+Alias: `/rename`
+
+Usage:
+
+- `/title`: Show the current session title
+- `/title <text>`: Set the session title (max 200 characters)
+
+After the first conversation turn, the title is automatically derived from the user message; once manually set with this command, auto-generation will no longer overwrite it.
+
 ### `/export`
 
 Export the current session context to a Markdown file for archiving or sharing.

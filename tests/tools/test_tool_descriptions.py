@@ -47,6 +47,21 @@ instance can preserve previous findings and work.
 - Be explicit about whether the subagent should write code or only do research.
 - The subagent result is only visible to you. If the user should see it, summarize it yourself.
 
+**Explore Agent — Preferred for Codebase Research**
+
+When you need to understand the codebase before making changes, fixing bugs, or planning features,
+prefer `subagent_type="explore"` over doing the search yourself. The explore agent is optimized for
+fast, read-only codebase investigation. Use it when:
+- Your task will clearly require more than 3 search queries
+- You need to understand how a module, feature, or code path works
+- You are about to enter plan mode and want to gather context first
+- You want to investigate multiple independent questions — launch multiple explore agents concurrently
+
+When calling explore, specify the desired thoroughness in the prompt:
+- "quick": targeted lookups — find a specific file, function, or config value
+- "medium": understand a module — how does auth work, what calls this API
+- "thorough": cross-cutting analysis — architecture overview, dependency mapping, multi-module investigation
+
 **When Not To Use Agent**
 
 - Reading a known file path

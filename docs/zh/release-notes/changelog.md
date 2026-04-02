@@ -5,6 +5,29 @@
 ## 未发布
 
 - CLI：新增 `--plan` 启动参数和 `default_plan_mode` 配置项——通过 `kimi --plan` 或在 `~/.kimi/config.toml` 中设置 `default_plan_mode = true` 可让新会话直接进入计划模式；恢复的会话保留其原有的计划模式状态
+## 1.29.0 (2026-04-01)
+
+- Core：支持层级化 `AGENTS.md` 加载——CLI 现在会从 git 项目根目录到工作目录逐层发现并合并 `AGENTS.md` 文件，包括每层目录中的 `.kimi/AGENTS.md`；在 32 KiB 预算上限下，更深层目录的文件优先保留，确保最具体的指令不会被截断
+- Core：修复空会话在退出后残留在磁盘上的问题——创建但未使用的会话现在会在所有退出路径（失败退出、会话切换、异常错误）中被清理，而不仅限于成功退出
+- Shell：新增 `KIMI_CLI_PASTE_CHAR_THRESHOLD` 和 `KIMI_CLI_PASTE_LINE_THRESHOLD` 环境变量，控制粘贴文本折叠为占位符的阈值——降低这些阈值可规避部分终端（如通过 SSH 连接的 XShell）在粘贴多行文本后 CJK 输入法失效的问题
+- Shell：修复不支持 truecolor 的终端（如 Xshell）上 diff 面板渲染异常的问题——`render_to_ansi` 不再硬编码 24 位色；Rich 现在通过 `COLORTERM`/`TERM` 环境变量自动检测终端颜色能力
+- Web：修复 CLI 升级后浏览器缓存旧 `index.html` 导致白屏的问题——服务端现在对 HTML 返回 `Cache-Control: no-cache`，对带 hash 的静态资源返回 `immutable`，防止因 chunk 文件名变更而产生 404
+- Core：修复 Windows 上文件写入时 LF 被转换为 CRLF 的问题——`writetext` 现在以 `newline=""` 打开文件，防止 Python 的通用换行符转换将 `\n` 静默转为 `\r\n`
+- Core：支持 `socks://` 代理协议——V2RayN 等代理工具会设置 `ALL_PROXY=socks://...`，但 httpx/aiohttp 不识别该协议；CLI 现在会在启动时将 `socks://` 归一化为 `socks5://`，确保所有 HTTP 客户端和子进程在 SOCKS 代理环境下正常工作
+- Shell：新增 `/title`（别名 `/rename`）命令，支持手动设置会话标题——标题现在统一存储在 `state.json` 中；旧版 `metadata.json` 会在首次加载时自动迁移
+- Shell：修复设置 `MANPAGER`（如 `bat`）后分页器输出乱码的问题——控制台分页器现在忽略 `MANPAGER`，委托给 `pydoc.pager()` 处理，保留 `PAGER` 及所有平台特定的回退逻辑
+- Explore：增强 explore Agent 的专家角色、搜索深度等级和自动环境上下文——explore Agent 启动时会自动获取仓库环境信息以提升调研质量；主 Agent 被引导优先使用 explore 进行代码库研究，Plan 模式鼓励先用 explore 调研再制定方案
+- Shell：修复工具调用显示中出现原始 OSC 8 转义字节（如 `8;id=391551;https://…`）的问题——超链接序列现在被包装为零宽转义以兼容 prompt_toolkit，在支持的终端中保留可点击链接
+- Core：在系统提示词中添加操作系统和 Shell 信息——模型现在能感知当前运行平台，Windows 上会收到优先使用内置工具而非 Shell 命令的指引，避免在 PowerShell 中执行 Linux 命令导致报错
+- Shell：修复 `command` 参数描述在所有平台上都写着 "bash command" 的问题——描述现在与平台无关
+- Web：修复自动标题覆盖手动会话重命名的问题——用户通过 Web UI 重命名会话后，新标题现在会被保留，不再被自动生成的标题替换
+## 1.28.0 (2026-03-30)
+
+- Core：修复文件写入/替换工具冻结事件循环的问题——diff 计算（`build_diff_blocks`）现在通过 `asyncio.to_thread` 转移到线程中执行，防止编辑大文件时 UI 卡死
+- Shell：修复 `_watch_root_wire_hub` 在处理异常时静默退出的问题——观察者现在会捕获并记录异常（与 `wire/server.py` 中的模式一致），并优雅处理 `QueueShutDown`，防止审批流程在会话中途静默中断
+- Core：对超大文件（>10000 行）跳过 O(n²) diff 计算——超过阈值的文件现在显示摘要块而非计算完整 diff，未变化的文件会立即短路返回
+- Wire：为 `DiffDisplayBlock` 新增 `is_summary` 字段（Wire 1.8）——标记包含行数摘要而非实际 diff 内容的块，便于客户端做差异化渲染
+- Web：渲染大文件 diff 摘要——当 diff 块标记为 `is_summary` 时，Web UI 显示紧凑的"文件过大无法内联 diff"提示及行数，而非尝试计算 diff
 - Auth：修复 OAuth 用户执行 Skill 或空闲后出现 "incorrect API KEY" 的问题——401 错误现在会显示清晰的 "请 /login" 提示，而不是原始的 API 错误信息；ACP 层会正确触发 VS Code 扩展的重新登录流程
 - Web：修复 OAuth 用户的会话标题生成始终失败的问题——标题生成器现在会使用 OAuth 令牌，并在调用模型前刷新过期令牌
 - Core：为 Agent 工具和 HTTP 请求添加超时保护——所有 `aiohttp` 会话现在默认 120 秒总超时 / 60 秒读取超时；Agent 工具新增可选 `timeout` 参数（前台默认 10 分钟，后台默认 15 分钟）；后台 Agent 任务超时后标记为 `timed_out` 并正确触发通知

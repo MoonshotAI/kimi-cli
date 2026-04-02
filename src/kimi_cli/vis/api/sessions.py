@@ -163,22 +163,17 @@ def _scan_session_dir(
         mtimes.append(st.st_mtime)
         state_size = st.st_size
 
-    # Read metadata.json first (cheap); it may already contain the title
-    metadata_info: dict[str, Any] | None = None
-    metadata_path = session_dir / "metadata.json"
-    if metadata_path.exists():
-        with contextlib.suppress(Exception):
-            metadata_info = json.loads(metadata_path.read_text(encoding="utf-8"))
+    # Read title from SessionState (source of truth), fall back to wire-derived title
+    from kimi_cli.session_state import load_session_state
 
-    # Always extract turn_count from wire.jsonl (cheap — bounded by max_bytes).
-    # Use metadata title if available, falling back to the wire-extracted one.
+    session_state = load_session_state(session_dir)
+
     title = ""
     turn_count = 0
     if wire_exists:
         title, turn_count = _extract_title_from_wire(wire_path)
-    metadata_title = (metadata_info or {}).get("title", "")
-    if metadata_title and metadata_title != "Untitled Session":
-        title = metadata_title
+    if session_state.custom_title:
+        title = session_state.custom_title
 
     # Count sub-agents
     subagent_count = 0
@@ -196,7 +191,7 @@ def _scan_session_dir(
         "has_wire": wire_exists,
         "has_context": context_exists,
         "has_state": state_exists,
-        "metadata": metadata_info,
+        "metadata": session_state.model_dump(mode="json"),
         "wire_size": wire_size,
         "context_size": context_size,
         "state_size": state_size,

@@ -114,6 +114,8 @@ export OPENAI_API_KEY="sk-xxx"
 | --- | --- |
 | `KIMI_SHARE_DIR` | 自定义共享目录路径（默认 `~/.kimi`） |
 | `KIMI_CLI_NO_AUTO_UPDATE` | 禁用自动更新检查 |
+| `KIMI_CLI_PASTE_CHAR_THRESHOLD` | 粘贴文本折叠的字符数阈值（默认 `1000`） |
+| `KIMI_CLI_PASTE_LINE_THRESHOLD` | 粘贴文本折叠的行数阈值（默认 `15`） |
 
 ### `KIMI_SHARE_DIR`
 
@@ -139,5 +141,35 @@ export KIMI_CLI_NO_AUTO_UPDATE="1"
 
 ::: tip 提示
 如果你通过 Nix 或其他包管理器安装 Kimi Code CLI，通常会自动设置此环境变量，因为更新由包管理器处理。
+:::
+
+### `KIMI_CLI_PASTE_CHAR_THRESHOLD`
+
+在 Agent 模式下，当粘贴文本的字符数达到此阈值时，文本会被折叠为占位符（如 `[Pasted text #1 +10 lines]`）显示，提交时自动展开为完整内容。默认值为 `1000`。
+
+```sh
+export KIMI_CLI_PASTE_CHAR_THRESHOLD="1000"
+```
+
+### `KIMI_CLI_PASTE_LINE_THRESHOLD`
+
+在 Agent 模式下，当粘贴文本的行数达到此阈值时，文本会被折叠为占位符显示。默认值为 `15`。
+
+```sh
+export KIMI_CLI_PASTE_LINE_THRESHOLD="15"
+```
+
+::: tip 提示
+部分终端（如通过 SSH 连接的 XShell）在粘贴多行文本后，可能出现中文/日文/韩文等 CJK 输入法无法正常工作的问题，表现为 IME 候选窗口不弹出或输入无响应，需要按 Ctrl+C 后才能恢复。
+
+这是因为多行文本在输入缓冲区中会导致终端光标定位信息错乱，影响 IME 的组合窗口定位。你可以通过降低行数阈值来规避此问题——将包含换行的粘贴内容折叠为单行占位符：
+
+```sh
+export KIMI_CLI_PASTE_LINE_THRESHOLD="2"
+```
+
+设置后，任何包含换行的粘贴内容都会被自动折叠，避免多行文本进入输入缓冲区。单行粘贴（如 URL、短命令）不受影响。
+
+注意：两个阈值的判断逻辑是"满足任一即折叠"（字符数 **或** 行数），因此只需调低行数阈值即可。不建议将字符数阈值设为很小的值（如 `1`），否则所有非空粘贴（包括单行短文本）都会被折叠。
 :::
 
