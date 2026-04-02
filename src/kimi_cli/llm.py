@@ -152,6 +152,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
@@ -160,6 +161,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic
@@ -170,6 +172,7 @@ def create_llm(
                 api_key=resolved_api_key,
                 default_max_tokens=50000,
                 metadata={"user_id": session_id} if session_id else None,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "google_genai" | "gemini":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI
@@ -178,6 +181,7 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "vertexai":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI
@@ -188,6 +192,7 @@ def create_llm(
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
                 vertexai=True,
+                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
         case "_echo":
             from kosong.chat_provider.echo import EchoChatProvider
