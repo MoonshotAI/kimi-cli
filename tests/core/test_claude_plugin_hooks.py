@@ -158,3 +158,48 @@ class TestHookTranslation:
 
         bundle = load_claude_plugins([plugin_dir])
         assert len(bundle.plugins["demo"].hooks) == 2
+
+    def test_bad_timeout_skips_entry_not_plugin(self, tmp_path: Path) -> None:
+        """A non-integer timeout must skip only that hook entry,
+        not crash the entire plugin load."""
+        hooks_data = {
+            "hooks": {
+                "SessionStart": [
+                    {
+                        "hooks": [
+                            {"type": "command", "command": "echo good", "timeout": 5},
+                            {"type": "command", "command": "echo bad", "timeout": "not_a_number"},
+                            {"type": "command", "command": "echo also_good"},
+                        ]
+                    }
+                ]
+            }
+        }
+        # Also add a skill so we can verify it survives the bad hook
+        plugin_dir = _make_plugin_with_hooks(tmp_path, hooks_data)
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: a skill\n---\nHello",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+
+        # Plugin must still be loaded
+        assert "demo" in bundle.plugins
+
+        # The good hooks should survive
+        assert len(bundle.plugins["demo"].hooks) == 2
+        commands = [h.command for h in bundle.plugins["demo"].hooks]
+        assert "echo good" in commands
+        assert "echo also_good" in commands
+
+        # The bad entry produced a warning
+        assert any("timeout" in w.lower() or "bad" in w.lower()
+                    for w in bundle.plugins["demo"].warnings)
+
+        # Skills are not affected
+        assert "demo:hello" in bundle.plugins["demo"].skills

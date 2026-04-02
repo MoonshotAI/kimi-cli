@@ -96,7 +96,20 @@ def load_plugin_hooks(runtime: ClaudePluginRuntime) -> None:
                     continue
 
                 command = expand_plugin_root(command, plugin_root)
-                raw_timeout: int = int(e.get("timeout", 30))
+
+                try:
+                    raw_timeout = int(e.get("timeout", 30))
+                except (ValueError, TypeError) as exc:
+                    runtime.warnings.append(
+                        f"Invalid hook timeout in plugin '{plugin_name}': {exc}"
+                    )
+                    logger.warning(
+                        "Invalid hook timeout in plugin '{plugin}': {error}",
+                        plugin=plugin_name,
+                        error=exc,
+                    )
+                    continue
+
                 timeout = max(1, min(600, raw_timeout))
 
                 try:
