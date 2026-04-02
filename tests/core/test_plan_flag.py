@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -285,3 +286,75 @@ class TestSchedulePlanActivationReminder:
         assert soul.plan_mode is False
         soul.schedule_plan_activation_reminder()
         assert soul._pending_plan_activation_injection is False
+
+
+class TestWebWorkerResumedDetection:
+    """Verify web worker derives `resumed` from session state on disk."""
+
+    @pytest.mark.asyncio
+    async def test_new_session_without_state_file_is_not_resumed(self, tmp_path):
+        """A brand-new web session (no state.json) should pass resumed=False."""
+        from kimi_cli.web.runner.worker import run_worker
+
+        session_dir = tmp_path / "session-dir"
+        session_dir.mkdir()
+        # No state.json → new session
+
+        create_calls: list[dict] = []
+
+        class _StopWorker(Exception):
+            pass
+
+        async def spy_create(session, **kwargs):
+            create_calls.append(kwargs)
+            raise _StopWorker  # abort after capturing args
+
+        fake_session = SimpleNamespace(dir=session_dir)
+        fake_joint = SimpleNamespace(kimi_cli_session=fake_session)
+
+        with (
+            patch("kimi_cli.web.runner.worker.load_session_by_id", return_value=fake_joint),
+            patch(
+                "kimi_cli.web.runner.worker.get_global_mcp_config_file",
+                return_value=tmp_path / "no-mcp.json",
+            ),
+            patch.object(KimiCLI, "create", side_effect=spy_create),
+            pytest.raises(_StopWorker),
+        ):
+            await run_worker(uuid4())
+
+        assert create_calls[0]["resumed"] is False
+
+    @pytest.mark.asyncio
+    async def test_existing_session_with_state_file_is_resumed(self, tmp_path):
+        """A session with state.json on disk should pass resumed=True."""
+        from kimi_cli.web.runner.worker import run_worker
+
+        session_dir = tmp_path / "session-dir"
+        session_dir.mkdir()
+        (session_dir / "state.json").write_text("{}", encoding="utf-8")
+
+        create_calls: list[dict] = []
+
+        class _StopWorker(Exception):
+            pass
+
+        async def spy_create(session, **kwargs):
+            create_calls.append(kwargs)
+            raise _StopWorker
+
+        fake_session = SimpleNamespace(dir=session_dir)
+        fake_joint = SimpleNamespace(kimi_cli_session=fake_session)
+
+        with (
+            patch("kimi_cli.web.runner.worker.load_session_by_id", return_value=fake_joint),
+            patch(
+                "kimi_cli.web.runner.worker.get_global_mcp_config_file",
+                return_value=tmp_path / "no-mcp.json",
+            ),
+            patch.object(KimiCLI, "create", side_effect=spy_create),
+            pytest.raises(_StopWorker),
+        ):
+            await run_worker(uuid4())
+
+        assert create_calls[0]["resumed"] is True
