@@ -77,6 +77,46 @@ def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
         subagent_store.update_instance(agent_id, status="failed")
 
 
+def _filter_supported_plugin_agent_tools(
+    raw_tools: list[str] | None,
+    *,
+    field_name: str,
+    agent_name: str,
+) -> tuple[list[str] | None, bool]:
+    """
+    Keep only plugin-agent tool entries that can be consumed by Kimi's
+    YAML-style tool loader.
+
+    Claude agent frontmatter often uses names like ``Read`` or ``Edit``.
+    Those are not valid Kimi import paths, so v1 treats them as best-effort
+    metadata: warn and ignore them instead of failing agent loading.
+    """
+    if raw_tools is None:
+        return None, False
+
+    supported: list[str] = []
+    ignored: list[str] = []
+    for entry in raw_tools:
+        if ":" in entry:
+            supported.append(entry)
+        else:
+            ignored.append(entry)
+
+    if ignored:
+        logger.warning(
+            "Ignoring unsupported Claude plugin agent {field} entries for {agent}: {entries}",
+            field=field_name,
+            agent=agent_name,
+            entries=ignored,
+        )
+
+    if supported:
+        return supported, True
+    if ignored:
+        return None, False
+    return [], True
+
+
 class KimiCLI:
     @staticmethod
     async def create(
@@ -317,17 +357,22 @@ class KimiCLI:
             and agent_file.suffix == ".md"
             and claude_plugin_bundle is not None
         ):
-            from kimi_cli.claude_plugin.agents import parse_agent_md
-
-            # Identify which plugin owns this agent file.
-            # Resolve to absolute path so relative --agent-file paths
-            # can be compared against absolute plugin roots.
+            # Only files already parsed from <plugin>/agents/ are eligible
+            # for plugin-agent overlay. Other Markdown files inside the
+            # plugin tree (for example commands/*.md) must not be reclassified.
             _resolved_agent = agent_file.resolve()
             for _pname, _prt in claude_plugin_bundle.plugins.items():
-                if _resolved_agent.is_relative_to(_prt.root):
-                    _claude_plugin_agent_spec = parse_agent_md(
-                        _resolved_agent, _pname
-                    )
+                _matched_agent = next(
+                    (
+                        _agent_spec
+                        for _agent_spec in _prt.agents.values()
+                        if _agent_spec.file_path is not None
+                        and _resolved_agent == _agent_spec.file_path.resolve()
+                    ),
+                    None,
+                )
+                if _matched_agent is not None:
+                    _claude_plugin_agent_spec = _matched_agent
                     break
 
             # Only fall back to DEFAULT_AGENT_FILE when we actually matched
@@ -353,16 +398,28 @@ class KimiCLI:
             original_llm = runtime.llm
             try:
                 base_agent_spec = load_agent_spec(DEFAULT_AGENT_FILE)
+                filtered_tools, tools_override = _filter_supported_plugin_agent_tools(
+                    plugin_agent_spec.tools,
+                    field_name="tools",
+                    agent_name=plugin_agent_spec.full_name,
+                )
+                filtered_allowed_tools, allowed_tools_override = (
+                    _filter_supported_plugin_agent_tools(
+                        plugin_agent_spec.allowed_tools,
+                        field_name="allowed-tools",
+                        agent_name=plugin_agent_spec.full_name,
+                    )
+                )
                 merged_tools: list[str] = (
-                    plugin_agent_spec.tools
-                    if plugin_agent_spec.tools is not None
+                    filtered_tools
+                    if tools_override and filtered_tools is not None
                     else base_agent_spec.tools
                 )
                 merged_allowed_tools: list[str] | None = (
-                    plugin_agent_spec.allowed_tools
-                    if plugin_agent_spec.allowed_tools is not None
+                    filtered_allowed_tools
+                    if allowed_tools_override
                     else None
-                    if plugin_agent_spec.tools is not None
+                    if tools_override
                     else base_agent_spec.allowed_tools
                 )
                 merged_agent_spec = dataclasses.replace(
@@ -482,8 +539,24 @@ class KimiCLI:
         # can autonomously choose plugin capabilities for goal-oriented requests
         if claude_plugin_bundle:
             from kimi_cli.claude_plugin.discovery import build_plugin_capability_summary
+            from kimi_cli.soul.kimisoul import FLOW_COMMAND_PREFIX, SKILL_COMMAND_PREFIX
+            from kimi_cli.soul.slash import registry as soul_slash_registry
 
-            cap_summary = build_plugin_capability_summary(claude_plugin_bundle)
+            reserved_command_names = {cmd.name for cmd in soul_slash_registry.list_commands()}
+            for skill in runtime.skills.values():
+                if skill.type not in ("standard", "flow"):
+                    continue
+                if skill.is_plugin:
+                    reserved_command_names.add(skill.name)
+                else:
+                    reserved_command_names.add(f"{SKILL_COMMAND_PREFIX}{skill.name}")
+                    if skill.type == "flow":
+                        reserved_command_names.add(f"{FLOW_COMMAND_PREFIX}{skill.name}")
+
+            cap_summary = build_plugin_capability_summary(
+                claude_plugin_bundle,
+                reserved_command_names=reserved_command_names,
+            )
             if cap_summary:
                 agent = dataclasses.replace(
                     agent,

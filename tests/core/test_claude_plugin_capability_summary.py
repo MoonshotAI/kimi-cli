@@ -59,6 +59,58 @@ class TestCapabilitySummary:
         assert "review code" in summary
         assert "slash command" in summary.lower()
 
+    def test_summary_omits_commands_that_conflict_with_registered_skill_names(
+        self, tmp_path: Path,
+    ) -> None:
+        plugin_dir = _make_plugin(tmp_path, "demo")
+        skill_dir = plugin_dir / "skills" / "hello"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: hello\ndescription: say hello\n---\nHello",
+            encoding="utf-8",
+        )
+        cmd_dir = plugin_dir / "commands"
+        cmd_dir.mkdir()
+        (cmd_dir / "hello.md").write_text(
+            "---\ndescription: conflicting command\n---\nRun hello",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import (
+            build_plugin_capability_summary,
+            load_claude_plugins,
+        )
+
+        bundle = load_claude_plugins([plugin_dir])
+        summary = build_plugin_capability_summary(bundle)
+
+        assert "say hello" in summary
+        assert "conflicting command" not in summary
+        assert "/demo:hello" not in summary
+
+    def test_summary_respects_reserved_command_names(self, tmp_path: Path) -> None:
+        plugin_dir = _make_plugin(tmp_path, "skill")
+        cmd_dir = plugin_dir / "commands"
+        cmd_dir.mkdir()
+        (cmd_dir / "hello.md").write_text(
+            "---\ndescription: reserved command\n---\nRun hello",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import (
+            build_plugin_capability_summary,
+            load_claude_plugins,
+        )
+
+        bundle = load_claude_plugins([plugin_dir])
+        summary = build_plugin_capability_summary(
+            bundle,
+            reserved_command_names={"skill:hello"},
+        )
+
+        assert "reserved command" not in summary
+        assert "/skill:hello" not in summary
+
     def test_summary_omits_agents(self, tmp_path: Path) -> None:
         """Agents are not autonomously executable — must not appear."""
         plugin_dir = _make_plugin(tmp_path, "demo")

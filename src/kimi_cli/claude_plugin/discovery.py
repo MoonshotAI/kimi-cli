@@ -293,7 +293,35 @@ def _load_plugin_settings(runtime: ClaudePluginRuntime) -> None:
         logger.warning(msg)
 
 
-def build_plugin_capability_summary(bundle: ClaudePluginBundle) -> str:
+def _effective_summary_command_names(
+    bundle: ClaudePluginBundle,
+    *,
+    reserved_names: set[str] | None = None,
+) -> set[str]:
+    """Return plugin command names that will actually be reachable in v1 summary."""
+    seen = set(reserved_names or ())
+    if reserved_names is None:
+        for plugin_rt in bundle.plugins.values():
+            for skill in plugin_rt.skills.values():
+                if skill.is_plugin and skill.type in ("standard", "flow"):
+                    seen.add(skill.name)
+
+    available: set[str] = set()
+    for plugin_rt in bundle.plugins.values():
+        for cmd_name in plugin_rt.commands:
+            if cmd_name in seen:
+                continue
+            available.add(cmd_name)
+            seen.add(cmd_name)
+
+    return available
+
+
+def build_plugin_capability_summary(
+    bundle: ClaudePluginBundle,
+    *,
+    reserved_command_names: set[str] | None = None,
+) -> str:
     """Build a concise capability summary for model-visible context.
 
     Lists each plugin's **skills** (actionable — read the SKILL.md for
@@ -304,6 +332,10 @@ def build_plugin_capability_summary(bundle: ClaudePluginBundle) -> str:
     Returns an empty string when no plugin capabilities exist.
     """
     sections: list[str] = []
+    summary_command_names = _effective_summary_command_names(
+        bundle,
+        reserved_names=reserved_command_names,
+    )
 
     for name, plugin_rt in sorted(bundle.plugins.items()):
         lines: list[str] = []
@@ -318,6 +350,8 @@ def build_plugin_capability_summary(bundle: ClaudePluginBundle) -> str:
 
         # Commands: slash-command only, model should tell the user
         for cmd_name, cmd in sorted(plugin_rt.commands.items()):
+            if cmd_name not in summary_command_names:
+                continue
             desc = cmd.description or "No description"
             lines.append(f"- /{cmd_name} — {desc} (slash command only)")
 

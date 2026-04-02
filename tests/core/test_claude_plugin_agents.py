@@ -291,6 +291,38 @@ class TestNonPluginMdAgentPreserved:
         assert agent_file == Path("custom.md")
         assert _claude_plugin_agent_spec is None
 
+    def test_non_agent_markdown_inside_plugin_root_is_not_misidentified(self, tmp_path: Path) -> None:
+        """Only known files from <plugin>/agents/ should enable plugin-agent overlay."""
+        from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        plugin_dir = _make_plugin_with_agent(tmp_path)
+        command_md = plugin_dir / "commands" / "review.md"
+        command_md.parent.mkdir()
+        command_md.write_text(
+            "---\ndescription: review command\n---\nReview $ARGUMENTS",
+            encoding="utf-8",
+        )
+
+        bundle = load_claude_plugins([plugin_dir])
+        agent_file = command_md
+        resolved = agent_file.resolve()
+        matched = next(
+            (
+                agent_spec
+                for plugin_rt in bundle.plugins.values()
+                for agent_spec in plugin_rt.agents.values()
+                if agent_spec.file_path is not None and resolved == agent_spec.file_path.resolve()
+            ),
+            None,
+        )
+
+        if matched is not None:
+            agent_file = DEFAULT_AGENT_FILE
+
+        assert matched is None
+        assert agent_file == command_md
+
 
 class TestBrokenPluginAgentBestEffort:
     def test_invalid_agent_markdown_does_not_crash(self, tmp_path: Path) -> None:
@@ -640,6 +672,176 @@ class TestSettingsAgentSelection:
         kimi = await KimiCLI.create(session, config=config, plugin_dirs=[plugin_dir])
 
         assert kimi.soul.agent.runtime.llm is plugin_llm
+
+    @pytest.mark.asyncio
+    async def test_plugin_default_agent_ignores_unsupported_claude_tool_names(
+        self,
+        session,
+        config,
+        runtime,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import kimi_cli.app as app_module
+        from kimi_cli.app import KimiCLI
+
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "reviewer.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: reviewer",
+                    "description: claude tool names",
+                    "tools:",
+                    "  - Read",
+                    "---",
+                    "Body.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (plugin_dir / "settings.json").write_text(
+            json.dumps({"agent": "reviewer"}),
+            encoding="utf-8",
+        )
+
+        fake_context = SimpleNamespace(system_prompt=None)
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+        warnings: list[str] = []
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+                self.agent = agent
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return runtime
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+        monkeypatch.setattr(
+            app_module.logger,
+            "warning",
+            lambda message, *args, **kwargs: warnings.append(
+                str(message).format(*args, **kwargs) if kwargs else str(message)
+            ),
+        )
+
+        import kimi_cli.plugin.manager as plugin_manager_module
+        import kimi_cli.plugin.tool as plugin_tool_module
+
+        monkeypatch.setattr(plugin_manager_module, "get_plugins_dir", lambda: tmp_path / "empty")
+        monkeypatch.setattr(plugin_tool_module, "load_plugin_tools", lambda *_args, **_kwargs: [])
+
+        kimi = await KimiCLI.create(session, config=config, plugin_dirs=[plugin_dir])
+
+        assert kimi.soul.agent.name == "demo:reviewer"
+        assert "Shell" in [tool.name for tool in kimi.soul.agent.toolset.tools]
+        assert any("Read" in warning and "unsupported" in warning.lower() for warning in warnings)
+
+    @pytest.mark.asyncio
+    async def test_explicit_plugin_agent_ignores_unsupported_claude_allowed_tools(
+        self,
+        session,
+        config,
+        runtime,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import kimi_cli.app as app_module
+        from kimi_cli.app import KimiCLI
+
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        agent_file = agents_dir / "reviewer.md"
+        agent_file.write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: reviewer",
+                    "description: claude allowed tools",
+                    "allowed-tools:",
+                    "  - Read",
+                    "---",
+                    "Body.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        fake_context = SimpleNamespace(system_prompt=None)
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+        warnings: list[str] = []
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+                self.agent = agent
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return runtime
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+        monkeypatch.setattr(
+            app_module.logger,
+            "warning",
+            lambda message, *args, **kwargs: warnings.append(
+                str(message).format(*args, **kwargs) if kwargs else str(message)
+            ),
+        )
+
+        import kimi_cli.plugin.manager as plugin_manager_module
+        import kimi_cli.plugin.tool as plugin_tool_module
+
+        monkeypatch.setattr(plugin_manager_module, "get_plugins_dir", lambda: tmp_path / "empty")
+        monkeypatch.setattr(plugin_tool_module, "load_plugin_tools", lambda *_args, **_kwargs: [])
+
+        kimi = await KimiCLI.create(
+            session,
+            config=config,
+            plugin_dirs=[plugin_dir],
+            agent_file=agent_file,
+        )
+
+        assert kimi.soul.agent.name == "demo:reviewer"
+        assert "Shell" in [tool.name for tool in kimi.soul.agent.toolset.tools]
+        assert any("Read" in warning and "unsupported" in warning.lower() for warning in warnings)
 
 
 class TestPluginSkillMergeNormalization:
