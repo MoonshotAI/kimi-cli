@@ -521,18 +521,30 @@ async def test_read_tail_max_lines(read_file_tool: ReadFile, temp_work_dir: Kaos
 
 
 async def test_read_tail_max_bytes(read_file_tool: ReadFile, temp_work_dir: KaosPath):
-    """Tail mode should respect MAX_BYTES boundary."""
+    """Tail mode MAX_BYTES truncation should keep newest lines (closest to EOF)."""
     large_file = temp_work_dir / "tail_bytes.txt"
-    # Each line ~1000 bytes, need > 100KB = ~105 lines to exceed MAX_BYTES
-    line_content = "B" * 1000
-    num_lines = (MAX_BYTES // 1000) + 20
-    content = "\n".join([line_content] * num_lines)
+    # Each line ~1001 bytes (1000 chars + \n), need > 100KB to exceed MAX_BYTES
+    num_lines = (MAX_BYTES // 1001) + 20
+    # Tag each line with its number so we can verify which lines are kept
+    lines_data = [f"{i:04d}{'B' * 996}" for i in range(1, num_lines + 1)]
+    content = "\n".join(lines_data)
     await large_file.write_text(content)
 
     result = await read_file_tool(Params(path=str(large_file), line_offset=-(num_lines)))
     assert not result.is_error
     assert f"Max {MAX_BYTES} bytes reached" in result.message
     assert f"Total lines in file: {num_lines}." in result.message
+
+    # Verify that the LAST line of the file is included (newest lines kept)
+    assert isinstance(result.output, str)
+    output_lines = [x for x in result.output.split("\n") if x.strip()]
+    last_output = output_lines[-1].split("\t", 1)[1]
+    assert last_output.startswith(f"{num_lines:04d}"), (
+        "MAX_BYTES truncation should keep newest lines closest to EOF"
+    )
+    # Verify that the first output line is NOT line 1 (oldest lines trimmed)
+    first_output = output_lines[0].split("\t", 1)[1]
+    assert not first_output.startswith("0001"), "MAX_BYTES truncation should trim oldest lines"
 
 
 async def test_read_tail_line_truncation(read_file_tool: ReadFile, temp_work_dir: KaosPath):
