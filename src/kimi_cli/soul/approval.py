@@ -151,6 +151,7 @@ class Approval:
             from pathlib import Path
 
             from kimi_cli.hooks import events
+            from kimi_cli.soul.toolset import _get_session_id
 
             # Build tool_input from action and description
             tool_input: dict = {"action": action, "description": description}
@@ -159,7 +160,7 @@ class Approval:
                 "PermissionRequest",
                 matcher_value=tool_call.function.name,
                 input_data=events.permission_request(
-                    session_id=tool_call.id,  # Use tool_call.id as session identifier
+                    session_id=_get_session_id(),  # Use actual CLI session id
                     cwd=str(Path.cwd()),
                     tool_name=tool_call.function.name,
                     tool_input=tool_input,
@@ -168,26 +169,41 @@ class Approval:
                     description=description,
                 ),
             )
+
+            # Aggregate results: block takes priority, then allow, then ask
+            # Timeouts/errors result in "ask" (fall back to terminal approval)
+            has_explicit_allow = False
+            allow_reason = ""
+            block_reason = ""
+
             for result in hook_results:
-                if result.action == "allow":
-                    # Hook explicitly allows - skip terminal approval
-                    logger.debug(
-                        "PermissionRequest hook allowed {tool_name}",
-                        tool_name=tool_call.function.name,
-                    )
-                    return ApprovalResult(approved=True)
-                elif result.action == "block":
-                    # Hook explicitly denies
-                    logger.debug(
-                        "PermissionRequest hook denied {tool_name}: {reason}",
-                        tool_name=tool_call.function.name,
-                        reason=result.reason,
-                    )
-                    return ApprovalResult(
-                        approved=False,
-                        feedback=result.reason or "Denied by PermissionRequest hook",
-                    )
-                # result.action == "ask" means continue to terminal approval
+                if result.action == "block":
+                    # Block takes highest priority
+                    block_reason = result.reason
+                    break
+                elif result.action == "allow":
+                    # Allow only if no block found
+                    has_explicit_allow = True
+                    allow_reason = result.reason
+                # result.action == "ask" or timeout/error: continue to check other results
+
+            if block_reason:
+                logger.debug(
+                    "PermissionRequest hook denied {tool_name}: {reason}",
+                    tool_name=tool_call.function.name,
+                    reason=block_reason,
+                )
+                return ApprovalResult(
+                    approved=False,
+                    feedback=block_reason or "Denied by PermissionRequest hook",
+                )
+            elif has_explicit_allow:
+                logger.debug(
+                    "PermissionRequest hook allowed {tool_name}",
+                    tool_name=tool_call.function.name,
+                )
+                return ApprovalResult(approved=True)
+            # If no explicit decision or only "ask", continue to terminal approval
 
         request_id = str(uuid.uuid4())
         display_blocks = display or []
