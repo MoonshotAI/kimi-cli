@@ -62,9 +62,12 @@ class BuiltinSystemPromptArgs:
     """The operating system kind, e.g. 'Windows', 'macOS', 'Linux'."""
     KIMI_SHELL: str
     """The shell executable used by the Shell tool, e.g. 'bash (`/bin/bash`)'."""
+    KIMI_ACTIVE_RULES: str
+    """The formatted content of active development rules for injection into system prompt."""
 
 
 _AGENTS_MD_MAX_BYTES = 32 * 1024  # 32 KiB
+_RULES_MAX_BYTES = 32 * 1024  # 32 KiB
 
 
 async def _find_project_root(work_dir: KaosPath) -> KaosPath:
@@ -208,6 +211,8 @@ class Runtime:
     role: Literal["root", "subagent"] = "root"
     hook_engine: Any = None
     """HookEngine instance, set by KimiCLI after soul creation."""
+    rules_registry: Any = None
+    """RulesRegistry instance for managing development rules. Set during Runtime.create."""
 
     def __post_init__(self) -> None:
         if self.subagent_store is None:
@@ -308,6 +313,39 @@ class Runtime:
             config.notifications,
         )
 
+        # Load rules if enabled
+        rules_registry = None
+        active_rules_content = ""
+        if config.rules.enabled:
+            from kimi_cli.rules import RulesRegistry, RulesStateManager
+
+            rules_registry = RulesRegistry(
+                session.work_dir,
+                config=config.rules,
+                state_manager=RulesStateManager(session.work_dir),
+            )
+            await rules_registry.load()
+
+            # Format active rules for system prompt
+            active_rules = rules_registry.get_active_rules()
+            if active_rules:
+                max_size = config.rules.max_total_size or _RULES_MAX_BYTES
+                lines = []
+                total_size = 0
+                for rule in sorted(active_rules, key=lambda r: r.metadata.priority):
+                    section = f"## {rule.name}\n\n{rule.content}\n\n"
+                    section_size = len(section.encode("utf-8"))
+                    if total_size + section_size > max_size:
+                        break
+                    lines.append(section)
+                    total_size += section_size
+                active_rules_content = "".join(lines).strip()
+                logger.info(
+                    "Loaded {count} active rules ({size} bytes)",
+                    count=len(active_rules),
+                    size=total_size,
+                )
+
         return Runtime(
             config=config,
             oauth=oauth,
@@ -322,6 +360,7 @@ class Runtime:
                 KIMI_ADDITIONAL_DIRS_INFO=additional_dirs_info,
                 KIMI_OS=environment.os_kind,
                 KIMI_SHELL=f"{environment.shell_name} (`{environment.shell_path}`)",
+                KIMI_ACTIVE_RULES=active_rules_content,
             ),
             denwa_renji=DenwaRenji(),
             approval=Approval(state=approval_state),
@@ -344,6 +383,7 @@ class Runtime:
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
             role="root",
+            rules_registry=rules_registry,
         )
 
     def copy_for_subagent(
@@ -376,6 +416,7 @@ class Runtime:
             subagent_id=agent_id,
             subagent_type=subagent_type,
             role="subagent",
+            rules_registry=self.rules_registry,
         )
 
 
