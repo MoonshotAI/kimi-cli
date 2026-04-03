@@ -12,6 +12,7 @@ interface WelcomeBoxProps {
   workDir?: string;
   sessionId?: string;
   modelName?: string;
+  poweredBy?: string;
   tip?: string;
 }
 
@@ -19,6 +20,7 @@ export function WelcomeBox({
   workDir,
   sessionId,
   modelName,
+  poweredBy,
   tip,
 }: WelcomeBoxProps) {
   // Shorten home directory
@@ -35,7 +37,7 @@ export function WelcomeBox({
       borderColor={KIMI_BLUE}
       flexDirection="column"
       paddingX={1}
-      paddingY={0}
+      paddingY={1}
     >
       {/* Logo + Welcome */}
       <Box>
@@ -70,7 +72,12 @@ export function WelcomeBox({
       <Text>
         <Text color="#888888">  Model: </Text>
         {modelName ? (
-          <Text>{modelName}</Text>
+          <Text>
+            {modelName}
+            {poweredBy && poweredBy !== modelName && (
+              <Text color="#888888"> (powered by {poweredBy})</Text>
+            )}
+          </Text>
         ) : (
           <Text color="yellow">not set, send /login to login</Text>
         )}

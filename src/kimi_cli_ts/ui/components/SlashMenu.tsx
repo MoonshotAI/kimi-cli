@@ -62,13 +62,44 @@ function filterCommands(
   if (!filter) return commands;
 
   const lower = filter.toLowerCase();
-  return commands.filter((cmd) => {
-    if (cmd.name.toLowerCase().includes(lower)) return true;
-    if (cmd.aliases) {
-      return cmd.aliases.some((a) => a.toLowerCase().includes(lower));
+  return commands
+    .map((cmd) => {
+      const nameScore = fuzzyScore(cmd.name.toLowerCase(), lower);
+      const aliasScores = (cmd.aliases ?? []).map((a) =>
+        fuzzyScore(a.toLowerCase(), lower),
+      );
+      const best = Math.max(nameScore, ...aliasScores);
+      return { cmd, score: best };
+    })
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((r) => r.cmd);
+}
+
+/**
+ * Fuzzy match: characters of `pattern` must appear in `text` in order.
+ * Returns a score > 0 on match (higher = tighter), 0 on miss.
+ * Bonus for consecutive matches and prefix match.
+ */
+function fuzzyScore(text: string, pattern: string): number {
+  let ti = 0;
+  let pi = 0;
+  let score = 0;
+  let consecutive = 0;
+
+  while (ti < text.length && pi < pattern.length) {
+    if (text[ti] === pattern[pi]) {
+      score += 1 + consecutive;
+      consecutive++;
+      // Bonus for matching at start
+      if (ti === pi) score += 2;
+      pi++;
+    } else {
+      consecutive = 0;
     }
-    return false;
-  });
+    ti++;
+  }
+  return pi === pattern.length ? score : 0;
 }
 
 /** Get filtered command count (used by parent to know menu size) */

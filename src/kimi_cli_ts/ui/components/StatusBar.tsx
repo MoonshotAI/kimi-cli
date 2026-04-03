@@ -100,8 +100,8 @@ export function StatusBar({
   const contextUsage = status?.context_usage;
   const contextPercent =
     contextUsage != null ? (contextUsage * 100).toFixed(1) : "0.0";
-  const contextTokens = (status as Record<string, unknown>)?.context_tokens as number | undefined;
-  const maxContextTokens = (status as Record<string, unknown>)?.max_context_tokens as number | undefined;
+  const contextTokens = status?.context_tokens;
+  const maxContextTokens = status?.max_context_tokens;
   const contextDetail =
     contextTokens != null && maxContextTokens != null
       ? ` (${formatTokenCount(contextTokens)}/${formatTokenCount(maxContextTokens)})`

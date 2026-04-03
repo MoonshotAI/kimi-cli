@@ -20,7 +20,7 @@ import { normalizeHistory } from "./dynamic_injection.ts";
 import { PlanModeInjectionProvider } from "./dynamic_injections/plan_mode.ts";
 import { YoloModeInjectionProvider } from "./dynamic_injections/yolo_mode.ts";
 import { handleNew, handleSessions, handleTitle } from "../ui/shell/commands/session.ts";
-import { handleModel } from "../ui/shell/commands/model.ts";
+import { handleModel, createModelPanel } from "../ui/shell/commands/model.ts";
 import { handleLogin, handleLogout, createLoginPanel } from "../ui/shell/commands/login.ts";
 import { handleHooks, handleMcp, handleDebug, handleChangelog } from "../ui/shell/commands/info.ts";
 import { handleExport, handleImport } from "../ui/shell/commands/export_import.ts";
@@ -811,9 +811,12 @@ export class KimiSoul {
     // Wire /model
     const modelCmd = registry.get("model");
     if (modelCmd) {
+      const notify = (t: string, b: string) => this.notify(t, b);
+      const configMeta = { isFromDefaultLocation: true, sourceFile: null };
       modelCmd.handler = async () => {
-        await handleModel(this.agent.runtime.config, { isFromDefaultLocation: true, sourceFile: null });
+        await handleModel(this.agent.runtime.config, configMeta, notify);
       };
+      modelCmd.panel = () => createModelPanel(this.agent.runtime.config, configMeta, notify);
     }
 
     // Wire /export

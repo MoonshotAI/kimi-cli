@@ -34,7 +34,51 @@ import type { WireUIEvent } from "./events.ts";
 import type { ApprovalResponseKind } from "../../wire/types.ts";
 import type { SlashCommand, CommandPanelConfig } from "../../types.ts";
 
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 const INPUT_MIN_HEIGHT = 6;
+
+/**
+ * Open $VISUAL / $EDITOR / vim to compose multi-line input.
+ * After the editor exits, submit the content.
+ */
+async function openExternalEditor(
+  pushNotification: (title: string, body: string) => void,
+  onSubmit?: (input: string) => void,
+): Promise<void> {
+  const editor = process.env.VISUAL || process.env.EDITOR || "vim";
+  const tmpFile = join(tmpdir(), `kimi-input-${Date.now()}.md`);
+
+  try {
+    await Bun.write(tmpFile, "");
+
+    const proc = Bun.spawn(editor.split(/\s+/).concat(tmpFile), {
+      stdio: ["inherit", "inherit", "inherit"],
+    });
+    const code = await proc.exited;
+
+    if (code !== 0) {
+      pushNotification("Editor", `Editor exited with code ${code}`);
+      return;
+    }
+
+    const content = await Bun.file(tmpFile).text();
+    const trimmed = content.trim();
+    if (trimmed && onSubmit) {
+      onSubmit(trimmed);
+    } else if (!trimmed) {
+      pushNotification("Editor", "Empty input, nothing submitted.");
+    }
+  } catch (err: any) {
+    pushNotification("Editor", `Failed to open editor: ${err?.message ?? err}`);
+  } finally {
+    try {
+      const fs = require("node:fs");
+      fs.unlinkSync(tmpFile);
+    } catch { /* ignore */ }
+  }
+}
 
 /** Deduplicate commands by name, shell commands take priority */
 function deduplicateCommands(commands: SlashCommand[]): SlashCommand[] {
@@ -166,6 +210,9 @@ export function Shell({
                 pushNotification("Plan mode", `Error: ${String(err)}`);
               });
           }
+          break;
+        case "open-editor":
+          openExternalEditor(pushNotification, onSubmit);
           break;
         // "exit" is handled internally by useKeyboard (calls exit())
       }

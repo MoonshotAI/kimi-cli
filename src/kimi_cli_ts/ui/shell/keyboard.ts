@@ -17,7 +17,8 @@ export type KeyAction =
   | "interrupt"
   | "exit"
   | "clear-input"
-  | "toggle-plan-mode";
+  | "toggle-plan-mode"
+  | "open-editor";
 
 export interface UseKeyboardOptions {
   onAction: (action: KeyAction) => void;
@@ -93,6 +94,12 @@ export function useKeyboard({ onAction, active = true }: UseKeyboardOptions) {
       // ── Shift+Tab ─────────────────────────────────
       if (key.shift && key.tab) {
         onAction("toggle-plan-mode");
+        return;
+      }
+
+      // ── Ctrl+O ────────────────────────────────────
+      if (input === "o" && key.ctrl) {
+        onAction("open-editor");
         return;
       }
 

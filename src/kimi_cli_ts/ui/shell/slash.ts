@@ -30,7 +30,7 @@ export function createShellSlashCommands(
     {
       name: "clear",
       description: "Clear conversation history",
-      aliases: ["cls"],
+      aliases: ["cls", "reset"],
       handler: async () => {
         ctx.clearMessages();
       },
