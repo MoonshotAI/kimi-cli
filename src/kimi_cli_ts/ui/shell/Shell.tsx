@@ -12,7 +12,7 @@
  * - StatusBar: always at bottom
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { Box, useApp, useStdout } from "ink";
 import { MessageList } from "./Visualize.tsx";
 import { Prompt } from "./Prompt.tsx";
@@ -23,7 +23,6 @@ import { CommandPanel } from "../components/CommandPanel.tsx";
 import { useGitStatus } from "../hooks/useGitStatus.ts";
 import { StreamingSpinner, CompactionSpinner } from "../components/Spinner.tsx";
 import { useWire } from "../hooks/useWire.ts";
-import { useKeyboard } from "./keyboard.ts";
 import {
   createShellSlashCommands,
   parseSlashCommand,
@@ -31,6 +30,7 @@ import {
 } from "./slash.ts";
 import { setActiveTheme } from "../theme.ts";
 import type { WireUIEvent } from "./events.ts";
+import type { KeyAction } from "./keyboard.ts";
 import type { ApprovalResponseKind } from "../../wire/types.ts";
 import type { SlashCommand, CommandPanelConfig } from "../../types.ts";
 
@@ -38,34 +38,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const INPUT_MIN_HEIGHT = 6;
-
-/**
- * Paste text from clipboard (matches Python Ctrl+V behavior).
- * macOS: pbpaste, Linux: xclip/xsel/wl-paste
- */
-async function pasteFromClipboard(
-  setPasteText: (text: string | undefined) => void,
-  pushNotification: (title: string, body: string) => void,
-): Promise<void> {
-  const commands = process.platform === "darwin"
-    ? [["pbpaste"]]
-    : [["xclip", "-selection", "clipboard", "-o"], ["xsel", "--clipboard", "--output"], ["wl-paste"]];
-
-  for (const cmd of commands) {
-    try {
-      const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "ignore" });
-      const text = await new Response(proc.stdout).text();
-      const code = await proc.exited;
-      if (code === 0 && text) {
-        setPasteText(text);
-        // Reset after a tick so the effect fires
-        setTimeout(() => setPasteText(undefined), 0);
-        return;
-      }
-    } catch { /* try next */ }
-  }
-  pushNotification("Paste", "Clipboard is empty or not available.");
-}
 
 /**
  * Run a shell command in foreground (matches Python _run_shell_command).
@@ -191,8 +163,14 @@ export function Shell({
   const [activePanel, setActivePanel] = useState<CommandPanelConfig | null>(null);
   const [clearInputSignal, setClearInputSignal] = useState(0);
   const [shellMode, setShellMode] = useState(false);
-  const [newlineSignal, setNewlineSignal] = useState(0);
-  const [pasteText, setPasteText] = useState<string | undefined>(undefined);
+
+  // Ctrl+C / Esc double-press tracking (moved from keyboard.ts)
+  const ctrlCCount = useRef(0);
+  const ctrlCTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const escCount = useRef(0);
+  const escTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const CTRLC_WINDOW = 2000;
+  const ESC_WINDOW = 500;
 
   // Wire state
   const wire = useWire({ onReady: onWireReady });
@@ -238,23 +216,40 @@ export function Shell({
     };
   }, [stdout]);
 
-  // Slash commands allowed in shell mode
-  const SHELL_MODE_COMMANDS = new Set(["clear", "exit", "help", "theme", "version", "quit", "q", "cls", "reset", "h", "?"]);
+  // Handle actions from Prompt's unified useInput
+  const handleAction = useCallback(
+    (action: KeyAction) => {
+      // Reset the OTHER counter on any action
+      if (action === "interrupt") {
+        // Could be Ctrl+C or Esc — we track both the same way now.
+        // Check Ctrl+C double-press for exit
+        ctrlCCount.current += 1;
+        if (ctrlCCount.current >= 2) {
+          ctrlCCount.current = 0;
+          if (ctrlCTimer.current) clearTimeout(ctrlCTimer.current);
+          exit();
+          return;
+        }
+        if (ctrlCTimer.current) clearTimeout(ctrlCTimer.current);
+        ctrlCTimer.current = setTimeout(() => {
+          ctrlCCount.current = 0;
+        }, CTRLC_WINDOW);
 
-  // Global keyboard handling
-  useKeyboard({
-    onAction: (action) => {
+        // Do the interrupt
+        if (activePanel) {
+          setActivePanel(null);
+        } else if (wire.isStreaming) {
+          onInterrupt?.();
+          wire.pushEvent({ type: "error", message: "Interrupted by user" });
+        }
+        pushNotification("Ctrl-C", "Press Ctrl-C again to exit");
+        return;
+      }
+
+      // Any non-interrupt action resets Ctrl+C counter
+      ctrlCCount.current = 0;
+
       switch (action) {
-        case "interrupt":
-          if (activePanel) {
-            setActivePanel(null);
-          } else if (wire.isStreaming) {
-            onInterrupt?.();
-            wire.pushEvent({ type: "error", message: "Interrupted by user" });
-          }
-          // Always show exit hint on Ctrl+C
-          pushNotification("Ctrl-C", "Press Ctrl-C again to exit");
-          break;
         case "clear-input":
           setClearInputSignal((n) => n + 1);
           break;
@@ -282,17 +277,13 @@ export function Shell({
         case "open-editor":
           openExternalEditor(pushNotification, onSubmit);
           break;
-        case "newline":
-          setNewlineSignal((n) => n + 1);
-          break;
-        case "paste-clipboard":
-          pasteFromClipboard(setPasteText, pushNotification);
-          break;
-        // "exit" is handled internally by useKeyboard (calls exit())
       }
     },
-    active: true,
-  });
+    [activePanel, wire, onInterrupt, onPlanModeToggle, onSubmit, pushNotification, exit],
+  );
+
+  // Slash commands allowed in shell mode
+  const SHELL_MODE_COMMANDS = new Set(["clear", "exit", "help", "theme", "version", "quit", "q", "cls", "reset", "h", "?"]);
 
   // Handle user input
   const handleSubmit = useCallback(
@@ -422,6 +413,7 @@ export function Shell({
           <Prompt
             onSubmit={handleSubmit}
             onOpenPanel={handleOpenPanel}
+            onAction={handleAction}
             disabled={false}
             isStreaming={wire.isStreaming}
             planMode={wire.status?.plan_mode ?? false}
@@ -431,8 +423,6 @@ export function Shell({
             onSlashMenuChange={setSlashMenuVisible}
             clearSignal={clearInputSignal}
             prefillText={prefillText}
-            newlineSignal={newlineSignal}
-            pasteText={pasteText}
           />
         )}
       </Box>
