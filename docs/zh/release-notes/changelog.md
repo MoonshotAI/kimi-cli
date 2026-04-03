@@ -5,6 +5,7 @@
 ## 未发布
 
 - ReadFile：每次读取返回文件总行数，并支持负数 `line_offset` 实现 tail 模式——工具现在会在消息中报告 `Total lines in file: N.`，方便模型规划后续读取；负数 `line_offset`（如 `-100`）通过滑动窗口读取文件末尾 N 行，适用于无需 Shell 命令即可查看最新日志输出的场景；绝对值上限为 1000（MAX_LINES）
+- Shell：修复 Markdown 渲染中行内代码和代码块出现黑色背景的问题——`NEUTRAL_MARKDOWN_THEME` 现在将所有 Rich 默认的 `markdown.*` 样式覆盖为 `"none"`，防止 Rich 内置的 `"cyan on black"` 在非黑色背景终端上泄露
 
 ## 1.30.0 (2026-04-02)
 
