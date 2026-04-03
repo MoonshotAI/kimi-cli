@@ -174,6 +174,17 @@ function VirtualizedMessageListComponent(
     [filteredMessages],
   );
 
+  // Memoize initial scroll position to prevent re-scrolling on re-renders
+  const initialTopMostItemIndex = useMemo(
+    () => ({
+      index: Math.max(0, listItems.length - 1),
+      align: "end" as const,
+    }),
+    // Only recompute when conversation changes (new session), not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversationKey],
+  );
+
   const handleAtBottomChange = useCallback(
     (atBottom: boolean) => {
       onAtBottomChange?.(atBottom);
@@ -245,10 +256,7 @@ function VirtualizedMessageListComponent(
       overscan={200}
       minOverscanItemCount={4}
       atBottomStateChange={handleAtBottomChange}
-      initialTopMostItemIndex={{
-        index: Math.max(0, listItems.length - 1),
-        align: "end",
-      }}
+      initialTopMostItemIndex={initialTopMostItemIndex}
       components={{
         Scroller: VirtuosoScroller,
         List: VirtuosoList,
