@@ -11,6 +11,7 @@ from kimi_cli.approval_runtime import (
     reset_current_approval_source,
     set_current_approval_source,
 )
+from kimi_cli.soul import RunCancelled
 from kimi_cli.subagents.builder import SubagentBuilder
 from kimi_cli.subagents.core import SubagentRunSpec, prepare_soul
 from kimi_cli.subagents.output import SubagentOutputWriter
@@ -99,6 +100,13 @@ class BackgroundAgentRunner:
             self._manager._mark_task_killed(self._task_id, "Stopped by TaskStop")
             output.stage("cancelled")
             raise
+        except RunCancelled:
+            # RunCancelled is Exception (not BaseException), so re-raising it from
+            # an asyncio.create_task would trigger "Task exception was never retrieved".
+            # Just mark killed and return — cleanup is already done.
+            self._runtime.subagent_store.update_instance(self._agent_id, status="killed")
+            self._manager._mark_task_killed(self._task_id, "Run was cancelled")
+            output.stage("cancelled")
         except Exception as exc:
             logger.exception("Background agent runner failed")
             self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
@@ -165,7 +173,13 @@ class BackgroundAgentRunner:
             return
         output.stage("run_soul_finished")
 
-        assert final_response is not None
+        if final_response is None:
+            self._manager._mark_task_failed(
+                self._task_id, "Agent completed but produced no output."
+            )
+            self._runtime.subagent_store.update_instance(self._agent_id, status="failed")
+            output.stage("failed: empty output")
+            return
         output.summary(final_response)
         self._runtime.subagent_store.update_instance(self._agent_id, status="idle")
         self._manager._mark_task_completed(self._task_id)

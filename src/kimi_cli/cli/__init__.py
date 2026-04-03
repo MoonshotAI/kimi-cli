@@ -14,9 +14,10 @@ from ._lazy_group import LazySubcommandGroup
 class Reload(Exception):
     """Reload configuration."""
 
-    def __init__(self, session_id: str | None = None):
+    def __init__(self, session_id: str | None = None, prefill_text: str | None = None):
         super().__init__("reload")
         self.session_id = session_id
+        self.prefill_text = prefill_text
         self.source_session: Session | None = None
 
 
@@ -542,7 +543,7 @@ def kimi(
     # exception handler can clean it up even when _run() fails before returning.
     _latest_created_session: Session | None = None
 
-    async def _run(session_id: str | None) -> tuple[Session, int]:
+    async def _run(session_id: str | None, prefill_text: str | None = None) -> tuple[Session, int]:
         """
         Create/load session and run the CLI instance.
 
@@ -565,7 +566,10 @@ def kimi(
                     )
                     session = await Session.create(work_dir, session_id)
                 else:
-                    resumed = True
+                    # Only count as "resumed" if the session has actual turns.
+                    # Sessions created by /new, /undo (turn 0), /fork via Reload
+                    # may have a custom_title but no wire content — treat as startup.
+                    resumed = not session.wire_file.is_empty()
                 logger.info("Resuming session: {session_id}", session_id=session.id)
             elif continue_:
                 session = await Session.continue_(work_dir)
@@ -669,7 +673,7 @@ def kimi(
             try:
                 match ui:
                     case "shell":
-                        shell_ok = await instance.run_shell(prompt)
+                        shell_ok = await instance.run_shell(prompt, prefill_text=prefill_text)
                         exit_code = ExitCode.SUCCESS if shell_ok else ExitCode.FAILURE
                     case "print":
                         exit_code = await instance.run_print(
@@ -691,7 +695,7 @@ def kimi(
             except Reload as e:
                 preserve_background_tasks = True
                 if e.session_id is None:
-                    r = Reload(session_id=session.id)
+                    r = Reload(session_id=session.id, prefill_text=e.prefill_text)
                     r.source_session = session
                     raise r from e
                 e.source_session = session
@@ -738,7 +742,13 @@ def kimi(
             wdm.last_session_id = None
             save_metadata(meta)
 
+    def _print_resume_hint(session: Session) -> None:
+        """Print a hint for resuming the session after exit."""
+        if not session.is_empty():
+            _emit_fatal_error(f"\nTo resume this session: kimi -r {session.id}")
+
     async def _post_run(last_session: Session, exit_code: int) -> None:
+        _print_resume_hint(last_session)
         if last_session.is_empty():
             # Always clean up empty sessions regardless of exit code
             await _delete_empty_session(last_session)
@@ -762,10 +772,11 @@ def kimi(
             or None if the session ended normally.
         """
         last_session: Session | None = None
+        prefill_text: str | None = None
         try:
             while True:
                 try:
-                    last_session, exit_code = await _run(session_id)
+                    last_session, exit_code = await _run(session_id, prefill_text=prefill_text)
                     break
                 except Reload as e:
                     # Clean up old empty session when switching to a different session
@@ -775,7 +786,12 @@ def kimi(
                         last_session = None
                     else:
                         last_session = e.source_session
+                        # Only print resume hint when switching to a different session
+                        # (not for same-session reloads like /model, /theme, /reload)
+                        if old is not None and e.session_id is not None and old.id != e.session_id:
+                            _print_resume_hint(old)
                     session_id = e.session_id
+                    prefill_text = e.prefill_text
                     continue
                 except SwitchToWeb as e:
                     if e.session_id is not None:
@@ -800,9 +816,11 @@ def kimi(
             # Best-effort cleanup: _latest_created_session is the session from
             # the most recent _run() call, which may have failed before returning.
             # last_session is from a *previous* iteration and must not be touched.
-            if _latest_created_session is not None and _latest_created_session.is_empty():
-                with contextlib.suppress(Exception):
-                    await _delete_empty_session(_latest_created_session)
+            if _latest_created_session is not None:
+                _print_resume_hint(_latest_created_session)
+                if _latest_created_session.is_empty():
+                    with contextlib.suppress(Exception):
+                        await _delete_empty_session(_latest_created_session)
             raise
 
     if _picker_mode:

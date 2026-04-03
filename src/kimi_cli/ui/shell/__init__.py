@@ -8,7 +8,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol
 
 from kosong.chat_provider import APIStatusError, ChatProviderError
 from rich.console import Group, RenderableType
@@ -64,6 +64,9 @@ class _PromptEvent:
 _MAX_BG_AUTO_TRIGGER_FAILURES = 3
 """Stop auto-triggering after this many consecutive failures."""
 
+_BG_AUTO_TRIGGER_INPUT_GRACE_S = 0.75
+"""Delay background auto-trigger briefly after local prompt activity."""
+
 
 class _BackgroundCompletionWatcher:
     """Watches for background task completions and auto-triggers the agent.
@@ -71,11 +74,22 @@ class _BackgroundCompletionWatcher:
     Sits between the idle event loop and the soul: when a background task
     finishes while the agent is idle *and* the LLM hasn't consumed the
     notification yet, it triggers a soul run.
+
+    Important: pre-existing pending notifications alone should not trigger a
+    foreground run immediately on session resume. They are consumed either by
+    the next actual background completion signal or by the next user-triggered
+    turn.
     """
 
-    def __init__(self, soul: Soul) -> None:
+    def __init__(
+        self,
+        soul: Soul,
+        *,
+        can_auto_trigger_pending: Callable[[], bool] | None = None,
+    ) -> None:
         self._event: asyncio.Event | None = None
         self._notifications: NotificationManager | None = None
+        self._can_auto_trigger_pending = can_auto_trigger_pending or (lambda: True)
         if isinstance(soul, KimiSoul):
             self._event = soul.runtime.background_tasks.completion_event
             self._notifications = soul.runtime.notifications
@@ -97,11 +111,16 @@ class _BackgroundCompletionWatcher:
         User input always takes priority over background completions.
         """
         if self.enabled and self._has_pending_llm_notifications():
-            # Pending notifications exist, but user input still wins.
+            # Pending notifications already exist (for example after resume).
+            # Before the user sends the first foreground turn after resume,
+            # pending background notifications should not auto-trigger a run.
+            # Once the shell is armed by a user-triggered turn, pending
+            # notifications can resume the normal auto-follow-up behavior.
             try:
                 return idle_events.get_nowait()
             except asyncio.QueueEmpty:
-                return None
+                if self._can_auto_trigger_pending():
+                    return None
 
         idle_task = asyncio.create_task(idle_events.get())
         if not self.enabled:
@@ -128,7 +147,9 @@ class _BackgroundCompletionWatcher:
         # Only bg fired
         self._event.clear()
         if self._has_pending_llm_notifications():
-            return None
+            if self._can_auto_trigger_pending():
+                return None
+            return _PromptEvent(kind="bg_noop")
         return _PromptEvent(kind="bg_noop")
 
     def _has_pending_llm_notifications(self) -> bool:
@@ -137,10 +158,26 @@ class _BackgroundCompletionWatcher:
         return self._notifications.has_pending_for_sink("llm")
 
 
+class _BackgroundAutoTriggerPromptState(Protocol):
+    def has_pending_input(self) -> bool: ...
+
+    def had_recent_input_activity(self, *, within_s: float) -> bool: ...
+
+    def recent_input_activity_remaining(self, *, within_s: float) -> float: ...
+
+    async def wait_for_input_activity(self) -> None: ...
+
+
 class Shell:
-    def __init__(self, soul: Soul, welcome_info: list[WelcomeInfoItem] | None = None):
+    def __init__(
+        self,
+        soul: Soul,
+        welcome_info: list[WelcomeInfoItem] | None = None,
+        prefill_text: str | None = None,
+    ):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
+        self._prefill_text = prefill_text
         self._background_tasks: set[asyncio.Task[Any]] = set()
         self._prompt_session: CustomPromptSession | None = None
         self._running_input_handler: Callable[[UserInput], None] | None = None
@@ -354,6 +391,9 @@ class Shell:
             plan_mode_toggle_callback=_plan_mode_toggle,
         ) as prompt_session:
             self._prompt_session = prompt_session
+            if self._prefill_text:
+                prompt_session.set_prefill_text(self._prefill_text)
+                self._prefill_text = None
             if isinstance(self.soul, KimiSoul):
                 kimi_soul = self.soul
                 snapshot = kimi_soul.status.mcp_status
@@ -379,19 +419,44 @@ class Shell:
             prompt_task = asyncio.create_task(
                 self._route_prompt_events(prompt_session, idle_events, resume_prompt)
             )
-            bg_watcher = _BackgroundCompletionWatcher(self.soul)
+            background_autotrigger_armed = False
+
+            def _can_auto_trigger_pending() -> bool:
+                return background_autotrigger_armed
+
+            bg_watcher = _BackgroundCompletionWatcher(
+                self.soul,
+                can_auto_trigger_pending=_can_auto_trigger_pending,
+            )
 
             shell_ok = True
             bg_auto_failures = 0
+            deferred_bg_trigger = False
             try:
                 while True:
-                    bg_watcher.clear()
-                    if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
-                        result = await idle_events.get()
+                    if deferred_bg_trigger and not self._should_defer_background_auto_trigger(
+                        prompt_session
+                    ):
+                        result = None
+                    elif deferred_bg_trigger:
+                        result = await self._wait_for_input_or_activity(
+                            prompt_session,
+                            idle_events,
+                            timeout_s=self._background_auto_trigger_timeout_s(prompt_session),
+                        )
                     else:
-                        result = await bg_watcher.wait_for_next(idle_events)
+                        bg_watcher.clear()
+                        if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
+                            result = await idle_events.get()
+                        else:
+                            result = await bg_watcher.wait_for_next(idle_events)
 
                     if result is None:
+                        if self._should_defer_background_auto_trigger(prompt_session):
+                            deferred_bg_trigger = True
+                            resume_prompt.set()
+                            continue
+                        deferred_bg_trigger = False
                         logger.info("Background task completed while idle, triggering agent")
                         resume_prompt.set()
                         ok = await self.run_soul_command(
@@ -417,6 +482,9 @@ class Shell:
 
                     event = result
 
+                    if event.kind == "input_activity":
+                        continue
+
                     if event.kind == "bg_noop":
                         continue
 
@@ -436,6 +504,7 @@ class Shell:
                     user_input = event.user_input
                     assert user_input is not None
                     bg_auto_failures = 0
+                    deferred_bg_trigger = False
                     if not user_input:
                         logger.debug("Got empty input, skipping")
                         resume_prompt.set()
@@ -461,6 +530,7 @@ class Shell:
                             and shell_slash_registry.find_command(slash_cmd_call.name) is None
                         )
                         if is_soul_slash:
+                            background_autotrigger_armed = True
                             resume_prompt.set()
                             await self.run_soul_command(slash_cmd_call.raw_input)
                             console.print()
@@ -472,6 +542,7 @@ class Shell:
                             resume_prompt.set()
                         continue
 
+                    background_autotrigger_armed = True
                     resume_prompt.set()
                     await self.run_soul_command(user_input.content)
                     console.print()
@@ -666,6 +737,59 @@ class Shell:
             remove_sigint()
         return False
 
+    @staticmethod
+    def _should_defer_background_auto_trigger(
+        prompt_session: _BackgroundAutoTriggerPromptState | None,
+    ) -> bool:
+        if prompt_session is None:
+            return False
+        return prompt_session.has_pending_input() or prompt_session.had_recent_input_activity(
+            within_s=_BG_AUTO_TRIGGER_INPUT_GRACE_S
+        )
+
+    @staticmethod
+    def _background_auto_trigger_timeout_s(
+        prompt_session: _BackgroundAutoTriggerPromptState | None,
+    ) -> float | None:
+        if prompt_session is None or prompt_session.has_pending_input():
+            return None
+        remaining = prompt_session.recent_input_activity_remaining(
+            within_s=_BG_AUTO_TRIGGER_INPUT_GRACE_S
+        )
+        return remaining if remaining > 0 else None
+
+    async def _wait_for_input_or_activity(
+        self,
+        prompt_session: _BackgroundAutoTriggerPromptState,
+        idle_events: asyncio.Queue[_PromptEvent],
+        *,
+        timeout_s: float | None = None,
+    ) -> _PromptEvent:
+        idle_task = asyncio.create_task(idle_events.get())
+        activity_task = asyncio.create_task(prompt_session.wait_for_input_activity())
+        timeout_task = (
+            asyncio.create_task(asyncio.sleep(timeout_s)) if timeout_s is not None else None
+        )
+        done: set[asyncio.Task[Any]] = set()
+        try:
+            done, _ = await asyncio.wait(
+                [task for task in (idle_task, activity_task, timeout_task) if task is not None],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for task in (idle_task, activity_task, timeout_task):
+                if task is None:
+                    continue
+                if task.done():
+                    continue
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+        if idle_task in done:
+            return idle_task.result()
+        return _PromptEvent(kind="input_activity")
+
     async def _watch_root_wire_hub(self) -> None:
         if not isinstance(self.soul, KimiSoul):
             return
@@ -738,6 +862,10 @@ class Shell:
 
     def _set_active_approval_sink(self, sink: Any) -> None:
         self._active_approval_sink = sink
+        # In interactive mode, approvals are handled by the prompt modal,
+        # not by the live view sink. Don't flush to avoid losing requests.
+        if self._prompt_session is not None:
+            return
         # Flush pending approvals to the newly active sink
         while self._pending_approval_requests:
             request = self._pending_approval_requests.popleft()
