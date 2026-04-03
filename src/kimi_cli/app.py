@@ -610,10 +610,9 @@ class KimiCLI:
         await context.restore()
 
         if context.system_prompt is not None:
-            restored_prompt = (
-                _merge_plugin_capability_summary(context.system_prompt, cap_summary)
-                if cap_summary
-                else context.system_prompt
+            restored_prompt = _merge_plugin_capability_summary(
+                context.system_prompt,
+                cap_summary,
             )
             agent = dataclasses.replace(agent, system_prompt=restored_prompt)
         else:
