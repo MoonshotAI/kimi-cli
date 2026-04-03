@@ -1,5 +1,6 @@
 import { loadTokens } from "../../../auth/oauth.ts";
 import type { Config } from "../../../config.ts";
+import type { CommandPanelConfig } from "../../../types.ts";
 import { logger } from "../../../utils/logging.ts";
 import { platform, release } from "node:os";
 
@@ -64,4 +65,24 @@ export async function handleFeedback(
     logger.info(`Failed to submit feedback: ${err instanceof Error ? err.message : err}`);
     logger.info(`Please submit at: ${ISSUE_URL}`);
   }
+}
+
+type Notify = (title: string, body: string) => void;
+
+export function createFeedbackPanel(
+  config: Config,
+  sessionId: string,
+  modelKey: string | undefined,
+  notify: Notify,
+): CommandPanelConfig {
+  return {
+    type: "input",
+    title: "Submit Feedback",
+    placeholder: "Describe your issue or suggestion...",
+    onSubmit: (value: string) => {
+      handleFeedback(config, value, sessionId, modelKey).catch(() => {
+        notify("Feedback", `Please submit at: ${ISSUE_URL}`);
+      });
+    },
+  };
 }

@@ -1,6 +1,33 @@
 import { loadConfig, saveConfig, type Config, type ConfigMeta } from "../../../config.ts";
+import type { CommandPanelConfig } from "../../../types.ts";
 import { logger } from "../../../utils/logging.ts";
 import { which } from "bun";
+
+type Notify = (title: string, body: string) => void;
+
+export function createEditorPanel(config: Config, configMeta: ConfigMeta, notify: Notify): CommandPanelConfig {
+  const current = config.default_editor || "";
+  return {
+    type: "choice",
+    title: "Select Editor",
+    items: [
+      { label: "VS Code (code --wait)", value: "code --wait", current: current === "code --wait" },
+      { label: "Vim", value: "vim", current: current === "vim" },
+      { label: "Nano", value: "nano", current: current === "nano" },
+      { label: "Auto-detect ($VISUAL/$EDITOR)", value: "", current: !current },
+    ],
+    onSelect: (value: string) => {
+      // Save to config
+      try {
+        config.default_editor = value;
+        saveConfig(config, configMeta.sourceFile ?? undefined);
+        notify("Editor", `Editor set to: ${value || "auto-detect"}`);
+      } catch (err: any) {
+        notify("Editor", `Failed to save: ${err?.message ?? err}`);
+      }
+    },
+  };
+}
 
 export async function handleEditor(config: Config, configMeta: ConfigMeta, args: string): Promise<void> {
   const currentEditor = config.default_editor;

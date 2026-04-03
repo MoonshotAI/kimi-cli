@@ -19,15 +19,15 @@ import type { DynamicInjection, DynamicInjectionProvider } from "./dynamic_injec
 import { normalizeHistory } from "./dynamic_injection.ts";
 import { PlanModeInjectionProvider } from "./dynamic_injections/plan_mode.ts";
 import { YoloModeInjectionProvider } from "./dynamic_injections/yolo_mode.ts";
-import { handleNew, handleSessions, handleTitle } from "../ui/shell/commands/session.ts";
+import { handleNew, handleSessions, handleTitle, createSessionsPanel, createTitlePanel } from "../ui/shell/commands/session.ts";
 import { handleModel, createModelPanel } from "../ui/shell/commands/model.ts";
 import { handleLogin, handleLogout, createLoginPanel } from "../ui/shell/commands/login.ts";
-import { handleHooks, handleMcp, handleDebug, handleChangelog } from "../ui/shell/commands/info.ts";
+import { handleHooks, handleMcp, handleDebug, handleChangelog, createHooksPanel, createMcpPanel, createDebugPanel, createChangelogPanel } from "../ui/shell/commands/info.ts";
 import { handleExport, handleImport } from "../ui/shell/commands/export_import.ts";
 import { handleWeb, handleVis, handleReload, handleTask } from "../ui/shell/commands/misc.ts";
 import { handleUsage } from "../ui/shell/commands/usage.ts";
-import { handleFeedback } from "../ui/shell/commands/feedback.ts";
-import { handleEditor } from "../ui/shell/commands/editor.ts";
+import { handleFeedback, createFeedbackPanel } from "../ui/shell/commands/feedback.ts";
+import { handleEditor, createEditorPanel } from "../ui/shell/commands/editor.ts";
 import { handleInit } from "../ui/shell/commands/init.ts";
 import { handleAddDir } from "../ui/shell/commands/add_dir.ts";
 import { logger } from "../utils/logging.ts";
@@ -98,6 +98,7 @@ export interface SoulCallbacks {
   onCompactionEnd?: () => void;
   onError?: (error: Error) => void;
   onNotification?: (title: string, body: string) => void;
+  onReload?: (sessionId: string, prefillText?: string) => void;
 }
 
 // ── Retry helpers ───────────────────────────────────
@@ -904,14 +905,23 @@ export class KimiSoul {
           this.agent.runtime.config.default_model || undefined,
         );
       };
+      feedbackCmd.panel = () => createFeedbackPanel(
+        this.agent.runtime.config,
+        this.agent.runtime.session.id,
+        this.agent.runtime.config.default_model || undefined,
+        (t, b) => this.notify(t, b),
+      );
     }
 
     // Wire /editor
     const editorCmd = registry.get("editor");
     if (editorCmd) {
+      const editorNotify = (t: string, b: string) => this.notify(t, b);
+      const editorConfigMeta = { isFromDefaultLocation: true, sourceFile: null };
       editorCmd.handler = async (args: string) => {
-        await handleEditor(this.agent.runtime.config, { isFromDefaultLocation: true, sourceFile: null }, args);
+        await handleEditor(this.agent.runtime.config, editorConfigMeta, args);
       };
+      editorCmd.panel = () => createEditorPanel(this.agent.runtime.config, editorConfigMeta, editorNotify);
     }
 
     // Wire /hooks
@@ -920,6 +930,7 @@ export class KimiSoul {
       hooksCmd.handler = async () => {
         handleHooks(this.agent.runtime.hookEngine);
       };
+      hooksCmd.panel = () => createHooksPanel(this.agent.runtime.hookEngine);
     }
 
     // Wire /mcp
@@ -928,6 +939,7 @@ export class KimiSoul {
       mcpCmd.handler = async () => {
         handleMcp(this.agent.runtime.config);
       };
+      mcpCmd.panel = () => createMcpPanel(this.agent.runtime.config);
     }
 
     // Wire /debug
@@ -936,6 +948,7 @@ export class KimiSoul {
       debugCmd.handler = async () => {
         handleDebug(this.context);
       };
+      debugCmd.panel = () => createDebugPanel(this.context);
     }
 
     // Wire /changelog
@@ -944,6 +957,7 @@ export class KimiSoul {
       changelogCmd.handler = async () => {
         handleChangelog();
       };
+      changelogCmd.panel = () => createChangelogPanel();
     }
 
     // Wire /new
@@ -960,6 +974,11 @@ export class KimiSoul {
       sessionsCmd.handler = async () => {
         await handleSessions(this.agent.runtime.session);
       };
+      sessionsCmd.panel = () => createSessionsPanel(
+        this.agent.runtime.session,
+        (t, b) => this.notify(t, b),
+        (id, prefill) => this.callbacks.onReload?.(id, prefill),
+      );
     }
 
     // Wire /title
@@ -968,6 +987,10 @@ export class KimiSoul {
       titleCmd.handler = async (args: string) => {
         await handleTitle(this.agent.runtime.session, args);
       };
+      titleCmd.panel = () => createTitlePanel(
+        this.agent.runtime.session,
+        (t, b) => this.notify(t, b),
+      );
     }
 
     // Wire /init

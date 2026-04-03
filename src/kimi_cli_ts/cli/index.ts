@@ -436,7 +436,7 @@ program
                 sessionTitle: app.session.title,
                 thinking: app.soul.thinking,
                 prefillText: currentPrefillText,
-                onSubmit: (input: string) => {
+                onSubmit: (input: string | ContentPart[]) => {
                   app.soul.run(input).catch((err: Error) => {
                     pushEvent?.({ type: "error", message: err.message });
                   });

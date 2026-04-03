@@ -3,12 +3,20 @@
  * Clipboard access for media (images, files) via system commands.
  */
 
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { mkdirSync } from "node:fs";
 import { logger } from "./logging.ts";
 
 export interface ClipboardResult {
   readonly imagePaths: string[];
   readonly filePaths: string[];
   readonly text?: string;
+}
+
+export interface ClipboardMedia {
+  images: string[];  // paths to saved image files
+  files: string[];   // paths to clipboard file references
 }
 
 /**
@@ -90,5 +98,101 @@ export async function writeClipboardText(text: string): Promise<boolean> {
   } catch {
     logger.debug("Failed to write clipboard text");
     return false;
+  }
+}
+
+/**
+ * Grab media (images) from the clipboard.
+ * On macOS, uses osascript to check clipboard info and save image data.
+ * Returns null if no image data is found or on unsupported platforms.
+ */
+export async function grabMediaFromClipboard(): Promise<ClipboardMedia | null> {
+  // Only macOS supported for now
+  if (process.platform !== "darwin") return null;
+
+  try {
+    // 1. Check clipboard content type via osascript
+    const infoProc = Bun.spawn(["osascript", "-e", "clipboard info"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const info = await new Response(infoProc.stdout).text();
+    await infoProc.exited;
+
+    // 2. Check for file URLs first (Finder copy)
+    const hasFileUrl = /«class furl»|public\.file-url/.test(info);
+    if (hasFileUrl) {
+      const fileScript = `
+        try
+          set theFiles to the clipboard as «class furl»
+          return POSIX path of theFiles
+        on error
+          return ""
+        end try
+      `;
+      const fileProc = Bun.spawn(["osascript", "-e", fileScript], {
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      const fileResult = (await new Response(fileProc.stdout).text()).trim();
+      await fileProc.exited;
+
+      if (fileResult) {
+        const filePaths = fileResult.split("\n").map((p) => p.trim()).filter(Boolean);
+        // Classify: images vs other files
+        const imageExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"]);
+        const images: string[] = [];
+        const files: string[] = [];
+        for (const fp of filePaths) {
+          const ext = fp.slice(fp.lastIndexOf(".")).toLowerCase();
+          if (imageExts.has(ext)) {
+            images.push(fp);
+          } else {
+            files.push(fp);
+          }
+        }
+        if (images.length > 0 || files.length > 0) {
+          return { images, files };
+        }
+      }
+    }
+
+    // 3. Check for raw image data (TIFF, PNG) — e.g. from screenshots
+    const hasImage = /«class PNGf»|«class TIFF»|TIFF|PNG/.test(info);
+    if (!hasImage) return null;
+
+    // 4. Save clipboard image to a temp file as PNG
+    const cacheDir = join(homedir(), ".kimi", "prompt-cache", "images");
+    mkdirSync(cacheDir, { recursive: true });
+    const filename = `clipboard-${Date.now()}.png`;
+    const filepath = join(cacheDir, filename);
+
+    const script = `
+      set filePath to POSIX file "${filepath}"
+      try
+        set imgData to the clipboard as «class PNGf»
+        set fileRef to open for access filePath with write permission
+        write imgData to fileRef
+        close access fileRef
+        return "${filepath}"
+      on error
+        try
+          close access filePath
+        end try
+        return "error"
+      end try
+    `;
+    const saveProc = Bun.spawn(["osascript", "-e", script], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const result = (await new Response(saveProc.stdout).text()).trim();
+    await saveProc.exited;
+
+    if (result === "error" || result === "") return null;
+    return { images: [filepath], files: [] };
+  } catch (err) {
+    logger.debug("Failed to grab media from clipboard: %s", err);
+    return null;
   }
 }

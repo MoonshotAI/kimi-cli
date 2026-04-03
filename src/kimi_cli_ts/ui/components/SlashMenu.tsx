@@ -91,7 +91,7 @@ function filterCommands(
   commands: SlashCommand[],
   filter: string,
 ): SlashCommand[] {
-  if (!filter) return commands;
+  if (!filter) return [...commands].sort((a, b) => a.name.localeCompare(b.name));
 
   const lower = filter.toLowerCase();
   return commands
