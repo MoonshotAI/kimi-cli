@@ -13,8 +13,8 @@
  */
 
 import React, { useCallback, useEffect, useState, useRef } from "react";
-import { Box, useApp, useStdout } from "ink";
-import { MessageList } from "./Visualize.tsx";
+import { Box, Static, useApp, useStdout } from "ink";
+import { MessageList, StaticMessageView } from "./Visualize.tsx";
 import { Prompt } from "./Prompt.tsx";
 import { WelcomeBox } from "../components/WelcomeBox.tsx";
 import { StatusBar } from "../components/StatusBar.tsx";
@@ -379,12 +379,20 @@ export function Shell({
         tip="Spot a bug or have feedback? Type /feedback right in this session — every report makes Kimi better."
       />
 
-      {/* ═══ ChatList: height follows content ═══ */}
+      {/* ═══ Static messages: rendered once, never re-drawn ═══ */}
+      {/* This allows users to select & copy completed messages with the mouse */}
+      <Static items={wire.isStreaming ? wire.messages.slice(0, -1) : wire.messages}>
+        {(msg) => <StaticMessageView key={msg.id} message={msg} />}
+      </Static>
+
+      {/* ═══ Active (streaming) message + spinners ═══ */}
       <Box flexDirection="column" flexShrink={0}>
-        <MessageList
-          messages={wire.messages}
-          isStreaming={wire.isStreaming}
-        />
+        {wire.isStreaming && wire.messages.length > 0 && (
+          <MessageList
+            messages={wire.messages.slice(-1)}
+            isStreaming={true}
+          />
+        )}
 
         {wire.isStreaming && !wire.isCompacting && (
           <StreamingSpinner stepCount={wire.stepCount} />

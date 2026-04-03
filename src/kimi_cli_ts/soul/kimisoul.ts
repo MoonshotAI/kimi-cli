@@ -517,15 +517,22 @@ export class KimiSoul {
    * once we start appending, we finish even if abort fires.
    */
   private async _executeToolsShielded(toolCalls: ToolCall[]): Promise<void> {
-    for (const tc of toolCalls) {
-      // Check abort before each tool, but don't interrupt mid-append
-      if (this.abortController?.signal.aborted) break;
+    // Execute all tools concurrently
+    const results = await Promise.all(
+      toolCalls.map(async (tc) => {
+        // Check abort before starting, but don't interrupt mid-execution
+        if (this.abortController?.signal.aborted) return null;
+        return { tc, result: await this.agent.toolset.handle(tc) };
+      }),
+    );
 
-      const result = await this.agent.toolset.handle(tc);
+    // Append results sequentially to maintain context order consistency
+    for (const entry of results) {
+      if (!entry) continue;
+      const { tc, result } = entry;
 
       // Detect tool rejection without feedback
       if (result.isError && result.message?.includes("rejected by the user")) {
-        // If the rejection message is just the standard template, no user feedback
         if (!result.extras?.userFeedback) {
           this._toolRejectedNoFeedback = true;
         }

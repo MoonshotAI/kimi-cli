@@ -3,10 +3,12 @@
  * Corresponds to Python tools/agent/__init__.py
  */
 
+import path from "node:path";
 import { z } from "zod/v4";
 import { CallableTool } from "../base.ts";
 import type { ToolContext, ToolResult } from "../types.ts";
 import { ToolError, ToolOk } from "../types.ts";
+import { loadDesc } from "../utils.ts";
 import type { Runtime } from "../../soul/agent.ts";
 import type { AgentTypeDefinition } from "../../subagents/models.ts";
 import {
@@ -15,18 +17,14 @@ import {
 } from "../../subagents/runner.ts";
 import { logger } from "../../utils/logging.ts";
 
+// Reuse the Python version's description.md — single source of truth
+const DESCRIPTION_MD_PATH = path.resolve(
+  import.meta.dir,
+  "../../../kimi_cli/tools/agent/description.md",
+);
+
 const MAX_FOREGROUND_TIMEOUT = 60 * 60; // 1 hour
 const MAX_BACKGROUND_TIMEOUT = 60 * 60; // 1 hour
-
-const DESCRIPTION = `Start a subagent instance to work on a focused task.
-
-**Usage:**
-- Always provide a short \`description\` (3-5 words).
-- Use \`subagent_type\` to select a built-in agent type. If omitted, \`coder\` is used.
-- Use \`model\` when you need to override the default model.
-- Default to foreground execution. Use \`run_in_background=true\` only when needed.
-- Be explicit about whether the subagent should write code or only do research.
-- The subagent result is only visible to you. If the user should see it, summarize it yourself.`;
 
 const ParamsSchema = z.object({
   description: z
@@ -85,19 +83,18 @@ export class AgentTool extends CallableTool<typeof ParamsSchema> {
 
   constructor() {
     super();
-    this._description = DESCRIPTION;
+    // Placeholder until buildDescription() is called with runtime
+    this._description = "Start a subagent instance to work on a focused task.";
   }
 
   /**
-   * Build the full description including available builtin types.
+   * Build the full description from description.md, including available builtin types.
    * Should be called after the tool is registered and runtime is available.
    */
   buildDescription(runtime: Runtime): void {
-    const typeLines = AgentTool._builtinTypeLines(runtime);
-    if (typeLines) {
-      this._description =
-        DESCRIPTION + "\n\n**Available subagent types:**\n" + typeLines;
-    }
+    this._description = loadDesc(DESCRIPTION_MD_PATH, {
+      BUILTIN_AGENT_TYPES_MD: AgentTool._builtinTypeLines(runtime),
+    });
   }
 
   private static _builtinTypeLines(runtime: Runtime): string {

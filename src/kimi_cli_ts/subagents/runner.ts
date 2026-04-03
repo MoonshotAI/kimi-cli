@@ -16,6 +16,14 @@ import { SubagentBuilder } from "./builder.ts";
 import type { AgentInstanceRecord } from "./models.ts";
 import { type SubagentRunSpec, prepareSoul } from "./core.ts";
 import type { ApprovalSource } from "../approval_runtime/index.ts";
+import type { Wire } from "../wire/wire_core.ts";
+import type { WireMessage } from "../wire/types.ts";
+import {
+  ApprovalRequest,
+  ToolCallRequest,
+  QuestionRequest,
+  SubagentEvent,
+} from "../wire/types.ts";
 import * as hookEvents from "../hooks/events.ts";
 import { logger } from "../utils/logging.ts";
 
@@ -143,6 +151,14 @@ export async function runWithSummaryContinuation(
   return [finalResponse, null];
 }
 
+// ── UI Loop Function Type ────────────────────────────────
+
+/**
+ * A function that reads Wire events and forwards them to the parent.
+ * Corresponds to Python UILoopFn.
+ */
+export type UILoopFn = (wire: Wire) => Promise<void>;
+
 // ── ForegroundSubagentRunner ─────────────────────────────
 
 export class ForegroundSubagentRunner {
@@ -206,6 +222,16 @@ export class ForegroundSubagentRunner {
 
     const toolCall = getCurrentToolCallOrNull();
     const parentToolCallId = toolCall?.id ?? null;
+
+    // Build UI loop function for wire event forwarding
+    // TODO: Pass _uiLoopFn into soul.run() once the TS Wire integration supports it
+    const _uiLoopFn = ForegroundSubagentRunner._makeUiLoopFn({
+      parentToolCallId,
+      agentId,
+      subagentType: actualType,
+      outputWriter,
+      superWireSoulSide: null, // TODO: get from parent wire when available
+    });
 
     // approvalSource is created inside the try block so the finally
     // clause can safely skip cancellation if we never got that far.
@@ -307,6 +333,76 @@ export class ForegroundSubagentRunner {
         );
       }
     }
+  }
+
+  /**
+   * Create a UI loop function that forwards subagent wire events to the parent wire.
+   * Corresponds to Python ForegroundSubagentRunner._make_ui_loop_fn().
+   *
+   * The returned function reads from the subagent's Wire and:
+   * - Writes all messages to the output file
+   * - Forwards ApprovalRequest/ToolCallRequest/QuestionRequest directly to parent wire
+   * - Wraps other events as SubagentEvent before forwarding
+   * - Skips HookRequest (handled internally)
+   *
+   * TODO: Wire the returned UILoopFn into soul.run() once the TS Wire system
+   * supports get_wire_or_none() and run_soul() accepts a ui_loop_fn parameter.
+   */
+  static _makeUiLoopFn(opts: {
+    parentToolCallId: string | null;
+    agentId: string;
+    subagentType: string;
+    outputWriter: SubagentOutputWriter;
+    superWireSoulSide?: { send(msg: WireMessage): void } | null;
+  }): UILoopFn {
+    const { parentToolCallId, agentId, subagentType, outputWriter, superWireSoulSide } = opts;
+
+    return async (wire: Wire): Promise<void> => {
+      const wireUi = wire.uiSide(true);
+      while (true) {
+        let msg: WireMessage;
+        try {
+          msg = await wireUi.receive();
+        } catch {
+          // Queue shut down — wire was closed
+          break;
+        }
+
+        // Always write to output file regardless of wire availability
+        // TODO: outputWriter.writeWireMessage(msg) — not yet implemented
+        logger.debug(`[subagent:${agentId}] wire event: ${(msg as any)?.type ?? "unknown"}`);
+
+        if (superWireSoulSide == null || parentToolCallId == null) {
+          continue;
+        }
+
+        // Forward approval/tool call/question requests directly to parent
+        const msgType = (msg as any)?.type;
+        if (
+          msgType === "ApprovalRequest" ||
+          msgType === "ApprovalResponse" ||
+          msgType === "ToolCallRequest" ||
+          msgType === "QuestionRequest"
+        ) {
+          superWireSoulSide.send(msg);
+          continue;
+        }
+
+        // Skip hook requests — handled internally
+        if (msgType === "HookRequest") {
+          continue;
+        }
+
+        // Wrap all other events as SubagentEvent
+        superWireSoulSide.send({
+          type: "SubagentEvent",
+          parent_tool_call_id: parentToolCallId,
+          agent_id: agentId,
+          subagent_type: subagentType,
+          event: msg,
+        } as unknown as WireMessage);
+      }
+    };
   }
 
   private async _prepareInstance(req: ForegroundRunRequest): Promise<PreparedInstance> {

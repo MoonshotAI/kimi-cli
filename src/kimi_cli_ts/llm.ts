@@ -296,6 +296,59 @@ export function estimateMessagesTokenCount(messages: Message[]): number {
 // ── Factory (placeholder providers) ────────────────────────
 
 /**
+ * Clone an LLM with a different model alias from the config.
+ * Returns the original LLM if modelAlias is null/undefined, or creates a new
+ * LLM with the aliased model/provider settings.
+ *
+ * Corresponds to Python clone_llm_with_model_alias().
+ */
+export function cloneLlmWithModelAlias(
+  llm: LLM | null,
+  config: {
+    models: Record<string, { provider: string; model: string; max_context_size: number; capabilities?: string[] }>;
+    providers: Record<string, { type: string; base_url: string; api_key: string; custom_headers?: Record<string, string>; env?: Record<string, string> }>;
+  },
+  modelAlias: string | null | undefined,
+  opts?: { sessionId?: string },
+): LLM | null {
+  if (modelAlias == null) return llm;
+
+  const mc = config.models[modelAlias];
+  if (!mc) {
+    throw new Error(`Unknown model alias: ${modelAlias}`);
+  }
+  const pc = config.providers[mc.provider];
+  if (!pc) {
+    throw new Error(`Unknown provider: ${mc.provider} for model alias: ${modelAlias}`);
+  }
+
+  // Convert snake_case config to camelCase LLM interface
+  const providerConfig: LLMProviderConfig = {
+    type: pc.type as ProviderType,
+    baseUrl: pc.base_url,
+    apiKey: pc.api_key,
+    customHeaders: pc.custom_headers,
+    env: pc.env,
+  };
+  const modelConfig: LLMModelConfig = {
+    model: mc.model,
+    provider: mc.provider,
+    maxContextSize: mc.max_context_size,
+    capabilities: mc.capabilities as ModelCapability[] | undefined,
+  };
+
+  // Inherit thinking setting from the parent LLM if available
+  let thinking: boolean | null = null;
+  if (llm != null) {
+    if (llm.capabilities.has("thinking") || llm.capabilities.has("always_thinking")) {
+      thinking = true;
+    }
+  }
+
+  return createLLM(providerConfig, modelConfig, { thinking, sessionId: opts?.sessionId });
+}
+
+/**
  * Create an LLM instance from provider and model config.
  */
 export function createLLM(

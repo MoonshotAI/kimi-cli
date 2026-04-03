@@ -4,6 +4,7 @@
  */
 
 import { type Runtime, type Agent, loadAgent } from "../soul/agent.ts";
+import { cloneLlmWithModelAlias } from "../llm.ts";
 import type { AgentLaunchSpec, AgentTypeDefinition } from "./models.ts";
 
 export class SubagentBuilder {
@@ -22,16 +23,25 @@ export class SubagentBuilder {
     typeDef: AgentTypeDefinition;
     launchSpec: AgentLaunchSpec;
   }): Promise<Agent> {
-    const _effectiveModel = SubagentBuilder.resolveEffectiveModel({
+    const effectiveModel = SubagentBuilder.resolveEffectiveModel({
       typeDef: opts.typeDef,
       launchSpec: opts.launchSpec,
     });
 
-    // Create a subagent runtime copy
-    const runtime = this._rootRuntime.copyForSubagent();
+    // Clone LLM with model alias if effective model differs from root
+    const llmOverride = cloneLlmWithModelAlias(
+      this._rootRuntime.llm,
+      this._rootRuntime.config,
+      effectiveModel,
+      { sessionId: this._rootRuntime.session.id },
+    );
 
-    // TODO: If effectiveModel differs from root, clone LLM with model alias.
-    // For now, subagents inherit the root LLM.
+    // Create a subagent runtime copy
+    const runtime = this._rootRuntime.copyForSubagent({
+      agentId: opts.agentId,
+      subagentType: opts.launchSpec.subagentType,
+      llmOverride,
+    });
 
     return await loadAgent({
       runtime,

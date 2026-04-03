@@ -50,6 +50,20 @@ export function MessageList({ messages, isStreaming, stepCount }: MessageListPro
   );
 }
 
+/**
+ * StaticMessageView — rendered inside <Static>, written once and never re-drawn.
+ * This makes completed messages selectable/copyable with the mouse.
+ */
+export function StaticMessageView({ message }: { message: UIMessage }) {
+  return (
+    <MessageView
+      message={message}
+      isLast={false}
+      isStreaming={false}
+    />
+  );
+}
+
 // ── MessageView ────────────────────────────────────────────
 
 interface MessageViewProps {

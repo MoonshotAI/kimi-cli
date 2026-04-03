@@ -4,7 +4,8 @@
 
 import { writeFileSync } from "node:fs";
 
-import type { Runtime, Agent } from "../soul/agent.ts";
+import type { Runtime } from "../soul/agent.ts";
+import { Agent } from "../soul/agent.ts";
 import { KimiSoul } from "../soul/kimisoul.ts";
 import { Context } from "../soul/context.ts";
 import type { AgentLaunchSpec, AgentTypeDefinition } from "./models.ts";
@@ -33,7 +34,7 @@ export async function prepareSoul(
   onStage?: (name: string) => void,
 ): Promise<[KimiSoul, string]> {
   // 1. Build agent from type definition
-  const agent = await builder.buildBuiltinInstance({
+  let agent = await builder.buildBuiltinInstance({
     agentId: spec.agentId,
     typeDef: spec.typeDef,
     launchSpec: spec.launchSpec,
@@ -47,9 +48,14 @@ export async function prepareSoul(
 
   // 3. System prompt: reuse persisted prompt on resume, persist on first run
   if (context.systemPrompt !== null) {
-    // On resume, the agent's system prompt is overridden by the persisted one.
-    // The KimiSoul constructor uses agent.systemPrompt for the initial system,
-    // but context already has the correct system prompt restored from file.
+    // On resume, override the agent's system prompt with the persisted one.
+    agent = new Agent({
+      name: agent.name,
+      systemPrompt: context.systemPrompt,
+      toolset: agent.toolset,
+      runtime: agent.runtime,
+      slashCommands: agent.slashCommands,
+    });
   } else {
     await context.writeSystemPrompt(agent.systemPrompt);
   }

@@ -44,6 +44,8 @@ export class Runtime {
   laborMarket: LaborMarket | null;
   subagentStore: SubagentStore | null;
   approvalRuntime: ApprovalRuntime | null;
+  subagentId: string | null;
+  subagentType: string | null;
 
   constructor(opts: {
     config: Config;
@@ -57,6 +59,8 @@ export class Runtime {
     laborMarket?: LaborMarket | null;
     subagentStore?: SubagentStore | null;
     approvalRuntime?: ApprovalRuntime | null;
+    subagentId?: string | null;
+    subagentType?: string | null;
   }) {
     this.config = opts.config;
     this.llm = opts.llm;
@@ -69,6 +73,8 @@ export class Runtime {
     this.laborMarket = opts.laborMarket ?? null;
     this.subagentStore = opts.subagentStore ?? null;
     this.approvalRuntime = opts.approvalRuntime ?? null;
+    this.subagentId = opts.subagentId ?? null;
+    this.subagentType = opts.subagentType ?? null;
   }
 
   get loopControl(): LoopControl {
@@ -150,10 +156,14 @@ export class Runtime {
   }
 
   /** Create a copy for subagents with shared state. */
-  copyForSubagent(): Runtime {
+  copyForSubagent(opts: {
+    agentId: string;
+    subagentType: string;
+    llmOverride?: LLM | null;
+  }): Runtime {
     return new Runtime({
       config: this.config,
-      llm: this.llm,
+      llm: opts.llmOverride ?? this.llm,
       session: this.session,
       approval: this.approval.share(),
       hookEngine: this.hookEngine,
@@ -167,6 +177,8 @@ export class Runtime {
       laborMarket: this.laborMarket,
       subagentStore: this.subagentStore,
       approvalRuntime: this.approvalRuntime,
+      subagentId: opts.agentId,
+      subagentType: opts.subagentType,
     });
   }
 }
