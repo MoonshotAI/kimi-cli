@@ -296,20 +296,30 @@ class _LiveView:
             self.show_next_question_request()
         self.refresh_soon()
 
-    def compose(self, *, include_status: bool = True) -> RenderableType:
-        """Compose the live view display content.
+    # -- Composable rendering --------------------------------------------------
 
-        Approval and question panels are rendered first so they remain visible
-        at the top of the terminal even when tool-call output is long enough
-        to push content beyond the visible area.
+    def compose_interactive_panels(self) -> list[RenderableType]:
+        """Approval and question panels — interactive overlays.
+
+        In Non-interactive mode (Rich Live), these are rendered by ``compose()``.
+        In Interactive mode (prompt_toolkit), these are rendered by modal
+        delegates in Layer 2, so ``render_agent_status()`` skips them to
+        avoid double-rendering.
         """
         blocks: list[RenderableType] = []
-        # Approval/question panels first — highest visual priority.
         if self._current_approval_request_panel:
             blocks.append(self._current_approval_request_panel.render())
         if self._current_question_panel:
             blocks.append(self._current_question_panel.render())
-        # Spinners or content + tool calls.
+        return blocks
+
+    def compose_agent_output(self) -> list[RenderableType]:
+        """Spinners, content blocks, tool calls, notifications.
+
+        Pure agent streaming status — no interactive overlays.
+        Always safe to render regardless of modal state.
+        """
+        blocks: list[RenderableType] = []
         if self._btw_spinner is not None:
             blocks.append(self._btw_spinner)
         if self._mcp_loading_spinner is not None:
@@ -325,7 +335,23 @@ class _LiveView:
                 blocks.append(tool_call.compose())
         for notification in self._live_notification_blocks:
             blocks.append(notification.compose())
+        return blocks
 
+    def compose(self, *, include_status: bool = True) -> RenderableType:
+        """Compose the full live view display content.
+
+        Combines interactive panels (approval/question) and agent output.
+        Panels are rendered first so they remain visible at the top of the
+        terminal even when tool-call output is long enough to push content
+        beyond the visible area.
+
+        In Interactive mode, prefer ``compose_agent_output()`` for Layer 1
+        rendering to avoid double-rendering panels that modal delegates
+        already handle in Layer 2.
+        """
+        blocks: list[RenderableType] = []
+        blocks.extend(self.compose_interactive_panels())
+        blocks.extend(self.compose_agent_output())
         if include_status:
             blocks.append(self._status_block.render())
         return Group(*blocks)

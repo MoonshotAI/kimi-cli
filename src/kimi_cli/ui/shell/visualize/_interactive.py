@@ -297,12 +297,16 @@ class _PromptLiveView(_LiveView):
     def render_agent_status(self, columns: int) -> ANSI:
         """Render agent streaming output — always visible regardless of modal.
 
-        This includes spinners (thinking/composing/compacting), content blocks,
-        tool calls, approval/question panels, notifications.
+        Uses ``compose_agent_output()`` (not ``compose()``) to avoid rendering
+        approval/question panels here.  Those panels are rendered by their
+        respective modal delegates in Layer 2.
         """
         if self._turn_ended:
             return ANSI("")
-        body = render_to_ansi(self.compose(include_status=False), columns=columns).rstrip("\n")
+        blocks = self.compose_agent_output()
+        if not blocks:
+            return ANSI("")
+        body = render_to_ansi(Group(*blocks), columns=columns).rstrip("\n")
         return ANSI(body if body else "")
 
     def render_running_prompt_body(self, columns: int) -> ANSI:

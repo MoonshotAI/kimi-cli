@@ -70,22 +70,34 @@ async def test_visualize_uses_prompt_live_view_when_prompt_session_and_steer_are
     assert unbound == [True]
 
 
-def test_render_agent_status_calls_compose_without_status() -> None:
+def test_render_agent_status_uses_compose_agent_output_not_compose() -> None:
+    """render_agent_status() must call compose_agent_output(), NOT compose().
+
+    This ensures approval/question panels are not double-rendered when a modal
+    delegate is active (they are rendered in Layer 2 by the modal, not Layer 1).
+    """
     view = object.__new__(_PromptLiveView)
     view._turn_ended = False
 
-    calls: list[bool] = []
+    agent_calls: list[bool] = []
+    compose_calls: list[bool] = []
+
+    def fake_compose_agent_output():
+        agent_calls.append(True)
+        return [Text("agent-status")]
 
     def fake_compose(*, include_status: bool = True):
-        calls.append(include_status)
-        return Text("body")
+        compose_calls.append(True)
+        return Text("full-compose")
 
+    view.compose_agent_output = fake_compose_agent_output
     view.compose = fake_compose
 
     rendered = view.render_agent_status(80)
 
-    assert calls == [False]
-    assert "body" in rendered.value
+    assert agent_calls == [True], "compose_agent_output() should be called"
+    assert compose_calls == [], "compose() should NOT be called"
+    assert "agent-status" in rendered.value
 
 
 def test_running_prompt_hides_placeholder() -> None:
