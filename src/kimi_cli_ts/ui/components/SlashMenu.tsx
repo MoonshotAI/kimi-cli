@@ -20,22 +20,36 @@ interface SlashMenuProps {
   selectedIndex: number;
 }
 
+const MAX_VISIBLE = 6;
+
 export function SlashMenu({ commands, filter, selectedIndex }: SlashMenuProps) {
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
 
   // Fuzzy filter commands
-  const filtered = filterCommands(commands, filter);
+  const allFiltered = filterCommands(commands, filter);
 
-  if (filtered.length === 0) return null;
+  if (allFiltered.length === 0) return null;
+
+  // Windowed display: show MAX_VISIBLE items around selectedIndex
+  const total = allFiltered.length;
+  let start = 0;
+  if (total > MAX_VISIBLE) {
+    // Keep selected item visible with some context
+    start = Math.max(0, Math.min(selectedIndex - 2, total - MAX_VISIBLE));
+  }
+  const visible = allFiltered.slice(start, start + MAX_VISIBLE);
+  const hasMore = total > MAX_VISIBLE;
 
   const separator = "─".repeat(columns);
 
   return (
     <Box flexDirection="column">
       <Text color={DIM}>{separator}</Text>
-      {filtered.map((cmd, i) => {
-        const isSelected = i === selectedIndex;
+      {start > 0 && <Text color={DIM}>  ↑ {start} more</Text>}
+      {visible.map((cmd, i) => {
+        const realIndex = start + i;
+        const isSelected = realIndex === selectedIndex;
         return (
           <Box key={cmd.name}>
             <Text color={isSelected ? HIGHLIGHT_BG : DIM}>
@@ -50,6 +64,7 @@ export function SlashMenu({ commands, filter, selectedIndex }: SlashMenuProps) {
           </Box>
         );
       })}
+      {start + MAX_VISIBLE < total && <Text color={DIM}>  ↓ {total - start - MAX_VISIBLE} more</Text>}
     </Box>
   );
 }

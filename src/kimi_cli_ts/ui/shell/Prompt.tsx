@@ -121,7 +121,10 @@ export function Prompt({
 
   const handleChange = useCallback(
     (newValue: string) => {
-      setValue(newValue);
+      // Strip non-printable control characters that leak from Ctrl+X/J/V/O shortcuts.
+      // Keep only printable chars (>= 0x20) and tab (0x09).
+      const cleaned = newValue.replace(/[^\x09\x20-\uFFFF]/g, "");
+      setValue(cleaned);
     },
     [setValue],
   );
