@@ -1,3 +1,6 @@
+import contextlib
+import os
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, override
@@ -10,12 +13,37 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DisplayBlock
 from kimi_cli.tools.file import FileActions
+from kimi_cli.tools.file.check_fmt import check_json, check_md, check_xml
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli.utils.path import is_within_workspace
 
 _BASE_DESCRIPTION = load_desc(Path(__file__).parent / "write.md")
+
+
+def _message_may_too_long(message: str) -> Path:
+    """Save a long message to a temp file if it exceeds the character limit.
+
+    Args:
+        message: The message to check and potentially save to a temp file.
+
+    Returns:
+        Path to the temp file if the message was saved, None otherwise.
+    """
+    LIMITATION = 65536
+    if message and len(message) > LIMITATION:
+        fd, tmp_path = tempfile.mkstemp(suffix=".txt", prefix="kimi-msg-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(message)
+            return str(Path(tmp_path).resolve())
+        except Exception:
+            # Clean up the temp file if writing fails
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+            raise
+    return message
 
 
 class Params(BaseModel):
@@ -161,6 +189,24 @@ class WriteFile(CallableTool2[Params]):
             # Get file info for success message
             file_size = (await p.stat()).st_size
             action = "overwritten" if params.mode == "overwrite" else "appended to"
+
+            # Check file format for JSON/XML files
+            fmt_error = None
+            file_path_str = str(p)
+            if file_path_str.lower().endswith(".json"):
+                fmt_error = check_json(file_path_str)
+            elif file_path_str.lower().endswith(".xml"):
+                fmt_error = check_xml(file_path_str)
+            elif file_path_str.lower().endswith(".md"):
+                fmt_error = check_md(file_path_str)
+
+            if fmt_error:
+                fmt_error = _message_may_too_long(fmt_error) # log may-be too long, use temp-file cache
+                return ToolError(
+                    message=f"File successfully {action}, but format validation failed: {fmt_error}",
+                    brief="Format validation failed",
+                )
+            
             return ToolReturnValue(
                 is_error=False,
                 output="",
