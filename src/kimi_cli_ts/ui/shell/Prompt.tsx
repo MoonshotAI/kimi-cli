@@ -21,6 +21,7 @@ interface PromptProps {
   disabled?: boolean;
   placeholder?: string;
   isStreaming?: boolean;
+  planMode?: boolean;
   commands?: SlashCommand[];
   onSlashMenuChange?: (visible: boolean) => void;
   /** Incremented by parent to signal "clear the input box" */
@@ -35,6 +36,7 @@ export function Prompt({
   disabled = false,
   placeholder = "Send a message... (/ for commands)",
   isStreaming = false,
+  planMode = false,
   commands = [],
   onSlashMenuChange,
   clearSignal = 0,
@@ -161,7 +163,7 @@ export function Prompt({
 
       {/* Input line — always rendered, always on top */}
       <Box>
-        <Text>{isStreaming ? "🔄 " : "✨ "}</Text>
+        <Text>{isStreaming ? "💫 " : planMode ? "📋 " : "✨ "}</Text>
         <TextInput
           value={value}
           onChange={handleChange}

@@ -13,6 +13,9 @@ export interface Toast {
   body: string;
   severity?: "info" | "warning" | "error";
   duration?: number; // milliseconds, 0 = no auto-dismiss
+  position?: "left" | "right"; // toolbar position, default "left"
+  topic?: string; // for deduplication — new toast with same topic replaces old
+  createdAt: number; // timestamp for expiry tracking
 }
 
 interface NotificationStackProps {

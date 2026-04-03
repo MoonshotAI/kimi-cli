@@ -194,10 +194,19 @@ export function useWire(options?: UseWireOptions): WireState & {
           id: nanoid(),
           title: event.title,
           body: event.body,
-          severity: "info",
-          duration: 4000, // auto-dismiss after 4 seconds
+          severity: (event.severity as Toast["severity"]) || "info",
+          duration: 5000,
+          position: "left",
+          topic: event.title, // deduplicate by title
+          createdAt: Date.now(),
         };
-        setNotifications((prev) => [...prev, toast]);
+        setNotifications((prev) => {
+          // Topic dedup: remove existing toast with same topic
+          const filtered = toast.topic
+            ? prev.filter((t) => t.topic !== toast.topic)
+            : prev;
+          return [...filtered, toast];
+        });
         break;
       }
 
@@ -209,6 +218,8 @@ export function useWire(options?: UseWireOptions): WireState & {
           body: event.message,
           severity: "error",
           duration: event.retryable ? 0 : 6000, // retryable errors don't auto-dismiss
+          position: "left",
+          createdAt: Date.now(),
         };
         setNotifications((prev) => [...prev, toast]);
         setIsStreaming(false);

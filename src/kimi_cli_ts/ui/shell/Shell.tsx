@@ -20,7 +20,7 @@ import { WelcomeBox } from "../components/WelcomeBox.tsx";
 import { StatusBar } from "../components/StatusBar.tsx";
 import { ApprovalPrompt } from "../components/ApprovalPrompt.tsx";
 import { CommandPanel } from "../components/CommandPanel.tsx";
-import { NotificationStack } from "../components/NotificationStack.tsx";
+import { useGitStatus } from "../hooks/useGitStatus.ts";
 import { StreamingSpinner, CompactionSpinner } from "../components/Spinner.tsx";
 import { useWire } from "../hooks/useWire.ts";
 import { useKeyboard } from "./keyboard.ts";
@@ -93,6 +93,9 @@ export function Shell({
 
   // Wire state
   const wire = useWire({ onReady: onWireReady });
+
+  // Git status
+  const gitStatus = useGitStatus();
 
   // Helper to push notifications to notification stack
   const pushNotification = useCallback(
@@ -236,8 +239,6 @@ export function Shell({
     [wire.pendingApproval, onApprovalResponse, wire],
   );
 
-  // Calculate status bar height (separator + 2 lines of status)
-  const statusBarHeight = slashMenuVisible ? 0 : 3;
 
   return (
     <Box flexDirection="column" minHeight={termHeight}>
@@ -270,12 +271,6 @@ export function Shell({
         )}
       </Box>
 
-      {/* ═══ Notification Stack: transient toasts ═══ */}
-      <NotificationStack
-        toasts={wire.notifications}
-        onDismiss={wire.dismissNotification}
-      />
-
       {/* ═══ InputBox: fills remaining, min 6 lines, text at top ═══ */}
       <Box
         flexDirection="column"
@@ -291,6 +286,7 @@ export function Shell({
             onOpenPanel={handleOpenPanel}
             disabled={false}
             isStreaming={wire.isStreaming}
+            planMode={wire.status?.plan_mode ?? false}
             commands={allCommands}
             onSlashMenuChange={setSlashMenuVisible}
             clearSignal={clearInputSignal}
@@ -299,19 +295,23 @@ export function Shell({
         )}
       </Box>
 
-      {/* ═══ Bottom: Status bar (always visible, hidden when slash menu or panel) ═══ */}
-      {!slashMenuVisible && !activePanel && (
-        <StatusBar
-          modelName={modelName}
-          workDir={workDir}
-          status={wire.status}
-          isStreaming={wire.isStreaming}
-          stepCount={wire.stepCount}
-          isCompacting={wire.isCompacting}
-          planMode={wire.status?.plan_mode ?? false}
-          thinking={thinking}
-        />
-      )}
+      {/* ═══ Bottom: Status bar (always visible) ═══ */}
+      <StatusBar
+        modelName={modelName}
+        workDir={workDir}
+        status={wire.status}
+        isStreaming={wire.isStreaming}
+        stepCount={wire.stepCount}
+        isCompacting={wire.isCompacting}
+        planMode={wire.status?.plan_mode ?? false}
+        thinking={thinking}
+        gitBranch={gitStatus.branch}
+        gitDirty={gitStatus.dirty}
+        gitAhead={gitStatus.ahead}
+        gitBehind={gitStatus.behind}
+        toasts={wire.notifications}
+        onDismissToast={wire.dismissNotification}
+      />
     </Box>
   );
 }
