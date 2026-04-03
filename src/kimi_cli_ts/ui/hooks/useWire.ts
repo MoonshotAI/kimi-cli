@@ -12,6 +12,7 @@ import type {
   ToolCallSegment,
 } from "../shell/events";
 import type { StatusUpdate, ApprovalRequest } from "../../wire/types";
+import type { Toast } from "../components/NotificationStack";
 import { nanoid } from "nanoid";
 
 export interface WireState {
@@ -21,6 +22,7 @@ export interface WireState {
   status: StatusUpdate | null;
   stepCount: number;
   isCompacting: boolean;
+  notifications: Toast[];
 }
 
 export interface UseWireOptions {
@@ -34,6 +36,7 @@ export interface UseWireOptions {
 export function useWire(options?: UseWireOptions): WireState & {
   pushEvent: (event: WireUIEvent) => void;
   clearMessages: () => void;
+  dismissNotification: (id: string) => void;
 } {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -42,6 +45,7 @@ export function useWire(options?: UseWireOptions): WireState & {
   const [status, setStatus] = useState<StatusUpdate | null>(null);
   const [stepCount, setStepCount] = useState(0);
   const [isCompacting, setIsCompacting] = useState(false);
+  const [notifications, setNotifications] = useState<Toast[]>([]);
 
   // Use ref for current assistant message being built
   const currentAssistantRef = useRef<UIMessage | null>(null);
@@ -185,26 +189,28 @@ export function useWire(options?: UseWireOptions): WireState & {
       }
 
       case "notification": {
-        const sysMsg: UIMessage = {
+        // Add to notification stack instead of message stream
+        const toast: Toast = {
           id: nanoid(),
-          role: "system",
-          segments: [
-            { type: "text", text: `${event.title}: ${event.body}` },
-          ],
-          timestamp: Date.now(),
+          title: event.title,
+          body: event.body,
+          severity: "info",
+          duration: 4000, // auto-dismiss after 4 seconds
         };
-        setMessages((prev) => [...prev, sysMsg]);
+        setNotifications((prev) => [...prev, toast]);
         break;
       }
 
       case "error": {
-        const errMsg: UIMessage = {
+        // Errors are also shown as notifications with longer duration
+        const toast: Toast = {
           id: nanoid(),
-          role: "system",
-          segments: [{ type: "text", text: `Error: ${event.message}` }],
-          timestamp: Date.now(),
+          title: "Error",
+          body: event.message,
+          severity: "error",
+          duration: event.retryable ? 0 : 6000, // retryable errors don't auto-dismiss
         };
-        setMessages((prev) => [...prev, errMsg]);
+        setNotifications((prev) => [...prev, toast]);
         setIsStreaming(false);
         break;
       }
@@ -217,6 +223,10 @@ export function useWire(options?: UseWireOptions): WireState & {
     setIsStreaming(false);
     setPendingApproval(null);
     setStepCount(0);
+  }, []);
+
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
   // Notify caller that pushEvent is ready
@@ -232,7 +242,9 @@ export function useWire(options?: UseWireOptions): WireState & {
     status,
     stepCount,
     isCompacting,
+    notifications,
     pushEvent,
     clearMessages,
+    dismissNotification,
   };
 }

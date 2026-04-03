@@ -20,6 +20,7 @@ import { WelcomeBox } from "../components/WelcomeBox.tsx";
 import { StatusBar } from "../components/StatusBar.tsx";
 import { ApprovalPrompt } from "../components/ApprovalPrompt.tsx";
 import { CommandPanel } from "../components/CommandPanel.tsx";
+import { NotificationStack } from "../components/NotificationStack.tsx";
 import { StreamingSpinner, CompactionSpinner } from "../components/Spinner.tsx";
 import { useWire } from "../hooks/useWire.ts";
 import { useKeyboard } from "./keyboard.ts";
@@ -93,7 +94,7 @@ export function Shell({
   // Wire state
   const wire = useWire({ onReady: onWireReady });
 
-  // Helper to push notifications to chat area
+  // Helper to push notifications to notification stack
   const pushNotification = useCallback(
     (title: string, body: string) => {
       wire.pushEvent({ type: "notification", title, body });
@@ -268,6 +269,12 @@ export function Shell({
           />
         )}
       </Box>
+
+      {/* ═══ Notification Stack: transient toasts ═══ */}
+      <NotificationStack
+        toasts={wire.notifications}
+        onDismiss={wire.dismissNotification}
+      />
 
       {/* ═══ InputBox: fills remaining, min 6 lines, text at top ═══ */}
       <Box
