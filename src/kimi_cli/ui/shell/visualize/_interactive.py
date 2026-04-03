@@ -173,6 +173,9 @@ class _PromptLiveView(_LiveView):
     # -- Visualize loop ------------------------------------------------------
 
     async def visualize_loop(self, wire: WireUISide):
+        # Declare outside try so finally can always cancel them.
+        wire_task: asyncio.Task[WireMessage] | None = None
+        external_task: asyncio.Task[WireMessage] | None = None
         try:
             wire_task = asyncio.create_task(wire.receive())
             external_task = asyncio.create_task(self._external_messages.get())
@@ -213,14 +216,22 @@ class _PromptLiveView(_LiveView):
                 self.dispatch_wire_message(msg)
                 self._flush_prompt_refresh()
 
-            # Wire closed — if btw modal is showing a result, keep the loop
-            # alive so the user can read and dismiss it.
-            if self._btw_modal is not None and not self._btw_modal._is_loading:  # pyright: ignore[reportPrivateUsage]
-                self._btw_dismiss_event = asyncio.Event()
-                await self._btw_dismiss_event.wait()
+            # Wire closed — if btw is active, wait for it to finish, then
+            # let the user read and dismiss the result.
+            if self._btw_modal is not None:
+                # If LLM is still running, wait for it (user can Escape to cancel)
+                if self._btw_run_task is not None and not self._btw_run_task.done():
+                    with suppress(asyncio.CancelledError):
+                        await self._btw_run_task
+                # Now btw has a result — wait for user dismiss.
+                # _dismiss_btw() may have been called during the await above
+                # (user pressed Escape), so re-check is necessary.
+                if self._btw_modal is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                    self._btw_dismiss_event = asyncio.Event()
+                    await self._btw_dismiss_event.wait()
         finally:
             self._external_messages.shutdown(immediate=True)
-            for task in (locals().get("wire_task"), locals().get("external_task")):
+            for task in (wire_task, external_task):
                 if task is None:
                     continue
                 task.cancel()
@@ -265,10 +276,11 @@ class _PromptLiveView(_LiveView):
             if self._btw_runner is not None and not self._btw_active:
                 self._start_btw(action.args)
             return
-        # Print permanently in conversation flow
+        # Print permanently in conversation flow (shows placeholder for pasted text)
         console.print(render_user_echo_text(user_input.command))
-        # Store the command text as dedup key (type-safe string comparison)
-        self._pending_local_steer_keys.append(user_input.command)
+        # Store resolved text as dedup key — matches what wire sends back
+        # (user_input.command may contain placeholders like "[Pasted text #1]")
+        self._pending_local_steer_keys.append(user_input.resolved_command)
         self._steer(user_input.content)
         self._flush_prompt_refresh()
 

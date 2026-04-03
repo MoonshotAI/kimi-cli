@@ -157,7 +157,7 @@ async def visualize(
         if prompt_session is not None and steer is not None:
             if unbind_running_input is not None:
                 unbind_running_input()
-            assert isinstance(view, _PromptLiveView)
-            prompt_session.detach_running_prompt(view)
+            if isinstance(view, _PromptLiveView):
+                prompt_session.detach_running_prompt(view)
         if on_view_closed is not None:
             on_view_closed()

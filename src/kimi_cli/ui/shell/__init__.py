@@ -871,13 +871,15 @@ class Shell:
             )
 
             # Wait for either LLM completion or user dismiss
+            dismiss_task = asyncio.create_task(dismiss_event.wait())
             _done, _ = await asyncio.wait(
-                [llm_task, asyncio.ensure_future(dismiss_event.wait())],
+                [llm_task, dismiss_task],
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
             if llm_task.done() and not llm_task.cancelled():
                 # LLM finished — show result, wait for user to dismiss
+                dismiss_task.cancel()
                 response, error = llm_task.result()
                 modal.set_result(response, error)
                 prompt_session.invalidate()
