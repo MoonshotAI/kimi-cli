@@ -188,3 +188,23 @@ def notification(
         "body": body,
         "severity": severity,
     }
+
+
+def permission_request(
+    *,
+    session_id: str,
+    cwd: str,
+    tool_name: str,
+    tool_input: dict[str, Any],
+    tool_call_id: str = "",
+    action: str = "",
+    description: str = "",
+) -> dict[str, Any]:
+    return {
+        **_base("PermissionRequest", session_id, cwd),
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+        "tool_call_id": tool_call_id,
+        "action": action,
+        "description": description,
+    }

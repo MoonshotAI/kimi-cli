@@ -12,7 +12,7 @@ from kimi_cli import logger
 class HookResult:
     """Result of a single hook execution."""
 
-    action: Literal["allow", "block"] = "allow"
+    action: Literal["allow", "block", "ask"] = "allow"
     reason: str = ""
     stdout: str = ""
     stderr: str = ""
@@ -75,10 +75,28 @@ async def run_hook(
             if isinstance(raw, dict):
                 parsed = cast(dict[str, Any], raw)
                 hook_output = cast(dict[str, Any], parsed.get("hookSpecificOutput", {}))
-                if hook_output.get("permissionDecision") == "deny":
+                decision = hook_output.get("permissionDecision") or hook_output.get("decision")
+                if decision == "deny":
                     return HookResult(
                         action="block",
-                        reason=str(hook_output.get("permissionDecisionReason", "")),
+                        reason=str(hook_output.get("permissionDecisionReason", hook_output.get("reason", ""))),
+                        stdout=stdout,
+                        stderr=stderr,
+                        exit_code=0,
+                    )
+                elif decision == "ask":
+                    # Explicitly ask user in terminal
+                    return HookResult(
+                        action="ask",
+                        reason=str(hook_output.get("reason", "")),
+                        stdout=stdout,
+                        stderr=stderr,
+                        exit_code=0,
+                    )
+                elif decision == "allow":
+                    return HookResult(
+                        action="allow",
+                        reason=str(hook_output.get("reason", "")),
                         stdout=stdout,
                         stderr=stderr,
                         exit_code=0,

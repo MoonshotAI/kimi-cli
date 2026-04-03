@@ -255,6 +255,7 @@ class KimiCLI:
         hook_engine = HookEngine(config.hooks, cwd=str(session.work_dir))
         soul.set_hook_engine(hook_engine)
         runtime.hook_engine = hook_engine
+        runtime.approval.set_hook_engine(hook_engine)
 
         return KimiCLI(soul, runtime, env_overrides)
 

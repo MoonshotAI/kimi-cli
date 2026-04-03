@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from kimi_cli.approval_runtime import (
     ApprovalCancelledError,
@@ -14,6 +14,9 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import DisplayBlock
+
+if TYPE_CHECKING:
+    from kimi_cli.hooks.engine import HookEngine
 
 type Response = Literal["approve", "approve_for_session", "reject"]
 
@@ -76,16 +79,21 @@ class Approval:
         *,
         state: ApprovalState | None = None,
         runtime: ApprovalRuntime | None = None,
+        hook_engine: HookEngine | None = None,
     ):
         self._state = state or ApprovalState(yolo=yolo)
         self._runtime = runtime or ApprovalRuntime()
+        self._hook_engine = hook_engine
 
     def share(self) -> Approval:
         """Create a new approval queue that shares state (yolo + auto-approve)."""
-        return Approval(state=self._state, runtime=self._runtime)
+        return Approval(state=self._state, runtime=self._runtime, hook_engine=self._hook_engine)
 
     def set_runtime(self, runtime: ApprovalRuntime) -> None:
         self._runtime = runtime
+
+    def set_hook_engine(self, hook_engine: HookEngine) -> None:
+        self._hook_engine = hook_engine
 
     @property
     def runtime(self) -> ApprovalRuntime:
@@ -137,6 +145,49 @@ class Approval:
 
         if action in self._state.auto_approve_actions:
             return ApprovalResult(approved=True)
+
+        # --- PermissionRequest hook ---
+        if self._hook_engine is not None:
+            from pathlib import Path
+
+            from kimi_cli.hooks import events
+
+            # Build tool_input from action and description
+            tool_input: dict = {"action": action, "description": description}
+
+            hook_results = await self._hook_engine.trigger(
+                "PermissionRequest",
+                matcher_value=tool_call.function.name,
+                input_data=events.permission_request(
+                    session_id=tool_call.id,  # Use tool_call.id as session identifier
+                    cwd=str(Path.cwd()),
+                    tool_name=tool_call.function.name,
+                    tool_input=tool_input,
+                    tool_call_id=tool_call.id,
+                    action=action,
+                    description=description,
+                ),
+            )
+            for result in hook_results:
+                if result.action == "allow":
+                    # Hook explicitly allows - skip terminal approval
+                    logger.debug(
+                        "PermissionRequest hook allowed {tool_name}",
+                        tool_name=tool_call.function.name,
+                    )
+                    return ApprovalResult(approved=True)
+                elif result.action == "block":
+                    # Hook explicitly denies
+                    logger.debug(
+                        "PermissionRequest hook denied {tool_name}: {reason}",
+                        tool_name=tool_call.function.name,
+                        reason=result.reason,
+                    )
+                    return ApprovalResult(
+                        approved=False,
+                        feedback=result.reason or "Denied by PermissionRequest hook",
+                    )
+                # result.action == "ask" means continue to terminal approval
 
         request_id = str(uuid.uuid4())
         display_blocks = display or []
