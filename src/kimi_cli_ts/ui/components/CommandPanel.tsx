@@ -109,6 +109,20 @@ function ChoicePanel({
     ),
   );
 
+  const rows = stdout?.rows ?? 24;
+  // Reserve lines for: separator + title + separator + status bar (~5 lines overhead)
+  const maxVisible = Math.max(rows - 8, 5);
+  const total = items.length;
+
+  // Compute visible window centered on selectedIndex
+  let start = 0;
+  if (total > maxVisible) {
+    start = Math.max(0, Math.min(selectedIndex - Math.floor(maxVisible / 2), total - maxVisible));
+  }
+  const visibleItems = items.slice(start, start + maxVisible);
+  const hasMore = start + maxVisible < total;
+  const hasPrev = start > 0;
+
   return (
     <Box flexDirection="column">
       <Text color={BORDER_COLOR}>{"─".repeat(columns)}</Text>
@@ -117,9 +131,16 @@ function ChoicePanel({
           {title}
         </Text>
         <Text color={DIM}> (↑↓ select, Enter confirm, Esc cancel)</Text>
+        {total > maxVisible && (
+          <Text color={DIM}>
+            {`  [${selectedIndex + 1}/${total}]`}
+          </Text>
+        )}
       </Box>
       <Text color={BORDER_COLOR}>{"─".repeat(columns)}</Text>
-      {items.map((item, i) => {
+      {hasPrev && <Text color={DIM}>  ↑ more...</Text>}
+      {visibleItems.map((item, vi) => {
+        const i = start + vi;
         const isSelected = i === selectedIndex;
         return (
           <Box key={item.value} paddingX={1}>
@@ -138,6 +159,7 @@ function ChoicePanel({
           </Box>
         );
       })}
+      {hasMore && <Text color={DIM}>  ↓ more...</Text>}
     </Box>
   );
 }
