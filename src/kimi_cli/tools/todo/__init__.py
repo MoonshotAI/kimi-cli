@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any, Literal, override
+from typing import Any, Literal, cast, override
 
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
@@ -108,8 +108,12 @@ class SetTodoList(CallableTool2[Params]):
         session.state.todos = items
 
     def _load_root_todos(self) -> list[Todo]:
-        todos = self._runtime.session.state.todos
-        return [Todo(title=t.title, status=t.status) for t in todos]
+        from kimi_cli.session_state import load_session_state
+
+        session = self._runtime.session
+        fresh = load_session_state(session.dir)
+        session.state.todos = fresh.todos
+        return [Todo(title=t.title, status=t.status) for t in fresh.todos]
 
     def _save_subagent_todos(self, items: list[TodoItemState]) -> None:
         state_file = self._subagent_state_file()
@@ -145,10 +149,14 @@ class SetTodoList(CallableTool2[Params]):
         if not path.exists():
             return {}
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             logger.warning("Corrupted subagent todo state, using defaults: {path}", path=path)
             return {}
+        if not isinstance(data, dict):
+            logger.warning("Invalid subagent todo state type, using defaults: {path}", path=path)
+            return {}
+        return cast(dict[str, Any], data)
 
     @staticmethod
     def _write_subagent_state(path: Path, data: dict[str, Any]) -> None:
