@@ -27,8 +27,10 @@ The configuration file contains the following top-level configuration items:
 | `default_model` | `string` | Default model name, must be a model defined in `models` |
 | `default_thinking` | `boolean` | Whether to enable thinking mode by default (defaults to `false`) |
 | `default_yolo` | `boolean` | Whether to enable YOLO (auto-approve) mode by default (defaults to `false`) |
+| `default_plan_mode` | `boolean` | Whether to start new sessions in plan mode by default (defaults to `false`); resumed sessions preserve their existing state |
 | `default_editor` | `string` | Default external editor command (e.g. `"vim"`, `"code --wait"`), auto-detects when empty |
 | `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |
+| `merge_all_available_skills` | `boolean` | Whether to merge skills from all brand directories (defaults to `false`); see [Skills configuration](../customization/skills.md) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -42,8 +44,10 @@ The configuration file contains the following top-level configuration items:
 default_model = "kimi-for-coding"
 default_thinking = false
 default_yolo = false
+default_plan_mode = false
 default_editor = ""
 theme = "dark"
+merge_all_available_skills = false
 
 [providers.kimi-for-coding]
 type = "kimi"

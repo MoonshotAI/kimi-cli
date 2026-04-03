@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pydoc
+import re
 
 from rich.console import Console, PagerContext, RenderableType
 from rich.pager import Pager
@@ -12,6 +13,7 @@ NEUTRAL_MARKDOWN_THEME = Theme(
         "markdown.paragraph": "none",
         "markdown.block_quote": "none",
         "markdown.hr": "none",
+        "markdown.list": "none",
         "markdown.item": "none",
         "markdown.item.bullet": "none",
         "markdown.item.number": "none",
@@ -24,9 +26,13 @@ NEUTRAL_MARKDOWN_THEME = Theme(
         "markdown.h4": "none",
         "markdown.h5": "none",
         "markdown.h6": "none",
+        "markdown.h7": "none",
         "markdown.em": "none",
+        "markdown.emph": "none",
         "markdown.strong": "none",
         "markdown.s": "none",
+        "markdown.code": "none",
+        "markdown.code_block": "none",
         "status.spinner": "none",
     },
     inherit=True,
@@ -71,6 +77,20 @@ class _KimiConsole(Console):
 console = _KimiConsole(highlight=False, theme=NEUTRAL_MARKDOWN_THEME)
 
 
+# Matches OSC 8 hyperlink open/close markers emitted by Rich's Style(link=...).
+# Format: ESC ] 8 ; <params> ; <uri> ST   where ST is ESC \ or BEL (\x07).
+# prompt_toolkit's ANSI parser does not understand OSC 8 and renders the raw
+# escape bytes as visible garbage (e.g. "8;id=391551;https://…").  We wrap each
+# marker in \001…\002 so prompt_toolkit treats it as a ZeroWidthEscape and
+# passes it through to the terminal via write_raw, preserving clickable links.
+_OSC8_RE = re.compile(r"\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)")
+
+
+def _wrap_osc8_as_zero_width(m: re.Match[str]) -> str:
+    """Wrap an OSC 8 marker in \\001…\\002 for prompt_toolkit ZeroWidthEscape."""
+    return f"\x01{m.group(0)}\x02"
+
+
 def render_to_ansi(renderable: RenderableType, *, columns: int) -> str:
     """Render a Rich renderable to an ANSI string for prompt_toolkit integration."""
     from io import StringIO
@@ -80,10 +100,10 @@ def render_to_ansi(renderable: RenderableType, *, columns: int) -> str:
     temp = Console(
         file=buf,
         force_terminal=True,
-        color_system="truecolor",
         width=width,
         theme=NEUTRAL_MARKDOWN_THEME,
         highlight=False,
     )
     temp.print(renderable, end="")
-    return buf.getvalue()
+    result = buf.getvalue()
+    return _OSC8_RE.sub(_wrap_osc8_as_zero_width, result)

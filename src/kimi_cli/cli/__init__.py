@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import typer
+
+if TYPE_CHECKING:
+    from kimi_cli.session import Session
 
 from ._lazy_group import LazySubcommandGroup
 
@@ -11,9 +14,11 @@ from ._lazy_group import LazySubcommandGroup
 class Reload(Exception):
     """Reload configuration."""
 
-    def __init__(self, session_id: str | None = None):
+    def __init__(self, session_id: str | None = None, prefill_text: str | None = None):
         super().__init__("reload")
         self.session_id = session_id
+        self.prefill_text = prefill_text
+        self.source_session: Session | None = None
 
 
 class SwitchToWeb(Exception):
@@ -53,6 +58,12 @@ class ExitCode:
 
 InputFormat = Literal["text", "stream-json"]
 OutputFormat = Literal["text", "stream-json"]
+
+
+def _strip_session_id_suffix(title: str, session_id: str) -> str:
+    """Remove the trailing `` (session_id)`` suffix from a session title, if present."""
+    suffix = f" ({session_id})"
+    return title.rsplit(suffix, 1)[0] if title.endswith(suffix) else title
 
 
 def _version_callback(value: bool) -> None:
@@ -123,8 +134,14 @@ def kimi(
         str | None,
         typer.Option(
             "--session",
+            "--resume",
             "-S",
-            help="Session ID to resume for the working directory. Default: new session.",
+            "-r",
+            help=(
+                "Resume a session. "
+                "With ID: resume that session. "
+                "Without ID: interactively pick a session."
+            ),
         ),
     ] = None,
     continue_: Annotated[
@@ -177,6 +194,13 @@ def kimi(
             "-y",
             "--auto-approve",
             help="Automatically approve all actions. Default: no.",
+        ),
+    ] = False,
+    plan: Annotated[
+        bool,
+        typer.Option(
+            "--plan",
+            help="Start in plan mode. Default: no.",
         ),
     ] = False,
     prompt: Annotated[
@@ -371,10 +395,15 @@ def kimi(
                 return
         typer.echo(message, err=True)
 
+    # session_id states:
+    #   None  → not provided (new session)
+    #   ""    → --session/--resume without value (picker mode)
+    #   "ID"  → --session ID (resume specific session)
+    _picker_mode = session_id == ""
     if session_id is not None:
-        session_id = session_id.strip()
-        if not session_id:
-            raise typer.BadParameter("Session ID cannot be empty", param_hint="--session")
+        session_id = session_id.strip() or None  # treat whitespace-only as picker mode
+        if session_id is None:
+            _picker_mode = True
 
     if quiet:
         if acp_mode or wire_mode:
@@ -403,7 +432,7 @@ def kimi(
         },
         {
             "--continue": continue_,
-            "--session": session_id is not None,
+            "--session": session_id is not None or _picker_mode,
         },
         {
             "--config": config_string is not None,
@@ -453,6 +482,11 @@ def kimi(
             "Final-message-only output is only supported for print UI",
             param_hint="--final-message-only",
         )
+    if _picker_mode and ui != "shell":
+        raise typer.BadParameter(
+            "--session without a session ID is only supported for shell UI",
+            param_hint="--session",
+        )
 
     config: Config | Path | None = None
     if config_string is not None:
@@ -491,7 +525,11 @@ def kimi(
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
 
-    async def _run(session_id: str | None) -> tuple[Session, int]:
+    # Tracks the most recently created/loaded session so that _reload_loop's
+    # exception handler can clean it up even when _run() fails before returning.
+    _latest_created_session: Session | None = None
+
+    async def _run(session_id: str | None, prefill_text: str | None = None) -> tuple[Session, int]:
         """
         Create/load session and run the CLI instance.
 
@@ -502,6 +540,9 @@ def kimi(
         try:
             startup_progress.update("Preparing session...")
 
+            # Track if we're resuming an existing session (vs creating new)
+            resumed = False
+
             if session_id is not None:
                 session = await Session.find(work_dir, session_id)
                 if session is None:
@@ -510,7 +551,12 @@ def kimi(
                         session_id=session_id,
                     )
                     session = await Session.create(work_dir, session_id)
-                logger.info("Switching to session: {session_id}", session_id=session.id)
+                else:
+                    # Only count as "resumed" if the session has actual turns.
+                    # Sessions created by /new, /undo (turn 0), /fork via Reload
+                    # may have a custom_title but no wire content — treat as startup.
+                    resumed = not session.wire_file.is_empty()
+                logger.info("Resuming session: {session_id}", session_id=session.id)
             elif continue_:
                 session = await Session.continue_(work_dir)
                 if session is None:
@@ -518,10 +564,14 @@ def kimi(
                         "No previous session found for the working directory",
                         param_hint="--continue",
                     )
+                resumed = True  # Continuing previous session
                 logger.info("Continuing previous session: {session_id}", session_id=session.id)
             else:
                 session = await Session.create(work_dir)
                 logger.info("Created new session: {session_id}", session_id=session.id)
+
+            nonlocal _latest_created_session
+            _latest_created_session = session
 
             # Add CLI-provided additional directories to session state
             if local_add_dirs:
@@ -560,6 +610,8 @@ def kimi(
                 model_name=model_name,
                 thinking=thinking,
                 yolo=yolo or (ui == "print"),  # print mode implies yolo
+                plan_mode=plan,
+                resumed=resumed,
                 agent_file=agent_file,
                 mcp_configs=mcp_configs,
                 skills_dirs=skills_dirs,
@@ -572,7 +624,7 @@ def kimi(
             startup_progress.stop()
 
             # --- SessionStart hook ---
-            _session_source = "resume" if continue_ else "startup"
+            _session_source = "resume" if resumed else "startup"
             await instance.soul.hook_engine.trigger(
                 "SessionStart",
                 matcher_value=_session_source,
@@ -590,7 +642,7 @@ def kimi(
             try:
                 match ui:
                     case "shell":
-                        shell_ok = await instance.run_shell(prompt)
+                        shell_ok = await instance.run_shell(prompt, prefill_text=prefill_text)
                         exit_code = ExitCode.SUCCESS if shell_ok else ExitCode.FAILURE
                     case "print":
                         exit_code = await instance.run_print(
@@ -612,7 +664,10 @@ def kimi(
             except Reload as e:
                 preserve_background_tasks = True
                 if e.session_id is None:
-                    raise Reload(session_id=session.id) from e
+                    r = Reload(session_id=session.id, prefill_text=e.prefill_text)
+                    r.source_session = session
+                    raise r from e
+                e.source_session = session
                 raise
             except SwitchToWeb:
                 preserve_background_tasks = True
@@ -643,34 +698,40 @@ def kimi(
         finally:
             startup_progress.stop()
 
+    async def _delete_empty_session(session: Session) -> None:
+        """Delete an empty session directory and clear last_session_id if it pointed to it."""
+        logger.info(
+            "Session {session_id} has empty context, removing it",
+            session_id=session.id,
+        )
+        await session.delete()
+        meta = load_metadata()
+        wdm = meta.get_work_dir_meta(session.work_dir)
+        if wdm is not None and wdm.last_session_id == session.id:
+            wdm.last_session_id = None
+            save_metadata(meta)
+
+    def _print_resume_hint(session: Session) -> None:
+        """Print a hint for resuming the session after exit."""
+        if not session.is_empty():
+            _emit_fatal_error(f"\nTo resume this session: kimi -r {session.id}")
+
     async def _post_run(last_session: Session, exit_code: int) -> None:
-        if exit_code != ExitCode.SUCCESS:
-            return
-
-        metadata = load_metadata()
-
-        # Update work_dir metadata with last session
-        work_dir_meta = metadata.get_work_dir_meta(last_session.work_dir)
-
-        if work_dir_meta is None:
-            logger.warning(
-                "Work dir metadata missing when marking last session, recreating: {work_dir}",
-                work_dir=last_session.work_dir,
-            )
-            work_dir_meta = metadata.new_work_dir_meta(last_session.work_dir)
-
+        _print_resume_hint(last_session)
         if last_session.is_empty():
-            logger.info(
-                "Session {session_id} has empty context, removing it",
-                session_id=last_session.id,
-            )
-            await last_session.delete()
-            if work_dir_meta.last_session_id == last_session.id:
-                work_dir_meta.last_session_id = None
-        else:
+            # Always clean up empty sessions regardless of exit code
+            await _delete_empty_session(last_session)
+        elif exit_code == ExitCode.SUCCESS:
+            metadata = load_metadata()
+            work_dir_meta = metadata.get_work_dir_meta(last_session.work_dir)
+            if work_dir_meta is None:
+                logger.warning(
+                    "Work dir metadata missing when marking last session, recreating: {work_dir}",
+                    work_dir=last_session.work_dir,
+                )
+                work_dir_meta = metadata.new_work_dir_meta(last_session.work_dir)
             work_dir_meta.last_session_id = last_session.id
-
-        save_metadata(metadata)
+            save_metadata(metadata)
 
     async def _reload_loop(session_id: str | None) -> tuple[str | None, int]:
         """Run the main loop, handling Reload/SwitchToWeb/SwitchToVis.
@@ -679,27 +740,94 @@ def kimi(
             (switch_target, exit_code) where switch_target is "web", "vis",
             or None if the session ended normally.
         """
-        while True:
+        last_session: Session | None = None
+        prefill_text: str | None = None
+        try:
+            while True:
+                try:
+                    last_session, exit_code = await _run(session_id, prefill_text=prefill_text)
+                    break
+                except Reload as e:
+                    # Clean up old empty session when switching to a different session
+                    old = e.source_session
+                    if old is not None and old.id != e.session_id and old.is_empty():
+                        await _delete_empty_session(old)
+                        last_session = None
+                    else:
+                        last_session = e.source_session
+                        # Only print resume hint when switching to a different session
+                        # (not for same-session reloads like /model, /theme, /reload)
+                        if old is not None and e.session_id is not None and old.id != e.session_id:
+                            _print_resume_hint(old)
+                    session_id = e.session_id
+                    prefill_text = e.prefill_text
+                    continue
+                except SwitchToWeb as e:
+                    if e.session_id is not None:
+                        session = await Session.find(work_dir, e.session_id)
+                        if session is not None:
+                            await _post_run(session, ExitCode.SUCCESS)
+                    return "web", ExitCode.SUCCESS
+                except SwitchToVis as e:
+                    if e.session_id is not None:
+                        session = await Session.find(work_dir, e.session_id)
+                        if session is not None:
+                            await _post_run(session, ExitCode.SUCCESS)
+                    return "vis", ExitCode.SUCCESS
+            assert last_session is not None
+            await _post_run(last_session, exit_code)
+            return None, exit_code
+        except (SwitchToWeb, SwitchToVis):
+            # Currently handled inside the loop (return), but re-raise explicitly
+            # so the generic except below never treats them as unexpected errors.
+            raise
+        except Exception:
+            # Best-effort cleanup: _latest_created_session is the session from
+            # the most recent _run() call, which may have failed before returning.
+            # last_session is from a *previous* iteration and must not be touched.
+            if _latest_created_session is not None:
+                _print_resume_hint(_latest_created_session)
+                if _latest_created_session.is_empty():
+                    with contextlib.suppress(Exception):
+                        await _delete_empty_session(_latest_created_session)
+            raise
+
+    if _picker_mode:
+        from prompt_toolkit.shortcuts.choice_input import ChoiceInput
+        from rich.console import Console
+
+        from kimi_cli.utils.datetime import format_relative_time
+
+        async def _pick_session() -> str:
+            all_sessions = await Session.list(work_dir)
+            if not all_sessions:
+                Console().print("[yellow]No sessions found for the working directory.[/yellow]")
+                raise typer.Exit(0)
+
+            choices: list[tuple[str, str]] = []
+            for s in all_sessions:
+                time_str = format_relative_time(s.updated_at)
+                short_id = s.id[:8]
+                name = _strip_session_id_suffix(s.title, s.id)
+                label = f"{name} ({short_id}), {time_str}"
+                choices.append((s.id, label))
+
             try:
-                last_session, exit_code = await _run(session_id)
-                break
-            except Reload as e:
-                session_id = e.session_id
-                continue
-            except SwitchToWeb as e:
-                if e.session_id is not None:
-                    session = await Session.find(work_dir, e.session_id)
-                    if session is not None:
-                        await _post_run(session, ExitCode.SUCCESS)
-                return "web", ExitCode.SUCCESS
-            except SwitchToVis as e:
-                if e.session_id is not None:
-                    session = await Session.find(work_dir, e.session_id)
-                    if session is not None:
-                        await _post_run(session, ExitCode.SUCCESS)
-                return "vis", ExitCode.SUCCESS
-        await _post_run(last_session, exit_code)
-        return None, exit_code
+                selection = await ChoiceInput(
+                    message="Select a session to resume"
+                    " (↑↓ navigate, Enter select, Ctrl+C cancel):",
+                    options=choices,
+                    default=choices[0][0],
+                ).prompt_async()
+            except (EOFError, KeyboardInterrupt):
+                raise typer.Exit(0) from None
+
+            if not selection:
+                raise typer.Exit(0)
+
+            return selection
+
+        session_id = asyncio.run(_pick_session())
 
     try:
         switch_target, exit_code = asyncio.run(_reload_loop(session_id))

@@ -33,11 +33,14 @@ In plan mode, the AI can only use read-only tools (`Glob`, `Grep`, `ReadFile`) t
 
 ### Entering plan mode
 
-There are three ways to enter plan mode:
+There are four ways to enter plan mode:
 
+- **CLI flag**: Use `kimi --plan` to start a new session directly in plan mode
 - **Keyboard shortcut**: Press `Shift-Tab` to toggle plan mode
 - **Slash command**: Enter `/plan` or `/plan on`
 - **AI-initiated**: When facing complex tasks, the AI may request to enter plan mode via the `EnterPlanMode` tool — you can accept or decline
+
+You can also set `default_plan_mode = true` in the config file to start every new session in plan mode by default. See [Configuration files](../configuration/config-files.md).
 
 When plan mode is active, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
 
@@ -81,8 +84,6 @@ Thinking mode requires support from the current model. Some models (like `kimi-k
 While the AI is executing a task, you can type and send follow-up messages in the input box without waiting for the current turn to finish. This feature is called "steering" and allows you to adjust the AI's direction mid-turn.
 
 Steer messages are appended to the context after the current step completes, and the AI will see and respond to your message before the next step begins. Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
-
-Any text you type in the input box during a turn but haven't yet submitted is preserved when the turn ends — it won't be lost. You can press `Enter` to send it as the next message, or continue editing.
 
 ::: tip
 Steer messages do not interrupt the AI's currently executing step — they are processed between steps. To interrupt immediately, use `Ctrl-C`.

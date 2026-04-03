@@ -4,8 +4,39 @@
 
 ## 未发布
 
+- Shell：修复 Markdown 渲染中行内代码和代码块出现黑色背景的问题——`NEUTRAL_MARKDOWN_THEME` 现在将所有 Rich 默认的 `markdown.*` 样式覆盖为 `"none"`，防止 Rich 内置的 `"cyan on black"` 在非黑色背景终端上泄露
+
+## 1.30.0 (2026-04-02)
+
+- Shell：细化空闲时后台完成的自动触发行为——恢复的 Shell 会话在用户发送消息前，不会因为历史遗留的后台通知而自动启动新的前景轮次；当用户正在输入时，新的后台完成事件也会短暂延后触发，避免抢占提示符或打断 CJK 输入法组合态
+- Core：修复前景轮次在中断后残留不平衡 Wire 事件的问题——轮次因取消或步骤中断退出时，现在也会补发 `TurnEnd`，避免恢复多次后会话 `wire.jsonl` 越来越脏
+- Core：提升会话启动恢复的鲁棒性——`--continue`/`--resume` 现在可容忍损坏的 `context.jsonl` 记录，以及损坏的子 Agent、后台任务或通知持久化工件；CLI 会尽可能跳过无效状态并继续恢复会话，而不是直接启动失败
+- CLI：改进 `kimi export` 会话导出体验——`kimi export` 现在默认预览并确认当前工作目录的上一个会话，显示会话 ID、标题和最后一条用户消息时间；新增 `--yes` 跳过确认；同时修复显式会话 ID 时 `--output` 放在参数后面会被错误解析为子命令的问题
+- Grep：新增 `include_ignored` 参数，支持搜索被 `.gitignore` 排除的文件——设为 `true` 时启用 ripgrep 的 `--no-ignore` 标志，可搜索构建产物或 `node_modules` 等通常被忽略的文件；敏感文件（如 `.env`）仍由敏感文件保护层过滤；默认 `false`，不影响现有行为
+- Core：为 Grep 和 Read 工具添加敏感文件保护——`.env`、SSH 私钥（`id_rsa`、`id_ed25519`、`id_ecdsa`）和云凭据（`.aws/credentials`、`.gcp/credentials`）会被检测并拦截；Grep 从结果中过滤并显示警告，Read 直接拒绝读取；`.env.example`/`.env.sample`/`.env.template` 不受影响
+- Core：修复并行 foreground 子 Agent 审批请求导致会话挂死的问题——在交互式 Shell 模式下，`_set_active_approval_sink` 不再将待处理的审批请求 flush 到 live view sink（该 sink 无法渲染审批弹窗）；请求保留在 pending 队列中由 prompt modal 路径处理；同时为 `wait_for_response` 增加 300 秒超时，确保未被 resolve 的审批请求最终抛出 `ApprovalCancelledError` 而非永久挂起
+- CLI：新增 `--session`/`--resume`（`-S`/`-r`）参数用于恢复会话——不带参数时打开交互式会话选择器（仅 Shell UI）；带会话 ID 时恢复指定会话；以统一的可选值参数设计替代了被回退的 `--pick-session`/`--list-sessions`
+- CLI：新增 CJK 安全的 `shorten()` 工具函数——替换所有 `textwrap.shorten` 调用，使不含空格的中日韩文本能优雅截断，而非被折叠成仅剩省略号
+- Core：修复当通用目录（如 `~/.config/agents/skills/`）存在但为空时，品牌目录（如 `~/.kimi/skills/`）中的 Skills 静默消失的问题——Skill 目录发现现在独立搜索品牌组和通用组目录并合并结果，而非在所有候选目录中找到第一个就停止
+- Core：新增 `merge_all_available_skills` 配置项——启用后，所有存在的品牌目录（`~/.kimi/skills/`、`~/.claude/skills/`、`~/.codex/skills/`）中的 Skills 都会被加载并合并，而非仅使用找到的第一个；同名 Skill 按 kimi > claude > codex 的优先级解析；默认关闭
+- CLI：新增 `--plan` 启动参数和 `default_plan_mode` 配置项——通过 `kimi --plan` 或在 `~/.kimi/config.toml` 中设置 `default_plan_mode = true` 可让新会话直接进入计划模式；恢复的会话保留其原有的计划模式状态
+- Shell：新增 `/undo` 和 `/fork` 命令用于会话分支——`/undo` 支持选择一个历史轮次并 fork 出新会话，被选中轮次的用户消息会预填到输入框供重新编辑；`/fork` 将当前完整对话历史复制到新会话；原会话始终保留不丢失
+- CLI：新增 `-r` 作为 `--session` 的简写别名，并在会话退出时输出恢复提示（`kimi -r <session-id>`）——覆盖正常退出、Ctrl-C、`/undo`、`/fork` 和 `/sessions` 切换等场景，确保用户始终能找到回到会话的方式
+- Core：修复 `custom_headers` 未传递给非 Kimi provider 的问题——OpenAI、Anthropic、Google GenAI 和 Vertex AI provider 现在能正确转发 `providers.*.custom_headers` 中配置的自定义请求头
+
+## 1.29.0 (2026-04-01)
+
+- Core：支持层级化 `AGENTS.md` 加载——CLI 现在会从 git 项目根目录到工作目录逐层发现并合并 `AGENTS.md` 文件，包括每层目录中的 `.kimi/AGENTS.md`；在 32 KiB 预算上限下，更深层目录的文件优先保留，确保最具体的指令不会被截断
+- Core：修复空会话在退出后残留在磁盘上的问题——创建但未使用的会话现在会在所有退出路径（失败退出、会话切换、异常错误）中被清理，而不仅限于成功退出
+- Shell：新增 `KIMI_CLI_PASTE_CHAR_THRESHOLD` 和 `KIMI_CLI_PASTE_LINE_THRESHOLD` 环境变量，控制粘贴文本折叠为占位符的阈值——降低这些阈值可规避部分终端（如通过 SSH 连接的 XShell）在粘贴多行文本后 CJK 输入法失效的问题
+- Shell：修复不支持 truecolor 的终端（如 Xshell）上 diff 面板渲染异常的问题——`render_to_ansi` 不再硬编码 24 位色；Rich 现在通过 `COLORTERM`/`TERM` 环境变量自动检测终端颜色能力
+- Web：修复 CLI 升级后浏览器缓存旧 `index.html` 导致白屏的问题——服务端现在对 HTML 返回 `Cache-Control: no-cache`，对带 hash 的静态资源返回 `immutable`，防止因 chunk 文件名变更而产生 404
+- Core：修复 Windows 上文件写入时 LF 被转换为 CRLF 的问题——`writetext` 现在以 `newline=""` 打开文件，防止 Python 的通用换行符转换将 `\n` 静默转为 `\r\n`
+- Core：支持 `socks://` 代理协议——V2RayN 等代理工具会设置 `ALL_PROXY=socks://...`，但 httpx/aiohttp 不识别该协议；CLI 现在会在启动时将 `socks://` 归一化为 `socks5://`，确保所有 HTTP 客户端和子进程在 SOCKS 代理环境下正常工作
+- Shell：新增 `/title`（别名 `/rename`）命令，支持手动设置会话标题——标题现在统一存储在 `state.json` 中；旧版 `metadata.json` 会在首次加载时自动迁移
 - Shell：修复设置 `MANPAGER`（如 `bat`）后分页器输出乱码的问题——控制台分页器现在忽略 `MANPAGER`，委托给 `pydoc.pager()` 处理，保留 `PAGER` 及所有平台特定的回退逻辑
 - Explore：增强 explore Agent 的专家角色、搜索深度等级和自动环境上下文——explore Agent 启动时会自动获取仓库环境信息以提升调研质量；主 Agent 被引导优先使用 explore 进行代码库研究，Plan 模式鼓励先用 explore 调研再制定方案
+- Shell：修复工具调用显示中出现原始 OSC 8 转义字节（如 `8;id=391551;https://…`）的问题——超链接序列现在被包装为零宽转义以兼容 prompt_toolkit，在支持的终端中保留可点击链接
 - Core：在系统提示词中添加操作系统和 Shell 信息——模型现在能感知当前运行平台，Windows 上会收到优先使用内置工具而非 Shell 命令的指引，避免在 PowerShell 中执行 Linux 命令导致报错
 - Shell：修复 `command` 参数描述在所有平台上都写着 "bash command" 的问题——描述现在与平台无关
 - Web：修复自动标题覆盖手动会话重命名的问题——用户通过 Web UI 重命名会话后，新标题现在会被保留，不再被自动生成的标题替换

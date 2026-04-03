@@ -55,9 +55,9 @@ The working directory determines the root directory for file operations. Relativ
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--continue` | `-C` | Continue the previous session in the current working directory |
-| `--session ID` | `-S` | Resume session with specified ID, creates new session if not exists |
+| `--session [ID]` / `--resume [ID]` | `-S` / `-r` | Resume a session. With ID: resume that session (creates new if not found). Without ID: open interactive session picker (shell mode only) |
 
-`--continue` and `--session` are mutually exclusive.
+`--continue` and `--session`/`--resume` are mutually exclusive.
 
 ## Input and commands
 
@@ -126,6 +126,16 @@ Default loads `~/.kimi/mcp.json` (if exists). See [Model Context Protocol](../cu
 In YOLO mode, all file modifications and shell commands are automatically executed. Use with caution.
 :::
 
+## Plan mode
+
+| Option | Description |
+|--------|-------------|
+| `--plan` | Start a new session in plan mode |
+
+When started with `--plan`, the AI can only use read-only tools to explore the codebase and write an implementation plan. When resuming an existing session, `--plan` forces plan mode on; resuming without `--plan` preserves the session's existing state.
+
+You can also set `default_plan_mode = true` in the config file to start new sessions in plan mode by default. See [Configuration files](../configuration/config-files.md).
+
 ## Thinking mode
 
 | Option | Description |
@@ -175,16 +185,17 @@ kimi logout
 
 ### `kimi export`
 
-Export the data of a specified session as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.).
+Export session data as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.).
 
 ```sh
-kimi export <session_id> [-o <output_path>]
+kimi export [<session_id>] [-o <output_path>] [--yes]
 ```
 
 | Argument / Option | Description |
 |--------|-------------|
-| `<session_id>` | Session ID to export |
+| `<session_id>` | Session ID to export. If omitted, the CLI previews the previous session for the current working directory and asks for confirmation before exporting |
 | `--output, -o` | Output ZIP file path (defaults to `session-<id>.zip` in the current directory) |
+| `--yes, -y` | Skip the confirmation prompt when exporting the default previous session |
 
 ::: info Added
 Added in version 1.20.

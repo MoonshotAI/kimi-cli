@@ -383,3 +383,26 @@ async def test_read_with_tilde_path_expansion(read_file_tool: ReadFile, temp_wor
         # Clean up
         if test_file.exists():
             test_file.unlink()
+
+
+async def test_read_rejects_sensitive_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """ReadFile should block reading files that match sensitive patterns."""
+    env_file = temp_work_dir / ".env"
+    await env_file.write_text("SECRET_KEY=hunter2\n")
+
+    result = await read_file_tool(Params(path=str(env_file)))
+
+    assert result.is_error
+    assert "sensitive" in result.message.lower() or "secrets" in result.message.lower()
+    assert "blocked" in result.message.lower() or "protect" in result.message.lower()
+
+
+async def test_read_allows_non_sensitive_dotfile(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """ReadFile should allow reading non-sensitive dotfiles like .gitignore."""
+    gitignore = temp_work_dir / ".gitignore"
+    await gitignore.write_text("node_modules/\n")
+
+    result = await read_file_tool(Params(path=str(gitignore)))
+
+    assert not result.is_error
+    assert "node_modules" in result.output

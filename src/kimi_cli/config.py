@@ -188,6 +188,7 @@ class Config(BaseModel):
     default_model: str = Field(default="", description="Default model to use")
     default_thinking: bool = Field(default=False, description="Default thinking mode")
     default_yolo: bool = Field(default=False, description="Default yolo (auto-approve) mode")
+    default_plan_mode: bool = Field(default=False, description="Default plan mode for new sessions")
     default_editor: str = Field(
         default="",
         description="Default external editor command (e.g. 'vim', 'code --wait')",
@@ -210,6 +211,13 @@ class Config(BaseModel):
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
     hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")  # pyright: ignore[reportUnknownVariableType]
+    merge_all_available_skills: bool = Field(
+        default=False,
+        description=(
+            "Merge skills from all existing brand directories (kimi/claude/codex) "
+            "instead of using only the first one found"
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

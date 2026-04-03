@@ -89,13 +89,15 @@ class GoogleGenAI:
         base_url: str | None = None,
         stream: bool = True,
         vertexai: bool | None = None,
+        default_headers: dict[str, str] | None = None,
         **client_kwargs: Any,
     ):
         self._model = model
         self._stream = stream
         self._base_url = base_url
+        http_options = HttpOptions(base_url=base_url, headers=default_headers)
         self._client: genai_client.Client = genai.Client(
-            http_options=HttpOptions(base_url=base_url),
+            http_options=http_options,
             api_key=api_key,
             vertexai=vertexai,
             **client_kwargs,

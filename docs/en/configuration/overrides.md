@@ -36,8 +36,11 @@ The model specified by `--model` must be defined in the configuration file's `mo
 | `--thinking` | Enable thinking mode |
 | `--no-thinking` | Disable thinking mode |
 | `--yolo, --yes, -y` | Auto-approve all operations |
+| `--plan` | Start in plan mode |
 
 `--thinking` / `--no-thinking` overrides the thinking state saved from the last session. If not specified, uses the last session's state.
+
+`--plan` enables plan mode for new sessions; when resuming an existing session, it forces plan mode on. You can also set `default_plan_mode = true` in the config file to start new sessions in plan mode by default.
 
 ## Environment variable overrides
 

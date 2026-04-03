@@ -55,9 +55,9 @@ kimi [OPTIONS] COMMAND [ARGS]
 | 选项 | 简写 | 说明 |
 |------|------|------|
 | `--continue` | `-C` | 继续当前工作目录的上一个会话 |
-| `--session ID` | `-S` | 恢复指定 ID 的会话，若不存在则创建新会话 |
+| `--session [ID]` / `--resume [ID]` | `-S` / `-r` | 恢复会话。带 ID 时恢复指定会话（不存在则创建新会话）；不带 ID 时打开交互式会话选择器（仅 Shell 模式） |
 
-`--continue` 和 `--session` 互斥。
+`--continue` 和 `--session`/`--resume` 互斥。
 
 ## 输入与命令
 
@@ -126,6 +126,16 @@ kimi [OPTIONS] COMMAND [ARGS]
 YOLO 模式下，所有文件修改和 Shell 命令都会自动执行，请谨慎使用。
 :::
 
+## 计划模式
+
+| 选项 | 说明 |
+|------|------|
+| `--plan` | 以计划模式启动新会话 |
+
+使用 `--plan` 启动时，AI 只能使用只读工具探索代码库并编写实现计划。恢复已有会话时，`--plan` 会强制开启计划模式；不带 `--plan` 恢复的会话保留其原有状态。
+
+也可以在配置文件中设置 `default_plan_mode = true`，每次启动新会话时默认进入计划模式。详见 [配置文件](../configuration/config-files.md)。
+
 ## Thinking 模式
 
 | 选项 | 说明 |
@@ -175,16 +185,17 @@ kimi logout
 
 ### `kimi export`
 
-将指定会话的数据导出为 ZIP 文件。ZIP 中包含会话目录下的所有文件（`context.jsonl`、`wire.jsonl`、`state.json` 等）。
+将会话数据导出为 ZIP 文件。ZIP 中包含会话目录下的所有文件（`context.jsonl`、`wire.jsonl`、`state.json` 等）。
 
 ```sh
-kimi export <session_id> [-o <output_path>]
+kimi export [<session_id>] [-o <output_path>] [--yes]
 ```
 
 | 参数 / 选项 | 说明 |
 |------|------|
-| `<session_id>` | 要导出的会话 ID |
+| `<session_id>` | 要导出的会话 ID。省略时，CLI 会预览并确认当前工作目录的上一个会话，然后再导出 |
 | `--output, -o` | 输出 ZIP 文件路径（默认为当前目录下的 `session-<id>.zip`） |
+| `--yes, -y` | 跳过默认会话的确认提示，直接导出 |
 
 ::: info 新增
 新增于 1.20 版本。

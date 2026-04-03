@@ -66,7 +66,7 @@ kimi vis -n
 可以将会话数据导出为 ZIP 文件，方便离线分析或分享。
 
 - **ZIP 下载**：在会话浏览器和会话详情页中点击下载按钮，即可将会话目录打包为 ZIP 文件下载
-- **CLI 导出**：使用 `kimi export <session_id>` 命令将指定会话导出为 ZIP 文件
+- **CLI 导出**：使用 `kimi export [<session_id>]` 命令导出会话为 ZIP 文件；省略 `<session_id>` 时会预览并确认当前工作目录的上一个会话
 
 ### 会话导入
 

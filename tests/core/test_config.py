@@ -24,6 +24,7 @@ def test_default_config_dump():
             "default_model": "",
             "default_thinking": False,
             "default_yolo": False,
+            "default_plan_mode": False,
             "default_editor": "",
             "theme": "dark",
             "models": {},
@@ -53,6 +54,7 @@ def test_default_config_dump():
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
             "hooks": [],
+            "merge_all_available_skills": False,
         }
     )
 

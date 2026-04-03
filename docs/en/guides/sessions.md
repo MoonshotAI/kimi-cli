@@ -16,13 +16,25 @@ Use the `--continue` flag to continue the most recent session in the current wor
 kimi --continue
 ```
 
-**Switch to a specific session**
+**Interactively pick a session**
 
-Use the `--session` flag to switch to a session with a specific ID:
+Use `--session` (or `--resume`, `-S`, `-r`) without an argument to open an interactive session picker, where you can use arrow keys to select the session to resume:
 
 ```sh
-kimi --session abc123
+kimi --session
 ```
+
+> The interactive picker is only available in shell mode.
+
+**Resume a specific session**
+
+Use `--session` (or `--resume`) with a session ID to resume that specific session:
+
+```sh
+kimi -r abc123
+```
+
+If the specified session ID does not exist, a new session is created automatically.
 
 **Switch sessions during runtime**
 
@@ -32,7 +44,7 @@ Enter `/sessions` (or `/resume`) to view all sessions in the current working dir
 /sessions
 ```
 
-The list shows each session's title and last update time, helping you find the conversation you want to continue.
+The list shows each session's title and last update time, helping you find the conversation you want to continue. Use `/title <text>` to set a custom title for the session, making it easier to find later.
 
 **Startup replay**
 
