@@ -1,4 +1,5 @@
 import re
+from io import StringIO
 from pathlib import Path
 
 from jinja2 import Environment, Undefined
@@ -54,6 +55,10 @@ DEFAULT_MAX_LINE_LENGTH = 2000
 class ToolResultBuilder:
     """
     Builder for tool results with character and line limits.
+    
+    This builder efficiently accumulates tool output while enforcing
+    character and line length limits. It uses StringIO for memory-efficient
+    string building.
     """
 
     def __init__(
@@ -66,7 +71,7 @@ class ToolResultBuilder:
         self._marker = "[...truncated]"
         if max_line_length is not None:
             assert max_line_length > len(self._marker)
-        self._buffer: list[str] = []
+        self._buffer = StringIO()
         self._n_chars = 0
         self._n_lines = 0
         self._truncation_happened = False
@@ -91,6 +96,9 @@ class ToolResultBuilder:
     def write(self, text: str) -> int:
         """
         Write text to the output buffer.
+        
+        Text is truncated if it exceeds max_chars or if individual lines
+        exceed max_line_length.
 
         Returns:
             int: Number of characters actually written
@@ -119,7 +127,7 @@ class ToolResultBuilder:
             if line != original_line:
                 self._truncation_happened = True
 
-            self._buffer.append(line)
+            self._buffer.write(line)
             chars_written += len(line)
             self._n_chars += len(line)
             if line.endswith("\n"):
@@ -139,7 +147,7 @@ class ToolResultBuilder:
 
     def ok(self, message: str = "", *, brief: str = "") -> ToolReturnValue:
         """Create a ToolReturnValue with is_error=False and the current output."""
-        output = "".join(self._buffer)
+        output = self._buffer.getvalue()
 
         final_message = message
         if final_message and not final_message.endswith("."):
@@ -160,7 +168,7 @@ class ToolResultBuilder:
 
     def error(self, message: str, *, brief: str) -> ToolReturnValue:
         """Create a ToolReturnValue with is_error=True and the current output."""
-        output = "".join(self._buffer)
+        output = self._buffer.getvalue()
 
         final_message = message
         if self._truncation_happened:

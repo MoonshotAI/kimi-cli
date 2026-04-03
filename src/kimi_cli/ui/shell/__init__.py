@@ -615,8 +615,10 @@ class Shell:
                     kwargs["stderr"] = stderr
                 proc = await asyncio.create_subprocess_shell(command, env=get_clean_env(), **kwargs)
                 await proc.wait()
-        except Exception as e:
-            logger.exception("Failed to run shell command:")
+        except asyncio.CancelledError:
+            raise
+        except OSError as e:
+            logger.error("Failed to run shell command: {error}", error=e)
             console.print(f"[red]Failed to run shell command: {e}[/red]")
         finally:
             remove_sigint()
