@@ -121,7 +121,7 @@ class _BtwModalDelegate:
             if not self._is_loading and total > 2:
                 answer_lines = total - 4
                 if answer_lines <= _BTW_SHORT_ANSWER_LINES:
-                    hint = "  Esc 关闭"
+                    hint = "  Escape to dismiss"
                 else:
                     hint = "  ↑/↓ scroll · Escape dismiss"
                 lines.insert(-1, hint)

@@ -1609,10 +1609,8 @@ class CustomPromptSession:
     def _slash_menu_left_padding(self) -> int:
         if self._mode == PromptMode.SHELL:
             return max(1, get_cwidth(f"{PROMPT_SYMBOL_SHELL} ") - 2)
-        if self._status_provider().plan_mode:
-            return max(1, get_cwidth(f"{PROMPT_SYMBOL_PLAN} ") - 2)
-        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
-        return max(1, get_cwidth(f"{symbol} ") - 2)
+        # Agent mode: prompt prefix is "│  " (3 chars inside input panel)
+        return 1
 
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
@@ -1643,8 +1641,9 @@ class CustomPromptSession:
         has_content = bool(agent_status or body)
         if has_content:
             fragments.append(("", "\n"))
-            fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
-            fragments.append(("", "\n"))
+        # Shell mode: simple separator + $ prefix (no panel border)
+        fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
+        fragments.append(("", "\n"))
         fragments.append(("bold", f"{PROMPT_SYMBOL_SHELL} "))
         return fragments
 
@@ -1791,15 +1790,28 @@ class CustomPromptSession:
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
 
-        # 3. When a modal is active, skip separator + prompt label.
+        # 3. When a modal is active, skip input panel border.
         if self._active_modal_delegate() is not None:
             return fragments
 
-        # 4. Normal: separator + prompt label
+        # 4. Input section header — style varies by mode:
+        #    normal:  ── input ─────────────────  (grey, solid)
+        #    plan:    ╌╌ input · plan ╌╌╌╌╌╌╌╌╌  (blue, dashed)
+        status = self._status_provider()
+        if status.plan_mode:
+            title = " input · plan "
+            dash = "╌"
+            style = "fg:#60a5fa"  # blue
+        else:
+            title = " input "
+            dash = "─"
+            style = "class:running-prompt-separator"
+        border_fill = max(0, columns - len(title) - 2)
+        top_border = f"{dash}{dash}{title}{dash * border_fill}"
         fragments.append(("", "\n"))
-        fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
+        fragments.append((style, top_border))
         fragments.append(("", "\n"))
-        fragments.extend(self._render_agent_prompt_label())
+        fragments.append(("", " "))
         return fragments
 
     def _render_agent_status(self, columns: int) -> FormattedText:
@@ -1826,11 +1838,8 @@ class CustomPromptSession:
         return to_formatted_text(block)
 
     def _render_agent_prompt_label(self) -> FormattedText:
-        status = self._status_provider()
-        if status.plan_mode:
-            return FormattedText([(get_toolbar_colors().plan_prompt, f"{PROMPT_SYMBOL_PLAN} ")])
-        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
-        return FormattedText([("", f"{symbol} ")])
+        """Render the prompt label (empty — cursor starts at column 0)."""
+        return FormattedText([("", "  ")])
 
     def __enter__(self) -> CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():

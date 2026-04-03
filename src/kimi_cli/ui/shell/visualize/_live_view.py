@@ -331,9 +331,9 @@ class _LiveView:
         else:
             if self._current_content_block is not None:
                 blocks.append(self._current_content_block.compose())
-            for tool_call in self._tool_call_blocks.values():
+            for tool_call in list(self._tool_call_blocks.values()):
                 blocks.append(tool_call.compose())
-        for notification in self._live_notification_blocks:
+        for notification in list(self._live_notification_blocks):
             blocks.append(notification.compose())
         return blocks
 
