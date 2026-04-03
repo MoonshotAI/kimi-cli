@@ -700,17 +700,19 @@ class Shell:
         loop = asyncio.get_running_loop()
         remove_sigint = install_sigint_handler(loop, _handler)
 
+        # Declare before try so finally can always access it.
+        from kimi_cli.ui.shell.visualize import (
+            _PromptLiveView,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        captured_view: _PromptLiveView | None = None
+
         try:
             snap = self.soul.status
             runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
             # Capture view reference via closure — _clear_active_view sets
             # _active_view=None inside visualize()'s finally (before run_soul
             # returns), so we must capture the view object independently.
-            from kimi_cli.ui.shell.visualize import (
-                _PromptLiveView,  # pyright: ignore[reportPrivateUsage]
-            )
-
-            captured_view: _PromptLiveView | None = None
 
             def _on_view_ready(view: Any) -> None:
                 nonlocal captured_view
@@ -750,12 +752,12 @@ class Shell:
                 await captured_view.wait_for_btw_dismiss()
 
             # Drain queued messages and send each as a new turn.
-            # Use a pending list so messages queued during an earlier
-            # queued turn aren't lost when the view is replaced.
-            # Each run_soul() updates captured_view via _on_view_ready;
-            # we drain the latest view at the top of every iteration.
+            # Safety valve: cap at 20 rounds to prevent infinite loops
+            # (user could theoretically keep queuing during each drain turn).
+            _MAX_DRAIN_ROUNDS = 20
             pending: list[UserInput] = []
-            while captured_view is not None:
+            drain_round = 0
+            while captured_view is not None and drain_round < _MAX_DRAIN_ROUNDS:
                 pending.extend(captured_view.drain_queued_messages())
                 if not pending:
                     break
@@ -788,8 +790,11 @@ class Shell:
                 # Wait for btw dismiss if one was triggered during this queued turn
                 if captured_view is not None:
                     await captured_view.wait_for_btw_dismiss()
+                drain_round += 1
                 # captured_view is now the view from this turn;
                 # next iteration drains it for any new messages.
+            if drain_round >= _MAX_DRAIN_ROUNDS:
+                logger.warning("Queue drain hit safety limit ({n} rounds)", n=_MAX_DRAIN_ROUNDS)
             return True
         except LLMNotSet:
             logger.exception("LLM not set:")
@@ -819,6 +824,12 @@ class Shell:
             console.print(f"[red]Unexpected error: {e}[/red]")
             raise  # re-raise unknown error
         finally:
+            # Warn about queued messages that were lost due to error/cancel
+            if captured_view is not None:
+                lost = captured_view.drain_queued_messages()
+                if lost:
+                    for msg in lost:
+                        console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
             self._maybe_present_pending_approvals()
             remove_sigint()
         return False

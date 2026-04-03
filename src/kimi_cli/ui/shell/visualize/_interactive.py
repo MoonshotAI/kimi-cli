@@ -114,16 +114,18 @@ class _PromptLiveView(_LiveView):
         """Set up the btw modal and start the LLM task."""
         import time
 
-        # Clear the input buffer so the /btw command text doesn't
-        # reappear when the modal is dismissed.
-        buf = self._prompt_session._session.default_buffer  # pyright: ignore[reportPrivateUsage]
-        if buf.text:
-            buf.set_document(Document(), bypass_readonly=True)
+        # Attach modal FIRST (hides input buffer), then clear buffer.
+        # This avoids a render frame between clear and attach where the
+        # user would see an empty input flash.
         modal = _BtwModalDelegate(on_dismiss=self._dismiss_btw)
         modal._question = question  # pyright: ignore[reportPrivateUsage]
         modal.set_start_time(time.monotonic())
         self._btw_modal = modal
         self._prompt_session.attach_modal(modal)
+        # Now safe to clear — buffer is hidden by modal
+        buf = self._prompt_session._session.default_buffer  # pyright: ignore[reportPrivateUsage]
+        if buf.text:
+            buf.set_document(Document(), bypass_readonly=True)
         self._btw_refresh_task = asyncio.create_task(self._btw_refresh_loop())
         self._btw_run_task = asyncio.create_task(self._run_btw(question))
 
@@ -285,11 +287,16 @@ class _PromptLiveView(_LiveView):
         """Ctrl+S: inject immediately into the running turn's context."""
         if not user_input or self._turn_ended:
             return
-        # Intercept /btw even on Ctrl+S — it should always run locally
+        # Intercept /btw and IGNORED (e.g. /btw without args) on Ctrl+S
         action = classify_input(user_input.resolved_command, is_streaming=True)
         if action.kind == InputAction.BTW:
             if self._btw_runner is not None and not self._btw_active:
                 self._start_btw(action.args)
+            return
+        if action.kind == InputAction.IGNORED:
+            from kimi_cli.ui.shell.prompt import toast
+
+            toast(action.args, topic="input-ignored", duration=3.0)
             return
         # Print permanently in conversation flow (shows placeholder for pasted text)
         console.print(render_user_echo_text(user_input.command))

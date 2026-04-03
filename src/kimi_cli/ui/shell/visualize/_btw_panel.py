@@ -72,6 +72,9 @@ class _BtwModalDelegate:
 
         if self._is_loading:
             elapsed = int(time.monotonic() - self._start_time) if self._start_time else 0
+            char_count = len(self._streaming_text)
+            if char_count > 0:
+                return f"[bold]btw[/bold] [dim]· answering {elapsed}s · {char_count} chars[/dim]"
             return f"[bold]btw[/bold] [dim]· answering {elapsed}s[/dim]"
         if self._error:
             return "[bold]btw[/bold] [dim]· error[/dim]"

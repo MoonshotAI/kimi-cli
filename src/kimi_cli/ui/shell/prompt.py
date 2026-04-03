@@ -1802,12 +1802,20 @@ class CustomPromptSession:
         #    normal:  ── input ─────────────────  (grey, solid)
         #    plan:    ╌╌ input · plan ╌╌╌╌╌╌╌╌╌  (blue, dashed)
         status = self._status_provider()
+        # Build title parts
+        title_parts = ["input"]
         if status.plan_mode:
-            title = " input · plan "
+            title_parts.append("plan")
+        # Queue count from running prompt delegate
+        running = self._running_prompt_delegate
+        queue_count = len(getattr(running, "_queued_messages", []))
+        if queue_count > 0:
+            title_parts.append(f"{queue_count} queued")
+        title = f" {' · '.join(title_parts)} "
+        if status.plan_mode:
             dash = "╌"
             style = "fg:#60a5fa"  # blue
         else:
-            title = " input "
             dash = "─"
             style = "class:running-prompt-separator"
         border_fill = max(0, columns - len(title) - 2)
