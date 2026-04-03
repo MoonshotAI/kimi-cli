@@ -30,7 +30,15 @@ from kosong.chat_provider.openai_common import (
     tool_to_openai,
 )
 from kosong.contrib.chat_provider.common import ToolMessageConversion
-from kosong.message import ContentPart, Message, TextPart, ThinkPart, ToolCall, ToolCallPart
+from kosong.message import (
+    ContentPart,
+    ImageURLPart,
+    Message,
+    TextPart,
+    ThinkPart,
+    ToolCall,
+    ToolCallPart,
+)
 from kosong.tooling import Tool
 
 if TYPE_CHECKING:
@@ -77,6 +85,7 @@ class OpenAILegacy:
         stream: bool = True,
         reasoning_key: str | None = None,
         tool_message_conversion: ToolMessageConversion | None = None,
+        supported_content_types: set[type[ContentPart]] | None = None,
         **client_kwargs: Any,
     ):
         """
@@ -84,6 +93,11 @@ class OpenAILegacy:
 
         To support OpenAI-compatible APIs that inject reasoning content in a extra field in
         the message, such as `{"reasoning": ...}`, `reasoning_key` can be set to the key name.
+
+        Args:
+            supported_content_types: Set of ContentPart types that the API supports.
+                If None, defaults to {TextPart, ImageURLPart, ToolCall, ToolCallPart}.
+                Set to {TextPart, ToolCall, ToolCallPart} for APIs that don't support images.
         """
         self.model = model
         self.stream = stream
@@ -100,6 +114,13 @@ class OpenAILegacy:
         self._reasoning_key = reasoning_key
         self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
         self._generation_kwargs: OpenAILegacy.GenerationKwargs = {}
+        # Default supported content types: TextPart, ImageURLPart (OpenAI standard), and tool-related
+        self._supported_content_types: set[type[ContentPart]] = supported_content_types or {
+            TextPart,
+            ImageURLPart,
+            ToolCall,
+            ToolCallPart,
+        }
 
     @property
     def model_name(self) -> str:
@@ -193,7 +214,12 @@ class OpenAILegacy:
         return model_parameters
 
     def _convert_message(self, message: Message) -> ChatCompletionMessageParam:
-        """Convert a Kosong message to OpenAI message."""
+        """Convert a Kosong message to OpenAI message.
+
+        Filters out content parts that are not supported by the API (e.g., VideoURLPart, AudioURLPart).
+        This prevents API errors when sending messages containing multimedia content to APIs that
+        don't support them. See: https://github.com/MoonshotAI/kimi-cli/issues/796
+        """
         # Note: for openai, `developer` role is more standard, but `system` is still accepted.
         # And many openai-compatible models do not accept `developer` role.
         # So we use `system` role here. OpenAIResponses will use `developer` role.
@@ -204,8 +230,10 @@ class OpenAILegacy:
         for part in message.content:
             if isinstance(part, ThinkPart):
                 reasoning_content += part.think
-            else:
+            elif type(part) in self._supported_content_types:
+                # Only include content types supported by this API
                 content.append(part)
+            # else: filter out unsupported content types (e.g., VideoURLPart, AudioURLPart)
         # if tool message and `tool_result_conversion` is `extract_text`, patch all text parts into
         # one so that we can make use of the serialization process of `Message` to output string
         if message.role == "tool" and self._tool_message_conversion == "extract_text":

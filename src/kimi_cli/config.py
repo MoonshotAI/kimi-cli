@@ -47,6 +47,15 @@ class LLMProvider(BaseModel):
     """Custom headers to include in API requests"""
     oauth: OAuthRef | None = None
     """OAuth credential reference (do not store tokens here)."""
+    reasoning_key: str | None = None
+    """Key name for reasoning/thinking content in API response (e.g., 'reasoning_content').
+    Used by openai_legacy provider to extract thinking content from OpenAI-compatible APIs.
+    See: https://github.com/MoonshotAI/kimi-cli/issues/1155"""
+    supported_content_types: list[str] | None = None
+    """List of supported content part types for openai_legacy provider.
+    Valid values: 'text', 'image_url'. If not specified, defaults to ['text', 'image_url'].
+    Note: 'video_url' and 'audio_url' are filtered out by default as most APIs don't support them.
+    See: https://github.com/MoonshotAI/kimi-cli/issues/796"""
 
     @field_serializer("api_key", when_used="json")
     def dump_secret(self, v: SecretStr):

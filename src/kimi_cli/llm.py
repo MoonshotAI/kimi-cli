@@ -147,12 +147,38 @@ def create_llm(
                 chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)
         case "openai_legacy":
             from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+            from kosong.message import ContentPart, ImageURLPart, TextPart
+
+            # Build supported content types based on config or model capabilities
+            supported_types: set[type[ContentPart]] | None = None
+            if provider.supported_content_types is not None:
+                # User explicitly specified supported types
+                type_map: dict[str, type[ContentPart]] = {
+                    "text": TextPart,
+                    "image_url": ImageURLPart,
+                }
+                supported_types = {
+                    type_map[t] for t in provider.supported_content_types if t in type_map
+                }
+            else:
+                # Auto-detect from model capabilities
+                model_caps = derive_model_capabilities(model)
+                supported_types = {TextPart}
+                if "image_in" in model_caps:
+                    supported_types.add(ImageURLPart)
+
+            # Always include ToolCall and ToolCallPart for tool support
+            from kosong.message import ToolCall, ToolCallPart
+
+            supported_types.update({ToolCall, ToolCallPart})
 
             chat_provider = OpenAILegacy(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
                 default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
+                reasoning_key=provider.reasoning_key,
+                supported_content_types=supported_types,
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
