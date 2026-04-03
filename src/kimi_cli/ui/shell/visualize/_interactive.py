@@ -9,11 +9,9 @@ input routing (queue/steer/btw), modal management, and key handling.
 from __future__ import annotations
 
 import asyncio
-from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
-from kosong.message import Message
 from prompt_toolkit.application.run_in_terminal import run_in_terminal
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.document import Document
@@ -79,7 +77,7 @@ class _PromptLiveView(_LiveView):
         self._prompt_session = prompt_session
         self._steer = steer
         self._btw_runner = btw_runner
-        self._pending_local_steer_keys: deque[str] = deque()
+        self._pending_local_steer_count: int = 0
         self._turn_ended = False
         self._question_modal: QuestionPromptDelegate | None = None
         # -- Queue: messages waiting to be sent after the turn ends ----------
@@ -248,7 +246,7 @@ class _PromptLiveView(_LiveView):
                 task.cancel()
                 with suppress(asyncio.CancelledError, QueueShutDown):
                     await task
-            self._pending_local_steer_keys.clear()
+            self._pending_local_steer_count = 0
             # Do NOT dismiss btw here — the shell will call
             # wait_for_btw_dismiss() after visualize_loop returns.
             # Only cancel the refresh task (spinner animation stops,
@@ -268,7 +266,7 @@ class _PromptLiveView(_LiveView):
         """Route user input through the unified classifier."""
         if not user_input or self._turn_ended:
             return
-        action = classify_input(user_input.command, is_streaming=True)
+        action = classify_input(user_input.resolved_command, is_streaming=True)
         match action.kind:
             case InputAction.BTW:
                 if self._btw_runner is not None and not self._btw_active:
@@ -288,33 +286,27 @@ class _PromptLiveView(_LiveView):
         if not user_input or self._turn_ended:
             return
         # Intercept /btw even on Ctrl+S — it should always run locally
-        action = classify_input(user_input.command, is_streaming=True)
+        action = classify_input(user_input.resolved_command, is_streaming=True)
         if action.kind == InputAction.BTW:
             if self._btw_runner is not None and not self._btw_active:
                 self._start_btw(action.args)
             return
         # Print permanently in conversation flow (shows placeholder for pasted text)
         console.print(render_user_echo_text(user_input.command))
-        # Store resolved text as dedup key — matches what wire sends back
-        # (user_input.command may contain placeholders like "[Pasted text #1]")
-        self._pending_local_steer_keys.append(user_input.resolved_command)
+        # Track that we originated this steer locally (FIFO counter for dedup)
+        self._pending_local_steer_count += 1
         self._steer(user_input.content)
         self._flush_prompt_refresh()
 
     # -- Wire event dispatch -------------------------------------------------
 
     def dispatch_wire_message(self, msg: WireMessage) -> None:
-        # Dedup locally-originated steers: compare by text to avoid
-        # type mismatches (list[ContentPart] vs str).
-        if isinstance(msg, SteerInput) and self._pending_local_steer_keys:
-            wire_text = (
-                msg.user_input
-                if isinstance(msg.user_input, str)
-                else Message(role="user", content=msg.user_input).extract_text(" ")
-            )
-            if self._pending_local_steer_keys[0] == wire_text.strip():
-                self._pending_local_steer_keys.popleft()
-                return
+        # Dedup locally-originated steers: we know how many we sent,
+        # so consume the matching SteerInput events without content comparison.
+        # This avoids text vs media mismatch issues.
+        if isinstance(msg, SteerInput) and self._pending_local_steer_count > 0:
+            self._pending_local_steer_count -= 1
+            return
         # Suppress parent's BtwBegin/BtwEnd spinner — btw is handled via modal
         if isinstance(msg, (BtwBegin, BtwEnd)):
             self._btw_spinner = None
@@ -346,7 +338,7 @@ class _PromptLiveView(_LiveView):
         blocks: list[RenderableType] = []
         for qi in self._queued_messages:
             blocks.append(Text(f"❯ {qi.command}", style="dim cyan"))
-        blocks.append(Text("Press ↑ to edit queued messages", style="dim"))
+        blocks.append(Text("↑ to edit · ctrl-s to send immediately", style="dim"))
 
         body = render_to_ansi(Group(*blocks), columns=columns).rstrip("\n")
         return ANSI(body if body else "")
@@ -404,16 +396,20 @@ class _PromptLiveView(_LiveView):
                 self._flush_prompt_refresh()
                 return
 
-        # Ctrl+S: send current input as immediate steer (with placeholder resolution)
+        # Ctrl+S: immediate steer
+        #   1) If input has text → steer it
+        #   2) Else if queue has messages → pop first (oldest) and steer it
         if key == "c-s":
             buf = event.current_buffer
             text = buf.text.strip()
             if text:
-                # Use _build_user_input to properly resolve placeholders
-                # (e.g. [Pasted text #1 +3 lines] → actual content)
                 steer_input = self._prompt_session._build_user_input(text)  # pyright: ignore[reportPrivateUsage]
                 self._clear_buffer(buf)
                 self.handle_immediate_steer(steer_input)
+            elif self._queued_messages:
+                queued = self._queued_messages.pop(0)  # FIFO: oldest first
+                self.handle_immediate_steer(queued)
+                self._flush_prompt_refresh()
             return
 
         mapped = {

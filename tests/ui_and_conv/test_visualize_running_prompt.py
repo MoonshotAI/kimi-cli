@@ -1,6 +1,5 @@
 import asyncio
 import importlib
-from collections import deque
 from contextlib import asynccontextmanager, suppress
 from typing import Any, cast
 
@@ -468,9 +467,9 @@ async def test_approval_prompt_delegate_ctrl_c_rejects_current_request() -> None
     assert resolved == [("req-ctrl-c", "reject")]
 
 
-def test_running_prompt_suppresses_duplicate_steer_echo_from_wire(monkeypatch) -> None:
+def test_running_prompt_suppresses_local_steer_echo_from_wire(monkeypatch) -> None:
     view = object.__new__(_PromptLiveView)
-    view._pending_local_steer_keys = deque(["A steer follow-up"])
+    view._pending_local_steer_count = 1
 
     forwarded: list[object] = []
     monkeypatch.setattr(
@@ -480,13 +479,13 @@ def test_running_prompt_suppresses_duplicate_steer_echo_from_wire(monkeypatch) -
     )
     view.dispatch_wire_message(SteerInput(user_input=[TextPart(text="A steer follow-up")]))
 
-    assert list(view._pending_local_steer_keys) == []
+    assert view._pending_local_steer_count == 0
     assert forwarded == []
 
 
-def test_running_prompt_forwards_non_matching_steer_echo_from_wire(monkeypatch) -> None:
+def test_running_prompt_forwards_non_local_steer_from_wire(monkeypatch) -> None:
     view = object.__new__(_PromptLiveView)
-    view._pending_local_steer_keys = deque(["local steer"])
+    view._pending_local_steer_count = 0
 
     forwarded: list[object] = []
     monkeypatch.setattr(
@@ -497,7 +496,7 @@ def test_running_prompt_forwards_non_matching_steer_echo_from_wire(monkeypatch) 
     wire_msg = SteerInput(user_input=[TextPart(text="remote steer")])
     view.dispatch_wire_message(wire_msg)
 
-    assert list(view._pending_local_steer_keys) == ["local steer"]
+    assert view._pending_local_steer_count == 0
     assert forwarded == [wire_msg]
 
 

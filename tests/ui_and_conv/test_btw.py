@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections import deque
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
@@ -439,11 +438,12 @@ class TestBtwWireTypes:
 
 
 class TestSteerDedup:
-    def test_matching_text_steer_is_consumed(self, monkeypatch):
+    def test_local_steer_consumed_by_counter(self, monkeypatch):
+        """SteerInput from wire is consumed when local steer count > 0."""
         from kimi_cli.ui.shell.visualize import _LiveView
 
         view = object.__new__(_PromptLiveView)
-        view._pending_local_steer_keys = deque(["hello world"])
+        view._pending_local_steer_count = 1
         view._btw_modal = None
 
         forwarded = []
@@ -454,14 +454,15 @@ class TestSteerDedup:
         )
         view.dispatch_wire_message(SteerInput(user_input=[TextPart(text="hello world")]))
 
-        assert list(view._pending_local_steer_keys) == []
+        assert view._pending_local_steer_count == 0
         assert forwarded == []
 
-    def test_non_matching_steer_is_forwarded(self, monkeypatch):
+    def test_non_local_steer_forwarded(self, monkeypatch):
+        """SteerInput from wire is forwarded when no local steers pending."""
         from kimi_cli.ui.shell.visualize import _LiveView
 
         view = object.__new__(_PromptLiveView)
-        view._pending_local_steer_keys = deque(["local text"])
+        view._pending_local_steer_count = 0
         view._btw_modal = None
 
         forwarded = []
@@ -470,18 +471,17 @@ class TestSteerDedup:
             "dispatch_wire_message",
             lambda self, msg: forwarded.append(msg),
         )
-        wire_msg = SteerInput(user_input=[TextPart(text="different text")])
-        view.dispatch_wire_message(wire_msg)
+        view.dispatch_wire_message(SteerInput(user_input=[TextPart(text="from elsewhere")]))
 
-        assert list(view._pending_local_steer_keys) == ["local text"]
+        assert view._pending_local_steer_count == 0
         assert len(forwarded) == 1
 
-    def test_str_type_steer_input_matched(self, monkeypatch):
-        """SteerInput with str user_input should also match text keys."""
+    def test_multiple_steers_consumed_in_order(self, monkeypatch):
+        """Multiple local steers are consumed one by one."""
         from kimi_cli.ui.shell.visualize import _LiveView
 
         view = object.__new__(_PromptLiveView)
-        view._pending_local_steer_keys = deque(["hello"])
+        view._pending_local_steer_count = 2
         view._btw_modal = None
 
         forwarded = []
@@ -490,16 +490,18 @@ class TestSteerDedup:
             "dispatch_wire_message",
             lambda self, msg: forwarded.append(msg),
         )
-        view.dispatch_wire_message(SteerInput(user_input="hello"))
+        view.dispatch_wire_message(SteerInput(user_input="first"))
+        view.dispatch_wire_message(SteerInput(user_input="second"))
+        view.dispatch_wire_message(SteerInput(user_input="third"))  # not local
 
-        assert list(view._pending_local_steer_keys) == []
-        assert forwarded == []
+        assert view._pending_local_steer_count == 0
+        assert len(forwarded) == 1  # only "third" forwarded
 
     def test_btw_events_suppressed(self, monkeypatch):
         from kimi_cli.ui.shell.visualize import _LiveView
 
         view = object.__new__(_PromptLiveView)
-        view._pending_local_steer_keys = deque()
+        view._pending_local_steer_count = 0
         view._btw_modal = None
         view._btw_spinner = "should be cleared"  # pyright: ignore[reportAttributeAccessIssue]
         forwarded = []
@@ -614,7 +616,7 @@ class TestHandleImmediateSteer:
         view._start_btw = lambda q: started.append(q)  # pyright: ignore[reportAttributeAccessIssue]
         steered = []
         view._steer = lambda content: steered.append(content)
-        view._pending_local_steer_keys = deque()
+        view._pending_local_steer_count = 0
 
         view.handle_immediate_steer(
             UserInput(
@@ -636,7 +638,7 @@ class TestHandleImmediateSteer:
         view._btw_modal = None
         view._btw_runner = lambda q, cb=None: None  # pyright: ignore[reportAttributeAccessIssue]
         view._flush_prompt_refresh = lambda: None
-        view._pending_local_steer_keys = deque()
+        view._pending_local_steer_count = 0
 
         steered = []
         view._steer = lambda content: steered.append(content)
@@ -652,3 +654,205 @@ class TestHandleImmediateSteer:
             )
         )
         assert len(steered) == 1
+        assert view._pending_local_steer_count == 1  # counter incremented
+
+    def test_btw_via_ctrl_s_uses_resolved_command(self):
+        """Ctrl+S /btw with placeholder should route using resolved_command."""
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._btw_modal = None
+        view._btw_runner = lambda q, cb=None: None  # pyright: ignore[reportAttributeAccessIssue]
+        view._flush_prompt_refresh = lambda: None
+        view._pending_local_steer_count = 0
+
+        started = []
+        view._start_btw = lambda q: started.append(q)  # pyright: ignore[reportAttributeAccessIssue]
+        view._steer = lambda content: None
+
+        view.handle_immediate_steer(
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/btw [Pasted text #1]",  # placeholder in command
+                resolved_command="/btw actual pasted content here",  # resolved
+                content=[TextPart(text="/btw actual pasted content here")],
+            )
+        )
+        # btw should receive resolved content, not placeholder
+        assert started == ["actual pasted content here"]
+
+
+# ---------------------------------------------------------------------------
+# Ctrl+S steer from queue (pop first queued message)
+# ---------------------------------------------------------------------------
+
+
+class TestCtrlSFromQueue:
+    def test_ctrl_s_key_pops_first_queued_and_steers(self, monkeypatch):
+        """handle_running_prompt_key('c-s') with empty buf pops oldest queue item."""
+        from prompt_toolkit.buffer import Buffer
+        from prompt_toolkit.document import Document
+
+        from kimi_cli.ui.shell.console import console
+
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._btw_modal = None
+        view._btw_runner = lambda q, cb=None: None  # pyright: ignore[reportAttributeAccessIssue]
+        view._flush_prompt_refresh = lambda: None
+        view._pending_local_steer_count = 0
+        view._cancel_event = None
+        view._current_approval_request_panel = None
+
+        steered_contents = []
+        view._steer = lambda content: steered_contents.append(content)
+        monkeypatch.setattr(console, "print", lambda *a, **kw: None)
+
+        q1 = UserInput(
+            mode=PromptMode.AGENT,
+            command="first",
+            resolved_command="first",
+            content=[TextPart(text="first")],
+        )
+        q2 = UserInput(
+            mode=PromptMode.AGENT,
+            command="second",
+            resolved_command="second",
+            content=[TextPart(text="second")],
+        )
+        view._queued_messages = [q1, q2]
+
+        # Mock event with empty buffer
+        buf = Buffer()
+        buf.set_document(Document(""), bypass_readonly=True)
+        event = MagicMock()
+        event.current_buffer = buf
+
+        view.handle_running_prompt_key("c-s", event)
+
+        # q1 (oldest) was popped and steered
+        assert len(view._queued_messages) == 1
+        assert view._queued_messages[0].command == "second"
+        assert len(steered_contents) == 1
+        assert view._pending_local_steer_count == 1
+
+    def test_ctrl_s_key_noop_when_input_and_queue_both_empty(self):
+        """handle_running_prompt_key('c-s') with empty input + empty queue does nothing."""
+        from prompt_toolkit.buffer import Buffer
+        from prompt_toolkit.document import Document
+
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._btw_modal = None
+        view._btw_runner = lambda q, cb=None: None  # pyright: ignore[reportAttributeAccessIssue]
+        view._flush_prompt_refresh = lambda: None
+        view._pending_local_steer_count = 0
+        view._cancel_event = None
+        view._current_approval_request_panel = None
+        view._queued_messages = []
+
+        buf = Buffer()
+        buf.set_document(Document(""), bypass_readonly=True)
+        event = MagicMock()
+        event.current_buffer = buf
+
+        # Should not crash, should not change state
+        view.handle_running_prompt_key("c-s", event)
+
+        assert view._pending_local_steer_count == 0
+        assert view._queued_messages == []
+
+    def test_steer_increments_counter(self, monkeypatch):
+        """handle_immediate_steer increments _pending_local_steer_count."""
+        from kimi_cli.ui.shell.console import console
+
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._btw_modal = None
+        view._btw_runner = lambda q, cb=None: None  # pyright: ignore[reportAttributeAccessIssue]
+        view._flush_prompt_refresh = lambda: None
+        view._pending_local_steer_count = 0
+        view._steer = lambda content: None
+        monkeypatch.setattr(console, "print", lambda *a, **kw: None)
+
+        view.handle_immediate_steer(
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="msg1",
+                resolved_command="msg1",
+                content=[TextPart(text="msg1")],
+            )
+        )
+        assert view._pending_local_steer_count == 1
+
+        view.handle_immediate_steer(
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="msg2",
+                resolved_command="msg2",
+                content=[TextPart(text="msg2")],
+            )
+        )
+        assert view._pending_local_steer_count == 2
+
+
+# ---------------------------------------------------------------------------
+# classify_input uses resolved_command (placeholder expanded)
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyInputResolved:
+    def test_btw_with_placeholder_uses_resolved(self):
+        """classify_input should receive resolved text, not placeholder."""
+        # Simulate: user types /btw then pastes multi-line text
+        # command = "/btw [Pasted text #1 +3 lines]"
+        # resolved_command = "/btw line1\nline2\nline3"
+        from kimi_cli.ui.shell.visualize._input_router import InputAction, classify_input
+
+        # With resolved text → BTW action has actual content
+        action = classify_input("/btw line1\nline2\nline3", is_streaming=False)
+        assert action.kind == InputAction.BTW
+        assert "line1" in action.args
+
+    def test_handle_local_input_routes_btw_with_resolved(self):
+        """handle_local_input should use resolved_command for classify_input."""
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._queued_messages = []
+        view._btw_modal = None
+        view._flush_prompt_refresh = lambda: None
+        view._btw_runner = lambda q, cb=None: None  # pyright: ignore[reportAttributeAccessIssue]
+
+        started = []
+        view._start_btw = lambda q: started.append(q)  # pyright: ignore[reportAttributeAccessIssue]
+
+        view.handle_local_input(
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/btw [Pasted text #1]",  # placeholder
+                resolved_command="/btw actual question text",  # resolved
+                content=[TextPart(text="/btw actual question text")],
+            )
+        )
+        # Should use resolved_command, so btw gets "actual question text"
+        assert started == ["actual question text"]
+
+
+# ---------------------------------------------------------------------------
+# wait_for_btw_dismiss
+# ---------------------------------------------------------------------------
+
+
+class TestWaitForBtwDismiss:
+    def test_noop_when_no_btw(self):
+        """wait_for_btw_dismiss should return immediately if no btw active."""
+        import asyncio
+
+        view = object.__new__(_PromptLiveView)
+        view._btw_modal = None
+        view._btw_run_task = None
+        view._btw_dismiss_event = None
+        view._btw_refresh_task = None
+        view._prompt_session = MagicMock()
+
+        # Should complete without blocking
+        asyncio.run(view.wait_for_btw_dismiss())

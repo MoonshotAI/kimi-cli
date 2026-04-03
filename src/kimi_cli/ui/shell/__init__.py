@@ -529,10 +529,14 @@ class Shell:
                     # before they reach the soul/wire.
                     from kimi_cli.ui.shell.visualize import InputAction, classify_input
 
-                    action = classify_input(
-                        user_input.command if hasattr(user_input, "command") else str(user_input),
-                        is_streaming=False,
+                    # Use resolved_command (placeholder-expanded) so /btw
+                    # receives the actual pasted content, not "[Pasted text #1]".
+                    input_text = (
+                        user_input.resolved_command
+                        if hasattr(user_input, "resolved_command")
+                        else str(user_input)
                     )
+                    action = classify_input(input_text, is_streaming=False)
                     if action.kind == InputAction.BTW and isinstance(self.soul, KimiSoul):
                         await self._run_btw_modal(action.args, prompt_session)
                         resume_prompt.set()
@@ -781,6 +785,9 @@ class Shell:
                     runtime.session.wire_file if runtime else None,
                     runtime,
                 )
+                # Wait for btw dismiss if one was triggered during this queued turn
+                if captured_view is not None:
+                    await captured_view.wait_for_btw_dismiss()
                 # captured_view is now the view from this turn;
                 # next iteration drains it for any new messages.
             return True
