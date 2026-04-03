@@ -359,6 +359,29 @@ async def test_save_state_reload_does_not_lose_worker_fields(
     assert result.custom_title == "External Title"
 
 
+async def test_save_state_preserves_external_todos(isolated_share_dir: Path, work_dir: KaosPath):
+    """save_state() should not overwrite todos written externally (e.g., by SetTodoList)."""
+    from kimi_cli.session_state import TodoItemState, load_session_state, save_session_state
+
+    session = await Session.create(work_dir)
+
+    # Simulate SetTodoList writing todos directly to disk (as _save_root_todos does)
+    fresh = load_session_state(session.dir)
+    fresh.todos = [TodoItemState(title="External todo", status="pending")]
+    save_session_state(fresh, session.dir)
+
+    # Worker's in-memory state still has empty todos
+    assert session.state.todos == []
+
+    # Worker saves — should reload todos from disk, not overwrite with empty list
+    session.save_state()
+
+    result = load_session_state(session.dir)
+    assert len(result.todos) == 1
+    assert result.todos[0].title == "External todo"
+    assert result.todos[0].status == "pending"
+
+
 async def test_is_empty_with_only_metadata_records(
     isolated_share_dir: Path, work_dir: KaosPath
 ) -> None:

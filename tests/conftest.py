@@ -249,9 +249,9 @@ def think_tool() -> Think:
 
 
 @pytest.fixture
-def set_todo_list_tool() -> SetTodoList:
+def set_todo_list_tool(runtime: Runtime) -> SetTodoList:
     """Create a SetTodoList tool instance."""
-    return SetTodoList()
+    return SetTodoList(runtime)
 
 
 @pytest.fixture
