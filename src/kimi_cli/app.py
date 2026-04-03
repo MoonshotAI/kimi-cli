@@ -131,6 +131,20 @@ def _filter_supported_plugin_agent_tools(
     return [], True
 
 
+_PLUGIN_CAPABILITY_SUMMARY_HEADER = "## Loaded Claude-compatible plugins"
+
+
+def _merge_plugin_capability_summary(prompt: str, cap_summary: str) -> str:
+    """Replace any old plugin capability summary with the current one."""
+    marker_index = prompt.find(_PLUGIN_CAPABILITY_SUMMARY_HEADER)
+    base_prompt = prompt[:marker_index].rstrip() if marker_index != -1 else prompt.rstrip()
+    if not cap_summary:
+        return base_prompt
+    if not base_prompt:
+        return cap_summary
+    return base_prompt + "\n\n" + cap_summary
+
+
 class KimiCLI:
     @staticmethod
     async def create(
@@ -549,8 +563,9 @@ class KimiCLI:
                     plugin=_later_plugin_name,
                 )
 
-        # Append plugin capability summary to system prompt so the model
-        # can autonomously choose plugin capabilities for goal-oriented requests
+        cap_summary = ""
+        # Build plugin capability summary so the model can autonomously choose
+        # plugin capabilities for goal-oriented requests.
         if claude_plugin_bundle:
             from kimi_cli.claude_plugin.discovery import build_plugin_capability_summary
             from kimi_cli.soul.kimisoul import FLOW_COMMAND_PREFIX, SKILL_COMMAND_PREFIX
@@ -588,11 +603,6 @@ class KimiCLI:
                 reserved_command_names=reserved_command_names,
                 registered_plugin_skill_names=registered_plugin_skill_names,
             )
-            if cap_summary:
-                agent = dataclasses.replace(
-                    agent,
-                    system_prompt=agent.system_prompt + "\n\n" + cap_summary,
-                )
 
         if startup_progress is not None:
             startup_progress("Restoring conversation...")
@@ -600,8 +610,20 @@ class KimiCLI:
         await context.restore()
 
         if context.system_prompt is not None:
-            agent = dataclasses.replace(agent, system_prompt=context.system_prompt)
+            restored_prompt = (
+                _merge_plugin_capability_summary(context.system_prompt, cap_summary)
+                if cap_summary
+                else context.system_prompt
+            )
+            agent = dataclasses.replace(agent, system_prompt=restored_prompt)
         else:
+            if cap_summary:
+                agent = dataclasses.replace(
+                    agent,
+                    system_prompt=_merge_plugin_capability_summary(
+                        agent.system_prompt, cap_summary
+                    ),
+                )
             await context.write_system_prompt(agent.system_prompt)
 
         soul = KimiSoul(agent, context=context)

@@ -1186,6 +1186,87 @@ class TestPluginSkillMergeNormalization:
         assert fake_runtime.skills[normalized] is existing_skill
 
     @pytest.mark.asyncio
+    async def test_resumed_session_replaces_stale_plugin_capability_summary(
+        self,
+        session,
+        config,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from kosong.tooling.empty import EmptyToolset
+
+        import kimi_cli.app as app_module
+        from kimi_cli.app import KimiCLI
+        from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs
+
+        plugin_dir = _make_plugin_with_skill(tmp_path, "Demo", "Hello")
+        fake_runtime = SimpleNamespace(
+            session=session,
+            config=config,
+            llm=None,
+            notifications=SimpleNamespace(recover=lambda: None),
+            background_tasks=SimpleNamespace(reconcile=lambda: None),
+            skills={},
+            skills_dirs=[],
+            builtin_args=BuiltinSystemPromptArgs(
+                KIMI_NOW="now",
+                KIMI_WORK_DIR=session.work_dir,
+                KIMI_WORK_DIR_LS="",
+                KIMI_AGENTS_MD="",
+                KIMI_SKILLS="No skills found.",
+                KIMI_ADDITIONAL_DIRS_INFO="",
+                KIMI_OS="Windows",
+                KIMI_SHELL="powershell",
+            ),
+        )
+        fake_agent = Agent(
+            name="Test Agent",
+            system_prompt="Fresh system prompt",
+            toolset=EmptyToolset(),
+            runtime=cast(Any, fake_runtime),
+        )
+        fake_context = SimpleNamespace(
+            system_prompt=(
+                "Persisted prompt\n\n"
+                "## Loaded Claude-compatible plugins\n\n"
+                "stale plugin summary"
+            )
+        )
+        fake_context.restore = AsyncMock()
+        fake_context.write_system_prompt = AsyncMock()
+
+        async def fake_runtime_create(*_args, **_kwargs):
+            return fake_runtime
+
+        async def fake_load_agent(agent_file, *_args, **_kwargs):
+            return fake_agent
+
+        class _FakeSoul:
+            def __init__(self, agent, context):
+                self.plan_mode = False
+                self.agent = agent
+
+            def register_plugin_commands(self, _bundle) -> None:
+                pass
+
+            def set_hook_engine(self, engine) -> None:
+                pass
+
+        monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+        monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+        monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+        monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+        monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+        monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+        monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+
+        kimi = await KimiCLI.create(session, config=config, plugin_dirs=[plugin_dir])
+
+        assert "Persisted prompt" in kimi.soul.agent.system_prompt
+        assert "stale plugin summary" not in kimi.soul.agent.system_prompt
+        assert "Demo:Hello" in kimi.soul.agent.system_prompt
+
+    @pytest.mark.asyncio
     async def test_multiple_plugin_default_agents_warn_and_first_wins(
         self,
         session,
