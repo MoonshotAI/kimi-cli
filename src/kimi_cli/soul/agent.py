@@ -12,7 +12,7 @@ from jinja2 import FileSystemLoader, StrictUndefined, TemplateError, UndefinedEr
 from kaos.path import KaosPath
 from kosong.tooling import Toolset
 
-from kimi_cli.agentspec import load_agent_spec
+from kimi_cli.agentspec import ResolvedAgentSpec, load_agent_spec
 from kimi_cli.approval_runtime import ApprovalRuntime
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.background import BackgroundTaskManager
@@ -412,10 +412,37 @@ async def load_agent(
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
 
-    system_prompt = _load_system_prompt(
-        agent_spec.system_prompt_path,
-        agent_spec.system_prompt_args,
-        runtime.builtin_args,
+    return await load_agent_from_resolved_spec(
+        agent_spec,
+        runtime,
+        mcp_configs=mcp_configs,
+        start_mcp_loading=start_mcp_loading,
+    )
+
+
+async def load_agent_from_resolved_spec(
+    agent_spec: ResolvedAgentSpec,
+    runtime: Runtime,
+    *,
+    mcp_configs: list[MCPConfig] | list[dict[str, Any]],
+    start_mcp_loading: bool = True,
+    system_prompt_override: str | None = None,
+) -> Agent:
+    """
+    Load an agent from an already-resolved specification.
+
+    This is used by the normal YAML-based path and by plugin compatibility
+    code that needs to overlay a parsed Markdown agent onto the default agent
+    constraints/tooling path.
+    """
+    system_prompt = (
+        system_prompt_override
+        if system_prompt_override is not None
+        else _load_system_prompt(
+            agent_spec.system_prompt_path,
+            agent_spec.system_prompt_args,
+            runtime.builtin_args,
+        )
     )
 
     # Register built-in subagent types before loading tools because some tools render

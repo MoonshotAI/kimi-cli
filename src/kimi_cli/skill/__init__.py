@@ -228,6 +228,8 @@ class Skill(BaseModel):
     type: SkillType = "standard"
     dir: KaosPath
     flow: Flow | None = None
+    is_plugin: bool = False
+    """True for skills loaded from a Claude-compatible plugin directory."""
 
     @property
     def skill_md_file(self) -> KaosPath:
