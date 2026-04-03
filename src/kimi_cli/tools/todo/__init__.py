@@ -108,7 +108,13 @@ class SetTodoList(CallableTool2[Params]):
         session = self._runtime.session
         fresh = load_session_state(session.dir)
         session.state.todos = fresh.todos
-        return [Todo(title=t.title, status=t.status) for t in fresh.todos]
+        result: list[Todo] = []
+        for t in fresh.todos:
+            try:
+                result.append(Todo(title=t.title, status=t.status))
+            except Exception:
+                logger.warning("Skipping malformed todo item in root state: {t}", t=t)
+        return result
 
     def _save_subagent_todos(self, items: list[TodoItemState]) -> None:
         state_file = self._subagent_state_file()
