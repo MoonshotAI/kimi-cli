@@ -1,10 +1,74 @@
 /**
  * useInputHistory hook — manages input history and slash command parsing.
  * Corresponds to history logic in Python's prompt.py.
+ *
+ * History is persisted per-working-directory to ~/.kimi/user-history/{md5(cwd)}.jsonl
+ * matching the Python implementation's behaviour.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { getShareDir } from "../../config.ts";
 import type { SlashCommand } from "../../types";
+
+// ── Persistent history helpers ─────────────────────────────
+
+interface HistoryEntry {
+  content: string;
+}
+
+function getHistoryDir(): string {
+  return join(getShareDir(), "user-history");
+}
+
+function getHistoryFile(): string {
+  const cwd = process.cwd();
+  const hash = createHash("md5").update(cwd, "utf-8").digest("hex");
+  return join(getHistoryDir(), `${hash}.jsonl`);
+}
+
+/** Load history entries from the JSONL file (sync, called once on mount). */
+function loadHistoryEntries(filePath: string): string[] {
+  try {
+    const file = Bun.file(filePath);
+    // Bun.file doesn't have a sync exists check, use node:fs
+    const fs = require("node:fs");
+    if (!fs.existsSync(filePath)) return [];
+    const text = fs.readFileSync(filePath, "utf-8") as string;
+    const entries: string[] = [];
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const parsed = JSON.parse(trimmed) as HistoryEntry;
+        if (parsed.content) {
+          entries.push(parsed.content);
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+/** Append a single history entry to the JSONL file. */
+function appendHistoryEntry(filePath: string, content: string): void {
+  try {
+    const fs = require("node:fs");
+    const dir = getHistoryDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const entry: HistoryEntry = { content };
+    fs.appendFileSync(filePath, JSON.stringify(entry) + "\n", "utf-8");
+  } catch {
+    // Silently ignore write failures (matches Python behaviour)
+  }
+}
+
+// ── Hook ───────────────────────────────────────────────────
 
 export interface InputHistoryState {
   /** Current input value */
@@ -31,21 +95,40 @@ export function useInputHistory(maxHistory = 100): InputHistoryState {
   const history = useRef<string[]>([]);
   const historyIndex = useRef(-1);
   const savedInput = useRef("");
+  const historyFile = useRef(getHistoryFile());
+  const lastHistoryContent = useRef("");
+  const initialized = useRef(false);
+
+  // Load persisted history on first mount
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    const entries = loadHistoryEntries(historyFile.current);
+    history.current = entries;
+    if (entries.length > 0) {
+      lastHistoryContent.current = entries[entries.length - 1]!;
+    }
+  }, []);
 
   const addToHistory = useCallback(
     (entry: string) => {
       const trimmed = entry.trim();
       if (!trimmed) return;
-      // Deduplicate: remove if already exists at end
+      // Deduplicate consecutive entries
       if (
         history.current.length > 0 &&
         history.current[history.current.length - 1] === trimmed
       ) {
-        // Already the last entry
+        // Already the last entry — skip
       } else {
         history.current.push(trimmed);
         if (history.current.length > maxHistory) {
           history.current.shift();
+        }
+        // Persist to disk (only if different from last persisted)
+        if (trimmed !== lastHistoryContent.current) {
+          appendHistoryEntry(historyFile.current, trimmed);
+          lastHistoryContent.current = trimmed;
         }
       }
       historyIndex.current = -1;
