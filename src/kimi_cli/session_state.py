@@ -40,7 +40,7 @@ class SessionState(BaseModel):
     archived_at: float | None = None
     auto_archive_exempt: bool = False
     # Todo list state
-    todos: list[TodoItemState] = Field(default_factory=lambda: list[TodoItemState]())
+    todos: list[TodoItemState] = Field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
 
 
 _LEGACY_METADATA_FILENAME = "metadata.json"
