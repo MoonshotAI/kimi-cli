@@ -3,11 +3,13 @@
  * Uses Ink's useInput hook for keyboard events in the React tree.
  *
  * Behavior:
- * - Ctrl+C ×1: interrupt current streaming turn
- * - Ctrl+C ×2 (within 500ms): exit the application
+ * - Ctrl+C ×1: interrupt current streaming turn + show "Press Ctrl-C again to exit"
+ * - Ctrl+C ×2 (within 2s): exit the application
  * - Esc ×1: interrupt current streaming turn
  * - Esc ×2 (within 500ms): clear the input box
  * - Shift+Tab: toggle plan mode
+ * - Ctrl+X: toggle agent/shell mode
+ * - Ctrl+O: open external editor
  */
 
 import { useInput, useApp } from "ink";
@@ -18,7 +20,10 @@ export type KeyAction =
   | "exit"
   | "clear-input"
   | "toggle-plan-mode"
-  | "open-editor";
+  | "toggle-shell-mode"
+  | "open-editor"
+  | "paste-clipboard"
+  | "newline";
 
 export interface UseKeyboardOptions {
   onAction: (action: KeyAction) => void;
@@ -26,12 +31,13 @@ export interface UseKeyboardOptions {
   active?: boolean;
 }
 
-const DOUBLE_PRESS_WINDOW = 500; // ms
+const CTRLC_WINDOW = 2000; // 2 seconds for Ctrl+C double press
+const ESC_WINDOW = 500; // 500ms for Esc double press
 
 /**
  * Hook that handles global keyboard shortcuts for the shell.
  *
- * Ctrl+C: 1st press = interrupt, 2nd press within 500ms = exit
+ * Ctrl+C: 1st press = interrupt + toast, 2nd press within 2s = exit
  * Escape: 1st press = interrupt, 2nd press within 500ms = clear input
  */
 export function useKeyboard({ onAction, active = true }: UseKeyboardOptions) {
@@ -64,7 +70,7 @@ export function useKeyboard({ onAction, active = true }: UseKeyboardOptions) {
         if (ctrlCTimer.current) clearTimeout(ctrlCTimer.current);
         ctrlCTimer.current = setTimeout(() => {
           ctrlCCount.current = 0;
-        }, DOUBLE_PRESS_WINDOW);
+        }, CTRLC_WINDOW);
         onAction("interrupt");
         return;
       }
@@ -86,7 +92,7 @@ export function useKeyboard({ onAction, active = true }: UseKeyboardOptions) {
         if (escTimer.current) clearTimeout(escTimer.current);
         escTimer.current = setTimeout(() => {
           escCount.current = 0;
-        }, DOUBLE_PRESS_WINDOW);
+        }, ESC_WINDOW);
         onAction("interrupt");
         return;
       }
@@ -97,9 +103,27 @@ export function useKeyboard({ onAction, active = true }: UseKeyboardOptions) {
         return;
       }
 
+      // ── Ctrl+X ────────────────────────────────────
+      if (input === "x" && key.ctrl) {
+        onAction("toggle-shell-mode");
+        return;
+      }
+
       // ── Ctrl+O ────────────────────────────────────
       if (input === "o" && key.ctrl) {
         onAction("open-editor");
+        return;
+      }
+
+      // ── Ctrl+V ────────────────────────────────────
+      if (input === "v" && key.ctrl) {
+        onAction("paste-clipboard");
+        return;
+      }
+
+      // ── Ctrl+J ────────────────────────────────────
+      if (input === "j" && key.ctrl) {
+        onAction("newline");
         return;
       }
 

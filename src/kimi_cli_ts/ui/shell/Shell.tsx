@@ -40,6 +40,62 @@ import { join } from "node:path";
 const INPUT_MIN_HEIGHT = 6;
 
 /**
+ * Paste text from clipboard (matches Python Ctrl+V behavior).
+ * macOS: pbpaste, Linux: xclip/xsel/wl-paste
+ */
+async function pasteFromClipboard(
+  setPasteText: (text: string | undefined) => void,
+  pushNotification: (title: string, body: string) => void,
+): Promise<void> {
+  const commands = process.platform === "darwin"
+    ? [["pbpaste"]]
+    : [["xclip", "-selection", "clipboard", "-o"], ["xsel", "--clipboard", "--output"], ["wl-paste"]];
+
+  for (const cmd of commands) {
+    try {
+      const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "ignore" });
+      const text = await new Response(proc.stdout).text();
+      const code = await proc.exited;
+      if (code === 0 && text) {
+        setPasteText(text);
+        // Reset after a tick so the effect fires
+        setTimeout(() => setPasteText(undefined), 0);
+        return;
+      }
+    } catch { /* try next */ }
+  }
+  pushNotification("Paste", "Clipboard is empty or not available.");
+}
+
+/**
+ * Run a shell command in foreground (matches Python _run_shell_command).
+ */
+async function runShellCommand(
+  command: string,
+  pushNotification: (title: string, body: string) => void,
+): Promise<void> {
+  const trimmed = command.trim();
+  if (!trimmed) return;
+
+  // Block 'cd' — directory changes don't persist
+  const parts = trimmed.split(/\s+/);
+  if (parts[0] === "cd") {
+    pushNotification("Shell", "Warning: Directory changes are not preserved across command executions.");
+    return;
+  }
+
+  try {
+    const proc = Bun.spawn(["sh", "-c", trimmed], {
+      stdio: ["inherit", "inherit", "inherit"],
+      env: process.env,
+    });
+    await proc.exited;
+  } catch (err: any) {
+    pushNotification("Shell", `Failed to run command: ${err?.message ?? err}`);
+  }
+}
+
+/**
  * Open $VISUAL / $EDITOR / vim to compose multi-line input.
  * After the editor exits, submit the content.
  */
@@ -134,6 +190,9 @@ export function Shell({
   const [slashMenuVisible, setSlashMenuVisible] = useState(false);
   const [activePanel, setActivePanel] = useState<CommandPanelConfig | null>(null);
   const [clearInputSignal, setClearInputSignal] = useState(0);
+  const [shellMode, setShellMode] = useState(false);
+  const [newlineSignal, setNewlineSignal] = useState(0);
+  const [pasteText, setPasteText] = useState<string | undefined>(undefined);
 
   // Wire state
   const wire = useWire({ onReady: onWireReady });
@@ -179,22 +238,24 @@ export function Shell({
     };
   }, [stdout]);
 
-  // Global keyboard handling: Ctrl+C / Esc / Shift+Tab
+  // Slash commands allowed in shell mode
+  const SHELL_MODE_COMMANDS = new Set(["clear", "exit", "help", "theme", "version", "quit", "q", "cls", "reset", "h", "?"]);
+
+  // Global keyboard handling
   useKeyboard({
     onAction: (action) => {
       switch (action) {
         case "interrupt":
           if (activePanel) {
-            // Close command panel on interrupt
             setActivePanel(null);
           } else if (wire.isStreaming) {
-            // Interrupt the running turn: abort the soul + push UI event
             onInterrupt?.();
             wire.pushEvent({ type: "error", message: "Interrupted by user" });
           }
+          // Always show exit hint on Ctrl+C
+          pushNotification("Ctrl-C", "Press Ctrl-C again to exit");
           break;
         case "clear-input":
-          // Double-Esc: clear the input box
           setClearInputSignal((n) => n + 1);
           break;
         case "toggle-plan-mode":
@@ -211,8 +272,21 @@ export function Shell({
               });
           }
           break;
+        case "toggle-shell-mode":
+          setShellMode((prev) => {
+            const next = !prev;
+            pushNotification("Mode", next ? "Shell mode" : "Agent mode");
+            return next;
+          });
+          break;
         case "open-editor":
           openExternalEditor(pushNotification, onSubmit);
+          break;
+        case "newline":
+          setNewlineSignal((n) => n + 1);
+          break;
+        case "paste-clipboard":
+          pasteFromClipboard(setPasteText, pushNotification);
           break;
         // "exit" is handled internally by useKeyboard (calls exit())
       }
@@ -225,9 +299,19 @@ export function Shell({
     (input: string) => {
       const parsed = parseSlashCommand(input);
       if (parsed) {
+        // In shell mode, only allow a subset of slash commands
+        if (shellMode) {
+          if (!SHELL_MODE_COMMANDS.has(parsed.name)) {
+            wire.pushEvent({
+              type: "notification",
+              title: "Shell mode",
+              body: `/${parsed.name} is not available in shell mode. Press Ctrl-X to switch to agent mode.`,
+            });
+            return;
+          }
+        }
         const cmd = findSlashCommand(allCommands, parsed.name);
         if (cmd) {
-          // If command has panel and no args provided, try opening panel
           if (cmd.panel && !parsed.args) {
             const panelConfig = cmd.panel();
             if (panelConfig) {
@@ -245,9 +329,16 @@ export function Shell({
         });
         return;
       }
+
+      // Shell mode: run as shell command
+      if (shellMode) {
+        runShellCommand(input, pushNotification);
+        return;
+      }
+
       onSubmit?.(input);
     },
-    [allCommands, onSubmit, wire],
+    [allCommands, onSubmit, wire, shellMode, pushNotification],
   );
 
   // Handle opening a command panel from slash menu
@@ -334,10 +425,14 @@ export function Shell({
             disabled={false}
             isStreaming={wire.isStreaming}
             planMode={wire.status?.plan_mode ?? false}
+            shellMode={shellMode}
+            workDir={workDir}
             commands={allCommands}
             onSlashMenuChange={setSlashMenuVisible}
             clearSignal={clearInputSignal}
             prefillText={prefillText}
+            newlineSignal={newlineSignal}
+            pasteText={pasteText}
           />
         )}
       </Box>
@@ -351,6 +446,7 @@ export function Shell({
         stepCount={wire.stepCount}
         isCompacting={wire.isCompacting}
         planMode={wire.status?.plan_mode ?? false}
+        shellMode={shellMode}
         thinking={thinking}
         gitBranch={gitStatus.branch}
         gitDirty={gitStatus.dirty}

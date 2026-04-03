@@ -35,6 +35,7 @@ interface StatusBarProps {
   planMode?: boolean;
   yolo?: boolean;
   thinking?: boolean;
+  shellMode?: boolean;
   // Git info
   gitBranch?: string | null;
   gitDirty?: boolean;
@@ -59,6 +60,7 @@ export function StatusBar({
   planMode = false,
   yolo = false,
   thinking = false,
+  shellMode = false,
   gitBranch,
   gitDirty = false,
   gitAhead = 0,
@@ -127,10 +129,13 @@ export function StatusBar({
   }
 
   // Build mode string
+  const modeName = shellMode ? "shell" : "agent";
   const thinkingDot = thinking ? "●" : "○";
-  const modeStr = modelName
-    ? `agent (${modelName} ${thinkingDot})`
-    : "agent";
+  const modeStr = shellMode
+    ? "shell"
+    : modelName
+      ? `${modeName} (${modelName} ${thinkingDot})`
+      : modeName;
 
   // Rotating tips (show 2 tips separated by |)
   let tipText = "";
