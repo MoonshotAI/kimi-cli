@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- ReadFile: Add total line count to every read response and support negative `line_offset` for tail mode — the tool now reports `Total lines in file: N.` in its message so the model can plan subsequent reads; negative `line_offset` (e.g. `-100`) reads the last N lines using a sliding window, useful for viewing recent log output without shell commands; the absolute value is capped at 1000 (MAX_LINES)
 - Shell: Fix black background on inline code and code blocks in Markdown rendering — `NEUTRAL_MARKDOWN_THEME` now overrides all Rich default `markdown.*` styles to `"none"`, preventing Rich's built-in `"cyan on black"` from leaking through on non-black terminals
 
 ## 1.30.0 (2026-04-02)

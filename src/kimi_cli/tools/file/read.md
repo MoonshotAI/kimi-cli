@@ -10,5 +10,7 @@ Read text content from a file.
 - If you want to search for a certain content/pattern, prefer Grep tool over ReadFile.
 - Content will be returned with a line number before each line like `cat -n` format.
 - Use `line_offset` and `n_lines` parameters when you only need to read a part of the file.
+- Use negative `line_offset` to read from the end of the file (e.g. `line_offset=-100` reads the last 100 lines). This is useful for viewing the tail of log files. The absolute value cannot exceed ${MAX_LINES}.
+- The tool always returns the total number of lines in the file in its message, which you can use to plan subsequent reads.
 - The maximum number of lines that can be read at once is ${MAX_LINES}.
 - Any lines longer than ${MAX_LINE_LENGTH} characters will be truncated, ending with "...".
