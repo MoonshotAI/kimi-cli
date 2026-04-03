@@ -547,6 +547,38 @@ async def test_read_tail_max_bytes(read_file_tool: ReadFile, temp_work_dir: Kaos
     assert not first_output.startswith("0001"), "MAX_BYTES truncation should trim oldest lines"
 
 
+async def test_read_tail_n_lines_not_affected_by_byte_cap(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath
+):
+    """Small n_lines should not be affected by MAX_BYTES truncation.
+
+    Regression test: line_offset=-N, n_lines=1 on a file with long lines
+    should return the first line of the tail window, not a line shifted by byte-cap.
+    """
+    large_file = temp_work_dir / "tail_nlines_bytecap.txt"
+    # Create a file where tail_buf total bytes >> MAX_BYTES but n_lines=1 is fine.
+    # Each line ~2000 bytes (after truncation), 500 lines total.
+    num_lines = 500
+    lines_data = [f"{i:04d}{'X' * 1996}" for i in range(1, num_lines + 1)]
+    content = "\n".join(lines_data)
+    await large_file.write_text(content)
+
+    # Request tail window of 200 lines but only read 1
+    result = await read_file_tool(Params(path=str(large_file), line_offset=-200, n_lines=1))
+    assert not result.is_error
+    assert isinstance(result.output, str)
+
+    # The first line of the tail window (last 200 lines) is line 301
+    output_lines = [x for x in result.output.split("\n") if x.strip()]
+    assert len(output_lines) == 1
+    line_content = output_lines[0].split("\t", 1)[1]
+    assert line_content.startswith("0301"), (
+        f"Expected line 301 (start of tail window), got content starting with: {line_content[:10]}"
+    )
+    # Should NOT report MAX_BYTES since 1 line is well within budget
+    assert "Max" not in result.message
+
+
 async def test_read_tail_line_truncation(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Tail mode should correctly report truncated lines via was_truncated flag in deque."""
     trunc_file = temp_work_dir / "tail_truncation.txt"

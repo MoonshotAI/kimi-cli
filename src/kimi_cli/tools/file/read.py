@@ -238,37 +238,39 @@ class ReadFile(CallableTool2[Params]):
 
         total_lines = current_line_no
 
-        # Determine byte-safe range by scanning from the newest (end) of tail_buf.
-        # This ensures MAX_BYTES truncation keeps the lines closest to EOF.
-        byte_safe_count = 0
-        n_bytes = 0
-        for _, truncated, _ in reversed(tail_buf):
-            n_bytes += len(truncated.encode("utf-8"))
-            if n_bytes > MAX_BYTES:
-                break
-            byte_safe_count += 1
-        max_bytes_reached = byte_safe_count < len(tail_buf)
+        # Step 1: Apply n_lines / MAX_LINES from head of tail_buf.
+        # This preserves the user's requested start position.
+        all_entries = list(tail_buf)
+        line_limit = min(params.n_lines, MAX_LINES)
+        candidates = all_entries[:line_limit]
+        max_lines_reached = len(all_entries) > MAX_LINES and len(candidates) == MAX_LINES
 
-        # Take only the byte-safe suffix of tail_buf
-        byte_safe_start = len(tail_buf) - byte_safe_count
-        safe_entries = list(tail_buf)[byte_safe_start:]
+        # Step 2: Apply MAX_BYTES — if candidates exceed the byte budget,
+        # reverse-scan to keep the newest (closest to EOF) lines that fit.
+        total_candidate_bytes = sum(len(entry[1].encode("utf-8")) for entry in candidates)
+        if total_candidate_bytes > MAX_BYTES:
+            max_bytes_reached = True
+            kept = 0
+            n_bytes = 0
+            for entry in reversed(candidates):
+                n_bytes += len(entry[1].encode("utf-8"))
+                if n_bytes > MAX_BYTES:
+                    break
+                kept += 1
+            candidates = candidates[len(candidates) - kept :]
+        else:
+            max_bytes_reached = False
 
-        # Apply n_lines / MAX_LINES limits (forward from the start of safe range)
+        # Step 3: Collect results from candidates
         lines: list[str] = []
         line_numbers: list[int] = []
         truncated_line_numbers: list[int] = []
-        max_lines_reached = False
 
-        for line_no, truncated, was_truncated in safe_entries:
+        for line_no, truncated, was_truncated in candidates:
             if was_truncated:
                 truncated_line_numbers.append(line_no)
             lines.append(truncated)
             line_numbers.append(line_no)
-            if len(lines) >= params.n_lines:
-                break
-            if len(lines) >= MAX_LINES:
-                max_lines_reached = True
-                break
 
         # Format output with absolute line numbers
         lines_with_no: list[str] = []
