@@ -519,6 +519,7 @@ class Shell:
 
                     user_input = event.user_input
                     assert user_input is not None
+                    self._consecutive_interrupts = 0
                     bg_auto_failures = 0
                     deferred_bg_trigger = False
                     if not user_input:
