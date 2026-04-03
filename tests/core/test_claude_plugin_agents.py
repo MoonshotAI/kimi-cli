@@ -149,6 +149,33 @@ class TestAgentDiscovery:
         assert "demo:hello" in bundle.plugins["demo"].skills
         assert any("agent" in w.lower() or "permission denied" in w.lower() for w in bundle.plugins["demo"].warnings)
 
+    def test_duplicate_agent_names_warn_and_keep_first(self, tmp_path: Path) -> None:
+        plugin_dir = tmp_path / "demo"
+        (plugin_dir / ".claude-plugin").mkdir(parents=True)
+        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "demo", "version": "1.0.0"}),
+            encoding="utf-8",
+        )
+        agents_dir = plugin_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "first.md").write_text(
+            "---\nname: reviewer\ndescription: first agent\n---\nFirst prompt.",
+            encoding="utf-8",
+        )
+        (agents_dir / "second.md").write_text(
+            "---\nname: reviewer\ndescription: second agent\n---\nSecond prompt.",
+            encoding="utf-8",
+        )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        plugin = bundle.plugins["demo"]
+
+        assert list(plugin.agents) == ["demo:reviewer"]
+        assert plugin.agents["demo:reviewer"].file_path == agents_dir / "first.md"
+        assert any("duplicate" in warning.lower() and "reviewer" in warning.lower() for warning in plugin.warnings)
+
 
 class TestPluginAgentOverlay:
     def test_plugin_agent_md_is_detected_as_plugin_relative(self, tmp_path: Path) -> None:

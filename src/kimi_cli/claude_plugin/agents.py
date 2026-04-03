@@ -49,6 +49,18 @@ def load_plugin_agents(runtime: ClaudePluginRuntime) -> None:
             )
             continue
 
+        if spec.full_name in runtime.agents:
+            runtime.warnings.append(
+                f"Skipping duplicate agent {spec.full_name} from {md_file.name}"
+            )
+            logger.warning(
+                "Skipping duplicate Claude plugin agent {plugin}:{agent} from {path}",
+                plugin=plugin_name,
+                agent=spec.name,
+                path=md_file,
+            )
+            continue
+
         runtime.agents[spec.full_name] = spec
 
 
