@@ -170,6 +170,27 @@ class _PromptLiveView(_LiveView):
         self._queued_messages.clear()
         return msgs
 
+    async def wait_for_btw_dismiss(self) -> None:
+        """Wait for btw LLM completion + user dismiss, then clean up.
+
+        Called by the shell AFTER visualize_loop returns (which must exit
+        within run_soul's 0.5s ui_task timeout).  The modal is still
+        attached to prompt_session, so prompt_toolkit continues to render
+        and handle key events.
+        """
+        if self._btw_modal is None:
+            return
+        # If LLM is still running, wait for it (user can Escape to cancel)
+        if self._btw_run_task is not None and not self._btw_run_task.done():
+            with suppress(asyncio.CancelledError):
+                await self._btw_run_task
+        # Wait for user dismiss (Escape/Enter/Space)
+        if self._btw_modal is not None:  # pyright: ignore[reportUnnecessaryComparison]
+            self._btw_dismiss_event = asyncio.Event()
+            await self._btw_dismiss_event.wait()
+        # Clean up: detach modal, cancel remaining tasks
+        self._dismiss_btw()
+
     # -- Visualize loop ------------------------------------------------------
 
     async def visualize_loop(self, wire: WireUISide):
@@ -216,19 +237,9 @@ class _PromptLiveView(_LiveView):
                 self.dispatch_wire_message(msg)
                 self._flush_prompt_refresh()
 
-            # Wire closed — if btw is active, wait for it to finish, then
-            # let the user read and dismiss the result.
-            if self._btw_modal is not None:
-                # If LLM is still running, wait for it (user can Escape to cancel)
-                if self._btw_run_task is not None and not self._btw_run_task.done():
-                    with suppress(asyncio.CancelledError):
-                        await self._btw_run_task
-                # Now btw has a result — wait for user dismiss.
-                # _dismiss_btw() may have been called during the await above
-                # (user pressed Escape), so re-check is necessary.
-                if self._btw_modal is not None:  # pyright: ignore[reportUnnecessaryComparison]
-                    self._btw_dismiss_event = asyncio.Event()
-                    await self._btw_dismiss_event.wait()
+            # NOTE: btw dismiss waiting is handled by the shell layer
+            # (run_soul_command → wait_for_btw_dismiss) AFTER visualize_loop
+            # returns, because run_soul gives ui_task only a 0.5s timeout.
         finally:
             self._external_messages.shutdown(immediate=True)
             for task in (wire_task, external_task):
@@ -238,7 +249,13 @@ class _PromptLiveView(_LiveView):
                 with suppress(asyncio.CancelledError, QueueShutDown):
                     await task
             self._pending_local_steer_keys.clear()
-            self._dismiss_btw()
+            # Do NOT dismiss btw here — the shell will call
+            # wait_for_btw_dismiss() after visualize_loop returns.
+            # Only cancel the refresh task (spinner animation stops,
+            # but modal stays attached for rendering + key handling).
+            if self._btw_refresh_task is not None:
+                self._btw_refresh_task.cancel()
+                self._btw_refresh_task = None
             self._turn_ended = False
             if self._question_modal is not None:
                 self._prompt_session.detach_modal(self._question_modal)

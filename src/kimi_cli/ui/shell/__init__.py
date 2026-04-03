@@ -667,6 +667,13 @@ class Shell:
                 runtime.session.wire_file if runtime else None,
                 runtime,
             )
+            # If btw is still showing, wait for user dismiss BEFORE draining
+            # queue.  This runs AFTER visualize_loop returns (within run_soul's
+            # 0.5s ui_task timeout), so the btw modal is still attached to
+            # prompt_session and key events continue to work.
+            if captured_view is not None:
+                await captured_view.wait_for_btw_dismiss()
+
             # Drain queued messages and send each as a new turn.
             # Use a pending list so messages queued during an earlier
             # queued turn aren't lost when the view is replaced.
