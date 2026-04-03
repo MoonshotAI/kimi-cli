@@ -6,7 +6,7 @@ import dataclasses
 import warnings
 from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import kaos
 from kaos.path import KaosPath
@@ -78,7 +78,7 @@ def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
 
 
 def _filter_supported_plugin_agent_tools(
-    raw_tools: list[str] | None,
+    raw_tools: Any,
     *,
     field_name: str,
     agent_name: str,
@@ -94,13 +94,27 @@ def _filter_supported_plugin_agent_tools(
     if raw_tools is None:
         return None, False
 
+    entries_to_check: list[Any]
+    if isinstance(raw_tools, str):
+        entries_to_check = [raw_tools]
+    elif isinstance(raw_tools, list):
+        entries_to_check = cast(list[Any], raw_tools)
+    else:
+        logger.warning(
+            "Ignoring unsupported Claude plugin agent {field} value for {agent}: {value}",
+            field=field_name,
+            agent=agent_name,
+            value=raw_tools,
+        )
+        return None, False
+
     supported: list[str] = []
     ignored: list[str] = []
-    for entry in raw_tools:
-        if ":" in entry:
+    for entry in entries_to_check:
+        if isinstance(entry, str) and ":" in entry:
             supported.append(entry)
         else:
-            ignored.append(entry)
+            ignored.append(str(entry))
 
     if ignored:
         logger.warning(
