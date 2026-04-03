@@ -1,13 +1,13 @@
 /**
- * StatusBar component — 3-line bottom toolbar matching Python's layout.
+ * StatusBar component — 3-line bottom toolbar matching Python's layout exactly.
  *
  * Layout:
  * ────────────────────────────────────────────────────────────────
- * [yolo] [plan] agent (model ●)  ~/cwd  main↑1  ⚙2  tip1 | tip2
- * [left toast]                              context: 45.2% (12k/200k)
+ * [yolo] [plan] agent (model ●)  ~/cwd  main [± ↑1]  ⚙ bash:2  tip1 | tip2
+ * [left toast]                                  context: 45.2% (12k/200k)
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text, useStdout } from "ink";
 import type { StatusUpdate } from "../../wire/types.ts";
 import type { Toast } from "./NotificationStack.tsx";
@@ -98,14 +98,14 @@ export function StatusBar({
     return () => timers.forEach(clearTimeout);
   }, [toasts, onDismissToast]);
 
-  // Context usage
+  // Context usage — match Python format: "context: 45.3% (28.5k/128k)"
   const contextUsage = status?.context_usage;
   const contextPercent =
-    contextUsage != null ? (contextUsage * 100).toFixed(1) : "0.0";
+    contextUsage != null ? `${(contextUsage * 100).toFixed(1)}%` : "0.0%";
   const contextTokens = status?.context_tokens;
   const maxContextTokens = status?.max_context_tokens;
   const contextDetail =
-    contextTokens != null && maxContextTokens != null
+    contextTokens != null && maxContextTokens != null && maxContextTokens > 0
       ? ` (${formatTokenCount(contextTokens)}/${formatTokenCount(maxContextTokens)})`
       : "";
 
@@ -117,25 +117,26 @@ export function StatusBar({
       : workDir
     : "";
 
-  // Git badge
+  // Git badge — match Python format: "main [± ↑1]"
   let gitBadge = "";
   if (gitBranch) {
-    gitBadge = gitBranch;
+    gitBadge = truncate(gitBranch, 22);
     const parts: string[] = [];
-    if (gitDirty) parts.push("*");
+    if (gitDirty) parts.push("±");
     if (gitAhead > 0) parts.push(`↑${gitAhead}`);
     if (gitBehind > 0) parts.push(`↓${gitBehind}`);
-    if (parts.length > 0) gitBadge += parts.join("");
+    if (parts.length > 0) {
+      gitBadge += ` [${parts.join(" ")}]`;
+    }
   }
 
-  // Build mode string
-  const modeName = shellMode ? "shell" : "agent";
+  // Build mode string — match Python: "agent (kimi-k2.5 ●)" / "shell"
   const thinkingDot = thinking ? "●" : "○";
   const modeStr = shellMode
     ? "shell"
     : modelName
-      ? `${modeName} (${modelName} ${thinkingDot})`
-      : modeName;
+      ? `agent (${modelName} ${thinkingDot})`
+      : "agent";
 
   // Rotating tips (show 2 tips separated by |)
   let tipText = "";
@@ -156,7 +157,7 @@ export function StatusBar({
     : "";
 
   // Right side: context info
-  const rightText = `context: ${contextPercent}%${contextDetail}`;
+  const rightText = `context: ${contextPercent}${contextDetail}`;
 
   // Separator
   const separator = "─".repeat(columns);
@@ -181,7 +182,7 @@ export function StatusBar({
           )}
           <Text>{modeStr}</Text>
           {displayDir && <Text color={DIM}>{truncate(displayDir, 30)}</Text>}
-          {gitBadge && <Text color="#a5d6a7">{truncate(gitBadge, 22)}</Text>}
+          {gitBadge && <Text color="#a5d6a7">{gitBadge}</Text>}
           {bgTaskCount > 0 && (
             <Text color="#56a4ff">⚙ bash: {bgTaskCount}</Text>
           )}
@@ -214,10 +215,18 @@ export function StatusBar({
   );
 }
 
+/**
+ * Format token count matching Python: 123, 28.5k, 1.2M
+ * Drops trailing .0 (e.g. "128k" not "128.0k")
+ */
 function formatTokenCount(count: number): string {
   if (count < 1000) return String(count);
-  if (count < 1_000_000) return `${(count / 1000).toFixed(1)}k`;
-  return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count < 1_000_000) {
+    const k = count / 1000;
+    return k % 1 === 0 ? `${k}k` : `${k.toFixed(1)}k`;
+  }
+  const m = count / 1_000_000;
+  return m % 1 === 0 ? `${m}M` : `${m.toFixed(1)}M`;
 }
 
 function truncate(text: string, maxLen: number): string {

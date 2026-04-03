@@ -116,6 +116,8 @@ export type CommandPanelConfig =
 export interface SlashCommand {
   name: string;
   description: string;
+  /** Extended description shown when selected in menu (up to 3 lines) */
+  longDescription?: string;
   aliases?: string[];
   handler: (args: string) => Promise<void>;
   /** If defined, selecting from menu renders a secondary panel instead of executing handler */

@@ -54,13 +54,16 @@ export function Prompt({
   newlineSignal = 0,
   pasteText,
 }: PromptProps) {
-  const { value, setValue, historyPrev, historyNext, addToHistory } =
+  const { value, setValue, historyPrev, historyNext, addToHistory, isFromHistory } =
     useInputHistory();
 
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [mentionMenuIndex, setMentionMenuIndex] = useState(0);
   // Multiline buffer: lines accumulated via Ctrl+J
   const [bufferedLines, setBufferedLines] = useState<string[]>([]);
+  // Ref to track latest slash menu state for submit handler
+  const showSlashMenuRef = React.useRef(false);
+  const showMentionMenuRef = React.useRef(false);
 
   // @ file mention
   const mention = useFileMention(value, workDir);
@@ -98,12 +101,16 @@ export function Prompt({
 
   // Detect slash completion mode
   const isSlashMode =
-    value.startsWith("/") && !value.includes(" ") && commands.length > 0;
+    value.startsWith("/") && !value.includes(" ") && commands.length > 0 && !isFromHistory;
   const slashFilter = isSlashMode ? value.slice(1) : "";
   const menuCount = isSlashMode
     ? getFilteredCommandCount(commands, slashFilter)
     : 0;
   const showSlashMenu = isSlashMode && menuCount > 0;
+
+  // Keep refs in sync for use in submit handler (avoids stale closure)
+  showSlashMenuRef.current = showSlashMenu;
+  showMentionMenuRef.current = showMentionMenu;
 
   // Notify parent about menu visibility
   React.useEffect(() => {
@@ -143,8 +150,9 @@ export function Prompt({
 
   const handleSubmit = useCallback(
     (input: string) => {
+      // Use refs to get latest menu state (avoids stale closure bug)
       // If mention menu is open, Tab/Enter selects the item
-      if (showMentionMenu) {
+      if (showMentionMenuRef.current) {
         const selected = mention.suggestions[mentionMenuIndex];
         if (selected) {
           applyMentionSelection(selected);
@@ -152,7 +160,7 @@ export function Prompt({
         }
       }
 
-      if (showSlashMenu) {
+      if (showSlashMenuRef.current) {
         const selected = getFilteredCommand(
           commands,
           slashFilter,
@@ -189,8 +197,6 @@ export function Prompt({
       onOpenPanel,
       addToHistory,
       setValue,
-      showSlashMenu,
-      showMentionMenu,
       commands,
       slashFilter,
       slashMenuIndex,
@@ -263,7 +269,7 @@ export function Prompt({
           value={value}
           onChange={handleChange}
           onSubmit={handleSubmit}
-          placeholder={isStreaming ? "Type to steer the agent..." : shellMode ? "Enter shell command..." : placeholder}
+          placeholder=""
         />
       </Box>
 

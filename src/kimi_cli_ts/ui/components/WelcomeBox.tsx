@@ -5,6 +5,7 @@
 
 import React from "react";
 import { Box, Text } from "ink";
+import { modelDisplayName } from "../../llm.ts";
 
 const KIMI_BLUE = "#1e90ff";
 
@@ -12,7 +13,6 @@ interface WelcomeBoxProps {
   workDir?: string;
   sessionId?: string;
   modelName?: string;
-  poweredBy?: string;
   tip?: string;
 }
 
@@ -20,7 +20,6 @@ export function WelcomeBox({
   workDir,
   sessionId,
   modelName,
-  poweredBy,
   tip,
 }: WelcomeBoxProps) {
   // Shorten home directory
@@ -30,6 +29,9 @@ export function WelcomeBox({
       ? "~" + workDir.slice(home.length)
       : workDir
     : "~";
+
+  // Apply "powered by" logic matching Python
+  const displayModel = modelDisplayName(modelName ?? null);
 
   return (
     <Box
@@ -71,13 +73,8 @@ export function WelcomeBox({
       {/* Model */}
       <Text>
         <Text color="#888888">  Model: </Text>
-        {modelName ? (
-          <Text>
-            {modelName}
-            {poweredBy && poweredBy !== modelName && (
-              <Text color="#888888"> (powered by {poweredBy})</Text>
-            )}
-          </Text>
+        {displayModel ? (
+          <Text>{displayModel}</Text>
         ) : (
           <Text color="yellow">not set, send /login to login</Text>
         )}
