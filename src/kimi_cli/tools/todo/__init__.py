@@ -98,14 +98,9 @@ class SetTodoList(CallableTool2[Params]):
             return self._load_subagent_todos()
 
     def _save_root_todos(self, items: list[TodoItemState]) -> None:
-        from kimi_cli.session_state import load_session_state, save_session_state
-
         session = self._runtime.session
-        # Read-modify-write to avoid overwriting concurrent changes
-        fresh = load_session_state(session.dir)
-        fresh.todos = items
-        save_session_state(fresh, session.dir)
         session.state.todos = items
+        session.save_state()
 
     def _load_root_todos(self) -> list[Todo]:
         from kimi_cli.session_state import load_session_state

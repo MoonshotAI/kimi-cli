@@ -94,7 +94,6 @@ class Session:
         self.state.archived = fresh.archived
         self.state.archived_at = fresh.archived_at
         self.state.auto_archive_exempt = fresh.auto_archive_exempt
-        self.state.todos = fresh.todos
         save_session_state(self.state, self.dir)
 
     async def delete(self) -> None:

@@ -359,26 +359,20 @@ async def test_save_state_reload_does_not_lose_worker_fields(
     assert result.custom_title == "External Title"
 
 
-async def test_save_state_preserves_external_todos(isolated_share_dir: Path, work_dir: KaosPath):
-    """save_state() should not overwrite todos written externally (e.g., by SetTodoList)."""
-    from kimi_cli.session_state import TodoItemState, load_session_state, save_session_state
+async def test_save_state_preserves_in_memory_todos(isolated_share_dir: Path, work_dir: KaosPath):
+    """save_state() should persist in-memory todos (worker-owned) to disk."""
+    from kimi_cli.session_state import TodoItemState, load_session_state
 
     session = await Session.create(work_dir)
 
-    # Simulate SetTodoList writing todos directly to disk (as _save_root_todos does)
-    fresh = load_session_state(session.dir)
-    fresh.todos = [TodoItemState(title="External todo", status="pending")]
-    save_session_state(fresh, session.dir)
-
-    # Worker's in-memory state still has empty todos
-    assert session.state.todos == []
-
-    # Worker saves — should reload todos from disk, not overwrite with empty list
+    # Simulate SetTodoList setting todos in memory before calling save_state()
+    session.state.todos = [TodoItemState(title="Worker todo", status="pending")]
     session.save_state()
 
+    # Verify todos were persisted to disk
     result = load_session_state(session.dir)
     assert len(result.todos) == 1
-    assert result.todos[0].title == "External todo"
+    assert result.todos[0].title == "Worker todo"
     assert result.todos[0].status == "pending"
 
 
