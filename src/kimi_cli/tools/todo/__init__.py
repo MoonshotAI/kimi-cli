@@ -128,7 +128,8 @@ class SetTodoList(CallableTool2[Params]):
         if state_file is None:
             return []
         data = self._read_subagent_state(state_file)
-        raw_todos = data.get("todos", [])
+        raw_todos_val = data.get("todos", [])
+        raw_todos = cast(list[Any], raw_todos_val) if isinstance(raw_todos_val, list) else []
         result: list[Todo] = []
         for item in raw_todos:
             try:
