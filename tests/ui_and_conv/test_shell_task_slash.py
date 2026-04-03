@@ -939,7 +939,7 @@ async def test_set_active_approval_sink_does_not_flush_in_interactive_mode(
             self.requests.append(req)
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     # Requests must remain in pending queue for the prompt modal
     assert len(shell._pending_approval_requests) == 1  # type: ignore[attr-defined]
