@@ -64,6 +64,18 @@ export function Prompt({
   // Ref to track latest slash menu state for submit handler
   const showSlashMenuRef = React.useRef(false);
   const showMentionMenuRef = React.useRef(false);
+  // Suppress next character from TextInput when a Ctrl shortcut just fired.
+  // ink's useInput cannot prevent TextInput from also receiving the key,
+  // so we detect it in handleChange and revert.
+  const suppressNextChar = React.useRef(false);
+
+  // Detect Ctrl+key presses at Prompt level to set the suppress flag.
+  // This runs BEFORE TextInput processes the character.
+  useInput((_input, key) => {
+    if (key.ctrl && _input && /^[xovjcXOVJC]$/.test(_input)) {
+      suppressNextChar.current = true;
+    }
+  }, { isActive: !disabled });
 
   // @ file mention
   const mention = useFileMention(value, workDir);
@@ -128,8 +140,13 @@ export function Prompt({
 
   const handleChange = useCallback(
     (newValue: string) => {
-      // Strip non-printable control characters that leak from Ctrl+X/J/V/O shortcuts.
-      // Keep only printable chars (>= 0x20) and tab (0x09).
+      // If a Ctrl shortcut just fired, TextInput still receives the character
+      // (e.g. Ctrl+X → "x" leaks in). Suppress it by ignoring this onChange.
+      if (suppressNextChar.current) {
+        suppressNextChar.current = false;
+        return;
+      }
+      // Also strip any remaining non-printable control characters
       const cleaned = newValue.replace(/[^\x09\x20-\uFFFF]/g, "");
       setValue(cleaned);
     },
