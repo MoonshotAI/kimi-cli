@@ -102,10 +102,18 @@ class _BtwModalDelegate:
                 parts.append(self._spinner)
         elif self._error:
             parts.append(Text(self._error, style="red"))
+            parts.append(Text(""))
+            parts.append(Text("Escape to dismiss", style="dim"))
         elif self._response:
             parts.append(Markdown(self._response))
+            # Hint is added here (inside Panel) for no-scroll case.
+            # Scroll mode replaces it with scroll indicators below.
+            parts.append(Text(""))
+            parts.append(Text("↑/↓ scroll · Escape dismiss", style="dim"))
         else:
             parts.append(Text("No response received.", style="dim"))
+            parts.append(Text(""))
+            parts.append(Text("Escape to dismiss", style="dim"))
 
         panel = Panel(
             Group(*parts),
@@ -121,31 +129,27 @@ class _BtwModalDelegate:
 
         # --- No scroll needed ---
         if total <= _BTW_MAX_VISIBLE_LINES:
-            if not self._is_loading and total > 2:
-                answer_lines = total - 4
-                if answer_lines <= _BTW_SHORT_ANSWER_LINES:
-                    hint = "  Escape to dismiss"
-                else:
-                    hint = "  ↑/↓ scroll · Escape dismiss"
-                lines.insert(-1, hint)
             return ANSI("\n".join(lines))
 
-        # --- Scroll mode ---
+        # --- Scroll mode: replace the hint (last content line before border)
+        #     with scroll indicators ---
         border_top = lines[0]
         border_bottom = lines[-1]
         content = lines[1:-1]
 
         # Auto-scroll: during streaming, follow the bottom
         if self._auto_scroll:
-            max_content = _BTW_MAX_VISIBLE_LINES - 3
+            max_content = _BTW_MAX_VISIBLE_LINES - 2  # -2 for borders
             self._scroll_offset = max(0, len(content) - max_content)
 
-        max_content = _BTW_MAX_VISIBLE_LINES - 3
+        max_content = _BTW_MAX_VISIBLE_LINES - 2
         max_offset = max(0, len(content) - max_content)
         self._scroll_offset = min(self._scroll_offset, max_offset)
         start = self._scroll_offset
         visible = content[start : start + max_content]
 
+        # Replace the last visible line with scroll info (it inherits
+        # the Panel border from the original rendered line).
         above = start
         below = max_offset - start
         hint_parts: list[str] = []
@@ -154,9 +158,11 @@ class _BtwModalDelegate:
         if below > 0:
             hint_parts.append(f"↓ {below} below")
         hint_parts.append("↑/↓ scroll · Escape dismiss")
-        hint_line = f"  {'  ·  '.join(hint_parts)}"
+        # Replace the last visible line (the hint rendered inside the Panel)
+        if visible:
+            visible[-1] = visible[-1][:3] + "  ·  ".join(hint_parts)
 
-        result = [border_top, *visible, hint_line, border_bottom]
+        result = [border_top, *visible, border_bottom]
         return ANSI("\n".join(result))
 
     # -- Protocol ------------------------------------------------------------

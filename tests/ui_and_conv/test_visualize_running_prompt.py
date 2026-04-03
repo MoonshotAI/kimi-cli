@@ -501,10 +501,12 @@ def test_running_prompt_forwards_non_local_steer_from_wire(monkeypatch) -> None:
 
 
 def test_handle_local_input_queues_message_by_default() -> None:
+    from unittest.mock import MagicMock
+
     view = object.__new__(_PromptLiveView)
     view._turn_ended = False
     view._queued_messages = []
-    view._flush_prompt_refresh = lambda: None
+    view._prompt_session = MagicMock()
 
     user_in = UserInput(
         mode=PromptMode.AGENT,

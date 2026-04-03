@@ -275,7 +275,9 @@ class _PromptLiveView(_LiveView):
                     self._start_btw(action.args)
             case InputAction.QUEUE:
                 self._queued_messages.append(user_input)
-                self._flush_prompt_refresh()
+                # Invalidate directly — _flush_prompt_refresh() is gated by
+                # _need_recompose which may be False between wire events.
+                self._prompt_session.invalidate()
             case InputAction.IGNORED:
                 from kimi_cli.ui.shell.prompt import toast
 
@@ -383,9 +385,12 @@ class _PromptLiveView(_LiveView):
             return False
         if key == "escape":
             return self._cancel_event is not None
-        # ↑ on empty buffer: recall last queued message
+        # ↑ on empty buffer: recall last queued message.
+        # Only intercept when buffer is empty — otherwise let prompt_toolkit
+        # handle ↑ for cursor movement / history navigation.
         if key == "up" and self._queued_messages:
-            return True
+            buf = self._prompt_session._session.default_buffer  # pyright: ignore[reportPrivateUsage]
+            return not buf.text.strip()
         # Ctrl+S: immediate steer
         return key == "c-s"
 
@@ -394,14 +399,14 @@ class _PromptLiveView(_LiveView):
             event.app.create_background_task(self._show_panel_in_pager())
             return
 
-        # ↑ on empty buffer: pop last queued message back to input for editing
+        # ↑ on empty buffer: pop last queued message back to input for editing.
+        # should_handle already verified buffer is empty.
         if key == "up" and self._queued_messages:
             buf = event.current_buffer
-            if not buf.text.strip():
-                recalled = self._queued_messages.pop()
-                buf.document = Document(recalled.command, len(recalled.command))
-                self._flush_prompt_refresh()
-                return
+            recalled = self._queued_messages.pop()
+            buf.document = Document(recalled.command, len(recalled.command))
+            self._prompt_session.invalidate()
+            return
 
         # Ctrl+S: immediate steer
         #   1) If input has text → steer it

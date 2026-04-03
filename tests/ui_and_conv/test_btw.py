@@ -550,7 +550,7 @@ class TestHandleLocalInput:
         view._turn_ended = False
         view._queued_messages = []
         view._btw_modal = None
-        view._flush_prompt_refresh = lambda: None
+        view._prompt_session = MagicMock()
 
         ui = UserInput(
             mode=PromptMode.AGENT,

@@ -751,6 +751,10 @@ class Shell:
             if captured_view is not None:
                 await captured_view.wait_for_btw_dismiss()
 
+            # Clear cancel_event so queued turns aren't tainted by a
+            # Ctrl+C that fired during btw dismiss wait.
+            cancel_event.clear()
+
             # Drain queued messages and send each as a new turn.
             # Safety valve: cap at 20 rounds to prevent infinite loops
             # (user could theoretically keep queuing during each drain turn).
@@ -790,6 +794,7 @@ class Shell:
                 # Wait for btw dismiss if one was triggered during this queued turn
                 if captured_view is not None:
                     await captured_view.wait_for_btw_dismiss()
+                cancel_event.clear()  # same rationale as above
                 drain_round += 1
                 # captured_view is now the view from this turn;
                 # next iteration drains it for any new messages.
@@ -824,6 +829,9 @@ class Shell:
             console.print(f"[red]Unexpected error: {e}[/red]")
             raise  # re-raise unknown error
         finally:
+            # Clean up btw modal if it's still attached (exception skipped wait_for_btw_dismiss)
+            if captured_view is not None:
+                captured_view._dismiss_btw()  # pyright: ignore[reportPrivateUsage]
             # Warn about queued messages that were lost due to error/cancel
             if captured_view is not None:
                 lost = captured_view.drain_queued_messages()
