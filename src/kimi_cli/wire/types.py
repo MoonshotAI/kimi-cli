@@ -176,6 +176,8 @@ class StatusUpdate(BaseModel):
     """Whether plan mode (read-only) is active. None means no change."""
     mcp_status: MCPStatusSnapshot | None = None
     """The current MCP startup snapshot. None means no change."""
+    tps: float | None = None
+    """Current tokens-per-second rate during streaming. None when not streaming."""
 
 
 class Notification(BaseModel):

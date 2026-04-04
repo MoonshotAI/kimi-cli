@@ -298,8 +298,10 @@ class Shell:
         # Initialize theme from config
         if isinstance(self.soul, KimiSoul):
             from kimi_cli.ui.theme import set_active_theme
+            from kimi_cli.ui.tps_meter import set_show_tps_meter
 
             set_active_theme(self.soul.runtime.config.theme)
+            set_show_tps_meter(self.soul.runtime.config.show_tps_meter)
 
         if command is not None:
             # run single command and exit
@@ -984,9 +986,11 @@ class Shell:
                 current_request,
                 on_response=self._handle_prompt_approval_response,
                 buffer_text_provider=(
-                    lambda: self._prompt_session._session.default_buffer.text  # pyright: ignore[reportPrivateUsage]
-                    if self._prompt_session is not None
-                    else ""
+                    lambda: (
+                        self._prompt_session._session.default_buffer.text  # pyright: ignore[reportPrivateUsage]
+                        if self._prompt_session is not None
+                        else ""
+                    )
                 ),
                 text_expander=self._prompt_session._get_placeholder_manager().serialize_for_history,  # pyright: ignore[reportPrivateUsage]
             )

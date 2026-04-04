@@ -162,8 +162,7 @@ async def test_wire_message_serde():
                             "tools": [],
                         }
                     ],
-                },
-            },
+                }, "tps": None},
         }
     )
     _test_serde(msg)

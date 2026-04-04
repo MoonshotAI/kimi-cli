@@ -197,6 +197,10 @@ class Config(BaseModel):
         default="dark",
         description="Terminal color theme. Use 'light' for light terminal backgrounds.",
     )
+    show_tps_meter: bool = Field(
+        default=False,
+        description="Show tokens-per-second (TPS) meter in the status bar",
+    )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
         default_factory=dict, description="List of LLM providers"

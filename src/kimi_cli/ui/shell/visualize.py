@@ -50,6 +50,7 @@ from kimi_cli.ui.shell.question_panel import (
     prompt_other_input,
     show_question_body_in_pager,
 )
+from kimi_cli.ui.tps_meter import get_show_tps_meter
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.rich.columns import BulletColumns
@@ -634,6 +635,7 @@ class _StatusBlock:
         self._context_usage: float = 0.0
         self._context_tokens: int = 0
         self._max_context_tokens: int = 0
+        self._tps: float = 0.0
         self.update(initial)
 
     def render(self) -> RenderableType:
@@ -646,12 +648,22 @@ class _StatusBlock:
             self._context_tokens = status.context_tokens
         if status.max_context_tokens is not None:
             self._max_context_tokens = status.max_context_tokens
-        if status.context_usage is not None:
-            self.text.plain = format_context_status(
-                self._context_usage,
-                self._context_tokens,
-                self._max_context_tokens,
-            )
+        if status.tps is not None:
+            self._tps = status.tps
+        # Only refresh if context_usage or tps is provided (fields that affect display)
+        if status.context_usage is not None or status.tps is not None:
+            self._refresh_text()
+
+    def _refresh_text(self) -> None:
+        context_str = format_context_status(
+            self._context_usage,
+            self._context_tokens,
+            self._max_context_tokens,
+        )
+        if get_show_tps_meter() and self._tps > 0:
+            self.text.plain = f"{context_str} · {self._tps:.1f} tok/s"
+        else:
+            self.text.plain = context_str
 
 
 @asynccontextmanager

@@ -646,6 +646,57 @@ def theme(app: Shell, args: str):
 
 
 @registry.command
+@shell_mode_registry.command
+def tps(app: Shell, args: str):
+    """Toggle TPS (tokens-per-second) meter display in status bar"""
+    from kimi_cli.ui.tps_meter import get_show_tps_meter, set_show_tps_meter
+
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    current = get_show_tps_meter()
+    arg = args.strip().lower()
+
+    if not arg:
+        status = "on" if current else "off"
+        console.print(f"TPS meter: [bold]{status}[/bold]")
+        console.print("[grey50]Usage: /tps on | /tps off[/grey50]")
+        return
+
+    if arg not in ("on", "off"):
+        console.print(f"[red]Invalid argument: {arg}. Use 'on' or 'off'.[/red]")
+        return
+
+    new_value = arg == "on"
+
+    if new_value == current:
+        console.print(f"[yellow]TPS meter is already {arg}.[/yellow]")
+        return
+
+    config_file = soul.runtime.config.source_file
+    if config_file is None:
+        console.print(
+            "[yellow]TPS toggle requires a config file; "
+            "restart without --config to persist this setting.[/yellow]"
+        )
+        return
+
+    # Persist to disk first — only update in-memory state after success
+    try:
+        config_for_save = load_config(config_file)
+        config_for_save.show_tps_meter = new_value
+        save_config(config_for_save, config_file)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return
+
+    # Update in-memory state immediately (no reload needed for TPS)
+    set_show_tps_meter(new_value)
+    console.print(f"[green]TPS meter {'enabled' if new_value else 'disabled'}.[/green]")
+
+
+@registry.command
 def web(app: Shell, args: str):
     """Open Kimi Code Web UI in browser"""
     soul = ensure_kimi_soul(app)

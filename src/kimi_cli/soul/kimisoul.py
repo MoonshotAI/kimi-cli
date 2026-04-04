@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
+from collections import deque
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -17,6 +19,7 @@ from kosong.chat_provider import (
     APIStatusError,
     APITimeoutError,
     RetryableChatProvider,
+    StreamedMessagePart,
 )
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
@@ -79,6 +82,7 @@ from kimi_cli.wire.types import (
     StepBegin,
     StepInterrupted,
     TextPart,
+    ThinkPart,
     ToolResult,
     TurnBegin,
     TurnEnd,
@@ -148,6 +152,10 @@ class KimiSoul:
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
         self._plan_mode: bool = self._runtime.session.state.plan_mode
         self._plan_session_id: str | None = self._runtime.session.state.plan_session_id
+        # TPS tracking for streaming tokens
+        self._streaming_token_timestamps: deque[tuple[float, float]] = deque()
+        self._streaming_token_count: float = 0.0
+        self._tps_window_seconds: float = 3.0
         # Pre-warm slug cache so the persisted slug survives process restarts
         if self._plan_session_id is not None and self._runtime.session.state.plan_slug is not None:
             from kimi_cli.tools.plan.heroes import seed_slug_cache
@@ -380,6 +388,7 @@ class KimiSoul:
             context_tokens=token_count,
             max_context_tokens=max_size,
             mcp_status=self._mcp_status_snapshot(),
+            tps=self._calculate_tps(),
         )
 
     @property
@@ -427,6 +436,62 @@ class KimiSoul:
     def steer(self, content: str | list[ContentPart]) -> None:
         """Queue a steer message for injection into the current turn."""
         self._steer_queue.put_nowait(content)
+
+    def _track_streaming_tokens(self, token_count: float) -> None:
+        """Track tokens received during streaming for TPS calculation."""
+        now = time.monotonic()
+        self._streaming_token_count += token_count
+        self._streaming_token_timestamps.append((now, self._streaming_token_count))
+        # Prune old entries outside the rolling window
+        cutoff = now - self._tps_window_seconds
+        while self._streaming_token_timestamps and self._streaming_token_timestamps[0][0] < cutoff:
+            self._streaming_token_timestamps.popleft()
+
+    def _reset_streaming_tps(self) -> None:
+        """Reset TPS tracking when streaming ends or a new step begins."""
+        self._streaming_token_timestamps.clear()
+        self._streaming_token_count = 0.0
+
+    def _calculate_tps(self) -> float:
+        """Calculate current tokens-per-second over the rolling window."""
+        if len(self._streaming_token_timestamps) < 2:
+            return 0.0
+        first_time, first_tokens = self._streaming_token_timestamps[0]
+        last_time, last_tokens = self._streaming_token_timestamps[-1]
+        duration = last_time - first_time
+        if duration <= 0:
+            return 0.0
+        tokens = last_tokens - first_tokens
+        return tokens / duration
+
+    @staticmethod
+    def _estimate_tokens_for_tps(text: str) -> float:
+        """Estimate token count for TPS calculation.
+
+        Uses simple heuristics for mixed CJK/Latin text:
+        - CJK characters: ~1.5 tokens each
+        - Other characters: ~1 token per 4 characters
+        """
+        cjk_count = 0
+        other_count = 0
+        for ch in text:
+            cp = ord(ch)
+            if (
+                0x4E00 <= cp <= 0x9FFF  # CJK Unified Ideographs
+                or 0x3400 <= cp <= 0x4DBF  # CJK Extension A
+                or 0xF900 <= cp <= 0xFAFF  # CJK Compatibility
+                or 0x3000 <= cp <= 0x303F  # CJK Symbols
+                or 0xFF00 <= cp <= 0xFFEF  # Fullwidth Forms
+                or 0x3040 <= cp <= 0x309F  # Hiragana
+                or 0x30A0 <= cp <= 0x30FF  # Katakana
+                or 0xAC00 <= cp <= 0xD7AF  # Hangul Syllables
+                or 0x1100 <= cp <= 0x11FF  # Hangul Jamo
+                or 0x3130 <= cp <= 0x318F  # Hangul Compatibility Jamo
+            ):
+                cjk_count += 1
+            else:
+                other_count += 1
+        return cjk_count * 1.5 + other_count / 4
 
     async def _consume_pending_steers(self) -> bool:
         """Drain the steer queue and inject as follow-up user messages.
@@ -691,6 +756,8 @@ class KimiSoul:
                 raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
             wire_send(StepBegin(n=step_no))
+            # Reset TPS tracking at the start of each step
+            self._reset_streaming_tps()
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
             try:
@@ -806,6 +873,18 @@ class KimiSoul:
         # Normalize: merge adjacent user messages for clean API input
         effective_history = normalize_history(self._context.history)
 
+        # Create a wrapped callback to track streaming tokens for TPS calculation
+        def _track_and_wire_send(part: StreamedMessagePart) -> None:
+            """Track tokens from streaming content and send to wire."""
+            match part:
+                case TextPart(text=text) | ThinkPart(think=text):
+                    if text:
+                        # Estimate tokens for TPS calculation
+                        self._track_streaming_tokens(self._estimate_tokens_for_tps(text))
+                case _:
+                    pass  # Other parts don't contain tokens to track
+            wire_send(part)
+
         async def _run_step_once() -> StepResult:
             # run an LLM step (may be interrupted)
             return await kosong.step(
@@ -813,7 +892,7 @@ class KimiSoul:
                 self._agent.system_prompt,
                 self._agent.toolset,
                 effective_history,
-                on_message_part=wire_send,
+                on_message_part=_track_and_wire_send,
                 on_tool_result=wire_send,
             )
 
@@ -843,6 +922,7 @@ class KimiSoul:
             status_update.context_usage = snap.context_usage
             status_update.context_tokens = snap.context_tokens
             status_update.max_context_tokens = snap.max_context_tokens
+            status_update.tps = snap.tps
         wire_send(status_update)
 
         # wait for all tool results (may be interrupted)

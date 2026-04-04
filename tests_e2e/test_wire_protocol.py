@@ -325,8 +325,7 @@ def test_external_tool_call(tmp_path) -> None:
                         "token_usage": None,
                         "message_id": None,
                         "plan_mode": False,
-                        "mcp_status": None,
-                    },
+                        "mcp_status": None, "tps": None},
                 },
                 {
                     "method": "request",
@@ -367,8 +366,7 @@ def test_external_tool_call(tmp_path) -> None:
                         "token_usage": None,
                         "message_id": None,
                         "plan_mode": False,
-                        "mcp_status": None,
-                    },
+                        "mcp_status": None, "tps": None},
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -419,8 +417,7 @@ def test_prompt_without_initialize(tmp_path) -> None:
                         "token_usage": None,
                         "message_id": None,
                         "plan_mode": False,
-                        "mcp_status": None,
-                    },
+                        "mcp_status": None, "tps": None},
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
