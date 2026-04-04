@@ -120,11 +120,13 @@ class OpenAILegacy:
         self._reasoning_key = reasoning_key
         self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
         self._generation_kwargs: OpenAILegacy.GenerationKwargs = {}
-        # Default supported content types: TextPart and ImageURLPart (OpenAI standard)
-        self._supported_content_types: set[type] = supported_content_types or {
-            TextPart,
-            ImageURLPart,
-        }
+        # Use explicit None check instead of `or` to handle empty set correctly.
+        # An empty set is falsy in Python, which would incorrectly trigger the default.
+        self._supported_content_types: set[type] = (
+            supported_content_types
+            if supported_content_types is not None
+            else {TextPart, ImageURLPart}
+        )
 
     @property
     def model_name(self) -> str:

@@ -53,8 +53,10 @@ class LLMProvider(BaseModel):
     See: https://github.com/MoonshotAI/kimi-cli/issues/1155"""
     supported_content_types: list[str] | None = None
     """List of supported content part types for openai_legacy provider.
-    Valid values: 'text', 'image_url'. If not specified, defaults to ['text', 'image_url'].
-    Note: 'video_url' and 'audio_url' are filtered out by default as most APIs don't support them.
+    Valid values: 'text', 'image_url'. Invalid values will raise ValueError at startup.
+    Note: 'text' is ALWAYS included to ensure text content is never dropped.
+    If not specified, auto-detects from model capabilities (image_in).
+    'video_url' and 'audio_url' are filtered out as most APIs don't support them.
     See: https://github.com/MoonshotAI/kimi-cli/issues/796"""
 
     @field_serializer("api_key", when_used="json")
