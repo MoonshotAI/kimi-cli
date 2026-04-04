@@ -63,6 +63,7 @@ from kimi_cli.ui.shell.placeholders import (
     sanitize_surrogates,
 )
 from kimi_cli.ui.theme import get_prompt_style, get_toolbar_colors
+from kimi_cli.ui.tps_meter import get_show_tps_meter
 from kimi_cli.utils.clipboard import (
     grab_media_from_clipboard,
     is_clipboard_available,
@@ -2152,9 +2153,12 @@ class CustomPromptSession:
     def _render_right_span(status: StatusSnapshot) -> str:
         current_toast = _current_toast("right")
         if current_toast is None:
-            return format_context_status(
+            context_str = format_context_status(
                 status.context_usage,
                 status.context_tokens,
                 status.max_context_tokens,
             )
+            if get_show_tps_meter() and status.tps > 0:
+                return f"{context_str} · {status.tps:.1f} tok/s"
+            return context_str
         return current_toast.message

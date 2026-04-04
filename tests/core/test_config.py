@@ -26,8 +26,7 @@ def test_default_config_dump():
             "default_yolo": False,
             "default_plan_mode": False,
             "default_editor": "",
-            "theme": "dark",
-            "models": {},
+            "theme": "dark", "show_tps_meter": False, "models": {},
             "providers": {},
             "loop_control": {
                 "max_steps_per_turn": 100,

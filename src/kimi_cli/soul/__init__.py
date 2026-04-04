@@ -96,6 +96,8 @@ class StatusSnapshot:
     """The maximum number of tokens the context can hold."""
     mcp_status: MCPStatusSnapshot | None = None
     """The current MCP startup snapshot, if MCP is configured."""
+    tps: float = 0.0
+    """Current tokens-per-second rate during streaming. 0 when not streaming."""
 
 
 @runtime_checkable
