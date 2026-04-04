@@ -48,6 +48,11 @@ if TYPE_CHECKING:
         _: RetryableChatProvider = openai_legacy
 
 
+# ContentPart subclasses that can be filtered by supported_content_types
+# Note: ToolCall and ToolCallPart are NOT ContentPart subclasses, they are handled separately
+_CONTENT_PART_TYPES: set[type] = {TextPart, ImageURLPart}
+
+
 class OpenAILegacy:
     """
     A chat provider that uses the OpenAI Chat Completions API.
@@ -85,7 +90,7 @@ class OpenAILegacy:
         stream: bool = True,
         reasoning_key: str | None = None,
         tool_message_conversion: ToolMessageConversion | None = None,
-        supported_content_types: set[type[ContentPart]] | None = None,
+        supported_content_types: set[type] | None = None,
         **client_kwargs: Any,
     ):
         """
@@ -95,9 +100,10 @@ class OpenAILegacy:
         the message, such as `{"reasoning": ...}`, `reasoning_key` can be set to the key name.
 
         Args:
-            supported_content_types: Set of ContentPart types that the API supports.
-                If None, defaults to {TextPart, ImageURLPart, ToolCall, ToolCallPart}.
-                Set to {TextPart, ToolCall, ToolCallPart} for APIs that don't support images.
+            supported_content_types: Set of ContentPart subclass types that the API supports.
+                If None, defaults to {TextPart, ImageURLPart}.
+                Only ContentPart subclasses (TextPart, ImageURLPart, etc.) should be included.
+                ToolCall and ToolCallPart are handled separately by message serialization.
         """
         self.model = model
         self.stream = stream
@@ -114,12 +120,10 @@ class OpenAILegacy:
         self._reasoning_key = reasoning_key
         self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
         self._generation_kwargs: OpenAILegacy.GenerationKwargs = {}
-        # Default supported content types: TextPart, ImageURLPart (OpenAI standard), and tool-related
-        self._supported_content_types: set[type[ContentPart]] = supported_content_types or {
+        # Default supported content types: TextPart and ImageURLPart (OpenAI standard)
+        self._supported_content_types: set[type] = supported_content_types or {
             TextPart,
             ImageURLPart,
-            ToolCall,
-            ToolCallPart,
         }
 
     @property
