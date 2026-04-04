@@ -18,6 +18,7 @@ export interface ToolContext {
     toolName: string,
     action: string,
     summary: string,
+    opts?: { display?: unknown[] },
   ) => Promise<ApprovalDecision>;
   /** Emit a wire event (for UI communication). */
   wireEmit?: (event: unknown) => void;

@@ -81,6 +81,10 @@ export interface InputHistoryState {
   historyNext: () => void;
   /** Add current value to history */
   addToHistory: (entry: string) => void;
+  /** True when navigating history (arrow up/down) */
+  isBrowsingHistory: boolean;
+  /** Exit history browsing mode (call on any edit) */
+  exitHistory: () => void;
   /** Check if current input is a slash command */
   isSlashCommand: boolean;
   /** Parse slash command name and args */
@@ -159,6 +163,13 @@ export function useInputHistory(maxHistory = 100): InputHistoryState {
     }
   }, []);
 
+  const exitHistory = useCallback(() => {
+    if (historyIndex.current !== -1) {
+      historyIndex.current = -1;
+      savedInput.current = "";
+    }
+  }, []);
+
   const isSlashCommand = value.startsWith("/");
 
   const parseSlashCommand = useCallback(() => {
@@ -180,6 +191,8 @@ export function useInputHistory(maxHistory = 100): InputHistoryState {
     historyPrev,
     historyNext,
     addToHistory,
+    isBrowsingHistory: historyIndex.current !== -1,
+    exitHistory,
     isSlashCommand,
     parseSlashCommand,
   };

@@ -13,9 +13,13 @@ import { KimiToolset } from "./toolset.ts";
 import { SlashCommandRegistry, createDefaultRegistry } from "./slash.ts";
 import { Context } from "./context.ts";
 import { logger } from "../utils/logging.ts";
-import type { LaborMarket } from "../subagents/registry.ts";
-import type { SubagentStore } from "../subagents/store.ts";
-import type { ApprovalRuntime } from "../approval_runtime/index.ts";
+import { LaborMarket } from "../subagents/registry.ts";
+import { SubagentStore } from "../subagents/store.ts";
+import { ApprovalRuntime } from "../approval_runtime/index.ts";
+import { RootWireHub } from "../wire/root_hub.ts";
+import { loadAgentSpec, getAgentsDir } from "../agentspec.ts";
+import { defaultToolPolicy, type ToolPolicy } from "../subagents/models.ts";
+import { join } from "node:path";
 
 // ── Built-in system prompt args ──────────────────────
 
@@ -44,6 +48,7 @@ export class Runtime {
   laborMarket: LaborMarket | null;
   subagentStore: SubagentStore | null;
   approvalRuntime: ApprovalRuntime | null;
+  rootWireHub: RootWireHub | null;
   subagentId: string | null;
   subagentType: string | null;
 
@@ -59,6 +64,7 @@ export class Runtime {
     laborMarket?: LaborMarket | null;
     subagentStore?: SubagentStore | null;
     approvalRuntime?: ApprovalRuntime | null;
+    rootWireHub?: RootWireHub | null;
     subagentId?: string | null;
     subagentType?: string | null;
   }) {
@@ -73,6 +79,7 @@ export class Runtime {
     this.laborMarket = opts.laborMarket ?? null;
     this.subagentStore = opts.subagentStore ?? null;
     this.approvalRuntime = opts.approvalRuntime ?? null;
+    this.rootWireHub = opts.rootWireHub ?? null;
     this.subagentId = opts.subagentId ?? null;
     this.subagentType = opts.subagentType ?? null;
   }
@@ -144,6 +151,13 @@ export class Runtime {
 
     const approval = new Approval({ state: approvalState });
 
+    // Create RootWireHub and ApprovalRuntime, then bind them
+    // (matches Python Runtime.__post_init__)
+    const rootWireHub = new RootWireHub();
+    const approvalRuntime = new ApprovalRuntime();
+    approvalRuntime.bindRootWireHub(rootWireHub);
+    approval.setRuntime(approvalRuntime);
+
     return new Runtime({
       config: opts.config,
       llm: opts.llm,
@@ -152,6 +166,12 @@ export class Runtime {
       hookEngine: opts.hookEngine,
       builtinArgs,
       additionalDirs,
+      laborMarket: new LaborMarket(),
+      subagentStore: new SubagentStore(
+        join(opts.session.dir, "subagents"),
+      ),
+      approvalRuntime,
+      rootWireHub,
     });
   }
 
@@ -177,6 +197,7 @@ export class Runtime {
       laborMarket: this.laborMarket,
       subagentStore: this.subagentStore,
       approvalRuntime: this.approvalRuntime,
+      rootWireHub: this.rootWireHub,
       subagentId: opts.agentId,
       subagentType: opts.subagentType,
     });
@@ -238,11 +259,12 @@ export async function loadAgent(opts: {
     context: {
       workingDir: runtime.session.workDir,
       signal: new AbortController().signal,
-      approval: async (toolName: string, _action: string, description: string) => {
+      approval: async (toolName: string, action: string, description: string, opts?: { display?: unknown[] }) => {
         const result = await runtime.approval.request(
           toolName,
-          toolName,
+          action,
           description,
+          { display: opts?.display },
         );
         return result.approved ? "approve" : "reject";
       },
@@ -267,6 +289,41 @@ export async function loadAgent(opts: {
     },
     hookEngine: runtime.hookEngine,
   });
+
+  // Register built-in subagent types from agent spec before loading tools,
+  // because AgentTool.buildDescription() reads from the labor market.
+  // Corresponds to Python load_agent() lines 423-442.
+  if (runtime.laborMarket) {
+    try {
+      const agentsDir = getAgentsDir();
+      const agentSpecPath = join(agentsDir, agentName, "agent.yaml");
+      const agentSpec = await loadAgentSpec(agentSpecPath);
+
+      for (const [subagentName, subagentInfo] of Object.entries(agentSpec.subagents)) {
+        logger.info(`Registering builtin subagent type: ${subagentName}`);
+        try {
+          const subSpec = await loadAgentSpec(subagentInfo.path);
+          const toolPolicy: ToolPolicy = subSpec.allowedTools != null
+            ? { mode: "allowlist" as const, tools: subSpec.allowedTools }
+            : defaultToolPolicy();
+          runtime.laborMarket.addBuiltinType({
+            name: subagentName,
+            description: subagentInfo.description,
+            agentFile: subagentInfo.path,
+            whenToUse: subSpec.whenToUse,
+            defaultModel: subSpec.model ?? undefined,
+            toolPolicy,
+            supportsBackground: true,
+          });
+        } catch (err) {
+          logger.warn(`Failed to load subagent spec for "${subagentName}": ${err}`);
+        }
+      }
+    } catch {
+      // Agent spec not found — no subagent types to register
+      logger.debug(`No agent spec found for "${agentName}", skipping subagent registration`);
+    }
+  }
 
   // Register built-in tools
   await registerBuiltinTools(toolset, runtime);

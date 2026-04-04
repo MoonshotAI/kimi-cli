@@ -127,8 +127,8 @@ export class AgentTool extends CallableTool<typeof ParamsSchema> {
 
   private static _uniqueToolNames(toolPaths: readonly string[]): string[] {
     const names: string[] = [];
-    for (const path of toolPaths) {
-      const name = path.split(":").pop() ?? path;
+    for (const toolPath of toolPaths) {
+      const name = String(toolPath).split(":").pop() ?? String(toolPath);
       if (!names.includes(name)) {
         names.push(name);
       }
@@ -202,12 +202,14 @@ export class AgentTool extends CallableTool<typeof ParamsSchema> {
 
   private async _runInBackground(
     params: Params,
-    _runtime: Runtime,
+    runtime: Runtime,
   ): Promise<ToolResult> {
-    // Background agent execution requires the background task system
-    // which will be implemented as part of the background runner migration.
-    return ToolError(
-      "Background subagent execution is not yet implemented in this version.",
+    // Background agent execution is not yet implemented.
+    // Fallback to foreground execution so the LLM's intent is still fulfilled
+    // rather than returning an error that may cause the turn to stall.
+    logger.warn(
+      "Background agent requested but not implemented; falling back to foreground.",
     );
+    return this._runForeground(params, runtime);
   }
 }

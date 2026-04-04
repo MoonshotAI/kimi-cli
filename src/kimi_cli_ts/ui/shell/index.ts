@@ -1,6 +1,7 @@
 export { Shell } from "./Shell.tsx";
 export type { ShellProps } from "./Shell.tsx";
-export { Prompt } from "./Prompt.tsx";
+export { PromptView } from "./PromptView.tsx";
+export type { PromptViewProps } from "./PromptView.tsx";
 export {
   MessageList,
   StreamingText,

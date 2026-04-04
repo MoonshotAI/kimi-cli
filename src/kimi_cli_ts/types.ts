@@ -119,7 +119,7 @@ export interface SlashCommand {
   /** Extended description shown when selected in menu (up to 3 lines) */
   longDescription?: string;
   aliases?: string[];
-  handler: (args: string) => Promise<void>;
+  handler: (args: string) => Promise<void | string>;
   /** If defined, selecting from menu renders a secondary panel instead of executing handler */
   panel?: () => CommandPanelConfig | null;
 }

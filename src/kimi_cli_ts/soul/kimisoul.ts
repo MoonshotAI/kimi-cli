@@ -771,9 +771,11 @@ export class KimiSoul {
         if (this.agent.runtime.approval.isYolo()) {
           this.agent.runtime.approval.setYolo(false);
           logger.info("YOLO mode: OFF");
+          return "You only die once! Actions will require approval.";
         } else {
           this.agent.runtime.approval.setYolo(true);
           logger.info("YOLO mode: ON");
+          return "You only live once! All actions will be auto-approved.";
         }
       };
     }

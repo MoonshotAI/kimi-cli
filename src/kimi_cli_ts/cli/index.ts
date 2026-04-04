@@ -10,7 +10,9 @@ import { KimiCLI } from "../app.ts";
 import type { SoulCallbacks } from "../soul/kimisoul.ts";
 import { Shell } from "../ui/shell/Shell.tsx";
 import type { WireUIEvent } from "../ui/shell/events.ts";
+import type { ApprovalResponseKind } from "../wire/types.ts";
 import chalk from "chalk";
+import { patchInkLogUpdate } from "../ui/renderer/index.ts";
 
 // ── Re-exports from Python cli/__init__.py ──────────────
 
@@ -427,6 +429,10 @@ program
               callbacks,
             });
 
+            // Patch Ink's log-update with our cell-level diffing renderer.
+            // This must happen before render() creates the Ink instance.
+            patchInkLogUpdate();
+
             const { waitUntilExit, unmount: inkUnmount } = render(
               React.createElement(Shell, {
                 modelName: app.soul.modelName,
@@ -435,6 +441,7 @@ program
                 sessionDir: app.session.dir,
                 sessionTitle: app.session.title,
                 thinking: app.soul.thinking,
+                yolo: options.yolo ?? false,
                 prefillText: currentPrefillText,
                 onSubmit: (input: string | ContentPart[]) => {
                   app.soul.run(input).catch((err: Error) => {
@@ -447,21 +454,54 @@ program
                 onPlanModeToggle: async () => {
                   return app.soul.togglePlanModeFromManual();
                 },
-                onWireReady: (push) => {
-                  pushEvent = push;
+                onApprovalResponse: (requestId: string, decision: ApprovalResponseKind, feedback?: string) => {
+                  if (app.soul.runtime.approvalRuntime) {
+                    app.soul.runtime.approvalRuntime.resolve(requestId, decision, feedback);
+                  }
+                },
+                onWireReady: (pe) => {
+                  pushEvent = pe;
                 },
                 onReload: (newSessionId: string, prefill?: string) => {
-                  // Print resume hint for the old session before switching
-                  printResumeHint(app.session);
-                  // Store reload info and unmount Ink to break out of waitUntilExit
                   pendingReload = { sessionId: newSessionId, prefillText: prefill };
                   inkUnmount();
                 },
                 extraSlashCommands: app.soul.availableSlashCommands,
               }),
-              { exitOnCtrlC: false, incrementalRendering: true },
+              { exitOnCtrlC: false },
             );
             unmount = inkUnmount;
+
+            // Start background task to forward RootWireHub events to UI
+            let rootHubQueue: any = null;
+            if (app.soul.runtime.rootWireHub) {
+              rootHubQueue = app.soul.runtime.rootWireHub.subscribe();
+              (async () => {
+                try {
+                  while (true) {
+                    const msg = await rootHubQueue.get();
+                    if (
+                      msg &&
+                      typeof msg === "object" &&
+                      "id" in msg &&
+                      "tool_call_id" in msg &&
+                      "sender" in msg
+                    ) {
+                      // ApprovalRequest
+                      pushEvent?.({
+                        type: "approval_request",
+                        request: msg as any,
+                      });
+                    }
+                  }
+                } catch (err) {
+                  // Queue shutdown or error
+                  if (rootHubQueue) {
+                    app.soul.runtime.rootWireHub?.unsubscribe(rootHubQueue);
+                  }
+                }
+              })();
+            }
 
             // Run initial prompt if provided (only on first iteration)
             if (currentPrompt) {
@@ -471,6 +511,9 @@ program
             }
 
             await waitUntilExit();
+            if (rootHubQueue && app.soul.runtime.rootWireHub) {
+              app.soul.runtime.rootWireHub.unsubscribe(rootHubQueue);
+            }
             await app.shutdown();
 
             // Check if this was a reload (/undo or /fork)

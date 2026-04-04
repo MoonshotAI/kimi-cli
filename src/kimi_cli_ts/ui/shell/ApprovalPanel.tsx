@@ -3,15 +3,15 @@
  * Corresponds to Python's ui/shell/approval_panel.py.
  *
  * Features:
- * - 4 options: approve once (y), approve for session (a), reject (n), reject with feedback (f)
- * - Diff preview panel
- * - Inline feedback input
- * - Truncation with expand hint
+ * - 4 options: approve once, approve for session, reject, reject with feedback
+ * - Content preview with line-budget truncation (diff, shell, brief)
+ * - Inline feedback input with draft persistence
  * - Keyboard navigation (↑↓ or 1-4 number keys)
  */
 
-import React, { useState, useCallback } from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useState, useCallback, useRef } from "react";
+import { Box, Text } from "ink";
+import { useInputLayer } from "./input-stack.ts";
 import type {
   ApprovalRequest,
   ApprovalResponseKind,
@@ -22,6 +22,7 @@ import type {
 } from "../../wire/types";
 
 const MAX_PREVIEW_LINES = 4;
+const FEEDBACK_OPTION_INDEX = 3;
 
 interface ApprovalOption {
   label: string;
@@ -34,8 +35,6 @@ const OPTIONS: ApprovalOption[] = [
   { label: "Reject", response: "reject" },
   { label: "Reject, tell the model what to do instead", response: "reject" },
 ];
-
-const FEEDBACK_OPTION_INDEX = 3;
 
 // ── DiffPreview ──────────────────────────────────────────
 
@@ -88,7 +87,13 @@ function DiffPreview({ blocks }: { blocks: DisplayBlock[] }) {
 
 // ── ContentPreview ───────────────────────────────────────
 
-function ContentPreview({ blocks }: { blocks: DisplayBlock[] }) {
+function ContentPreview({
+  blocks,
+  truncatedRef,
+}: {
+  blocks: DisplayBlock[];
+  truncatedRef: React.MutableRefObject<boolean>;
+}) {
   let budget = MAX_PREVIEW_LINES;
   let truncated = false;
   const elements: React.ReactNode[] = [];
@@ -119,18 +124,20 @@ function ContentPreview({ blocks }: { blocks: DisplayBlock[] }) {
       if (lines.length > budget) truncated = true;
       budget -= showLines.length;
       elements.push(
-        <Text key={`brief-${i}`} color="grey">
+        <Text key={`brief-${i}`} color="grey" italic>
           {showLines.join("\n")}
         </Text>,
       );
     }
   }
 
+  truncatedRef.current = truncated;
+
   return (
     <Box flexDirection="column">
       {elements}
       {truncated && (
-        <Text color="grey" dimColor italic>
+        <Text dimColor italic>
           ... (truncated, ctrl-e to expand)
         </Text>
       )}
@@ -152,34 +159,64 @@ export function ApprovalPanel({ request, onRespond }: ApprovalPanelProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [feedbackMode, setFeedbackMode] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
+  // Feedback draft: persisted when navigating away from option 4
+  const feedbackDraftRef = useRef("");
+  const nonDiffTruncatedRef = useRef(false);
 
-  const isFeedbackSelected = selectedIndex === FEEDBACK_OPTION_INDEX;
+  const hasDiff = request.display.some((b) => b.type === "diff");
+  const hasExpandableContent = hasDiff || nonDiffTruncatedRef.current;
 
   const submit = useCallback(
     (index: number) => {
       if (index === FEEDBACK_OPTION_INDEX) {
         setFeedbackMode(true);
+        // Restore draft if available
+        if (feedbackDraftRef.current) {
+          setFeedbackText(feedbackDraftRef.current);
+        }
         return;
       }
+      feedbackDraftRef.current = "";
       onRespond(OPTIONS[index]!.response);
     },
     [onRespond],
   );
 
-  useInput((input, key) => {
+  useInputLayer((input, key) => {
     if (feedbackMode) {
       if (key.return) {
+        // Only submit if non-empty (matches Python: empty enter does nothing)
         if (feedbackText.trim()) {
+          feedbackDraftRef.current = "";
           onRespond("reject", feedbackText.trim());
         }
         return;
       }
       if (key.escape) {
+        // Esc in feedback mode: reject with empty feedback
+        feedbackDraftRef.current = "";
         onRespond("reject", "");
         return;
       }
       if (key.backspace || key.delete) {
         setFeedbackText((t) => t.slice(0, -1));
+        return;
+      }
+      if (key.upArrow) {
+        // Save draft, navigate away
+        feedbackDraftRef.current = feedbackText;
+        setFeedbackMode(false);
+        setFeedbackText("");
+        setSelectedIndex(
+          (i) => (i - 1 + OPTIONS.length) % OPTIONS.length,
+        );
+        return;
+      }
+      if (key.downArrow) {
+        feedbackDraftRef.current = feedbackText;
+        setFeedbackMode(false);
+        setFeedbackText("");
+        setSelectedIndex((i) => (i + 1) % OPTIONS.length);
         return;
       }
       if (input && !key.ctrl && !key.meta) {
@@ -190,9 +227,23 @@ export function ApprovalPanel({ request, onRespond }: ApprovalPanelProps) {
 
     // Normal navigation
     if (key.upArrow) {
-      setSelectedIndex((i) => (i - 1 + OPTIONS.length) % OPTIONS.length);
+      setSelectedIndex((prev) => {
+        const next = (prev - 1 + OPTIONS.length) % OPTIONS.length;
+        if (next === FEEDBACK_OPTION_INDEX && feedbackDraftRef.current) {
+          setFeedbackMode(true);
+          setFeedbackText(feedbackDraftRef.current);
+        }
+        return next;
+      });
     } else if (key.downArrow) {
-      setSelectedIndex((i) => (i + 1) % OPTIONS.length);
+      setSelectedIndex((prev) => {
+        const next = (prev + 1) % OPTIONS.length;
+        if (next === FEEDBACK_OPTION_INDEX && feedbackDraftRef.current) {
+          setFeedbackMode(true);
+          setFeedbackText(feedbackDraftRef.current);
+        }
+        return next;
+      });
     } else if (key.return) {
       submit(selectedIndex);
     } else if (key.escape) {
@@ -201,20 +252,22 @@ export function ApprovalPanel({ request, onRespond }: ApprovalPanelProps) {
       const idx = parseInt(input) - 1;
       if (idx < OPTIONS.length) {
         setSelectedIndex(idx);
-        if (idx !== FEEDBACK_OPTION_INDEX) {
-          submit(idx);
-        } else {
+        if (idx === FEEDBACK_OPTION_INDEX) {
           setFeedbackMode(true);
+          if (feedbackDraftRef.current) {
+            setFeedbackText(feedbackDraftRef.current);
+          }
+        } else {
+          submit(idx);
         }
       }
     }
   });
 
-  const hasDiff = request.display.some((b) => b.type === "diff");
-  const hasContent =
-    hasDiff ||
-    !!request.description ||
-    request.display.some((b) => b.type === "shell" || b.type === "brief");
+  // Check whether we have non-diff content blocks
+  const hasNonDiffBlocks = request.display.some(
+    (b) => b.type === "shell" || b.type === "brief",
+  );
 
   return (
     <Box
@@ -223,19 +276,19 @@ export function ApprovalPanel({ request, onRespond }: ApprovalPanelProps) {
       borderColor="yellow"
       paddingX={1}
     >
-      {/* Title */}
+      {/* Title — matches Python Panel(title="⚠ ACTION REQUIRED", border_style="bold yellow") */}
       <Text color="yellow" bold>
         ⚠ ACTION REQUIRED
       </Text>
-      <Text> </Text>
+      <Text>{" "}</Text>
 
-      {/* Request header */}
+      {/* Request header — matches Python render() content_lines */}
       <Box paddingLeft={1} flexDirection="column">
         <Text color="yellow">
           {request.sender} is requesting approval to {request.action}:
         </Text>
 
-        {/* Source metadata */}
+        {/* Source metadata — matches Python _render_source_metadata_lines() */}
         {(request.subagent_type || request.agent_id) && (
           <Text color="grey">
             Subagent:{" "}
@@ -249,9 +302,9 @@ export function ApprovalPanel({ request, onRespond }: ApprovalPanelProps) {
         )}
       </Box>
 
-      <Text> </Text>
+      <Text>{" "}</Text>
 
-      {/* Description */}
+      {/* Description (only if no display blocks) — matches Python line 74-83 */}
       {request.description && !request.display.length && (
         <Box paddingLeft={1}>
           <Text>{truncateLines(request.description, MAX_PREVIEW_LINES)}</Text>
@@ -265,24 +318,26 @@ export function ApprovalPanel({ request, onRespond }: ApprovalPanelProps) {
         </Box>
       )}
 
-      {/* Non-diff content preview */}
-      {request.display.some(
-        (b) => b.type === "shell" || b.type === "brief",
-      ) && (
+      {/* Non-diff content preview (shell/brief) with line budget */}
+      {hasNonDiffBlocks && (
         <Box paddingLeft={1}>
-          <ContentPreview blocks={request.display} />
+          <ContentPreview
+            blocks={request.display}
+            truncatedRef={nonDiffTruncatedRef}
+          />
         </Box>
       )}
 
-      <Text> </Text>
+      <Text>{" "}</Text>
 
-      {/* Options */}
+      {/* Options — matches Python render() menu section */}
       {OPTIONS.map((option, i) => {
         const num = i + 1;
         const isSelected = i === selectedIndex;
-        const isFeedback = i === FEEDBACK_OPTION_INDEX;
+        const isFeedbackOption = i === FEEDBACK_OPTION_INDEX;
 
-        if (isFeedback && feedbackMode && isSelected) {
+        // Feedback input line: → [4] Reject: {text}█
+        if (isFeedbackOption && feedbackMode && isSelected) {
           return (
             <Text key={i} color="cyan">
               → [{num}] Reject: {feedbackText}█
@@ -291,26 +346,23 @@ export function ApprovalPanel({ request, onRespond }: ApprovalPanelProps) {
         }
 
         return (
-          <Text
-            key={i}
-            color={isSelected ? "cyan" : "grey"}
-          >
+          <Text key={i} color={isSelected ? "cyan" : "grey"}>
             {isSelected ? "→" : " "} [{num}] {option.label}
           </Text>
         );
       })}
 
-      <Text> </Text>
+      <Text>{" "}</Text>
 
-      {/* Keyboard hints */}
+      {/* Keyboard hints — matches Python render() hint lines */}
       {feedbackMode ? (
         <Text dimColor>
           {"  "}Type your feedback, then press Enter to submit.
         </Text>
       ) : (
         <Text dimColor>
-          {"  "}▲/▼ select {"  "}1/2/3/4 choose {"  "}↵ confirm
-          {hasContent ? "  ctrl-e expand" : ""}
+          {"  "}▲/▼ select{"  "}1/2/3/4 choose{"  "}↵ confirm
+          {hasExpandableContent ? "  ctrl-e expand" : ""}
         </Text>
       )}
     </Box>

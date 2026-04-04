@@ -62,6 +62,7 @@ export type WireUIEvent =
   | { type: "compaction_begin" }
   | { type: "compaction_end" }
   | { type: "notification"; title: string; body: string; severity?: string }
+  | { type: "slash_result"; userInput: string; text: string }
   | { type: "plan_display"; content: string; filePath: string }
   | { type: "hook_triggered"; event: string; target: string; hookCount: number }
   | { type: "hook_resolved"; event: string; target: string; action: string; reason: string; durationMs: number }

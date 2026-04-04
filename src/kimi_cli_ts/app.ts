@@ -198,6 +198,10 @@ export class KimiCLI {
       session = await Session.create(workDir);
     }
 
+    // Ensure session directory exists and set up disk logging
+    await session.ensureDir();
+    logger.setLogDir(session.dir);
+
     // Store additional dirs in session state
     if (opts.additionalDirs && opts.additionalDirs.length > 0) {
       session.state.additional_dirs = opts.additionalDirs.map((d) =>

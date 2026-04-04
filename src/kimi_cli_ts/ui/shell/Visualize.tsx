@@ -79,6 +79,23 @@ function MessageView({ message, isLast, isStreaming, stepCount }: MessageViewPro
   const roleLabel = getRoleLabel(message.role);
   const roleColor = getRoleColor(message.role, colors);
 
+  // For user messages, render inline with emoji prefix
+  if (message.role === "user") {
+    const userText = message.segments
+      .filter((s): s is TextSegment => s.type === "text")
+      .map((s) => s.text)
+      .join("");
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Box>
+          <Text color={roleColor}>{roleLabel} </Text>
+          <Text>{userText}</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // For assistant messages, no role label
   return (
     <Box flexDirection="column" marginBottom={1}>
       {/* Step count header for assistant messages */}
@@ -87,9 +104,6 @@ function MessageView({ message, isLast, isStreaming, stepCount }: MessageViewPro
           ─── Step {stepCount} ───
         </Text>
       )}
-      <Text color={roleColor} bold>
-        {roleLabel}
-      </Text>
       {message.segments.map((segment, idx) => (
         <SegmentView
           key={idx}
@@ -104,13 +118,13 @@ function MessageView({ message, isLast, isStreaming, stepCount }: MessageViewPro
 function getRoleLabel(role: string): string {
   switch (role) {
     case "user":
-      return "You";
+      return "✨";
     case "assistant":
-      return "Assistant";
+      return "";
     case "system":
-      return "System";
+      return "";
     case "tool":
-      return "Tool";
+      return "";
     default:
       return role;
   }

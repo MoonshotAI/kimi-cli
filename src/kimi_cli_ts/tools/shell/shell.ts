@@ -130,6 +130,15 @@ export class Shell extends CallableTool<typeof ParamsSchema> {
       "Shell",
       "run command",
       `Run command \`${params.command}\``,
+      {
+        display: [
+          {
+            type: "shell" as const,
+            language: "bash",
+            command: params.command,
+          },
+        ],
+      },
     );
     if (decision === "reject") {
       return ToolError(

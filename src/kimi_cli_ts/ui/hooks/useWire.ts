@@ -210,6 +210,24 @@ export function useWire(options?: UseWireOptions): WireState & {
         break;
       }
 
+      case "slash_result": {
+        // Atomically insert a user+assistant message pair (for slash command feedback)
+        const userMsg: UIMessage = {
+          id: nanoid(),
+          role: "user",
+          segments: [{ type: "text", text: event.userInput }],
+          timestamp: Date.now(),
+        };
+        const assistantMsg: UIMessage = {
+          id: nanoid(),
+          role: "assistant",
+          segments: [{ type: "text", text: event.text }],
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+        break;
+      }
+
       case "error": {
         // Errors are also shown as notifications with longer duration
         const toast: Toast = {

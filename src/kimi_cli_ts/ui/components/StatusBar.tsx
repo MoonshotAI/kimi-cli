@@ -138,16 +138,130 @@ export function StatusBar({
       ? `agent (${modelName} ${thinkingDot})`
       : "agent";
 
-  // Rotating tips (show 2 tips separated by |)
-  let tipText = "";
+  // Rotating tips: build both 2-tip and 1-tip variants for progressive shrinking.
+  let tip1Text = "";
+  let tip2Text = "";
   if (tips.length > 0) {
-    const tip1 = tips[tipIndex % tips.length]!;
+    tip1Text = tips[tipIndex % tips.length]!;
     if (tips.length > 1) {
       const tip2 = tips[(tipIndex + 1) % tips.length]!;
-      tipText = `${tip1} | ${tip2}`;
-    } else {
-      tipText = tip1;
+      tip2Text = `${tip1Text} | ${tip2}`;
     }
+  }
+
+  // --- Line 1: fit all elements into one row, dropping from the end ---
+  // Build an ordered list of segments. Each segment has a text representation
+  // and a render function. We measure total width and drop segments from the
+  // *end* (lowest priority) until the line fits within `columns`.
+  //
+  // Priority (highest first, i.e. dropped last):
+  //   plan/yolo > modeStr > workDir > gitBadge > compacting > bgTask > tips
+  //
+  // The gap between left-side segments is 2 chars ("  ").
+
+  type Segment = {
+    key: string;
+    text: string;
+    render: () => React.ReactNode;
+  };
+
+  const leftSegments: Segment[] = [];
+
+  // plan and yolo display first (and are highest priority — dropped last)
+  if (planMode) {
+    leftSegments.push({
+      key: "plan",
+      text: "plan",
+      render: () => <Text key="plan" color="cyan" bold>plan</Text>,
+    });
+  }
+
+  if (yolo) {
+    leftSegments.push({
+      key: "yolo",
+      text: "yolo",
+      render: () => <Text key="yolo" color="yellow" bold>yolo</Text>,
+    });
+  }
+
+  leftSegments.push({
+    key: "mode",
+    text: modeStr,
+    render: () => <Text key="mode">{modeStr}</Text>,
+  });
+
+  if (displayDir) {
+    const dir = truncate(displayDir, 30);
+    leftSegments.push({
+      key: "dir",
+      text: dir,
+      render: () => <Text key="dir" color={DIM}>{dir}</Text>,
+    });
+  }
+
+  if (gitBadge) {
+    leftSegments.push({
+      key: "git",
+      text: gitBadge,
+      render: () => <Text key="git" color="#a5d6a7">{gitBadge}</Text>,
+    });
+  }
+
+  if (isCompacting) {
+    leftSegments.push({
+      key: "compact",
+      text: "compacting...",
+      render: () => <Text key="compact" color="yellow">compacting...</Text>,
+    });
+  }
+
+  if (bgTaskCount > 0) {
+    const t = `⚙ bash: ${bgTaskCount}`;
+    leftSegments.push({
+      key: "bg",
+      text: t,
+      render: () => <Text key="bg" color="#56a4ff">{t}</Text>,
+    });
+  }
+
+  // Tips go on the right side and are the first to be dropped.
+  const GAP = 2; // gap between left segments rendered by Ink's gap={2}
+  const LEFT_RIGHT_GAP = 2; // minimum gap between left group and right tips
+
+  const calcLeftWidth = (segs: Segment[]) =>
+    segs.reduce((w, s, i) => w + s.text.length + (i > 0 ? GAP : 0), 0);
+
+  let visibleLeft = [...leftSegments];
+
+  // Try 2-tip → 1-tip → no tip
+  const calcTotal = (tip: string) => {
+    const lw = calcLeftWidth(visibleLeft);
+    return tip ? lw + LEFT_RIGHT_GAP + tip.length : lw;
+  };
+
+  let visibleTip = "";
+  if (tip2Text && calcTotal(tip2Text) <= columns) {
+    visibleTip = tip2Text;
+  } else if (tip1Text && calcTotal(tip1Text) <= columns) {
+    visibleTip = tip1Text;
+  }
+
+  // Phase 2: drop left segments from the end (lowest priority first),
+  // but never drop the very first segment (plan/yolo/modeStr).
+  while (calcTotal(visibleTip) > columns && visibleLeft.length > 1) {
+    visibleLeft.pop();
+  }
+
+  // Phase 3: if still too wide, truncate the last remaining segment
+  if (calcTotal(visibleTip) > columns && visibleLeft.length === 1) {
+    const lastSeg = visibleLeft[0]!;
+    const maxLen = Math.max(5, columns - (visibleTip ? visibleTip.length + LEFT_RIGHT_GAP : 0));
+    const truncated = truncate(lastSeg.text, maxLen);
+    visibleLeft[0] = {
+      key: lastSeg.key,
+      text: truncated,
+      render: () => <Text key={lastSeg.key}>{truncated}</Text>,
+    };
   }
 
   // Left toast (first unexpired toast with position=left)
@@ -164,36 +278,16 @@ export function StatusBar({
 
   return (
     <Box flexDirection="column">
-      {/* Line 0: separator */}
-      <Text color={DIM}>{separator}</Text>
-
-      {/* Line 1: status indicators */}
-      <Box justifyContent="space-between">
-        <Box gap={2}>
-          {yolo && (
-            <Text color="yellow" bold>
-              yolo
-            </Text>
-          )}
-          {planMode && (
-            <Text color="cyan" bold>
-              plan
-            </Text>
-          )}
-          <Text>{modeStr}</Text>
-          {displayDir && <Text color={DIM}>{truncate(displayDir, 30)}</Text>}
-          {gitBadge && <Text color="#a5d6a7">{gitBadge}</Text>}
-          {bgTaskCount > 0 && (
-            <Text color="#56a4ff">⚙ bash: {bgTaskCount}</Text>
-          )}
-          {isStreaming && (
-            <Text color="#1e90ff">step {stepCount}</Text>
-          )}
-          {isCompacting && <Text color="yellow">compacting...</Text>}
+      {/* Line 1: status indicators — guaranteed single row */}
+      <Box>
+        <Box gap={2} flexShrink={0}>
+          {visibleLeft.map((seg) => seg.render())}
         </Box>
-        <Box>
-          <Text color={DIM}>{tipText}</Text>
-        </Box>
+        {visibleTip && (
+          <Box flexGrow={1} justifyContent="flex-end" flexShrink={0}>
+            <Text color={DIM}>{visibleTip}</Text>
+          </Box>
+        )}
       </Box>
 
       {/* Line 2: left toast + right context */}
