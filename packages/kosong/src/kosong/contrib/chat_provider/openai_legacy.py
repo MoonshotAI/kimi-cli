@@ -166,10 +166,18 @@ class OpenAILegacy:
                 reasoning_effort = "medium"
 
         try:
+            # Build tools parameter: omit if empty to avoid API errors.
+            # Some APIs (DashScope, Xunfei) reject empty tools array with errors like:
+            # - "[] is too short - 'tools'" (DashScope)
+            # - "EngineInternalError: Bad Request" (Xunfei)
+            # See: https://github.com/MoonshotAI/kimi-cli/issues/1344
+            tools_param = (
+                [tool_to_openai(tool) for tool in tools] if tools else omit
+            )
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                tools=(tool_to_openai(tool) for tool in tools),
+                tools=tools_param,
                 stream=self.stream,
                 stream_options={"include_usage": True} if self.stream else omit,
                 reasoning_effort=reasoning_effort,
