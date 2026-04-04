@@ -41,6 +41,7 @@
     "ink": "^6.8.0",
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
+    "log4js": "^6.9.1",
     "micromatch": "^4.0.8",
     "nanoid": "^5.1.7",
     "openai": "^6.33.0",
