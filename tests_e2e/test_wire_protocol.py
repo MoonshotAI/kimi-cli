@@ -76,11 +76,6 @@ def test_initialize_handshake(tmp_path) -> None:
                             "aliases": [],
                         },
                         {
-                            "name": "btw",
-                            "description": "Ask a quick side question without interrupting the main conversation",
-                            "aliases": [],
-                        },
-                        {
                             "name": "import",
                             "description": "Import context from a file or session ID",
                             "aliases": [],
@@ -183,11 +178,6 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         {
                             "name": "export",
                             "description": "Export current session context to a markdown file",
-                            "aliases": [],
-                        },
-                        {
-                            "name": "btw",
-                            "description": "Ask a quick side question without interrupting the main conversation",
                             "aliases": [],
                         },
                         {

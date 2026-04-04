@@ -706,6 +706,7 @@ class Shell:
         )
 
         captured_view: _PromptLiveView | None = None
+        pending: list[UserInput] = []  # queued messages being drained
 
         try:
             snap = self.soul.status
@@ -756,13 +757,17 @@ class Shell:
             cancel_event.clear()
 
             # Drain queued messages and send each as a new turn.
-            # Safety valve: cap at 20 rounds to prevent infinite loops
-            # (user could theoretically keep queuing during each drain turn).
-            _MAX_DRAIN_ROUNDS = 20
-            pending: list[UserInput] = []
-            drain_round = 0
-            while captured_view is not None and drain_round < _MAX_DRAIN_ROUNDS:
-                pending.extend(captured_view.drain_queued_messages())
+            # Safety valve: cap at 20 "generations" (new batches of messages
+            # from the view). A one-time backlog of 25 messages = 1 generation,
+            # but a user adding new messages every turn = 1 generation per turn.
+            _MAX_DRAIN_GENERATIONS = 20
+            pending.clear()
+            drain_generation = 0
+            while captured_view is not None and drain_generation < _MAX_DRAIN_GENERATIONS:
+                new_messages = captured_view.drain_queued_messages()
+                if new_messages:
+                    drain_generation += 1
+                pending.extend(new_messages)
                 if not pending:
                     break
                 queued = pending.pop(0)
@@ -795,11 +800,16 @@ class Shell:
                 if captured_view is not None:
                     await captured_view.wait_for_btw_dismiss()
                 cancel_event.clear()  # same rationale as above
-                drain_round += 1
                 # captured_view is now the view from this turn;
                 # next iteration drains it for any new messages.
-            if drain_round >= _MAX_DRAIN_ROUNDS:
-                logger.warning("Queue drain hit safety limit ({n} rounds)", n=_MAX_DRAIN_ROUNDS)
+            if drain_generation >= _MAX_DRAIN_GENERATIONS:
+                logger.warning(
+                    "Queue drain hit safety limit ({n} generations)",
+                    n=_MAX_DRAIN_GENERATIONS,
+                )
+                # Warn about remaining items in the local pending buffer
+                for msg in pending:
+                    console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
             return True
         except LLMNotSet:
             logger.exception("LLM not set:")
@@ -832,12 +842,14 @@ class Shell:
             # Clean up btw modal if it's still attached (exception skipped wait_for_btw_dismiss)
             if captured_view is not None:
                 captured_view._dismiss_btw()  # pyright: ignore[reportPrivateUsage]
-            # Warn about queued messages that were lost due to error/cancel
+            # Warn about queued messages lost due to error/cancel.
+            # Check both: pending (already drained from view) and view (not yet drained).
+            all_lost: list[UserInput] = list(pending)
+            pending.clear()
             if captured_view is not None:
-                lost = captured_view.drain_queued_messages()
-                if lost:
-                    for msg in lost:
-                        console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
+                all_lost.extend(captured_view.drain_queued_messages())
+            for msg in all_lost:
+                console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
             self._maybe_present_pending_approvals()
             remove_sigint()
         return False

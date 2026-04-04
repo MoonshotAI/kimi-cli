@@ -244,19 +244,6 @@ async def export(soul: KimiSoul, args: str):
     )
 
 
-@registry.command
-async def btw(soul: KimiSoul, args: str):
-    """Ask a quick side question without interrupting the main conversation"""
-    question = args.strip()
-    if not question:
-        wire_send(TextPart(text="Usage: /btw <question>"))
-        return
-
-    from kimi_cli.soul.btw import run_side_question
-
-    await run_side_question(soul, question)
-
-
 @registry.command(name="import")
 async def import_context(soul: KimiSoul, args: str):
     """Import context from a file or session ID"""

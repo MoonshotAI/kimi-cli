@@ -274,6 +274,22 @@ class _PromptLiveView(_LiveView):
                 if self._btw_runner is not None and not self._btw_active:
                     self._start_btw(action.args)
             case InputAction.QUEUE:
+                # Block shell-only commands from being queued — they would
+                # be misrouted through run_soul() instead of the shell dispatcher.
+                from kimi_cli.utils.slashcmd import parse_slash_command_call
+
+                if cmd := parse_slash_command_call(user_input.resolved_command.strip()):
+                    from kimi_cli.ui.shell.slash import registry as shell_registry
+
+                    if shell_registry.find_command(cmd.name) is not None:
+                        from kimi_cli.ui.shell.prompt import toast
+
+                        toast(
+                            f"/{cmd.name} is not available during streaming",
+                            topic="input-ignored",
+                            duration=3.0,
+                        )
+                        return
                 self._queued_messages.append(user_input)
                 # Invalidate directly — _flush_prompt_refresh() is gated by
                 # _need_recompose which may be False between wire events.
