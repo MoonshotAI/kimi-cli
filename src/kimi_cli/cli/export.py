@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import time
 import zipfile
@@ -253,7 +254,8 @@ def export(
         for file_path in files:
             zf.write(file_path, arcname=file_path.name)
         for log_path in log_files:
-            zf.write(log_path, arcname=f"logs/{log_path.name}")
+            with contextlib.suppress(OSError):
+                zf.write(log_path, arcname=f"logs/{log_path.name}")
     buf.seek(0)
 
     output.parent.mkdir(parents=True, exist_ok=True)

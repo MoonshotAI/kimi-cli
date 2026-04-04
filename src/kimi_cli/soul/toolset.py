@@ -331,8 +331,12 @@ class KimiToolset:
         module_name, class_name = tool_path.rsplit(":", 1)
         try:
             module = importlib.import_module(module_name)
-        except ImportError:
-            logger.warning("Tool module import failed: {module_name}", module_name=module_name)
+        except ImportError as e:
+            logger.warning(
+                "Tool module import failed: {module_name}: {error}",
+                module_name=module_name,
+                error=e,
+            )
             return None
         tool_cls = getattr(module, class_name, None)
         if tool_cls is None:
