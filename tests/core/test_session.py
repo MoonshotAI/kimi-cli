@@ -359,6 +359,23 @@ async def test_save_state_reload_does_not_lose_worker_fields(
     assert result.custom_title == "External Title"
 
 
+async def test_save_state_preserves_in_memory_todos(isolated_share_dir: Path, work_dir: KaosPath):
+    """save_state() should persist in-memory todos (worker-owned) to disk."""
+    from kimi_cli.session_state import TodoItemState, load_session_state
+
+    session = await Session.create(work_dir)
+
+    # Simulate SetTodoList setting todos in memory before calling save_state()
+    session.state.todos = [TodoItemState(title="Worker todo", status="pending")]
+    session.save_state()
+
+    # Verify todos were persisted to disk
+    result = load_session_state(session.dir)
+    assert len(result.todos) == 1
+    assert result.todos[0].title == "Worker todo"
+    assert result.todos[0].status == "pending"
+
+
 async def test_is_empty_with_only_metadata_records(
     isolated_share_dir: Path, work_dir: KaosPath
 ) -> None:

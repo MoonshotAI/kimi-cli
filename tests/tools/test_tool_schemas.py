@@ -108,27 +108,32 @@ def test_set_todo_list_params_schema(set_todo_list_tool: SetTodoList):
         {
             "properties": {
                 "todos": {
-                    "description": "The updated todo list",
-                    "items": {
-                        "properties": {
-                            "title": {
-                                "description": "The title of the todo",
-                                "minLength": 1,
-                                "type": "string",
+                    "anyOf": [
+                        {
+                            "items": {
+                                "properties": {
+                                    "title": {
+                                        "description": "The title of the todo",
+                                        "minLength": 1,
+                                        "type": "string",
+                                    },
+                                    "status": {
+                                        "description": "The status of the todo",
+                                        "enum": ["pending", "in_progress", "done"],
+                                        "type": "string",
+                                    },
+                                },
+                                "required": ["title", "status"],
+                                "type": "object",
                             },
-                            "status": {
-                                "description": "The status of the todo",
-                                "enum": ["pending", "in_progress", "done"],
-                                "type": "string",
-                            },
+                            "type": "array",
                         },
-                        "required": ["title", "status"],
-                        "type": "object",
-                    },
-                    "type": "array",
+                        {"type": "null"},
+                    ],
+                    "default": None,
+                    "description": "The updated todo list. If not provided, returns the current todo list without making changes.",
                 }
             },
-            "required": ["todos"],
             "type": "object",
         }
     )

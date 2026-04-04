@@ -304,7 +304,7 @@ def test_max_steps_reached(tmp_path) -> None:
                         "tool_call_id": "tc-1",
                         "return_value": {
                             "is_error": False,
-                            "output": "",
+                            "output": "Todo list updated",
                             "message": "Todo list updated",
                             "display": [
                                 {

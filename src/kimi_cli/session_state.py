@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -14,6 +15,13 @@ STATE_FILE_NAME = "state.json"
 class ApprovalStateData(BaseModel):
     yolo: bool = False
     auto_approve_actions: set[str] = Field(default_factory=set)
+
+
+class TodoItemState(BaseModel):
+    """A single todo item stored in session or subagent state."""
+
+    title: str
+    status: Literal["pending", "in_progress", "done"]
 
 
 class SessionState(BaseModel):
@@ -31,6 +39,8 @@ class SessionState(BaseModel):
     archived: bool = False
     archived_at: float | None = None
     auto_archive_exempt: bool = False
+    # Todo list state
+    todos: list[TodoItemState] = Field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
 
 
 _LEGACY_METADATA_FILENAME = "metadata.json"
