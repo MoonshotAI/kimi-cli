@@ -316,6 +316,21 @@ class _PromptLiveView(_LiveView):
 
             toast(action.args, topic="input-ignored", duration=3.0)
             return
+        # Block shell-only commands — same check as the Enter/queue path
+        from kimi_cli.utils.slashcmd import parse_slash_command_call
+
+        if cmd := parse_slash_command_call(user_input.resolved_command.strip()):
+            from kimi_cli.ui.shell.slash import registry as shell_registry
+
+            if shell_registry.find_command(cmd.name) is not None:
+                from kimi_cli.ui.shell.prompt import toast
+
+                toast(
+                    f"/{cmd.name} is not available during streaming",
+                    topic="input-ignored",
+                    duration=3.0,
+                )
+                return
         # Print permanently in conversation flow (shows placeholder for pasted text)
         console.print(render_user_echo_text(user_input.command))
         # Track that we originated this steer locally (FIFO counter for dedup)

@@ -11,6 +11,7 @@ Renders the /btw overlay that replaces the prompt line, with:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 from prompt_toolkit.formatted_text import ANSI
@@ -22,6 +23,33 @@ from rich.text import Text
 
 from kimi_cli.ui.shell.console import render_to_ansi
 from kimi_cli.ui.shell.visualize._blocks import Markdown
+
+# Regex patterns for extracting Rich Panel left/right borders from ANSI lines.
+# Left: ANSI codes + │ + ANSI codes + space
+_LEFT_BORDER_RE = re.compile(r"((?:\x1b\[[^m]*m)*│(?:\x1b\[[^m]*m)* )")
+# Right: space + ANSI codes + │ + ANSI codes (at end of line)
+_RIGHT_BORDER_RE = re.compile(r"( (?:\x1b\[[^m]*m)*│(?:\x1b\[[^m]*m)*)$")
+
+
+def _build_bordered_line(text: str, reference_line: str, columns: int) -> str:
+    """Build an ANSI line with Panel borders matching *reference_line*.
+
+    Extracts the left/right border patterns from an existing Panel content
+    line and wraps *text* between them, padded to fill the Panel width.
+    Falls back to borderless if extraction fails.
+    """
+    left_m = _LEFT_BORDER_RE.match(reference_line)
+    right_m = _RIGHT_BORDER_RE.search(reference_line)
+    if not left_m or not right_m:
+        return f"  {text}"  # fallback: no border
+    left = left_m.group(1)
+    right = right_m.group(1)
+    # Inner width = total columns - 2 (border chars) - 2 (padding spaces)
+    inner_width = max(0, columns - 4)
+    dim = "\x1b[2m"
+    reset = "\x1b[0m"
+    return f"{left}{dim}{text.ljust(inner_width)[:inner_width]}{reset}{right}"
+
 
 _BTW_MAX_VISIBLE_LINES = 20
 """Max content lines shown in btw panel before scrolling kicks in."""
@@ -131,8 +159,7 @@ class _BtwModalDelegate:
         if total <= _BTW_MAX_VISIBLE_LINES:
             return ANSI("\n".join(lines))
 
-        # --- Scroll mode: replace the hint (last content line before border)
-        #     with scroll indicators ---
+        # --- Scroll mode ---
         border_top = lines[0]
         border_bottom = lines[-1]
         content = lines[1:-1]
@@ -148,8 +175,8 @@ class _BtwModalDelegate:
         start = self._scroll_offset
         visible = content[start : start + max_content]
 
-        # Replace the last visible line with scroll info (it inherits
-        # the Panel border from the original rendered line).
+        # Build scroll hint with proper Panel border (extracted from
+        # existing content lines to avoid ANSI escape code slicing).
         above = start
         below = max_offset - start
         hint_parts: list[str] = []
@@ -158,9 +185,10 @@ class _BtwModalDelegate:
         if below > 0:
             hint_parts.append(f"↓ {below} below")
         hint_parts.append("↑/↓ scroll · Escape dismiss")
-        # Replace the last visible line (the hint rendered inside the Panel)
+        hint_text = "  ·  ".join(hint_parts)
+        hint_line = _build_bordered_line(hint_text, content[0] if content else "", columns)
         if visible:
-            visible[-1] = visible[-1][:3] + "  ·  ".join(hint_parts)
+            visible[-1] = hint_line
 
         result = [border_top, *visible, border_bottom]
         return ANSI("\n".join(result))

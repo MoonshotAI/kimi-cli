@@ -807,9 +807,11 @@ class Shell:
                     "Queue drain hit safety limit ({n} generations)",
                     n=_MAX_DRAIN_GENERATIONS,
                 )
-                # Warn about remaining items in the local pending buffer
+                # Warn about remaining items in the local pending buffer.
+                # Clear after printing so finally doesn't duplicate.
                 for msg in pending:
                     console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
+                pending.clear()
             return True
         except LLMNotSet:
             logger.exception("LLM not set:")
