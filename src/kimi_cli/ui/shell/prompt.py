@@ -91,7 +91,7 @@ class _SafePyperclipClipboard(PyperclipClipboard):
             data = super().get_data()
         except TypeError as exc:
             logger.debug(
-                "Ignoring non-text clipboard payload in text paste handler: {error}",
+                "Ignoring non-text clipboard payload in clipboard get_data: {error}",
                 error=exc,
             )
             return ClipboardData()
@@ -1858,7 +1858,8 @@ class CustomPromptSession:
         Reads the clipboard once and handles all detected content:
         non-image files (videos, PDFs, etc.) are inserted as paths,
         image files are cached and inserted as placeholders.
-        Returns True if any media content was inserted.
+        Returns True if the paste event was handled (content inserted or
+        recognized but unsupported), False if no media was detected.
         """
         result = grab_media_from_clipboard()
         if result is None:

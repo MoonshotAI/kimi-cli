@@ -185,7 +185,7 @@ def test_paste_single_image(monkeypatch) -> None:
     assert buffer.inserted[0].startswith("[image:")
 
 
-def test_paste_image_unsupported_model_consumes_paste(monkeypatch, capsys) -> None:
+def test_paste_image_unsupported_model_consumes_paste(monkeypatch) -> None:
     img = Image.new("RGB", (10, 10))
     monkeypatch.setattr(
         shell_prompt,
