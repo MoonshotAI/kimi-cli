@@ -21,6 +21,7 @@ from kaos.path import KaosPath
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.clipboard.base import ClipboardData
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.completion import (
     CompleteEvent,
@@ -79,6 +80,24 @@ PROMPT_SYMBOL = "✨"
 PROMPT_SYMBOL_SHELL = "$"
 PROMPT_SYMBOL_THINKING = "💫"
 PROMPT_SYMBOL_PLAN = "📋"
+
+
+class _SafePyperclipClipboard(PyperclipClipboard):
+    """Treat non-text clipboard payloads as empty text instead of crashing prompt_toolkit."""
+
+    @override
+    def get_data(self) -> ClipboardData:
+        try:
+            data = super().get_data()
+        except TypeError as exc:
+            logger.debug(
+                "Ignoring non-text clipboard payload in clipboard get_data: {error}",
+                error=exc,
+            )
+            return ClipboardData()
+        if not isinstance(data.text, str):
+            return ClipboardData()
+        return data
 
 
 class SlashCommandCompleter(Completer):
@@ -1488,7 +1507,7 @@ class CustomPromptSession:
                 self._insert_pasted_text(event.current_buffer, clipboard_data.text)
                 event.app.invalidate()
 
-            clipboard = PyperclipClipboard()
+            clipboard = _SafePyperclipClipboard()
         else:
             clipboard = None
 
@@ -1839,13 +1858,15 @@ class CustomPromptSession:
         Reads the clipboard once and handles all detected content:
         non-image files (videos, PDFs, etc.) are inserted as paths,
         image files are cached and inserted as placeholders.
-        Returns True if any media content was inserted.
+        Returns True if the paste event was handled (content inserted or
+        recognized but unsupported), False if no media was detected.
         """
         result = grab_media_from_clipboard()
         if result is None:
             return False
 
         parts: list[str] = []
+        unsupported_images = False
 
         # 1. Insert file paths (videos, PDFs, etc.)
         if result.file_paths:
@@ -1859,6 +1880,7 @@ class CustomPromptSession:
         # 2. Insert images via cache.
         if result.images:
             if "image_in" not in self._model_capabilities:
+                unsupported_images = True
                 console.print(
                     "[yellow]Image input is not supported by the selected LLM model[/yellow]"
                 )
@@ -1877,7 +1899,7 @@ class CustomPromptSession:
         if parts:
             event.current_buffer.insert_text(" ".join(parts))
         event.app.invalidate()
-        return bool(parts)
+        return bool(parts) or unsupported_images
 
     def set_prefill_text(self, text: str) -> None:
         """Pre-fill the input buffer with the given text.
