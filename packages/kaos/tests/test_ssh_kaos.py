@@ -227,7 +227,7 @@ async def test_exec_streams_stdout_and_stderr(ssh_kaos: SSHKaos):
 
 async def test_exec_rejects_empty_command(ssh_kaos: SSHKaos):
     with pytest.raises(ValueError):
-        await ssh_kaos.exec()  # type: ignore[misc]
+        await ssh_kaos.exec()
 
 
 async def test_process_kill_updates_returncode(ssh_kaos: SSHKaos):
