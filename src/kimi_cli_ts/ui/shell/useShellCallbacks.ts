@@ -8,7 +8,7 @@
 import { useCallback, useRef } from "react";
 import { parseSlashCommand, findSlashCommand } from "./slash.ts";
 import { runShellCommand, openExternalEditor } from "./shell-executor.ts";
-import { Reload } from "../../cli/index.ts";
+import { Reload } from "../../cli/errors.ts";
 import { SHELL_MODE_COMMANDS } from "./shell-commands.ts";
 import type { WireUIEvent } from "./events.ts";
 import type { ApprovalRequest, ApprovalResponseKind } from "../../wire/types.ts";

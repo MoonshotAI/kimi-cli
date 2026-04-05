@@ -3,13 +3,13 @@
  * Corresponds to Python tools/file/write.py
  */
 
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { z } from "zod/v4";
+import { buildWireDiffBlocks } from "../../utils/diff.ts";
 import { CallableTool } from "../base.ts";
 import type { ToolContext, ToolResult } from "../types.ts";
 import { ToolError, ToolRejectedError } from "../types.ts";
 import { inspectPlanEditTarget } from "./plan_mode.ts";
-import type { DiffDisplayBlock } from "../display.ts";
 
 const DESCRIPTION = `Write content to a file.
 
@@ -18,172 +18,163 @@ const DESCRIPTION = `Write content to a file.
 - When the content to write is too long (e.g. > 100 lines), use this tool multiple times instead of a single call. Use \`overwrite\` mode at the first time, then use \`append\` mode after the first write.`;
 
 const ParamsSchema = z.object({
-  path: z.string().describe(
-    "The path to the file to write. Absolute paths are required when writing files outside the working directory.",
-  ),
-  content: z.string().describe("The content to write to the file"),
-  mode: z
-    .enum(["overwrite", "append"])
-    .default("overwrite")
-    .describe("The mode to use: `overwrite` or `append`."),
+	path: z
+		.string()
+		.describe(
+			"The path to the file to write. Absolute paths are required when writing files outside the working directory.",
+		),
+	content: z.string().describe("The content to write to the file"),
+	mode: z
+		.enum(["overwrite", "append"])
+		.default("overwrite")
+		.describe("The mode to use: `overwrite` or `append`."),
 });
 
 type Params = z.infer<typeof ParamsSchema>;
 
 function resolvePath(filePath: string, workingDir: string): string {
-  if (filePath.startsWith("/") || filePath.startsWith("~")) {
-    if (filePath.startsWith("~")) {
-      const home = process.env.HOME || process.env.USERPROFILE || "";
-      return filePath.replace(/^~/, home);
-    }
-    return filePath;
-  }
-  return resolve(workingDir, filePath);
-}
-
-/** Build a simple unified diff for display. */
-function buildSimpleDiff(oldContent: string, newContent: string, path: string): string {
-  const oldLines = oldContent.split("\n");
-  const newLines = newContent.split("\n");
-  const maxPreview = 50;
-  const diffLines: string[] = [`--- a/${path}`, `+++ b/${path}`];
-
-  let shown = 0;
-  const maxLen = Math.max(oldLines.length, newLines.length);
-  for (let i = 0; i < maxLen && shown < maxPreview; i++) {
-    const oldLine = oldLines[i];
-    const newLine = newLines[i];
-    if (oldLine !== newLine) {
-      if (oldLine !== undefined) {
-        diffLines.push(`-${oldLine}`);
-        shown++;
-      }
-      if (newLine !== undefined) {
-        diffLines.push(`+${newLine}`);
-        shown++;
-      }
-    }
-  }
-
-  if (shown >= maxPreview) {
-    diffLines.push(`... (diff truncated, ${maxLen} total lines)`);
-  }
-
-  return diffLines.join("\n");
+	if (filePath.startsWith("/") || filePath.startsWith("~")) {
+		if (filePath.startsWith("~")) {
+			const home = process.env.HOME || process.env.USERPROFILE || "";
+			return filePath.replace(/^~/, home);
+		}
+		return filePath;
+	}
+	return resolve(workingDir, filePath);
 }
 
 export class WriteFile extends CallableTool<typeof ParamsSchema> {
-  readonly name = "WriteFile";
-  readonly description = DESCRIPTION;
-  readonly schema = ParamsSchema;
+	readonly name = "WriteFile";
+	readonly description = DESCRIPTION;
+	readonly schema = ParamsSchema;
 
-  /** Optional plan mode bindings. */
-  private _planModeChecker?: () => boolean;
-  private _planFilePathGetter?: () => string | null;
+	/** Optional plan mode bindings. */
+	private _planModeChecker?: () => boolean;
+	private _planFilePathGetter?: () => string | null;
 
-  /** Bind plan mode state checker and plan file path getter. */
-  bindPlanMode(checker: () => boolean, pathGetter: () => string | null): void {
-    this._planModeChecker = checker;
-    this._planFilePathGetter = pathGetter;
-  }
+	/** Bind plan mode state checker and plan file path getter. */
+	bindPlanMode(checker: () => boolean, pathGetter: () => string | null): void {
+		this._planModeChecker = checker;
+		this._planFilePathGetter = pathGetter;
+	}
 
-  async execute(params: Params, ctx: ToolContext): Promise<ToolResult> {
-    if (!params.path) {
-      return ToolError("File path cannot be empty.");
-    }
+	async execute(params: Params, ctx: ToolContext): Promise<ToolResult> {
+		if (!params.path) {
+			return ToolError("File path cannot be empty.");
+		}
 
-    try {
-      const resolvedPath = resolvePath(params.path, ctx.workingDir);
+		try {
+			const resolvedPath = resolvePath(params.path, ctx.workingDir);
 
-      // Check plan mode restrictions
-      const planTarget = inspectPlanEditTarget(resolvedPath, {
-        planModeChecker: this._planModeChecker ?? ctx.getPlanMode,
-        planFilePathGetter: this._planFilePathGetter,
-      });
-      if ("isError" in planTarget && planTarget.isError) {
-        return planTarget;
-      }
-      const isPlanFileWrite = !("isError" in planTarget) && planTarget.isPlanTarget;
+			// Check plan mode restrictions
+			const planTarget = inspectPlanEditTarget(resolvedPath, {
+				planModeChecker: this._planModeChecker ?? ctx.getPlanMode,
+				planFilePathGetter: this._planFilePathGetter,
+			});
+			if ("isError" in planTarget && planTarget.isError) {
+				return planTarget;
+			}
+			const isPlanFileWrite =
+				!("isError" in planTarget) && planTarget.isPlanTarget;
 
-      // Ensure parent directory for plan file writes
-      if (isPlanFileWrite && !("isError" in planTarget) && planTarget.planPath) {
-        const { mkdirSync } = await import("node:fs");
-        mkdirSync(dirname(planTarget.planPath), { recursive: true });
-      }
+			// Ensure parent directory for plan file writes
+			if (
+				isPlanFileWrite &&
+				!("isError" in planTarget) &&
+				planTarget.planPath
+			) {
+				const { mkdirSync } = await import("node:fs");
+				mkdirSync(dirname(planTarget.planPath), { recursive: true });
+			}
 
-      // Check if parent directory exists
-      const parentDir = dirname(resolvedPath);
-      const { stat: fsStat, mkdir } = await import("node:fs/promises");
-      try {
-        const parentInfo = await fsStat(parentDir);
-        if (!parentInfo.isDirectory()) {
-          return ToolError(`Parent path \`${parentDir}\` exists but is not a directory.`);
-        }
-      } catch (err: any) {
-        if (err?.code === "ENOENT") {
-          await mkdir(parentDir, { recursive: true });
-        } else {
-          return ToolError(`Cannot access parent directory \`${parentDir}\`: ${err?.message}`);
-        }
-      }
+			// Check if parent directory exists
+			const parentDir = dirname(resolvedPath);
+			const { stat: fsStat, mkdir } = await import("node:fs/promises");
+			try {
+				const parentInfo = await fsStat(parentDir);
+				if (!parentInfo.isDirectory()) {
+					return ToolError(
+						`Parent path \`${parentDir}\` exists but is not a directory.`,
+					);
+				}
+			} catch (err: any) {
+				if (err?.code === "ENOENT") {
+					await mkdir(parentDir, { recursive: true });
+				} else {
+					return ToolError(
+						`Cannot access parent directory \`${parentDir}\`: ${err?.message}`,
+					);
+				}
+			}
 
-      const file = Bun.file(resolvedPath);
-      const fileExisted = await file.exists();
+			const file = Bun.file(resolvedPath);
+			const fileExisted = await file.exists();
 
-      // Build diff for approval display
-      let diffPreview = "";
-      if (fileExisted) {
-        try {
-          const oldContent = await file.text();
-          const newContent = params.mode === "append" ? oldContent + params.content : params.content;
-          diffPreview = buildSimpleDiff(oldContent, newContent, params.path);
-        } catch {
-          // Can't read old file — skip diff
-        }
-      }
+			// Read old content and compute new content for diff
+			let oldContent = "";
+			if (fileExisted) {
+				try {
+					oldContent = await file.text();
+				} catch {
+					// Can't read old file — skip diff
+				}
+			}
+			const newContent =
+				params.mode === "append" ? oldContent + params.content : params.content;
 
-      // Plan file writes are auto-approved; other writes need approval
-      if (!isPlanFileWrite) {
-        const approvalSummary = fileExisted
-          ? `${params.mode === "append" ? "Append to" : "Overwrite"} file \`${params.path}\`${diffPreview ? `\n${diffPreview}` : ""}`
-          : `Create file \`${params.path}\` (${params.content.length} chars)`;
+			// Build diff display blocks (matches Python's build_diff_blocks)
+			const diffBlocks = buildWireDiffBlocks(
+				resolvedPath,
+				oldContent,
+				newContent,
+			);
 
-        const { decision, feedback } = await ctx.approval(
-          "WriteFile",
-          fileExisted ? "edit" : "create",
-          approvalSummary,
-        );
-        if (decision === "reject") {
-          return new ToolRejectedError({
-            message: feedback
-              ? `The tool call is rejected by the user. User feedback: ${feedback}`
-              : undefined,
-            brief: feedback ? `Rejected: ${feedback}` : "Rejected by user",
-            hasFeedback: !!feedback,
-          }).toToolResult();
-        }
-      }
+			// Plan file writes are auto-approved; other writes need approval
+			if (!isPlanFileWrite) {
+				const approvalSummary = fileExisted
+					? `${params.mode === "append" ? "Append to" : "Overwrite"} file \`${params.path}\``
+					: `Create file \`${params.path}\` (${params.content.length} chars)`;
 
-      if (params.mode === "append" && fileExisted) {
-        const { appendFile } = await import("node:fs/promises");
-        await appendFile(resolvedPath, params.content, "utf-8");
-      } else {
-        await Bun.write(resolvedPath, params.content);
-      }
+				const { decision, feedback } = await ctx.approval(
+					"WriteFile",
+					fileExisted ? "edit" : "create",
+					approvalSummary,
+					{ display: diffBlocks },
+				);
+				if (decision === "reject") {
+					return new ToolRejectedError({
+						message: feedback
+							? `The tool call is rejected by the user. User feedback: ${feedback}`
+							: undefined,
+						brief: feedback ? `Rejected: ${feedback}` : "Rejected by user",
+						hasFeedback: !!feedback,
+					}).toToolResult();
+				}
+			}
 
-      const newFile = Bun.file(resolvedPath);
-      const fileSize = newFile.size;
-      const action =
-        params.mode === "overwrite"
-          ? (fileExisted ? "overwritten" : "created")
-          : "appended to";
-      return {
-        isError: false,
-        output: "",
-        message: `File successfully ${action}. Current size: ${fileSize} bytes.`,
-      };
-    } catch (e) {
-      return ToolError(`Failed to write to ${params.path}. Error: ${e}`);
-    }
-  }
+			if (params.mode === "append" && fileExisted) {
+				const { appendFile } = await import("node:fs/promises");
+				await appendFile(resolvedPath, params.content, "utf-8");
+			} else {
+				await Bun.write(resolvedPath, params.content);
+			}
+
+			const newFile = Bun.file(resolvedPath);
+			const fileSize = newFile.size;
+			const action =
+				params.mode === "overwrite"
+					? fileExisted
+						? "overwritten"
+						: "created"
+					: "appended to";
+			return {
+				isError: false,
+				output: "",
+				message: `File successfully ${action}. Current size: ${fileSize} bytes.`,
+				display: diffBlocks,
+			};
+		} catch (e) {
+			return ToolError(`Failed to write to ${params.path}. Error: ${e}`);
+		}
+	}
 }

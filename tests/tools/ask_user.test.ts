@@ -4,7 +4,7 @@
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { createTempDir, removeTempDir, createTestToolContext } from "../conftest.ts";
-import { AskUserQuestion } from "../../src/kimi_cli_ts/tools/ask_user/ask_user.ts";
+import { AskUserQuestion } from "../../src/kimi_cli_ts/tools/ask_user/index.ts";
 
 let tempDir: string;
 let tool: AskUserQuestion;

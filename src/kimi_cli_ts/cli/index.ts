@@ -4,54 +4,17 @@
  */
 
 import { Command } from "commander";
-import React from "react";
-import { render } from "ink";
-import { KimiCLI } from "../app.ts";
-import { runSoul, type UILoopFn } from "../soul/index.ts";
+// Heavy imports are lazy-loaded inside the action handler to speed up --help/--version.
+// Only type imports (erased at runtime) are kept static.
+import type { UILoopFn } from "../soul/index.ts";
 import type { ContentPart } from "../types.ts";
-import { WireFile } from "../wire/file.ts";
-import { Shell } from "../ui/shell/Shell.tsx";
 import type { WireUIEvent } from "../ui/shell/events.ts";
 import type { ApprovalResponseKind } from "../wire/types.ts";
-import { QueueShutDown } from "../utils/queue.ts";
-import chalk from "chalk";
-import { patchInkLogUpdate } from "../ui/renderer/index.ts";
 
 // ── Re-exports from Python cli/__init__.py ──────────────
-
-export class Reload extends Error {
-  sessionId: string | null;
-  prefillText: string | null;
-  constructor(sessionId: string | null = null, prefillText: string | null = null) {
-    super("reload");
-    this.name = "Reload";
-    this.sessionId = sessionId;
-    this.prefillText = prefillText;
-  }
-}
-
-/** Return true if an unknown value is a Reload sentinel. */
-function isReload(err: unknown): err is Reload {
-  return err instanceof Reload || (err instanceof Error && err.name === "Reload");
-}
-
-export class SwitchToWeb extends Error {
-  sessionId: string | null;
-  constructor(sessionId: string | null = null) {
-    super("switch_to_web");
-    this.name = "SwitchToWeb";
-    this.sessionId = sessionId;
-  }
-}
-
-export class SwitchToVis extends Error {
-  sessionId: string | null;
-  constructor(sessionId: string | null = null) {
-    super("switch_to_vis");
-    this.name = "SwitchToVis";
-    this.sessionId = sessionId;
-  }
-}
+// These live in cli/errors.ts to avoid circular imports (cli ↔ soul ↔ cli).
+export { Reload, isReload, SwitchToWeb, SwitchToVis } from "./errors.ts";
+import { Reload, isReload } from "./errors.ts";
 
 export type UIMode = "shell" | "print" | "acp" | "wire";
 export type InputFormat = "text" | "stream-json";
@@ -75,8 +38,9 @@ function stripSessionIdSuffix(title: string, sessionId: string): string {
 
 /**
  * Print a hint for resuming the session after exit.
+ * chalk must be passed in since it's lazy-loaded.
  */
-function printResumeHint(session: { id: string; isEmpty?: () => Promise<boolean> }): void {
+function printResumeHint(session: { id: string; isEmpty?: () => Promise<boolean> }, chalk: any): void {
   console.error(chalk.dim(`\nTo resume this session: kimi -r ${session.id}`));
 }
 
@@ -88,6 +52,7 @@ import { infoCommand } from "./info.ts";
 import { exportCommand } from "./export.ts";
 import { mcpCommand } from "./mcp.ts";
 import { pluginCommand } from "./plugin.ts";
+import { toadCommand } from "./toad.ts";
 import { visCommand } from "./vis.ts";
 import { webCommand } from "./web.ts";
 
@@ -114,6 +79,7 @@ const program = new Command()
   .addCommand(exportCommand)
   .addCommand(mcpCommand)
   .addCommand(pluginCommand)
+  .addCommand(toadCommand)
   .addCommand(visCommand)
   .addCommand(webCommand);
 
@@ -190,6 +156,31 @@ program
         maxRalphIterations?: number;
       },
     ) => {
+      // ── Lazy-load heavy modules (only needed for actual runs, not --help/--version) ──
+      const [
+        ReactModule,
+        { render },
+        { KimiCLI },
+        { runSoul },
+        { WireFile },
+        { Shell },
+        { QueueShutDown },
+        chalkModule,
+        { patchInkLogUpdate },
+      ] = await Promise.all([
+        import("react"),
+        import("ink"),
+        import("../app.ts"),
+        import("../soul/index.ts"),
+        import("../wire/file.ts"),
+        import("../ui/shell/Shell.tsx"),
+        import("../utils/queue.ts"),
+        import("chalk"),
+        import("../ui/renderer/index.ts"),
+      ]);
+      const React = ReactModule.default ?? ReactModule;
+      const chalk = chalkModule.default ?? chalkModule;
+
       // Handle --yes alias for --yolo
       if (options.yes) options.yolo = true;
 
@@ -280,31 +271,194 @@ program
       try {
         if (options.print) {
           // ── Print mode: UILoopFn writes directly to stdout/stderr ──
+          // Matches Python's TextPrinter: rich.print(msg) for every wire message.
+          /**
+           * Format a value as a Python-style repr string.
+           * Matches Python's rich.pretty_repr output conventions:
+           * - Strings: 'text' (single-quoted)
+           * - null/undefined → None
+           * - booleans → True/False
+           * - Objects with __wireType: TypeName(field=value, ...)
+           * - Plain objects: { key: value, ... } in Python repr style
+           */
+          function pyRepr(value: unknown): string {
+            if (value === null || value === undefined) return "None";
+            if (typeof value === "boolean") return value ? "True" : "False";
+            if (typeof value === "number") return String(value);
+            if (typeof value === "string") return `'${value}'`;
+            if (Array.isArray(value)) {
+              const items = value.map((v) => pyRepr(v));
+              return `[${items.join(", ")}]`;
+            }
+            if (typeof value === "object") {
+              const obj = value as Record<string, unknown>;
+              // If it's a wire-typed object, format as TypeName(field=value, ...)
+              if (typeof obj.__wireType === "string") {
+                return formatWireMessage(obj);
+              }
+              // Plain object: format as TypeName(field=value, ...) if it looks like one,
+              // otherwise as { key: value, ... }
+              const entries = Object.entries(obj);
+              if (entries.length === 0) return "{}";
+              const parts = entries.map(([k, v]) => `${k}: ${pyRepr(v)}`);
+              return `{ ${parts.join(", ")} }`;
+            }
+            return String(value);
+          }
+
+          /**
+           * Format a wire message with Python-style pretty-printing.
+           * Matches rich.pretty_repr(obj, max_width=80):
+           * - If single-line repr fits in max_width, use single line
+           * - Otherwise, use multi-line with 4-space indent per level
+           */
+          function prettyRepr(
+            typeName: string,
+            fields: [string, unknown][],
+            indent: number,
+            maxWidth: number,
+          ): string {
+            // Build field repr strings
+            const fieldReprs = fields.map(([k, v]) => {
+              // For nested wire-typed objects, try compact first
+              if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+                const obj = v as Record<string, unknown>;
+                if (typeof obj.__wireType === "string") {
+                  const nestedName = obj.__wireType;
+                  const { __wireType: _, ...nestedFields } = obj;
+                  const nestedEntries = Object.entries(nestedFields);
+                  return { key: k, value: v, compact: `${k}=${pyRepr(v)}`, nestedType: nestedName, nestedEntries };
+                }
+              }
+              return { key: k, value: v, compact: `${k}=${pyRepr(v)}`, nestedType: null, nestedEntries: null };
+            });
+
+            // Try compact (single-line) first
+            const compact = `${typeName}(${fieldReprs.map((f) => f.compact).join(", ")})`;
+            if (compact.length + indent <= maxWidth) {
+              return compact;
+            }
+
+            // Multi-line format with 4-space indent
+            const childIndent = indent + 4;
+            const pad = " ".repeat(childIndent);
+            const closePad = " ".repeat(indent);
+            const lines: string[] = [`${typeName}(`];
+            for (let i = 0; i < fieldReprs.length; i++) {
+              const f = fieldReprs[i];
+              const isLast = i === fieldReprs.length - 1;
+              const comma = isLast ? "" : ",";
+
+              // For nested wire-typed objects, try to pretty-print them too
+              if (f.nestedType && f.nestedEntries) {
+                const nestedRepr = prettyRepr(
+                  f.nestedType,
+                  f.nestedEntries.map(([nk, nv]) => [nk, nv]),
+                  childIndent,
+                  maxWidth,
+                );
+                // Check if nested repr is multi-line
+                if (nestedRepr.includes("\n")) {
+                  const nestedLines = nestedRepr.split("\n");
+                  lines.push(`${pad}${f.key}=${nestedLines[0]}`);
+                  for (let j = 1; j < nestedLines.length - 1; j++) {
+                    lines.push(`${pad}${nestedLines[j]}`);
+                  }
+                  lines.push(`${pad}${nestedLines[nestedLines.length - 1]}${comma}`);
+                } else {
+                  lines.push(`${pad}${f.key}=${nestedRepr}${comma}`);
+                }
+              } else {
+                lines.push(`${pad}${f.key}=${pyRepr(f.value)}${comma}`);
+              }
+            }
+            lines.push(`${closePad})`);
+            return lines.join("\n");
+          }
+
+          /**
+           * Format a wire message for display, matching Python's rich.print(msg) output.
+           * Uses rich-compatible pretty_repr with max_width=80.
+           */
+          function formatWireMessage(msg: any): string {
+            const typeName = msg.__wireType ?? "Unknown";
+            const { __wireType: _, ...fields } = msg;
+            const entries: [string, unknown][] = Object.entries(fields);
+            return prettyRepr(typeName, entries, 0, 80);
+          }
+
+          const outputFormat = options.outputFormat ?? "text";
+          const finalOnly = options.finalMessageOnly ?? false;
+
           const printUILoopFn: UILoopFn = async (wire) => {
             const uiSide = wire.uiSide(true);
+            // For final-only mode, track the last step's text content
+            let finalTextBuffer = "";
+            // For text mode, merge consecutive TextPart/ThinkPart messages
+            // (Python's wire merge produces single merged parts; TS wire sends streaming deltas)
+            let pendingMerge: { type: string; msg: any } | null = null;
+
+            function flushPendingMerge(): void {
+              if (pendingMerge) {
+                process.stdout.write(formatWireMessage(pendingMerge.msg) + "\n");
+                pendingMerge = null;
+              }
+            }
+
             while (true) {
               let msg: any;
               try {
                 msg = await uiSide.receive();
               } catch (err) {
-                if (err instanceof QueueShutDown) break;
+                if (err instanceof QueueShutDown) {
+                  flushPendingMerge();
+                  break;
+                }
                 throw err;
               }
               const t = msg.__wireType ?? "";
-              if (t === "TextPart") {
-                process.stdout.write(msg.text);
-              } else if (t === "ThinkPart") {
-                process.stderr.write(chalk.dim(msg.text));
-              } else if (t === "TurnEnd") {
-                process.stdout.write("\n");
-              } else if (t === "StatusUpdate") {
-                if (options.verbose && msg.token_usage) {
-                  process.stderr.write(
-                    chalk.dim(
-                      `[tokens] in=${msg.token_usage.inputTokens} out=${msg.token_usage.outputTokens}\n`,
-                    ),
-                  );
+
+              if (finalOnly) {
+                // FinalOnly mode: only output the last step's text
+                if (t === "StepBegin" || t === "StepInterrupted") {
+                  finalTextBuffer = "";
+                } else if (t === "TextPart") {
+                  finalTextBuffer += msg.text;
+                } else if (t === "TurnEnd") {
+                  if (finalTextBuffer) {
+                    if (outputFormat === "stream-json") {
+                      process.stdout.write(
+                        JSON.stringify({ role: "assistant", content: finalTextBuffer }) + "\n",
+                      );
+                    } else {
+                      process.stdout.write(finalTextBuffer + "\n");
+                    }
+                    finalTextBuffer = "";
+                  }
                 }
+              } else if (outputFormat === "text") {
+                // Text mode: merge consecutive same-type content parts,
+                // matching Python's merged Wire output.
+                if (t === "TextPart" || t === "ThinkPart") {
+                  if (pendingMerge && pendingMerge.type === t) {
+                    // Merge: append text to the pending message
+                    pendingMerge.msg.text += msg.text;
+                  } else {
+                    // Different type or no pending — flush old, start new
+                    flushPendingMerge();
+                    pendingMerge = { type: t, msg: { ...msg } };
+                  }
+                } else {
+                  // Non-content message: flush pending merge, then print
+                  flushPendingMerge();
+                  process.stdout.write(formatWireMessage(msg) + "\n");
+                }
+              } else {
+                // stream-json mode: emit JSON for each wire message
+                const { __wireType: typeName, ...fields } = msg;
+                process.stdout.write(
+                  JSON.stringify({ __wireType: typeName, ...fields }) + "\n",
+                );
               }
             }
           };
@@ -323,6 +477,10 @@ program
           });
 
           if (prompt) {
+            // Echo user input to stdout (matches Python Print.run() line 89)
+            if (outputFormat === "text" && !finalOnly) {
+              console.log(prompt);
+            }
             const wireFile = app.session.wireFile ? new WireFile(app.session.wireFile) : undefined;
             const cancelController = new AbortController();
             await runSoul(app.soul, prompt, printUILoopFn, cancelController, {
@@ -330,7 +488,7 @@ program
               runtime: app.soul.runtime,
             });
           }
-          printResumeHint(app.session);
+          printResumeHint(app.session, chalk);
           await app.shutdown();
         } else if (options.wire) {
           // ── Wire mode ──
@@ -616,7 +774,7 @@ program
             }
 
             // Normal exit
-            printResumeHint(app.session);
+            printResumeHint(app.session, chalk);
             break;
           }
         }

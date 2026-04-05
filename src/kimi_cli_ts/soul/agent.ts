@@ -409,13 +409,13 @@ async function registerBuiltinTools(toolset: KimiToolset, runtime: Runtime): Pro
     () => import("../tools/file/replace.ts"),
     () => import("../tools/file/glob.ts"),
     () => import("../tools/file/grep.ts"),
-    () => import("../tools/shell/shell.ts"),
+    () => import("../tools/shell/index.ts"),
     () => import("../tools/web/fetch.ts"),
     () => import("../tools/web/search.ts"),
-    () => import("../tools/think/think.ts"),
-    () => import("../tools/ask_user/ask_user.ts"),
-    () => import("../tools/todo/todo.ts"),
-    () => import("../tools/plan/plan.ts"),
+    () => import("../tools/think/index.ts"),
+    () => import("../tools/ask_user/index.ts"),
+    () => import("../tools/todo/index.ts"),
+    () => import("../tools/plan/index.ts"),
   ];
 
   for (const loadModule of toolModules) {
@@ -446,7 +446,7 @@ async function registerBuiltinTools(toolset: KimiToolset, runtime: Runtime): Pro
 
   // Register Agent tool (needs runtime for description building)
   try {
-    const { AgentTool } = await import("../tools/agent/agent.ts");
+    const { AgentTool } = await import("../tools/agent/index.ts");
     const agentTool = new AgentTool();
     agentTool.buildDescription(runtime);
     toolset.add(agentTool);

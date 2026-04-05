@@ -6,7 +6,7 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { join } from "node:path";
 import { createTempDir, removeTempDir, createTestToolContext } from "../conftest.ts";
-import { Shell } from "../../src/kimi_cli_ts/tools/shell/shell.ts";
+import { Shell } from "../../src/kimi_cli_ts/tools/shell/index.ts";
 
 let tempDir: string;
 let tool: Shell;

@@ -4,7 +4,7 @@
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { createTempDir, removeTempDir, createTestToolContext } from "../conftest.ts";
-import { SetTodoList } from "../../src/kimi_cli_ts/tools/todo/todo.ts";
+import { SetTodoList } from "../../src/kimi_cli_ts/tools/todo/index.ts";
 
 let tempDir: string;
 let tool: SetTodoList;

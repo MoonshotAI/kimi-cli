@@ -21,7 +21,7 @@ import { PlanModeInjectionProvider } from "./dynamic_injections/plan_mode.ts";
 import { YoloModeInjectionProvider } from "./dynamic_injections/yolo_mode.ts";
 import { wireSend, wireMsg, getWireOrNull } from "./index.ts";
 import { MaxStepsReached } from "./index.ts";
-import { Reload } from "../cli/index.ts";
+import { Reload } from "../cli/errors.ts";
 import { handleNew, handleSessions, handleTitle, createSessionsPanel, createTitlePanel } from "../ui/shell/commands/session.ts";
 import { handleModel, createModelPanel } from "../ui/shell/commands/model.ts";
 import { handleLogin, handleLogout, createLoginPanel } from "../ui/shell/commands/login.ts";
@@ -1208,7 +1208,7 @@ export class KimiSoul {
     ctx.askUser = async (question: string, options?: string[]): Promise<string> => {
       const { randomUUID } = await import("node:crypto");
       const { PendingQuestionRequest } = await import("../wire/types.ts");
-      const { registerPendingQuestion } = await import("../tools/ask_user/ask_user.ts");
+      const { registerPendingQuestion } = await import("../tools/ask_user/index.ts");
       const { getCurrentToolCallOrNull } = await import("./toolset.ts");
 
       const wire = getWireOrNull();

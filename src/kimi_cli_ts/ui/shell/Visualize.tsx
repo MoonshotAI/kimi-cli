@@ -395,11 +395,13 @@ function DisplayBlockView({ block, isError }: DisplayBlockViewProps) {
       return <Text color={isError ? colors.darkRed : colors.dim}>{b.brief as string}</Text>;
     case "diff":
       return (
-        <DiffView
+        <EnhancedDiffView
           block={{
             path: b.path as string,
             old_text: b.old_text as string,
             new_text: b.new_text as string,
+            old_start: b.old_start as number | undefined,
+            new_start: b.new_start as number | undefined,
           }}
         />
       );
@@ -989,14 +991,15 @@ function EnhancedDiffView({
   const maxLineNum = Math.max(oldStart + oldLines.length, newStart + newLines.length);
   const lineNumWidth = String(maxLineNum).length;
 
+  // Build title: "+N path" for new file, "path" for edits
+  const isNewFile = oldLines.length === 0 && newLines.length > 0;
+  const title = isNewFile
+    ? ` +${newLines.length} ${block.path} `
+    : ` ${block.path} `;
+
   return (
-    <Box flexDirection="column">
-      <Text color="#e6e6e6" bold>
-        {block.path}
-      </Text>
-      <Text color="#6b7280">
-        @@ -{oldStart},{oldLines.length} +{newStart},{newLines.length} @@
-      </Text>
+    <Box flexDirection="column" borderStyle="round" borderColor="#555555" paddingX={1}>
+      <Text color="#e6e6e6" bold>{title}</Text>
       {oldLines.map((line, idx) => (
         <Text key={`old-${idx}`} color="#ff7b72" backgroundColor={diffColors.delBg}>
           {String(oldStart + idx).padStart(lineNumWidth)} - {line}

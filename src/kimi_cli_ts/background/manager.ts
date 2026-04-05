@@ -355,6 +355,27 @@ export class BackgroundTaskManager {
     this._store.writeRuntime(taskId, runtime);
   }
 
+  markTaskAwaitingApproval(taskId: string, reason: string): void {
+    const runtime = this._store.readRuntime(taskId);
+    if (isTerminalStatus(runtime.status)) return;
+    runtime.status = "awaiting_approval";
+    runtime.updatedAt = Date.now() / 1000;
+    runtime.failureReason = reason;
+    this._store.writeRuntime(taskId, runtime);
+  }
+
+  markTaskTimedOut(taskId: string, reason: string): void {
+    const runtime = this._store.readRuntime(taskId);
+    if (isTerminalStatus(runtime.status)) return;
+    runtime.status = "failed";
+    runtime.updatedAt = Date.now() / 1000;
+    runtime.finishedAt = runtime.updatedAt;
+    runtime.interrupted = true;
+    runtime.timedOut = true;
+    runtime.failureReason = reason;
+    this._store.writeRuntime(taskId, runtime);
+  }
+
   private bestEffortKill(runtime: TaskRuntime): void {
     try {
       const pid = runtime.childPgid ?? runtime.childPid ?? runtime.workerPid;

@@ -171,15 +171,14 @@ export interface ConfigMeta {
 
 // ── Paths ───────────────────────────────────────────────
 
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { ConfigError } from "./exception.ts";
 
 export { ConfigError };
 
-export function getShareDir(): string {
-  return process.env.KIMI_SHARE_DIR ?? join(homedir(), ".kimi");
-}
+// Re-export from canonical location (share.ts) for backwards compatibility
+export { getShareDir } from "./share.ts";
+import { getShareDir } from "./share.ts";
 
 export function getConfigFile(): string {
   return join(getShareDir(), "config.toml");

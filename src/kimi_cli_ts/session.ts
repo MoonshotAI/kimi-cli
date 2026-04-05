@@ -1,9 +1,8 @@
 /**
- * Session module — corresponds to Python session.py + session_state.py
+ * Session module — corresponds to Python session.py
  * Manages per-workdir sessions with context files and state persistence.
  */
 
-import { z } from "zod/v4";
 import { join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { getShareDir } from "./config.ts";
@@ -18,52 +17,17 @@ import {
   type WorkDirMeta,
 } from "./metadata.ts";
 
-// ── Session State ───────────────────────────────────────
-
-export const ApprovalStateData = z.object({
-  yolo: z.boolean().default(false),
-  auto_approve_actions: z.array(z.string()).default([]),
-});
-export type ApprovalStateData = z.infer<typeof ApprovalStateData>;
-
-export const SessionState = z.object({
-  version: z.number().int().default(1),
-  approval: ApprovalStateData.default({} as any),
-  additional_dirs: z.array(z.string()).default([]),
-  custom_title: z.string().nullable().default(null),
-  title_generated: z.boolean().default(false),
-  title_generate_attempts: z.number().int().default(0),
-  plan_mode: z.boolean().default(false),
-  plan_session_id: z.string().nullable().default(null),
-  plan_slug: z.string().nullable().default(null),
-  wire_mtime: z.number().nullable().default(null),
-  archived: z.boolean().default(false),
-  archived_at: z.number().nullable().default(null),
-  auto_archive_exempt: z.boolean().default(false),
-});
-export type SessionState = z.infer<typeof SessionState>;
-
-const STATE_FILE_NAME = "state.json";
-
-export async function loadSessionState(sessionDir: string): Promise<SessionState> {
-  const stateFile = join(sessionDir, STATE_FILE_NAME);
-  const file = Bun.file(stateFile);
-  if (!(await file.exists())) {
-    return SessionState.parse({});
-  }
-  try {
-    const data = await file.json();
-    return SessionState.parse(data);
-  } catch {
-    logger.warn(`Corrupted state file, using defaults: ${stateFile}`);
-    return SessionState.parse({});
-  }
-}
-
-export async function saveSessionState(state: SessionState, sessionDir: string): Promise<void> {
-  const stateFile = join(sessionDir, STATE_FILE_NAME);
-  await Bun.write(stateFile, JSON.stringify(state, null, 2));
-}
+// Re-export session state types and functions from canonical location (session_state.ts)
+export {
+  ApprovalStateData,
+  TodoItemState,
+  SessionState,
+  loadSessionState,
+  saveSessionState,
+  STATE_FILE_NAME,
+} from "./session_state.ts";
+import type { SessionState } from "./session_state.ts";
+import { SessionState as SessionStateSchema, loadSessionState, saveSessionState } from "./session_state.ts";
 
 // ── WorkDir Metadata (uses metadata.ts for Python-compatible MD5 hashing) ──
 
@@ -243,7 +207,7 @@ export class Session {
       sessionsDir,
       contextFile,
       wireFile: join(sessionDir, "wire.jsonl"),
-      state: SessionState.parse({}),
+      state: SessionStateSchema.parse({}),
     });
     await session.refresh();
     return session;

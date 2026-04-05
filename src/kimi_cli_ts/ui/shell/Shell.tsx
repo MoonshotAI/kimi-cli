@@ -15,7 +15,7 @@ import { WelcomeBox } from "../components/WelcomeBox.tsx";
 import { StatusBar } from "../components/StatusBar.tsx";
 import { ApprovalPanel } from "./ApprovalPanel.tsx";
 import { QuestionPanel } from "./QuestionPanel.tsx";
-import { resolveQuestionRequest, rejectQuestionRequest } from "../../tools/ask_user/ask_user.ts";
+import { resolveQuestionRequest, rejectQuestionRequest } from "../../tools/ask_user/index.ts";
 import { ChoicePanel, ContentPanel } from "../components/CommandPanel.tsx";
 import { DebugPanel } from "./DebugPanel.tsx";
 import { SlashMenu } from "../components/SlashMenu.tsx";

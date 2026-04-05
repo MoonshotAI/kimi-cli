@@ -9,11 +9,11 @@ import { WriteFile } from "../../src/kimi_cli_ts/tools/file/write.ts";
 import { StrReplaceFile } from "../../src/kimi_cli_ts/tools/file/replace.ts";
 import { Glob } from "../../src/kimi_cli_ts/tools/file/glob.ts";
 import { Grep } from "../../src/kimi_cli_ts/tools/file/grep.ts";
-import { Shell } from "../../src/kimi_cli_ts/tools/shell/shell.ts";
+import { Shell } from "../../src/kimi_cli_ts/tools/shell/index.ts";
 import { FetchURL } from "../../src/kimi_cli_ts/tools/web/fetch.ts";
-import { Think } from "../../src/kimi_cli_ts/tools/think/think.ts";
-import { AskUserQuestion } from "../../src/kimi_cli_ts/tools/ask_user/ask_user.ts";
-import { SetTodoList } from "../../src/kimi_cli_ts/tools/todo/todo.ts";
+import { Think } from "../../src/kimi_cli_ts/tools/think/index.ts";
+import { AskUserQuestion } from "../../src/kimi_cli_ts/tools/ask_user/index.ts";
+import { SetTodoList } from "../../src/kimi_cli_ts/tools/todo/index.ts";
 
 describe("Tool Schemas", () => {
   describe("ReadFile schema", () => {

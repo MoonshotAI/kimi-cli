@@ -4,7 +4,7 @@
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { createTempDir, removeTempDir, createTestToolContext } from "../conftest.ts";
-import { Think } from "../../src/kimi_cli_ts/tools/think/think.ts";
+import { Think } from "../../src/kimi_cli_ts/tools/think/index.ts";
 
 let tempDir: string;
 let tool: Think;
