@@ -7,6 +7,11 @@ Default to using Bun instead of Node.js.
 - Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
 - Bun automatically loads .env, so don't use dotenv.
 
+## Child CLAUDE.md Files
+
+- `src/kimi_cli_ts/CLAUDE.md` — TypeScript implementation details (tech stack, architecture layers, tools, patterns, logging)
+  - `src/kimi_cli_ts/ui/CLAUDE.md` — UI layer architecture (rendering fix, input architecture, slash command output)
+
 ## Project Overview
 
 Kimi Code CLI (`kimi-cli`) is an AI-powered terminal agent with two parallel implementations:
@@ -267,12 +272,158 @@ The renderer writes `renderer-debug.log` in the working directory. Use `tail -f 
 
 - `STRIP!` — a clearTerminal frame was intercepted and rewritten as CUP
 - `FRAME#` — a BSU/ESU-wrapped frame (DEC 2026 terminal)
-- `NOSYNC` — a write outside BSU/ESU (non-DEC-2026 terminal, e.g. tmux)
+- `NOSYNC` — a write outside BSU/ESU (non-DEC-2026 terminal, e.g. screen)
 - `eraseLn*` — Ink's normal incremental diff (good, means selection-safe path)
 - `ERASE_SCREEN!` — should never appear in output (means strip failed)
 
 ### Constraints
 
 - Bun cannot monkey-patch Ink's ESM `log-update.js` module (ESM default exports are read-only in Bun's require)
-- tmux does not support DEC 2026 synchronized output, so BSU/ESU are passed through individually
+- screen does not support DEC 2026 synchronized output, so BSU/ESU are passed through individually
 - The renderer library files under `ui/renderer/` (screen.ts, diff.ts, ansi-parser.ts, patch-writer.ts, etc.) are infrastructure for future cell-level diffing but are not actively used in the current solution
+
+## Debugging Interactive TUI with tmux
+
+The TS version uses React Ink and the Python version uses prompt-toolkit. Both are interactive TUIs that are hard to debug with `expect` or piped stdout. Use `tmux` for reliable detached session control with precise keystroke injection and ANSI-accurate output capture.
+
+**Why tmux over screen/expect?**
+
+| Tool | Verdict |
+|------|---------|
+| **tmux** | Best: stable detached sessions, precise `send-keys`, `capture-pane -e` preserves ANSI |
+| **screen** | v5.0+ on macOS: `-dm` sessions die immediately; `-L -Logfile` doesn't work detached |
+| **expect** | TUI prompt matching unreliable; `log_file` misses React Ink frames |
+| **script** | Captures raw PTY but can't automate input |
+
+### Quick Start
+
+```bash
+# Launch both versions side by side
+tmux new-session -d -s py -x 120 -y 40 'cd ~/git/kimi-cli && uv run kimi; exec bash'
+tmux new-session -d -s ts -x 120 -y 40 'cd ~/git/kimi-cli && bun run start; exec bash'
+sleep 12  # wait for startup
+
+# Verify they're ready
+tmux capture-pane -t py -p | head -3
+tmux capture-pane -t ts -p | head -3
+```
+
+### Sending Input
+
+```bash
+# Type text (no Enter yet)
+tmux send-keys -t py 'exec ls'
+
+# Send Enter separately
+tmux send-keys -t py Enter
+
+# For input mode panels (e.g. approval reject+feedback), type char by char:
+for c in h e l l o; do tmux send-keys -t py "$c" && sleep 0.3; done
+tmux send-keys -t py Enter
+
+# Special keys
+tmux send-keys -t py Escape     # Escape
+tmux send-keys -t py C-c        # Ctrl+C
+tmux send-keys -t py C-x        # Ctrl+X (toggle shell mode)
+```
+
+### Capturing Output
+
+```bash
+# Plain text (no ANSI codes)
+tmux capture-pane -t py -p > py-plain.txt
+
+# With ANSI escape codes (for color comparison)
+tmux capture-pane -t py -p -e > py-ansi.txt
+
+# Include scrollback history (up to 200 lines)
+tmux capture-pane -t py -p -e -S -200 > py-history.txt
+```
+
+### Character-Level Color Comparison
+
+To do a precise diff of Python vs TS terminal output including ANSI colors:
+
+```bash
+# Capture both with ANSI codes
+tmux capture-pane -t py -p -e > /tmp/py-ansi.txt
+tmux capture-pane -t ts -p -e > /tmp/ts-ansi.txt
+
+# Text-only diff
+diff <(tmux capture-pane -t py -p) <(tmux capture-pane -t ts -p)
+
+# Byte-level diff (shows exact ANSI escape code differences)
+xxd /tmp/py-ansi.txt > /tmp/py-hex.txt
+xxd /tmp/ts-ansi.txt > /tmp/ts-hex.txt
+diff /tmp/py-hex.txt /tmp/ts-hex.txt
+
+# Or write a Bun script to parse and compare ANSI codes:
+# - 256-color: \e[38;5;NNm (foreground), \e[48;5;NNm (background)
+# - RGB true color: \e[38;2;R;G;Bm (foreground), \e[48;2;R;G;Bm (background)
+# - Reset: \e[39m (fg), \e[49m (bg), \e[0m (all)
+```
+
+### Cleanup
+
+```bash
+tmux kill-session -t py
+tmux kill-session -t ts
+```
+
+### Gotcha: Enter Key in React Ink Raw Mode
+
+React Ink runs in terminal raw mode. `tmux send-keys ... Enter` sends the Enter key literal, which usually works. However, there are edge cases:
+
+1. **`send-keys "text" Enter` as a single command** — may send text + Enter too fast. Ink's keystroke handler might not process the text before the Enter arrives. **Always split into two calls:**
+   ```bash
+   tmux send-keys -t kimi "your prompt here"
+   tmux send-keys -t kimi Enter
+   ```
+
+2. **If `Enter` doesn't submit** (text shows in input field but context stays 0.0%), try `C-m` (carriage return) as fallback:
+   ```bash
+   tmux send-keys -t kimi C-m
+   ```
+
+3. **For approval panels** (numbered 1/2/3/4 selection), send the number key then `C-m` with a small delay:
+   ```bash
+   tmux send-keys -t kimi "2"
+   sleep 0.3
+   tmux send-keys -t kimi C-m
+   ```
+
+4. **Wait for startup before sending input.** The Ink TUI takes ~5s to mount. Sending keys before it's ready will be lost. Check with `tmux capture-pane -t kimi -p | grep '💫'` — the `💫` prompt emoji confirms the input field is ready.
+
+### Python vs TS Print Mode Output Differences
+
+When debugging with `--print --yolo -p "prompt"`, the two versions produce fundamentally different output:
+
+| Aspect | Python | TypeScript |
+|--------|--------|-----------|
+| Output format | Raw wire messages (`SubagentEvent(...)`, `ToolCall(...)`) | Only parent soul's text via `onTextDelta` callback |
+| SubagentEvent visible | Yes — printed as Python repr | No — swallowed by print mode callbacks |
+| Tool call details | Full ToolCall/ToolResult objects | Only final summary text |
+| Use case | Verbose wire-level debugging | Clean user-facing output |
+
+**Root cause**: Python's `TextPrinter` does `rich.print(msg)` for every wire message. TS's print mode UILoopFn reads Wire events and writes `TextPart` to stdout, `ThinkPart` to stderr.
+
+**For comparing subagent UI behavior**: Use interactive shell mode (`bun run start` without `--print`), not print mode. The interactive shell renders SubagentEvent via the `useWire` hook → `Visualize.tsx` pipeline.
+
+### Subagent Event Flow: Python vs TypeScript Architecture
+
+Both versions now use the same Wire-based architecture:
+
+```
+Python:  run_soul() → Wire (ContextVar) → UILoopFn (parallel async task)
+         SubagentRunner._make_ui_loop_fn() reads subagent Wire, wraps as SubagentEvent
+
+TS:      runSoul() → Wire (AsyncLocalStorage) → UILoopFn (parallel async task)
+         SubagentRunner._makeUiLoopFn() reads subagent Wire, wraps as SubagentEvent
+```
+
+Key architecture (shared by both versions):
+- `runSoul()` creates a `Wire` instance, sets it as the current wire via context (Python: `ContextVar`, TS: `AsyncLocalStorage`)
+- `wireSend()` / `wire_send()` is used throughout the soul to emit events (TurnBegin, TextPart, ToolCall, StatusUpdate, etc.)
+- `UILoopFn` runs as a parallel async task, reading from `wire.uiSide()` and forwarding events to the UI layer
+- For subagents, `_makeUiLoopFn()` captures the parent wire and forwards events wrapped as `SubagentEvent`
+- Wire messages use `__wireType` tag (TS only) for efficient type detection in serde

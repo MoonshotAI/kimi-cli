@@ -16,22 +16,24 @@ const CSI = `${ESC}[`;
  * Returns empty string if no movement needed.
  */
 export function cursorMove(dx: number, dy: number): string {
-  let seq = "";
-  if (dy < 0) seq += `${CSI}${-dy}A`; // CUU — cursor up
-  else if (dy > 0) seq += `${CSI}${dy}B`; // CUD — cursor down
-  if (dx > 0) seq += `${CSI}${dx}C`; // CUF — cursor forward
-  else if (dx < 0) seq += `${CSI}${-dx}D`; // CUB — cursor back
-  return seq;
+	let seq = "";
+	if (dy < 0)
+		seq += `${CSI}${-dy}A`; // CUU — cursor up
+	else if (dy > 0) seq += `${CSI}${dy}B`; // CUD — cursor down
+	if (dx > 0)
+		seq += `${CSI}${dx}C`; // CUF — cursor forward
+	else if (dx < 0) seq += `${CSI}${-dx}D`; // CUB — cursor back
+	return seq;
 }
 
 /** Move cursor to column `col` (0-indexed). Uses CHA (CSI n G), 1-indexed. */
 export function cursorTo(col: number): string {
-  return `${CSI}${col + 1}G`;
+	return `${CSI}${col + 1}G`;
 }
 
 /** Absolute cursor position (1-indexed row, col). CUP: CSI row;col H. */
 export function cursorPosition(row: number, col: number): string {
-  return `${CSI}${row};${col}H`;
+	return `${CSI}${row};${col}H`;
 }
 
 // ── Erase ───────────────────────────────────────────────
@@ -50,13 +52,13 @@ export const ERASE_SCREEN = `${CSI}2J`;
  * then move cursor to column 0. Matches ansi-escapes.eraseLines() exactly.
  */
 export function eraseLines(count: number): string {
-  if (count <= 0) return "";
-  let seq = ERASE_LINE; // Erase current line
-  for (let i = 1; i < count; i++) {
-    seq += `${CSI}1A${ERASE_LINE}`; // Move up 1 + erase line
-  }
-  seq += `${CSI}G`; // CHA — move to column 1 (leftmost)
-  return seq;
+	if (count <= 0) return "";
+	let seq = ERASE_LINE; // Erase current line
+	for (let i = 1; i < count; i++) {
+		seq += `${CSI}1A${ERASE_LINE}`; // Move up 1 + erase line
+	}
+	seq += `${CSI}G`; // CHA — move to column 1 (leftmost)
+	return seq;
 }
 
 // ── Cursor Visibility ───────────────────────────────────

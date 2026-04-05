@@ -12,19 +12,25 @@ import { renameSync, unlinkSync } from "node:fs";
  * This prevents data corruption if the process crashes mid-write: either the
  * old file is kept intact or the new file is fully committed.
  */
-export async function atomicJsonWrite(data: unknown, path: string): Promise<void> {
-  const dir = dirname(path);
-  const tmpPath = join(dir, `.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  try {
-    const content = JSON.stringify(data, null, 2);
-    await Bun.write(tmpPath, content);
-    renameSync(tmpPath, path);
-  } catch (err) {
-    try {
-      unlinkSync(tmpPath);
-    } catch {
-      // Ignore cleanup errors
-    }
-    throw err;
-  }
+export async function atomicJsonWrite(
+	data: unknown,
+	path: string,
+): Promise<void> {
+	const dir = dirname(path);
+	const tmpPath = join(
+		dir,
+		`.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+	);
+	try {
+		const content = JSON.stringify(data, null, 2);
+		await Bun.write(tmpPath, content);
+		renameSync(tmpPath, path);
+	} catch (err) {
+		try {
+			unlinkSync(tmpPath);
+		} catch {
+			// Ignore cleanup errors
+		}
+		throw err;
+	}
 }

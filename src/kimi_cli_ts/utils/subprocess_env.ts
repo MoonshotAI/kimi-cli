@@ -12,15 +12,17 @@
  * In the Bun runtime there's no PyInstaller, so this simply returns a copy
  * of the current environment (or the provided base).
  */
-export function getCleanEnv(baseEnv?: Record<string, string | undefined>): Record<string, string> {
-  const env = baseEnv ?? process.env;
-  const clean: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (value !== undefined) {
-      clean[key] = value;
-    }
-  }
-  return clean;
+export function getCleanEnv(
+	baseEnv?: Record<string, string | undefined>,
+): Record<string, string> {
+	const env = baseEnv ?? process.env;
+	const clean: Record<string, string> = {};
+	for (const [key, value] of Object.entries(env)) {
+		if (value !== undefined) {
+			clean[key] = value;
+		}
+	}
+	return clean;
 }
 
 /**
@@ -30,14 +32,14 @@ export function getCleanEnv(baseEnv?: Record<string, string | undefined>): Recor
  * of waiting for user input that will never arrive.
  */
 export function getNoninteractiveEnv(
-  baseEnv?: Record<string, string | undefined>,
+	baseEnv?: Record<string, string | undefined>,
 ): Record<string, string> {
-  const env = getCleanEnv(baseEnv);
+	const env = getCleanEnv(baseEnv);
 
-  // GIT_TERMINAL_PROMPT=0 makes git fail instead of prompting for credentials.
-  if (!env.GIT_TERMINAL_PROMPT) {
-    env.GIT_TERMINAL_PROMPT = "0";
-  }
+	// GIT_TERMINAL_PROMPT=0 makes git fail instead of prompting for credentials.
+	if (!env.GIT_TERMINAL_PROMPT) {
+		env.GIT_TERMINAL_PROMPT = "0";
+	}
 
-  return env;
+	return env;
 }

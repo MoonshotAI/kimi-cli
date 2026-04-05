@@ -12,14 +12,14 @@ import type { UIMode } from "./input-state.ts";
 
 /** Compute the prompt symbol based on current mode and state. */
 export function getPromptSymbol(
-  mode: UIMode,
-  shellMode: boolean,
-  thinking: boolean,
-  planMode: boolean,
+	mode: UIMode,
+	shellMode: boolean,
+	thinking: boolean,
+	planMode: boolean,
 ): string {
-  if (mode.type === "panel_input") return "▸ ";
-  if (shellMode) return "$ ";
-  if (planMode) return "📋 ";
-  if (thinking) return "💫 ";
-  return "✨ ";
+	if (mode.type === "panel_input") return "▸ ";
+	if (shellMode) return "$ ";
+	if (planMode) return "📋 ";
+	if (thinking) return "💫 ";
+	return "✨ ";
 }

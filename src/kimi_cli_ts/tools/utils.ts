@@ -11,20 +11,20 @@
  * _KeepPlaceholderUndefined behaviour).
  */
 export function loadDesc(
-  path: string,
-  context?: Record<string, string>,
+	path: string,
+	context?: Record<string, string>,
 ): string {
-  const file = Bun.file(path);
-  // Bun.file().text() is async; use the sync node:fs fallback for simplicity
-  // since this is only called at init time.
-  const fs = require("node:fs") as typeof import("node:fs");
-  let text = fs.readFileSync(path, "utf-8");
+	const file = Bun.file(path);
+	// Bun.file().text() is async; use the sync node:fs fallback for simplicity
+	// since this is only called at init time.
+	const fs = require("node:fs") as typeof import("node:fs");
+	let text = fs.readFileSync(path, "utf-8");
 
-  if (context) {
-    for (const [key, value] of Object.entries(context)) {
-      text = text.replaceAll(`\${${key}}`, value);
-    }
-  }
+	if (context) {
+		for (const [key, value] of Object.entries(context)) {
+			text = text.replaceAll(`\${${key}}`, value);
+		}
+	}
 
-  return text;
+	return text;
 }

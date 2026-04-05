@@ -9,10 +9,10 @@ import type { KimiSoul } from "./kimisoul.ts";
 // ── DynamicInjection ─────────────────────────────────
 
 export interface DynamicInjection {
-  /** Identifier, e.g. "plan_mode", "yolo_mode" */
-  readonly type: string;
-  /** Text content (will be wrapped in <system-reminder> tags) */
-  readonly content: string;
+	/** Identifier, e.g. "plan_mode", "yolo_mode" */
+	readonly type: string;
+	/** Text content (will be wrapped in <system-reminder> tags) */
+	readonly content: string;
 }
 
 // ── DynamicInjectionProvider ─────────────────────────
@@ -24,10 +24,10 @@ export interface DynamicInjection {
  * Providers can access all runtime state via the `soul` parameter.
  */
 export interface DynamicInjectionProvider {
-  getInjections(
-    history: readonly Message[],
-    soul: KimiSoul,
-  ): Promise<DynamicInjection[]>;
+	getInjections(
+		history: readonly Message[],
+		soul: KimiSoul,
+	): Promise<DynamicInjection[]>;
 }
 
 // ── normalizeHistory ─────────────────────────────────
@@ -43,41 +43,41 @@ export interface DynamicInjectionProvider {
  * form linked pairs that must stay intact.
  */
 export function normalizeHistory(messages: readonly Message[]): Message[] {
-  if (messages.length === 0) return [];
+	if (messages.length === 0) return [];
 
-  const result: Message[] = [];
-  for (const msg of messages) {
-    const prev = result[result.length - 1];
-    if (
-      prev &&
-      prev.role === "user" &&
-      msg.role === "user" &&
-      !isNotificationMessage(prev) &&
-      !isNotificationMessage(msg)
-    ) {
-      // Merge content
-      const prevParts = toContentArray(prev.content);
-      const curParts = toContentArray(msg.content);
-      result[result.length - 1] = {
-        role: "user",
-        content: [...prevParts, ...curParts],
-      };
-    } else {
-      result.push(msg);
-    }
-  }
-  return result;
+	const result: Message[] = [];
+	for (const msg of messages) {
+		const prev = result[result.length - 1];
+		if (
+			prev &&
+			prev.role === "user" &&
+			msg.role === "user" &&
+			!isNotificationMessage(prev) &&
+			!isNotificationMessage(msg)
+		) {
+			// Merge content
+			const prevParts = toContentArray(prev.content);
+			const curParts = toContentArray(msg.content);
+			result[result.length - 1] = {
+				role: "user",
+				content: [...prevParts, ...curParts],
+			};
+		} else {
+			result.push(msg);
+		}
+	}
+	return result;
 }
 
 // ── Helpers ──────────────────────────────────────────
 
 function toContentArray(
-  content: string | readonly ContentPart[],
+	content: string | readonly ContentPart[],
 ): ContentPart[] {
-  if (typeof content === "string") {
-    return [{ type: "text" as const, text: content }];
-  }
-  return [...content];
+	if (typeof content === "string") {
+		return [{ type: "text" as const, text: content }];
+	}
+	return [...content];
 }
 
 /**
@@ -86,17 +86,17 @@ function toContentArray(
  * full notifications module.
  */
 function isNotificationMessage(msg: Message): boolean {
-  if (msg.role !== "user") return false;
-  const text = extractText(msg.content);
-  return text.includes("<notification>") || text.includes("<notification ");
+	if (msg.role !== "user") return false;
+	const text = extractText(msg.content);
+	return text.includes("<notification>") || text.includes("<notification ");
 }
 
 function extractText(
-  content: string | readonly { type: string; [key: string]: unknown }[],
+	content: string | readonly { type: string; [key: string]: unknown }[],
 ): string {
-  if (typeof content === "string") return content;
-  return content
-    .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .map((p) => p.text)
-    .join("");
+	if (typeof content === "string") return content;
+	return content
+		.filter((p): p is { type: "text"; text: string } => p.type === "text")
+		.map((p) => p.text)
+		.join("");
 }

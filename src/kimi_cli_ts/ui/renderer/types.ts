@@ -11,12 +11,12 @@
 
 /** Cell width classification for double-wide characters (CJK, emoji). */
 export const CellWidth = {
-  /** Normal single-width character. */
-  Narrow: 0,
-  /** Wide character (occupies 2 columns). This cell holds the actual char. */
-  Wide: 1,
-  /** Second column of a wide character. Skip during rendering. */
-  SpacerTail: 2,
+	/** Normal single-width character. */
+	Narrow: 0,
+	/** Wide character (occupies 2 columns). This cell holds the actual char. */
+	Wide: 1,
+	/** Second column of a wide character. Skip during rendering. */
+	SpacerTail: 2,
 } as const;
 
 export type CellWidthType = (typeof CellWidth)[keyof typeof CellWidth];
@@ -34,18 +34,18 @@ export type CellWidthType = (typeof CellWidth)[keyof typeof CellWidth];
  * fast integer comparison in diffing.
  */
 export type Screen = {
-  width: number;
-  height: number;
-  /** Packed cell data: 2 Int32 per cell. Length = width * height * 2. */
-  cells: Int32Array;
-  /** Interned character strings. Index 0 = ' ' (space). */
-  charPool: string[];
-  /** Map from char string → charPool index (for fast intern). */
-  charMap: Map<string, number>;
-  /** Interned SGR style strings. Index 0 = '' (no style / reset). */
-  stylePool: string[];
-  /** Map from style string → stylePool index. */
-  styleMap: Map<string, number>;
+	width: number;
+	height: number;
+	/** Packed cell data: 2 Int32 per cell. Length = width * height * 2. */
+	cells: Int32Array;
+	/** Interned character strings. Index 0 = ' ' (space). */
+	charPool: string[];
+	/** Map from char string → charPool index (for fast intern). */
+	charMap: Map<string, number>;
+	/** Interned SGR style strings. Index 0 = '' (no style / reset). */
+	stylePool: string[];
+	/** Map from style string → stylePool index. */
+	styleMap: Map<string, number>;
 };
 
 // ── Packed Cell Access ──────────────────────────────────
@@ -57,13 +57,13 @@ export const WIDTH_MASK = 0x3;
 // ── Viewport ────────────────────────────────────────────
 
 export type Viewport = {
-  width: number;
-  height: number;
+	width: number;
+	height: number;
 };
 
 // ── Cursor ──────────────────────────────────────────────
 
 export type CursorPosition = {
-  x: number;
-  y: number;
+	x: number;
+	y: number;
 };

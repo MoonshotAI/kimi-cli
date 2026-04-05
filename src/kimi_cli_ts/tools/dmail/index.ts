@@ -18,26 +18,24 @@ After a D-Mail is sent, the system will revert the current context to the specif
 When sending a D-Mail, DO NOT explain to the user. Just explain to your past self.`;
 
 const ParamsSchema = z.object({
-  checkpoint_id: z.string().describe("The checkpoint ID to revert to."),
-  message: z
-    .string()
-    .describe(
-      "The message to send to your past self with useful information.",
-    ),
+	checkpoint_id: z.string().describe("The checkpoint ID to revert to."),
+	message: z
+		.string()
+		.describe("The message to send to your past self with useful information."),
 });
 
 type Params = z.infer<typeof ParamsSchema>;
 
 export class SendDMail extends CallableTool<typeof ParamsSchema> {
-  readonly name = "SendDMail";
-  readonly description = DESCRIPTION;
-  readonly schema = ParamsSchema;
+	readonly name = "SendDMail";
+	readonly description = DESCRIPTION;
+	readonly schema = ParamsSchema;
 
-  async execute(params: Params, _ctx: ToolContext): Promise<ToolResult> {
-    // Stub: full implementation requires denwa_renji
-    return ToolOk(
-      "",
-      "If you see this message, the D-Mail was NOT sent successfully.",
-    );
-  }
+	async execute(params: Params, _ctx: ToolContext): Promise<ToolResult> {
+		// Stub: full implementation requires denwa_renji
+		return ToolOk(
+			"",
+			"If you see this message, the D-Mail was NOT sent successfully.",
+		);
+	}
 }

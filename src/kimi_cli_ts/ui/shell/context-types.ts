@@ -17,8 +17,8 @@
  * TS:     { type: "text", text: "..." }
  */
 export interface KTextPart {
-  type: "text";
-  text: string;
+	type: "text";
+	text: string;
 }
 
 /**
@@ -27,9 +27,9 @@ export interface KTextPart {
  * TS:     stored as reasoning_content field on message (not as ContentPart)
  */
 export interface KThinkPart {
-  type: "think";
-  think: string;
-  encrypted?: string | null;
+	type: "think";
+	think: string;
+	encrypted?: string | null;
 }
 
 /**
@@ -37,11 +37,11 @@ export interface KThinkPart {
  * Python: ImageURLPart(type="image_url", image_url={url, id?})
  */
 export interface KImageURLPart {
-  type: "image_url";
-  image_url: {
-    url: string;
-    id?: string | null;
-  };
+	type: "image_url";
+	image_url: {
+		url: string;
+		id?: string | null;
+	};
 }
 
 /**
@@ -49,12 +49,12 @@ export interface KImageURLPart {
  * TS: { type: "image", source: { type: "base64"|"url", data: "...", mediaType?: "..." } }
  */
 export interface KImagePart {
-  type: "image";
-  source: {
-    type: "base64" | "url";
-    data: string;
-    mediaType?: string;
-  };
+	type: "image";
+	source: {
+		type: "base64" | "url";
+		data: string;
+		mediaType?: string;
+	};
 }
 
 /**
@@ -62,11 +62,11 @@ export interface KImagePart {
  * Python: AudioURLPart(type="audio_url", audio_url={url, id?})
  */
 export interface KAudioURLPart {
-  type: "audio_url";
-  audio_url: {
-    url: string;
-    id?: string | null;
-  };
+	type: "audio_url";
+	audio_url: {
+		url: string;
+		id?: string | null;
+	};
 }
 
 /**
@@ -74,11 +74,11 @@ export interface KAudioURLPart {
  * Python: VideoURLPart(type="video_url", video_url={url, id?})
  */
 export interface KVideoURLPart {
-  type: "video_url";
-  video_url: {
-    url: string;
-    id?: string | null;
-  };
+	type: "video_url";
+	video_url: {
+		url: string;
+		id?: string | null;
+	};
 }
 
 /**
@@ -86,10 +86,10 @@ export interface KVideoURLPart {
  * TS: { type: "tool_use", id: "...", name: "...", input: {...} }
  */
 export interface KToolUsePart {
-  type: "tool_use";
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
+	type: "tool_use";
+	id: string;
+	name: string;
+	input: Record<string, unknown>;
 }
 
 /**
@@ -97,10 +97,10 @@ export interface KToolUsePart {
  * TS: { type: "tool_result", toolUseId: "...", content: "...", isError?: bool }
  */
 export interface KToolResultPart {
-  type: "tool_result";
-  toolUseId: string;
-  content: string;
-  isError?: boolean;
+	type: "tool_result";
+	toolUseId: string;
+	content: string;
+	isError?: boolean;
 }
 
 /**
@@ -108,14 +108,14 @@ export interface KToolResultPart {
  * The debug panel must handle all of these.
  */
 export type KContentPart =
-  | KTextPart
-  | KThinkPart
-  | KImageURLPart
-  | KImagePart
-  | KAudioURLPart
-  | KVideoURLPart
-  | KToolUsePart
-  | KToolResultPart;
+	| KTextPart
+	| KThinkPart
+	| KImageURLPart
+	| KImagePart
+	| KAudioURLPart
+	| KVideoURLPart
+	| KToolUsePart
+	| KToolResultPart;
 
 // ── Tool Call (Python/kosong format, separate from content) ──
 
@@ -124,13 +124,13 @@ export type KContentPart =
  * Python: ToolCall(type="function", id="...", function={name, arguments})
  */
 export interface KToolCall {
-  type: "function";
-  id: string;
-  function: {
-    name: string;
-    arguments: string | null;
-  };
-  extras?: Record<string, unknown> | null;
+	type: "function";
+	id: string;
+	function: {
+		name: string;
+		arguments: string | null;
+	};
+	extras?: Record<string, unknown> | null;
 }
 
 // ── Message (union of Python and TS formats) ─────────────
@@ -142,31 +142,31 @@ export type KRole = "system" | "developer" | "user" | "assistant" | "tool";
  * Covers both Python (kosong) and TS (Anthropic-style) formats.
  */
 export interface KMessage {
-  role: KRole;
+	role: KRole;
 
-  /** Message content: string (single text) or array of content parts. */
-  content: string | KContentPart[];
+	/** Message content: string (single text) or array of content parts. */
+	content: string | KContentPart[];
 
-  // ── Python/kosong format fields ──
-  /** Display name (Python: msg.name) */
-  name?: string | null;
-  /** Tool calls requested by assistant (Python format). */
-  tool_calls?: KToolCall[] | null;
-  /** Tool call ID this message responds to (Python format). */
-  tool_call_id?: string | null;
-  /** Whether this is a partial/streaming message. */
-  partial?: boolean | null;
+	// ── Python/kosong format fields ──
+	/** Display name (Python: msg.name) */
+	name?: string | null;
+	/** Tool calls requested by assistant (Python format). */
+	tool_calls?: KToolCall[] | null;
+	/** Tool call ID this message responds to (Python format). */
+	tool_call_id?: string | null;
+	/** Whether this is a partial/streaming message. */
+	partial?: boolean | null;
 
-  // ── TS-specific fields ──
-  /** Thinking content stored separately (TS format, not in content array). */
-  reasoning_content?: string;
+	// ── TS-specific fields ──
+	/** Thinking content stored separately (TS format, not in content array). */
+	reasoning_content?: string;
 }
 
 // ── Context info for debug display ───────────────────────
 
 export interface KContextInfo {
-  totalMessages: number;
-  tokenCount: number;
-  checkpoints: number;
-  trajectory?: string;
+	totalMessages: number;
+	tokenCount: number;
+	checkpoints: number;
+	trajectory?: string;
 }

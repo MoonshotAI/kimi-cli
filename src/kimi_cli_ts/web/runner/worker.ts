@@ -10,92 +10,92 @@ import { parseArgs } from "node:util";
 import { logger } from "../../utils/logging.ts";
 
 async function runWorker(sessionId: string): Promise<void> {
-  logger.info(`Worker starting for session: ${sessionId}`);
+	logger.info(`Worker starting for session: ${sessionId}`);
 
-  const sessionDir = process.env.KIMI_SESSION_DIR;
-  if (!sessionDir) {
-    throw new Error("KIMI_SESSION_DIR not set");
-  }
+	const sessionDir = process.env.KIMI_SESSION_DIR;
+	if (!sessionDir) {
+		throw new Error("KIMI_SESSION_DIR not set");
+	}
 
-  // Dynamic import to avoid circular dependencies
-  const { loadSessionById } = await import("../store/sessions.ts");
-  const session = loadSessionById(sessionId);
-  if (!session) {
-    throw new Error(`Session not found: ${sessionId}`);
-  }
+	// Dynamic import to avoid circular dependencies
+	const { loadSessionById } = await import("../store/sessions.ts");
+	const session = loadSessionById(sessionId);
+	if (!session) {
+		throw new Error(`Session not found: ${sessionId}`);
+	}
 
-  // TODO: Wire up KimiCLI.create + wire_stdio when the full integration is ready.
-  // For now, the worker is a stub that reads stdin and logs messages.
-  const decoder = new TextDecoder();
-  const reader = Bun.stdin.stream().getReader();
-  let buffer = "";
+	// TODO: Wire up KimiCLI.create + wire_stdio when the full integration is ready.
+	// For now, the worker is a stub that reads stdin and logs messages.
+	const decoder = new TextDecoder();
+	const reader = Bun.stdin.stream().getReader();
+	let buffer = "";
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
+			buffer += decoder.decode(value, { stream: true });
 
-      let newlineIdx: number;
-      while ((newlineIdx = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, newlineIdx).trim();
-        buffer = buffer.slice(newlineIdx + 1);
+			let newlineIdx: number;
+			while ((newlineIdx = buffer.indexOf("\n")) >= 0) {
+				const line = buffer.slice(0, newlineIdx).trim();
+				buffer = buffer.slice(newlineIdx + 1);
 
-        if (!line) continue;
+				if (!line) continue;
 
-        try {
-          const msg = JSON.parse(line);
-          logger.debug(`Worker received: ${msg.method ?? "response"}`);
+				try {
+					const msg = JSON.parse(line);
+					logger.debug(`Worker received: ${msg.method ?? "response"}`);
 
-          // Echo back a success response for now
-          if (msg.id && msg.method) {
-            const response = {
-              jsonrpc: "2.0",
-              id: msg.id,
-              result: { status: "ok" },
-            };
-            process.stdout.write(JSON.stringify(response) + "\n");
-          }
-        } catch (err) {
-          logger.warn(`Worker parse error: ${err}`);
-        }
-      }
-    }
-  } catch (err) {
-    logger.error(`Worker error: ${err}`);
-  }
+					// Echo back a success response for now
+					if (msg.id && msg.method) {
+						const response = {
+							jsonrpc: "2.0",
+							id: msg.id,
+							result: { status: "ok" },
+						};
+						process.stdout.write(JSON.stringify(response) + "\n");
+					}
+				} catch (err) {
+					logger.warn(`Worker parse error: ${err}`);
+				}
+			}
+		}
+	} catch (err) {
+		logger.error(`Worker error: ${err}`);
+	}
 
-  logger.info(`Worker exiting for session: ${sessionId}`);
+	logger.info(`Worker exiting for session: ${sessionId}`);
 }
 
 async function main(): Promise<void> {
-  const { values } = parseArgs({
-    options: {
-      "session-id": { type: "string" },
-    },
-    strict: true,
-    allowPositionals: false,
-  });
+	const { values } = parseArgs({
+		options: {
+			"session-id": { type: "string" },
+		},
+		strict: true,
+		allowPositionals: false,
+	});
 
-  const sessionId = values["session-id"];
-  if (!sessionId) {
-    console.error("Usage: worker --session-id <uuid>");
-    process.exit(1);
-  }
+	const sessionId = values["session-id"];
+	if (!sessionId) {
+		console.error("Usage: worker --session-id <uuid>");
+		process.exit(1);
+	}
 
-  // Set process title
-  try {
-    process.title = `kimi-worker-${sessionId.slice(0, 8)}`;
-  } catch {
-    // ignore
-  }
+	// Set process title
+	try {
+		process.title = `kimi-worker-${sessionId.slice(0, 8)}`;
+	} catch {
+		// ignore
+	}
 
-  await runWorker(sessionId);
+	await runWorker(sessionId);
 }
 
 // Run if executed directly
 main().catch((err) => {
-  console.error("Worker fatal error:", err);
-  process.exit(1);
+	console.error("Worker fatal error:", err);
+	process.exit(1);
 });

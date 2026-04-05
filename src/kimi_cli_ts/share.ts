@@ -12,7 +12,7 @@ import { mkdirSync } from "node:fs";
  * Creates the directory if it doesn't exist (matches Python behavior).
  */
 export function getShareDir(): string {
-  const dir = process.env.KIMI_SHARE_DIR ?? join(homedir(), ".kimi");
-  mkdirSync(dir, { recursive: true });
-  return dir;
+	const dir = process.env.KIMI_SHARE_DIR ?? join(homedir(), ".kimi");
+	mkdirSync(dir, { recursive: true });
+	return dir;
 }

@@ -5,7 +5,7 @@
 export { SessionProcess, KimiCLIRunner } from "./process.ts";
 export type { RestartWorkersSummary } from "./process.ts";
 export {
-  newSessionStatusMessage,
-  newHistoryCompleteMessage,
-  sendHistoryComplete,
+	newSessionStatusMessage,
+	newHistoryCompleteMessage,
+	sendHistoryComplete,
 } from "./messages.ts";

@@ -10,30 +10,30 @@ import { AsyncQueue, BroadcastQueue } from "../utils/queue.ts";
 import type { WireMessage } from "./types.ts";
 
 export class RootWireHub {
-  private _queue = new BroadcastQueue<WireMessage>();
+	private _queue = new BroadcastQueue<WireMessage>();
 
-  /** Create a new subscriber queue. */
-  subscribe(): AsyncQueue<WireMessage> {
-    return this._queue.subscribe();
-  }
+	/** Create a new subscriber queue. */
+	subscribe(): AsyncQueue<WireMessage> {
+		return this._queue.subscribe();
+	}
 
-  /** Remove a subscriber queue. */
-  unsubscribe(queue: AsyncQueue<WireMessage>): void {
-    this._queue.unsubscribe(queue);
-  }
+	/** Remove a subscriber queue. */
+	unsubscribe(queue: AsyncQueue<WireMessage>): void {
+		this._queue.unsubscribe(queue);
+	}
 
-  /** Publish a message to all subscribers (async, for await compatibility). */
-  async publish(msg: WireMessage): Promise<void> {
-    this._queue.publishNowait(msg);
-  }
+	/** Publish a message to all subscribers (async, for await compatibility). */
+	async publish(msg: WireMessage): Promise<void> {
+		this._queue.publishNowait(msg);
+	}
 
-  /** Publish a message synchronously. */
-  publishNowait(msg: WireMessage): void {
-    this._queue.publishNowait(msg);
-  }
+	/** Publish a message synchronously. */
+	publishNowait(msg: WireMessage): void {
+		this._queue.publishNowait(msg);
+	}
 
-  /** Shut down the hub and all subscriber queues. */
-  shutdown(): void {
-    this._queue.shutdown();
-  }
+	/** Shut down the hub and all subscriber queues. */
+	shutdown(): void {
+		this._queue.shutdown();
+	}
 }

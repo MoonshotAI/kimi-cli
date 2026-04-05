@@ -11,28 +11,28 @@ export type ApprovalStatus = "pending" | "resolved" | "cancelled";
 export type ApprovalRuntimeEventKind = "request_created" | "request_resolved";
 
 export interface ApprovalSource {
-  kind: ApprovalSourceKind;
-  id: string;
-  agentId?: string;
-  subagentType?: string;
+	kind: ApprovalSourceKind;
+	id: string;
+	agentId?: string;
+	subagentType?: string;
 }
 
 export interface ApprovalRequestRecord {
-  id: string;
-  toolCallId: string;
-  sender: string;
-  action: string;
-  description: string;
-  display: unknown[];
-  source: ApprovalSource;
-  createdAt: number;
-  status: ApprovalStatus;
-  resolvedAt: number | null;
-  response: ApprovalResponseKind | null;
-  feedback: string;
+	id: string;
+	toolCallId: string;
+	sender: string;
+	action: string;
+	description: string;
+	display: unknown[];
+	source: ApprovalSource;
+	createdAt: number;
+	status: ApprovalStatus;
+	resolvedAt: number | null;
+	response: ApprovalResponseKind | null;
+	feedback: string;
 }
 
 export interface ApprovalRuntimeEvent {
-  kind: ApprovalRuntimeEventKind;
-  request: ApprovalRequestRecord;
+	kind: ApprovalRuntimeEventKind;
+	request: ApprovalRequestRecord;
 }

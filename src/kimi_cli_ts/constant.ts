@@ -10,20 +10,20 @@ export const NAME = "Kimi Code CLI";
 let _version: string | null = null;
 
 export function getVersion(): string {
-  if (_version) return _version;
-  try {
-    // Read version from package.json at build/runtime
-    const pkgPath = join(import.meta.dir, "../../package.json");
-    const pkg = require(pkgPath);
-    _version = String(pkg.version ?? "0.0.0");
-  } catch {
-    _version = "0.0.0";
-  }
-  return _version;
+	if (_version) return _version;
+	try {
+		// Read version from package.json at build/runtime
+		const pkgPath = join(import.meta.dir, "../../package.json");
+		const pkg = require(pkgPath);
+		_version = String(pkg.version ?? "0.0.0");
+	} catch {
+		_version = "0.0.0";
+	}
+	return _version;
 }
 
 export function getUserAgent(): string {
-  return `KimiCLI/${getVersion()}`;
+	return `KimiCLI/${getVersion()}`;
 }
 
 export const VERSION: string = getVersion();

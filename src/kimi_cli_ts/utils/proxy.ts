@@ -4,12 +4,12 @@
  */
 
 const PROXY_ENV_VARS = [
-  "ALL_PROXY",
-  "all_proxy",
-  "HTTP_PROXY",
-  "http_proxy",
-  "HTTPS_PROXY",
-  "https_proxy",
+	"ALL_PROXY",
+	"all_proxy",
+	"HTTP_PROXY",
+	"http_proxy",
+	"HTTPS_PROXY",
+	"https_proxy",
 ];
 
 const SOCKS_PREFIX = "socks://";
@@ -24,10 +24,10 @@ const SOCKS5_PREFIX = "socks5://";
  * in-place replacement so that downstream HTTP clients work correctly.
  */
 export function normalizeProxyEnv(): void {
-  for (const varName of PROXY_ENV_VARS) {
-    const value = process.env[varName];
-    if (value !== undefined && value.toLowerCase().startsWith(SOCKS_PREFIX)) {
-      process.env[varName] = SOCKS5_PREFIX + value.slice(SOCKS_PREFIX.length);
-    }
-  }
+	for (const varName of PROXY_ENV_VARS) {
+		const value = process.env[varName];
+		if (value !== undefined && value.toLowerCase().startsWith(SOCKS_PREFIX)) {
+			process.env[varName] = SOCKS5_PREFIX + value.slice(SOCKS_PREFIX.length);
+		}
+	}
 }
