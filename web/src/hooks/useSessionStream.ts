@@ -303,8 +303,10 @@ export function useSessionStream(
   const { yoloStatus } = useYoloMode(sessionId);
 
   // Update yoloMode state when yoloStatus changes (initial load or refresh)
+  // Only apply if we haven't received a live update from WebSocket to avoid
+  // stale HTTP responses overwriting newer real-time state
   useEffect(() => {
-    if (yoloStatus !== null) {
+    if (yoloStatus !== null && !hasReceivedLiveYoloUpdateRef.current) {
       setYoloMode(yoloStatus.enabled);
     }
   }, [yoloStatus]);
@@ -342,6 +344,7 @@ export function useSessionStream(
   const watchdogIntervalRef = useRef<number | null>(null); // Stale connection watchdog
   const statusRef = useRef<ChatStatus>("ready"); // Synced copy of status for watchdog
   const previousSessionIdRef = useRef<string | null>(null); // Track previous session for reconnect detection
+  const hasReceivedLiveYoloUpdateRef = useRef(false); // Track if we've received live yolo_mode from WebSocket
 
   // First turn tracking for auto-rename (simplified: backend reads from wire.jsonl)
   const hasTurnStartedRef = useRef(false); // Whether at least one turn has started
@@ -872,6 +875,7 @@ export function useSessionStream(
     setPlanMode(false);
     if (!preserveYoloMode) {
       setYoloMode(false);
+      hasReceivedLiveYoloUpdateRef.current = false;
     }
     setError(null);
     setSessionStatus(null);
@@ -1757,6 +1761,7 @@ export function useSessionStream(
 
           const nextYoloMode = event.payload.yolo_mode;
           if (typeof nextYoloMode === "boolean") {
+            hasReceivedLiveYoloUpdateRef.current = true;
             setYoloMode(nextYoloMode);
           }
 
