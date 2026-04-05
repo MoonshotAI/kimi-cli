@@ -138,6 +138,7 @@ import { createMessageId, getApiBaseUrl } from "./utils";
 import { kimiCliVersion } from "@/lib/version";
 import { handleToolResult, useToolEventsStore, type TodoItem } from "@/features/tool/store";
 import { v4 as uuidV4 } from "uuid";
+import { useYoloMode } from "@/hooks/useYoloMode";
 
 // Regex patterns moved to top level for performance
 const DATA_URL_MEDIA_TYPE_REGEX = /^data:([^;,]+)[;,]/;
@@ -297,6 +298,16 @@ export function useSessionStream(
   const [isAwaitingFirstResponse, setIsAwaitingFirstResponse] = useState(false);
   const [isReplayingHistory, setIsReplayingHistory] = useState(true);
   const [slashCommands, setSlashCommands] = useState<SlashCommandDef[]>([]);
+
+  // Fetch initial YOLO mode state from the server API
+  const { yoloStatus } = useYoloMode(sessionId);
+
+  // Update yoloMode state when yoloStatus changes (initial load or refresh)
+  useEffect(() => {
+    if (yoloStatus !== null) {
+      setYoloMode(yoloStatus.enabled);
+    }
+  }, [yoloStatus]);
 
   // Refs
   /**

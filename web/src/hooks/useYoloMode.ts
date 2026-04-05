@@ -21,11 +21,6 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
   const isInitializedRef = useRef(false);
   const sessionIdRef = useRef(sessionId);
 
-  // Keep ref in sync for effect comparison
-  useEffect(() => {
-    sessionIdRef.current = sessionId;
-  }, [sessionId]);
-
   const refresh = useCallback(async () => {
     if (!sessionId) {
       setYoloStatus(null);
@@ -117,6 +112,7 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
     if (isInitializedRef.current && sessionIdRef.current === sessionId) {
       return;
     }
+    sessionIdRef.current = sessionId;
     isInitializedRef.current = true;
     refresh();
   }, [sessionId, refresh]);

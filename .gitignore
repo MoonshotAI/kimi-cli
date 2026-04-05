@@ -45,3 +45,5 @@ static/
 .memo/
 .entire
 .claude
+.local/
+
