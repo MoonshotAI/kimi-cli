@@ -188,9 +188,10 @@ Web UI provides a unified prompt toolbar above the input box, displaying various
 - **File changes**: Detects Git repository status, showing the number of new, modified, and deleted files (including untracked files). Click to view a detailed list of changes
 - **Todo list**: When the `SetTodoList` tool is active, shows task progress with support for expanding to view the detailed list
 - **Plan mode**: Toggle plan mode on/off from the input toolbar. When plan mode is active, the composer displays a dashed blue border. Plan mode can also be set programmatically via the `set_plan_mode` Wire protocol method
+- **YOLO mode**: Toggle YOLO (auto-approve) mode on/off from the input toolbar. When YOLO mode is active, the composer displays a dashed yellow border and all operations are automatically approved without confirmation
 
 ::: info Changed
-Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Version 1.10 unified it into the prompt toolbar. Version 1.11 moved the context usage indicator to the prompt toolbar. Plan mode toggle added in version 1.20.
+Git diff status bar added in version 1.5. Activity status indicator added in version 1.9. Version 1.10 unified it into the prompt toolbar. Version 1.11 moved the context usage indicator to the prompt toolbar. Plan mode toggle added in version 1.20. YOLO mode toggle added in version 1.30.
 :::
 
 ### Open-in functionality
