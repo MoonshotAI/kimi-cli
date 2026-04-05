@@ -915,12 +915,16 @@ async def update_yolo_status(
 
     # Update state
     state.approval.yolo = request.enabled
-    save_session_state(state, session_dir)
 
-    # If session is running, notify the worker to update runtime state
+    # If session is running, notify the worker to update runtime state.
+    # The worker will persist state via its notify_change callback, so we skip
+    # saving here to avoid race conditions with concurrent worker changes.
     session_process = runner.get_session(session_id)
     if session_process is not None and session_process.is_alive:
         await session_process.set_yolo_mode(request.enabled)
+    else:
+        # Only save directly to disk when the worker is not alive
+        save_session_state(state, session_dir)
 
     return YoloStatus(
         enabled=state.approval.yolo,
