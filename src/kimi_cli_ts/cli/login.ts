@@ -4,6 +4,7 @@
  */
 
 import { Command } from "commander";
+import { logger } from "../utils/logging.ts";
 
 export const loginCommand = new Command("login")
   .description("Login to your Kimi account.")
@@ -31,7 +32,7 @@ export const loginCommand = new Command("login")
       for await (const event of loginKimiCode(config)) {
         if (event.type === "waiting") {
           if (!waiting) {
-            process.stderr.write("Waiting for user authorization...\n");
+            logger.info("Waiting for user authorization...");
             waiting = true;
           }
           continue;

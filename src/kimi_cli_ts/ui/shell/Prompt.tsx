@@ -322,7 +322,7 @@ export function Prompt({
       }
 
       // ── Enter → submit ──
-      if (key.return) {
+      if (key.return || key.enter) {
         doSubmit();
         return;
       }

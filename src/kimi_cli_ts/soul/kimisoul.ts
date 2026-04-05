@@ -31,6 +31,7 @@ import { handleEditor, createEditorPanel } from "../ui/shell/commands/editor.ts"
 import { handleInit } from "../ui/shell/commands/init.ts";
 import { handleAddDir } from "../ui/shell/commands/add_dir.ts";
 import { logger } from "../utils/logging.ts";
+import { readSkillText, type Skill } from "../skill/index.ts";
 
 // ── Errors ─────────────────────────────────────────
 
@@ -190,6 +191,100 @@ export class KimiSoul {
       new PlanModeInjectionProvider(),
       new YoloModeInjectionProvider(),
     ];
+
+    // Build and register skill slash commands
+    this._buildSkillSlashCommands();
+  }
+
+  /**
+   * Replace the current callbacks.
+   * Used by subagent runner to forward events as SubagentEvents to the parent UI.
+   */
+  setCallbacks(cb: SoulCallbacks): void {
+    this.callbacks = cb;
+  }
+
+  /**
+   * Build slash commands from discovered skills.
+   * Mirrors Python KimiSoul._build_slash_commands()
+   */
+  private _buildSkillSlashCommands(): void {
+    const commands = this.agent.slashCommands.list();
+    const seenNames = new Set<string>(commands.map((c) => c.name));
+
+    // Register skill commands (/skill:name)
+    for (const skill of this.agent.runtime.skills.values()) {
+      if (skill.type !== "standard" && skill.type !== "flow") {
+        continue;
+      }
+      const name = `${SKILL_COMMAND_PREFIX}${skill.name}`;
+      if (seenNames.has(name)) {
+        logger.warn(`Skipping skill slash command /${name}: name already registered`);
+        continue;
+      }
+
+      const skillCommand: SlashCommand = {
+        name,
+        description: skill.description || "",
+        handler: this._makeSkillRunner(skill),
+        aliases: [],
+      };
+      this.agent.slashCommands.register(skillCommand);
+      seenNames.add(name);
+    }
+
+    // Register flow commands (/flow:name)
+    for (const skill of this.agent.runtime.skills.values()) {
+      if (skill.type !== "flow") {
+        continue;
+      }
+      if (!skill.flow) {
+        logger.warn(`Flow skill ${skill.name} has no flow; skipping`);
+        continue;
+      }
+
+      const commandName = `${FLOW_COMMAND_PREFIX}${skill.name}`;
+      if (seenNames.has(commandName)) {
+        logger.warn(`Skipping prompt flow slash command /${commandName}: name already registered`);
+        continue;
+      }
+
+      // For now, flow commands point to the skill handler (flow execution is already in kimisoul.ts)
+      const flowCommand: SlashCommand = {
+        name: commandName,
+        description: skill.description || "",
+        handler: this._makeSkillRunner(skill),
+        aliases: [],
+      };
+      this.agent.slashCommands.register(flowCommand);
+      seenNames.add(commandName);
+    }
+  }
+
+  /**
+   * Create a skill runner function for a given skill.
+   * Mirrors Python KimiSoul._make_skill_runner()
+   *
+   * Called from within run()'s TurnBegin/TurnEnd lifecycle.
+   * Simply calls _turn() directly, exactly as Python does:
+   *   await soul._turn(Message(role="user", content=skill_text))
+   */
+  private _makeSkillRunner(skill: Skill) {
+    return async (args: string): Promise<void> => {
+      const skillText = readSkillText(skill);
+      if (!skillText) {
+        this.notify("Skill Error", `Failed to load skill "${skill.name}".`);
+        return;
+      }
+
+      let finalText = skillText;
+      const extra = args.trim();
+      if (extra) {
+        finalText = `${skillText}\n\nUser request:\n${extra}`;
+      }
+
+      await this._turn(finalText);
+    };
   }
 
   // ── Properties ───────────────────────────────────
@@ -248,6 +343,7 @@ export class KimiSoul {
       maxContextTokens: maxCtx,
       tokenUsage: this._totalUsage,
       planMode: this._planMode,
+      yoloEnabled: this.isYolo,
       mcpStatus: null,
     };
   }
@@ -381,12 +477,6 @@ export class KimiSoul {
       return;
     }
 
-    // Check for slash commands
-    if (typeof userInput === "string" && userInput.trim().startsWith("/")) {
-      const handled = await this.agent.slashCommands.execute(userInput);
-      if (handled) return;
-    }
-
     this._isRunning = true;
     this.abortController = new AbortController();
     this._toolRejectedNoFeedback = false;
@@ -395,10 +485,25 @@ export class KimiSoul {
     let turnFinished = false;
     try {
       this.callbacks.onTurnBegin?.(userInput);
-      this._wireLog({ type: "turn_begin", user_input: typeof userInput === "string" ? userInput : "[complex]" });
+      await this._wireLog({ type: "TurnBegin", user_input: typeof userInput === "string" ? [{ type: "text", text: userInput }] : userInput });
       turnStarted = true;
-      await this._turn(userInput);
-      this._wireLog({ type: "turn_end" });
+
+      // Slash command dispatch — inside turn lifecycle, matching Python soul/kimisoul.py:505-521.
+      // TurnBegin has already been emitted with the original user input (e.g. "/skill:foo").
+      const commandCall = this._parseSlashCommand(userInput);
+      if (commandCall) {
+        const command = this.agent.slashCommands.get(commandCall.name);
+        if (command) {
+          await command.handler(commandCall.args);
+        } else {
+          // Unknown command (shouldn't happen — Shell already filtered)
+          this.notify("Unknown command", `Unknown slash command "/${commandCall.name}".`);
+        }
+      } else {
+        await this._turn(userInput);
+      }
+
+      await this._wireLog({ type: "TurnEnd" });
       this.callbacks.onTurnEnd?.();
       turnFinished = true;
     } catch (err) {
@@ -418,7 +523,7 @@ export class KimiSoul {
       }
     } finally {
       if (turnStarted && !turnFinished) {
-        this._wireLog({ type: "turn_end" });
+        await this._wireLog({ type: "TurnEnd" });
         this.callbacks.onTurnEnd?.();
       }
       this._isRunning = false;
@@ -442,9 +547,36 @@ export class KimiSoul {
     this._pendingSteers.push(msg);
   }
 
+  // ── Slash command parsing ──────────────────────────
+
+  /**
+   * Parse a slash command from user input.
+   * Mirrors Python utils/slashcmd.py:parse_slash_command_call()
+   */
+  private _parseSlashCommand(
+    userInput: string | ContentPart[],
+  ): { name: string; args: string } | null {
+    const text =
+      typeof userInput === "string" ? userInput.trim() : "";
+    if (!text || !text.startsWith("/")) return null;
+
+    const match = text.match(/^\/([a-zA-Z0-9_-]+(?::[a-zA-Z0-9_-]+)*)/);
+    if (!match || !match[1]) return null;
+
+    const name = match[1];
+    const rest = text.slice(match[0].length);
+    // If there's a non-space character immediately after the command name, it's not a valid command
+    if (rest.length > 0 && !/^\s/.test(rest)) return null;
+
+    return { name, args: rest.trim() };
+  }
+
   // ── Turn execution ──────────────────────────────
 
   private async _turn(userInput: string | ContentPart[]): Promise<void> {
+    // Create checkpoint before appending user message (mirrors Python: self._checkpoint())
+    await this.context.checkpoint();
+    
     // Append user message
     const userMsg: Message = {
       role: "user",
@@ -482,6 +614,7 @@ export class KimiSoul {
 
       // Execute one step
       this._stepCount++;
+      await this._wireLog({ type: "StepBegin", n: this._stepCount });
       this.callbacks.onStepBegin?.(this._stepCount);
 
       const maxRetries = this.agent.runtime.config.loop_control.max_retries_per_step;
@@ -515,18 +648,44 @@ export class KimiSoul {
    * Execute tools and append results to context.
    * This is "shielded" from abort to keep context consistent —
    * once we start appending, we finish even if abort fires.
+   * 
+   * Mirrors Python's concurrent tool execution pattern:
+   * - Tool calls are dispatched as concurrent promises (not awaited immediately)
+   * - All promises are collected, then awaited together
+   * - Results are appended sequentially to maintain context order
    */
   private async _executeToolsShielded(toolCalls: ToolCall[]): Promise<void> {
-    // Execute all tools concurrently
+    // Phase 1: Dispatch all tool calls as concurrent promises (non-blocking)
+    // This mirrors Python's toolset.handle() which returns asyncio.Task immediately
+    const toolPromises = toolCalls.map((tc) => ({
+      tc,
+      promise: this.agent.toolset.handle(tc),
+    }));
+
+    // Phase 2: Collect all results concurrently
+    // All tool executions run in parallel, but we wait for all to complete
     const results = await Promise.all(
-      toolCalls.map(async (tc) => {
-        // Check abort before starting, but don't interrupt mid-execution
+      toolPromises.map(async (item) => {
+        // Check abort before waiting for result, but don't interrupt mid-execution
         if (this.abortController?.signal.aborted) return null;
-        return { tc, result: await this.agent.toolset.handle(tc) };
+        try {
+          return { tc: item.tc, result: await item.promise };
+        } catch (err) {
+          // Tool execution failed — wrap as error result
+          return {
+            tc: item.tc,
+            result: {
+              isError: true,
+              output: "",
+              message: `Tool execution failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          };
+        }
       }),
     );
 
-    // Append results sequentially to maintain context order consistency
+    // Phase 3: Append results sequentially to maintain context order consistency
+    // This is where sequential coordination happens even though execution was concurrent
     for (const entry of results) {
       if (!entry) continue;
       const { tc, result } = entry;
@@ -545,6 +704,18 @@ export class KimiSoul {
         isError: result.isError,
         message: result.message,
       });
+
+      // Wire log the tool result (matching Python format)
+      await this._wireLog({
+        type: "ToolResult",
+        tool_call_id: tc.id,
+        return_value: {
+          is_error: result.isError,
+          output: result.output,
+        },
+        display: result.display ?? [],
+      });
+
       // Append atomically — even if abort was signaled during tool execution,
       // we still append the result to keep context consistent
       await this.context.appendMessage(resultMsg);
@@ -676,16 +847,39 @@ export class KimiSoul {
       await this.context.updateTokenCount(usage);
     }
 
-    // Wire log step results
+    // Wire log step results (order matches Python: think → text → toolcalls → status)
+    if (thinkText) {
+      await this._wireLog({ type: "ContentPart", payload: { type: "think", think: thinkText } });
+    }
     if (assistantText) {
-      this._wireLog({ type: "text_part", text: assistantText });
+      await this._wireLog({ type: "ContentPart", payload: { type: "text", text: assistantText } });
     }
     for (const tc of toolCalls) {
-      this._wireLog({ type: "tool_call", name: tc.name, id: tc.id });
+      // Match Python ToolCall format: {type:"function", id, function:{name, arguments}}
+      await this._wireLog({
+        type: "ToolCall",
+        payload: {
+          type: "function",
+          id: tc.id,
+          function: { name: tc.name, arguments: tc.arguments },
+        },
+      });
     }
 
-    // Send status update
-    this.callbacks.onStatusUpdate?.(this.status);
+    // Wire log + callback status update
+    const snap = this.status;
+    await this._wireLog({
+      type: "StatusUpdate",
+      context_usage: snap.contextUsage ?? null,
+      context_tokens: snap.contextTokens ?? null,
+      max_context_tokens: snap.maxContextTokens ?? null,
+      token_usage: usage ?? null,
+      message_id: null,
+      plan_mode: snap.planMode ?? false,
+      yolo: snap.yoloEnabled ?? false,
+      mcp_status: null,
+    });
+    this.callbacks.onStatusUpdate?.(snap);
 
     return toolCalls;
   }
@@ -737,14 +931,27 @@ export class KimiSoul {
   wireSlashCommands(): void {
     const registry = this.agent.slashCommands;
 
-    // Wire /clear
+    // Wire /clear — soul-level handler clears context + wire file.
+    // The shell-level /clear handler orchestrates: clearMessages() + soulClear() + triggerReload().
     const clearCmd = registry.get("clear");
     if (clearCmd) {
       clearCmd.handler = async () => {
         await this.context.clear();
         await this.context.writeSystemPrompt(this.agent.systemPrompt);
+        // Truncate wire.jsonl so replay doesn't re-show old messages after reload.
+        // Python achieves this implicitly: replay_recent_history() checks
+        // context.history (empty after clear) and returns early.
+        const wireFile = this.agent.runtime.session.wireFile;
+        if (wireFile) {
+          try {
+            const { writeFile } = await import("node:fs/promises");
+            await writeFile(wireFile, "");
+          } catch { /* best-effort */ }
+        }
         logger.info("Context cleared");
         this.callbacks.onStatusUpdate?.(this.status);
+        // Trigger reload — mirrors Python: shell raises Reload() after run_soul_command("/clear")
+        this.callbacks.onReload?.(this.agent.runtime.session.id);
       };
     }
 
@@ -753,14 +960,20 @@ export class KimiSoul {
     if (compactCmd) {
       compactCmd.handler = async (args: string) => {
         if (this.context.nCheckpoints === 0) {
-          logger.info("The context is empty.");
-          return;
+          return "The context is empty.";
         }
         const llm = this.agent.runtime.llm;
         if (!llm) return;
         logger.info("Running `/compact`");
-        await compactContext(this.context, llm, { focus: args || undefined });
+        this.callbacks.onCompactionBegin?.();
+        try {
+          await compactContext(this.context, llm, this.agent, { focus: args || undefined });
+        } finally {
+          this.callbacks.onCompactionEnd?.();
+        }
         this.callbacks.onStatusUpdate?.(this.status);
+        logger.info("Context has been compacted.");
+        return "The context has been compacted.";
       };
     }
 
@@ -771,10 +984,12 @@ export class KimiSoul {
         if (this.agent.runtime.approval.isYolo()) {
           this.agent.runtime.approval.setYolo(false);
           logger.info("YOLO mode: OFF");
+          this.callbacks.onStatusUpdate?.(this.status);
           return "You only die once! Actions will require approval.";
         } else {
           this.agent.runtime.approval.setYolo(true);
           logger.info("YOLO mode: ON");
+          this.callbacks.onStatusUpdate?.(this.status);
           return "You only live once! All actions will be auto-approved.";
         }
       };
@@ -788,32 +1003,28 @@ export class KimiSoul {
         if (subcmd === "on") {
           if (!this._planMode) await this.togglePlanModeFromManual();
           const planPath = this.getPlanFilePath();
-          logger.info(`Plan mode ON. Plan file: ${planPath}`);
           this.callbacks.onStatusUpdate?.({ planMode: this._planMode });
+          return `Plan mode ON. Plan file: ${planPath}`;
         } else if (subcmd === "off") {
           if (this._planMode) await this.togglePlanModeFromManual();
-          logger.info("Plan mode OFF. All tools are now available.");
           this.callbacks.onStatusUpdate?.({ planMode: this._planMode });
+          return "Plan mode OFF. All tools are now available.";
         } else if (subcmd === "view") {
           const content = this.readCurrentPlan();
-          if (content) {
-            logger.info(content);
-          } else {
-            logger.info("No plan file found for this session.");
-          }
+          return content ?? "No plan file found for this session.";
         } else if (subcmd === "clear") {
           this.clearCurrentPlan();
-          logger.info("Plan cleared.");
+          return "Plan cleared.";
         } else {
           // Default: toggle
           const newState = await this.togglePlanModeFromManual();
+          this.callbacks.onStatusUpdate?.({ planMode: this._planMode });
           if (newState) {
             const planPath = this.getPlanFilePath();
-            logger.info(`Plan mode ON. Write your plan to: ${planPath}`);
+            return `Plan mode ON. Write your plan to: ${planPath}\nUse ExitPlanMode when done, or /plan off to exit manually.`;
           } else {
-            logger.info("Plan mode OFF. All tools are now available.");
+            return "Plan mode OFF. All tools are now available.";
           }
-          this.callbacks.onStatusUpdate?.({ planMode: this._planMode });
         }
       };
     }
@@ -822,18 +1033,28 @@ export class KimiSoul {
     const modelCmd = registry.get("model");
     if (modelCmd) {
       const notify = (t: string, b: string) => this.notify(t, b);
+      const onReload = (sessionId: string, prefillText?: string) => {
+        this.callbacks.onReload?.(sessionId, prefillText);
+      };
       const configMeta = { isFromDefaultLocation: true, sourceFile: null };
       modelCmd.handler = async () => {
         await handleModel(this.agent.runtime.config, configMeta, notify);
       };
-      modelCmd.panel = () => createModelPanel(this.agent.runtime.config, configMeta, notify);
+      modelCmd.panel = () =>
+        createModelPanel(
+          this.agent.runtime.config,
+          configMeta,
+          notify,
+          this.agent.runtime.session.id,
+          onReload,
+        );
     }
 
     // Wire /export
     const exportCmd = registry.get("export");
     if (exportCmd) {
       exportCmd.handler = async (args: string) => {
-        await handleExport(this.context, this.agent.runtime.session, args);
+        return await handleExport(this.context, this.agent.runtime.session, args);
       };
     }
 
@@ -841,7 +1062,7 @@ export class KimiSoul {
     const importCmd = registry.get("import");
     if (importCmd) {
       importCmd.handler = async (args: string) => {
-        await handleImport(this.context, this.agent.runtime.session, args);
+        return await handleImport(this.context, this.agent.runtime.session, args);
       };
     }
 
@@ -849,7 +1070,7 @@ export class KimiSoul {
     const webCmd = registry.get("web");
     if (webCmd) {
       webCmd.handler = async () => {
-        handleWeb(this.agent.runtime.session.id);
+        return handleWeb(this.agent.runtime.session.id);
       };
     }
 
@@ -857,7 +1078,7 @@ export class KimiSoul {
     const visCmd = registry.get("vis");
     if (visCmd) {
       visCmd.handler = async () => {
-        handleVis(this.agent.runtime.session.id);
+        return handleVis(this.agent.runtime.session.id);
       };
     }
 
@@ -865,7 +1086,7 @@ export class KimiSoul {
     const reloadCmd = registry.get("reload");
     if (reloadCmd) {
       reloadCmd.handler = async () => {
-        handleReload();
+        return handleReload();
       };
     }
 
@@ -873,7 +1094,7 @@ export class KimiSoul {
     const taskCmd = registry.get("task");
     if (taskCmd) {
       taskCmd.handler = async () => {
-        handleTask();
+        return handleTask();
       };
     }
 
@@ -899,7 +1120,7 @@ export class KimiSoul {
     const usageCmd = registry.get("usage");
     if (usageCmd) {
       usageCmd.handler = async () => {
-        await handleUsage(this.agent.runtime.config, this.agent.runtime.config.default_model || undefined);
+        return await handleUsage(this.agent.runtime.config, this.agent.runtime.config.default_model || undefined);
       };
     }
 
@@ -907,7 +1128,7 @@ export class KimiSoul {
     const feedbackCmd = registry.get("feedback");
     if (feedbackCmd) {
       feedbackCmd.handler = async (args: string) => {
-        await handleFeedback(
+        return await handleFeedback(
           this.agent.runtime.config,
           args,
           this.agent.runtime.session.id,
@@ -928,7 +1149,7 @@ export class KimiSoul {
       const editorNotify = (t: string, b: string) => this.notify(t, b);
       const editorConfigMeta = { isFromDefaultLocation: true, sourceFile: null };
       editorCmd.handler = async (args: string) => {
-        await handleEditor(this.agent.runtime.config, editorConfigMeta, args);
+        return await handleEditor(this.agent.runtime.config, editorConfigMeta, args);
       };
       editorCmd.panel = () => createEditorPanel(this.agent.runtime.config, editorConfigMeta, editorNotify);
     }
@@ -937,7 +1158,7 @@ export class KimiSoul {
     const hooksCmd = registry.get("hooks");
     if (hooksCmd) {
       hooksCmd.handler = async () => {
-        handleHooks(this.agent.runtime.hookEngine);
+        return handleHooks(this.agent.runtime.hookEngine);
       };
       hooksCmd.panel = () => createHooksPanel(this.agent.runtime.hookEngine);
     }
@@ -946,7 +1167,7 @@ export class KimiSoul {
     const mcpCmd = registry.get("mcp");
     if (mcpCmd) {
       mcpCmd.handler = async () => {
-        handleMcp(this.agent.runtime.config);
+        return handleMcp(this.agent.runtime.config);
       };
       mcpCmd.panel = () => createMcpPanel(this.agent.runtime.config);
     }
@@ -955,7 +1176,7 @@ export class KimiSoul {
     const debugCmd = registry.get("debug");
     if (debugCmd) {
       debugCmd.handler = async () => {
-        handleDebug(this.context);
+        return handleDebug(this.context);
       };
       debugCmd.panel = () => createDebugPanel(this.context);
     }
@@ -964,7 +1185,7 @@ export class KimiSoul {
     const changelogCmd = registry.get("changelog");
     if (changelogCmd) {
       changelogCmd.handler = async () => {
-        handleChangelog();
+        return handleChangelog();
       };
       changelogCmd.panel = () => createChangelogPanel();
     }
@@ -973,7 +1194,7 @@ export class KimiSoul {
     const newCmd = registry.get("new");
     if (newCmd) {
       newCmd.handler = async () => {
-        await handleNew(this.agent.runtime.session);
+        return await handleNew(this.agent.runtime.session);
       };
     }
 
@@ -981,7 +1202,7 @@ export class KimiSoul {
     const sessionsCmd = registry.get("sessions");
     if (sessionsCmd) {
       sessionsCmd.handler = async () => {
-        await handleSessions(this.agent.runtime.session);
+        return await handleSessions(this.agent.runtime.session);
       };
       sessionsCmd.panel = () => createSessionsPanel(
         this.agent.runtime.session,
@@ -994,7 +1215,7 @@ export class KimiSoul {
     const titleCmd = registry.get("title");
     if (titleCmd) {
       titleCmd.handler = async (args: string) => {
-        await handleTitle(this.agent.runtime.session, args);
+        return await handleTitle(this.agent.runtime.session, args);
       };
       titleCmd.panel = () => createTitlePanel(
         this.agent.runtime.session,
@@ -1006,14 +1227,7 @@ export class KimiSoul {
     const initCmd = registry.get("init");
     if (initCmd) {
       initCmd.handler = async () => {
-        const result = await handleInit(this.agent.runtime.session.workDir);
-        if (result) {
-          // Inject the generated AGENTS.md into context so the LLM knows about it
-          await this.context.appendMessage({
-            role: "user",
-            content: `The user ran /init. Generated AGENTS.md:\n${result}`,
-          });
-        }
+        return await handleInit(this.agent.runtime.session.workDir);
       };
     }
 
@@ -1021,18 +1235,11 @@ export class KimiSoul {
     const addDirCmd = registry.get("add-dir");
     if (addDirCmd) {
       addDirCmd.handler = async (args: string) => {
-        const result = await handleAddDir(
+        return await handleAddDir(
           this.agent.runtime.session,
           this.agent.runtime.session.workDir,
           args,
         );
-        if (result) {
-          // Inject directory info into context so the LLM knows about it
-          await this.context.appendMessage({
-            role: "user",
-            content: result,
-          });
-        }
       };
     }
   }
@@ -1050,15 +1257,60 @@ export class KimiSoul {
 
   /**
    * Append a wire event to the session's wire.jsonl file.
-   * Used for session title generation and debugging.
+   * Matches Python's wire.jsonl format exactly:
+   * - First line: {"type":"metadata","protocol_version":"1.8"}
+   * - Subsequent lines: {"timestamp":float,"message":{"type":"TypeName","payload":{...}}}
+   *
+   * Event format:
+   * - { type: "TurnBegin", user_input: "..." }
+   * - { type: "text_part", text: "..." }
+   * - { type: "ContentPart", payload: { type: "think", thinking: "..." } }
+   * - { type: "tool_call", name: "...", id: "..." }
    */
   private async _wireLog(event: Record<string, unknown>): Promise<void> {
     const wireFile = this.agent.runtime.session.wireFile;
     if (!wireFile) return;
     try {
-      const { appendFile } = await import("node:fs/promises");
-      const line = JSON.stringify({ ...event, ts: Date.now() }) + "\n";
-      await appendFile(wireFile, line, "utf-8");
+      const { appendFile, stat } = await import("node:fs/promises");
+      const { dirname } = await import("node:path");
+
+      // Ensure directory exists
+      await import("node:fs/promises")
+        .then(m => m.mkdir(dirname(wireFile), { recursive: true }))
+        .catch(() => {});
+
+      // Check if file is empty (need metadata header)
+      let needsMetadata = false;
+      try {
+        const stats = await stat(wireFile);
+        needsMetadata = stats.size === 0;
+      } catch {
+        needsMetadata = true;  // File doesn't exist
+      }
+
+      let content = "";
+
+      // Write metadata header on first append
+      if (needsMetadata) {
+        const metadata = { type: "metadata", protocol_version: "1.8" };
+        content += JSON.stringify(metadata) + "\n";
+      }
+
+      // Extract type and build payload
+      const { type, payload, ...otherFields } = event;
+      const finalPayload = payload || otherFields;
+
+      // Write the message record in Python-compatible format
+      const record = {
+        timestamp: Date.now() / 1000,  // Convert ms to float seconds
+        message: {
+          type,
+          payload: finalPayload,
+        },
+      };
+      content += JSON.stringify(record) + "\n";
+
+      await appendFile(wireFile, content, "utf-8");
     } catch {
       // Wire logging is best-effort — don't crash on failure
     }
@@ -1071,6 +1323,7 @@ import type { Flow, FlowNode, FlowEdge } from "../skill/flow/index.ts";
 import { parseChoice } from "../skill/flow/index.ts";
 
 const DEFAULT_MAX_FLOW_MOVES = 1000;
+const SKILL_COMMAND_PREFIX = "skill:";
 const FLOW_COMMAND_PREFIX = "flow:";
 
 interface FlowTurnResult {
@@ -1277,7 +1530,7 @@ export class FlowRunner {
     const stepsAfter = soul["_stepCount"];
 
     // Extract final assistant text from context
-    const history = soul["context"].messages;
+    const history = soul["context"].history;
     const lastMsg = history.length > 0 ? history[history.length - 1] : undefined;
     let finalText: string | undefined;
     if (lastMsg?.role === "assistant") {
@@ -1286,8 +1539,8 @@ export class FlowRunner {
           ? lastMsg.content
           : Array.isArray(lastMsg.content)
             ? lastMsg.content
-                .filter((p): p is { type: "text"; text: string } => "type" in p && p.type === "text")
-                .map((p) => p.text)
+                .filter((p: any): p is { type: "text"; text: string } => "type" in p && p.type === "text")
+                .map((p: any) => p.text)
                 .join(" ")
             : undefined;
     }

@@ -172,6 +172,7 @@ export const StatusUpdate = z.object({
   token_usage: TokenUsage.nullable().default(null),
   message_id: z.string().nullable().default(null),
   plan_mode: z.boolean().nullable().default(null),
+  yolo: z.boolean().nullable().default(null),
   mcp_status: MCPStatusSnapshot.nullable().default(null),
 });
 export type StatusUpdate = z.infer<typeof StatusUpdate>;

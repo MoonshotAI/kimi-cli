@@ -1,7 +1,6 @@
 import { loadTokens } from "../../../auth/oauth.ts";
 import type { Config } from "../../../config.ts";
 import type { CommandPanelConfig } from "../../../types.ts";
-import { logger } from "../../../utils/logging.ts";
 import { platform, release } from "node:os";
 
 const ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues";
@@ -11,12 +10,10 @@ export async function handleFeedback(
   args: string,
   sessionId: string,
   modelKey: string | undefined,
-): Promise<void> {
+): Promise<string> {
   const content = args.trim();
   if (!content) {
-    logger.info("Usage: /feedback <your feedback text>");
-    logger.info(`Or submit at: ${ISSUE_URL}`);
-    return;
+    return `Usage: /feedback <your feedback text>\nOr submit at: ${ISSUE_URL}`;
   }
 
   // Try to find a provider with OAuth for posting feedback
@@ -35,8 +32,7 @@ export async function handleFeedback(
   }
 
   if (!apiKey || !baseUrl) {
-    logger.info(`No authenticated platform found. Please submit feedback at: ${ISSUE_URL}`);
-    return;
+    return `No authenticated platform found. Please submit feedback at: ${ISSUE_URL}`;
   }
 
   const payload = {
@@ -57,13 +53,12 @@ export async function handleFeedback(
       body: JSON.stringify(payload),
     });
     if (res.ok) {
-      logger.info(`Feedback submitted, thank you! Session ID: ${sessionId}`);
+      return `Feedback submitted, thank you! Session ID: ${sessionId}`;
     } else {
-      logger.info(`Failed to submit feedback (HTTP ${res.status}). Try: ${ISSUE_URL}`);
+      return `Failed to submit feedback (HTTP ${res.status}). Try: ${ISSUE_URL}`;
     }
   } catch (err) {
-    logger.info(`Failed to submit feedback: ${err instanceof Error ? err.message : err}`);
-    logger.info(`Please submit at: ${ISSUE_URL}`);
+    return `Failed to submit feedback: ${err instanceof Error ? err.message : err}\nPlease submit at: ${ISSUE_URL}`;
   }
 }
 

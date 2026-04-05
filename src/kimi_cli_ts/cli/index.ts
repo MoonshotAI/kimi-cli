@@ -271,6 +271,8 @@ program
       let unmount: (() => void) | undefined;
       // pushEvent — hoisted so the outer catch block can push errors to the UI
       let pushEvent: ((event: WireUIEvent) => void) | null = null;
+      // disableBracketedPaste — hoisted so the outer catch block can cleanup bracketed paste mode
+      let disableBracketedPaste: (() => void) | undefined;
 
       try {
         if (options.print) {
@@ -305,6 +307,9 @@ program
             maxStepsPerTurn: options.maxStepsPerTurn ?? options.maxRetriesPerStep,
             callbacks,
           });
+
+          // Wire subagent event sink for print mode (output logging only)
+          app.agent.runtime.subagentEventSink = () => {};
 
           if (prompt) await app.runPrint(prompt);
           printResumeHint(app.session);
@@ -344,6 +349,15 @@ program
             // pushEvent will be set by Shell's onWireReady callback
             pushEvent = null;
 
+            // inkUnmount will be set after render() — captured here so callbacks can trigger reload
+            let inkUnmountFn: (() => void) | null = null;
+
+            // Helper: trigger reload from anywhere (SoulCallbacks or Shell prop)
+            const triggerReload = (sessionId: string, prefillText?: string) => {
+              pendingReload = { sessionId, prefillText };
+              inkUnmountFn?.();
+            };
+
             const callbacks: SoulCallbacks = {
               onTurnBegin: (userInput) => {
                 const text =
@@ -373,6 +387,16 @@ program
                 });
               },
               onToolResult: (toolCallId, result) => {
+                // Build display blocks — include brief for rejected-with-feedback
+                const display: unknown[] = result.display ?? [];
+                if (result.isError && result.message?.includes("User feedback:") && display.length === 0) {
+                  const match = result.message.match(/User feedback: (.+)$/);
+                  if (match) {
+                    display.push({ type: "brief", brief: `Rejected: ${match[1]}` });
+                  }
+                } else if (result.isError && result.message?.includes("rejected by the user") && display.length === 0) {
+                  display.push({ type: "brief", brief: "Rejected by user" });
+                }
                 pushEvent?.({
                   type: "tool_result",
                   toolCallId,
@@ -383,7 +407,7 @@ program
                       output: result.output,
                       message: result.message,
                     },
-                    display: [],
+                    display,
                   },
                 });
               },
@@ -397,6 +421,7 @@ program
                     token_usage: status.tokenUsage ?? null,
                     message_id: null,
                     plan_mode: status.planMode ?? null,
+                    yolo: status.yoloEnabled ?? null,
                     mcp_status: null,
                   },
                 });
@@ -412,6 +437,9 @@ program
               },
               onNotification: (title, body) => {
                 pushEvent?.({ type: "notification", title, body });
+              },
+              onReload: (sessionId, prefillText) => {
+                triggerReload(sessionId, prefillText);
               },
             };
 
@@ -429,9 +457,32 @@ program
               callbacks,
             });
 
+            // Wire subagent event sink so subagent runner can forward events to UI.
+            // This bridges the subagent's SoulCallbacks → parent pushEvent as SubagentEvent.
+            app.agent.runtime.subagentEventSink = (event) => {
+              pushEvent?.(event as any);
+            };
+
             // Patch Ink's log-update with our cell-level diffing renderer.
             // This must happen before render() creates the Ink instance.
             patchInkLogUpdate();
+
+            // Enable bracketed paste mode so terminal doesn't show paste warning.
+            // This tells the terminal (e.g., VSCode) that we handle large pastes.
+            process.stdout.write("\x1b[?2004h");
+            disableBracketedPaste = () => {
+              process.stdout.write("\x1b[?2004l");
+            };
+
+            // Check if stdin is a proper TTY for Ink's raw mode support
+            const isRawModeSupported = process.stdin.isTTY === true;
+            if (!isRawModeSupported) {
+              console.error("Error: Kimi CLI requires an interactive terminal.");
+              console.error("Raw mode is not supported on stdin. Make sure you're running:");
+              console.error("  bun run start");
+              console.error("(not piping stdin from another command)");
+              process.exit(1);
+            }
 
             const { waitUntilExit, unmount: inkUnmount } = render(
               React.createElement(Shell, {
@@ -461,16 +512,31 @@ program
                 },
                 onWireReady: (pe) => {
                   pushEvent = pe;
+                  // Emit initial status so StatusBar shows context tokens at startup
+                  const initStatus = app.soul.status;
+                  pe({
+                    type: "status_update",
+                    status: {
+                      context_usage: initStatus.contextUsage ?? null,
+                      context_tokens: initStatus.contextTokens ?? null,
+                      max_context_tokens: initStatus.maxContextTokens ?? null,
+                      token_usage: initStatus.tokenUsage ?? null,
+                      message_id: null,
+                      plan_mode: initStatus.planMode ?? null,
+                      yolo: initStatus.yoloEnabled ?? null,
+                      mcp_status: null,
+                    },
+                  });
                 },
                 onReload: (newSessionId: string, prefill?: string) => {
-                  pendingReload = { sessionId: newSessionId, prefillText: prefill };
-                  inkUnmount();
+                  triggerReload(newSessionId, prefill);
                 },
                 extraSlashCommands: app.soul.availableSlashCommands,
               }),
               { exitOnCtrlC: false },
             );
             unmount = inkUnmount;
+            inkUnmountFn = inkUnmount;
 
             // Start background task to forward RootWireHub events to UI
             let rootHubQueue: any = null;
@@ -487,12 +553,23 @@ program
                       "tool_call_id" in msg &&
                       "sender" in msg
                     ) {
-                      // ApprovalRequest
+                      // ApprovalRequest — enrich with source_description from subagent store
+                      // (mirrors Python's _enrich_approval_request_for_ui)
+                      const request = msg as any;
+                      if (request.agent_id && !request.source_description && app.soul.runtime.subagentStore) {
+                        const record = app.soul.runtime.subagentStore.getInstance(request.agent_id);
+                        if (record) {
+                          request.source_description = record.description;
+                        }
+                      }
                       pushEvent?.({
                         type: "approval_request",
-                        request: msg as any,
+                        request,
                       });
                     }
+                    // NOTE: ApprovalResponse is NOT forwarded here.
+                    // Responses flow through handleApprovalResponse → wire.pushEvent
+                    // to avoid double-processing.
                   }
                 } catch (err) {
                   // Queue shutdown or error
@@ -511,6 +588,7 @@ program
             }
 
             await waitUntilExit();
+            disableBracketedPaste();
             if (rootHubQueue && app.soul.runtime.rootWireHub) {
               app.soul.runtime.rootWireHub.unsubscribe(rootHubQueue);
             }
@@ -530,6 +608,8 @@ program
           }
         }
       } catch (err) {
+        // Clean up bracketed paste mode on error
+        disableBracketedPaste?.();
         if (isReload(err)) {
           // Shouldn't happen with the new loop, but handle gracefully
           console.error("Unexpected reload — restarting is not supported here.");

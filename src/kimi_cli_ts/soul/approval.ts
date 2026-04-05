@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import {
   ApprovalRuntime,
   ApprovalCancelledError,
+  getCurrentApprovalSourceOrNull,
   type ApprovalResponseKind,
   type ApprovalSource,
 } from "../approval_runtime/index.ts";
@@ -90,7 +91,12 @@ export class Approval {
     },
   ): Promise<ApprovalResult> {
     const toolCallId = opts?.toolCallId ?? randomUUID();
-    const source: ApprovalSource = opts?.source ?? { kind: "foreground_turn", id: toolCallId };
+    // Read approval source from AsyncLocalStorage context (set by subagent runner),
+    // fall back to explicit opts.source, then default.
+    // Mirrors Python: get_current_approval_source_or_none() or ApprovalSource(...)
+    const source: ApprovalSource = opts?.source
+      ?? getCurrentApprovalSourceOrNull()
+      ?? { kind: "foreground_turn", id: toolCallId };
 
     if (this.state.yolo) return new ApprovalResult(true);
     if (this.state.autoApproveActions.has(action)) return new ApprovalResult(true);

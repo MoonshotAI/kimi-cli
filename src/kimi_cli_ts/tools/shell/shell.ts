@@ -6,7 +6,7 @@
 import { z } from "zod/v4";
 import { CallableTool } from "../base.ts";
 import type { ToolContext, ToolResult } from "../types.ts";
-import { ToolError, ToolResultBuilder } from "../types.ts";
+import { ToolError, ToolRejectedError, ToolResultBuilder } from "../types.ts";
 
 const MAX_FOREGROUND_TIMEOUT = 5 * 60; // 5 minutes
 const MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60; // 24 hours
@@ -126,7 +126,7 @@ export class Shell extends CallableTool<typeof ParamsSchema> {
     }
 
     // Request approval
-    const decision = await ctx.approval(
+    const { decision, feedback } = await ctx.approval(
       "Shell",
       "run command",
       `Run command \`${params.command}\``,
@@ -141,9 +141,13 @@ export class Shell extends CallableTool<typeof ParamsSchema> {
       },
     );
     if (decision === "reject") {
-      return ToolError(
-        "The tool call is rejected by the user. Stop what you are doing and wait for the user to tell you how to proceed.",
-      );
+      return new ToolRejectedError({
+        message: feedback
+          ? `The tool call is rejected by the user. User feedback: ${feedback}`
+          : undefined,
+        brief: feedback ? `Rejected: ${feedback}` : "Rejected by user",
+        hasFeedback: !!feedback,
+      }).toToolResult();
     }
 
     try {

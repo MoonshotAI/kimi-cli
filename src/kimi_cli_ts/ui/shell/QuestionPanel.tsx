@@ -191,7 +191,7 @@ export function QuestionPanel({
   useInput((input, key) => {
     // Other text input mode
     if (otherMode) {
-      if (key.return) {
+      if (key.return || key.enter) {
         submitOther(otherText.trim());
         return;
       }
@@ -241,7 +241,7 @@ export function QuestionPanel({
         }
         return next;
       });
-    } else if (key.return) {
+    } else if (key.return || key.enter) {
       submitCurrent();
     } else if (key.escape) {
       onCancel();

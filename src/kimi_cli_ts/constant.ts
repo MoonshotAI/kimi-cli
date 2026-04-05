@@ -13,7 +13,7 @@ export function getVersion(): string {
   if (_version) return _version;
   try {
     // Read version from package.json at build/runtime
-    const pkgPath = join(import.meta.dir, "../../../package.json");
+    const pkgPath = join(import.meta.dir, "../../package.json");
     const pkg = require(pkgPath);
     _version = String(pkg.version ?? "0.0.0");
   } catch {

@@ -4,6 +4,7 @@
  * currentToolCall tracking, and sessionId context.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { CallableTool } from "../tools/base.ts";
 import { ToolRegistry } from "../tools/registry.ts";
 import type { ToolContext, ToolResult } from "../tools/types.ts";
@@ -11,9 +12,12 @@ import type { HookEngine } from "../hooks/engine.ts";
 import type { ToolCall } from "../types.ts";
 import { logger } from "../utils/logging.ts";
 
-// ── Context variables (module-level singletons) ──────
+// ── Context variables ─────────────────────────────────
+// Use AsyncLocalStorage to mirror Python's ContextVar behavior:
+// each concurrent execution (Promise / asyncio.Task) gets its own
+// value, preventing races when multiple tools run in parallel.
 
-let _currentToolCall: ToolCall | null = null;
+const _toolCallStorage = new AsyncLocalStorage<ToolCall | null>();
 let _currentSessionId = "";
 
 /** Set the current session ID for tool call context. */
@@ -28,7 +32,7 @@ export function getSessionId(): string {
 
 /** Get the current tool call, or null if not in a tool execution. */
 export function getCurrentToolCallOrNull(): ToolCall | null {
-  return _currentToolCall;
+  return _toolCallStorage.getStore() ?? null;
 }
 
 export interface ToolsetOptions {
@@ -92,12 +96,36 @@ export class KimiToolset {
 
   // ── Tool execution with hooks ────────────────────
 
-  async handle(toolCall: ToolCall): Promise<ToolResult> {
-    const { id, name, arguments: argsStr } = toolCall;
+  /**
+   * Dispatch a tool call asynchronously.
+   *
+   * Returns a Promise that is already running (not awaited here),
+   * so the caller can fire multiple handles concurrently and collect
+   * them with Promise.all().
+   *
+   * Mirrors Python's pattern where toolset.handle() returns
+   * asyncio.create_task(_call()) — the task starts immediately and
+   * inherits the ContextVar value set before creation.
+   *
+   * We use AsyncLocalStorage.run() to give each execution its own
+   * currentToolCall value (Python ContextVar equivalent).
+   */
+  handle(toolCall: ToolCall): Promise<ToolResult> {
+    // Run the async execution inside an AsyncLocalStorage context
+    // so getCurrentToolCallOrNull() returns the correct tool call
+    // for each concurrent execution — mirrors Python ContextVar.
+    return _toolCallStorage.run(toolCall, () =>
+      this._executeToolAsync(toolCall),
+    );
+  }
 
-    // Set current tool call context
-    const prevToolCall = _currentToolCall;
-    _currentToolCall = toolCall;
+  /**
+   * Execute a single tool call with hooks.
+   * Runs inside AsyncLocalStorage context — getCurrentToolCallOrNull()
+   * returns the correct ToolCall throughout the execution.
+   */
+  private async _executeToolAsync(toolCall: ToolCall): Promise<ToolResult> {
+    const { id, name, arguments: argsStr } = toolCall;
 
     try {
       // Notify about tool call
@@ -179,9 +207,15 @@ export class KimiToolset {
       this.onToolResult?.(id, result);
 
       return result;
-    } finally {
-      // Restore previous tool call context
-      _currentToolCall = prevToolCall;
+    } catch (err) {
+      // Defensive: catch any unexpected errors so the caller never hangs
+      const result: ToolResult = {
+        isError: true,
+        output: "",
+        message: `Tool "${name}" error: ${err instanceof Error ? err.message : String(err)}`,
+      };
+      this.onToolResult?.(id, result);
+      return result;
     }
   }
 

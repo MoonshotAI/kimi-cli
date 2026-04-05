@@ -7,7 +7,7 @@ import { resolve, dirname } from "node:path";
 import { z } from "zod/v4";
 import { CallableTool } from "../base.ts";
 import type { ToolContext, ToolResult } from "../types.ts";
-import { ToolError } from "../types.ts";
+import { ToolError, ToolRejectedError } from "../types.ts";
 import { inspectPlanEditTarget } from "./plan_mode.ts";
 import type { DiffDisplayBlock } from "../display.ts";
 
@@ -148,15 +148,19 @@ export class WriteFile extends CallableTool<typeof ParamsSchema> {
           ? `${params.mode === "append" ? "Append to" : "Overwrite"} file \`${params.path}\`${diffPreview ? `\n${diffPreview}` : ""}`
           : `Create file \`${params.path}\` (${params.content.length} chars)`;
 
-        const decision = await ctx.approval(
+        const { decision, feedback } = await ctx.approval(
           "WriteFile",
           fileExisted ? "edit" : "create",
           approvalSummary,
         );
         if (decision === "reject") {
-          return ToolError(
-            "The tool call is rejected by the user. Stop what you are doing and wait for the user to tell you how to proceed.",
-          );
+          return new ToolRejectedError({
+            message: feedback
+              ? `The tool call is rejected by the user. User feedback: ${feedback}`
+              : undefined,
+            brief: feedback ? `Rejected: ${feedback}` : "Rejected by user",
+            hasFeedback: !!feedback,
+          }).toToolResult();
         }
       }
 

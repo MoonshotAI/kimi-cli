@@ -25,6 +25,10 @@ export interface Skill {
 // ── Directory discovery ──
 
 export function getBuiltinSkillsDir(): string {
+  // Builtin skills are shared with the Python version under src/kimi_cli/skills/
+  // Fall back to TS-local directory if it exists
+  const pySkillsDir = join(dirname(new URL(import.meta.url).pathname), "..", "..", "kimi_cli", "skills");
+  if (existsSync(pySkillsDir)) return pySkillsDir;
   return join(dirname(new URL(import.meta.url).pathname), "..", "skills");
 }
 

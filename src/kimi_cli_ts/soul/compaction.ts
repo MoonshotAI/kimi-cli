@@ -7,6 +7,7 @@
 import type { LLM } from "../llm.ts";
 import type { Message } from "../types.ts";
 import type { Context } from "./context.ts";
+import type { Agent } from "./agent.ts";
 import { logger } from "../utils/logging.ts";
 
 /** Default number of recent user/assistant turns to preserve during compaction. */
@@ -21,7 +22,7 @@ export function estimateTextTokens(messages: readonly Message[]): number {
   for (const msg of messages) {
     if (typeof msg.content === "string") {
       totalChars += msg.content.length;
-    } else {
+    } else if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
         if (part.type === "text") {
           totalChars += part.text.length;
@@ -75,10 +76,22 @@ export function prepareCompaction(
 /**
  * Simple compaction strategy: ask the LLM to summarize the conversation.
  * Preserves recent messages verbatim.
+ * 
+ * Mirrors Python KimiSoul.compact_context() behavior:
+ * 1. Call onBegin hook
+ * 2. Prepare messages (split into to-compact and to-preserve)
+ * 3. Call LLM to summarize (with fallback)
+ * 4. Clear context
+ * 5. Write system prompt
+ * 6. Create checkpoint
+ * 7. Append summary + preserved messages
+ * 8. Update token count estimate
+ * 9. Call onEnd hook
  */
 export async function compactContext(
   context: Context,
   llm: LLM,
+  agent?: Agent,
   opts?: {
     focus?: string;
     maxPreservedMessages?: number;
@@ -125,8 +138,11 @@ export async function compactContext(
       summary = buildFallbackSummary(toCompact);
     }
 
-    // Clear context and inject summary + preserved messages
+    // Clear context and rotate backup (preserves system prompt)
     await context.compact();
+    
+    // Create checkpoint (mirrors Python: self._checkpoint())
+    await context.checkpoint();
 
     if (summary) {
       await context.appendMessage({
@@ -138,6 +154,18 @@ export async function compactContext(
     // Re-append preserved messages
     for (const msg of toPreserve) {
       await context.appendMessage(msg);
+    }
+    
+    // Estimate token count for accurate context display
+    const estimatedTokens = estimateTextTokens([
+      { role: "user", content: summary },
+      ...toPreserve,
+    ]);
+    if (estimatedTokens > 0) {
+      await context.updateTokenCount({
+        inputTokens: estimatedTokens,
+        outputTokens: 0,
+      });
     }
   } finally {
     opts?.onEnd?.();
@@ -156,7 +184,7 @@ function buildSummaryPrompt(
     parts.push(`## Message ${i + 1}\nRole: ${msg.role}\nContent:`);
     if (typeof msg.content === "string") {
       parts.push(msg.content);
-    } else {
+    } else if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
         if (part.type === "text") {
           parts.push(part.text);
@@ -179,10 +207,21 @@ function buildSummaryPrompt(
 }
 
 const COMPACT_PROMPT = `Summarize the conversation above concisely. Preserve:
-- Key decisions and outcomes
-- Important file paths and code changes
-- Tool call results that are still relevant
-- Any pending tasks or goals
+- Current task state and what is being worked on
+- All encountered errors and their resolutions
+- Code evolution: final working versions (remove intermediate attempts)
+- System context: project structure, dependencies, environment setup
+- Design decisions and their rationale
+- TODO items and unfinished tasks
+
+Compression rules:
+- MUST KEEP: Error messages, stack traces, working solutions, current task
+- MERGE: Similar discussions into single summary points
+- REMOVE: Redundant explanations, failed attempts (but keep lessons learned), verbose comments
+- CONDENSE: Long code blocks → keep signatures and key logic only
+
+Output format:
+Start with a brief summary of the current task state, then organize remaining context by category.
 Be thorough but concise.`;
 
 function buildFallbackSummary(history: readonly Message[]): string {

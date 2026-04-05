@@ -38,7 +38,15 @@ interface CompactionSpinnerProps {
 
 export function CompactionSpinner({ active }: CompactionSpinnerProps) {
   if (!active) return null;
-  return <Spinner label="Compacting context..." color="#f2cc60" />;
+  // Match Python exactly: Spinner("balloon", "Compacting...")
+  return (
+    <Box>
+      <Text>
+        <InkSpinner type="balloon" />
+      </Text>
+      <Text> Compacting...</Text>
+    </Box>
+  );
 }
 
 interface StreamingSpinnerProps {
@@ -46,9 +54,14 @@ interface StreamingSpinnerProps {
 }
 
 export function StreamingSpinner({ stepCount }: StreamingSpinnerProps) {
+  // Match Python: StepBegin shows a moon-phase spinner with no text.
+  // The "Thinking..." / "Composing..." text is shown by _ContentBlock spinners,
+  // not by this top-level streaming indicator.
   return (
-    <Spinner
-      label={stepCount > 0 ? `Thinking... (step ${stepCount})` : "Thinking..."}
-    />
+    <Box>
+      <Text>
+        <InkSpinner type="moon" />
+      </Text>
+    </Box>
   );
 }

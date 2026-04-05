@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 import { z } from "zod/v4";
 import { CallableTool } from "../base.ts";
 import type { ToolContext, ToolResult } from "../types.ts";
-import { ToolError } from "../types.ts";
+import { ToolError, ToolRejectedError } from "../types.ts";
 import { inspectPlanEditTarget } from "./plan_mode.ts";
 
 const DESCRIPTION = `Replace specific strings within a specified file.
@@ -147,15 +147,19 @@ export class StrReplaceFile extends CallableTool<typeof ParamsSchema> {
         }
         const diffPreview = diffLines.length > 0 ? `\n${diffLines.join("\n")}` : "";
 
-        const decision = await ctx.approval(
+        const { decision, feedback } = await ctx.approval(
           "StrReplaceFile",
           "edit",
           `Edit file \`${resolvedPath}\` (${edits.length} edit(s))${diffPreview}`,
         );
         if (decision === "reject") {
-          return ToolError(
-            "The tool call is rejected by the user. Stop what you are doing and wait for the user to tell you how to proceed.",
-          );
+          return new ToolRejectedError({
+            message: feedback
+              ? `The tool call is rejected by the user. User feedback: ${feedback}`
+              : undefined,
+            brief: feedback ? `Rejected: ${feedback}` : "Rejected by user",
+            hasFeedback: !!feedback,
+          }).toToolResult();
         }
       }
 

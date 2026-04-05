@@ -11,14 +11,19 @@ import type {
   ThinkSegment,
   ToolCallSegment,
 } from "../shell/events";
+import { extractKeyArgument } from "../../tools/types.ts";
 import type { StatusUpdate, ApprovalRequest } from "../../wire/types";
 import type { Toast } from "../components/NotificationStack";
 import { nanoid } from "nanoid";
 
+const MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4;
 export interface WireState {
   messages: UIMessage[];
   isStreaming: boolean;
+  /** The approval request currently being shown to the user (head of queue). */
   pendingApproval: ApprovalRequest | null;
+  /** Full queue of pending approval requests (including the current one). */
+  approvalQueue: ApprovalRequest[];
   status: StatusUpdate | null;
   stepCount: number;
   isCompacting: boolean;
@@ -40,8 +45,9 @@ export function useWire(options?: UseWireOptions): WireState & {
 } {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [pendingApproval, setPendingApproval] =
-    useState<ApprovalRequest | null>(null);
+  // Approval queue — mirrors Python's deque[ApprovalRequest].
+  // The first element is the one currently displayed to the user.
+  const [approvalQueue, setApprovalQueue] = useState<ApprovalRequest[]>([]);
   const [status, setStatus] = useState<StatusUpdate | null>(null);
   const [stepCount, setStepCount] = useState(0);
   const [isCompacting, setIsCompacting] = useState(false);
@@ -153,7 +159,8 @@ export function useWire(options?: UseWireOptions): WireState & {
         ) as ToolCallSegment | undefined;
         if (toolSeg) {
           toolSeg.result = event.result;
-          toolSeg.collapsed = true;
+          // Keep expanded if result has display blocks (e.g. "Rejected: feedback")
+          toolSeg.collapsed = event.result.display.length === 0;
         }
         setMessages((prev) => {
           const idx = prev.findIndex((m) => m.id === msg.id);
@@ -164,12 +171,20 @@ export function useWire(options?: UseWireOptions): WireState & {
       }
 
       case "approval_request": {
-        setPendingApproval(event.request);
+        // Enqueue — mirrors Python's _queue_approval_request()
+        setApprovalQueue((prev) => {
+          // Deduplicate: don't enqueue if already present
+          if (prev.some((r) => r.id === event.request.id)) return prev;
+          return [...prev, event.request];
+        });
         break;
       }
 
       case "approval_response": {
-        setPendingApproval(null);
+        // Dequeue the resolved request — advances to the next one automatically
+        setApprovalQueue((prev) =>
+          prev.filter((r) => r.id !== event.requestId),
+        );
         break;
       }
 
@@ -211,20 +226,93 @@ export function useWire(options?: UseWireOptions): WireState & {
       }
 
       case "slash_result": {
-        // Atomically insert a user+assistant message pair (for slash command feedback)
-        const userMsg: UIMessage = {
+        // Insert a system message for slash command feedback (matches Python's wire_send(TextPart(...)))
+        const sysMsg: UIMessage = {
           id: nanoid(),
-          role: "user",
-          segments: [{ type: "text", text: event.userInput }],
-          timestamp: Date.now(),
-        };
-        const assistantMsg: UIMessage = {
-          id: nanoid(),
-          role: "assistant",
+          role: "system",
           segments: [{ type: "text", text: event.text }],
           timestamp: Date.now(),
         };
-        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+        setMessages((prev) => [...prev, sysMsg]);
+        break;
+      }
+
+      case "subagent_event": {
+        if (!currentAssistantRef.current || !event.parentToolCallId) break;
+        const msg = currentAssistantRef.current;
+        const toolSeg = msg.segments.find(
+          (s) =>
+            s.type === "tool_call" &&
+            (s as ToolCallSegment).id === event.parentToolCallId,
+        ) as ToolCallSegment | undefined;
+        if (!toolSeg) break;
+
+        // Store subagent metadata
+        if (event.agentId) toolSeg.subagentId = event.agentId;
+        if (event.subagentType) toolSeg.subagentType = event.subagentType;
+
+        // Initialize tracking structures
+        if (!toolSeg.ongoingSubCalls) toolSeg.ongoingSubCalls = {};
+        if (!toolSeg.finishedSubCalls) toolSeg.finishedSubCalls = [];
+
+        // Dispatch nested event by type (wire envelope: {type, payload})
+        const nested = event.event as Record<string, unknown>;
+        const nestedType = nested?.type as string | undefined;
+        const nestedPayload = (nested?.payload ?? nested) as Record<string, unknown>;
+
+        if (nestedType === "ToolCall") {
+          // New subagent tool call
+          const p = nestedPayload as { id?: string; function?: { name?: string; arguments?: string } };
+          const callId = (p.id ?? "") as string;
+          const fn = p.function;
+          if (callId) {
+            toolSeg.ongoingSubCalls[callId] = {
+              id: callId,
+              name: fn?.name ?? "unknown",
+              arguments: fn?.arguments ?? "",
+            };
+          }
+        } else if (nestedType === "ToolResult") {
+          // Completed subagent tool call
+          const p = nestedPayload as { tool_call_id?: string; return_value?: { isError?: boolean; is_error?: boolean } };
+          const callId = (p.tool_call_id ?? "") as string;
+          const ongoing = callId ? toolSeg.ongoingSubCalls[callId] : undefined;
+          if (ongoing) {
+            delete toolSeg.ongoingSubCalls[callId];
+            const isError = p.return_value?.isError ?? p.return_value?.is_error ?? false;
+            // Deque behavior: keep last MAX items, track overflow
+            if (toolSeg.finishedSubCalls.length >= MAX_SUBAGENT_TOOL_CALLS_TO_SHOW) {
+              toolSeg.finishedSubCalls.shift();
+              toolSeg.nExtraSubCalls = (toolSeg.nExtraSubCalls ?? 0) + 1;
+            }
+            let keyArg = "";
+            try {
+              keyArg = extractKeyArgument(ongoing.arguments, ongoing.name) ?? "";
+            } catch { /* ignore parse errors */ }
+            toolSeg.finishedSubCalls.push({
+              callId: ongoing.id,
+              toolName: ongoing.name,
+              arguments: keyArg,
+              isError,
+            });
+          }
+        }
+        // ToolCallPart: update ongoing call arguments
+        else if (nestedType === "ToolCallPart") {
+          const p = nestedPayload as { id?: string; arguments_part?: string };
+          const callId = (p.id ?? "") as string;
+          const ongoing = callId ? toolSeg.ongoingSubCalls[callId] : undefined;
+          if (ongoing && p.arguments_part) {
+            ongoing.arguments += p.arguments_part;
+          }
+        }
+
+        // Trigger re-render
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === msg.id);
+          if (idx === -1) return prev;
+          return [...prev.slice(0, idx), { ...msg }, ...prev.slice(idx + 1)];
+        });
         break;
       }
 
@@ -250,7 +338,7 @@ export function useWire(options?: UseWireOptions): WireState & {
     setMessages([]);
     currentAssistantRef.current = null;
     setIsStreaming(false);
-    setPendingApproval(null);
+    setApprovalQueue([]);
     setStepCount(0);
   }, []);
 
@@ -264,10 +352,14 @@ export function useWire(options?: UseWireOptions): WireState & {
     onReady?.(pushEvent);
   }, [pushEvent, onReady]);
 
+  // The head of the queue is the approval currently shown to the user
+  const pendingApproval = approvalQueue.length > 0 ? approvalQueue[0]! : null;
+
   return {
     messages,
     isStreaming,
     pendingApproval,
+    approvalQueue,
     status,
     stepCount,
     isCompacting,

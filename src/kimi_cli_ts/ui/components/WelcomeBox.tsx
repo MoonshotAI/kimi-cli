@@ -7,7 +7,10 @@ import React from "react";
 import { Box, Text } from "ink";
 import { modelDisplayName } from "../../llm.ts";
 
-const KIMI_BLUE = "#1e90ff";
+// Python uses 256-color palette index 33 = RGB(0, 135, 255) = #0087ff (dodger_blue1)
+const KIMI_BLUE = "#0087ff";
+// Python uses palette index 244 = RGB(178, 178, 178) = #b2b2b2 (grey50)
+const GREY_50 = "#b2b2b2";
 
 interface WelcomeBoxProps {
   workDir?: string;
@@ -38,56 +41,44 @@ export function WelcomeBox({
       borderStyle="round"
       borderColor={KIMI_BLUE}
       flexDirection="column"
-      paddingX={1}
+      paddingX={2}
       paddingY={1}
     >
       {/* Logo + Welcome */}
       <Box>
         <Box flexDirection="column" marginRight={2}>
-          <Text color={KIMI_BLUE} bold>▐█▛█▛█▌</Text>
-          <Text color={KIMI_BLUE} bold>▐█████▌</Text>
+          <Text color={KIMI_BLUE}>▐█▛█▛█▌</Text>
+          <Text color={KIMI_BLUE}>▐█████▌</Text>
         </Box>
         <Box flexDirection="column" justifyContent="center">
-          <Text bold>Welcome to Kimi Code CLI!</Text>
-          <Text color="#888888">Send /help for help information.</Text>
+          <Text>Welcome to Kimi Code CLI!</Text>
+          <Text color={GREY_50}>Send /help for help information.</Text>
         </Box>
       </Box>
 
       {/* Blank line */}
       <Text> </Text>
 
-      {/* Directory */}
-      <Text>
-        <Text color="#888888">  Directory: </Text>
-        <Text>{displayDir}</Text>
-      </Text>
+      {/* Directory — Python renders entire line in grey50 */}
+      <Text color={GREY_50}>Directory: {displayDir}</Text>
 
       {/* Session */}
       {sessionId && (
-        <Text>
-          <Text color="#888888">  Session: </Text>
-          <Text>{sessionId}</Text>
-        </Text>
+        <Text color={GREY_50}>Session: {sessionId}</Text>
       )}
 
       {/* Model */}
-      <Text>
-        <Text color="#888888">  Model: </Text>
-        {displayModel ? (
-          <Text>{displayModel}</Text>
-        ) : (
-          <Text color="yellow">not set, send /login to login</Text>
-        )}
-      </Text>
+      {displayModel ? (
+        <Text color={GREY_50}>Model: {displayModel}</Text>
+      ) : (
+        <Text color="yellow">Model: not set, send /login to login</Text>
+      )}
 
       {/* Tip */}
       {tip && (
         <>
           <Text> </Text>
-          <Text>
-            <Text color="#888888">  Tip: </Text>
-            <Text>{tip}</Text>
-          </Text>
+          <Text color={GREY_50}>Tip: {tip}</Text>
         </>
       )}
     </Box>

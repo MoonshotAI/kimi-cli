@@ -25,6 +25,7 @@ import type {
   ToolCallSegment,
 } from "./events.ts";
 import type { ToolResult, DisplayBlock } from "../../wire/types.ts";
+import { extractKeyArgument } from "../../tools/types.ts";
 
 // ── MessageList ────────────────────────────────────────────
 
@@ -91,6 +92,19 @@ function MessageView({ message, isLast, isStreaming, stepCount }: MessageViewPro
           <Text color={roleColor}>{roleLabel} </Text>
           <Text>{userText}</Text>
         </Box>
+      </Box>
+    );
+  }
+
+  // For system messages (slash command feedback), render with bullet prefix to match Python
+  if (message.role === "system") {
+    const sysText = message.segments
+      .filter((s): s is TextSegment => s.type === "text")
+      .map((s) => s.text)
+      .join("");
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Text>• {sysText}</Text>
       </Box>
     );
   }
@@ -180,8 +194,13 @@ export function StreamingText({ text, isStreaming }: StreamingTextProps) {
 
   return (
     <Box flexDirection="column">
-      {rendered}
-      {isStreaming && <Text>▌</Text>}
+      <Box>
+        <Text>• </Text>
+        <Box flexDirection="column" flexGrow={1}>
+          {rendered}
+          {isStreaming && <Text>▌</Text>}
+        </Box>
+      </Box>
     </Box>
   );
 }
@@ -194,16 +213,11 @@ interface ThinkingViewProps {
 
 export function ThinkingView({ text }: ThinkingViewProps) {
   const colors = getMessageColors();
-  // Truncate thinking to max 6 lines for preview
-  const lines = text.split("\n");
-  const preview = lines.length > 6
-    ? lines.slice(0, 6).join("\n") + `\n… ${lines.length - 6} more lines`
-    : text;
-
+  // Render thinking text with bullet, matching Python's BulletColumns format
   return (
-    <Box borderStyle="single" borderColor={colors.thinking} paddingX={1}>
+    <Box>
       <Text color={colors.thinking} italic>
-        💭 {preview}
+        • {text}
       </Text>
     </Box>
   );
@@ -216,39 +230,121 @@ interface ToolCallViewProps {
 }
 
 export function ToolCallView({ toolCall }: ToolCallViewProps) {
-  const [collapsed, setCollapsed] = useState(toolCall.collapsed);
+  // Derive collapsed from prop — when result has display blocks, stay expanded
+  const collapsed = toolCall.collapsed;
   const colors = getMessageColors();
-  const statusIcon = toolCall.result
-    ? toolCall.result.return_value.isError
-      ? "✗"
-      : "✓"
-    : "⟳";
-  const statusColor = toolCall.result
-    ? toolCall.result.return_value.isError
-      ? colors.error
-      : colors.highlight
-    : colors.dim;
 
   // Format arguments for display — extract key argument
   let argsPreview = "";
   try {
-    const parsed = JSON.parse(toolCall.arguments);
-    const key = extractKeyArgument(toolCall.name, parsed);
+    // extractKeyArgument takes (jsonString, toolName) and returns string | null
+    const key = extractKeyArgument(toolCall.arguments, toolCall.name);
     argsPreview = key || truncate(toolCall.arguments, 60);
   } catch {
     // Streaming JSON: show partial arguments
     argsPreview = renderStreamingJson(toolCall.arguments);
   }
 
+  // Python formatting: "Using ToolName (arg)" or "Used ToolName (arg)"
+  const isFinished = toolCall.result !== undefined;
+  const stateLabel = isFinished ? "Used " : "Using ";
+  const isError = isFinished && toolCall.result?.return_value.isError;
+  
+  // Bullet: ⟳ while pending, • when finished (matches Python)
+  // Color: green for success, dark_red for error/rejected, dim for pending
+  const bulletColor = isFinished 
+    ? isError ? colors.darkRed : colors.highlight
+    : colors.dim;
+  const bullet = isFinished ? "•" : "⟳";
+
+  // Subagent data
+  const hasSubagent = !!(toolCall.subagentId && toolCall.subagentType);
+  const finishedSubs = toolCall.finishedSubCalls ?? [];
+  const nExtra = toolCall.nExtraSubCalls ?? 0;
+
   return (
     <Box flexDirection="column" marginY={0}>
+      {/* Tool call headline: Using/Used ToolName (argument) */}
       <Box>
-        <Text color={statusColor}>{statusIcon} </Text>
-        <Text color={colors.tool} bold>
+        <Text color={bulletColor}>{bullet} </Text>
+        <Text>{stateLabel}</Text>
+        <Text color={colors.tool}>
           {toolCall.name}
         </Text>
-        <Text color={colors.dim}> {argsPreview}</Text>
+        {argsPreview && (
+          <>
+            <Text color={colors.dim}> (</Text>
+            <Text color={colors.dim}>{argsPreview}</Text>
+            <Text color={colors.dim}>)</Text>
+          </>
+        )}
       </Box>
+      {/* Subagent metadata header — matches Python: "subagent {type} ({id})" in grey50 */}
+      {hasSubagent && (
+        <Box marginLeft={2}>
+          <Text color={colors.dim}>
+            subagent {toolCall.subagentType} ({toolCall.subagentId})
+          </Text>
+        </Box>
+      )}
+      {/* Hidden call count — matches Python: "N more tool calls ..." */}
+      {nExtra > 0 && (
+        <Box marginLeft={2}>
+          <Text color={colors.dim} italic>
+            {nExtra} more tool call{nExtra > 1 ? "s" : ""} ...
+          </Text>
+        </Box>
+      )}
+      {/* Finished subagent tool calls — matches Python BulletColumns pattern */}
+      {finishedSubs.length > 0 && (
+        <Box flexDirection="column" marginLeft={2}>
+          {finishedSubs.map((sub) => {
+            const subBullet = "•";
+            const subColor = sub.isError ? colors.darkRed : colors.highlight;
+            return (
+              <Box key={sub.callId}>
+                <Text color={subColor}>{subBullet} </Text>
+                <Text>Used </Text>
+                <Text color={colors.tool}>{sub.toolName}</Text>
+                {sub.arguments ? (
+                  <>
+                    <Text color={colors.dim}> (</Text>
+                    <Text color={colors.dim}>{sub.arguments}</Text>
+                    <Text color={colors.dim}>)</Text>
+                  </>
+                ) : null}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+      {/* Rejected feedback line — matches Python's "  Rejected: {feedback}" in dark_red */}
+      {isFinished && isError && toolCall.result?.return_value.output && (() => {
+        const output = toolCall.result!.return_value.output;
+        // Check for rejection feedback pattern from approval.ts
+        const rejectMatch = output.match(/rejected by the user\.\s*User feedback:\s*(.+)/i);
+        const briefBlock = toolCall.result!.display.find(
+          (b) => b.type === "brief" && (b as Record<string, unknown>).brief,
+        );
+        const briefText = briefBlock ? (briefBlock as Record<string, unknown>).brief as string : null;
+        // Show "Rejected: feedback" if we have a brief that starts with "Rejected:"
+        if (briefText?.startsWith("Rejected:")) {
+          return (
+            <Box marginLeft={2}>
+              <Text color={colors.darkRed}>{briefText}</Text>
+            </Box>
+          );
+        }
+        // Or extract from output message
+        if (rejectMatch?.[1]) {
+          return (
+            <Box marginLeft={2}>
+              <Text color={colors.darkRed}>Rejected: {rejectMatch[1]}</Text>
+            </Box>
+          );
+        }
+        return null;
+      })()}
       {!collapsed && toolCall.result && (
         <Box marginLeft={2} flexDirection="column">
           <ToolResultView result={toolCall.result} />
@@ -273,7 +369,7 @@ function ToolResultView({ result }: ToolResultViewProps) {
   return (
     <Box flexDirection="column">
       {result.display.map((block, idx) => (
-        <DisplayBlockView key={idx} block={block} />
+        <DisplayBlockView key={idx} block={block} isError={isError} />
       ))}
       {!result.display.length && (
         <Text color={isError ? colors.error : colors.dim}>{truncated}</Text>
@@ -286,16 +382,17 @@ function ToolResultView({ result }: ToolResultViewProps) {
 
 interface DisplayBlockViewProps {
   block: DisplayBlock;
+  isError?: boolean;
 }
 
-function DisplayBlockView({ block }: DisplayBlockViewProps) {
+function DisplayBlockView({ block, isError }: DisplayBlockViewProps) {
   const colors = getMessageColors();
   const diffColors = getDiffColors();
   const b = block as Record<string, unknown>;
 
   switch (block.type) {
     case "brief":
-      return <Text color={colors.dim}>{b.brief as string}</Text>;
+      return <Text color={isError ? colors.darkRed : colors.dim}>{b.brief as string}</Text>;
     case "diff":
       return (
         <DiffView
@@ -749,7 +846,7 @@ function renderInlineFormatting(text: string): string {
     // Strikethrough
     .replace(/~~(.+?)~~/g, (_, p1) => chalk.strikethrough(p1))
     // Inline code
-    .replace(/`(.+?)`/g, (_, p1) => chalk.cyan(p1))
+    .replace(/`(.+?)`/g, (_, p1) => chalk.bold.cyanBright(p1))
     // Links [text](url)
     .replace(/\[(.+?)\]\((.+?)\)/g, (_, text, url) =>
       chalk.underline.hex("#56a4ff")(text) + chalk.hex("#6b7280")(` (${url})`),
@@ -919,27 +1016,4 @@ function EnhancedDiffView({
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return `${text.slice(0, maxLen)}…`;
-}
-
-/**
- * Extract the most relevant argument from a tool call for preview.
- */
-function extractKeyArgument(
-  toolName: string,
-  args: Record<string, unknown>,
-): string {
-  // Try common key argument names
-  const keyNames = ["path", "file_path", "command", "query", "url", "name", "pattern", "description"];
-  for (const key of keyNames) {
-    if (key in args && typeof args[key] === "string") {
-      return truncate(args[key] as string, 80);
-    }
-  }
-  // Fall back to first string argument
-  for (const [_, val] of Object.entries(args)) {
-    if (typeof val === "string" && val.length < 100) {
-      return val;
-    }
-  }
-  return "";
 }

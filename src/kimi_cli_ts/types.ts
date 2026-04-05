@@ -35,7 +35,12 @@ export const ToolResultPart = z.object({
   isError: z.boolean().optional(),
 });
 
-export const ContentPart = z.union([TextPart, ImagePart, ToolUsePart, ToolResultPart]);
+export const ThinkPart = z.object({
+  type: z.literal("think"),
+  think: z.string(),
+});
+
+export const ContentPart = z.union([TextPart, ImagePart, ToolUsePart, ToolResultPart, ThinkPart]);
 export type ContentPart = z.infer<typeof ContentPart>;
 
 // ── Message Types ────────────────────────────────────────
@@ -43,6 +48,7 @@ export type ContentPart = z.infer<typeof ContentPart>;
 export const Message = z.object({
   role: z.enum(["user", "assistant", "system", "tool"]),
   content: z.union([z.string(), z.array(ContentPart)]),
+  reasoning_content: z.string().optional(),  // Thinking content (stored separately for now)
 });
 export type Message = z.infer<typeof Message>;
 
@@ -88,6 +94,12 @@ export type ToolReturnValue = z.infer<typeof ToolReturnValue>;
 
 export type ApprovalDecision = "approve" | "approve_for_session" | "reject";
 
+/** Result returned by the ToolContext.approval callback. */
+export interface ApprovalDecisionResult {
+  decision: ApprovalDecision;
+  feedback: string;
+}
+
 // ── Status ──────────────────────────────────────────────
 
 export interface StatusSnapshot {
@@ -96,6 +108,7 @@ export interface StatusSnapshot {
   maxContextTokens: number | null;
   tokenUsage: TokenUsage | null;
   planMode: boolean;
+  yoloEnabled: boolean;
   mcpStatus: Record<string, string> | null;
 }
 
@@ -108,10 +121,13 @@ export interface PanelChoiceItem {
   current?: boolean;
 }
 
+import type { KContextInfo, KMessage } from "./ui/shell/context-types.ts";
+
 export type CommandPanelConfig =
   | { type: "choice"; title: string; items: PanelChoiceItem[]; onSelect: (value: string) => CommandPanelConfig | Promise<CommandPanelConfig | void> | void }
   | { type: "content"; title: string; content: string }
-  | { type: "input"; title: string; placeholder?: string; password?: boolean; onSubmit: (value: string) => CommandPanelConfig | Promise<CommandPanelConfig | void> | void };
+  | { type: "input"; title: string; placeholder?: string; password?: boolean; onSubmit: (value: string) => CommandPanelConfig | Promise<CommandPanelConfig | void> | void }
+  | { type: "debug"; data: { context: KContextInfo; messages: KMessage[] } };
 
 export interface SlashCommand {
   name: string;

@@ -1,15 +1,20 @@
 /**
  * UsagePanel.tsx — API usage and quota display panel.
- * Corresponds to Python's ui/shell/usage.py.
+ * Matches Python's ui/shell/usage.py rendering character-for-character.
  *
- * Features:
- * - API quota usage display
- * - Progress bars
- * - Reset timer
+ * Python uses Rich Panel(expand=False, border_style="wheat4", padding=(0,2))
+ * with ProgressBar(width=20, complete_style=color) using ━╺╸ characters.
+ *
+ * Uses PanelShell for borders and usePanelKeyboard for Esc dismiss.
  */
 
 import React from "react";
-import { Box, Text } from "ink";
+import { Text } from "ink";
+import { PanelShell, PanelRow } from "../components/PanelShell.tsx";
+import { usePanelKeyboard } from "../hooks/usePanelKeyboard.ts";
+
+const BAR_BG_COLOR = "#3a3a3a"; // Rich color 237
+const HINT_COLOR = "#808080"; // Rich grey50 / color 244
 
 export interface UsageRow {
   label: string;
@@ -23,9 +28,14 @@ export interface UsagePanelProps {
   limits: UsageRow[];
   loading?: boolean;
   error?: string | null;
+  onClose?: () => void;
 }
 
-function ProgressBar({
+/**
+ * Rich-style progress bar using ━╺╸ characters.
+ * Exactly matches Python's rich.progress_bar.ProgressBar.__rich_console__.
+ */
+function RichProgressBar({
   completed,
   total,
   width = 20,
@@ -34,17 +44,43 @@ function ProgressBar({
   total: number;
   width?: number;
 }) {
-  const ratio = total > 0 ? Math.min(completed / total, 1) : 0;
-  const filledWidth = Math.round(ratio * width);
-  const emptyWidth = width - filledWidth;
-  const color = ratioColor(total > 0 ? (total - completed) / total : 0);
+  const remainingRatio = total > 0 ? (total - completed) / total : 0;
+  const color = ratioColor(remainingRatio);
 
-  return (
-    <Text>
-      <Text color={color}>{"█".repeat(filledWidth)}</Text>
-      <Text color="grey">{"░".repeat(emptyWidth)}</Text>
-    </Text>
-  );
+  if (completed <= 0) {
+    return <Text color={BAR_BG_COLOR}>{"\u2501".repeat(width)}</Text>;
+  }
+  if (completed >= total) {
+    return <Text color={color}>{"\u2501".repeat(width)}</Text>;
+  }
+
+  const completeHalves = Math.floor(width * 2 * completed / total);
+  const barCount = Math.floor(completeHalves / 2);
+  const halfBarCount = completeHalves % 2;
+
+  const parts: React.ReactNode[] = [];
+
+  if (barCount > 0) {
+    parts.push(<Text key="filled" color={color}>{"\u2501".repeat(barCount)}</Text>);
+  }
+
+  let remainingBars = width - barCount - halfBarCount;
+
+  if (halfBarCount > 0) {
+    parts.push(<Text key="half" color={color}>{"\u2578"}</Text>);
+  }
+
+  if (remainingBars > 0) {
+    if (halfBarCount === 0 && barCount > 0) {
+      parts.push(<Text key="trans" color={BAR_BG_COLOR}>{"\u257A"}</Text>);
+      remainingBars -= 1;
+    }
+    if (remainingBars > 0) {
+      parts.push(<Text key="empty" color={BAR_BG_COLOR}>{"\u2501".repeat(remainingBars)}</Text>);
+    }
+  }
+
+  return <Text>{parts}</Text>;
 }
 
 function ratioColor(ratio: number): string {
@@ -53,81 +89,93 @@ function ratioColor(ratio: number): string {
   return "green";
 }
 
-function UsageRowView({ row, labelWidth }: { row: UsageRow; labelWidth: number }) {
+function UsageRowView({ row, labelWidth, contentWidth }: {
+  row: UsageRow;
+  labelWidth: number;
+  contentWidth: number;
+}) {
   const remaining = row.limit > 0 ? (row.limit - row.used) / row.limit : 0;
   const percent = remaining * 100;
 
+  const pctText = `  ${percent.toFixed(0)}% left`;
+  const hintText = row.resetHint ? `  (${row.resetHint})` : "";
+  const labelText = row.label.padEnd(labelWidth) + "  ";
+
+  const usedWidth = labelText.length + 20 + pctText.length + hintText.length;
+  const rightPad = Math.max(0, contentWidth - usedWidth);
+
   return (
-    <Box>
-      <Box width={labelWidth + 2}>
-        <Text color="cyan">{row.label.padEnd(labelWidth)}</Text>
-      </Box>
-      <Box width={22}>
-        <ProgressBar completed={row.used} total={row.limit || 1} width={20} />
-      </Box>
-      <Box>
-        <Text bold>{`  ${percent.toFixed(0)}% left`}</Text>
-        {row.resetHint && (
-          <Text color="grey">{`  (${row.resetHint})`}</Text>
-        )}
-      </Box>
-    </Box>
+    <Text>
+      <Text color="cyan">{labelText}</Text>
+      <RichProgressBar completed={row.used} total={row.limit || 1} width={20} />
+      <Text bold>{pctText}</Text>
+      {hintText && <Text color={HINT_COLOR}>{hintText}</Text>}
+      {rightPad > 0 && <Text>{" ".repeat(rightPad)}</Text>}
+    </Text>
   );
 }
 
-export function UsagePanel({ summary, limits, loading, error }: UsagePanelProps) {
+export function UsagePanel({ summary, limits, loading, error, onClose }: UsagePanelProps) {
+  // Keyboard: only Esc to close
+  usePanelKeyboard({
+    onEscape: () => onClose?.(),
+  });
+
   if (loading) {
+    const loadingText = "Fetching usage...";
     return (
-      <Box
-        borderStyle="round"
-        borderColor="#d2b48c"
-        paddingX={2}
-      >
-        <Text color="cyan">Fetching usage...</Text>
-      </Box>
+      <PanelShell title="API Usage" contentWidth={loadingText.length}>
+        <PanelRow contentWidth={loadingText.length}>
+          <Text color="cyan">{loadingText}</Text>
+        </PanelRow>
+      </PanelShell>
     );
   }
 
   if (error) {
     return (
-      <Box
-        borderStyle="round"
-        borderColor="#d2b48c"
-        paddingX={2}
-      >
-        <Text color="red">{error}</Text>
-      </Box>
+      <PanelShell title="API Usage" contentWidth={error.length}>
+        <PanelRow contentWidth={error.length}>
+          <Text color="red">{error}</Text>
+        </PanelRow>
+      </PanelShell>
     );
   }
 
   const rows = [...(summary ? [summary] : []), ...limits];
   if (rows.length === 0) {
+    const noData = "No usage data";
     return (
-      <Box
-        borderStyle="round"
-        borderColor="#d2b48c"
-        paddingX={2}
-      >
-        <Text color="grey">No usage data</Text>
-      </Box>
+      <PanelShell title="API Usage" contentWidth={noData.length}>
+        <PanelRow contentWidth={noData.length}>
+          <Text color="grey">{noData}</Text>
+        </PanelRow>
+      </PanelShell>
     );
   }
 
   const labelWidth = Math.max(6, ...rows.map((r) => r.label.length));
 
+  const contentWidth = Math.max(...rows.map((row) => {
+    const remaining = row.limit > 0 ? (row.limit - row.used) / row.limit : 0;
+    const pctText = `  ${(remaining * 100).toFixed(0)}% left`;
+    const hintText = row.resetHint ? `  (${row.resetHint})` : "";
+    const labelText = row.label.padEnd(labelWidth) + "  ";
+    return labelText.length + 20 + pctText.length + hintText.length;
+  }));
+
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor="#d2b48c"
-      paddingX={2}
+    <PanelShell
+      title="API Usage"
+      contentWidth={contentWidth}
+      footerHints={["Esc close"]}
     >
-      <Text bold>API Usage</Text>
-      <Text> </Text>
       {rows.map((row, idx) => (
-        <UsageRowView key={idx} row={row} labelWidth={labelWidth} />
+        <PanelRow key={idx} contentWidth={contentWidth}>
+          <UsageRowView row={row} labelWidth={labelWidth} contentWidth={contentWidth} />
+        </PanelRow>
       ))}
-    </Box>
+    </PanelShell>
   );
 }
 

@@ -5,6 +5,7 @@
 
 import type { SlashCommand, CommandPanelConfig } from "../../types";
 import { getActiveTheme } from "../theme.ts";
+import type { Config } from "../../config.ts";
 
 export type SlashCommandHandler = (args: string) => Promise<void>;
 
@@ -18,6 +19,14 @@ export interface ShellSlashContext {
   getSessionInfo?: () => { sessionDir: string; workDir: string; title: string } | null;
   /** Trigger a reload with a new session (and optional prefill text). */
   triggerReload?: (sessionId: string, prefillText?: string) => void;
+  /** Current session ID for same-session reload (used by /clear). */
+  sessionId?: string;
+  /** Show usage panel (called by /usage command). */
+  showUsage?: (config: Config) => Promise<void>;
+  /** Soul-level context clear: clears context + rewrites system prompt + sends status update. */
+  soulClear?: () => Promise<void>;
+  /** Get the current line count of the dynamic viewport below <Static> (prompt + bottom slot). */
+  getDynamicViewportHeight?: () => number;
 }
 
 /**
@@ -32,7 +41,26 @@ export function createShellSlashCommands(
       description: "Clear conversation history",
       aliases: ["cls", "reset"],
       handler: async () => {
-        ctx.clearMessages();
+        // Match Python: soul clears context, then shell triggers same-session reload.
+        // Step 1: Clear the wire messages FIRST (before unmounting Ink)
+        ctx.clearMessages?.();
+        // Step 2: Clear the soul context
+        await ctx.soulClear?.();
+        // Step 3: Snapshot the dynamic viewport height BEFORE triggerReload unmounts Ink
+        const height = ctx.getDynamicViewportHeight?.() ?? 5;
+        // Step 4: Trigger same-session reload — calls inkUnmount() which does a final render.
+        if (ctx.triggerReload && ctx.sessionId) {
+          ctx.triggerReload(ctx.sessionId);
+        }
+        // Step 5: AFTER Ink unmount, erase the residual dynamic viewport lines it left behind,
+        // then write the feedback message in their place.
+        const eraseLine = "\x1b[2K";
+        const cursorUp = "\x1b[A";
+        process.stdout.write(
+          (eraseLine + cursorUp).repeat(height) +
+          eraseLine + "\r" +
+          "• The context has been cleared.\n"
+        );
       },
     },
     {
@@ -98,7 +126,8 @@ export function createShellSlashCommands(
       name: "version",
       description: "Show version information",
       handler: async () => {
-        ctx.pushNotification("Version", "kimi-cli v2.0.0 (TypeScript)");
+        const { VERSION } = await import("../../constant.ts");
+        return `kimi, version ${VERSION}`;
       },
     },
     {
@@ -192,8 +221,22 @@ export function createShellSlashCommands(
                 });
               }
 
-              ctx.pushNotification("Undo", `Forked at turn ${turnIndex}. Switching to new session...`);
+              // Save old session ID and viewport height before reload
+              const oldSessionId = ctx.sessionId;
+              const height = ctx.getDynamicViewportHeight?.() ?? 5;
+
               ctx.triggerReload!(newSessionId, userText);
+
+              // After Ink unmount: erase viewport + write green message + resume hint
+              const eraseLine = "\x1b[2K";
+              const cursorUp = "\x1b[A";
+              process.stdout.write(
+                (eraseLine + cursorUp).repeat(height) +
+                eraseLine + "\r" +
+                `\x1b[32mForked at turn ${turnIndex}. Switching to new session...\x1b[39m\n` +
+                "\n" +
+                `To resume this session: kimi -r ${oldSessionId}\n`
+              );
             } catch (err: any) {
               ctx.pushNotification("Undo", `Error: ${err.message ?? String(err)}`);
             }
@@ -224,10 +267,46 @@ export function createShellSlashCommands(
             sourceTitle: info.title,
           });
 
-          ctx.pushNotification("Fork", "Session forked. Switching to new session...");
+          // Save old session ID before reload
+          const oldSessionId = ctx.sessionId;
+
+          // Snapshot the dynamic viewport height BEFORE triggerReload unmounts Ink
+          const height = ctx.getDynamicViewportHeight?.() ?? 5;
+
+          // Trigger reload — calls inkUnmount() internally
           ctx.triggerReload(newSessionId);
+
+          // AFTER Ink unmount: erase residual viewport lines, then write feedback.
+          // Matches Python: green message + blank line + resume hint.
+          const eraseLine = "\x1b[2K";
+          const cursorUp = "\x1b[A";
+          process.stdout.write(
+            (eraseLine + cursorUp).repeat(height) +
+            eraseLine + "\r" +
+            "\x1b[32mSession forked. Switching to new session...\x1b[39m\n" +
+            "\n" +
+            `To resume this session: kimi -r ${oldSessionId}\n`
+          );
         } catch (err: any) {
           ctx.pushNotification("Fork", `Error: ${err.message ?? String(err)}`);
+        }
+      },
+    },
+    {
+      name: "usage",
+      description: "Display API usage and quota information",
+      aliases: ["status"],
+      handler: async () => {
+        if (!ctx.showUsage) {
+          ctx.pushNotification("Usage", "Usage panel not available.");
+          return;
+        }
+        try {
+          const { loadConfig } = await import("../../config.ts");
+          const { config } = await loadConfig();
+          await ctx.showUsage(config);
+        } catch (err: any) {
+          ctx.pushNotification("Usage", `Error: ${err.message ?? String(err)}`);
         }
       },
     },
@@ -266,6 +345,8 @@ export function findSlashCommand(
   );
 }
 
+const SKILL_COMMAND_PREFIX = "skill:";
+
 function formatHelp(commands: SlashCommand[]): string {
   const lines = [
     "Kimi Code CLI — Help",
@@ -279,23 +360,40 @@ function formatHelp(commands: SlashCommand[]): string {
     "  Ctrl+D             Exit",
     "  Ctrl+C             Interrupt",
     "",
-    "Slash Commands:",
   ];
 
-  // Deduplicate by name and sort
+  // Separate skills from regular commands
   const seen = new Set<string>();
-  const sorted = commands
-    .filter((c) => {
-      if (seen.has(c.name)) return false;
-      seen.add(c.name);
-      return true;
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const regularCmds: SlashCommand[] = [];
+  const skillCmds: SlashCommand[] = [];
 
-  for (const cmd of sorted) {
+  for (const cmd of commands) {
+    if (seen.has(cmd.name)) continue;
+    seen.add(cmd.name);
+    if (cmd.name.startsWith(SKILL_COMMAND_PREFIX)) {
+      skillCmds.push(cmd);
+    } else {
+      regularCmds.push(cmd);
+    }
+  }
+
+  regularCmds.sort((a, b) => a.name.localeCompare(b.name));
+  skillCmds.sort((a, b) => a.name.localeCompare(b.name));
+
+  lines.push("Slash Commands:");
+  for (const cmd of regularCmds) {
     const aliases = cmd.aliases?.length ? `, /${cmd.aliases.join(", /")}` : "";
     const nameStr = `/${cmd.name}${aliases}`;
     lines.push(`  ${nameStr.padEnd(22)} ${cmd.description}`);
+  }
+
+  if (skillCmds.length > 0) {
+    lines.push("");
+    lines.push("Skills:");
+    for (const cmd of skillCmds) {
+      const nameStr = `/${cmd.name}`;
+      lines.push(`  ${nameStr.padEnd(30)} ${cmd.description}`);
+    }
   }
 
   lines.push("");

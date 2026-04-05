@@ -16,6 +16,7 @@ import { SubagentBuilder } from "./builder.ts";
 import type { AgentInstanceRecord } from "./models.ts";
 import { type SubagentRunSpec, prepareSoul } from "./core.ts";
 import type { ApprovalSource } from "../approval_runtime/index.ts";
+import { runWithApprovalSourceAsync } from "../approval_runtime/index.ts";
 import type { Wire } from "../wire/wire_core.ts";
 import type { WireMessage } from "../wire/types.ts";
 import {
@@ -223,15 +224,48 @@ export class ForegroundSubagentRunner {
     const toolCall = getCurrentToolCallOrNull();
     const parentToolCallId = toolCall?.id ?? null;
 
-    // Build UI loop function for wire event forwarding
-    // TODO: Pass _uiLoopFn into soul.run() once the TS Wire integration supports it
-    const _uiLoopFn = ForegroundSubagentRunner._makeUiLoopFn({
-      parentToolCallId,
-      agentId,
-      subagentType: actualType,
-      outputWriter,
-      superWireSoulSide: null, // TODO: get from parent wire when available
-    });
+    // Wire subagent soul callbacks to forward events as SubagentEvent to the parent UI.
+    // This is the TS equivalent of Python's _make_ui_loop_fn() + Wire pattern.
+    // Python captures the parent wire via ContextVar closure; we capture parentToolCallId
+    // in the closure and forward events to the parent via runtime.subagentEventSink.
+    const sink = this._runtime.subagentEventSink;
+    if (sink && parentToolCallId) {
+      const wrap = (nestedEvent: Record<string, unknown>) => {
+        sink({
+          type: "subagent_event",
+          parentToolCallId,
+          agentId,
+          subagentType: actualType,
+          event: nestedEvent,
+        });
+      };
+      // Emit initial metadata event so the UI knows about this subagent
+      // even before any tool calls (matches Python's set_subagent_metadata timing)
+      wrap({ type: "_metadata" });
+
+      soul.setCallbacks({
+        onToolCall: (tc) => {
+          outputWriter.toolCall(tc.name);
+          wrap({ type: "ToolCall", payload: { id: tc.id, function: { name: tc.name, arguments: tc.arguments } } });
+        },
+        onToolResult: (toolCallId, result) => {
+          const isError = result.isError ?? false;
+          const brief = result.message ?? undefined;
+          outputWriter.toolResult(isError ? "error" : "success", brief);
+          wrap({
+            type: "ToolResult",
+            payload: {
+              tool_call_id: toolCallId,
+              return_value: { isError, output: result.output, message: result.message },
+              display: result.display ?? [],
+            },
+          });
+        },
+        onTextDelta: (text) => {
+          outputWriter.text(text);
+        },
+      });
+    }
 
     // approvalSource is created inside the try block so the finally
     // clause can safely skip cancellation if we never got that far.
@@ -261,7 +295,10 @@ export class ForegroundSubagentRunner {
       });
 
       outputWriter.stage("run_soul_start");
-      const [finalResponse, failure] = await runWithSummaryContinuation(soul, prompt);
+      const [finalResponse, failure] = await runWithApprovalSourceAsync(
+        approvalSource,
+        () => runWithSummaryContinuation(soul, prompt),
+      );
 
       if (failure !== null) {
         this._store.updateInstance(agentId, { status: "failed" });
@@ -369,7 +406,7 @@ export class ForegroundSubagentRunner {
         }
 
         // Always write to output file regardless of wire availability
-        // TODO: outputWriter.writeWireMessage(msg) — not yet implemented
+        outputWriter.writeWireMessage(msg as Record<string, unknown>);
         logger.debug(`[subagent:${agentId}] wire event: ${(msg as any)?.type ?? "unknown"}`);
 
         if (superWireSoulSide == null || parentToolCallId == null) {

@@ -16,7 +16,7 @@
  * handler if the stack is empty.
  */
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 
 // ── Types ───────────────────────────────────────────────
 
@@ -95,7 +95,6 @@ export function useInputLayer(handler: InputHandler): void {
   const idRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Stable wrapper that delegates to the latest handler ref
     const stableHandler: InputHandler = (input, key) => {
       handlerRef.current(input, key);
     };

@@ -1,17 +1,16 @@
 /**
  * Optimized Ink renderer.
  *
- * Two layers of protection for text selection:
+ * Protection layers for text selection:
  *
- * 1. Shell removes minHeight={termHeight} so Ink uses incremental diff
- *    (eraseLines + overwrite changed lines) instead of clearTerminal.
+ * 1. Shell.tsx avoids fixed height so Ink uses incremental diff
+ *    (eraseLines + overwrite) instead of clearTerminal.
  *    Static messages stay in scrollback untouched.
  *
  * 2. As a safety net, if \x1b[2J (erase screen) still appears in output
  *    (e.g., resize, edge cases), strip it to prevent selection destruction.
  *
- * 3. On terminals supporting DEC 2026, buffer BSU/ESU sequences into
- *    a single atomic stdout.write() call.
+ * 3. On DEC 2026 terminals, buffer BSU/ESU into single atomic write.
  *
  * Usage:
  *   import { patchInkLogUpdate } from '../ui/renderer';
@@ -70,8 +69,8 @@ function analyzeAnsi(s: string): string {
   const f: string[] = [];
   if (s.includes("\x1b[2J")) f.push("ERASE_SCREEN!");
   if (s.includes("\x1b[3J")) f.push("ERASE_SCROLLBACK!");
-  if (s.includes("\x1b[J"))  f.push("ERASE_BELOW");
-  if (s.includes("\x1b[H"))  f.push("HOME");
+  if (s.includes("\x1b[J")) f.push("ERASE_BELOW");
+  if (s.includes("\x1b[H")) f.push("HOME");
   if (s.includes("\x1b[?2026h")) f.push("BSU");
   if (s.includes("\x1b[?2026l")) f.push("ESU");
   if (s.includes("\x1b[?25l")) f.push("HIDE");
@@ -98,38 +97,15 @@ const ERASE_BELOW = "\x1b[J";
 const CURSOR_HOME = "\x1b[H";
 
 /**
- * When we strip clearTerminal, Ink's log.sync() sets previousLineCount to the
- * current content height. On the next frame with smaller content, eraseLines()
- * won't erase enough lines. We track the max height we've rendered and emit
- * extra ERASE_BELOW when content shrinks.
- */
-let maxRenderedLines = 0;
-
-/**
  * Rewrite a clearTerminal frame into CUP-positioned lines.
- *
- * When Ink hits the clearTerminal path, it emits:
- *   \x1b[2J \x1b[3J \x1b[H  fullStaticOutput + output
- *
- * fullStaticOutput = completed messages (already in scrollback via <Static>)
- * output = dynamic part (streaming msg, spinner, prompt, statusbar)
- *
- * We rewrite this as CUP-positioned lines showing only the LAST `rows` lines
- * (the dynamic viewport). The static history is already in scrollback from
- * earlier <Static> writes — no need to re-emit it.
- *
- * This means: no \x1b[2J (no erase), no \x1b[3J (scrollback preserved),
- * no \n (no scroll pollution). Just CUP overwrite of the visible viewport.
  */
 function rewriteClearFrame(s: string, termRows: number): string {
-  // Strip all destructive/positioning sequences
   let body = s;
   body = body.replaceAll(ERASE_SCREEN, "");
   body = body.replaceAll(ERASE_SCROLLBACK, "");
   body = body.replaceAll(CURSOR_HOME, "");
 
   const lines = body.split("\n");
-  // Remove trailing empty line from split
   if (lines.length > 0 && lines[lines.length - 1] === "") {
     lines.pop();
   }
@@ -137,8 +113,6 @@ function rewriteClearFrame(s: string, termRows: number): string {
   const totalLines = lines.length;
   const rows = termRows || 24;
 
-  // Show the LAST `rows` lines — this keeps statusbar/input visible
-  // and drops the static history (which is already in scrollback)
   const startLine = totalLines > rows ? totalLines - rows : 0;
   const visibleCount = Math.min(totalLines - startLine, rows);
 
@@ -148,7 +122,6 @@ function rewriteClearFrame(s: string, termRows: number): string {
     parts.push(lines[startLine + i]!);
     parts.push(ERASE_EOL);
   }
-  // Clear any lines below content (in case previous frame was taller)
   if (visibleCount < rows) {
     parts.push(ERASE_BELOW);
   }
@@ -167,6 +140,12 @@ function installWrapper(stream: NodeJS.WriteStream): void {
     log("wrapper: skip (not TTY)");
     return;
   }
+
+  if ((stream as any).__rendererWrapped) {
+    log("wrapper: skip (already wrapped)");
+    return;
+  }
+  (stream as any).__rendererWrapped = true;
 
   const originalWrite = stream.write.bind(stream) as typeof stream.write;
   let buffer: string[] = [];
@@ -190,6 +169,13 @@ function installWrapper(stream: NodeJS.WriteStream): void {
     const wn = writeCounter;
     const now = Date.now();
 
+    // Track frame height: count newlines in every Ink write to stdout.
+    // This gives us the exact line count of the dynamic viewport.
+    const nlCount = (str.match(/\n/g) || []).length;
+    if (nlCount > 0) {
+      (stream as any).__lastFrameHeight = nlCount;
+    }
+
     // ── BSU/ESU buffering (only when DEC 2026 is supported) ──
 
     if (SYNC_SUPPORTED) {
@@ -208,10 +194,8 @@ function installWrapper(stream: NodeJS.WriteStream): void {
         inSyncBlock = false;
         frameCounter++;
 
-        // Safety: strip erase-screen if present
         const hadClear = hasEraseScreen(merged);
         if (hadClear) {
-          // Unwrap BSU/ESU, rewrite as CUP, re-wrap
           let inner = merged;
           const hadBSU = inner.startsWith(BSU);
           const hadESU = inner.endsWith(ESU);
@@ -219,24 +203,6 @@ function installWrapper(stream: NodeJS.WriteStream): void {
           if (hadESU) inner = inner.slice(0, -ESU.length);
           inner = rewriteClearFrame(inner, stream.rows || 24);
           merged = (hadBSU ? BSU : "") + inner + (hadESU ? ESU : "");
-          // Update maxRenderedLines
-          const lines = inner.split("\n").length;
-          maxRenderedLines = Math.min(lines, stream.rows || 24);
-        } else {
-          // Check for content shrinking and add ERASE_BELOW if needed
-          const nlCount = (merged.match(/\n/g) || []).length;
-          if (maxRenderedLines > 0 && nlCount + 1 < maxRenderedLines) {
-            // Unwrap ESU, add ERASE_BELOW, re-add ESU
-            const hasTrailingESU = merged.endsWith(ESU);
-            if (hasTrailingESU) {
-              merged = merged.slice(0, -ESU.length) + ERASE_BELOW + ESU;
-            } else {
-              merged = merged + ERASE_BELOW;
-            }
-            log(`FRAME#${frameCounter}: SHRINK ${nlCount + 1}<${maxRenderedLines} +ERASE_BELOW`);
-          } else if (nlCount + 1 > maxRenderedLines) {
-            maxRenderedLines = nlCount + 1;
-          }
         }
 
         const gap = lastFlushTime ? now - lastFlushTime : 0;
@@ -268,32 +234,9 @@ function installWrapper(stream: NodeJS.WriteStream): void {
     const hadClear = hasEraseScreen(output);
     if (hadClear) {
       output = rewriteClearFrame(output, stream.rows || 24);
-      // rewriteClearFrame already includes ERASE_BELOW, and positions content
-      // at top of screen. Update maxRenderedLines to the visible count.
-      const lines = str.split("\n").length;
-      maxRenderedLines = Math.min(lines, stream.rows || 24);
-      log(`NOSYNC w#${wn}: STRIP! ${str.length}b→${output.length}b maxLines=${maxRenderedLines} | ${analyzeAnsi(output)}`);
-    } else {
-      // Count newlines in this frame
-      const nlCount = (str.match(/\n/g) || []).length;
-      
-      // Check if content shrank below our max rendered height
-      // If so, we need to erase the orphaned lines at the bottom
-      if (maxRenderedLines > 0 && nlCount + 1 < maxRenderedLines) {
-        // After Ink writes, cursor is at bottom of new content.
-        // Add ERASE_BELOW to clear any orphaned lines below it.
-        output = str + ERASE_BELOW;
-        log(`NOSYNC w#${wn}: SHRINK ${nlCount + 1}<${maxRenderedLines} +ERASE_BELOW | ${analyzeAnsi(output)}`);
-        // Keep maxRenderedLines at current level until next clearTerminal
-      } else {
-        // Update max if we rendered more lines
-        if (nlCount + 1 > maxRenderedLines) {
-          maxRenderedLines = nlCount + 1;
-        }
-        if (wn <= 20 || wn % 200 === 0) {
-          log(`NOSYNC w#${wn}: ${str.length}b maxLines=${maxRenderedLines} | ${analyzeAnsi(str)}`);
-        }
-      }
+      log(`NOSYNC w#${wn}: STRIP! ${str.length}b→${output.length}b | ${analyzeAnsi(output)}`);
+    } else if (wn <= 20 || wn % 200 === 0) {
+      log(`NOSYNC w#${wn}: ${str.length}b | ${analyzeAnsi(str)}`);
     }
 
     if (output !== str) {
@@ -306,16 +249,30 @@ function installWrapper(stream: NodeJS.WriteStream): void {
   log("wrapper: installed");
 }
 
+/**
+ * Get the line count of the last Ink render frame.
+ * Used by /clear to know how many residual lines to erase after Ink unmount.
+ */
+export function getLastFrameHeight(): number {
+  return (process.stdout as any).__lastFrameHeight ?? 5;
+}
+
 // ── Public API ──────────────────────────────────────────
 
+let installed = false;
+
 export function patchInkLogUpdate(): void {
+  if (installed || (process.stdout as any).__rendererPatched) return;
+  installed = true;
+  (process.stdout as any).__rendererPatched = true;
+
   initLog();
   log("patch: starting");
 
   installWrapper(process.stdout);
 
   log(`patch: done — log at ${LOG_FILE}`);
-  process.stderr.write(`[renderer] patched, log: ${LOG_FILE}\n`);
+  // process.stderr.write(`[renderer] patched, log: ${LOG_FILE}\n`);
 }
 
 // ── Re-exports ──────────────────────────────────────────

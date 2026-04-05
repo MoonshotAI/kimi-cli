@@ -302,7 +302,9 @@ export class Session {
         state,
       });
 
+      // Skip empty sessions (must be done before refresh to respect state.custom_title)
       if (await session.isEmpty()) continue;
+      
       await session.refresh();
       sessions.push(session);
     }

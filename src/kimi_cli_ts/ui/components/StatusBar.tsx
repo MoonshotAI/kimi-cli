@@ -12,7 +12,15 @@ import { Box, Text, useStdout } from "ink";
 import type { StatusUpdate } from "../../wire/types.ts";
 import type { Toast } from "./NotificationStack.tsx";
 
-const DIM = "#888888";
+// Python 256-color palette mappings:
+// - palette 239 = #4e4e4e (separator)
+// - palette 240 = #585858 (tip text)
+// - palette 241 = #626262 (cwd, dim text)
+// - palette 244 = #808080 (grey50, bg_tasks)
+const SEPARATOR_COLOR = "#4e4e4e";   // palette 239
+const TIP_COLOR = "#585858";        // palette 240
+const DIM = "#626262";              // palette 241 for cwd
+const BG_TASKS_COLOR = "#808080";   // palette 244
 const TIP_ROTATE_MS = 30_000;
 
 const DEFAULT_TIPS = [
@@ -203,7 +211,7 @@ export function StatusBar({
     leftSegments.push({
       key: "git",
       text: gitBadge,
-      render: () => <Text key="git" color="#a5d6a7">{gitBadge}</Text>,
+      render: () => <Text key="git" color={DIM}>{gitBadge}</Text>,
     });
   }
 
@@ -220,7 +228,7 @@ export function StatusBar({
     leftSegments.push({
       key: "bg",
       text: t,
-      render: () => <Text key="bg" color="#56a4ff">{t}</Text>,
+      render: () => <Text key="bg" color={BG_TASKS_COLOR}>{t}</Text>,
     });
   }
 
@@ -278,6 +286,9 @@ export function StatusBar({
 
   return (
     <Box flexDirection="column">
+      {/* Separator line above status bar — matches Python's palette 239 */}
+      <Text color={SEPARATOR_COLOR}>{separator}</Text>
+
       {/* Line 1: status indicators — guaranteed single row */}
       <Box>
         <Box gap={2} flexShrink={0}>
@@ -285,7 +296,7 @@ export function StatusBar({
         </Box>
         {visibleTip && (
           <Box flexGrow={1} justifyContent="flex-end" flexShrink={0}>
-            <Text color={DIM}>{visibleTip}</Text>
+            <Text color={TIP_COLOR}>{visibleTip}</Text>
           </Box>
         )}
       </Box>
@@ -302,7 +313,7 @@ export function StatusBar({
           )}
         </Box>
         <Box>
-          <Text color={DIM}>{rightText}</Text>
+          <Text>{rightText}</Text>
         </Box>
       </Box>
     </Box>

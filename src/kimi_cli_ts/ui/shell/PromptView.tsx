@@ -44,10 +44,13 @@ export function PromptView({
 
   return (
     <Box flexDirection="column">
+      {/* Separator line above prompt — matches Python's palette 240 = #585858 */}
+      <Text color="#585858">{"─".repeat(columns)}</Text>
+
       {/* Panel input title */}
       {panelTitle && (
         <Box paddingX={1}>
-          <Text bold color="#1e90ff">
+          <Text bold color="#0087ff">
             {panelTitle}
           </Text>
           <Text color="#888888"> (Enter submit, Esc cancel)</Text>

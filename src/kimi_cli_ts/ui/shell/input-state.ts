@@ -27,11 +27,46 @@ import {
 } from "../components/SlashMenu.tsx";
 import type { SlashCommand, CommandPanelConfig } from "../../types.ts";
 
+// Paste handling thresholds (matches Python version)
+const TEXT_PASTE_CHAR_THRESHOLD = 1000;
+const TEXT_PASTE_LINE_THRESHOLD = 15;
+
+/** Normalize pasted text: convert \r\n and \r to \n (matches Python's normalize_pasted_text). */
+function normalizePastedText(text: string): string {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function countTextLines(text: string): number {
+  if (!text) return 1;
+  return text.split("\n").length;
+}
+
+function shouldPlaceholderizePastedText(text: string): boolean {
+  return text.length >= TEXT_PASTE_CHAR_THRESHOLD || countTextLines(text) >= TEXT_PASTE_LINE_THRESHOLD;
+}
+
+function buildPastedTextPlaceholder(pasteId: number, text: string): string {
+  const lineCount = countTextLines(text);
+  return lineCount <= 1 ? `[Pasted text #${pasteId}]` : `[Pasted text #${pasteId} +${lineCount} lines]`;
+}
+
+function resolvePastedTextPlaceholders(
+  text: string,
+  pastedTexts: Map<number, string>,
+): string {
+  // Replace [Pasted text #N +lines] with actual content
+  return text.replace(/\[Pasted text #(\d+)(?: \+\d+ lines?)?\]/g, (match, id) => {
+    const actualText = pastedTexts.get(parseInt(id));
+    return actualText ?? match;
+  });
+}
+
 // ── UI Mode ─────────────────────────────────────────────
 
 type ChoiceConfig = Extract<CommandPanelConfig, { type: "choice" }>;
 type InputConfig = Extract<CommandPanelConfig, { type: "input" }>;
 type ContentConfig = Extract<CommandPanelConfig, { type: "content" }>;
+type DebugConfig = Extract<CommandPanelConfig, { type: "debug" }>;
 
 export type UIMode =
   | { type: "normal" }
@@ -39,7 +74,8 @@ export type UIMode =
   | { type: "mention_menu" }
   | { type: "panel_choice"; config: ChoiceConfig; index: number }
   | { type: "panel_input"; config: InputConfig }
-  | { type: "panel_content"; config: ContentConfig; scrollOffset: number };
+  | { type: "panel_content"; config: ContentConfig; scrollOffset: number }
+  | { type: "panel_debug"; config: DebugConfig };
 
 // ── Hook Return ─────────────────────────────────────────
 
@@ -57,6 +93,7 @@ export interface ShellInputState {
   showSlashMenu: boolean;
   showMentionMenu: boolean;
   openPanel: (config: CommandPanelConfig) => void;
+  closePanel: () => void;
 }
 
 // ── Hook Options ────────────────────────────────────────
@@ -79,6 +116,8 @@ interface UseShellInputOptions {
   onOpenEditor: () => void;
   /** Called to push a notification to the UI */
   onNotify: (title: string, body: string) => void;
+  /** Called to trigger a reload (e.g., on model change) */
+  onReload: (sessionId: string, prefillText?: string) => void;
 }
 
 // ── Hotkey Constants ────────────────────────────────────
@@ -98,12 +137,23 @@ export function useShellInput({
   onPlanModeToggle,
   onOpenEditor,
   onNotify,
+  onReload,
 }: UseShellInputOptions): ShellInputState {
   // ── Input value + history ──
   const { value, setValue, historyPrev, historyNext, addToHistory, isBrowsingHistory, exitHistory } =
     useInputHistory();
   const [cursorOffset, setCursorOffset] = useState(0);
   const [bufferedLines, setBufferedLines] = useState<string[]>([]);
+
+  // ── Pasted text storage ──
+  const pastedTexts = useRef<Map<number, string>>(new Map());
+  const nextPasteId = useRef(1);
+
+  // ── Bracketed paste state machine ──
+  // When terminal sends \x1b[200~...text...\x1b[201~, Ink splits it into
+  // multiple input events. We buffer them and emit one paste at the end.
+  const pasteBuffering = useRef(false);
+  const pasteBuffer = useRef<string[]>([]);
 
   // ── Shell mode (toggled by Ctrl+X) ──
   const [shellMode, setShellMode] = useState(false);
@@ -127,6 +177,10 @@ export function useShellInput({
   const ctrlCCount = useRef(0);
   const ctrlCTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Hotkey: Esc double-press tracking (for clearing input) ──
+  const escCount = useRef(0);
+  const escTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ── Stable callback refs (avoid stale closures in useInput) ──
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
@@ -142,6 +196,8 @@ export function useShellInput({
   onSubmitRef.current = onSubmit;
   const onSlashExecuteRef = useRef(onSlashExecute);
   onSlashExecuteRef.current = onSlashExecute;
+  const onReloadRef = useRef(onReload);
+  onReloadRef.current = onReload;
 
   // ── Derived: slash menu (suppressed when browsing history) ──
   const isSlashMode =
@@ -213,6 +269,8 @@ export function useShellInput({
       setMode({ type: "panel_input", config });
     } else if (config.type === "content") {
       setMode({ type: "panel_content", config, scrollOffset: 0 });
+    } else if (config.type === "debug") {
+      setMode({ type: "panel_debug", config });
     }
   }, [setValue]);
 
@@ -238,14 +296,43 @@ export function useShellInput({
         const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "ignore" });
         const text = await new Response(proc.stdout).text();
         if ((await proc.exited) === 0 && text) {
-          const next = value.slice(0, cursorOffset) + text + value.slice(cursorOffset);
+          // Check if we should placeholderize this text
+          let insertText = text;
+          if (shouldPlaceholderizePastedText(text)) {
+            const pasteId = nextPasteId.current;
+            nextPasteId.current += 1;
+            pastedTexts.current.set(pasteId, text);
+            insertText = buildPastedTextPlaceholder(pasteId, text);
+          }
+          
+          const next = value.slice(0, cursorOffset) + insertText + value.slice(cursorOffset);
           setValue(next);
-          setCursorOffset((prev) => prev + text.length);
+          setCursorOffset((prev) => prev + insertText.length);
           return;
         }
       } catch { /* try next */ }
     }
   }, [value, cursorOffset, setValue]);
+
+  // ── Insert pasted text (with optional placeholderization) ──
+  const insertPastedText = useCallback(
+    (pastedText: string) => {
+      exitHistory();
+      // Normalize \r\n and \r to \n (terminal may send \r in raw mode)
+      const normalized = normalizePastedText(pastedText);
+      let text = normalized;
+      if (shouldPlaceholderizePastedText(normalized)) {
+        const pasteId = nextPasteId.current;
+        nextPasteId.current += 1;
+        pastedTexts.current.set(pasteId, normalized);
+        text = buildPastedTextPlaceholder(pasteId, normalized);
+      }
+      const next = value.slice(0, cursorOffset) + text + value.slice(cursorOffset);
+      setValue(next);
+      setCursorOffset((prev) => prev + text.length);
+    },
+    [value, cursorOffset, setValue, exitHistory],
+  );
 
   // ── Text editing (exit history browsing on any edit) ──
   const insertChar = useCallback(
@@ -266,20 +353,66 @@ export function useShellInput({
     }
   }, [value, cursorOffset, setValue, exitHistory]);
 
-  // ── Hotkey: handle interrupt (Ctrl+C / Esc in normal mode) ──
-  const handleInterrupt = useCallback(() => {
+  // ── Hotkey: handle Ctrl+C (interrupt / double-press exit) ──
+  const handleCtrlC = useCallback(() => {
     ctrlCCount.current += 1;
     if (ctrlCCount.current >= 2) {
+      // Ctrl+C pressed twice: force exit
       ctrlCCount.current = 0;
       if (ctrlCTimer.current) clearTimeout(ctrlCTimer.current);
       onExitRef.current();
       return;
     }
+    // Ctrl+C pressed once: interrupt
     if (ctrlCTimer.current) clearTimeout(ctrlCTimer.current);
     ctrlCTimer.current = setTimeout(() => { ctrlCCount.current = 0; }, CTRLC_WINDOW_MS);
     onInterruptRef.current();
     onNotifyRef.current("Ctrl-C", "Press Ctrl-C again to exit");
   }, []);
+
+  // ── Hotkey: handle Escape (close panel / clear input on double-press) ──
+  const handleEscape = useCallback(() => {
+    const m = mode.type;
+
+    // panel_input doesn't use useInputLayer, so Esc still comes here
+    if (m === "panel_input") {
+      setValue("");
+      setCursorOffset(0);
+      setMode({ type: "normal" });
+      escCount.current = 0;
+      if (escTimer.current) clearTimeout(escTimer.current);
+      return;
+    }
+
+    // In normal mode: track double-press to clear input
+    if (m === "normal") {
+      escCount.current += 1;
+      if (escCount.current >= 2) {
+        // Esc pressed twice: clear input
+        escCount.current = 0;
+        if (escTimer.current) clearTimeout(escTimer.current);
+        setValue("");
+        setCursorOffset(0);
+        setBufferedLines([]);
+        onNotifyRef.current("Input", "Cleared");
+        return;
+      }
+      // Esc pressed once: interrupt streaming
+      if (escTimer.current) clearTimeout(escTimer.current);
+      escTimer.current = setTimeout(() => { escCount.current = 0; }, CTRLC_WINDOW_MS);
+      onInterruptRef.current();
+      onNotifyRef.current("Esc", "Press Esc again to clear input");
+      return;
+    }
+
+    // If in a menu (slash/mention), just return to normal
+    if (m === "slash_menu" || m === "mention_menu") {
+      setMode({ type: "normal" });
+      escCount.current = 0;
+      if (escTimer.current) clearTimeout(escTimer.current);
+      return;
+    }
+  }, [mode.type, setValue]);
 
   // ── Submit handler ──
   const doSubmit = useCallback(() => {
@@ -324,11 +457,15 @@ export function useShellInput({
       ? [...bufferedLines, value].join("\n") : value;
     const final = fullInput.trim();
     if (!final) return;
+    
+    // Resolve paste placeholders before submitting
+    const resolved = resolvePastedTextPlaceholders(final, pastedTexts.current);
+    
     addToHistory(final);
     setValue("");
     setCursorOffset(0);
     setBufferedLines([]);
-    onSubmitRef.current(final);
+    onSubmitRef.current(resolved);
   }, [
     mode, value, commands, slashFilter, slashMenuIndex,
     mention.suggestions, mentionMenuIndex, applyMention,
@@ -338,22 +475,53 @@ export function useShellInput({
   // ── Single useInput dispatcher ──
   useInput(
     (input, key) => {
-      // ── Global keys: always fire regardless of input stack ──
-      // Ctrl+C: interrupt / double-press exit
-      if (key.ctrl && input === "c") { handleInterrupt(); return; }
-      // Esc: close panel or interrupt (global escape hatch)
-      if (key.escape) {
-        const m = mode.type;
-        if (m === "panel_choice" || m === "panel_input" || m === "panel_content") {
-          setValue("");
-          setCursorOffset(0);
-          setMode({ type: "normal" });
+      // ── Bracketed paste buffering (must be checked before any key handling) ──
+      // When paste mode is active, buffer everything except the end marker.
+      // Terminal sends \x1b[200~...text...\x1b[201~ which Ink splits into
+      // multiple events. The markers arrive as "[200~" / "[201~" (ESC stripped).
+      if (pasteBuffering.current) {
+        // Check for paste end marker
+        if (input && input.includes("[201~")) {
+          const beforeMarker = input.split("[201~")[0];
+          if (beforeMarker) pasteBuffer.current.push(beforeMarker);
+          pasteBuffering.current = false;
+          const fullPaste = pasteBuffer.current.join("");
+          pasteBuffer.current = [];
+          if (fullPaste) insertPastedText(fullPaste);
           return;
         }
-        // If a stack layer is active, let it handle Esc too
+        // Buffer text content; restore newlines from return/enter keys
+        if (key.return || key.enter) {
+          pasteBuffer.current.push("\n");
+        } else if (input) {
+          pasteBuffer.current.push(input);
+        }
+        return;
+      }
+      // Check for paste start marker (outside paste mode)
+      if (input && input.includes("[200~")) {
+        pasteBuffering.current = true;
+        pasteBuffer.current = [];
+        const afterMarker = input.split("[200~").slice(1).join("[200~");
+        if (afterMarker) pasteBuffer.current.push(afterMarker);
+        return;
+      }
+
+      // ── Global keys: always fire regardless of input stack ──
+      // Ctrl+C: interrupt / double-press exit (separate from Esc)
+      if (key.ctrl && input === "c") { handleCtrlC(); return; }
+
+      // Ctrl+D: direct exit (no double-press required)
+      if (key.ctrl && input === "d") { onExitRef.current(); return; }
+      
+      // Esc: if input stack layer is active, let it handle Esc first
+      if (key.escape) {
         const topHandler = getTopHandler();
-        if (topHandler) { topHandler(input, key); return; }
-        handleInterrupt();
+        if (topHandler) {
+          topHandler(input, key);
+          return;
+        }
+        handleEscape();
         return;
       }
 
@@ -393,26 +561,6 @@ export function useShellInput({
 
       // ── Escape already handled above as global key ──
 
-      // ── Panel choice ──
-      if (m === "panel_choice" && mode.type === "panel_choice") {
-        if (key.upArrow) { setMode({ ...mode, index: Math.max(0, mode.index - 1) }); return; }
-        if (key.downArrow) { setMode({ ...mode, index: Math.min(mode.config.items.length - 1, mode.index + 1) }); return; }
-        if (key.return) {
-          const item = mode.config.items[mode.index];
-          if (item) handlePanelResult(mode.config.onSelect(item.value));
-          return;
-        }
-        return;
-      }
-
-      // ── Panel content ──
-      if (m === "panel_content" && mode.type === "panel_content") {
-        const maxScroll = Math.max(0, mode.config.content.split("\n").length - 15);
-        if (key.upArrow) { setMode({ ...mode, scrollOffset: Math.max(0, mode.scrollOffset - 1) }); return; }
-        if (key.downArrow) { setMode({ ...mode, scrollOffset: Math.min(maxScroll, mode.scrollOffset + 1) }); return; }
-        return;
-      }
-
       // ── Normal / slash / mention / panel_input ──
 
       if (key.shift && key.tab && m !== "panel_input") {
@@ -431,7 +579,7 @@ export function useShellInput({
         return;
       }
 
-      if (key.return) { doSubmit(); return; }
+      if (key.return || key.enter) { doSubmit(); return; }
 
       if (key.upArrow) {
         if (m === "mention_menu") setMentionMenuIndex((i) => Math.max(0, i - 1));
@@ -449,7 +597,22 @@ export function useShellInput({
       if (key.leftArrow) { setCursorOffset((prev) => Math.max(0, prev - 1)); return; }
       if (key.rightArrow) { setCursorOffset((prev) => Math.min(value.length, prev + 1)); return; }
       if (key.backspace || key.delete) { backspace(); return; }
-      if (input) { insertChar(input); }
+      
+      // Handle input which may contain newlines from screen/tmux bulk paste
+      if (input) {
+        // Filter out CR/LF from the end and treat as Enter submission trigger
+        const hasNewline = /[\r\n]$/.test(input);
+        const cleanInput = input.replace(/[\r\n]+$/, "");
+        
+        if (cleanInput) {
+          insertChar(cleanInput);
+        }
+        
+        // If input ended with newline, treat as Enter submission
+        if (hasNewline) {
+          doSubmit();
+        }
+      }
     },
     { isActive: !disabled },
   );
@@ -468,5 +631,6 @@ export function useShellInput({
     showSlashMenu,
     showMentionMenu,
     openPanel: openPanelConfig,
+    closePanel: useCallback(() => setMode({ type: "normal" }), []),
   };
 }

@@ -102,6 +102,7 @@ export interface MessageColors {
   system: string;
   tool: string;
   error: string;
+  darkRed: string;
   dim: string;
   thinking: string;
   highlight: string;
@@ -111,10 +112,11 @@ const MESSAGE_DARK: MessageColors = {
   user: "#56d364",       // Rich "green"
   assistant: "#e0e0e0",  // bright text for readability
   system: "#d670d6",     // Rich "magenta"
-  tool: "#C8C5F4",       // Rich "blue" — lavender as seen in Python
+  tool: "#0000d7",       // Rich "blue" — ANSI basic blue (\e[34m)
   error: "#ff7b72",      // Rich "dark_red"
-  dim: "#808080",        // Rich "grey50"
-  thinking: "#7c8594",
+  darkRed: "#870000",    // Rich "dark_red" — 256-color idx 88, for rejected/error bullets
+  dim: "#b2b2b2",        // Rich "grey50" — 256-color idx 244
+  thinking: "#b2b2b2",   // Rich "grey50" — matches Python's grey50 italic
   highlight: "#56d364",  // Rich "green"
 };
 
@@ -124,6 +126,7 @@ const MESSAGE_LIGHT: MessageColors = {
   system: "#7c3aed",     // dark purple
   tool: "#1d4ed8",       // dark blue
   error: "#dc2626",
+  darkRed: "#991b1b",    // dark red for light theme
   dim: "#6b7280",
   thinking: "#6b7280",
   highlight: "#166534",

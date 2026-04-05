@@ -4,7 +4,6 @@
 
 import { Session, loadSessionState, saveSessionState } from "../../../session.ts";
 import type { CommandPanelConfig } from "../../../types.ts";
-import { logger } from "../../../utils/logging.ts";
 import { readdirSync, statSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -63,11 +62,13 @@ export function createSessionsPanel(
 
     // Try state file for custom_title
     const stateFile = join(sessionDir, "state.json");
+    let hasCustomTitle = false;
     if (existsSync(stateFile)) {
       try {
         const stateData = JSON.parse(readFileSync(stateFile, "utf-8"));
         if (stateData.custom_title) {
           title = stateData.custom_title;
+          hasCustomTitle = true;
         }
       } catch { /* ignore */ }
     }
@@ -96,6 +97,9 @@ export function createSessionsPanel(
       }
     }
 
+    // Skip empty sessions (session with no custom title and no wire events)
+    if (title === "Untitled" && !hasCustomTitle) continue;
+
     sessions.push({ id: entry, title, updatedAt });
   }
 
@@ -106,7 +110,7 @@ export function createSessionsPanel(
   const items = sessions.map((s) => ({
     label: s.title,
     value: s.id,
-    description: `${formatRelativeTimeMs(s.updatedAt)}${s.id === session.id ? " (current)" : ""}`,
+    description: formatRelativeTimeMs(s.updatedAt),
     current: s.id === session.id,
   }));
 
@@ -125,32 +129,32 @@ export function createSessionsPanel(
   };
 }
 
-export async function handleNew(session: Session): Promise<void> {
+export async function handleNew(session: Session): Promise<string> {
   const workDir = session.workDir;
   if (await session.isEmpty()) {
     await session.delete();
   }
   const newSession = await Session.create(workDir);
-  logger.info(`New session created: ${newSession.id}. Please restart to switch.`);
+  return `New session created: ${newSession.id}. Please restart to switch.`;
 }
 
-export async function handleSessions(session: Session): Promise<void> {
+export async function handleSessions(session: Session): Promise<string> {
   const sessions = await Session.list(session.workDir);
   if (sessions.length === 0) {
-    logger.info("No sessions found.");
-    return;
+    return "No sessions found.";
   }
+  const lines: string[] = [];
   for (const s of sessions) {
     const current = s.id === session.id ? " (current)" : "";
     const timeAgo = formatRelativeTime(s.updatedAt);
-    logger.info(`  ${s.title} (${s.id}) - ${timeAgo}${current}`);
+    lines.push(`  ${s.title}, ${timeAgo}${current}`);
   }
+  return lines.join("\n");
 }
 
-export async function handleTitle(session: Session, args: string): Promise<void> {
+export async function handleTitle(session: Session, args: string): Promise<string> {
   if (!args.trim()) {
-    logger.info(`Session title: ${session.title}`);
-    return;
+    return `Session title: ${session.title}`;
   }
   const newTitle = args.trim().slice(0, 200);
   const freshState = await loadSessionState(session.dir);
@@ -159,17 +163,18 @@ export async function handleTitle(session: Session, args: string): Promise<void>
   await saveSessionState(freshState, session.dir);
   session.state.custom_title = newTitle;
   session.title = newTitle;
-  logger.info(`Session title set to: ${newTitle}`);
+  return `Session title set to: ${newTitle}`;
 }
 
 export function createTitlePanel(
   session: Session,
   notify: Notify,
 ): CommandPanelConfig {
+  const currentTitle = session.title || "Untitled";
   return {
     type: "input",
-    title: "Set Session Title",
-    placeholder: session.title || "Enter a title...",
+    title: `Session Title — ${currentTitle}`,
+    placeholder: "Enter a new title...",
     onSubmit: (value: string) => {
       const newTitle = value.trim().slice(0, 200);
       if (!newTitle) return;

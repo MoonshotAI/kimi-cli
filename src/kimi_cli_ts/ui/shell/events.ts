@@ -24,6 +24,14 @@ export interface ThinkSegment {
   text: string;
 }
 
+/** A sub-tool-call from a subagent, displayed as a nested entry. */
+export interface FinishedSubCall {
+  callId: string;
+  toolName: string;
+  arguments: string;
+  isError: boolean;
+}
+
 export interface ToolCallSegment {
   type: "tool_call";
   id: string;
@@ -31,6 +39,15 @@ export interface ToolCallSegment {
   arguments: string;
   result?: ToolResult;
   collapsed: boolean;
+  // Subagent tracking (matches Python _ToolCallBlock)
+  subagentId?: string;
+  subagentType?: string;
+  /** In-flight subagent tool calls keyed by tool_call_id. */
+  ongoingSubCalls?: Record<string, { id: string; name: string; arguments: string }>;
+  /** Most recent MAX_SUBAGENT_TOOL_CALLS_TO_SHOW completed sub-calls. */
+  finishedSubCalls?: FinishedSubCall[];
+  /** Number of finished sub-calls hidden (overflow). */
+  nExtraSubCalls?: number;
 }
 
 export type MessageSegment = TextSegment | ThinkSegment | ToolCallSegment;
@@ -62,7 +79,7 @@ export type WireUIEvent =
   | { type: "compaction_begin" }
   | { type: "compaction_end" }
   | { type: "notification"; title: string; body: string; severity?: string }
-  | { type: "slash_result"; userInput: string; text: string }
+  | { type: "slash_result"; text: string }
   | { type: "plan_display"; content: string; filePath: string }
   | { type: "hook_triggered"; event: string; target: string; hookCount: number }
   | { type: "hook_resolved"; event: string; target: string; action: string; reason: string; durationMs: number }

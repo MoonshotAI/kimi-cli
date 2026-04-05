@@ -3,18 +3,18 @@ import type { Session } from "../../../session.ts";
 import type { ContentPart } from "../../../types.ts";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { logger } from "../../../utils/logging.ts";
 
-export async function handleExport(context: Context, session: Session, args: string): Promise<void> {
+export async function handleExport(context: Context, session: Session, args: string): Promise<string> {
   const history = context.history;
   if (!history.length) {
-    logger.info("Nothing to export - context is empty.");
-    return;
+    return "Nothing to export - context is empty.";
   }
 
   // Determine output path
   const outputDir = args.trim() || session.workDir;
-  const filename = `kimi-export-${session.id.slice(0, 8)}.md`;
+  const now = new Date();
+  const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
+  const filename = `kimi-export-${session.id.slice(0, 8)}-${ts}.md`;
   const outputPath = join(outputDir, filename);
 
   // Build markdown
@@ -56,18 +56,19 @@ export async function handleExport(context: Context, session: Session, args: str
     await Bun.write(outputPath, lines.join("\n"));
     // Shorten home dir for display
     const display = outputPath.replace(homedir(), "~");
-    logger.info(`Exported ${history.length} messages to ${display}`);
-    logger.info("Note: The exported file may contain sensitive information.");
+    return (
+      `Exported ${history.length} messages to ${display}\n` +
+      "Note: The exported file may contain sensitive information. Please be cautious when sharing it externally."
+    );
   } catch (err) {
-    logger.info(`Failed to export: ${err instanceof Error ? err.message : err}`);
+    return `Failed to export: ${err instanceof Error ? err.message : err}`;
   }
 }
 
-export async function handleImport(context: Context, session: Session, args: string): Promise<void> {
+export async function handleImport(context: Context, session: Session, args: string): Promise<string> {
   const target = args.trim();
   if (!target) {
-    logger.info("Usage: /import <file_path or session_id>");
-    return;
+    return "Usage: /import <file_path or session_id>";
   }
 
   // Check if it's a file path
@@ -80,26 +81,23 @@ export async function handleImport(context: Context, session: Session, args: str
         role: "user",
         content: `[Imported from ${target}]\n\n${content}`,
       });
-      logger.info(`Imported ${content.length} chars from ${target}`);
+      return `Imported ${content.length} chars from ${target}`;
     } catch (err) {
-      logger.info(`Failed to import: ${err instanceof Error ? err.message : err}`);
+      return `Failed to import: ${err instanceof Error ? err.message : err}`;
     }
-    return;
   }
 
   // Try as session ID
   const { Session: SessionClass } = await import("../../../session.ts");
   const otherSession = await SessionClass.find(session.workDir, target);
   if (!otherSession) {
-    logger.info(`File not found and no session with ID: ${target}`);
-    return;
+    return `File not found and no session with ID: ${target}`;
   }
 
   // Read other session's context
   const contextFile = Bun.file(otherSession.contextFile);
   if (!(await contextFile.exists())) {
-    logger.info("Target session has no context.");
-    return;
+    return "Target session has no context.";
   }
 
   const text = await contextFile.text();
@@ -108,5 +106,5 @@ export async function handleImport(context: Context, session: Session, args: str
     role: "user",
     content: `[Imported context from session ${target}]\n\n${text}`,
   });
-  logger.info(`Imported context from session ${target} (~${messageCount} entries)`);
+  return `Imported context from session ${target} (~${messageCount} entries)`;
 }

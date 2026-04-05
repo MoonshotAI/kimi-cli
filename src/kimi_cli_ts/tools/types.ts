@@ -2,7 +2,7 @@
  * Tool-related types — corresponds to Python tools/utils.py and kosong.tooling types.
  */
 
-import type { ApprovalDecision, JsonValue } from "../types.ts";
+import type { ApprovalDecisionResult, JsonValue } from "../types.ts";
 import type { Runtime } from "../soul/agent.ts";
 
 // ── ToolContext ──────────────────────────────────────────
@@ -13,13 +13,13 @@ export interface ToolContext {
   workingDir: string;
   /** AbortSignal for cooperative cancellation. */
   signal?: AbortSignal;
-  /** Request user approval; returns the decision. */
+  /** Request user approval; returns the decision and optional feedback. */
   approval: (
     toolName: string,
     action: string,
     summary: string,
     opts?: { display?: unknown[] },
-  ) => Promise<ApprovalDecision>;
+  ) => Promise<ApprovalDecisionResult>;
   /** Emit a wire event (for UI communication). */
   wireEmit?: (event: unknown) => void;
   /** Toggle plan mode on/off. */
@@ -66,8 +66,9 @@ export function ToolError(
   message: string,
   output = "",
   display?: unknown[],
+  extras?: Record<string, JsonValue>,
 ): ToolResult {
-  return { isError: true, output, message, display };
+  return { isError: true, output, message, display, extras };
 }
 
 // ── ToolDefinition ──────────────────────────────────────
@@ -246,6 +247,8 @@ export class ToolRejectedError extends Error {
       isError: true,
       output: "",
       message: this.message,
+      display: [{ type: "brief" as const, brief: this.brief }],
+      extras: this.hasFeedback ? { userFeedback: true } : undefined,
     };
   }
 }

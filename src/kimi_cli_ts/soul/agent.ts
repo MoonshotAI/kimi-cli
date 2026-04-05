@@ -20,6 +20,13 @@ import { RootWireHub } from "../wire/root_hub.ts";
 import { loadAgentSpec, getAgentsDir } from "../agentspec.ts";
 import { defaultToolPolicy, type ToolPolicy } from "../subagents/models.ts";
 import { join } from "node:path";
+import type { Skill } from "../skill/index.ts";
+import {
+  discoverSkillsFromRoots,
+  indexSkills,
+  readSkillText,
+  resolveSkillsRoots,
+} from "../skill/index.ts";
 
 // ── Built-in system prompt args ──────────────────────
 
@@ -51,6 +58,13 @@ export class Runtime {
   rootWireHub: RootWireHub | null;
   subagentId: string | null;
   subagentType: string | null;
+  skills: Map<string, Skill>;
+  /**
+   * Callback for forwarding subagent events to the parent UI.
+   * Set by cli/index.ts when wiring the parent soul's callbacks.
+   * Used by ForegroundSubagentRunner to emit SubagentEvent to the shell.
+   */
+  subagentEventSink: ((event: Record<string, unknown>) => void) | null;
 
   constructor(opts: {
     config: Config;
@@ -67,6 +81,8 @@ export class Runtime {
     rootWireHub?: RootWireHub | null;
     subagentId?: string | null;
     subagentType?: string | null;
+    skills?: Map<string, Skill>;
+    subagentEventSink?: ((event: Record<string, unknown>) => void) | null;
   }) {
     this.config = opts.config;
     this.llm = opts.llm;
@@ -82,6 +98,8 @@ export class Runtime {
     this.rootWireHub = opts.rootWireHub ?? null;
     this.subagentId = opts.subagentId ?? null;
     this.subagentType = opts.subagentType ?? null;
+    this.skills = opts.skills ?? new Map();
+    this.subagentEventSink = opts.subagentEventSink ?? null;
   }
 
   get loopControl(): LoopControl {
@@ -115,12 +133,31 @@ export class Runtime {
 
     const shell = process.env.SHELL ?? "/bin/bash";
 
+    // Discover and format skills (matching Python version)
+    const skillsRoots = resolveSkillsRoots(workDir, {
+      mergeBrands: opts.config.merge_all_available_skills ?? false,
+    });
+    const discoveredSkills = discoverSkillsFromRoots(skillsRoots);
+    const skillsByName = indexSkills(discoveredSkills);
+    const skillsFormatted =
+      discoveredSkills.length > 0
+        ? discoveredSkills
+            .map(
+              (skill) =>
+                `- ${skill.name}\n` +
+                `  - Path: ${skill.skillMdFile}\n` +
+                `  - Description: ${skill.description}`,
+            )
+            .join("\n")
+        : "No skills found.";
+    logger.info(`Discovered ${discoveredSkills.length} skill(s)`);
+
     const builtinArgs: BuiltinSystemPromptArgs = {
       KIMI_NOW: new Date().toISOString(),
       KIMI_WORK_DIR: workDir,
       KIMI_WORK_DIR_LS: workDirLs,
       KIMI_AGENTS_MD: await loadAgentsMd(workDir) ?? "",
-      KIMI_SKILLS: "", // TODO: list skills
+      KIMI_SKILLS: skillsFormatted,
       KIMI_ADDITIONAL_DIRS_INFO: opts.session.state.additional_dirs.length > 0
         ? `Additional directories: ${opts.session.state.additional_dirs.join(", ")}`
         : "",
@@ -172,6 +209,7 @@ export class Runtime {
       ),
       approvalRuntime,
       rootWireHub,
+      skills: skillsByName,
     });
   }
 
@@ -200,6 +238,8 @@ export class Runtime {
       rootWireHub: this.rootWireHub,
       subagentId: opts.agentId,
       subagentType: opts.subagentType,
+      skills: this.skills,
+      subagentEventSink: this.subagentEventSink,
     });
   }
 }
@@ -266,7 +306,7 @@ export async function loadAgent(opts: {
           description,
           { display: opts?.display },
         );
-        return result.approved ? "approve" : "reject";
+        return { decision: result.approved ? "approve" as const : "reject" as const, feedback: result.feedback };
       },
       wireEmit: () => {}, // Will be wired by KimiSoul
       serviceConfig: {
