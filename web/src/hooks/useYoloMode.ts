@@ -20,12 +20,22 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
 
   const isInitializedRef = useRef(false);
   const sessionIdRef = useRef(sessionId);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async () => {
     if (!sessionId) {
       setYoloStatus(null);
       return;
     }
+
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new AbortController for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     setIsLoading(true);
     setError(null);
@@ -36,6 +46,7 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
           headers: {
             ...getAuthHeader(),
           },
+          signal: controller.signal,
         },
       );
 
@@ -52,12 +63,19 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
         autoApproveActions: data.auto_approve_actions,
       });
     } catch (err) {
+      // Skip state updates if the request was aborted
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       const message =
         err instanceof Error ? err.message : "Failed to load YOLO status";
       setError(message);
       console.error("[useYoloMode] Failed to load YOLO status:", err);
     } finally {
-      setIsLoading(false);
+      // Only clear loading state if this request wasn't aborted
+      if (abortControllerRef.current === controller) {
+        setIsLoading(false);
+      }
     }
   }, [sessionId]);
 
@@ -115,6 +133,14 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
     sessionIdRef.current = sessionId;
     isInitializedRef.current = true;
     refresh();
+
+    // Cleanup: abort any in-flight request when sessionId changes or component unmounts
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
   }, [sessionId, refresh]);
 
   return {
