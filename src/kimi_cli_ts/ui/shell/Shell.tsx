@@ -193,12 +193,12 @@ export function Shell({
   });
 
   // ── Layout ──
-  const { staticItems } = useShellLayout(wire.messages, wire.isStreaming);
+  const { staticItems, resizeKey } = useShellLayout(wire.messages, wire.isStreaming);
   const mode = inputState.mode;
   const promptSymbol = getPromptSymbol(mode, inputState.shellMode, thinking, wire.status?.plan_mode ?? false);
 
   return (
-    <Box flexDirection="column">
+    <Box key={resizeKey} flexDirection="column">
       <Static items={staticItems}>
         {(item: any) =>
           item._isWelcome ? (
