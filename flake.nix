@@ -47,44 +47,48 @@
       packages = forAllSystems (
         { pkgs, ... }:
         let
+          inherit (pkgs)
+            lib
+            python313
+            callPackage
+            ;
+          python = python313;
+          pyproject = lib.importTOML ./pyproject.toml;
+          workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
+
+          overlay = workspace.mkPyprojectOverlay {
+            sourcePreference = "wheel";
+          };
+          extraBuildOverlay = final: prev: {
+            # Add setuptools build dependency for ripgrepy
+            ripgrepy = prev.ripgrepy.overrideAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.setuptools ];
+            });
+            # Replace README symlink with real file for Nix builds.
+            "kimi-code" = prev."kimi-code".overrideAttrs (old: {
+              postPatch = (old.postPatch or "") + ''
+                rm -f README.md
+                cp ${./README.md} README.md
+              '';
+            });
+          };
+          pythonSet = (callPackage pyproject-nix.build.packages { inherit python; }).overrideScope (
+            lib.composeManyExtensions [
+              pyproject-build-systems.overlays.wheel
+              overlay
+              extraBuildOverlay
+            ]
+          );
+
           kimi-cli =
             let
               inherit (pkgs)
                 lib
-                callPackage
-                python313
-                runCommand
                 ripgrep
                 stdenvNoCC
                 makeWrapper
                 versionCheckHook
                 ;
-              python = python313;
-              pyproject = lib.importTOML ./pyproject.toml;
-              workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
-              overlay = workspace.mkPyprojectOverlay {
-                sourcePreference = "wheel";
-              };
-              extraBuildOverlay = final: prev: {
-                # Add setuptools build dependency for ripgrepy
-                ripgrepy = prev.ripgrepy.overrideAttrs (old: {
-                  nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.setuptools ];
-                });
-                # Replace README symlink with real file for Nix builds.
-                "kimi-code" = prev."kimi-code".overrideAttrs (old: {
-                  postPatch = (old.postPatch or "") + ''
-                    rm -f README.md
-                    cp ${./README.md} README.md
-                  '';
-                });
-              };
-              pythonSet = (callPackage pyproject-nix.build.packages { inherit python; }).overrideScope (
-                lib.composeManyExtensions [
-                  pyproject-build-systems.overlays.wheel
-                  overlay
-                  extraBuildOverlay
-                ]
-              );
               kimiCliPackage = pythonSet.mkVirtualEnv "kimi-cli-virtual-env-${pyproject.project.version}" workspace.deps.default;
             in
             stdenvNoCC.mkDerivation ({
@@ -123,12 +127,57 @@
                 mainProgram = "kimi";
               };
             });
+
+          devEnv =
+            let
+              editableOverlay = workspace.mkEditablePyprojectOverlay {
+                root = "$REPO_ROOT";
+              };
+              editablePythonSet = pythonSet.overrideScope editableOverlay;
+            in
+            {
+              devVirtualEnv = editablePythonSet.mkVirtualEnv "kimi-cli-dev-virtual-env-${pyproject.project.version}" workspace.deps.all;
+              devPythonInterpreter = editablePythonSet.python.interpreter;
+            };
         in
         {
           inherit kimi-cli;
+          inherit (devEnv) devVirtualEnv devPythonInterpreter;
           default = kimi-cli;
         }
       );
       formatter = forAllSystems ({ pkgs, ... }: pkgs.nixfmt-tree);
+      devShells = forAllSystems (
+        { pkgs, system, ... }:
+        let
+          venv = self.packages.${system}.devVirtualEnv;
+          python = self.packages.${system}.devPythonInterpreter;
+        in
+        {
+          default = pkgs.mkShell {
+            packages = [
+              venv
+            ]
+            ++ (with pkgs; [
+              uv
+              prek
+              nodejs
+              biome
+            ]);
+
+            env = {
+              UV_NO_SYNC = "1";
+              UV_PYTHON = python;
+              UV_PROJECT_ENVIRONMENT = venv;
+              UV_PYTHON_DOWNLOADS = "never";
+            };
+
+            shellHook = ''
+              unset PYTHONPATH
+              export REPO_ROOT=$(git rev-parse --show-toplevel)
+            '';
+          };
+        }
+      );
     };
 }
