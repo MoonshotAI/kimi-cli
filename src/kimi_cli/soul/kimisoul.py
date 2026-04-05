@@ -702,7 +702,16 @@ class KimiSoul:
                     reserved_context_size=self._loop_control.reserved_context_size,
                 ):
                     logger.info("Context too long, compacting...")
-                    await self.compact_context()
+                    try:
+                        await self.compact_context()
+                    except Exception as compact_err:
+                        logger.error(
+                            "Context compaction failed at step {step_no}: {error_type}: {error}",
+                            step_no=step_no,
+                            error_type=type(compact_err).__name__,
+                            error=compact_err,
+                        )
+                        raise
 
                 logger.debug("Beginning step {step_no}", step_no=step_no)
                 await self._checkpoint()
@@ -712,6 +721,12 @@ class KimiSoul:
                 back_to_the_future = e
             except Exception as e:
                 # any other exception should interrupt the step
+                logger.error(
+                    "Agent step {step_no} failed: {error_type}: {error}",
+                    step_no=step_no,
+                    error_type=type(e).__name__,
+                    error=e,
+                )
                 wire_send(StepInterrupted())
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
@@ -1052,6 +1067,11 @@ class KimiSoul:
                 )
                 raise
             if not recovered:
+                logger.warning(
+                    "Chat provider recovery not available for {name} after {error_type}.",
+                    name=name,
+                    error_type=type(error).__name__,
+                )
                 raise
             logger.info(
                 "Recovered chat provider during {name} after {error_type}; retrying once.",
@@ -1061,15 +1081,25 @@ class KimiSoul:
             try:
                 return await operation()
             except (APIConnectionError, APITimeoutError) as second_error:
+                logger.warning(
+                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
+                    name=name,
+                    error_type=type(second_error).__name__,
+                    error=second_error,
+                )
                 second_error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
                 raise
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):
-        logger.info(
-            "Retrying {name} for the {n} time. Waiting {sleep} seconds.",
+        error = retry_state.outcome.exception() if retry_state.outcome else None
+        logger.warning(
+            "Retrying {name} for the {n} time (last error: {error_type}: {error}). "
+            "Waiting {sleep} seconds.",
             name=name,
             n=retry_state.attempt_number,
+            error_type=type(error).__name__ if error else "unknown",
+            error=error or "unknown",
             sleep=retry_state.next_action.sleep
             if retry_state.next_action is not None
             else "unknown",

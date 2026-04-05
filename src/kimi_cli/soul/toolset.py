@@ -140,6 +140,12 @@ class KimiToolset:
             try:
                 arguments: JsonType = json.loads(tool_call.function.arguments or "{}", strict=False)
             except json.JSONDecodeError as e:
+                logger.warning(
+                    "Tool call JSON parse error: {tool_name} (call_id={call_id}): {error}",
+                    tool_name=tool_call.function.name,
+                    call_id=tool_call.id,
+                    error=e,
+                )
                 return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
             async def _call():
@@ -173,6 +179,12 @@ class KimiToolset:
                 try:
                     ret = await tool.call(arguments)
                 except Exception as e:
+                    logger.error(
+                        "Tool execution failed: {tool_name} (call_id={call_id}): {error}",
+                        tool_name=tool_call.function.name,
+                        call_id=tool_call.id,
+                        error=e,
+                    )
                     # --- PostToolUseFailure (fire-and-forget) ---
                     _hook_task = asyncio.create_task(
                         self._hook_engine.trigger(
@@ -319,10 +331,20 @@ class KimiToolset:
         module_name, class_name = tool_path.rsplit(":", 1)
         try:
             module = importlib.import_module(module_name)
-        except ImportError:
+        except ImportError as e:
+            logger.warning(
+                "Tool module import failed: {module_name}: {error}",
+                module_name=module_name,
+                error=e,
+            )
             return None
         tool_cls = getattr(module, class_name, None)
         if tool_cls is None:
+            logger.warning(
+                "Tool class not found: {class_name} in {module_name}",
+                class_name=class_name,
+                module_name=module_name,
+            )
             return None
         args: list[Any] = []
         if "__init__" in tool_cls.__dict__:
@@ -534,11 +556,22 @@ class MCPTool[T: ClientTransport](CallableTool):
                     timeout=self._timeout,
                     raise_on_error=False,
                 )
+                if result.is_error:
+                    logger.warning(
+                        "MCP tool returned error: {tool_name}: {content}",
+                        tool_name=self._mcp_tool.name,
+                        content=[str(p) for p in result.content][:3],
+                    )
                 return convert_mcp_tool_result(result)
         except Exception as e:
             # fastmcp raises `RuntimeError` on timeout and we cannot tell it from other errors
             exc_msg = str(e).lower()
             if "timeout" in exc_msg or "timed out" in exc_msg:
+                logger.warning(
+                    "MCP tool call timed out: {tool_name}: {error}",
+                    tool_name=self._mcp_tool.name,
+                    error=e,
+                )
                 return ToolError(
                     message=(
                         f"Timeout while calling MCP tool `{self._mcp_tool.name}`. "
@@ -546,6 +579,11 @@ class MCPTool[T: ClientTransport](CallableTool):
                     ),
                     brief="Timeout",
                 )
+            logger.error(
+                "MCP tool call failed: {tool_name}: {error}",
+                tool_name=self._mcp_tool.name,
+                error=e,
+            )
             raise
 
 

@@ -12,6 +12,7 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
+from kimi_cli.utils.logging import logger
 
 
 class Params(BaseModel):
@@ -89,6 +90,11 @@ class SearchWeb(CallableTool2[Params]):
                 ) as response,
             ):
                 if response.status != 200:
+                    logger.warning(
+                        "SearchWeb HTTP error: status={status}, query={query}",
+                        status=response.status,
+                        query=params.query,
+                    )
                     return builder.error(
                         (
                             f"Failed to search. Status: {response.status}. "
@@ -100,6 +106,11 @@ class SearchWeb(CallableTool2[Params]):
                 try:
                     results = Response(**await response.json()).search_results
                 except ValidationError as e:
+                    logger.warning(
+                        "SearchWeb response parse error: {error}, query={query}",
+                        error=e,
+                        query=params.query,
+                    )
                     return builder.error(
                         (
                             f"Failed to parse search results. Error: {e}. "
@@ -108,11 +119,17 @@ class SearchWeb(CallableTool2[Params]):
                         brief="Failed to parse search results",
                     )
         except TimeoutError:
+            logger.warning("SearchWeb request timed out: query={query}", query=params.query)
             return builder.error(
                 "Search request timed out. The search service may be slow or unavailable.",
                 brief="Search request timed out",
             )
         except aiohttp.ClientError as e:
+            logger.warning(
+                "SearchWeb network error: {error}, query={query}",
+                error=e,
+                query=params.query,
+            )
             return builder.error(
                 f"Search request failed: {e}. The search service may be unavailable.",
                 brief="Search request failed",
