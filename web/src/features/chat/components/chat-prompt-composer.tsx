@@ -213,7 +213,8 @@ export const ChatPromptComposer = memo(function ChatPromptComposerComponent({
         accept="*"
         className={cn(
           "w-full [&_[data-slot=input-group]]:border [&_[data-slot=input-group]]:border-border",
-          planMode && "[&_[data-slot=input-group]]:border-dashed [&_[data-slot=input-group]]:!border-blue-200 dark:[&_[data-slot=input-group]]:!border-blue-600"
+          planMode && "[&_[data-slot=input-group]]:border-dashed [&_[data-slot=input-group]]:!border-blue-200 dark:[&_[data-slot=input-group]]:!border-blue-600",
+          yoloMode && "[&_[data-slot=input-group]]:border-dashed [&_[data-slot=input-group]]:!border-amber-200 dark:[&_[data-slot=input-group]]:!border-amber-600"
         )}
         multiple
         maxFiles={MEDIA_CONFIG.maxCount}
