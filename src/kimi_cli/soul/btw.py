@@ -142,9 +142,10 @@ async def execute_side_question(
                 on_message_part=_on_part,
             )
 
-            # Check for text response
+            # Check for text response — but only accept it if the LLM
+            # didn't also call tools (mixed text+tool = incomplete preamble).
             response_text = "".join(text_chunks).strip()
-            if response_text:
+            if response_text and not result.tool_calls:
                 return response_text, None
 
             # No text — did the LLM try to call a tool?

@@ -74,6 +74,22 @@ def _tool_call_result(tool_name: str = "Bash") -> _FakeStepResult:
     )
 
 
+def _mixed_text_and_tool_result(text: str, tool_name: str = "Read") -> _FakeStepResult:
+    """Simulate LLM returning BOTH text and a tool call in the same turn."""
+    tc = ToolCall(
+        id=f"tc-{tool_name}", function=ToolCall.FunctionBody(name=tool_name, arguments="{}")
+    )
+    error = ToolResult(
+        tool_call_id=tc.id,
+        return_value=ToolError(message="Tool calls are disabled", brief="denied"),
+    )
+    return _FakeStepResult(
+        message=Message(role="assistant", content=text, tool_calls=[tc]),
+        tool_calls=[tc],
+        _tool_results=[error],
+    )
+
+
 # ---------------------------------------------------------------------------
 # classify_input
 # ---------------------------------------------------------------------------
@@ -297,6 +313,93 @@ class TestExecuteSideQuestion:
         assert error is not None
         assert "tried to call tools" in error
         assert "Bash" in error
+
+    def test_mixed_text_and_tool_retries_and_returns_second_turn(self):
+        """LLM outputs text + tool_call on turn 1 → retry → turn 2 text is the answer."""
+        soul = MagicMock()
+        soul._runtime.llm.chat_provider = MagicMock()
+        soul._agent.system_prompt = "sys"
+        soul._agent.toolset.tools = []
+        soul.context.history = []
+
+        call_count = 0
+
+        async def fake_step(provider, sys_prompt, toolset, history, **kw):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Turn 1: mixed text + tool call (preamble + tool use)
+                if kw.get("on_message_part"):
+                    kw["on_message_part"](TextPart(text="Let me check..."))
+                return _mixed_text_and_tool_result("Let me check...", "Read")
+            # Turn 2: pure text answer
+            if kw.get("on_message_part"):
+                kw["on_message_part"](TextPart(text="The answer is 42"))
+            return _text_result("The answer is 42")
+
+        with patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step):
+            response, error = asyncio.run(execute_side_question(soul, "what is X?"))
+
+        assert call_count == 2, "Should have retried after mixed text+tool"
+        assert error is None
+        assert response is not None
+        # The final response should contain the second turn's answer
+        assert "The answer is 42" in response
+
+    def test_mixed_text_and_tool_on_both_turns_reports_error(self):
+        """LLM outputs text + tool_call on both turns → error with tool names."""
+        soul = MagicMock()
+        soul._runtime.llm.chat_provider = MagicMock()
+        soul._agent.system_prompt = "sys"
+        soul._agent.toolset.tools = []
+        soul.context.history = []
+
+        async def fake_step(provider, sys_prompt, toolset, history, **kw):
+            if kw.get("on_message_part"):
+                kw["on_message_part"](TextPart(text="Preamble..."))
+            return _mixed_text_and_tool_result("Preamble...", "Bash")
+
+        with patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step):
+            response, error = asyncio.run(execute_side_question(soul, "hi"))
+
+        assert response is None
+        assert error is not None
+        assert "tried to call tools" in error
+
+    def test_mixed_output_streaming_callback_receives_both_turns(self):
+        """on_text_chunk receives chunks from both turns (preamble + real answer)."""
+        soul = MagicMock()
+        soul._runtime.llm.chat_provider = MagicMock()
+        soul._agent.system_prompt = "sys"
+        soul._agent.toolset.tools = []
+        soul.context.history = []
+
+        call_count = 0
+        chunks: list[str] = []
+
+        async def fake_step(provider, sys_prompt, toolset, history, **kw):
+            nonlocal call_count
+            call_count += 1
+            cb = kw.get("on_message_part")
+            if call_count == 1:
+                if cb:
+                    cb(TextPart(text="Preamble. "))
+                return _mixed_text_and_tool_result("Preamble. ", "Read")
+            if cb:
+                cb(TextPart(text="Real answer."))
+            return _text_result("Real answer.")
+
+        with patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step):
+            response, error = asyncio.run(
+                execute_side_question(soul, "q", on_text_chunk=chunks.append)
+            )
+
+        # Callback receives chunks from BOTH turns
+        assert "Preamble. " in chunks
+        assert "Real answer." in chunks
+        # Final response is from second turn only (text_chunks cleared between turns)
+        assert response == "Real answer."
+        assert error is None
 
     def test_exception_returns_error(self):
         """LLM call raises exception → return error string."""
@@ -597,6 +700,52 @@ class TestHandleLocalInput:
         )
         assert started == []
 
+    def test_shell_command_blocked_from_queue(self, monkeypatch):
+        """Shell-only commands like /help should be rejected, not queued."""
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._queued_messages = []
+        view._btw_modal = None
+        view._prompt_session = MagicMock()
+
+        toasted = []
+        monkeypatch.setattr(
+            "kimi_cli.ui.shell.prompt.toast",
+            lambda msg, **kw: toasted.append(msg),
+        )
+
+        view.handle_local_input(
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/help",
+                resolved_command="/help",
+                content=[TextPart(text="/help")],
+            )
+        )
+        # Should NOT be queued
+        assert view._queued_messages == []
+        # Should show toast warning
+        assert any("not available" in t for t in toasted)
+
+    def test_soul_command_allowed_in_queue(self):
+        """Soul-level commands like /compact should be queued normally."""
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._queued_messages = []
+        view._btw_modal = None
+        view._prompt_session = MagicMock()
+
+        view.handle_local_input(
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/compact",
+                resolved_command="/compact",
+                content=[TextPart(text="/compact")],
+            )
+        )
+        # Soul commands SHOULD be queued (they work via run_soul)
+        assert len(view._queued_messages) == 1
+
 
 # ---------------------------------------------------------------------------
 # handle_immediate_steer — /btw interception via Ctrl+S
@@ -679,6 +828,36 @@ class TestHandleImmediateSteer:
         )
         # btw should receive resolved content, not placeholder
         assert started == ["actual pasted content here"]
+
+    def test_shell_command_blocked_on_ctrl_s(self, monkeypatch):
+        """Ctrl+S with shell-only command should toast, not steer."""
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._btw_modal = None
+        view._btw_runner = lambda q, cb=None: None  # pyright: ignore[reportAttributeAccessIssue]
+        view._flush_prompt_refresh = lambda: None
+        view._pending_local_steer_count = 0
+
+        steered = []
+        view._steer = lambda content: steered.append(content)
+
+        toasted = []
+        monkeypatch.setattr(
+            "kimi_cli.ui.shell.prompt.toast",
+            lambda msg, **kw: toasted.append(msg),
+        )
+
+        view.handle_immediate_steer(
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/help",
+                resolved_command="/help",
+                content=[TextPart(text="/help")],
+            )
+        )
+        assert steered == []  # NOT steered into agent context
+        assert view._pending_local_steer_count == 0
+        assert any("not available" in t for t in toasted)
 
 
 # ---------------------------------------------------------------------------
