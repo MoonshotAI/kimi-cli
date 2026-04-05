@@ -146,7 +146,7 @@ def _collect_recent_log_files(session_dir: Path) -> list[Path]:
         session_cutoff = session_start - _LOG_RETENTION_SECONDS
         session_upper = (session_end or session_start) + _LOG_RETENTION_SECONDS
 
-    result: list[Path] = []
+    result: list[tuple[float, Path]] = []
     for f in log_dir.iterdir():
         if not f.is_file() or not f.name.startswith("kimi.") or not f.name.endswith(".log"):
             continue
@@ -157,7 +157,7 @@ def _collect_recent_log_files(session_dir: Path) -> list[Path]:
 
         # Group 2: near export time
         if mtime >= export_cutoff:
-            result.append(f)
+            result.append((mtime, f))
             continue
 
         # Group 1: near session active period
@@ -167,10 +167,10 @@ def _collect_recent_log_files(session_dir: Path) -> list[Path]:
             and mtime >= session_cutoff
             and mtime <= session_upper
         ):
-            result.append(f)
+            result.append((mtime, f))
 
-    result.sort(key=lambda p: p.stat().st_mtime)
-    return result
+    result.sort(key=lambda item: item[0])
+    return [path for _, path in result]
 
 
 def _format_message_timestamp(timestamp: float | None) -> str:
