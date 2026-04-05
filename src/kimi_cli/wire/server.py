@@ -52,6 +52,7 @@ from .jsonrpc import (
     JSONRPCReplayMessage,
     JSONRPCRequestMessage,
     JSONRPCSetPlanModeMessage,
+    JSONRPCSetYoloModeMessage,
     JSONRPCSteerMessage,
     JSONRPCSuccessResponse,
     Statuses,
@@ -365,6 +366,8 @@ class WireServer:
                     resp = await self._handle_steer(msg)
                 case JSONRPCSetPlanModeMessage():
                     resp = await self._handle_set_plan_mode(msg)
+                case JSONRPCSetYoloModeMessage():
+                    resp = await self._handle_set_yolo_mode(msg)
                 case JSONRPCCancelMessage():
                     resp = await self._handle_cancel(msg)
                 case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
@@ -761,6 +764,31 @@ class WireServer:
         return JSONRPCSuccessResponse(
             id=msg.id,
             result={"status": "ok", "plan_mode": new_state},
+        )
+
+    async def _handle_set_yolo_mode(
+        self, msg: JSONRPCSetYoloModeMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if not isinstance(self._soul, KimiSoul):
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE,
+                    message="YOLO mode is not supported",
+                ),
+            )
+
+        # Update the approval state
+        self._soul.runtime.approval.set_yolo(msg.params.enabled)
+        new_state = self._soul.runtime.approval.is_yolo()
+
+        status = StatusUpdate(yolo_mode=new_state)
+        await self._send_msg(JSONRPCEventMessage(params=status))
+        # Persist to wire file so replay reconstructs yolo mode state
+        await self._soul.wire_file.append_message(status)
+        return JSONRPCSuccessResponse(
+            id=msg.id,
+            result={"status": "ok", "yolo_mode": new_state},
         )
 
     async def _handle_replay(

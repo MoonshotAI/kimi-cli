@@ -86,6 +86,10 @@ type ChatWorkspaceProps = {
   planMode?: boolean;
   /** Callback to set plan mode */
   onPlanModeChange?: (enabled: boolean) => void;
+  /** Whether yolo mode is active */
+  yoloMode?: boolean;
+  /** Callback to set yolo mode */
+  onYoloModeChange?: (enabled: boolean) => void;
   /** Maximum context size for the current model (tokens) */
   maxContextSize?: number;
   /** Fork session at a specific turn */
@@ -120,6 +124,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   slashCommands = [],
   planMode = false,
   onPlanModeChange,
+  yoloMode = false,
+  onYoloModeChange,
   onForkSession,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
@@ -341,6 +347,8 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
                       slashCommands={slashCommands}
                       planMode={planMode}
                       onPlanModeChange={onPlanModeChange}
+                      yoloMode={yoloMode}
+                      onYoloModeChange={onYoloModeChange}
                       activityStatus={activityStatus}
                       usagePercent={usagePercent}
                       usedTokens={usedTokens}

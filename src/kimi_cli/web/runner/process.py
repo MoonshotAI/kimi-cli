@@ -614,6 +614,25 @@ class SessionProcess:
                 # Ignore errors closing already-disconnected WebSockets
                 pass
 
+    async def set_yolo_mode(self, enabled: bool) -> None:
+        """Set YOLO mode for the running session.
+
+        Sends a set_yolo_mode message to the worker process.
+        """
+        if not self.is_alive:
+            return
+
+        message = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "set_yolo_mode",
+                "id": str(uuid4()),
+                "params": {"enabled": enabled},
+            },
+            ensure_ascii=False,
+        )
+        await self.send_message(message)
+
     async def remove_websocket(self, ws: WebSocket) -> None:
         """Remove a WebSocket connection from this session."""
         async with self._ws_lock:

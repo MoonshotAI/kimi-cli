@@ -96,3 +96,18 @@ class GenerateTitleResponse(BaseModel):
     """Generate title response."""
 
     title: str
+
+
+class YoloStatus(BaseModel):
+    """YOLO (auto-approve) mode status."""
+
+    enabled: bool = Field(..., description="Whether YOLO mode is enabled")
+    auto_approve_actions: list[str] = Field(
+        default_factory=list, description="List of auto-approved action types"
+    )
+
+
+class UpdateYoloRequest(BaseModel):
+    """Update YOLO mode request."""
+
+    enabled: bool = Field(..., description="Enable or disable YOLO mode")

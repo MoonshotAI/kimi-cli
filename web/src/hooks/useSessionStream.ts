@@ -242,6 +242,10 @@ type UseSessionStreamReturn = {
   planMode: boolean;
   /** Set plan mode via silent RPC (no context message) */
   sendSetPlanMode: (enabled: boolean) => void;
+  /** Whether YOLO (auto-approve) mode is active */
+  yoloMode: boolean;
+  /** Set YOLO mode via silent RPC (no context message) */
+  sendSetYoloMode: (enabled: boolean) => void;
   /** Available slash commands from the server */
   slashCommands: SlashCommandDef[];
 };
@@ -286,6 +290,7 @@ export function useSessionStream(
   const [contextUsage, setContextUsage] = useState(0);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [planMode, setPlanMode] = useState(false);
+  const [yoloMode, setYoloMode] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -853,6 +858,7 @@ export function useSessionStream(
     setContextUsage(0);
     setTokenUsage(null);
     setPlanMode(false);
+    setYoloMode(false);
     setError(null);
     setSessionStatus(null);
     lastStatusSeqRef.current = null;
@@ -1733,6 +1739,11 @@ export function useSessionStream(
           const nextPlanMode = event.payload.plan_mode;
           if (typeof nextPlanMode === "boolean") {
             setPlanMode(nextPlanMode);
+          }
+
+          const nextYoloMode = event.payload.yolo_mode;
+          if (typeof nextYoloMode === "boolean") {
+            setYoloMode(nextYoloMode);
           }
 
           // If we have a message_id, create a special message to display it
@@ -2815,6 +2826,20 @@ export function useSessionStream(
     wsRef.current.send(JSON.stringify(message));
   }, []);
 
+  // Set YOLO mode via silent RPC (no context message)
+  const sendSetYoloMode = useCallback((enabled: boolean) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const message: JsonRpcRequest = {
+      jsonrpc: "2.0",
+      method: "set_yolo_mode",
+      id: uuidV4(),
+      params: { enabled },
+    };
+    wsRef.current.send(JSON.stringify(message));
+  }, []);
+
   // Auto-connect when sessionId changes
   useLayoutEffect(() => {
     /**
@@ -2899,6 +2924,8 @@ export function useSessionStream(
     error,
     planMode,
     sendSetPlanMode,
+    yoloMode,
+    sendSetYoloMode,
     slashCommands,
   };
 }
