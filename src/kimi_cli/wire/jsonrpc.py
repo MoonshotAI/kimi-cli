@@ -161,6 +161,18 @@ class JSONRPCSetPlanModeMessage(_MessageBase):
     params: _SetPlanModeParams
 
 
+class _SetYoloModeParams(BaseModel):
+    enabled: bool
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class JSONRPCSetYoloModeMessage(_MessageBase):
+    method: Literal["set_yolo_mode"] = "set_yolo_mode"
+    id: str
+    params: _SetYoloModeParams
+
+
 class JSONRPCCancelMessage(_MessageBase):
     method: Literal["cancel"] = "cancel"
     id: str
@@ -212,10 +224,19 @@ type JSONRPCInMessage = (
     | JSONRPCSteerMessage
     | JSONRPCReplayMessage
     | JSONRPCSetPlanModeMessage
+    | JSONRPCSetYoloModeMessage
     | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "set_plan_mode", "cancel"}
+JSONRPC_IN_METHODS = {
+    "initialize",
+    "prompt",
+    "steer",
+    "replay",
+    "set_plan_mode",
+    "set_yolo_mode",
+    "cancel",
+}
 
 type JSONRPCOutMessage = (
     JSONRPCSuccessResponse

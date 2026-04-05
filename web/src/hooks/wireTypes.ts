@@ -131,6 +131,7 @@ export type StatusUpdateEvent = {
     token_usage?: TokenUsage | null;
     message_id?: string;
     plan_mode?: boolean | null;
+    yolo_mode?: boolean | null;
   };
 };
 

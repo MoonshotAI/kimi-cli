@@ -20,6 +20,8 @@ export * from './UpdateConfigTomlResponse';
 export * from './UpdateGlobalConfigRequest';
 export * from './UpdateGlobalConfigResponse';
 export * from './UpdateSessionRequest';
+export * from './UpdateYoloRequest';
 export * from './UploadSessionFileResponse';
 export * from './ValidationError';
 export * from './ValidationErrorLocInner';
+export * from './YoloStatus';

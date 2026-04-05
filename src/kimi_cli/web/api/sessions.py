@@ -21,8 +21,10 @@ from pydantic import BaseModel, Field
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from kimi_cli import logger
+from kimi_cli.config import load_config
 from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.session import Session as KimiCLISession
+from kimi_cli.session_state import load_session_state, save_session_state
 from kimi_cli.utils.subprocess_env import get_clean_env
 from kimi_cli.web.auth import is_origin_allowed, is_private_ip, verify_token
 from kimi_cli.web.models import (
@@ -33,6 +35,8 @@ from kimi_cli.web.models import (
     Session,
     SessionStatus,
     UpdateSessionRequest,
+    UpdateYoloRequest,
+    YoloStatus,
 )
 from kimi_cli.web.runner.messages import new_session_status_message, send_history_complete
 from kimi_cli.web.runner.process import KimiCLIRunner
@@ -332,6 +336,14 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
     else:
         work_dir = KaosPath.unsafe_from_local_path(Path.home())
     kimi_cli_session = await KimiCLISession.create(work_dir=work_dir)
+
+    # Apply default_yolo config setting to new session
+    config = load_config()
+    if config.default_yolo:
+        state = load_session_state(kimi_cli_session.dir)
+        state.approval.yolo = True
+        save_session_state(state, kimi_cli_session.dir)
+
     context_file = kimi_cli_session.dir / "context.jsonl"
     invalidate_sessions_cache()
     invalidate_work_dirs_cache()
@@ -869,6 +881,51 @@ Title:"""
     invalidate_sessions_cache()
 
     return GenerateTitleResponse(title=title)
+
+
+@router.get("/{session_id}/yolo", summary="Get YOLO mode status")
+async def get_yolo_status(session_id: UUID) -> YoloStatus:
+    """Get the YOLO (auto-approve) mode status for a session."""
+    session = load_session_by_id(session_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    session_dir = session.kimi_cli_session.dir
+    state = load_session_state(session_dir)
+
+    return YoloStatus(
+        enabled=state.approval.yolo,
+        auto_approve_actions=list(state.approval.auto_approve_actions),
+    )
+
+
+@router.post("/{session_id}/yolo", summary="Update YOLO mode status")
+async def update_yolo_status(
+    session_id: UUID,
+    request: UpdateYoloRequest,
+    runner: KimiCLIRunner = Depends(get_runner),
+) -> YoloStatus:
+    """Enable or disable YOLO (auto-approve) mode for a session."""
+    session = load_session_by_id(session_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    session_dir = session.kimi_cli_session.dir
+    state = load_session_state(session_dir)
+
+    # Update state
+    state.approval.yolo = request.enabled
+    save_session_state(state, session_dir)
+
+    # If session is running, notify the worker to update runtime state
+    session_process = runner.get_session(session_id)
+    if session_process is not None and session_process.is_alive:
+        await session_process.set_yolo_mode(request.enabled)
+
+    return YoloStatus(
+        enabled=state.approval.yolo,
+        auto_approve_actions=list(state.approval.auto_approve_actions),
+    )
 
 
 @router.websocket("/{session_id}/stream")

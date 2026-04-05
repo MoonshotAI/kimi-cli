@@ -124,6 +124,8 @@ export function ChatWorkspaceContainer({
     isReplayingHistory,
     planMode,
     sendSetPlanMode,
+    yoloMode,
+    sendSetYoloMode,
     slashCommands,
   } = sessionStream;
 
@@ -316,6 +318,10 @@ export function ChatWorkspaceContainer({
     sendSetPlanMode(enabled);
   }, [sendSetPlanMode]);
 
+  const handleYoloModeChange = useCallback((enabled: boolean) => {
+    sendSetYoloMode(enabled);
+  }, [sendSetYoloMode]);
+
   const handleForkSession = useCallback(
     async (turnIndex: number) => {
       if (!(selectedSessionId && onForkSession)) {
@@ -386,6 +392,8 @@ export function ChatWorkspaceContainer({
       slashCommands={slashCommands}
       planMode={planMode}
       onPlanModeChange={handlePlanModeChange}
+      yoloMode={yoloMode}
+      onYoloModeChange={handleYoloModeChange}
       onForkSession={onForkSession ? handleForkSession : undefined}
     />
   );
