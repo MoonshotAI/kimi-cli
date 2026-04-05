@@ -375,8 +375,10 @@ program
               inkUnmountFn?.();
             };
 
-            // Create a UILoopFn that translates Wire messages → WireUIEvent for Shell
-            const createShellUILoopFn = (pe: (event: WireUIEvent) => void): UILoopFn => {
+            // Create a UILoopFn that translates Wire messages → WireUIEvent for Shell.
+            // Uses the outer `pushEvent` variable (not a parameter) so that event
+            // routing stays correct across Shell lifecycle changes.
+            const createShellUILoopFn = (): UILoopFn => {
               return async (wire) => {
                 const uiSide = wire.uiSide(true);
                 while (true) {
@@ -387,6 +389,8 @@ program
                     if (err instanceof QueueShutDown) break;
                     throw err;
                   }
+                  const pe = pushEvent;
+                  if (!pe) continue;
                   const t = msg.__wireType ?? "";
                   if (t === "TurnBegin") {
                     const raw = msg.user_input;
@@ -490,7 +494,7 @@ program
                   currentCancelController = cancelController;
                   const wireFile = app.session.wireFile ? new WireFile(app.session.wireFile) : undefined;
                   try {
-                    await runSoul(app.soul, input, createShellUILoopFn(pushEvent!), cancelController, {
+                    await runSoul(app.soul, input, createShellUILoopFn(), cancelController, {
                       wireFile,
                       runtime: app.soul.runtime,
                     });
@@ -588,7 +592,7 @@ program
               const cancelController = new AbortController();
               currentCancelController = cancelController;
               const wireFile = app.session.wireFile ? new WireFile(app.session.wireFile) : undefined;
-              runSoul(app.soul, currentPrompt, createShellUILoopFn(pushEvent!), cancelController, {
+              runSoul(app.soul, currentPrompt, createShellUILoopFn(), cancelController, {
                 wireFile,
                 runtime: app.soul.runtime,
               }).catch((err) => {
