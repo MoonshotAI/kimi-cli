@@ -19,6 +19,9 @@ import type { DynamicInjection, DynamicInjectionProvider } from "./dynamic_injec
 import { normalizeHistory } from "./dynamic_injection.ts";
 import { PlanModeInjectionProvider } from "./dynamic_injections/plan_mode.ts";
 import { YoloModeInjectionProvider } from "./dynamic_injections/yolo_mode.ts";
+import { wireSend, wireMsg, getWireOrNull } from "./index.ts";
+import { MaxStepsReached } from "./index.ts";
+import { Reload } from "../cli/index.ts";
 import { handleNew, handleSessions, handleTitle, createSessionsPanel, createTitlePanel } from "../ui/shell/commands/session.ts";
 import { handleModel, createModelPanel } from "../ui/shell/commands/model.ts";
 import { handleLogin, handleLogout, createLoginPanel } from "../ui/shell/commands/login.ts";
@@ -33,44 +36,9 @@ import { handleAddDir } from "../ui/shell/commands/add_dir.ts";
 import { logger } from "../utils/logging.ts";
 import { readSkillText, type Skill } from "../skill/index.ts";
 
-// ── Errors ─────────────────────────────────────────
+// ── Errors (re-export from soul/index.ts) ───────────────────
 
-export class LLMNotSet extends Error {
-  constructor() {
-    super("LLM not set");
-    this.name = "LLMNotSet";
-  }
-}
-
-export class LLMNotSupported extends Error {
-  readonly modelName: string;
-  readonly capabilities: ModelCapability[];
-  constructor(modelName: string, capabilities: ModelCapability[]) {
-    const word = capabilities.length === 1 ? "capability" : "capabilities";
-    super(
-      `LLM model '${modelName}' does not support required ${word}: ${capabilities.join(", ")}`,
-    );
-    this.name = "LLMNotSupported";
-    this.modelName = modelName;
-    this.capabilities = capabilities;
-  }
-}
-
-export class MaxStepsReached extends Error {
-  readonly maxSteps: number;
-  constructor(maxSteps: number) {
-    super(`Reached max steps per turn: ${maxSteps}`);
-    this.name = "MaxStepsReached";
-    this.maxSteps = maxSteps;
-  }
-}
-
-export class RunCancelled extends Error {
-  constructor() {
-    super("The run was cancelled");
-    this.name = "RunCancelled";
-  }
-}
+export { LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled } from "./index.ts";
 
 export class BackToTheFuture extends Error {
   readonly checkpointId: number;
@@ -81,25 +49,6 @@ export class BackToTheFuture extends Error {
     this.checkpointId = checkpointId;
     this.messages = messages;
   }
-}
-
-// ── Wire event callbacks ────────────────────────────
-
-export interface SoulCallbacks {
-  onTurnBegin?: (userInput: string | ContentPart[]) => void;
-  onTurnEnd?: () => void;
-  onStepBegin?: (stepNum: number) => void;
-  onStepInterrupted?: () => void;
-  onTextDelta?: (text: string) => void;
-  onThinkDelta?: (text: string) => void;
-  onToolCall?: (toolCall: ToolCall) => void;
-  onToolResult?: (toolCallId: string, result: ToolResult) => void;
-  onStatusUpdate?: (status: Partial<StatusSnapshot>) => void;
-  onCompactionBegin?: () => void;
-  onCompactionEnd?: () => void;
-  onError?: (error: Error) => void;
-  onNotification?: (title: string, body: string) => void;
-  onReload?: (sessionId: string, prefillText?: string) => void;
 }
 
 // ── Retry helpers ───────────────────────────────────
@@ -153,7 +102,6 @@ async function withRetry<T>(
 export class KimiSoul {
   private agent: Agent;
   private context: Context;
-  private callbacks: SoulCallbacks;
   private abortController: AbortController | null = null;
   private _isRunning = false;
   private _planMode = false;
@@ -173,11 +121,9 @@ export class KimiSoul {
   constructor(opts: {
     agent: Agent;
     context: Context;
-    callbacks?: SoulCallbacks;
   }) {
     this.agent = opts.agent;
     this.context = opts.context;
-    this.callbacks = opts.callbacks ?? {};
 
     // Restore plan mode from session state
     this._planMode = opts.agent.runtime.session.state.plan_mode ?? false;
@@ -194,14 +140,6 @@ export class KimiSoul {
 
     // Build and register skill slash commands
     this._buildSkillSlashCommands();
-  }
-
-  /**
-   * Replace the current callbacks.
-   * Used by subagent runner to forward events as SubagentEvents to the parent UI.
-   */
-  setCallbacks(cb: SoulCallbacks): void {
-    this.callbacks = cb;
   }
 
   /**
@@ -352,9 +290,25 @@ export class KimiSoul {
     return this.agent.runtime.hookEngine;
   }
 
-  /** Push a notification to the UI (appears in message list). */
+  /** Push a notification to the wire. */
   notify(title: string, body: string): void {
-    this.callbacks.onNotification?.(title, body);
+    try {
+      wireSend(wireMsg("Notification", {
+        id: crypto.randomUUID(),
+        category: "system",
+        type: "info",
+        source_kind: "soul",
+        source_id: this.name,
+        title,
+        body,
+        severity: "info",
+        created_at: Date.now() / 1000,
+        payload: {},
+      }));
+    } catch {
+      // Wire may not be available (e.g. during construction)
+      logger.warn(`Notification dropped (no wire): ${title}`);
+    }
   }
 
   get availableSlashCommands(): SlashCommand[] {
@@ -393,9 +347,8 @@ export class KimiSoul {
       this._planSessionId = null;
       this.agent.runtime.session.state.plan_session_id = null;
     }
-    // Persist to session state
+    // Persist to session state (matches Python — no wire_send here)
     this.agent.runtime.session.state.plan_mode = this._planMode;
-    this.callbacks.onStatusUpdate?.({ planMode: this._planMode });
     return this._planMode;
   }
 
@@ -463,6 +416,21 @@ export class KimiSoul {
     this._injectionProviders.push(provider);
   }
 
+  /** Send a full StatusUpdate over the wire. */
+  private _sendStatusUpdate(): void {
+    const snap = this.status;
+    wireSend(wireMsg("StatusUpdate", {
+      context_usage: snap.contextUsage ?? null,
+      context_tokens: snap.contextTokens ?? null,
+      max_context_tokens: snap.maxContextTokens ?? null,
+      token_usage: snap.tokenUsage ?? null,
+      message_id: null,
+      plan_mode: snap.planMode ?? false,
+      yolo: snap.yoloEnabled ?? false,
+      mcp_status: null,
+    }));
+  }
+
   // ── Yolo mode ────────────────────────────────────
 
   setYolo(yolo: boolean): void {
@@ -484,8 +452,9 @@ export class KimiSoul {
     let turnStarted = false;
     let turnFinished = false;
     try {
-      this.callbacks.onTurnBegin?.(userInput);
-      await this._wireLog({ type: "TurnBegin", user_input: typeof userInput === "string" ? [{ type: "text", text: userInput }] : userInput });
+      wireSend(wireMsg("TurnBegin", {
+        user_input: userInput,
+      }));
       turnStarted = true;
 
       // Slash command dispatch — inside turn lifecycle, matching Python soul/kimisoul.py:505-521.
@@ -503,28 +472,22 @@ export class KimiSoul {
         await this._turn(userInput);
       }
 
-      await this._wireLog({ type: "TurnEnd" });
-      this.callbacks.onTurnEnd?.();
+      wireSend(wireMsg("TurnEnd"));
       turnFinished = true;
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         logger.info("Turn aborted");
-        this.callbacks.onStepInterrupted?.();
+        wireSend(wireMsg("StepInterrupted"));
       } else if (err instanceof MaxStepsReached) {
         logger.warn(err.message);
-        this.callbacks.onError?.(err);
-        this.callbacks.onTurnEnd?.();
+        wireSend(wireMsg("TurnEnd"));
         turnFinished = true;
       } else {
         logger.error(`Turn error: ${err}`);
-        this.callbacks.onError?.(
-          err instanceof Error ? err : new Error(String(err)),
-        );
       }
     } finally {
       if (turnStarted && !turnFinished) {
-        await this._wireLog({ type: "TurnEnd" });
-        this.callbacks.onTurnEnd?.();
+        wireSend(wireMsg("TurnEnd"));
       }
       this._isRunning = false;
       this.abortController = null;
@@ -602,7 +565,7 @@ export class KimiSoul {
 
       // Check abort
       if (this.abortController?.signal.aborted) {
-        this.callbacks.onStepInterrupted?.();
+        wireSend(wireMsg("StepInterrupted"));
         break;
       }
 
@@ -614,8 +577,7 @@ export class KimiSoul {
 
       // Execute one step
       this._stepCount++;
-      await this._wireLog({ type: "StepBegin", n: this._stepCount });
-      this.callbacks.onStepBegin?.(this._stepCount);
+      wireSend(wireMsg("StepBegin", { n: this._stepCount }));
 
       const maxRetries = this.agent.runtime.config.loop_control.max_retries_per_step;
       const toolCalls = await withRetry(
@@ -706,15 +668,15 @@ export class KimiSoul {
       });
 
       // Wire log the tool result (matching Python format)
-      await this._wireLog({
-        type: "ToolResult",
+      wireSend(wireMsg("ToolResult", {
         tool_call_id: tc.id,
         return_value: {
-          is_error: result.isError,
+          isError: result.isError,
           output: result.output,
+          message: result.message,
         },
         display: result.display ?? [],
-      });
+      }));
 
       // Append atomically — even if abort was signaled during tool execution,
       // we still append the result to keep context consistent
@@ -777,12 +739,13 @@ export class KimiSoul {
       switch (chunk.type) {
         case "text":
           assistantText += chunk.text;
-          this.callbacks.onTextDelta?.(chunk.text);
+          // Stream text as ContentPart wire event (matches Python on_message_part=wire_send)
+          wireSend(wireMsg("TextPart", { type: "text", text: chunk.text }));
           break;
 
         case "think":
           thinkText += chunk.text;
-          this.callbacks.onThinkDelta?.(chunk.text);
+          wireSend(wireMsg("ThinkPart", { type: "think", text: chunk.text }));
           break;
 
         case "tool_call":
@@ -791,11 +754,12 @@ export class KimiSoul {
             name: chunk.name,
             arguments: chunk.arguments,
           });
-          this.callbacks.onToolCall?.({
+          // Send ToolCall wire event (flat structure matching ToolCall schema)
+          wireSend(wireMsg("ToolCall", {
             id: chunk.id,
             name: chunk.name,
             arguments: chunk.arguments,
-          });
+          }));
           break;
 
         case "usage":
@@ -847,29 +811,9 @@ export class KimiSoul {
       await this.context.updateTokenCount(usage);
     }
 
-    // Wire log step results (order matches Python: think → text → toolcalls → status)
-    if (thinkText) {
-      await this._wireLog({ type: "ContentPart", payload: { type: "think", think: thinkText } });
-    }
-    if (assistantText) {
-      await this._wireLog({ type: "ContentPart", payload: { type: "text", text: assistantText } });
-    }
-    for (const tc of toolCalls) {
-      // Match Python ToolCall format: {type:"function", id, function:{name, arguments}}
-      await this._wireLog({
-        type: "ToolCall",
-        payload: {
-          type: "function",
-          id: tc.id,
-          function: { name: tc.name, arguments: tc.arguments },
-        },
-      });
-    }
-
-    // Wire log + callback status update
+    // Wire status update (matches Python: wire_send(StatusUpdate(...)))
     const snap = this.status;
-    await this._wireLog({
-      type: "StatusUpdate",
+    wireSend(wireMsg("StatusUpdate", {
       context_usage: snap.contextUsage ?? null,
       context_tokens: snap.contextTokens ?? null,
       max_context_tokens: snap.maxContextTokens ?? null,
@@ -878,8 +822,7 @@ export class KimiSoul {
       plan_mode: snap.planMode ?? false,
       yolo: snap.yoloEnabled ?? false,
       mcp_status: null,
-    });
-    this.callbacks.onStatusUpdate?.(snap);
+    }));
 
     return toolCalls;
   }
@@ -916,13 +859,13 @@ export class KimiSoul {
         lc.compaction_trigger_ratio,
       )
     ) {
-      this.callbacks.onCompactionBegin?.();
+      wireSend(wireMsg("CompactionBegin"));
       try {
         await compactContext(this.context, llm);
       } catch (err) {
         logger.error(`Compaction failed: ${err}`);
       }
-      this.callbacks.onCompactionEnd?.();
+      wireSend(wireMsg("CompactionEnd"));
     }
   }
 
@@ -930,6 +873,19 @@ export class KimiSoul {
 
   wireSlashCommands(): void {
     const registry = this.agent.slashCommands;
+
+    // Helper: wrap a handler that returns string → wireSend(TextPart).
+    // Matches Python where soul slash handlers use wire_send(TextPart(text=...)).
+    const wrapTextHandler = (
+      fn: (args: string) => Promise<string | void> | string | void,
+    ): ((args: string) => Promise<void>) => {
+      return async (args: string) => {
+        const result = await fn(args);
+        if (typeof result === "string" && result) {
+          wireSend(wireMsg("TextPart", { type: "text", text: result }));
+        }
+      };
+    };
 
     // Wire /clear — soul-level handler clears context + wire file.
     // The shell-level /clear handler orchestrates: clearMessages() + soulClear() + triggerReload().
@@ -939,8 +895,6 @@ export class KimiSoul {
         await this.context.clear();
         await this.context.writeSystemPrompt(this.agent.systemPrompt);
         // Truncate wire.jsonl so replay doesn't re-show old messages after reload.
-        // Python achieves this implicitly: replay_recent_history() checks
-        // context.history (empty after clear) and returns early.
         const wireFile = this.agent.runtime.session.wireFile;
         if (wireFile) {
           try {
@@ -949,9 +903,10 @@ export class KimiSoul {
           } catch { /* best-effort */ }
         }
         logger.info("Context cleared");
-        this.callbacks.onStatusUpdate?.(this.status);
-        // Trigger reload — mirrors Python: shell raises Reload() after run_soul_command("/clear")
-        this.callbacks.onReload?.(this.agent.runtime.session.id);
+        wireSend(wireMsg("TextPart", { type: "text", text: "The context has been cleared." }));
+        this._sendStatusUpdate();
+        // NOTE: Reload is raised by the shell-level /clear handler, not here.
+        // This matches Python: soul handler clears context, shell handler raises Reload().
       };
     }
 
@@ -960,20 +915,21 @@ export class KimiSoul {
     if (compactCmd) {
       compactCmd.handler = async (args: string) => {
         if (this.context.nCheckpoints === 0) {
-          return "The context is empty.";
+          wireSend(wireMsg("TextPart", { type: "text", text: "The context is empty." }));
+          return;
         }
         const llm = this.agent.runtime.llm;
         if (!llm) return;
         logger.info("Running `/compact`");
-        this.callbacks.onCompactionBegin?.();
+        wireSend(wireMsg("CompactionBegin"));
         try {
           await compactContext(this.context, llm, this.agent, { focus: args || undefined });
         } finally {
-          this.callbacks.onCompactionEnd?.();
+          wireSend(wireMsg("CompactionEnd"));
         }
-        this.callbacks.onStatusUpdate?.(this.status);
+        this._sendStatusUpdate();
         logger.info("Context has been compacted.");
-        return "The context has been compacted.";
+        wireSend(wireMsg("TextPart", { type: "text", text: "The context has been compacted." }));
       };
     }
 
@@ -984,13 +940,13 @@ export class KimiSoul {
         if (this.agent.runtime.approval.isYolo()) {
           this.agent.runtime.approval.setYolo(false);
           logger.info("YOLO mode: OFF");
-          this.callbacks.onStatusUpdate?.(this.status);
-          return "You only die once! Actions will require approval.";
+          this._sendStatusUpdate();
+          wireSend(wireMsg("TextPart", { type: "text", text: "You only die once! Actions will require approval." }));
         } else {
           this.agent.runtime.approval.setYolo(true);
           logger.info("YOLO mode: ON");
-          this.callbacks.onStatusUpdate?.(this.status);
-          return "You only live once! All actions will be auto-approved.";
+          this._sendStatusUpdate();
+          wireSend(wireMsg("TextPart", { type: "text", text: "You only live once! All actions will be auto-approved." }));
         }
       };
     }
@@ -1003,28 +959,28 @@ export class KimiSoul {
         if (subcmd === "on") {
           if (!this._planMode) await this.togglePlanModeFromManual();
           const planPath = this.getPlanFilePath();
-          this.callbacks.onStatusUpdate?.({ planMode: this._planMode });
-          return `Plan mode ON. Plan file: ${planPath}`;
+          wireSend(wireMsg("TextPart", { type: "text", text: `Plan mode ON. Plan file: ${planPath}` }));
+          wireSend(wireMsg("StatusUpdate", { plan_mode: this._planMode }));
         } else if (subcmd === "off") {
           if (this._planMode) await this.togglePlanModeFromManual();
-          this.callbacks.onStatusUpdate?.({ planMode: this._planMode });
-          return "Plan mode OFF. All tools are now available.";
+          wireSend(wireMsg("TextPart", { type: "text", text: "Plan mode OFF. All tools are now available." }));
+          wireSend(wireMsg("StatusUpdate", { plan_mode: this._planMode }));
         } else if (subcmd === "view") {
           const content = this.readCurrentPlan();
-          return content ?? "No plan file found for this session.";
+          wireSend(wireMsg("TextPart", { type: "text", text: content ?? "No plan file found for this session." }));
         } else if (subcmd === "clear") {
           this.clearCurrentPlan();
-          return "Plan cleared.";
+          wireSend(wireMsg("TextPart", { type: "text", text: "Plan cleared." }));
         } else {
           // Default: toggle
           const newState = await this.togglePlanModeFromManual();
-          this.callbacks.onStatusUpdate?.({ planMode: this._planMode });
           if (newState) {
             const planPath = this.getPlanFilePath();
-            return `Plan mode ON. Write your plan to: ${planPath}\nUse ExitPlanMode when done, or /plan off to exit manually.`;
+            wireSend(wireMsg("TextPart", { type: "text", text: `Plan mode ON. Write your plan to: ${planPath}\nUse ExitPlanMode when done, or /plan off to exit manually.` }));
           } else {
-            return "Plan mode OFF. All tools are now available.";
+            wireSend(wireMsg("TextPart", { type: "text", text: "Plan mode OFF. All tools are now available." }));
           }
+          wireSend(wireMsg("StatusUpdate", { plan_mode: this._planMode }));
         }
       };
     }
@@ -1034,7 +990,7 @@ export class KimiSoul {
     if (modelCmd) {
       const notify = (t: string, b: string) => this.notify(t, b);
       const onReload = (sessionId: string, prefillText?: string) => {
-        this.callbacks.onReload?.(sessionId, prefillText);
+        throw new Reload(sessionId, prefillText);
       };
       const configMeta = { isFromDefaultLocation: true, sourceFile: null };
       modelCmd.handler = async () => {
@@ -1053,49 +1009,45 @@ export class KimiSoul {
     // Wire /export
     const exportCmd = registry.get("export");
     if (exportCmd) {
-      exportCmd.handler = async (args: string) => {
-        return await handleExport(this.context, this.agent.runtime.session, args);
-      };
+      exportCmd.handler = wrapTextHandler((args) =>
+        handleExport(this.context, this.agent.runtime.session, args),
+      );
     }
 
     // Wire /import
     const importCmd = registry.get("import");
     if (importCmd) {
-      importCmd.handler = async (args: string) => {
-        return await handleImport(this.context, this.agent.runtime.session, args);
-      };
+      importCmd.handler = wrapTextHandler((args) =>
+        handleImport(this.context, this.agent.runtime.session, args),
+      );
     }
 
     // Wire /web
     const webCmd = registry.get("web");
     if (webCmd) {
-      webCmd.handler = async () => {
-        return handleWeb(this.agent.runtime.session.id);
-      };
+      webCmd.handler = wrapTextHandler(() =>
+        handleWeb(this.agent.runtime.session.id),
+      );
     }
 
     // Wire /vis
     const visCmd = registry.get("vis");
     if (visCmd) {
-      visCmd.handler = async () => {
-        return handleVis(this.agent.runtime.session.id);
-      };
+      visCmd.handler = wrapTextHandler(() =>
+        handleVis(this.agent.runtime.session.id),
+      );
     }
 
     // Wire /reload
     const reloadCmd = registry.get("reload");
     if (reloadCmd) {
-      reloadCmd.handler = async () => {
-        return handleReload();
-      };
+      reloadCmd.handler = wrapTextHandler(() => handleReload());
     }
 
     // Wire /task
     const taskCmd = registry.get("task");
     if (taskCmd) {
-      taskCmd.handler = async () => {
-        return handleTask();
-      };
+      taskCmd.handler = wrapTextHandler(() => handleTask());
     }
 
     // Wire /login
@@ -1119,22 +1071,22 @@ export class KimiSoul {
     // Wire /usage
     const usageCmd = registry.get("usage");
     if (usageCmd) {
-      usageCmd.handler = async () => {
-        return await handleUsage(this.agent.runtime.config, this.agent.runtime.config.default_model || undefined);
-      };
+      usageCmd.handler = wrapTextHandler(() =>
+        handleUsage(this.agent.runtime.config, this.agent.runtime.config.default_model || undefined),
+      );
     }
 
     // Wire /feedback
     const feedbackCmd = registry.get("feedback");
     if (feedbackCmd) {
-      feedbackCmd.handler = async (args: string) => {
-        return await handleFeedback(
+      feedbackCmd.handler = wrapTextHandler((args) =>
+        handleFeedback(
           this.agent.runtime.config,
           args,
           this.agent.runtime.session.id,
           this.agent.runtime.config.default_model || undefined,
-        );
-      };
+        ),
+      );
       feedbackCmd.panel = () => createFeedbackPanel(
         this.agent.runtime.config,
         this.agent.runtime.session.id,
@@ -1148,75 +1100,73 @@ export class KimiSoul {
     if (editorCmd) {
       const editorNotify = (t: string, b: string) => this.notify(t, b);
       const editorConfigMeta = { isFromDefaultLocation: true, sourceFile: null };
-      editorCmd.handler = async (args: string) => {
-        return await handleEditor(this.agent.runtime.config, editorConfigMeta, args);
-      };
+      editorCmd.handler = wrapTextHandler((args) =>
+        handleEditor(this.agent.runtime.config, editorConfigMeta, args),
+      );
       editorCmd.panel = () => createEditorPanel(this.agent.runtime.config, editorConfigMeta, editorNotify);
     }
 
     // Wire /hooks
     const hooksCmd = registry.get("hooks");
     if (hooksCmd) {
-      hooksCmd.handler = async () => {
-        return handleHooks(this.agent.runtime.hookEngine);
-      };
+      hooksCmd.handler = wrapTextHandler(() =>
+        handleHooks(this.agent.runtime.hookEngine),
+      );
       hooksCmd.panel = () => createHooksPanel(this.agent.runtime.hookEngine);
     }
 
     // Wire /mcp
     const mcpCmd = registry.get("mcp");
     if (mcpCmd) {
-      mcpCmd.handler = async () => {
-        return handleMcp(this.agent.runtime.config);
-      };
+      mcpCmd.handler = wrapTextHandler(() =>
+        handleMcp(this.agent.runtime.config),
+      );
       mcpCmd.panel = () => createMcpPanel(this.agent.runtime.config);
     }
 
     // Wire /debug
     const debugCmd = registry.get("debug");
     if (debugCmd) {
-      debugCmd.handler = async () => {
-        return handleDebug(this.context);
-      };
+      debugCmd.handler = wrapTextHandler(() =>
+        handleDebug(this.context),
+      );
       debugCmd.panel = () => createDebugPanel(this.context);
     }
 
     // Wire /changelog
     const changelogCmd = registry.get("changelog");
     if (changelogCmd) {
-      changelogCmd.handler = async () => {
-        return handleChangelog();
-      };
+      changelogCmd.handler = wrapTextHandler(() => handleChangelog());
       changelogCmd.panel = () => createChangelogPanel();
     }
 
     // Wire /new
     const newCmd = registry.get("new");
     if (newCmd) {
-      newCmd.handler = async () => {
-        return await handleNew(this.agent.runtime.session);
-      };
+      newCmd.handler = wrapTextHandler(() =>
+        handleNew(this.agent.runtime.session),
+      );
     }
 
     // Wire /sessions
     const sessionsCmd = registry.get("sessions");
     if (sessionsCmd) {
-      sessionsCmd.handler = async () => {
-        return await handleSessions(this.agent.runtime.session);
-      };
+      sessionsCmd.handler = wrapTextHandler(() =>
+        handleSessions(this.agent.runtime.session),
+      );
       sessionsCmd.panel = () => createSessionsPanel(
         this.agent.runtime.session,
         (t, b) => this.notify(t, b),
-        (id, prefill) => this.callbacks.onReload?.(id, prefill),
+        (id, prefill) => { throw new Reload(id, prefill); },
       );
     }
 
     // Wire /title
     const titleCmd = registry.get("title");
     if (titleCmd) {
-      titleCmd.handler = async (args: string) => {
-        return await handleTitle(this.agent.runtime.session, args);
-      };
+      titleCmd.handler = wrapTextHandler((args) =>
+        handleTitle(this.agent.runtime.session, args),
+      );
       titleCmd.panel = () => createTitlePanel(
         this.agent.runtime.session,
         (t, b) => this.notify(t, b),
@@ -1226,21 +1176,21 @@ export class KimiSoul {
     // Wire /init
     const initCmd = registry.get("init");
     if (initCmd) {
-      initCmd.handler = async () => {
-        return await handleInit(this.agent.runtime.session.workDir);
-      };
+      initCmd.handler = wrapTextHandler(() =>
+        handleInit(this.agent.runtime.session.workDir),
+      );
     }
 
     // Wire /add-dir
     const addDirCmd = registry.get("add-dir");
     if (addDirCmd) {
-      addDirCmd.handler = async (args: string) => {
-        return await handleAddDir(
+      addDirCmd.handler = wrapTextHandler((args) =>
+        handleAddDir(
           this.agent.runtime.session,
           this.agent.runtime.session.workDir,
           args,
-        );
-      };
+        ),
+      );
     }
   }
 
@@ -1251,70 +1201,43 @@ export class KimiSoul {
     ctx.getPlanMode = () => this._planMode;
     ctx.getPlanFilePath = () => this.getPlanFilePath() ?? undefined;
     ctx.togglePlanMode = () => this.togglePlanMode();
-  }
 
-  // ── Wire file logging ────────────────────────────
+    // Wire ctx.askUser to use QuestionRequest through Wire (matches Python pattern).
+    // This makes EnterPlanMode, ExitPlanMode, and any tool using ctx.askUser
+    // show the QuestionPanel to the user.
+    ctx.askUser = async (question: string, options?: string[]): Promise<string> => {
+      const { randomUUID } = await import("node:crypto");
+      const { PendingQuestionRequest } = await import("../wire/types.ts");
+      const { registerPendingQuestion } = await import("../tools/ask_user/ask_user.ts");
+      const { getCurrentToolCallOrNull } = await import("./toolset.ts");
 
-  /**
-   * Append a wire event to the session's wire.jsonl file.
-   * Matches Python's wire.jsonl format exactly:
-   * - First line: {"type":"metadata","protocol_version":"1.8"}
-   * - Subsequent lines: {"timestamp":float,"message":{"type":"TypeName","payload":{...}}}
-   *
-   * Event format:
-   * - { type: "TurnBegin", user_input: "..." }
-   * - { type: "text_part", text: "..." }
-   * - { type: "ContentPart", payload: { type: "think", thinking: "..." } }
-   * - { type: "tool_call", name: "...", id: "..." }
-   */
-  private async _wireLog(event: Record<string, unknown>): Promise<void> {
-    const wireFile = this.agent.runtime.session.wireFile;
-    if (!wireFile) return;
-    try {
-      const { appendFile, stat } = await import("node:fs/promises");
-      const { dirname } = await import("node:path");
+      const wire = getWireOrNull();
+      if (!wire) throw new Error("Wire not available");
 
-      // Ensure directory exists
-      await import("node:fs/promises")
-        .then(m => m.mkdir(dirname(wireFile), { recursive: true }))
-        .catch(() => {});
-
-      // Check if file is empty (need metadata header)
-      let needsMetadata = false;
-      try {
-        const stats = await stat(wireFile);
-        needsMetadata = stats.size === 0;
-      } catch {
-        needsMetadata = true;  // File doesn't exist
-      }
-
-      let content = "";
-
-      // Write metadata header on first append
-      if (needsMetadata) {
-        const metadata = { type: "metadata", protocol_version: "1.8" };
-        content += JSON.stringify(metadata) + "\n";
-      }
-
-      // Extract type and build payload
-      const { type, payload, ...otherFields } = event;
-      const finalPayload = payload || otherFields;
-
-      // Write the message record in Python-compatible format
-      const record = {
-        timestamp: Date.now() / 1000,  // Convert ms to float seconds
-        message: {
-          type,
-          payload: finalPayload,
-        },
+      const toolCall = getCurrentToolCallOrNull();
+      const requestData = {
+        id: randomUUID(),
+        tool_call_id: toolCall?.id ?? "",
+        questions: [{
+          question,
+          header: "",
+          options: (options ?? []).map((label) => ({ label, description: "" })),
+          multi_select: false,
+          body: "",
+          other_label: "",
+          other_description: "",
+        }],
       };
-      content += JSON.stringify(record) + "\n";
+      const pending = new PendingQuestionRequest(requestData);
+      registerPendingQuestion(requestData.id, pending);
 
-      await appendFile(wireFile, content, "utf-8");
-    } catch {
-      // Wire logging is best-effort — don't crash on failure
-    }
+      wireSend(wireMsg("QuestionRequest", requestData));
+
+      const answers = await pending.wait();
+      return answers[question] ?? "";
+    };
   }
+
 }
 
 // ── FlowRunner ─────────────────────────────────────
@@ -1523,11 +1446,12 @@ export class FlowRunner {
     soul: KimiSoul,
     prompt: string,
   ): Promise<FlowTurnResult> {
-    // TODO: Wire TurnBegin/TurnEnd events once wire_send is available
-    // For now, drive the soul's internal _turn method
+    // Send wire events for flow turn (matches Python FlowRunner._flow_turn)
+    wireSend(wireMsg("TurnBegin", { user_input: [{ type: "text", text: prompt }] }));
     const stepsBefore = soul["_stepCount"];
     await soul["_turn"](prompt);
     const stepsAfter = soul["_stepCount"];
+    wireSend(wireMsg("TurnEnd"));
 
     // Extract final assistant text from context
     const history = soul["context"].history;

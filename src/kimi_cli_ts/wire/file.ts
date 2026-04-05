@@ -286,11 +286,9 @@ export class WireFile {
     }
     content += JSON.stringify(record) + "\n";
 
-    // Append to file
-    const writer = Bun.file(this.path).writer();
-    writer.write(content);
-    await writer.flush();
-    writer.end();
+    // Append to file (not overwrite!)
+    const { appendFile: fsAppendFile } = await import("node:fs/promises");
+    await fsAppendFile(this.path, content, "utf-8");
   }
 
   toString(): string {

@@ -107,7 +107,7 @@ function ContentPreview({
       const showLines = lines.slice(0, budget);
       if (lines.length > budget) truncated = true;
       budget -= showLines.length;
-      elements.push(<Text key={`shell-${i}`} color="grey">{showLines.join("\n")}</Text>);
+      elements.push(<Text key={`shell-${i}`}>{showLines.join("\n")}</Text>);
     } else if (block.type === "brief") {
       const briefBlock = block as BriefDisplayBlock;
       const lines = briefBlock.brief.trim().split("\n");

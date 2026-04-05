@@ -9,8 +9,8 @@ import { modelDisplayName } from "../../llm.ts";
 
 // Python uses 256-color palette index 33 = RGB(0, 135, 255) = #0087ff (dodger_blue1)
 const KIMI_BLUE = "#0087ff";
-// Python uses palette index 244 = RGB(178, 178, 178) = #b2b2b2 (grey50)
-const GREY_50 = "#b2b2b2";
+// Python uses palette index 244 = RGB(128, 128, 128) = #808080 (grey50)
+const GREY_50 = "#808080";
 
 interface WelcomeBoxProps {
   workDir?: string;
@@ -46,7 +46,7 @@ export function WelcomeBox({
     >
       {/* Logo + Welcome */}
       <Box>
-        <Box flexDirection="column" marginRight={2}>
+        <Box flexDirection="column" marginRight={2} marginLeft={1}>
           <Text color={KIMI_BLUE}>▐█▛█▛█▌</Text>
           <Text color={KIMI_BLUE}>▐█████▌</Text>
         </Box>

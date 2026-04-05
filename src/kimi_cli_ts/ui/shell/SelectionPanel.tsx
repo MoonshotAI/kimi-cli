@@ -1,29 +1,21 @@
 /**
  * SelectionPanel.tsx — Reusable selection panel with optional inline text input.
  *
- * A bordered panel that displays a list of numbered options with keyboard
- * navigation. One or more options can be marked as `inputMode`, which turns
- * them into inline text fields when selected.
- *
- * Features:
- * - ↑/↓ circular navigation with number-key shortcuts (1-N)
- * - Inline text input for options with `inputMode: true`
- * - Draft persistence when navigating away from input options
- * - Captures ALL keyboard input via useInputLayer (nothing leaks)
+ * Uses useSelectionInput for keyboard logic. Renders a bordered panel with
+ * numbered options, optional children slot, and keyboard hints.
  *
  * Used by ApprovalPanel and any future panel that needs option selection.
  */
 
-import React, { useState, useRef } from "react";
+import React from "react";
 import { Box, Text } from "ink";
-import { useInputLayer } from "./input-stack.ts";
+import { useSelectionInput, type SelectionInputOption } from "./useSelectionInput.ts";
+import { TitleBox } from "../components/TitleBox.tsx";
 
 // ── Types ────────────────────────────────────────────────
 
-export interface SelectionOption {
+export interface SelectionOption extends SelectionInputOption {
   label: string;
-  /** If true, selecting this option enters inline text input mode. */
-  inputMode?: boolean;
   /** Prefix shown before the input cursor (e.g. "Reject: "). Defaults to label + ": ". */
   inputPrefix?: string;
 }
@@ -62,135 +54,25 @@ export function SelectionPanel({
   titleColor,
   extraHint,
 }: SelectionPanelProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [inputText, setInputText] = useState("");
-  const inputDraftRef = useRef("");
-
-  const isInputActive = !!options[selectedIndex]?.inputMode;
-  const optCount = options.length;
-
-  useInputLayer((input, key) => {
-    if (isInputActive) {
-      // ── INPUT MODE ──
-      if (key.return || key.enter) {
-        const text = inputText.trim();
-        if (text) {
-          setInputText("");
-          inputDraftRef.current = "";
-          onInputSubmit?.(selectedIndex, text);
-        }
-        // Empty enter: keep editing (matches Python)
-        return;
-      }
-
-      if (key.escape) {
-        setInputText("");
-        inputDraftRef.current = "";
-        onCancel?.();
-        return;
-      }
-
-      if (key.upArrow) {
-        inputDraftRef.current = inputText;
-        setInputText("");
-        setSelectedIndex((i) => (i - 1 + optCount) % optCount);
-        return;
-      }
-
-      if (key.downArrow) {
-        inputDraftRef.current = inputText;
-        setInputText("");
-        setSelectedIndex((i) => (i + 1) % optCount);
-        return;
-      }
-
-      if (key.backspace || key.delete) {
-        setInputText((t) => t.slice(0, -1));
-        return;
-      }
-
-      if (input && !key.ctrl && !key.meta) {
-        setInputText((t) => t + input);
-        return;
-      }
-
-      return; // Consume everything in input mode
-    }
-
-    // ── SELECTION MODE ──
-    if (key.upArrow) {
-      setSelectedIndex((prev) => {
-        const next = (prev - 1 + optCount) % optCount;
-        if (options[next]?.inputMode && inputDraftRef.current) {
-          setInputText(inputDraftRef.current);
-        }
-        return next;
-      });
-      return;
-    }
-
-    if (key.downArrow) {
-      setSelectedIndex((prev) => {
-        const next = (prev + 1) % optCount;
-        if (options[next]?.inputMode && inputDraftRef.current) {
-          setInputText(inputDraftRef.current);
-        }
-        return next;
-      });
-      return;
-    }
-
-    if (key.return || key.enter) {
-      inputDraftRef.current = "";
-      onSelect(selectedIndex);
-      return;
-    }
-
-    if (key.escape) {
-      onCancel?.();
-      return;
-    }
-
-    // Number keys 1-9 (up to option count)
-    if (input >= "1" && input <= "9") {
-      const idx = parseInt(input) - 1;
-      if (idx < optCount) {
-        setSelectedIndex(idx);
-        if (options[idx]?.inputMode) {
-          // Enter input mode; restore draft if available
-          if (inputDraftRef.current) {
-            setInputText(inputDraftRef.current);
-          }
-        } else {
-          inputDraftRef.current = "";
-          onSelect(idx);
-        }
-      }
-      return;
-    }
-
-    // Consume all other keys
+  const { selectedIndex, isInputActive, inputText } = useSelectionInput({
+    options,
+    onSelect,
+    onInputSubmit,
+    onCancel,
   });
 
+  const optCount = options.length;
   const effectiveTitleColor = titleColor ?? borderColor;
 
   return (
-    <Box
-      flexDirection="column"
+    <TitleBox
+      title={title}
+      titleColor={effectiveTitleColor}
       borderStyle="round"
       borderColor={borderColor}
+      flexDirection="column"
       paddingX={1}
     >
-      {/* Title */}
-      {title && (
-        <>
-          <Text color={effectiveTitleColor} bold>
-            {title}
-          </Text>
-          <Text>{" "}</Text>
-        </>
-      )}
-
       {/* Content slot */}
       {children}
 
@@ -228,10 +110,10 @@ export function SelectionPanel({
       ) : (
         <Text dimColor>
           {"  "}▲/▼ select{"  "}
-          {optCount <= 9 ? `1/${optCount}` : "1-9"} choose{"  "}↵ confirm
+          {optCount <= 9 ? Array.from({ length: optCount }, (_, i) => i + 1).join("/") : "1-9"} choose{"  "}↵ confirm
           {extraHint ?? ""}
         </Text>
       )}
-    </Box>
+    </TitleBox>
   );
 }

@@ -14,6 +14,8 @@ import { PromptView } from "./PromptView.tsx";
 import { WelcomeBox } from "../components/WelcomeBox.tsx";
 import { StatusBar } from "../components/StatusBar.tsx";
 import { ApprovalPanel } from "./ApprovalPanel.tsx";
+import { QuestionPanel } from "./QuestionPanel.tsx";
+import { resolveQuestionRequest, rejectQuestionRequest } from "../../tools/ask_user/ask_user.ts";
 import { ChoicePanel, ContentPanel } from "../components/CommandPanel.tsx";
 import { DebugPanel } from "./DebugPanel.tsx";
 import { SlashMenu } from "../components/SlashMenu.tsx";
@@ -44,7 +46,7 @@ export interface ShellProps {
   thinking?: boolean;
   yolo?: boolean;
   prefillText?: string;
-  onSubmit?: (input: string) => void;
+  onSubmit?: (input: string) => Promise<void>;
   onInterrupt?: () => void;
   onPlanModeToggle?: () => Promise<boolean>;
   onApprovalResponse?: (requestId: string, decision: ApprovalResponseKind, feedback?: string) => void;
@@ -160,6 +162,7 @@ export function Shell({
       }
     },
     getDynamicViewportHeight: () => getLastFrameHeight(),
+    onSubmitExternal: onSubmit,
   });
   const allCommands = createAllCommands(shellCommands, extraSlashCommands);
 
@@ -218,6 +221,20 @@ export function Shell({
             key={wire.pendingApproval.id}
             request={wire.pendingApproval}
             onRespond={handleApprovalResponse}
+          />
+        )}
+        {wire.pendingQuestion && (
+          <QuestionPanel
+            key={wire.pendingQuestion.id}
+            request={wire.pendingQuestion}
+            onAnswer={(answers) => {
+              resolveQuestionRequest(wire.pendingQuestion!.id, answers);
+              wire.pushEvent({ type: "question_response", requestId: wire.pendingQuestion!.id, answers });
+            }}
+            onCancel={() => {
+              rejectQuestionRequest(wire.pendingQuestion!.id);
+              wire.pushEvent({ type: "question_response", requestId: wire.pendingQuestion!.id, answers: {} });
+            }}
           />
         )}
       </Box>

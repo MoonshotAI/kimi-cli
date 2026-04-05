@@ -7,7 +7,8 @@ import { randomUUID } from "node:crypto";
 
 import type { Runtime } from "../soul/agent.ts";
 import type { Message, ContentPart } from "../types.ts";
-import { KimiSoul, MaxStepsReached, RunCancelled } from "../soul/kimisoul.ts";
+import { KimiSoul } from "../soul/kimisoul.ts";
+import { MaxStepsReached, RunCancelled, getWireOrNull, runSoul, type UILoopFn } from "../soul/index.ts";
 import { getCurrentToolCallOrNull } from "../soul/toolset.ts";
 import { ToolOk, ToolError, type ToolResult } from "../tools/types.ts";
 import { SubagentOutputWriter } from "./output.ts";
@@ -25,6 +26,8 @@ import {
   QuestionRequest,
   SubagentEvent,
 } from "../wire/types.ts";
+import { QueueShutDown } from "../utils/queue.ts";
+import { WireFile } from "../wire/file.ts";
 import * as hookEvents from "../hooks/events.ts";
 import { logger } from "../utils/logging.ts";
 
@@ -79,17 +82,28 @@ function extractAssistantText(history: readonly Message[]): string {
 }
 
 /**
- * Run a single soul turn and validate the result.
+ * Run a single soul turn using runSoul() and validate the result.
  * Returns a SoulRunFailure if the run failed, or null on success.
  * Corresponds to Python run_soul_checked().
  */
 export async function runSoulChecked(
   soul: KimiSoul,
   prompt: string,
+  uiLoopFn: UILoopFn,
+  wirePath: string,
   phase: string,
 ): Promise<SoulRunFailure | null> {
   try {
-    await soul.run(prompt);
+    await runSoul(
+      soul,
+      prompt,
+      uiLoopFn,
+      new AbortController(),
+      {
+        wireFile: new WireFile(wirePath),
+        runtime: soul.runtime,
+      },
+    );
   } catch (err) {
     // RunCancelled must propagate — the caller marks the instance as killed.
     if (err instanceof RunCancelled) {
@@ -98,7 +112,7 @@ export async function runSoulChecked(
     if (err instanceof MaxStepsReached) {
       return {
         message:
-          `Max steps ${err.maxSteps} reached when ${phase}. ` +
+          `Max steps ${err.nSteps} reached when ${phase}. ` +
           "Please try splitting the task into smaller subtasks.",
         brief: "Max steps reached",
       };
@@ -131,8 +145,10 @@ export async function runSoulChecked(
 export async function runWithSummaryContinuation(
   soul: KimiSoul,
   prompt: string,
+  uiLoopFn: UILoopFn,
+  wirePath: string,
 ): Promise<[string | null, SoulRunFailure | null]> {
-  const failure = await runSoulChecked(soul, prompt, "running agent");
+  const failure = await runSoulChecked(soul, prompt, uiLoopFn, wirePath, "running agent");
   if (failure !== null) return [null, failure];
 
   let finalResponse = extractAssistantText(soul.ctx.history);
@@ -143,6 +159,8 @@ export async function runWithSummaryContinuation(
     const contFailure = await runSoulChecked(
       soul,
       SUMMARY_CONTINUATION_PROMPT,
+      uiLoopFn,
+      wirePath,
       "continuing the agent summary",
     );
     if (contFailure !== null) return [null, contFailure];
@@ -151,14 +169,6 @@ export async function runWithSummaryContinuation(
 
   return [finalResponse, null];
 }
-
-// ── UI Loop Function Type ────────────────────────────────
-
-/**
- * A function that reads Wire events and forwards them to the parent.
- * Corresponds to Python UILoopFn.
- */
-export type UILoopFn = (wire: Wire) => Promise<void>;
 
 // ── ForegroundSubagentRunner ─────────────────────────────
 
@@ -224,48 +234,17 @@ export class ForegroundSubagentRunner {
     const toolCall = getCurrentToolCallOrNull();
     const parentToolCallId = toolCall?.id ?? null;
 
-    // Wire subagent soul callbacks to forward events as SubagentEvent to the parent UI.
-    // This is the TS equivalent of Python's _make_ui_loop_fn() + Wire pattern.
-    // Python captures the parent wire via ContextVar closure; we capture parentToolCallId
-    // in the closure and forward events to the parent via runtime.subagentEventSink.
-    const sink = this._runtime.subagentEventSink;
-    if (sink && parentToolCallId) {
-      const wrap = (nestedEvent: Record<string, unknown>) => {
-        sink({
-          type: "subagent_event",
-          parentToolCallId,
-          agentId,
-          subagentType: actualType,
-          event: nestedEvent,
-        });
-      };
-      // Emit initial metadata event so the UI knows about this subagent
-      // even before any tool calls (matches Python's set_subagent_metadata timing)
-      wrap({ type: "_metadata" });
-
-      soul.setCallbacks({
-        onToolCall: (tc) => {
-          outputWriter.toolCall(tc.name);
-          wrap({ type: "ToolCall", payload: { id: tc.id, function: { name: tc.name, arguments: tc.arguments } } });
-        },
-        onToolResult: (toolCallId, result) => {
-          const isError = result.isError ?? false;
-          const brief = result.message ?? undefined;
-          outputWriter.toolResult(isError ? "error" : "success", brief);
-          wrap({
-            type: "ToolResult",
-            payload: {
-              tool_call_id: toolCallId,
-              return_value: { isError, output: result.output, message: result.message },
-              display: result.display ?? [],
-            },
-          });
-        },
-        onTextDelta: (text) => {
-          outputWriter.text(text);
-        },
-      });
-    }
+    // Capture parent wire (via AsyncLocalStorage) for event forwarding.
+    // Matches Python: super_wire = get_wire_or_none() in _make_ui_loop_fn.
+    const superWire = getWireOrNull();
+    const uiLoopFn = ForegroundSubagentRunner._makeUiLoopFn({
+      parentToolCallId,
+      agentId,
+      subagentType: actualType,
+      outputWriter,
+      superWireSoulSide: superWire?.soulSide ?? null,
+    });
+    const wirePath = this._store.wirePath(agentId);
 
     // approvalSource is created inside the try block so the finally
     // clause can safely skip cancellation if we never got that far.
@@ -297,7 +276,7 @@ export class ForegroundSubagentRunner {
       outputWriter.stage("run_soul_start");
       const [finalResponse, failure] = await runWithApprovalSourceAsync(
         approvalSource,
-        () => runWithSummaryContinuation(soul, prompt),
+        () => runWithSummaryContinuation(soul, prompt, uiLoopFn, wirePath),
       );
 
       if (failure !== null) {
@@ -381,9 +360,6 @@ export class ForegroundSubagentRunner {
    * - Forwards ApprovalRequest/ToolCallRequest/QuestionRequest directly to parent wire
    * - Wraps other events as SubagentEvent before forwarding
    * - Skips HookRequest (handled internally)
-   *
-   * TODO: Wire the returned UILoopFn into soul.run() once the TS Wire system
-   * supports get_wire_or_none() and run_soul() accepts a ui_loop_fn parameter.
    */
   static _makeUiLoopFn(opts: {
     parentToolCallId: string | null;
@@ -400,21 +376,22 @@ export class ForegroundSubagentRunner {
         let msg: WireMessage;
         try {
           msg = await wireUi.receive();
-        } catch {
-          // Queue shut down — wire was closed
-          break;
+        } catch (err) {
+          if (err instanceof QueueShutDown) break;
+          throw err;
         }
 
         // Always write to output file regardless of wire availability
         outputWriter.writeWireMessage(msg as Record<string, unknown>);
-        logger.debug(`[subagent:${agentId}] wire event: ${(msg as any)?.type ?? "unknown"}`);
 
         if (superWireSoulSide == null || parentToolCallId == null) {
           continue;
         }
 
+        // Use __wireType tag for efficient type detection (set by wireSend/wireMsg)
+        const msgType = (msg as Record<string, unknown>).__wireType as string | undefined;
+
         // Forward approval/tool call/question requests directly to parent
-        const msgType = (msg as any)?.type;
         if (
           msgType === "ApprovalRequest" ||
           msgType === "ApprovalResponse" ||
@@ -432,7 +409,7 @@ export class ForegroundSubagentRunner {
 
         // Wrap all other events as SubagentEvent
         superWireSoulSide.send({
-          type: "SubagentEvent",
+          __wireType: "SubagentEvent",
           parent_tool_call_id: parentToolCallId,
           agent_id: agentId,
           subagent_type: subagentType,

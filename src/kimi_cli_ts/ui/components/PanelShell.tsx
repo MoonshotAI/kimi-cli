@@ -3,9 +3,9 @@
  *
  * Two variant modes:
  * - "box": Unicode box border (╭─╮│╰─╯) with title centered in top border.
- *   Used by UsagePanel, DebugPanel, SelectionPanel.
+ *   Used by UsagePanel.
  * - "rules": Horizontal rule lines (─) as top/bottom separator with header.
- *   Used by SlashMenu, ChoicePanel, ContentPanel.
+ *   Used by CommandPanel.
  *
  * Pure render component — no useInput.
  */

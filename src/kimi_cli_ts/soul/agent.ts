@@ -59,12 +59,6 @@ export class Runtime {
   subagentId: string | null;
   subagentType: string | null;
   skills: Map<string, Skill>;
-  /**
-   * Callback for forwarding subagent events to the parent UI.
-   * Set by cli/index.ts when wiring the parent soul's callbacks.
-   * Used by ForegroundSubagentRunner to emit SubagentEvent to the shell.
-   */
-  subagentEventSink: ((event: Record<string, unknown>) => void) | null;
 
   constructor(opts: {
     config: Config;
@@ -82,7 +76,6 @@ export class Runtime {
     subagentId?: string | null;
     subagentType?: string | null;
     skills?: Map<string, Skill>;
-    subagentEventSink?: ((event: Record<string, unknown>) => void) | null;
   }) {
     this.config = opts.config;
     this.llm = opts.llm;
@@ -99,7 +92,6 @@ export class Runtime {
     this.subagentId = opts.subagentId ?? null;
     this.subagentType = opts.subagentType ?? null;
     this.skills = opts.skills ?? new Map();
-    this.subagentEventSink = opts.subagentEventSink ?? null;
   }
 
   get loopControl(): LoopControl {
@@ -239,7 +231,6 @@ export class Runtime {
       subagentId: opts.agentId,
       subagentType: opts.subagentType,
       skills: this.skills,
-      subagentEventSink: this.subagentEventSink,
     });
   }
 }

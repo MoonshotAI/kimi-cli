@@ -1,6 +1,12 @@
 /**
  * Grep tool — regex search using ripgrep.
  * Corresponds to Python tools/file/grep_local.py
+ *
+ * Ripgrep binary resolution:
+ *   1. ~/.kimi/bin/rg (cached extraction or user-installed)
+ *   2. <source>/deps/bin/rg (development mode, bun run)
+ *   3. System PATH (user-installed rg)
+ *   4. Extract embedded binary → ~/.kimi/bin/rg (compiled mode)
  */
 
 import { z } from "zod/v4";
@@ -8,10 +14,163 @@ import { CallableTool } from "../base.ts";
 import type { ToolContext, ToolResult } from "../types.ts";
 import { ToolError, ToolResultBuilder } from "../types.ts";
 import { isSensitiveFile, sensitiveFileWarning } from "../../utils/sensitive.ts";
+import { getShareDir } from "../../config.ts";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { execSync } from "node:child_process";
+
+// Embed the ripgrep binary into compiled executable via Bun's asset system.
+// In dev mode (bun run), this resolves to the file path on disk.
+// In compiled mode (bun build --compile), the binary is embedded in the
+// executable and this resolves to a `$bunfs/...` internal path that can be
+// read with Bun.file() or fs APIs.
+// @ts-ignore — import attribute not yet in TS lib
+import embeddedRgPath from "../../../kimi_cli/deps/bin/rg" with { type: "file" };
 
 const RG_TIMEOUT = 20_000; // 20 seconds in ms
 const RG_MAX_BUFFER = 20_000_000; // 20MB
 const RG_KILL_GRACE = 5_000; // 5 seconds: SIGTERM → SIGKILL
+
+/** Detect the ripgrep binary name for the current platform */
+function getRgBinaryName(): string {
+  return process.platform === "win32" ? "rg.exe" : "rg";
+}
+
+/** Check if a file exists and is executable */
+function isExecutable(filePath: string): boolean {
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Extract the embedded ripgrep binary to ~/.kimi/bin/rg.
+ * Only used when running as a compiled binary (bun build --compile).
+ * Reads from the Bun-embedded $bunfs/ path and writes to the cache directory.
+ */
+function extractEmbeddedRg(): string | null {
+  try {
+    const binName = getRgBinaryName();
+    const targetDir = path.join(getShareDir(), "bin");
+    const targetPath = path.join(targetDir, binName);
+
+    // Read the embedded binary content
+    const file = Bun.file(embeddedRgPath);
+    const buffer = new Uint8Array(file.size);
+    const reader = file.stream().getReader();
+    let offset = 0;
+
+    // Synchronous-ish extraction: we use a blocking pattern since this
+    // only runs once on first grep invocation.
+    // Use writeFileSync with the embedded path directly via fs.
+    const content = fs.readFileSync(embeddedRgPath);
+
+    // Ensure target directory exists
+    fs.mkdirSync(targetDir, { recursive: true });
+
+    // Write the binary
+    fs.writeFileSync(targetPath, content);
+
+    // Make executable (rwxr-xr-x)
+    fs.chmodSync(targetPath, 0o755);
+
+    if (isExecutable(targetPath)) {
+      return targetPath;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find the ripgrep binary using a priority-based search.
+ *
+ * Search order:
+ *   1. ~/.kimi/bin/rg (cached extraction or user-installed)
+ *   2. <source>/deps/bin/rg (development mode via bun run)
+ *   3. System PATH (user-installed ripgrep)
+ *   4. Extract embedded binary → ~/.kimi/bin/rg (compiled mode fallback)
+ *
+ * This matches the Python grep tool's search order in grep_local.py.
+ */
+function findRipgrepBinary(): string | null {
+  const binName = getRgBinaryName();
+
+  // Priority 1: Check user's share directory (~/.kimi/bin/rg)
+  // This is the canonical cache location — both extracted and user-installed
+  // binaries live here.
+  const shareBin = path.join(getShareDir(), "bin", binName);
+  if (fs.existsSync(shareBin) && isExecutable(shareBin)) {
+    return shareBin;
+  }
+
+  // Priority 2: Check package's local deps folder (development mode)
+  // This works when running with `bun run` from source tree.
+  // In compiled mode, import.meta.url points to $bunfs/ — the path won't
+  // resolve to a real directory, so existsSync will simply return false.
+  try {
+    const currentDir = path.dirname(import.meta.url.replace("file://", ""));
+    const packageRoot = path.resolve(currentDir, "../../..");
+    const localDep = path.join(packageRoot, "deps", "bin", binName);
+    if (fs.existsSync(localDep) && isExecutable(localDep)) {
+      return localDep;
+    }
+  } catch {
+    // Not in dev mode or path resolution failed
+  }
+
+  // Priority 3: Check system PATH
+  try {
+    const whichCmd = process.platform === "win32" ? "where" : "which";
+    const result = execSync(`${whichCmd} ${binName}`, { encoding: "utf-8" }).trim();
+    if (result) {
+      return result;
+    }
+  } catch {
+    // ripgrep not found in PATH
+  }
+
+  // Priority 4: Extract embedded binary to ~/.kimi/bin/rg
+  // This is the fallback for compiled mode when no cached binary exists yet.
+  const extracted = extractEmbeddedRg();
+  if (extracted) {
+    return extracted;
+  }
+
+  return null;
+}
+
+// Cache the rg binary path
+let cachedRgPath: string | null | undefined;
+
+/** Get the ripgrep binary path, with caching */
+function getRipgrepPath(): string {
+  if (cachedRgPath !== undefined) {
+    if (cachedRgPath === null) {
+      throw new Error(
+        "ripgrep (rg) not found. Install ripgrep or ensure it's in your PATH.\n" +
+        "Install: https://github.com/BurntSushi/ripgrep/releases",
+      );
+    }
+    return cachedRgPath;
+  }
+
+  const rgPath = findRipgrepBinary();
+  cachedRgPath = rgPath;
+
+  if (!rgPath) {
+    throw new Error(
+      "ripgrep (rg) not found. Install ripgrep or ensure it's in your PATH.\n" +
+      "Install: https://github.com/BurntSushi/ripgrep/releases",
+    );
+  }
+
+  return rgPath;
+}
 
 const DESCRIPTION = `A powerful search tool based on ripgrep.
 
@@ -95,9 +254,10 @@ type Params = z.infer<typeof ParamsSchema>;
 function buildRgArgs(
   params: Params,
   searchPath: string,
+  rgPath: string,
   opts?: { singleThreaded?: boolean },
 ): string[] {
-  const args: string[] = ["rg"];
+  const args: string[] = [rgPath];
 
   // Fixed args
   if (params.output_mode !== "content") {
@@ -194,7 +354,19 @@ export class Grep extends CallableTool<typeof ParamsSchema> {
       }
       searchPath = searchPath.replace(/^~/, process.env.HOME || "");
 
-      const args = buildRgArgs(params, searchPath, {
+      // Get the ripgrep binary path
+      let rgPath: string;
+      try {
+        rgPath = getRipgrepPath();
+      } catch (e) {
+        // If rg is not found, try fallback to 'rg' in PATH anyway
+        const err = e instanceof Error ? e.message : String(e);
+        return ToolError(
+          `Grep tool requires ripgrep (rg) to be installed.\n\nDetails: ${err}\n\nYou can install ripgrep with: https://github.com/BurntSushi/ripgrep/releases`,
+        );
+      }
+
+      const args = buildRgArgs(params, searchPath, rgPath, {
         singleThreaded: opts?._retry,
       });
 
@@ -295,7 +467,7 @@ export class Grep extends CallableTool<typeof ParamsSchema> {
             continue;
           }
           const m = _RG_LINE_RE.exec(line);
-          filePath = m ? m[1] : line;
+          filePath = m ? m[1]! : line;
         } else if (params.output_mode === "count_matches") {
           const idx = line.lastIndexOf(":");
           filePath = idx > 0 ? line.slice(0, idx) : line;

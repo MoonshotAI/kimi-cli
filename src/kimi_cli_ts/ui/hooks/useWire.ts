@@ -12,7 +12,7 @@ import type {
   ToolCallSegment,
 } from "../shell/events";
 import { extractKeyArgument } from "../../tools/types.ts";
-import type { StatusUpdate, ApprovalRequest } from "../../wire/types";
+import type { StatusUpdate, ApprovalRequest, QuestionRequest } from "../../wire/types";
 import type { Toast } from "../components/NotificationStack";
 import { nanoid } from "nanoid";
 
@@ -24,6 +24,10 @@ export interface WireState {
   pendingApproval: ApprovalRequest | null;
   /** Full queue of pending approval requests (including the current one). */
   approvalQueue: ApprovalRequest[];
+  /** The question request currently being shown to the user (head of queue). */
+  pendingQuestion: QuestionRequest | null;
+  /** Full queue of pending question requests. */
+  questionQueue: QuestionRequest[];
   status: StatusUpdate | null;
   stepCount: number;
   isCompacting: boolean;
@@ -48,6 +52,7 @@ export function useWire(options?: UseWireOptions): WireState & {
   // Approval queue — mirrors Python's deque[ApprovalRequest].
   // The first element is the one currently displayed to the user.
   const [approvalQueue, setApprovalQueue] = useState<ApprovalRequest[]>([]);
+  const [questionQueue, setQuestionQueue] = useState<QuestionRequest[]>([]);
   const [status, setStatus] = useState<StatusUpdate | null>(null);
   const [stepCount, setStepCount] = useState(0);
   const [isCompacting, setIsCompacting] = useState(false);
@@ -59,14 +64,16 @@ export function useWire(options?: UseWireOptions): WireState & {
   const pushEvent = useCallback((event: WireUIEvent) => {
     switch (event.type) {
       case "turn_begin": {
-        // Add user message
-        const userMsg: UIMessage = {
-          id: nanoid(),
-          role: "user",
-          segments: [{ type: "text", text: event.userInput }],
-          timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, userMsg]);
+        // Add user message (skip for slash commands where userInput is empty)
+        if (event.userInput) {
+          const userMsg: UIMessage = {
+            id: nanoid(),
+            role: "user",
+            segments: [{ type: "text", text: event.userInput }],
+            timestamp: Date.now(),
+          };
+          setMessages((prev) => [...prev, userMsg]);
+        }
         setIsStreaming(true);
         setStepCount(0);
         // Start new assistant message
@@ -183,6 +190,23 @@ export function useWire(options?: UseWireOptions): WireState & {
       case "approval_response": {
         // Dequeue the resolved request — advances to the next one automatically
         setApprovalQueue((prev) =>
+          prev.filter((r) => r.id !== event.requestId),
+        );
+        break;
+      }
+
+      case "question_request": {
+        // Enqueue question request — mirrors approval queue pattern
+        setQuestionQueue((prev) => {
+          if (prev.some((r) => r.id === event.request.id)) return prev;
+          return [...prev, event.request];
+        });
+        break;
+      }
+
+      case "question_response": {
+        // Dequeue the resolved question
+        setQuestionQueue((prev) =>
           prev.filter((r) => r.id !== event.requestId),
         );
         break;
@@ -354,12 +378,15 @@ export function useWire(options?: UseWireOptions): WireState & {
 
   // The head of the queue is the approval currently shown to the user
   const pendingApproval = approvalQueue.length > 0 ? approvalQueue[0]! : null;
+  const pendingQuestion = questionQueue.length > 0 ? questionQueue[0]! : null;
 
   return {
     messages,
     isStreaming,
     pendingApproval,
     approvalQueue,
+    pendingQuestion,
+    questionQueue,
     status,
     stepCount,
     isCompacting,

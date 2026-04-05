@@ -71,7 +71,7 @@ export function Prompt({
   panelInput = null,
   onPanelInputSubmit,
 }: PromptProps) {
-  const { value, setValue, historyPrev, historyNext, addToHistory, isFromHistory } =
+  const { value, setValue, historyPrev, historyNext, addToHistory, isBrowsingHistory } =
     useInputHistory();
 
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
@@ -123,7 +123,7 @@ export function Prompt({
   // Detect slash completion mode — disabled in panel mode
   const isSlashMode =
     !inPanelMode &&
-    value.startsWith("/") && !value.includes(" ") && commands.length > 0 && !isFromHistory;
+    value.startsWith("/") && !value.includes(" ") && commands.length > 0 && !isBrowsingHistory;
   const slashFilter = isSlashMode ? value.slice(1) : "";
   const menuCount = isSlashMode
     ? getFilteredCommandCount(commands, slashFilter)
@@ -322,7 +322,7 @@ export function Prompt({
       }
 
       // ── Enter → submit ──
-      if (key.return || key.enter) {
+      if (key.return) {
         doSubmit();
         return;
       }

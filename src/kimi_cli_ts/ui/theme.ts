@@ -115,8 +115,8 @@ const MESSAGE_DARK: MessageColors = {
   tool: "#0000d7",       // Rich "blue" — ANSI basic blue (\e[34m)
   error: "#ff7b72",      // Rich "dark_red"
   darkRed: "#870000",    // Rich "dark_red" — 256-color idx 88, for rejected/error bullets
-  dim: "#b2b2b2",        // Rich "grey50" — 256-color idx 244
-  thinking: "#b2b2b2",   // Rich "grey50" — matches Python's grey50 italic
+  dim: "#808080",        // Rich "grey50" — 256-color idx 244 = RGB(128,128,128)
+  thinking: "#808080",   // Rich "grey50" — 256-color idx 244 = RGB(128,128,128)
   highlight: "#56d364",  // Rich "green"
 };
 

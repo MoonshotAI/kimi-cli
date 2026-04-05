@@ -10,7 +10,7 @@ import { Session } from "./session.ts";
 import { HookEngine } from "./hooks/engine.ts";
 import { Context } from "./soul/context.ts";
 import { Runtime, Agent, loadAgent } from "./soul/agent.ts";
-import { KimiSoul, type SoulCallbacks } from "./soul/kimisoul.ts";
+import { KimiSoul } from "./soul/kimisoul.ts";
 import { logger } from "./utils/logging.ts";
 
 // ── KimiCLI ─────────────────────────────────────────
@@ -53,7 +53,7 @@ export class KimiCLI {
     sessionId?: string;
     continueSession?: boolean;
     maxStepsPerTurn?: number;
-    callbacks?: SoulCallbacks;
+    // callbacks removed — now uses Wire architecture
   }): Promise<KimiCLI> {
     const workDir = opts.workDir ?? process.cwd();
 
@@ -243,7 +243,6 @@ export class KimiCLI {
     const soul = new KimiSoul({
       agent,
       context,
-      callbacks: opts.callbacks ?? {},
     });
 
     // Wire slash commands

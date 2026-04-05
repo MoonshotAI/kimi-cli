@@ -8,6 +8,7 @@
 import { useCallback, useRef } from "react";
 import { parseSlashCommand, findSlashCommand } from "./slash.ts";
 import { runShellCommand, openExternalEditor } from "./shell-executor.ts";
+import { Reload } from "../../cli/index.ts";
 import { SHELL_MODE_COMMANDS } from "./shell-commands.ts";
 import type { WireUIEvent } from "./events.ts";
 import type { ApprovalRequest, ApprovalResponseKind } from "../../wire/types.ts";
@@ -26,7 +27,7 @@ export interface UseShellCallbacksOptions {
   exit: () => void;
   pushNotification: (title: string, body: string) => void;
   /** External onSubmit from ShellProps — sends input to the agent loop. */
-  onSubmitExternal?: (input: string) => void;
+  onSubmitExternal?: (input: string) => Promise<void>;
   onInterruptExternal?: () => void;
   onPlanModeToggleExternal?: () => Promise<boolean>;
   onApprovalResponseExternal?: (requestId: string, decision: ApprovalResponseKind, feedback?: string) => void;
@@ -61,7 +62,17 @@ interface InputStateAccessor {
  * Commands that are purely UI-side and never pass through soul.run().
  * Mirrors Python: shell_slash_registry commands that are NOT also soul commands.
  */
-const PURE_SHELL_COMMANDS = new Set(["exit", "quit", "q", "theme"]);
+const PURE_SHELL_COMMANDS = new Set([
+  "exit", "quit", "q",
+  "theme",
+  "clear", "cls", "reset",
+  "new",
+  "help", "h", "?",
+  "version",
+  "undo",
+  "fork",
+  "usage", "status",
+]);
 
 export function useShellCallbacks({
   wire,
@@ -116,7 +127,39 @@ export function useShellCallbacks({
           // Panel support: if command has a panel and no args, open it locally
           if (knownCmd.panel && !parsed.args) {
             const pc = knownCmd.panel();
-            if (pc) { inputRef.current.openPanel(pc); return; }
+            if (pc) {
+              // Wrap onSelect/onSubmit to catch Reload thrown by soul-level panels
+              // and translate to shell-level reload (matching Python pattern)
+              if (pc.type === "choice") {
+                const origOnSelect = pc.onSelect;
+                pc.onSelect = (value: string) => {
+                  try {
+                    return origOnSelect(value);
+                  } catch (err) {
+                    if (err instanceof Reload) {
+                      onReloadExternal?.(err.sessionId ?? "", err.prefillText ?? undefined);
+                      return;
+                    }
+                    throw err;
+                  }
+                };
+              } else if (pc.type === "input" && pc.onSubmit) {
+                const origOnSubmit = pc.onSubmit;
+                pc.onSubmit = (value: string) => {
+                  try {
+                    return origOnSubmit(value);
+                  } catch (err) {
+                    if (err instanceof Reload) {
+                      onReloadExternal?.(err.sessionId ?? "", err.prefillText ?? undefined);
+                      return;
+                    }
+                    throw err;
+                  }
+                };
+              }
+              inputRef.current.openPanel(pc);
+              return;
+            }
           }
           // Route to soul.run() — mirrors Python: await self.run_soul_command(raw_input)
           onSubmitExternal?.(input);
@@ -130,19 +173,28 @@ export function useShellCallbacks({
       if (inputRef.current.shellMode) { runShellCommand(input, pushNotification); return; }
       onSubmitExternal?.(input);
     },
-    [allCommands, shellCommands, onSubmitExternal, wire, pushNotification],
+    [allCommands, shellCommands, onSubmitExternal, onReloadExternal, wire, pushNotification],
   );
 
   const onSlashExecute = useCallback((cmd: SlashCommand) => {
-    const result = cmd.handler("");
-    if (result && typeof result.then === "function") {
-      result.then((feedback: void | string) => {
-        if (typeof feedback === "string") {
-          wire.pushEvent({ type: "slash_result", text: feedback });
-        }
-      });
+    // Shell commands (clear, exit, quit, theme, etc.) run directly — their handlers
+    // manage their own lifecycle and don't need Wire context.
+    // Soul commands must route through onSubmitExternal → runSoul() for Wire context.
+    const isShellCmd = shellCommands.some(sc => sc.name === cmd.name || sc.aliases?.includes(cmd.name));
+    if (isShellCmd) {
+      const result = cmd.handler("");
+      if (result && typeof result.then === "function") {
+        result.then((feedback: void | string) => {
+          if (typeof feedback === "string") {
+            wire.pushEvent({ type: "slash_result", text: feedback });
+          }
+        });
+      }
+    } else {
+      // Soul command — route through runSoul() to ensure Wire context exists
+      onSubmitExternal?.(`/${cmd.name}`);
     }
-  }, [wire]);
+  }, [wire, shellCommands, onSubmitExternal]);
 
   const onExit = useCallback(() => exit(), [exit]);
 

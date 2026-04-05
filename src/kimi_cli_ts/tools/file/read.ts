@@ -320,7 +320,7 @@ export class ReadFile extends CallableTool<typeof ParamsSchema> {
       let kept = 0;
       let nBytes = 0;
       for (let i = candidates.length - 1; i >= 0; i--) {
-        nBytes += new TextEncoder().encode(candidates[i].line).length;
+        nBytes += new TextEncoder().encode(candidates[i]!.line).length;
         if (nBytes > MAX_BYTES) break;
         kept++;
       }

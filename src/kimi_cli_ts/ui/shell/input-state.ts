@@ -491,7 +491,7 @@ export function useShellInput({
           return;
         }
         // Buffer text content; restore newlines from return/enter keys
-        if (key.return || key.enter) {
+        if (key.return) {
           pasteBuffer.current.push("\n");
         } else if (input) {
           pasteBuffer.current.push(input);
@@ -579,7 +579,7 @@ export function useShellInput({
         return;
       }
 
-      if (key.return || key.enter) { doSubmit(); return; }
+      if (key.return) { doSubmit(); return; }
 
       if (key.upArrow) {
         if (m === "mention_menu") setMentionMenuIndex((i) => Math.max(0, i - 1));

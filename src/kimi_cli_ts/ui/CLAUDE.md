@@ -267,3 +267,202 @@ The TS version needs to:
 you can use screen  and bun run start to launch tui and debug ui
 
 debug时需要使用本地磁盘log 不要污染stderr
+
+## Integration Testing: tmux Side-by-Side Verification
+
+Any new feature or bugfix that touches the TS version **must** be integration-tested against the Python version using tmux to confirm behavioral parity. This is a hard rule — do not skip it.
+
+### Why
+
+Unit tests cannot catch UI-level behavioral differences (approval dialog content, subagent event rendering, concurrent execution order, keyboard interaction timing). The only reliable way to verify TS↔Python alignment is to run both side-by-side with identical input and compare the observable output.
+
+### Procedure
+
+```bash
+# 1. Launch both versions
+tmux new-session -d -s py -x 130 -y 50 -c "$(pwd)" 'uv run kimi; exec bash'
+tmux new-session -d -s ts -x 130 -y 50 -c "$(pwd)" 'bun run start; exec bash'
+sleep 12  # wait for startup
+
+# 2. Verify ready (💫 prompt visible)
+tmux capture-pane -t py -p | grep "💫"
+tmux capture-pane -t ts -p | grep "💫"
+
+# 3. Send identical prompt to both
+tmux send-keys -t py "your test prompt here"
+tmux send-keys -t py Enter
+tmux send-keys -t ts "your test prompt here"
+tmux send-keys -t ts Enter
+
+# 4. Capture and compare output
+tmux capture-pane -t py -p -S -200 > /tmp/py-output.txt
+tmux capture-pane -t ts -p -S -200 > /tmp/ts-output.txt
+diff /tmp/py-output.txt /tmp/ts-output.txt
+
+# 5. For approval interactions — send ONLY the number key, NOT Enter
+#    (number key triggers onSelect directly; Enter causes double-fire)
+tmux send-keys -t ts "1"    # approve once
+tmux send-keys -t py "1"
+
+# 6. Cleanup
+tmux kill-session -t py
+tmux kill-session -t ts
+```
+
+### What to Compare
+
+| Aspect | How to check |
+|--------|-------------|
+| Approval dialog content | `grep -A 15 "ACTION REQUIRED"` — verify Subagent/Task metadata lines match |
+| Concurrent subagent count | Look for `⟳ Using Agent` (TS) / `⠼ Using Agent` (PY) lines — count must match |
+| Approval queue behavior | Approve first, wait 3s, check if second approval pops up |
+| Tool execution order | Compare tool call/result sequence in output |
+| Final result text | Compare the summary after all subagents complete |
+
+### When to Run
+
+- Any change to `soul/toolset.ts`, `soul/kimisoul.ts` (tool execution)
+- Any change to `ui/hooks/useWire.ts`, `ui/shell/useShellCallbacks.ts` (approval flow)
+- Any change to `subagents/runner.ts`, `subagents/builder.ts` (subagent lifecycle)
+- Any change to `approval_runtime/`, `soul/approval.ts` (approval system)
+- Any change to `cli/index.ts` rootWireHub event forwarding
+- Any new tool or wire event type
+
+### Gotchas
+
+- **Do NOT send `Enter` after number key in approval panels.** Number keys (`1`/`2`/`3`/`4`) trigger selection directly in `SelectionPanel`. Sending Enter afterwards will approve the NEXT queued request due to React state update timing. This is a tmux testing artifact — real users press either number key OR arrow+Enter, not both.
+- **Wait at least 12s after launch** before sending input. Ink TUI needs time to mount.
+- **LLM responses are non-deterministic.** The exact wording will differ, but the structural behavior (number of subagents, approval sequence, tool calls) must match.
+- **Check session logs** for debugging: `ls -1t ~/.kimi/sessions/*/*/logs.log | head -1 | xargs tail -50`
+
+## Concurrent Subagent Execution & Approval Queue
+
+### Problem Solved
+
+TS version only showed one subagent running when the LLM dispatched multiple Agent tool calls in parallel. Python showed both running concurrently with separate approval dialogs.
+
+Three layers of issues were found and fixed:
+
+### Layer 1: Tool Execution Concurrency (`soul/toolset.ts`)
+
+**Python** uses `ContextVar` + `asyncio.create_task()`:
+```python
+# toolset.handle() returns Task immediately — all tasks run concurrently
+def handle(self, tool_call):
+    token = current_tool_call.set(tool_call)  # ContextVar: per-task isolation
+    try:
+        return asyncio.create_task(_call())    # Task inherits ContextVar
+    finally:
+        current_tool_call.reset(token)
+```
+
+**TS had a module-level global** `let _currentToolCall` — concurrent tools clobbered each other's context. Fixed by using `AsyncLocalStorage` (Node.js equivalent of Python's `ContextVar`):
+
+```typescript
+const _toolCallStorage = new AsyncLocalStorage<ToolCall | null>();
+
+handle(toolCall: ToolCall): Promise<ToolResult> {
+  return _toolCallStorage.run(toolCall, () =>
+    this._executeToolAsync(toolCall),
+  );
+}
+```
+
+`kimisoul.ts` `_executeToolsShielded()` follows 3-phase pattern:
+1. **Dispatch**: create all promises immediately (non-blocking)
+2. **Collect**: `Promise.all()` — true concurrent execution
+3. **Append**: sequential context append (maintains order)
+
+### Layer 2: Approval Queue (`ui/hooks/useWire.ts`)
+
+**Python** queues approval requests in a `deque[ApprovalRequest]`, shows them one by one.
+
+**TS had** `pendingApproval: ApprovalRequest | null` — new requests replaced the old one. Fixed by using an array queue:
+
+```typescript
+const [approvalQueue, setApprovalQueue] = useState<ApprovalRequest[]>([]);
+
+case "approval_request":
+  setApprovalQueue(prev => [...prev, event.request]);  // enqueue
+case "approval_response":
+  setApprovalQueue(prev => prev.filter(r => r.id !== event.requestId));  // dequeue
+```
+
+`pendingApproval` is derived as `approvalQueue[0]` — the head of the queue.
+
+`Shell.tsx` uses `key={wire.pendingApproval.id}` on `<ApprovalPanel>` to force React to remount when the head changes (resets all internal state like selection index).
+
+### Layer 3: Double-Fire Prevention (`useShellCallbacks.ts`, `SelectionPanel.tsx`)
+
+**Bug**: When user presses number key "1" to approve, `SelectionPanel` calls `onSelect(0)` immediately. 300ms later, the Enter key arrives. By then React has updated the queue — `pendingApproval` points to the NEXT request. The Enter event triggers `onSelect` again on the NEW `SelectionPanel` instance, auto-approving the second request without user intent.
+
+**Fix**: `handleApprovalResponse` in `useShellCallbacks.ts` uses:
+1. `respondedIdsRef` (Set) — tracks already-responded request IDs across renders
+2. Time-window debounce (400ms) — ignores rapid-fire responses
+
+```typescript
+const respondedIdsRef = useRef(new Set<string>());
+const lastRespondTimeRef = useRef(0);
+
+const handleApprovalResponse = useCallback((decision, feedback) => {
+  const current = wire.pendingApproval;
+  if (!current) return;
+  if (respondedIdsRef.current.has(current.id)) return;     // already handled
+  if (Date.now() - lastRespondTimeRef.current < 400) return; // debounce
+  respondedIdsRef.current.add(current.id);
+  lastRespondTimeRef.current = Date.now();
+  onApprovalResponseExternal?.(current.id, decision, feedback);
+  wire.pushEvent({ type: "approval_response", ... });
+}, [...]);
+```
+
+### Layer 4: Subagent Info in Approval Panel (`soul/approval.ts`, `subagents/runner.ts`, `cli/index.ts`)
+
+**Python** shows `Subagent: coder (agent_id)` and `Task: description` in the approval dialog by:
+1. Setting `ApprovalSource` with `agent_id` and `subagent_type` via ContextVar before soul execution
+2. Enriching `source_description` from `subagent_store.get_instance(agent_id).description` before UI display
+
+**TS was missing both**. Fixed by:
+1. `subagents/runner.ts`: wraps soul execution in `runWithApprovalSourceAsync(source, fn)` so all inner `approval.request()` calls inherit the source
+2. `soul/approval.ts`: reads `getCurrentApprovalSourceOrNull()` from AsyncLocalStorage (mirrors Python's `get_current_approval_source_or_none()`)
+3. `cli/index.ts`: enriches `source_description` from `subagentStore.getInstance(agent_id).description` when forwarding approval requests to UI
+
+### Key Architectural Pattern: AsyncLocalStorage = Python ContextVar
+
+| Python | TypeScript | Purpose |
+|--------|-----------|---------|
+| `ContextVar[ToolCall]` | `AsyncLocalStorage<ToolCall>` | Per-tool-call context in concurrent execution |
+| `ContextVar[ApprovalSource]` | `AsyncLocalStorage<ApprovalSource>` | Per-subagent approval source |
+| `asyncio.create_task()` inherits ContextVar | `AsyncLocalStorage.run()` wraps async execution | Context propagation |
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `soul/toolset.ts` | `AsyncLocalStorage` for `_currentToolCall`, non-blocking `handle()` |
+| `soul/kimisoul.ts` | 3-phase concurrent tool execution |
+| `soul/approval.ts` | Read approval source from `AsyncLocalStorage` |
+| `subagents/runner.ts` | `runWithApprovalSourceAsync()` wrapping soul execution |
+| `ui/hooks/useWire.ts` | Approval queue (array instead of single value) |
+| `ui/shell/useShellCallbacks.ts` | Double-fire prevention (Set + debounce) |
+| `ui/shell/Shell.tsx` | `key={request.id}` on ApprovalPanel |
+| `cli/index.ts` | Enrich `source_description` from subagent store |
+
+### RootWireHub Event Flow for Approvals
+
+```
+Subagent Shell tool → approval.request() → ApprovalRuntime.createRequest()
+  → _publishWireRequest() → rootWireHub.publishNowait()
+  → cli/index.ts rootHubQueue.get() → enrich source_description
+  → pushEvent({ type: "approval_request", request })
+  → useWire: setApprovalQueue(prev => [...prev, request])
+  → Shell.tsx: <ApprovalPanel key={id} request={queue[0]} />
+
+User approves → handleApprovalResponse()
+  → onApprovalResponseExternal() → approvalRuntime.resolve()
+  → wire.pushEvent({ type: "approval_response" })
+  → useWire: setApprovalQueue(prev => prev.filter(...))
+  → Next request becomes queue[0] → ApprovalPanel re-renders
+```
+
+**Important**: Do NOT forward `ApprovalResponse` from rootWireHub to UI pushEvent. Responses flow only through `handleApprovalResponse → wire.pushEvent`. Forwarding both causes double-processing and phantom auto-approvals.

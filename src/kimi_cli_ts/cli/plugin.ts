@@ -267,8 +267,8 @@ pluginCommand
         const { OAuthManager } = await import("../auth/oauth.ts");
         const oauth = new OAuthManager(config);
         hostValues = collectHostValues(
-          config as Parameters<typeof collectHostValues>[0],
-          oauth,
+          config as unknown as Parameters<typeof collectHostValues>[0],
+          oauth as unknown as Parameters<typeof collectHostValues>[1],
         );
       } catch {
         // OAuth may not be available

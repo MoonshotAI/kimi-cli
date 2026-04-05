@@ -113,7 +113,7 @@ export function SetupWizard({
           setSelectedIndex((i) => (i - 1 + platforms.length) % platforms.length);
         } else if (key.downArrow) {
           setSelectedIndex((i) => (i + 1) % platforms.length);
-        } else if (key.return || key.enter) {
+        } else if (key.return) {
           const platform = platforms[selectedIndex]!;
           setSelectedPlatform(platform);
           setStep("api_key");
@@ -138,7 +138,7 @@ export function SetupWizard({
           setSelectedIndex((i) => (i - 1 + models.length) % models.length);
         } else if (key.downArrow) {
           setSelectedIndex((i) => (i + 1) % models.length);
-        } else if (key.return || key.enter) {
+        } else if (key.return) {
           const model = models[selectedIndex]!;
           const caps = model.capabilities || [];
           if (caps.includes("always_thinking")) {
@@ -160,14 +160,14 @@ export function SetupWizard({
           setSelectedIndex((i) => (i - 1 + choices.length) % choices.length);
         } else if (key.downArrow) {
           setSelectedIndex((i) => (i + 1) % choices.length);
-        } else if (key.return || key.enter) {
+        } else if (key.return) {
           finishSetup(selectedModel!, selectedIndex === 0);
         }
         break;
       }
 
       case "error": {
-        if (key.return || key.enter) {
+        if (key.return) {
           setStep("api_key");
           setApiKey("");
           setError("");

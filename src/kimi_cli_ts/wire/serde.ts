@@ -12,10 +12,16 @@ import {
 } from "./types.ts";
 
 /**
- * Detect the type name of a WireMessage by trying each schema.
- * Returns the first matching type name.
+ * Detect the type name of a WireMessage.
+ * Uses __wireType hint if available (fast path from wireSend),
+ * otherwise falls back to trial-parsing each schema.
  */
 function detectTypeName(msg: Record<string, unknown>): string | null {
+  // Fast path: tagged messages from wireSend()
+  if (typeof msg.__wireType === "string" && msg.__wireType in _wireMessageSchemas) {
+    return msg.__wireType;
+  }
+  // Slow path: trial-parse each schema
   for (const [name, schema] of Object.entries(_wireMessageSchemas)) {
     const result = schema.safeParse(msg);
     if (result.success) return name;
@@ -51,7 +57,9 @@ export function serializeWireMessage(
   if (!typeName) {
     throw new Error(`Cannot detect wire message type for: ${JSON.stringify(msg)}`);
   }
-  return toEnvelope(typeName, msg) as Record<string, unknown>;
+  // Strip __wireType hint from serialized payload
+  const { __wireType: _, ...cleanPayload } = msg;
+  return toEnvelope(typeName, cleanPayload) as Record<string, unknown>;
 }
 
 /**

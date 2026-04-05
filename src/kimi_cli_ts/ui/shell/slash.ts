@@ -27,6 +27,8 @@ export interface ShellSlashContext {
   soulClear?: () => Promise<void>;
   /** Get the current line count of the dynamic viewport below <Static> (prompt + bottom slot). */
   getDynamicViewportHeight?: () => number;
+  /** Submit input through the soul (goes through runSoul with Wire context). Returns when turn completes. */
+  onSubmitExternal?: (input: string) => Promise<void>;
 }
 
 /**
@@ -41,25 +43,54 @@ export function createShellSlashCommands(
       description: "Clear conversation history",
       aliases: ["cls", "reset"],
       handler: async () => {
-        // Match Python: soul clears context, then shell triggers same-session reload.
-        // Step 1: Clear the wire messages FIRST (before unmounting Ink)
+        // Match Python exactly: await run_soul_command("/clear"); raise Reload()
+        // Step 1: Clear UI messages before soul command (prevents flash of old content)
         ctx.clearMessages?.();
-        // Step 2: Clear the soul context
-        await ctx.soulClear?.();
-        // Step 3: Snapshot the dynamic viewport height BEFORE triggerReload unmounts Ink
+        // Step 2: Run soul /clear through Wire context (clears context + wire file)
+        await ctx.onSubmitExternal?.("/clear");
+        // Step 3: Snapshot viewport height before reload unmounts Ink
         const height = ctx.getDynamicViewportHeight?.() ?? 5;
-        // Step 4: Trigger same-session reload — calls inkUnmount() which does a final render.
+        // Step 4: Trigger same-session reload (remounts Ink with fresh state)
         if (ctx.triggerReload && ctx.sessionId) {
           ctx.triggerReload(ctx.sessionId);
         }
-        // Step 5: AFTER Ink unmount, erase the residual dynamic viewport lines it left behind,
-        // then write the feedback message in their place.
+        // Step 5: Erase residual lines left by Ink unmount, show feedback
         const eraseLine = "\x1b[2K";
         const cursorUp = "\x1b[A";
         process.stdout.write(
           (eraseLine + cursorUp).repeat(height) +
           eraseLine + "\r" +
           "• The context has been cleared.\n"
+        );
+      },
+    },
+    {
+      name: "new",
+      description: "Start a new session",
+      handler: async () => {
+        // Match Python: create new session, clean up empty current session, then reload.
+        const info = ctx.getSessionInfo?.();
+        if (!info || !ctx.triggerReload) {
+          ctx.pushNotification("New", "No active session.");
+          return;
+        }
+        const { Session } = await import("../../session.ts");
+        const currentSession = await Session.find(info.workDir, ctx.sessionId ?? "");
+        if (currentSession && await currentSession.isEmpty()) {
+          await currentSession.delete();
+        }
+        const newSession = await Session.create(info.workDir);
+        // Snapshot viewport height before reload unmounts Ink
+        const height = ctx.getDynamicViewportHeight?.() ?? 5;
+        // Trigger reload with new session
+        ctx.triggerReload(newSession.id);
+        // Erase residual Ink lines and show feedback (same pattern as /clear)
+        const eraseLine = "\x1b[2K";
+        const cursorUp = "\x1b[A";
+        process.stdout.write(
+          (eraseLine + cursorUp).repeat(height) +
+          eraseLine + "\r" +
+          "\x1b[32mNew session created. Switching...\x1b[39m\n"
         );
       },
     },

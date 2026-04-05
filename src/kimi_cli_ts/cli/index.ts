@@ -7,10 +7,13 @@ import { Command } from "commander";
 import React from "react";
 import { render } from "ink";
 import { KimiCLI } from "../app.ts";
-import type { SoulCallbacks } from "../soul/kimisoul.ts";
+import { runSoul, type UILoopFn } from "../soul/index.ts";
+import type { ContentPart } from "../types.ts";
+import { WireFile } from "../wire/file.ts";
 import { Shell } from "../ui/shell/Shell.tsx";
 import type { WireUIEvent } from "../ui/shell/events.ts";
 import type { ApprovalResponseKind } from "../wire/types.ts";
+import { QueueShutDown } from "../utils/queue.ts";
 import chalk from "chalk";
 import { patchInkLogUpdate } from "../ui/renderer/index.ts";
 
@@ -276,22 +279,34 @@ program
 
       try {
         if (options.print) {
-          // ── Print mode: callbacks write directly to stdout/stderr ──
-          const callbacks: SoulCallbacks = {
-            onTextDelta: (text) => process.stdout.write(text),
-            onThinkDelta: (text) => process.stderr.write(chalk.dim(text)),
-            onError: (err) =>
-              process.stderr.write(chalk.red(`[ERROR] ${err.message}\n`)),
-            onTurnEnd: () => process.stdout.write("\n"),
-            onStatusUpdate: (status) => {
-              if (options.verbose && status.tokenUsage) {
-                process.stderr.write(
-                  chalk.dim(
-                    `[tokens] in=${status.tokenUsage.inputTokens} out=${status.tokenUsage.outputTokens}\n`,
-                  ),
-                );
+          // ── Print mode: UILoopFn writes directly to stdout/stderr ──
+          const printUILoopFn: UILoopFn = async (wire) => {
+            const uiSide = wire.uiSide(true);
+            while (true) {
+              let msg: any;
+              try {
+                msg = await uiSide.receive();
+              } catch (err) {
+                if (err instanceof QueueShutDown) break;
+                throw err;
               }
-            },
+              const t = msg.__wireType ?? "";
+              if (t === "TextPart") {
+                process.stdout.write(msg.text);
+              } else if (t === "ThinkPart") {
+                process.stderr.write(chalk.dim(msg.text));
+              } else if (t === "TurnEnd") {
+                process.stdout.write("\n");
+              } else if (t === "StatusUpdate") {
+                if (options.verbose && msg.token_usage) {
+                  process.stderr.write(
+                    chalk.dim(
+                      `[tokens] in=${msg.token_usage.inputTokens} out=${msg.token_usage.outputTokens}\n`,
+                    ),
+                  );
+                }
+              }
+            }
           };
 
           const app = await KimiCLI.create({
@@ -305,13 +320,16 @@ program
             sessionId: resolvedSessionId,
             continueSession: options.continue,
             maxStepsPerTurn: options.maxStepsPerTurn ?? options.maxRetriesPerStep,
-            callbacks,
           });
 
-          // Wire subagent event sink for print mode (output logging only)
-          app.agent.runtime.subagentEventSink = () => {};
-
-          if (prompt) await app.runPrint(prompt);
+          if (prompt) {
+            const wireFile = app.session.wireFile ? new WireFile(app.session.wireFile) : undefined;
+            const cancelController = new AbortController();
+            await runSoul(app.soul, prompt, printUILoopFn, cancelController, {
+              wireFile,
+              runtime: app.soul.runtime,
+            });
+          }
           printResumeHint(app.session);
           await app.shutdown();
         } else if (options.wire) {
@@ -327,7 +345,6 @@ program
             sessionId: resolvedSessionId,
             continueSession: options.continue,
             maxStepsPerTurn: options.maxStepsPerTurn ?? options.maxRetriesPerStep,
-            callbacks: {},
           });
           // Wire mode not yet implemented
           console.error("Wire mode is not yet implemented.");
@@ -352,96 +369,77 @@ program
             // inkUnmount will be set after render() — captured here so callbacks can trigger reload
             let inkUnmountFn: (() => void) | null = null;
 
-            // Helper: trigger reload from anywhere (SoulCallbacks or Shell prop)
+            // Helper: trigger reload from anywhere (UILoopFn or Shell prop)
             const triggerReload = (sessionId: string, prefillText?: string) => {
               pendingReload = { sessionId, prefillText };
               inkUnmountFn?.();
             };
 
-            const callbacks: SoulCallbacks = {
-              onTurnBegin: (userInput) => {
-                const text =
-                  typeof userInput === "string"
-                    ? userInput
-                    : "[complex input]";
-                pushEvent?.({ type: "turn_begin", userInput: text });
-              },
-              onTurnEnd: () => {
-                pushEvent?.({ type: "turn_end" });
-              },
-              onStepBegin: (n) => {
-                pushEvent?.({ type: "step_begin", n });
-              },
-              onTextDelta: (text) => {
-                pushEvent?.({ type: "text_delta", text });
-              },
-              onThinkDelta: (text) => {
-                pushEvent?.({ type: "think_delta", text });
-              },
-              onToolCall: (tc) => {
-                pushEvent?.({
-                  type: "tool_call",
-                  id: tc.id,
-                  name: tc.name,
-                  arguments: tc.arguments,
-                });
-              },
-              onToolResult: (toolCallId, result) => {
-                // Build display blocks — include brief for rejected-with-feedback
-                const display: unknown[] = result.display ?? [];
-                if (result.isError && result.message?.includes("User feedback:") && display.length === 0) {
-                  const match = result.message.match(/User feedback: (.+)$/);
-                  if (match) {
-                    display.push({ type: "brief", brief: `Rejected: ${match[1]}` });
+            // Create a UILoopFn that translates Wire messages → WireUIEvent for Shell
+            const createShellUILoopFn = (pe: (event: WireUIEvent) => void): UILoopFn => {
+              return async (wire) => {
+                const uiSide = wire.uiSide(true);
+                while (true) {
+                  let msg: any;
+                  try {
+                    msg = await uiSide.receive();
+                  } catch (err) {
+                    if (err instanceof QueueShutDown) break;
+                    throw err;
                   }
-                } else if (result.isError && result.message?.includes("rejected by the user") && display.length === 0) {
-                  display.push({ type: "brief", brief: "Rejected by user" });
+                  const t = msg.__wireType ?? "";
+                  if (t === "TurnBegin") {
+                    const raw = msg.user_input;
+                    let userInput: string;
+                    if (typeof raw === "string") {
+                      userInput = raw;
+                    } else if (Array.isArray(raw)) {
+                      userInput = (raw as any[])
+                        .filter((p: any) => p?.type === "text" && typeof p.text === "string")
+                        .map((p: any) => p.text)
+                        .join("") || "[complex input]";
+                    } else {
+                      userInput = "[complex input]";
+                    }
+                    // Slash commands: skip user input echo (matches Python — visualize.py
+                    // only does flush_content() for TurnBegin, never renders user message).
+                    // Pass empty string so useWire still creates assistant message container.
+                    pe({ type: "turn_begin", userInput: userInput.startsWith("/") ? "" : userInput });
+                  } else if (t === "TurnEnd") {
+                    pe({ type: "turn_end" });
+                  } else if (t === "StepBegin") {
+                    pe({ type: "step_begin", n: msg.n });
+                  } else if (t === "TextPart") {
+                    pe({ type: "text_delta", text: msg.text });
+                  } else if (t === "ThinkPart") {
+                    pe({ type: "think_delta", text: msg.text });
+                  } else if (t === "ToolCall") {
+                    pe({ type: "tool_call", id: msg.id, name: msg.name, arguments: msg.arguments });
+                  } else if (t === "ToolResult") {
+                    pe({ type: "tool_result", toolCallId: msg.tool_call_id, result: msg });
+                  } else if (t === "StatusUpdate") {
+                    pe({ type: "status_update", status: msg });
+                  } else if (t === "CompactionBegin") {
+                    pe({ type: "compaction_begin" });
+                  } else if (t === "CompactionEnd") {
+                    pe({ type: "compaction_end" });
+                  } else if (t === "Notification") {
+                    pe({ type: "notification", title: msg.title, body: msg.body });
+                  } else if (t === "SubagentEvent") {
+                    pe({ type: "subagent_event", parentToolCallId: msg.parent_tool_call_id, agentId: msg.agent_id, subagentType: msg.subagent_type, event: msg.event });
+                  } else if (t === "ApprovalRequest") {
+                    pe({ type: "approval_request", request: msg });
+                  } else if (t === "QuestionRequest") {
+                    pe({ type: "question_request", request: msg });
+                  } else if (t === "StepInterrupted") {
+                    pe({ type: "step_interrupted" });
+                  }
                 }
-                pushEvent?.({
-                  type: "tool_result",
-                  toolCallId,
-                  result: {
-                    tool_call_id: toolCallId,
-                    return_value: {
-                      isError: result.isError,
-                      output: result.output,
-                      message: result.message,
-                    },
-                    display,
-                  },
-                });
-              },
-              onStatusUpdate: (status) => {
-                pushEvent?.({
-                  type: "status_update",
-                  status: {
-                    context_usage: status.contextUsage ?? null,
-                    context_tokens: status.contextTokens ?? null,
-                    max_context_tokens: status.maxContextTokens ?? null,
-                    token_usage: status.tokenUsage ?? null,
-                    message_id: null,
-                    plan_mode: status.planMode ?? null,
-                    yolo: status.yoloEnabled ?? null,
-                    mcp_status: null,
-                  },
-                });
-              },
-              onCompactionBegin: () => {
-                pushEvent?.({ type: "compaction_begin" });
-              },
-              onCompactionEnd: () => {
-                pushEvent?.({ type: "compaction_end" });
-              },
-              onError: (err) => {
-                pushEvent?.({ type: "error", message: err.message });
-              },
-              onNotification: (title, body) => {
-                pushEvent?.({ type: "notification", title, body });
-              },
-              onReload: (sessionId, prefillText) => {
-                triggerReload(sessionId, prefillText);
-              },
+              };
             };
+
+            // Cancel controller for the current soul run — shared between onSubmit and onInterrupt
+            let currentCancelController: AbortController | null = null;
 
             const app = await KimiCLI.create({
               workDir: options.workDir,
@@ -454,14 +452,7 @@ program
               continueSession: !currentSessionId ? options.continue : undefined,
               resumed: !!currentSessionId,
               maxStepsPerTurn: options.maxStepsPerTurn ?? options.maxRetriesPerStep,
-              callbacks,
             });
-
-            // Wire subagent event sink so subagent runner can forward events to UI.
-            // This bridges the subagent's SoulCallbacks → parent pushEvent as SubagentEvent.
-            app.agent.runtime.subagentEventSink = (event) => {
-              pushEvent?.(event as any);
-            };
 
             // Patch Ink's log-update with our cell-level diffing renderer.
             // This must happen before render() creates the Ink instance.
@@ -494,13 +485,27 @@ program
                 thinking: app.soul.thinking,
                 yolo: options.yolo ?? false,
                 prefillText: currentPrefillText,
-                onSubmit: (input: string | ContentPart[]) => {
-                  app.soul.run(input).catch((err: Error) => {
-                    pushEvent?.({ type: "error", message: err.message });
-                  });
+                onSubmit: async (input: string | ContentPart[]) => {
+                  const cancelController = new AbortController();
+                  currentCancelController = cancelController;
+                  const wireFile = app.session.wireFile ? new WireFile(app.session.wireFile) : undefined;
+                  try {
+                    await runSoul(app.soul, input, createShellUILoopFn(pushEvent!), cancelController, {
+                      wireFile,
+                      runtime: app.soul.runtime,
+                    });
+                  } catch (err) {
+                    if (err instanceof Reload) {
+                      // Soul handler requested reload (e.g., /model, /sessions panel)
+                      // Translate to shell-level triggerReload, matching Python pattern
+                      triggerReload(err.sessionId ?? app.session.id, err.prefillText ?? undefined);
+                      return;
+                    }
+                    pushEvent?.({ type: "error", message: err instanceof Error ? err.message : String(err) });
+                  }
                 },
                 onInterrupt: () => {
-                  app.soul.abort();
+                  currentCancelController?.abort();
                 },
                 onPlanModeToggle: async () => {
                   return app.soul.togglePlanModeFromManual();
@@ -538,7 +543,9 @@ program
             unmount = inkUnmount;
             inkUnmountFn = inkUnmount;
 
-            // Start background task to forward RootWireHub events to UI
+            // Start background task to forward RootWireHub events to UI.
+            // ApprovalRequests flow through ApprovalRuntime → RootWireHub,
+            // NOT through the soul's Wire, so we need a separate subscriber.
             let rootHubQueue: any = null;
             if (app.soul.runtime.rootWireHub) {
               rootHubQueue = app.soul.runtime.rootWireHub.subscribe();
@@ -554,7 +561,6 @@ program
                       "sender" in msg
                     ) {
                       // ApprovalRequest — enrich with source_description from subagent store
-                      // (mirrors Python's _enrich_approval_request_for_ui)
                       const request = msg as any;
                       if (request.agent_id && !request.source_description && app.soul.runtime.subagentStore) {
                         const record = app.soul.runtime.subagentStore.getInstance(request.agent_id);
@@ -562,16 +568,13 @@ program
                           request.source_description = record.description;
                         }
                       }
-                      pushEvent?.({
+                      (pushEvent as ((e: WireUIEvent) => void) | null)?.({
                         type: "approval_request",
                         request,
                       });
                     }
-                    // NOTE: ApprovalResponse is NOT forwarded here.
-                    // Responses flow through handleApprovalResponse → wire.pushEvent
-                    // to avoid double-processing.
                   }
-                } catch (err) {
+                } catch {
                   // Queue shutdown or error
                   if (rootHubQueue) {
                     app.soul.runtime.rootWireHub?.unsubscribe(rootHubQueue);
@@ -582,8 +585,14 @@ program
 
             // Run initial prompt if provided (only on first iteration)
             if (currentPrompt) {
-              app.soul.run(currentPrompt).catch((err: Error) => {
-                pushEvent?.({ type: "error", message: err.message });
+              const cancelController = new AbortController();
+              currentCancelController = cancelController;
+              const wireFile = app.session.wireFile ? new WireFile(app.session.wireFile) : undefined;
+              runSoul(app.soul, currentPrompt, createShellUILoopFn(pushEvent!), cancelController, {
+                wireFile,
+                runtime: app.soul.runtime,
+              }).catch((err) => {
+                pushEvent?.({ type: "error", message: err instanceof Error ? err.message : String(err) });
               });
             }
 
@@ -596,8 +605,8 @@ program
 
             // Check if this was a reload (/undo or /fork)
             if (pendingReload) {
-              currentSessionId = pendingReload.sessionId;
-              currentPrefillText = pendingReload.prefillText;
+              currentSessionId = (pendingReload as { sessionId: string; prefillText?: string }).sessionId;
+              currentPrefillText = (pendingReload as { sessionId: string; prefillText?: string }).prefillText;
               currentPrompt = undefined; // Don't re-run the initial prompt
               continue;
             }
