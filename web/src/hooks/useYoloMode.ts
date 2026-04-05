@@ -117,6 +117,7 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
     if (isInitializedRef.current && sessionIdRef.current === sessionId) {
       return;
     }
+    sessionIdRef.current = sessionId;
     isInitializedRef.current = true;
     refresh();
   }, [sessionId, refresh]);
