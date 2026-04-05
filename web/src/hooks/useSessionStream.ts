@@ -331,7 +331,7 @@ export function useSessionStream(
   const connectRef = useRef<() => void>(() => undefined);
   const disconnectRef = useRef<() => void>(() => undefined);
   const reconnectRef = useRef<() => void>(() => undefined);
-  const resetStateRef = useRef<(preserveSlashCommands?: boolean) => void>(() => undefined);
+  const resetStateRef = useRef<(preserveSlashCommands?: boolean, preserveYoloMode?: boolean) => void>(() => undefined);
   const historyCompleteTimeoutRef = useRef<number | null>(null);
   const isReplayingRef = useRef(true); // Track if we're still replaying history
   const pendingMessageRef = useRef<string | null>(null); // Message to send after connection
@@ -341,6 +341,7 @@ export function useSessionStream(
   const lastWsMessageTimeRef = useRef<number>(0); // Last time a WS message was received
   const watchdogIntervalRef = useRef<number | null>(null); // Stale connection watchdog
   const statusRef = useRef<ChatStatus>("ready"); // Synced copy of status for watchdog
+  const previousSessionIdRef = useRef<string | null>(null); // Track previous session for reconnect detection
 
   // First turn tracking for auto-rename (simplified: backend reads from wire.jsonl)
   const hasTurnStartedRef = useRef(false); // Whether at least one turn has started
@@ -858,7 +859,7 @@ export function useSessionStream(
   }, []);
 
   // Reset all state
-  const resetState = useCallback((preserveSlashCommands = false) => {
+  const resetState = useCallback((preserveSlashCommands = false, preserveYoloMode = false) => {
     resetStepState();
     currentToolCallsRef.current?.clear();
     currentToolCallIdRef.current = null;
@@ -869,7 +870,9 @@ export function useSessionStream(
     setContextUsage(0);
     setTokenUsage(null);
     setPlanMode(false);
-    setYoloMode(false);
+    if (!preserveYoloMode) {
+      setYoloMode(false);
+    }
     setError(null);
     setSessionStatus(null);
     lastStatusSeqRef.current = null;
@@ -2419,8 +2422,12 @@ export function useSessionStream(
       watchdogIntervalRef.current = null;
     }
 
+    // Check if we're reconnecting to the same session (preserve yoloMode) or switching sessions (reset yoloMode)
+    const isReconnectingToSameSession = previousSessionIdRef.current === sessionId;
+    previousSessionIdRef.current = sessionId;
+
     awaitingIdleRef.current = false;
-    resetState(true);  // preserve slashCommands on reconnect
+    resetState(true, isReconnectingToSameSession);  // preserve slashCommands on reconnect, preserve yoloMode on same-session reconnect
     setMessages([]);
     setStatus("submitted");
     setAwaitingFirstResponse(Boolean(pendingMessageRef.current));
