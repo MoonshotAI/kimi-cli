@@ -22,7 +22,7 @@ import { Agent, type Runtime } from "./agent.ts";
 import { KimiToolset } from "./toolset.ts";
 import { SlashCommandRegistry } from "./slash.ts";
 import { compactContext, shouldCompact } from "./compaction.ts";
-import { toolResultMessage, systemReminder } from "./message.ts";
+import { toolResultMessage, systemReminder, checkMessage } from "./message.ts";
 import type {
 	DynamicInjection,
 	DynamicInjectionProvider,
@@ -31,7 +31,7 @@ import { normalizeHistory } from "./dynamic_injection.ts";
 import { PlanModeInjectionProvider } from "./dynamic_injections/plan_mode.ts";
 import { YoloModeInjectionProvider } from "./dynamic_injections/yolo_mode.ts";
 import { wireSend, wireMsg, getWireOrNull } from "./index.ts";
-import { MaxStepsReached } from "./index.ts";
+import { MaxStepsReached, LLMNotSet, LLMNotSupported } from "./index.ts";
 import { Reload } from "../cli/errors.ts";
 import {
 	handleNew,
@@ -63,7 +63,6 @@ import {
 import {
 	handleWeb,
 	handleVis,
-	handleReload,
 	handleTask,
 } from "../ui/shell/commands/misc.ts";
 import { handleUsage } from "../ui/shell/commands/usage.ts";
@@ -249,11 +248,11 @@ export class KimiSoul {
 				continue;
 			}
 
-			// For now, flow commands point to the skill handler (flow execution is already in kimisoul.ts)
+			const runner = new FlowRunner(skill.flow, { name: skill.name });
 			const flowCommand: SlashCommand = {
 				name: commandName,
 				description: skill.description || "",
-				handler: this._makeSkillRunner(skill),
+				handler: (args: string) => runner.run(this, args),
 				aliases: [],
 			};
 			this.agent.slashCommands.register(flowCommand);
@@ -488,11 +487,18 @@ export class KimiSoul {
 				context_usage: snap.contextUsage ?? null,
 				context_tokens: snap.contextTokens ?? null,
 				max_context_tokens: snap.maxContextTokens ?? null,
-				token_usage: snap.tokenUsage ?? null,
+				token_usage: snap.tokenUsage
+					? {
+							__wireType: "TokenUsage",
+							input_other: snap.tokenUsage.inputTokens,
+							output: snap.tokenUsage.outputTokens,
+							input_cache_read: snap.tokenUsage.cacheReadTokens ?? 0,
+							input_cache_creation: snap.tokenUsage.cacheWriteTokens ?? 0,
+						}
+					: null,
 				message_id: null,
 				plan_mode: snap.planMode ?? false,
-				yolo: snap.yoloEnabled ?? false,
-				mcp_status: null,
+				mcp_status: this.agent.toolset.mcpStatusSnapshot() ?? null,
 			}),
 		);
 	}
@@ -550,9 +556,21 @@ export class KimiSoul {
 				logger.info("Turn aborted");
 				wireSend(wireMsg("StepInterrupted"));
 			} else if (err instanceof MaxStepsReached) {
-				logger.warn(err.message);
+				// Re-throw MaxStepsReached so the wire server can handle it
+				// (matching Python behavior where this propagates to the caller)
 				wireSend(wireMsg("TurnEnd"));
 				turnFinished = true;
+				throw err;
+			} else if (err instanceof LLMNotSet || err instanceof LLMNotSupported) {
+				// Re-throw LLM errors so the wire server can map them to JSON-RPC error codes
+				// (matching Python behavior where these propagate to the caller)
+				throw err;
+			} else if (err instanceof Error && err.name === "ChatProviderError") {
+				// Re-throw ChatProviderError for wire server error mapping
+				throw err;
+			} else if (err instanceof Error && err.name === "Reload") {
+				// Re-throw Reload so cli/index.ts can catch it and trigger reload loop
+				throw err;
 			} else {
 				logger.error(`Turn error: ${err}`);
 			}
@@ -607,6 +625,12 @@ export class KimiSoul {
 	// ── Turn execution ──────────────────────────────
 
 	private async _turn(userInput: string | ContentPart[]): Promise<void> {
+		// Validate LLM is set and supports required capabilities (matches Python _turn)
+		const llm = this.agent.runtime.llm;
+		if (!llm) {
+			throw new LLMNotSet();
+		}
+
 		// Create checkpoint before appending user message (mirrors Python: self._checkpoint())
 		await this.context.checkpoint();
 
@@ -615,6 +639,16 @@ export class KimiSoul {
 			role: "user",
 			content: typeof userInput === "string" ? userInput : userInput,
 		};
+
+		// Check message capabilities (matches Python: check_message())
+		const missingCaps = checkMessage(userMsg, llm.capabilities);
+		if (missingCaps.size > 0) {
+			throw new LLMNotSupported(
+				llm.modelName,
+				Array.from(missingCaps),
+			);
+		}
+
 		await this.context.appendMessage(userMsg);
 
 		// Agent loop
@@ -626,6 +660,27 @@ export class KimiSoul {
 	private async _agentLoop(): Promise<void> {
 		const maxSteps = this.agent.runtime.config.loop_control.max_steps_per_turn;
 		this._stepCount = 0;
+
+		// ── MCP deferred loading (mirrors Python kimisoul.py lines 674-685) ──
+		const toolset = this.agent.toolset;
+		await toolset.startDeferredMcpToolLoading();
+		const mcpLoading = toolset.hasPendingMcpTools();
+		if (mcpLoading) {
+			const snapshot = toolset.mcpStatusSnapshot();
+			if (snapshot) {
+				wireSend(wireMsg("StatusUpdate", { mcp_status: snapshot }));
+			}
+			wireSend(wireMsg("MCPLoadingBegin", {}));
+			try {
+				await toolset.waitForMcpTools();
+			} finally {
+				const finalSnapshot = toolset.mcpStatusSnapshot();
+				if (finalSnapshot) {
+					wireSend(wireMsg("StatusUpdate", { mcp_status: finalSnapshot }));
+				}
+				wireSend(wireMsg("MCPLoadingEnd", {}));
+			}
+		}
 
 		while (true) {
 			// Check max steps — raise exception like Python
@@ -746,11 +801,12 @@ export class KimiSoul {
 				wireMsg("ToolResult", {
 					tool_call_id: tc.id,
 					return_value: {
-						isError: result.isError,
+						is_error: result.isError,
 						output: result.output,
-						message: result.message,
+						message: result.message ?? "",
+						display: result.display ?? [],
+						extras: result.extras ?? null,
 					},
-					display: result.display ?? [],
 				}),
 			);
 
@@ -775,7 +831,7 @@ export class KimiSoul {
 	private async _step(): Promise<ToolCall[]> {
 		const llm = this.agent.runtime.llm;
 		if (!llm) {
-			throw new Error("No LLM configured");
+			throw new LLMNotSet();
 		}
 
 		// Build messages for LLM — normalize to merge adjacent user messages
@@ -808,6 +864,9 @@ export class KimiSoul {
 		let thinkText = "";
 		const toolCalls: ToolCall[] = [];
 		let usage: TokenUsage | null = null;
+		let messageId: string | null = null;
+		// Track in-progress tool call parts for streaming accumulation
+		const pendingToolCallParts = new Map<string, { id: string; name: string; arguments: string }>();
 
 		const stream = llm.chat(messages, chatOptions);
 
@@ -815,13 +874,13 @@ export class KimiSoul {
 			switch (chunk.type) {
 				case "text":
 					assistantText += chunk.text;
-					// Stream text as ContentPart wire event (matches Python on_message_part=wire_send)
+					// Stream text as TextPart wire event (matches Python on_message_part=wire_send)
 					wireSend(wireMsg("TextPart", { type: "text", text: chunk.text }));
 					break;
 
 				case "think":
 					thinkText += chunk.text;
-					wireSend(wireMsg("ThinkPart", { type: "think", text: chunk.text }));
+					wireSend(wireMsg("ThinkPart", { type: "think", think: chunk.text, encrypted: null }));
 					break;
 
 				case "tool_call":
@@ -830,15 +889,58 @@ export class KimiSoul {
 						name: chunk.name,
 						arguments: chunk.arguments,
 					});
-					// Send ToolCall wire event (flat structure matching ToolCall schema)
+					// Send ToolCall wire event (nested function structure matching Python format)
 					wireSend(
 						wireMsg("ToolCall", {
+							type: "function",
 							id: chunk.id,
-							name: chunk.name,
-							arguments: chunk.arguments,
+							function: { name: chunk.name, arguments: chunk.arguments },
+							extras: null,
 						}),
 					);
 					break;
+
+				case "tool_call_part": {
+					// Streaming tool call part — accumulate arguments
+					const key = chunk.id || "__default__";
+					if (chunk.argumentsPart === null) {
+						// Final part — finalize tool call
+						const pending = pendingToolCallParts.get(key);
+						if (pending) {
+							toolCalls.push({
+								id: pending.id,
+								name: pending.name,
+								arguments: pending.arguments,
+							});
+							wireSend(
+								wireMsg("ToolCall", {
+									type: "function",
+									id: pending.id,
+									function: { name: pending.name, arguments: pending.arguments },
+									extras: null,
+								}),
+							);
+							pendingToolCallParts.delete(key);
+						}
+					} else {
+						let pending = pendingToolCallParts.get(key);
+						if (!pending) {
+							pending = { id: chunk.id, name: chunk.name, arguments: "" };
+							pendingToolCallParts.set(key, pending);
+						}
+						pending.arguments += chunk.argumentsPart;
+						// Emit ToolCallPart wire event for streaming UI
+						wireSend(
+							wireMsg("ToolCallPart", {
+								type: "tool_use",
+								id: pending.id,
+								name: pending.name,
+								input: {},
+							}),
+						);
+					}
+					break;
+				}
 
 				case "usage":
 					usage = chunk.usage;
@@ -850,6 +952,9 @@ export class KimiSoul {
 					break;
 
 				case "done":
+					if (chunk.messageId) {
+						messageId = chunk.messageId;
+					}
 					break;
 			}
 		}
@@ -889,19 +994,31 @@ export class KimiSoul {
 		}
 
 		// Wire status update (matches Python: wire_send(StatusUpdate(...)))
+		// Python only sets context_usage/context_tokens/max_context_tokens when usage is present
 		const snap = this.status;
-		wireSend(
-			wireMsg("StatusUpdate", {
-				context_usage: snap.contextUsage ?? null,
-				context_tokens: snap.contextTokens ?? null,
-				max_context_tokens: snap.maxContextTokens ?? null,
-				token_usage: usage ?? null,
-				message_id: null,
-				plan_mode: snap.planMode ?? false,
-				yolo: snap.yoloEnabled ?? false,
-				mcp_status: null,
-			}),
-		);
+		const statusPayload: Record<string, unknown> = {
+			context_usage: null,
+			context_tokens: null,
+			max_context_tokens: null,
+			token_usage: usage
+				? {
+						__wireType: "TokenUsage",
+						input_other: usage.inputTokens,
+						output: usage.outputTokens,
+						input_cache_read: usage.cacheReadTokens ?? 0,
+						input_cache_creation: usage.cacheWriteTokens ?? 0,
+					}
+				: null,
+			message_id: messageId,
+			plan_mode: snap.planMode ?? false,
+			mcp_status: this.agent.toolset.mcpStatusSnapshot() ?? null,
+		};
+		if (usage) {
+			statusPayload.context_usage = snap.contextUsage ?? null;
+			statusPayload.context_tokens = snap.contextTokens ?? null;
+			statusPayload.max_context_tokens = snap.maxContextTokens ?? null;
+		}
+		wireSend(wireMsg("StatusUpdate", statusPayload));
 
 		return toolCalls;
 	}
@@ -1173,16 +1290,21 @@ export class KimiSoul {
 			);
 		}
 
-		// Wire /reload
+		// Wire /reload — throw Reload to trigger config reload loop in cli/index.ts.
+		// Matches Python: raise Reload(session_id=soul.runtime.session.id)
 		const reloadCmd = registry.get("reload");
 		if (reloadCmd) {
-			reloadCmd.handler = wrapTextHandler(() => handleReload());
+			reloadCmd.handler = async () => {
+				const { Reload } = await import("../cli/errors.ts");
+				throw new Reload(this.agent.runtime.session.id);
+			};
 		}
 
 		// Wire /task
 		const taskCmd = registry.get("task");
 		if (taskCmd) {
 			taskCmd.handler = wrapTextHandler(() => handleTask());
+			taskCmd.panel = () => ({ type: "task" as const });
 		}
 
 		// Wire /login
@@ -1269,9 +1391,16 @@ export class KimiSoul {
 		const mcpCmd = registry.get("mcp");
 		if (mcpCmd) {
 			mcpCmd.handler = wrapTextHandler(() =>
-				handleMcp(this.agent.runtime.config),
+				handleMcp(
+					this.agent.runtime.config,
+					this.agent.toolset.mcpStatusSnapshot(),
+				),
 			);
-			mcpCmd.panel = () => createMcpPanel(this.agent.runtime.config);
+			mcpCmd.panel = () =>
+				createMcpPanel(
+					this.agent.runtime.config,
+					this.agent.toolset.mcpStatusSnapshot(),
+				);
 		}
 
 		// Wire /debug
@@ -1324,12 +1453,12 @@ export class KimiSoul {
 				);
 		}
 
-		// Wire /init
+		// Wire /init — matches Python: creates a temp soul to analyze codebase & generate AGENTS.md
 		const initCmd = registry.get("init");
 		if (initCmd) {
-			initCmd.handler = wrapTextHandler(() =>
-				handleInit(this.agent.runtime.session.workDir),
-			);
+			initCmd.handler = async () => {
+				await handleInit(this.agent, this.context);
+			};
 		}
 
 		// Wire /add-dir
@@ -1602,7 +1731,7 @@ export class FlowRunner {
 	): Promise<FlowTurnResult> {
 		// Send wire events for flow turn (matches Python FlowRunner._flow_turn)
 		wireSend(
-			wireMsg("TurnBegin", { user_input: [{ type: "text", text: prompt }] }),
+			wireMsg("TurnBegin", { user_input: prompt }),
 		);
 		const stepsBefore = soul["_stepCount"];
 		await soul["_turn"](prompt);

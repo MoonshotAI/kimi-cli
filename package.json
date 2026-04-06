@@ -35,6 +35,7 @@
     "@anthropic-ai/sdk": "^0.81.0",
     "@google/genai": "^1.48.0",
     "@iarna/toml": "^2.2.5",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "globby": "^16.2.0",

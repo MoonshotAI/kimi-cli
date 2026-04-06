@@ -3,12 +3,12 @@
  */
 
 import { Command } from "commander";
-import { join } from "node:path";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { getShareDir } from "../share.ts";
 
 function getGlobalMcpConfigFile(): string {
-	const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ".";
-	return join(homeDir, ".kimi", "mcp.json");
+	return join(getShareDir(), "mcp.json");
 }
 
 function loadMcpConfig(): Record<string, unknown> {
@@ -27,6 +27,7 @@ function loadMcpConfig(): Record<string, unknown> {
 
 function saveMcpConfig(config: Record<string, unknown>): void {
 	const mcpFile = getGlobalMcpConfigFile();
+	mkdirSync(dirname(mcpFile), { recursive: true });
 	writeFileSync(mcpFile, JSON.stringify(config, null, 2), "utf-8");
 }
 
@@ -217,12 +218,56 @@ mcpCommand
 	.command("test")
 	.description("Test connection to an MCP server and list available tools.")
 	.argument("<name>", "Name of the MCP server to test")
-	.action((name: string) => {
-		getMcpServer(name);
-		// TODO: Implement MCP client test when fastmcp TS equivalent is available
-		console.log(
-			`Testing MCP server '${name}' is not yet implemented in TypeScript.`,
-		);
+	.action(async (name: string) => {
+		const server = getMcpServer(name);
+
+		try {
+			const { Client } = await import(
+				"@modelcontextprotocol/sdk/client/index.js"
+			);
+			const { StdioClientTransport } = await import(
+				"@modelcontextprotocol/sdk/client/stdio.js"
+			);
+
+			let transport: InstanceType<typeof StdioClientTransport>;
+
+			if ("command" in server && server.command) {
+				transport = new StdioClientTransport({
+					command: server.command as string,
+					args: (server.args as string[]) ?? [],
+					env: (server.env as Record<string, string>) ?? undefined,
+				});
+			} else if ("url" in server && server.url) {
+				console.error("HTTP MCP transport is not yet supported for testing.");
+				process.exit(1);
+			} else {
+				console.error(`Unknown server configuration for '${name}'.`);
+				process.exit(1);
+			}
+
+			const client = new Client({
+				name: `kimi-cli-test-${name}`,
+				version: "2.0.0",
+			});
+
+			console.log(`Connecting to MCP server '${name}'...`);
+			await client.connect(transport);
+
+			const { tools } = await client.listTools();
+			console.log(`\nConnected! ${tools.length} tool(s) available:\n`);
+
+			for (const tool of tools) {
+				const desc = tool.description
+					? `: ${tool.description}`
+					: "";
+				console.log(`  - ${tool.name}${desc}`);
+			}
+
+			await client.close();
+		} catch (err) {
+			console.error(`Failed to connect to MCP server '${name}': ${err}`);
+			process.exit(1);
+		}
 	});
 
 mcpCommand

@@ -12,6 +12,38 @@ import {
 } from "./types.ts";
 
 /**
+ * Recursively strip __wireType hints from nested objects.
+ * This ensures internal formatting tags don't leak into the wire protocol.
+ */
+function stripWireTypeDeep(obj: Record<string, unknown>): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(obj)) {
+		if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+			const nested = value as Record<string, unknown>;
+			if ("__wireType" in nested) {
+				const { __wireType: _, ...clean } = nested;
+				result[key] = stripWireTypeDeep(clean);
+			} else {
+				result[key] = stripWireTypeDeep(nested);
+			}
+		} else {
+			result[key] = value;
+		}
+	}
+	return result;
+}
+
+/**
+ * Map internal type names to wire protocol names.
+ * Python serializes TextPart and ThinkPart as "ContentPart" on the wire.
+ * We keep the internal names for readability but remap for wire compat.
+ */
+const _wireTypeNameMap: Record<string, string> = {
+	TextPart: "ContentPart",
+	ThinkPart: "ContentPart",
+};
+
+/**
  * Detect the type name of a WireMessage.
  * Uses __wireType hint if available (fast path from wireSend),
  * otherwise falls back to trial-parsing each schema.
@@ -51,20 +83,23 @@ export function serializeWireMessage(
 	payload?: Record<string, unknown>,
 ): Record<string, unknown> {
 	if (typeof typeNameOrMsg === "string") {
-		return toEnvelope(typeNameOrMsg, payload!) as Record<string, unknown>;
+		const wireName = _wireTypeNameMap[typeNameOrMsg] ?? typeNameOrMsg;
+		return toEnvelope(wireName, payload!) as Record<string, unknown>;
 	}
 
 	// Auto-detect type name from message object
 	const msg = typeNameOrMsg as Record<string, unknown>;
-	const typeName = detectTypeName(msg);
-	if (!typeName) {
+	const rawTypeName = detectTypeName(msg);
+	if (!rawTypeName) {
 		throw new Error(
 			`Cannot detect wire message type for: ${JSON.stringify(msg)}`,
 		);
 	}
-	// Strip __wireType hint from serialized payload
+	// Remap internal type names to wire protocol names (e.g. TextPart → ContentPart)
+	const typeName = _wireTypeNameMap[rawTypeName] ?? rawTypeName;
+	// Strip __wireType hint from serialized payload (recursively)
 	const { __wireType: _, ...cleanPayload } = msg;
-	return toEnvelope(typeName, cleanPayload) as Record<string, unknown>;
+	return toEnvelope(typeName, stripWireTypeDeep(cleanPayload)) as Record<string, unknown>;
 }
 
 /**

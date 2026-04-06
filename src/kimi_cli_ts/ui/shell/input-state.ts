@@ -83,7 +83,8 @@ export type UIMode =
 	| { type: "panel_choice"; config: ChoiceConfig; index: number }
 	| { type: "panel_input"; config: InputConfig }
 	| { type: "panel_content"; config: ContentConfig; scrollOffset: number }
-	| { type: "panel_debug"; config: DebugConfig };
+	| { type: "panel_debug"; config: DebugConfig }
+	| { type: "panel_task" };
 
 // ── Hook Return ─────────────────────────────────────────
 
@@ -299,6 +300,8 @@ export function useShellInput({
 				setMode({ type: "panel_content", config, scrollOffset: 0 });
 			} else if (config.type === "debug") {
 				setMode({ type: "panel_debug", config });
+			} else if (config.type === "task") {
+				setMode({ type: "panel_task" });
 			}
 		},
 		[setValue],

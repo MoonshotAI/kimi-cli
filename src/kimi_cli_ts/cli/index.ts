@@ -284,6 +284,42 @@ program
 			// disableBracketedPaste — hoisted so the outer catch block can cleanup bracketed paste mode
 			let disableBracketedPaste: (() => void) | undefined;
 
+			// ── Load MCP configs (mirrors Python cli/__init__.py lines 503-518) ──
+			const mcpConfigs: Record<string, unknown>[] = [];
+			{
+				const { existsSync, readFileSync } = await import("node:fs");
+				const { join } = await import("node:path");
+				const { getShareDir } = await import("../share.ts");
+
+				const fileConfigs = options.mcpConfigFile ? [...options.mcpConfigFile] : [];
+				// If no explicit config files, try default ~/.kimi/mcp.json
+				if (fileConfigs.length === 0) {
+					const defaultMcpFile = join(getShareDir(), "mcp.json");
+					if (existsSync(defaultMcpFile)) {
+						fileConfigs.push(defaultMcpFile);
+					}
+				}
+				// Load file configs
+				for (const filePath of fileConfigs) {
+					try {
+						const raw = readFileSync(filePath, "utf-8");
+						mcpConfigs.push(JSON.parse(raw));
+					} catch (err) {
+						console.error(`Failed to load MCP config from ${filePath}: ${err}`);
+					}
+				}
+				// Load inline JSON configs
+				if (options.mcpConfig) {
+					for (const raw of options.mcpConfig) {
+						try {
+							mcpConfigs.push(JSON.parse(raw));
+						} catch (err) {
+							console.error(`Failed to parse MCP config JSON: ${err}`);
+						}
+					}
+				}
+			}
+
 			try {
 				if (options.print) {
 					// ── Print mode: UILoopFn writes directly to stdout/stderr ──
@@ -390,10 +426,10 @@ program
 									const nestedLines = nestedRepr.split("\n");
 									lines.push(`${pad}${f.key}=${nestedLines[0]}`);
 									for (let j = 1; j < nestedLines.length - 1; j++) {
-										lines.push(`${pad}${nestedLines[j]}`);
+										lines.push(`${nestedLines[j]}`);
 									}
 									lines.push(
-										`${pad}${nestedLines[nestedLines.length - 1]}${comma}`,
+										`${nestedLines[nestedLines.length - 1]}${comma}`,
 									);
 								} else {
 									lines.push(`${pad}${f.key}=${nestedRepr}${comma}`);
@@ -454,8 +490,8 @@ program
 								// FinalOnly mode: only output the last step's text
 								if (t === "StepBegin" || t === "StepInterrupted") {
 									finalTextBuffer = "";
-								} else if (t === "TextPart") {
-									finalTextBuffer += msg.text;
+								} else if (t === "TextPart" || (t === "ContentPart" && msg.type === "text")) {
+									finalTextBuffer += msg.text ?? "";
 								} else if (t === "TurnEnd") {
 									if (finalTextBuffer) {
 										if (outputFormat === "stream-json") {
@@ -474,14 +510,20 @@ program
 							} else if (outputFormat === "text") {
 								// Text mode: merge consecutive same-type content parts,
 								// matching Python's merged Wire output.
-								if (t === "TextPart" || t === "ThinkPart") {
-									if (pendingMerge && pendingMerge.type === t) {
+								// ContentPart is the wire name for both TextPart and ThinkPart
+								const effectiveType = t === "ContentPart" ? (msg.type === "think" ? "ThinkPart" : "TextPart") : t;
+								if (effectiveType === "TextPart" || effectiveType === "ThinkPart") {
+									if (pendingMerge && pendingMerge.type === effectiveType) {
 										// Merge: append text to the pending message
-										pendingMerge.msg.text += msg.text;
+										if (effectiveType === "ThinkPart") {
+											pendingMerge.msg.think = (pendingMerge.msg.think ?? "") + (msg.think ?? msg.text ?? "");
+										} else {
+											pendingMerge.msg.text = (pendingMerge.msg.text ?? "") + (msg.text ?? "");
+										}
 									} else {
 										// Different type or no pending — flush old, start new
 										flushPendingMerge();
-										pendingMerge = { type: t, msg: { ...msg } };
+										pendingMerge = { type: effectiveType, msg: { ...msg } };
 									}
 								} else {
 									// Non-content message: flush pending merge, then print
@@ -510,6 +552,8 @@ program
 						continueSession: options.continue,
 						maxStepsPerTurn:
 							options.maxStepsPerTurn ?? options.maxRetriesPerStep,
+						mcpConfigs: mcpConfigs.length > 0 ? mcpConfigs : undefined,
+						deferMcpLoading: false,
 					});
 
 					if (prompt) {
@@ -534,6 +578,7 @@ program
 						workDir: options.workDir,
 						additionalDirs: options.addDir,
 						configFile,
+						configText: options.config,
 						modelName: options.model,
 						thinking: options.thinking,
 						yolo: options.yolo,
@@ -542,6 +587,10 @@ program
 						continueSession: options.continue,
 						maxStepsPerTurn:
 							options.maxStepsPerTurn ?? options.maxRetriesPerStep,
+						agentFile: options.agentFile,
+						skillsDirs: options.skillsDir,
+						mcpConfigs: mcpConfigs.length > 0 ? mcpConfigs : undefined,
+						deferMcpLoading: false,
 					});
 
 					// Import wire components
@@ -551,14 +600,63 @@ program
 
 					// Create the WireServerSoul adapter
 					const wireServerSoul = {
+						wireFile: app.session.wireFile
+							? new WireFile(app.session.wireFile)
+							: undefined,
+
 						async onInitialize(params: Record<string, unknown>) {
-							return {
+							// Build slash commands
+							const slashCommands = app.soul.availableSlashCommands.map(
+								(cmd: { name: string; description: string; aliases?: string[] }) => ({
+									name: cmd.name,
+									description: cmd.description,
+									aliases: cmd.aliases ?? [],
+								}),
+							);
+
+							// Handle external tools
+							const accepted: string[] = [];
+							const rejected: Array<{ name: string; reason: string }> = [];
+							const externalTools = params.external_tools as
+								| Array<{ name: string; description: string; input_schema: Record<string, unknown> }>
+								| undefined;
+							if (externalTools && app.agent.toolset) {
+								for (const tool of externalTools) {
+									const existing = app.agent.toolset.find(tool.name);
+									if (existing) {
+										rejected.push({ name: tool.name, reason: "conflicts with builtin tool" });
+									} else {
+										// Accept and register external tool
+										accepted.push(tool.name);
+									}
+								}
+							}
+
+							// Build hooks info
+							const { HookEventType } = await import("../config.ts");
+							const supportedEvents = HookEventType.options;
+							const hookEngine = app.soul.hookEngine;
+							const hooksInfo: Record<string, unknown> = {
+								supported_events: supportedEvents,
+								configured: hookEngine?.summary ?? [],
+							};
+
+							const result: Record<string, unknown> = {
 								agent: {
 									name: app.agent.name,
 									model: app.soul.modelName,
 									workDir: app.session.workDir,
 								},
+								slash_commands: slashCommands,
+								hooks: hooksInfo,
 							};
+
+							if (accepted.length > 0 || rejected.length > 0) {
+								result.rejected_tools = rejected;
+								result.external_tools = { accepted, rejected };
+							}
+
+							return result;
 						},
 
 						async onPrompt(
@@ -566,13 +664,13 @@ program
 							streamCallback: (wire: Wire) => Promise<void>,
 							cancelEvent: any,
 						): Promise<string> {
-							const wire = new Wire();
+							const wire = new Wire({ fileBackend: wireServerSoul.wireFile });
 
 							return runWithWireContext(wire, async () => {
 								const streamPromise = streamCallback(wire);
 								try {
 									await app.soul.run(userInput as string | ContentPart[]);
-									return "completed";
+									return "finished";
 								} finally {
 									wire.shutdown();
 									await wire.join();
@@ -597,6 +695,9 @@ program
 
 					if (app.soul.runtime.rootWireHub) {
 						wireServer.setRootHub(app.soul.runtime.rootWireHub);
+					}
+					if (app.soul.runtime.approvalRuntime) {
+						wireServer.setApprovalRuntime(app.soul.runtime.approvalRuntime);
 					}
 
 					// Run the server
@@ -678,22 +779,37 @@ program
 										pe({ type: "turn_end" });
 									} else if (t === "StepBegin") {
 										pe({ type: "step_begin", n: msg.n });
-									} else if (t === "TextPart") {
-										pe({ type: "text_delta", text: msg.text });
-									} else if (t === "ThinkPart") {
-										pe({ type: "think_delta", text: msg.text });
+									} else if (t === "TextPart" || (t === "ContentPart" && msg.type === "text")) {
+										pe({ type: "text_delta", text: msg.text ?? "" });
+									} else if (t === "ThinkPart" || (t === "ContentPart" && msg.type === "think")) {
+										pe({ type: "think_delta", text: msg.think ?? msg.text ?? "" });
 									} else if (t === "ToolCall") {
+										// ToolCall uses nested function structure: {type:"function", id, function:{name, arguments}, extras}
+										const fn = msg.function as { name?: string; arguments?: string } | undefined;
 										pe({
 											type: "tool_call",
-											id: msg.id,
-											name: msg.name,
-											arguments: msg.arguments,
+											id: msg.id ?? "",
+											name: fn?.name ?? msg.name ?? "",
+											arguments: fn?.arguments ?? msg.arguments ?? "",
 										});
 									} else if (t === "ToolResult") {
+										// Normalize return_value: wire uses is_error (snake_case), UI expects isError
+										const rv = msg.return_value ?? {};
+										const normalizedResult = {
+											tool_call_id: msg.tool_call_id ?? "",
+											return_value: {
+												output: rv.output ?? "",
+												isError: rv.isError ?? rv.is_error ?? false,
+												message: rv.message ?? "",
+												display: rv.display ?? [],
+												extras: rv.extras ?? null,
+											},
+											display: msg.display ?? rv.display ?? [],
+										};
 										pe({
 											type: "tool_result",
-											toolCallId: msg.tool_call_id,
-											result: msg,
+											toolCallId: msg.tool_call_id ?? "",
+											result: normalizedResult,
 										});
 									} else if (t === "StatusUpdate") {
 										pe({ type: "status_update", status: msg });
@@ -741,6 +857,8 @@ program
 							resumed: !!currentSessionId,
 							maxStepsPerTurn:
 								options.maxStepsPerTurn ?? options.maxRetriesPerStep,
+							mcpConfigs: mcpConfigs.length > 0 ? mcpConfigs : undefined,
+							deferMcpLoading: true,
 						});
 
 						// Patch Ink's log-update with our cell-level diffing renderer.
@@ -840,7 +958,14 @@ program
 											context_usage: initStatus.contextUsage ?? null,
 											context_tokens: initStatus.contextTokens ?? null,
 											max_context_tokens: initStatus.maxContextTokens ?? null,
-											token_usage: initStatus.tokenUsage ?? null,
+											token_usage: initStatus.tokenUsage
+											? {
+													input_other: initStatus.tokenUsage.inputTokens,
+													output: initStatus.tokenUsage.outputTokens,
+													input_cache_read: initStatus.tokenUsage.cacheReadTokens ?? 0,
+													input_cache_creation: initStatus.tokenUsage.cacheWriteTokens ?? 0,
+												}
+											: null,
 											message_id: null,
 											plan_mode: initStatus.planMode ?? null,
 											yolo: initStatus.yoloEnabled ?? null,

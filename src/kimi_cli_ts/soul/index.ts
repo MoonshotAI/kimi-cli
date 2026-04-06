@@ -28,7 +28,7 @@ import { logger } from "../utils/logging.ts";
 
 export class LLMNotSet extends Error {
 	constructor() {
-		super("LLM not set");
+		super("LLM is not set");
 		this.name = "LLMNotSet";
 	}
 }

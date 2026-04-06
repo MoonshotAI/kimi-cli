@@ -48,6 +48,11 @@ export class ToolRegistry {
 		}
 	}
 
+	/** Remove a tool by name. Returns true if it existed. */
+	remove(name: string): boolean {
+		return this.tools.delete(name);
+	}
+
 	/** Find a tool by name. */
 	find(name: string): CallableTool | undefined {
 		return this.tools.get(name);
@@ -70,10 +75,12 @@ export class ToolRegistry {
 	): Promise<ToolResult> {
 		const tool = this.tools.get(name);
 		if (!tool) {
+			const msg = `Tool \`${name}\` not found`;
 			return {
 				isError: true,
-				output: "",
-				message: `Tool "${name}" not found.`,
+				output: msg,
+				message: msg,
+				display: [{ type: "brief", text: msg }],
 			};
 		}
 

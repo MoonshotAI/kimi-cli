@@ -42,21 +42,66 @@ export async function handleModel(
 }
 
 /**
+ * Save config with new model/thinking and trigger reload.
+ * Shared by model panel and thinking panel paths.
+ * Corresponds to Python ui/shell/slash.py lines 244-264.
+ */
+async function saveAndReload(
+	config: Config,
+	configMeta: ConfigMeta,
+	selectedModelName: string,
+	newThinking: boolean,
+	currentModel: string | undefined,
+	currentThinking: boolean,
+	notify: Notify,
+	sessionId?: string,
+	onReload?: (sessionId: string, prefillText?: string) => void,
+): Promise<void> {
+	const selectedModelCfg = config.models[selectedModelName]!;
+	const prevModel = config.default_model;
+	const prevThinking = config.default_thinking;
+
+	config.default_model = selectedModelName;
+	config.default_thinking = newThinking;
+
+	try {
+		await saveConfig(config, configMeta.sourceFile ?? undefined);
+	} catch (err: any) {
+		// Rollback on save failure
+		config.default_model = prevModel;
+		config.default_thinking = prevThinking;
+		notify("Model", `Failed to save config: ${err?.message ?? err}`);
+		return;
+	}
+
+	// Success — show message and trigger reload
+	notify(
+		"Model",
+		`Switched to ${selectedModelName} with thinking ${newThinking ? "on" : "off"}. Reloading...`,
+	);
+
+	if (sessionId && onReload) {
+		onReload(sessionId);
+	} else if (!sessionId) {
+		notify("Model", "Warning: sessionId not available for reload");
+	}
+}
+
+/**
  * Create a panel for selecting thinking mode.
- * Corresponds to Python ui/shell/slash.py thinking mode selection (lines 213-228)
+ * Corresponds to Python ui/shell/slash.py thinking mode selection (lines 206-228)
  */
 function createThinkingModePanel(
 	config: Config,
 	configMeta: ConfigMeta,
 	selectedModelName: string,
+	currentModel: string | undefined,
 	currentThinking: boolean,
 	notify: Notify,
 	sessionId?: string,
 	onReload?: (sessionId: string, prefillText?: string) => void,
 ): CommandPanelConfig {
-	const selectedModelCfg = config.models[selectedModelName]!;
-
-	// Build thinking mode items
+	// Build thinking mode items (matches Python lines 212-219)
 	const currentLabel = (mode: "off" | "on") =>
 		mode === (currentThinking ? "on" : "off") ? ` (current)` : "";
 	const items = [
@@ -81,48 +126,29 @@ function createThinkingModePanel(
 		onSelect: async (thinkingSelection: string) => {
 			const newThinking = thinkingSelection === "on";
 
-			// Check if anything changed
-			if (
-				selectedModelName === config.default_model &&
-				newThinking === currentThinking
-			) {
-				notify("Model", "No changes.");
-				return;
-			}
+			// Check if anything changed (matches Python lines 233-240)
+			const modelChanged = currentModel !== selectedModelName;
+			const thinkingChanged = currentThinking !== newThinking;
 
-			try {
-				// Save config with new model and thinking setting
-				const prevModel = config.default_model;
-				const prevThinking = config.default_thinking;
-
-				config.default_model = selectedModelName;
-				config.default_thinking = newThinking;
-
-				try {
-					await saveConfig(config, configMeta.sourceFile ?? undefined);
-				} catch (err: any) {
-					// Rollback on save failure
-					config.default_model = prevModel;
-					config.default_thinking = prevThinking;
-					notify("Model", `Failed to save config: ${err?.message ?? err}`);
-					return;
-				}
-
-				// Success — show message and trigger reload
+			if (!modelChanged && !thinkingChanged) {
 				notify(
 					"Model",
-					`Switched to: ${selectedModelCfg.model} with thinking ${newThinking ? "on" : "off"}. Reloading...`,
+					`Already using ${selectedModelName} with thinking ${newThinking ? "on" : "off"}.`,
 				);
-
-				if (sessionId && onReload) {
-					onReload(sessionId);
-				} else if (!sessionId) {
-					notify("Model", "Warning: sessionId not available for reload");
-				}
 				return;
-			} catch (err: any) {
-				notify("Model", `Error: ${err?.message ?? err}`);
 			}
+
+			await saveAndReload(
+				config,
+				configMeta,
+				selectedModelName,
+				newThinking,
+				currentModel,
+				currentThinking,
+				notify,
+				sessionId,
+				onReload,
+			);
 		},
 	};
 }
@@ -157,7 +183,7 @@ export function createModelPanel(
 		const capabilities = modelCfg.capabilities?.join(", ") || "none";
 		const label =
 			name === currentModel
-				? `${modelCfg.model} (${providerName}) [current]`
+				? `${modelCfg.model} (${providerName}) (current)`
 				: `${modelCfg.model} (${providerName})`;
 		return {
 			label,
@@ -169,94 +195,60 @@ export function createModelPanel(
 
 	return {
 		type: "choice",
-		title: "Select Model",
+		title: "Select a model (\u2191\u2193 navigate, Enter select, Ctrl+C cancel):",
 		items,
 		onSelect: async (selectedModelName: string) => {
-			// Step 1: Check if model changed
-			if (selectedModelName === currentModel) {
-				notify("Model", "Already using this model.");
-				return;
-			}
-
-			// Step 2: Determine thinking mode options for selected model
 			const selectedModelCfg = config.models[selectedModelName]!;
 			const { alwaysThinking, supportsThinking } =
 				getThinkingCapabilities(selectedModelCfg);
 
-			// If model always has thinking, auto-enable and proceed with save
+			// Step 2: Determine thinking mode (matches Python lines 206-230)
 			if (alwaysThinking) {
-				const newThinking = true;
-
-				try {
-					config.default_model = selectedModelName;
-					config.default_thinking = newThinking;
-
-					try {
-						await saveConfig(config, configMeta.sourceFile ?? undefined);
-					} catch (err: any) {
-						config.default_model = currentModel;
-						config.default_thinking = currentThinking;
-						notify("Model", `Failed to save config: ${err?.message ?? err}`);
-						return;
-					}
-
-					notify(
-						"Model",
-						`Switched to: ${selectedModelCfg.model} with thinking on. Reloading...`,
-					);
-
-					if (sessionId && onReload) {
-						onReload(sessionId);
-					} else if (!sessionId) {
-						notify("Model", "Warning: sessionId not available for reload");
-					}
-					return;
-				} catch (err: any) {
-					notify("Model", `Error: ${err?.message ?? err}`);
-				}
+				// always_thinking: auto-enable, save and reload
+				await saveAndReload(
+					config,
+					configMeta,
+					selectedModelName,
+					true,
+					currentModel,
+					currentThinking,
+					notify,
+					sessionId,
+					onReload,
+				);
 			} else if (supportsThinking) {
-				// Model supports optional thinking — show thinking mode panel
-				// Return the thinking mode panel to display to user
+				// Model supports optional thinking — chain to thinking mode panel
 				return createThinkingModePanel(
 					config,
 					configMeta,
 					selectedModelName,
+					currentModel,
 					currentThinking,
 					notify,
 					sessionId,
 					onReload,
 				);
 			} else {
-				// Model doesn't support thinking
-				const newThinking = false;
-
-				try {
-					config.default_model = selectedModelName;
-					config.default_thinking = newThinking;
-
-					try {
-						await saveConfig(config, configMeta.sourceFile ?? undefined);
-					} catch (err: any) {
-						config.default_model = currentModel;
-						config.default_thinking = currentThinking;
-						notify("Model", `Failed to save config: ${err?.message ?? err}`);
-						return;
-					}
-
+				// Model doesn't support thinking — check if anything changed
+				const modelChanged = currentModel !== selectedModelName;
+				if (!modelChanged) {
 					notify(
 						"Model",
-						`Switched to: ${selectedModelCfg.model}. Reloading...`,
+						`Already using ${selectedModelName} with thinking off.`,
 					);
-
-					if (sessionId && onReload) {
-						onReload(sessionId);
-					} else if (!sessionId) {
-						notify("Model", "Warning: sessionId not available for reload");
-					}
 					return;
-				} catch (err: any) {
-					notify("Model", `Error: ${err?.message ?? err}`);
 				}
+				await saveAndReload(
+					config,
+					configMeta,
+					selectedModelName,
+					false,
+					currentModel,
+					currentThinking,
+					notify,
+					sessionId,
+					onReload,
+				);
 			}
 		},
 	};

@@ -38,6 +38,13 @@ export interface ToolCallChunk {
 	arguments: string;
 }
 
+export interface ToolCallPartChunk {
+	type: "tool_call_part";
+	id: string;
+	name: string;
+	argumentsPart: string | null;
+}
+
 export interface UsageChunk {
 	type: "usage";
 	usage: TokenUsage;
@@ -52,8 +59,18 @@ export type StreamChunk =
 	| TextChunk
 	| ThinkChunk
 	| ToolCallChunk
+	| ToolCallPartChunk
 	| UsageChunk
 	| DoneChunk;
+
+// ── Errors ───────────────────────────────────────────────
+
+export class ChatProviderError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "ChatProviderError";
+	}
+}
 
 // ── LLM Provider Interface ────────────────────────────────
 
@@ -434,6 +451,10 @@ export function createLLM(
 			};
 			break;
 
+		case "_scripted_echo":
+			llmProvider = createScriptedEchoProvider(provider, model.model);
+			break;
+
 		default:
 			llmProvider = {
 				modelName: model.model,
@@ -453,6 +474,200 @@ export function createLLM(
 		modelConfig: model,
 		providerConfig: provider,
 	});
+}
+
+// ── Scripted Echo Provider (test-only) ────────────────────────
+
+/**
+ * Parse a single echo DSL script text into StreamChunks.
+ * DSL format (one command per line):
+ *   text: <text>
+ *   think: <text>
+ *   tool_call: <JSON object with id, name, arguments>
+ *   usage: <JSON object with input_other, output, ...>
+ *   id: <message_id>
+ * Lines starting with # or ``` or empty lines are ignored.
+ * The bare word "echo" is also ignored.
+ */
+function parseEchoScript(script: string): StreamChunk[] {
+	const chunks: StreamChunk[] = [];
+	let messageId: string | undefined;
+	let usage: { inputTokens: number; outputTokens: number } | undefined;
+
+	let lineNum = 0;
+	for (const rawLine of script.split("\n")) {
+		lineNum++;
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#") || line.startsWith("```")) continue;
+		if (line.toLowerCase() === "echo") continue;
+
+		const sepIdx = line.indexOf(":");
+		if (sepIdx === -1) {
+			throw new ChatProviderError(`Invalid echo DSL at line ${lineNum}: '${line}'`);
+		}
+
+		const kind = line.slice(0, sepIdx).trim().toLowerCase();
+		let payload = line.slice(sepIdx + 1);
+		// Strip leading single space after colon (like Python)
+		if (payload.startsWith(" ")) payload = payload.slice(1);
+
+		if (kind === "id") {
+			messageId = stripQuotes(payload.trim());
+			continue;
+		}
+		if (kind === "usage") {
+			const parsed = parseMapping(payload);
+			usage = {
+				inputTokens: toInt(parsed.input_other) + toInt(parsed.input_cache_read) + toInt(parsed.input_cache_creation),
+				outputTokens: toInt(parsed.output),
+			};
+			continue;
+		}
+
+		switch (kind) {
+			case "text":
+				chunks.push({ type: "text", text: stripQuotes(payload) });
+				break;
+			case "think":
+				chunks.push({ type: "think", text: stripQuotes(payload) });
+				break;
+			case "tool_call": {
+				const mapping = parseMapping(payload);
+				const fn = typeof mapping.function === "object" && mapping.function !== null
+					? mapping.function as Record<string, unknown>
+					: null;
+
+				const id = (mapping.id as string) ?? "";
+				const name = (mapping.name as string) ?? (fn?.name as string) ?? "";
+				let args = mapping.arguments as string | undefined;
+				if (args === undefined && fn) {
+					args = fn.arguments as string | undefined;
+				}
+				chunks.push({
+					type: "tool_call",
+					id,
+					name,
+					arguments: args ?? "",
+				});
+				break;
+			}
+			case "tool_call_part": {
+				const parsed = parseMapping(payload);
+				const id = (parsed.id as string) ?? "";
+				const name = (parsed.name as string) ?? "";
+				let argumentsPart = parsed.arguments_part;
+				if (argumentsPart === null || argumentsPart === undefined || argumentsPart === "") {
+					argumentsPart = null;
+				} else if (typeof argumentsPart === "object") {
+					argumentsPart = JSON.stringify(argumentsPart);
+				} else {
+					argumentsPart = String(argumentsPart);
+				}
+				chunks.push({
+					type: "tool_call_part",
+					id,
+					name,
+					argumentsPart: argumentsPart as string | null,
+				});
+				break;
+			}
+			default:
+				throw new Error(`Unknown echo DSL kind '${kind}': ${rawLine}`);
+		}
+	}
+
+	// Emit usage only if explicitly specified in the script (matches Python behavior)
+	if (usage) {
+		chunks.push({ type: "usage", usage });
+	}
+	chunks.push({ type: "done", messageId });
+
+	return chunks;
+}
+
+function stripQuotes(s: string): string {
+	if (s.length >= 2 && s[0] === s[s.length - 1] && (s[0] === "'" || s[0] === '"')) {
+		return s.slice(1, -1);
+	}
+	return s;
+}
+
+function parseMapping(raw: string): Record<string, unknown> {
+	raw = raw.trim();
+	try {
+		const loaded = JSON.parse(raw);
+		if (typeof loaded === "object" && loaded !== null && !Array.isArray(loaded)) {
+			return loaded;
+		}
+	} catch {
+		// not JSON, try key=value
+	}
+	const mapping: Record<string, unknown> = {};
+	for (const token of raw.replace(/,/g, " ").split(/\s+/)) {
+		if (!token) continue;
+		const eqIdx = token.indexOf("=");
+		if (eqIdx === -1) {
+			throw new Error(`Invalid token '${token}' in DSL payload`);
+		}
+		const key = token.slice(0, eqIdx).trim();
+		const val = token.slice(eqIdx + 1).trim();
+		mapping[key] = parseValue(val);
+	}
+	return mapping;
+}
+
+function parseValue(raw: string): unknown {
+	raw = raw.trim();
+	if (!raw) return null;
+	const lowered = raw.toLowerCase();
+	if (lowered === "null" || lowered === "none") return null;
+	try {
+		return JSON.parse(raw);
+	} catch {
+		return stripQuotes(raw);
+	}
+}
+
+function toInt(v: unknown): number {
+	if (v == null) return 0;
+	const n = Number(v);
+	return Number.isNaN(n) ? 0 : Math.floor(n);
+}
+
+/**
+ * Create a _scripted_echo LLM provider for testing.
+ * Reads scripts from a JSON file specified by KIMI_SCRIPTED_ECHO_SCRIPTS env var.
+ */
+function createScriptedEchoProvider(
+	providerConfig: LLMProviderConfig,
+	modelName: string,
+): LLMProvider {
+	const scriptsPath = providerConfig.env?.KIMI_SCRIPTED_ECHO_SCRIPTS;
+	if (!scriptsPath) {
+		throw new Error("_scripted_echo provider requires KIMI_SCRIPTED_ECHO_SCRIPTS in provider.env");
+	}
+
+	// Load scripts eagerly
+	const raw = require("node:fs").readFileSync(scriptsPath, "utf-8");
+	const scripts: string[] = JSON.parse(raw);
+	let callIndex = 0;
+
+	return {
+		modelName,
+		async *chat(_messages: Message[], _options?: ChatOptions) {
+			if (callIndex >= scripts.length) {
+				throw new Error(
+					`ScriptedEchoChatProvider exhausted at turn ${callIndex + 1}`,
+				);
+			}
+			const scriptText = scripts[callIndex]!;
+			callIndex++;
+			const chunks = parseEchoScript(scriptText);
+			for (const chunk of chunks) {
+				yield chunk;
+			}
+		},
+	};
 }
 
 // ── OpenAI-Compatible Provider ──────────────────────────────
@@ -585,6 +800,7 @@ class OpenAICompatibleProvider implements LLMProvider {
 		let totalInputTokens = 0;
 		let totalOutputTokens = 0;
 		let cacheReadTokens = 0;
+		let sseMessageId: string | undefined;
 		const pendingToolCalls = new Map<
 			number,
 			{ id: string; name: string; arguments: string }
@@ -617,6 +833,11 @@ class OpenAICompatibleProvider implements LLMProvider {
 						data = JSON.parse(jsonStr);
 					} catch {
 						continue;
+					}
+
+					// Extract message ID from SSE chunk (OpenAI-compatible 'id' field)
+					if (data.id && typeof data.id === "string") {
+						sseMessageId = data.id;
 					}
 
 					// Extract usage if present (handle both standard and Kimi-specific formats)
@@ -704,7 +925,7 @@ class OpenAICompatibleProvider implements LLMProvider {
 			};
 		}
 
-		yield { type: "done" };
+		yield { type: "done", messageId: sseMessageId };
 	}
 
 	private convertMessages(

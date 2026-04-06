@@ -120,7 +120,7 @@ function findRipgrepBinary(): string | null {
 	try {
 		const currentDir = path.dirname(import.meta.url.replace("file://", ""));
 		const packageRoot = path.resolve(currentDir, "../../..");
-		const localDep = path.join(packageRoot, "deps", "bin", binName);
+		const localDep = path.join(packageRoot, "kimi_cli", "deps", "bin", binName);
 		if (fs.existsSync(localDep) && isExecutable(localDep)) {
 			return localDep;
 		}

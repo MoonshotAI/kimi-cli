@@ -4,6 +4,7 @@
  */
 
 import { WIRE_PROTOCOL_VERSION } from "./protocol.ts";
+import { NAME, VERSION } from "../constant.ts";
 import { AsyncQueue, QueueShutDown } from "../utils/queue.ts";
 import { Wire, WireUISide } from "./wire_core.ts";
 import { WireFile } from "./file.ts";
@@ -56,6 +57,12 @@ import {
 } from "./jsonrpc.ts";
 import { serializeWireMessage, deserializeWireMessage } from "./serde.ts";
 import { RootWireHub } from "./root_hub.ts";
+import { MaxStepsReached, RunCancelled } from "../soul/index.ts";
+import type { ApprovalRuntime } from "../approval_runtime/runtime.ts";
+import {
+	resolveQuestionRequest,
+	rejectQuestionRequest,
+} from "../tools/ask_user/index.ts";
 
 // Maximum buffer size for stdio reader
 const STDIO_BUFFER_LIMIT = 100 * 1024 * 1024;
@@ -89,6 +96,9 @@ export class WireServer {
 	private _rootHubQueue: AsyncQueue<WireMessage> | null = null;
 	private _rootHubAbort: AbortController | null = null;
 
+	// Approval runtime (for routing approval responses back)
+	private _approvalRuntime: ApprovalRuntime | null = null;
+
 	// Soul interface (abstracted for decoupling)
 	private _soul: WireServerSoul | null = null;
 
@@ -118,6 +128,13 @@ export class WireServer {
 	 */
 	setRootHub(hub: RootWireHub): void {
 		this._rootHub = hub;
+	}
+
+	/**
+	 * Attach an approval runtime for routing approval responses back.
+	 */
+	setApprovalRuntime(runtime: ApprovalRuntime): void {
+		this._approvalRuntime = runtime;
 	}
 
 	/**
@@ -164,19 +181,18 @@ export class WireServer {
 				const msg = await this._rootHubQueue.get();
 				if (!this._initialized) continue;
 
-				// Check if msg has request_id (ApprovalResponse) or id (ApprovalRequest)
 				const msgObj = msg as Record<string, unknown>;
-				if ("request_id" in msgObj && "response" in msgObj) {
-					// ApprovalResponse
+				const wireType = msgObj.__wireType as string | undefined;
+
+				if (wireType === "ApprovalResponse" || ("request_id" in msgObj && "response" in msgObj)) {
+					// ApprovalResponse event
 					const requestId = msgObj.request_id as string;
 					this._pendingRequests.delete(requestId);
 					await this._sendMsg(createEventMessage(msg));
-				} else if (
-					"id" in msgObj &&
-					"tool_call_id" in msgObj &&
-					"sender" in msgObj
-				) {
-					// ApprovalRequest
+				} else if (wireType === "ApprovalRequest" || ("id" in msgObj && "tool_call_id" in msgObj && "sender" in msgObj)) {
+					// ApprovalRequest — register pending request and forward to client
+					const pending = new PendingApprovalRequest(msg as ApprovalRequest);
+					this._pendingRequests.set(msgObj.id as string, pending);
 					await this._sendMsg(
 						createRequestMessage(msgObj.id as string, msg as Request),
 					);
@@ -459,7 +475,7 @@ export class WireServer {
 
 		const result: Record<string, unknown> = {
 			protocol_version: WIRE_PROTOCOL_VERSION,
-			server: { name: "kimi-cli", version: WIRE_PROTOCOL_VERSION },
+			server: { name: NAME, version: VERSION },
 			slash_commands: [],
 		};
 
@@ -530,6 +546,20 @@ export class WireServer {
 				result: { status },
 			};
 		} catch (err: unknown) {
+			if (err instanceof MaxStepsReached) {
+				return {
+					jsonrpc: "2.0",
+					id: msg.id,
+					result: { status: Statuses.MAX_STEPS_REACHED, steps: err.nSteps },
+				};
+			}
+			if (err instanceof RunCancelled) {
+				return {
+					jsonrpc: "2.0",
+					id: msg.id,
+					result: { status: Statuses.CANCELLED },
+				};
+			}
 			const error = err as Error & { code?: string };
 			const errCode = this._mapErrorCode(error);
 			return {
@@ -569,6 +599,20 @@ export class WireServer {
 	}
 
 	private _mapErrorCode(err: Error & { code?: string }): number {
+		// Match by class name (mirrors Python's except LLMNotSet / LLMNotSupported / ChatProviderError)
+		switch (err.name) {
+			case "LLMNotSet":
+				return ErrorCodes.LLM_NOT_SET;
+			case "LLMNotSupported":
+				return ErrorCodes.LLM_NOT_SUPPORTED;
+			case "ChatProviderError":
+				return ErrorCodes.CHAT_PROVIDER_ERROR;
+			case "AuthExpiredError":
+				return ErrorCodes.AUTH_EXPIRED;
+			default:
+				break;
+		}
+		// Fallback: match by code string
 		switch (err.code) {
 			case "LLM_NOT_SET":
 				return ErrorCodes.LLM_NOT_SET;
@@ -779,6 +823,10 @@ export class WireServer {
 		if (request instanceof PendingApprovalRequest) {
 			if (isError) {
 				request.resolve("reject");
+				// Also route back to ApprovalRuntime if available
+				if (this._approvalRuntime) {
+					this._approvalRuntime.resolve(id, "reject");
+				}
 				return;
 			}
 			try {
@@ -796,8 +844,15 @@ export class WireServer {
 					| "reject";
 				const feedback = (resultObj.feedback ?? "") as string;
 				request.resolve(response, feedback);
+				// Also route back to ApprovalRuntime if available
+				if (this._approvalRuntime) {
+					this._approvalRuntime.resolve(id, response, feedback);
+				}
 			} catch {
 				request.resolve("reject");
+				if (this._approvalRuntime) {
+					this._approvalRuntime.resolve(id, "reject");
+				}
 			}
 		} else if (request instanceof PendingToolCallRequest) {
 			if (isError) {
@@ -812,6 +867,7 @@ export class WireServer {
 		} else if (request instanceof PendingQuestionRequest) {
 			if (isError) {
 				request.resolve({});
+				resolveQuestionRequest(id, {});
 				return;
 			}
 			try {
@@ -821,8 +877,11 @@ export class WireServer {
 				>;
 				const answers = (resultObj.answers ?? {}) as Record<string, string>;
 				request.resolve(answers);
+				// Also resolve the tool's pending question
+				resolveQuestionRequest(id, answers);
 			} catch {
 				request.resolve({});
+				resolveQuestionRequest(id, {});
 			}
 		} else if (request instanceof PendingHookRequest) {
 			if (isError) {
@@ -917,9 +976,9 @@ export class WireServer {
 
 	private async _requestQuestion(request: QuestionRequest): Promise<void> {
 		if (!this._clientSupportsQuestion) {
-			// Client does not support interactive questions
-			const pending = new PendingQuestionRequest(request);
-			pending.setException(new QuestionNotSupported());
+			// Client does not support interactive questions;
+			// signal the tool so it can tell the LLM to use an alternative approach.
+			rejectQuestionRequest(request.id);
 			return;
 		}
 		const msgId = request.id;

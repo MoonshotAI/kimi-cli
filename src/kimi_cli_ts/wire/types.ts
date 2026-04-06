@@ -6,8 +6,6 @@
 import { z } from "zod/v4";
 import {
 	ContentPart,
-	TokenUsage,
-	ToolCall,
 	ToolReturnValue,
 	type JsonValue,
 } from "../types.ts";
@@ -164,12 +162,21 @@ export const MCPStatusSnapshot = z.object({
 });
 export type MCPStatusSnapshot = z.infer<typeof MCPStatusSnapshot>;
 
+/** Python-compatible token usage for wire protocol. */
+export const WireTokenUsage = z.object({
+	input_other: z.number(),
+	output: z.number(),
+	input_cache_read: z.number().default(0),
+	input_cache_creation: z.number().default(0),
+});
+export type WireTokenUsage = z.infer<typeof WireTokenUsage>;
+
 /** Status update on the current state of the soul. None fields = no change. */
 export const StatusUpdate = z.object({
 	context_usage: z.number().nullable().default(null),
 	context_tokens: z.number().nullable().default(null),
 	max_context_tokens: z.number().nullable().default(null),
-	token_usage: TokenUsage.nullable().default(null),
+	token_usage: WireTokenUsage.nullable().default(null),
 	message_id: z.string().nullable().default(null),
 	plan_mode: z.boolean().nullable().default(null),
 	yolo: z.boolean().nullable().default(null),
@@ -331,6 +338,19 @@ export class QuestionNotSupported extends Error {
 		this.name = "QuestionNotSupported";
 	}
 }
+
+// ── Wire ToolCall (nested function structure matching Python) ──
+
+export const WireToolCall = z.object({
+	type: z.literal("function"),
+	id: z.string(),
+	function: z.object({
+		name: z.string(),
+		arguments: z.string(),
+	}),
+	extras: z.unknown().nullable(),
+});
+export type WireToolCall = z.infer<typeof WireToolCall>;
 
 // ── Tool Call Request ──────────────────────────────────────
 
@@ -599,13 +619,15 @@ export const _wireMessageSchemas: Record<string, z.ZodType<unknown>> = {
 	QuestionRequest,
 	HookRequest,
 	// Content parts (also valid events in Python)
+	// ContentPart is the Python wire name for both TextPart and ThinkPart
+	ContentPart: z.object({ type: z.enum(["text", "think"]), text: z.string().optional(), think: z.string().optional() }).passthrough(),
 	TextPart,
 	ThinkPart,
 	ImageURLPart,
 	AudioURLPart,
 	VideoURLPart,
 	ToolCallPart,
-	ToolCall,
+	ToolCall: WireToolCall,
 	// Backwards compatibility
 	ApprovalRequestResolved: ApprovalResponse,
 };
@@ -631,6 +653,7 @@ const _eventTypeNames = new Set([
 	"ToolResult",
 	"TextPart",
 	"ThinkPart",
+	"ContentPart",
 	"ImageURLPart",
 	"AudioURLPart",
 	"VideoURLPart",

@@ -164,7 +164,21 @@ export function useShellCallbacks({
 								const origOnSelect = pc.onSelect;
 								pc.onSelect = (value: string) => {
 									try {
-										return origOnSelect(value);
+										const result = origOnSelect(value);
+										// Handle async onSelect (e.g. /model saves config then throws Reload)
+										if (result instanceof Promise) {
+											return result.catch((err: unknown) => {
+												if (err instanceof Reload) {
+													onReloadExternal?.(
+														err.sessionId ?? "",
+														err.prefillText ?? undefined,
+													);
+													return;
+												}
+												throw err;
+											});
+										}
+										return result;
 									} catch (err) {
 										if (err instanceof Reload) {
 											onReloadExternal?.(
@@ -180,7 +194,20 @@ export function useShellCallbacks({
 								const origOnSubmit = pc.onSubmit;
 								pc.onSubmit = (value: string) => {
 									try {
-										return origOnSubmit(value);
+										const result = origOnSubmit(value);
+										if (result instanceof Promise) {
+											return result.catch((err: unknown) => {
+												if (err instanceof Reload) {
+													onReloadExternal?.(
+														err.sessionId ?? "",
+														err.prefillText ?? undefined,
+													);
+													return;
+												}
+												throw err;
+											});
+										}
+										return result;
 									} catch (err) {
 										if (err instanceof Reload) {
 											onReloadExternal?.(

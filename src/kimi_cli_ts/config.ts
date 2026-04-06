@@ -103,7 +103,7 @@ export const MCPClientConfig = z.object({
 export type MCPClientConfig = z.infer<typeof MCPClientConfig>;
 
 export const MCPConfig = z.object({
-	client: MCPClientConfig.default({} as any),
+	client: MCPClientConfig.default(() => MCPClientConfig.parse({})),
 });
 export type MCPConfig = z.infer<typeof MCPConfig>;
 
@@ -142,11 +142,11 @@ export const Config = z
 		theme: z.enum(["dark", "light"]).default("dark"),
 		models: z.record(z.string(), LLMModel).default({}),
 		providers: z.record(z.string(), LLMProvider).default({}),
-		loop_control: LoopControl.default({} as any),
-		background: BackgroundConfig.default({} as any),
-		notifications: NotificationConfig.default({} as any),
+		loop_control: LoopControl.default(() => LoopControl.parse({})),
+		background: BackgroundConfig.default(() => BackgroundConfig.parse({})),
+		notifications: NotificationConfig.default(() => NotificationConfig.parse({})),
 		services: Services.default({}),
-		mcp: MCPConfig.default({} as any),
+		mcp: MCPConfig.default(() => MCPConfig.parse({})),
 		hooks: z.array(HookDef).default([]),
 		merge_all_available_skills: z.boolean().default(false),
 	})

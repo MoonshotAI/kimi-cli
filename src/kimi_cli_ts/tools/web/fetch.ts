@@ -28,15 +28,29 @@ export class FetchURL extends CallableTool<typeof ParamsSchema> {
 		try {
 			// Try service-based fetch first (if configured)
 			const fetchConfig = ctx.serviceConfig?.moonshotFetch;
-			if (fetchConfig?.baseUrl && fetchConfig?.apiKey) {
-				try {
-					const serviceResult = await fetchViaService(params.url, fetchConfig);
-					if (serviceResult) {
-						builder.write(serviceResult);
-						return builder.ok("Content fetched via service.");
+			if (fetchConfig?.baseUrl) {
+				// Resolve API key: prefer OAuth token, fall back to static api_key
+				let apiKey = fetchConfig.apiKey;
+				if (fetchConfig.oauth && ctx.runtime) {
+					apiKey = await ctx.runtime.oauth.resolveApiKey(
+						fetchConfig.apiKey,
+						fetchConfig.oauth,
+					);
+				}
+				if (apiKey) {
+					try {
+						const serviceResult = await fetchViaService(params.url, {
+							baseUrl: fetchConfig.baseUrl,
+							apiKey,
+							customHeaders: fetchConfig.customHeaders,
+						});
+						if (serviceResult) {
+							builder.write(serviceResult);
+							return builder.ok("Content fetched via service.");
+						}
+					} catch {
+						// Fall through to direct fetch
 					}
-				} catch {
-					// Fall through to direct fetch
 				}
 			}
 

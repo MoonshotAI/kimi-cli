@@ -40,9 +40,36 @@ export const ThinkPart = z.object({
 	think: z.string(),
 });
 
+export const ImageURLPart = z.object({
+	type: z.literal("image_url"),
+	image_url: z.object({
+		url: z.string(),
+		id: z.string().nullable().default(null),
+	}),
+});
+
+export const AudioURLPart = z.object({
+	type: z.literal("audio_url"),
+	audio_url: z.object({
+		url: z.string(),
+		id: z.string().nullable().default(null),
+	}),
+});
+
+export const VideoURLPart = z.object({
+	type: z.literal("video_url"),
+	video_url: z.object({
+		url: z.string(),
+		id: z.string().nullable().default(null),
+	}),
+});
+
 export const ContentPart = z.union([
 	TextPart,
 	ImagePart,
+	ImageURLPart,
+	AudioURLPart,
+	VideoURLPart,
 	ToolUsePart,
 	ToolResultPart,
 	ThinkPart,
@@ -148,7 +175,8 @@ export type CommandPanelConfig =
 				value: string,
 			) => CommandPanelConfig | Promise<CommandPanelConfig | void> | void;
 	  }
-	| { type: "debug"; data: { context: KContextInfo; messages: KMessage[] } };
+	| { type: "debug"; data: { context: KContextInfo; messages: KMessage[] } }
+	| { type: "task" };
 
 export interface SlashCommand {
 	name: string;

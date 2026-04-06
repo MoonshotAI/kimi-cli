@@ -21,6 +21,7 @@ import {
 } from "../../tools/ask_user/index.ts";
 import { ChoicePanel, ContentPanel } from "../components/CommandPanel.tsx";
 import { DebugPanel } from "./DebugPanel.tsx";
+import { TaskPanel } from "./TaskPanel.tsx";
 import { SlashMenu } from "../components/SlashMenu.tsx";
 import { MentionMenu } from "../components/MentionMenu.tsx";
 import { UsagePanel } from "./UsagePanel.tsx";
@@ -299,6 +300,7 @@ export function Shell({
 					config={mode.config}
 					onClose={inputState.closePanel}
 					onChain={inputState.openPanel}
+					onReload={onReload}
 				/>
 			) : mode.type === "panel_content" ? (
 				<ContentPanel config={mode.config} onClose={inputState.closePanel} />
@@ -308,6 +310,8 @@ export function Shell({
 					messages={mode.config.data.messages}
 					onClose={inputState.closePanel}
 				/>
+			) : mode.type === "panel_task" ? (
+				<TaskPanel onClose={inputState.closePanel} />
 			) : inputState.showSlashMenu ? (
 				<SlashMenu
 					commands={allCommands}

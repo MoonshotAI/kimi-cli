@@ -7,6 +7,7 @@ import type { HookEngine } from "../../../hooks/engine.ts";
 import type { Config } from "../../../config.ts";
 import type { Context } from "../../../soul/context.ts";
 import type { ContentPart, CommandPanelConfig } from "../../../types.ts";
+import type { MCPStatusSnapshot } from "../../../wire/types.ts";
 import { CHANGELOG } from "../../../utils/changelog.ts";
 
 export function handleHooks(hookEngine: HookEngine): string {
@@ -21,12 +22,32 @@ export function handleHooks(hookEngine: HookEngine): string {
 	return lines.join("\n");
 }
 
-export function handleMcp(config: Config): string {
-	return (
-		"MCP Configuration:\n" +
-		`  Client timeout: ${config.mcp.client.tool_call_timeout_ms}ms\n` +
-		"\nNote: MCP server management available via 'kimi mcp' CLI commands."
+export function handleMcp(
+	config: Config,
+	mcpSnapshot: MCPStatusSnapshot | null,
+): string {
+	if (!mcpSnapshot) {
+		return "No MCP servers configured.";
+	}
+	const lines: string[] = [];
+	lines.push(
+		`MCP Servers: ${mcpSnapshot.connected}/${mcpSnapshot.total} connected, ${mcpSnapshot.tools} tools`,
 	);
+	for (const server of mcpSnapshot.servers) {
+		const statusSuffix =
+			server.status === "unauthorized"
+				? ` (unauthorized - run: kimi mcp auth ${server.name})`
+				: server.status !== "connected"
+					? ` (${server.status})`
+					: "";
+		lines.push(`  • ${server.name}${statusSuffix}`);
+		for (const tool of server.tools) {
+			lines.push(`      • ${tool}`);
+		}
+	}
+	lines.push("");
+	lines.push(`Client timeout: ${config.mcp.client.tool_call_timeout_ms}ms`);
+	return lines.join("\n");
 }
 
 export function handleDebug(context: Context): string {
@@ -130,12 +151,10 @@ export function createHooksPanel(hookEngine: HookEngine): CommandPanelConfig {
 	return { type: "content", title: "Hooks", content: lines.join("\n") };
 }
 
-export function createMcpPanel(config: Config): CommandPanelConfig {
-	const lines: string[] = [
-		"MCP Configuration:",
-		`  Client timeout: ${config.mcp.client.tool_call_timeout_ms}ms`,
-		"",
-		"Note: MCP server management available via 'kimi mcp' CLI commands.",
-	];
-	return { type: "content", title: "MCP", content: lines.join("\n") };
+export function createMcpPanel(
+	config: Config,
+	mcpSnapshot: MCPStatusSnapshot | null,
+): CommandPanelConfig {
+	const content = handleMcp(config, mcpSnapshot);
+	return { type: "content", title: "MCP Servers", content };
 }

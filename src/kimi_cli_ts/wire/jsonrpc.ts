@@ -84,8 +84,13 @@ export type ClientInfo = z.infer<typeof ClientInfo>;
 export const ExternalTool = z.object({
 	name: z.string(),
 	description: z.string(),
-	parameters: z.record(z.string(), z.unknown()),
-});
+	parameters: z.record(z.string(), z.unknown()).optional(),
+	input_schema: z.record(z.string(), z.unknown()).optional(),
+}).transform((val) => ({
+	name: val.name,
+	description: val.description,
+	parameters: val.parameters ?? val.input_schema ?? {},
+}));
 export type ExternalTool = z.infer<typeof ExternalTool>;
 
 export const ClientCapabilities = z.object({

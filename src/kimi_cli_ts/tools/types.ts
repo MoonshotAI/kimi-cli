@@ -4,6 +4,7 @@
 
 import type { ApprovalDecisionResult, JsonValue } from "../types.ts";
 import type { Runtime } from "../soul/agent.ts";
+import type { OAuthRef } from "../config.ts";
 
 // ── ToolContext ──────────────────────────────────────────
 
@@ -38,11 +39,13 @@ export interface ToolContext {
 			baseUrl: string;
 			apiKey: string;
 			customHeaders?: Record<string, string>;
+			oauth?: OAuthRef;
 		};
 		moonshotFetch?: {
 			baseUrl: string;
 			apiKey: string;
 			customHeaders?: Record<string, string>;
+			oauth?: OAuthRef;
 		};
 	};
 	/** Runtime reference for tools that need full runtime access (e.g. Agent tool). */

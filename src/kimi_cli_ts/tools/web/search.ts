@@ -48,7 +48,22 @@ export class SearchWeb extends CallableTool<typeof ParamsSchema> {
 		const builder = new ToolResultBuilder(50_000, null);
 
 		const searchConfig = ctx.serviceConfig?.moonshotSearch;
-		if (!searchConfig?.baseUrl || !searchConfig?.apiKey) {
+		if (!searchConfig?.baseUrl) {
+			return builder.error(
+				"Search service is not configured. You may want to try other methods to search.",
+			);
+		}
+
+		// Resolve API key: prefer OAuth token, fall back to static api_key
+		let apiKey = searchConfig.apiKey;
+		if (searchConfig.oauth && ctx.runtime) {
+			const resolved = await ctx.runtime.oauth.resolveApiKey(
+				searchConfig.apiKey,
+				searchConfig.oauth,
+			);
+			apiKey = resolved;
+		}
+		if (!apiKey) {
 			return builder.error(
 				"Search service is not configured. You may want to try other methods to search.",
 			);
@@ -62,7 +77,7 @@ export class SearchWeb extends CallableTool<typeof ParamsSchema> {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
-					Authorization: `Bearer ${searchConfig.apiKey}`,
+					Authorization: `Bearer ${apiKey}`,
 					...(searchConfig.customHeaders ?? {}),
 				},
 				body: JSON.stringify({

@@ -62,7 +62,8 @@ export class SubagentOutputWriter {
 				this.toolResult(isError ? "error" : "success", brief);
 				break;
 			}
-			case "ContentPart": {
+			case "ContentPart":
+			case "TextPart": {
 				if (payload?.type === "text") {
 					this.text((payload.text as string) ?? "");
 				}

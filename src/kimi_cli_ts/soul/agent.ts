@@ -27,6 +27,7 @@ import {
 	readSkillText,
 	resolveSkillsRoots,
 } from "../skill/index.ts";
+import { OAuthManager } from "../auth/oauth.ts";
 
 // ── Built-in system prompt args ──────────────────────
 
@@ -45,6 +46,7 @@ export interface BuiltinSystemPromptArgs {
 
 export class Runtime {
 	config: Config;
+	oauth: OAuthManager;
 	llm: LLM | null;
 	session: Session;
 	approval: Approval;
@@ -62,6 +64,7 @@ export class Runtime {
 
 	constructor(opts: {
 		config: Config;
+		oauth: OAuthManager;
 		llm: LLM | null;
 		session: Session;
 		approval: Approval;
@@ -78,6 +81,7 @@ export class Runtime {
 		skills?: Map<string, Skill>;
 	}) {
 		this.config = opts.config;
+		this.oauth = opts.oauth;
 		this.llm = opts.llm;
 		this.session = opts.session;
 		this.approval = opts.approval;
@@ -101,9 +105,11 @@ export class Runtime {
 	/** Create runtime with defaults. */
 	static async create(opts: {
 		config: Config;
+		oauth?: OAuthManager;
 		llm: LLM | null;
 		session: Session;
 		hookEngine: HookEngine;
+		skillsDirs?: string[];
 	}): Promise<Runtime> {
 		const workDir = opts.session.workDir;
 
@@ -127,6 +133,7 @@ export class Runtime {
 
 		// Discover and format skills (matching Python version)
 		const skillsRoots = resolveSkillsRoots(workDir, {
+			skillsDirs: opts.skillsDirs,
 			mergeBrands: opts.config.merge_all_available_skills ?? false,
 		});
 		const discoveredSkills = discoverSkillsFromRoots(skillsRoots);
@@ -189,6 +196,7 @@ export class Runtime {
 
 		return new Runtime({
 			config: opts.config,
+			oauth: opts.oauth ?? new OAuthManager(opts.config),
 			llm: opts.llm,
 			session: opts.session,
 			approval,
@@ -211,6 +219,7 @@ export class Runtime {
 	}): Runtime {
 		return new Runtime({
 			config: this.config,
+			oauth: this.oauth,
 			llm: opts.llmOverride ?? this.llm,
 			session: this.session,
 			approval: this.approval.share(),
@@ -273,7 +282,10 @@ export class Agent {
 export async function loadAgent(opts: {
 	runtime: Runtime;
 	agentName?: string;
+	agentFile?: string;
 	systemPromptOverride?: string;
+	mcpConfigs?: Record<string, unknown>[];
+	startMcpLoading?: boolean;
 }): Promise<Agent> {
 	const { runtime, agentName = "default" } = opts;
 
@@ -315,6 +327,7 @@ export async function loadAgent(opts: {
 							apiKey: runtime.config.services.moonshot_search.api_key,
 							customHeaders:
 								runtime.config.services.moonshot_search.custom_headers,
+							oauth: runtime.config.services.moonshot_search.oauth,
 						}
 					: undefined,
 				moonshotFetch: runtime.config.services.moonshot_fetch
@@ -323,6 +336,7 @@ export async function loadAgent(opts: {
 							apiKey: runtime.config.services.moonshot_fetch.api_key,
 							customHeaders:
 								runtime.config.services.moonshot_fetch.custom_headers,
+							oauth: runtime.config.services.moonshot_fetch.oauth,
 						}
 					: undefined,
 			},
@@ -331,50 +345,81 @@ export async function loadAgent(opts: {
 		hookEngine: runtime.hookEngine,
 	});
 
-	// Register built-in subagent types from agent spec before loading tools,
-	// because AgentTool.buildDescription() reads from the labor market.
-	// Corresponds to Python load_agent() lines 423-442.
-	if (runtime.laborMarket) {
-		try {
+	// Load agent spec for subagent registration and exclude_tools enforcement.
+	// Corresponds to Python load_agent() lines 423-460.
+	let agentSpec: Awaited<ReturnType<typeof loadAgentSpec>> | null = null;
+	try {
+		if (opts.agentFile) {
+			agentSpec = await loadAgentSpec(opts.agentFile);
+		} else {
 			const agentsDir = getAgentsDir();
 			const agentSpecPath = join(agentsDir, agentName, "agent.yaml");
-			const agentSpec = await loadAgentSpec(agentSpecPath);
+			agentSpec = await loadAgentSpec(agentSpecPath);
+		}
+	} catch {
+		logger.debug(
+			`No agent spec found for "${agentName}", skipping subagent registration`,
+		);
+	}
 
-			for (const [subagentName, subagentInfo] of Object.entries(
-				agentSpec.subagents,
-			)) {
-				logger.info(`Registering builtin subagent type: ${subagentName}`);
-				try {
-					const subSpec = await loadAgentSpec(subagentInfo.path);
-					const toolPolicy: ToolPolicy =
-						subSpec.allowedTools != null
-							? { mode: "allowlist" as const, tools: subSpec.allowedTools }
-							: defaultToolPolicy();
-					runtime.laborMarket.addBuiltinType({
-						name: subagentName,
-						description: subagentInfo.description,
-						agentFile: subagentInfo.path,
-						whenToUse: subSpec.whenToUse,
-						defaultModel: subSpec.model ?? undefined,
-						toolPolicy,
-						supportsBackground: true,
-					});
-				} catch (err) {
-					logger.warn(
-						`Failed to load subagent spec for "${subagentName}": ${err}`,
-					);
-				}
+	// Register built-in subagent types from agent spec before loading tools,
+	// because AgentTool.buildDescription() reads from the labor market.
+	if (runtime.laborMarket && agentSpec) {
+		for (const [subagentName, subagentInfo] of Object.entries(
+			agentSpec.subagents,
+		)) {
+			logger.info(`Registering builtin subagent type: ${subagentName}`);
+			try {
+				const subSpec = await loadAgentSpec(subagentInfo.path);
+				const toolPolicy: ToolPolicy =
+					subSpec.allowedTools != null
+						? { mode: "allowlist" as const, tools: subSpec.allowedTools }
+						: defaultToolPolicy();
+				runtime.laborMarket.addBuiltinType({
+					name: subagentName,
+					description: subagentInfo.description,
+					agentFile: subagentInfo.path,
+					whenToUse: subSpec.whenToUse,
+					defaultModel: subSpec.model ?? undefined,
+					toolPolicy,
+					supportsBackground: true,
+				});
+			} catch (err) {
+				logger.warn(
+					`Failed to load subagent spec for "${subagentName}": ${err}`,
+				);
 			}
-		} catch {
-			// Agent spec not found — no subagent types to register
-			logger.debug(
-				`No agent spec found for "${agentName}", skipping subagent registration`,
-			);
 		}
 	}
 
 	// Register built-in tools
 	await registerBuiltinTools(toolset, runtime);
+
+	// Enforce exclude_tools from agent spec (matches Python agent.py:458-460)
+	if (agentSpec?.excludeTools) {
+		for (const toolName of agentSpec.excludeTools) {
+			toolset.removeTool(toolName);
+		}
+	}
+
+	// Load MCP tools (mirrors Python agent.py:477-494)
+	const mcpConfigs = opts.mcpConfigs;
+	const startMcpLoading = opts.startMcpLoading ?? true;
+	if (mcpConfigs && mcpConfigs.length > 0) {
+		// Validate each config — accept raw JSON objects with mcpServers
+		const validatedConfigs = mcpConfigs.map((cfg) => {
+			if (cfg.mcpServers && typeof cfg.mcpServers === "object") {
+				return cfg as { mcpServers: Record<string, Record<string, unknown>> };
+			}
+			throw new Error("Invalid MCP config: missing mcpServers");
+		});
+
+		if (startMcpLoading) {
+			await toolset.loadMcpTools(validatedConfigs, runtime, true);
+		} else {
+			toolset.deferMcpToolLoading(validatedConfigs, runtime);
+		}
+	}
 
 	return new Agent({
 		name: agentName,

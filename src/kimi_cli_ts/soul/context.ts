@@ -3,22 +3,32 @@
  * Manages conversation message history with token tracking and persistence.
  */
 
+import { readdirSync } from "node:fs";
+import { basename, dirname, extname, join } from "node:path";
 import type { Message, TokenUsage } from "../types.ts";
 import { estimateMessagesTokenCount } from "../llm.ts";
 import { logger } from "../utils/logging.ts";
 
-// ── Special JSONL record markers ────────────────────────
+// ── Special JSONL record markers (Python-compatible format) ──
+// Python uses: {"role": "_system_prompt", "content": "..."}
+//              {"role": "_usage", "token_count": N}
+//              {"role": "_checkpoint", "id": N}
+// All special records use the "role" field with underscore-prefixed values.
 
 interface SystemPromptRecord {
-	_system_prompt: string;
+	role: "_system_prompt";
+	content: string;
 }
 
 interface UsageRecord {
-	_usage: { input_tokens: number; output_tokens: number };
+	role: "_usage";
+	token_count: number;
 }
 
 interface CheckpointRecord {
-	_checkpoint: { id: number; reminder?: string };
+	role: "_checkpoint";
+	id: number;
+	reminder?: string;
 }
 
 type ContextRecord =
@@ -87,25 +97,49 @@ export class Context {
 			if (!line) continue;
 
 			try {
-				const record: ContextRecord = JSON.parse(line);
+				const record = JSON.parse(line) as Record<string, unknown>;
+				const role = record.role as string | undefined;
 
-				if ("_system_prompt" in record) {
-					this._systemPrompt = record._system_prompt;
-				} else if ("_usage" in record) {
-					// Only input tokens count toward context window (matches Python behavior)
-					this._tokenCount = record._usage.input_tokens;
+				if (role === "_system_prompt") {
+					this._systemPrompt = record.content as string;
+				} else if (role === "_usage") {
+					this._tokenCount = record.token_count as number;
 					lastUsageLineIdx = i;
-				} else if ("_checkpoint" in record) {
-					this._nextCheckpointId = record._checkpoint.id + 1;
-					if (record._checkpoint.reminder) {
+				} else if (role === "_checkpoint") {
+					this._nextCheckpointId = (record.id as number) + 1;
+					if (record.reminder) {
 						// Checkpoint with system reminder → inject as user message
 						this._history.push({
 							role: "user",
-							content: `<system-reminder>\n${record._checkpoint.reminder}\n</system-reminder>`,
+							content: `<system-reminder>\n${record.reminder}\n</system-reminder>`,
 						});
 					}
-				} else if ("role" in record) {
-					this._history.push(record as Message);
+				} else if (
+					// Legacy TS format support (can be removed once all sessions migrated)
+					"_system_prompt" in record
+				) {
+					this._systemPrompt = record._system_prompt as string;
+				} else if ("_usage" in record) {
+					const usage = record._usage as {
+						input_tokens: number;
+						output_tokens: number;
+					};
+					this._tokenCount = usage.input_tokens;
+					lastUsageLineIdx = i;
+				} else if ("_checkpoint" in record) {
+					const cp = record._checkpoint as {
+						id: number;
+						reminder?: string;
+					};
+					this._nextCheckpointId = cp.id + 1;
+					if (cp.reminder) {
+						this._history.push({
+							role: "user",
+							content: `<system-reminder>\n${cp.reminder}\n</system-reminder>`,
+						});
+					}
+				} else if (role && !role.startsWith("_")) {
+					this._history.push(record as unknown as Message);
 				}
 			} catch {
 				logger.warn(`Skipping corrupt context line ${i}: ${line.slice(0, 80)}`);
@@ -121,7 +155,8 @@ export class Context {
 				if (!line) continue;
 				try {
 					const record = JSON.parse(line);
-					if ("role" in record) {
+					const r = record.role as string | undefined;
+					if (r && !r.startsWith("_")) {
 						postUsageMessages.push(record);
 						postUsageCount++;
 					}
@@ -152,7 +187,7 @@ export class Context {
 
 	async writeSystemPrompt(systemPrompt: string): Promise<void> {
 		this._systemPrompt = systemPrompt;
-		const record: SystemPromptRecord = { _system_prompt: systemPrompt };
+		const record: SystemPromptRecord = { role: "_system_prompt", content: systemPrompt };
 		// Prepend to file (rewrite)
 		const file = Bun.file(this._filePath);
 		let existing = "";
@@ -167,13 +202,12 @@ export class Context {
 
 	async updateTokenCount(usage: TokenUsage): Promise<void> {
 		// Only input tokens count toward context window size (output doesn't consume context)
-		this._tokenCount = usage.inputTokens + (usage.cacheReadTokens ?? 0);
+		const tokenCount = usage.inputTokens + (usage.cacheReadTokens ?? 0);
+		this._tokenCount = tokenCount;
 		this._pendingTokenEstimate = 0;
 		const record: UsageRecord = {
-			_usage: {
-				input_tokens: usage.inputTokens,
-				output_tokens: usage.outputTokens,
-			},
+			role: "_usage",
+			token_count: tokenCount,
 		};
 		await this._appendToFile(record);
 	}
@@ -183,7 +217,9 @@ export class Context {
 	async checkpoint(reminder?: string): Promise<number> {
 		const id = this._nextCheckpointId++;
 		const record: CheckpointRecord = {
-			_checkpoint: { id, ...(reminder ? { reminder } : {}) },
+			role: "_checkpoint",
+			id,
+			...(reminder ? { reminder } : {}),
 		};
 		if (reminder) {
 			this._history.push({
@@ -198,49 +234,49 @@ export class Context {
 	// ── Clear context ──────────────────────────────
 
 	async clear(): Promise<void> {
-		// Clear all state, keep system prompt
+		// Rotate the context file (matches Python behavior: context.jsonl → context_1.jsonl)
+		const file = Bun.file(this._filePath);
+		if (await file.exists()) {
+			const rotatedPath = nextAvailableRotation(this._filePath);
+			if (rotatedPath) {
+				const { rename } = await import("node:fs/promises");
+				await rename(this._filePath, rotatedPath);
+			}
+		}
+
+		// Clear all state (matches Python: system_prompt is set to None)
 		this._history = [];
 		this._tokenCount = 0;
 		this._pendingTokenEstimate = 0;
 		this._nextCheckpointId = 0;
+		this._systemPrompt = null;
 
-		// Write empty file (with system prompt if present)
-		if (this._systemPrompt) {
-			const record: SystemPromptRecord = {
-				_system_prompt: this._systemPrompt,
-			};
-			await Bun.write(this._filePath, JSON.stringify(record) + "\n");
-		} else {
-			await Bun.write(this._filePath, "");
-		}
+		// Create empty file
+		await Bun.write(this._filePath, "");
 	}
 
 	// ── Compact (clear and rotate) ─────────────────
 
 	async compact(): Promise<void> {
-		// Rotate old file
-		const backupPath = this._filePath + ".bak";
+		// Rotate old file (matches Python behavior: context.jsonl → context_1.jsonl)
 		const file = Bun.file(this._filePath);
 		if (await file.exists()) {
-			const content = await file.text();
-			await Bun.write(backupPath, content);
+			const rotatedPath = nextAvailableRotation(this._filePath);
+			if (rotatedPath) {
+				const { rename } = await import("node:fs/promises");
+				await rename(this._filePath, rotatedPath);
+			}
 		}
 
-		// Clear state
+		// Clear state (matches Python: system_prompt is set to None)
 		this._history = [];
 		this._tokenCount = 0;
 		this._pendingTokenEstimate = 0;
 		this._nextCheckpointId = 0;
+		this._systemPrompt = null;
 
-		// Write empty file (with system prompt if present)
-		if (this._systemPrompt) {
-			const record: SystemPromptRecord = {
-				_system_prompt: this._systemPrompt,
-			};
-			await Bun.write(this._filePath, JSON.stringify(record) + "\n");
-		} else {
-			await Bun.write(this._filePath, "");
-		}
+		// Create empty file
+		await Bun.write(this._filePath, "");
 	}
 
 	// ── Revert to checkpoint ───────────────────────
@@ -260,7 +296,11 @@ export class Context {
 			kept.push(trimmed);
 			try {
 				const record = JSON.parse(trimmed);
-				if ("_checkpoint" in record && record._checkpoint.id === checkpointId) {
+				// Support both Python format and legacy TS format
+				if (
+					(record.role === "_checkpoint" && record.id === checkpointId) ||
+					("_checkpoint" in record && record._checkpoint?.id === checkpointId)
+				) {
 					found = true;
 					break;
 				}
@@ -289,4 +329,38 @@ export class Context {
 		const { appendFile } = await import("node:fs/promises");
 		await appendFile(this._filePath, line, "utf-8");
 	}
+}
+
+// ── Rotation helper (matches Python next_available_rotation) ──
+
+/**
+ * Given a file path like `/a/b/context.jsonl`, find the next available
+ * rotation path: `context_1.jsonl`, `context_2.jsonl`, etc.
+ */
+function nextAvailableRotation(filePath: string): string | null {
+	const dir = dirname(filePath);
+	const ext = extname(filePath); // e.g. ".jsonl"
+	const base = basename(filePath, ext); // e.g. "context"
+
+	// Scan existing rotated files to find max N
+	const pattern = new RegExp(
+		`^${escapeRegExp(base)}_(\\d+)${escapeRegExp(ext)}$`,
+	);
+	let maxNum = 0;
+	try {
+		for (const entry of readdirSync(dir)) {
+			const match = pattern.exec(entry);
+			if (match) {
+				maxNum = Math.max(maxNum, parseInt(match[1]!, 10));
+			}
+		}
+	} catch {
+		return null;
+	}
+
+	return join(dir, `${base}_${maxNum + 1}${ext}`);
+}
+
+function escapeRegExp(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

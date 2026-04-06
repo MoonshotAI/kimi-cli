@@ -34,7 +34,7 @@ export class SetTodoList extends CallableTool<typeof ParamsSchema> {
 	async execute(params: Params, _ctx: ToolContext): Promise<ToolResult> {
 		return {
 			isError: false,
-			output: "",
+			output: "Todo list updated",
 			message: "Todo list updated",
 			display: [
 				{

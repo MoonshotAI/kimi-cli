@@ -277,6 +277,7 @@ export class ApprovalRuntime {
 	private _publishWireRequest(request: ApprovalRequestRecord): void {
 		if (!this._rootWireHub) return;
 		this._rootWireHub.publishNowait({
+			__wireType: "ApprovalRequest",
 			id: request.id,
 			tool_call_id: request.toolCallId,
 			sender: request.sender,
@@ -298,6 +299,7 @@ export class ApprovalRuntime {
 	): void {
 		if (!this._rootWireHub) return;
 		this._rootWireHub.publishNowait({
+			__wireType: "ApprovalResponse",
 			request_id: requestId,
 			response,
 			feedback,

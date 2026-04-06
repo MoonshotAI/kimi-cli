@@ -16,6 +16,7 @@ import { PanelShell } from "./PanelShell.tsx";
 import { usePanelScroller } from "../hooks/usePanelScroller.ts";
 import { usePanelKeyboard } from "../hooks/usePanelKeyboard.ts";
 import type { CommandPanelConfig } from "../../types.ts";
+import { isReload } from "../../cli/errors.ts";
 
 const DIM = "#888888";
 const HIGHLIGHT = "#1e90ff";
@@ -26,9 +27,11 @@ interface ChoicePanelProps {
 	config: Extract<CommandPanelConfig, { type: "choice" }>;
 	onClose: () => void;
 	onChain: (next: CommandPanelConfig) => void;
+	/** Called when a chained panel triggers a Reload (e.g. /model → thinking → save → reload). */
+	onReload?: (sessionId: string, prefillText?: string) => void;
 }
 
-export function ChoicePanel({ config, onClose, onChain }: ChoicePanelProps) {
+export function ChoicePanel({ config, onClose, onChain, onReload }: ChoicePanelProps) {
 	const { items, title } = config;
 	const initialIndex = Math.max(
 		0,
@@ -54,7 +57,18 @@ export function ChoicePanel({ config, onClose, onChain }: ChoicePanelProps) {
 			if (!result) {
 				onClose();
 			} else if (result instanceof Promise) {
-				result.then((next) => (next ? onChain(next) : onClose()));
+				result.then(
+					(next) => (next ? onChain(next) : onClose()),
+					(err) => {
+						// Propagate Reload errors so the shell can handle session reload
+						// (e.g. /model → thinking panel → save config → throw Reload)
+						if (isReload(err) && onReload) {
+							onReload(err.sessionId ?? "", err.prefillText ?? undefined);
+							return;
+						}
+						onClose();
+					},
+				);
 			} else {
 				onChain(result);
 			}

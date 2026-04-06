@@ -98,8 +98,8 @@ export function checkMessage(
 	const needed = new Set<ModelCapability>();
 	const content = typeof message.content === "string" ? [] : message.content;
 	for (const part of content) {
-		if (part.type === "image") needed.add("image_in");
-		if ((part as any).type === "video") needed.add("video_in");
+		if (part.type === "image" || (part as any).type === "image_url") needed.add("image_in");
+		if ((part as any).type === "video" || (part as any).type === "video_url") needed.add("video_in");
 		if ((part as any).type === "thinking") needed.add("thinking");
 	}
 	// Return only the capabilities that are missing

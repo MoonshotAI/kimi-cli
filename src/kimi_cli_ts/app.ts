@@ -3,7 +3,7 @@
  * Creates and wires together all components.
  */
 
-import { loadConfig, type Config, type ConfigMeta } from "./config.ts";
+import { loadConfig, loadConfigFromString, type Config, type ConfigMeta } from "./config.ts";
 import { createLLM, augmentProviderWithEnvVars, type LLM } from "./llm.ts";
 import { OAuthManager, loadTokens, commonHeaders } from "./auth/oauth.ts";
 import { Session } from "./session.ts";
@@ -45,6 +45,7 @@ export class KimiCLI {
 		workDir?: string;
 		additionalDirs?: string[];
 		configFile?: string;
+		configText?: string;
 		modelName?: string;
 		thinking?: boolean;
 		yolo?: boolean;
@@ -53,12 +54,18 @@ export class KimiCLI {
 		sessionId?: string;
 		continueSession?: boolean;
 		maxStepsPerTurn?: number;
+		agentFile?: string;
+		skillsDirs?: string[];
+		mcpConfigs?: Record<string, unknown>[];
+		deferMcpLoading?: boolean;
 		// callbacks removed — now uses Wire architecture
 	}): Promise<KimiCLI> {
 		const workDir = opts.workDir ?? process.cwd();
 
 		// 1. Load config
-		const { config, meta: configMeta } = await loadConfig(opts.configFile);
+		const { config, meta: configMeta } = opts.configText
+			? await loadConfigFromString(opts.configText)
+			: await loadConfig(opts.configFile);
 
 		// Override settings from CLI flags
 		if (opts.maxStepsPerTurn) {
@@ -180,7 +187,7 @@ export class KimiCLI {
 				session = found;
 				resumed = true;
 			} else {
-				session = await Session.create(workDir);
+				session = await Session.create(workDir, opts.sessionId);
 			}
 		} else if (opts.continueSession) {
 			const continued = await Session.continue_(workDir);
@@ -213,22 +220,33 @@ export class KimiCLI {
 			cwd: workDir,
 		});
 
-		// 5. Create runtime
+		// 5. Create OAuth manager and initialize
+		const oauth = new OAuthManager(config);
+		await oauth.initialize();
+
+		// 6. Create runtime
 		const runtime = await Runtime.create({
 			config,
+			oauth,
 			llm,
 			session,
 			hookEngine,
+			skillsDirs: opts.skillsDirs,
 		});
 
-		// 6. Load agent
-		const agent = await loadAgent({ runtime });
+		// 7. Load agent
+		const agent = await loadAgent({
+			runtime,
+			agentFile: opts.agentFile,
+			mcpConfigs: opts.mcpConfigs,
+			startMcpLoading: !(opts.deferMcpLoading ?? false),
+		});
 
-		// 7. Create/restore context
+		// 8. Create/restore context
 		const context = new Context(session.contextFile);
 		await context.restore();
 
-		// 8. Write system prompt if new context; otherwise use restored prompt
+		// 9. Write system prompt if new context; otherwise use restored prompt
 		if (!context.systemPrompt) {
 			await context.writeSystemPrompt(agent.systemPrompt);
 		} else {
@@ -237,7 +255,7 @@ export class KimiCLI {
 			(agent as any).systemPrompt = context.systemPrompt;
 		}
 
-		// 9. Create KimiSoul
+		// 10. Create KimiSoul
 		const soul = new KimiSoul({
 			agent,
 			context,
