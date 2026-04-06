@@ -230,7 +230,7 @@ export function createTestToolContext(
   return {
     workingDir: workDir,
     signal: new AbortController().signal,
-    approval: async () => (opts?.yolo !== false ? "approve" : "reject"),
+    approval: async () => ({ decision: opts?.yolo !== false ? "approve" as const : "reject" as const, feedback: "" }),
     wireEmit: () => {},
   };
 }

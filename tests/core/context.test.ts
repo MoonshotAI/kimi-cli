@@ -151,23 +151,23 @@ describe("Context", () => {
     expect(ctx.history.length).toBe(0);
     expect(ctx.tokenCount).toBe(0);
 
-    // Backup file should exist
-    const bakExists = await Bun.file(contextFile + ".bak").exists();
-    expect(bakExists).toBe(true);
+    // Rotated file should exist (context_1.jsonl, matching Python rotation naming)
+    const rotatedExists = await Bun.file(join(tempDir, "context_1.jsonl")).exists();
+    expect(rotatedExists).toBe(true);
   });
 
-  test("compact preserves system prompt", async () => {
+  test("compact resets system prompt (matches Python)", async () => {
     const ctx = new Context(contextFile);
     await ctx.writeSystemPrompt("System prompt here.");
     await ctx.appendMessage({ role: "user", content: "hello" });
 
     await ctx.compact();
-    expect(ctx.systemPrompt).toBe("System prompt here.");
+    expect(ctx.systemPrompt).toBeNull();
     expect(ctx.history.length).toBe(0);
 
-    // Restoring should recover system prompt
+    // Restoring should not recover system prompt (cleared file)
     const ctx2 = new Context(contextFile);
     await ctx2.restore();
-    expect(ctx2.systemPrompt).toBe("System prompt here.");
+    expect(ctx2.systemPrompt).toBeNull();
   });
 });

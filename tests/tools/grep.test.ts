@@ -9,11 +9,24 @@ import { mkdirSync } from "node:fs";
 import { createTempDir, removeTempDir, createTestToolContext } from "../conftest.ts";
 import { Grep } from "../../src/kimi_cli_ts/tools/file/grep.ts";
 
-// Check if rg (ripgrep) is available in PATH
+// Check if rg (ripgrep) is available — use the same search logic as the Grep tool:
+// 1. ~/.kimi/bin/rg  2. <source>/deps/bin/rg  3. System PATH
 let rgAvailable = false;
 try {
-  const proc = Bun.spawnSync(["rg", "--version"]);
-  rgAvailable = proc.exitCode === 0;
+  // First try the bundled binary in deps/bin/rg (development mode)
+  const currentDir = import.meta.dir;
+  const projectRoot = join(currentDir, "..", "..");
+  const localDep = join(projectRoot, "src", "kimi_cli", "deps", "bin", "rg");
+  const { existsSync } = await import("node:fs");
+  if (existsSync(localDep)) {
+    const proc = Bun.spawnSync([localDep, "--version"]);
+    rgAvailable = proc.exitCode === 0;
+  }
+  // Fallback to system PATH
+  if (!rgAvailable) {
+    const proc = Bun.spawnSync(["rg", "--version"]);
+    rgAvailable = proc.exitCode === 0;
+  }
 } catch {
   rgAvailable = false;
 }
@@ -356,7 +369,7 @@ describe("Grep", () => {
   });
 
   rgTest("hidden files are searchable", async () => {
-    await Bun.write(join(tempDir, ".env"), "SECRET_KEY=abc123\n");
+    await Bun.write(join(tempDir, ".hidden_config"), "SECRET_KEY=abc123\n");
     await Bun.write(join(tempDir, "visible.txt"), "SECRET_KEY=xyz\n");
 
     const result = await tool.execute(
@@ -379,7 +392,7 @@ describe("Grep", () => {
     );
 
     expect(result.isError).toBe(false);
-    expect(result.output).toContain(".env");
+    expect(result.output).toContain(".hidden_config");
     expect(result.output).toContain("visible.txt");
   });
 

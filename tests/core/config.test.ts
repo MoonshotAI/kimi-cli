@@ -36,9 +36,10 @@ describe("Config", () => {
     expect(cfg.default_thinking).toBe(false);
     expect(cfg.default_yolo).toBe(false);
     expect(cfg.theme).toBe("dark");
-    // zod/v4 with default({} as any) does not fill nested object defaults
-    expect(cfg.loop_control).toEqual({});
-    expect(cfg.background).toEqual({});
+    // Zod fills in nested object defaults
+    expect(cfg.loop_control.max_steps_per_turn).toBe(100);
+    expect(cfg.loop_control.compaction_trigger_ratio).toBe(0.85);
+    expect(cfg.background.max_running_tasks).toBe(4);
     expect(cfg.hooks).toEqual([]);
   });
 
@@ -47,7 +48,7 @@ describe("Config", () => {
   test("Config.parse with empty object returns defaults", () => {
     const cfg = Config.parse({});
     expect(cfg.default_model).toBe("");
-    expect(cfg.loop_control).toEqual({});
+    expect(cfg.loop_control.max_steps_per_turn).toBe(100);
   });
 
   test("Config.parse rejects invalid compaction_trigger_ratio", () => {

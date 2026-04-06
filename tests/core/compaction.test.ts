@@ -78,7 +78,7 @@ describe("compactContext", () => {
     let began = false;
     let ended = false;
 
-    await compactContext(ctx, llm, {
+    await compactContext(ctx, llm, undefined, {
       onBegin: () => { began = true; },
       onEnd: () => { ended = true; },
     });
