@@ -490,11 +490,13 @@ export async function collectUntilResponse(
   responseId: string,
   opts?: {
     requestHandler?: (msg: Record<string, unknown>) => Record<string, unknown>;
+    timeout?: number;
   },
 ): Promise<[Record<string, unknown>, Array<Record<string, unknown>>]> {
   const messages: Array<Record<string, unknown>> = [];
+  const readTimeout = opts?.timeout ?? DEFAULT_TIMEOUT;
   while (true) {
-    const msg = await wire.readJson();
+    const msg = await wire.readJson(readTimeout);
     if (msg.method === "event" || msg.method === "request") {
       messages.push(msg);
     }

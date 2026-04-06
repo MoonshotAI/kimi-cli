@@ -200,7 +200,7 @@ describe("wire question", () => {
       const rv = (toolResult!.payload as Record<string, unknown>)
         ?.return_value as Record<string, unknown>;
       expect(rv?.is_error).toBe(true);
-      expect(String(rv?.output)).toContain(
+      expect(String(rv?.message)).toContain(
         "does not support interactive questions",
       );
     } finally {

@@ -248,7 +248,7 @@ describe("wire skills & MCP", () => {
     }
   });
 
-  it("test_mcp_tool_call", async () => {
+  it("test_mcp_tool_call", { timeout: 30000 }, async () => {
     // Create a Python MCP server script
     const serverPath = path.join(tmpPath, "mcp_server.py");
     fs.writeFileSync(
@@ -311,6 +311,7 @@ describe("wire skills & MCP", () => {
 
       const [resp, messages] = await collectUntilResponse(wire, "prompt-1", {
         requestHandler: (msg) => buildApprovalResponse(msg, "approve"),
+        timeout: 15000,
       });
       expect((resp.result as Record<string, unknown>)?.status).toBe("finished");
 

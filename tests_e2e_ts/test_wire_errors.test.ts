@@ -73,7 +73,7 @@ describe("wire errors", () => {
         method: "prompt",
         params: { user_input: "hi" },
       });
-      const resp = normalizeResponse(await readResponse(wire, "bad-1"));
+      const resp = normalizeResponse(await wire.readJson());
       expect((resp.error as Record<string, unknown>)?.code).toBe(-32600);
       expect((resp.error as Record<string, unknown>)?.message).toBe(
         "Invalid request",

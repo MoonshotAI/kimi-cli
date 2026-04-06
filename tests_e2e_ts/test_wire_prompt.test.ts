@@ -228,7 +228,7 @@ describe("wire prompt", () => {
             id: "tc-1",
             function: {
               name: "SetTodoList",
-              arguments: '{"todos": [{"title": "x", "status": "pending"}]}',
+              arguments: '{"todos":[{"title":"x","status":"pending"}]}',
             },
             extras: null,
           },

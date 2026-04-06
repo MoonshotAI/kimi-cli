@@ -285,8 +285,7 @@ describe("wire approvals & tools", () => {
         "text: replacing",
         toolCallLine("tc-1", "StrReplaceFile", {
           path: "file.txt",
-          old_str: "hello",
-          new_str: "world",
+          edit: { old: "hello", new: "world", replace_all: false },
         }),
       ].join("\n"),
       "text: done",
@@ -431,10 +430,12 @@ describe("wire approvals & tools", () => {
 
   it("test_custom_agent_exclude_tool", async () => {
     const agentYaml = [
-      "name: test-agent",
-      "extends: default",
-      "exclude_tools:",
-      "  - Shell",
+      "version: 1",
+      "agent:",
+      "  name: test-agent",
+      "  extend: default",
+      "  exclude_tools:",
+      "    - Shell",
     ].join("\n");
 
     const agentDir = path.join(tmpPath, "agent_exclude");
