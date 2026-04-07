@@ -185,7 +185,7 @@ kimi logout
 
 ### `kimi export`
 
-Export session data as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.).
+Export session data as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.) and related diagnostic logs.
 
 ```sh
 kimi export [<session_id>] [-o <output_path>] [--yes]

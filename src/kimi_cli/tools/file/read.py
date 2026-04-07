@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, detect_file_type
 from kimi_cli.tools.utils import load_desc, truncate_line
+from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import is_within_workspace
 from kimi_cli.utils.sensitive import is_sensitive_file
 
@@ -162,6 +163,7 @@ class ReadFile(CallableTool2[Params]):
             else:
                 return await self._read_forward(p, params)
         except Exception as e:
+            logger.warning("ReadFile failed: {path}: {error}", path=params.path, error=e)
             return ToolError(
                 message=f"Failed to read {params.path}. Error: {e}",
                 brief="Failed to read file",
