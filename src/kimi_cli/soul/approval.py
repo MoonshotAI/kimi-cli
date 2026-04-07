@@ -174,20 +174,23 @@ class Approval:
             # Timeouts/errors result in "ask" (fall back to terminal approval)
             has_explicit_allow = False
             allow_reason = ""
+            has_block = False
             block_reason = ""
 
             for result in hook_results:
                 if result.action == "block":
-                    # Block takes highest priority
+                    # Block takes highest priority - check action, not reason
+                    has_block = True
                     block_reason = result.reason
                     break
-                elif result.action == "allow":
-                    # Allow only if no block found
+                elif result.action == "allow" and not result.timed_out:
+                    # Allow only if no block found and not timed out
+                    # Note: timed-out hooks return action="allow" but must not auto-approve
                     has_explicit_allow = True
                     allow_reason = result.reason
                 # result.action == "ask" or timeout/error: continue to check other results
 
-            if block_reason:
+            if has_block:
                 logger.debug(
                     "PermissionRequest hook denied {tool_name}: {reason}",
                     tool_name=tool_call.function.name,
@@ -203,7 +206,7 @@ class Approval:
                     tool_name=tool_call.function.name,
                 )
                 return ApprovalResult(approved=True)
-            # If no explicit decision or only "ask", continue to terminal approval
+            # If no explicit decision or only "ask"/timeouts, continue to terminal approval
 
         request_id = str(uuid.uuid4())
         display_blocks = display or []
