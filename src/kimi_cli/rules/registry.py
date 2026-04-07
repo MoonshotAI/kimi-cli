@@ -185,7 +185,8 @@ class RulesRegistry:
         import fnmatch
 
         try:
-            async for item in self.work_dir.rglob("*"):
+            # KaosPath has glob() but not rglob(), use **/* for recursive
+            async for item in self.work_dir.glob("**/*"):
                 if fnmatch.fnmatch(item.name, pattern):
                     return True
         except Exception:
