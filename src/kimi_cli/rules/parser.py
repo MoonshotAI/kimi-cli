@@ -52,7 +52,7 @@ def parse_rule_file(
     path: Path,
     level: str,
     rules_root: Path | None = None,
-) -> "Rule":
+) -> Rule:
     """
     Parse a single rule file, extracting frontmatter and content.
     
@@ -108,7 +108,7 @@ def parse_rule_file(
     )
 
 
-def should_apply_rule(rule: "Rule", file_path: Path | None) -> bool:
+def should_apply_rule(rule: Rule, file_path: Path | None) -> bool:
     """
     Check if a rule should apply to a given file path.
     
@@ -134,8 +134,4 @@ def should_apply_rule(rule: "Rule", file_path: Path | None) -> bool:
 
     path_str = str(file_path).replace("\\", "/")
 
-    for pattern in rule.metadata.paths:
-        if fnmatch(path_str, pattern):
-            return True
-
-    return False
+    return any(fnmatch(path_str, pattern) for pattern in rule.metadata.paths)

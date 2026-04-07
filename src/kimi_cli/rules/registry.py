@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from kaos.path import KaosPath
 
 from kimi_cli.rules.discovery import discover_rule_files, resolve_rules_roots
-from kimi_cli.rules.models import Rule, RuleState, RulesStats
+from kimi_cli.rules.models import Rule, RulesStats, RuleState
 from kimi_cli.rules.parser import parse_rule_file, should_apply_rule
 from kimi_cli.rules.state import RulesStateManager
 from kimi_cli.utils.logging import logger
@@ -31,7 +31,7 @@ class RulesRegistry:
     def __init__(
         self,
         work_dir: KaosPath,
-        config: "RulesConfig | None" = None,
+        config: RulesConfig | None = None,
         state_manager: RulesStateManager | None = None,
     ):
         self.work_dir = work_dir
@@ -55,7 +55,9 @@ class RulesRegistry:
         )
 
         # Load rules from each root (later roots override earlier ones for same ID)
-        for root in roots:
+        # resolve_rules_roots returns [project, user, builtin] (high to low priority)
+        # We iterate in reverse so project rules are loaded last and override others
+        for root in reversed(roots):
             await self._load_from_root(root)
 
         # Load persisted states
@@ -249,15 +251,16 @@ class RulesRegistry:
 
         from datetime import datetime
 
+        rule = self._rules[rule_id]
         state = self._state.get(rule_id, RuleState())
         state.enabled = enabled
         state.pinned = True  # User action pins the state
         state.last_modified = datetime.now().isoformat()
         self._state[rule_id] = state
 
-        # Persist state
+        # Persist state with level info for proper file separation
         if self.state_manager:
-            self.state_manager.set_state(rule_id, state)
+            self.state_manager.set_state(rule_id, state, level=rule.level)
 
         logger.info(
             "Rule {rule_id} {action}",
@@ -310,3 +313,18 @@ class RulesRegistry:
         """Persist current rule states."""
         if self.state_manager:
             await self.state_manager.save()
+
+    async def delete_state_files(self, level: str | None = None) -> None:
+        """
+        Delete state files from disk.
+        
+        Args:
+            level: If specified, only delete the state file for this level
+                   ("user" or "project"). If None, deletes both.
+        """
+        if self.state_manager:
+            from typing import Literal
+            level_typed: Literal["user", "project"] | None = (
+                level if level in ("user", "project") else None  # type: ignore
+            )
+            await self.state_manager.delete_state_files(level_typed)

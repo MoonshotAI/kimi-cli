@@ -131,7 +131,11 @@ async def discover_rule_files(rules_dir: KaosPath) -> list[KaosPath]:
     from kimi_cli.utils.logging import logger
 
     is_dir = await rules_dir.is_dir()
-    logger.debug("discover_rule_files: rules_dir={path} is_dir={is_dir}", path=rules_dir, is_dir=is_dir)
+    logger.debug(
+        "discover_rule_files: rules_dir={path} is_dir={is_dir}",
+        path=rules_dir,
+        is_dir=is_dir,
+    )
     
     if not is_dir:
         return []

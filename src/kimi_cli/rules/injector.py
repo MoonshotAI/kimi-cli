@@ -11,6 +11,7 @@ from kimi_cli.utils.logging import logger
 
 if TYPE_CHECKING:
     from kaos.path import KaosPath
+
     from kimi_cli.rules.models import Rule
 
 
@@ -58,7 +59,9 @@ class RulesInjector:
         seen_ids: set[str] = set()
 
         # Load from each root (project overrides user overrides builtin)
-        for root in reversed(roots):  # Reverse to apply priority correctly
+        # resolve_rules_roots returns [project, user, builtin] (high to low priority)
+        # First-seen wins, so project rules take precedence over duplicates
+        for root in roots:
             level = self._determine_level(root)
 
             from kimi_cli.rules.discovery import discover_rule_files

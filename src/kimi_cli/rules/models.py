@@ -44,9 +44,10 @@ class RuleState:
     enabled: bool = True  # 是否启用
     pinned: bool = False  # 是否固定（不受自动检测影响）
     last_modified: str | None = None  # 最后修改时间 ISO 格式
+    level: Literal["builtin", "user", "project"] | None = None  # 规则来源层级
 
     def to_dict(self) -> dict:
-        """转换为字典用于序列化"""
+        """转换为字典用于序列化（不包含 level，因为 level 决定保存位置而非内容）"""
         result: dict = {"enabled": self.enabled}
         if self.pinned:
             result["pinned"] = True
@@ -61,6 +62,7 @@ class RuleState:
             enabled=data.get("enabled", True),
             pinned=data.get("pinned", False),
             last_modified=data.get("last_modified"),
+            level=data.get("level"),  # May be None for legacy states
         )
 
 
