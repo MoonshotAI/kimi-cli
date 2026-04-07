@@ -10,9 +10,12 @@ from pydantic import SecretStr
 from kimi_cli import logger
 from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
 from kimi_cli.auth.platforms import (
+    BEDROCK_MANTLE_PLATFORM_ID,
+    BEDROCK_MANTLE_REGIONS,
     PLATFORMS,
     ModelInfo,
     Platform,
+    bedrock_mantle_base_url,
     get_platform_by_name,
     list_models,
     managed_model_key,
@@ -59,6 +62,8 @@ async def setup_platform(platform: Platform) -> bool:
     thinking_label = "on" if result.thinking else "off"
     console.print("[green]✓ Setup complete![/green]")
     console.print(f"  Platform: [bold]{result.platform.name}[/bold]")
+    if result.mantle_region:
+        console.print(f"  Region:   [bold]{result.mantle_region}[/bold]")
     console.print(f"  Model:    [bold]{result.selected_model.id}[/bold]")
     console.print(f"  Thinking: [bold]{thinking_label}[/bold]")
     console.print("  Reloading...")
@@ -71,15 +76,63 @@ class _SetupResult(NamedTuple):
     selected_model: ModelInfo
     models: list[ModelInfo]
     thinking: bool
+    resolved_base_url: str
+    mantle_region: str | None = None
 
 
 async def _setup_platform(platform: Platform) -> _SetupResult | None:
-    # enter the API key
+    if platform.id == BEDROCK_MANTLE_PLATFORM_ID:
+        return await _setup_bedrock_mantle(platform)
+    return await _setup_kimi_like_platform(platform)
+
+
+async def _setup_bedrock_mantle(platform: Platform) -> _SetupResult | None:
+    region_labels = [f"{code} — {title}" for code, title in BEDROCK_MANTLE_REGIONS]
+    label = await _prompt_choice(
+        header="Select AWS Region (↑↓ navigate, Enter select, Ctrl+C cancel):",
+        choices=region_labels,
+    )
+    if not label:
+        console.print("[red]No region selected[/red]")
+        return None
+    region = label.split(" — ", 1)[0]
+    resolved_base_url = bedrock_mantle_base_url(region)
+
+    api_key = await _prompt_text("Enter your Bedrock API key", is_password=True)
+    if not api_key:
+        return None
+
+    try:
+        with console.status("[cyan]Verifying API key...[/cyan]"):
+            models = await list_models(platform, api_key, list_base_url=resolved_base_url)
+    except aiohttp.ClientResponseError as e:
+        logger.error("Failed to get models: {error}", error=e)
+        console.print(f"[red]Failed to get models: {e.message}[/red]")
+        if e.status == 401:
+            console.print(
+                "[yellow]Hint: Create a Bedrock API key in the AWS console and ensure "
+                "this region supports Bedrock Mantle.[/yellow]"
+            )
+        return None
+    except Exception as e:
+        logger.error("Failed to get models: {error}", error=e)
+        console.print(f"[red]Failed to get models: {e}[/red]")
+        return None
+
+    return await _finalize_model_and_thinking(
+        platform,
+        api_key=api_key,
+        models=models,
+        resolved_base_url=resolved_base_url,
+        mantle_region=region,
+    )
+
+
+async def _setup_kimi_like_platform(platform: Platform) -> _SetupResult | None:
     api_key = await _prompt_text("Enter your API key", is_password=True)
     if not api_key:
         return None
 
-    # list models
     try:
         with console.status("[cyan]Verifying API key...[/cyan]"):
             models = await list_models(platform, api_key)
@@ -97,7 +150,23 @@ async def _setup_platform(platform: Platform) -> _SetupResult | None:
         console.print(f"[red]Failed to get models: {e}[/red]")
         return None
 
-    # select the model
+    return await _finalize_model_and_thinking(
+        platform,
+        api_key=api_key,
+        models=models,
+        resolved_base_url=platform.base_url,
+        mantle_region=None,
+    )
+
+
+async def _finalize_model_and_thinking(
+    platform: Platform,
+    *,
+    api_key: str,
+    models: list[ModelInfo],
+    resolved_base_url: str,
+    mantle_region: str | None,
+) -> _SetupResult | None:
     if not models:
         console.print("[red]No models available for the selected platform[/red]")
         return None
@@ -113,7 +182,6 @@ async def _setup_platform(platform: Platform) -> _SetupResult | None:
 
     selected_model = model_map[model_id]
 
-    # Determine thinking mode based on model capabilities
     capabilities = selected_model.capabilities
     thinking: bool
 
@@ -136,6 +204,8 @@ async def _setup_platform(platform: Platform) -> _SetupResult | None:
         selected_model=selected_model,
         models=models,
         thinking=thinking,
+        resolved_base_url=resolved_base_url,
+        mantle_region=mantle_region,
     )
 
 
@@ -144,8 +214,8 @@ def _apply_setup_result(result: _SetupResult) -> None:
     provider_key = managed_provider_key(result.platform.id)
     model_key = managed_model_key(result.platform.id, result.selected_model.id)
     config.providers[provider_key] = LLMProvider(
-        type="kimi",
-        base_url=result.platform.base_url,
+        type=result.platform.llm_provider_type,
+        base_url=result.resolved_base_url,
         api_key=result.api_key,
     )
     for key, model in list(config.models.items()):
@@ -162,17 +232,21 @@ def _apply_setup_result(result: _SetupResult) -> None:
     config.default_model = model_key
     config.default_thinking = result.thinking
 
-    if result.platform.search_url:
-        config.services.moonshot_search = MoonshotSearchConfig(
-            base_url=result.platform.search_url,
-            api_key=result.api_key,
-        )
+    if result.platform.id == BEDROCK_MANTLE_PLATFORM_ID:
+        config.services.moonshot_search = None
+        config.services.moonshot_fetch = None
+    else:
+        if result.platform.search_url:
+            config.services.moonshot_search = MoonshotSearchConfig(
+                base_url=result.platform.search_url,
+                api_key=result.api_key,
+            )
 
-    if result.platform.fetch_url:
-        config.services.moonshot_fetch = MoonshotFetchConfig(
-            base_url=result.platform.fetch_url,
-            api_key=result.api_key,
-        )
+        if result.platform.fetch_url:
+            config.services.moonshot_fetch = MoonshotFetchConfig(
+                base_url=result.platform.fetch_url,
+                api_key=result.api_key,
+            )
 
     save_config(config)
 

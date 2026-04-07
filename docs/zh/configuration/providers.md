@@ -7,7 +7,7 @@ Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/login` 命
 最简单的配置方式是在 Shell 模式下运行 `/login` 命令（别名 `/setup`），按照向导完成平台和模型的选择：
 
 1. 选择 API 平台
-2. 输入 API 密钥
+2. 若选择 **AWS Bedrock Mantle（OpenAI 兼容）**，先选择 AWS 区域，再输入 API 密钥；其他平台直接输入 API 密钥
 3. 从可用模型列表中选择模型
 
 配置完成后，Kimi Code CLI 会自动保存设置到 `~/.kimi/config.toml` 并重新加载。
@@ -16,11 +16,12 @@ Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/login` 命
 
 | 平台 | 说明 |
 | --- | --- |
+| AWS Bedrock Mantle（OpenAI 兼容） | Amazon Bedrock Mantle 的 OpenAI 兼容 API；使用 `openai_legacy` 与 Bedrock API 密钥 |
 | Kimi Code | Kimi Code 平台，支持搜索和抓取服务 |
 | Moonshot AI 开放平台 (moonshot.cn) | 中国区 API 端点 |
 | Moonshot AI Open Platform (moonshot.ai) | 全球区 API 端点 |
 
-如需使用其他平台，请手动编辑配置文件。
+如需使用其他平台，请手动编辑配置文件。示例见仓库内 [`examples/bedrock-mantle.md`](../../../examples/bedrock-mantle.md)。
 
 ## 供应商类型
 
@@ -56,6 +57,20 @@ type = "openai_legacy"
 base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
+
+#### AWS Bedrock Mantle（OpenAI 兼容 API）
+
+[Bedrock Mantle](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) 在每个 AWS 区域提供 OpenAI 兼容端点，例如：
+
+`https://bedrock-mantle.<region>.api.aws/v1`
+
+请使用 **Bedrock API 密钥**（不是 IAM 访问密钥），`type` 设为 `openai_legacy`。模型 ID 形如 `moonshotai.kimi-k2.5`（实际目录随区域变化）。
+
+**`/login` 流程：** 选择 **AWS Bedrock Mantle (OpenAI-compatible)**，选择区域，输入 API 密钥，再选模型。将写入托管供应商 `managed:bedrock-mantle`，并清除 Moonshot 搜索/抓取配置（这些能力依赖 Kimi Code）。
+
+**环境变量覆盖（可选）：** 若设置了 `OPENAI_BASE_URL` 与 `OPENAI_API_KEY`，会覆盖已保存的 `openai_legacy` 供应商的 `base_url` 与 `api_key`，**不会**影响其他供应商的 URL。
+
+**示例：** 见仓库 [`examples/bedrock-mantle.md`](../../../examples/bedrock-mantle.md)（英文说明）。
 
 ### `openai_responses`
 
