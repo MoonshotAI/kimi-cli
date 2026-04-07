@@ -13,6 +13,7 @@
     "test": "bun test",
     "build": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi",
     "build:linux-x64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-linux-x64",
+    "build:linux-x64-baseline": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-linux-x64-baseline",
     "build:linux-arm64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-linux-arm64",
     "build:darwin-x64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-darwin-x64",
     "build:darwin-arm64": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=bun-darwin-arm64",

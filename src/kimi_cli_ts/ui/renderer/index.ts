@@ -296,8 +296,3 @@ export function patchInkLogUpdate(): void {
 // ── Re-exports ──────────────────────────────────────────
 
 export { BSU, ESU, SYNC_SUPPORTED } from "./terminal-detect.ts";
-export { createScreen, resetScreen } from "./screen.ts";
-export { parseAnsiToScreen } from "./ansi-parser.ts";
-export { computeDiff, screensEqual } from "./diff.ts";
-export { buildPatch, buildFrameOutput } from "./patch-writer.ts";
-export type { Screen, Viewport, CursorPosition } from "./types.ts";
