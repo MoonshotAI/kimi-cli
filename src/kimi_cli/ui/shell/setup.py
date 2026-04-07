@@ -95,7 +95,9 @@ async def _setup_bedrock_mantle(platform: Platform) -> _SetupResult | None:
     if not label:
         console.print("[red]No region selected[/red]")
         return None
-    region = label.split(" — ", 1)[0]
+    # Parse region code from label (e.g., "us-east-1 — US East (N. Virginia)" -> "us-east-1")
+    # Handles both em-dash (—) and regular hyphen (-) separators
+    region = label.split(" ", 1)[0] if " " in label else label
     resolved_base_url = bedrock_mantle_base_url(region)
 
     api_key = await _prompt_text("Enter your Bedrock API key", is_password=True)
