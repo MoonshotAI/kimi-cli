@@ -528,13 +528,11 @@ async def get_session_file(
             if subpath.is_dir():
                 result.append({"name": subpath.name, "type": "directory"})
             else:
-                result.append(
-                    {
-                        "name": subpath.name,
-                        "type": "file",
-                        "size": subpath.stat().st_size,
-                    }
-                )
+                try:
+                    size = subpath.stat().st_size
+                except OSError:
+                    size = 0
+                result.append({"name": subpath.name, "type": "file", "size": size})
         result.sort(key=lambda x: (cast(str, x["type"]), cast(str, x["name"])))
         return Response(content=json.dumps(result), media_type="application/json")
 
