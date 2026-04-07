@@ -206,6 +206,17 @@ def _load_plugin_skills(runtime: ClaudePluginRuntime) -> None:
                     name=namespaced_name,
                 )
                 continue
+            if namespaced_name in runtime.skills:
+                runtime.warnings.append(
+                    f"Skipping duplicate skill {namespaced_name} from {entry.name}"
+                )
+                logger.warning(
+                    "Skipping duplicate Claude plugin skill {plugin}:{skill} from {path}",
+                    plugin=plugin_name,
+                    skill=raw_skill.name,
+                    path=entry,
+                )
+                continue
             skill = Skill(
                 name=namespaced_name,
                 description=raw_skill.description,

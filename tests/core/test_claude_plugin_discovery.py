@@ -124,6 +124,25 @@ class TestPluginSkillDiscovery:
             for w in bundle.plugins["demo"].warnings
         )
 
+    def test_duplicate_skill_name_is_skipped(self, tmp_path: Path) -> None:
+        plugin_dir = _make_plugin(tmp_path, "demo")
+        # Two skill directories that declare the same frontmatter name
+        for dir_name in ("skill_a", "skill_b"):
+            skill_dir = plugin_dir / "skills" / dir_name
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(
+                "---\nname: greet\ndescription: say hello\n---\nHello",
+                encoding="utf-8",
+            )
+
+        from kimi_cli.claude_plugin.discovery import load_claude_plugins
+
+        bundle = load_claude_plugins([plugin_dir])
+        # First one wins, duplicate is skipped
+        assert "demo:greet" in bundle.plugins["demo"].skills
+        assert len(bundle.plugins["demo"].skills) == 1
+        assert any("duplicate" in w.lower() for w in bundle.plugins["demo"].warnings)
+
     def test_no_skills_dir(self, tmp_path: Path) -> None:
         plugin_dir = _make_plugin(tmp_path, "demo")
 
