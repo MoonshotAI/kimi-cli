@@ -183,12 +183,14 @@ class Approval:
                     has_block = True
                     block_reason = result.reason
                     break
-                elif result.action == "allow" and not result.timed_out:
-                    # Allow only if no block found and not timed out
-                    # Note: timed-out hooks return action="allow" but must not auto-approve
+                elif result.action == "allow" and not result.timed_out and result.exit_code == 0:
+                    # Allow only if:
+                    # - no block found
+                    # - not timed out (timed-out hooks return action="allow")
+                    # - exit_code is 0 (errors/crashes return action="allow" with non-zero exit)
                     has_explicit_allow = True
                     allow_reason = result.reason
-                # result.action == "ask" or timeout/error: continue to check other results
+                # result.action == "ask" or timeout/error/crash: continue to check other results
 
             if has_block:
                 logger.debug(
