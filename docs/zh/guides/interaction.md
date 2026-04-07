@@ -19,7 +19,7 @@ $ git status
 $ npm run build
 ```
 
-Shell 模式也支持部分斜杠命令，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog`、`/feedback`、`/export`、`/import`、`/rules` 和 `/task`。
+Shell 模式也支持部分斜杠命令，包括 `/help`、`/exit`、`/version`、`/editor`、`/changelog`、`/feedback`、`/export`、`/import` 和 `/task`。
 
 ::: warning 注意
 Shell 模式中每个命令独立执行，`cd`、`export` 等改变环境的命令不会影响后续命令。

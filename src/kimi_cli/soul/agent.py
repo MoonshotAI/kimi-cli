@@ -329,13 +329,25 @@ class Runtime:
             # Format active rules for system prompt
             active_rules = rules_registry.get_active_rules()
             if active_rules:
-                max_size = config.rules.max_total_size or _RULES_MAX_BYTES
+                # max_total_size = 0 means unlimited
+                max_size = (
+                    _RULES_MAX_BYTES
+                    if config.rules.max_total_size is None
+                    else config.rules.max_total_size
+                )
+                max_rules = config.rules.max_active_rules
                 lines = []
                 total_size = 0
-                for rule in sorted(active_rules, key=lambda r: r.metadata.priority):
+                for rule_count, rule in enumerate(
+                    sorted(active_rules, key=lambda r: r.metadata.priority)
+                ):
+                    # Enforce max_active_rules limit
+                    if rule_count >= max_rules:
+                        break
                     section = f"## {rule.name}\n\n{rule.content}\n\n"
                     section_size = len(section.encode("utf-8"))
-                    if total_size + section_size > max_size:
+                    # Enforce max_total_size limit (0 = unlimited)
+                    if max_size > 0 and total_size + section_size > max_size:
                         break
                     lines.append(section)
                     total_size += section_size

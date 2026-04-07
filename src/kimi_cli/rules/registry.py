@@ -83,9 +83,9 @@ class RulesRegistry:
         for rule_file in rule_files:
             try:
                 rule = parse_rule_file(
-                    rule_file.to_path(),
+                    rule_file.unsafe_to_local_path(),
                     level=level,
-                    rules_root=root.to_path(),
+                    rules_root=root.unsafe_to_local_path(),
                 )
 
                 # Store rule (overwrites if same ID from lower priority level)
