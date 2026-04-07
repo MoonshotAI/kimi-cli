@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Improve error diagnostics — enrich internal logging coverage, include relevant log files and system manifest in `kimi export` archives, and surface actionable error messages for common failures (auth, network, timeout, quota)
 - Shell: Use `git ls-files` for `@` file mention discovery — file completer now queries `git ls-files --recurse-submodules` with a 5-second timeout as the primary discovery mechanism, falling back to `os.walk` for non-git repositories; this fixes large repositories (e.g., apache/superset with 65k+ files) where the 1000-file limit caused late-alphabetical directories to be unreachable (fixes #1375)
 - Core: Add shared `file_filter` module — unifies file mention logic between shell and web UIs via `src/kimi_cli/utils/file_filter.py`, providing consistent path filtering, ignored directory exclusion, and git-aware file discovery
 - Shell: Prevent path traversal in file mention scope parameter — the `scope` parameter in file completer requests is now validated to prevent directory traversal attacks

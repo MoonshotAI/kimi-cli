@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from kosong.chat_provider import APIStatusError, ChatProviderError
+from kosong.chat_provider import (
+    APIConnectionError,
+    APIEmptyResponseError,
+    APIStatusError,
+    APITimeoutError,
+    ChatProviderError,
+)
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -715,22 +721,59 @@ class Shell:
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             if isinstance(e, APIStatusError) and e.status_code == 401:
-                console.print("[red]Authorization failed, please check your login status[/red]")
+                console.print(
+                    "[red]Authorization failed. Your session may have expired.[/red]\n"
+                    "[dim]Type [bold]/login[/bold] to re-authenticate.[/dim]\n"
+                    f"[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIStatusError) and e.status_code == 402:
-                console.print("[red]Membership expired, please renew your plan[/red]")
+                console.print(
+                    f"[red]Membership expired, please renew your plan[/red]\n[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIStatusError) and e.status_code == 403:
-                console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
+                console.print(
+                    "[red]Quota exceeded, please upgrade your plan or retry later[/red]\n"
+                    f"[dim]Server: {e}[/dim]"
+                )
+            elif isinstance(e, APIConnectionError):
+                console.print(
+                    f"[red]Network connection failed: {e}[/red]\n"
+                    "[dim]Please check your network and try again.[/dim]"
+                )
+            elif isinstance(e, APITimeoutError):
+                console.print(
+                    f"[red]Request timed out: {e}[/red]\n"
+                    "[dim]The server may be slow or unreachable. Please try again later.[/dim]"
+                )
+            elif isinstance(e, APIEmptyResponseError):
+                console.print(
+                    "[red]The server returned an empty response.[/red]\n"
+                    "[dim]This is usually a temporary issue. Please try again.[/dim]"
+                )
             else:
                 console.print(f"[red]LLM provider error: {e}[/red]")
+            if not isinstance(e, APIStatusError) or e.status_code not in (401, 402, 403):
+                console.print(
+                    "[dim]If this persists, run [bold]kimi export[/bold] and send the "
+                    "exported data to support for assistance. "
+                    "Please do not share the exported file publicly.[/dim]"
+                )
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            console.print(f"[yellow]{e}[/yellow]")
+            console.print(
+                f"[yellow]{e}[/yellow]\n"
+                "[dim]Send another message to continue where it left off.[/dim]"
+            )
         except RunCancelled:
             logger.info("Cancelled by user")
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")
-            console.print(f"[red]Unexpected error: {e}[/red]")
+            console.print(
+                f"[red]Unexpected error: {e}[/red]\n"
+                "[dim]Run [bold]kimi export[/bold] and send the exported data to support "
+                "for assistance. Please do not share the exported file publicly.[/dim]"
+            )
             raise  # re-raise unknown error
         finally:
             self._maybe_present_pending_approvals()

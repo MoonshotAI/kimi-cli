@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：改进错误诊断——丰富内部日志覆盖，在 `kimi export` 导出的归档中包含相关日志文件和系统信息，并为常见错误（认证、网络、超时、配额）提供可操作的提示消息
 - Shell：使用 `git ls-files` 进行 `@` 文件引用发现——文件补全器现在优先使用 `git ls-files --recurse-submodules` 查询文件列表（5 秒超时），非 Git 仓库则回退到 `os.walk`；此修复解决了大型仓库（如包含 6.5 万+文件的 apache/superset）中 1000 文件限制导致字母顺序靠后的目录无法访问的问题（修复 #1375）
 - Core：新增共享的 `file_filter` 模块——通过 `src/kimi_cli/utils/file_filter.py` 统一 Shell 和 Web 的文件引用逻辑，提供一致的路径过滤、忽略目录排除和 Git 感知文件发现
 - Shell：防止文件引用 scope 参数的路径遍历——文件补全器请求中的 `scope` 参数现在会经过验证，防止目录遍历攻击
