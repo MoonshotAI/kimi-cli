@@ -57,10 +57,10 @@ class RulesStateManager:
 
         for state_path, parent_dir in candidates:
             if await parent_dir.is_dir():
-                return state_path.to_path() if hasattr(state_path, 'to_path') else state_path
+                return state_path.unsafe_to_local_path()
 
         # Default to .agents if neither exists (will create on save)
-        return (self.work_dir / ".agents" / STATE_FILENAME).to_path()
+        return (self.work_dir / ".agents" / STATE_FILENAME).unsafe_to_local_path()
 
     async def load(self) -> None:
         """Load states from both user and project levels."""
