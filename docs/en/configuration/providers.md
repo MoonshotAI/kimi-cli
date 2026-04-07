@@ -14,12 +14,12 @@ After configuration, Kimi Code CLI will automatically save settings to `~/.kimi/
 
 `/login` currently supports the following platforms:
 
-| Platform | Description |
-| --- | --- |
-| AWS Bedrock Mantle (OpenAI-compatible) | Amazon Bedrock Mantle OpenAI API; uses `openai_legacy` and a Bedrock API key |
-| Kimi Code | Kimi Code platform, supports search and fetch services |
-| Moonshot AI Open Platform (moonshot.cn) | China region API endpoint |
-| Moonshot AI Open Platform (moonshot.ai) | Global region API endpoint |
+| Platform                                | Description                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------- |
+| AWS Bedrock Mantle (OpenAI-compatible)  | Amazon Bedrock Mantle OpenAI API; uses `openai_legacy` and a Bedrock API key |
+| Kimi Code                               | Kimi Code platform, supports search and fetch services                       |
+| Moonshot AI Open Platform (moonshot.cn) | China region API endpoint                                                    |
+| Moonshot AI Open Platform (moonshot.ai) | Global region API endpoint                                                   |
 
 For other platforms, please manually edit the configuration file. See also [Bedrock Mantle example](../../../examples/bedrock-mantle.md).
 
@@ -27,14 +27,14 @@ For other platforms, please manually edit the configuration file. See also [Bedr
 
 The `type` field in `providers` configuration specifies the API provider type. Different types use different API protocols and client implementations.
 
-| Type | Description |
-| --- | --- |
-| `kimi` | Kimi API |
-| `openai_legacy` | OpenAI Chat Completions API |
-| `openai_responses` | OpenAI Responses API |
-| `anthropic` | Anthropic Claude API |
-| `gemini` | Google Gemini API |
-| `vertexai` | Google Vertex AI |
+| Type               | Description                 |
+| ------------------ | --------------------------- |
+| `kimi`             | Kimi API                    |
+| `openai_legacy`    | OpenAI Chat Completions API |
+| `openai_responses` | OpenAI Responses API        |
+| `anthropic`        | Anthropic Claude API        |
+| `gemini`           | Google Gemini API           |
+| `vertexai`         | Google Vertex AI            |
 
 ### `kimi`
 
@@ -121,12 +121,12 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 
 The `capabilities` field in model configuration declares the capabilities supported by the model. This affects feature availability in Kimi Code CLI.
 
-| Capability | Description |
-| --- | --- |
-| `thinking` | Supports thinking mode (deep reasoning), can be toggled |
-| `always_thinking` | Always uses thinking mode (cannot be disabled) |
-| `image_in` | Supports image input |
-| `video_in` | Supports video input |
+| Capability        | Description                                             |
+| ----------------- | ------------------------------------------------------- |
+| `thinking`        | Supports thinking mode (deep reasoning), can be toggled |
+| `always_thinking` | Always uses thinking mode (cannot be disabled)          |
+| `image_in`        | Supports image input                                    |
+| `video_in`        | Supports video input                                    |
 
 ```toml
 [models.gemini-3-pro-preview]
@@ -158,9 +158,9 @@ The `SearchWeb` and `FetchURL` tools depend on external services, currently only
 
 When selecting the Kimi Code platform using `/login`, search and fetch services are automatically configured.
 
-| Service | Corresponding tool | Behavior when not configured |
-| --- | --- | --- |
-| `moonshot_search` | `SearchWeb` | Tool unavailable |
-| `moonshot_fetch` | `FetchURL` | Falls back to local fetching |
+| Service           | Corresponding tool | Behavior when not configured |
+| ----------------- | ------------------ | ---------------------------- |
+| `moonshot_search` | `SearchWeb`        | Tool unavailable             |
+| `moonshot_fetch`  | `FetchURL`         | Falls back to local fetching |
 
 When using other platforms, the `FetchURL` tool is still available but will fall back to local fetching.

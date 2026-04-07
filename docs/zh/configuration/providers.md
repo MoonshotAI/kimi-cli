@@ -14,12 +14,12 @@ Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/login` 命
 
 `/login` 目前支持以下平台：
 
-| 平台 | 说明 |
-| --- | --- |
-| AWS Bedrock Mantle（OpenAI 兼容） | Amazon Bedrock Mantle 的 OpenAI 兼容 API；使用 `openai_legacy` 与 Bedrock API 密钥 |
-| Kimi Code | Kimi Code 平台，支持搜索和抓取服务 |
-| Moonshot AI 开放平台 (moonshot.cn) | 中国区 API 端点 |
-| Moonshot AI Open Platform (moonshot.ai) | 全球区 API 端点 |
+| 平台                                    | 说明                                                                               |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| AWS Bedrock Mantle（OpenAI 兼容）       | Amazon Bedrock Mantle 的 OpenAI 兼容 API；使用 `openai_legacy` 与 Bedrock API 密钥 |
+| Kimi Code                               | Kimi Code 平台，支持搜索和抓取服务                                                 |
+| Moonshot AI 开放平台 (moonshot.cn)      | 中国区 API 端点                                                                    |
+| Moonshot AI Open Platform (moonshot.ai) | 全球区 API 端点                                                                    |
 
 如需使用其他平台，请手动编辑配置文件。示例见仓库内 [`examples/bedrock-mantle.md`](../../../examples/bedrock-mantle.md)。
 
@@ -27,14 +27,14 @@ Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/login` 命
 
 `providers` 配置中的 `type` 字段指定 API 供应商类型。不同类型使用不同的 API 协议和客户端实现。
 
-| 类型 | 说明 |
-| --- | --- |
-| `kimi` | Kimi API |
-| `openai_legacy` | OpenAI Chat Completions API |
-| `openai_responses` | OpenAI Responses API |
-| `anthropic` | Anthropic Claude API |
-| `gemini` | Google Gemini API |
-| `vertexai` | Google Vertex AI |
+| 类型               | 说明                        |
+| ------------------ | --------------------------- |
+| `kimi`             | Kimi API                    |
+| `openai_legacy`    | OpenAI Chat Completions API |
+| `openai_responses` | OpenAI Responses API        |
+| `anthropic`        | Anthropic Claude API        |
+| `gemini`           | Google Gemini API           |
+| `vertexai`         | Google Vertex AI            |
 
 ### `kimi`
 
@@ -121,12 +121,12 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 
 模型配置中的 `capabilities` 字段声明模型支持的能力。这会影响 Kimi Code CLI 的功能可用性。
 
-| 能力 | 说明 |
-| --- | --- |
-| `thinking` | 支持 Thinking 模式（深度思考），可开关 |
-| `always_thinking` | 始终使用 Thinking 模式（不可关闭） |
-| `image_in` | 支持图片输入 |
-| `video_in` | 支持视频输入 |
+| 能力              | 说明                                   |
+| ----------------- | -------------------------------------- |
+| `thinking`        | 支持 Thinking 模式（深度思考），可开关 |
+| `always_thinking` | 始终使用 Thinking 模式（不可关闭）     |
+| `image_in`        | 支持图片输入                           |
+| `video_in`        | 支持视频输入                           |
 
 ```toml
 [models.gemini-3-pro-preview]
@@ -158,10 +158,9 @@ capabilities = ["thinking", "image_in"]
 
 使用 `/login` 选择 Kimi Code 平台时，搜索和抓取服务会自动配置。
 
-| 服务 | 对应工具 | 未配置时的行为 |
-| --- | --- | --- |
-| `moonshot_search` | `SearchWeb` | 工具不可用 |
-| `moonshot_fetch` | `FetchURL` | 回退到本地抓取 |
+| 服务              | 对应工具    | 未配置时的行为 |
+| ----------------- | ----------- | -------------- |
+| `moonshot_search` | `SearchWeb` | 工具不可用     |
+| `moonshot_fetch`  | `FetchURL`  | 回退到本地抓取 |
 
 使用其他平台时，`FetchURL` 工具仍可使用，但会回退到本地抓取。
-
