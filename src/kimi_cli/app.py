@@ -131,13 +131,23 @@ def _filter_supported_plugin_agent_tools(
     return [], True
 
 
-_PLUGIN_CAPABILITY_SUMMARY_HEADER = "## Loaded Claude-compatible plugins"
-
-
 def _merge_plugin_capability_summary(prompt: str, cap_summary: str) -> str:
     """Replace any old plugin capability summary with the current one."""
-    marker_index = prompt.find(_PLUGIN_CAPABILITY_SUMMARY_HEADER)
-    base_prompt = prompt[:marker_index].rstrip() if marker_index != -1 else prompt.rstrip()
+    from kimi_cli.claude_plugin.discovery import (
+        PLUGIN_SUMMARY_SENTINEL_BEGIN,
+        PLUGIN_SUMMARY_SENTINEL_END,
+    )
+
+    begin = prompt.find(PLUGIN_SUMMARY_SENTINEL_BEGIN)
+    if begin != -1:
+        end = prompt.find(PLUGIN_SUMMARY_SENTINEL_END, begin)
+        if end != -1:
+            end += len(PLUGIN_SUMMARY_SENTINEL_END)
+            base_prompt = (prompt[:begin] + prompt[end:]).strip()
+        else:
+            base_prompt = prompt[:begin].rstrip()
+    else:
+        base_prompt = prompt.rstrip()
     if not cap_summary:
         return base_prompt
     if not base_prompt:

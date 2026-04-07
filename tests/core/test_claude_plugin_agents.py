@@ -1225,11 +1225,18 @@ class TestPluginSkillMergeNormalization:
             toolset=EmptyToolset(),
             runtime=cast(Any, fake_runtime),
         )
+        from kimi_cli.claude_plugin.discovery import (
+            PLUGIN_SUMMARY_SENTINEL_BEGIN,
+            PLUGIN_SUMMARY_SENTINEL_END,
+        )
+
         fake_context = SimpleNamespace(
             system_prompt=(
                 "Persisted prompt\n\n"
+                f"{PLUGIN_SUMMARY_SENTINEL_BEGIN}\n"
                 "## Loaded Claude-compatible plugins\n\n"
-                "stale plugin summary"
+                "stale plugin summary\n"
+                f"{PLUGIN_SUMMARY_SENTINEL_END}"
             )
         )
         fake_context.restore = AsyncMock()
@@ -1277,6 +1284,10 @@ class TestPluginSkillMergeNormalization:
 
         import kimi_cli.app as app_module
         from kimi_cli.app import KimiCLI
+        from kimi_cli.claude_plugin.discovery import (
+            PLUGIN_SUMMARY_SENTINEL_BEGIN,
+            PLUGIN_SUMMARY_SENTINEL_END,
+        )
         from kimi_cli.soul.agent import Agent, BuiltinSystemPromptArgs
 
         fake_runtime = SimpleNamespace(
@@ -1307,8 +1318,10 @@ class TestPluginSkillMergeNormalization:
         fake_context = SimpleNamespace(
             system_prompt=(
                 "Persisted prompt\n\n"
+                f"{PLUGIN_SUMMARY_SENTINEL_BEGIN}\n"
                 "## Loaded Claude-compatible plugins\n\n"
-                "stale plugin summary"
+                "stale plugin summary\n"
+                f"{PLUGIN_SUMMARY_SENTINEL_END}"
             )
         )
         fake_context.restore = AsyncMock()

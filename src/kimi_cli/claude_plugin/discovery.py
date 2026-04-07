@@ -16,6 +16,9 @@ from .spec import (
     ClaudePluginRuntime,
 )
 
+PLUGIN_SUMMARY_SENTINEL_BEGIN = "<!-- KIMI_PLUGIN_CAPABILITY_SUMMARY_BEGIN -->"
+PLUGIN_SUMMARY_SENTINEL_END = "<!-- KIMI_PLUGIN_CAPABILITY_SUMMARY_END -->"
+
 
 def get_claude_plugins_dir() -> Path:
     """Return the default auto-discovery directory for Claude-compatible plugins.
@@ -381,10 +384,15 @@ def build_plugin_capability_summary(
     if not sections:
         return ""
 
-    return (
+    body = (
         "## Loaded Claude-compatible plugins\n\n"
         "The following plugin capabilities are available. "
         "For skills, read the SKILL.md file to get detailed instructions. "
         "For commands, tell the user the slash-command invocation form.\n\n"
         + "\n\n".join(sections)
+    )
+    return (
+        PLUGIN_SUMMARY_SENTINEL_BEGIN + "\n"
+        + body + "\n"
+        + PLUGIN_SUMMARY_SENTINEL_END
     )
