@@ -5,6 +5,7 @@ import contextlib
 import importlib
 import inspect
 import json
+import time
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
@@ -58,6 +59,10 @@ _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default
 
 def set_session_id(sid: str) -> None:
     _current_session_id.set(sid)
+
+
+def get_session_id() -> str:
+    return _current_session_id.get()
 
 
 def _get_session_id() -> str:
@@ -176,14 +181,14 @@ class KimiToolset:
                         )
 
                 # --- Execute tool ---
+                t0 = time.monotonic()
                 try:
                     ret = await tool.call(arguments)
                 except Exception as e:
-                    logger.error(
-                        "Tool execution failed: {tool_name} (call_id={call_id}): {error}",
+                    logger.exception(
+                        "Tool execution failed: {tool_name} (call_id={call_id})",
                         tool_name=tool_call.function.name,
                         call_id=tool_call.id,
-                        error=e,
                     )
                     # --- PostToolUseFailure (fire-and-forget) ---
                     _hook_task = asyncio.create_task(
@@ -207,6 +212,14 @@ class KimiToolset:
                         tool_call_id=tool_call.id,
                         return_value=ToolRuntimeError(str(e)),
                     )
+
+                tool_elapsed = time.monotonic() - t0
+                logger.info(
+                    "Tool {tool_name} completed in {elapsed:.1f}s (call_id={call_id})",
+                    tool_name=tool_call.function.name,
+                    elapsed=tool_elapsed,
+                    call_id=tool_call.id,
+                )
 
                 # --- PostToolUse (fire-and-forget) ---
                 _hook_task = asyncio.create_task(

@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import io
+import json
+import platform
 import time
 import zipfile
 from datetime import UTC, datetime
@@ -22,6 +24,8 @@ if TYPE_CHECKING:
 
 # Include global log files whose last modification is within this window.
 _LOG_RETENTION_SECONDS = 2 * 24 * 60 * 60  # 2 days
+# Maximum total size of log files to bundle in an export archive.
+_MAX_LOG_BYTES = 100 * 1024 * 1024  # 100 MB
 
 cli = typer.Typer(help="Export session data.")
 
@@ -146,18 +150,21 @@ def _collect_recent_log_files(session_dir: Path) -> list[Path]:
         session_cutoff = session_start - _LOG_RETENTION_SECONDS
         session_upper = (session_end or session_start) + _LOG_RETENTION_SECONDS
 
-    result: list[tuple[float, Path]] = []
+    # Collect candidates with (mtime, size, path)
+    candidates: list[tuple[float, int, Path]] = []
     for f in log_dir.iterdir():
         if not f.is_file() or not f.name.startswith("kimi.") or not f.name.endswith(".log"):
             continue
         try:
-            mtime = f.stat().st_mtime
+            st = f.stat()
+            mtime = st.st_mtime
+            size = st.st_size
         except OSError:
             continue
 
         # Group 2: near export time
         if mtime >= export_cutoff:
-            result.append((mtime, f))
+            candidates.append((mtime, size, f))
             continue
 
         # Group 1: near session active period
@@ -167,10 +174,49 @@ def _collect_recent_log_files(session_dir: Path) -> list[Path]:
             and mtime >= session_cutoff
             and mtime <= session_upper
         ):
-            result.append((mtime, f))
+            candidates.append((mtime, size, f))
+
+    # Prioritize files closest to session_end (most diagnostic value),
+    # falling back to recency when session time is unavailable.
+    anchor = session_end or session_start or now
+    candidates.sort(key=lambda item: abs(item[0] - anchor))
+
+    # Apply size cap — keep highest-priority files first
+    result: list[tuple[float, Path]] = []
+    total_size = 0
+    for mtime, size, path in candidates:
+        if total_size + size > _MAX_LOG_BYTES:
+            break
+        result.append((mtime, path))
+        total_size += size
 
     result.sort(key=lambda item: item[0])
     return [path for _, path in result]
+
+
+def _build_manifest(session_id: str, session_dir: Path) -> dict[str, str | None]:
+    """Build a manifest dict with system and session diagnostics.
+
+    Best-effort: never raises — returns a minimal manifest on failure.
+    """
+    manifest: dict[str, str | None] = {"session_id": session_id}
+    try:
+        from kimi_cli.constant import get_version
+
+        manifest["exported_at"] = datetime.now(UTC).isoformat()
+        manifest["kimi_cli_version"] = get_version()
+        manifest["python_version"] = platform.python_version()
+        manifest["os"] = f"{platform.system()} {platform.release()}"
+        manifest["platform"] = platform.machine()
+
+        first_ts, last_ts = _session_time_range(session_dir)
+        if first_ts is not None:
+            manifest["session_first_activity"] = datetime.fromtimestamp(first_ts, UTC).isoformat()
+        if last_ts is not None:
+            manifest["session_last_activity"] = datetime.fromtimestamp(last_ts, UTC).isoformat()
+    except Exception:
+        pass
+    return manifest
 
 
 def _format_message_timestamp(timestamp: float | None) -> str:
@@ -235,8 +281,8 @@ def export(
             typer.echo(f"Error: session '{session_id}' not found.", err=True)
             raise typer.Exit(code=1)
 
-    # Collect files
-    files = sorted(f for f in session_dir.iterdir() if f.is_file())
+    # Collect all files in the session directory (including subagents/ and tasks/)
+    files = sorted(f for f in session_dir.rglob("*") if f.is_file())
     if not files:
         typer.echo(f"Error: session '{session_id}' has no files.", err=True)
         raise typer.Exit(code=1)
@@ -248,11 +294,16 @@ def export(
     # Collect recent global log files for diagnostics
     log_files = _collect_recent_log_files(session_dir)
 
+    # Build manifest with system diagnostics
+    manifest = _build_manifest(session_id, session_dir)
+
     # Create ZIP
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
         for file_path in files:
-            zf.write(file_path, arcname=file_path.name)
+            with contextlib.suppress(OSError):
+                zf.write(file_path, arcname=str(file_path.relative_to(session_dir)))
         for log_path in log_files:
             with contextlib.suppress(OSError):
                 zf.write(log_path, arcname=f"logs/{log_path.name}")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -721,11 +722,14 @@ class KimiSoul:
                 back_to_the_future = e
             except Exception as e:
                 # any other exception should interrupt the step
+                req_id = getattr(e, "request_id", None)
                 logger.error(
-                    "Agent step {step_no} failed: {error_type}: {error}",
+                    "Agent step {step_no} failed: {error_type}: {error}"
+                    + (" (request_id={request_id})" if req_id else ""),
                     step_no=step_no,
                     error_type=type(e).__name__,
                     error=e,
+                    request_id=req_id,
                 )
                 wire_send(StepInterrupted())
                 # --- StopFailure hook ---
@@ -846,14 +850,22 @@ class KimiSoul:
                 chat_provider=chat_provider,
             )
 
+        t0 = time.monotonic()
         result = await _kosong_step_with_retry()
-        logger.debug("Got step result: {result}", result=result)
-        status_update = StatusUpdate(
-            token_usage=result.usage, message_id=result.id, plan_mode=self._plan_mode
+        llm_elapsed = time.monotonic() - t0
+        usage = result.usage
+        logger.info(
+            "LLM step completed in {elapsed:.1f}s (input={input_tokens}, output={output_tokens})",
+            elapsed=llm_elapsed,
+            input_tokens=usage.input if usage else "?",
+            output_tokens=usage.output if usage else "?",
         )
-        if result.usage is not None:
+        status_update = StatusUpdate(
+            token_usage=usage, message_id=result.id, plan_mode=self._plan_mode
+        )
+        if usage is not None:
             # mark the token count for the context before the step
-            await self._context.update_token_count(result.usage.input)
+            await self._context.update_token_count(usage.input)
             snap = self.status
             status_update.context_usage = snap.context_usage
             status_update.context_tokens = snap.context_tokens

@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from kosong.chat_provider import APIStatusError, ChatProviderError
+from kosong.chat_provider import (
+    APIConnectionError,
+    APIEmptyResponseError,
+    APIStatusError,
+    APITimeoutError,
+    ChatProviderError,
+)
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -720,8 +726,29 @@ class Shell:
                 console.print("[red]Membership expired, please renew your plan[/red]")
             elif isinstance(e, APIStatusError) and e.status_code == 403:
                 console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
+            elif isinstance(e, APIConnectionError):
+                console.print(
+                    f"[red]Network connection failed: {e}[/red]\n"
+                    "[dim]Please check your network and try again.[/dim]"
+                )
+            elif isinstance(e, APITimeoutError):
+                console.print(
+                    f"[red]Request timed out: {e}[/red]\n"
+                    "[dim]The server may be slow or unreachable. Please try again later.[/dim]"
+                )
+            elif isinstance(e, APIEmptyResponseError):
+                console.print(
+                    "[red]The server returned an empty response.[/red]\n"
+                    "[dim]This is usually a temporary issue. Please try again.[/dim]"
+                )
             else:
                 console.print(f"[red]LLM provider error: {e}[/red]")
+            if not isinstance(e, APIStatusError) or e.status_code not in (401, 402, 403):
+                console.print(
+                    "[dim]If this persists, run [bold]kimi export[/bold] and send the "
+                    "exported data to support for assistance. "
+                    "Please do not share the exported file publicly.[/dim]"
+                )
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
             console.print(f"[yellow]{e}[/yellow]")
@@ -730,7 +757,11 @@ class Shell:
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")
-            console.print(f"[red]Unexpected error: {e}[/red]")
+            console.print(
+                f"[red]Unexpected error: {e}[/red]\n"
+                "[dim]Run [bold]kimi export[/bold] and send the exported data to support "
+                "for assistance. Please do not share the exported file publicly.[/dim]"
+            )
             raise  # re-raise unknown error
         finally:
             self._maybe_present_pending_approvals()

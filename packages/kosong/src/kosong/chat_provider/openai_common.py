@@ -80,7 +80,8 @@ def convert_error(error: OpenAIError | httpx.HTTPError) -> ChatProviderError:
     # misclassification (e.g. APITimeoutError inherits APIConnectionError).
     match error:
         case openai.APIStatusError():
-            return APIStatusError(error.status_code, error.message)
+            req_id = error.response.headers.get("x-request-id")
+            return APIStatusError(error.status_code, error.message, request_id=req_id)
         case openai.APITimeoutError():
             return APITimeoutError(error.message)
         case openai.APIConnectionError():

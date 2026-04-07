@@ -209,8 +209,8 @@ class TestToolExecutionLogging:
             result = toolset.handle(tool_call)
             if isinstance(result, asyncio.Task):
                 await result
-            mock_logger.error.assert_called()
-            assert "FailingTool" in str(mock_logger.error.call_args)
+            mock_logger.exception.assert_called()
+            assert "FailingTool" in str(mock_logger.exception.call_args)
 
     async def test_toolset_json_parse_error_logged(self):
         """When tool call arguments are invalid JSON, toolset should log a WARNING."""
