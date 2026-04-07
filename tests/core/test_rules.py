@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-import yaml
 
 from kimi_cli.rules.discovery import discover_rule_files, resolve_rules_roots
 from kimi_cli.rules.injector import RulesInjector
-from kimi_cli.rules.models import Rule, RuleMetadata, RuleState, RulesStats
+from kimi_cli.rules.models import Rule, RuleMetadata, RuleState
 from kimi_cli.rules.parser import parse_frontmatter, parse_rule_file, should_apply_rule
 from kimi_cli.rules.registry import RulesRegistry
 from kimi_cli.rules.state import RulesStateManager
@@ -243,6 +242,115 @@ class TestRulesStateManager:
 
         assert state_manager.get_state("common/style") is None
         assert state_manager.get_state("python/style") is None
+
+    async def test_level_separation(self, state_manager: RulesStateManager, tmp_path: Path):
+        """States are saved to separate files based on rule level."""
+        from pathlib import Path
+        
+        # Create .agents directory for project-level state
+        agents_dir = Path(tmp_path / ".agents")
+        agents_dir.mkdir(exist_ok=True)
+
+        # Set states with different levels
+        builtin_state = RuleState(enabled=True, pinned=True)
+        user_state = RuleState(enabled=True, pinned=False)
+        project_state = RuleState(enabled=False, pinned=True)
+
+        state_manager.set_state("builtin/rule", builtin_state, level="builtin")
+        state_manager.set_state("user/custom", user_state, level="user")
+        state_manager.set_state("project/local", project_state, level="project")
+
+        await state_manager.save()
+
+        # Verify user-level file contains builtin and user rules
+        assert state_manager.user_state_path.exists()
+        user_content = state_manager.user_state_path.read_text()
+        assert "builtin/rule" in user_content
+        assert "user/custom" in user_content
+        assert "project/local" not in user_content  # Project rule not in user file
+
+        # Verify project-level file contains only project rules
+        project_path = tmp_path / ".agents" / "rules.state.toml"
+        assert project_path.exists()
+        project_content = project_path.read_text()
+        assert "project/local" in project_content
+        assert "builtin/rule" not in project_content  # Builtin rule not in project file
+        assert "user/custom" not in project_content  # User rule not in project file
+
+    async def test_project_state_priority(self, state_manager: RulesStateManager, tmp_path: Path):
+        """Project-level states take precedence over user-level states."""
+        from pathlib import Path
+        
+        # Create .agents directory
+        agents_dir = Path(tmp_path / ".agents")
+        agents_dir.mkdir(exist_ok=True)
+
+        # Set same rule in both levels (user disabled, project enabled)
+        state_manager.set_state("shared/rule", RuleState(enabled=False), level="user")
+        state_manager.set_state("shared/rule", RuleState(enabled=True), level="project")
+
+        # Project-level should take precedence
+        loaded_state = state_manager.get_state("shared/rule")
+        assert loaded_state is not None
+        assert loaded_state.enabled is True  # Project level wins
+
+        # After clearing project states, should fall back to user state
+        state_manager.clear_states(level="project")
+        loaded_state = state_manager.get_state("shared/rule")
+        assert loaded_state is not None
+        assert loaded_state.enabled is False  # Falls back to user level (disabled)
+
+    async def test_empty_states_delete_files(self, state_manager: RulesStateManager, tmp_path: Path):
+        """Empty states should delete state files, not leave stale data."""
+        from pathlib import Path
+        
+        # Create .agents directory for project-level state
+        agents_dir = Path(tmp_path / ".agents")
+        agents_dir.mkdir(exist_ok=True)
+
+        # Set some states and save
+        state_manager.set_state("user/rule", RuleState(enabled=False), level="user")
+        state_manager.set_state("project/rule", RuleState(enabled=True), level="project")
+        await state_manager.save()
+
+        # Verify files exist
+        assert state_manager.user_state_path.exists()
+        assert (tmp_path / ".agents" / "rules.state.toml").exists()
+
+        # Clear all states and save again
+        state_manager.clear_states()
+        await state_manager.save()
+
+        # Files should be deleted (no empty states to persist)
+        assert not state_manager.user_state_path.exists()
+        assert not (tmp_path / ".agents" / "rules.state.toml").exists()
+
+    async def test_delete_state_files(self, state_manager: RulesStateManager, tmp_path: Path):
+        """delete_state_files should remove state files from disk."""
+        from pathlib import Path
+        
+        # Create .agents directory
+        agents_dir = Path(tmp_path / ".agents")
+        agents_dir.mkdir(exist_ok=True)
+
+        # Set states and save
+        state_manager.set_state("user/rule", RuleState(), level="user")
+        state_manager.set_state("project/rule", RuleState(), level="project")
+        await state_manager.save()
+
+        # Verify files exist
+        assert state_manager.user_state_path.exists()
+        assert (tmp_path / ".agents" / "rules.state.toml").exists()
+
+        # Delete only user state file
+        await state_manager.delete_state_files(level="user")
+        assert not state_manager.user_state_path.exists()
+        assert (tmp_path / ".agents" / "rules.state.toml").exists()
+
+        # Delete all state files
+        await state_manager.delete_state_files()
+        assert not (tmp_path / ".agents" / "rules.state.toml").exists()
+
 class TestRulesRegistry:
     """Test rules registry."""
 
@@ -352,8 +460,8 @@ class TestRulesRegistry:
         assert state.pinned is True
         assert state.last_modified is not None
 
-        # Check persistence was called
-        registry.state_manager.set_state.assert_called_once_with("test/rule", state)
+        # Check persistence was called with level info
+        registry.state_manager.set_state.assert_called_once_with("test/rule", state, level="builtin")
 
     def test_get_stats(self, registry: RulesRegistry):
         """Get statistics about rules."""
