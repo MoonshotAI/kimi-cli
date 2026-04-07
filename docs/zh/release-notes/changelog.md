@@ -4,6 +4,12 @@
 
 ## 未发布
 
+- Shell：新增 `/btw` 侧问命令——在 streaming 期间提出快速问题，不打断主对话；使用相同的系统提示词和工具定义以对齐 Prompt 缓存；响应在可滚动的模态面板中显示，支持流式输出
+- Shell：重新设计底部动态区——将单体 `visualize.py`（1865 行）拆分为模块化包（`visualize/`），包含输入路由、交互式提示、审批/提问面板和 btw 模态面板等独立模块；通过 `classify_input()` 统一输入语义，实现一致的命令路由
+- Shell：新增 streaming 期间的排队和 steer 双通道输入——Enter 将消息排队，在当前轮次结束后发送；Ctrl+S 将消息立即注入到正在运行的轮次上下文中；排队消息在提示区域显示计数指示器，可通过 ↑ 键召回编辑
+- Shell：新增 `BtwBegin`/`BtwEnd` Wire 事件，支持跨客户端侧问
+- Shell：改进 spinner 中的耗时格式——超过 60 秒的时长现在显示为 `"1m 23s"` 而非 `"83s"`；低于 1 秒的显示为 `"<1s"`
+- Shell：修复 btw 面板中的 Rich markup 注入问题——包含 `[`/`]` 字符的用户问题现在会被转义，防止 spinner 文本和面板标题出现渲染错误或样式注入
 - Shell：修复 Markdown 渲染中行内代码和代码块出现黑色背景的问题——`NEUTRAL_MARKDOWN_THEME` 现在将所有 Rich 默认的 `markdown.*` 样式覆盖为 `"none"`，防止 Rich 内置的 `"cyan on black"` 在非黑色背景终端上泄露
 
 ## 1.30.0 (2026-04-02)

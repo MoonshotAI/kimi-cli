@@ -11,6 +11,12 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add `/btw` side question command — ask a quick question during streaming without interrupting the main conversation; uses the same system prompt and tool definitions for prompt cache alignment; responses display in a scrollable modal panel with streaming support
+- Shell: Redesign bottom dynamic area — split the monolithic `visualize.py` (1865 lines) into a modular package (`visualize/`) with dedicated modules for input routing, interactive prompts, approval/question panels, and btw modal; unify input semantics with `classify_input()` for consistent command routing
+- Shell: Add queue and steer dual-channel input during streaming — Enter queues messages for delivery after the current turn; Ctrl+S injects messages immediately into the running turn's context; queued messages display in the prompt area with count indicator and can be recalled with ↑
+- Shell: Add `BtwBegin`/`BtwEnd` wire events for cross-client side question support
+- Shell: Improve elapsed time formatting in spinners — durations over 60 seconds now display as `"1m 23s"` instead of `"83s"`; sub-second durations show `"<1s"`
+- Shell: Fix Rich markup injection in btw panel — user questions containing `[`/`]` characters are now escaped to prevent broken rendering or style injection in spinner text and panel titles
 - Shell: Fix black background on inline code and code blocks in Markdown rendering — `NEUTRAL_MARKDOWN_THEME` now overrides all Rich default `markdown.*` styles to `"none"`, preventing Rich's built-in `"cyan on black"` from leaking through on non-black terminals
 
 ## 1.30.0 (2026-04-02)
