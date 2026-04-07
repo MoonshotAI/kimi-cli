@@ -205,8 +205,8 @@ class ApprovalRequestPanel:
 
         return Panel(
             Group(*lines),
-            border_style="bold yellow",
-            title="[bold yellow]\u26a0 ACTION REQUIRED[/bold yellow]",
+            border_style="yellow",
+            title="[bold]approval[/bold]",
             title_align="left",
             padding=(0, 1),
         )

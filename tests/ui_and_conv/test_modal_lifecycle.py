@@ -744,6 +744,134 @@ async def test_compose_approval_before_question_when_both_present() -> None:
 
 
 # ---------------------------------------------------------------------------
+# compose_agent_output / compose_interactive_panels split
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_compose_agent_output_excludes_panels() -> None:
+    """compose_agent_output() must NOT contain approval/question panels."""
+    from rich.panel import Panel
+
+    view = _LiveView(StatusUpdate())
+    view.request_approval(_make_approval_request())
+    view.request_question(_make_question_request())
+
+    blocks = view.compose_agent_output()
+    for block in blocks:
+        assert not isinstance(block, Panel), (
+            "compose_agent_output() should not include Panel renderables "
+            "(approval/question panels belong in compose_interactive_panels)"
+        )
+
+
+@pytest.mark.asyncio
+async def test_compose_interactive_panels_includes_both() -> None:
+    """compose_interactive_panels() returns approval + question panels."""
+    from rich.panel import Panel
+
+    view = _LiveView(StatusUpdate())
+    view.request_approval(_make_approval_request())
+    view.request_question(_make_question_request())
+
+    panels = view.compose_interactive_panels()
+    assert len(panels) == 2
+    for p in panels:
+        assert isinstance(p, Panel)
+
+
+@pytest.mark.asyncio
+async def test_compose_interactive_panels_empty_when_no_panels() -> None:
+    """compose_interactive_panels() returns empty list when no panels."""
+    view = _LiveView(StatusUpdate())
+    assert view.compose_interactive_panels() == []
+
+
+@pytest.mark.asyncio
+async def test_compose_equals_panels_plus_agent_output() -> None:
+    """compose() must be the concatenation of interactive panels + agent output."""
+    from rich.console import Group
+
+    from kimi_cli.wire.types import ToolCall
+
+    view = _LiveView(StatusUpdate())
+    view.request_approval(_make_approval_request())
+    for i in range(2):
+        tc = ToolCall(
+            id=f"tc-{i}",
+            function=ToolCall.FunctionBody(name=f"Tool{i}", arguments="{}"),
+        )
+        view.append_tool_call(tc)
+
+    panels = view.compose_interactive_panels()
+    agent_blocks = view.compose_agent_output()
+    full = view.compose(include_status=False)
+
+    assert isinstance(full, Group)
+    all_renderables = list(full._renderables)
+    expected = panels + agent_blocks
+    assert len(all_renderables) == len(expected), (
+        f"compose() has {len(all_renderables)} items but panels+agent has {len(expected)}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_compose_agent_output_includes_spinners_and_tool_calls() -> None:
+    """compose_agent_output() should include spinners and tool call blocks."""
+    from rich.spinner import Spinner
+
+    from kimi_cli.wire.types import ToolCall
+
+    view = _LiveView(StatusUpdate())
+    view._mooning_spinner = Spinner("moon", "thinking")
+
+    blocks = view.compose_agent_output()
+    assert any(isinstance(b, Spinner) for b in blocks), "Should include spinner"
+
+    view._mooning_spinner = None
+    tc = ToolCall(id="tc-1", function=ToolCall.FunctionBody(name="ReadFile", arguments="{}"))
+    view.append_tool_call(tc)
+
+    blocks = view.compose_agent_output()
+    assert len(blocks) >= 1, "Should include tool call block"
+
+
+@pytest.mark.asyncio
+async def test_render_agent_status_excludes_panels_in_interactive() -> None:
+    """In interactive mode, render_agent_status() must not include panels.
+
+    This is the core test for the double-rendering fix: when a modal is
+    active, the panel is rendered by the modal in Layer 2, NOT by
+    render_agent_status() in Layer 1.
+    """
+    from kimi_cli.ui.shell.visualize import _PromptLiveView
+
+    view = object.__new__(_PromptLiveView)
+    view._turn_ended = False
+    view._btw_spinner = None
+    view._btw_question = None
+    view._mcp_loading_spinner = None
+    view._mooning_spinner = None
+    view._compacting_spinner = None
+    view._current_content_block = None
+    view._tool_call_blocks = {}
+    view._live_notification_blocks = cast(
+        Any, type("deque", (), {"__iter__": lambda self: iter([])})()
+    )
+
+    # Add approval panel to the view (as if wire event arrived)
+    view._current_approval_request_panel = cast(
+        Any, type("_FakePanel", (), {"render": lambda self, **kw: "APPROVAL_PANEL"})()
+    )
+
+    rendered = view.render_agent_status(80)
+    assert "APPROVAL_PANEL" not in rendered.value, (
+        "render_agent_status() must NOT render approval panels — "
+        "that is the modal delegate's responsibility in Layer 2"
+    )
+
+
+# ---------------------------------------------------------------------------
 # External message handling
 # ---------------------------------------------------------------------------
 
@@ -1133,7 +1261,7 @@ async def test_clear_active_approval_sink_requeues_pending_requests(
     assert len(shell._pending_approval_requests) == 0  # type: ignore[attr-defined]
 
     # Now the live view closes
-    shell._clear_active_approval_sink()  # type: ignore[attr-defined]
+    shell._clear_active_view()  # type: ignore[attr-defined]
 
     # The pending request should have been re-queued
     pending_ids = [r.id for r in shell._pending_approval_requests]  # type: ignore[attr-defined]
@@ -1142,5 +1270,5 @@ async def test_clear_active_approval_sink_requeues_pending_requests(
     # Already-resolved requests should NOT be re-queued
     runtime.approval_runtime.resolve("sink-r1", "approve")
     shell._pending_approval_requests.clear()  # type: ignore[attr-defined]
-    shell._clear_active_approval_sink()  # type: ignore[attr-defined]
+    shell._clear_active_view()  # type: ignore[attr-defined]
     assert len(shell._pending_approval_requests) == 0  # type: ignore[attr-defined]

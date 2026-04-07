@@ -433,6 +433,9 @@ class KimiSoul:
         """Drain the steer queue and inject as follow-up user messages.
 
         Returns True if any steers were consumed.
+
+        Note: /btw is intercepted at the UI layer (``classify_input``) before
+        reaching the steer queue, so it never appears here.
         """
         consumed = False
         while not self._steer_queue.empty():

@@ -202,6 +202,26 @@ class PlanDisplay(BaseModel):
     """The path to the plan file for reference."""
 
 
+class BtwBegin(BaseModel):
+    """Indicates that a side question (/btw) has started processing."""
+
+    id: str
+    """Unique ID to pair with the corresponding BtwEnd."""
+    question: str
+    """The user's original side question text."""
+
+
+class BtwEnd(BaseModel):
+    """Indicates that a side question (/btw) has finished."""
+
+    id: str
+    """Unique ID matching the BtwBegin."""
+    response: str | None = None
+    """The LLM's response text, or None if it failed."""
+    error: str | None = None
+    """Error message if the side question failed."""
+
+
 class SubagentEvent(BaseModel):
     """
     An event from a subagent.
@@ -497,6 +517,8 @@ type Event = (
     | ApprovalResponse
     | SubagentEvent
     | PlanDisplay
+    | BtwBegin
+    | BtwEnd
 )
 """Any event, including control flow and content/tooling events."""
 
@@ -643,6 +665,8 @@ __all__ = [
     "ApprovalResponse",
     "SubagentEvent",
     "PlanDisplay",
+    "BtwBegin",
+    "BtwEnd",
     "ApprovalRequest",
     "ToolCallRequest",
     "QuestionOption",
