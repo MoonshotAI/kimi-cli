@@ -721,11 +721,19 @@ class Shell:
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             if isinstance(e, APIStatusError) and e.status_code == 401:
-                console.print("[red]Authorization failed, please check your login status[/red]")
+                console.print(
+                    "[red]Authorization failed, please check your login status[/red]\n"
+                    f"[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIStatusError) and e.status_code == 402:
-                console.print("[red]Membership expired, please renew your plan[/red]")
+                console.print(
+                    f"[red]Membership expired, please renew your plan[/red]\n[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIStatusError) and e.status_code == 403:
-                console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
+                console.print(
+                    "[red]Quota exceeded, please upgrade your plan or retry later[/red]\n"
+                    f"[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIConnectionError):
                 console.print(
                     f"[red]Network connection failed: {e}[/red]\n"
