@@ -536,6 +536,45 @@ class TestBtwWireTypes:
 
 
 # ---------------------------------------------------------------------------
+# Btw markup escape
+# ---------------------------------------------------------------------------
+
+
+class TestBtwMarkupEscape:
+    """Rich markup characters in btw questions must be escaped to prevent rendering errors."""
+
+    def test_rich_escape_applied_to_btw_spinner(self):
+        """BtwBegin spinner text should escape Rich markup in question."""
+        from rich.markup import escape as rich_escape
+
+        question = "What is [bold]foo[/bold]?"
+        truncated = (question[:40] + "...") if len(question) > 40 else question
+        # After escape, brackets should be literal
+        escaped = rich_escape(truncated)
+        assert "\\[bold]" in escaped
+        assert "\\[/bold]" in escaped
+
+    def test_rich_escape_applied_to_btw_panel_title(self):
+        """BtwEnd panel title should escape Rich markup from question."""
+        from rich.markup import escape as rich_escape
+
+        question = "Is [red]this[/red] safe?"
+        truncated_q = (question[:50] + "...") if len(question) > 50 else question
+        title = f"[dim]btw: {rich_escape(truncated_q)}[/dim]"
+        # The [red] inside should be escaped, but [dim] wrapper should remain
+        assert "\\[red]" in title
+        assert "\\[/red]" in title
+        assert title.startswith("[dim]")
+
+    def test_rich_escape_no_change_for_normal_text(self):
+        """Normal text without brackets passes through unchanged."""
+        from rich.markup import escape as rich_escape
+
+        question = "How does Python work?"
+        assert rich_escape(question) == question
+
+
+# ---------------------------------------------------------------------------
 # Steer dedup (text-based comparison)
 # ---------------------------------------------------------------------------
 

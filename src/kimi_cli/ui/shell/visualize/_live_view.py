@@ -17,6 +17,7 @@ from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
 from rich.console import Group, RenderableType
 from rich.live import Live
+from rich.markup import escape as rich_escape
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
@@ -400,7 +401,7 @@ class _LiveView:
             case BtwBegin(question=question):
                 truncated = (question[:40] + "...") if len(question) > 40 else question
                 self._btw_question = question
-                self._btw_spinner = Spinner("dots", f"Side question: {truncated}")
+                self._btw_spinner = Spinner("dots", f"Side question: {rich_escape(truncated)}")
                 self.refresh_soon()
             case BtwEnd(response=response, error=error):
                 self._btw_spinner = None
@@ -411,7 +412,7 @@ class _LiveView:
                     console.print(
                         Panel(
                             Markdown(response),
-                            title=f"[dim]btw: {truncated_q}[/dim]",
+                            title=f"[dim]btw: {rich_escape(truncated_q)}[/dim]",
                             border_style="grey50",
                             padding=(0, 1),
                         )
