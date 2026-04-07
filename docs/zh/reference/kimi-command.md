@@ -185,7 +185,7 @@ kimi logout
 
 ### `kimi export`
 
-将会话数据导出为 ZIP 文件。ZIP 中包含会话目录下的所有文件（`context.jsonl`、`wire.jsonl`、`state.json` 等）。
+将会话数据导出为 ZIP 文件。ZIP 中包含会话目录下的所有文件（`context.jsonl`、`wire.jsonl`、`state.json` 等）及相关的诊断日志。
 
 ```sh
 kimi export [<session_id>] [-o <output_path>] [--yes]

@@ -15,6 +15,7 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock, ShellDisplayBlock
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.environment import Environment
+from kimi_cli.utils.logging import logger
 from kimi_cli.utils.subprocess_env import get_noninteractive_env
 
 MAX_FOREGROUND_TIMEOUT = 5 * 60
@@ -121,6 +122,16 @@ class Shell(CallableTool2[Params]):
                 f"Command killed by timeout ({params.timeout}s)",
                 brief=f"Killed by timeout ({params.timeout}s)",
             )
+        except Exception as e:
+            logger.error(
+                "Shell command execution failed: {command}: {error}",
+                command=params.command,
+                error=e,
+            )
+            return builder.error(
+                f"Command execution failed: {e}",
+                brief="Execution failed",
+            )
 
     async def _run_in_background(self, params: Params) -> ToolReturnValue:
         tool_call = get_current_tool_call_or_none()
@@ -155,6 +166,11 @@ class Shell(CallableTool2[Params]):
                 cwd=str(self._runtime.session.work_dir),
             )
         except Exception as exc:
+            logger.error(
+                "Failed to start background shell task: {command}: {error}",
+                command=params.command,
+                error=exc,
+            )
             builder = ToolResultBuilder()
             return builder.error(f"Failed to start background task: {exc}", brief="Start failed")
 
