@@ -722,7 +722,8 @@ class Shell:
             logger.exception("LLM provider error:")
             if isinstance(e, APIStatusError) and e.status_code == 401:
                 console.print(
-                    "[red]Authorization failed, please check your login status[/red]\n"
+                    "[red]Authorization failed. Your session may have expired.[/red]\n"
+                    "[dim]Type [bold]/login[/bold] to re-authenticate.[/dim]\n"
                     f"[dim]Server: {e}[/dim]"
                 )
             elif isinstance(e, APIStatusError) and e.status_code == 402:
@@ -759,7 +760,10 @@ class Shell:
                 )
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            console.print(f"[yellow]{e}[/yellow]")
+            console.print(
+                f"[yellow]{e}[/yellow]\n"
+                "[dim]Send another message to continue where it left off.[/dim]"
+            )
         except RunCancelled:
             logger.info("Cancelled by user")
             console.print("[red]Interrupted by user[/red]")

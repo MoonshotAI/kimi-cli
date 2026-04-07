@@ -852,7 +852,11 @@ def kimi(
 
             log_path = get_share_dir() / "logs" / "kimi.log"
             # In non-debug mode, print a concise error and point users to logs.
-            _emit_fatal_error(f"{exc}\nSee logs: {log_path}")
+            _emit_fatal_error(
+                f"{exc}\n"
+                f"See logs: {log_path}\n"
+                "Run with --debug for full traceback, or run kimi export to share diagnostics."
+            )
         raise typer.Exit(code=1) from exc
     if switch_target in ("web", "vis"):
         from kimi_cli.utils.logging import restore_stderr
