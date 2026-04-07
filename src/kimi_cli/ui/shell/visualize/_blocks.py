@@ -24,6 +24,7 @@ from rich.text import Text
 from kimi_cli.soul import format_context_status, format_token_count
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
+from kimi_cli.utils.datetime import format_elapsed
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.diff_render import (
     collect_diff_hunks,
@@ -252,7 +253,7 @@ class _ContentBlock:
     def _compose_spinner(self) -> Spinner:
         elapsed = time.monotonic() - self._start_time
         label = "Thinking..." if self.is_think else "Composing..."
-        elapsed_str = f"{int(elapsed)}s" if elapsed >= 1 else "<1s"
+        elapsed_str = format_elapsed(elapsed)
         count_str = f"{format_token_count(int(self._token_count))} tokens"
 
         self._spinner.text = Text.assemble(

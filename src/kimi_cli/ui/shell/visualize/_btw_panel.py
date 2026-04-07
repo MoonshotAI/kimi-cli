@@ -12,6 +12,7 @@ Renders the /btw overlay that replaces the prompt line, with:
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable
 
 from prompt_toolkit.formatted_text import ANSI
@@ -23,6 +24,7 @@ from rich.text import Text
 
 from kimi_cli.ui.shell.console import render_to_ansi
 from kimi_cli.ui.shell.visualize._blocks import Markdown
+from kimi_cli.utils.datetime import format_elapsed
 
 # Regex patterns for extracting Rich Panel left/right borders from ANSI lines.
 # Left: ANSI codes + │ + ANSI codes + space
@@ -96,14 +98,13 @@ class _BtwModalDelegate:
     # -- Title ---------------------------------------------------------------
 
     def _build_title(self) -> str:
-        import time
-
         if self._is_loading:
-            elapsed = int(time.monotonic() - self._start_time) if self._start_time else 0
+            elapsed = time.monotonic() - self._start_time if self._start_time else 0.0
+            elapsed_str = format_elapsed(elapsed)
             char_count = len(self._streaming_text)
             if char_count > 0:
-                return f"[bold]btw[/bold] [dim]· answering {elapsed}s · {char_count} chars[/dim]"
-            return f"[bold]btw[/bold] [dim]· answering {elapsed}s[/dim]"
+                return f"[bold]btw[/bold] [dim]· answering {elapsed_str} · {char_count} chars[/dim]"
+            return f"[bold]btw[/bold] [dim]· answering {elapsed_str}[/dim]"
         if self._error:
             return "[bold]btw[/bold] [dim]· error[/dim]"
         return "[bold]btw[/bold]"
