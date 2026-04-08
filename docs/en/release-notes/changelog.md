@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Fix agent loop silently stopping when model exhausts token budget during thinking phase — detect think-only responses (reasoning content with no assistant text or tool calls) and automatically continue the loop so the model can produce its final answer
 - Shell: Add directory scope toggle to `/sessions` picker — press `Ctrl+A` to switch between showing sessions for the current working directory only or across all known directories; uses a new full-screen session picker UI with header scope indicator and footer hint bar
 - Shell: Add `/btw` side question command — ask a quick question during streaming without interrupting the main conversation; uses the same system prompt and tool definitions for prompt cache alignment; responses display in a scrollable modal panel with streaming support
 - Shell: Redesign bottom dynamic area — split the monolithic `visualize.py` (1865 lines) into a modular package (`visualize/`) with dedicated modules for input routing, interactive prompts, approval/question panels, and btw modal; unify input semantics with `classify_input()` for consistent command routing
