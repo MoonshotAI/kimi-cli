@@ -33,6 +33,7 @@ from kimi_cli.ui.shell.echo import render_user_echo_text
 from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
+    CwdLostError,
     PromptMode,
     UserInput,
     toast,
@@ -205,6 +206,37 @@ class Shell:
         """Get all available slash commands, including shell-level and soul-level commands."""
         return self._available_slash_commands
 
+    def _print_cwd_lost_crash(self) -> None:
+        """Print a crash report when the working directory is no longer accessible."""
+        runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
+        session_id = runtime.session.id if runtime else "unknown"
+        work_dir = str(runtime.session.work_dir) if runtime else "unknown"
+
+        info = Table.grid(padding=(0, 1))
+        info.add_row("Session:", session_id)
+        info.add_row("Working directory:", work_dir)
+
+        panel = Panel(
+            Group(
+                Text(
+                    "The working directory is no longer accessible "
+                    "(external drive unplugged, directory deleted, or filesystem unmounted).",
+                ),
+                Text(""),
+                info,
+                Text(""),
+                Text(
+                    "Your conversation history has been saved. "
+                    "Restart kimi in a valid directory to continue.",
+                    style="dim",
+                ),
+            ),
+            title="[bold red]Session crashed[/bold red]",
+            border_style="red",
+        )
+        console.print()
+        console.print(panel)
+
     @staticmethod
     def _should_exit_input(user_input: UserInput) -> bool:
         return user_input.command.strip() in {"exit", "quit", "/exit", "/quit"}
@@ -284,6 +316,11 @@ class Shell:
                     return
                 resume_prompt.clear()
                 await idle_events.put(_PromptEvent(kind="eof"))
+                return
+            except CwdLostError:
+                logger.error("Working directory no longer exists")
+                resume_prompt.clear()
+                await idle_events.put(_PromptEvent(kind="cwd_lost"))
                 return
             except Exception:
                 logger.exception("Prompt router crashed")
@@ -502,6 +539,11 @@ class Shell:
 
                     if event.kind == "eof":
                         console.print("Bye!")
+                        break
+
+                    if event.kind == "cwd_lost":
+                        self._print_cwd_lost_crash()
+                        shell_ok = False
                         break
 
                     if event.kind == "error":
