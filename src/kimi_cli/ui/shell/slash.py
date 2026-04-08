@@ -17,6 +17,7 @@ from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.mcp_status import render_mcp_console
 from kimi_cli.ui.shell.task_browser import TaskBrowserApp
 from kimi_cli.utils.changelog import CHANGELOG
+from kimi_cli.utils.clipboard import copy_text_to_clipboard
 from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
@@ -535,6 +536,46 @@ async def title(app: Shell, args: str):
     session.state.title_generated = True
     session.title = new_title
     console.print(f"[green]Session title set to: {new_title}[/green]")
+
+
+@registry.command
+def copy(app: Shell, args: str):
+    """Copy the latest assistant response to the system clipboard"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    if args.strip():
+        console.print("[yellow]Usage: /copy[/yellow]")
+        return
+
+    latest_text: str | None = None
+    saw_assistant = False
+
+    for message in reversed(soul.context.history):
+        if message.role != "assistant":
+            continue
+
+        saw_assistant = True
+        text = message.extract_text(sep="\n").strip()
+        if text:
+            latest_text = text
+            break
+
+    if latest_text is None:
+        if saw_assistant:
+            console.print("[yellow]The latest assistant response has no text to copy.[/yellow]")
+        else:
+            console.print("[yellow]No assistant response found to copy.[/yellow]")
+        return
+
+    try:
+        copy_text_to_clipboard(latest_text)
+    except Exception as exc:
+        console.print(f"[red]Failed to copy to clipboard: {exc}[/red]")
+        return
+
+    console.print("[green]Copied the latest assistant response to clipboard.[/green]")
 
 
 @registry.command(name="sessions", aliases=["resume"])
