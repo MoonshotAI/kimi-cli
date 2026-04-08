@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "bun run src/kimi_cli_ts/index.ts",
+    "kimi": "bun run start",
     "dev": "bun --watch run src/kimi_cli_ts/index.ts",
     "test": "bun test",
     "build": "bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi",

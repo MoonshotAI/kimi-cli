@@ -13,7 +13,15 @@ import type {
 	ModelCapability,
 } from "../types.ts";
 import type { ToolResult } from "../tools/types.ts";
-import type { LLM, StreamChunk, ChatOptions } from "../llm.ts";
+import type { LLM, StreamChunk, ChatOptions, LLMProvider } from "../llm.ts";
+import {
+	ChatProviderError,
+	APIConnectionError,
+	APITimeoutError,
+	APIStatusError,
+	APIEmptyResponseError,
+	isRetryableChatProvider,
+} from "../llm.ts";
 import type { HookEngine } from "../hooks/engine.ts";
 import type { Config } from "../config.ts";
 import type { Session } from "../session.ts";
@@ -99,26 +107,33 @@ export class BackToTheFuture extends Error {
 	}
 }
 
-// ── Retry helpers ───────────────────────────────────
+// ── Retry helpers (aligned with Python kimisoul.py) ────────
 
+/** Aligned with Python KimiSoul._is_retryable_error (kimisoul.py:1019-1031) */
 function isRetryableError(err: unknown): boolean {
-	if (!(err instanceof Error)) return false;
-	const msg = err.message.toLowerCase();
-	// HTTP status codes that are retryable
-	if (/\b(429|500|502|503|504)\b/.test(msg)) return true;
-	// Network errors
-	if (
-		msg.includes("timeout") ||
-		msg.includes("econnreset") ||
-		msg.includes("econnrefused") ||
-		msg.includes("connection") ||
-		msg.includes("network") ||
-		msg.includes("fetch failed") ||
-		msg.includes("socket hang up")
-	)
-		return true;
-	// Empty response
-	if (msg.includes("empty response") || msg.includes("no body")) return true;
+	// Structured error types (primary path)
+	if (err instanceof APIConnectionError || err instanceof APITimeoutError) {
+		return !(err as any)._kimiRecoveryExhausted;
+	}
+	if (err instanceof APIEmptyResponseError) return true;
+	if (err instanceof APIStatusError) {
+		return [429, 500, 502, 503, 504].includes(err.statusCode);
+	}
+	// Fallback: string matching for non-structured errors (e.g. from third-party code)
+	if (err instanceof Error) {
+		const msg = err.message.toLowerCase();
+		if (/\b(429|500|502|503|504)\b/.test(msg)) return true;
+		if (
+			msg.includes("timeout") ||
+			msg.includes("econnreset") ||
+			msg.includes("econnrefused") ||
+			msg.includes("fetch failed") ||
+			msg.includes("socket hang up")
+		)
+			return true;
+		if (msg.includes("empty response") || msg.includes("no body"))
+			return true;
+	}
 	return false;
 }
 
@@ -565,8 +580,9 @@ export class KimiSoul {
 				// Re-throw LLM errors so the wire server can map them to JSON-RPC error codes
 				// (matching Python behavior where these propagate to the caller)
 				throw err;
-			} else if (err instanceof Error && err.name === "ChatProviderError") {
-				// Re-throw ChatProviderError for wire server error mapping
+			} else if (err instanceof ChatProviderError) {
+				// Re-throw ChatProviderError (and subclasses: APITimeoutError,
+				// APIConnectionError, etc.) for wire server error mapping
 				throw err;
 			} else if (err instanceof Error && err.name === "Reload") {
 				// Re-throw Reload so cli/index.ts can catch it and trigger reload loop
@@ -706,8 +722,14 @@ export class KimiSoul {
 
 			const maxRetries =
 				this.agent.runtime.config.loop_control.max_retries_per_step;
+			const provider = this.agent.runtime.llm?.provider;
 			const toolCalls = await withRetry(
-				() => this._step(),
+				() =>
+					this._runWithConnectionRecovery(
+						"step",
+						() => this._step(),
+						provider,
+					),
 				maxRetries,
 				`step ${this._stepCount}`,
 			);
@@ -824,6 +846,54 @@ export class KimiSoul {
 			await this.context.appendMessage(msg);
 		}
 		return true;
+	}
+
+	// ── Connection recovery (aligned with Python kimisoul.py:1033-1065) ──
+
+	/**
+	 * Run an operation with connection recovery. On APIConnectionError or
+	 * APITimeoutError, attempt provider-level recovery (e.g. recreating the
+	 * HTTP client) and retry the operation once before re-raising.
+	 */
+	private async _runWithConnectionRecovery<T>(
+		name: string,
+		operation: () => Promise<T>,
+		chatProvider?: LLMProvider,
+	): Promise<T> {
+		try {
+			return await operation();
+		} catch (error) {
+			if (
+				!(error instanceof APIConnectionError) &&
+				!(error instanceof APITimeoutError)
+			) {
+				throw error;
+			}
+			if (!isRetryableChatProvider(chatProvider)) throw error;
+
+			let recovered: boolean;
+			try {
+				recovered = chatProvider.onRetryableError(error);
+			} catch {
+				throw error;
+			}
+			if (!recovered) throw error;
+
+			logger.info(
+				`Recovered chat provider during ${name} after ${error.name}; retrying once.`,
+			);
+			try {
+				return await operation();
+			} catch (secondError) {
+				if (
+					secondError instanceof APIConnectionError ||
+					secondError instanceof APITimeoutError
+				) {
+					(secondError as any)._kimiRecoveryExhausted = true;
+				}
+				throw secondError;
+			}
+		}
 	}
 
 	// ── Single step ─────────────────────────────────
@@ -1057,7 +1127,18 @@ export class KimiSoul {
 		) {
 			wireSend(wireMsg("CompactionBegin"));
 			try {
-				await compactContext(this.context, llm);
+				const provider = llm.provider;
+				const maxRetries = lc.max_retries_per_step;
+				await withRetry(
+					() =>
+						this._runWithConnectionRecovery(
+							"compaction",
+							() => compactContext(this.context, llm),
+							provider,
+						),
+					maxRetries,
+					"compaction",
+				);
 			} catch (err) {
 				logger.error(`Compaction failed: ${err}`);
 			}

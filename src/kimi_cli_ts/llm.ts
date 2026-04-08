@@ -63,13 +63,78 @@ export type StreamChunk =
 	| UsageChunk
 	| DoneChunk;
 
-// ── Errors ───────────────────────────────────────────────
+// ── Errors (aligned with kosong/chat_provider/__init__.py) ──
 
 export class ChatProviderError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = "ChatProviderError";
 	}
+}
+
+export class APIConnectionError extends ChatProviderError {
+	constructor(message: string) {
+		super(message);
+		this.name = "APIConnectionError";
+	}
+}
+
+export class APITimeoutError extends ChatProviderError {
+	constructor(message: string) {
+		super(message);
+		this.name = "APITimeoutError";
+	}
+}
+
+export class APIStatusError extends ChatProviderError {
+	readonly statusCode: number;
+	constructor(statusCode: number, message: string) {
+		super(message);
+		this.name = "APIStatusError";
+		this.statusCode = statusCode;
+	}
+}
+
+export class APIEmptyResponseError extends ChatProviderError {
+	constructor(message: string) {
+		super(message);
+		this.name = "APIEmptyResponseError";
+	}
+}
+
+// ── RetryableChatProvider (aligned with kosong RetryableChatProvider protocol) ──
+
+export interface RetryableChatProvider {
+	onRetryableError(error: Error): boolean;
+}
+
+export function isRetryableChatProvider(
+	p: unknown,
+): p is RetryableChatProvider {
+	return (
+		typeof p === "object" &&
+		p !== null &&
+		typeof (p as RetryableChatProvider).onRetryableError === "function"
+	);
+}
+
+// ── Timeout helper ──────────────────────────────────────────
+
+function withTimeout<T>(
+	promise: Promise<T>,
+	ms: number,
+	message: string,
+): Promise<T> {
+	let timerId: ReturnType<typeof setTimeout>;
+	const timeout = new Promise<never>((_, reject) => {
+		timerId = setTimeout(
+			() => reject(new APITimeoutError(message)),
+			ms,
+		);
+	});
+	return Promise.race([promise, timeout]).finally(() =>
+		clearTimeout(timerId),
+	);
 }
 
 // ── LLM Provider Interface ────────────────────────────────
@@ -670,6 +735,33 @@ function createScriptedEchoProvider(
 	};
 }
 
+// ── Fetch error conversion (aligned with openai_common.py convert_error) ──
+
+function convertFetchError(err: unknown): ChatProviderError {
+	if (err instanceof ChatProviderError) return err;
+	if (!(err instanceof Error))
+		return new ChatProviderError(`Fetch error: ${err}`);
+	const msg = err.message.toLowerCase();
+	if (
+		err.name === "AbortError" ||
+		msg.includes("timeout") ||
+		msg.includes("timed out")
+	) {
+		return new APITimeoutError(err.message);
+	}
+	if (
+		msg.includes("econnreset") ||
+		msg.includes("econnrefused") ||
+		msg.includes("fetch failed") ||
+		msg.includes("network") ||
+		msg.includes("socket hang up") ||
+		msg.includes("connection")
+	) {
+		return new APIConnectionError(err.message);
+	}
+	return new ChatProviderError(err.message);
+}
+
 // ── OpenAI-Compatible Provider ──────────────────────────────
 // Works with Kimi API, OpenAI API, and any OpenAI-compatible endpoint.
 
@@ -709,7 +801,7 @@ interface OpenAITool {
 	};
 }
 
-class OpenAICompatibleProvider implements LLMProvider {
+class OpenAICompatibleProvider implements LLMProvider, RetryableChatProvider {
 	readonly modelName: string;
 	private baseUrl: string;
 	private apiKey: string;
@@ -722,6 +814,16 @@ class OpenAICompatibleProvider implements LLMProvider {
 		this.apiKey = config.apiKey;
 		this.customHeaders = config.customHeaders ?? {};
 		this.thinkingMode = config.thinkingMode;
+	}
+
+	/**
+	 * Attempt to recover from a retryable transport error.
+	 * Aligned with Python kimi.py KimiChatProvider.on_retryable_error().
+	 * TS uses native fetch (no persistent client), so recovery is a no-op that
+	 * signals "safe to retry" — the next fetch creates a fresh connection.
+	 */
+	onRetryableError(_error: Error): boolean {
+		return true;
 	}
 
 	async *chat(
@@ -775,25 +877,49 @@ class OpenAICompatibleProvider implements LLMProvider {
 			...this.customHeaders,
 		};
 
-		const response = await fetch(url, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(body),
-			signal: options?.signal,
-		});
+		// Total per-call timeout via AbortSignal.timeout.  This fires at
+		// the native I/O level (not JS setTimeout) so it reliably aborts
+		// even when Bun's event loop is stuck on reader.read().
+		// 5 minutes is generous — most LLM calls complete in < 3 min.
+		const PER_CALL_TIMEOUT_MS = 300_000; // 5 minutes
+		const signals: AbortSignal[] = [AbortSignal.timeout(PER_CALL_TIMEOUT_MS)];
+		if (options?.signal) signals.push(options.signal);
+		const fetchSignal = signals.length === 1
+			? signals[0]!
+			: AbortSignal.any(signals);
+
+		let response: Response;
+		try {
+			response = await fetch(url, {
+				method: "POST",
+				headers,
+				body: JSON.stringify(body),
+				signal: fetchSignal,
+			});
+		} catch (err) {
+			throw convertFetchError(err);
+		}
 
 		if (!response.ok) {
-			const text = await response.text();
-			throw new Error(
+			const text = await response.text().catch(() => "");
+			throw new APIStatusError(
+				response.status,
 				`LLM API error ${response.status}: ${text.slice(0, 500)}`,
 			);
 		}
 
 		if (!response.body) {
-			throw new Error("LLM API returned no body");
+			throw new APIEmptyResponseError("LLM API returned no body");
 		}
 
 		// Parse SSE stream
+		const CHUNK_TIMEOUT_MS = 60_000; // 60s, aligned with Python sock_read=60
+		// No-progress timeout: if the server sends keep-alive data (empty SSE
+		// frames) the per-chunk timeout resets each read, but no content is
+		// yielded.  Detect this by tracking the last time we yielded a real chunk.
+		const NO_PROGRESS_TIMEOUT_MS = 120_000; // 2 min with no yielded content
+		let lastYieldTime = Date.now();
+
 		const reader = response.body.getReader();
 		const decoder = new TextDecoder();
 		let buffer = "";
@@ -808,12 +934,26 @@ class OpenAICompatibleProvider implements LLMProvider {
 
 		try {
 			while (true) {
-				const { done, value } = await reader.read();
+				const { done, value } = await withTimeout(
+					reader.read(),
+					CHUNK_TIMEOUT_MS,
+					"LLM stream chunk timeout: no data received for 60s",
+				);
 				if (done) break;
 
 				buffer += decoder.decode(value, { stream: true });
 				const lines = buffer.split("\n");
 				buffer = lines.pop() ?? "";
+
+				// Check no-progress timeout: reader.read() resolved (possibly
+				// with keep-alive bytes) but we haven't yielded real content in
+				// a while.  This catches API "stall" where the TCP connection
+				// stays alive but no tokens are generated.
+				if (Date.now() - lastYieldTime > NO_PROGRESS_TIMEOUT_MS) {
+					throw new APITimeoutError(
+						`LLM stream stalled: no content yielded for ${NO_PROGRESS_TIMEOUT_MS / 1000}s`,
+					);
+				}
 
 				for (const line of lines) {
 					const trimmed = line.trim();
@@ -865,11 +1005,13 @@ class OpenAICompatibleProvider implements LLMProvider {
 
 					// Text content
 					if (delta.content) {
+						lastYieldTime = Date.now();
 						yield { type: "text", text: delta.content };
 					}
 
 					// Reasoning/thinking content (Kimi k2.5 specific)
 					if (delta.reasoning_content) {
+						lastYieldTime = Date.now();
 						yield { type: "think", text: delta.reasoning_content };
 					}
 
@@ -894,6 +1036,11 @@ class OpenAICompatibleProvider implements LLMProvider {
 						}
 					}
 
+					// Tool call argument streaming also counts as progress
+					if (delta.tool_calls) {
+						lastYieldTime = Date.now();
+					}
+
 					// Check for finish reason
 					if (choices[0].finish_reason) {
 						// Emit any pending tool calls
@@ -909,7 +1056,15 @@ class OpenAICompatibleProvider implements LLMProvider {
 					}
 				}
 			}
+		} catch (err) {
+			// Convert streaming errors to structured types
+			// (APITimeoutError from withTimeout is already structured)
+			if (err instanceof ChatProviderError) throw err;
+			throw convertFetchError(err);
 		} finally {
+			// Cancel the stream to abort the underlying TCP connection and
+			// prevent leaked reader.read() promises from keeping it alive.
+			try { await reader.cancel(); } catch { /* ignore */ }
 			reader.releaseLock();
 		}
 

@@ -599,13 +599,18 @@ export class WireServer {
 	}
 
 	private _mapErrorCode(err: Error & { code?: string }): number {
-		// Match by class name (mirrors Python's except LLMNotSet / LLMNotSupported / ChatProviderError)
+		// Match by class name — use both name and name-includes to catch
+		// subclasses (APITimeoutError, APIConnectionError, etc.)
 		switch (err.name) {
 			case "LLMNotSet":
 				return ErrorCodes.LLM_NOT_SET;
 			case "LLMNotSupported":
 				return ErrorCodes.LLM_NOT_SUPPORTED;
 			case "ChatProviderError":
+			case "APITimeoutError":
+			case "APIConnectionError":
+			case "APIStatusError":
+			case "APIEmptyResponseError":
 				return ErrorCodes.CHAT_PROVIDER_ERROR;
 			case "AuthExpiredError":
 				return ErrorCodes.AUTH_EXPIRED;
