@@ -20,13 +20,6 @@ pytestmark = pytest.mark.skipif(
     reason="Shell PTY E2E tests require a Unix-like PTY.",
 )
 
-PROMPT_SYMBOL = "── input"
-
-
-def _read_until_prompt(shell, *, after: int, timeout: float = 15.0) -> str:
-    return read_until_prompt_ready(shell, after=after, timeout=timeout)
-
-
 def test_sessions_shows_no_other_sessions_message(tmp_path: Path) -> None:
     """When /sessions is invoked in a fresh session with no other sessions,
     it should print 'No other sessions found' and NOT show the picker."""
@@ -43,7 +36,7 @@ def test_sessions_shows_no_other_sessions_message(tmp_path: Path) -> None:
     try:
         shell.read_until_contains("Welcome to Kimi Code CLI!")
         prompt_mark = shell.mark()
-        _read_until_prompt(shell, after=prompt_mark)
+        read_until_prompt_ready(shell, after=prompt_mark)
 
         # Send the /sessions command
         sessions_mark = shell.mark()
