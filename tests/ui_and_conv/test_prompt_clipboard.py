@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from PIL import Image
 from prompt_toolkit.key_binding import KeyPressEvent
+from prompt_toolkit.selection import SelectionType
 
 if TYPE_CHECKING:
     from prompt_toolkit.buffer import Buffer
@@ -184,7 +185,7 @@ def test_paste_single_image(monkeypatch) -> None:
     assert buffer.inserted[0].startswith("[image:")
 
 
-def test_paste_image_unsupported_model(monkeypatch, capsys) -> None:
+def test_paste_image_unsupported_model_consumes_paste(monkeypatch) -> None:
     img = Image.new("RGB", (10, 10))
     monkeypatch.setattr(
         shell_prompt,
@@ -199,9 +200,11 @@ def test_paste_image_unsupported_model(monkeypatch, capsys) -> None:
 
     result = ps._try_paste_media(cast(KeyPressEvent, event))
 
-    # No image placeholder inserted, returns False so caller can fall back to text paste
-    assert result is False
+    # Media was recognized, so the paste event should be consumed even though the
+    # model cannot accept image input.
+    assert result is True
     assert buffer.inserted == []
+    assert app.invalidated is True
 
 
 # --- Mixed content tests ---
@@ -268,6 +271,19 @@ def test_paste_returns_false_when_no_media(monkeypatch) -> None:
 
     assert result is False
     assert buffer.inserted == []
+
+
+def test_safe_pyperclip_clipboard_treats_none_as_empty_text(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "prompt_toolkit.clipboard.pyperclip.pyperclip.paste",
+        lambda: None,
+    )
+
+    clipboard = shell_prompt._SafePyperclipClipboard()
+    data = clipboard.get_data()
+
+    assert data.text == ""
+    assert data.type == SelectionType.CHARACTERS
 
 
 def test_insert_pasted_text_placeholderizes_long_text_in_agent_mode() -> None:
