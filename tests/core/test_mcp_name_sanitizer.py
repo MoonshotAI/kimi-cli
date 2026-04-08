@@ -234,6 +234,29 @@ class TestEdgeCases:
         sanitized = sanitizer.sanitize_name("tool_名称")
         assert sanitized.startswith("n") or "_" in sanitized
 
+    def test_empty_string(self):
+        """Empty string should not crash and get 'n' prefix."""
+        sanitizer = MCPServerSanitizer("test_server")
+        # Empty string should be sanitized to just the prefix
+        assert sanitizer.sanitize_name("") == "n"
+
+    def test_digit_prefix_with_invalid_chars(self):
+        """Names starting with digit AND having invalid chars need full sanitization."""
+        sanitizer = MCPServerSanitizer("test_server")
+        # Name starts with digit AND has hyphens and dots
+        sanitized = sanitizer.sanitize_name("3rd-party.tool")
+        # Should have 'n' prefix AND invalid chars replaced with underscores
+        assert sanitized == "n3rd_party_tool"
+        assert is_valid_tool_name(sanitized) is True
+
+    def test_digit_prefix_with_unicode(self):
+        """Names starting with digit AND having unicode need full sanitization."""
+        sanitizer = MCPServerSanitizer("test_server")
+        sanitized = sanitizer.sanitize_name("1tool_名称")
+        # Should have 'n' prefix AND unicode replaced
+        assert sanitized.startswith("n")
+        assert "_" in sanitized or sanitized == "n1tool_"
+
 
 class TestRealWorldExamples:
     """Tests based on real-world MCP server tool names."""

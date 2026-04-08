@@ -32,9 +32,7 @@ from kosong.utils.typing import JsonType
 from kimi_cli import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
-from kimi_cli.soul.mcp_name_sanitizer import (
-    sanitize_tool_name,
-)
+from kimi_cli.soul.mcp_name_sanitizer import MCPNameSanitizer
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
     ContentPart,
@@ -97,6 +95,8 @@ class KimiToolset:
         self._mcp_loading_task: asyncio.Task[None] | None = None
         self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
         self._hook_engine: HookEngine = HookEngine()
+        # Per-toolset sanitizer to avoid cross-session pollution (e.g., in ACP server)
+        self._name_sanitizer: MCPNameSanitizer = MCPNameSanitizer()
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -426,7 +426,13 @@ class KimiToolset:
                 async with server_info.client as client:
                     for tool in await client.list_tools():
                         server_info.tools.append(
-                            MCPTool(server_name, tool, client, runtime=runtime)
+                            MCPTool(
+                                server_name,
+                                tool,
+                                client,
+                                runtime=runtime,
+                                sanitizer=self._name_sanitizer,
+                            )
                         )
 
                 for tool in server_info.tools:
@@ -542,12 +548,13 @@ class MCPTool[T: ClientTransport](CallableTool):
         client: fastmcp.Client[T],
         *,
         runtime: Runtime,
+        sanitizer: MCPNameSanitizer,
         **kwargs: Any,
     ):
         # Sanitize tool name for LLM API compatibility. Some MCP servers return tool names
         # starting with digits (e.g., 21st_magic_component_builder) which don't match the
         # Kimi API naming convention ^[a-zA-Z_][a-zA-Z0-9_]*$
-        sanitized_name = sanitize_tool_name(server_name, mcp_tool.name)
+        sanitized_name = sanitizer.sanitize_tool_name(server_name, mcp_tool.name)
 
         super().__init__(
             name=sanitized_name,

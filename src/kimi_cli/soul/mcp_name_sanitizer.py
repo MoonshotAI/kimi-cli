@@ -54,19 +54,19 @@ class MCPServerSanitizer:
             return self._original_to_sanitized[original_name]
 
         # Determine the sanitized name
-        if STARTS_WITH_DIGIT_PATTERN.match(original_name):
-            # Name starts with digit - prepend prefix
-            sanitized = f"{SANITIZE_PREFIX}{original_name}"
-        elif not VALID_NAME_PATTERN.match(original_name):
-            # For other invalid patterns, replace invalid chars with underscores
+        if VALID_NAME_PATTERN.match(original_name):
+            # Name is already valid, use as-is
+            sanitized = original_name
+        else:
+            # Sanitize invalid characters first (replace with underscores)
             sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", original_name)
-            if STARTS_WITH_DIGIT_PATTERN.match(sanitized) or (
-                not sanitized[0].isalpha() and sanitized[0] != "_"
+            # Ensure it starts with a valid character (letter or underscore)
+            if (
+                not sanitized
+                or STARTS_WITH_DIGIT_PATTERN.match(sanitized)
+                or (not sanitized[0].isalpha() and sanitized[0] != "_")
             ):
                 sanitized = f"{SANITIZE_PREFIX}{sanitized}"
-        else:
-            # Name is already valid
-            sanitized = original_name
 
         # Check for collisions (including when a valid name conflicts with a sanitized name)
         if sanitized in self._sanitized_to_original:
