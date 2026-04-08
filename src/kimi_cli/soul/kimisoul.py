@@ -80,6 +80,7 @@ from kimi_cli.wire.types import (
     StepBegin,
     StepInterrupted,
     TextPart,
+    ThinkPart,
     ToolResult,
     TurnBegin,
     TurnEnd,
@@ -932,6 +933,46 @@ class KimiSoul:
 
         if result.tool_calls:
             return None
+
+        # Detect think-only responses: the model produced thinking content but no
+        # text and no tool calls.  This typically happens when extended thinking
+        # exhausts the max_tokens budget before the model can emit visible output.
+        # Treat this as an incomplete response and let the agent loop continue so
+        # the model can see its own thinking and finish generating.
+        has_think = any(isinstance(p, ThinkPart) for p in result.message.content)
+        has_text = any(isinstance(p, TextPart) and p.text.strip() for p in result.message.content)
+        if has_think and not has_text:
+            think_chars = sum(
+                len(p.think) for p in result.message.content if isinstance(p, ThinkPart)
+            )
+            logger.warning(
+                "Model response contains only thinking content ({n_chars} chars) "
+                "without text or tool calls — likely truncated by max_tokens. "
+                "Continuing agent loop to let the model complete its response.",
+                n_chars=think_chars,
+            )
+            # Inject a user continuation message to maintain proper
+            # user→assistant message alternation in the context.  Without
+            # this, the think-only assistant message followed by the next
+            # assistant response would create consecutive assistant messages,
+            # which can be rejected by some APIs (and becomes problematic
+            # after compaction strips ThinkParts).
+            await asyncio.shield(
+                self._context.append_message(
+                    Message(
+                        role="user",
+                        content=[
+                            system(
+                                "Your previous response contained only thinking content "
+                                "and was likely truncated. Please continue and provide "
+                                "your response."
+                            )
+                        ],
+                    )
+                )
+            )
+            return None
+
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
