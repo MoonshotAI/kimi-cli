@@ -120,12 +120,12 @@ def test_slash_completion_single_enter_executes(tmp_path: Path) -> None:
         # Single Enter: accept completion AND submit in one step.
         _tmux("send-keys", "-t", f"{session_name}:0.0", "Enter")
 
-        # The /sessions command should execute immediately — either showing
-        # the picker or the "no other sessions" early return message.
+        # The /sessions command should execute immediately — showing
+        # the full-screen session picker (SessionPickerApp).
         deadline = time.monotonic() + 10.0
         while True:
             pane = _capture_pane(session_name)
-            if "Select a session" in pane or "No other sessions" in pane:
+            if "SESSIONS" in pane or "No other sessions" in pane or "Select a session" in pane:
                 break
             if time.monotonic() >= deadline:
                 raise AssertionError(
