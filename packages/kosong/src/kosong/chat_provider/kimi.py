@@ -43,6 +43,8 @@ from kosong.message import (
 )
 from kosong.tooling import Tool
 
+_DEFAULT_READ_TIMEOUT = 1800.0  # 30 min — generous for long-thinking LLM responses
+
 if TYPE_CHECKING:
 
     def type_check(kimi: "Kimi"):
@@ -117,6 +119,11 @@ class Kimi:
         self._api_key: str | None = api_key
         self._base_url: str | None = base_url
         self._client_kwargs: dict[str, Any] = dict(client_kwargs)
+        # The httpx read timeout is per-read, so it only fires after prolonged silence.
+        if "timeout" not in self._client_kwargs:
+            self._client_kwargs["timeout"] = httpx.Timeout(
+                connect=5.0, read=_DEFAULT_READ_TIMEOUT, write=600.0, pool=600.0
+            )
         self.client: AsyncOpenAI = create_openai_client(
             api_key=self._api_key,
             base_url=self._base_url,
