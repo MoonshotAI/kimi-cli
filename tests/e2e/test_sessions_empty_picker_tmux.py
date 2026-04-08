@@ -20,6 +20,7 @@ pytestmark = pytest.mark.skipif(
     reason="Shell PTY E2E tests require a Unix-like PTY.",
 )
 
+
 def test_sessions_shows_no_other_sessions_message(tmp_path: Path) -> None:
     """When /sessions is invoked in a fresh session with no other sessions,
     it should print 'No other sessions found' and NOT show the picker."""
