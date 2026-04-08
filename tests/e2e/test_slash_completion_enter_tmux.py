@@ -93,8 +93,9 @@ def _start_tmux_shell(
 def test_slash_completion_enter_executes_in_two_presses(tmp_path: Path) -> None:
     """After accepting a slash-command completion with Enter, the next Enter submits.
 
-    Regression test: previously, accepting a completion left complete_state active,
-    causing the second Enter to be swallowed (required 3 presses instead of 2).
+    Regression test: previously, accepting a completion required extra Enter
+    presses before the command would execute. Now a single Enter both accepts
+    the completion and submits the command.
     """
     config_path = write_scripted_config(tmp_path, ["text: Hello!"])
     work_dir = make_work_dir(tmp_path)
@@ -112,21 +113,16 @@ def test_slash_completion_enter_executes_in_two_presses(tmp_path: Path) -> None:
         _wait_for_pane_text(session_name, "── input")
 
         # Type "/session" (partial) to trigger completion menu.
-        # Do NOT send Enter yet -- just type the characters.
         _tmux("send-keys", "-t", f"{session_name}:0.0", "/session", "")
 
         # Wait for completion menu to show "/sessions" candidate
         _wait_for_pane_text(session_name, "/sessions", timeout=5.0)
 
-        # First Enter: accept the completion (should complete to "/sessions")
-        _tmux("send-keys", "-t", f"{session_name}:0.0", "Enter")
-        time.sleep(0.5)
-
-        # Second Enter: submit the command
+        # Single Enter: accept completion AND submit in one step.
         _tmux("send-keys", "-t", f"{session_name}:0.0", "Enter")
 
-        # The /sessions command should execute — either showing the picker
-        # or the "no other sessions" early return message.
+        # The /sessions command should execute immediately — either showing
+        # the picker or the "no other sessions" early return message.
         deadline = time.monotonic() + 10.0
         while True:
             pane = _capture_pane(session_name)
