@@ -96,7 +96,8 @@ class SessionPickerApp:
             sessions = [s for s in await Session.list_all() if s.id != current.id]
 
         await current.refresh()
-        sessions.insert(0, current)
+        if not current.is_empty():
+            sessions.insert(0, current)
         self._sessions = sessions
 
     def _build_values(self) -> list[tuple[str, str]]:
