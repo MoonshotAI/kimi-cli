@@ -1,11 +1,11 @@
-"""Tests for telemetry instrumentation correctness.
+"""Tests for telemetry event behavior and schema correctness.
 
-These tests verify that track() calls in production code emit the correct events
-with the correct properties under the correct conditions. They do NOT test the
-telemetry infrastructure itself (that's in test_telemetry.py).
-
-Strategy: patch `kimi_cli.telemetry.track` at the call site and assert the
-event name / properties, rather than running the full UI/soul stack.
+These tests exercise the telemetry API directly and verify that calls to
+track() and related helpers produce the expected event names, properties,
+queue entries, and sink-forwarded payloads under the correct conditions.
+They do NOT verify that specific production UI/soul call sites are still
+instrumented — that coverage belongs in integration tests.
+Transport/infrastructure tests are in test_telemetry.py.
 """
 
 from __future__ import annotations

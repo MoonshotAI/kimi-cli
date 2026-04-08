@@ -370,24 +370,113 @@ class TestAsyncTransport:
 
     @pytest.mark.asyncio
     async def test_anonymous_retry_4xx_drops_events(self):
-        """Anonymous retry returning 4xx (client error) drops events without disk fallback."""
-        transport = AsyncTransport(endpoint="https://mock.test/events")
+        """401 with token → anonymous retry returns 4xx → events dropped, no disk fallback."""
+        transport = AsyncTransport(
+            get_access_token=lambda: "valid-token",
+            endpoint="https://mock.test/events",
+        )
 
-        call_count = 0
+        # First response: 401 (triggers anonymous retry)
+        resp_401 = MagicMock()
+        resp_401.status = 401
+        resp_401.__aenter__ = AsyncMock(return_value=resp_401)
+        resp_401.__aexit__ = AsyncMock(return_value=False)
 
-        async def mock_send_http(payload: dict) -> None:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                # Simulate: first call succeeds (no _TransientError), events are "sent"
-                # But we need to test the internal 4xx path. We'll test via send() + save_to_disk.
-                pass
+        # Second response: 403 (client error on anonymous retry)
+        resp_403 = MagicMock()
+        resp_403.status = 403
+        resp_403.__aenter__ = AsyncMock(return_value=resp_403)
+        resp_403.__aexit__ = AsyncMock(return_value=False)
 
-        # More direct: patch _send_http to NOT raise (simulating 4xx handled internally)
-        # The 4xx path returns without raising, so send() should not call save_to_disk.
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(side_effect=[resp_401, resp_403])
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
         with (
-            patch.object(transport, "_send_http", new_callable=AsyncMock),
+            patch("kimi_cli.utils.aiohttp.new_client_session", return_value=mock_session),
             patch.object(transport, "save_to_disk") as mock_save,
         ):
             await transport.send([{"event": "test", "timestamp": 1.0}])
             mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_401_with_token_anonymous_retry_success(self):
+        """401 with token → anonymous retry returns 200 → success, no disk fallback."""
+        transport = AsyncTransport(
+            get_access_token=lambda: "valid-token",
+            endpoint="https://mock.test/events",
+        )
+
+        resp_401 = MagicMock()
+        resp_401.status = 401
+        resp_401.__aenter__ = AsyncMock(return_value=resp_401)
+        resp_401.__aexit__ = AsyncMock(return_value=False)
+
+        resp_200 = MagicMock()
+        resp_200.status = 200
+        resp_200.__aenter__ = AsyncMock(return_value=resp_200)
+        resp_200.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(side_effect=[resp_401, resp_200])
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("kimi_cli.utils.aiohttp.new_client_session", return_value=mock_session),
+            patch.object(transport, "save_to_disk") as mock_save,
+        ):
+            await transport.send([{"event": "test", "timestamp": 1.0}])
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_401_with_token_anonymous_retry_5xx(self, tmp_path: Path):
+        """401 with token → anonymous retry returns 500 → disk fallback."""
+        transport = AsyncTransport(
+            get_access_token=lambda: "valid-token",
+            endpoint="https://mock.test/events",
+        )
+
+        resp_401 = MagicMock()
+        resp_401.status = 401
+        resp_401.__aenter__ = AsyncMock(return_value=resp_401)
+        resp_401.__aexit__ = AsyncMock(return_value=False)
+
+        resp_500 = MagicMock()
+        resp_500.status = 500
+        resp_500.__aenter__ = AsyncMock(return_value=resp_500)
+        resp_500.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(side_effect=[resp_401, resp_500])
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("kimi_cli.utils.aiohttp.new_client_session", return_value=mock_session),
+            patch("kimi_cli.telemetry.transport._telemetry_dir", return_value=tmp_path),
+        ):
+            await transport.send([{"event": "test", "timestamp": 1.0}])
+
+        saved_files = list(tmp_path.glob("failed_*.jsonl"))
+        assert len(saved_files) == 1
+
+    @pytest.mark.asyncio
+    async def test_send_unexpected_exception_falls_back_to_disk(self, tmp_path: Path):
+        """Unexpected exception during send triggers disk fallback."""
+        transport = AsyncTransport(endpoint="https://mock.test/events")
+
+        with (
+            patch.object(
+                transport,
+                "_send_http",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("unexpected"),
+            ),
+            patch("kimi_cli.telemetry.transport._telemetry_dir", return_value=tmp_path),
+        ):
+            await transport.send([{"event": "test", "timestamp": 1.0}])
+
+        saved_files = list(tmp_path.glob("failed_*.jsonl"))
+        assert len(saved_files) == 1

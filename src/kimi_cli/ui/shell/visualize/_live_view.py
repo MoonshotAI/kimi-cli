@@ -486,7 +486,7 @@ class _LiveView:
                     if self._current_question_panel.is_multi_select:
                         self._current_question_panel.toggle_select()
                     else:
-                        self._try_submit_question()
+                        self._try_submit_question(method="space")
                 case KeyEvent.ENTER:
                     # "Other" is handled in keyboard_handler (async context)
                     self._try_submit_question(method="enter")
