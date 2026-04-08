@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Core: Recover partial stream results when connection breaks after receiving complete tool calls — instead of discarding all work and interrupting the agent loop, completed tool calls with valid JSON arguments are preserved and executed; truncated arguments still trigger re-raise for upstream retry
+- Core: Increase default LLM streaming read timeout from 600s to 1800s (30 min) to accommodate long-thinking model responses; user-supplied timeout values are not overridden
+- Core: Defer `on_tool_call` callback dispatch until after completeness validation, preventing incomplete tool calls from being dispatched on failed recovery
+
 ## 0.48.0 (2026-04-02)
 
 - Google GenAI: Add `default_headers` parameter to `GoogleGenAI` constructor — custom headers are merged into `HttpOptions` so they are included in all API requests
