@@ -1235,28 +1235,46 @@ class CustomPromptSession:
         # Build key bindings
         _kb = KeyBindings()
 
-        @_kb.add("enter", filter=has_completions)
+        def _is_slash_completion() -> bool:
+            """True when the active completion menu is for a slash command."""
+            buff = self._session.default_buffer
+            return bool(
+                buff.complete_state
+                and buff.complete_state.completions
+                and SlashCommandCompleter.should_complete(buff.document)
+            )
+
+        _slash_completion_filter = has_completions & Condition(_is_slash_completion)
+        _non_slash_completion_filter = has_completions & ~Condition(_is_slash_completion)
+
+        @_kb.add("enter", filter=_slash_completion_filter)
         def _(event: KeyPressEvent) -> None:
-            """Accept completion; auto-submit only for slash commands."""
+            """Slash command completion: accept and submit in one step."""
             buff = event.current_buffer
             if buff.complete_state and buff.complete_state.completions:
-                # Check if this is a slash command completion before applying,
-                # since apply_completion will change the buffer text.
-                is_slash = SlashCommandCompleter.should_complete(buff.document)
                 completion = buff.complete_state.current_completion
                 if not completion:
                     completion = buff.complete_state.completions[0]
-                # Suppress re-completion: apply_completion fires on_text_changed
-                # which would schedule a new async completer via start_completion().
                 self._suppress_auto_completion = True
                 try:
                     buff.apply_completion(completion)
                 finally:
                     self._suppress_auto_completion = False
-                if is_slash:
-                    # Slash commands: submit immediately — the intermediate state
-                    # (completed text without description) is useless.
-                    buff.validate_and_handle()
+                buff.validate_and_handle()
+
+        @_kb.add("enter", filter=_non_slash_completion_filter)
+        def _(event: KeyPressEvent) -> None:
+            """Non-slash completion (file mentions, etc.): accept only."""
+            buff = event.current_buffer
+            if buff.complete_state and buff.complete_state.completions:
+                completion = buff.complete_state.current_completion
+                if not completion:
+                    completion = buff.complete_state.completions[0]
+                self._suppress_auto_completion = True
+                try:
+                    buff.apply_completion(completion)
+                finally:
+                    self._suppress_auto_completion = False
 
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
