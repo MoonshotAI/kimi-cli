@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import platform
+import re
 import socket
 import sys
 import time
@@ -192,13 +193,15 @@ def get_device_id() -> str:
     return device_id
 
 
+# Characters unsafe for HTTP header values: control chars (0x00-0x1F),
+# DEL (0x7F), non-ASCII (0x80+), and '#' which some servers/proxies
+# reject (e.g. Linux kernel version strings like "#101~22.04.1-Ubuntu ...").
+_UNSAFE_HEADER_RE = re.compile(r"[^\x20-\x7e]|#")
+
+
 def _ascii_header_value(value: str, *, fallback: str = "unknown") -> str:
-    try:
-        value.encode("ascii")
-        return value.strip()
-    except UnicodeEncodeError:
-        sanitized = value.encode("ascii", errors="ignore").decode("ascii").strip()
-        return sanitized or fallback
+    sanitized = _UNSAFE_HEADER_RE.sub("", value).strip()
+    return sanitized or fallback
 
 
 def _common_headers() -> dict[str, str]:
