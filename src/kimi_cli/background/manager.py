@@ -93,6 +93,14 @@ class BackgroundTaskManager:
             1 for view in self._store.list_views() if not is_terminal_status(view.runtime.status)
         )
 
+    def has_active_tasks(self) -> bool:
+        """Return True if any background tasks are in a non-terminal status.
+
+        This includes ``running``, ``awaiting_approval``, and any other
+        non-terminal state — not just actively executing tasks.
+        """
+        return self._active_task_count() > 0
+
     def _worker_command(self, task_dir: Path) -> list[str]:
         if getattr(sys, "frozen", False):
             return [

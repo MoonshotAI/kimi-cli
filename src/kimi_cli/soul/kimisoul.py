@@ -758,6 +758,47 @@ class KimiSoul:
                 has_steers = await self._consume_pending_steers()
                 if has_steers:
                     continue  # steers injected, force another LLM step
+
+                # If background tasks are still running and the LLM simply
+                # produced text (no tool calls), wait for the next completion
+                # instead of exiting the loop.  Each completion triggers one
+                # new step so the LLM can process the notification promptly.
+                #
+                # Note: completion_event is set by the notification pump
+                # (reconcile → publish_terminal_notifications), NOT directly
+                # by _mark_task_completed.  The pump runs concurrently during
+                # run_soul(), so there may be up to ~1s latency.
+                #
+                # Only applies to "no_tool_calls" — other stop reasons like
+                # "tool_rejected" should exit the turn immediately.
+                if (
+                    step_outcome.stop_reason == "no_tool_calls"
+                    and self._runtime.role == "root"
+                    and self._runtime.background_tasks.has_active_tasks()
+                ):
+                    event = self._runtime.background_tasks.completion_event
+                    event.clear()
+                    # Re-check after clearing to avoid a race where a task
+                    # completed between has_active_tasks() and clear().
+                    if self._runtime.background_tasks.has_active_tasks():
+                        logger.debug("Waiting for next background task completion")
+                        while True:
+                            try:
+                                await asyncio.wait_for(event.wait(), timeout=2.0)
+                                event.clear()
+                                break  # A task completed — let next step handle it
+                            except TimeoutError:
+                                pass
+                            event.clear()
+                            # Steers take priority — if the user sent input
+                            # while we were waiting, break out immediately.
+                            if await self._consume_pending_steers():
+                                break
+                            # Tasks may have finished without event (edge case)
+                            if not self._runtime.background_tasks.has_active_tasks():
+                                break
+                        continue
+
                 final_message = (
                     step_outcome.assistant_message
                     if step_outcome.stop_reason == "no_tool_calls"
