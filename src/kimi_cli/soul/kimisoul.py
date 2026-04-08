@@ -932,7 +932,6 @@ class KimiSoul:
 
         if result.tool_calls:
             return None
-
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
