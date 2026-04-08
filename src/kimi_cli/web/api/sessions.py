@@ -55,6 +55,7 @@ from kimi_cli.wire.jsonrpc import (
     JSONRPCPromptMessage,
 )
 from kimi_cli.wire.serde import deserialize_wire_message
+from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import is_request
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -923,6 +924,10 @@ async def update_yolo_status(
     else:
         # Only save directly to disk when the worker is not alive
         save_session_state(state, session_dir)
+        # Also persist a status update to wire.jsonl so replay shows correct YOLO state
+        wire_file = WireFile(session_dir / "wire.jsonl")
+        from kimi_cli.wire.types import StatusUpdate
+        await wire_file.append_message(StatusUpdate(yolo_mode=request.enabled))
 
     return YoloStatus(
         enabled=state.approval.yolo,
