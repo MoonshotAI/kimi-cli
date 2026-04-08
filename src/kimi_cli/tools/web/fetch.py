@@ -58,6 +58,11 @@ class FetchURL(CallableTool2[Params]):
                 ) as response,
             ):
                 if response.status >= 400:
+                    logger.warning(
+                        "FetchURL HTTP error: status={status}, url={url}",
+                        status=response.status,
+                        url=params.url,
+                    )
                     return builder.error(
                         (
                             f"Failed to fetch URL. Status: {response.status}. "
@@ -73,11 +78,13 @@ class FetchURL(CallableTool2[Params]):
                     builder.write(resp_text)
                     return builder.ok("The returned content is the full content of the page.")
         except TimeoutError:
+            logger.warning("FetchURL timed out: url={url}", url=params.url)
             return builder.error(
                 "Failed to fetch URL: request timed out. The server may be slow or unreachable.",
                 brief="Request timed out",
             )
         except aiohttp.ClientError as e:
+            logger.warning("FetchURL network error: {error}, url={url}", error=e, url=params.url)
             return builder.error(
                 (
                     f"Failed to fetch URL due to network error: {e}. "
@@ -148,6 +155,11 @@ class FetchURL(CallableTool2[Params]):
                 ) as response,
             ):
                 if response.status != 200:
+                    logger.warning(
+                        "FetchURL service HTTP error: status={status}, url={url}",
+                        status=response.status,
+                        url=params.url,
+                    )
                     return builder.error(
                         f"Failed to fetch URL via service. Status: {response.status}.",
                         brief="Failed to fetch URL via fetch service",
@@ -159,11 +171,15 @@ class FetchURL(CallableTool2[Params]):
                     "The returned content is the main content extracted from the page."
                 )
         except TimeoutError:
+            logger.warning("FetchURL service timed out: url={url}", url=params.url)
             return builder.error(
                 "Failed to fetch URL via service: request timed out.",
                 brief="Service request timed out",
             )
         except aiohttp.ClientError as e:
+            logger.warning(
+                "FetchURL service network error: {error}, url={url}", error=e, url=params.url
+            )
             return builder.error(
                 (
                     f"Failed to fetch URL via service due to network error: {e}. "

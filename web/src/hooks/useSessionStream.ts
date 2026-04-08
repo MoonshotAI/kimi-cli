@@ -307,8 +307,6 @@ export function useSessionStream(
   // stale HTTP responses overwriting newer real-time state
   useEffect(() => {
     if (yoloStatus !== null && !hasReceivedLiveYoloUpdateRef.current) {
-      setYoloMode(yoloStatus.enabled);
-    }
   }, [yoloStatus]);
 
   // Refs
@@ -2007,7 +2005,7 @@ export function useSessionStream(
       method: "initialize",
       id,
       params: {
-        protocol_version: "1.8",
+        protocol_version: "1.9",
         client: {
           name: "kiwi",
           version: kimiCliVersion,

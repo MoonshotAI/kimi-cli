@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import Enum
 from hashlib import md5
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast, override
+from typing import Any, Literal, Protocol, cast, override, runtime_checkable
 
 from kaos.path import KaosPath
 from prompt_toolkit import PromptSession
@@ -612,82 +612,15 @@ class SlashCommandMenuControl(UIControl):
 
 
 class LocalFileMentionCompleter(Completer):
-    """Offer fuzzy `@` path completion by indexing workspace files."""
+    """Offer fuzzy `@` path completion by indexing workspace files.
+
+    File discovery and ignore rules are delegated to
+    :mod:`kimi_cli.utils.file_filter` so that the web backend can reuse
+    them.
+    """
 
     _FRAGMENT_PATTERN = re.compile(r"[^\s@]+")
     _TRIGGER_GUARDS = frozenset((".", "-", "_", "`", "'", '"', ":", "@", "#", "~"))
-    _IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
-        "vcs_metadata": (".DS_Store", ".bzr", ".git", ".hg", ".svn"),
-        "tooling_caches": (
-            ".build",
-            ".cache",
-            ".coverage",
-            ".fleet",
-            ".gradle",
-            ".idea",
-            ".ipynb_checkpoints",
-            ".pnpm-store",
-            ".pytest_cache",
-            ".pub-cache",
-            ".ruff_cache",
-            ".swiftpm",
-            ".tox",
-            ".venv",
-            ".vs",
-            ".vscode",
-            ".yarn",
-            ".yarn-cache",
-        ),
-        "js_frontend": (
-            ".next",
-            ".nuxt",
-            ".parcel-cache",
-            ".svelte-kit",
-            ".turbo",
-            ".vercel",
-            "node_modules",
-        ),
-        "python_packaging": (
-            "__pycache__",
-            "build",
-            "coverage",
-            "dist",
-            "htmlcov",
-            "pip-wheel-metadata",
-            "venv",
-        ),
-        "java_jvm": (".mvn", "out", "target"),
-        "dotnet_native": ("bin", "cmake-build-debug", "cmake-build-release", "obj"),
-        "bazel_buck": ("bazel-bin", "bazel-out", "bazel-testlogs", "buck-out"),
-        "misc_artifacts": (
-            ".dart_tool",
-            ".serverless",
-            ".stack-work",
-            ".terraform",
-            ".terragrunt-cache",
-            "DerivedData",
-            "Pods",
-            "deps",
-            "tmp",
-            "vendor",
-        ),
-    }
-    _IGNORED_NAMES = frozenset(name for group in _IGNORED_NAME_GROUPS.values() for name in group)
-    _IGNORED_PATTERN_PARTS: tuple[str, ...] = (
-        r".*_cache$",
-        r".*-cache$",
-        r".*\.egg-info$",
-        r".*\.dist-info$",
-        r".*\.py[co]$",
-        r".*\.class$",
-        r".*\.sw[po]$",
-        r".*~$",
-        r".*\.(?:tmp|bak)$",
-    )
-    _IGNORED_PATTERNS = re.compile(
-        "|".join(f"(?:{part})" for part in _IGNORED_PATTERN_PARTS),
-        re.IGNORECASE,
-    )
 
     def __init__(
         self,
@@ -701,9 +634,12 @@ class LocalFileMentionCompleter(Completer):
         self._limit = limit
         self._cache_time: float = 0.0
         self._cached_paths: list[str] = []
+        self._cache_scope: str | None = None
         self._top_cache_time: float = 0.0
         self._top_cached_paths: list[str] = []
         self._fragment_hint: str | None = None
+        self._is_git: bool | None = None  # lazily detected
+        self._git_index_mtime: float | None = None
 
         self._word_completer = WordCompleter(
             self._get_paths,
@@ -717,14 +653,6 @@ class LocalFileMentionCompleter(Completer):
             pattern=r"^[^\s@]*",
         )
 
-    @classmethod
-    def _is_ignored(cls, name: str) -> bool:
-        if not name:
-            return True
-        if name in cls._IGNORED_NAMES:
-            return True
-        return bool(cls._IGNORED_PATTERNS.fullmatch(name))
-
     def _get_paths(self) -> list[str]:
         fragment = self._fragment_hint or ""
         if "/" not in fragment and len(fragment) < 3:
@@ -732,6 +660,8 @@ class LocalFileMentionCompleter(Completer):
         return self._get_deep_paths()
 
     def _get_top_level_paths(self) -> list[str]:
+        from kimi_cli.utils.file_filter import is_ignored
+
         now = time.monotonic()
         if now - self._top_cache_time <= self._refresh_interval:
             return self._top_cached_paths
@@ -740,7 +670,7 @@ class LocalFileMentionCompleter(Completer):
         try:
             for entry in sorted(self._root.iterdir(), key=lambda p: p.name):
                 name = entry.name
-                if self._is_ignored(name):
+                if is_ignored(name):
                     continue
                 entries.append(f"{name}/" if entry.is_dir() else name)
                 if len(entries) >= self._limit:
@@ -753,45 +683,45 @@ class LocalFileMentionCompleter(Completer):
         return self._top_cached_paths
 
     def _get_deep_paths(self) -> list[str]:
+        from kimi_cli.utils.file_filter import (
+            detect_git,
+            git_index_mtime,
+            list_files_git,
+            list_files_walk,
+        )
+
+        fragment = self._fragment_hint or ""
+
+        scope: str | None = None
+        if "/" in fragment:
+            scope = fragment.rsplit("/", 1)[0]
+
         now = time.monotonic()
-        if now - self._cache_time <= self._refresh_interval:
+        cache_valid = (
+            now - self._cache_time <= self._refresh_interval and self._cache_scope == scope
+        )
+
+        # Invalidate on .git/index mtime change (like Claude Code).
+        if cache_valid and self._is_git:
+            mtime = git_index_mtime(self._root)
+            if mtime != self._git_index_mtime:
+                cache_valid = False
+
+        if cache_valid:
             return self._cached_paths
 
-        paths: list[str] = []
-        try:
-            for current_root, dirs, files in os.walk(self._root):
-                relative_root = Path(current_root).relative_to(self._root)
+        if self._is_git is None:
+            self._is_git = detect_git(self._root)
 
-                # Prevent descending into ignored directories.
-                dirs[:] = sorted(d for d in dirs if not self._is_ignored(d))
-
-                if relative_root.parts and any(
-                    self._is_ignored(part) for part in relative_root.parts
-                ):
-                    dirs[:] = []
-                    continue
-
-                if relative_root.parts:
-                    paths.append(relative_root.as_posix() + "/")
-                    if len(paths) >= self._limit:
-                        break
-
-                for file_name in sorted(files):
-                    if self._is_ignored(file_name):
-                        continue
-                    relative = (relative_root / file_name).as_posix()
-                    if not relative:
-                        continue
-                    paths.append(relative)
-                    if len(paths) >= self._limit:
-                        break
-
-                if len(paths) >= self._limit:
-                    break
-        except OSError:
-            return self._cached_paths
+        paths: list[str] | None = None
+        if self._is_git:
+            paths = list_files_git(self._root, scope)
+            self._git_index_mtime = git_index_mtime(self._root)
+        if paths is None:
+            paths = list_files_walk(self._root, scope, limit=self._limit)
 
         self._cached_paths = paths
+        self._cache_scope = scope
         self._cache_time = now
         return self._cached_paths
 
@@ -1141,6 +1071,8 @@ class _ToastEntry:
 
 
 class RunningPromptDelegate(Protocol):
+    """Protocol for components that can take over the bottom prompt area."""
+
     modal_priority: int
 
     def render_running_prompt_body(self, columns: int) -> AnyFormattedText: ...
@@ -1156,6 +1088,19 @@ class RunningPromptDelegate(Protocol):
     def should_handle_running_prompt_key(self, key: str) -> bool: ...
 
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None: ...
+
+
+@runtime_checkable
+class AgentStatusProvider(Protocol):
+    """Optional protocol for delegates that render always-visible agent status.
+
+    When the running prompt delegate implements this, ``_render_agent_status``
+    will call ``render_agent_status`` instead of the fallback status block.
+    This ensures spinners, content blocks, and tool calls remain visible
+    even when a modal (approval/question/btw) is active.
+    """
+
+    def render_agent_status(self, columns: int) -> AnyFormattedText: ...
 
 
 _toast_queues: dict[Literal["left", "right"], deque[_ToastEntry]] = {
@@ -1393,6 +1338,14 @@ class CustomPromptSession:
             self._handle_running_prompt_key("space", event)
 
         @_kb.add(
+            "c-s",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("c-s")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("c-s", event)
+
+        @_kb.add(
             "c-e",
             eager=True,
             filter=Condition(lambda: self._should_handle_running_prompt_key("c-e")),
@@ -1590,10 +1543,8 @@ class CustomPromptSession:
     def _slash_menu_left_padding(self) -> int:
         if self._mode == PromptMode.SHELL:
             return max(1, get_cwidth(f"{PROMPT_SYMBOL_SHELL} ") - 2)
-        if self._status_provider().plan_mode:
-            return max(1, get_cwidth(f"{PROMPT_SYMBOL_PLAN} ") - 2)
-        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
-        return max(1, get_cwidth(f"{symbol} ") - 2)
+        # Agent mode: prompt prefix is "│  " (3 chars inside input panel)
+        return 1
 
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
@@ -1604,17 +1555,29 @@ class CustomPromptSession:
         app = get_app_or_none()
         columns = app.output.get_size().columns if app is not None else 80
         fragments: FormattedText = FormattedText()
-        body = self._render_agent_prompt_body(columns)
+
+        # Agent status (always visible)
+        agent_status = self._render_agent_status(columns)
+        if agent_status:
+            fragments.extend(agent_status)
+            if not agent_status[-1][1].endswith("\n"):
+                fragments.append(("", "\n"))
+
+        # Interactive body
+        body = self._render_interactive_body(columns)
         if body:
             fragments.extend(body)
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
+
         if self._active_modal_delegate() is not None:
             return fragments
-        if body:
+        has_content = bool(agent_status or body)
+        if has_content:
             fragments.append(("", "\n"))
-            fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
-            fragments.append(("", "\n"))
+        # Shell mode: simple separator + $ prefix (no panel border)
+        fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
+        fragments.append(("", "\n"))
         fragments.append(("bold", f"{PROMPT_SYMBOL_SHELL} "))
         return fragments
 
@@ -1726,9 +1689,16 @@ class CustomPromptSession:
         elif (
             old_state == PromptUIState.MODAL_HIDDEN_INPUT
             and new_state != PromptUIState.MODAL_HIDDEN_INPUT
+            and self._suspended_buffer_document is not None
         ):
-            if self._suspended_buffer_document is not None and not buffer.text:
+            if not buffer.text:
                 buffer.set_document(self._suspended_buffer_document, bypass_readonly=True)
+            else:
+                # Buffer was externally modified (e.g. approval inline feedback).
+                # Don't overwrite the new content, but log that the old input is lost.
+                logger.debug(
+                    "Dropping suspended buffer document because buffer was modified externally"
+                )
             self._suspended_buffer_document = None
 
         self._last_ui_state = new_state
@@ -1737,23 +1707,67 @@ class CustomPromptSession:
         app = get_app_or_none()
         columns = app.output.get_size().columns if app is not None else 80
         fragments: FormattedText = FormattedText()
-        body = self._render_agent_prompt_body(columns)
+
+        # 1. Agent status — ALWAYS rendered from running prompt delegate.
+        #    This ensures spinners, content blocks, tool calls etc. stay
+        #    visible even when a modal (btw/approval/question) is active.
+        agent_status = self._render_agent_status(columns)
+        if agent_status:
+            fragments.extend(agent_status)
+            if not agent_status[-1][1].endswith("\n"):
+                fragments.append(("", "\n"))
+
+        # 2. Interactive area — from the active delegate (modal overrides).
+        body = self._render_interactive_body(columns)
         if body:
             fragments.extend(body)
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
+
+        # 3. When a modal is active, skip input panel border.
         if self._active_modal_delegate() is not None:
             return fragments
+
+        # 4. Input section header — style varies by mode:
+        #    normal:  ── input ─────────────────  (grey, solid)
+        #    plan:    ╌╌ input · plan ╌╌╌╌╌╌╌╌╌  (blue, dashed)
+        status = self._status_provider()
+        # Build title parts
+        title_parts = ["input"]
+        if status.plan_mode:
+            title_parts.append("plan")
+        # Queue count from running prompt delegate
+        running = self._running_prompt_delegate
+        queue_count = len(getattr(running, "_queued_messages", []))
+        if queue_count > 0:
+            title_parts.append(f"{queue_count} queued")
+        title = f" {' · '.join(title_parts)} "
+        if status.plan_mode:
+            dash = "╌"
+            style = "fg:#60a5fa"  # blue
+        else:
+            dash = "─"
+            style = "class:running-prompt-separator"
+        border_fill = max(0, columns - len(title) - 2)
+        top_border = f"{dash}{dash}{title}{dash * border_fill}"
         fragments.append(("", "\n"))
-        fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
+        fragments.append((style, top_border))
         fragments.append(("", "\n"))
-        fragments.extend(self._render_agent_prompt_label())
+        fragments.append(("", " "))
         return fragments
 
-    def _render_agent_prompt_body(self, columns: int) -> FormattedText:
+    def _render_agent_status(self, columns: int) -> FormattedText:
+        """Render agent streaming output (always visible, independent of modals)."""
+        running = self._running_prompt_delegate
+        if running is not None and isinstance(running, AgentStatusProvider):
+            return to_formatted_text(running.render_agent_status(columns))
+        return self._render_status_block(columns)
+
+    def _render_interactive_body(self, columns: int) -> FormattedText:
+        """Render the interactive area from the active delegate (modal or running prompt)."""
         delegate = self._active_prompt_delegate()
         if delegate is None:
-            return self._render_status_block(columns)
+            return FormattedText([])
         return to_formatted_text(delegate.render_running_prompt_body(columns))
 
     def _render_status_block(self, columns: int) -> FormattedText:
@@ -1766,11 +1780,8 @@ class CustomPromptSession:
         return to_formatted_text(block)
 
     def _render_agent_prompt_label(self) -> FormattedText:
-        status = self._status_provider()
-        if status.plan_mode:
-            return FormattedText([(get_toolbar_colors().plan_prompt, f"{PROMPT_SYMBOL_PLAN} ")])
-        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
-        return FormattedText([("", f"{symbol} ")])
+        """Render the prompt label (empty — cursor starts at column 0)."""
+        return FormattedText([("", "  ")])
 
     def __enter__(self) -> CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():

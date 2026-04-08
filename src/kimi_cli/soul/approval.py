@@ -169,3 +169,5 @@ class Approval:
                 return ApprovalResult(approved=True)
             case "reject":
                 return ApprovalResult(approved=False, feedback=feedback)
+            case _:
+                return ApprovalResult(approved=False)

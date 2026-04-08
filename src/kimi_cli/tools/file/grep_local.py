@@ -577,6 +577,12 @@ class Grep(CallableTool2[Params]):
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            logger.warning(
+                "Grep failed: pattern={pattern}, path={path}: {error}",
+                pattern=params.pattern,
+                path=params.path,
+                error=e,
+            )
             return ToolError(
                 message=f"Failed to grep. Error: {str(e)}",
                 brief="Failed to grep",

@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from kosong.chat_provider import APIStatusError, ChatProviderError
+from kosong.chat_provider import (
+    APIConnectionError,
+    APIEmptyResponseError,
+    APIStatusError,
+    APITimeoutError,
+    ChatProviderError,
+)
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -183,6 +189,7 @@ class Shell:
         self._running_input_handler: Callable[[UserInput], None] | None = None
         self._running_interrupt_handler: Callable[[], None] | None = None
         self._active_approval_sink: Any | None = None
+        self._active_view: Any | None = None
         self._pending_approval_requests = deque[ApprovalRequest]()
         self._current_prompt_approval_request: ApprovalRequest | None = None
         self._approval_modal: ApprovalPromptDelegate | None = None
@@ -524,6 +531,27 @@ class Shell:
                         resume_prompt.set()
                         continue
 
+                    # Unified input routing — intercept local commands
+                    # before they reach the soul/wire.
+                    from kimi_cli.ui.shell.visualize import InputAction, classify_input
+
+                    # Use resolved_command (placeholder-expanded) so /btw
+                    # receives the actual pasted content, not "[Pasted text #1]".
+                    input_text = (
+                        user_input.resolved_command
+                        if hasattr(user_input, "resolved_command")
+                        else str(user_input)
+                    )
+                    action = classify_input(input_text, is_streaming=False)
+                    if action.kind == InputAction.BTW and isinstance(self.soul, KimiSoul):
+                        await self._run_btw_modal(action.args, prompt_session)
+                        resume_prompt.set()
+                        continue
+                    if action.kind == InputAction.IGNORED:
+                        console.print(f"[dim]{action.args}[/dim]")
+                        resume_prompt.set()
+                        continue
+
                     if slash_cmd_call := self._agent_slash_command_call(user_input):
                         is_soul_slash = (
                             slash_cmd_call.name in self._available_slash_commands
@@ -678,9 +706,27 @@ class Shell:
         loop = asyncio.get_running_loop()
         remove_sigint = install_sigint_handler(loop, _handler)
 
+        # Declare before try so finally can always access it.
+        from kimi_cli.ui.shell.visualize import (
+            _PromptLiveView,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        captured_view: _PromptLiveView | None = None
+        pending: list[UserInput] = []  # queued messages being drained
+
         try:
             snap = self.soul.status
             runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
+            # Capture view reference via closure — _clear_active_view sets
+            # _active_view=None inside visualize()'s finally (before run_soul
+            # returns), so we must capture the view object independently.
+
+            def _on_view_ready(view: Any) -> None:
+                nonlocal captured_view
+                self._set_active_view(view)
+                if isinstance(view, _PromptLiveView):
+                    captured_view = view
+
             await run_soul(
                 self.soul,
                 user_input,
@@ -695,15 +741,83 @@ class Shell:
                     cancel_event=cancel_event,
                     prompt_session=self._prompt_session,
                     steer=self.soul.steer if isinstance(self.soul, KimiSoul) else None,
+                    btw_runner=self._make_btw_runner(),
                     bind_running_input=self._bind_running_input,
                     unbind_running_input=self._unbind_running_input,
-                    on_view_ready=self._set_active_approval_sink,
-                    on_view_closed=self._clear_active_approval_sink,
+                    on_view_ready=_on_view_ready,
+                    on_view_closed=self._clear_active_view,
                 ),
                 cancel_event,
                 runtime.session.wire_file if runtime else None,
                 runtime,
             )
+            # If btw is still showing, wait for user dismiss BEFORE draining
+            # queue.  This runs AFTER visualize_loop returns (within run_soul's
+            # 0.5s ui_task timeout), so the btw modal is still attached to
+            # prompt_session and key events continue to work.
+            if captured_view is not None:
+                await captured_view.wait_for_btw_dismiss()
+
+            # Clear cancel_event so queued turns aren't tainted by a
+            # Ctrl+C that fired during btw dismiss wait.
+            cancel_event.clear()
+
+            # Drain queued messages and send each as a new turn.
+            # Safety valve: cap at 20 "generations" (new batches of messages
+            # from the view). A one-time backlog of 25 messages = 1 generation,
+            # but a user adding new messages every turn = 1 generation per turn.
+            _MAX_DRAIN_GENERATIONS = 20
+            pending.clear()
+            drain_generation = 0
+            while captured_view is not None and drain_generation < _MAX_DRAIN_GENERATIONS:
+                new_messages = captured_view.drain_queued_messages()
+                if new_messages:
+                    drain_generation += 1
+                pending.extend(new_messages)
+                if not pending:
+                    break
+                queued = pending.pop(0)
+                console.print(render_user_echo_text(queued.command))
+                await run_soul(
+                    self.soul,
+                    queued.content,
+                    lambda wire: visualize(
+                        wire.ui_side(merge=False),
+                        initial_status=StatusUpdate(
+                            context_usage=self.soul.status.context_usage,
+                            context_tokens=self.soul.status.context_tokens,
+                            max_context_tokens=self.soul.status.max_context_tokens,
+                            mcp_status=self.soul.status.mcp_status,
+                        ),
+                        cancel_event=cancel_event,
+                        prompt_session=self._prompt_session,
+                        steer=self.soul.steer if isinstance(self.soul, KimiSoul) else None,
+                        btw_runner=self._make_btw_runner(),
+                        bind_running_input=self._bind_running_input,
+                        unbind_running_input=self._unbind_running_input,
+                        on_view_ready=_on_view_ready,
+                        on_view_closed=self._clear_active_view,
+                    ),
+                    cancel_event,
+                    runtime.session.wire_file if runtime else None,
+                    runtime,
+                )
+                # Wait for btw dismiss if one was triggered during this queued turn
+                if captured_view is not None:
+                    await captured_view.wait_for_btw_dismiss()
+                cancel_event.clear()  # same rationale as above
+                # captured_view is now the view from this turn;
+                # next iteration drains it for any new messages.
+            if drain_generation >= _MAX_DRAIN_GENERATIONS:
+                logger.warning(
+                    "Queue drain hit safety limit ({n} generations)",
+                    n=_MAX_DRAIN_GENERATIONS,
+                )
+                # Warn about remaining items in the local pending buffer.
+                # Clear after printing so finally doesn't duplicate.
+                for msg in pending:
+                    console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
+                pending.clear()
             return True
         except LLMNotSet:
             logger.exception("LLM not set:")
@@ -715,24 +829,72 @@ class Shell:
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             if isinstance(e, APIStatusError) and e.status_code == 401:
-                console.print("[red]Authorization failed, please check your login status[/red]")
+                console.print(
+                    "[red]Authorization failed. Your session may have expired.[/red]\n"
+                    "[dim]Type [bold]/login[/bold] to re-authenticate.[/dim]\n"
+                    f"[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIStatusError) and e.status_code == 402:
-                console.print("[red]Membership expired, please renew your plan[/red]")
+                console.print(
+                    f"[red]Membership expired, please renew your plan[/red]\n[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIStatusError) and e.status_code == 403:
-                console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
+                console.print(
+                    "[red]Quota exceeded, please upgrade your plan or retry later[/red]\n"
+                    f"[dim]Server: {e}[/dim]"
+                )
+            elif isinstance(e, APIConnectionError):
+                console.print(
+                    f"[red]Network connection failed: {e}[/red]\n"
+                    "[dim]Please check your network and try again.[/dim]"
+                )
+            elif isinstance(e, APITimeoutError):
+                console.print(
+                    f"[red]Request timed out: {e}[/red]\n"
+                    "[dim]The server may be slow or unreachable. Please try again later.[/dim]"
+                )
+            elif isinstance(e, APIEmptyResponseError):
+                console.print(
+                    "[red]The server returned an empty response.[/red]\n"
+                    "[dim]This is usually a temporary issue. Please try again.[/dim]"
+                )
             else:
                 console.print(f"[red]LLM provider error: {e}[/red]")
+            if not isinstance(e, APIStatusError) or e.status_code not in (401, 402, 403):
+                console.print(
+                    "[dim]If this persists, run [bold]kimi export[/bold] and send the "
+                    "exported data to support for assistance. "
+                    "Please do not share the exported file publicly.[/dim]"
+                )
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            console.print(f"[yellow]{e}[/yellow]")
+            console.print(
+                f"[yellow]{e}[/yellow]\n"
+                "[dim]Send another message to continue where it left off.[/dim]"
+            )
         except RunCancelled:
             logger.info("Cancelled by user")
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")
-            console.print(f"[red]Unexpected error: {e}[/red]")
+            console.print(
+                f"[red]Unexpected error: {e}[/red]\n"
+                "[dim]Run [bold]kimi export[/bold] and send the exported data to support "
+                "for assistance. Please do not share the exported file publicly.[/dim]"
+            )
             raise  # re-raise unknown error
         finally:
+            # Clean up btw modal if it's still attached (exception skipped wait_for_btw_dismiss)
+            if captured_view is not None:
+                captured_view._dismiss_btw()  # pyright: ignore[reportPrivateUsage]
+            # Warn about queued messages lost due to error/cancel.
+            # Check both: pending (already drained from view) and view (not yet drained).
+            all_lost: list[UserInput] = list(pending)
+            pending.clear()
+            if captured_view is not None:
+                all_lost.extend(captured_view.drain_queued_messages())
+            for msg in all_lost:
+                console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
             self._maybe_present_pending_approvals()
             remove_sigint()
         return False
@@ -860,8 +1022,122 @@ class Shell:
             return request
         return request.model_copy(update={"source_description": record.description})
 
-    def _set_active_approval_sink(self, sink: Any) -> None:
-        self._active_approval_sink = sink
+    async def _run_btw_modal(
+        self,
+        question: str,
+        prompt_session: CustomPromptSession,
+    ) -> None:
+        """Run /btw using the prompt session's modal system.
+
+        Attaches a ``_BtwModalDelegate`` that replaces the input line with
+        the btw panel.  A refresh loop animates the spinner.  After the LLM
+        responds, we start a new prompt read so prompt_toolkit can render the
+        result and accept dismiss keys.
+        """
+        from kimi_cli.soul.btw import execute_side_question
+        from kimi_cli.ui.shell.visualize import (
+            _BtwModalDelegate,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        assert isinstance(self.soul, KimiSoul)
+
+        dismiss_event = asyncio.Event()
+        modal = _BtwModalDelegate(on_dismiss=lambda: dismiss_event.set())
+        import time
+
+        modal._question = question  # pyright: ignore[reportPrivateUsage]
+        modal.set_start_time(time.monotonic())
+        prompt_session.attach_modal(modal)
+
+        # Refresh loop for spinner animation
+        async def _refresh() -> None:
+            try:
+                while True:
+                    await asyncio.sleep(0.08)
+                    prompt_session.invalidate()
+            except asyncio.CancelledError:
+                pass
+
+        refresh_task = asyncio.create_task(_refresh())
+        prompt_task: asyncio.Task[None] | None = None
+        llm_task: asyncio.Task[tuple[str | None, str | None]] | None = None
+
+        try:
+
+            def _on_chunk(chunk: str) -> None:
+                modal.append_text(chunk)
+
+            # Start a prompt read concurrently — renders the modal and
+            # handles key events while the LLM call runs in parallel.
+            async def _wait_for_dismiss() -> None:
+                while not dismiss_event.is_set():
+                    try:
+                        await prompt_session.prompt_next()
+                    except (KeyboardInterrupt, EOFError):
+                        dismiss_event.set()
+                        break
+
+            prompt_task = asyncio.create_task(_wait_for_dismiss())
+
+            # Run LLM call as a separate task so Escape can cancel it
+            llm_task = asyncio.create_task(
+                execute_side_question(self.soul, question, on_text_chunk=_on_chunk)
+            )
+
+            # Wait for either LLM completion or user dismiss
+            dismiss_task = asyncio.create_task(dismiss_event.wait())
+            _done, _ = await asyncio.wait(
+                [llm_task, dismiss_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if llm_task.done() and not llm_task.cancelled():
+                # LLM finished — show result, wait for user to dismiss
+                dismiss_task.cancel()
+                response, error = llm_task.result()
+                modal.set_result(response, error)
+                prompt_session.invalidate()
+                await dismiss_event.wait()
+            else:
+                # User dismissed during loading — cancel the LLM call
+                llm_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await llm_task
+        finally:
+            # Cancel ALL child tasks
+            if llm_task is not None and not llm_task.done():
+                llm_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await llm_task
+            if prompt_task is not None:
+                prompt_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await prompt_task
+            refresh_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await refresh_task
+            prompt_session.detach_modal(modal)
+
+    def _make_btw_runner(self):
+        """Create a btw_runner callback bound to the current soul."""
+        if not isinstance(self.soul, KimiSoul):
+            return None
+
+        soul = self.soul
+
+        async def _runner(
+            question: str,
+            on_text_chunk: Callable[[str], None] | None = None,
+        ) -> tuple[str | None, str | None]:
+            from kimi_cli.soul.btw import execute_side_question
+
+            return await execute_side_question(soul, question, on_text_chunk)
+
+        return _runner
+
+    def _set_active_view(self, view: Any) -> None:
+        self._active_approval_sink = view
+        self._active_view = view
         # In interactive mode, approvals are handled by the prompt modal,
         # not by the live view sink. Don't flush to avoid losing requests.
         if self._prompt_session is not None:
@@ -877,8 +1153,9 @@ class Shell:
                 continue
             self._forward_approval_to_sink(request)
 
-    def _clear_active_approval_sink(self) -> None:
+    def _clear_active_view(self) -> None:
         self._active_approval_sink = None
+        self._active_view = None
         # Re-queue any approval requests that were forwarded to the sink
         # but not yet resolved.  Without this, those requests would be
         # silently lost when the live view closes between turns.

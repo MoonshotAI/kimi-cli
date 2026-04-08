@@ -4,6 +4,17 @@
 
 ## 未发布
 
+- Shell：新增 `/btw` 侧问命令——在 streaming 期间提出快速问题，不打断主对话；使用相同的系统提示词和工具定义以对齐 Prompt 缓存；响应在可滚动的模态面板中显示，支持流式输出
+- Shell：重新设计底部动态区——将单体 `visualize.py`（1865 行）拆分为模块化包（`visualize/`），包含输入路由、交互式提示、审批/提问面板和 btw 模态面板等独立模块；通过 `classify_input()` 统一输入语义，实现一致的命令路由
+- Shell：新增 streaming 期间的排队和 steer 双通道输入——Enter 将消息排队，在当前轮次结束后发送；Ctrl+S 将消息立即注入到正在运行的轮次上下文中；排队消息在提示区域显示计数指示器，可通过 ↑ 键召回编辑
+- Shell：新增 `BtwBegin`/`BtwEnd` Wire 事件，支持跨客户端侧问
+- Shell：改进 spinner 中的耗时格式——超过 60 秒的时长现在显示为 `"1m 23s"` 而非 `"83s"`；低于 1 秒的显示为 `"<1s"`
+- Shell：修复 btw 面板中的 Rich markup 注入问题——包含 `[`/`]` 字符的用户问题现在会被转义，防止 spinner 文本和面板标题出现渲染错误或样式注入
+- Core：改进错误诊断——丰富内部日志覆盖，在 `kimi export` 导出的归档中包含相关日志文件和系统信息，并为常见错误（认证、网络、超时、配额）提供可操作的提示消息
+- Shell：使用 `git ls-files` 进行 `@` 文件引用发现——文件补全器现在优先使用 `git ls-files --recurse-submodules` 查询文件列表（5 秒超时），非 Git 仓库则回退到 `os.walk`；此修复解决了大型仓库（如包含 6.5 万+文件的 apache/superset）中 1000 文件限制导致字母顺序靠后的目录无法访问的问题（修复 #1375）
+- Core：新增共享的 `file_filter` 模块——通过 `src/kimi_cli/utils/file_filter.py` 统一 Shell 和 Web 的文件引用逻辑，提供一致的路径过滤、忽略目录排除和 Git 感知文件发现
+- Shell：防止文件引用 scope 参数的路径遍历——文件补全器请求中的 `scope` 参数现在会经过验证，防止目录遍历攻击
+- Web：恢复文件浏览器 API 中的未过滤目录列表——文件浏览器端点不再应用 Git 感知过滤，确保 Web UI 文件选择器中显示所有文件
 - Web：Web 界面新增 YOLO 模式支持——用户可直接在 Web UI 中开关自动审批模式；新增 `/api/sessions/{id}/yolo` 接口，并在 `StatusUpdate` 中增加 `yolo_mode` 字段（Wire 1.9）
 - Todo：重构 `SetTodoList` 工具，支持状态持久化并防止工具调用风暴——待办事项现在会持久化到会话状态（主 Agent）和独立状态文件（子 Agent）；新增查询模式（省略 `todos` 参数可读取当前状态）和清空模式（传 `[]` 清空）；工具描述中增加了防风暴指导，防止在没有实际进展的情况下反复调用（修复 #1710）
 - ReadFile：每次读取返回文件总行数，并支持负数 `line_offset` 实现 tail 模式——工具现在会在消息中报告 `Total lines in file: N.`，方便模型规划后续读取；负数 `line_offset`（如 `-100`）通过滑动窗口读取文件末尾 N 行，适用于无需 Shell 命令即可查看最新日志输出的场景；绝对值上限为 1000（MAX_LINES）
