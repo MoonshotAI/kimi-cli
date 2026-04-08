@@ -17,7 +17,6 @@ from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.mcp_status import render_mcp_console
 from kimi_cli.ui.shell.task_browser import TaskBrowserApp
 from kimi_cli.utils.changelog import CHANGELOG
-from kimi_cli.utils.datetime import format_relative_time
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
 if TYPE_CHECKING:
@@ -540,41 +539,32 @@ async def title(app: Shell, args: str):
 @registry.command(name="sessions", aliases=["resume"])
 async def list_sessions(app: Shell, args: str):
     """List sessions and resume optionally"""
+    import shlex
+
+    from kimi_cli.ui.shell.session_picker import SessionPickerApp
+
     soul = ensure_kimi_soul(app)
     if soul is None:
         return
 
-    work_dir = soul.runtime.session.work_dir
     current_session = soul.runtime.session
-    current_session_id = current_session.id
-    sessions = [
-        session for session in await Session.list(work_dir) if session.id != current_session_id
-    ]
+    result = await SessionPickerApp(
+        work_dir=current_session.work_dir,
+        current_session=current_session,
+    ).run()
 
-    await current_session.refresh()
-    sessions.insert(0, current_session)
-
-    choices: list[tuple[str, str]] = []
-    for session in sessions:
-        time_str = format_relative_time(session.updated_at)
-        marker = " (current)" if session.id == current_session_id else ""
-        label = f"{session.title} ({session.id}), {time_str}{marker}"
-        choices.append((session.id, label))
-
-    try:
-        selection = await ChoiceInput(
-            message="Select a session to switch to (↑↓ navigate, Enter select, Ctrl+C cancel):",
-            options=choices,
-            default=choices[0][0],
-        ).prompt_async()
-    except (EOFError, KeyboardInterrupt):
+    if result is None:
         return
 
-    if not selection:
-        return
+    selection, selected_work_dir = result
 
-    if selection == current_session_id:
+    if selection == current_session.id:
         console.print("[yellow]You are already in this session.[/yellow]")
+        return
+
+    if selected_work_dir != current_session.work_dir:
+        cmd = f"kimi --work-dir {shlex.quote(str(selected_work_dir))} --session {selection}"
+        console.print(f"[yellow]Session is in a different directory. Run:[/yellow]\n  {cmd}")
         return
 
     console.print(f"[green]Switching to session {selection}...[/green]")
