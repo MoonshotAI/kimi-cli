@@ -51,6 +51,7 @@ class SessionPickerApp:
         self._scope: SessionScope = "current"
         self._sessions: list[Session] = []
         self._result: str | None = None
+        self._reload_version: int = 0
 
         self._radio_list = RadioList[str](
             values=[(_EMPTY_SESSION_ID, "Loading...")],
@@ -67,8 +68,8 @@ class SessionPickerApp:
         )
         self._app = self._build_app()
 
-    async def run(self) -> str | None:
-        """Run the picker and return the selected session ID, or None."""
+    async def run(self) -> tuple[str, KaosPath] | None:
+        """Run the picker and return ``(session_id, work_dir)``, or *None*."""
         await self._load_sessions()
         self._sync_radio_list()
         result = await self._app.run_async()
@@ -76,7 +77,11 @@ class SessionPickerApp:
             return None
         if result == _EMPTY_SESSION_ID:
             return None
-        return result
+        # Look up the work_dir for the selected session.
+        for s in self._sessions:
+            if s.id == result:
+                return (result, s.work_dir)
+        return None
 
     # ------------------------------------------------------------------
     # Data loading
@@ -162,6 +167,7 @@ class SessionPickerApp:
         @kb.add("c-a")
         def _toggle_scope(event: KeyPressEvent) -> None:
             self._scope = "all" if self._scope == "current" else "current"
+            self._reload_version += 1
             event.app.create_background_task(self._reload_and_refresh(event.app))
 
         # Mark handlers as used
@@ -194,6 +200,8 @@ class SessionPickerApp:
         )
 
     async def _reload_and_refresh(self, app: Application[str | None]) -> None:
+        version = self._reload_version
+
         # Show loading state
         self._radio_list.values = [(_EMPTY_SESSION_ID, "Loading...")]
         self._radio_list.current_value = _EMPTY_SESSION_ID
@@ -201,6 +209,10 @@ class SessionPickerApp:
         app.invalidate()
 
         await self._load_sessions()
+
+        if version != self._reload_version:
+            return  # stale reload; a newer toggle already started
+
         self._sync_radio_list()
         app.invalidate()
 

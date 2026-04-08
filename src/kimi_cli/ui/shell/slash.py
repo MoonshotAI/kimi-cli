@@ -539,6 +539,8 @@ async def title(app: Shell, args: str):
 @registry.command(name="sessions", aliases=["resume"])
 async def list_sessions(app: Shell, args: str):
     """List sessions and resume optionally"""
+    import shlex
+
     from kimi_cli.ui.shell.session_picker import SessionPickerApp
 
     soul = ensure_kimi_soul(app)
@@ -546,16 +548,23 @@ async def list_sessions(app: Shell, args: str):
         return
 
     current_session = soul.runtime.session
-    selection = await SessionPickerApp(
+    result = await SessionPickerApp(
         work_dir=current_session.work_dir,
         current_session=current_session,
     ).run()
 
-    if not selection:
+    if result is None:
         return
+
+    selection, selected_work_dir = result
 
     if selection == current_session.id:
         console.print("[yellow]You are already in this session.[/yellow]")
+        return
+
+    if selected_work_dir != current_session.work_dir:
+        cmd = f"kimi --work-dir {shlex.quote(str(selected_work_dir))} --session {selection}"
+        console.print(f"[yellow]Session is in a different directory. Run:[/yellow]\n  {cmd}")
         return
 
     console.print(f"[green]Switching to session {selection}...[/green]")
