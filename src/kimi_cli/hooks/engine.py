@@ -201,9 +201,14 @@ class HookEngine:
             return []
 
         try:
-            return await self._execute_hooks(
+            results = await self._execute_hooks(
                 event, matcher_value, server_matched, wire_matched, input_data
             )
+            from kimi_cli.telemetry import track
+
+            has_block = any(r.action == "block" for r in results)
+            track("kimi_hook_triggered", event_type=event, action="block" if has_block else "allow")
+            return results
         except Exception:
             logger.warning("Hook engine error for {}, failing open", event)
             return []

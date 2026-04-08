@@ -302,6 +302,8 @@ class Shell:
             await idle_events.put(_PromptEvent(kind="input", user_input=user_input))
 
     async def run(self, command: str | None = None) -> bool:
+        _run_start_time = time.monotonic()
+
         # Initialize theme from config
         if isinstance(self.soul, KimiSoul):
             from kimi_cli.ui.theme import set_active_theme
@@ -325,6 +327,14 @@ class Shell:
             self._start_background_task(self._auto_update())
 
         _print_welcome_info(self.soul.name or "Kimi Code CLI", self._welcome_info)
+
+        # Start telemetry periodic flush and disk retry
+        from kimi_cli.telemetry import get_sink
+
+        _telemetry_sink = get_sink()
+        if _telemetry_sink is not None:
+            _telemetry_sink.start_periodic_flush()
+            self._start_background_task(_telemetry_sink.retry_disk_events())
 
         if isinstance(self.soul, KimiSoul):
             watcher = NotificationWatcher(
@@ -544,6 +554,9 @@ class Shell:
                     )
                     action = classify_input(input_text, is_streaming=False)
                     if action.kind == InputAction.BTW and isinstance(self.soul, KimiSoul):
+                        from kimi_cli.telemetry import track
+
+                        track("kimi_input_btw")
                         await self._run_btw_modal(action.args, prompt_session)
                         resume_prompt.set()
                         continue
@@ -558,6 +571,9 @@ class Shell:
                             and shell_slash_registry.find_command(slash_cmd_call.name) is None
                         )
                         if is_soul_slash:
+                            from kimi_cli.telemetry import track
+
+                            track("kimi_input_command", command=slash_cmd_call.name)
                             background_autotrigger_armed = True
                             resume_prompt.set()
                             await self.run_soul_command(slash_cmd_call.raw_input)
@@ -588,6 +604,13 @@ class Shell:
                     self._approval_modal = None
                 self._prompt_session = None
                 self._cancel_background_tasks()
+                # Track exit and flush remaining telemetry events
+                from kimi_cli.telemetry import track
+
+                track("kimi_exit", duration_s=time.monotonic() - _run_start_time)
+                if _telemetry_sink is not None:
+                    _telemetry_sink.stop_periodic_flush()
+                    await _telemetry_sink.flush()
                 ensure_tty_sane()
 
         return shell_ok
@@ -624,6 +647,9 @@ class Shell:
             return
 
         logger.info("Running shell command: {cmd}", cmd=command)
+        from kimi_cli.telemetry import track
+
+        track("kimi_input_bash")
 
         proc: asyncio.subprocess.Process | None = None
 
@@ -651,14 +677,18 @@ class Shell:
 
     async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
         from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
+        from kimi_cli.telemetry import track
 
         if command_call.name not in self._available_slash_commands:
             logger.info("Unknown slash command /{command}", command=command_call.name)
+            track("kimi_input_command_invalid")
             console.print(
                 f'[red]Unknown slash command "/{command_call.name}", '
                 'type "/" for all available commands[/red]'
             )
             return
+
+        track("kimi_input_command", command=command_call.name)
 
         command = shell_slash_registry.find_command(command_call.name)
         if command is None:
@@ -874,6 +904,12 @@ class Shell:
             )
         except RunCancelled:
             logger.info("Cancelled by user")
+            from kimi_cli.telemetry import track
+
+            _at_step = (
+                getattr(self.soul, "_current_step_no", 0) if isinstance(self.soul, KimiSoul) else 0
+            )
+            track("kimi_turn_interrupted", at_step=_at_step)
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")
@@ -1302,6 +1338,14 @@ class Shell:
     async def _auto_update(self) -> None:
         result = await do_update(print=False, check_only=True)
         if result == UpdateResult.UPDATE_AVAILABLE:
+            from kimi_cli.constant import VERSION as _current_version
+            from kimi_cli.telemetry import track
+
+            # Read latest version from the file written by do_update
+            _latest = ""
+            with contextlib.suppress(Exception):
+                _latest = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
+            track("kimi_update_prompted", current=_current_version, latest=_latest)
             while True:
                 toast(
                     f"new version found, run `{_update_mod.UPGRADE_COMMAND}` to upgrade",

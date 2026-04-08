@@ -256,6 +256,12 @@ async def model(app: Shell, args: str):
         console.print(f"[red]Failed to save config: {exc}[/red]")
         return
 
+    from kimi_cli.telemetry import track
+
+    if model_changed:
+        track("kimi_model_switch", model=selected_model_name)
+    if thinking_changed:
+        track("kimi_thinking_toggle", enabled=new_thinking)
     console.print(
         f"[green]Switched to {selected_model_name} "
         f"with thinking {'on' if new_thinking else 'off'}. "
@@ -469,6 +475,9 @@ async def feedback(app: Shell, args: str):
             ):
                 pass
             session_id = soul.runtime.session.id
+            from kimi_cli.telemetry import track
+
+            track("kimi_feedback_submitted")
             console.print(
                 f"[green]Feedback submitted, thank you! Your session ID is: {session_id}[/green]"
             )
@@ -490,6 +499,9 @@ async def clear(app: Shell, args: str):
     """Clear the context"""
     if ensure_kimi_soul(app) is None:
         return
+    from kimi_cli.telemetry import track
+
+    track("kimi_clear")
     await app.run_soul_command("/clear")
     raise Reload()
 
@@ -508,6 +520,9 @@ async def new(app: Shell, args: str):
     if current_session.is_empty():
         await current_session.delete()
     session = await Session.create(work_dir)
+    from kimi_cli.telemetry import track
+
+    track("kimi_session_new")
     console.print("[green]New session created. Switching...[/green]")
     raise Reload(session_id=session.id)
 
@@ -577,6 +592,9 @@ async def list_sessions(app: Shell, args: str):
         console.print("[yellow]You are already in this session.[/yellow]")
         return
 
+    from kimi_cli.telemetry import track
+
+    track("kimi_session_resume")
     console.print(f"[green]Switching to session {selection}...[/green]")
     raise Reload(session_id=selection)
 
@@ -641,6 +659,9 @@ def theme(app: Shell, args: str):
         console.print(f"[red]Failed to save config: {exc}[/red]")
         return
 
+    from kimi_cli.telemetry import track
+
+    track("kimi_theme_switch", theme=arg)
     console.print(f"[green]Switched to {arg} theme. Reloading...[/green]")
     raise Reload(session_id=soul.runtime.session.id)
 
@@ -648,6 +669,9 @@ def theme(app: Shell, args: str):
 @registry.command
 def web(app: Shell, args: str):
     """Open Kimi Code Web UI in browser"""
+    from kimi_cli.telemetry import track
+
+    track("kimi_web_opened")
     soul = ensure_kimi_soul(app)
     session_id = soul.runtime.session.id if soul else None
     raise SwitchToWeb(session_id=session_id)
@@ -656,6 +680,9 @@ def web(app: Shell, args: str):
 @registry.command
 def vis(app: Shell, args: str):
     """Open Kimi Agent Tracing Visualizer in browser"""
+    from kimi_cli.telemetry import track
+
+    track("kimi_vis_opened")
     soul = ensure_kimi_soul(app)
     session_id = soul.runtime.session.id if soul else None
     raise SwitchToVis(session_id=session_id)
@@ -793,6 +820,9 @@ async def undo(app: Shell, args: str):
             source_title=session.title,
         )
 
+    from kimi_cli.telemetry import track
+
+    track("kimi_undo")
     console.print(f"[green]Forked at turn {turn_index}. Switching to new session...[/green]")
     raise Reload(session_id=new_session_id, prefill_text=user_text)
 
@@ -815,6 +845,9 @@ async def fork(app: Shell, args: str):
         source_title=session.title,
     )
 
+    from kimi_cli.telemetry import track
+
+    track("kimi_session_fork")
     console.print("[green]Session forked. Switching to new session...[/green]")
     raise Reload(session_id=new_session_id)
 

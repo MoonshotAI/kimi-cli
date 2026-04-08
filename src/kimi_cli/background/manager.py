@@ -169,6 +169,9 @@ class BackgroundTaskManager:
             timeout_s=timeout_s,
         )
         self._store.create_task(spec)
+        from kimi_cli.telemetry import track
+
+        track("kimi_background_task_created")
 
         runtime = self._store.read_runtime(task_id)
         task_dir = self._store.task_dir(task_id)
@@ -545,6 +548,11 @@ class BackgroundTaskManager:
         runtime.finished_at = runtime.updated_at
         runtime.failure_reason = None
         self._store.write_runtime(task_id, runtime)
+        from kimi_cli.telemetry import track
+
+        if runtime.started_at and runtime.finished_at:
+            duration = runtime.finished_at - runtime.started_at
+            track("kimi_background_task_completed", success=True, duration_s=duration)
 
     def _mark_task_failed(self, task_id: str, reason: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -555,6 +563,11 @@ class BackgroundTaskManager:
         runtime.finished_at = runtime.updated_at
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
+        from kimi_cli.telemetry import track
+
+        if runtime.started_at and runtime.finished_at:
+            duration = runtime.finished_at - runtime.started_at
+            track("kimi_background_task_completed", success=False, duration_s=duration)
 
     def _mark_task_timed_out(self, task_id: str, reason: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -567,6 +580,11 @@ class BackgroundTaskManager:
         runtime.timed_out = True
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
+        from kimi_cli.telemetry import track
+
+        if runtime.started_at and runtime.finished_at:
+            duration = runtime.finished_at - runtime.started_at
+            track("kimi_background_task_completed", success=False, duration_s=duration)
 
     def _mark_task_killed(self, task_id: str, reason: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -578,3 +596,8 @@ class BackgroundTaskManager:
         runtime.interrupted = True
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
+        from kimi_cli.telemetry import track
+
+        if runtime.started_at and runtime.finished_at:
+            duration = runtime.finished_at - runtime.started_at
+            track("kimi_background_task_completed", success=False, duration_s=duration)

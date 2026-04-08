@@ -653,6 +653,9 @@ class KimiSoul:
 
     def _make_skill_runner(self, skill: Skill) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
+            from kimi_cli.telemetry import track
+
+            track("kimi_skill_invoked", skill_name=_skill.name)
             skill_text = await read_skill_text(_skill)
             if skill_text is None:
                 wire_send(
@@ -683,17 +686,30 @@ class KimiSoul:
                 wire_send(MCPLoadingBegin())
             try:
                 await self.wait_for_background_mcp_loading()
+                # Track MCP connection result
+                if loading:
+                    from kimi_cli.telemetry import track as _track_mcp
+
+                    mcp_snap = self._mcp_status_snapshot()
+                    if mcp_snap:
+                        if mcp_snap.connected > 0:
+                            _track_mcp("kimi_mcp_connected", server_count=mcp_snap.connected)
+                        _failed = mcp_snap.total - mcp_snap.connected
+                        if _failed > 0:
+                            _track_mcp("kimi_mcp_failed")
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
         step_no = 0
+        self._current_step_no = 0
         while True:
             step_no += 1
             if step_no > self._loop_control.max_steps_per_turn:
                 raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
+            self._current_step_no = step_no
             wire_send(StepBegin(n=step_no))
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
@@ -735,6 +751,23 @@ class KimiSoul:
                     request_id=req_id,
                 )
                 wire_send(StepInterrupted())
+                # Track API/step errors
+                from kimi_cli.telemetry import track
+
+                error_type = "other"
+                if isinstance(e, APIStatusError):
+                    status = getattr(e, "status_code", getattr(e, "status", 0))
+                    if status == 429:
+                        error_type = "rate_limit"
+                    elif status in (401, 403):
+                        error_type = "auth"
+                    else:
+                        error_type = "api"
+                elif isinstance(e, APIConnectionError):
+                    error_type = "network"
+                elif isinstance(e, (APITimeoutError, TimeoutError)):
+                    error_type = "timeout"
+                track("kimi_api_error", error_type=error_type)
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
@@ -1185,6 +1218,10 @@ class FlowRunner:
         return FlowRunner(flow, max_moves=max_moves)
 
     async def run(self, soul: KimiSoul, args: str) -> None:
+        if self._name:
+            from kimi_cli.telemetry import track
+
+            track("kimi_flow_invoked", flow_name=self._name)
         if args.strip():
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)

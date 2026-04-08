@@ -208,6 +208,9 @@ class KimiToolset:
                     _hook_task.add_done_callback(
                         lambda t: t.exception() if not t.cancelled() else None
                     )
+                    from kimi_cli.telemetry import track
+
+                    track("kimi_tool_error", tool_name=tool_call.function.name)
                     return ToolResult(
                         tool_call_id=tool_call.id,
                         return_value=ToolRuntimeError(str(e)),

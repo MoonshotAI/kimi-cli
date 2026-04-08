@@ -156,11 +156,18 @@ class Approval:
         try:
             response, feedback = await self._runtime.wait_for_response(request_id)
         except ApprovalCancelledError:
+            from kimi_cli.telemetry import track
+
+            track("kimi_tool_rejected", tool_name=tool_call.function.name)
             return ApprovalResult(approved=False)
+        from kimi_cli.telemetry import track
+
         match response:
             case "approve":
+                track("kimi_tool_approved", tool_name=tool_call.function.name)
                 return ApprovalResult(approved=True)
             case "approve_for_session":
+                track("kimi_tool_approved", tool_name=tool_call.function.name)
                 self._state.auto_approve_actions.add(action)
                 self._state.notify_change()
                 for pending in self._runtime.list_pending():
@@ -168,6 +175,8 @@ class Approval:
                         self._runtime.resolve(pending.id, "approve")
                 return ApprovalResult(approved=True)
             case "reject":
+                track("kimi_tool_rejected", tool_name=tool_call.function.name)
                 return ApprovalResult(approved=False, feedback=feedback)
             case _:
+                track("kimi_tool_rejected", tool_name=tool_call.function.name)
                 return ApprovalResult(approved=False)
