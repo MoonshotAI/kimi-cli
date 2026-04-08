@@ -365,6 +365,21 @@ body {
     font-size: 0.75rem;
   }
 
+  [data-mermaid-diagram] {
+    overflow-x: auto;
+  }
+
+  [data-mermaid-diagram] svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+  }
+
+  [data-mermaid-diagram] .label {
+    color: var(--foreground);
+  }
+
   /* ===== Animations ===== */
   @keyframes glow-pulse {
     0%,
