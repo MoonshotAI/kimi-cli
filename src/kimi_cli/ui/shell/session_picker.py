@@ -59,7 +59,7 @@ class SessionPickerApp:
             show_numbers=False,
             select_on_focus=True,
             open_character="",
-            select_character=">",
+            select_character="\u276f",
             close_character="",
             show_cursor=False,
             show_scrollbar=False,
@@ -110,11 +110,12 @@ class SessionPickerApp:
             short_id = session.id[:8]
             marker = " (current)" if session.id == current_id else ""
 
+            title_line = f"{session.title}{marker}"
+            meta_parts = [time_str, short_id]
             if self._scope == "all":
-                wd = _shorten_work_dir(str(session.work_dir))
-                label = f"{session.title} ({short_id}), {time_str}{marker} \u2014 {wd}"
-            else:
-                label = f"{session.title} ({short_id}), {time_str}{marker}"
+                meta_parts.append(_shorten_work_dir(str(session.work_dir)))
+            meta_line = "  " + " \u00b7 ".join(meta_parts)
+            label = f"{title_line}\n{meta_line}"
 
             values.append((session.id, label))
         return values
@@ -136,19 +137,21 @@ class SessionPickerApp:
 
     def _header_fragments(self) -> StyleAndTextTuples:
         scope_label = "current directory" if self._scope == "current" else "all directories"
+        total = len(self._sessions)
+        selected = self._radio_list._selected_index + 1  # pyright: ignore[reportPrivateUsage]
         return [
-            ("class:header.title", " SESSIONS "),
+            ("class:header.title", f" SESSIONS ({selected} of {total}) "),
             ("class:header.meta", f" [{scope_label}] "),
         ]
 
     def _footer_fragments(self) -> StyleAndTextTuples:
+        scope_action = "show all projects" if self._scope == "current" else "show current project"
         return [
-            ("class:footer.key", " Ctrl+A "),
-            ("class:footer.text", "toggle all directories  "),
-            ("class:footer.key", " Enter "),
-            ("class:footer.text", "select  "),
-            ("class:footer.key", " Ctrl+C "),
-            ("class:footer.text", "cancel "),
+            ("class:footer.text", f" Ctrl+A to {scope_action}"),
+            ("class:footer.text", " \u00b7 "),
+            ("class:footer.text", "Enter to select"),
+            ("class:footer.text", " \u00b7 "),
+            ("class:footer.text", "Esc to cancel "),
         ]
 
     def _build_app(self) -> Application[str | None]:
