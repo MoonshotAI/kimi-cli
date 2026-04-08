@@ -169,6 +169,43 @@ async def test_wire_message_serde():
     )
     _test_serde(msg)
 
+    # StatusUpdate with yolo_mode explicitly set
+    msg = StatusUpdate(yolo_mode=True)
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "StatusUpdate",
+            "payload": {
+                "context_usage": None,
+                "context_tokens": None,
+                "max_context_tokens": None,
+                "token_usage": None,
+                "message_id": None,
+                "plan_mode": None,
+                "yolo_mode": True,
+                "mcp_status": None,
+            },
+        }
+    )
+    _test_serde(msg)
+
+    msg = StatusUpdate(yolo_mode=False)
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "StatusUpdate",
+            "payload": {
+                "context_usage": None,
+                "context_tokens": None,
+                "max_context_tokens": None,
+                "token_usage": None,
+                "message_id": None,
+                "plan_mode": None,
+                "yolo_mode": False,
+                "mcp_status": None,
+            },
+        }
+    )
+    _test_serde(msg)
+
     msg = Notification(
         id="n1234567",
         category="task",
