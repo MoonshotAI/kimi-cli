@@ -242,6 +242,20 @@ Directories already within the working directory do not need to be added, as the
 
 ## Others
 
+### `/btw`
+
+Ask a quick side question without interrupting the main conversation. Available both when idle and during streaming.
+
+Usage: `/btw <question>`
+
+The side question runs in an isolated context: it sees the conversation history but does not modify it. Tool calls are disabled — the response is text-only, based on the model's existing knowledge of the conversation.
+
+During streaming, the response appears in a scrollable modal panel overlaying the prompt area. Use `↑`/`↓` to scroll, `Escape` to dismiss.
+
+::: tip
+This command is only available in interactive shell mode. Wire and ACP clients can use the `BtwBegin`/`BtwEnd` wire events with the `run_side_question()` API.
+:::
+
 ### `/init`
 
 Analyze the current project and generate an `AGENTS.md` file.

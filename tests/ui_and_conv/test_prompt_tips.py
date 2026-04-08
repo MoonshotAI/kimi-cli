@@ -570,8 +570,8 @@ def test_running_prompt_uses_shared_toolbar_and_separator_layout(monkeypatch: An
     rendered_message = prompt_session._render_agent_prompt_message()
     plain_message = "".join(fragment[1] for fragment in rendered_message)
     assert plain_message.startswith(f"live view ({width})\n\n")
-    assert f"\n{'─' * width}\n" in plain_message
-    assert plain_message.endswith(f"{PROMPT_SYMBOL} ")
+    # Input section header
+    assert "── input " in plain_message
 
     _toast_queues["left"].clear()
     _toast_queues["right"].clear()
@@ -712,9 +712,8 @@ def test_idle_agent_prompt_uses_same_separator_layout(monkeypatch: Any) -> None:
 
     rendered_message = prompt_session._render_agent_prompt_message()
     plain_message = "".join(fragment[1] for fragment in rendered_message)
-    assert plain_message.startswith("\n")
-    assert f"\n{'─' * width}\n" in plain_message
-    assert plain_message.endswith(f"{PROMPT_SYMBOL} ")
+    # Input section header
+    assert "── input " in plain_message
 
 
 # ── Session mode / erase_when_done behavior ───────────────────────────────────

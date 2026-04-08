@@ -107,6 +107,7 @@ def test_invalid_config_toml_is_reported(tmp_path: Path) -> None:
         f"""\
 Invalid TOML in configuration file {config_path}: Invalid key "this is not toml" at line 1 col 17
 See logs: {log_path}
+Run with --debug for full traceback, or run kimi export to share diagnostics.
 """
     )
 

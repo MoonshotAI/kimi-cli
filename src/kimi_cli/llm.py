@@ -10,6 +10,7 @@ from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
 
 from kimi_cli.constant import USER_AGENT
+from kimi_cli.utils.logging import logger
 
 if TYPE_CHECKING:
     from kimi_cli.auth.oauth import OAuthManager
@@ -114,6 +115,10 @@ def create_llm(
     if provider.type not in {"_echo", "_scripted_echo"} and (
         not provider.base_url or not model.model
     ):
+        logger.warning(
+            "Cannot create LLM: missing base_url or model (provider_type={provider_type})",
+            provider_type=provider.type,
+        )
         return None
 
     resolved_api_key = (

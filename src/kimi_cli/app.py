@@ -33,6 +33,17 @@ if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
 
 
+def _patch_session_id(record: dict[str, Any]) -> None:
+    """Inject the current session ID (from ContextVar) into log records."""
+    try:
+        from kimi_cli.soul.toolset import get_session_id
+
+        sid = get_session_id()
+        record["extra"]["sid"] = sid if sid else ""
+    except Exception:
+        record["extra"].setdefault("sid", "")
+
+
 def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None:
     # NOTE: stderr redirection is implemented by swapping the process-level fd=2 (dup2).
     # That can hide Click/Typer error output during CLI startup, so some entrypoints delay
@@ -45,9 +56,14 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
         get_share_dir() / "logs" / "kimi.log",
         # FIXME: configure level for different modules
         level="TRACE" if debug else "INFO",
+        format=(
+            "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | "
+            "{name}:{function}:{line} | {extra[sid]} - {message}"
+        ),
         rotation="06:00",
         retention="10 days",
     )
+    logger.configure(extra={"sid": ""}, patcher=_patch_session_id)
     if redirect_stderr:
         redirect_stderr_to_logger()
 

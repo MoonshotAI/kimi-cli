@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.utils import load_desc
+from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import is_within_directory, is_within_workspace, list_directory
 
 MAX_MATCHES = 1000
@@ -150,6 +151,9 @@ class Glob(CallableTool2[Params]):
             )
 
         except Exception as e:
+            logger.warning(
+                "Glob failed: pattern={pattern}: {error}", pattern=params.pattern, error=e
+            )
             return ToolError(
                 message=f"Failed to search for pattern {params.pattern}. Error: {e}",
                 brief="Glob failed",
