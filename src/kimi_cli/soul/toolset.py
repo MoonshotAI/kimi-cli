@@ -32,6 +32,7 @@ from kosong.utils.typing import JsonType
 from kimi_cli import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
+from kimi_cli.soul.mcp_name_sanitizer import MCPNameSanitizer
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
     ContentPart,
@@ -94,6 +95,8 @@ class KimiToolset:
         self._mcp_loading_task: asyncio.Task[None] | None = None
         self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
         self._hook_engine: HookEngine = HookEngine()
+        # Per-toolset sanitizer to avoid cross-session pollution (e.g., in ACP server)
+        self._name_sanitizer: MCPNameSanitizer = MCPNameSanitizer()
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -112,10 +115,42 @@ class KimiToolset:
         """Restore a hidden tool to the LLM tool list."""
         self._hidden_tools.discard(tool_name)
 
+    def _ensure_unique_tool_name(self, name: str, server_name: str) -> str:
+        """Ensure a tool name is unique across all MCP servers.
+
+        If the name already exists from a different server, prepend a sanitized
+        version of the server name to disambiguate. Handles nested collisions
+        by adding a numeric suffix.
+        """
+        original_name = name
+        counter = 0
+
+        while name in self._tool_dict:
+            existing = self._tool_dict[name]
+            # Same server - allow overwrite (tool update scenario)
+            if isinstance(existing, MCPTool) and existing._server_name == server_name:
+                return original_name
+
+            # Cross-server collision - disambiguate with sanitized server name
+            import re
+
+            sanitized_server = re.sub(r"[^a-zA-Z0-9_]", "_", server_name)
+            if not sanitized_server or sanitized_server[0].isdigit():
+                sanitized_server = f"srv_{sanitized_server}"
+
+            if counter == 0:
+                name = f"{sanitized_server}_{original_name}"
+            else:
+                name = f"{sanitized_server}_{original_name}_{counter}"
+            counter += 1
+
+        return name
+
     @overload
     def find(self, tool_name_or_type: str) -> ToolType | None: ...
     @overload
     def find[T: ToolType](self, tool_name_or_type: type[T]) -> T | None: ...
+
     def find(self, tool_name_or_type: str | type[ToolType]) -> ToolType | None:
         if isinstance(tool_name_or_type, str):
             return self._tool_dict.get(tool_name_or_type)
@@ -422,10 +457,36 @@ class KimiToolset:
                 async with server_info.client as client:
                     for tool in await client.list_tools():
                         server_info.tools.append(
-                            MCPTool(server_name, tool, client, runtime=runtime)
+                            MCPTool(
+                                server_name,
+                                tool,
+                                client,
+                                runtime=runtime,
+                                sanitizer=self._name_sanitizer,
+                            )
                         )
 
                 for tool in server_info.tools:
+                    # Check for cross-server name collisions
+                    original_name = tool.name
+                    unique_name = self._ensure_unique_tool_name(tool.name, server_name)
+                    if unique_name != original_name:
+                        logger.warning(
+                            "MCP tool name collision across servers: "
+                            "'{name}' from server '{server}' renamed to '{unique_name}'",
+                            name=original_name,
+                            server=server_name,
+                            unique_name=unique_name,
+                        )
+                        # Create a new tool with the unique name
+                        tool = MCPTool(
+                            server_name,
+                            tool._mcp_tool,
+                            tool._client,
+                            runtime=runtime,
+                            sanitizer=self._name_sanitizer,
+                            name=unique_name,
+                        )
                     self.add(tool)
 
                 server_info.status = "connected"
@@ -521,6 +582,7 @@ class KimiToolset:
                 await self._mcp_loading_task
         for server_info in self._mcp_servers.values():
             await server_info.client.close()
+        self._name_sanitizer.clear()
 
 
 @dataclass(slots=True)
@@ -538,10 +600,18 @@ class MCPTool[T: ClientTransport](CallableTool):
         client: fastmcp.Client[T],
         *,
         runtime: Runtime,
+        sanitizer: MCPNameSanitizer,
+        name: str | None = None,
         **kwargs: Any,
     ):
+        # Sanitize tool name for LLM API compatibility. Some MCP servers return tool names
+        # starting with digits (e.g., 21st_magic_component_builder) which don't match the
+        # Kimi API naming convention ^[a-zA-Z_][a-zA-Z0-9_]*$
+        # If 'name' is provided, use it directly (for collision disambiguation)
+        sanitized_name = name or sanitizer.sanitize_tool_name(server_name, mcp_tool.name)
+
         super().__init__(
-            name=mcp_tool.name,
+            name=sanitized_name,
             description=(
                 f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
                 f"{mcp_tool.description or 'No description provided.'}"
@@ -549,14 +619,20 @@ class MCPTool[T: ClientTransport](CallableTool):
             parameters=mcp_tool.inputSchema,
             **kwargs,
         )
+        self._server_name = server_name
         self._mcp_tool = mcp_tool
         self._client = client
         self._runtime = runtime
         self._timeout = timedelta(milliseconds=runtime.config.mcp.client.tool_call_timeout_ms)
         self._action_name = f"mcp:{mcp_tool.name}"
+        self._original_name = mcp_tool.name
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
-        description = f"Call MCP tool `{self._mcp_tool.name}`."
+        # Use original name for MCP calls, sanitized name for display
+        tool_name_for_call = self._original_name
+        tool_name_display = self.name
+
+        description = f"Call MCP tool `{tool_name_display}` (server: `{self._server_name}`)."
         result = await self._runtime.approval.request(self.name, self._action_name, description)
         if not result:
             return result.rejection_error()
@@ -564,7 +640,7 @@ class MCPTool[T: ClientTransport](CallableTool):
         try:
             async with self._client as client:
                 result = await client.call_tool(
-                    self._mcp_tool.name,
+                    tool_name_for_call,
                     kwargs,
                     timeout=self._timeout,
                     raise_on_error=False,
@@ -572,7 +648,7 @@ class MCPTool[T: ClientTransport](CallableTool):
                 if result.is_error:
                     logger.warning(
                         "MCP tool returned error: {tool_name}: {content}",
-                        tool_name=self._mcp_tool.name,
+                        tool_name=tool_name_for_call,
                         content=[str(p) for p in result.content][:3],
                     )
                 return convert_mcp_tool_result(result)
@@ -582,19 +658,19 @@ class MCPTool[T: ClientTransport](CallableTool):
             if "timeout" in exc_msg or "timed out" in exc_msg:
                 logger.warning(
                     "MCP tool call timed out: {tool_name}: {error}",
-                    tool_name=self._mcp_tool.name,
+                    tool_name=tool_name_for_call,
                     error=e,
                 )
                 return ToolError(
                     message=(
-                        f"Timeout while calling MCP tool `{self._mcp_tool.name}`. "
+                        f"Timeout while calling MCP tool `{tool_name_display}`. "
                         "You may explain to the user that the timeout config is set too low."
                     ),
                     brief="Timeout",
                 )
             logger.error(
                 "MCP tool call failed: {tool_name}: {error}",
-                tool_name=self._mcp_tool.name,
+                tool_name=tool_name_for_call,
                 error=e,
             )
             raise

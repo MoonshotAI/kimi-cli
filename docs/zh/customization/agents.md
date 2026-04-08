@@ -262,6 +262,7 @@ agent:
 | `-i` | bool | 忽略大小写 |
 | `multiline` | bool | 启用多行匹配 |
 | `head_limit` | int | 限制输出行数 |
+| `include_ignored` | bool | 是否搜索被 `.gitignore` 排除的文件，默认 `false` |
 
 ### `WriteFile`
 
