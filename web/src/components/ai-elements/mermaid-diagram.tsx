@@ -26,7 +26,7 @@ const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }
-  return "Unable to render Mermaid diagram.";
+  return "Unable to render Mermaid diagram. Showing the source below.";
 };
 
 export function MermaidDiagram({
@@ -118,7 +118,7 @@ export function MermaidDiagram({
         <div className="mb-3 flex items-start gap-2 text-destructive">
           <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
           <div className="min-w-0">
-            <div className="font-medium">Mermaid render failed</div>
+            <div className="font-medium">Couldn't render Mermaid diagram</div>
             <div className="mt-1 whitespace-pre-wrap break-words text-xs text-destructive/90">
               {error}
             </div>
