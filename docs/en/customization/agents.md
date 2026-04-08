@@ -262,6 +262,7 @@ When `run_in_background=true`, the command is launched as a background task and 
 | `-i` | bool | Case insensitive |
 | `multiline` | bool | Enable multiline matching |
 | `head_limit` | int | Limit output lines |
+| `include_ignored` | bool | Search files ignored by `.gitignore`, default false |
 
 ### `WriteFile`
 

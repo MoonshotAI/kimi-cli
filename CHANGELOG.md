@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Add automatic MCP tool name sanitization — tool names starting with digits (e.g., `21st_magic_component_builder`) are automatically prefixed with 'n' (e.g., `n21st_magic_component_builder`) to comply with LLM API naming conventions; bidirectional mapping ensures original names are used for MCP calls while sanitized names are used for LLM API interactions
 - Shell: Exclude empty current session from `/sessions` picker — completely empty sessions (no conversation history and no custom title) are no longer shown in the session list; sessions with a custom title are still displayed
 - Shell: Fix slash command completion Enter key behavior — accepting a completion now submits in a single Enter press; auto-submit is limited to slash command completions only; file mention completions (`@`) accept without submitting so the user can continue editing; re-completion after accepting is suppressed to prevent stale completion state
 - Shell: Add directory scope toggle to `/sessions` picker — press `Ctrl+A` to switch between showing sessions for the current working directory only or across all known directories; uses a new full-screen session picker UI with header scope indicator and footer hint bar

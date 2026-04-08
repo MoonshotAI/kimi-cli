@@ -46,6 +46,8 @@ Enter `/sessions` (or `/resume`) to view all sessions in the current working dir
 
 The list shows each session's title and last update time, helping you find the conversation you want to continue. Use `/title <text>` to set a custom title for the session, making it easier to find later.
 
+Press `Ctrl+A` in the session picker to toggle the directory scope: switch between "current working directory only" and "all known directories". The list updates in real time after switching, and the top status bar shows the current scope.
+
 **Startup replay**
 
 When you continue an existing session, Kimi Code CLI will replay the previous conversation history so you can quickly understand the context. During replay, previous messages and AI responses will be displayed.
