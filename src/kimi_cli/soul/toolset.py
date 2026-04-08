@@ -115,6 +115,21 @@ class KimiToolset:
         """Restore a hidden tool to the LLM tool list."""
         self._hidden_tools.discard(tool_name)
 
+    def _ensure_unique_tool_name(self, name: str, server_name: str) -> str:
+        """Ensure a tool name is unique across all MCP servers.
+
+        If the name already exists from a different server, prepend the server name.
+        """
+        if name not in self._tool_dict:
+            return name
+
+        existing = self._tool_dict[name]
+        if isinstance(existing, MCPTool) and existing._server_name != server_name:
+            # Collision across servers - prepend server name
+            return f"{server_name}_{name}"
+
+        return name
+
     @overload
     def find(self, tool_name_or_type: str) -> ToolType | None: ...
     @overload
@@ -436,6 +451,26 @@ class KimiToolset:
                         )
 
                 for tool in server_info.tools:
+                    # Check for cross-server name collisions
+                    original_name = tool.name
+                    unique_name = self._ensure_unique_tool_name(tool.name, server_name)
+                    if unique_name != original_name:
+                        logger.warning(
+                            "MCP tool name collision across servers: "
+                            "'{name}' from server '{server}' renamed to '{unique_name}'",
+                            name=original_name,
+                            server=server_name,
+                            unique_name=unique_name,
+                        )
+                        # Create a new tool with the unique name
+                        tool = MCPTool(
+                            server_name,
+                            tool._mcp_tool,
+                            tool._client,
+                            runtime=runtime,
+                            sanitizer=self._name_sanitizer,
+                            name=unique_name,
+                        )
                     self.add(tool)
 
                 server_info.status = "connected"
@@ -531,6 +566,7 @@ class KimiToolset:
                 await self._mcp_loading_task
         for server_info in self._mcp_servers.values():
             await server_info.client.close()
+        self._name_sanitizer.clear()
 
 
 @dataclass(slots=True)
@@ -549,12 +585,14 @@ class MCPTool[T: ClientTransport](CallableTool):
         *,
         runtime: Runtime,
         sanitizer: MCPNameSanitizer,
+        name: str | None = None,
         **kwargs: Any,
     ):
         # Sanitize tool name for LLM API compatibility. Some MCP servers return tool names
         # starting with digits (e.g., 21st_magic_component_builder) which don't match the
         # Kimi API naming convention ^[a-zA-Z_][a-zA-Z0-9_]*$
-        sanitized_name = sanitizer.sanitize_tool_name(server_name, mcp_tool.name)
+        # If 'name' is provided, use it directly (for collision disambiguation)
+        sanitized_name = name or sanitizer.sanitize_tool_name(server_name, mcp_tool.name)
 
         super().__init__(
             name=sanitized_name,
