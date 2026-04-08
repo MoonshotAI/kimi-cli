@@ -47,8 +47,13 @@ def _completions(completer: SlashCommandCompleter, text: str):
     return list(completer.get_completions(document, event))
 
 
-def test_exact_command_match_hides_completions():
-    """Exact matches should not show completions."""
+def test_exact_command_match_shows_only_that_command():
+    """Exact command name match should show only that command, not prefix fuzzy hits.
+
+    Regression for #1752 (exact match should still reveal the completion entry so
+    the user can read its description) while preserving the #666 intent of hiding
+    unrelated noise like `/mcp` → `/mcp-server`.
+    """
     completer = SlashCommandCompleter(
         [
             _make_command("mcp"),
@@ -59,11 +64,11 @@ def test_exact_command_match_hides_completions():
 
     texts = _completion_texts(completer, "/mcp")
 
-    assert not texts
+    assert texts == ["/mcp"]
 
 
-def test_exact_alias_match_hides_completions():
-    """Exact alias matches should not show completions."""
+def test_exact_alias_match_shows_only_canonical_command():
+    """Exact alias match should show only the canonical command, not other fuzzy hits."""
     completer = SlashCommandCompleter(
         [
             _make_command("help", aliases=["h"]),
@@ -73,7 +78,24 @@ def test_exact_alias_match_hides_completions():
 
     texts = _completion_texts(completer, "/h")
 
-    assert not texts
+    assert texts == ["/help"]
+
+
+def test_exact_command_match_completion_has_description():
+    """Exact matches must carry the command's description so users can read it (#1752)."""
+    completer = SlashCommandCompleter(
+        [
+            _make_command("editor"),
+            _make_command("exit"),
+        ]
+    )
+
+    completions = _completions(completer, "/editor")
+
+    assert len(completions) == 1
+    assert completions[0].text == "/editor"
+    assert completions[0].display_text == "/editor"
+    assert completions[0].display_meta_text == "editor command"
 
 
 def test_should_complete_only_for_root_slash_token():

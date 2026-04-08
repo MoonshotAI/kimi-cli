@@ -138,6 +138,22 @@ class SlashCommandCompleter(Completer):
 
         typed = token[1:]
         if typed and typed in self._command_lookup:
+            # Exact match: only show the matching command itself (with its
+            # description), skipping fuzzy fallbacks like `/mcp` → `/mcp-server`.
+            # This preserves the intent of #666 (hide unrelated prefix noise)
+            # while still letting the user confirm the command and read its
+            # description (#1752).
+            seen_exact: set[str] = set()
+            for cmd in self._command_lookup[typed]:
+                if cmd.name in seen_exact:
+                    continue
+                seen_exact.add(cmd.name)
+                yield Completion(
+                    text=f"/{cmd.name}",
+                    start_position=-len(token),
+                    display=f"/{cmd.name}",
+                    display_meta=cmd.description,
+                )
             return
         mention_doc = Document(text=typed, cursor_position=len(typed))
         candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
