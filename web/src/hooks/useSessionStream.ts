@@ -307,6 +307,8 @@ export function useSessionStream(
   // stale HTTP responses overwriting newer real-time state
   useEffect(() => {
     if (yoloStatus !== null && !hasReceivedLiveYoloUpdateRef.current) {
+      setYoloMode(yoloStatus.enabled);
+    }
   }, [yoloStatus]);
 
   // Refs
