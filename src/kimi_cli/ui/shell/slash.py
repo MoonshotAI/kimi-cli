@@ -556,7 +556,8 @@ async def list_sessions(app: Shell, args: str):
         return
 
     await current_session.refresh()
-    sessions.insert(0, current_session)
+    if not current_session.is_empty():
+        sessions.insert(0, current_session)
 
     choices: list[tuple[str, str]] = []
     for session in sessions:
