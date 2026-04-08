@@ -32,6 +32,9 @@ from kosong.utils.typing import JsonType
 from kimi_cli import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
+from kimi_cli.soul.mcp_name_sanitizer import (
+    sanitize_tool_name,
+)
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
     ContentPart,
@@ -116,6 +119,7 @@ class KimiToolset:
     def find(self, tool_name_or_type: str) -> ToolType | None: ...
     @overload
     def find[T: ToolType](self, tool_name_or_type: type[T]) -> T | None: ...
+
     def find(self, tool_name_or_type: str | type[ToolType]) -> ToolType | None:
         if isinstance(tool_name_or_type, str):
             return self._tool_dict.get(tool_name_or_type)
@@ -540,8 +544,13 @@ class MCPTool[T: ClientTransport](CallableTool):
         runtime: Runtime,
         **kwargs: Any,
     ):
+        # Sanitize tool name for LLM API compatibility. Some MCP servers return tool names
+        # starting with digits (e.g., 21st_magic_component_builder) which don't match the
+        # Kimi API naming convention ^[a-zA-Z_][a-zA-Z0-9_]*$
+        sanitized_name = sanitize_tool_name(server_name, mcp_tool.name)
+
         super().__init__(
-            name=mcp_tool.name,
+            name=sanitized_name,
             description=(
                 f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
                 f"{mcp_tool.description or 'No description provided.'}"
@@ -549,14 +558,20 @@ class MCPTool[T: ClientTransport](CallableTool):
             parameters=mcp_tool.inputSchema,
             **kwargs,
         )
+        self._server_name = server_name
         self._mcp_tool = mcp_tool
         self._client = client
         self._runtime = runtime
         self._timeout = timedelta(milliseconds=runtime.config.mcp.client.tool_call_timeout_ms)
         self._action_name = f"mcp:{mcp_tool.name}"
+        self._original_name = mcp_tool.name
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
-        description = f"Call MCP tool `{self._mcp_tool.name}`."
+        # Use original name for MCP calls, sanitized name for display
+        tool_name_for_call = self._original_name
+        tool_name_display = self.name
+
+        description = f"Call MCP tool `{tool_name_display}` (server: `{self._server_name}`)."
         result = await self._runtime.approval.request(self.name, self._action_name, description)
         if not result:
             return result.rejection_error()
@@ -564,7 +579,7 @@ class MCPTool[T: ClientTransport](CallableTool):
         try:
             async with self._client as client:
                 result = await client.call_tool(
-                    self._mcp_tool.name,
+                    tool_name_for_call,
                     kwargs,
                     timeout=self._timeout,
                     raise_on_error=False,
@@ -572,7 +587,7 @@ class MCPTool[T: ClientTransport](CallableTool):
                 if result.is_error:
                     logger.warning(
                         "MCP tool returned error: {tool_name}: {content}",
-                        tool_name=self._mcp_tool.name,
+                        tool_name=tool_name_for_call,
                         content=[str(p) for p in result.content][:3],
                     )
                 return convert_mcp_tool_result(result)
@@ -582,19 +597,19 @@ class MCPTool[T: ClientTransport](CallableTool):
             if "timeout" in exc_msg or "timed out" in exc_msg:
                 logger.warning(
                     "MCP tool call timed out: {tool_name}: {error}",
-                    tool_name=self._mcp_tool.name,
+                    tool_name=tool_name_for_call,
                     error=e,
                 )
                 return ToolError(
                     message=(
-                        f"Timeout while calling MCP tool `{self._mcp_tool.name}`. "
+                        f"Timeout while calling MCP tool `{tool_name_display}`. "
                         "You may explain to the user that the timeout config is set too low."
                     ),
                     brief="Timeout",
                 )
             logger.error(
                 "MCP tool call failed: {tool_name}: {error}",
-                tool_name=self._mcp_tool.name,
+                tool_name=tool_name_for_call,
                 error=e,
             )
             raise
