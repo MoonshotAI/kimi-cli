@@ -1,6 +1,6 @@
 "use client";
 
-import { useTheme } from "@/hooks/use-theme";
+import type { Theme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import { AlertTriangleIcon, Loader2Icon } from "lucide-react";
 import { type HTMLAttributes, useEffect, useId, useRef, useState } from "react";
@@ -29,12 +29,46 @@ const getErrorMessage = (error: unknown): string => {
   return "Unable to render Mermaid diagram. Showing the source below.";
 };
 
+const getDocumentTheme = (): Theme => {
+  if (typeof document === "undefined") {
+    return "light";
+  }
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+};
+
+const useDocumentTheme = (): Theme => {
+  const [theme, setTheme] = useState<Theme>(() => getDocumentTheme());
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const root = document.documentElement;
+    const updateTheme = () => {
+      setTheme(root.classList.contains("dark") ? "dark" : "light");
+    };
+
+    updateTheme();
+
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return theme;
+};
+
 export function MermaidDiagram({
   code,
   className,
   ...props
 }: MermaidDiagramProps) {
-  const { theme } = useTheme();
+  const theme = useDocumentTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const bindFunctionsRef = useRef<MermaidBindFunctions | null>(null);
   const renderId = useId().replaceAll(":", "");
