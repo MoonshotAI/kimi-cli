@@ -1200,6 +1200,7 @@ class CustomPromptSession:
         self._last_tip_rotate_time: float = time.monotonic()
         self._last_submission_was_running = False
         self._last_input_activity_time: float = 0.0
+        self._suppress_auto_completion: bool = False
         self._input_activity_event: asyncio.Event = asyncio.Event()
         self._running_prompt_previous_mode: PromptMode | None = None
         self._running_prompt_delegate: RunningPromptDelegate | None = None
@@ -1243,9 +1244,14 @@ class CustomPromptSession:
                 completion = buff.complete_state.current_completion
                 if not completion:
                     completion = buff.complete_state.completions[0]
-                buff.apply_completion(completion)
-                # Clear any completions re-triggered by text insertion
-                buff.cancel_completion()
+                # Suppress re-completion: applying a completion fires
+                # on_text_changed which would schedule a new async completer,
+                # re-populating complete_state before the next Enter press.
+                self._suppress_auto_completion = True
+                try:
+                    buff.apply_completion(completion)
+                finally:
+                    self._suppress_auto_completion = False
 
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
@@ -1479,7 +1485,7 @@ class CustomPromptSession:
         def _(buffer: Buffer) -> None:
             self._last_input_activity_time = time.monotonic()
             self._input_activity_event.set()
-            if buffer.complete_while_typing():
+            if buffer.complete_while_typing() and not self._suppress_auto_completion:
                 buffer.start_completion()
 
         self._status_refresh_task: asyncio.Task[None] | None = None
