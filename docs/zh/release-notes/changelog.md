@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Shell：修复模态文本输入（如 `/btw` 面板）中 Alt+Backspace 无法按词删除的问题——全局 escape 键绑定注册时使用了 `eager=True`，会在 prompt_toolkit 匹配 emacs `backward-kill-word` 之前吞掉 `escape,backspace` 序列里的 escape；现在当模态文本输入 delegate 处于活跃状态时禁用 eager 标志，多键序列恢复正常解析（修复 #1744）
 - Shell：新增 `/btw` 侧问命令——在 streaming 期间提出快速问题，不打断主对话；使用相同的系统提示词和工具定义以对齐 Prompt 缓存；响应在可滚动的模态面板中显示，支持流式输出
 - Shell：重新设计底部动态区——将单体 `visualize.py`（1865 行）拆分为模块化包（`visualize/`），包含输入路由、交互式提示、审批/提问面板和 btw 模态面板等独立模块；通过 `classify_input()` 统一输入语义，实现一致的命令路由
 - Shell：新增 streaming 期间的排队和 steer 双通道输入——Enter 将消息排队，在当前轮次结束后发送；Ctrl+S 将消息立即注入到正在运行的轮次上下文中；排队消息在提示区域显示计数指示器，可通过 ↑ 键召回编辑

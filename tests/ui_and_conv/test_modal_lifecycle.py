@@ -1272,3 +1272,88 @@ async def test_clear_active_approval_sink_requeues_pending_requests(
     shell._pending_approval_requests.clear()  # type: ignore[attr-defined]
     shell._clear_active_view()  # type: ignore[attr-defined]
     assert len(shell._pending_approval_requests) == 0  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# CustomPromptSession._active_ui_state — drives the escape key eager filter
+# that fixes Alt+Backspace inside text-input modals (#1744).
+# ---------------------------------------------------------------------------
+
+
+def _make_prompt_session_stub(delegate: object | None):
+    """Partially build a CustomPromptSession with just enough state to call
+    `_active_ui_state()`. Avoids the full `__init__` which touches filesystem
+    history and clipboard."""
+    from kimi_cli.ui.shell.prompt import CustomPromptSession
+
+    session = object.__new__(CustomPromptSession)
+    session._running_prompt_delegate = None  # type: ignore[attr-defined]
+    session._modal_delegates = []  # type: ignore[attr-defined]
+    if delegate is not None:
+        session._modal_delegates.append(delegate)  # type: ignore[attr-defined]
+    return session
+
+
+def test_active_ui_state_is_modal_text_input_for_text_accepting_delegate() -> None:
+    """When the active modal delegate accepts text input, the session reports
+    MODAL_TEXT_INPUT. The escape key binding's eager filter relies on this to
+    drop out of eager mode so that default emacs Alt+X sequences (notably
+    Alt+Backspace → backward-kill-word) reach the buffer (#1744).
+    """
+    from kimi_cli.ui.shell.prompt import PromptUIState
+
+    class _TextInputDelegate:
+        modal_priority = 10
+
+        @staticmethod
+        def running_prompt_hides_input_buffer() -> bool:
+            return False
+
+        @staticmethod
+        def running_prompt_allows_text_input() -> bool:
+            return True
+
+    session = _make_prompt_session_stub(_TextInputDelegate())
+    assert session._active_ui_state() == PromptUIState.MODAL_TEXT_INPUT  # type: ignore[attr-defined]
+
+
+def test_active_ui_state_is_normal_for_non_text_input_delegate() -> None:
+    """A modal that does not accept text input (e.g. question panel in
+    multi-choice mode) should leave the session in NORMAL_INPUT so plain
+    Escape closes it eagerly."""
+    from kimi_cli.ui.shell.prompt import PromptUIState
+
+    class _ChoiceOnlyDelegate:
+        modal_priority = 10
+
+        @staticmethod
+        def running_prompt_hides_input_buffer() -> bool:
+            return False
+
+        @staticmethod
+        def running_prompt_allows_text_input() -> bool:
+            return False
+
+    session = _make_prompt_session_stub(_ChoiceOnlyDelegate())
+    assert session._active_ui_state() == PromptUIState.NORMAL_INPUT  # type: ignore[attr-defined]
+
+
+def test_active_ui_state_is_modal_hidden_for_buffer_hiding_delegate() -> None:
+    """A modal that hides the input buffer (approval panel, btw modal) should
+    report MODAL_HIDDEN_INPUT; the eager escape filter stays eager in that
+    state."""
+    from kimi_cli.ui.shell.prompt import PromptUIState
+
+    class _HiddenBufferDelegate:
+        modal_priority = 10
+
+        @staticmethod
+        def running_prompt_hides_input_buffer() -> bool:
+            return True
+
+        @staticmethod
+        def running_prompt_allows_text_input() -> bool:
+            return False
+
+    session = _make_prompt_session_stub(_HiddenBufferDelegate())
+    assert session._active_ui_state() == PromptUIState.MODAL_HIDDEN_INPUT  # type: ignore[attr-defined]

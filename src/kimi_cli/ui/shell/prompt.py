@@ -1369,9 +1369,16 @@ class CustomPromptSession:
         def _(event: KeyPressEvent) -> None:
             self._handle_running_prompt_key("c-d", event)
 
+        # `eager=True` ensures a plain Escape closes the modal immediately, but
+        # prompt_toolkit's eager matching short-circuits longer sequences such as
+        # `escape backspace` (Alt+Backspace → backward-kill-word). When the modal
+        # accepts text input, drop eager so the default Alt+X emacs bindings
+        # (backward-kill-word, backward-word, etc.) work against the buffer
+        # (fixes #1744). The standalone `escape` binding still fires when no
+        # longer sequence arrives, preserving the Escape-to-cancel behaviour.
         @_kb.add(
             "escape",
-            eager=True,
+            eager=Condition(lambda: self._active_ui_state() != PromptUIState.MODAL_TEXT_INPUT),
             filter=Condition(lambda: self._should_handle_running_prompt_key("escape")),
         )
         def _(event: KeyPressEvent) -> None:

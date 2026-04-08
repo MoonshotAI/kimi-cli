@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Fix Alt+Backspace not deleting a word inside modal text input (e.g. the `/btw` panel) — the global escape key binding was registered with `eager=True`, which swallowed the leading `escape` of the `escape,backspace` sequence before prompt_toolkit could match the emacs `backward-kill-word` binding; the eager flag is now disabled while a modal text input delegate is active so multi-key sequences resolve normally (fixes #1744)
 - Shell: Add `/btw` side question command — ask a quick question during streaming without interrupting the main conversation; uses the same system prompt and tool definitions for prompt cache alignment; responses display in a scrollable modal panel with streaming support
 - Shell: Redesign bottom dynamic area — split the monolithic `visualize.py` (1865 lines) into a modular package (`visualize/`) with dedicated modules for input routing, interactive prompts, approval/question panels, and btw modal; unify input semantics with `classify_input()` for consistent command routing
 - Shell: Add queue and steer dual-channel input during streaming — Enter queues messages for delivery after the current turn; Ctrl+S injects messages immediately into the running turn's context; queued messages display in the prompt area with count indicator and can be recalled with ↑
