@@ -31,6 +31,7 @@ def test_default_config_dump():
             "providers": {},
             "loop_control": {
                 "max_steps_per_turn": 100,
+                "max_think_only_continuations": 3,
                 "max_retries_per_step": 3,
                 "max_ralph_iterations": 0,
                 "reserved_context_size": 50000,

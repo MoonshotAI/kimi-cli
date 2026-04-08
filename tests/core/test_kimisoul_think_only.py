@@ -381,3 +381,101 @@ async def test_step_continues_for_think_with_empty_text(
 
     # Empty/whitespace TextPart should not prevent think-only detection
     assert outcome is None
+
+
+@pytest.mark.asyncio
+async def test_think_only_streak_stops_after_max_continuations(
+    runtime: Runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After exceeding max_think_only_continuations, the agent should stop
+    with a StepOutcome instead of continuing indefinitely."""
+    soul = _make_soul(runtime, tmp_path)
+    sent: list[object] = []
+
+    # Always return think-only
+    async def fake_kosong_step(chat_provider, system_prompt, toolset, history, **kwargs):
+        return StepResult(
+            id="step-think-forever",
+            message=Message(
+                role="assistant",
+                content=[ThinkPart(think="Still thinking...")],
+            ),
+            usage=None,
+            tool_calls=[],
+            _tool_result_futures={},
+        )
+
+    async def fake_checkpoint() -> None:
+        return None
+
+    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
+    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
+    monkeypatch.setattr(kimisoul_module.kosong, "step", fake_kosong_step)
+    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: sent.append(msg))
+
+    # Default max_think_only_continuations is 3, so 4th think-only should stop
+    outcome = await soul._agent_loop()
+
+    assert outcome.stop_reason == "no_tool_calls"
+    # Should have done max_continuations + 1 steps (3 continuations + 1 final stop)
+    max_cont = soul._loop_control.max_think_only_continuations
+    step_begins = [msg for msg in sent if isinstance(msg, StepBegin)]
+    assert len(step_begins) == max_cont + 1
+
+    # The last wire_send should include an error TextPart
+    error_texts = [msg for msg in sent if isinstance(msg, TextPart) and "Error" in msg.text]
+    assert len(error_texts) == 1
+
+
+@pytest.mark.asyncio
+async def test_think_only_streak_resets_on_text_response(
+    runtime: Runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The think-only streak counter should reset when a normal response is produced."""
+    soul = _make_soul(runtime, tmp_path)
+    call_count = 0
+
+    async def fake_kosong_step(chat_provider, system_prompt, toolset, history, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        # 2 think-only, then text, then 2 more think-only, then text
+        if call_count in (1, 2, 4, 5):
+            return StepResult(
+                id=f"step-think-{call_count}",
+                message=Message(
+                    role="assistant",
+                    content=[ThinkPart(think=f"Round {call_count}")],
+                ),
+                usage=None,
+                tool_calls=[],
+                _tool_result_futures={},
+            )
+        else:
+            return StepResult(
+                id=f"step-text-{call_count}",
+                message=Message(
+                    role="assistant",
+                    content=[TextPart(text=f"Answer {call_count}")],
+                ),
+                usage=None,
+                tool_calls=[],
+                _tool_result_futures={},
+            )
+
+    async def fake_checkpoint() -> None:
+        return None
+
+    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
+    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
+    monkeypatch.setattr(kimisoul_module.kosong, "step", fake_kosong_step)
+    monkeypatch.setattr(kimisoul_module, "wire_send", lambda _msg: None)
+
+    # First turn: 2 think-only + text → stops normally (streak resets)
+    outcome = await soul._agent_loop()
+    assert outcome.stop_reason == "no_tool_calls"
+    assert call_count == 3
+    assert soul._think_only_streak == 0
