@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Core: Fix agent loop silently stopping when model exhausts token budget during thinking phase — detect think-only responses (reasoning content with no assistant text or tool calls) and automatically continue the loop so the model can produce its final answer
+- Shell: Exclude empty current session from `/sessions` picker — completely empty sessions (no conversation history and no custom title) are no longer shown in the session list; sessions with a custom title are still displayed
 - Shell: Fix slash command completion Enter key behavior — accepting a completion now submits in a single Enter press; auto-submit is limited to slash command completions only; file mention completions (`@`) accept without submitting so the user can continue editing; re-completion after accepting is suppressed to prevent stale completion state
 - Shell: Add directory scope toggle to `/sessions` picker — press `Ctrl+A` to switch between showing sessions for the current working directory only or across all known directories; uses a new full-screen session picker UI with header scope indicator and footer hint bar
 - Shell: Add `/btw` side question command — ask a quick question during streaming without interrupting the main conversation; uses the same system prompt and tool definitions for prompt cache alignment; responses display in a scrollable modal panel with streaming support
