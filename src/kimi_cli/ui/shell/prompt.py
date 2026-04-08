@@ -81,6 +81,10 @@ PROMPT_SYMBOL_THINKING = "💫"
 PROMPT_SYMBOL_PLAN = "📋"
 
 
+class CwdLostError(OSError):
+    """Raised when the working directory no longer exists (e.g. external drive unplugged)."""
+
+
 class SlashCommandCompleter(Completer):
     """
     A completer that:
@@ -1196,6 +1200,7 @@ class CustomPromptSession:
         self._last_tip_rotate_time: float = time.monotonic()
         self._last_submission_was_running = False
         self._last_input_activity_time: float = 0.0
+        self._suppress_auto_completion: bool = False
         self._input_activity_event: asyncio.Event = asyncio.Event()
         self._running_prompt_previous_mode: PromptMode | None = None
         self._running_prompt_delegate: RunningPromptDelegate | None = None
@@ -1230,16 +1235,39 @@ class CustomPromptSession:
         # Build key bindings
         _kb = KeyBindings()
 
-        @_kb.add("enter", filter=has_completions)
-        def _(event: KeyPressEvent) -> None:
-            """Accept the first completion when Enter is pressed and completions are shown."""
-            buff = event.current_buffer
-            if buff.complete_state and buff.complete_state.completions:
-                # Get the current completion, or use the first one if none is selected
-                completion = buff.complete_state.current_completion
-                if not completion:
-                    completion = buff.complete_state.completions[0]
+        def _accept_completion(buff: Buffer) -> None:
+            """Accept the current or first completion, suppressing re-completion."""
+            completion = buff.complete_state.current_completion  # type: ignore[union-attr]
+            if not completion:
+                completion = buff.complete_state.completions[0]  # type: ignore[union-attr]
+            self._suppress_auto_completion = True
+            try:
                 buff.apply_completion(completion)
+            finally:
+                self._suppress_auto_completion = False
+
+        def _is_slash_completion() -> bool:
+            """True when the active completion menu is for a slash command."""
+            buff = self._session.default_buffer
+            return bool(
+                buff.complete_state
+                and buff.complete_state.completions
+                and SlashCommandCompleter.should_complete(buff.document)
+            )
+
+        _slash_completion_filter = has_completions & Condition(_is_slash_completion)
+        _non_slash_completion_filter = has_completions & ~Condition(_is_slash_completion)
+
+        @_kb.add("enter", filter=_slash_completion_filter)
+        def _(event: KeyPressEvent) -> None:
+            """Slash command completion: accept and submit in one step."""
+            _accept_completion(event.current_buffer)
+            event.current_buffer.validate_and_handle()
+
+        @_kb.add("enter", filter=_non_slash_completion_filter)
+        def _(event: KeyPressEvent) -> None:
+            """Non-slash completion (file mentions, etc.): accept only."""
+            _accept_completion(event.current_buffer)
 
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
@@ -1473,7 +1501,7 @@ class CustomPromptSession:
         def _(buffer: Buffer) -> None:
             self._last_input_activity_time = time.monotonic()
             self._input_activity_event.set()
-            if buffer.complete_while_typing():
+            if buffer.complete_while_typing() and not self._suppress_auto_completion:
                 buffer.start_completion()
 
         self._status_refresh_task: asyncio.Task[None] | None = None
@@ -2078,7 +2106,15 @@ class CustomPromptSession:
 
         # CWD (truncated from left) + git branch with status badge
         # Degrade gracefully on narrow terminals: full → cwd-only → truncated cwd → skip
-        cwd = _truncate_left(_shorten_cwd(str(KaosPath.cwd())), _MAX_CWD_COLS)
+        try:
+            cwd = _truncate_left(_shorten_cwd(str(KaosPath.cwd())), _MAX_CWD_COLS)
+        except OSError:
+            # CWD no longer exists (e.g. external drive unplugged).  Ask
+            # prompt_toolkit to exit; the raised exception will propagate out
+            # of prompt_async() into the Shell's event router which prints a
+            # crash report with session info and exits cleanly.
+            app.exit(exception=CwdLostError())
+            return FormattedText([])
         branch = _get_git_branch()
         if branch:
             dirty, ahead, behind = _get_git_status()

@@ -9,7 +9,7 @@ import pytest
 
 import kimi_cli.ui.shell as shell_module
 from kimi_cli.soul import Soul
-from kimi_cli.ui.shell.prompt import PromptMode, UserInput
+from kimi_cli.ui.shell.prompt import CwdLostError, PromptMode, UserInput
 from kimi_cli.wire.types import TextPart
 
 
@@ -245,3 +245,22 @@ async def test_ctrl_d_after_agent_run_posts_eof_not_swallowed_by_stale_handler(
     event = idle_events.get_nowait()
     assert event.kind == "eof"
     assert shell._exit_after_run is False
+
+
+@pytest.mark.asyncio
+async def test_route_prompt_events_cwd_lost_posts_cwd_lost_event(
+    _patched_prompt_router,
+) -> None:
+    """When prompt_next raises CwdLostError the router should post a 'cwd_lost'
+    event and stop, so the main loop can print a crash report and exit."""
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    prompt_session = _FakePromptSession([(False, CwdLostError())])
+    idle_events: asyncio.Queue[shell_module._PromptEvent] = asyncio.Queue()
+    resume_prompt = asyncio.Event()
+    resume_prompt.set()
+
+    await shell._route_prompt_events(cast(Any, prompt_session), idle_events, resume_prompt)
+
+    event = idle_events.get_nowait()
+    assert event.kind == "cwd_lost"
+    assert not resume_prompt.is_set()

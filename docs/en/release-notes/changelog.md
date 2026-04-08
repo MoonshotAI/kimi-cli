@@ -4,6 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Exclude empty current session from `/sessions` picker — completely empty sessions (no conversation history and no custom title) are no longer shown in the session list; sessions with a custom title are still displayed
+- Shell: Fix slash command completion Enter key behavior — accepting a completion now submits in a single Enter press; auto-submit is limited to slash command completions only; file mention completions (`@`) accept without submitting so the user can continue editing; re-completion after accepting is suppressed to prevent stale completion state
+- Shell: Add directory scope toggle to `/sessions` picker — press `Ctrl+A` to switch between showing sessions for the current working directory only or across all known directories; uses a new full-screen session picker UI with header scope indicator and footer hint bar
 - Shell: Add `/btw` side question command — ask a quick question during streaming without interrupting the main conversation; uses the same system prompt and tool definitions for prompt cache alignment; responses display in a scrollable modal panel with streaming support
 - Shell: Redesign bottom dynamic area — split the monolithic `visualize.py` (1865 lines) into a modular package (`visualize/`) with dedicated modules for input routing, interactive prompts, approval/question panels, and btw modal; unify input semantics with `classify_input()` for consistent command routing
 - Shell: Add queue and steer dual-channel input during streaming — Enter queues messages for delivery after the current turn; Ctrl+S injects messages immediately into the running turn's context; queued messages display in the prompt area with count indicator and can be recalled with ↑
@@ -11,6 +14,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Shell: Improve elapsed time formatting in spinners — durations over 60 seconds now display as `"1m 23s"` instead of `"83s"`; sub-second durations show `"<1s"`
 - Shell: Fix Rich markup injection in btw panel — user questions containing `[`/`]` characters are now escaped to prevent broken rendering or style injection in spinner text and panel titles
 - Core: Improve error diagnostics — enrich internal logging coverage, include relevant log files and system manifest in `kimi export` archives, and surface actionable error messages for common failures (auth, network, timeout, quota)
+- Shell: Gracefully exit with crash report when working directory becomes inaccessible during session — detects CWD loss (external drive unplugged, directory deleted, or filesystem unmounted) and prints a session recovery panel with session ID and work directory before exiting cleanly
 - Shell: Use `git ls-files` for `@` file mention discovery — file completer now queries `git ls-files --recurse-submodules` with a 5-second timeout as the primary discovery mechanism, falling back to `os.walk` for non-git repositories; this fixes large repositories (e.g., apache/superset with 65k+ files) where the 1000-file limit caused late-alphabetical directories to be unreachable (fixes #1375)
 - Core: Add shared `file_filter` module — unifies file mention logic between shell and web UIs via `src/kimi_cli/utils/file_filter.py`, providing consistent path filtering, ignored directory exclusion, and git-aware file discovery
 - Shell: Prevent path traversal in file mention scope parameter — the `scope` parameter in file completer requests is now validated to prevent directory traversal attacks
