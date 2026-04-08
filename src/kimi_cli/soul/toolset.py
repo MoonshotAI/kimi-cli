@@ -118,15 +118,31 @@ class KimiToolset:
     def _ensure_unique_tool_name(self, name: str, server_name: str) -> str:
         """Ensure a tool name is unique across all MCP servers.
 
-        If the name already exists from a different server, prepend the server name.
+        If the name already exists from a different server, prepend a sanitized
+        version of the server name to disambiguate. Handles nested collisions
+        by adding a numeric suffix.
         """
-        if name not in self._tool_dict:
-            return name
+        original_name = name
+        counter = 0
 
-        existing = self._tool_dict[name]
-        if isinstance(existing, MCPTool) and existing._server_name != server_name:
-            # Collision across servers - prepend server name
-            return f"{server_name}_{name}"
+        while name in self._tool_dict:
+            existing = self._tool_dict[name]
+            # Same server - allow overwrite (tool update scenario)
+            if isinstance(existing, MCPTool) and existing._server_name == server_name:
+                return original_name
+
+            # Cross-server collision - disambiguate with sanitized server name
+            import re
+
+            sanitized_server = re.sub(r"[^a-zA-Z0-9_]", "_", server_name)
+            if not sanitized_server or sanitized_server[0].isdigit():
+                sanitized_server = f"srv_{sanitized_server}"
+
+            if counter == 0:
+                name = f"{sanitized_server}_{original_name}"
+            else:
+                name = f"{sanitized_server}_{original_name}_{counter}"
+            counter += 1
 
         return name
 
