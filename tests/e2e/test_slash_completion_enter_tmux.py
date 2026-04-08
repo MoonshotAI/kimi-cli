@@ -90,12 +90,11 @@ def _start_tmux_shell(
     )
 
 
-def test_slash_completion_enter_executes_in_two_presses(tmp_path: Path) -> None:
-    """After accepting a slash-command completion with Enter, the next Enter submits.
+def test_slash_completion_single_enter_executes(tmp_path: Path) -> None:
+    """A single Enter accepts a slash-command completion and submits it.
 
     Regression test: previously, accepting a completion required extra Enter
-    presses before the command would execute. Now a single Enter both accepts
-    the completion and submits the command.
+    presses before the command would execute.
     """
     config_path = write_scripted_config(tmp_path, ["text: Hello!"])
     work_dir = make_work_dir(tmp_path)

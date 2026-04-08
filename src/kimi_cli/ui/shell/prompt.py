@@ -1235,6 +1235,17 @@ class CustomPromptSession:
         # Build key bindings
         _kb = KeyBindings()
 
+        def _accept_completion(buff: Buffer) -> None:
+            """Accept the current or first completion, suppressing re-completion."""
+            completion = buff.complete_state.current_completion  # type: ignore[union-attr]
+            if not completion:
+                completion = buff.complete_state.completions[0]  # type: ignore[union-attr]
+            self._suppress_auto_completion = True
+            try:
+                buff.apply_completion(completion)
+            finally:
+                self._suppress_auto_completion = False
+
         def _is_slash_completion() -> bool:
             """True when the active completion menu is for a slash command."""
             buff = self._session.default_buffer
@@ -1250,31 +1261,13 @@ class CustomPromptSession:
         @_kb.add("enter", filter=_slash_completion_filter)
         def _(event: KeyPressEvent) -> None:
             """Slash command completion: accept and submit in one step."""
-            buff = event.current_buffer
-            if buff.complete_state and buff.complete_state.completions:
-                completion = buff.complete_state.current_completion
-                if not completion:
-                    completion = buff.complete_state.completions[0]
-                self._suppress_auto_completion = True
-                try:
-                    buff.apply_completion(completion)
-                finally:
-                    self._suppress_auto_completion = False
-                buff.validate_and_handle()
+            _accept_completion(event.current_buffer)
+            event.current_buffer.validate_and_handle()
 
         @_kb.add("enter", filter=_non_slash_completion_filter)
         def _(event: KeyPressEvent) -> None:
             """Non-slash completion (file mentions, etc.): accept only."""
-            buff = event.current_buffer
-            if buff.complete_state and buff.complete_state.completions:
-                completion = buff.complete_state.current_completion
-                if not completion:
-                    completion = buff.complete_state.completions[0]
-                self._suppress_auto_completion = True
-                try:
-                    buff.apply_completion(completion)
-                finally:
-                    self._suppress_auto_completion = False
+            _accept_completion(event.current_buffer)
 
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
