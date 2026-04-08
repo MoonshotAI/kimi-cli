@@ -551,6 +551,10 @@ async def list_sessions(app: Shell, args: str):
         session for session in await Session.list(work_dir) if session.id != current_session_id
     ]
 
+    if not sessions:
+        console.print("[yellow]No other sessions found for the current working directory.[/yellow]")
+        return
+
     await current_session.refresh()
     sessions.insert(0, current_session)
 
