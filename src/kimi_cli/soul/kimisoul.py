@@ -80,7 +80,6 @@ from kimi_cli.wire.types import (
     StepBegin,
     StepInterrupted,
     TextPart,
-    ThinkPart,
     ToolResult,
     TurnBegin,
     TurnEnd,
@@ -164,7 +163,6 @@ class KimiSoul:
         ]
         self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False
-        self._think_only_streak: int = 0
         if self._runtime.role == "root":
             self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
 
@@ -933,74 +931,8 @@ class KimiSoul:
             )
 
         if result.tool_calls:
-            self._think_only_streak = 0
             return None
 
-        # Detect think-only responses: the model produced thinking content but no
-        # text and no tool calls.  This typically happens when extended thinking
-        # exhausts the max_tokens budget before the model can emit visible output.
-        # Treat this as an incomplete response and let the agent loop continue so
-        # the model can see its own thinking and finish generating.
-        has_think = any(isinstance(p, ThinkPart) for p in result.message.content)
-        has_text = any(isinstance(p, TextPart) and p.text.strip() for p in result.message.content)
-        if has_think and not has_text:
-            self._think_only_streak += 1
-            think_chars = sum(
-                len(p.think) for p in result.message.content if isinstance(p, ThinkPart)
-            )
-            max_continuations = self._loop_control.max_think_only_continuations
-            if self._think_only_streak > max_continuations:
-                streak = self._think_only_streak
-                logger.error(
-                    "Model returned {n} consecutive think-only responses "
-                    "({n_chars} chars total thinking) — giving up. "
-                    "Consider increasing max output tokens or reducing thinking effort.",
-                    n=streak,
-                    n_chars=think_chars,
-                )
-                self._think_only_streak = 0
-                wire_send(
-                    TextPart(
-                        text=f"\n\n[Error: Model produced {streak} "
-                        "consecutive think-only responses without generating visible "
-                        "output. This usually means the thinking budget is too large "
-                        "relative to the max output tokens. Try increasing max output "
-                        "tokens or reducing thinking effort.]\n"
-                    )
-                )
-                return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
-
-            logger.warning(
-                "Model response contains only thinking content ({n_chars} chars) "
-                "without text or tool calls — likely truncated by max_tokens. "
-                "Auto-continuing ({streak}/{max}).",
-                n_chars=think_chars,
-                streak=self._think_only_streak,
-                max=max_continuations,
-            )
-            # Inject a user continuation message to maintain proper
-            # user→assistant message alternation in the context.  Without
-            # this, the think-only assistant message followed by the next
-            # assistant response would create consecutive assistant messages,
-            # which can be rejected by some APIs (and becomes problematic
-            # after compaction strips ThinkParts).
-            await asyncio.shield(
-                self._context.append_message(
-                    Message(
-                        role="user",
-                        content=[
-                            system(
-                                "Your previous response contained only thinking content "
-                                "and was likely truncated. Please continue and provide "
-                                "your response."
-                            )
-                        ],
-                    )
-                )
-            )
-            return None
-
-        self._think_only_streak = 0
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
