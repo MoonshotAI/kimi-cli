@@ -402,3 +402,82 @@ async def test_agent_loop_tool_rejected_exits_despite_background_tasks(
 
     # Should exit immediately with tool_rejected, not wait for bg tasks
     assert outcome.stop_reason == "tool_rejected"
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_skips_wait_when_event_already_set(
+    runtime: Runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When completion_event is already set (a task completed during _step()),
+    the loop should skip the timed wait and immediately continue to the next
+    step to process the pending notification."""
+    soul = _make_soul(runtime, tmp_path)
+    step_calls = 0
+
+    async def fake_checkpoint() -> None:
+        return None
+
+    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
+    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
+    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: None)
+
+    manager = runtime.background_tasks
+    _create_fake_task(manager, "agent-fast", "running")
+    _create_fake_task(manager, "agent-slow", "running")
+
+    async def fake_step():
+        nonlocal step_calls
+        step_calls += 1
+
+        if step_calls == 1:
+            # Simulate: task-fast completed during this step, pump set event.
+            store = manager.store
+            rt = store.read_runtime("agent-fast")
+            rt.status = "completed"
+            store.write_runtime("agent-fast", rt)
+            manager.completion_event.set()
+
+            return kimisoul_module.StepOutcome(
+                stop_reason="no_tool_calls",
+                assistant_message=Message(
+                    role="assistant",
+                    content=[TextPart(text="Waiting...")],
+                ),
+            )
+
+        if step_calls == 2:
+            # Step 2 should run immediately (no 2s delay) because
+            # event was already set. Mark slow task done so loop exits.
+            store = manager.store
+            rt = store.read_runtime("agent-slow")
+            rt.status = "completed"
+            store.write_runtime("agent-slow", rt)
+
+            return kimisoul_module.StepOutcome(
+                stop_reason="no_tool_calls",
+                assistant_message=Message(
+                    role="assistant",
+                    content=[TextPart(text="All done")],
+                ),
+            )
+
+        pytest.fail("Should not reach step 3")
+
+    monkeypatch.setattr(soul, "_step", fake_step)
+
+    import time
+
+    start = time.monotonic()
+    outcome = await asyncio.wait_for(soul._agent_loop(), timeout=5.0)
+    elapsed = time.monotonic() - start
+
+    assert step_calls == 2
+    assert outcome.stop_reason == "no_tool_calls"
+    # Should complete well under 2s (the wait timeout) since the event
+    # was already set and the fast path skipped the timed wait.
+    assert elapsed < 1.0, (
+        f"Loop took {elapsed:.1f}s — it should have skipped the 2s wait "
+        f"because completion_event was already set"
+    )

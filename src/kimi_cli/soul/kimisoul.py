@@ -777,9 +777,13 @@ class KimiSoul:
                     and self._runtime.background_tasks.has_active_tasks()
                 ):
                     event = self._runtime.background_tasks.completion_event
-                    event.clear()
-                    # Re-check after clearing to avoid a race where a task
-                    # completed between has_active_tasks() and clear().
+                    # If the event is already set (a task completed during
+                    # _step()), skip the wait and let the next step process
+                    # the pending notification immediately.
+                    if event.is_set():
+                        event.clear()
+                        continue
+                    # No completion yet — enter the timed wait loop.
                     if self._runtime.background_tasks.has_active_tasks():
                         logger.debug("Waiting for next background task completion")
                         while True:
