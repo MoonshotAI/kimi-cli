@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import shlex
 import sys
 import time
 from collections import deque
@@ -513,13 +512,9 @@ class Shell:
         # Handle bare `cd` / `cd <path>` — resolve and persist globally.
         # Compound commands like `cd /tmp && ls` are left to the shell.
         stripped_cmd = command.strip()
-        split_cmd: list[str] | None = None
-        try:
-            split_cmd = shlex.split(stripped_cmd)
-        except ValueError as exc:
-            logger.debug("Failed to parse shell command for cd check: {error}", error=exc)
-        if split_cmd and split_cmd[0] == "cd" and len(split_cmd) <= 2:
-            await self._handle_cd(split_cmd)
+        is_cd = stripped_cmd == "cd" or stripped_cmd.startswith(("cd ", "cd\t"))
+        if is_cd:
+            await self._handle_cd(stripped_cmd)
             return
 
         logger.info("Running shell command: {cmd}", cmd=command)
@@ -543,52 +538,45 @@ class Shell:
             except Exception:
                 logger.debug("Failed to inject shell output to context", exc_info=True)
 
-    async def _handle_cd(self, args: list[str]) -> None:
-        """Resolve ``cd`` via a real shell and persist the directory change.
+    async def _handle_cd(self, raw_command: str) -> None:
+        """Execute cd via a real shell and sync the result to Python.
 
-        Only called for bare ``cd`` / ``cd <path>`` (at most 2 tokens).
+        The raw command (e.g. ``cd ~/foo``, ``cd -``, ``cd $HOME``) is passed
+        to a subprocess shell as-is. The shell handles all expansion and edge
+        cases; Python only reads the resulting pwd and calls os.chdir().
         """
-        target = args[1] if len(args) > 1 else "~"
-
-        # Provide OLDPWD so `cd -` works across invocations.
         env = get_clean_env()
-        old_cwd = os.getcwd()
-        if "OLDPWD" not in env:
-            env["OLDPWD"] = old_cwd
+        oldpwd = os.environ.get("OLDPWD", os.getcwd())
 
-        # Use shlex.quote for safety, but NOT for targets that need shell
-        # expansion: ~, -, and $VAR references.  For those we let the real
-        # shell handle expansion directly.
-        needs_shell_expansion = target.startswith("~") or target.startswith("$") or target == "-"
-        quoted_target = target if needs_shell_expansion else shlex.quote(target)
+        # Export OLDPWD inside the shell command so `cd -` works with /bin/sh
+        # (sh doesn't inherit OLDPWD from env vars, unlike bash).
+        import shlex as _shlex
 
-        # Let the shell resolve ~, -, $HOME, CDPATH, etc.
-        probe = await asyncio.create_subprocess_shell(
-            f"cd {quoted_target} && pwd",
+        proc = await asyncio.create_subprocess_shell(
+            f"export OLDPWD={_shlex.quote(oldpwd)}; {raw_command} && pwd",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
         )
-        stdout, stderr = await probe.communicate()
+        stdout, stderr = await proc.communicate()
 
-        if probe.returncode != 0:
+        if proc.returncode != 0:
             err = stderr.decode("utf-8", errors="replace").strip()
             console.print(f"[red]cd: {err or 'failed'}[/red]")
             return
 
-        # `cd -` prints the destination before `pwd`; take the last non-empty line.
-        lines = [ln for ln in stdout.decode("utf-8", errors="replace").splitlines() if ln.strip()]
+        # `cd -` prints the old directory before pwd; take the last line.
+        lines = stdout.decode("utf-8", errors="replace").splitlines()
         new_cwd = lines[-1].strip() if lines else ""
         if not new_cwd or not os.path.isdir(new_cwd):
-            console.print(f"[red]cd: not a directory: {target}[/red]")
+            console.print("[red]cd: not a directory[/red]")
             return
 
+        old_cwd = os.getcwd()
         os.chdir(new_cwd)
-        # Set OLDPWD for the next `cd -` invocation.
         os.environ["OLDPWD"] = old_cwd
 
-        # Keep the session's work_dir in sync so agent background tasks
-        # (which use session.work_dir as cwd) also see the new directory.
+        # Keep the session's work_dir in sync.
         if isinstance(self.soul, KimiSoul):
             from kaos.path import KaosPath
 
