@@ -114,7 +114,9 @@ def test_slash_completion_enter_executes_in_two_presses(tmp_path: Path) -> None:
         # Type "/session" (partial) to trigger completion menu.
         # Do NOT send Enter yet -- just type the characters.
         _tmux("send-keys", "-t", f"{session_name}:0.0", "/session", "")
-        time.sleep(1.5)  # wait for completion menu to appear
+
+        # Wait for completion menu to show "/sessions" candidate
+        _wait_for_pane_text(session_name, "/sessions", timeout=5.0)
 
         # First Enter: accept the completion (should complete to "/sessions")
         _tmux("send-keys", "-t", f"{session_name}:0.0", "Enter")
@@ -123,9 +125,17 @@ def test_slash_completion_enter_executes_in_two_presses(tmp_path: Path) -> None:
         # Second Enter: submit the command
         _tmux("send-keys", "-t", f"{session_name}:0.0", "Enter")
 
-        # The /sessions command should execute and show the session selector.
-        # With the bug, this second Enter would be swallowed and nothing would happen.
-        pane = _wait_for_pane_text(session_name, "Select a session", timeout=10.0)
-        assert "Select a session" in pane
+        # The /sessions command should execute — either showing the picker
+        # or the "no other sessions" early return message.
+        deadline = time.monotonic() + 10.0
+        while True:
+            pane = _capture_pane(session_name)
+            if "Select a session" in pane or "No other sessions" in pane:
+                break
+            if time.monotonic() >= deadline:
+                raise AssertionError(
+                    f"Timed out waiting for /sessions output.\nPane contents:\n{pane}"
+                )
+            time.sleep(0.1)
     finally:
         _tmux("kill-session", "-t", session_name, check=False)

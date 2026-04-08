@@ -1244,6 +1244,7 @@ class CustomPromptSession:
                 if not completion:
                     completion = buff.complete_state.completions[0]
                 buff.apply_completion(completion)
+                # Clear any completions re-triggered by text insertion
                 buff.cancel_completion()
 
         @_kb.add("c-x", eager=True)
