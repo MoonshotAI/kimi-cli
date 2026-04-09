@@ -1053,7 +1053,7 @@ export const PromptInputTextarea = forwardRef<
         autoComplete="off"
         name="message"
         onBlur={() => setIsComposing(false)}
-        onCompositionEnd={() => {
+        onCompositionEnd={(e) => {
           setIsComposing(false);
           compositionEndTimeRef.current = e.timeStamp;
         }}
