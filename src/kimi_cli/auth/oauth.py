@@ -278,7 +278,8 @@ def _save_to_file(key: str, token: OAuthToken) -> None:
         os.write(fd, json.dumps(token.to_dict(), ensure_ascii=False).encode("utf-8"))
         os.close(fd)
         fd = -1
-        os.chmod(tmp_path, 0o600)
+        with suppress(OSError):
+            os.chmod(tmp_path, 0o600)
         os.replace(tmp_path, path)
     except BaseException:
         if fd >= 0:

@@ -1072,6 +1072,10 @@ class KimiSoul:
         except APIStatusError as error:
             if error.status_code != 401:
                 raise
+            # Only attempt refresh+retry for OAuth sessions; for plain
+            # API-key auth there is nothing to refresh.
+            if not any(p.oauth for p in self._runtime.config.providers.values() if p.oauth):
+                raise
             logger.warning(
                 "Received 401 during {name}, attempting token refresh",
                 name=name,
