@@ -54,7 +54,6 @@ KEYRING_SERVICE = "kimi-code"
 REFRESH_INTERVAL_SECONDS = 60
 MIN_REFRESH_THRESHOLD_SECONDS = 300
 REFRESH_THRESHOLD_RATIO = 0.5
-_CROSS_PROCESS_LOCK_TIMEOUT = 10  # seconds
 _CROSS_PROCESS_LOCK_RETRIES = 5
 
 
@@ -259,6 +258,10 @@ class _CrossProcessLock:
             if sys.platform == "win32":
                 import msvcrt
 
+                # msvcrt.locking requires bytes to exist at the lock position.
+                if os.fstat(self._fd).st_size == 0:
+                    os.write(self._fd, b"\0")
+                    os.lseek(self._fd, 0, os.SEEK_SET)
                 msvcrt.locking(self._fd, msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
