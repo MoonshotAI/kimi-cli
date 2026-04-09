@@ -954,6 +954,11 @@ export const PromptInputTextarea = forwardRef<
     const controller = useOptionalPromptInputController();
     const attachments = usePromptInputAttachments();
     const [isComposing, setIsComposing] = useState(false);
+    // Track when compositionend last fired. Safari (WebKit bug #165004) fires
+    // compositionend *before* the Enter keydown, so both isComposing and
+    // nativeEvent.isComposing are false by the time we check. A short cooldown
+    // after compositionend prevents that Enter from triggering a send.
+    const compositionEndTimeRef = useRef(0);
 
     const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
       onKeyDown?.(e);
@@ -962,7 +967,11 @@ export const PromptInputTextarea = forwardRef<
       }
 
       if (e.key === "Enter") {
-        if (isComposing || e.nativeEvent.isComposing) {
+        if (
+          isComposing ||
+          e.nativeEvent.isComposing ||
+          e.timeStamp - compositionEndTimeRef.current < 100
+        ) {
           return;
         }
         if (e.shiftKey) {
@@ -1044,7 +1053,10 @@ export const PromptInputTextarea = forwardRef<
         autoComplete="off"
         name="message"
         onBlur={() => setIsComposing(false)}
-        onCompositionEnd={() => setIsComposing(false)}
+        onCompositionEnd={(e) => {
+          setIsComposing(false);
+          compositionEndTimeRef.current = e.timeStamp;
+        }}
         onCompositionStart={() => setIsComposing(true)}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
