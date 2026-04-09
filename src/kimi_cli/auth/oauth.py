@@ -799,7 +799,8 @@ class OAuthManager:
         if token is None:
             return
         self._cache_access_token(ref, token)
-        self._apply_access_token(runtime, token.access_token)
+        if token.access_token:
+            self._apply_access_token(runtime, token.access_token)
         await self._refresh_tokens(ref, token, runtime, force=force)
 
     @asynccontextmanager
@@ -925,24 +926,13 @@ class OAuthManager:
                         self._cache_access_token(ref, latest)
                         self._apply_access_token(runtime, latest.access_token)
                         return
-                    # Mark the revoked token as expired so subsequent loads
-                    # don't loop on failed refresh attempts.  Clear both
-                    # access_token and refresh_token:
-                    # - access_token="" prevents _cache_access_token from
-                    #   re-caching the old invalid token on the next cycle.
-                    # - refresh_token="" causes the early-exit guard
-                    #   (``if not current_token.refresh_token: return``) to
-                    #   trigger, stopping further refresh attempts.
-                    if latest:
-                        invalidated = OAuthToken(
-                            access_token="",
-                            refresh_token="",
-                            expires_at=0,
-                            scope=latest.scope,
-                            token_type=latest.token_type,
-                            expires_in=0.0,
-                        )
-                        save_tokens(ref, invalidated)
+                    # Delete the revoked credential file so that:
+                    # 1. load_tokens returns None on subsequent calls,
+                    #    preventing ensure_fresh from applying an empty
+                    #    access_token to the live client.
+                    # 2. resolve_api_key falls back to the configured
+                    #    api_key immediately.
+                    delete_tokens(ref)
                     logger.warning(
                         "OAuth credentials rejected: {error}",
                         error=exc,
