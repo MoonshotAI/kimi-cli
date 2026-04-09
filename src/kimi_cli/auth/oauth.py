@@ -51,6 +51,7 @@ DEFAULT_OAUTH_HOST = "https://auth.kimi.com"
 KEYRING_SERVICE = "kimi-code"
 REFRESH_INTERVAL_SECONDS = 60
 REFRESH_THRESHOLD_SECONDS = 300
+_REFRESH_MAX_RETRIES = 3
 
 
 class OAuthError(RuntimeError):
@@ -359,26 +360,45 @@ async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[st
     return status, data
 
 
-async def refresh_token(refresh_token: str) -> OAuthToken:
-    async with (
-        new_client_session() as session,
-        session.post(
-            f"{_oauth_host().rstrip('/')}/api/oauth/token",
-            data={
-                "client_id": KIMI_CODE_CLIENT_ID,
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-            },
-            headers=_common_headers(),
-        ) as response,
-    ):
-        data = await response.json(content_type=None)
-        status = response.status
-    if status in (401, 403):
-        raise OAuthUnauthorized(data.get("error_description") or "Token refresh unauthorized.")
-    if status != 200:
-        raise OAuthError(data.get("error_description") or "Token refresh failed.")
-    return OAuthToken.from_response(data)
+async def refresh_token(
+    refresh_token: str, *, max_retries: int = _REFRESH_MAX_RETRIES
+) -> OAuthToken:
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            async with (
+                new_client_session() as session,
+                session.post(
+                    f"{_oauth_host().rstrip('/')}/api/oauth/token",
+                    data={
+                        "client_id": KIMI_CODE_CLIENT_ID,
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                    },
+                    headers=_common_headers(),
+                ) as response,
+            ):
+                data = await response.json(content_type=None)
+                status = response.status
+            if status in (401, 403):
+                raise OAuthUnauthorized(
+                    data.get("error_description") or "Token refresh unauthorized."
+                )
+            if status != 200:
+                raise OAuthError(data.get("error_description") or "Token refresh failed.")
+            return OAuthToken.from_response(data)
+        except OAuthUnauthorized:
+            raise
+        except (aiohttp.ClientError, TimeoutError, OSError) as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2**attempt)
+                logger.warning(
+                    "Token refresh attempt {attempt} failed, retrying: {error}",
+                    attempt=attempt + 1,
+                    error=exc,
+                )
+    raise OAuthError("Token refresh failed after retries.") from last_exc
 
 
 def _select_default_model_and_thinking(models: list[ModelInfo]) -> tuple[ModelInfo, bool] | None:
@@ -676,13 +696,15 @@ class OAuthManager:
                 return service.oauth
         return None
 
-    async def ensure_fresh(self, runtime: Runtime | None = None) -> None:
+    async def ensure_fresh(self, runtime: Runtime | None = None, *, force: bool = False) -> None:
         """Load persisted tokens, cache them, and refresh if close to expiry.
 
         Args:
             runtime: When provided the live LLM client's API key is updated
                 in-place.  Pass ``None`` for lightweight callers (e.g. title
                 generation) that only need the internal cache to be current.
+            force: When True, skip the expiry-threshold check and always
+                attempt a refresh.  Used after receiving a 401 from the server.
         """
         ref = self._kimi_code_ref()
         if ref is None:
@@ -691,8 +713,9 @@ class OAuthManager:
         if token is None:
             return
         self._cache_access_token(ref, token)
-        self._apply_access_token(runtime, token.access_token)
-        await self._refresh_tokens(ref, token, runtime)
+        if token.access_token:
+            self._apply_access_token(runtime, token.access_token)
+        await self._refresh_tokens(ref, token, runtime, force=force)
 
     @asynccontextmanager
     async def refreshing(self, runtime: Runtime) -> AsyncIterator[None]:
@@ -734,6 +757,8 @@ class OAuthManager:
         ref: OAuthRef,
         token: OAuthToken,
         runtime: Runtime | None,
+        *,
+        force: bool = False,
     ) -> None:
         # Always prefer persisted tokens before refresh to avoid stale cache
         # when multiple sessions might have already rotated the refresh token.
@@ -749,13 +774,14 @@ class OAuthManager:
             if persisted:
                 self._cache_access_token(ref, persisted)
             current = persisted or current_token
-            now = time.time()
-            if (
-                current.expires_at
-                and current.expires_at > now
-                and current.expires_at - now >= REFRESH_THRESHOLD_SECONDS
-            ):
-                return
+            if not force:
+                now = time.time()
+                if (
+                    current.expires_at
+                    and current.expires_at > now
+                    and current.expires_at - now >= REFRESH_THRESHOLD_SECONDS
+                ):
+                    return
             refresh_token_value = current.refresh_token
             if not refresh_token_value:
                 return

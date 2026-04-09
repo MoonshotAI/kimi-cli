@@ -1069,6 +1069,29 @@ class KimiSoul:
     ) -> Any:
         try:
             return await operation()
+        except APIStatusError as error:
+            if error.status_code != 401:
+                raise
+            # Only attempt refresh+retry when the active model's provider
+            # uses OAuth.  For plain API-key providers there is nothing
+            # to refresh and retrying would just add latency.
+            active_provider = (
+                self._runtime.config.providers.get(self._runtime.llm.model_config.provider)
+                if self._runtime.llm and self._runtime.llm.model_config
+                else None
+            )
+            if not (active_provider and active_provider.oauth):
+                raise
+            logger.warning(
+                "Received 401 during {name}, attempting token refresh",
+                name=name,
+            )
+            try:
+                await self._runtime.oauth.ensure_fresh(self._runtime, force=True)
+            except Exception as refresh_exc:
+                logger.exception("Token refresh failed after 401.")
+                raise error from refresh_exc
+            return await operation()
         except (APIConnectionError, APITimeoutError) as error:
             if not isinstance(chat_provider, RetryableChatProvider):
                 raise
