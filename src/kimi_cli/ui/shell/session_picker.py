@@ -71,6 +71,15 @@ class SessionPickerApp:
     async def run(self) -> tuple[str, KaosPath] | None:
         """Run the picker and return ``(session_id, work_dir)``, or *None*."""
         await self._load_sessions()
+
+        # Skip the picker when no other sessions exist.
+        other_sessions = [s for s in self._sessions if s.id != self._current_session.id]
+        if not other_sessions:
+            from kimi_cli.ui.shell.console import console
+
+            console.print("[yellow]No other sessions to switch to.[/yellow]")
+            return None
+
         self._sync_radio_list()
         result = await self._app.run_async()
         if result is None:
