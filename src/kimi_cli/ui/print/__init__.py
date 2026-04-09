@@ -96,6 +96,64 @@ class Print:
                         runtime.session.wire_file if runtime else None,
                         runtime,
                     )
+
+                    # In one-shot text mode the process exits after this
+                    # function returns, which would kill still-running
+                    # background agents.  Poll until they finish, calling
+                    # reconcile() each iteration (the notification pump
+                    # inside run_soul is no longer running, so we must
+                    # drive reconcile ourselves to recover lost workers
+                    # and publish terminal notifications).  Only re-enter
+                    # the soul when there are pending LLM notifications.
+                    #
+                    # stream-json mode is multi-turn: background tasks
+                    # from one command must not block the next command.
+                    if runtime and runtime.role == "root" and self.input_format == "text":
+                        manager = runtime.background_tasks
+                        notifications = runtime.notifications
+                        while not cancel_event.is_set():
+                            # Drive reconcile() ourselves: the notification
+                            # pump inside run_soul is no longer running, so
+                            # we must recover lost workers and publish
+                            # terminal notifications here.
+                            manager.reconcile()
+                            if notifications.has_pending_for_sink("llm"):
+                                # Re-enter soul so the LLM can process the
+                                # completion notification.  Do this even if
+                                # other tasks are still active — progress on
+                                # completed tasks should not wait on siblings.
+                                bg_prompt = (
+                                    "<system-reminder>"
+                                    "Background tasks have completed."
+                                    " Process their results."
+                                    "</system-reminder>"
+                                )
+                                await run_soul(
+                                    self.soul,
+                                    bg_prompt,
+                                    partial(visualize, self.output_format, self.final_only),
+                                    cancel_event,
+                                    runtime.session.wire_file,
+                                    runtime,
+                                )
+                                continue
+                            if not manager.has_active_tasks():
+                                # Re-check once after noticing no active
+                                # tasks: a worker may have finished between
+                                # the reconcile above and this snapshot,
+                                # leaving a terminal state on disk that we
+                                # haven't published yet.  Without this
+                                # second reconcile+pending check, that
+                                # final completion notification would be
+                                # lost when the process exits.
+                                manager.reconcile()
+                                if notifications.has_pending_for_sink("llm"):
+                                    continue
+                                break
+                            # Still waiting for tasks to finish.
+                            await asyncio.sleep(1.0)
+                        if cancel_event.is_set():
+                            raise RunCancelled
                 else:
                     logger.info("Empty command, skipping")
 

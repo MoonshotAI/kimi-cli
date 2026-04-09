@@ -1,483 +1,372 @@
-"""Tests for agent loop behavior when background tasks are active.
+"""Tests for Print mode background task waiting behavior.
 
-The agent loop should NOT exit when the LLM produces a text-only response
-(no tool calls) while background tasks are still running. Instead, it should
-wait for background task completions and continue the loop.
+When background agents are still running after ``run_soul()`` completes a turn,
+**text** (one-shot) print mode should:
+
+- drive ``reconcile()`` each iteration (the notification pump inside ``run_soul``
+  is no longer running, so we must recover lost workers and publish terminal
+  notifications ourselves);
+- re-enter the soul whenever ``has_pending_for_sink("llm")`` is True — even if
+  other tasks are still active — so per-task progress is not blocked by
+  long-running siblings;
+- keep polling until both ``has_active_tasks()`` and ``has_pending_for_sink``
+  are False;
+- skip the wait loop entirely in ``stream-json`` mode (multi-turn) so
+  background tasks from one command do not block the next command;
+- raise ``RunCancelled`` when ``cancel_event`` is set.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from kosong.message import Message
-from kosong.tooling.empty import EmptyToolset
 
-import kimi_cli.soul.kimisoul as kimisoul_module
-from kimi_cli.background.models import TaskRuntime, TaskSpec, TaskStatus
-from kimi_cli.soul.agent import Agent, Runtime
-from kimi_cli.soul.context import Context
+from kimi_cli.cli import ExitCode, InputFormat
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.wire.types import TextPart
+from kimi_cli.ui.print import Print
 
 
-@pytest.fixture
-def approval():
-    from kimi_cli.soul.approval import Approval
+class _FakeState:
+    """Mutable state that drives has_active_tasks / has_pending_for_sink."""
 
-    return Approval(yolo=True)
+    def __init__(self, *, active: bool = False, pending: bool = False):
+        self.active = active
+        self.pending = pending
+        self.reconcile_count = 0
 
 
-def _make_soul(runtime: Runtime, tmp_path: Path) -> KimiSoul:
-    agent = Agent(
-        name="Background Wait Test Agent",
-        system_prompt="Test prompt.",
-        toolset=EmptyToolset(),
-        runtime=runtime,
+def _wire_manager(state: _FakeState) -> tuple[MagicMock, MagicMock]:
+    manager = MagicMock()
+    manager.has_active_tasks = MagicMock(side_effect=lambda: state.active)
+
+    def _reconcile():
+        state.reconcile_count += 1
+
+    manager.reconcile = MagicMock(side_effect=_reconcile)
+
+    notifications = MagicMock()
+    notifications.has_pending_for_sink = MagicMock(side_effect=lambda sink: state.pending)
+    return manager, notifications
+
+
+def _make_print_with_runtime(
+    tmp_path: Path,
+    manager: MagicMock,
+    notifications: MagicMock,
+    *,
+    input_format: InputFormat = "text",
+) -> tuple[Print, AsyncMock]:
+    soul = AsyncMock(spec=KimiSoul)
+    soul.runtime = MagicMock()
+    soul.runtime.role = "root"
+    soul.runtime.background_tasks = manager
+    soul.runtime.notifications = notifications
+    soul.runtime.session.wire_file = tmp_path / "wire.jsonl"
+
+    p = Print(
+        soul=soul,
+        input_format=input_format,
+        output_format="text",
+        context_file=tmp_path / "context.json",
     )
-    return KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+    return p, soul
 
 
-def _create_fake_task(manager, task_id: str, status: TaskStatus = "running") -> None:
-    """Create a fake task entry in the background task store."""
-    spec = TaskSpec(
-        id=task_id,
-        kind="agent",
-        session_id="test",
-        description=f"Test task {task_id}",
-        tool_call_id=f"call-{task_id}",
-        owner_role="root",
-    )
-    runtime = TaskRuntime(status=status)
-    manager.store.task_dir(task_id)  # ensure directory exists
-    manager.store.write_spec(spec)
-    manager.store.write_runtime(task_id, runtime)
+# ---------------------------------------------------------------------------
+# Core: wait → pending → re-enter soul
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_waits_for_background_tasks_before_exiting(
-    runtime: Runtime,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When background tasks are active and LLM returns no tool calls,
-    the agent loop should wait for background task completion instead of exiting.
+async def test_print_reruns_soul_on_pending_notification(tmp_path: Path) -> None:
+    """After run_soul, if tasks complete and create pending LLM notifications,
+    Print should re-enter run_soul with a system-reminder prompt."""
+    state = _FakeState(active=True, pending=False)
+    manager, notifications = _wire_manager(state)
 
-    This test reproduces the bug where the agent loop exits prematurely
-    because it only checks for steers, not pending background tasks.
-    """
-    soul = _make_soul(runtime, tmp_path)
-    step_calls = 0
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications)
+    run_soul_calls: list[str] = []
 
-    async def fake_checkpoint() -> None:
-        return None
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        if len(run_soul_calls) == 1:
+            # Simulate a worker finishing + reconcile publishing a notification
+            state.active = False
+            state.pending = True
+        else:
+            # Re-entry drains the pending notification (like real deliver_pending)
+            state.pending = False
 
-    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
-    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
-    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: None)
+    with patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul):
+        code = await p.run(command="do work")
 
-    manager = runtime.background_tasks
-    # Create two fake running background tasks
-    _create_fake_task(manager, "agent-task1", "running")
-    _create_fake_task(manager, "agent-task2", "running")
+    assert code == ExitCode.SUCCESS
+    assert len(run_soul_calls) == 2
+    assert run_soul_calls[0] == "do work"
+    assert "<system-reminder>" in run_soul_calls[1]
+    assert state.reconcile_count >= 1
 
-    async def fake_step():
-        nonlocal step_calls
-        step_calls += 1
 
-        if step_calls == 1:
-            # First step: LLM says "waiting for tasks" with no tool calls.
-            # There are 2 active background tasks, so loop should NOT exit.
-            return kimisoul_module.StepOutcome(
-                stop_reason="no_tool_calls",
-                assistant_message=Message(
-                    role="assistant",
-                    content=[TextPart(text="Waiting for background tasks to finish...")],
-                ),
-            )
-
-        if step_calls == 2:
-            # Second step: triggered by task1 completion.
-            # task2 is still running → loop waits again.
-            return kimisoul_module.StepOutcome(
-                stop_reason="no_tool_calls",
-                assistant_message=Message(
-                    role="assistant",
-                    content=[TextPart(text="Task 1 done, waiting for task 2...")],
-                ),
-            )
-
-        if step_calls == 3:
-            # Third step: triggered by task2 completion.
-            # No more active tasks → loop exits normally.
-            return kimisoul_module.StepOutcome(
-                stop_reason="no_tool_calls",
-                assistant_message=Message(
-                    role="assistant",
-                    content=[TextPart(text="All tasks done!")],
-                ),
-            )
-
-        pytest.fail("Should not reach step 4")
-
-    monkeypatch.setattr(soul, "_step", fake_step)
-
-    # Schedule background task completions with enough gap between them
-    # so each completion triggers a separate step.
-    async def simulate_completions():
-        await asyncio.sleep(0.05)
-        # First task completes → set completion event → triggers step 2
-        store = manager.store
-        rt = store.read_runtime("agent-task1")
-        rt.status = "completed"
-        store.write_runtime("agent-task1", rt)
-        manager.completion_event.set()
-
-        await asyncio.sleep(0.5)
-        # Second task completes → set completion event → triggers step 3
-        rt = store.read_runtime("agent-task2")
-        rt.status = "completed"
-        store.write_runtime("agent-task2", rt)
-        manager.completion_event.set()
-
-    completion_task = asyncio.create_task(simulate_completions())
-
-    try:
-        outcome = await asyncio.wait_for(soul._agent_loop(), timeout=5.0)
-    except TimeoutError:
-        pytest.fail("agent_loop timed out — it may be stuck waiting indefinitely")
-    finally:
-        completion_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await completion_task
-
-    # Each completion triggers one new step. With 2 tasks:
-    # step 1 (initial) + step 2 (task1 done) + step 3 (task2 done) = 3 steps.
-    # Without the fix, it would exit after step 1 (step_calls == 1).
-    assert step_calls == 3, (
-        f"Expected 3 steps (one per background task completion), "
-        f"but got {step_calls}. The loop likely exited prematurely."
-    )
-    assert outcome.stop_reason == "no_tool_calls"
+# ---------------------------------------------------------------------------
+# reconcile() is called on every poll iteration
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_exits_normally_when_no_background_tasks(
-    runtime: Runtime,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When no background tasks are active and LLM returns no tool calls,
-    the loop should exit normally (existing behavior preserved)."""
-    soul = _make_soul(runtime, tmp_path)
+async def test_print_calls_reconcile_each_poll_iteration(tmp_path: Path) -> None:
+    """reconcile() must be called on every poll iteration."""
+    state = _FakeState(active=True, pending=False)
+    manager, notifications = _wire_manager(state)
 
-    async def fake_checkpoint() -> None:
-        return None
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications)
+    call_count = 0
 
-    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
-    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
-    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: None)
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
 
-    async def fake_step():
-        return kimisoul_module.StepOutcome(
-            stop_reason="no_tool_calls",
-            assistant_message=Message(
-                role="assistant",
-                content=[TextPart(text="Done, no background tasks.")],
-            ),
-        )
+    # Patch sleep to also decrement a poll counter so the test finishes fast
+    poll_counter = {"n": 0}
+    real_sleep = asyncio.sleep
 
-    monkeypatch.setattr(soul, "_step", fake_step)
+    async def fake_sleep(duration):
+        poll_counter["n"] += 1
+        if poll_counter["n"] >= 3:
+            state.active = False
+        await real_sleep(0)
 
-    outcome = await soul._agent_loop()
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+    ):
+        await p.run(command="test")
 
-    assert outcome.stop_reason == "no_tool_calls"
-    assert outcome.step_count == 1
+    # Before each sleep there is a reconcile call (and one final reconcile
+    # after the last sleep).  Expect at least 3 reconciles.
+    assert state.reconcile_count >= 3
 
 
-@pytest.mark.asyncio
-async def test_agent_loop_background_wait_respects_cancellation(
-    runtime: Runtime,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When waiting for background tasks, the loop should be cancellable
-    (e.g., via Ctrl+C / asyncio.CancelledError)."""
-    soul = _make_soul(runtime, tmp_path)
-
-    async def fake_checkpoint() -> None:
-        return None
-
-    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
-    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
-    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: None)
-
-    manager = runtime.background_tasks
-    _create_fake_task(manager, "agent-hanging", "running")
-
-    async def fake_step():
-        return kimisoul_module.StepOutcome(
-            stop_reason="no_tool_calls",
-            assistant_message=Message(
-                role="assistant",
-                content=[TextPart(text="Waiting...")],
-            ),
-        )
-
-    monkeypatch.setattr(soul, "_step", fake_step)
-
-    # The loop should be waiting for background tasks.
-    # Cancel it after a short delay.
-    loop_task = asyncio.create_task(soul._agent_loop())
-    await asyncio.sleep(0.1)
-    loop_task.cancel()
-
-    with pytest.raises(asyncio.CancelledError):
-        await loop_task
+# ---------------------------------------------------------------------------
+# No re-entry when no notifications are pending
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_exits_when_tasks_complete_between_checks(
-    runtime: Runtime,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """If all background tasks complete between the first has_active_tasks()
-    check and the re-check after event.clear(), the loop should exit normally
-    instead of waiting forever."""
-    soul = _make_soul(runtime, tmp_path)
-    step_calls = 0
+async def test_print_skips_reentry_when_no_pending_notifications(tmp_path: Path) -> None:
+    """If tasks complete but there are no pending LLM notifications, the soul
+    should NOT be re-entered."""
+    state = _FakeState(active=True, pending=False)
+    manager, notifications = _wire_manager(state)
 
-    async def fake_checkpoint() -> None:
-        return None
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications)
+    run_soul_calls: list[str] = []
 
-    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
-    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
-    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: None)
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
 
-    manager = runtime.background_tasks
-    _create_fake_task(manager, "agent-fast", "running")
+    real_sleep = asyncio.sleep
 
-    has_active_call_count = 0
+    async def fake_sleep(duration):
+        state.active = False
+        await real_sleep(0)
 
-    def patched_has_active_tasks():
-        nonlocal has_active_call_count
-        has_active_call_count += 1
-        if has_active_call_count == 1:
-            return True  # first check: still active
-        # Between checks, the task completed
-        store = manager.store
-        rt = store.read_runtime("agent-fast")
-        rt.status = "completed"
-        store.write_runtime("agent-fast", rt)
-        return False  # re-check: no longer active
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+    ):
+        code = await p.run(command="hello")
 
-    monkeypatch.setattr(manager, "has_active_tasks", patched_has_active_tasks)
+    assert code == ExitCode.SUCCESS
+    assert len(run_soul_calls) == 1
 
-    async def fake_step():
-        nonlocal step_calls
-        step_calls += 1
-        return kimisoul_module.StepOutcome(
-            stop_reason="no_tool_calls",
-            assistant_message=Message(
-                role="assistant",
-                content=[TextPart(text="Done")],
-            ),
-        )
 
-    monkeypatch.setattr(soul, "_step", fake_step)
-
-    outcome = await asyncio.wait_for(soul._agent_loop(), timeout=2.0)
-
-    assert step_calls == 1
-    assert outcome.stop_reason == "no_tool_calls"
+# ---------------------------------------------------------------------------
+# Pre-existing pending notifications: tasks already done before first check
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_background_wait_handles_steer(
-    runtime: Runtime,
+async def test_print_reruns_soul_when_tasks_done_but_notifications_pending(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When waiting for background tasks, a steer from the user should
-    break the wait and let the loop continue so the steer is processed."""
-    soul = _make_soul(runtime, tmp_path)
-    step_calls = 0
+    """If all tasks finished before the first check and reconcile publishes
+    notifications, the soul should still be re-entered to drain them."""
+    state = _FakeState(active=False, pending=False)
+    manager, notifications = _wire_manager(state)
 
-    async def fake_checkpoint() -> None:
-        return None
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications)
+    run_soul_calls: list[str] = []
+    reconcile_original = manager.reconcile.side_effect
 
-    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
-    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
-    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: None)
+    def reconcile_then_publish():
+        reconcile_original()
+        # First reconcile: publish a pending notification
+        if state.reconcile_count == 1:
+            state.pending = True
 
-    manager = runtime.background_tasks
-    _create_fake_task(manager, "agent-slow", "running")
+    manager.reconcile.side_effect = reconcile_then_publish
 
-    async def fake_step():
-        nonlocal step_calls
-        step_calls += 1
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        if len(run_soul_calls) > 1:
+            state.pending = False
 
-        if step_calls == 1:
-            # LLM returns text, bg task still running → enters wait loop
-            return kimisoul_module.StepOutcome(
-                stop_reason="no_tool_calls",
-                assistant_message=Message(
-                    role="assistant",
-                    content=[TextPart(text="Waiting...")],
-                ),
-            )
+    with patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul):
+        code = await p.run(command="trigger")
 
-        # step 2: steer was consumed, bg task completes, loop exits
-        store = manager.store
-        rt = store.read_runtime("agent-slow")
-        rt.status = "completed"
-        store.write_runtime("agent-slow", rt)
+    assert code == ExitCode.SUCCESS
+    assert len(run_soul_calls) == 2
+    assert "<system-reminder>" in run_soul_calls[1]
 
-        return kimisoul_module.StepOutcome(
-            stop_reason="no_tool_calls",
-            assistant_message=Message(
-                role="assistant",
-                content=[TextPart(text="Done after steer")],
-            ),
-        )
 
-    monkeypatch.setattr(soul, "_step", fake_step)
-
-    # After a short delay, send a steer — this should break the bg wait
-    async def send_steer():
-        await asyncio.sleep(0.1)
-        soul.steer("stop and do something else")
-
-    steer_task = asyncio.create_task(send_steer())
-
-    try:
-        await asyncio.wait_for(soul._agent_loop(), timeout=5.0)
-    except TimeoutError:
-        pytest.fail("agent_loop timed out — steer was not picked up during bg wait")
-    finally:
-        steer_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await steer_task
-
-    # The steer should have broken the wait, causing step 2 to run
-    assert step_calls == 2, f"Expected 2 steps (wait interrupted by steer), got {step_calls}"
+# ---------------------------------------------------------------------------
+# Empty: no tasks, no pending → no wait, exit immediately
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_tool_rejected_exits_despite_background_tasks(
-    runtime: Runtime,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When the LLM's tool call is rejected (stop_reason='tool_rejected'),
-    the loop should exit immediately even if background tasks are still running.
-    The background wait logic only applies to 'no_tool_calls'."""
-    soul = _make_soul(runtime, tmp_path)
+async def test_print_exits_normally_when_no_background_work(tmp_path: Path) -> None:
+    """No active tasks and no pending notifications → exit without waiting."""
+    state = _FakeState(active=False, pending=False)
+    manager, notifications = _wire_manager(state)
 
-    async def fake_checkpoint() -> None:
-        return None
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications)
+    run_soul_calls: list[str] = []
 
-    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
-    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
-    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: None)
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
 
-    manager = runtime.background_tasks
-    _create_fake_task(manager, "agent-running", "running")
+    with patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul):
+        code = await p.run(command="hello")
 
-    async def fake_step():
-        return kimisoul_module.StepOutcome(
-            stop_reason="tool_rejected",
-            assistant_message=Message(
-                role="assistant",
-                content=[TextPart(text="Tool was rejected.")],
-            ),
-        )
+    assert code == ExitCode.SUCCESS
+    assert len(run_soul_calls) == 1
+    # Two reconciles: one at the top of the loop, one final double-check
+    # before break (to catch workers that finish between the two snapshots).
+    assert state.reconcile_count == 2
 
-    monkeypatch.setattr(soul, "_step", fake_step)
 
-    outcome = await asyncio.wait_for(soul._agent_loop(), timeout=2.0)
-
-    # Should exit immediately with tool_rejected, not wait for bg tasks
-    assert outcome.stop_reason == "tool_rejected"
+# ---------------------------------------------------------------------------
+# stream-json mode: must NOT block between commands
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_skips_wait_when_event_already_set(
-    runtime: Runtime,
+async def test_print_stream_json_does_not_wait_for_background_tasks(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When completion_event is already set (a task completed during _step()),
-    the loop should skip the timed wait and immediately continue to the next
-    step to process the pending notification."""
-    soul = _make_soul(runtime, tmp_path)
-    step_calls = 0
+    """In stream-json mode the wait loop must be skipped entirely."""
+    state = _FakeState(active=True, pending=True)
+    manager, notifications = _wire_manager(state)
 
-    async def fake_checkpoint() -> None:
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications, input_format="stream-json")
+    run_soul_calls: list[str] = []
+    read_count = 0
+
+    def fake_read_next_command():
+        nonlocal read_count
+        read_count += 1
+        if read_count == 1:
+            return "second command"
         return None
 
-    monkeypatch.setattr(soul, "_checkpoint", fake_checkpoint)
-    monkeypatch.setattr(soul._denwa_renji, "set_n_checkpoints", lambda _n: None)
-    monkeypatch.setattr(kimisoul_module, "wire_send", lambda msg: None)
+    p._read_next_command = fake_read_next_command
 
-    manager = runtime.background_tasks
-    _create_fake_task(manager, "agent-fast", "running")
-    _create_fake_task(manager, "agent-slow", "running")
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
 
-    async def fake_step():
-        nonlocal step_calls
-        step_calls += 1
+    with patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul):
+        code = await p.run(command="first command")
 
-        if step_calls == 1:
-            # Simulate: task-fast completed during this step, pump set event.
-            store = manager.store
-            rt = store.read_runtime("agent-fast")
-            rt.status = "completed"
-            store.write_runtime("agent-fast", rt)
-            manager.completion_event.set()
+    assert code == ExitCode.SUCCESS
+    assert run_soul_calls == ["first command", "second command"]
+    # reconcile must NOT be called in stream-json mode
+    assert state.reconcile_count == 0
 
-            return kimisoul_module.StepOutcome(
-                stop_reason="no_tool_calls",
-                assistant_message=Message(
-                    role="assistant",
-                    content=[TextPart(text="Waiting...")],
-                ),
-            )
 
-        if step_calls == 2:
-            # Step 2 should run immediately (no 2s delay) because
-            # event was already set. Mark slow task done so loop exits.
-            store = manager.store
-            rt = store.read_runtime("agent-slow")
-            rt.status = "completed"
-            store.write_runtime("agent-slow", rt)
+# ---------------------------------------------------------------------------
+# Cancellation → FAILURE, not SUCCESS
+# ---------------------------------------------------------------------------
 
-            return kimisoul_module.StepOutcome(
-                stop_reason="no_tool_calls",
-                assistant_message=Message(
-                    role="assistant",
-                    content=[TextPart(text="All done")],
-                ),
-            )
 
-        pytest.fail("Should not reach step 3")
+@pytest.mark.asyncio
+async def test_print_background_wait_cancel_returns_failure(tmp_path: Path) -> None:
+    """Ctrl+C during background wait should exit and return FAILURE."""
+    state = _FakeState(active=True, pending=False)
+    manager, notifications = _wire_manager(state)
 
-    monkeypatch.setattr(soul, "_step", fake_step)
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications)
 
-    import time
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        pass
 
-    start = time.monotonic()
-    outcome = await asyncio.wait_for(soul._agent_loop(), timeout=5.0)
-    elapsed = time.monotonic() - start
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.install_sigint_handler") as mock_sigint,
+    ):
+        cancel_handler = None
 
-    assert step_calls == 2
-    assert outcome.stop_reason == "no_tool_calls"
-    # Should complete well under 2s (the wait timeout) since the event
-    # was already set and the fast path skipped the timed wait.
-    assert elapsed < 1.0, (
-        f"Loop took {elapsed:.1f}s — it should have skipped the 2s wait "
-        f"because completion_event was already set"
-    )
+        def capture_handler(loop, handler):
+            nonlocal cancel_handler
+            cancel_handler = handler
+            return lambda: None
+
+        mock_sigint.side_effect = capture_handler
+
+        async def run_with_cancel():
+            task = asyncio.create_task(p.run(command="test"))
+            await asyncio.sleep(0.05)
+            if cancel_handler:
+                cancel_handler()
+            return await asyncio.wait_for(task, timeout=5.0)
+
+        code = await run_with_cancel()
+
+    assert code == ExitCode.FAILURE
+
+
+# ---------------------------------------------------------------------------
+# Re-entry with sibling tasks still running (P1 scenario 2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_print_reruns_soul_even_with_active_sibling_tasks(
+    tmp_path: Path,
+) -> None:
+    """When one task finishes and publishes a notification while another is
+    still active, the re-entry must happen immediately — completed-task
+    progress must not wait on siblings."""
+    state = _FakeState(active=True, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications)
+    run_soul_calls: list[str] = []
+
+    reconcile_original = manager.reconcile.side_effect
+
+    def reconcile_then_publish():
+        reconcile_original()
+        # First reconcile: publish notification for completed sibling,
+        # other task still running.
+        if state.reconcile_count == 1:
+            state.pending = True
+
+    manager.reconcile.side_effect = reconcile_then_publish
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        if len(run_soul_calls) == 2:
+            # Re-entry: ack the pending notification and finish the sibling
+            state.pending = False
+            state.active = False
+
+    with patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul):
+        code = await p.run(command="siblings")
+
+    assert code == ExitCode.SUCCESS
+    # Re-entry happened even though active=True at that moment
+    assert len(run_soul_calls) == 2
