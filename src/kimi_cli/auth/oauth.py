@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import platform
+import random
 import socket
 import sys
 import tempfile
@@ -53,6 +54,8 @@ KEYRING_SERVICE = "kimi-code"
 REFRESH_INTERVAL_SECONDS = 60
 MIN_REFRESH_THRESHOLD_SECONDS = 300
 REFRESH_THRESHOLD_RATIO = 0.5
+_CROSS_PROCESS_LOCK_TIMEOUT = 10  # seconds
+_CROSS_PROCESS_LOCK_RETRIES = 5
 
 
 class OAuthError(RuntimeError):
@@ -230,6 +233,62 @@ def _credentials_dir() -> Path:
 def _credentials_path(key: str) -> Path:
     name = key.removeprefix("oauth/").split("/")[-1] or key
     return _credentials_dir() / f"{name}.json"
+
+
+def _credentials_lock_path(key: str) -> Path:
+    name = key.removeprefix("oauth/").split("/")[-1] or key
+    return _credentials_dir() / f"{name}.lock"
+
+
+class _CrossProcessLock:
+    """File-based lock that coordinates token refresh across kimi-cli processes.
+
+    Uses fcntl.flock on Unix and msvcrt.locking on Windows.
+    """
+
+    def __init__(self, key: str) -> None:
+        self._path = _credentials_lock_path(key)
+        self._fd: int | None = None
+
+    def _acquire(self) -> bool:
+        try:
+            self._fd = os.open(str(self._path), os.O_CREAT | os.O_RDWR)
+        except OSError:
+            return False
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                msvcrt.locking(self._fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            os.close(self._fd)
+            self._fd = None
+            return False
+
+    def release(self) -> None:
+        if self._fd is not None:
+            with suppress(OSError):
+                os.close(self._fd)
+            self._fd = None
+
+    async def acquire_with_retry(self) -> bool:
+        for _attempt in range(_CROSS_PROCESS_LOCK_RETRIES):
+            if self._acquire():
+                return True
+            await asyncio.sleep(1 + random.random())
+            # After waiting, re-check if the token was refreshed by the holder.
+        return self._acquire()
+
+    async def __aenter__(self) -> bool:
+        return await self.acquire_with_retry()
+
+    async def __aexit__(self, *args: object) -> None:
+        self.release()
 
 
 def _load_from_keyring(key: str) -> OAuthToken | None:
@@ -793,7 +852,7 @@ class OAuthManager:
         if not current_token.refresh_token:
             return
         async with self._refresh_lock:
-            # Re-check persisted token inside the lock to reduce races.
+            # Re-check persisted token inside the in-process lock.
             persisted = load_tokens(ref)
             if persisted:
                 self._cache_access_token(ref, persisted)
@@ -814,44 +873,74 @@ class OAuthManager:
             refresh_token_value = current.refresh_token
             if not refresh_token_value:
                 return
+
+            # Acquire cross-process file lock to coordinate with other
+            # kimi-cli instances (terminal, VS Code, web).
+            xlock = _CrossProcessLock(ref.key)
+            acquired = await xlock.acquire_with_retry()
             try:
-                refreshed = await refresh_token(refresh_token_value)
-            except OAuthUnauthorized as exc:
-                # Give a concurrent instance time to persist its rotated token.
-                await asyncio.sleep(1)
-                latest = load_tokens(ref)
-                if latest and latest.refresh_token != refresh_token_value:
-                    self._cache_access_token(ref, latest)
-                    self._apply_access_token(runtime, latest.access_token)
-                    return
-                # The on-disk token is the same one we just tried and it
-                # was rejected — no other instance rotated it.  Mark it as
-                # expired (expires_at=0) so subsequent loads treat it as
-                # unusable without deleting the file (avoids the race where
-                # another instance writes between our check and delete).
-                if latest:
-                    invalidated = OAuthToken(
-                        access_token=latest.access_token,
-                        refresh_token=latest.refresh_token,
-                        expires_at=0,
-                        scope=latest.scope,
-                        token_type=latest.token_type,
-                        expires_in=0.0,
+                if acquired:
+                    # Triple-check after acquiring the lock — another process
+                    # may have refreshed while we waited.
+                    locked_token = load_tokens(ref)
+                    if locked_token and locked_token.refresh_token != refresh_token_value:
+                        self._cache_access_token(ref, locked_token)
+                        self._apply_access_token(runtime, locked_token.access_token)
+                        return
+                    if not force and locked_token:
+                        remaining = locked_token.expires_at - time.time()
+                        t = (
+                            max(
+                                MIN_REFRESH_THRESHOLD_SECONDS,
+                                locked_token.expires_in * REFRESH_THRESHOLD_RATIO,
+                            )
+                            if locked_token.expires_in > 0
+                            else MIN_REFRESH_THRESHOLD_SECONDS
+                        )
+                        if locked_token.expires_at and remaining >= t:
+                            self._cache_access_token(ref, locked_token)
+                            self._apply_access_token(runtime, locked_token.access_token)
+                            return
+                else:
+                    logger.warning("Could not acquire cross-process lock for token refresh")
+
+                try:
+                    refreshed = await refresh_token(refresh_token_value)
+                except OAuthUnauthorized as exc:
+                    # Give a concurrent instance time to persist its rotated token.
+                    await asyncio.sleep(1)
+                    latest = load_tokens(ref)
+                    if latest and latest.refresh_token != refresh_token_value:
+                        self._cache_access_token(ref, latest)
+                        self._apply_access_token(runtime, latest.access_token)
+                        return
+                    # Mark the revoked token as expired so subsequent loads
+                    # don't loop on failed refresh attempts.
+                    if latest:
+                        invalidated = OAuthToken(
+                            access_token=latest.access_token,
+                            refresh_token=latest.refresh_token,
+                            expires_at=0,
+                            scope=latest.scope,
+                            token_type=latest.token_type,
+                            expires_in=0.0,
+                        )
+                        save_tokens(ref, invalidated)
+                    logger.warning(
+                        "OAuth credentials rejected: {error}",
+                        error=exc,
                     )
-                    save_tokens(ref, invalidated)
-                logger.warning(
-                    "OAuth credentials rejected: {error}",
-                    error=exc,
-                )
-                self._access_tokens.pop(ref.key, None)
-                self._apply_access_token(runtime, "")
-                return
-            except Exception as exc:
-                logger.warning("Failed to refresh OAuth token: {error}", error=exc)
-                return
-            save_tokens(ref, refreshed)
-            self._cache_access_token(ref, refreshed)
-            self._apply_access_token(runtime, refreshed.access_token)
+                    self._access_tokens.pop(ref.key, None)
+                    self._apply_access_token(runtime, "")
+                    return
+                except Exception as exc:
+                    logger.warning("Failed to refresh OAuth token: {error}", error=exc)
+                    return
+                save_tokens(ref, refreshed)
+                self._cache_access_token(ref, refreshed)
+                self._apply_access_token(runtime, refreshed.access_token)
+            finally:
+                xlock.release()
 
     def _apply_access_token(self, runtime: Runtime | None, access_token: str) -> None:
         if runtime is None:
