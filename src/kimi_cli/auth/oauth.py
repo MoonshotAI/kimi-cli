@@ -275,14 +275,17 @@ class _CrossProcessLock:
 
     def release(self) -> None:
         if self._fd is not None:
-            with suppress(OSError):
+            try:
                 if sys.platform == "win32":
                     import msvcrt
 
-                    os.lseek(self._fd, 0, os.SEEK_SET)
-                    msvcrt.locking(self._fd, msvcrt.LK_UNLCK, 1)
-                os.close(self._fd)
-            self._fd = None
+                    with suppress(OSError):
+                        os.lseek(self._fd, 0, os.SEEK_SET)
+                        msvcrt.locking(self._fd, msvcrt.LK_UNLCK, 1)
+            finally:
+                with suppress(OSError):
+                    os.close(self._fd)
+                self._fd = None
 
     async def acquire_with_retry(self) -> bool:
         for _attempt in range(_CROSS_PROCESS_LOCK_RETRIES):
