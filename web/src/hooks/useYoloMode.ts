@@ -28,6 +28,9 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
       return;
     }
 
+    // Capture sessionId at request start to detect stale responses
+    const requestSessionId = sessionId;
+
     // Cancel any in-flight request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -58,6 +61,15 @@ export function useYoloMode(sessionId: string | null): UseYoloModeReturn {
       }
 
       const data = await response.json();
+
+      // Guard against stale responses: only apply if session hasn't changed
+      if (
+        requestSessionId !== sessionIdRef.current ||
+        abortControllerRef.current !== controller
+      ) {
+        return;
+      }
+
       setYoloStatus({
         enabled: data.enabled,
         autoApproveActions: data.auto_approve_actions,
