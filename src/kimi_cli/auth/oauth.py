@@ -6,6 +6,7 @@ import os
 import platform
 import socket
 import sys
+import tempfile
 import time
 import uuid
 import webbrowser
@@ -50,7 +51,8 @@ KIMI_CODE_OAUTH_KEY = "oauth/kimi-code"
 DEFAULT_OAUTH_HOST = "https://auth.kimi.com"
 KEYRING_SERVICE = "kimi-code"
 REFRESH_INTERVAL_SECONDS = 60
-REFRESH_THRESHOLD_SECONDS = 300
+MIN_REFRESH_THRESHOLD_SECONDS = 300
+REFRESH_THRESHOLD_RATIO = 0.5
 _REFRESH_MAX_RETRIES = 3
 
 
@@ -93,6 +95,7 @@ class OAuthToken:
     expires_at: float
     scope: str
     token_type: str
+    expires_in: float = 0.0
 
     @classmethod
     def from_response(cls, payload: dict[str, Any]) -> OAuthToken:
@@ -103,6 +106,7 @@ class OAuthToken:
             expires_at=time.time() + expires_in,
             scope=str(payload["scope"]),
             token_type=str(payload["token_type"]),
+            expires_in=expires_in,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -112,6 +116,7 @@ class OAuthToken:
             "expires_at": self.expires_at,
             "scope": self.scope,
             "token_type": self.token_type,
+            "expires_in": self.expires_in,
         }
 
     @classmethod
@@ -123,6 +128,7 @@ class OAuthToken:
             expires_at=float(expires_at_value) if expires_at_value is not None else 0.0,
             scope=str(payload.get("scope") or ""),
             token_type=str(payload.get("token_type") or ""),
+            expires_in=float(payload.get("expires_in") or 0),
         )
 
 
@@ -258,7 +264,7 @@ def _load_from_file(key: str) -> OAuthToken | None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -268,8 +274,24 @@ def _load_from_file(key: str) -> OAuthToken | None:
 
 def _save_to_file(key: str, token: OAuthToken) -> None:
     path = _credentials_path(key)
-    path.write_text(json.dumps(token.to_dict(), ensure_ascii=False), encoding="utf-8")
-    _ensure_private_file(path)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        data = json.dumps(token.to_dict(), ensure_ascii=False).encode("utf-8")
+        written = os.write(fd, data)
+        if written != len(data):
+            raise OSError(f"Short write: {written}/{len(data)} bytes")
+        os.close(fd)
+        fd = -1
+        with suppress(OSError):
+            os.chmod(tmp_path, 0o600)
+        os.replace(tmp_path, path)
+    except BaseException:
+        if fd >= 0:
+            with suppress(OSError):
+                os.close(fd)
+        with suppress(OSError):
+            os.unlink(tmp_path)
+        raise
 
 
 def _delete_from_file(key: str) -> None:
@@ -724,6 +746,7 @@ class OAuthManager:
         async def _runner() -> None:
             try:
                 while True:
+                    wall_before = time.time()
                     try:
                         await asyncio.wait_for(
                             stop_event.wait(),
@@ -732,8 +755,16 @@ class OAuthManager:
                         return
                     except TimeoutError:
                         pass
+                    elapsed = time.time() - wall_before
+                    force = elapsed > REFRESH_INTERVAL_SECONDS * 2
+                    if force:
+                        logger.info(
+                            "Detected possible sleep/wake ({elapsed:.0f}s elapsed), "
+                            "forcing token refresh.",
+                            elapsed=elapsed,
+                        )
                     try:
-                        await self.ensure_fresh(runtime)
+                        await self.ensure_fresh(runtime, force=force)
                     except Exception as exc:
                         logger.warning(
                             "Failed to refresh OAuth token in background: {error}",
@@ -776,10 +807,15 @@ class OAuthManager:
             current = persisted or current_token
             if not force:
                 now = time.time()
+                threshold = (
+                    max(MIN_REFRESH_THRESHOLD_SECONDS, current.expires_in * REFRESH_THRESHOLD_RATIO)
+                    if current.expires_in > 0
+                    else MIN_REFRESH_THRESHOLD_SECONDS
+                )
                 if (
                     current.expires_at
                     and current.expires_at > now
-                    and current.expires_at - now >= REFRESH_THRESHOLD_SECONDS
+                    and current.expires_at - now >= threshold
                 ):
                     return
             refresh_token_value = current.refresh_token
@@ -788,19 +824,25 @@ class OAuthManager:
             try:
                 refreshed = await refresh_token(refresh_token_value)
             except OAuthUnauthorized as exc:
-                # If another session refreshed and persisted a new token,
-                # do not delete it. Just sync memory and exit.
+                # Give a concurrent instance time to persist its rotated token.
+                await asyncio.sleep(1)
                 latest = load_tokens(ref)
                 if latest and latest.refresh_token != refresh_token_value:
                     self._cache_access_token(ref, latest)
                     self._apply_access_token(runtime, latest.access_token)
                     return
+                # Delete the revoked credential file so that:
+                # 1. load_tokens returns None on subsequent calls,
+                #    preventing ensure_fresh from applying an empty
+                #    access_token to the live client.
+                # 2. resolve_api_key falls back to the configured
+                #    api_key immediately.
+                delete_tokens(ref)
                 logger.warning(
-                    "OAuth credentials rejected, deleting stored tokens: {error}",
+                    "OAuth credentials rejected: {error}",
                     error=exc,
                 )
                 self._access_tokens.pop(ref.key, None)
-                delete_tokens(ref)
                 self._apply_access_token(runtime, "")
                 return
             except Exception as exc:
