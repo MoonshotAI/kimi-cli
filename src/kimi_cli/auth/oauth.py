@@ -251,7 +251,7 @@ class _CrossProcessLock:
 
     def _acquire(self) -> bool:
         try:
-            self._fd = os.open(str(self._path), os.O_CREAT | os.O_RDWR)
+            self._fd = os.open(str(self._path), os.O_CREAT | os.O_RDWR, 0o600)
         except OSError:
             return False
         try:
