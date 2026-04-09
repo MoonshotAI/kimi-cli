@@ -337,7 +337,10 @@ def _save_to_file(key: str, token: OAuthToken) -> None:
     path = _credentials_path(key)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
-        os.write(fd, json.dumps(token.to_dict(), ensure_ascii=False).encode("utf-8"))
+        data = json.dumps(token.to_dict(), ensure_ascii=False).encode("utf-8")
+        written = os.write(fd, data)
+        if written != len(data):
+            raise OSError(f"Short write: {written}/{len(data)} bytes")
         os.close(fd)
         fd = -1
         with suppress(OSError):
@@ -918,11 +921,17 @@ class OAuthManager:
                         self._apply_access_token(runtime, latest.access_token)
                         return
                     # Mark the revoked token as expired so subsequent loads
-                    # don't loop on failed refresh attempts.
+                    # don't loop on failed refresh attempts.  Clear both
+                    # access_token and refresh_token:
+                    # - access_token="" prevents _cache_access_token from
+                    #   re-caching the old invalid token on the next cycle.
+                    # - refresh_token="" causes the early-exit guard
+                    #   (``if not current_token.refresh_token: return``) to
+                    #   trigger, stopping further refresh attempts.
                     if latest:
                         invalidated = OAuthToken(
-                            access_token=latest.access_token,
-                            refresh_token=latest.refresh_token,
+                            access_token="",
+                            refresh_token="",
                             expires_at=0,
                             scope=latest.scope,
                             token_type=latest.token_type,
