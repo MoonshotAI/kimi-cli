@@ -4,7 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
-- Print: Wait for background tasks before exiting one-shot runs — in `--print` mode with `--input-format text`, the process now polls for running background tasks after the main turn finishes and re-enters the soul to process any pending completion notifications, instead of exiting and killing still-running background agents; re-entry is triggered immediately when a sibling task completes (completed-task progress is not blocked by still-running siblings) and a final reconcile before exit guards against losing the last completion notification; `stream-json` multi-turn mode is unaffected so background tasks never block between commands; Ctrl+C during the wait now exits with failure
+- Print: Wait for background tasks before exiting — in one-shot `--print` mode, the process now waits for running background agents to finish and lets the model process their results, instead of exiting and killing them
 - Core: Fix agent loop silently stopping when model response contains only thinking content — detect think-only responses (reasoning content with no text or tool calls) as an incomplete response error and retry automatically
 - Core: Fix crash on streaming mid-flight network disconnection — when the OpenAI SDK raises a base `APIError` (instead of `APIConnectionError`) during long-running streams, the error is now correctly classified as retryable, enabling automatic retry and connection recovery instead of an unrecoverable crash
 - Shell: Exclude empty current session from `/sessions` picker — completely empty sessions (no conversation history and no custom title) are no longer shown in the session list; sessions with a custom title are still displayed
