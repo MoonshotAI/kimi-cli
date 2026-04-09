@@ -152,6 +152,13 @@ def kimi(
             help="Continue the previous session for the working directory. Default: no.",
         ),
     ] = False,
+    list_sessions: Annotated[
+        bool,
+        typer.Option(
+            "--list-sessions",
+            help="List all sessions for the working directory and exit.",
+        ),
+    ] = False,
     config_string: Annotated[
         str | None,
         typer.Option(
@@ -433,6 +440,7 @@ def kimi(
         {
             "--continue": continue_,
             "--session": session_id is not None or _picker_mode,
+            "--list-sessions": list_sessions,
         },
         {
             "--config": config_string is not None,
@@ -524,6 +532,27 @@ def kimi(
         skills_dirs = [KaosPath.unsafe_from_local_path(p) for p in local_skills_dir]
 
     work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
+
+    # Handle --list-sessions
+    if list_sessions:
+        from rich.console import Console
+
+        from kimi_cli.utils.datetime import format_relative_time
+
+        all_sessions = asyncio.run(Session.list(work_dir))
+        console = Console()
+
+        if not all_sessions:
+            console.print("[yellow]No sessions found for the working directory.[/yellow]")
+        else:
+            console.print(f"\n[bold]Sessions for {work_dir}:[/bold]\n")
+            for i, s in enumerate(all_sessions, 1):
+                time_str = format_relative_time(s.updated_at)
+                short_id = s.id[:8]
+                name = _strip_session_id_suffix(s.title, s.id)
+                console.print(f"{i}. [cyan]{name}[/cyan] ([dim]{short_id}[/dim]) - {time_str}")
+                console.print(f"   Resume: kimi -r {s.id}\n")
+        raise typer.Exit(0)
 
     # Tracks the most recently created/loaded session so that _reload_loop's
     # exception handler can clean it up even when _run() fails before returning.
