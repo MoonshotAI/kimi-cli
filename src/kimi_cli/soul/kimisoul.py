@@ -1069,6 +1069,19 @@ class KimiSoul:
     ) -> Any:
         try:
             return await operation()
+        except APIStatusError as error:
+            if error.status_code != 401:
+                raise
+            logger.warning(
+                "Received 401 during {name}, attempting token refresh",
+                name=name,
+            )
+            try:
+                await self._runtime.oauth.ensure_fresh(self._runtime, force=True)
+            except Exception as refresh_exc:
+                logger.exception("Token refresh failed after 401.")
+                raise error from refresh_exc
+            return await operation()
         except (APIConnectionError, APITimeoutError) as error:
             if not isinstance(chat_provider, RetryableChatProvider):
                 raise

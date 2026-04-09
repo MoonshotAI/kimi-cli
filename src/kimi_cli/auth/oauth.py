@@ -6,6 +6,7 @@ import os
 import platform
 import socket
 import sys
+import tempfile
 import time
 import uuid
 import webbrowser
@@ -50,7 +51,8 @@ KIMI_CODE_OAUTH_KEY = "oauth/kimi-code"
 DEFAULT_OAUTH_HOST = "https://auth.kimi.com"
 KEYRING_SERVICE = "kimi-code"
 REFRESH_INTERVAL_SECONDS = 60
-REFRESH_THRESHOLD_SECONDS = 300
+MIN_REFRESH_THRESHOLD_SECONDS = 300
+REFRESH_THRESHOLD_RATIO = 0.5
 
 
 class OAuthError(RuntimeError):
@@ -92,6 +94,7 @@ class OAuthToken:
     expires_at: float
     scope: str
     token_type: str
+    expires_in: float = 0.0
 
     @classmethod
     def from_response(cls, payload: dict[str, Any]) -> OAuthToken:
@@ -102,6 +105,7 @@ class OAuthToken:
             expires_at=time.time() + expires_in,
             scope=str(payload["scope"]),
             token_type=str(payload["token_type"]),
+            expires_in=expires_in,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -111,6 +115,7 @@ class OAuthToken:
             "expires_at": self.expires_at,
             "scope": self.scope,
             "token_type": self.token_type,
+            "expires_in": self.expires_in,
         }
 
     @classmethod
@@ -122,6 +127,7 @@ class OAuthToken:
             expires_at=float(expires_at_value) if expires_at_value is not None else 0.0,
             scope=str(payload.get("scope") or ""),
             token_type=str(payload.get("token_type") or ""),
+            expires_in=float(payload.get("expires_in") or 0),
         )
 
 
@@ -267,8 +273,20 @@ def _load_from_file(key: str) -> OAuthToken | None:
 
 def _save_to_file(key: str, token: OAuthToken) -> None:
     path = _credentials_path(key)
-    path.write_text(json.dumps(token.to_dict(), ensure_ascii=False), encoding="utf-8")
-    _ensure_private_file(path)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        os.write(fd, json.dumps(token.to_dict(), ensure_ascii=False).encode("utf-8"))
+        os.close(fd)
+        fd = -1
+        os.chmod(tmp_path, 0o600)
+        os.replace(tmp_path, path)
+    except BaseException:
+        if fd >= 0:
+            with suppress(OSError):
+                os.close(fd)
+        with suppress(OSError):
+            os.unlink(tmp_path)
+        raise
 
 
 def _delete_from_file(key: str) -> None:
@@ -359,26 +377,43 @@ async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[st
     return status, data
 
 
-async def refresh_token(refresh_token: str) -> OAuthToken:
-    async with (
-        new_client_session() as session,
-        session.post(
-            f"{_oauth_host().rstrip('/')}/api/oauth/token",
-            data={
-                "client_id": KIMI_CODE_CLIENT_ID,
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-            },
-            headers=_common_headers(),
-        ) as response,
-    ):
-        data = await response.json(content_type=None)
-        status = response.status
-    if status in (401, 403):
-        raise OAuthUnauthorized(data.get("error_description") or "Token refresh unauthorized.")
-    if status != 200:
-        raise OAuthError(data.get("error_description") or "Token refresh failed.")
-    return OAuthToken.from_response(data)
+async def refresh_token(refresh_token: str, *, max_retries: int = 3) -> OAuthToken:
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            async with (
+                new_client_session() as session,
+                session.post(
+                    f"{_oauth_host().rstrip('/')}/api/oauth/token",
+                    data={
+                        "client_id": KIMI_CODE_CLIENT_ID,
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                    },
+                    headers=_common_headers(),
+                ) as response,
+            ):
+                data = await response.json(content_type=None)
+                status = response.status
+            if status in (401, 403):
+                raise OAuthUnauthorized(
+                    data.get("error_description") or "Token refresh unauthorized."
+                )
+            if status != 200:
+                raise OAuthError(data.get("error_description") or "Token refresh failed.")
+            return OAuthToken.from_response(data)
+        except OAuthUnauthorized:
+            raise
+        except (aiohttp.ClientError, TimeoutError, OSError) as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2**attempt)
+                logger.warning(
+                    "Token refresh attempt {attempt} failed, retrying: {error}",
+                    attempt=attempt + 1,
+                    error=exc,
+                )
+    raise OAuthError("Token refresh failed after retries.") from last_exc
 
 
 def _select_default_model_and_thinking(models: list[ModelInfo]) -> tuple[ModelInfo, bool] | None:
@@ -676,13 +711,15 @@ class OAuthManager:
                 return service.oauth
         return None
 
-    async def ensure_fresh(self, runtime: Runtime | None = None) -> None:
+    async def ensure_fresh(self, runtime: Runtime | None = None, *, force: bool = False) -> None:
         """Load persisted tokens, cache them, and refresh if close to expiry.
 
         Args:
             runtime: When provided the live LLM client's API key is updated
                 in-place.  Pass ``None`` for lightweight callers (e.g. title
                 generation) that only need the internal cache to be current.
+            force: When True, skip the expiry-threshold check and always
+                attempt a refresh.  Used after receiving a 401 from the server.
         """
         ref = self._kimi_code_ref()
         if ref is None:
@@ -692,7 +729,7 @@ class OAuthManager:
             return
         self._cache_access_token(ref, token)
         self._apply_access_token(runtime, token.access_token)
-        await self._refresh_tokens(ref, token, runtime)
+        await self._refresh_tokens(ref, token, runtime, force=force)
 
     @asynccontextmanager
     async def refreshing(self, runtime: Runtime) -> AsyncIterator[None]:
@@ -701,6 +738,7 @@ class OAuthManager:
         async def _runner() -> None:
             try:
                 while True:
+                    wall_before = time.time()
                     try:
                         await asyncio.wait_for(
                             stop_event.wait(),
@@ -709,8 +747,16 @@ class OAuthManager:
                         return
                     except TimeoutError:
                         pass
+                    elapsed = time.time() - wall_before
+                    force = elapsed > REFRESH_INTERVAL_SECONDS * 2
+                    if force:
+                        logger.info(
+                            "Detected possible sleep/wake ({elapsed:.0f}s elapsed), "
+                            "forcing token refresh.",
+                            elapsed=elapsed,
+                        )
                     try:
-                        await self.ensure_fresh(runtime)
+                        await self.ensure_fresh(runtime, force=force)
                     except Exception as exc:
                         logger.warning(
                             "Failed to refresh OAuth token in background: {error}",
@@ -734,6 +780,8 @@ class OAuthManager:
         ref: OAuthRef,
         token: OAuthToken,
         runtime: Runtime | None,
+        *,
+        force: bool = False,
     ) -> None:
         # Always prefer persisted tokens before refresh to avoid stale cache
         # when multiple sessions might have already rotated the refresh token.
@@ -749,32 +797,40 @@ class OAuthManager:
             if persisted:
                 self._cache_access_token(ref, persisted)
             current = persisted or current_token
-            now = time.time()
-            if (
-                current.expires_at
-                and current.expires_at > now
-                and current.expires_at - now >= REFRESH_THRESHOLD_SECONDS
-            ):
-                return
+            if not force:
+                now = time.time()
+                threshold = (
+                    max(MIN_REFRESH_THRESHOLD_SECONDS, current.expires_in * REFRESH_THRESHOLD_RATIO)
+                    if current.expires_in > 0
+                    else MIN_REFRESH_THRESHOLD_SECONDS
+                )
+                if (
+                    current.expires_at
+                    and current.expires_at > now
+                    and current.expires_at - now >= threshold
+                ):
+                    return
             refresh_token_value = current.refresh_token
             if not refresh_token_value:
                 return
             try:
                 refreshed = await refresh_token(refresh_token_value)
             except OAuthUnauthorized as exc:
-                # If another session refreshed and persisted a new token,
-                # do not delete it. Just sync memory and exit.
+                # Give a concurrent instance time to persist its rotated token.
+                await asyncio.sleep(1)
                 latest = load_tokens(ref)
                 if latest and latest.refresh_token != refresh_token_value:
                     self._cache_access_token(ref, latest)
                     self._apply_access_token(runtime, latest.access_token)
                     return
+                # Do not delete persisted tokens from the background loop —
+                # only clear the in-memory cache so the next interactive
+                # command will prompt re-login.
                 logger.warning(
-                    "OAuth credentials rejected, deleting stored tokens: {error}",
+                    "OAuth credentials rejected: {error}",
                     error=exc,
                 )
                 self._access_tokens.pop(ref.key, None)
-                delete_tokens(ref)
                 self._apply_access_token(runtime, "")
                 return
             except Exception as exc:
