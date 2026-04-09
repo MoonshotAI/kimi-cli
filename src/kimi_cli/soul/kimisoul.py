@@ -1072,9 +1072,15 @@ class KimiSoul:
         except APIStatusError as error:
             if error.status_code != 401:
                 raise
-            # Only attempt refresh+retry for OAuth sessions; for plain
-            # API-key auth there is nothing to refresh.
-            if not any(p.oauth for p in self._runtime.config.providers.values() if p.oauth):
+            # Only attempt refresh+retry when the active model's provider
+            # uses OAuth.  For plain API-key providers there is nothing
+            # to refresh and retrying would just add latency.
+            active_provider = (
+                self._runtime.config.providers.get(self._runtime.llm.model_config.provider)
+                if self._runtime.llm and self._runtime.llm.model_config
+                else None
+            )
+            if not (active_provider and active_provider.oauth):
                 raise
             logger.warning(
                 "Received 401 during {name}, attempting token refresh",
