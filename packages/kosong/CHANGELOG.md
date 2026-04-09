@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OpenAI: Fix crash on streaming mid-flight disconnection — classify base `openai.APIError` (body=None) as retryable via heuristic message matching, so that `_run_with_connection_recovery` and tenacity retry logic correctly trigger instead of crashing
+
 ## 0.48.0 (2026-04-02)
 
 - Google GenAI: Add `default_headers` parameter to `GoogleGenAI` constructor — custom headers are merged into `HttpOptions` so they are included in all API requests
