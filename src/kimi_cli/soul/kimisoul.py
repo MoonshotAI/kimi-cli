@@ -64,6 +64,7 @@ from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.exception import MCPRuntimeError
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
@@ -683,6 +684,8 @@ class KimiSoul:
                 wire_send(MCPLoadingBegin())
             try:
                 await self.wait_for_background_mcp_loading()
+            except MCPRuntimeError as e:
+                logger.warning("MCP loading failed, continuing without MCP tools: {}", e)
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
