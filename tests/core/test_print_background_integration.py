@@ -108,6 +108,7 @@ async def test_real_reconcile_publishes_notification_and_triggers_reentry(
     soul = AsyncMock(spec=KimiSoul)
     soul.runtime = MagicMock()
     soul.runtime.role = "root"
+    soul.runtime.config.background.keep_alive_on_exit = False
     soul.runtime.background_tasks = manager
     soul.runtime.notifications = notifications
     soul.runtime.session = session
@@ -170,6 +171,7 @@ async def test_real_reconcile_no_reentry_when_task_completes_without_notificatio
     soul = AsyncMock(spec=KimiSoul)
     soul.runtime = MagicMock()
     soul.runtime.role = "root"
+    soul.runtime.config.background.keep_alive_on_exit = False
     soul.runtime.background_tasks = manager
     soul.runtime.notifications = notifications
     soul.runtime.session = session
@@ -219,6 +221,7 @@ async def test_real_reconcile_multiple_tasks(
     soul = AsyncMock(spec=KimiSoul)
     soul.runtime = MagicMock()
     soul.runtime.role = "root"
+    soul.runtime.config.background.keep_alive_on_exit = False
     soul.runtime.background_tasks = manager
     soul.runtime.notifications = notifications
     soul.runtime.session = session
@@ -298,6 +301,7 @@ async def test_race_window_worker_finishes_between_reconcile_and_active_check(
     soul = AsyncMock(spec=KimiSoul)
     soul.runtime = MagicMock()
     soul.runtime.role = "root"
+    soul.runtime.config.background.keep_alive_on_exit = False
     soul.runtime.background_tasks = manager
     soul.runtime.notifications = notifications
     soul.runtime.session = session

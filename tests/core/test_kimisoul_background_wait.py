@@ -58,12 +58,14 @@ def _make_print_with_runtime(
     notifications: MagicMock,
     *,
     input_format: InputFormat = "text",
+    keep_alive_on_exit: bool = False,
 ) -> tuple[Print, AsyncMock]:
     soul = AsyncMock(spec=KimiSoul)
     soul.runtime = MagicMock()
     soul.runtime.role = "root"
     soul.runtime.background_tasks = manager
     soul.runtime.notifications = notifications
+    soul.runtime.config.background.keep_alive_on_exit = keep_alive_on_exit
     soul.runtime.session.wire_file = tmp_path / "wire.jsonl"
 
     p = Print(
@@ -284,6 +286,38 @@ async def test_print_stream_json_does_not_wait_for_background_tasks(
     assert code == ExitCode.SUCCESS
     assert run_soul_calls == ["first command", "second command"]
     # reconcile must NOT be called in stream-json mode
+    assert state.reconcile_count == 0
+
+
+# ---------------------------------------------------------------------------
+# keep_alive_on_exit: wait loop is skipped entirely
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_print_skips_wait_when_keep_alive_on_exit_enabled(tmp_path: Path) -> None:
+    """When ``background.keep_alive_on_exit`` is True, background tasks are
+    supposed to outlive the CLI exit — so Print must not block waiting for
+    them to finish.  Verify the wait loop is skipped entirely (reconcile is
+    not called, no re-entry happens) even when active tasks and pending LLM
+    notifications are both True."""
+    state = _FakeState(active=True, pending=True)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(tmp_path, manager, notifications, keep_alive_on_exit=True)
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+
+    with patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul):
+        code = await p.run(command="fire and forget")
+
+    assert code == ExitCode.SUCCESS
+    # Only the original command was processed — no wait, no re-entry.
+    assert len(run_soul_calls) == 1
+    assert run_soul_calls[0] == "fire and forget"
+    # The wait loop was never entered — reconcile must not be called.
     assert state.reconcile_count == 0
 
 

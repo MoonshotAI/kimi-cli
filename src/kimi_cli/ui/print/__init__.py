@@ -108,7 +108,17 @@ class Print:
                     #
                     # stream-json mode is multi-turn: background tasks
                     # from one command must not block the next command.
-                    if runtime and runtime.role == "root" and self.input_format == "text":
+                    #
+                    # keep_alive_on_exit opts into "fire and forget"
+                    # semantics: background tasks are meant to outlive
+                    # the CLI process, so Print must not block waiting
+                    # for them.
+                    if (
+                        runtime
+                        and runtime.role == "root"
+                        and self.input_format == "text"
+                        and not runtime.config.background.keep_alive_on_exit
+                    ):
                         manager = runtime.background_tasks
                         notifications = runtime.notifications
                         while not cancel_event.is_set():
