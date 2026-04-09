@@ -970,7 +970,7 @@ export const PromptInputTextarea = forwardRef<
         if (
           isComposing ||
           e.nativeEvent.isComposing ||
-          Date.now() - compositionEndTimeRef.current < 100
+          e.timeStamp - compositionEndTimeRef.current < 100
         ) {
           return;
         }
@@ -1055,7 +1055,7 @@ export const PromptInputTextarea = forwardRef<
         onBlur={() => setIsComposing(false)}
         onCompositionEnd={() => {
           setIsComposing(false);
-          compositionEndTimeRef.current = Date.now();
+          compositionEndTimeRef.current = e.timeStamp;
         }}
         onCompositionStart={() => setIsComposing(true)}
         onKeyDown={handleKeyDown}
