@@ -1,5 +1,8 @@
-"""Tests for OAuth token refresh: retry with backoff and force refresh."""
+"""Tests for OAuth token refresh: retry, force refresh, atomic write, and 401 recovery."""
 
+import asyncio
+import json
+import os
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +15,7 @@ from kimi_cli.auth.oauth import (
     OAuthManager,
     OAuthToken,
     OAuthUnauthorized,
+    _save_to_file,
     refresh_token,
 )
 from kimi_cli.config import Config, LLMModel, LLMProvider, OAuthRef, Services
@@ -31,6 +35,7 @@ def _make_token(
         expires_at=time.time() + expires_in,
         scope="kimi-code",
         token_type="Bearer",
+        expires_in=expires_in,
     )
 
 
@@ -55,7 +60,7 @@ def _make_manager(token: OAuthToken | None = None) -> OAuthManager:
         return OAuthManager(_make_config())
 
 
-# ── refresh_token retry on network errors ──────────────────────
+# ── P2: refresh_token retry on network errors ────────────────────
 
 
 @pytest.mark.asyncio
@@ -162,7 +167,49 @@ async def test_refresh_token_raises_after_all_retries_exhausted():
         await refresh_token("some-refresh", max_retries=2)
 
 
-# ── force refresh ──────────────────────────────────────────────
+# ── P1: dynamic refresh threshold ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_ensure_fresh_uses_dynamic_threshold():
+    """Token with 7 minutes remaining and expires_in=900 should trigger refresh
+    (threshold = max(300, 900*0.5) = 450s, and 420s < 450s)."""
+    token = _make_token(expires_in=420)  # 7 minutes remaining
+    token.expires_in = 900  # Original lifetime was 15 min
+
+    manager = _make_manager(token)
+    mock_refresh = AsyncMock()
+
+    with (
+        patch("kimi_cli.auth.oauth.load_tokens", return_value=token),
+        patch.object(manager, "_refresh_lock", asyncio.Lock()),
+        patch("kimi_cli.auth.oauth.refresh_token", mock_refresh),
+    ):
+        mock_refresh.return_value = _make_token()
+        with patch("kimi_cli.auth.oauth.save_tokens"):
+            await manager.ensure_fresh()
+
+    mock_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_fresh_skips_when_plenty_of_time():
+    """Token with 8 minutes remaining and expires_in=900 should NOT trigger refresh
+    (threshold = 450s, and 480s > 450s)."""
+    token = _make_token(expires_in=480)  # 8 minutes remaining
+    token.expires_in = 900
+
+    manager = _make_manager(token)
+
+    with patch("kimi_cli.auth.oauth.load_tokens", return_value=token):
+        mock_refresh = AsyncMock()
+        with patch("kimi_cli.auth.oauth.refresh_token", mock_refresh):
+            await manager.ensure_fresh()
+
+    mock_refresh.assert_not_called()
+
+
+# ── P0: force refresh ───────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -181,3 +228,54 @@ async def test_ensure_fresh_force_bypasses_threshold():
         await manager.ensure_fresh(force=True)
 
     mock_refresh.assert_called_once()
+
+
+# ── P3: atomic file write ───────────────────────────────────────
+
+
+def test_save_to_file_is_atomic(tmp_path):
+    """_save_to_file should write atomically via temp file + rename."""
+    cred_dir = tmp_path / "credentials"
+    cred_dir.mkdir()
+    token = _make_token()
+
+    with patch("kimi_cli.auth.oauth._credentials_path", return_value=cred_dir / "test.json"):
+        _save_to_file("test", token)
+
+    saved = json.loads((cred_dir / "test.json").read_text())
+    assert saved["access_token"] == "access-123"
+    assert saved["expires_in"] == 900
+
+    # No temp files left behind
+    assert len(list(cred_dir.glob("*.tmp"))) == 0
+
+    # File permissions
+    stat = os.stat(cred_dir / "test.json")
+    assert stat.st_mode & 0o777 == 0o600
+
+
+def test_save_to_file_expires_in_roundtrip(tmp_path):
+    """expires_in field should survive save/load roundtrip."""
+    cred_dir = tmp_path / "credentials"
+    cred_dir.mkdir()
+    token = _make_token(expires_in=1800)
+
+    with patch("kimi_cli.auth.oauth._credentials_path", return_value=cred_dir / "test.json"):
+        _save_to_file("test", token)
+
+    saved = json.loads((cred_dir / "test.json").read_text())
+    restored = OAuthToken.from_dict(saved)
+    assert restored.expires_in == 1800
+
+
+def test_oauth_token_from_dict_defaults_expires_in():
+    """Tokens from older versions (no expires_in) should default to 0."""
+    old_format = {
+        "access_token": "a",
+        "refresh_token": "r",
+        "expires_at": time.time() + 100,
+        "scope": "kimi-code",
+        "token_type": "Bearer",
+    }
+    token = OAuthToken.from_dict(old_format)
+    assert token.expires_in == 0
