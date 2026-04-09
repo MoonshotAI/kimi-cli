@@ -276,6 +276,11 @@ class _CrossProcessLock:
     def release(self) -> None:
         if self._fd is not None:
             with suppress(OSError):
+                if sys.platform == "win32":
+                    import msvcrt
+
+                    os.lseek(self._fd, 0, os.SEEK_SET)
+                    msvcrt.locking(self._fd, msvcrt.LK_UNLCK, 1)
                 os.close(self._fd)
             self._fd = None
 
@@ -325,7 +330,7 @@ def _load_from_file(key: str) -> OAuthToken | None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError):
         return None
     if not isinstance(payload, dict):
         return None
