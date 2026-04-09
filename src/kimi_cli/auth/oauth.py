@@ -824,9 +824,21 @@ class OAuthManager:
                     self._cache_access_token(ref, latest)
                     self._apply_access_token(runtime, latest.access_token)
                     return
-                # Do not delete persisted tokens from the background loop —
-                # only clear the in-memory cache so the next interactive
-                # command will prompt re-login.
+                # The on-disk token is the same one we just tried and it
+                # was rejected — no other instance rotated it.  Mark it as
+                # expired (expires_at=0) so subsequent loads treat it as
+                # unusable without deleting the file (avoids the race where
+                # another instance writes between our check and delete).
+                if latest:
+                    invalidated = OAuthToken(
+                        access_token=latest.access_token,
+                        refresh_token=latest.refresh_token,
+                        expires_at=0,
+                        scope=latest.scope,
+                        token_type=latest.token_type,
+                        expires_in=0.0,
+                    )
+                    save_tokens(ref, invalidated)
                 logger.warning(
                     "OAuth credentials rejected: {error}",
                     error=exc,
