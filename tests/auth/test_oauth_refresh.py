@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 import time
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -12,8 +11,6 @@ import pytest
 from pydantic import SecretStr
 
 from kimi_cli.auth.oauth import (
-    MIN_REFRESH_THRESHOLD_SECONDS,
-    REFRESH_THRESHOLD_RATIO,
     OAuthError,
     OAuthManager,
     OAuthToken,
@@ -22,7 +19,6 @@ from kimi_cli.auth.oauth import (
     refresh_token,
 )
 from kimi_cli.config import Config, LLMModel, LLMProvider, OAuthRef, Services
-
 
 # ── helpers ──────────────────────────────────────────────────────
 
