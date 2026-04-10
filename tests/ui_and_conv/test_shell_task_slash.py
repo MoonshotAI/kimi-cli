@@ -484,7 +484,7 @@ async def test_shell_routes_foreground_approval_to_active_live_view(
             request.resolve("approve")
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
         id="req-fg-1",
@@ -553,7 +553,7 @@ async def test_shell_foreground_subagent_approval_renders_subagent_metadata(
             self.requests.append(request)
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
         id="req-fg-subagent",
@@ -622,7 +622,7 @@ async def test_shell_queues_approval_until_sink_is_ready(
             self.requests.append(req)
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     # Setting sink flushes pending requests to it
     assert list(shell._pending_approval_requests) == []  # type: ignore[attr-defined]
@@ -660,7 +660,7 @@ async def test_shell_sink_approval_bridge_resolves_in_runtime(
                 msg.resolve("approve")
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
         id="req-bridge",
@@ -858,7 +858,7 @@ async def test_shell_sink_bridge_passes_feedback_to_runtime(
                 msg.resolve("reject", feedback="use rm -i instead")
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
         id="req-sink-fb",
@@ -939,7 +939,7 @@ async def test_set_active_approval_sink_does_not_flush_in_interactive_mode(
             self.requests.append(req)
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     # Requests must remain in pending queue for the prompt modal
     assert len(shell._pending_approval_requests) == 1  # type: ignore[attr-defined]

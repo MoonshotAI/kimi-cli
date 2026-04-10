@@ -86,6 +86,11 @@ async def run_soul_checked(
             runtime=soul.runtime,
         )
     except MaxStepsReached as exc:
+        logger.warning(
+            "Subagent max steps reached ({n_steps}) when {phase}",
+            n_steps=exc.n_steps,
+            phase=phase,
+        )
         return SoulRunFailure(
             message=(
                 f"Max steps {exc.n_steps} reached when {phase}. "
@@ -98,11 +103,22 @@ async def run_soul_checked(
     except asyncio.CancelledError:
         raise
     except APIStatusError as exc:
+        logger.warning(
+            "Subagent LLM API error (HTTP {status_code}) when {phase}: {error}",
+            status_code=exc.status_code,
+            phase=phase,
+            error=exc,
+        )
         return SoulRunFailure(
             message=f"LLM API error (HTTP {exc.status_code}) when {phase}: {exc}",
             brief=f"API error ({exc.status_code})",
         )
     except ChatProviderError as exc:
+        logger.warning(
+            "Subagent LLM provider error when {phase}: {error}",
+            phase=phase,
+            error=exc,
+        )
         return SoulRunFailure(
             message=f"LLM provider error when {phase}: {exc}",
             brief="LLM provider error",
