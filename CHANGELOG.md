@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add blocking update gate on interactive shell startup — when a newer version is detected (from the existing background check cache), a blocking prompt appears before the shell loads, offering `[Enter]` to upgrade immediately, `[q]` to continue and be reminded next time, or `[s]` to skip reminders for that version; respects the `KIMI_CLI_NO_AUTO_UPDATE` environment variable; replaces the previous repeating toast notification for available updates
 - Core: Fix agent loop silently stopping when model response contains only thinking content — detect think-only responses (reasoning content with no text or tool calls) as an incomplete response error and retry automatically
 - Core: Fix crash on streaming mid-flight network disconnection — when the OpenAI SDK raises a base `APIError` (instead of `APIConnectionError`) during long-running streams, the error is now correctly classified as retryable, enabling automatic retry and connection recovery instead of an unrecoverable crash
 - Shell: Exclude empty current session from `/sessions` picker — completely empty sessions (no conversation history and no custom title) are no longer shown in the session list; sessions with a custom title are still displayed

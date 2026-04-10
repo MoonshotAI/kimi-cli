@@ -135,12 +135,12 @@ uv tool upgrade kimi-cli --no-cache
 
 Adding `--no-cache` ensures you get the latest version.
 
-### How to disable auto-update check
+### How to disable update reminders
 
-If you don't want Kimi Code CLI to check for updates in the background, set the environment variable:
+If you don't want Kimi Code CLI to check for updates or show update prompts on startup, set the environment variable:
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE=1
 ```
 
-You can add this line to your shell configuration file (like `~/.zshrc` or `~/.bashrc`).
+This disables background update checks, the blocking update gate on startup, and the version hint in the welcome panel. You can add this line to your shell configuration file (like `~/.zshrc` or `~/.bashrc`).
