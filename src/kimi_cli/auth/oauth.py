@@ -262,10 +262,12 @@ class _CrossProcessLock:
         self._fd: int | None = None
 
     def _acquire(self) -> bool:
-        try:
-            self._fd = os.open(str(self._path), os.O_CREAT | os.O_RDWR, 0o600)
-        except OSError:
-            return False
+        """Acquire the lock.
+
+        Returns ``True`` if locked, ``False`` on contention.
+        Raises ``OSError`` if the lock file cannot be opened (permanent failure).
+        """
+        self._fd = os.open(str(self._path), os.O_CREAT | os.O_RDWR, 0o600)
         try:
             if sys.platform == "win32":
                 import msvcrt
@@ -301,11 +303,19 @@ class _CrossProcessLock:
 
     async def acquire_with_retry(self) -> bool:
         for _attempt in range(_CROSS_PROCESS_LOCK_RETRIES):
-            if self._acquire():
-                return True
+            try:
+                if self._acquire():
+                    return True
+            except OSError:
+                # Cannot open/create the lock file (permissions, read-only FS, etc.).
+                # Permanent failure — skip backoff and fall back to unlocked refresh.
+                return False
             await asyncio.sleep(1 + random.random())
             # After waiting, re-check if the token was refreshed by the holder.
-        return self._acquire()
+        try:
+            return self._acquire()
+        except OSError:
+            return False
 
     async def __aenter__(self) -> bool:
         return await self.acquire_with_retry()
@@ -480,8 +490,12 @@ async def refresh_token(refresh_token: str, *, max_retries: int = 3) -> OAuthTok
                     headers=_common_headers(),
                 ) as response,
             ):
-                data = await response.json(content_type=None)
                 status = response.status
+                data: dict[str, Any]
+                try:
+                    data = await response.json(content_type=None)
+                except (json.JSONDecodeError, aiohttp.ContentTypeError):
+                    data = {}
             if status in (401, 403):
                 raise OAuthUnauthorized(
                     data.get("error_description") or "Token refresh unauthorized."
