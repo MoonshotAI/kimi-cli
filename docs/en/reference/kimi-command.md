@@ -162,6 +162,7 @@ When not specified, Kimi Code CLI automatically discovers user-level and project
 | [`kimi info`](./kimi-info.md) | Display version and protocol information |
 | [`kimi acp`](./kimi-acp.md) | Start multi-session ACP server |
 | [`kimi mcp`](./kimi-mcp.md) | Manage MCP server configuration |
+| [`kimi plugin`](../customization/plugins.md) | Manage plugins (Beta) |
 | [`kimi term`](./kimi-term.md) | Launch the Toad terminal UI |
 | [`kimi export`](#kimi-export) | Export a session as a ZIP file |
 | [`kimi vis`](./kimi-vis.md) | Launch the Agent Tracing Visualizer (Technical Preview) |
@@ -215,6 +216,8 @@ kimi vis [OPTIONS]
 
 | Option | Short | Description |
 |--------|-------|-------------|
+| `--host TEXT` | `-h` | Host address to bind to (default: `127.0.0.1`) |
+| `--network` | `-n` | Listen on all network interfaces (bind to `0.0.0.0`) with auto-detected LAN IP display |
 | `--port INTEGER` | `-p` | Port number to bind to (default: `5495`) |
 | `--open / --no-open` | | Automatically open browser (default: enabled) |
 | `--reload` | | Enable auto-reload (development mode) |
@@ -234,6 +237,7 @@ If the default port is in use, the server will pick the next available port (by 
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--host TEXT` | `-h` | Host address to bind to (default: `127.0.0.1`) |
+| `--network` | `-n` | Listen on all network interfaces (bind to `0.0.0.0`) with auto-detected LAN IP display |
 | `--port INTEGER` | `-p` | Port number to bind to (default: `5494`) |
 | `--reload` | | Enable auto-reload (development mode) |
 | `--open / --no-open` | | Automatically open browser (default: enabled) |
