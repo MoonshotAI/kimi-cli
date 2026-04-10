@@ -59,29 +59,16 @@ _LIST_DIR_ROOT_WIDTH = 30
 _LIST_DIR_CHILD_WIDTH = 10
 
 
-def _format_mode(st_mode: int) -> str:
-    """Format *st_mode* into a 10-char permission string like ``drwxr-xr-x``."""
-    m = "d" if S_ISDIR(st_mode) else "-"
-    for shift in (6, 3, 0):
-        triple = (st_mode >> shift) & 0o7
-        m += "r" if triple & 4 else "-"
-        m += "w" if triple & 2 else "-"
-        m += "x" if triple & 1 else "-"
-    return m
-
-
 async def _collect_entries(
     dir_path: KaosPath, max_width: int
-) -> tuple[list[tuple[str, bool, str]], int]:
+) -> tuple[list[tuple[str, bool]], int]:
     """Collect up to *max_width* entries from *dir_path*.
 
-    Returns ``(entries, total_count)`` where each entry is
-    ``(name, is_dir, mode_str)``.  *mode_str* is a permission string like
-    ``-rw-r--r--`` or ``"?"`` on stat failure.
+    Returns ``(entries, total_count)`` where each entry is ``(name, is_dir)``.
     Entries beyond *max_width* are counted but not stat-ed.
     Results are sorted directories-first, then alphabetically.
     """
-    entries: list[tuple[str, bool, str]] = []
+    entries: list[tuple[str, bool]] = []
     total = 0
     async for entry in dir_path.iterdir():
         total += 1
@@ -90,11 +77,9 @@ async def _collect_entries(
         try:
             st = await entry.stat()
             is_dir = S_ISDIR(st.st_mode)
-            mode = _format_mode(st.st_mode)
         except OSError:
             is_dir = False
-            mode = "?"
-        entries.append((entry.name, is_dir, mode))
+        entries.append((entry.name, is_dir))
     entries.sort(key=lambda e: (not e[1], e[0]))
     return entries, total
 
@@ -117,12 +102,12 @@ async def list_directory(work_dir: KaosPath) -> str:
     entries, total = await _collect_entries(work_dir, _LIST_DIR_ROOT_WIDTH)
     remaining = total - len(entries)
 
-    for i, (name, is_dir, mode) in enumerate(entries):
+    for i, (name, is_dir) in enumerate(entries):
         is_last = (i == len(entries) - 1) and remaining == 0
         connector = "└── " if is_last else "├── "
 
         if is_dir:
-            lines.append(f"{connector}[{mode}] {name}/")
+            lines.append(f"{connector}{name}/")
             child_prefix = "    " if is_last else "│   "
             try:
                 child_entries, child_total = await _collect_entries(
@@ -132,15 +117,15 @@ async def list_directory(work_dir: KaosPath) -> str:
                 lines.append(f"{child_prefix}└── [not readable]")
                 continue
             child_remaining = child_total - len(child_entries)
-            for j, (child_name, child_is_dir, child_mode) in enumerate(child_entries):
+            for j, (child_name, child_is_dir) in enumerate(child_entries):
                 child_is_last = (j == len(child_entries) - 1) and child_remaining == 0
                 child_connector = "└── " if child_is_last else "├── "
                 suffix = "/" if child_is_dir else ""
-                lines.append(f"{child_prefix}{child_connector}[{child_mode}] {child_name}{suffix}")
+                lines.append(f"{child_prefix}{child_connector}{child_name}{suffix}")
             if child_remaining > 0:
                 lines.append(f"{child_prefix}└── ... and {child_remaining} more")
         else:
-            lines.append(f"{connector}[{mode}] {name}")
+            lines.append(f"{connector}{name}")
 
     if remaining > 0:
         lines.append(f"└── ... and {remaining} more entries")

@@ -32,13 +32,13 @@ async def test_list_directory_tree_unix(temp_work_dir: KaosPath) -> None:
     out = await list_directory(temp_work_dir)
     assert out == snapshot(
         """\
-├── [drwxr-xr-x] adir/
-│   └── [-rw-r--r--] inside.txt
-├── [drwxr-xr-x] emptydir/
-├── [-rw-r--r--] largefile.bin
-├── [-rw-r--r--] link_to_regular
-├── [?] link_to_regular_missing
-└── [-rw-r--r--] regular.txt\
+├── adir/
+│   └── inside.txt
+├── emptydir/
+├── largefile.bin
+├── link_to_regular
+├── link_to_regular_missing
+└── regular.txt\
 """
     )
 
@@ -85,10 +85,10 @@ async def test_list_directory_dirs_before_files(temp_work_dir: KaosPath) -> None
     out = await list_directory(temp_work_dir)
     assert out == snapshot(
         """\
-├── [drwxr-xr-x] alpha/
-├── [drwxr-xr-x] omega/
-├── [-rw-r--r--] beta.txt
-└── [-rw-r--r--] zebra.txt\
+├── alpha/
+├── omega/
+├── beta.txt
+└── zebra.txt\
 """
     )
 
