@@ -105,6 +105,7 @@ from kimi_cli.ui.shell.visualize._question_panel import (
 # Wire types and utils (re-exported for test compatibility)
 from kimi_cli.utils.aioqueue import QueueShutDown as QueueShutDown  # noqa: F401
 from kimi_cli.wire import WireUISide
+from kimi_cli.utils.slashcmd import SlashCommandCall
 from kimi_cli.wire.types import ContentPart, StatusUpdate
 from kimi_cli.wire.types import TurnEnd as TurnEnd  # noqa: F401
 
@@ -124,6 +125,7 @@ async def visualize(
     unbind_running_input: Callable[[], None] | None = None,
     on_view_ready: Callable[[Any], None] | None = None,
     on_view_closed: Callable[[], None] | None = None,
+    on_running_shell_slash: Callable[[SlashCommandCall], None] | None = None,
 ):
     """A loop to consume agent events and visualize the agent behavior.
 
@@ -138,6 +140,7 @@ async def visualize(
             steer=steer,
             btw_runner=btw_runner,
             cancel_event=cancel_event,
+            on_running_shell_slash=on_running_shell_slash,
         )
         prompt_session.attach_running_prompt(view)
 
