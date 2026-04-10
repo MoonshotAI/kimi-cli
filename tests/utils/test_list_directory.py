@@ -145,6 +145,6 @@ async def test_list_directory_tree_windows(temp_work_dir: KaosPath) -> None:
 ├── adir/
 │   └── inside.txt
 ├── emptydir/
-├── regular.txt\
+└── regular.txt\
 """
     )

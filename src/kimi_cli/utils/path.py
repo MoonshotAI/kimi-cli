@@ -65,23 +65,20 @@ async def _collect_entries(
     """Collect up to *max_width* entries from *dir_path*.
 
     Returns ``(entries, total_count)`` where each entry is ``(name, is_dir)``.
-    Entries beyond *max_width* are counted but not stat-ed.
-    Results are sorted directories-first, then alphabetically.
+    All entries are stat-ed, sorted directories-first then alphabetically,
+    and truncated to *max_width* so the returned subset is deterministic
+    regardless of filesystem enumeration order.
     """
-    entries: list[tuple[str, bool]] = []
-    total = 0
+    all_entries: list[tuple[str, bool]] = []
     async for entry in dir_path.iterdir():
-        total += 1
-        if len(entries) >= max_width:
-            continue
         try:
             st = await entry.stat()
             is_dir = S_ISDIR(st.st_mode)
         except OSError:
             is_dir = False
-        entries.append((entry.name, is_dir))
-    entries.sort(key=lambda e: (not e[1], e[0]))
-    return entries, total
+        all_entries.append((entry.name, is_dir))
+    all_entries.sort(key=lambda e: (not e[1], e[0]))
+    return all_entries[:max_width], len(all_entries)
 
 
 async def list_directory(work_dir: KaosPath) -> str:
