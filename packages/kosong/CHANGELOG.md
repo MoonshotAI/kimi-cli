@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Core: Treat think-only model responses (reasoning content with no text or tool calls) as incomplete response errors, enabling automatic retry instead of silently stopping the agent loop
 - OpenAI: Fix crash on streaming mid-flight disconnection — classify base `openai.APIError` (body=None) as retryable via heuristic message matching, so that `_run_with_connection_recovery` and tenacity retry logic correctly trigger instead of crashing
 
 ## 0.48.0 (2026-04-02)
