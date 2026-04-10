@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import re
 from collections.abc import Awaitable, Mapping
 from typing import Any, cast
 
@@ -86,8 +87,32 @@ def convert_error(error: OpenAIError | httpx.HTTPError) -> ChatProviderError:
             return APITimeoutError(error.message)
         case openai.APIConnectionError():
             return APIConnectionError(error.message)
+        case openai.APIError() if type(error) is openai.APIError and error.body is None:
+            # Base APIError with no body indicates a transport-layer failure
+            # (e.g. "Network connection lost." during streaming).  SSE error
+            # events from the server carry a body dict and should fall through
+            # to the default case instead.
+            return _classify_base_api_error(error.message)
         case _:
             return ChatProviderError(f"Error: {error}")
+
+
+_NETWORK_RE = re.compile(r"network|connection|connect|disconnect", re.IGNORECASE)
+_TIMEOUT_RE = re.compile(r"timed?\s*out|timeout|deadline", re.IGNORECASE)
+
+
+def _classify_base_api_error(message: str) -> ChatProviderError:
+    """Heuristically map an ``openai.APIError`` message to a retryable error type.
+
+    Timeout patterns are checked first because a message like
+    "connection timed out" should be classified as a timeout, not a
+    connection error.
+    """
+    if _TIMEOUT_RE.search(message):
+        return APITimeoutError(message)
+    if _NETWORK_RE.search(message):
+        return APIConnectionError(message)
+    return ChatProviderError(f"Error: {message}")
 
 
 def thinking_effort_to_reasoning_effort(effort: ThinkingEffort) -> ReasoningEffort:

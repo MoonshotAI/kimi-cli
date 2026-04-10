@@ -75,29 +75,49 @@ async def mock_http_server() -> AsyncIterator[MockServerFactory]:
             await runner.cleanup()
 
 
-async def test_fetch_url_basic_functionality(fetch_url_tool: FetchURL) -> None:
-    """Test basic WebFetch functionality."""
-    # Test with a reliable website that has content
-    test_url = "https://github.com/MoonshotAI/Moonlight/issues/4"
-
-    result = await fetch_url_tool(Params(url=test_url))
+async def test_fetch_url_basic_functionality(
+    fetch_url_tool: FetchURL,
+    mock_http_server: MockServerFactory,
+) -> None:
+    """Test basic WebFetch functionality with HTML content extraction."""
+    # Use a mocked HTML page to test trafilatura extraction instead of hitting
+    # a real external URL.  Real pages change over time and cause flaky failures.
+    html_page = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Sample Bug Report</title>
+    <meta name="author" content="TestAuthor">
+    <meta name="description" content="The default value should be lowercase.">
+</head>
+<body>
+<article>
+    <h1>Sample Bug Report</h1>
+    <p>The default parameter value for <code>optimizer</code> should probably be
+    <code>adamw</code> instead of <code>adamW</code> according to how
+    <code>get_optimizer</code> is written.</p>
+</article>
+</body>
+</html>"""
+    server_url = await mock_http_server(html_page, content_type="text/html")
+    result = await fetch_url_tool(Params(url=server_url))
 
     assert not result.is_error
-    assert result.output == snapshot(
-        """\
----
-title: Typo: adamw vs adamW · Issue #4 · MoonshotAI/Moonlight
-author: MoonshotAI
-url: https://github.com/MoonshotAI/Moonlight/issues/4
-hostname: github.com
-description: The default parameter value for optimizer should probably be adamw instead of adamW according to how get_optimizer is written.
-sitename: GitHub
-date: 2025-02-23
-categories: ['issue:2873381615']
----
-The default parameter value for `optimizer` should probably be `adamw` instead of `adamW` according to how `get_optimizer` is written.\
-"""
+    assert isinstance(result.output, str)
+    assert (
+        result.message == "The returned content is the main text content extracted from the page."
     )
+    # Verify trafilatura extracted the meaningful text from the HTML
+    assert "optimizer" in result.output
+    assert "adamw" in result.output
+    assert "adamW" in result.output
+    # Verify HTML tags were stripped (not returning raw HTML)
+    assert "<article>" not in result.output
+    assert "<code>" not in result.output
+    # Verify metadata extraction (with_metadata=True)
+    assert "title:" in result.output.lower()
+    assert "description:" in result.output.lower()
 
 
 async def test_fetch_url_invalid_url(fetch_url_tool: FetchURL) -> None:
