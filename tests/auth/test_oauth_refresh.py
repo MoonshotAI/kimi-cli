@@ -13,6 +13,7 @@ from kimi_cli.auth.oauth import (
     OAuthManager,
     OAuthToken,
     OAuthUnauthorized,
+    _refresh_threshold,
     _save_to_file,
     refresh_token,
 )
@@ -275,3 +276,72 @@ def test_oauth_token_from_dict_defaults_expires_in():
     }
     token = OAuthToken.from_dict(payload)
     assert token.expires_in == 0.0
+
+
+# ── force refresh failure propagation ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_ensure_fresh_force_raises_on_unauthorized():
+    """force=True should propagate OAuthUnauthorized instead of swallowing it."""
+    token = _make_token(expires_in=800)
+    manager = _make_manager(token)
+
+    with (
+        patch("kimi_cli.auth.oauth.load_tokens", return_value=token),
+        patch(
+            "kimi_cli.auth.oauth.refresh_token", AsyncMock(side_effect=OAuthUnauthorized("revoked"))
+        ),
+        patch("kimi_cli.auth.oauth.delete_tokens"),
+        pytest.raises(OAuthUnauthorized, match="revoked"),
+    ):
+        await manager.ensure_fresh(force=True)
+
+
+@pytest.mark.asyncio
+async def test_ensure_fresh_force_raises_on_network_error():
+    """force=True should propagate network errors instead of swallowing them."""
+    token = _make_token(expires_in=800)
+    manager = _make_manager(token)
+
+    with (
+        patch("kimi_cli.auth.oauth.load_tokens", return_value=token),
+        patch(
+            "kimi_cli.auth.oauth.refresh_token", AsyncMock(side_effect=OAuthError("after retries"))
+        ),
+        pytest.raises(OAuthError, match="after retries"),
+    ):
+        await manager.ensure_fresh(force=True)
+
+
+@pytest.mark.asyncio
+async def test_ensure_fresh_non_force_swallows_errors():
+    """Without force, refresh errors should be swallowed (background loop behavior)."""
+    token = _make_token(expires_in=100)  # below threshold → triggers refresh
+    token.expires_at = time.time() + 100
+    manager = _make_manager(token)
+
+    with (
+        patch("kimi_cli.auth.oauth.load_tokens", return_value=token),
+        patch("kimi_cli.auth.oauth.refresh_token", AsyncMock(side_effect=OAuthError("fail"))),
+    ):
+        # Should NOT raise — errors are swallowed in background mode
+        await manager.ensure_fresh()
+
+
+# ── _refresh_threshold helper ─────────────────────────────────
+
+
+def test_refresh_threshold_uses_ratio_when_large():
+    """When expires_in * RATIO > MIN, use the ratio-based threshold."""
+    assert _refresh_threshold(1800) == 900.0  # 1800 * 0.5 = 900 > 300
+
+
+def test_refresh_threshold_uses_minimum_when_small():
+    """When expires_in * RATIO < MIN, use the minimum."""
+    assert _refresh_threshold(500) == 300.0  # 500 * 0.5 = 250 < 300
+
+
+def test_refresh_threshold_zero_expires_in():
+    """When expires_in is 0, fall back to the minimum."""
+    assert _refresh_threshold(0) == 300.0

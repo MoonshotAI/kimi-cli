@@ -1066,11 +1066,12 @@ class KimiSoul:
         operation: Callable[[], Awaitable[Any]],
         *,
         chat_provider: object | None = None,
+        _auth_retried: bool = False,
     ) -> Any:
         try:
             return await operation()
         except APIStatusError as error:
-            if error.status_code != 401:
+            if error.status_code != 401 or _auth_retried:
                 raise
             # Only attempt refresh+retry when the active model's provider
             # uses OAuth.  For plain API-key providers there is nothing
@@ -1091,7 +1092,11 @@ class KimiSoul:
             except Exception as refresh_exc:
                 logger.exception("Token refresh failed after 401.")
                 raise error from refresh_exc
-            return await operation()
+            # Re-enter full recovery so that transient connection errors
+            # on the retry are still handled by on_retryable_error.
+            return await self._run_with_connection_recovery(
+                name, operation, chat_provider=chat_provider, _auth_retried=True
+            )
         except (APIConnectionError, APITimeoutError) as error:
             if not isinstance(chat_provider, RetryableChatProvider):
                 raise

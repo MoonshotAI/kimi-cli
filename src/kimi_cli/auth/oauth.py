@@ -57,6 +57,13 @@ REFRESH_THRESHOLD_RATIO = 0.5
 _CROSS_PROCESS_LOCK_RETRIES = 5
 
 
+def _refresh_threshold(expires_in: float) -> float:
+    """Return the dynamic refresh threshold in seconds."""
+    if expires_in > 0:
+        return max(MIN_REFRESH_THRESHOLD_SECONDS, expires_in * REFRESH_THRESHOLD_RATIO)
+    return MIN_REFRESH_THRESHOLD_SECONDS
+
+
 class OAuthError(RuntimeError):
     """OAuth flow error."""
 
@@ -874,15 +881,10 @@ class OAuthManager:
             current = persisted or current_token
             if not force:
                 now = time.time()
-                threshold = (
-                    max(MIN_REFRESH_THRESHOLD_SECONDS, current.expires_in * REFRESH_THRESHOLD_RATIO)
-                    if current.expires_in > 0
-                    else MIN_REFRESH_THRESHOLD_SECONDS
-                )
                 if (
                     current.expires_at
                     and current.expires_at > now
-                    and current.expires_at - now >= threshold
+                    and current.expires_at - now >= _refresh_threshold(current.expires_in)
                 ):
                     return
             refresh_token_value = current.refresh_token
@@ -904,15 +906,9 @@ class OAuthManager:
                         return
                     if not force and locked_token:
                         remaining = locked_token.expires_at - time.time()
-                        t = (
-                            max(
-                                MIN_REFRESH_THRESHOLD_SECONDS,
-                                locked_token.expires_in * REFRESH_THRESHOLD_RATIO,
-                            )
-                            if locked_token.expires_in > 0
-                            else MIN_REFRESH_THRESHOLD_SECONDS
-                        )
-                        if locked_token.expires_at and remaining >= t:
+                        if locked_token.expires_at and remaining >= _refresh_threshold(
+                            locked_token.expires_in
+                        ):
                             self._cache_access_token(ref, locked_token)
                             self._apply_access_token(runtime, locked_token.access_token)
                             return
@@ -929,21 +925,22 @@ class OAuthManager:
                         self._cache_access_token(ref, latest)
                         self._apply_access_token(runtime, latest.access_token)
                         return
-                    # Delete the revoked credential file so that:
-                    # 1. load_tokens returns None on subsequent calls,
-                    #    preventing ensure_fresh from applying an empty
-                    #    access_token to the live client.
-                    # 2. resolve_api_key falls back to the configured
-                    #    api_key immediately.
+                    # Clear in-memory state first, then delete the credential
+                    # file.  This order ensures that even if file deletion
+                    # fails, the revoked token is no longer used in-process.
+                    self._access_tokens.pop(ref.key, None)
+                    self._apply_access_token(runtime, "")
                     delete_tokens(ref)
+                    if force:
+                        raise
                     logger.warning(
                         "OAuth credentials rejected: {error}",
                         error=exc,
                     )
-                    self._access_tokens.pop(ref.key, None)
-                    self._apply_access_token(runtime, "")
                     return
                 except Exception as exc:
+                    if force:
+                        raise
                     logger.warning("Failed to refresh OAuth token: {error}", error=exc)
                     return
                 save_tokens(ref, refreshed)
