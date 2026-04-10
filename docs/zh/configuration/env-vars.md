@@ -113,7 +113,7 @@ export OPENAI_API_KEY="sk-xxx"
 | 环境变量 | 说明 |
 | --- | --- |
 | `KIMI_SHARE_DIR` | 自定义共享目录路径（默认 `~/.kimi`） |
-| `KIMI_CLI_NO_AUTO_UPDATE` | 禁用自动更新检查 |
+| `KIMI_CLI_NO_AUTO_UPDATE` | 禁用所有更新相关功能 |
 | `KIMI_CLI_PASTE_CHAR_THRESHOLD` | 粘贴文本折叠的字符数阈值（默认 `1000`） |
 | `KIMI_CLI_PASTE_LINE_THRESHOLD` | 粘贴文本折叠的行数阈值（默认 `15`） |
 
@@ -133,7 +133,7 @@ export KIMI_SHARE_DIR="/path/to/custom/kimi"
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 
-设置为 `1`、`true`、`t`、`yes` 或 `y`（不区分大小写）时，禁用 Shell 模式下的后台自动更新检查。
+设置为 `1`、`true`、`t`、`yes` 或 `y`（不区分大小写）时，禁用所有更新相关功能，包括后台自动更新检查、启动时的阻断式更新提醒和欢迎面板中的版本提示。
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE="1"

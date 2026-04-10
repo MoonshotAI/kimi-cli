@@ -460,6 +460,11 @@ class KimiCLI:
         """Run the Kimi Code CLI instance with shell UI."""
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
 
+        if command is None:
+            from kimi_cli.ui.shell.update import check_update_gate
+
+            check_update_gate()
+
         welcome_info = [
             WelcomeInfoItem(
                 name="Directory", value=str(shorten_home(self._runtime.session.work_dir))

@@ -113,7 +113,7 @@ export OPENAI_API_KEY="sk-xxx"
 | Environment Variable | Description |
 | --- | --- |
 | `KIMI_SHARE_DIR` | Customize the share directory path (default: `~/.kimi`) |
-| `KIMI_CLI_NO_AUTO_UPDATE` | Disable automatic update check |
+| `KIMI_CLI_NO_AUTO_UPDATE` | Disable all update-related features |
 | `KIMI_CLI_PASTE_CHAR_THRESHOLD` | Character threshold for folding pasted text (default: `1000`) |
 | `KIMI_CLI_PASTE_LINE_THRESHOLD` | Line threshold for folding pasted text (default: `15`) |
 
@@ -133,7 +133,7 @@ See [Data Locations](./data-locations.md) for details.
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 
-When set to `1`, `true`, `t`, `yes`, or `y` (case-insensitive), disables background auto-update check in shell mode.
+When set to `1`, `true`, `t`, `yes`, or `y` (case-insensitive), disables all update-related features, including background auto-update check, the blocking update gate on startup, and the version hint in the welcome panel.
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE="1"

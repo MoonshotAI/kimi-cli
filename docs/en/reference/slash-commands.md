@@ -128,7 +128,7 @@ List all sessions in the current working directory, allowing switching to other 
 
 Alias: `/resume`
 
-Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel.
+Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel. Press `Ctrl-A` to toggle between showing sessions for the current directory only or across all directories.
 
 ### `/title`
 

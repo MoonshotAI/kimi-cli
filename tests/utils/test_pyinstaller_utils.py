@@ -146,14 +146,10 @@ def test_pyinstaller_hiddenimports():
 
     assert sorted(hiddenimports) == snapshot(
         [
-            "kimi_cli.cli",
-            "kimi_cli.cli.__main__",
-            "kimi_cli.cli._lazy_group",
             "kimi_cli.cli.export",
             "kimi_cli.cli.info",
             "kimi_cli.cli.mcp",
             "kimi_cli.cli.plugin",
-            "kimi_cli.cli.toad",
             "kimi_cli.cli.vis",
             "kimi_cli.cli.web",
             "kimi_cli.tools",
@@ -185,3 +181,15 @@ def test_pyinstaller_hiddenimports():
             "setproctitle",
         ]
     )
+
+
+def test_pyinstaller_hiddenimports_include_lazy_cli_subcommands():
+    from kimi_cli.cli._lazy_group import LazySubcommandGroup
+    from kimi_cli.utils.pyinstaller import hiddenimports
+
+    expected_hiddenimports = {
+        module_name
+        for module_name, _attribute_name, _help_text in LazySubcommandGroup.lazy_subcommands.values()
+    }
+
+    assert expected_hiddenimports <= set(hiddenimports)
