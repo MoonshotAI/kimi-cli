@@ -55,7 +55,7 @@ async def next_available_rotation(path: Path) -> Path | None:
         next_num += 1
 
 
-_LIST_DIR_MAX_ENTRIES = 500
+_LIST_DIR_MAX_ENTRIES = 200
 
 
 async def list_directory(work_dir: KaosPath) -> str:
