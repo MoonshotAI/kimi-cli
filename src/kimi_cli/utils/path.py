@@ -55,6 +55,9 @@ async def next_available_rotation(path: Path) -> Path | None:
         next_num += 1
 
 
+_LIST_DIR_MAX_ENTRIES = 500
+
+
 async def list_directory(work_dir: KaosPath) -> str:
     """Return an ``ls``-like listing of *work_dir*.
 
@@ -63,11 +66,19 @@ async def list_directory(work_dir: KaosPath) -> str:
     It should therefore be robust against per-entry filesystem issues such as
     broken symlinks or permission errors: a single bad entry must not crash
     the whole CLI.
+
+    The listing is capped at :data:`_LIST_DIR_MAX_ENTRIES` entries to avoid
+    blowing up the system-prompt token budget when the working directory
+    contains thousands of files (see GH-1809).
     """
 
     entries: list[str] = []
+    total = 0
     # Iterate entries; tolerate per-entry stat failures (broken symlinks, permissions, etc.).
     async for entry in work_dir.iterdir():
+        total += 1
+        if len(entries) >= _LIST_DIR_MAX_ENTRIES:
+            continue
         try:
             st = await entry.stat()
         except OSError:
@@ -85,6 +96,10 @@ async def list_directory(work_dir: KaosPath) -> str:
         mode += "w" if st.st_mode & 0o002 else "-"
         mode += "x" if st.st_mode & 0o001 else "-"
         entries.append(f"{mode} {st.st_size:>10} {entry.name}")
+
+    remaining = total - len(entries)
+    if remaining > 0:
+        entries.append(f"... and {remaining} more entries (use Glob or Shell to explore)")
     return "\n".join(entries)
 
 

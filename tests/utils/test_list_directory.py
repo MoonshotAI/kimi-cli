@@ -9,7 +9,7 @@ import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
 
-from kimi_cli.utils.path import list_directory
+from kimi_cli.utils.path import _LIST_DIR_MAX_ENTRIES, list_directory
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Unix-specific symlink tests.")
@@ -45,6 +45,20 @@ drwxr-xr-x adir
 drwxr-xr-x emptydir\
 """
     )
+
+
+async def test_list_directory_truncates_large_dirs(temp_work_dir: KaosPath) -> None:
+    """GH-1809: listing is capped at _LIST_DIR_MAX_ENTRIES to prevent token-limit blowup."""
+    file_count = _LIST_DIR_MAX_ENTRIES + 100
+    for i in range(file_count):
+        (temp_work_dir / f"file_{i:05d}.txt").unsafe_to_local_path().touch()
+
+    out = await list_directory(temp_work_dir)
+    lines = out.splitlines()
+
+    # Should have exactly MAX_ENTRIES listed + 1 truncation footer
+    assert len(lines) == _LIST_DIR_MAX_ENTRIES + 1
+    assert lines[-1] == "... and 100 more entries (use Glob or Shell to explore)"
 
 
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-specific symlink tests.")
