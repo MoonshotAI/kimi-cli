@@ -106,7 +106,7 @@ The directory listing of current working directory is:
 Test ls content
 ```
 
-Use this as your basic understanding of the project structure.
+Use this as your basic understanding of the project structure. The tree only shows the first two levels; entries marked "... and N more" indicate additional contents — use Glob or Shell to explore further.
 
 # Project Information
 
