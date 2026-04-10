@@ -55,52 +55,82 @@ async def next_available_rotation(path: Path) -> Path | None:
         next_num += 1
 
 
-_LIST_DIR_MAX_ENTRIES = 200
+_LIST_DIR_ROOT_WIDTH = 30
+_LIST_DIR_CHILD_WIDTH = 10
 
 
-async def list_directory(work_dir: KaosPath) -> str:
-    """Return an ``ls``-like listing of *work_dir*.
+async def _collect_entries(
+    dir_path: KaosPath, max_width: int
+) -> tuple[list[tuple[str, bool]], int]:
+    """Collect up to *max_width* entries from *dir_path*.
 
-    This helper is used mainly to provide context to the LLM (for example
-    ``KIMI_WORK_DIR_LS``) and to show top-level directory contents in tools.
-    It should therefore be robust against per-entry filesystem issues such as
-    broken symlinks or permission errors: a single bad entry must not crash
-    the whole CLI.
-
-    The listing is capped at :data:`_LIST_DIR_MAX_ENTRIES` entries to avoid
-    blowing up the system-prompt token budget when the working directory
-    contains thousands of files (see GH-1809).
+    Returns ``(entries, total_count)`` where each entry is ``(name, is_dir)``.
+    Entries beyond *max_width* are counted but not stat-ed.
+    Results are sorted directories-first, then alphabetically.
     """
-
-    entries: list[str] = []
+    entries: list[tuple[str, bool]] = []
     total = 0
-    # Iterate entries; tolerate per-entry stat failures (broken symlinks, permissions, etc.).
-    async for entry in work_dir.iterdir():
+    async for entry in dir_path.iterdir():
         total += 1
-        if len(entries) >= _LIST_DIR_MAX_ENTRIES:
+        if len(entries) >= max_width:
             continue
         try:
             st = await entry.stat()
+            is_dir = S_ISDIR(st.st_mode)
         except OSError:
-            # Broken symlink, permission error, etc. – keep listing other entries.
-            entries.append(f"?--------- {'?':>10} {entry.name} [stat failed]")
-            continue
-        mode = "d" if S_ISDIR(st.st_mode) else "-"
-        mode += "r" if st.st_mode & 0o400 else "-"
-        mode += "w" if st.st_mode & 0o200 else "-"
-        mode += "x" if st.st_mode & 0o100 else "-"
-        mode += "r" if st.st_mode & 0o040 else "-"
-        mode += "w" if st.st_mode & 0o020 else "-"
-        mode += "x" if st.st_mode & 0o010 else "-"
-        mode += "r" if st.st_mode & 0o004 else "-"
-        mode += "w" if st.st_mode & 0o002 else "-"
-        mode += "x" if st.st_mode & 0o001 else "-"
-        entries.append(f"{mode} {st.st_size:>10} {entry.name}")
+            is_dir = False
+        entries.append((entry.name, is_dir))
+    entries.sort(key=lambda e: (not e[1], e[0]))
+    return entries, total
 
+
+async def list_directory(work_dir: KaosPath) -> str:
+    """Return a compact tree listing of *work_dir* (up to 2 levels).
+
+    This helper is used mainly to provide context to the LLM (for example
+    ``KIMI_WORK_DIR_LS``) and to show top-level directory contents in tools.
+
+    Both depth and width are capped to keep the system-prompt token budget
+    bounded (see GH-1809):
+
+    * **Depth 0** (root): up to :data:`_LIST_DIR_ROOT_WIDTH` entries.
+    * **Depth 1** (children of root dirs): up to :data:`_LIST_DIR_CHILD_WIDTH`
+      entries per directory.
+    * Truncated levels show ``... and N more`` so the LLM knows more exists.
+    """
+    lines: list[str] = []
+    entries, total = await _collect_entries(work_dir, _LIST_DIR_ROOT_WIDTH)
     remaining = total - len(entries)
+
+    for i, (name, is_dir) in enumerate(entries):
+        is_last = (i == len(entries) - 1) and remaining == 0
+        connector = "└── " if is_last else "├── "
+
+        if is_dir:
+            lines.append(f"{connector}{name}/")
+            child_prefix = "    " if is_last else "│   "
+            try:
+                child_entries, child_total = await _collect_entries(
+                    work_dir / name, _LIST_DIR_CHILD_WIDTH
+                )
+            except OSError:
+                lines.append(f"{child_prefix}└── [not readable]")
+                continue
+            child_remaining = child_total - len(child_entries)
+            for j, (child_name, child_is_dir) in enumerate(child_entries):
+                child_is_last = (j == len(child_entries) - 1) and child_remaining == 0
+                child_connector = "└── " if child_is_last else "├── "
+                suffix = "/" if child_is_dir else ""
+                lines.append(f"{child_prefix}{child_connector}{child_name}{suffix}")
+            if child_remaining > 0:
+                lines.append(f"{child_prefix}└── ... and {child_remaining} more")
+        else:
+            lines.append(f"{connector}{name}")
+
     if remaining > 0:
-        entries.append(f"... and {remaining} more entries (use Glob or Shell to explore)")
-    return "\n".join(entries)
+        lines.append(f"└── ... and {remaining} more entries")
+
+    return "\n".join(lines)
 
 
 def shorten_home(path: KaosPath) -> KaosPath:

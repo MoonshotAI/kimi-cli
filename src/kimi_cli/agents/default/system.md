@@ -90,7 +90,7 @@ The directory listing of current working directory is:
 ${KIMI_WORK_DIR_LS}
 ```
 
-Use this as your basic understanding of the project structure.
+Use this as your basic understanding of the project structure. The tree only shows the first two levels; entries marked "... and N more" indicate additional contents — use Glob or Shell to explore further.
 {% if KIMI_ADDITIONAL_DIRS_INFO %}
 
 ## Additional Directories
