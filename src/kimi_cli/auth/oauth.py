@@ -55,6 +55,7 @@ REFRESH_INTERVAL_SECONDS = 60
 MIN_REFRESH_THRESHOLD_SECONDS = 300
 REFRESH_THRESHOLD_RATIO = 0.5
 _CROSS_PROCESS_LOCK_RETRIES = 5
+_RETRYABLE_REFRESH_STATUSES = {429, 500, 502, 503, 504}
 
 
 def _refresh_threshold(expires_in: float) -> float:
@@ -70,6 +71,10 @@ class OAuthError(RuntimeError):
 
 class OAuthUnauthorized(OAuthError):
     """OAuth credentials rejected."""
+
+
+class _RetryableRefreshError(OAuthError):
+    """Transient HTTP error during token refresh (5xx / 429)."""
 
 
 class OAuthDeviceExpired(OAuthError):
@@ -356,6 +361,7 @@ def _save_to_file(key: str, token: OAuthToken) -> None:
         written = os.write(fd, data)
         if written != len(data):
             raise OSError(f"Short write: {written}/{len(data)} bytes")
+        os.fsync(fd)
         os.close(fd)
         fd = -1
         with suppress(OSError):
@@ -481,11 +487,14 @@ async def refresh_token(refresh_token: str, *, max_retries: int = 3) -> OAuthTok
                     data.get("error_description") or "Token refresh unauthorized."
                 )
             if status != 200:
-                raise OAuthError(data.get("error_description") or "Token refresh failed.")
+                desc = data.get("error_description") or f"Token refresh failed (HTTP {status})."
+                if status in _RETRYABLE_REFRESH_STATUSES:
+                    raise _RetryableRefreshError(desc)
+                raise OAuthError(desc)
             return OAuthToken.from_response(data)
         except OAuthUnauthorized:
             raise
-        except (aiohttp.ClientError, TimeoutError, OSError) as exc:
+        except (aiohttp.ClientError, TimeoutError, OSError, _RetryableRefreshError) as exc:
             last_exc = exc
             if attempt < max_retries - 1:
                 await asyncio.sleep(2**attempt)

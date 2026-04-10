@@ -166,6 +166,85 @@ async def test_refresh_token_raises_after_all_retries_exhausted():
         await refresh_token("some-refresh", max_retries=2)
 
 
+@pytest.mark.asyncio
+async def test_refresh_token_retries_on_5xx():
+    """refresh_token should retry when the auth server returns 502/503."""
+    ok_response = MagicMock()
+    ok_response.status = 200
+    ok_response.json = AsyncMock(
+        return_value={
+            "access_token": "recovered",
+            "refresh_token": "new-refresh",
+            "expires_in": 900,
+            "scope": "kimi-code",
+            "token_type": "Bearer",
+        }
+    )
+
+    call_count = 0
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        def post(self, *args, **kwargs):
+            return FakeContext()
+
+    class FakeContext:
+        async def __aenter__(self):
+            nonlocal call_count
+            call_count += 1
+            resp = MagicMock()
+            if call_count < 3:
+                resp.status = 502
+                resp.json = AsyncMock(return_value={})
+                return resp
+            return ok_response
+
+        async def __aexit__(self, *args):
+            pass
+
+    with patch("kimi_cli.auth.oauth.new_client_session", return_value=FakeSession()):
+        result = await refresh_token("old-refresh", max_retries=3)
+
+    assert result.access_token == "recovered"
+    assert call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_does_not_retry_on_400():
+    """Non-retryable HTTP errors (e.g. 400) should fail immediately."""
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        def post(self, *args, **kwargs):
+            return FakeContext()
+
+    class FakeContext:
+        async def __aenter__(self):
+            resp = MagicMock()
+            resp.status = 400
+            resp.json = AsyncMock(return_value={"error_description": "invalid_grant"})
+            return resp
+
+        async def __aexit__(self, *args):
+            pass
+
+    with (
+        patch("kimi_cli.auth.oauth.new_client_session", return_value=FakeSession()),
+        pytest.raises(OAuthError, match="invalid_grant"),
+    ):
+        await refresh_token("bad-refresh", max_retries=3)
+
+
 # ── force refresh ──────────────────────────────────────────────
 
 
