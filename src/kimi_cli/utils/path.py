@@ -55,7 +55,7 @@ async def next_available_rotation(path: Path) -> Path | None:
         next_num += 1
 
 
-_LIST_DIR_ROOT_WIDTH = 30
+_LIST_DIR_ROOT_WIDTH = 30  # worst-case ~330 lines ≈ 2.5k tokens
 _LIST_DIR_CHILD_WIDTH = 10
 
 
@@ -130,7 +130,7 @@ async def list_directory(work_dir: KaosPath) -> str:
     if remaining > 0:
         lines.append(f"└── ... and {remaining} more entries")
 
-    return "\n".join(lines)
+    return "\n".join(lines) if lines else "(empty directory)"
 
 
 def shorten_home(path: KaosPath) -> KaosPath:

@@ -72,7 +72,7 @@ async def test_list_directory_truncates_child_width(temp_work_dir: KaosPath) -> 
     # 1 (subdir/) + CHILD_WIDTH (children) + 1 (truncation)
     assert len(lines) == 1 + _LIST_DIR_CHILD_WIDTH + 1
     assert "subdir/" in lines[0]
-    assert lines[-1].strip() == f"└── ... and {overflow} more"
+    assert lines[-1] == f"    └── ... and {overflow} more"
 
 
 async def test_list_directory_dirs_before_files(temp_work_dir: KaosPath) -> None:
@@ -89,6 +89,45 @@ async def test_list_directory_dirs_before_files(temp_work_dir: KaosPath) -> None
 ├── omega/
 ├── beta.txt
 └── zebra.txt\
+"""
+    )
+
+
+async def test_list_directory_empty(temp_work_dir: KaosPath) -> None:
+    """Empty directory returns a placeholder string."""
+    out = await list_directory(temp_work_dir)
+    assert out == "(empty directory)"
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Unix-specific permission tests.")
+async def test_list_directory_unreadable_subdir(temp_work_dir: KaosPath) -> None:
+    """Unreadable subdirectory shows [not readable] instead of crashing."""
+    await (temp_work_dir / "secret").mkdir()
+    await (temp_work_dir / "secret" / "file.txt").write_text("x")
+    os.chmod((temp_work_dir / "secret").unsafe_to_local_path(), 0o000)
+    try:
+        out = await list_directory(temp_work_dir)
+        assert out == snapshot(
+            """\
+└── secret/
+    └── [not readable]\
+"""
+        )
+    finally:
+        os.chmod((temp_work_dir / "secret").unsafe_to_local_path(), 0o755)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Unix-specific tests.")
+async def test_list_directory_last_entry_is_dir(temp_work_dir: KaosPath) -> None:
+    """When the last root entry is a dir, child prefix uses spaces not │."""
+    await (temp_work_dir / "only_dir").mkdir()
+    await (temp_work_dir / "only_dir" / "child.txt").write_text("c")
+
+    out = await list_directory(temp_work_dir)
+    assert out == snapshot(
+        """\
+└── only_dir/
+    └── child.txt\
 """
     )
 
