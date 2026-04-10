@@ -135,12 +135,12 @@ uv tool upgrade kimi-cli --no-cache
 
 添加 `--no-cache` 参数可以确保获取最新版本。
 
-### 如何禁用自动更新检查
+### 如何禁用更新提醒
 
-如果不希望 Kimi Code CLI 在后台检查更新，可以设置环境变量：
+如果不希望 Kimi Code CLI 检查更新或在启动时显示更新提醒，可以设置环境变量：
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE=1
 ```
 
-可以将此行添加到你的 shell 配置文件（如 `~/.zshrc` 或 `~/.bashrc`）中。
+这会同时禁用后台更新检查、启动时的阻断式更新提醒和欢迎面板中的版本提示。可以将此行添加到你的 shell 配置文件（如 `~/.zshrc` 或 `~/.bashrc`）中。

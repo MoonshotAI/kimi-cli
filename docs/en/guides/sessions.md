@@ -44,7 +44,7 @@ Enter `/sessions` (or `/resume`) to view all sessions in the current working dir
 /sessions
 ```
 
-The list shows each session's title and last update time, helping you find the conversation you want to continue. Use `/title <text>` to set a custom title for the session, making it easier to find later.
+The list shows each session's title and last update time, helping you find the conversation you want to continue. Press `Ctrl-A` to toggle between showing sessions for the current directory only or across all directories, making it easy to find sessions across projects. Use `/title <text>` to set a custom title for the session, making it easier to find later.
 
 **Startup replay**
 

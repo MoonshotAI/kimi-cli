@@ -1343,15 +1343,7 @@ class Shell:
 
     async def _auto_update(self) -> None:
         result = await do_update(print=False, check_only=True)
-        if result == UpdateResult.UPDATE_AVAILABLE:
-            while True:
-                toast(
-                    f"new version found, run `{_update_mod.UPGRADE_COMMAND}` to upgrade",
-                    topic="update",
-                    duration=30.0,
-                )
-                await asyncio.sleep(60.0)
-        elif result == UpdateResult.UPDATED:
+        if result == UpdateResult.UPDATED:
             toast("auto updated, restart to use the new version", topic="update", duration=5.0)
 
     def _start_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
@@ -1418,15 +1410,30 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
 
     if LATEST_VERSION_FILE.exists():
         from kimi_cli.constant import VERSION as current_version
+        from kimi_cli.ui.shell.update import SKIPPED_VERSION_FILE
+        from kimi_cli.utils.envvar import get_env_bool
 
-        latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
-        if semver_tuple(latest_version) > semver_tuple(current_version):
-            rows.append(
-                Text.from_markup(
-                    f"\n[yellow]New version available: {latest_version}. "
-                    f"Please run `{_update_mod.UPGRADE_COMMAND}` to upgrade.[/yellow]"
-                )
-            )
+        if not get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
+            try:
+                latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
+            except OSError:
+                latest_version = ""
+            if latest_version and semver_tuple(latest_version) > semver_tuple(current_version):
+                try:
+                    skipped = (
+                        SKIPPED_VERSION_FILE.read_text(encoding="utf-8").strip()
+                        if SKIPPED_VERSION_FILE.exists()
+                        else ""
+                    )
+                except OSError:
+                    skipped = ""
+                if skipped != latest_version:
+                    rows.append(
+                        Text.from_markup(
+                            f"\n[yellow]New version available: {latest_version}. "
+                            f"Please run `{_update_mod.UPGRADE_COMMAND}` to upgrade.[/yellow]"
+                        )
+                    )
 
     console.print(
         Panel(
