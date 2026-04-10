@@ -498,6 +498,8 @@ type Event =
   | ToolResult
   | ApprovalResponse
   | SubagentEvent
+  | BtwBegin
+  | BtwEnd
   | SteerInput
   | PlanDisplay
   | HookTriggered
@@ -717,6 +719,42 @@ interface ApprovalResponse {
   response: "approve" | "approve_for_session" | "reject"
   /** 拒绝时的可选反馈文本，JSON 中可能不存在 */
   feedback?: string
+}
+```
+
+### `BtwBegin`
+
+::: info 新增
+新增于 Wire 1.9。
+:::
+
+侧问（`/btw`）开始处理。
+
+```typescript
+interface BtwBegin {
+  /** 唯一 ID，用于与对应的 BtwEnd 配对 */
+  id: string
+  /** 用户的侧问文本 */
+  question: string
+}
+```
+
+### `BtwEnd`
+
+::: info 新增
+新增于 Wire 1.9。
+:::
+
+侧问（`/btw`）处理完成。
+
+```typescript
+interface BtwEnd {
+  /** 唯一 ID，与对应的 BtwBegin 匹配 */
+  id: string
+  /** LLM 的回复文本，失败时为 null */
+  response?: string | null
+  /** 失败时的错误信息 */
+  error?: string | null
 }
 ```
 
