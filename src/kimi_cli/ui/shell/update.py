@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import platform
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -96,16 +98,22 @@ CHANGELOG_URL_EN = "https://moonshotai.github.io/kimi-cli/en/release-notes/chang
 def _read_key() -> str:
     """Read a single character from stdin in raw terminal mode."""
     import sys
-    import termios
-    import tty
 
-    fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        return sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    if sys.platform == "win32":
+        import msvcrt
+
+        return msvcrt.getwch()
+    else:
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            return sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 def check_update_gate() -> None:
@@ -117,7 +125,7 @@ def check_update_gate() -> None:
 
     if get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
         return
-    if not sys.stdin.isatty():
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
         return
     if not LATEST_VERSION_FILE.exists():
         return
@@ -188,7 +196,13 @@ def _run_update_gate(current_version: str, latest_version: str) -> None:
 
     if key in ("\r", "\n"):
         console.print(f"[grey50]Running: {UPGRADE_COMMAND}[/grey50]\n")
-        result = subprocess.run(UPGRADE_COMMAND.split())
+        try:
+            result = subprocess.run(shlex.split(UPGRADE_COMMAND))
+        except OSError:
+            console.print()
+            console.print("[red]Upgrade failed. Please try running manually:[/red]")
+            console.print(f"  {UPGRADE_COMMAND}")
+            sys.exit(1)
         console.print()
         if result.returncode == 0:
             console.print("[green]Upgrade complete! Run kimi-cli to start the new version.[/green]")
@@ -197,7 +211,8 @@ def _run_update_gate(current_version: str, latest_version: str) -> None:
             console.print(f"  {UPGRADE_COMMAND}")
         sys.exit(result.returncode)
     elif key in ("s", "S"):
-        SKIPPED_VERSION_FILE.write_text(latest_version, encoding="utf-8")
+        with contextlib.suppress(OSError):
+            SKIPPED_VERSION_FILE.write_text(latest_version, encoding="utf-8")
         console.print(f"[grey50]Reminders skipped for version {latest_version}.[/grey50]\n")
     elif key in ("\x03", "\x1b"):
         sys.exit(0)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -23,6 +24,11 @@ class TestCheckUpdateGate:
         # Ensure stdin.isatty() returns True by default
         monkeypatch.setattr("sys.stdin", MagicMock(isatty=MagicMock(return_value=True)))
 
+        # Ensure stdout.isatty() returns True — patch the existing object's method
+        # rather than replacing stdout (which conflicts with pytest's capture)
+        self._orig_stdout_isatty = sys.stdout.isatty if hasattr(sys.stdout, "isatty") else None
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
         self._run_gate_mock = MagicMock()
         monkeypatch.setattr("kimi_cli.ui.shell.update._run_update_gate", self._run_gate_mock)
 
@@ -39,6 +45,14 @@ class TestCheckUpdateGate:
 
         self.latest_file.write_text("2.0.0")
         monkeypatch.setattr("sys.stdin", MagicMock(isatty=MagicMock(return_value=False)))
+        check_update_gate()
+        self._run_gate_mock.assert_not_called()
+
+    def test_skips_when_stdout_not_tty(self, monkeypatch):
+        from kimi_cli.ui.shell.update import check_update_gate
+
+        self.latest_file.write_text("2.0.0")
+        monkeypatch.setattr("sys.stdout", MagicMock(isatty=MagicMock(return_value=False)))
         check_update_gate()
         self._run_gate_mock.assert_not_called()
 
@@ -172,6 +186,16 @@ class TestRunUpdateGate:
             _run_update_gate("1.2.3", "1.5.0")
         assert exc_info.value.code == 1
 
+    def test_enter_upgrade_command_not_found(self, monkeypatch):
+        from kimi_cli.ui.shell.update import _run_update_gate
+
+        monkeypatch.setattr("kimi_cli.ui.shell.update._read_key", lambda: "\r")
+        monkeypatch.setattr("subprocess.run", MagicMock(side_effect=OSError("No such file")))
+
+        with pytest.raises(SystemExit) as exc_info:
+            _run_update_gate("1.2.3", "1.5.0")
+        assert exc_info.value.code == 1
+
     def test_s_writes_skip_file_and_continues(self, monkeypatch):
         from kimi_cli.ui.shell.update import _run_update_gate
 
@@ -185,6 +209,16 @@ class TestRunUpdateGate:
         monkeypatch.setattr("kimi_cli.ui.shell.update._read_key", lambda: "S")
         _run_update_gate("1.2.3", "1.5.0")
         assert self.skipped_file.read_text(encoding="utf-8") == "1.5.0"
+
+    def test_s_continues_even_when_skip_file_write_fails(self, monkeypatch):
+        from kimi_cli.ui.shell.update import _run_update_gate
+
+        monkeypatch.setattr("kimi_cli.ui.shell.update._read_key", lambda: "s")
+        monkeypatch.setattr(
+            "kimi_cli.ui.shell.update.SKIPPED_VERSION_FILE",
+            MagicMock(write_text=MagicMock(side_effect=OSError)),
+        )
+        _run_update_gate("1.2.3", "1.5.0")
 
     def test_q_continues_without_action(self, monkeypatch):
         from kimi_cli.ui.shell.update import _run_update_gate
@@ -221,6 +255,23 @@ class TestRunUpdateGate:
         _run_update_gate("1.2.3", "1.5.0")
         assert not self.skipped_file.exists()
         mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestReadKeyWindows
+# ---------------------------------------------------------------------------
+class TestReadKeyWindows:
+    def test_win32_uses_msvcrt(self, monkeypatch):
+        monkeypatch.setattr("sys.platform", "win32")
+        mock_msvcrt = MagicMock()
+        mock_msvcrt.getwch.return_value = "q"
+        monkeypatch.setitem(__import__("sys").modules, "msvcrt", mock_msvcrt)
+
+        from kimi_cli.ui.shell.update import _read_key
+
+        result = _read_key()
+        assert result == "q"
+        mock_msvcrt.getwch.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
