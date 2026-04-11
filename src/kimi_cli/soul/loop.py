@@ -109,10 +109,11 @@ class LoopScheduler:
         self._fire_event.set()
 
     def cancel_task(self, task_id: str) -> LoopTask | None:
-        task = self.tasks.get(task_id)
+        task = self.tasks.pop(task_id, None)
         if task is None:
             return None
         task.cancel()
+        self._pending_prompts = [(tid, p) for tid, p in self._pending_prompts if tid != task_id]
         logger.info("Loop task cancelled: {id}", id=task_id)
         return task
 
@@ -122,6 +123,7 @@ class LoopScheduler:
             if not task.cancelled:
                 task.cancel()
                 count += 1
+        self.tasks.clear()
         self._pending_prompts.clear()
         logger.info("Cancelled {count} loop task(s)", count=count)
         return count
