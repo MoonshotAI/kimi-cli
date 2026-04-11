@@ -47,8 +47,8 @@ def _completions(completer: SlashCommandCompleter, text: str):
     return list(completer.get_completions(document, event))
 
 
-def test_exact_command_match_hides_completions():
-    """Exact matches should not show completions."""
+def test_exact_command_match_shows_completions():
+    """Exact matches should still show slash menu candidates."""
     completer = SlashCommandCompleter(
         [
             _make_command("mcp"),
@@ -59,11 +59,11 @@ def test_exact_command_match_hides_completions():
 
     texts = _completion_texts(completer, "/mcp")
 
-    assert not texts
+    assert "/mcp" in texts
 
 
-def test_exact_alias_match_hides_completions():
-    """Exact alias matches should not show completions."""
+def test_exact_alias_match_shows_completions():
+    """Exact alias matches should still show canonical command candidates."""
     completer = SlashCommandCompleter(
         [
             _make_command("help", aliases=["h"]),
@@ -73,7 +73,7 @@ def test_exact_alias_match_hides_completions():
 
     texts = _completion_texts(completer, "/h")
 
-    assert not texts
+    assert "/help" in texts
 
 
 def test_should_complete_only_for_root_slash_token():
