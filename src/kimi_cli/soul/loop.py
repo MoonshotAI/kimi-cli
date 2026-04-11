@@ -85,6 +85,8 @@ class LoopScheduler:
         *,
         recurring: bool = True,
     ) -> LoopTask:
+        if len(self.tasks) >= _MAX_LOOP_TASKS:
+            raise ValueError(f"Maximum number of loop tasks ({_MAX_LOOP_TASKS}) reached")
         task_id = uuid.uuid4().hex[:8]
         task = LoopTask(
             id=task_id,
@@ -133,11 +135,14 @@ class LoopScheduler:
         now = time.monotonic()
         fired = 0
         expired_ids: list[str] = []
+        pending_ids = {tid for tid, _ in self._pending_prompts}
         for task_id, task in self.tasks.items():
             if task.cancelled:
                 continue
             if task.expired:
                 expired_ids.append(task_id)
+                continue
+            if task_id in pending_ids:
                 continue
             if now >= task.next_fire_time() and task.was_not_fired_at(now):
                 task.mark_fired()

@@ -330,11 +330,15 @@ async def loop(soul: KimiSoul, args: str):
         interval_seconds = 600.0
         logger.info("No interval provided, using self-paced default of 10m")
 
-    task = scheduler.create_task(
-        prompt=prompt,
-        interval_seconds=interval_seconds,
-        recurring=True,
-    )
+    try:
+        task = scheduler.create_task(
+            prompt=prompt,
+            interval_seconds=interval_seconds,
+            recurring=True,
+        )
+    except ValueError as exc:
+        wire_send(TextPart(text=str(exc)))
+        return
     scheduler.enqueue_first(task)
     wire_send(
         TextPart(

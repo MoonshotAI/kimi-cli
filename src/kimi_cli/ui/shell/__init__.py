@@ -117,6 +117,7 @@ class _BackgroundCompletionWatcher:
         self,
         idle_events: asyncio.Queue[_PromptEvent],
         loop_fire_event: asyncio.Event | None = None,
+        bg_enabled: bool | None = None,
     ) -> _PromptEvent | None:
         """Wait for either a user prompt event, a background completion, or a loop fire.
 
@@ -125,7 +126,8 @@ class _BackgroundCompletionWatcher:
         Returns a _PromptEvent(kind="loop") if a loop task fired.
         User input always takes priority over background completions.
         """
-        if self.enabled and self._has_pending_llm_notifications():
+        use_bg = self.enabled if bg_enabled is None else bg_enabled
+        if use_bg and self._has_pending_llm_notifications():
             try:
                 return idle_events.get_nowait()
             except asyncio.QueueEmpty:
@@ -133,11 +135,11 @@ class _BackgroundCompletionWatcher:
                     return None
 
         idle_task = asyncio.create_task(idle_events.get())
-        if not self.enabled and loop_fire_event is None:
+        if not use_bg and loop_fire_event is None:
             return await idle_task
 
         wait_tasks: list[asyncio.Task[Any]] = [idle_task]
-        if self.enabled:
+        if use_bg:
             assert self._event is not None
             wait_tasks.append(asyncio.create_task(self._event.wait()))
         loop_wait_task: asyncio.Task[bool] | None = None
@@ -523,7 +525,14 @@ class Shell:
                             result = _PromptEvent(kind="loop")
                         else:
                             if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
-                                result = await idle_events.get()
+                                if loop_fire is not None and isinstance(self.soul, KimiSoul):
+                                    result = await bg_watcher.wait_for_next(
+                                        idle_events,
+                                        loop_fire_event=loop_fire,
+                                        bg_enabled=False,
+                                    )
+                                else:
+                                    result = await idle_events.get()
                             else:
                                 result = await bg_watcher.wait_for_next(
                                     idle_events, loop_fire_event=loop_fire
