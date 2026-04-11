@@ -17,7 +17,7 @@ echo "Explain what this code does" | kimi --print
 Print mode characteristics:
 
 - **Non-interactive**: Exits automatically after executing instructions
-- **Auto-approval**: Implicitly enables `--yolo` mode, all operations are auto-approved, and interactive questions (`AskUserQuestion`) and plan mode switches are also handled automatically
+- **Auto-approval**: Implicitly enables `--yolo` mode so operations are auto-approved; because print mode has no user-feedback channel, interactive questions (`AskUserQuestion`) and plan review prompts auto-resolve instead of waiting for input
 - **Text output**: AI responses are output to stdout
 
 <!-- TODO: Enable this example after supporting reading content from stdin and instructions from -p simultaneously

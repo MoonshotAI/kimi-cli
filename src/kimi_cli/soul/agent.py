@@ -205,6 +205,7 @@ class Runtime:
     root_wire_hub: RootWireHub | None = None
     subagent_id: str | None = None
     subagent_type: str | None = None
+    can_request_user_feedback: bool = True
     role: Literal["root", "subagent"] = "root"
     hook_engine: Any = None
     """HookEngine instance, set by KimiCLI after soul creation."""
@@ -343,6 +344,7 @@ class Runtime:
             subagent_store=SubagentStore(session),
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
+            can_request_user_feedback=True,
             role="root",
         )
 
@@ -375,6 +377,7 @@ class Runtime:
             root_wire_hub=self.root_wire_hub,
             subagent_id=agent_id,
             subagent_type=subagent_type,
+            can_request_user_feedback=self.can_request_user_feedback,
             role="subagent",
         )
 
