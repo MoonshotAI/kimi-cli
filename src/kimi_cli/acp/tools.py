@@ -79,8 +79,8 @@ class Terminal(CallableTool2[ShellParams]):
         if not approval_result:
             return approval_result.rejection_error()
 
-        timeout_seconds = float(params.timeout)
-        timeout_label = f"{timeout_seconds:g}s"
+        timeout_seconds = params.timeout
+        timeout_label = f"{timeout_seconds}s"
         terminal_id: str | None = None
         exit_status: (
             acp.schema.WaitForTerminalExitResponse | acp.schema.TerminalExitStatus | None

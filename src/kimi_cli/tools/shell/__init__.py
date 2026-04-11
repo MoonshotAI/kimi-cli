@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from typing import Self, override
 
 import kaos
@@ -20,6 +21,8 @@ from kimi_cli.utils.subprocess_env import get_noninteractive_env
 
 MAX_FOREGROUND_TIMEOUT = 5 * 60
 MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
+TIMEOUT_ALIAS_FIELD = "timeout_s"
+UNSUPPORTED_TIMEOUT_FIELDS = frozenset({"timeout_ms", "timeoutSeconds"})
 
 
 class Params(BaseModel):
@@ -43,6 +46,30 @@ class Params(BaseModel):
             "A short description for the background task. Required when run_in_background=true."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_timeout_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        values = dict(data)
+
+        unsupported = sorted(k for k in UNSUPPORTED_TIMEOUT_FIELDS if k in values)
+        if unsupported:
+            raise ValueError(
+                f"Unsupported timeout field(s): {', '.join(unsupported)}. "
+                f"Use `timeout` or `{TIMEOUT_ALIAS_FIELD}` in seconds."
+            )
+
+        has_timeout = "timeout" in values
+        has_timeout_alias = TIMEOUT_ALIAS_FIELD in values
+        if has_timeout and has_timeout_alias and values["timeout"] != values[TIMEOUT_ALIAS_FIELD]:
+            raise ValueError("`timeout` and `timeout_s` must match when both are provided")
+        if not has_timeout and has_timeout_alias:
+            values["timeout"] = values[TIMEOUT_ALIAS_FIELD]
+
+        return values
 
     @model_validator(mode="after")
     def _validate_background_fields(self) -> Self:
