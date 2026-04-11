@@ -1,0 +1,20 @@
+{
+  "changelog": ["@changesets/changelog-github", { "repo": "MoonshotAI/kimi-cli" }],
+  "commit": false,
+  "fixed": [["@moonshot-ai/core", "@moonshot-ai/sdk", "@moonshot-ai/cli"]],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [
+    "@moonshot-ai/kosong",
+    "@moonshot-ai/kaos",
+    "@moonshot-ai/core",
+    "@moonshot-ai/sdk",
+    "@moonshot-ai/cli"
+  ],
+  "snapshot": {
+    "useCalculatedVersion": true,
+    "prereleaseTemplate": "{tag}-{commit}"
+  }
+}

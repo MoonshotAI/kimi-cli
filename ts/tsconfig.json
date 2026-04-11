@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+
+    "strict": true,
+    "isolatedDeclarations": true,
+    "isolatedModules": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "verbatimModuleSyntax": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+
+    "types": ["node"],
+
+    "paths": {
+      "@moonshot-ai/kosong": ["./packages/kosong/src/index.ts"],
+      "@moonshot-ai/kaos": ["./packages/kaos/src/index.ts"],
+      "@moonshot-ai/core": ["./packages/kimi-core/src/index.ts"],
+      "@moonshot-ai/sdk": ["./packages/kimi-sdk/src/index.ts"],
+      "@moonshot-ai/cli": ["./apps/kimi-cli/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage"]
+}

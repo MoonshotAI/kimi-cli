@@ -1,0 +1,89 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "pedantic": "warn",
+    "perf": "warn"
+  },
+  "plugins": ["typescript", "import", "unicorn", "promise", "node"],
+  "rules": {
+    "eslint/eqeqeq": "error",
+    "eslint/no-console": "warn",
+
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/return-await": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-non-null-assertion": "warn",
+    "typescript/no-unsafe-argument": "warn",
+    "typescript/no-unsafe-assignment": "warn",
+    "typescript/no-unsafe-call": "warn",
+    "typescript/no-unsafe-return": "warn",
+    "typescript/use-unknown-in-catch-callback-variable": "warn",
+    "typescript/switch-exhaustiveness-check": "warn",
+    "typescript/no-confusing-void-expression": "warn",
+    "typescript/consistent-type-imports": "warn",
+    "typescript/ban-ts-comment": "warn",
+
+    "import/no-cycle": "error",
+    "import/no-self-import": "error",
+    "import/no-duplicates": "warn",
+    "import/no-mutable-exports": "warn",
+
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/no-thenable": "error",
+    "unicorn/error-message": "warn",
+    "unicorn/throw-new-error": "warn",
+    "unicorn/catch-error-name": "warn",
+    "unicorn/no-useless-promise-resolve-reject": "warn",
+    "unicorn/prefer-array-some": "warn",
+
+    "promise/no-multiple-resolved": "warn",
+    "promise/no-return-in-finally": "warn",
+    "promise/no-callback-in-promise": "warn",
+    "promise/valid-params": "warn",
+    "promise/no-new-statics": "error",
+
+    "node/no-new-require": "warn",
+    "node/no-path-concat": "warn",
+
+    "oxc/no-accumulating-spread": "warn",
+
+    "eslint/max-classes-per-file": "off",
+    "eslint/max-depth": "off",
+    "eslint/max-lines": "off",
+    "eslint/max-lines-per-function": "off",
+    "eslint/max-nested-callbacks": "off",
+    "eslint/max-params": "off",
+    "eslint/no-warning-comments": "off",
+    "eslint/sort-vars": "off",
+    "eslint/radix": "off",
+    "eslint/symbol-description": "off",
+    "typescript/no-deprecated": "off",
+    "typescript/strict-boolean-expressions": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.spec.ts", "**/test/**/*.ts"],
+      "plugins": ["vitest"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-non-null-assertion": "off",
+        "eslint/no-console": "off",
+        "vitest/expect-expect": "error",
+        "vitest/no-conditional-tests": "error",
+        "vitest/no-disabled-tests": "warn",
+        "vitest/no-focused-tests": "error",
+        "vitest/no-identical-title": "error",
+        "vitest/valid-expect": "error",
+        "vitest/valid-describe-callback": "error",
+        "vitest/no-standalone-expect": "error"
+      }
+    }
+  ],
+  "ignorePatterns": ["dist/", "coverage/", "node_modules/"]
+}

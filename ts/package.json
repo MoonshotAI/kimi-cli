@@ -1,0 +1,56 @@
+{
+  "name": "@moonshot-ai/monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run sherif",
+    "typecheck": "tsc",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
+    "lint:pkg": "pnpm -r --filter '!@moonshot-ai/monorepo' exec publint && pnpm -r --filter './packages/*' exec attw --pack . --ignore-rules no-resolution",
+    "sherif": "sherif",
+    "fmt": "oxfmt --write .",
+    "fmt:check": "oxfmt --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "pnpm -r run clean",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "publish": "pnpm run check && pnpm run test && pnpm run build && pnpm run lint:pkg && changeset publish",
+    "prepare": "simple-git-hooks"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.2",
+    "@changesets/changelog-github": "0.6.0",
+    "@changesets/cli": "2.30.0",
+    "@types/node": "^22.15.3",
+    "@vitest/coverage-v8": "4.1.4",
+    "lint-staged": "16.4.0",
+    "oxfmt": "0.44.0",
+    "oxlint": "1.59.0",
+    "oxlint-tsgolint": "0.20.0",
+    "publint": "0.3.18",
+    "sherif": "1.11.1",
+    "simple-git-hooks": "2.13.1",
+    "tsdown": "0.21.7",
+    "typescript": "6.0.2",
+    "vitest": "4.1.4"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "cd ts && pnpm exec lint-staged"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "oxlint --fix",
+      "oxfmt --write"
+    ],
+    "*.{json,md,yaml,yml}": "oxfmt --write"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@10.33.0"
+}
