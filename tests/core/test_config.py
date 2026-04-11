@@ -51,6 +51,9 @@ def test_default_config_dump():
             "notifications": {
                 "claim_stale_after_ms": 15000,
             },
+            "approval": {
+                "timeout_s": 300.0,
+            },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
             "hooks": [],
@@ -132,3 +135,33 @@ def test_load_config_compaction_trigger_ratio_too_low():
 def test_load_config_compaction_trigger_ratio_too_high():
     with pytest.raises(ConfigError, match="compaction_trigger_ratio"):
         load_config_from_string('{"loop_control": {"compaction_trigger_ratio": 1.0}}')
+
+
+def test_load_config_approval_timeout_s_default():
+    config = load_config_from_string("{}")
+    assert config.approval.timeout_s == 300.0
+
+
+def test_load_config_approval_timeout_s_toml_finite():
+    config = load_config_from_string("[approval]\ntimeout_s = 120\n")
+    assert config.approval.timeout_s == 120
+
+
+def test_load_config_approval_timeout_s_toml_unlimited_zero():
+    config = load_config_from_string("[approval]\ntimeout_s = 0\n")
+    assert config.approval.timeout_s == 0
+
+
+def test_load_config_approval_timeout_s_reject_negative():
+    with pytest.raises(ConfigError, match="timeout_s"):
+        load_config_from_string("[approval]\ntimeout_s = -1\n")
+
+
+def test_load_config_approval_timeout_s_reject_nan():
+    with pytest.raises(ConfigError, match="timeout_s"):
+        load_config_from_string('{"approval": {"timeout_s": NaN}}')
+
+
+def test_load_config_approval_timeout_s_reject_inf():
+    with pytest.raises(ConfigError, match="timeout_s"):
+        load_config_from_string('{"approval": {"timeout_s": Infinity}}')

@@ -231,3 +231,92 @@ async def test_approval_runtime_wait_for_response_times_out() -> None:
     record = runtime.get_request(request.id)
     assert record is not None
     assert record.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_approval_runtime_wait_for_response_uses_default_timeout_300(monkeypatch) -> None:
+    runtime = ApprovalRuntime()
+    request = runtime.create_request(
+        request_id="req-default-timeout",
+        tool_call_id="call-default-timeout",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/default.txt",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-default"),
+    )
+
+    captured_timeout: list[float] = []
+    original_wait_for = asyncio.wait_for
+
+    async def _wait_for_spy(awaitable, timeout):
+        captured_timeout.append(timeout)
+        return await original_wait_for(awaitable, timeout=timeout)
+
+    monkeypatch.setattr(asyncio, "wait_for", _wait_for_spy)
+
+    waiter = asyncio.create_task(runtime.wait_for_response(request.id))
+    await asyncio.sleep(0)
+    assert runtime.resolve(request.id, "approve")
+    response, feedback = await waiter
+
+    assert response == "approve"
+    assert feedback == ""
+    assert captured_timeout == [300.0]
+
+
+@pytest.mark.asyncio
+async def test_approval_runtime_timeout_zero_waits_indefinitely(monkeypatch) -> None:
+    runtime = ApprovalRuntime()
+    request = runtime.create_request(
+        request_id="req-timeout-zero",
+        tool_call_id="call-timeout-zero",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/zero.txt",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-zero"),
+    )
+
+    called_wait_for = False
+
+    async def _wait_for_should_not_run(awaitable, timeout):
+        nonlocal called_wait_for
+        called_wait_for = True
+        return await awaitable
+
+    monkeypatch.setattr(asyncio, "wait_for", _wait_for_should_not_run)
+
+    waiter = asyncio.create_task(runtime.wait_for_response(request.id, timeout=0))
+    await asyncio.sleep(0)
+    assert runtime.resolve(request.id, "approve")
+    response, feedback = await waiter
+
+    assert response == "approve"
+    assert feedback == ""
+    assert called_wait_for is False
+
+
+@pytest.mark.asyncio
+async def test_approval_runtime_unlimited_wait_can_be_cancelled_by_source() -> None:
+    runtime = ApprovalRuntime()
+    request = runtime.create_request(
+        request_id="req-timeout-zero-cancel",
+        tool_call_id="call-timeout-zero-cancel",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/zero-cancel.txt",
+        display=[],
+        source=ApprovalSource(kind="background_agent", id="task-timeout-zero-cancel"),
+    )
+
+    waiter = asyncio.create_task(runtime.wait_for_response(request.id, timeout=0))
+    await asyncio.sleep(0)
+    assert runtime.cancel_by_source("background_agent", "task-timeout-zero-cancel") == 1
+
+    with pytest.raises(ApprovalCancelledError):
+        await waiter
+
+    record = runtime.get_request(request.id)
+    assert record is not None
+    assert record.status == "cancelled"

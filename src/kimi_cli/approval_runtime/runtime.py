@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import uuid
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
@@ -83,7 +84,7 @@ class ApprovalRuntime:
         return request
 
     async def wait_for_response(
-        self, request_id: str, timeout: float = 300.0
+        self, request_id: str, timeout: float | None = 300.0
     ) -> tuple[ApprovalResponseKind, str]:
         waiter = self._waiters.get(request_id)
         request = self._requests.get(request_id)
@@ -97,6 +98,12 @@ class ApprovalRuntime:
                 return request.response, request.feedback
             waiter = asyncio.get_running_loop().create_future()
             self._waiters[request_id] = waiter
+        if timeout is not None and (timeout < 0 or not math.isfinite(timeout)):
+            raise ValueError("timeout must be a finite non-negative number or None")
+
+        if timeout is None or timeout == 0:
+            return await asyncio.shield(waiter)
+
         try:
             return await asyncio.wait_for(asyncio.shield(waiter), timeout=timeout)
         except TimeoutError:

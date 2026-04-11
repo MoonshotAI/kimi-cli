@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Literal, Self
 
@@ -114,6 +115,19 @@ class NotificationConfig(BaseModel):
     claim_stale_after_ms: int = Field(default=15_000, ge=1000)
 
 
+class ApprovalConfig(BaseModel):
+    """Approval runtime configuration."""
+
+    timeout_s: float = Field(default=300.0, ge=0)
+    """Approval request timeout in seconds. Set to 0 for unlimited wait."""
+
+    @model_validator(mode="after")
+    def validate_timeout_s(self) -> Self:
+        if not math.isfinite(self.timeout_s):
+            raise ValueError("approval.timeout_s must be a finite non-negative number")
+        return self
+
+
 class MoonshotSearchConfig(BaseModel):
     """Moonshot Search configuration."""
 
@@ -207,6 +221,9 @@ class Config(BaseModel):
     )
     notifications: NotificationConfig = Field(
         default_factory=NotificationConfig, description="Notification configuration"
+    )
+    approval: ApprovalConfig = Field(
+        default_factory=ApprovalConfig, description="Approval configuration"
     )
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")

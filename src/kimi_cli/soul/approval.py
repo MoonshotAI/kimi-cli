@@ -57,11 +57,15 @@ class ApprovalState:
         self,
         yolo: bool = False,
         auto_approve_actions: set[str] | None = None,
+        request_timeout_s: float | None = 300.0,
         on_change: Callable[[], None] | None = None,
     ):
         self.yolo = yolo
+        """Whether approvals are bypassed."""
         self.auto_approve_actions: set[str] = auto_approve_actions or set()
         """Set of action names that should automatically be approved."""
+        self.request_timeout_s = request_timeout_s
+        """Per-request approval timeout in seconds; ``None`` means unlimited wait."""
         self._on_change = on_change
 
     def notify_change(self) -> None:
@@ -97,6 +101,13 @@ class Approval:
 
     def is_yolo(self) -> bool:
         return self._state.yolo
+
+    @property
+    def request_timeout_s(self) -> float | None:
+        return self._state.request_timeout_s
+
+    def set_request_timeout(self, timeout_s: float | None) -> None:
+        self._state.request_timeout_s = timeout_s
 
     async def request(
         self,
@@ -154,7 +165,9 @@ class Approval:
             source=source,
         )
         try:
-            response, feedback = await self._runtime.wait_for_response(request_id)
+            response, feedback = await self._runtime.wait_for_response(
+                request_id, timeout=self._state.request_timeout_s
+            )
         except ApprovalCancelledError:
             return ApprovalResult(approved=False)
         match response:

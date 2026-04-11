@@ -35,6 +35,7 @@ The configuration file contains the following top-level configuration items:
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
 | `background` | `table` | Background task runtime parameters |
+| `approval` | `table` | Approval runtime parameters |
 | `services` | `table` | External service configuration (search, fetch) |
 | `mcp` | `table` | MCP client configuration |
 
@@ -70,6 +71,9 @@ compaction_trigger_ratio = 0.85
 max_running_tasks = 4
 keep_alive_on_exit = false
 agent_task_timeout_s = 900
+
+[approval]
+timeout_s = 300
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
@@ -147,6 +151,16 @@ capabilities = ["thinking", "image_in"]
 | `max_running_tasks` | `integer` | `4` | Maximum number of concurrent background tasks |
 | `keep_alive_on_exit` | `boolean` | `false` | Whether to keep background tasks running when CLI exits; default is to terminate all background tasks on exit |
 | `agent_task_timeout_s` | `integer` | `900` | Maximum runtime in seconds for a background agent task; timed-out tasks are marked as failed and the main agent is notified |
+
+### `approval`
+
+`approval` controls approval waiting behavior.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `timeout_s` | `float` | `300` | Approval request timeout in seconds. Set `0` to wait indefinitely. |
+
+`approval.timeout_s` must be a finite non-negative number.
 
 ### `services`
 

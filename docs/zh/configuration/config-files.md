@@ -35,6 +35,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `models` | `table` | 模型配置 |
 | `loop_control` | `table` | Agent 循环控制参数 |
 | `background` | `table` | 后台任务运行参数 |
+| `approval` | `table` | 审批运行参数 |
 | `services` | `table` | 外部服务配置（搜索、抓取） |
 | `mcp` | `table` | MCP 客户端配置 |
 
@@ -70,6 +71,9 @@ compaction_trigger_ratio = 0.85
 max_running_tasks = 4
 keep_alive_on_exit = false
 agent_task_timeout_s = 900
+
+[approval]
+timeout_s = 300
 
 [services.moonshot_search]
 base_url = "https://api.kimi.com/coding/v1/search"
@@ -147,6 +151,16 @@ capabilities = ["thinking", "image_in"]
 | `max_running_tasks` | `integer` | `4` | 同时运行的最大后台任务数 |
 | `keep_alive_on_exit` | `boolean` | `false` | CLI 退出时是否保留后台任务运行；默认退出时终止所有后台任务 |
 | `agent_task_timeout_s` | `integer` | `900` | 后台 Agent 任务的最大运行时间（秒）；超时后任务标记为失败并通知主 Agent |
+
+### `approval`
+
+`approval` 用于控制审批等待行为。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `timeout_s` | `float` | `300` | 审批请求超时时间（秒）。设为 `0` 表示无限等待。 |
+
+`approval.timeout_s` 必须是有限且非负的数字。
 
 ### `services`
 

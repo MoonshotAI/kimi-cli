@@ -218,6 +218,7 @@ class Runtime:
             self.approval_runtime = ApprovalRuntime()
         self.approval_runtime.bind_root_wire_hub(self.root_wire_hub)
         self.approval.set_runtime(self.approval_runtime)
+        self.approval.set_request_timeout(self.config.approval.timeout_s)
         self.background_tasks.bind_runtime(self)
 
     @staticmethod
