@@ -112,6 +112,7 @@ class KimiCLI:
         max_ralph_iterations: int | None = None,
         startup_progress: Callable[[str], None] | None = None,
         defer_mcp_loading: bool = False,
+        can_request_user_feedback: bool | None = None,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -138,6 +139,9 @@ class KimiCLI:
                 interactive startup UI. Defaults to None.
             defer_mcp_loading (bool, optional): Defer MCP startup until the interactive shell is
                 ready. Defaults to False.
+            can_request_user_feedback (bool | None, optional): Override whether the runtime
+                should expose feedback-dependent flows such as AskUserQuestion and plan review.
+                Defaults to None, which preserves the runtime default.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -219,6 +223,8 @@ class KimiCLI:
             yolo,
             skills_dirs=skills_dirs,
         )
+        if can_request_user_feedback is not None:
+            runtime.can_request_user_feedback = can_request_user_feedback
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
