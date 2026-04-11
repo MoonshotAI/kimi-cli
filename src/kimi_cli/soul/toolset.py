@@ -34,7 +34,9 @@ from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
+    AudioURLPart,
     ContentPart,
+    ImageURLPart,
     MCPServerSnapshot,
     MCPStatusSnapshot,
     TextPart,
@@ -42,6 +44,7 @@ from kimi_cli.wire.types import (
     ToolCallRequest,
     ToolResult,
     ToolReturnValue,
+    VideoURLPart,
 )
 
 if TYPE_CHECKING:
@@ -650,12 +653,27 @@ class WireExternalTool(CallableTool):
 MCP_MAX_OUTPUT_CHARS = 100_000
 
 
+def _media_part_size(part: ContentPart) -> int | None:
+    """Return the payload size of a media part, or ``None`` for non-media parts."""
+    if isinstance(part, ImageURLPart):
+        return len(part.image_url.url)
+    if isinstance(part, AudioURLPart):
+        return len(part.audio_url.url)
+    if isinstance(part, VideoURLPart):
+        return len(part.video_url.url)
+    return None
+
+
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
     """Convert MCP tool result to kosong tool return value.
 
-    Text content is truncated to *MCP_MAX_OUTPUT_CHARS* total characters.
-    Unsupported content types are replaced with a ``ToolError`` part instead
-    of crashing the turn.
+    All content — text *and* inline media (``data:`` URLs) — is subject to
+    a shared *MCP_MAX_OUTPUT_CHARS* character budget.  Text parts are
+    truncated in-place; media parts that exceed the remaining budget are
+    dropped and replaced with a descriptive placeholder.
+
+    Unsupported content types are caught and replaced with a ``TextPart``
+    placeholder instead of crashing the turn.
     """
     content: list[ContentPart] = []
     char_budget = MCP_MAX_OUTPUT_CHARS
@@ -671,7 +689,7 @@ def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
             )
             converted = TextPart(text=f"[Unsupported content: {exc}]")
 
-        # Apply character budget to text parts
+        # --- budget enforcement (text) ---
         if isinstance(converted, TextPart):
             if char_budget <= 0:
                 truncated = True
@@ -680,7 +698,20 @@ def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
                 converted = TextPart(text=converted.text[:char_budget])
                 truncated = True
             char_budget -= len(converted.text)
+            content.append(converted)
+            continue
 
+        # --- budget enforcement (media: image / audio / video) ---
+        media_size = _media_part_size(converted)
+        if media_size is not None:
+            if media_size > char_budget:
+                truncated = True
+                continue  # drop the oversized media part silently
+            char_budget -= media_size
+            content.append(converted)
+            continue
+
+        # Unknown ContentPart subclass — pass through without budget impact
         content.append(converted)
 
     if truncated:

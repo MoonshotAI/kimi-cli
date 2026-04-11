@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import base64
+from collections.abc import Sequence
 from unittest.mock import MagicMock
 
 import mcp.types
-from kosong.message import TextPart
+from kosong.message import ImageURLPart, TextPart
 from kosong.tooling import ToolError, ToolOk
 from pydantic import AnyUrl
 
 from kimi_cli.soul.toolset import MCP_MAX_OUTPUT_CHARS, convert_mcp_tool_result
 
 
-def _make_result(content: list[mcp.types.ContentBlock], *, is_error: bool = False) -> MagicMock:
+def _make_result(content: Sequence[mcp.types.ContentBlock], *, is_error: bool = False) -> MagicMock:
     r = MagicMock()
     r.content = content
     r.is_error = is_error
@@ -79,15 +81,77 @@ class TestMCPTruncation:
         assert isinstance(out.output[1], TextPart)
         assert "truncated" in out.output[1].text.lower()
 
-    def test_image_not_counted_against_budget(self):
-        """Non-text parts (images) don't consume the character budget."""
+    def test_small_image_counted_against_budget(self):
+        """Small images consume budget but fit, so both image and text survive."""
         img = mcp.types.ImageContent(type="image", data="AAAA", mimeType="image/png")
         text = mcp.types.TextContent(type="text", text="hello")
         result = _make_result([img, text])
         out = convert_mcp_tool_result(result)
         assert isinstance(out, ToolOk)
         assert len(out.output) == 2
+        assert isinstance(out.output[0], ImageURLPart)
         assert _text(out.output[1]) == "hello"
+
+
+class TestMCPMediaTruncation:
+    """Regression tests: oversized non-text MCP payloads must be dropped."""
+
+    def test_oversized_image_dropped(self):
+        """A base64 image exceeding the budget should be dropped with truncation notice."""
+        # ~150K of base64 data → data URL will be well over MCP_MAX_OUTPUT_CHARS
+        big_data = base64.b64encode(b"\x00" * 150_000).decode()
+        img = mcp.types.ImageContent(type="image", data=big_data, mimeType="image/png")
+        result = _make_result([img])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        # Image should be dropped; only truncation notice remains
+        assert all(isinstance(p, TextPart) for p in out.output)
+        assert any("truncated" in _text(p).lower() for p in out.output)
+
+    def test_oversized_blob_resource_dropped(self):
+        """An EmbeddedResource with huge blob should be dropped."""
+        big_blob = base64.b64encode(b"\xff" * 150_000).decode()
+        blob = mcp.types.EmbeddedResource(
+            type="resource",
+            resource=mcp.types.BlobResourceContents(
+                uri=AnyUrl("file:///screenshot.png"),
+                mimeType="image/png",
+                blob=big_blob,
+            ),
+        )
+        result = _make_result([blob])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        assert all(isinstance(p, TextPart) for p in out.output)
+        assert any("truncated" in _text(p).lower() for p in out.output)
+
+    def test_text_survives_after_oversized_image_dropped(self):
+        """When an oversized image is dropped, subsequent text should still be kept."""
+        big_data = base64.b64encode(b"\x00" * 150_000).decode()
+        img = mcp.types.ImageContent(type="image", data=big_data, mimeType="image/png")
+        text = mcp.types.TextContent(type="text", text="caption after screenshot")
+        result = _make_result([img, text])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        texts = [p for p in out.output if isinstance(p, TextPart)]
+        assert any("caption" in t.text for t in texts)
+        assert any("truncated" in t.text.lower() for t in texts)
+
+    def test_multiple_images_exhaust_budget(self):
+        """Multiple medium images that together exceed the budget."""
+        # Each image ~ 40K chars of data URL, 3 of them > 100K
+        medium_data = base64.b64encode(b"\x00" * 30_000).decode()
+        imgs = [
+            mcp.types.ImageContent(type="image", data=medium_data, mimeType="image/png")
+            for _ in range(4)
+        ]
+        result = _make_result(imgs)
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        image_parts = [p for p in out.output if isinstance(p, ImageURLPart)]
+        # Not all 4 should survive
+        assert len(image_parts) < 4
+        assert any(isinstance(p, TextPart) and "truncated" in p.text.lower() for p in out.output)
 
 
 class TestMCPUnsupportedContent:
