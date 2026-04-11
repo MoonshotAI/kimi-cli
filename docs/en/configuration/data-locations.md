@@ -149,7 +149,7 @@ To clean only specific data:
 | --- | --- |
 | Reset configuration | Delete `~/.kimi/config.toml` |
 | Clear all sessions | Delete `~/.kimi/sessions/` directory |
-| Clear sessions for specific working directory | Use `/sessions` in shell mode to view and delete |
+| Clear sessions for specific working directory | Use `/sessions` to view, then `/delete` (or `/remove`) in shell mode |
 | Clear plan files | Delete `~/.kimi/plans/` directory, or use `/plan clear` in plan mode |
 | Clear input history | Delete `~/.kimi/user-history/` directory |
 | Clear logs | Delete `~/.kimi/logs/` directory |

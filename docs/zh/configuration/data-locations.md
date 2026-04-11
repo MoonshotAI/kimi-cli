@@ -149,10 +149,9 @@ Plan 模式的方案文件存储在 `~/.kimi/plans/` 目录下。每个 Plan 会
 | --- | --- |
 | 重置配置 | 删除 `~/.kimi/config.toml` |
 | 清理所有会话 | 删除 `~/.kimi/sessions/` 目录 |
-| 清理特定工作目录的会话 | 在 Shell 模式下使用 `/sessions` 查看并删除 |
+| 清理特定工作目录的会话 | 在 Shell 模式下使用 `/sessions` 查看，再用 `/delete`（或 `/remove`）删除 |
 | 清理 Plan 方案文件 | 删除 `~/.kimi/plans/` 目录，或在 Plan 模式下使用 `/plan clear` |
 | 清理输入历史 | 删除 `~/.kimi/user-history/` 目录 |
 | 清理日志 | 删除 `~/.kimi/logs/` 目录 |
 | 清理 MCP 配置 | 删除 `~/.kimi/mcp.json` 或使用 `kimi mcp remove` |
 | 清理登录凭据 | 删除 `~/.kimi/credentials/` 目录或使用 `/logout` |
-
