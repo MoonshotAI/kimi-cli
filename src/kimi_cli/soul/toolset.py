@@ -37,6 +37,7 @@ from kimi_cli.wire.types import (
     ContentPart,
     MCPServerSnapshot,
     MCPStatusSnapshot,
+    TextPart,
     ToolCall,
     ToolCallRequest,
     ToolResult,
@@ -642,15 +643,56 @@ class WireExternalTool(CallableTool):
             )
 
 
+# Maximum characters allowed in MCP tool output before truncation.
+# Built-in tools use 50K via ToolResultBuilder; MCP gets a wider budget because
+# multi-part results (e.g. text + image) are common, but still needs a cap to
+# prevent context overflow from tools like Playwright that return full DOMs.
+MCP_MAX_OUTPUT_CHARS = 100_000
+
+
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
     """Convert MCP tool result to kosong tool return value.
 
-    Raises:
-        ValueError: If any content part has unsupported type or mime type.
+    Text content is truncated to *MCP_MAX_OUTPUT_CHARS* total characters.
+    Unsupported content types are replaced with a ``ToolError`` part instead
+    of crashing the turn.
     """
     content: list[ContentPart] = []
+    char_budget = MCP_MAX_OUTPUT_CHARS
+    truncated = False
+
     for part in result.content:
-        content.append(convert_mcp_content(part))
+        try:
+            converted = convert_mcp_content(part)
+        except ValueError as exc:
+            logger.warning(
+                "Skipping unsupported MCP content part: {error}",
+                error=exc,
+            )
+            converted = TextPart(text=f"[Unsupported content: {exc}]")
+
+        # Apply character budget to text parts
+        if isinstance(converted, TextPart):
+            if char_budget <= 0:
+                truncated = True
+                continue
+            if len(converted.text) > char_budget:
+                converted = TextPart(text=converted.text[:char_budget])
+                truncated = True
+            char_budget -= len(converted.text)
+
+        content.append(converted)
+
+    if truncated:
+        content.append(
+            TextPart(
+                text=(
+                    f"\n\n[Output truncated: exceeded {MCP_MAX_OUTPUT_CHARS} character limit. "
+                    "Use pagination or more specific queries to get remaining content.]"
+                )
+            )
+        )
+
     if result.is_error:
         return ToolError(
             output=content,

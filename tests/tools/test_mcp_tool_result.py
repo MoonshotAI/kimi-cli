@@ -1,0 +1,121 @@
+"""Tests for convert_mcp_tool_result: truncation + unsupported content handling."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import mcp.types
+from kosong.message import TextPart
+from kosong.tooling import ToolError, ToolOk
+
+from kimi_cli.soul.toolset import MCP_MAX_OUTPUT_CHARS, convert_mcp_tool_result
+
+
+def _make_result(content: list[mcp.types.ContentBlock], *, is_error: bool = False) -> MagicMock:
+    r = MagicMock()
+    r.content = content
+    r.is_error = is_error
+    return r
+
+
+class TestMCPTruncation:
+    def test_small_text_passes_through(self):
+        result = _make_result([mcp.types.TextContent(type="text", text="hello")])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        assert len(out.output) == 1
+        assert out.output[0].text == "hello"
+
+    def test_text_truncated_at_budget(self):
+        big_text = "x" * (MCP_MAX_OUTPUT_CHARS + 5000)
+        result = _make_result([mcp.types.TextContent(type="text", text=big_text)])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        # Should have truncated text + truncation notice
+        assert len(out.output) == 2
+        assert len(out.output[0].text) == MCP_MAX_OUTPUT_CHARS
+        assert "truncated" in out.output[1].text.lower()
+
+    def test_multi_part_truncation(self):
+        half = MCP_MAX_OUTPUT_CHARS // 2
+        part1 = mcp.types.TextContent(type="text", text="a" * (half + 100))
+        part2 = mcp.types.TextContent(type="text", text="b" * (half + 100))
+        result = _make_result([part1, part2])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        # part1 passes, part2 gets truncated, plus truncation notice
+        total_text = sum(
+            len(p.text)
+            for p in out.output
+            if isinstance(p, TextPart) and "truncated" not in p.text.lower()
+        )
+        assert total_text <= MCP_MAX_OUTPUT_CHARS
+
+    def test_budget_exhausted_skips_remaining_text(self):
+        """When budget is fully consumed, subsequent text parts are skipped."""
+        full = mcp.types.TextContent(type="text", text="x" * MCP_MAX_OUTPUT_CHARS)
+        extra = mcp.types.TextContent(type="text", text="should be dropped")
+        result = _make_result([full, extra])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        # full text + truncation notice (extra is dropped)
+        texts = [p for p in out.output if isinstance(p, TextPart)]
+        assert len(texts) == 2
+        assert "truncated" in texts[-1].text.lower()
+
+    def test_error_result_preserves_truncation(self):
+        big_text = "e" * (MCP_MAX_OUTPUT_CHARS + 1000)
+        result = _make_result([mcp.types.TextContent(type="text", text=big_text)], is_error=True)
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolError)
+        assert len(out.output) == 2
+        assert "truncated" in out.output[1].text.lower()
+
+    def test_image_not_counted_against_budget(self):
+        """Non-text parts (images) don't consume the character budget."""
+        img = mcp.types.ImageContent(type="image", data="AAAA", mimeType="image/png")
+        text = mcp.types.TextContent(type="text", text="hello")
+        result = _make_result([img, text])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        assert len(out.output) == 2
+        assert out.output[1].text == "hello"
+
+
+class TestMCPUnsupportedContent:
+    def test_unsupported_content_type_becomes_text_error(self):
+        """Unknown content type should not crash, but produce an error placeholder."""
+        # Create a content block with an unknown type
+        unknown = MagicMock(spec=[])  # empty spec = no known attributes
+        result = _make_result([unknown])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        assert len(out.output) == 1
+        assert "unsupported" in out.output[0].text.lower()
+
+    def test_unsupported_blob_mimetype_becomes_text_error(self):
+        """EmbeddedResource with unsupported mime type should not crash."""
+        blob = mcp.types.EmbeddedResource(
+            type="resource",
+            resource=mcp.types.BlobResourceContents(
+                uri="file:///test.bin",
+                mimeType="application/x-custom",
+                blob="deadbeef",
+            ),
+        )
+        result = _make_result([blob])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        assert len(out.output) == 1
+        assert "unsupported" in out.output[0].text.lower()
+
+    def test_mixed_valid_and_invalid_parts(self):
+        """Valid parts should still be converted even when some fail."""
+        good = mcp.types.TextContent(type="text", text="valid")
+        bad = MagicMock(spec=[])
+        result = _make_result([good, bad])
+        out = convert_mcp_tool_result(result)
+        assert isinstance(out, ToolOk)
+        assert len(out.output) == 2
+        assert out.output[0].text == "valid"
+        assert "unsupported" in out.output[1].text.lower()

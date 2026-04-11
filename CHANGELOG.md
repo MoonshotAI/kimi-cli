@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Truncate MCP tool output to 100K characters to prevent context overflow — tools like Playwright that return full DOMs (500KB+) or large base64 screenshots are now capped with a truncation notice; unsupported MCP content types are gracefully handled instead of crashing the turn
+
 ## 1.31.0 (2026-04-10)
 
 - Core: Cap `list_directory` output as a depth-limited tree to prevent token-limit blowup in large directories — replaces the unbounded flat listing with a 2-level tree (root: 30 entries, child: 10 per subdirectory), dirs-first alphabetical sorting, and `"... and N more"` truncation hints so the model knows to explore further (fixes #1809)
