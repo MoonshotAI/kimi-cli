@@ -25,13 +25,17 @@ def _noop(app: object, args: str) -> None:
 
 
 def _make_command(
-    name: str, *, aliases: Iterable[str] = ()
+    name: str,
+    *,
+    aliases: Iterable[str] = (),
+    completion_submit: str = "auto_submit",
 ) -> SlashCommand[Callable[[object, str], None]]:
     return SlashCommand(
         name=name,
         description=f"{name} command",
         func=_noop,
         aliases=list(aliases),
+        completion_submit=completion_submit,
     )
 
 
@@ -98,6 +102,25 @@ def test_completion_display_uses_canonical_command_name():
     assert completions[0].text == "/help"
     assert completions[0].display_text == "/help"
     assert completions[0].display_meta_text == "help command"
+
+
+def test_completion_submit_policy_uses_command_metadata():
+    completer = SlashCommandCompleter(
+        [
+            _make_command("sessions"),
+            _make_command("skill:test", completion_submit="insert_only"),
+        ]
+    )
+
+    completions = _completions(completer, "/ski")
+    skill_completion = next(c for c in completions if c.text == "/skill:test")
+    assert completer.should_auto_submit_completion(skill_completion) is False
+
+    completions = _completions(completer, "/ses")
+    sessions_completion = next(c for c in completions if c.text == "/sessions")
+    assert completer.should_auto_submit_completion(sessions_completion) is True
+    assert completer.should_auto_submit_completion(Completion(text="/unknown", start_position=0))
+    assert completer.should_auto_submit_completion(None)
 
 
 def test_wrap_to_width_respects_width():

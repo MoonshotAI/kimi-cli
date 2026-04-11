@@ -97,11 +97,13 @@ class SlashCommandCompleter(Completer):
         super().__init__()
         self._available_commands = list(available_commands)
         self._command_lookup: dict[str, list[SlashCommand[Any]]] = {}
+        self._commands_by_name: dict[str, SlashCommand[Any]] = {}
         words: list[str] = []
 
         for cmd in sorted(self._available_commands, key=lambda c: c.name):
             if cmd.name not in self._command_lookup:
                 self._command_lookup[cmd.name] = []
+                self._commands_by_name[cmd.name] = cmd
                 words.append(cmd.name)
             self._command_lookup[cmd.name].append(cmd)
             for alias in cmd.aliases:
@@ -129,6 +131,30 @@ class SlashCommandCompleter(Completer):
         prefix = text[: last_space + 1] if last_space != -1 else ""
 
         return not prefix.strip() and token.startswith("/")
+
+    @staticmethod
+    def _completion_to_command_name(completion: Completion | None) -> str | None:
+        if completion is None:
+            return None
+        text = completion.text.strip()
+        if not text.startswith("/"):
+            return None
+        name = text[1:].strip()
+        if not name:
+            return None
+        return name
+
+    def command_for_completion(self, completion: Completion | None) -> SlashCommand[Any] | None:
+        command_name = self._completion_to_command_name(completion)
+        if command_name is None:
+            return None
+        return self._commands_by_name.get(command_name)
+
+    def should_auto_submit_completion(self, completion: Completion | None) -> bool:
+        command = self.command_for_completion(completion)
+        if command is None:
+            return True
+        return command.completion_submit == "auto_submit"
 
     @override
     def get_completions(
@@ -1222,29 +1248,43 @@ class CustomPromptSession:
             self._last_history_content = history_entries[-1].content
 
         # Build completers
+        self._agent_slash_completer = SlashCommandCompleter(agent_mode_slash_commands)
+        self._shell_slash_completer = SlashCommandCompleter(shell_mode_slash_commands)
         self._agent_mode_completer = merge_completers(
             [
-                SlashCommandCompleter(agent_mode_slash_commands),
+                self._agent_slash_completer,
                 # TODO(kaos): we need an async KaosFileMentionCompleter
                 LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
             ],
             deduplicate=True,
         )
-        self._shell_mode_completer = SlashCommandCompleter(shell_mode_slash_commands)
+        self._shell_mode_completer = self._shell_slash_completer
 
         # Build key bindings
         _kb = KeyBindings()
 
+        def _current_or_first_completion(buff: Buffer) -> Completion | None:
+            complete_state = buff.complete_state
+            if complete_state is None or not complete_state.completions:
+                return None
+            return complete_state.current_completion or complete_state.completions[0]
+
         def _accept_completion(buff: Buffer) -> None:
             """Accept the current or first completion, suppressing re-completion."""
-            completion = buff.complete_state.current_completion  # type: ignore[union-attr]
-            if not completion:
-                completion = buff.complete_state.completions[0]  # type: ignore[union-attr]
+            completion = _current_or_first_completion(buff)
+            if completion is None:
+                return
             self._suppress_auto_completion = True
             try:
                 buff.apply_completion(completion)
             finally:
                 self._suppress_auto_completion = False
+
+        def _slash_completion_should_submit(buff: Buffer) -> bool:
+            completion = _current_or_first_completion(buff)
+            if self._mode == PromptMode.SHELL:
+                return self._shell_slash_completer.should_auto_submit_completion(completion)
+            return self._agent_slash_completer.should_auto_submit_completion(completion)
 
         def _is_slash_completion() -> bool:
             """True when the active completion menu is for a slash command."""
@@ -1260,9 +1300,11 @@ class CustomPromptSession:
 
         @_kb.add("enter", filter=_slash_completion_filter)
         def _(event: KeyPressEvent) -> None:
-            """Slash command completion: accept and submit in one step."""
+            """Slash command completion: accept, then submit based on command policy."""
+            should_submit = _slash_completion_should_submit(event.current_buffer)
             _accept_completion(event.current_buffer)
-            event.current_buffer.validate_and_handle()
+            if should_submit:
+                event.current_buffer.validate_and_handle()
 
         @_kb.add("enter", filter=_non_slash_completion_filter)
         def _(event: KeyPressEvent) -> None:
