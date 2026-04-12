@@ -6,13 +6,7 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "@moonshot-ai/kosong",
-    "@moonshot-ai/kaos",
-    "@moonshot-ai/core",
-    "@moonshot-ai/sdk",
-    "@moonshot-ai/cli"
-  ],
+  "ignore": [],
   "snapshot": {
     "useCalculatedVersion": true,
     "prereleaseTemplate": "{tag}-{commit}"

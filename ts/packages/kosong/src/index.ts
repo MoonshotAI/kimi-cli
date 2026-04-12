@@ -27,6 +27,7 @@ export type {
 // Provider interfaces
 export type {
   ChatProvider,
+  GenerateOptions,
   RetryableChatProvider,
   StreamedMessage,
   ThinkingEffort,
@@ -60,6 +61,17 @@ export {
 // Toolset implementations
 export { SimpleToolset } from './simple-toolset.js';
 export { EmptyToolset } from './empty-toolset.js';
+export { MCPToolset, convertMCPContentBlock } from './mcp-toolset.js';
+
+// Typed tool helpers
+export { createTypedTool } from './typed-tool.js';
+export type { TypedTool, TypedToolConfig } from './typed-tool.js';
+export type {
+  MCPClient,
+  MCPContentBlock,
+  MCPToolDefinition,
+  MCPToolResult,
+} from './mcp-toolset.js';
 
 // Token usage
 export { addUsage, emptyUsage, grandTotal, inputTotal } from './usage.js';
@@ -75,12 +87,25 @@ export {
 } from './errors.js';
 
 // Context / Storage
-export { LinearContext, MemoryLinearStorage, JsonlLinearStorage } from './context.js';
-export type { LinearStorage } from './context.js';
+export { JsonlLinearStorage, LinearContext, MemoryLinearStorage } from './context.js';
+export type { LinearRestoreResult, LinearStorage } from './context.js';
+
+// Logger
+export { getLogger, setLogger } from './logger.js';
+export type { Logger } from './logger.js';
 
 // JSON Schema utilities
 export { derefJsonSchema } from './json-schema-deref.js';
 
-// Test utilities
+// Test utilities (no SDK dependencies)
 export { MockChatProvider } from './mock-provider.js';
 export { EchoChatProvider, ScriptedEchoChatProvider } from './echo-provider.js';
+
+// NOTE: Concrete provider adapters are NOT exported from the root barrel
+// because their SDK type graphs (undici-types, etc.) pollute downstream
+// declaration bundles and break builds in packages that only need the generic
+// chat/tool types.
+//
+// Import provider adapters from subpaths instead:
+//   import { KimiChatProvider } from '@moonshot-ai/kosong/providers/kimi';
+//   import { OpenAILegacyChatProvider } from '@moonshot-ai/kosong/providers/openai-legacy';

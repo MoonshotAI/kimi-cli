@@ -32,6 +32,11 @@
       "@moonshot-ai/cli": ["./apps/kimi-cli/src/index.ts"]
     }
   },
-  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "coverage"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "apps/*/test/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "coverage", "packages/kosong/test/type-safety-negative.ts"]
 }

@@ -1,0 +1,6 @@
+{"role":"user","content":"hello from python"}
+{"role":"assistant","content":[{"type":"think","think":"Let me reason about the request.","encrypted":"sig-123"},{"type":"text","text":"I will inspect the media."},{"type":"image_url","image_url":{"url":"https://example.com/image.png","id":"img-1"}},{"type":"audio_url","audio_url":{"url":"https://example.com/audio.mp3","id":"aud-1"}},{"type":"video_url","video_url":{"url":"ms://video-1","id":"vid-1"}}],"tool_calls":[{"type":"function","id":"call-1","function":{"name":"describe_media","arguments":"{\"detail\":\"full\"}"}}]}
+{"role":"tool","content":"{\"label\":\"sunset\"}","tool_call_id":"call-1"}
+{"role":"assistant","content":"TS-friendly response","tool_calls":null}
+{"role":"user","content":[
+{"role":"user","content":[{"type":"image_url","image_url":{"id":"img-missing-url"}}]}

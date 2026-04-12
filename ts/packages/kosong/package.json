@@ -17,6 +17,76 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./providers/kimi": {
+      "import": {
+        "types": "./dist/providers/kimi.d.mts",
+        "default": "./dist/providers/kimi.mjs"
+      },
+      "require": {
+        "types": "./dist/providers/kimi.d.cts",
+        "default": "./dist/providers/kimi.cjs"
+      }
+    },
+    "./providers/openai-legacy": {
+      "import": {
+        "types": "./dist/providers/openai-legacy.d.mts",
+        "default": "./dist/providers/openai-legacy.mjs"
+      },
+      "require": {
+        "types": "./dist/providers/openai-legacy.d.cts",
+        "default": "./dist/providers/openai-legacy.cjs"
+      }
+    },
+    "./providers/openai-responses": {
+      "import": {
+        "types": "./dist/providers/openai-responses.d.mts",
+        "default": "./dist/providers/openai-responses.mjs"
+      },
+      "require": {
+        "types": "./dist/providers/openai-responses.d.cts",
+        "default": "./dist/providers/openai-responses.cjs"
+      }
+    },
+    "./providers/anthropic": {
+      "import": {
+        "types": "./dist/providers/anthropic.d.mts",
+        "default": "./dist/providers/anthropic.mjs"
+      },
+      "require": {
+        "types": "./dist/providers/anthropic.d.cts",
+        "default": "./dist/providers/anthropic.cjs"
+      }
+    },
+    "./providers/google-genai": {
+      "import": {
+        "types": "./dist/providers/google-genai.d.mts",
+        "default": "./dist/providers/google-genai.mjs"
+      },
+      "require": {
+        "types": "./dist/providers/google-genai.d.cts",
+        "default": "./dist/providers/google-genai.cjs"
+      }
+    },
+    "./providers/chaos": {
+      "import": {
+        "types": "./dist/providers/chaos.d.mts",
+        "default": "./dist/providers/chaos.mjs"
+      },
+      "require": {
+        "types": "./dist/providers/chaos.d.cts",
+        "default": "./dist/providers/chaos.cjs"
+      }
+    },
+    "./providers/common": {
+      "import": {
+        "types": "./dist/providers/openai-common.d.mts",
+        "default": "./dist/providers/openai-common.mjs"
+      },
+      "require": {
+        "types": "./dist/providers/openai-common.d.cts",
+        "default": "./dist/providers/openai-common.cjs"
+      }
     }
   },
   "publishConfig": {
@@ -25,10 +95,14 @@
   },
   "scripts": {
     "build": "tsdown",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "clean": "rm -rf dist"
   },
   "dependencies": {
-    "openai": "^6.34.0"
+    "@anthropic-ai/sdk": "^0.88.0",
+    "@google/genai": "^1.49.0",
+    "ajv": "^8.18.0",
+    "openai": "^6.34.0",
+    "zod": "^4.3.6",
+    "zod-to-json-schema": "^3.25.2"
   }
 }
