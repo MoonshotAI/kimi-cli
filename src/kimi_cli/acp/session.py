@@ -136,7 +136,7 @@ class ACPSession:
 
     @property
     def cli(self) -> KimiCLI:
-        """The Kimi Code CLI instance bound to this ACP session."""
+        """The KIMI-JANG CLI instance bound to this ACP session."""
         return self._cli
 
     async def prompt(self, prompt: list[ACPContentBlock]) -> acp.PromptResponse:

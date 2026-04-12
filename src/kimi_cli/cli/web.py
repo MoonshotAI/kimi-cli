@@ -1,10 +1,10 @@
-"""Web UI command for Kimi Code CLI."""
+"""Web UI command for KIMI-JANG CLI."""
 
 from typing import Annotated
 
 import typer
 
-cli = typer.Typer(help="Run Kimi Code CLI web interface.")
+cli = typer.Typer(help="Run KIMI-JANG CLI web interface.")
 
 
 @cli.callback(invoke_without_command=True)
@@ -56,7 +56,7 @@ def web(
         ),
     ] = True,
 ):
-    """Run Kimi Code CLI web interface."""
+    """Run KIMI-JANG CLI web interface."""
     from kimi_cli.web.app import run_web_server
 
     # Determine bind address

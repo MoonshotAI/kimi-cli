@@ -315,10 +315,10 @@ def kimi(
         ),
     ] = None,
 ):
-    """Kimi, your next CLI agent."""
+    """KIMI-JANG, your next CLI agent."""
     from kimi_cli.utils.proctitle import init_process_name
 
-    init_process_name("Kimi Code")
+    init_process_name("KIMI-JANG")
 
     if ctx.invoked_subcommand is not None:
         return  # skip rest if a subcommand is invoked
@@ -766,7 +766,7 @@ def logout(
 def term(
     ctx: typer.Context,
 ) -> None:
-    """Run Toad TUI backed by Kimi Code CLI ACP server."""
+    """Run Toad TUI backed by KIMI-JANG CLI ACP server."""
     from .toad import run_term
 
     run_term(ctx)
@@ -774,7 +774,7 @@ def term(
 
 @cli.command()
 def acp():
-    """Run Kimi Code CLI ACP server."""
+    """Run KIMI-JANG CLI ACP server."""
     from kimi_cli.acp import acp_main
 
     acp_main()
