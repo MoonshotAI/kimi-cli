@@ -72,7 +72,7 @@ class ACPServer:
         self._auth_methods = [
             acp.schema.AuthMethod(
                 id="login",
-                name="Login with Kimi account",
+                name="Login with KIMI-JANG account",
                 description=(
                     "Run `kimi login` command in the terminal, "
                     "then follow the instructions to finish login."
@@ -82,7 +82,7 @@ class ACPServer:
                     "terminal-auth": {
                         "command": command,
                         "args": terminal_args,
-                        "label": "Kimi Code Login",
+                        "label": "KIMI-JANG Code Login",
                         "env": {},
                         "type": "terminal",
                     }
@@ -108,7 +108,7 @@ class ACPServer:
         )
 
     def _check_auth(self) -> None:
-        """Check if Kimi Code authentication is complete. Raise AUTH_REQUIRED if not."""
+        """Check if KIMI-JANG Code authentication is complete. Raise AUTH_REQUIRED if not."""
         ref = OAuthRef(storage="file", key=KIMI_CODE_OAUTH_KEY)
         token = load_tokens(ref)
 
