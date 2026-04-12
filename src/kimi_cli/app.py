@@ -258,14 +258,23 @@ class KimiCLI:
             ),
             WelcomeInfoItem(name="Session", value=self._runtime.session.id),
         ]
-        if base_url := self._env_overrides.get("KIMI_BASE_URL"):
-            welcome_info.append(
-                WelcomeInfoItem(
-                    name="API URL",
-                    value=f"{base_url} (from KIMI_BASE_URL)",
-                    level=WelcomeInfoItem.Level.WARN,
+        # Display base URL override info for all providers
+        base_url_envs = {
+            "KIMI_BASE_URL": "KIMI",
+            "OPENAI_BASE_URL": "OpenAI",
+            "ANTHROPIC_BASE_URL": "Anthropic",
+            "GOOGLE_GENAI_BASE_URL": "Google GenAI",
+            "VERTEXAI_BASE_URL": "VertexAI",
+        }
+        for env_var, provider_name in base_url_envs.items():
+            if base_url := self._env_overrides.get(env_var):
+                welcome_info.append(
+                    WelcomeInfoItem(
+                        name="API URL",
+                        value=f"{base_url} (from {env_var}, {provider_name})",
+                        level=WelcomeInfoItem.Level.WARN,
+                    )
                 )
-            )
         if self._env_overrides.get("KIMI_API_KEY"):
             welcome_info.append(
                 WelcomeInfoItem(

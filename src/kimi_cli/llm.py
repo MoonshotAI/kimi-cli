@@ -86,8 +86,31 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
         case "openai_legacy" | "openai_responses":
             if base_url := os.getenv("OPENAI_BASE_URL"):
                 provider.base_url = base_url
+                applied["OPENAI_BASE_URL"] = base_url
             if api_key := os.getenv("OPENAI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
+                applied["OPENAI_API_KEY"] = "******"
+        case "anthropic":
+            if base_url := os.getenv("ANTHROPIC_BASE_URL"):
+                provider.base_url = base_url
+                applied["ANTHROPIC_BASE_URL"] = base_url
+            if api_key := os.getenv("ANTHROPIC_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+                applied["ANTHROPIC_API_KEY"] = "******"
+        case "google_genai" | "gemini":
+            if base_url := os.getenv("GOOGLE_GENAI_BASE_URL"):
+                provider.base_url = base_url
+                applied["GOOGLE_GENAI_BASE_URL"] = base_url
+            if api_key := os.getenv("GOOGLE_GENAI_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+                applied["GOOGLE_GENAI_API_KEY"] = "******"
+        case "vertexai":
+            if base_url := os.getenv("VERTEXAI_BASE_URL"):
+                provider.base_url = base_url
+                applied["VERTEXAI_BASE_URL"] = base_url
+            if api_key := os.getenv("VERTEXAI_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+                applied["VERTEXAI_API_KEY"] = "******"
         case _:
             pass
 
