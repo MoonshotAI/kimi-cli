@@ -178,7 +178,11 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.web",
             "kimi_cli.tools.web.fetch",
             "kimi_cli.tools.web.search",
+            "pywintypes",
             "setproctitle",
+            "win32api",
+            "win32con",
+            "win32job",
         ]
     )
 

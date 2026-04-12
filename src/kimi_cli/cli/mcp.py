@@ -325,7 +325,15 @@ def mcp_test(
     server = _get_mcp_server(name)
 
     async def _test() -> None:
+        import sys
+
         import fastmcp
+
+        # On Windows, resolve App Execution Aliases before connecting.
+        if sys.platform == "win32" and "command" in server:
+            from kimi_cli.utils.subprocess_env import resolve_windows_executable
+
+            server["command"] = resolve_windows_executable(server["command"], server.get("env"))
 
         typer.echo(f"Testing connection to '{name}'...")
         client = fastmcp.Client({"mcpServers": {name: server}})
@@ -344,6 +352,39 @@ def mcp_test(
                         typer.echo(f"    - {tool.name}: {desc}")
         except Exception as e:
             typer.echo(f"✗ Connection failed: {type(e).__name__}: {e}", err=True)
+            if sys.platform == "win32" and "command" in server:
+                _diagnose_windows_command(server["command"], name)
             raise typer.Exit(code=1) from None
 
     asyncio.run(_test())
+
+
+def _diagnose_windows_command(command: str, server_name: str) -> None:
+    """Print actionable diagnostics when an MCP server command fails on Windows."""
+    import os
+    import shutil
+
+    resolved = shutil.which(command)
+    hint = typer.echo
+    if resolved is None:
+        hint(f"  Hint: '{command}' was not found on PATH.", err=True)
+        install_hints: dict[str, str] = {
+            "node": "Install Node.js: https://nodejs.org/",
+            "npx": "Install Node.js: https://nodejs.org/",
+            "python": "Install Python: https://python.org/",
+            "python3": "Install Python: https://python.org/",
+            "uvx": "Install uv: https://docs.astral.sh/uv/",
+            "uv": "Install uv: https://docs.astral.sh/uv/",
+        }
+        if command in install_hints:
+            hint(f"  {install_hints[command]}", err=True)
+    elif os.path.getsize(resolved) == 0:
+        hint(
+            f"  Hint: '{command}' resolved to a Windows App Alias ({resolved}).",
+            err=True,
+        )
+        hint(
+            "  Fix: install a real executable, or disable the"
+            " alias in Settings > Apps > App execution aliases.",
+            err=True,
+        )

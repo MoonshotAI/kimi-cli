@@ -30,7 +30,7 @@ from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
 
 from kimi_cli import logger
-from kimi_cli.exception import InvalidToolError, MCPRuntimeError
+from kimi_cli.exception import InvalidToolError
 from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
@@ -383,12 +383,13 @@ class KimiToolset:
         """
         Load MCP tools from specified MCP configs.
 
-        Raises:
-            MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
-                connected.
+        Note:
+            Servers that fail to connect are logged as warnings and skipped.
+            The CLI continues with built-in tools and any successfully
+            connected MCP servers.
         """
         import fastmcp
-        from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
+        from fastmcp.mcp_config import MCPConfig, RemoteMCPServer, StdioMCPServer
 
         from kimi_cli.ui.shell.prompt import toast
 
@@ -475,11 +476,23 @@ class KimiToolset:
                     continue
 
             if failed_servers:
-                _toast_mcp("mcp connection failed")
-                raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
+                for name, error in failed_servers.items():
+                    logger.warning(
+                        "MCP server '{name}' failed to connect: {error}",
+                        name=name,
+                        error=error,
+                    )
+                if failed_servers and not any(
+                    info.status == "connected" for info in self._mcp_servers.values()
+                ):
+                    _toast_mcp("mcp connection failed")
+                elif failed_servers:
+                    _toast_mcp("some mcp servers failed")
+                # Continue with whatever servers connected successfully
+                # instead of crashing the entire CLI.
             if unauthorized_servers:
                 _toast_mcp("mcp authorization needed")
-            else:
+            elif not failed_servers:
                 _toast_mcp("mcp servers connected")
 
         for mcp_config in mcp_configs:
@@ -490,6 +503,23 @@ class KimiToolset:
             for server_name, server_config in mcp_config.mcpServers.items():
                 if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
                     oauth_servers[server_name] = server_config.url
+
+                # Resolve Windows App Execution Aliases (0-byte stubs in
+                # WindowsApps/) that cause WinError 5 with CREATE_NO_WINDOW.
+                if isinstance(server_config, StdioMCPServer):
+                    from kimi_cli.utils.subprocess_env import resolve_windows_executable
+
+                    resolved = resolve_windows_executable(
+                        server_config.command, server_config.env or None
+                    )
+                    if resolved != server_config.command:
+                        logger.debug(
+                            "Resolved MCP command for '{name}': {orig} -> {resolved}",
+                            name=server_name,
+                            orig=server_config.command,
+                            resolved=resolved,
+                        )
+                        server_config.command = resolved
 
                 client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
                 self._mcp_servers[server_name] = MCPServerInfo(

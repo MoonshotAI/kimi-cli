@@ -30,6 +30,10 @@ if onedir_mode:
     exe = EXE(
         pyz,
         a.scripts,
+        # Enable UTF-8 mode in the embedded interpreter (PEP 540).
+        # PyInstaller ignores the PYTHONUTF8 env var, so this is the only
+        # way to guarantee UTF-8 stdout/stderr on Windows before Python 3.15.
+        [("X utf8", None, "OPTION")],
         exclude_binaries=True,
         name="kimi-exe",
         debug=False,
@@ -59,6 +63,7 @@ else:
     exe = EXE(
         pyz,
         a.scripts,
+        [("X utf8", None, "OPTION")],
         a.binaries,
         a.datas,
         [],
