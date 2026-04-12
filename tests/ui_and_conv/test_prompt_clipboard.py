@@ -6,12 +6,14 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from PIL import Image
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyPressEvent
 
 if TYPE_CHECKING:
     from prompt_toolkit.buffer import Buffer
 
 from kimi_cli.llm import ModelCapability
+from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell import prompt as shell_prompt
 from kimi_cli.ui.shell.prompt import PromptMode
 from kimi_cli.utils.clipboard import ClipboardResult
@@ -32,6 +34,10 @@ class _DummyApp:
 
     def invalidate(self) -> None:
         self.invalidated = True
+
+
+def _make_key_event(buffer: Buffer) -> KeyPressEvent:
+    return cast(KeyPressEvent, SimpleNamespace(current_buffer=buffer, app=_DummyApp()))
 
 
 class _FakeAttachmentCache(shell_prompt.AttachmentCache):
@@ -57,6 +63,25 @@ def _make_prompt_session(
         path=Path("/tmp/abc123.png"),
     )
     ps._attachment_cache = _FakeAttachmentCache(cached)
+    return ps
+
+
+def _make_editing_prompt_session(
+    monkeypatch, *, mode: PromptMode = PromptMode.AGENT
+) -> shell_prompt.CustomPromptSession:
+    monkeypatch.setattr(shell_prompt, "is_clipboard_available", lambda: False)
+    ps = shell_prompt.CustomPromptSession(
+        status_provider=lambda: StatusSnapshot(context_usage=0.0),
+        model_capabilities=cast(set[ModelCapability], {"image_in"}),
+        model_name=None,
+        thinking=False,
+        agent_mode_slash_commands=[],
+        shell_mode_slash_commands=[],
+    )
+    ps._mode = mode
+    ps._apply_mode()
+    ps._session.default_buffer.start_completion = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    ps._session.default_buffer.validate_while_typing = Condition(lambda: False)
     return ps
 
 
@@ -391,3 +416,163 @@ async def test_question_delegate_expands_placeholders_on_submit() -> None:
     assert expand_calls[0] == "prefix [Pasted text #1 +19 lines]"
     assert len(submitted_texts) == 1
     assert full_text in submitted_texts[0]
+
+
+def test_boundary_placeholder_keys_select_expected_span(monkeypatch) -> None:
+    ps = _make_editing_prompt_session(monkeypatch)
+    buffer = ps._session.default_buffer
+
+    cases = [
+        (
+            ps._handle_placeholder_backspace,
+            "before [image:abc123.png,10x10] after",
+            len("before [image:abc123.png,10x10]"),
+            "[image:abc123.png,10x10]",
+            "before [image:abc123.png,10x10] after",
+            len("before "),
+        ),
+        (
+            ps._handle_placeholder_delete,
+            "before [image:abc123.png,10x10] after",
+            len("before "),
+            "[image:abc123.png,10x10]",
+            "before [image:abc123.png,10x10] after",
+            len("before [image:abc123.png,10x10]"),
+        ),
+        (
+            ps._handle_placeholder_left,
+            "before [image:abc123.png,10x10] after",
+            len("before [image:abc123.png,10x10]"),
+            "[image:abc123.png,10x10]",
+            "before [image:abc123.png,10x10] after",
+            len("before "),
+        ),
+        (
+            ps._handle_placeholder_right,
+            "before [image:abc123.png,10x10] after",
+            len("before "),
+            "[image:abc123.png,10x10]",
+            "before [image:abc123.png,10x10] after",
+            len("before [image:abc123.png,10x10]"),
+        ),
+        (
+            ps._handle_placeholder_backspace,
+            "before [Pasted text #1 +15 lines] after",
+            len("before [Pasted text #1 +15 lines]"),
+            "[Pasted text #1 +15 lines]",
+            "before [Pasted text #1 +15 lines] after",
+            len("before "),
+        ),
+        (
+            ps._handle_placeholder_backspace,
+            "[image:first.png,10x10] [image:second.png,20x20]",
+            len("[image:first.png,10x10] [image:second.png,20x20]"),
+            "[image:second.png,20x20]",
+            "[image:first.png,10x10] [image:second.png,20x20]",
+            len("[image:first.png,10x10] "),
+        ),
+    ]
+
+    for handler, text, cursor, target, expected_text, expected_cursor in cases:
+        buffer.exit_selection()
+        start = text.index(target)
+        end = start + len(target)
+        buffer.document = shell_prompt.Document(text=text, cursor_position=cursor)
+
+        handler(_make_key_event(buffer))
+
+        assert buffer.text == expected_text
+        assert buffer.document.selection_range() == (start, end)
+        assert buffer.cursor_position == expected_cursor
+
+
+def test_selected_placeholder_keys_delete_or_collapse(monkeypatch) -> None:
+    ps = _make_editing_prompt_session(monkeypatch)
+    token = "[image:abc123.png,10x10]"
+    buffer = ps._session.default_buffer
+
+    cases = [
+        (ps._handle_placeholder_backspace, "before [image:abc123.png,10x10] after", len("before ")),
+        (ps._handle_placeholder_delete, "before [image:abc123.png,10x10] after", len("before ")),
+        (
+            ps._handle_placeholder_left,
+            "before [image:abc123.png,10x10] after",
+            len("before "),
+        ),
+        (
+            ps._handle_placeholder_right,
+            "before [image:abc123.png,10x10] after",
+            len("before [image:abc123.png,10x10]"),
+        ),
+    ]
+
+    for handler, text, expected_cursor in cases:
+        buffer.exit_selection()
+        start = text.index(token)
+        end = start + len(token)
+        buffer.document = shell_prompt.Document(text=text, cursor_position=start)
+        buffer.start_selection()
+        buffer.cursor_position = end
+
+        handler(_make_key_event(buffer))
+
+        if handler in {ps._handle_placeholder_backspace, ps._handle_placeholder_delete}:
+            assert buffer.text == "before  after"
+        else:
+            assert buffer.text == text
+        assert buffer.cursor_position == expected_cursor
+        assert buffer.selection_state is None
+
+
+def test_placeholder_atomic_editing_filters_reject_non_atomic_contexts(monkeypatch) -> None:
+    ps = _make_editing_prompt_session(monkeypatch)
+    buffer = ps._session.default_buffer
+    token = "[image:abc123.png,10x10]"
+
+    buffer.document = shell_prompt.Document(text=token, cursor_position=token.index("abc123"))
+    assert ps._should_handle_placeholder_backspace() is False
+    assert ps._should_handle_placeholder_left() is False
+    assert ps._should_handle_placeholder_right() is False
+    assert ps._should_handle_placeholder_delete() is False
+
+    text = f"before {token} after"
+    start = text.index(token)
+    buffer.document = shell_prompt.Document(text=text, cursor_position=start)
+    buffer.start_selection()
+    buffer.cursor_position = start + len(token) - 1
+    assert ps._selected_placeholder_span(buffer) is None
+    assert ps._should_handle_placeholder_backspace() is False
+    assert ps._should_handle_placeholder_delete() is False
+    assert ps._should_handle_placeholder_left() is False
+    assert ps._should_handle_placeholder_right() is False
+
+    shell_ps = _make_editing_prompt_session(monkeypatch, mode=PromptMode.SHELL)
+    shell_buffer = shell_ps._session.default_buffer
+    shell_buffer.document = shell_prompt.Document(text=token, cursor_position=len(token))
+    assert shell_ps._should_handle_placeholder_backspace() is False
+    assert shell_ps._should_handle_placeholder_left() is False
+    assert shell_ps._should_handle_placeholder_right() is False
+    assert shell_ps._should_handle_placeholder_delete() is False
+
+
+def test_non_placeholder_selection_at_boundary_does_not_get_replaced(monkeypatch) -> None:
+    ps = _make_editing_prompt_session(monkeypatch)
+    token = "[image:abc123.png,10x10]"
+    text = f"prefix {token} suffix"
+    token_start = text.index(token)
+    non_placeholder_start = text.index("prefix")
+    non_placeholder_end = token_start
+    buffer = ps._session.default_buffer
+    buffer.document = shell_prompt.Document(text=text, cursor_position=non_placeholder_start)
+    buffer.start_selection()
+    buffer.cursor_position = non_placeholder_end
+
+    assert ps._selected_placeholder_span(buffer) is None
+    assert ps._should_handle_placeholder_backspace() is False
+    assert ps._should_handle_placeholder_left() is False
+
+    ps._handle_placeholder_backspace(_make_key_event(buffer))
+
+    assert buffer.text == text
+    assert buffer.document.selection_range() == (non_placeholder_start, non_placeholder_end)
+    assert buffer.cursor_position == non_placeholder_end
