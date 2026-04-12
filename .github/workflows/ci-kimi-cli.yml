@@ -159,7 +159,7 @@ jobs:
           import subprocess
 
           binary = os.path.abspath(os.environ["BINARY_PATH"])
-          result = subprocess.run([binary, "--help"], capture_output=True, text=True, check=True)
+          result = subprocess.run([binary, "--help"], capture_output=True, text=True, encoding="utf-8", check=True)
           if "Kimi" not in result.stdout:
               raise SystemExit("'Kimi' not found in --help output")
         env:
