@@ -10,8 +10,10 @@ def _prog_name() -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int | str | None:
+    from kimi_cli.utils.encoding import ensure_utf8
     from kimi_cli.utils.proxy import normalize_proxy_env
 
+    ensure_utf8()
     normalize_proxy_env()
 
     args = list(sys.argv[1:] if argv is None else argv)
