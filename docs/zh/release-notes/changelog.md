@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Core：将 MCP 工具输出截断至 10 万字符以防止上下文溢出——所有内容类型（文本和内联媒体如 image/audio/video data URL）共享同一字符预算；Playwright 等返回完整 DOM（500KB+）或大型 base64 截图的工具现在会被截断并附加提示信息；超出预算的媒体部分会被丢弃；不支持的 MCP 内容类型会被优雅处理而非导致当前轮次崩溃
+- CLI：修复 PyInstaller 二进制包缺少延迟加载 CLI 子命令的问题——`kimi info`、`kimi export`、`kimi mcp`、`kimi plugin`、`kimi vis` 和 `kimi web` 现在在独立二进制分发中可正常使用
+
 ## 1.31.0 (2026-04-10)
 
 - Core：限制 `list_directory` 输出为深度受限的树形结构，防止大目录导致 token 超限——将无上限的扁平列表替换为 2 级树（根级最多 30 条、每个子目录最多 10 条），按目录优先的字母序排列，截断处显示 `"... and N more"` 提示以引导模型进一步探索（修复 #1809）
