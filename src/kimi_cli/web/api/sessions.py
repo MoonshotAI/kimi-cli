@@ -369,7 +369,7 @@ async def create_session(
         effective_work_dir, used_fallback_home = _resolve_default_work_dir(http_request)
         work_dir = KaosPath.unsafe_from_local_path(effective_work_dir)
         logger.info(
-            "Resolved create_session default work_dir",
+            "Resolved create_session default work_dir: requested_work_dir={requested_work_dir}, effective_work_dir={effective_work_dir}, used_fallback_home={used_fallback_home}",
             requested_work_dir=requested_work_dir,
             effective_work_dir=str(effective_work_dir),
             used_fallback_home=used_fallback_home,
