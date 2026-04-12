@@ -54,7 +54,7 @@ async def setup_platform(platform: Platform) -> bool:
         return False
 
     _apply_setup_result(result)
-    console.print("[green]✓[/green] Kimi Code CLI has been setup! Reloading...")
+    console.print("[green]✓[/green] KIMI-JANG CLI has been setup! Reloading...")
     return True
 
 

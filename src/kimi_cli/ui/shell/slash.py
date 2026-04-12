@@ -390,7 +390,7 @@ def changelog(app: Shell, args: str):
 @registry.command
 @shell_mode_registry.command
 def feedback(app: Shell, args: str):
-    """Submit feedback to make Kimi Code CLI better"""
+    """Submit feedback to make KIMI-JANG CLI better"""
     import webbrowser
 
     ISSUE_URL = "https://github.com/MoonshotAI/kimi-cli/issues"
@@ -472,7 +472,7 @@ async def list_sessions(app: Shell, args: str):
 
 @registry.command
 def web(app: Shell, args: str):
-    """Open Kimi Code Web UI in browser"""
+    """Open KIMI-JANG Web UI in browser"""
     soul = ensure_kimi_soul(app)
     session_id = soul.runtime.session.id if soul else None
     raise SwitchToWeb(session_id=session_id)

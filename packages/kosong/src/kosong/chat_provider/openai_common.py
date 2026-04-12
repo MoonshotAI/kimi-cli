@@ -25,7 +25,29 @@ def create_openai_client(
     base_url: str | None,
     client_kwargs: Mapping[str, Any],
 ) -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=api_key, base_url=base_url, **dict(client_kwargs))
+    import httpx
+
+    # Create optimized HTTP client with Rust-like connection pooling
+    timeout = httpx.Timeout(60.0, connect=10.0)
+    limits = httpx.Limits(max_connections=100, max_keepalive_connections=20)
+    transport = httpx.AsyncHTTPTransport(
+        retries=3,
+        local_address=None,
+        uds=None,
+    )
+    http_client = httpx.AsyncClient(
+        timeout=timeout,
+        limits=limits,
+        transport=transport,
+        follow_redirects=False,
+    )
+
+    return AsyncOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        http_client=http_client,
+        **dict(client_kwargs),
+    )
 
 
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:

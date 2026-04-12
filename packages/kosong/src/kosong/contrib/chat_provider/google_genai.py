@@ -90,13 +90,28 @@ class GoogleGenAI:
         vertexai: bool | None = None,
         **client_kwargs: Any,
     ):
+        import httpx
+
         self._model = model
         self._stream = stream
         self._base_url = base_url
+        
+        # Create optimized HTTP client with Rust-like connection pooling
+        timeout = httpx.Timeout(60.0, connect=10.0)
+        limits = httpx.Limits(max_connections=100, max_keepalive_connections=20)
+        transport = httpx.AsyncHTTPTransport(retries=3)
+        http_client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=limits,
+            transport=transport,
+            follow_redirects=False,
+        )
+        
         self._client: genai_client.Client = genai.Client(
-            http_options=HttpOptions(base_url=base_url),
+            http_options=HttpOptions(base_url=base_url, timeout=timeout.total),
             api_key=api_key,
             vertexai=vertexai,
+            httpx_client=http_client,
             **client_kwargs,
         )
         self._generation_kwargs: GoogleGenAI.GenerationKwargs = {}

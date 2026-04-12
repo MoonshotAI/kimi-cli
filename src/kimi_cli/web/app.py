@@ -1,4 +1,4 @@
-"""Kimi Code CLI Web UI application."""
+"""KIMI-JANG CLI Web UI application."""
 
 import os
 import secrets
@@ -186,7 +186,7 @@ def create_app(
             await runner.stop()
 
     application = FastAPI(
-        title="Kimi Code CLI Web Interface",
+        title="KIMI-JANG CLI Web Interface",
         docs_url=None,
         lifespan=lifespan,
         separate_input_output_schemas=False,

@@ -58,7 +58,7 @@ def _kimi_code_base_url() -> str:
 PLATFORMS: list[Platform] = [
     Platform(
         id=KIMI_CODE_PLATFORM_ID,
-        name="Kimi Code",
+        name="KIMI-JANG",
         base_url=_kimi_code_base_url(),
         search_url=f"{_kimi_code_base_url()}/search",
         fetch_url=f"{_kimi_code_base_url()}/fetch",
