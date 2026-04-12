@@ -399,6 +399,75 @@ def feedback(app: Shell, args: str):
     console.print(f"Please submit feedback at [underline]{ISSUE_URL}[/underline].")
 
 
+@registry.command
+@shell_mode_registry.command
+async def onboarding(app: Shell, args: str):
+    """Connect with Telegram to chat directly with Kimi (BETA)"""
+    from rich.console import Group, RenderableType
+    from rich.text import Text
+
+    from kimi_cli.utils.rich.columns import BulletColumns
+
+    renderables: list[RenderableType] = []
+    
+    title = Text.from_markup("[bold cyan]Telegram Onboarding (BETA)[/bold cyan]")
+    renderables.append(title)
+    renderables.append(Text(""))
+    renderables.append(
+        Text.from_markup(
+            "[yellow]⚠️  This feature is in BETA. Use with caution.[/yellow]"
+        )
+    )
+    renderables.append(Text(""))
+    renderables.append(
+        Text.from_markup(
+            "Connect your KIMI-JANG CLI with Telegram to chat directly with Kimi!\n\n"
+            "This allows you to continue conversations on your mobile device.\n\n"
+            "[bold]Steps to connect:[/bold]\n"
+            "1. Open Telegram and search for @KimiBot\n"
+            "2. Start a chat with the bot\n"
+            "3. Send /link command to get your linking code\n"
+            "4. Enter the linking code below when prompted\n\n"
+            "[bold gray50]Note: Requires a valid Telegram account and active internet connection.[/bold gray50]"
+        )
+    )
+    
+    renderables.append(BulletColumns(Group(*renderables)))
+    
+    with console.pager(styles=True):
+        console.print(Group(*renderables))
+    
+    # Prompt for linking code
+    try:
+        from prompt_toolkit import PromptSession
+        
+        session = PromptSession()
+        console.print("\n[bold]Enter your Telegram linking code (or 'q' to cancel):[/bold]")
+        code = await session.prompt_async("> ")
+        
+        if code.strip().lower() == 'q':
+            console.print("[yellow]Onboarding cancelled.[/yellow]")
+            return
+        
+        if not code.strip():
+            console.print("[red]No code provided.[/red]")
+            return
+        
+        # TODO: Implement actual Telegram linking logic here
+        # This would involve:
+        # 1. Validating the code with Telegram API
+        # 2. Storing the Telegram chat ID in config
+        # 3. Setting up webhook or polling for messages
+        
+        console.print(
+            "[yellow]Telegram integration is not yet fully implemented.[/yellow]\n"
+            "[gray50]This is a placeholder for future functionality.[/gray50]"
+        )
+        
+    except (EOFError, KeyboardInterrupt):
+        console.print("\n[yellow]Onboarding cancelled.[/yellow]")
+
+
 @registry.command(aliases=["reset"])
 async def clear(app: Shell, args: str):
     """Clear the context"""
