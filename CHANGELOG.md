@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Reduce idle CPU and typing latency for heavy background-task users — `NotificationManager.find_by_dedupe_key` now uses an in-memory `dedupe_key → notification_id` index (lazy-built, maintained by `publish()`), turning publish from an O(N) directory scan into an O(1) lookup; previously, sessions that spawned many `Agent(run_in_background=True)` or `Shell(run_in_background=True)` tool calls over a long session would see the main asyncio event loop saturate as each 1 Hz reconcile poll rescanned every notification, causing visible typing lag and streaming stutter while the process sat at ~100% CPU with the rest of the machine idle
 - Core: Truncate MCP tool output to 100K characters to prevent context overflow — all content types (text and inline media such as image/audio/video data URLs) share a single character budget; tools like Playwright that return full DOMs (500KB+) or large base64 screenshots are now capped with a truncation notice; oversized media parts are dropped; unsupported MCP content types are gracefully handled instead of crashing the turn
 - CLI: Fix PyInstaller binary missing lazy CLI subcommands — `kimi info`, `kimi export`, `kimi mcp`, `kimi plugin`, `kimi vis`, and `kimi web` now work correctly in the standalone binary distribution
 

@@ -291,3 +291,109 @@ def test_recover_skips_notification_with_structurally_invalid_event(runtime) -> 
 
     views = manager.store.list_views()
     assert [view.event.id for view in views] == [event.event.id]
+
+
+def _make_dedupe_event(manager, source_id: str, dedupe_key: str) -> NotificationEvent:
+    return NotificationEvent(
+        id=manager.new_id(),
+        category="task",
+        type="task.completed",
+        source_kind="background_task",
+        source_id=source_id,
+        title=f"Task {source_id} completed",
+        body="done",
+        dedupe_key=dedupe_key,
+    )
+
+
+def test_find_by_dedupe_key_builds_index_lazily(runtime, monkeypatch) -> None:
+    manager = runtime.notifications
+    manager.publish(_make_dedupe_event(manager, "b0000001", "bg:b0000001:completed"))
+    manager.publish(_make_dedupe_event(manager, "b0000002", "bg:b0000002:completed"))
+
+    # Drop the index so the next lookup rebuilds from disk, then count how
+    # often the store is scanned.
+    manager._dedupe_index = None
+    calls: list[None] = []
+    original = manager._store.list_views
+
+    def counting_list_views() -> list:
+        calls.append(None)
+        return original()
+
+    monkeypatch.setattr(manager._store, "list_views", counting_list_views)
+
+    first = manager.find_by_dedupe_key("bg:b0000001:completed")
+    second = manager.find_by_dedupe_key("bg:b0000002:completed")
+
+    assert first is not None and first.event.source_id == "b0000001"
+    assert second is not None and second.event.source_id == "b0000002"
+    # The store should be scanned exactly once — on the first lookup.
+    assert len(calls) == 1
+
+
+def test_publish_updates_dedupe_index_without_rescan(runtime, monkeypatch) -> None:
+    manager = runtime.notifications
+    # Prime the index with an empty store.
+    manager._ensure_dedupe_index()
+
+    calls: list[None] = []
+    original = manager._store.list_views
+
+    def counting_list_views() -> list:
+        calls.append(None)
+        return original()
+
+    monkeypatch.setattr(manager._store, "list_views", counting_list_views)
+
+    manager.publish(_make_dedupe_event(manager, "b0000003", "bg:b0000003:completed"))
+    # Second publish with the same dedupe_key must return the existing view
+    # without scanning the store.
+    duplicate = _make_dedupe_event(manager, "b0000003", "bg:b0000003:completed")
+    duplicate = duplicate.model_copy(update={"id": manager.new_id()})
+    existing = manager.publish(duplicate)
+
+    assert existing.event.dedupe_key == "bg:b0000003:completed"
+    assert existing.event.source_id == "b0000003"
+    # publish() must not trigger a store rescan once the index is live.
+    assert calls == []
+
+
+def test_find_by_dedupe_key_recovers_from_stale_entry(runtime) -> None:
+    import shutil
+
+    manager = runtime.notifications
+    published = manager.publish(_make_dedupe_event(manager, "b0000004", "bg:b0000004:completed"))
+
+    # Force-delete the notification directory out from under the manager —
+    # simulating a missing-file race.
+    shutil.rmtree(manager.store.notification_dir(published.event.id))
+
+    # The indexed lookup must return None and invalidate the cache so a
+    # subsequent publish of the same dedupe_key can create a fresh entry.
+    first = manager.find_by_dedupe_key("bg:b0000004:completed")
+    assert first is None
+    assert manager._dedupe_index is None
+
+    recreated = manager.publish(_make_dedupe_event(manager, "b0000004", "bg:b0000004:completed"))
+    assert recreated.event.id != published.event.id
+    assert manager.find_by_dedupe_key("bg:b0000004:completed") is not None
+
+
+def test_publish_without_dedupe_key_does_not_touch_index(runtime) -> None:
+    manager = runtime.notifications
+    manager._ensure_dedupe_index()
+    snapshot = dict(manager._dedupe_index or {})
+
+    event = NotificationEvent(
+        id=manager.new_id(),
+        category="system",
+        type="system.info",
+        source_kind="test",
+        source_id="no-dedupe",
+        title="x",
+        body="y",
+    )
+    manager.publish(event)
+
+    assert manager._dedupe_index == snapshot

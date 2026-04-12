@@ -5,6 +5,8 @@ import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from kimi_cli.config import NotificationConfig
 from kimi_cli.utils.logging import logger
 
@@ -21,6 +23,13 @@ class NotificationManager:
     def __init__(self, root: Path, config: NotificationConfig) -> None:
         self._config = config
         self._store = NotificationStore(root)
+        # dedupe_key -> notification_id index for O(1) find_by_dedupe_key.
+        # None means "not yet built"; built lazily on first query by scanning
+        # the store once, then maintained incrementally by publish().
+        # Invariant: NotificationEvent.dedupe_key is set at create_notification
+        # time and never mutates (write_event is unused in the tree), so no
+        # invalidation is required for in-place updates.
+        self._dedupe_index: dict[str, str] | None = None
 
     @property
     def store(self) -> NotificationStore:
@@ -32,11 +41,34 @@ class NotificationManager:
     def _initial_delivery(self, event: NotificationEvent) -> NotificationDelivery:
         return NotificationDelivery(sinks={sink: NotificationSinkState() for sink in event.targets})
 
-    def find_by_dedupe_key(self, dedupe_key: str) -> NotificationView | None:
+    def _ensure_dedupe_index(self) -> dict[str, str]:
+        if self._dedupe_index is not None:
+            return self._dedupe_index
+        index: dict[str, str] = {}
         for view in self._store.list_views():
-            if view.event.dedupe_key == dedupe_key:
-                return view
-        return None
+            if view.event.dedupe_key:
+                index[view.event.dedupe_key] = view.event.id
+        self._dedupe_index = index
+        return index
+
+    def find_by_dedupe_key(self, dedupe_key: str) -> NotificationView | None:
+        index = self._ensure_dedupe_index()
+        notification_id = index.get(dedupe_key)
+        if notification_id is None:
+            return None
+        try:
+            return self._store.merged_view(notification_id)
+        except (FileNotFoundError, ValueError, ValidationError) as exc:
+            # Indexed file vanished or cannot be parsed. Drop the cache so the
+            # next lookup rebuilds from disk and surface the anomaly.
+            logger.warning(
+                "Stale dedupe index entry dropped: dedupe_key={key} id={nid} error={err}",
+                key=dedupe_key,
+                nid=notification_id,
+                err=exc,
+            )
+            self._dedupe_index = None
+            return None
 
     def publish(self, event: NotificationEvent) -> NotificationView:
         if event.dedupe_key:
@@ -45,6 +77,8 @@ class NotificationManager:
                 return existing
         delivery = self._initial_delivery(event)
         self._store.create_notification(event, delivery)
+        if event.dedupe_key and self._dedupe_index is not None:
+            self._dedupe_index[event.dedupe_key] = event.id
         return NotificationView(event=event, delivery=delivery)
 
     def recover(self) -> None:
