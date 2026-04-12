@@ -108,6 +108,81 @@ Overrides the provider's `api_key` field in the configuration file.
 export OPENAI_API_KEY="sk-xxx"
 ```
 
+## Anthropic environment variables
+
+The following environment variables take effect when using `anthropic` type providers.
+
+| Environment Variable | Description |
+| --- | --- |
+| `ANTHROPIC_BASE_URL` | API base URL |
+| `ANTHROPIC_API_KEY` | API key |
+
+### `ANTHROPIC_BASE_URL`
+
+Overrides the provider's `base_url` field in the configuration file.
+
+```sh
+export ANTHROPIC_BASE_URL="https://api.anthropic.com/v1"
+```
+
+### `ANTHROPIC_API_KEY`
+
+Overrides the provider's `api_key` field in the configuration file.
+
+```sh
+export ANTHROPIC_API_KEY="sk-ant-xxx"
+```
+
+## Google GenAI environment variables
+
+The following environment variables take effect when using `google_genai` or `gemini` type providers.
+
+| Environment Variable | Description |
+| --- | --- |
+| `GOOGLE_GENAI_BASE_URL` | API base URL |
+| `GOOGLE_GENAI_API_KEY` | API key |
+
+### `GOOGLE_GENAI_BASE_URL`
+
+Overrides the provider's `base_url` field in the configuration file.
+
+```sh
+export GOOGLE_GENAI_BASE_URL="https://generativelanguage.googleapis.com/v1"
+```
+
+### `GOOGLE_GENAI_API_KEY`
+
+Overrides the provider's `api_key` field in the configuration file.
+
+```sh
+export GOOGLE_GENAI_API_KEY="xxx"
+```
+
+## VertexAI environment variables
+
+The following environment variables take effect when using `vertexai` type providers.
+
+| Environment Variable | Description |
+| --- | --- |
+| `VERTEXAI_BASE_URL` | API base URL |
+| `VERTEXAI_API_KEY` | API key |
+
+### `VERTEXAI_BASE_URL`
+
+Overrides the provider's `base_url` field in the configuration file.
+
+```sh
+export VERTEXAI_BASE_URL="https://us-central1-aiplatform.googleapis.com/v1"
+```
+
+### `VERTEXAI_API_KEY`
+
+Overrides the provider's `api_key` field in the configuration file.
+
+```sh
+export VERTEXAI_API_KEY="xxx"
+```
+
 ## Other environment variables
 
 | Environment Variable | Description |
