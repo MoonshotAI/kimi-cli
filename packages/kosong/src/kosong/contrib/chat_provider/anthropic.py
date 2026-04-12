@@ -131,11 +131,30 @@ class Anthropic:
         metadata: MetadataParam | None = None,
         **client_kwargs: Any,
     ):
+        import httpx
+
         self._model = model
         self._stream = stream
-        self._client = AsyncAnthropic(api_key=api_key, base_url=base_url, **client_kwargs)
-        self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
         self._metadata = metadata
+        self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
+        
+        # Create optimized HTTP client with Rust-like connection pooling
+        timeout = httpx.Timeout(60.0, connect=10.0)
+        limits = httpx.Limits(max_connections=100, max_keepalive_connections=20)
+        transport = httpx.AsyncHTTPTransport(retries=3)
+        http_client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=limits,
+            transport=transport,
+            follow_redirects=False,
+        )
+        
+        self._client = AsyncAnthropic(
+            api_key=api_key,
+            base_url=base_url,
+            http_client=http_client,
+            **client_kwargs,
+        )
         self._generation_kwargs: Anthropic.GenerationKwargs = {
             "max_tokens": default_max_tokens,
             "beta_features": ["interleaved-thinking-2025-05-14"],

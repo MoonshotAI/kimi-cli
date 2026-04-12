@@ -1,4 +1,4 @@
-"""Kimi Code CLI Web Interface."""
+"""KIMI-JANG CLI Web Interface."""
 
 from kimi_cli.web.app import create_app, run_web_server
 
