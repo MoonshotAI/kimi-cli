@@ -1,44 +1,69 @@
-# Python-generated files
+```
+# Compiled and build artifacts
+*.pyc
 __pycache__/
-*.py[oc]
-build/
+*.o
+*.obj
 dist/
-wheels/
-*.egg-info
+build/
+*.so
+*.dll
+*.exe
+*.class
+*.out
+.a
+*.dylib
 
-# Virtual environments
-.venv
-
-# Project files
-.vscode
+# Dependencies
+.venv/
+venv/
 .env
 .env.local
-/tests_local
-uv.toml
-.idea/*
-
-# Build dependencies
-src/kimi_cli/deps/bin
-src/kimi_cli/deps/tmp
-
-# Web build artifacts
-src/kimi_cli/web/static/assets/
-
-# Generated reports
-tests_ai/report.json
-
-# nix build result
-result
-result-*
-
-# macOS files
-.DS_Store
-
-# Rust files
-target/
-
+.env.*
 node_modules/
-static/
-.memo/
-.entire
-.claude
+target/
+.gradle/
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Editors
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+```
