@@ -39,7 +39,7 @@ Raises:
 registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 shell_mode_registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 
-_DELETE_USAGE = "[yellow]Usage: /delete [session_id][/yellow]"
+_DELETE_USAGE = "[yellow]Usage: /delete \\[session_id][/yellow]"
 _DELETE_CROSS_WORK_DIR = (
     "[yellow]Cannot delete sessions from a different working directory in this command. "
     "Switch to that project and run /delete there.[/yellow]"

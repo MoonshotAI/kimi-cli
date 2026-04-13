@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import pytest
 from kaos.path import KaosPath
 from kosong.message import Message
+from rich.text import Text
 
 from kimi_cli.cli import Reload
 from kimi_cli.metadata import load_metadata, save_metadata
@@ -296,6 +297,10 @@ class TestDeleteCommandRegistration:
         from kimi_cli.soul.slash import registry as soul_slash_registry
 
         assert soul_slash_registry.find_command("delete") is None
+
+    def test_usage_message_renders_literal_session_id_placeholder(self) -> None:
+        plain = Text.from_markup(shell_slash._DELETE_USAGE).plain
+        assert plain == "Usage: /delete [session_id]"
 
 
 async def _make_shell_with_session(work_dir: KaosPath) -> tuple[Mock, Session]:
