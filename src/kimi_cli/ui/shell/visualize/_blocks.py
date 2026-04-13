@@ -46,16 +46,27 @@ from kimi_cli.wire.types import (
 )
 
 _ELLIPSIS = "..."
-_THINKING_PREVIEW_LINES = 6
-_PENDING_PREVIEW_LINES = 8
 _SELF_CLOSING_BLOCKS = frozenset(("fence", "code_block", "hr", "html_block"))
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
 
+# Animated bullet frames shown after the "Thinking" label. Dots grow in
+# from the left, reach three, then drain out from the left — a continuous
+# rightward flow that loops every ``_BULLET_FRAME_INTERVAL * len(frames)``.
+_BULLET_FRAMES = (".  ", ".. ", "...", " ..", "  .", "   ")
+_BULLET_FRAME_INTERVAL = 0.13  # seconds per frame
 
-def _truncate_to_display_width(line: str, max_width: int) -> str:
+
+def _bullet_frame_for(elapsed: float) -> str:
+    """Select the current bullet frame from wall-clock elapsed time."""
+    idx = int(elapsed / _BULLET_FRAME_INTERVAL) % len(_BULLET_FRAMES)
+    return _BULLET_FRAMES[idx]
+
+
+def _truncate_to_display_width(line: str, max_width: int) -> str:  # pyright: ignore[reportUnusedFunction]
     """Truncate *line* so its terminal display width fits within *max_width*.
 
     Uses ``rich.cells.cell_len`` for CJK-aware column width measurement.
+    Kept for backwards-compatible re-export from ``visualize/__init__.py``.
     """
     from rich.cells import cell_len
 
@@ -152,8 +163,11 @@ def _find_committed_boundary(text: str) -> int | None:
     return offset
 
 
-def _tail_lines(text: str, n: int) -> str:
-    """Extract the last *n* lines from *text* via reverse scanning (O(n))."""
+def _tail_lines(text: str, n: int) -> str:  # pyright: ignore[reportUnusedFunction]
+    """Extract the last *n* lines from *text* via reverse scanning (O(n)).
+
+    Kept for backwards-compatible re-export from ``visualize/__init__.py``.
+    """
     pos = len(text)
     for _ in range(n):
         pos = text.rfind("\n", 0, pos)
@@ -170,8 +184,12 @@ class _ContentBlock:
     giving users real-time streaming output.  Only the unconfirmed tail remains
     in the transient Rich Live area.
 
-    For **thinking** (``is_think=True``), content stays in the Live area as a
-    scrolling preview until the block is finalized.
+    For **thinking** (``is_think=True``), the raw reasoning text is kept only
+    for token accounting and never rendered.  The Live area shows a compact
+    ``Thinking`` label with an animated bullet sequence, followed by elapsed
+    time, token count, and a live tokens/second pulse.  When the block ends,
+    a compact one-liner ``Thought for Xs · N tokens`` is committed to history
+    in grey italics.
     """
 
     def __init__(self, is_think: bool):
@@ -195,35 +213,36 @@ class _ContentBlock:
             self._flush_committed()
 
     def compose(self) -> RenderableType:
-        """Render the transient Live area content."""
-        pending = self._pending_text()
+        """Render the transient Live area content.
 
-        # Thinking: always show spinner + preview.
+        Thinking mode shows the italic ``Thinking`` label with animated
+        bullets; composing mode shows the dots spinner over the
+        uncommitted markdown tail.
+        """
         if self.is_think:
-            spinner = self._compose_spinner()
-            if not pending:
-                return spinner
-            preview = self._build_preview(pending)
-            return Group(spinner, Text(preview, style="grey50 italic"))
-
-        # Composing: always show spinner with elapsed time and token count.
-        # Committed blocks are already printed permanently above.
+            return self._compose_thinking()
         return self._compose_spinner()
 
     def compose_final(self) -> RenderableType:
         """Render the remaining uncommitted content when the block ends."""
+        if self.is_think:
+            elapsed_str = format_elapsed(time.monotonic() - self._start_time)
+            count_str = format_token_count(int(self._token_count))
+            return Text(
+                f"Thought for {elapsed_str} · {count_str} tokens",
+                style="grey50 italic",
+            )
         remaining = self._pending_text()
         if not remaining:
             return Text("")
-        if self.is_think:
-            return BulletColumns(
-                Markdown(remaining, style="grey50 italic"),
-                bullet_style="grey50",
-            )
         return self._wrap_bullet(Markdown(remaining))
 
     def has_pending(self) -> bool:
         """Whether there is uncommitted content to flush."""
+        # Thinking blocks always commit a final trace line if any content
+        # was received, so gate on raw_text rather than uncommitted length.
+        if self.is_think:
+            return bool(self.raw_text)
         return bool(self._pending_text())
 
     # -- Private -------------------------------------------------------------
@@ -252,23 +271,39 @@ class _ContentBlock:
 
     def _compose_spinner(self) -> Spinner:
         elapsed = time.monotonic() - self._start_time
-        label = "Thinking..." if self.is_think else "Composing..."
         elapsed_str = format_elapsed(elapsed)
         count_str = f"{format_token_count(int(self._token_count))} tokens"
 
         self._spinner.text = Text.assemble(
-            (label, ""),
+            ("Composing...", ""),
             (f" {elapsed_str}", "grey50"),
             (f" · {count_str}", "grey50"),
         )
         return self._spinner
 
-    def _build_preview(self, text: str) -> str:
-        max_lines = _THINKING_PREVIEW_LINES if self.is_think else _PENDING_PREVIEW_LINES
-        max_width = console.width - 2 if console.width else 78
-        tail_text = _tail_lines(text, max_lines)
-        lines = tail_text.split("\n")
-        return "\n".join(_truncate_to_display_width(line, max_width) for line in lines)
+    def _compose_thinking(self) -> Text:
+        """Render the thinking line: italic Thinking + bullets + metadata."""
+        elapsed = time.monotonic() - self._start_time
+        elapsed_str = format_elapsed(elapsed)
+        tokens_int = int(self._token_count)
+        count_str = f"{format_token_count(tokens_int)} tokens"
+        frame = _bullet_frame_for(elapsed)
+
+        parts: list[tuple[str, str | Style]] = [
+            ("Thinking", "italic"),
+            (f" {frame}", "cyan"),
+            (f"  {elapsed_str}", "grey50"),
+            (f" · {count_str}", "grey50"),
+        ]
+
+        # Live tok/s pulse — a real heartbeat signal that confirms the model
+        # is still streaming even when the raw content is hidden.
+        if elapsed > 0.5 and tokens_int > 0:
+            rate = int(tokens_int / elapsed)
+            if rate > 0:
+                parts.append((f" · {rate} tok/s", "grey50"))
+
+        return Text.assemble(*parts)
 
 
 class _ToolCallBlock:
