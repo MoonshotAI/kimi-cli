@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Unify managed model display as "Kimi for Code" and drop hardcoded `kimi-k2.5` version references from the welcome screen and `/login` tip
+
 ## 1.32.0 (2026-04-13)
 
 - Core: Truncate MCP tool output to 100K characters to prevent context overflow — all content types (text and inline media such as image/audio/video data URLs) share a single character budget; tools like Playwright that return full DOMs (500KB+) or large base64 screenshots are now capped with a truncation notice; oversized media parts are dropped; unsupported MCP content types are gracefully handled instead of crashing the turn
