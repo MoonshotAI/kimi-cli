@@ -683,6 +683,8 @@ class KimiSoul:
                 wire_send(MCPLoadingBegin())
             try:
                 await self.wait_for_background_mcp_loading()
+            except Exception as e:
+                logger.warning("MCP loading failed, continuing without MCP tools: %s", e)
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
