@@ -641,7 +641,9 @@ async def _delete_session_by_id(app: Shell, target_session_id: str) -> None:
         console.print(_DELETE_CURRENT_FORBIDDEN)
         return
 
-    if not _confirm_delete(target.id, target.work_dir):
+    # Confirm.ask() is synchronous; run it in a worker thread to avoid
+    # blocking the event loop while waiting for user input.
+    if not await asyncio.to_thread(_confirm_delete, target.id, target.work_dir):
         console.print(_DELETE_CANCELLED)
         return
 
