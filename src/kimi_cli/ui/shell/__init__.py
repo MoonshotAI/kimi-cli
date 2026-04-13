@@ -200,6 +200,7 @@ class Shell:
             **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
         }
         """Shell-level slash commands + soul-level slash commands. Name to command mapping."""
+        self._pending_running_slash_command: SlashCommandCall | None = None
 
     @property
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
@@ -769,6 +770,10 @@ class Shell:
                 if isinstance(view, _PromptLiveView):
                     captured_view = view
 
+            def _on_running_shell_slash(cmd_call: SlashCommandCall) -> None:
+                self._pending_running_slash_command = cmd_call
+                cancel_event.set()
+
             await run_soul(
                 self.soul,
                 user_input,
@@ -788,6 +793,7 @@ class Shell:
                     unbind_running_input=self._unbind_running_input,
                     on_view_ready=_on_view_ready,
                     on_view_closed=self._clear_active_view,
+                    on_running_shell_slash=_on_running_shell_slash,
                 ),
                 cancel_event,
                 runtime.session.wire_file if runtime else None,
@@ -839,6 +845,7 @@ class Shell:
                         unbind_running_input=self._unbind_running_input,
                         on_view_ready=_on_view_ready,
                         on_view_closed=self._clear_active_view,
+                        on_running_shell_slash=_on_running_shell_slash,
                     ),
                     cancel_event,
                     runtime.session.wire_file if runtime else None,
@@ -860,6 +867,7 @@ class Shell:
                 for msg in pending:
                     console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
                 pending.clear()
+            await self._maybe_execute_pending_running_slash_command()
             return True
         except LLMNotSet:
             logger.exception("LLM not set:")
@@ -939,7 +947,31 @@ class Shell:
                 console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
             self._maybe_present_pending_approvals()
             remove_sigint()
+
+        if await self._maybe_execute_pending_running_slash_command():
+            return True
         return False
+
+    async def _maybe_execute_pending_running_slash_command(self) -> bool:
+        """If a shell-level slash command was submitted during streaming, execute it now."""
+        if self._pending_running_slash_command is None:
+            return False
+        cmd_call = self._pending_running_slash_command
+        self._pending_running_slash_command = None
+        from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
+
+        try:
+            await self._run_slash_command(cmd_call)
+        except (Reload, SwitchToWeb, SwitchToVis):
+            raise
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            logger.debug("Pending slash command interrupted by KeyboardInterrupt")
+            console.print("[red]Interrupted by user[/red]")
+        except Exception as e:
+            logger.exception("Unknown error:")
+            console.print(f"[red]Unknown error: {e}[/red]")
+            raise
+        return True
 
     @staticmethod
     def _should_defer_background_auto_trigger(

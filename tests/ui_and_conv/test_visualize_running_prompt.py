@@ -35,7 +35,7 @@ async def test_visualize_uses_prompt_live_view_when_prompt_session_and_steer_are
             called.append(("detach", delegate, None))
 
     class _DummyPromptLiveView:
-        def __init__(self, initial_status, *, prompt_session, steer, btw_runner=None, cancel_event):
+        def __init__(self, initial_status, *, prompt_session, steer, btw_runner=None, cancel_event, on_running_shell_slash=None):
             called.append(("init", initial_status, cancel_event))
             assert prompt_session is not None
             assert steer is not None
@@ -1103,3 +1103,142 @@ async def test_approval_request_feedback_available_before_wait():
 
     # feedback is available synchronously, no need to await
     assert request.feedback == "try rm -i instead"
+
+
+def test_handle_local_input_calls_on_running_shell_slash_for_shell_command(monkeypatch) -> None:
+    """During streaming, shell-level slash commands should trigger on_running_shell_slash."""
+    from unittest.mock import MagicMock
+
+    called: list[object] = []
+
+    def fake_parse(text: str):
+        from kimi_cli.utils.slashcmd import SlashCommandCall
+        return SlashCommandCall(name="task", args="", raw_input="/task")
+
+    monkeypatch.setattr(_interactive_mod, "parse_slash_command_call", fake_parse)
+    monkeypatch.setattr(
+        "kimi_cli.ui.shell.slash.registry",
+        type("_Reg", (), {"find_command": lambda self, name: object() if name == "task" else None})(),
+    )
+
+    view = object.__new__(_PromptLiveView)
+    view._turn_ended = False
+    view._queued_messages = []
+    view._prompt_session = MagicMock()
+    view._on_running_shell_slash = lambda cmd: called.append(cmd)
+
+    view.handle_local_input(
+        UserInput(
+            mode=PromptMode.AGENT,
+            command="/task",
+            resolved_command="/task",
+            content=[TextPart(text="/task")],
+        )
+    )
+
+    assert len(called) == 1
+    assert called[0].name == "task"
+    assert view._queued_messages == []
+
+
+def test_handle_immediate_steer_calls_on_running_shell_slash_for_shell_command(monkeypatch) -> None:
+    """Ctrl+S on a shell-level slash command during streaming should trigger on_running_shell_slash."""
+    from unittest.mock import MagicMock
+
+    called: list[object] = []
+
+    def fake_parse(text: str):
+        from kimi_cli.utils.slashcmd import SlashCommandCall
+        return SlashCommandCall(name="task", args="", raw_input="/task")
+
+    monkeypatch.setattr(_interactive_mod, "parse_slash_command_call", fake_parse)
+    monkeypatch.setattr(
+        "kimi_cli.ui.shell.slash.registry",
+        type("_Reg", (), {"find_command": lambda self, name: object() if name == "task" else None})(),
+    )
+
+    view = object.__new__(_PromptLiveView)
+    view._turn_ended = False
+    view._queued_messages = []
+    view._prompt_session = MagicMock()
+    view._steer = lambda _content: None
+    view._pending_local_steer_count = 0
+    view._flush_prompt_refresh = lambda: None
+    view._on_running_shell_slash = lambda cmd: called.append(cmd)
+
+    view.handle_immediate_steer(
+        UserInput(
+            mode=PromptMode.AGENT,
+            command="/task",
+            resolved_command="/task",
+            content=[TextPart(text="/task")],
+        )
+    )
+
+    assert len(called) == 1
+    assert called[0].name == "task"
+
+
+def test_handle_local_input_queues_soul_level_slash_command(monkeypatch) -> None:
+    """Soul-level slash commands (not in shell registry) should still be queued."""
+    from unittest.mock import MagicMock
+
+    def fake_parse(text: str):
+        from kimi_cli.utils.slashcmd import SlashCommandCall
+        return SlashCommandCall(name="clear", args="", raw_input="/clear")
+
+    monkeypatch.setattr(_interactive_mod, "parse_slash_command_call", fake_parse)
+    monkeypatch.setattr(
+        "kimi_cli.ui.shell.slash.registry",
+        type("_Reg", (), {"find_command": lambda self, name: None})(),
+    )
+
+    view = object.__new__(_PromptLiveView)
+    view._turn_ended = False
+    view._queued_messages = []
+    view._prompt_session = MagicMock()
+    view._on_running_shell_slash = None
+
+    view.handle_local_input(
+        UserInput(
+            mode=PromptMode.AGENT,
+            command="/clear",
+            resolved_command="/clear",
+            content=[TextPart(text="/clear")],
+        )
+    )
+
+    assert len(view._queued_messages) == 1
+    assert view._queued_messages[0].command == "/clear"
+
+
+def test_handle_local_input_ignores_shell_command_when_no_callback(monkeypatch) -> None:
+    """If on_running_shell_slash is None, shell-level slash commands during streaming are ignored."""
+    from unittest.mock import MagicMock
+
+    def fake_parse(text: str):
+        from kimi_cli.utils.slashcmd import SlashCommandCall
+        return SlashCommandCall(name="task", args="", raw_input="/task")
+
+    monkeypatch.setattr(_interactive_mod, "parse_slash_command_call", fake_parse)
+    monkeypatch.setattr(
+        "kimi_cli.ui.shell.slash.registry",
+        type("_Reg", (), {"find_command": lambda self, name: object() if name == "task" else None})(),
+    )
+
+    view = object.__new__(_PromptLiveView)
+    view._turn_ended = False
+    view._queued_messages = []
+    view._prompt_session = MagicMock()
+    view._on_running_shell_slash = None
+
+    view.handle_local_input(
+        UserInput(
+            mode=PromptMode.AGENT,
+            command="/task",
+            resolved_command="/task",
+            content=[TextPart(text="/task")],
+        )
+    )
+
+    assert view._queued_messages == []

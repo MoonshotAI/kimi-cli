@@ -355,6 +355,8 @@ class SessionProcess:
             raise
         except Exception as e:
             logger.warning(f"Unexpected error in read loop: {e.__class__.__name__} {e}")
+            self._in_flight_prompt_ids.clear()
+            await self._emit_status("error", reason="read_loop_error", detail=str(e))
 
     async def _handle_out_message(self, message: JSONRPCOutMessage) -> None:
         """Handle outbound message from worker."""

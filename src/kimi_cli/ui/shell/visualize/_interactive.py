@@ -30,6 +30,7 @@ from kimi_cli.ui.shell.prompt import (
 from kimi_cli.ui.shell.visualize._btw_panel import _BtwModalDelegate
 from kimi_cli.ui.shell.visualize._input_router import InputAction, classify_input
 from kimi_cli.ui.shell.visualize._live_view import _LiveView
+from kimi_cli.utils.slashcmd import SlashCommandCall, parse_slash_command_call
 from kimi_cli.ui.shell.visualize._question_panel import (
     QuestionPromptDelegate,
     QuestionRequestPanel,
@@ -72,11 +73,13 @@ class _PromptLiveView(_LiveView):
         steer: Callable[[str | list[ContentPart]], None],
         btw_runner: BtwRunner | None = None,
         cancel_event: asyncio.Event | None = None,
+        on_running_shell_slash: Callable[[SlashCommandCall], None] | None = None,
     ) -> None:
         super().__init__(initial_status, cancel_event)
         self._prompt_session = prompt_session
         self._steer = steer
         self._btw_runner = btw_runner
+        self._on_running_shell_slash = on_running_shell_slash
         self._pending_local_steer_count: int = 0
         self._turn_ended = False
         self._question_modal: QuestionPromptDelegate | None = None
@@ -274,21 +277,14 @@ class _PromptLiveView(_LiveView):
                 if self._btw_runner is not None and not self._btw_active:
                     self._start_btw(action.args)
             case InputAction.QUEUE:
-                # Block shell-only commands from being queued — they would
-                # be misrouted through run_soul() instead of the shell dispatcher.
-                from kimi_cli.utils.slashcmd import parse_slash_command_call
-
+                # Shell-only commands during streaming should cancel the run
+                # and be executed by the shell layer.
                 if cmd := parse_slash_command_call(user_input.resolved_command.strip()):
                     from kimi_cli.ui.shell.slash import registry as shell_registry
 
                     if shell_registry.find_command(cmd.name) is not None:
-                        from kimi_cli.ui.shell.prompt import toast
-
-                        toast(
-                            f"/{cmd.name} is not available during streaming",
-                            topic="input-ignored",
-                            duration=3.0,
-                        )
+                        if self._on_running_shell_slash is not None:
+                            self._on_running_shell_slash(cmd)
                         return
                 self._queued_messages.append(user_input)
                 # Invalidate directly — _flush_prompt_refresh() is gated by
@@ -316,20 +312,14 @@ class _PromptLiveView(_LiveView):
 
             toast(action.args, topic="input-ignored", duration=3.0)
             return
-        # Block shell-only commands — same check as the Enter/queue path
-        from kimi_cli.utils.slashcmd import parse_slash_command_call
-
+        # Shell-only commands during streaming should cancel the run
+        # and be executed by the shell layer.
         if cmd := parse_slash_command_call(user_input.resolved_command.strip()):
             from kimi_cli.ui.shell.slash import registry as shell_registry
 
             if shell_registry.find_command(cmd.name) is not None:
-                from kimi_cli.ui.shell.prompt import toast
-
-                toast(
-                    f"/{cmd.name} is not available during streaming",
-                    topic="input-ignored",
-                    duration=3.0,
-                )
+                if self._on_running_shell_slash is not None:
+                    self._on_running_shell_slash(cmd)
                 return
         # Print permanently in conversation flow (shows placeholder for pasted text)
         console.print(render_user_echo_text(user_input.command))
