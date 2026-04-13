@@ -750,7 +750,11 @@ class KimiSoul:
                         ),
                     )
                 )
-                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                _hook_task.add_done_callback(
+                    lambda t: logger.error("Hook failed: {}", t.exception())
+                    if not t.cancelled() and t.exception()
+                    else None
+                )
                 # break the agent loop
                 raise
 
@@ -805,7 +809,11 @@ class KimiSoul:
                         ),
                     )
                 )
-                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                _hook_task.add_done_callback(
+                    lambda t: logger.error("Hook failed: {}", t.exception())
+                    if not t.cancelled() and t.exception()
+                    else None
+                )
 
             await self._runtime.notifications.deliver_pending(
                 "llm",
@@ -1044,7 +1052,11 @@ class KimiSoul:
                 ),
             )
         )
-        _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        _hook_task.add_done_callback(
+            lambda t: logger.error("Hook failed: {}", t.exception())
+            if not t.cancelled() and t.exception()
+            else None
+        )
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
