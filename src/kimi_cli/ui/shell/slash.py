@@ -24,8 +24,9 @@ from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
 if TYPE_CHECKING:
-    from kimi_cli.ui.shell import Shell
     from kaos.path import KaosPath
+
+    from kimi_cli.ui.shell import Shell
 
 type ShellSlashCmdFunc = Callable[[Shell, str], None | Awaitable[None]]
 """
