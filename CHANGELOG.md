@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Fix inline diff highlights misaligned on lines containing tabs — raw-code diff offsets are now mapped to rendered positions via expandtabs column tracking so highlight spans land correctly after tab expansion
+
 ## 1.33.0 (2026-04-13)
 
 - Shell: Unify managed model display as "Kimi for Code" and drop hardcoded `kimi-k2.5` version references from the welcome screen and `/login` tip
