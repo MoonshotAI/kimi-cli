@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.7`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.9`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -1081,6 +1081,8 @@ interface DiffDisplayBlock {
   old_text: string
   /** 新内容 */
   new_text: string
+  /** 是否为摘要块（文件过大时显示行数摘要而非实际 diff），JSON 中可能不存在。新增于 Wire 1.8 */
+  is_summary?: boolean
 }
 
 interface TodoDisplayBlock {

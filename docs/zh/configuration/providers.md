@@ -35,6 +35,8 @@ Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/login` 命
 | `gemini` | Google Gemini API |
 | `vertexai` | Google Vertex AI |
 
+所有供应商类型都支持通过 `custom_headers` 字段添加自定义 HTTP 请求头。详见 [配置文件](./config-files.md)。
+
 ### `kimi`
 
 用于连接 Kimi API，包括 Kimi Code 和 Moonshot AI 开放平台。

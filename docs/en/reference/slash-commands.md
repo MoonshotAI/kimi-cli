@@ -314,6 +314,10 @@ YOLO mode skips all confirmations. Make sure you understand the potential risks.
 
 Switch to Web UI. Kimi Code CLI will start a Web UI server and open the current session in your browser, allowing you to continue the conversation in the Web UI. See [Web UI](./kimi-web.md) for details.
 
+### `/vis`
+
+Switch to the Agent Tracing Visualizer. Kimi Code CLI will start the visualizer server and open the current session's tracing view in the browser, where you can inspect Wire event timelines, context messages, and usage statistics. See [Agent Tracing Visualizer](./kimi-vis.md) for details.
+
 ## Command completion
 
 After typing `/` in the input box, a list of available commands is automatically displayed. Continue typing to filter commands with fuzzy matching support, press Enter to select.
