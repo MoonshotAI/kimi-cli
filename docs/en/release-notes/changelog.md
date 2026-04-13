@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.33.0 (2026-04-13)
+
 - Shell: Unify managed model display as "Kimi for Code" and drop hardcoded `kimi-k2.5` version references from the welcome screen and `/login` tip
 
 ## 1.32.0 (2026-04-13)
