@@ -245,7 +245,7 @@ describe('e2e: kosong toolchain bridges', () => {
       async callTool(name, args) {
         callLog.push({ name, args });
         return {
-          content: [{ type: 'text', text: `${args['title']} summarized` }],
+          content: [{ type: 'text', text: `${String(args['title'])} summarized` }],
           isError: false,
         };
       },

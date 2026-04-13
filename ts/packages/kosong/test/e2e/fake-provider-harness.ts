@@ -9,7 +9,7 @@ export interface FakeProviderRequest {
   readonly search: string;
   readonly headers: Record<string, string>;
   readonly bodyText: string;
-  readonly bodyJson: unknown | null;
+  readonly bodyJson: unknown;
 }
 
 export interface FakeProviderReply {
@@ -119,7 +119,8 @@ export async function createFakeProviderHarness(): Promise<FakeProviderHarness> 
   const requests: FakeProviderRequest[] = [];
   const routes = new Map<string, FakeProviderRouteHandler>();
 
-  const server = node_http.createServer(async (req, res) => {
+  const server = node_http.createServer((req, res) => {
+    void (async () => {
     const method = (req.method ?? 'GET').toUpperCase();
     const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
     const key = `${method} ${requestUrl.pathname}`;
@@ -130,7 +131,7 @@ export async function createFakeProviderHarness(): Promise<FakeProviderHarness> 
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
     const bodyText = Buffer.concat(chunks).toString('utf8');
-    let bodyJson: unknown | null = null;
+    let bodyJson: unknown = null;
     if (bodyText.length > 0) {
       try {
         bodyJson = JSON.parse(bodyText) as unknown;
@@ -226,6 +227,7 @@ export async function createFakeProviderHarness(): Promise<FakeProviderHarness> 
     if (!responded) {
       await reply.text(500, `Fake route for ${method} ${requestUrl.pathname} did not respond.`);
     }
+    })();
   });
 
   await new Promise<void>((resolve, reject) => {

@@ -807,6 +807,6 @@ describe('extractUsage', () => {
 
   it('returns null for null/undefined', () => {
     expect(extractUsage(null)).toBeNull();
-    expect(extractUsage()).toBeNull();
+    expect(extractUsage(undefined)).toBeNull();
   });
 });
