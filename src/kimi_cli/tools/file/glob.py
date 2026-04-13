@@ -16,7 +16,7 @@ MAX_MATCHES = 1000
 
 
 class Params(BaseModel):
-    pattern: str = Field(description=("Glob pattern to match files/directories."))
+    pattern: str = Field(description=("Glob pattern to match files/directories. NEVER start with '**'"))
     directory: str | None = Field(
         description=(
             "Absolute path to the directory to search in (defaults to working directory)."
