@@ -643,7 +643,13 @@ async def _delete_session_by_id(app: Shell, target_session_id: str) -> None:
 
     # Confirm.ask() is synchronous; run it in a worker thread to avoid
     # blocking the event loop while waiting for user input.
-    if not await asyncio.to_thread(_confirm_delete, target.id, target.work_dir):
+    try:
+        confirmed = await asyncio.to_thread(_confirm_delete, target.id, target.work_dir)
+    except EOFError:
+        console.print(_DELETE_CANCELLED)
+        return
+
+    if not confirmed:
         console.print(_DELETE_CANCELLED)
         return
 
@@ -662,6 +668,7 @@ async def _delete_session_by_id(app: Shell, target_session_id: str) -> None:
             error=exc,
         )
         console.print(_DELETE_METADATA_WARNING)
+        return
 
     console.print(_DELETE_SUCCESS.format(session_id=target.id))
 

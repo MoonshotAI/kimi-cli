@@ -427,6 +427,26 @@ class TestDeleteCommandBehavior:
             for call in print_mock.call_args_list
         )
 
+    async def test_delete_eof_from_confirmation_is_treated_as_cancelled(
+        self, isolated_share_dir: Path, work_dir: KaosPath, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        shell, _ = await _make_shell_with_session(work_dir)
+        target = await Session.create(work_dir)
+        print_mock = Mock()
+
+        def _confirm_raises_eof(*_args: object, **_kwargs: object) -> bool:
+            raise EOFError
+
+        monkeypatch.setattr(shell_slash.console, "print", print_mock)
+        monkeypatch.setattr(shell_slash, "_confirm_delete", _confirm_raises_eof)
+
+        cmd = shell_slash_registry.find_command("delete")
+        assert cmd is not None
+        await _invoke_slash_command(cmd, shell, target.id)
+
+        assert await Session.find(work_dir, target.id) is not None
+        assert any("Deletion cancelled" in str(call.args[0]) for call in print_mock.call_args_list)
+
     async def test_delete_not_found(
         self, isolated_share_dir: Path, work_dir: KaosPath, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -511,6 +531,7 @@ class TestDeleteCommandBehavior:
             "failed to update metadata" in str(call.args[0]).lower()
             for call in print_mock.call_args_list
         )
+        assert not any("Deleted session" in str(call.args[0]) for call in print_mock.call_args_list)
 
     async def test_remove_alias_matches_delete_behavior(
         self, isolated_share_dir: Path, work_dir: KaosPath, monkeypatch: pytest.MonkeyPatch
