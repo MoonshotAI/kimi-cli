@@ -59,6 +59,9 @@ importers:
       '@moonshot-ai/core':
         specifier: workspace:^
         version: link:../../packages/kimi-core
+      '@moonshot-ai/kimi-wire-mock':
+        specifier: workspace:*
+        version: link:../../mock/kimi-wire
       chalk:
         specifier: ^5.4.1
         version: 5.6.2
@@ -90,6 +93,8 @@ importers:
       tsx:
         specifier: ^4.19.4
         version: 4.21.0
+
+  mock/kimi-wire: {}
 
   packages/kaos:
     dependencies:

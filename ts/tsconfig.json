@@ -29,14 +29,17 @@
       "@moonshot-ai/kaos": ["./packages/kaos/src/index.ts"],
       "@moonshot-ai/core": ["./packages/kimi-core/src/index.ts"],
       "@moonshot-ai/sdk": ["./packages/kimi-sdk/src/index.ts"],
-      "@moonshot-ai/cli": ["./apps/kimi-cli/src/index.ts"]
+      "@moonshot-ai/cli": ["./apps/kimi-cli/src/index.ts"],
+      "@moonshot-ai/kimi-wire-mock": ["./mock/kimi-wire/src/index.ts"]
     }
   },
   "include": [
     "packages/*/src/**/*.ts",
     "packages/*/test/**/*.ts",
     "apps/*/src/**/*.ts",
-    "apps/*/test/**/*.ts"
+    "apps/*/test/**/*.ts",
+    "mock/*/src/**/*.ts",
+    "mock/*/test/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "coverage", "packages/kosong/test/type-safety-negative.ts"]
 }
