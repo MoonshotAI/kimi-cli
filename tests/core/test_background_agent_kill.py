@@ -239,6 +239,100 @@ async def test_kill_keeps_strong_reference_until_runner_finishes(runtime, monkey
 
 
 # ---------------------------------------------------------------------------
+# Regression: kill() must clean up _live_agent_tasks even when the runner
+# coroutine is cancelled before its first event-loop step. In that case
+# `coro.throw(CancelledError)` into a FRAME_CREATED coroutine completes it
+# without executing the function body — the runner's `finally` block never
+# runs, so it cannot be the only place that pops the dict entry. The cleanup
+# must come from a task done callback wired up at task creation time.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_kill_before_runner_starts_cleans_up_live_tasks(runtime, monkeypatch):
+    """If kill() is called in the same event-loop turn as create_agent_task(),
+    the runner coroutine is cancelled before it has a chance to take its first
+    step. Python throws CancelledError into the never-started coroutine, which
+    transitions to COMPLETED without executing any of the function body —
+    including the finally block. _live_agent_tasks must still be cleaned up
+    via a task done callback registered at creation time."""
+    _register_coder(runtime)
+    agent_id = _create_bg_agent_instance(runtime, agent_id="anvrstrt")
+
+    runner_body_started = asyncio.Event()
+
+    async def fake_load_agent(agent_file, rt, *, mcp_configs, start_mcp_loading=True):
+        # Reaching this proves the runner body executed — we want to assert
+        # the opposite, so flip the flag if we ever get here.
+        runner_body_started.set()
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="never started",
+            toolset=EmptyToolset(),
+            runtime=rt,
+        )
+
+    async def fake_run_soul(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        await asyncio.Future()  # Would block forever if reached.
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    runtime.background_tasks.bind_runtime(runtime)
+
+    # Create the background agent task and IMMEDIATELY kill it without
+    # yielding to the event loop in between. The runner coroutine has been
+    # scheduled (loop.call_soon for its first __step) but has not yet executed.
+    view = runtime.background_tasks.create_agent_task(
+        agent_id=agent_id,
+        subagent_type="coder",
+        prompt="never starts",
+        description="never started",
+        tool_call_id="tc-never-start",
+        model_override=None,
+    )
+    task_id = view.spec.id
+
+    # Sanity: the task should be in the dict and the runner body should not
+    # have run yet (we have not yielded to the loop).
+    assert task_id in runtime.background_tasks._live_agent_tasks
+    assert not runner_body_started.is_set()
+
+    # Kill before the runner has had any chance to start its first step.
+    runtime.background_tasks.kill(task_id, reason="kill before start")
+
+    # Yield to the loop several times so asyncio can:
+    #   1. Process the runner task's scheduled __step (which sees must_cancel
+    #      and throws CancelledError into the FRAME_CREATED coroutine)
+    #   2. Mark the task DONE
+    #   3. Schedule and fire its done callbacks
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    # The runner body must NOT have executed — this is the precondition that
+    # makes this test exercise the never-started cancellation path. If this
+    # fails, the test setup is wrong and the assertion below would not be
+    # meaningful.
+    assert not runner_body_started.is_set(), (
+        "Runner coroutine started before kill() — test setup is wrong, "
+        "this scenario cannot exercise the never-started cancellation path"
+    )
+
+    # Despite the runner's finally block never running, the entry must have
+    # been cleaned up from _live_agent_tasks. Cleanup must come from a task
+    # done callback registered at creation time, because the finally block
+    # is no longer reachable on this path.
+    assert task_id not in runtime.background_tasks._live_agent_tasks, (
+        "_live_agent_tasks still holds the cancelled-before-start task — "
+        "the runner's finally block never ran on this path. create_agent_task "
+        "must register a task done callback so the dict entry is cleaned up "
+        "regardless of how the task terminates."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Test 2: Kill cancels pending approval requests
 # ---------------------------------------------------------------------------
 

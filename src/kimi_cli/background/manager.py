@@ -250,6 +250,13 @@ class BackgroundTaskManager:
             ).run()
         )
         self._live_agent_tasks[task_id] = task
+        # Cleanup safety net for the case where the runner is cancelled before
+        # its first event-loop step. Python throws CancelledError into a
+        # FRAME_CREATED coroutine without executing any of the function body,
+        # so the runner's finally block never runs and cannot pop the entry
+        # itself. The done callback fires regardless of how the task ends, and
+        # is idempotent with the runner's own pop (both use pop(..., None)).
+        task.add_done_callback(lambda _t, tid=task_id: self._live_agent_tasks.pop(tid, None))
         return self._store.merged_view(task_id)
 
     def list_tasks(
