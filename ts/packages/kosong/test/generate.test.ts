@@ -244,7 +244,7 @@ describe('generate()', () => {
 
     expect(result.message.content.some((p) => p.type === 'think')).toBe(true);
     expect(result.message.toolCalls).toBeDefined();
-    expect(result.message.toolCalls!.length).toBeGreaterThan(0);
+    expect(result.message.toolCalls.length).toBeGreaterThan(0);
   });
 
   it('preserves stream id and usage', async () => {
@@ -638,7 +638,7 @@ describe('generate()', () => {
     const provider = createMockProvider(stream);
 
     // Shared state so the callback can inspect the message.
-    const state: { message: import('../src/message.js').Message | null } = { message: null };
+    const state: { message: Message | null } = { message: null };
     const observations: Array<{ id: string; totalToolCalls: number; allComplete: boolean }> = [];
 
     const result = await generate(provider, '', [], [], {

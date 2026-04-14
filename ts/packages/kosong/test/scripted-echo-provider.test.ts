@@ -2,7 +2,14 @@ import { describe, it, expect } from 'vitest';
 
 import { ScriptedEchoChatProvider } from '../src/echo-provider.js';
 import { ChatProviderError } from '../src/errors.js';
-import type { StreamedMessagePart, TextPart, ToolCall, ToolCallPart } from '../src/message.js';
+import type {
+  AudioURLPart,
+  StreamedMessagePart,
+  TextPart,
+  ToolCall,
+  ToolCallPart,
+  VideoURLPart,
+} from '../src/message.js';
 
 describe('ScriptedEchoChatProvider', () => {
   it('streams parts from first and second scripts', async () => {
@@ -13,6 +20,8 @@ describe('ScriptedEchoChatProvider', () => {
       'text:  world!',
       'think: thinking...',
       'image_url: {"url": "https://example.com/image.png", "id": "img-1"}',
+      'audio_url: https://example.com/audio.mp3',
+      'video_url: https://example.com/video.mp4',
       'tool_call: {"id": "call-1", "name": "search", "arguments": "{\\"q\\":\\"python\\"", "extras": {"source": "test"}}',
       'tool_call_part: {"arguments_part": "}"}',
     ].join('\n');
@@ -43,6 +52,14 @@ describe('ScriptedEchoChatProvider', () => {
         type: 'image_url',
         imageUrl: { url: 'https://example.com/image.png', id: 'img-1' },
       },
+      {
+        type: 'audio_url',
+        audioUrl: { url: 'https://example.com/audio.mp3' },
+      } satisfies AudioURLPart,
+      {
+        type: 'video_url',
+        videoUrl: { url: 'https://example.com/video.mp4' },
+      } satisfies VideoURLPart,
       {
         type: 'function',
         id: 'call-1',
@@ -125,7 +142,7 @@ describe('ScriptedEchoChatProvider', () => {
     expect(result.message.toolCalls).toBeDefined();
     expect(result.message.toolCalls).toHaveLength(1);
 
-    const tc = result.message.toolCalls![0]!;
+    const tc = result.message.toolCalls[0]!;
     expect(tc.id).toBe('call-1');
     expect(tc.function.name).toBe('search');
     expect(tc.function.arguments).toBe('{"q":"python"}');

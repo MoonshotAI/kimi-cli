@@ -62,6 +62,8 @@ export function convertContentPart(part: ContentPart): OpenAIContentPart | null 
             ? { url: part.videoUrl.url }
             : { url: part.videoUrl.url, id: part.videoUrl.id },
       };
+    default:
+      throw new Error(`Unknown content part type: ${(part as ContentPart).type}`);
   }
 }
 
@@ -117,7 +119,7 @@ export function convertOpenAIError(error: unknown): ChatProviderError {
     return new APIConnectionError(error.message);
   }
   // APIError with a status code => status error
-  if (error instanceof OpenAIAPIError && error.status !== undefined) {
+  if (error instanceof OpenAIAPIError && typeof error.status === 'number') {
     const reqId = error.requestID ?? null;
     return new APIStatusError(error.status, error.message, reqId);
   }
@@ -175,6 +177,8 @@ export function thinkingEffortToReasoningEffort(effort: ThinkingEffort): string 
       return 'medium';
     case 'high':
       return 'high';
+    default:
+      throw new Error(`Unknown thinking effort: ${String(effort)}`);
   }
 }
 
@@ -259,5 +263,7 @@ export function convertToolMessageContent(
   if (conversion === 'extract_text') {
     return extractText(message);
   }
-  return message.content.map(convertContentPart).filter((p): p is OpenAIContentPart => p !== null);
+  return message.content
+    .map((p) => convertContentPart(p))
+    .filter((p): p is OpenAIContentPart => p !== null);
 }

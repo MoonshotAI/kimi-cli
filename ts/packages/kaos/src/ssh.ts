@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { posix } from 'node:path';
-import type { Readable } from 'node:stream';
-import type { Writable } from 'node:stream';
+import type { Readable, Writable } from 'node:stream';
 
 import type {
   AnyAuthMethod,
@@ -257,10 +256,8 @@ export class SSHProcess implements KaosProcess {
       // Listen to 'close' on the channel, not 'exit', to ensure all
       // buffered output is flushed before we resolve.
       channel.on('close', (code: number | null) => {
-        if (this._exitCode === null) {
-          // Some ssh2 backends surface the exit status only on 'close'.
-          this._exitCode = code ?? 1;
-        }
+        // Some ssh2 backends surface the exit status only on 'close'.
+          this._exitCode ??= code ?? 1;
         resolve(this._exitCode);
       });
       channel.on('exit', (code: number | null) => {
@@ -317,11 +314,18 @@ function getSftp(client: Client): Promise<SFTPWrapper> {
   });
 }
 
+// Every promisified SFTP helper funnels rejections through `mapSftpError` so
+// callers see a KaosSSHError subclass (KaosFileNotFoundError / KaosPermissionError /
+// KaosConnectionError / generic KaosSSHError) instead of the raw ssh2 error.
+// The operation label is the underlying SFTP RPC name — it shows up in the
+// error message for debugging and is the same label used by `stat()` before
+// this was hoisted into the helpers.
+
 function sftpRealpath(sftp: SFTPWrapper, path: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     sftp.realpath(path, (err, absPath) => {
       if (err) {
-        reject(err);
+        reject(mapSftpError('realpath', err));
       } else {
         resolve(absPath);
       }
@@ -333,7 +337,7 @@ function sftpStat(sftp: SFTPWrapper, path: string): Promise<SFTPStats> {
   return new Promise<SFTPStats>((resolve, reject) => {
     sftp.stat(path, (err, stats) => {
       if (err) {
-        reject(err);
+        reject(mapSftpError('stat', err));
       } else {
         resolve(stats);
       }
@@ -345,7 +349,7 @@ function sftpLstat(sftp: SFTPWrapper, path: string): Promise<SFTPStats> {
   return new Promise<SFTPStats>((resolve, reject) => {
     sftp.lstat(path, (err, stats) => {
       if (err) {
-        reject(err);
+        reject(mapSftpError('lstat', err));
       } else {
         resolve(stats);
       }
@@ -362,7 +366,7 @@ function sftpReaddir(sftp: SFTPWrapper, path: string): Promise<SFTPFileEntry[]> 
   return new Promise<SFTPFileEntry[]>((resolve, reject) => {
     sftp.readdir(path, (err, list) => {
       if (err) {
-        reject(err);
+        reject(mapSftpError('readdir', err));
       } else {
         resolve(list as SFTPFileEntry[]);
       }
@@ -374,7 +378,7 @@ function sftpMkdir(sftp: SFTPWrapper, path: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     sftp.mkdir(path, (err) => {
       if (err) {
-        reject(err);
+        reject(mapSftpError('mkdir', err));
       } else {
         resolve();
       }
@@ -394,7 +398,7 @@ function sftpReadFile(sftp: SFTPWrapper, path: string): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     sftp.readFile(path, (err, data) => {
       if (err) {
-        reject(err);
+        reject(mapSftpError('readFile', err));
       } else {
         resolve(data);
       }
@@ -406,7 +410,7 @@ function sftpWriteFile(sftp: SFTPWrapper, path: string, data: string | Buffer): 
   return new Promise<void>((resolve, reject) => {
     sftp.writeFile(path, data, (err) => {
       if (err) {
-        reject(err);
+        reject(mapSftpError('writeFile', err));
       } else {
         resolve();
       }
@@ -418,7 +422,7 @@ function sftpAppendFile(sftp: SFTPWrapper, path: string, data: string | Buffer):
   return new Promise<void>((resolve, reject) => {
     sftp.appendFile(path, data, (err) => {
       if (err) {
-        reject(err);
+        reject(mapSftpError('appendFile', err));
       } else {
         resolve();
       }
@@ -586,14 +590,10 @@ export class SSHKaos implements Kaos {
   async stat(path: string, options?: { followSymlinks?: boolean }): Promise<StatResult> {
     const resolved = this._resolvePath(path);
     const followSymlinks = options?.followSymlinks ?? true;
-    let st: SFTPStats;
-    try {
-      st = followSymlinks
-        ? await sftpStat(this._sftp, resolved)
-        : await sftpLstat(this._sftp, resolved);
-    } catch (error: unknown) {
-      throw mapSftpError('stat', error);
-    }
+    // sftpStat / sftpLstat already wrap errors via mapSftpError.
+    const st = followSymlinks
+      ? await sftpStat(this._sftp, resolved)
+      : await sftpLstat(this._sftp, resolved);
 
     return {
       stMode: buildStMode(st),
@@ -804,8 +804,7 @@ export class SSHKaos implements Kaos {
     const parts = path.split('/').filter(Boolean);
     let current = path.startsWith('/') ? '/' : '';
     const lastIndex = parts.length - 1;
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]!;
+    for (const [i, part] of parts.entries()) {
       current = current ? posix.join(current, part) : part;
 
       const isFinal = i === lastIndex;
@@ -876,23 +875,55 @@ export class SSHKaos implements Kaos {
     return this._execInternal(args, env);
   }
 
-  private async _execInternal(args: string[], env?: Record<string, string>): Promise<KaosProcess> {
+  /**
+   * Build the full remote shell command string that will be handed to
+   * `client.exec`. Exposed as a static so it can be unit-tested without
+   * needing a live SSH connection — see `ssh.test.ts`.
+   *
+   * Shape: `cd '<cwd>' && KEY1='v1' KEY2='v2' <cmd> <arg1> <arg2> ...`
+   *
+   * Environment variables are injected as POSIX inline assignments instead
+   * of being passed through ssh2's `ExecOptions.env`. The env-request path
+   * silently drops anything not whitelisted by sshd's `AcceptEnv` directive
+   * (stock OpenSSH only allows LANG/LC_*), which is a well-known footgun
+   * inherited from the Python / asyncssh implementation. Inline assignments
+   * run inside the remote shell itself, so they bypass AcceptEnv entirely
+   * and reach the command regardless of server configuration.
+   */
+  private static _buildExecCommand(
+    args: string[],
+    cwd: string,
+    env?: Record<string, string>,
+  ): string {
     let command = args.map((arg) => shellQuote(arg)).join(' ');
-    // Inject cd to cwd before the command
-    if (this._cwd) {
-      command = `cd ${shellQuote(this._cwd)} && ${command}`;
-    }
 
-    const execOptions: SSH2ExecOptions = {};
     if (env !== undefined) {
-      execOptions.env = env;
+      const assignments: string[] = [];
+      for (const [key, value] of Object.entries(env)) {
+        // Reject anything that isn't a POSIX-valid shell variable name so
+        // the injected prefix can never become a shell-injection vector.
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+          throw new KaosValueError(
+            `SSHKaos.execWithEnv(): invalid env variable name ${JSON.stringify(key)}`,
+          );
+        }
+        assignments.push(`${key}=${shellQuote(value)}`);
+      }
+      if (assignments.length > 0) {
+        command = `${assignments.join(' ')} ${command}`;
+      }
     }
 
-    const channel = await clientExec(
-      this._client,
-      command,
-      Object.keys(execOptions).length > 0 ? execOptions : undefined,
-    );
+    if (cwd !== '') {
+      command = `cd ${shellQuote(cwd)} && ${command}`;
+    }
+
+    return command;
+  }
+
+  private async _execInternal(args: string[], env?: Record<string, string>): Promise<KaosProcess> {
+    const command = SSHKaos._buildExecCommand(args, this._cwd, env);
+    const channel = await clientExec(this._client, command);
     return new SSHProcess(channel);
   }
 

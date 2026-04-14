@@ -21,6 +21,7 @@ export function decodeTextWithErrors(
   // diverge. Only UTF-family encodings participate in the strict/replace/
   // ignore dance; the others are lossless and use Buffer.toString directly.
   let webLabel: string | undefined;
+  // eslint-disable-next-line typescript-eslint/switch-exhaustiveness-check
   switch (encoding) {
     case 'utf-8':
     case 'utf8':

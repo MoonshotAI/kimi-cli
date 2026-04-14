@@ -179,7 +179,7 @@ describe('integration: parallel tool calls through SimpleToolset', () => {
     // Each handler saw the correct parsed JSON arguments.
     const toolResults = await result.toolResults();
     expect(toolResults).toHaveLength(3);
-    expect(toolResults.every((r) => r.returnValue.isError === false)).toBe(true);
+    expect(toolResults.every((r) => ! r.returnValue.isError)).toBe(true);
 
     expect(observed['read_file']).toEqual({ path: 'a.txt' });
     expect(observed['write_file']).toEqual({ path: 'b.txt', data: 'X' });

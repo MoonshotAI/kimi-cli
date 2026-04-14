@@ -4,6 +4,8 @@ import Module from 'node:module';
 import type { AnyAuthMethod, ConnectConfig, SFTPWrapper, Stats as SFTPStats } from 'ssh2';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { SSHKaos as SSHKaosType } from '../src/ssh.js';
+
 interface CreateHarnessState {
   attemptedKeys: string[];
   connectConfigs: ConnectConfig[];
@@ -61,7 +63,7 @@ function createSuccessfulSftp(): SFTPWrapper {
 }
 
 async function loadSSHModule(options: CreateHarnessOptions = {}): Promise<{
-  SSHKaos: typeof import('../src/ssh.js').SSHKaos;
+  SSHKaos: typeof SSHKaosType;
   state: CreateHarnessState;
 }> {
   vi.resetModules();

@@ -411,7 +411,7 @@ describe('LocalKaos', () => {
 
       // Use a short timeout via Promise.race
       const result = await Promise.race([
-        proc.wait().then((code) => ({ kind: 'exited' as const, code })),
+        proc.wait().then((exitCode) => ({ kind: 'exited' as const, code: exitCode })),
         new Promise<{ kind: 'timeout' }>((resolve) =>
           setTimeout(() => {
             resolve({ kind: 'timeout' });

@@ -245,6 +245,56 @@ describe('LinearContext with JsonlLinearStorage', () => {
     expect(ctx.history[0]!.content[0]!).toEqual({ type: 'text', text: 'safe' });
   });
 
+  it('round-trips an assistant message with empty content and empty toolCalls', async () => {
+    tmpFile = node_path.join(
+      node_os.tmpdir(),
+      `kosong-test-empty-roundtrip-${Date.now()}.jsonl`,
+    );
+
+    const original: Message = {
+      role: 'assistant',
+      content: [],
+      toolCalls: [],
+    };
+
+    const ctxWrite = new LinearContext(new JsonlLinearStorage(tmpFile));
+    await ctxWrite.addMessage(original);
+
+    const ctxRead = new LinearContext(new JsonlLinearStorage(tmpFile));
+    expect(await ctxRead.restore()).toBe(true);
+
+    expect(ctxRead.history).toHaveLength(1);
+    expect(ctxRead.history[0]!).toEqual(original);
+  });
+
+  it('round-trips an assistant message with empty content and non-empty toolCalls', async () => {
+    tmpFile = node_path.join(
+      node_os.tmpdir(),
+      `kosong-test-empty-content-roundtrip-${Date.now()}.jsonl`,
+    );
+
+    const original: Message = {
+      role: 'assistant',
+      content: [],
+      toolCalls: [
+        {
+          type: 'function',
+          id: 'call-empty',
+          function: { name: 'noop', arguments: '{}' },
+        },
+      ],
+    };
+
+    const ctxWrite = new LinearContext(new JsonlLinearStorage(tmpFile));
+    await ctxWrite.addMessage(original);
+
+    const ctxRead = new LinearContext(new JsonlLinearStorage(tmpFile));
+    expect(await ctxRead.restore()).toBe(true);
+
+    expect(ctxRead.history).toHaveLength(1);
+    expect(ctxRead.history[0]!).toEqual(original);
+  });
+
   it('restore skips corrupted JSONL lines and warns', async () => {
     tmpFile = node_path.join(node_os.tmpdir(), `kosong-test-corrupted-${Date.now()}.jsonl`);
 
@@ -349,6 +399,68 @@ describe('JsonlLinearStorage Python compatibility', () => {
     expect(restored.messages).toHaveLength(1);
     expect(restored.messages[0]!.role).toBe('assistant');
     expect(restored.messages[0]!.toolCalls).toEqual([]);
+  });
+
+  it('maps Python null content to an empty content array', async () => {
+    tmpFile = node_path.join(
+      node_os.tmpdir(),
+      `kosong-test-python-null-content-${Date.now()}.jsonl`,
+    );
+
+    const fixture =
+      '{"role": "assistant", "content": null, "tool_calls": [{"type": "function", "id": "tc_456", "function": {"name": "do_other", "arguments": "{}"}}]}\n';
+    await node_fs.promises.writeFile(tmpFile, fixture, 'utf-8');
+
+    const restored = await new JsonlLinearStorage(tmpFile).restore();
+
+    expect(restored.messages).toHaveLength(1);
+    expect(restored.messages[0]!).toEqual({
+      role: 'assistant',
+      content: [],
+      toolCalls: [
+        {
+          type: 'function',
+          id: 'tc_456',
+          function: { name: 'do_other', arguments: '{}' },
+        },
+      ],
+    });
+  });
+
+  it('accepts JSONL row with no tool_calls field and defaults to empty toolCalls', async () => {
+    tmpFile = node_path.join(
+      node_os.tmpdir(),
+      `kosong-test-python-no-tool-calls-${Date.now()}.jsonl`,
+    );
+
+    // Python's `model_dump(exclude_none=True)` omits absent fields entirely;
+    // user / system / tool messages always lack a `tool_calls` key.
+    const fixture = [
+      '{"role": "user", "content": [{"type": "text", "text": "Only content, no tools."}]}',
+      '{"role": "system", "content": "You are helpful."}',
+      '{"role": "tool", "content": "result data", "tool_call_id": "tc_abc"}',
+    ].join('\n');
+    await node_fs.promises.writeFile(tmpFile, fixture + '\n', 'utf-8');
+
+    const restored = await new JsonlLinearStorage(tmpFile).restore();
+
+    expect(restored.messages).toHaveLength(3);
+    expect(restored.messages[0]!).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: 'Only content, no tools.' }],
+      toolCalls: [],
+    });
+    expect(restored.messages[1]!).toEqual({
+      role: 'system',
+      content: [{ type: 'text', text: 'You are helpful.' }],
+      toolCalls: [],
+    });
+    expect(restored.messages[2]!).toEqual({
+      role: 'tool',
+      content: [{ type: 'text', text: 'result data' }],
+      toolCalls: [],
+      toolCallId: 'tc_abc',
+    });
   });
 
   it('restores mixed Python snake_case and TS camelCase JSONL lines together', async () => {

@@ -16,6 +16,9 @@ interface PRNG {
   next(): number;
 }
 
+// mulberry32 relies on bit-twiddling (`| 0`, `>>> 0`) for 32-bit integer
+// semantics — `Math.trunc()` does not preserve the same behavior.
+/* eslint-disable unicorn/prefer-math-trunc */
 function createPRNG(seed: number | undefined): PRNG {
   if (seed === undefined) {
     return { next: () => Math.random() };
@@ -30,6 +33,7 @@ function createPRNG(seed: number | undefined): PRNG {
     },
   };
 }
+/* eslint-enable unicorn/prefer-math-trunc */
 
 // ── ChaosConfig ──────────────────────────────────────────────────────
 
@@ -97,7 +101,8 @@ export class ChaosChatProvider implements ChatProvider, RetryableChatProvider {
     options?: GenerateOptions,
   ): Promise<StreamedMessage> {
     if (this._rng.next() < this._config.errorProbability) {
-      const statusCode = this._errorTypes[Math.floor(this._rng.next() * this._errorTypes.length)]!;
+      const statusCode =
+        this._errorTypes[Math.floor(this._rng.next() * this._errorTypes.length)] ?? 500;
       throw new APIStatusError(statusCode, `Chaos injected error ${statusCode}`);
     }
     const base = await this._inner.generate(systemPrompt, tools, history, options);
@@ -167,7 +172,7 @@ class ChaosStreamedMessage implements StreamedMessage {
     for await (const part of this._wrapped) {
       if (this._streamErrorProbability > 0 && this._rng.next() < this._streamErrorProbability) {
         const statusCode =
-          this._errorTypes[Math.floor(this._rng.next() * this._errorTypes.length)]!;
+          this._errorTypes[Math.floor(this._rng.next() * this._errorTypes.length)] ?? 500;
         throw new APIStatusError(statusCode, `Chaos injected mid-stream error ${statusCode}`);
       }
       yield this._maybeCorruptToolCall(part);

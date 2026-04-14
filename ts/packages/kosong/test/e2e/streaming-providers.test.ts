@@ -118,7 +118,7 @@ describe('integration: streaming provider contracts', () => {
 
       // ToolCall assembled correctly
       expect(result.message.toolCalls).toHaveLength(1);
-      expect(result.message.toolCalls![0]!.function.arguments).toBe('{"query":"vitest"}');
+      expect(result.message.toolCalls[0]!.function.arguments).toBe('{"query":"vitest"}');
 
       // Usage extracted from the stream metadata
       expect(result.usage).toEqual(usage);
@@ -199,9 +199,9 @@ describe('integration: streaming provider contracts', () => {
 
       // ToolCall assembled
       expect(result.message.toolCalls).toHaveLength(1);
-      expect(result.message.toolCalls![0]!.id).toBe('toolu_01');
-      expect(result.message.toolCalls![0]!.function.name).toBe('read_file');
-      expect(result.message.toolCalls![0]!.function.arguments).toBe('{"path":"/src/main.ts"}');
+      expect(result.message.toolCalls[0]!.id).toBe('toolu_01');
+      expect(result.message.toolCalls[0]!.function.name).toBe('read_file');
+      expect(result.message.toolCalls[0]!.function.arguments).toBe('{"path":"/src/main.ts"}');
     });
 
     it('redacted_thinking yields ThinkPart with encrypted and empty think', async () => {
@@ -295,7 +295,7 @@ describe('integration: streaming provider contracts', () => {
 
       // Function call with correct ID format
       expect(result.message.toolCalls).toHaveLength(1);
-      const tc = result.message.toolCalls![0]!;
+      const tc = result.message.toolCalls[0]!;
       expect(tc.id).toBe('search_12345');
       expect(tc.id).toMatch(/^search_\d+$/);
       expect(tc.function.name).toBe('search');
@@ -317,7 +317,7 @@ describe('integration: streaming provider contracts', () => {
       const result = await generate(provider, '', [], []);
 
       expect(result.message.toolCalls).toHaveLength(1);
-      const tc = result.message.toolCalls![0]!;
+      const tc = result.message.toolCalls[0]!;
       // Verify the ID follows the {name}_{id} pattern
       expect(tc.id.startsWith(`${tc.function.name}_`)).toBe(true);
     });
@@ -347,9 +347,9 @@ describe('integration: streaming provider contracts', () => {
       const result = await generate(provider, '', [], []);
 
       expect(result.message.toolCalls).toHaveLength(3);
-      expect(result.message.toolCalls![0]!.id).toBe('read_file_001');
-      expect(result.message.toolCalls![1]!.id).toBe('read_file_002');
-      expect(result.message.toolCalls![2]!.id).toBe('write_file_003');
+      expect(result.message.toolCalls[0]!.id).toBe('read_file_001');
+      expect(result.message.toolCalls[1]!.id).toBe('read_file_002');
+      expect(result.message.toolCalls[2]!.id).toBe('write_file_003');
     });
   });
 

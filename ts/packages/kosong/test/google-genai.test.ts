@@ -209,6 +209,25 @@ describe('GoogleGenAIChatProvider', () => {
       ]);
     });
 
+    it('multi-turn conversation with system prompt sets system_instruction', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'What is 2+2?' }], toolCalls: [] },
+        { role: 'assistant', content: [{ type: 'text', text: '2+2 equals 4.' }], toolCalls: [] },
+        { role: 'user', content: [{ type: 'text', text: 'And 3+3?' }], toolCalls: [] },
+      ];
+      const body = await captureRequestBody(provider, 'You are a math tutor.', [], history);
+
+      expect(body['contents']).toEqual([
+        { parts: [{ text: 'What is 2+2?' }], role: 'user' },
+        { parts: [{ text: '2+2 equals 4.' }], role: 'model' },
+        { parts: [{ text: 'And 3+3?' }], role: 'user' },
+      ]);
+
+      const config = body['config'] as Record<string, unknown>;
+      expect(config['system_instruction']).toBe('You are a math tutor.');
+    });
+
     it('tool definitions use parameters_json_schema', async () => {
       const provider = createProvider();
       const history: Message[] = [
@@ -298,6 +317,43 @@ describe('GoogleGenAIChatProvider', () => {
           role: 'user',
         },
       ]);
+    });
+
+    it('tool call with thought_signature_b64 emits thoughtSignature on outbound function_call', async () => {
+      // Round-trip: a previous turn returned a tool call with thoughtSignature
+      // (decoded into ToolCall.extras.thought_signature_b64). When we send
+      // the assistant message back, the converter must put the original
+      // signature back into the function_call part so Gemini can resume the
+      // reasoning chain.
+      const provider = createProvider();
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'Add 2 and 3' }], toolCalls: [] },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: "I'll add those." }],
+          toolCalls: [
+            {
+              type: 'function',
+              id: 'add_call_sig',
+              function: { name: 'add', arguments: '{"a": 2, "b": 3}' },
+              extras: { thought_signature_b64: 'dGhvdWdodF9zaWduYXR1cmVfZGF0YQ==' },
+            },
+          ],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const contents = body['contents'] as Array<{ parts: unknown[]; role: string }>;
+      const assistantParts = contents.find((c) => c.role === 'model')!.parts;
+      const fnCallPart = assistantParts.find(
+        (p) => (p as Record<string, unknown>)['function_call'] !== undefined,
+      ) as { function_call: Record<string, unknown>; thought_signature?: unknown } | undefined;
+      expect(fnCallPart).toBeDefined();
+      expect(fnCallPart!.function_call).toMatchObject({ name: 'add', args: { a: 2, b: 3 } });
+      // The thought signature must be carried back to the wire so the model
+      // can resume its reasoning chain. The exact field name on the wire is
+      // `thought_signature` (snake_case), as expected by the google-genai SDK.
+      expect(fnCallPart!.thought_signature).toBe('dGhvdWdodF9zaWduYXR1cmVfZGF0YQ==');
     });
 
     it('tool message with image_url result yields function_response + inline data part', () => {
@@ -1223,7 +1279,7 @@ describe('GoogleGenAIChatProvider', () => {
 
       mockModels['generateContentStream'] = vi.fn().mockImplementation(
         () =>
-          new Promise<AsyncGenerator<unknown>>(() => {
+          new Promise<AsyncGenerator>(() => {
             // Intentionally never resolves: reproduces the "stuck before first
             // chunk" window where cancellation must still win the race.
           }),
@@ -1244,7 +1300,7 @@ describe('GoogleGenAIChatProvider', () => {
           (error: unknown) => ({ settled: 'rejected' as const, error }),
         ),
         new Promise<{ settled: 'timeout' }>((resolve) =>
-          setTimeout(() => resolve({ settled: 'timeout' }), 100),
+          setTimeout(() =>{  resolve({ settled: 'timeout' }); }, 100),
         ),
       ]);
 

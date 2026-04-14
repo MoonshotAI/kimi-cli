@@ -224,10 +224,10 @@ describe('e2e: KaosPath cross-platform', () => {
         }),
       ]);
 
-      expect(results[0]!.name).toBe('kaos-1');
-      expect(results[0]!.home).toBe('/home/user1');
-      expect(results[1]!.name).toBe('kaos-2');
-      expect(results[1]!.home).toBe('/home/user2');
+      expect(results[0].name).toBe('kaos-1');
+      expect(results[0].home).toBe('/home/user1');
+      expect(results[1].name).toBe('kaos-2');
+      expect(results[1].home).toBe('/home/user2');
     });
 
     it('nested runWithKaos scopes correctly', () => {

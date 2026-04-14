@@ -34,6 +34,10 @@ function processPartSafely(part: StreamedMessagePart): string {
       return part.function.name; // ToolCall.function.name -> string
     case 'tool_call_part':
       return part.argumentsPart ?? ''; // ToolCallPart.argumentsPart -> string | null
+    default: {
+      const _exhaustive: never = part;
+      throw new Error(`Unknown part type: ${JSON.stringify(_exhaustive)}`);
+    }
   }
 }
 

@@ -8,9 +8,7 @@ const kaosStorage = new AsyncLocalStorage<Kaos>();
 // Lazy-initialized default instance
 let defaultKaos: Kaos | null = null;
 function getDefaultKaos(): Kaos {
-  if (defaultKaos === null) {
-    defaultKaos = new LocalKaos();
-  }
+  defaultKaos ??= new LocalKaos();
   return defaultKaos;
 }
 

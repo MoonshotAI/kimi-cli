@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { APIStatusError } from '../src/errors.js';
 import type { Message, StreamedMessagePart, ToolCall } from '../src/message.js';
 import { MockChatProvider } from '../src/mock-provider.js';
+import type { RetryableChatProvider } from '../src/provider.js';
 import { ChaosChatProvider } from '../src/providers/chaos.js';
 
 describe('ChaosChatProvider', () => {
@@ -132,7 +133,7 @@ describe('ChaosChatProvider', () => {
 
   it('onRetryableError delegates to inner provider when it is retryable', () => {
     let called = 0;
-    const inner: Partial<import('../src/provider.js').RetryableChatProvider> = {
+    const inner: Partial<RetryableChatProvider> = {
       name: 'retryable-mock',
       modelName: 'rm',
       thinkingEffort: null,
@@ -150,7 +151,7 @@ describe('ChaosChatProvider', () => {
       }),
     };
     const chaos = new ChaosChatProvider(
-      inner as import('../src/provider.js').RetryableChatProvider,
+      inner as RetryableChatProvider,
       { errorProbability: 0 },
     );
     const result = chaos.onRetryableError(new Error('boom'));

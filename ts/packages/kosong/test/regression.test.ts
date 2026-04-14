@@ -139,7 +139,7 @@ describe('regression', () => {
     it('throws an error when removing a tool that does not exist', () => {
       const toolset = new SimpleToolset();
 
-      expect(() => toolset.remove('nonexistent-tool')).toThrow(
+      expect(() =>{  toolset.remove('nonexistent-tool'); }).toThrow(
         'Tool `nonexistent-tool` not found in the toolset.',
       );
     });
@@ -152,7 +152,7 @@ describe('regression', () => {
       );
 
       toolset.remove('my-tool');
-      expect(() => toolset.remove('my-tool')).toThrow('Tool `my-tool` not found in the toolset.');
+      expect(() =>{  toolset.remove('my-tool'); }).toThrow('Tool `my-tool` not found in the toolset.');
     });
   });
 

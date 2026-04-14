@@ -12,8 +12,7 @@ import {
 } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join as pathJoin, normalize } from 'node:path';
-import type { Readable } from 'node:stream';
-import type { Writable } from 'node:stream';
+import type { Readable, Writable } from 'node:stream';
 
 import { KaosFileExistsError } from './errors.js';
 import { BufferedReadable, decodeTextWithErrors, globPatternToRegex } from './internal.js';
@@ -443,7 +442,7 @@ export class LocalKaos implements Kaos {
 // 'error' (ENOENT / EACCES / etc.). Until this resolves, callers should not
 // assume the child is running — they may otherwise write to the stdin of a
 // process that never existed.
-function waitForSpawn(child: import('node:child_process').ChildProcess): Promise<void> {
+function waitForSpawn(child: ChildProcess): Promise<void> {
   return new Promise((resolve, reject) => {
     const onSpawn = (): void => {
       child.off('error', onError);

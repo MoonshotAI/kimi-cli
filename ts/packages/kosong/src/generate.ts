@@ -1,8 +1,14 @@
 import { APIEmptyResponseError } from './errors.js';
-import type { Message, StreamedMessagePart, ToolCall } from './message.js';
-import { isContentPart, isToolCall, isToolCallPart, mergeInPlace } from './message.js';
-import type { ChatProvider, GenerateOptions } from './provider.js';
-import type { StreamedMessage } from './provider.js';
+import {
+  isContentPart,
+  isToolCall,
+  isToolCallPart,
+  mergeInPlace,
+  type Message,
+  type StreamedMessagePart,
+  type ToolCall,
+} from './message.js';
+import type { ChatProvider, GenerateOptions, StreamedMessage } from './provider.js';
 import type { Tool } from './tool.js';
 import type { TokenUsage } from './usage.js';
 
@@ -260,7 +266,6 @@ function flushPart(
     if (streamIndex !== undefined) {
       toolCallIndexMap.set(streamIndex, arrayIdx);
     }
-    return;
   }
   // ToolCallPart: orphaned — silently ignore
 }
@@ -272,5 +277,5 @@ function flushPart(
  * string fields that `mergeInPlace` mutates (text, think, arguments).
  */
 function deepCopyPart(part: StreamedMessagePart): StreamedMessagePart {
-  return structuredClone(part) as StreamedMessagePart;
+  return structuredClone(part);
 }

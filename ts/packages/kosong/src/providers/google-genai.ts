@@ -270,7 +270,9 @@ function toolMessageToFunctionResponseParts(
       case 'video_url':
         mediaParts.push(convertMediaUrl(part.videoUrl.url, 'video/mp4'));
         break;
-      // Skip think and any other synthetic parts
+      case 'think':
+        // Skip — handled separately via reasoning channel.
+        break;
     }
   }
 
@@ -291,7 +293,8 @@ export function messagesToGoogleGenAIContents(messages: Message[]): GoogleConten
 
   let i = 0;
   while (i < messages.length) {
-    const message = messages[i]!;
+    const message = messages[i];
+    if (message === undefined) break;
 
     if (message.role === 'system') {
       // Google GenAI's `Content.role` only accepts "user" or "model", so a
@@ -327,8 +330,10 @@ export function messagesToGoogleGenAIContents(messages: Message[]): GoogleConten
       // Collect consecutive tool messages
       let j = i + 1;
       const toolMessages: Message[] = [];
-      while (j < messages.length && messages[j]!.role === 'tool') {
-        toolMessages.push(messages[j]!);
+      while (j < messages.length) {
+        const toolMsg = messages[j];
+        if (toolMsg === undefined || toolMsg.role !== 'tool') break;
+        toolMessages.push(toolMsg);
         j += 1;
       }
 
@@ -688,16 +693,16 @@ export class GoogleGenAIChatProvider implements RetryableChatProvider {
 
     const contents = messagesToGoogleGenAIContents(history);
 
-    const config: Record<string, unknown> = { ...this._generationKwargs };
-    config['system_instruction'] = systemPrompt;
-    if (tools.length > 0) {
-      config['tools'] = tools.map((t) => toolToGoogleGenAI(t));
-    }
+    const config: Record<string, unknown> = {
+      ...this._generationKwargs,
+      system_instruction: systemPrompt,
+      ...(tools.length > 0 ? { tools: tools.map((t) => toolToGoogleGenAI(t)) } : {}),
+    };
 
     try {
       const models = this._client.models as unknown as {
         generateContent(params: Record<string, unknown>): Promise<unknown>;
-        generateContentStream(params: Record<string, unknown>): Promise<AsyncGenerator<unknown>>;
+        generateContentStream(params: Record<string, unknown>): Promise<AsyncGenerator>;
       };
 
       const params = { model: this._model, contents, config };

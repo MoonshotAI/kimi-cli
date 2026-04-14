@@ -100,8 +100,10 @@ function contentPartsToInputItems(parts: ContentPart[]): unknown[] {
         }
         break;
       }
-      // think parts handled separately
-      // video_url not supported by Responses API
+      case 'think':
+      case 'video_url':
+        // think: handled separately. video_url: not supported by Responses API.
+        break;
     }
   }
   return items;
@@ -141,8 +143,11 @@ function messageContentToFunctionOutputItems(content: ContentPart[]): string | u
         }
         break;
       }
-      // think / video_url still intentionally skipped: the Responses
-      // API has no representation for them inside a function_call_output.
+      case 'think':
+      case 'video_url':
+        // think / video_url still intentionally skipped: the Responses
+        // API has no representation for them inside a function_call_output.
+        break;
     }
   }
   return items;
@@ -157,7 +162,8 @@ function mapAudioUrlToInputItem(url: string): unknown {
       const b64 = parts[1];
       const subtypePart = header.split('/')[1];
       if (subtypePart === undefined) return null;
-      const subtype = subtypePart.split(';')[0]!.toLowerCase();
+      const [subtypeHead = ''] = subtypePart.split(';');
+      const subtype = subtypeHead.toLowerCase();
       const ext =
         subtype === 'mp3' || subtype === 'mpeg' ? 'mp3' : subtype === 'wav' ? 'wav' : null;
       if (ext === null) return null;
@@ -225,7 +231,8 @@ function convertMessage(
     let i = 0;
     const n = message.content.length;
     while (i < n) {
-      const part = message.content[i]!;
+      const part = message.content[i];
+      if (part === undefined) break;
       if (part.type === 'think') {
         // Flush accumulated non-reasoning parts first
         flushPendingParts();
@@ -234,7 +241,8 @@ function convertMessage(
         const summaries: unknown[] = [{ type: 'summary_text', text: part.think || '' }];
         i += 1;
         while (i < n) {
-          const nextPart = message.content[i]!;
+          const nextPart = message.content[i];
+          if (nextPart === undefined) break;
           if (nextPart.type !== 'think') break;
           if (nextPart.encrypted !== encryptedValue) break;
           summaries.push({ type: 'summary_text', text: nextPart.think || '' });
@@ -258,7 +266,7 @@ function convertMessage(
   // Handle tool calls
   for (const toolCall of message.toolCalls) {
     result.push({
-      arguments: toolCall.function.arguments || '{}',
+      arguments: toolCall.function.arguments ?? '{}',
       call_id: toolCall.id,
       name: toolCall.function.name,
       type: 'function_call',

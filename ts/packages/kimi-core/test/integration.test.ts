@@ -1,13 +1,26 @@
 import type { Readable } from 'node:stream';
 
-import type { Kaos } from '@moonshot-ai/kaos';
-import { LocalKaos } from '@moonshot-ai/kaos';
-import type { StreamedMessagePart, Tool, ToolReturnValue } from '@moonshot-ai/kosong';
-import { EmptyToolset, ScriptedEchoChatProvider, SimpleToolset, toolOk } from '@moonshot-ai/kosong';
+import { LocalKaos, type Kaos } from '@moonshot-ai/kaos';
+import {
+  EmptyToolset,
+  ScriptedEchoChatProvider,
+  SimpleToolset,
+  toolOk,
+  type Message as KosongMessage,
+  type StreamedMessagePart,
+  type Tool,
+  type ToolReturnValue,
+} from '@moonshot-ai/kosong';
 import { describe, expect, test } from 'vitest';
 
-import { CollectingSink, runTurn } from '../src/index.js';
-import type { Runtime, TurnResult } from '../src/index.js';
+import {
+  CollectingSink,
+  runTurn,
+  type ContentDeltaEvent as CoreContentDelta,
+  type Runtime,
+  type ToolCallEvent as CoreToolCallEvent,
+  type TurnResult,
+} from '../src/index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -370,13 +383,9 @@ describe('Empty Toolset: tool_call with no tools', () => {
 
 describe('Cross-package type consistency', () => {
   test('Message type from kosong and re-exported from core are compatible', () => {
-    // Import Message from kosong
-    type KosongMessage = import('@moonshot-ai/kosong').Message;
-    // Import it indirectly via kimi-core re-exports (kimi-core depends on kosong)
     // kimi-core does not re-export Message directly, but Runtime uses kosong types.
     // The key test is: a kosong Message can be used where kosong Message is expected
     // through the kimi-core pipeline.
-
     const msg: KosongMessage = {
       role: 'user',
       content: [{ type: 'text', text: 'hello' }],
@@ -433,9 +442,6 @@ describe('Cross-package type consistency', () => {
     // WireEvent's ContentDeltaEvent uses ContentPart from kosong
     // WireEvent's ToolCallEvent uses ToolCall from kosong
     // This test ensures the transitive type dependency works.
-    type CoreContentDelta = import('../src/index.js').ContentDeltaEvent;
-    type CoreToolCallEvent = import('../src/index.js').ToolCallEvent;
-
     const delta: CoreContentDelta = {
       type: 'content.delta',
       part: { type: 'text', text: 'test' },

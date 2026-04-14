@@ -2,8 +2,7 @@ import type { Client, SFTPWrapper, Stats as SFTPStats } from 'ssh2';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KaosFileExistsError } from '../../src/errors.js';
-import { SSHKaos } from '../../src/ssh.js';
-import { KaosFileNotFoundError } from '../../src/ssh.js';
+import { KaosFileNotFoundError, SSHKaos } from '../../src/ssh.js';
 
 // ── SSH path resolution: mock SFTP harness ────────────────────────────
 //

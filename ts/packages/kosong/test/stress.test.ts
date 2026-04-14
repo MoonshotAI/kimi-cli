@@ -98,11 +98,11 @@ describe('stress: large ToolCall arguments (10KB)', () => {
 
     expect(result.message.toolCalls).toBeDefined();
     expect(result.message.toolCalls).toHaveLength(1);
-    expect(result.message.toolCalls![0]!.function.arguments).toBe(fullArgs);
-    expect(result.message.toolCalls![0]!.function.arguments!.length).toBe(fullArgs.length);
+    expect(result.message.toolCalls[0]!.function.arguments).toBe(fullArgs);
+    expect(result.message.toolCalls[0]!.function.arguments!.length).toBe(fullArgs.length);
 
     // Verify the JSON is parseable and correct
-    const parsed = JSON.parse(result.message.toolCalls![0]!.function.arguments!) as {
+    const parsed = JSON.parse(result.message.toolCalls[0]!.function.arguments!) as {
       data: string;
     };
     expect(parsed.data).toBe(largeValue);
@@ -317,7 +317,7 @@ describe('stress: consecutive different type parts', () => {
 
     // Verify tool calls
     expect(result.message.toolCalls).toHaveLength(1);
-    expect(result.message.toolCalls![0]).toEqual({
+    expect(result.message.toolCalls[0]).toEqual({
       type: 'function',
       id: 'tc-1',
       function: { name: 'search', arguments: '{"q":"test"}' },
@@ -363,7 +363,7 @@ describe('stress: consecutive different type parts', () => {
 
     expect(result.message.content).toHaveLength(1);
     expect(result.message.toolCalls).toHaveLength(2);
-    expect(result.message.toolCalls![0]!.id).toBe('tc-1');
-    expect(result.message.toolCalls![1]!.id).toBe('tc-2');
+    expect(result.message.toolCalls[0]!.id).toBe('tc-1');
+    expect(result.message.toolCalls[1]!.id).toBe('tc-2');
   });
 });

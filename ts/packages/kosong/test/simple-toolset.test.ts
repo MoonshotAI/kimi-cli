@@ -223,7 +223,7 @@ describe('SimpleToolset', () => {
 
   it('remove() throws for non-existent tool', () => {
     const toolset = new SimpleToolset();
-    expect(() => toolset.remove('does-not-exist')).toThrow(
+    expect(() =>{  toolset.remove('does-not-exist'); }).toThrow(
       'Tool `does-not-exist` not found in the toolset.',
     );
   });

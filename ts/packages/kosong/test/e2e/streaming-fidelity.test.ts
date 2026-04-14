@@ -147,10 +147,10 @@ describe('e2e: streaming fidelity', () => {
       const result = await generate(provider, '', [], []);
 
       expect(result.message.toolCalls).toHaveLength(1);
-      expect(result.message.toolCalls![0]!.function.arguments).toBe(fullArgs);
+      expect(result.message.toolCalls[0]!.function.arguments).toBe(fullArgs);
 
       // Verify JSON is parseable and complete
-      const parsed = JSON.parse(result.message.toolCalls![0]!.function.arguments!) as Record<
+      const parsed = JSON.parse(result.message.toolCalls[0]!.function.arguments!) as Record<
         string,
         unknown
       >;
@@ -187,8 +187,8 @@ describe('e2e: streaming fidelity', () => {
       const result = await generate(provider, '', [], []);
 
       expect(result.message.toolCalls).toHaveLength(2);
-      expect(result.message.toolCalls![0]!.function.arguments).toBe(args1);
-      expect(result.message.toolCalls![1]!.function.arguments).toBe(args2);
+      expect(result.message.toolCalls[0]!.function.arguments).toBe(args1);
+      expect(result.message.toolCalls[1]!.function.arguments).toBe(args2);
     });
 
     it('ToolCallPart with null argumentsPart does not corrupt arguments', async () => {
@@ -209,7 +209,7 @@ describe('e2e: streaming fidelity', () => {
       const result = await generate(provider, '', [], []);
 
       expect(result.message.toolCalls).toHaveLength(1);
-      expect(result.message.toolCalls![0]!.function.arguments).toBe('{"key":"val"}');
+      expect(result.message.toolCalls[0]!.function.arguments).toBe('{"key":"val"}');
     });
   });
 
@@ -322,7 +322,7 @@ describe('e2e: streaming fidelity', () => {
         onMessagePart(part: StreamedMessagePart): void {
           // Track when onMessagePart sees the ToolCall
           if (part.type === 'function') {
-            const tc = part as ToolCall;
+            const tc = part;
             toolCallSnapshots.push(`onMessagePart:args=${tc.function.arguments}`);
           }
         },
@@ -413,8 +413,8 @@ describe('e2e: streaming fidelity', () => {
       expect(result.message.toolCalls).toHaveLength(5);
 
       for (let i = 0; i < 5; i++) {
-        expect(result.message.toolCalls![i]!.id).toBe(`tc-${i}`);
-        const parsed = JSON.parse(result.message.toolCalls![i]!.function.arguments!) as {
+        expect(result.message.toolCalls[i]!.id).toBe(`tc-${i}`);
+        const parsed = JSON.parse(result.message.toolCalls[i]!.function.arguments!) as {
           index: number;
         };
         expect(parsed.index).toBe(i);

@@ -2,8 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { generate } from '../src/generate.js';
 import type { ContentPart, Message, ToolCall } from '../src/message.js';
-import { KimiChatProvider } from '../src/providers/kimi.js';
-import { extractUsageFromChunk } from '../src/providers/kimi.js';
+import { extractUsageFromChunk, KimiChatProvider } from '../src/providers/kimi.js';
 import { extractUsage } from '../src/providers/openai-common.js';
 import type { Tool } from '../src/tool.js';
 
@@ -806,7 +805,8 @@ describe('extractUsage', () => {
   });
 
   it('returns null for null/undefined', () => {
+    const undef: unknown = undefined;
     expect(extractUsage(null)).toBeNull();
-    expect(extractUsage(undefined)).toBeNull();
+    expect(extractUsage(undef)).toBeNull();
   });
 });

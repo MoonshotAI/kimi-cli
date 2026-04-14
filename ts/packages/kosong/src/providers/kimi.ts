@@ -149,8 +149,8 @@ function convertStreamToolCall(
         name: functionName,
         arguments: initialArguments,
       },
+      _streamIndex: streamIndex,
     };
-    toolCallHeader._streamIndex = streamIndex;
     return [toolCallHeader];
   }
 
@@ -158,11 +158,11 @@ function convertStreamToolCall(
     return [];
   }
 
-  const part: StreamedMessagePart = {
+  const part: StreamedMessagePart & { index: number | string } = {
     type: 'tool_call_part',
     argumentsPart: functionArguments,
+    index: streamIndex,
   };
-  (part as { index: number | string }).index = streamIndex;
   return [part];
 }
 
@@ -426,9 +426,7 @@ export class KimiChatProvider implements RetryableChatProvider {
    * messages.
    */
   get files(): KimiFiles {
-    if (this._files === undefined) {
-      this._files = new KimiFiles(this._client);
-    }
+    this._files ??= new KimiFiles(this._client);
     return this._files;
   }
 

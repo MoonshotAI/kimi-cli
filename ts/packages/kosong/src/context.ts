@@ -90,7 +90,7 @@ function normalizeMessage(raw: unknown): Message {
   } else if (rawContent === null || rawContent === undefined) {
     content = [];
   } else if (Array.isArray(rawContent)) {
-    content = rawContent.map(normalizeContentPart);
+    content = rawContent.map((part) => normalizeContentPart(part));
   } else {
     throw new TypeError('Message row has an invalid content shape');
   }

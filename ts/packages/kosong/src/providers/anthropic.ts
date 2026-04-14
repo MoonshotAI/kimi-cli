@@ -1,5 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-import {
+import Anthropic, {
   APIConnectionError as AnthropicConnectionError,
   APIConnectionTimeoutError as AnthropicTimeoutError,
   APIError as AnthropicAPIError,
@@ -232,7 +231,7 @@ function convertMessage(message: Message): MessageParam {
     }
   }
 
-  return { role: role as 'user' | 'assistant', content: blocks };
+  return { role: role, content: blocks };
 }
 
 // ── Error conversion ─────────────────────────────────────────────────
@@ -246,7 +245,7 @@ export function convertAnthropicError(error: unknown): ChatProviderError {
     return new APIConnectionError(error.message);
   }
   // APIError with a status code => status error
-  if (error instanceof AnthropicAPIError && error.status !== undefined) {
+  if (error instanceof AnthropicAPIError && typeof error.status === 'number') {
     const reqId = error.requestID ?? null;
     return new APIStatusError(error.status, error.message, reqId);
   }
@@ -401,6 +400,7 @@ class AnthropicStreamedMessage implements StreamedMessage {
           const blockEvt = evt as unknown as RawContentBlockStartEvent;
           const block = blockEvt.content_block;
           const blockIndex = blockEvt.index;
+          // eslint-disable-next-line typescript-eslint/switch-exhaustiveness-check
           switch (block.type) {
             case 'text':
               yield { type: 'text', text: block.text };
@@ -434,6 +434,7 @@ class AnthropicStreamedMessage implements StreamedMessage {
           const deltaEvt = evt as unknown as RawContentBlockDeltaEvent;
           const delta = deltaEvt.delta;
           const blockIndex = deltaEvt.index;
+          // eslint-disable-next-line typescript-eslint/switch-exhaustiveness-check
           switch (delta.type) {
             case 'text_delta':
               yield { type: 'text', text: delta.text };

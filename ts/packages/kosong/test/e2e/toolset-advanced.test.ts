@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { StreamedMessagePart, ToolCall } from '../../src/message.js';
-import type { Message } from '../../src/message.js';
+import type { Message, StreamedMessagePart, ToolCall } from '../../src/message.js';
 import type { ChatProvider, StreamedMessage, ThinkingEffort } from '../../src/provider.js';
 import { SimpleToolset } from '../../src/simple-toolset.js';
-import { step } from '../../src/step.js';
-import type { StepCallbacks } from '../../src/step.js';
-import type { JsonType, Tool, ToolResult, ToolReturnValue } from '../../src/tool.js';
-import { toolOk } from '../../src/tool.js';
+import { step, type StepCallbacks } from '../../src/step.js';
+import { toolOk, type JsonType, type Tool, type ToolResult, type ToolReturnValue } from '../../src/tool.js';
 import type { TokenUsage } from '../../src/usage.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────

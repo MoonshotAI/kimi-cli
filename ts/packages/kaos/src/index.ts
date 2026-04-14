@@ -1,3 +1,7 @@
+import { getCurrentKaos } from './current.js';
+import type { KaosProcess } from './process.js';
+import type { StatResult } from './types.js';
+
 export type { StatResult } from './types.js';
 export type { KaosProcess } from './process.js';
 export type { Kaos } from './kaos.js';
@@ -5,15 +9,12 @@ export type { KaosToken } from './current.js';
 export { KaosError, KaosValueError, KaosFileExistsError } from './errors.js';
 export { KaosPath } from './path.js';
 export { LocalKaos, localKaos } from './local.js';
-export { getCurrentKaos, setCurrentKaos, resetCurrentKaos, runWithKaos } from './current.js';
+export { setCurrentKaos, resetCurrentKaos, runWithKaos } from './current.js';
 export { SSHKaos } from './ssh.js';
 export type { SSHKaosOptions, SSHKaosExtraOptions } from './ssh.js';
+export { getCurrentKaos };
 
 // ── Module-level convenience functions (delegate to getCurrentKaos) ──
-
-import { getCurrentKaos } from './current.js';
-import type { KaosProcess } from './process.js';
-import type { StatResult } from './types.js';
 
 /** Read a file as text, delegating to the current Kaos instance. */
 export function readText(

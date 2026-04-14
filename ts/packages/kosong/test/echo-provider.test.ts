@@ -2,16 +2,18 @@ import { describe, it, expect } from 'vitest';
 
 import { EchoChatProvider } from '../src/echo-provider.js';
 import { ChatProviderError } from '../src/errors.js';
-import type {
-  StreamedMessagePart,
-  TextPart,
-  ThinkPart,
-  ImageURLPart,
-  ToolCall,
-  ToolCallPart,
+import {
+  createUserMessage,
+  type AudioURLPart,
+  type ImageURLPart,
+  type Message,
+  type StreamedMessagePart,
+  type TextPart,
+  type ThinkPart,
+  type ToolCall,
+  type ToolCallPart,
+  type VideoURLPart,
 } from '../src/message.js';
-import { createUserMessage } from '../src/message.js';
-import type { Message } from '../src/message.js';
 
 function userMsg(text: string): Message {
   return createUserMessage(text);
@@ -26,6 +28,8 @@ describe('EchoChatProvider', () => {
       'text:  world!',
       'think: thinking...',
       'image_url: {"url": "https://example.com/image.png", "id": "img-1"}',
+      'audio_url: https://example.com/audio.mp3',
+      'video_url: https://example.com/video.mp4',
       'tool_call: {"id": "call-1", "name": "search", "arguments": "{\\"q\\":\\"python\\"", "extras": {"source": "test"}}',
       'tool_call_part: {"arguments_part": "}"}',
     ].join('\n');
@@ -55,6 +59,14 @@ describe('EchoChatProvider', () => {
         type: 'image_url',
         imageUrl: { url: 'https://example.com/image.png', id: 'img-1' },
       } satisfies ImageURLPart,
+      {
+        type: 'audio_url',
+        audioUrl: { url: 'https://example.com/audio.mp3' },
+      } satisfies AudioURLPart,
+      {
+        type: 'video_url',
+        videoUrl: { url: 'https://example.com/video.mp4' },
+      } satisfies VideoURLPart,
       {
         type: 'function',
         id: 'call-1',
@@ -147,7 +159,7 @@ describe('EchoChatProvider', () => {
     expect(result.message.toolCalls).toBeDefined();
     expect(result.message.toolCalls).toHaveLength(1);
 
-    const tc = result.message.toolCalls![0]!;
+    const tc = result.message.toolCalls[0]!;
     expect(tc.id).toBe('call-1');
     expect(tc.function.name).toBe('search');
     expect(tc.function.arguments).toBe('{"q":"python"}');

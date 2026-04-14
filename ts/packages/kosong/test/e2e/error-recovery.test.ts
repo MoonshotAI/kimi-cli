@@ -338,7 +338,7 @@ describe('e2e: error recovery', () => {
       toolset.add(
         { name: 'throws_string', description: 'Throws a string', parameters: {} },
         async (): Promise<ToolReturnValue> => {
-          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          // eslint-disable-next-line @typescript-eslint/only-throw-error, no-throw-literal
           throw 'a raw string error';
         },
       );

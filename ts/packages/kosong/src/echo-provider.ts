@@ -35,9 +35,8 @@ export function parseEchoScript(script: string): ParseResult {
   let usage: TokenUsage | null = null;
 
   const lines = script.split('\n');
-  for (let i = 0; i < lines.length; i++) {
+  for (const [i, rawLine] of lines.entries()) {
     const lineno = i + 1;
-    const rawLine = lines[i]!;
     const line = rawLine.trim();
 
     // skip empty lines, comments, markdown fences, bare "echo" keyword
@@ -172,9 +171,7 @@ function parseToolCall(payload: string, lineno: number, rawLine: string): ToolCa
   let args = mapping['arguments'] as string | null | undefined;
 
   if (func) {
-    if (args === null || args === undefined) {
-      args = func['arguments'] as string | null | undefined;
-    }
+    args ??= func['arguments'] as string | null | undefined;
   }
 
   if (typeof toolCallId !== 'string' || typeof name !== 'string') {
@@ -323,10 +320,10 @@ export class EchoChatProvider implements ChatProvider {
     history: Message[],
     _options?: GenerateOptions,
   ): Promise<EchoStreamedMessage> {
-    if (history.length === 0) {
+    const lastMessage = history.at(-1);
+    if (lastMessage === undefined) {
       throw new ChatProviderError('EchoChatProvider requires at least one message in history.');
     }
-    const lastMessage = history.at(-1)!;
     if (lastMessage.role !== 'user') {
       throw new ChatProviderError('EchoChatProvider expects the last history message to be user.');
     }
@@ -370,12 +367,12 @@ export class ScriptedEchoChatProvider implements ChatProvider {
     _history: Message[],
     _options?: GenerateOptions,
   ): Promise<EchoStreamedMessage> {
-    if (this._cursor >= this._scripts.length) {
+    const scriptText = this._scripts[this._cursor];
+    if (scriptText === undefined) {
       throw new ChatProviderError(
         `ScriptedEchoChatProvider exhausted at turn ${this._cursor + 1}.`,
       );
     }
-    const scriptText = this._scripts[this._cursor]!;
     this._cursor++;
 
     const { parts, messageId, usage } = parseEchoScript(scriptText);

@@ -66,8 +66,8 @@ function createFakeChannel(): {
     get closeCalls() {
       return closeCalls;
     },
-    emitClose: () => emit('close'),
-    emitExit: (code: number) => emit('exit', code),
+    emitClose: () =>{  emit('close'); },
+    emitExit: (code: number) =>{  emit('exit', code); },
   };
 }
 

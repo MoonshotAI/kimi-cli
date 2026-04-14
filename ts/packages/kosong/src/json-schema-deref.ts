@@ -23,7 +23,7 @@ export function derefJsonSchema(schema: Record<string, unknown>): Record<string,
 
 function hasUnresolvedDefsRef(node: unknown): boolean {
   if (Array.isArray(node)) {
-    return node.some(hasUnresolvedDefsRef);
+    return node.some((child) => hasUnresolvedDefsRef(child));
   }
   if (typeof node === 'object' && node !== null) {
     const obj = node as Record<string, unknown>;

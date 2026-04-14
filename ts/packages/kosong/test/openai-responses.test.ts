@@ -144,6 +144,173 @@ describe('OpenAIResponsesChatProvider', () => {
       ]);
     });
 
+    it('multi-turn with system prompt', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'What is 2+2?' }], toolCalls: [] },
+        { role: 'assistant', content: [{ type: 'text', text: '2+2 equals 4.' }], toolCalls: [] },
+        { role: 'user', content: [{ type: 'text', text: 'And 3+3?' }], toolCalls: [] },
+      ];
+      const body = await captureRequestBody(provider, 'You are a math tutor.', [], history);
+
+      expect(body['input']).toEqual([
+        { role: 'developer', content: 'You are a math tutor.' },
+        {
+          content: [{ type: 'input_text', text: 'What is 2+2?' }],
+          role: 'user',
+          type: 'message',
+        },
+        {
+          content: [{ type: 'output_text', text: '2+2 equals 4.', annotations: [] }],
+          role: 'assistant',
+          type: 'message',
+        },
+        {
+          content: [{ type: 'input_text', text: 'And 3+3?' }],
+          role: 'user',
+          type: 'message',
+        },
+      ]);
+    });
+
+    it('image url in user message is encoded as input_image', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: "What's in this image?" },
+            { type: 'image_url', imageUrl: { url: 'https://example.com/image.png' } },
+          ],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      expect(body['input']).toEqual([
+        {
+          content: [
+            { type: 'input_text', text: "What's in this image?" },
+            {
+              type: 'input_image',
+              detail: 'auto',
+              image_url: 'https://example.com/image.png',
+            },
+          ],
+          role: 'user',
+          type: 'message',
+        },
+      ]);
+    });
+
+    it('parallel tool calls produce multiple function_call and function_call_output items', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Calculate 2+3 and 4*5' }],
+          toolCalls: [],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: "I'll calculate both." }],
+          toolCalls: [
+            {
+              type: 'function',
+              id: 'call_add',
+              function: { name: 'add', arguments: '{"a": 2, "b": 3}' },
+            },
+            {
+              type: 'function',
+              id: 'call_mul',
+              function: { name: 'multiply', arguments: '{"a": 4, "b": 5}' },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '5' },
+          ],
+          toolCallId: 'call_add',
+          toolCalls: [],
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '20' },
+          ],
+          toolCallId: 'call_mul',
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [ADD_TOOL, MUL_TOOL], history);
+
+      const input = body['input'] as unknown[];
+
+      // user
+      expect(input[0]).toEqual({
+        content: [{ type: 'input_text', text: 'Calculate 2+3 and 4*5' }],
+        role: 'user',
+        type: 'message',
+      });
+      // assistant text
+      expect(input[1]).toEqual({
+        content: [{ type: 'output_text', text: "I'll calculate both.", annotations: [] }],
+        role: 'assistant',
+        type: 'message',
+      });
+      // function_call #1
+      expect(input[2]).toEqual({
+        arguments: '{"a": 2, "b": 3}',
+        call_id: 'call_add',
+        name: 'add',
+        type: 'function_call',
+      });
+      // function_call #2
+      expect(input[3]).toEqual({
+        arguments: '{"a": 4, "b": 5}',
+        call_id: 'call_mul',
+        name: 'multiply',
+        type: 'function_call',
+      });
+      // function_call_output #1
+      expect(input[4]).toEqual({
+        call_id: 'call_add',
+        output: [
+          {
+            type: 'input_text',
+            text: '<system-reminder>This is a system reminder</system-reminder>',
+          },
+          { type: 'input_text', text: '5' },
+        ],
+        type: 'function_call_output',
+      });
+      // function_call_output #2
+      expect(input[5]).toEqual({
+        call_id: 'call_mul',
+        output: [
+          {
+            type: 'input_text',
+            text: '<system-reminder>This is a system reminder</system-reminder>',
+          },
+          { type: 'input_text', text: '20' },
+        ],
+        type: 'function_call_output',
+      });
+
+      // tools array preserved
+      expect(body['tools']).toHaveLength(2);
+    });
+
     it('tool definitions include strict: false', async () => {
       const provider = createProvider();
       const history: Message[] = [

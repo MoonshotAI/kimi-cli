@@ -68,9 +68,9 @@ describe('e2e: context persistence', () => {
       const restoredAssistant = ctx2.history[0]!;
       expect(restoredAssistant.role).toBe('assistant');
       expect(restoredAssistant.toolCalls).toHaveLength(1);
-      expect(restoredAssistant.toolCalls![0]!.id).toBe('tc-1');
-      expect(restoredAssistant.toolCalls![0]!.function.name).toBe('search');
-      expect(restoredAssistant.toolCalls![0]!.function.arguments).toBe('{"query":"vitest"}');
+      expect(restoredAssistant.toolCalls[0]!.id).toBe('tc-1');
+      expect(restoredAssistant.toolCalls[0]!.function.name).toBe('search');
+      expect(restoredAssistant.toolCalls[0]!.function.arguments).toBe('{"query":"vitest"}');
 
       const restoredTool = ctx2.history[1]!;
       expect(restoredTool.role).toBe('tool');
@@ -200,7 +200,7 @@ describe('e2e: context persistence', () => {
       expect(assistantContent.content).toHaveLength(2);
       expect(assistantContent.content[0]!.type).toBe('think');
       expect(assistantContent.toolCalls).toHaveLength(1);
-      expect(assistantContent.toolCalls![0]!.function.name).toBe('analyze_image');
+      expect(assistantContent.toolCalls[0]!.function.name).toBe('analyze_image');
     });
   });
 

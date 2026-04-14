@@ -19,7 +19,7 @@ describe('validateToolSchema', () => {
       },
     };
 
-    expect(() => validateToolSchema(tool)).not.toThrow();
+    expect(() =>{  validateToolSchema(tool); }).not.toThrow();
   });
 
   test('throws ToolDefinitionError for an invalid JSON schema', () => {
@@ -31,8 +31,8 @@ describe('validateToolSchema', () => {
       },
     };
 
-    expect(() => validateToolSchema(tool)).toThrowError(ToolDefinitionError);
-    expect(() => validateToolSchema(tool)).toThrowError(
+    expect(() =>{  validateToolSchema(tool); }).toThrowError(ToolDefinitionError);
+    expect(() =>{  validateToolSchema(tool); }).toThrowError(
       /^Invalid parameters schema for tool 'broken_tool': /,
     );
   });

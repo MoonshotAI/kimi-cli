@@ -323,6 +323,152 @@ describe('AnthropicChatProvider', () => {
       });
     });
 
+    it('tool call with image result wraps image source inside tool_result', async () => {
+      const provider = createProvider();
+      const toolCall: ToolCall = {
+        type: 'function',
+        id: 'call_abc123',
+        function: { name: 'add', arguments: '{"a": 2, "b": 3}' },
+      };
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'Add 2 and 3' }], toolCalls: [] },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: "I'll add those numbers for you." }],
+          toolCalls: [toolCall],
+        },
+        {
+          role: 'tool',
+          content: [
+            { type: 'text', text: '5' },
+            { type: 'image_url', imageUrl: { url: 'https://example.com/image.png' } },
+          ] satisfies ContentPart[],
+          toolCallId: 'call_abc123',
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+      const messages = body['messages'] as unknown[];
+
+      // Tool result block carries both text and image.
+      expect(messages[2]).toEqual({
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'call_abc123',
+            content: [
+              { type: 'text', text: '5' },
+              {
+                type: 'image',
+                source: { type: 'url', url: 'https://example.com/image.png' },
+              },
+            ],
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+      });
+    });
+
+    it('parallel tool calls and tool results (request body capture)', async () => {
+      const provider = createProvider();
+      const tcAdd: ToolCall = {
+        type: 'function',
+        id: 'call_add',
+        function: { name: 'add', arguments: '{"a": 2, "b": 3}' },
+      };
+      const tcMul: ToolCall = {
+        type: 'function',
+        id: 'call_mul',
+        function: { name: 'multiply', arguments: '{"a": 4, "b": 5}' },
+      };
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Calculate 2+3 and 4*5' }],
+          toolCalls: [],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: "I'll calculate both." }],
+          toolCalls: [tcAdd, tcMul],
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '5' },
+          ],
+          toolCallId: 'call_add',
+          toolCalls: [],
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '20' },
+          ],
+          toolCallId: 'call_mul',
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [ADD_TOOL, MUL_TOOL], history);
+      const messages = body['messages'] as unknown[];
+
+      // Assistant message: text + 2 tool_use blocks (in order)
+      expect(messages[1]).toEqual({
+        role: 'assistant',
+        content: [
+          { type: 'text', text: "I'll calculate both." },
+          { type: 'tool_use', id: 'call_add', name: 'add', input: { a: 2, b: 3 } },
+          { type: 'tool_use', id: 'call_mul', name: 'multiply', input: { a: 4, b: 5 } },
+        ],
+      });
+
+      // Tool results: 2 user messages, each with one tool_result block
+      // (Anthropic accepts both the "one user msg per result" and the
+      // "one user msg with multiple tool_result blocks" forms; verify
+      // whichever the converter produces is consistent.)
+      const userMessagesWithResults = (messages as Array<{ role: string; content: unknown[] }>)
+        .slice(2)
+        .filter((m) => m.role === 'user');
+      // Flatten all tool_result blocks across the user messages following the assistant.
+      const allToolResults = userMessagesWithResults.flatMap((m) =>
+        (m.content as Array<Record<string, unknown>>).filter(
+          (block) => block['type'] === 'tool_result',
+        ),
+      );
+      expect(allToolResults).toHaveLength(2);
+      expect(allToolResults[0]).toMatchObject({
+        type: 'tool_result',
+        tool_use_id: 'call_add',
+        content: [
+          {
+            type: 'text',
+            text: '<system-reminder>This is a system reminder</system-reminder>',
+          },
+          { type: 'text', text: '5' },
+        ],
+      });
+      expect(allToolResults[1]).toMatchObject({
+        type: 'tool_result',
+        tool_use_id: 'call_mul',
+        content: [
+          {
+            type: 'text',
+            text: '<system-reminder>This is a system reminder</system-reminder>',
+          },
+          { type: 'text', text: '20' },
+        ],
+      });
+    });
+
     it('assistant with thinking (has encrypted -> ThinkingBlockParam)', async () => {
       const provider = createProvider();
       const history: Message[] = [

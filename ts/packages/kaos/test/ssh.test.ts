@@ -6,7 +6,12 @@ import { resetCurrentKaos, setCurrentKaos } from '../src/current.js';
 import type { KaosToken } from '../src/current.js';
 import { KaosValueError } from '../src/errors.js';
 import { KaosPath } from '../src/path.js';
-import { SSHKaos } from '../src/ssh.js';
+import {
+  KaosFileNotFoundError,
+  KaosPermissionError,
+  KaosSSHError,
+  SSHKaos,
+} from '../src/ssh.js';
 
 // Environment variable configuration for SSH connection
 const SSH_SMOKE = process.env['KAOS_SSH_SMOKE'] === '1';
@@ -235,6 +240,51 @@ describe.skipIf(process.platform === 'win32' || !SSH_SMOKE)('SSHKaos smoke', () 
     expect(stderrData.toString().trim()).toBe('err');
   });
 
+  // NOTE: these execWithEnv tests require the remote sshd to accept the
+  // injected variable names via its `AcceptEnv` directive (or an equivalent
+  // mechanism). Stock OpenSSH only whitelists LANG/LC_*; if the test server
+  // is not configured to accept KAOS_TEST_*, these tests will fail — which
+  // is exactly the signal we want (it reveals the silent env-drop bug that
+  // the Python version has).
+  test('execWithEnv delivers a single env var to the remote process', async () => {
+    const proc = await sshKaos.execWithEnv(
+      ['sh', '-c', 'printf "%s" "${KAOS_TEST_MARKER}"'],
+      { KAOS_TEST_MARKER: 'beacon42' },
+    );
+    const out = (await streamToBuffer(proc.stdout)).toString();
+    const code = await proc.wait();
+
+    expect(code).toBe(0);
+    expect(out).toBe('beacon42');
+  });
+
+  test('execWithEnv delivers multiple env vars', async () => {
+    const proc = await sshKaos.execWithEnv(
+      ['sh', '-c', 'printf "%s|%s" "${KAOS_TEST_A}" "${KAOS_TEST_B}"'],
+      { KAOS_TEST_A: 'hello', KAOS_TEST_B: 'world' },
+    );
+    const out = (await streamToBuffer(proc.stdout)).toString();
+    const code = await proc.wait();
+
+    expect(code).toBe(0);
+    expect(out).toBe('hello|world');
+  });
+
+  test('execWithEnv preserves values with shell metacharacters', async () => {
+    // Single quotes, dollar signs, backticks, pipes, ampersands, redirects,
+    // double quotes, and a backslash — anything an unsafe impl might mangle.
+    const value = `it's $HOME \`id\`; | & < > " \\`;
+    const proc = await sshKaos.execWithEnv(
+      ['sh', '-c', 'printf "%s" "${KAOS_TEST_VALUE}"'],
+      { KAOS_TEST_VALUE: value },
+    );
+    const out = (await streamToBuffer(proc.stdout)).toString();
+    const code = await proc.wait();
+
+    expect(code).toBe(0);
+    expect(out).toBe(value);
+  });
+
   test('exec rejects empty command', async () => {
     await expect((sshKaos.exec as (...args: string[]) => Promise<unknown>)()).rejects.toThrow();
   });
@@ -276,6 +326,19 @@ describe('SSHKaos argument validation', () => {
     expect(() => SSHKaos.prototype.execWithEnv.call(fakeThis, [])).toThrow(
       /SSHKaos\.execWithEnv\(\)/,
     );
+  });
+
+  // glob() is an async generator, so the caseSensitive=false guard fires on
+  // the first pull rather than at call-time. We verify both the error class
+  // (KaosValueError) and the fact that it rejects before touching SFTP.
+  it('glob(caseSensitive: false) rejects with KaosValueError', async () => {
+    const instance = Object.create(SSHKaos.prototype) as SSHKaos;
+    const internal = instance as unknown as { _cwd: string; _sftp: unknown };
+    internal._cwd = '/tmp';
+    internal._sftp = {};
+
+    const gen = instance.glob('/some/path', '*', { caseSensitive: false });
+    await expect(gen.next()).rejects.toBeInstanceOf(KaosValueError);
   });
 });
 
@@ -342,6 +405,269 @@ describe('SSHKaos.chdir directory validation', () => {
 
     await kaos.chdir(target);
     expect(kaos.getcwd()).toBe(target);
+  });
+});
+
+// These tests pin the SFTPError → KaosError mapping contract. They use a
+// fake SFTPWrapper that invokes callbacks with errors carrying the standard
+// SFTP status codes (NO_SUCH_FILE=2, PERMISSION_DENIED=3), so they run in
+// CI without needing a live SSH connection.
+//
+// The mapping lives in the promisified SFTP helpers in ssh.ts, so every
+// SSHKaos method that touches SFTP automatically throws a KaosSSHError
+// subclass (KaosFileNotFoundError / KaosPermissionError / …) instead of
+// the raw ssh2 error.
+describe('SSHKaos SFTP error mapping', () => {
+  const NO_SUCH_FILE = 2;
+  const PERMISSION_DENIED = 3;
+
+  interface FailingMethods {
+    stat?: boolean;
+    lstat?: boolean;
+    readFile?: boolean;
+    writeFile?: boolean;
+    appendFile?: boolean;
+    mkdir?: boolean;
+    readdir?: boolean;
+  }
+
+  function makeSftpError(errorCode: number): Error {
+    const err = new Error('simulated SFTP error');
+    (err as unknown as { code: number }).code = errorCode;
+    return err;
+  }
+
+  // Minimal SFTPWrapper stub. For each I/O method, when `failing[method]` is
+  // true the callback is invoked with an error carrying `code`; otherwise
+  // a harmless default is returned. Only the methods that SSHKaos actually
+  // calls need to be stubbed.
+  function makeFakeSftp(errorCode: number, failing: FailingMethods): unknown {
+    const dirStats = {
+      mode: 0o040755,
+      size: 0,
+      uid: 0,
+      gid: 0,
+      atime: 0,
+      mtime: 0,
+      isDirectory: (): boolean => true,
+      isFile: (): boolean => false,
+      isSymbolicLink: (): boolean => false,
+      isSocket: (): boolean => false,
+      isCharacterDevice: (): boolean => false,
+      isBlockDevice: (): boolean => false,
+      isFIFO: (): boolean => false,
+    };
+
+    return {
+      realpath(path: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, path);
+      },
+      stat(_path: string, cb: (err: Error | null, stats?: unknown) => void): void {
+        if (failing.stat === true) {
+          cb(makeSftpError(errorCode));
+          return;
+        }
+        cb(null, dirStats);
+      },
+      lstat(_path: string, cb: (err: Error | null, stats?: unknown) => void): void {
+        if (failing.lstat === true) {
+          cb(makeSftpError(errorCode));
+          return;
+        }
+        cb(null, dirStats);
+      },
+      readFile(_path: string, cb: (err: Error | null, data?: Buffer) => void): void {
+        if (failing.readFile === true) {
+          cb(makeSftpError(errorCode));
+          return;
+        }
+        cb(null, Buffer.alloc(0));
+      },
+      writeFile(_path: string, _data: unknown, cb: (err: Error | null) => void): void {
+        if (failing.writeFile === true) {
+          cb(makeSftpError(errorCode));
+          return;
+        }
+        cb(null);
+      },
+      appendFile(_path: string, _data: unknown, cb: (err: Error | null) => void): void {
+        if (failing.appendFile === true) {
+          cb(makeSftpError(errorCode));
+          return;
+        }
+        cb(null);
+      },
+      mkdir(_path: string, cb: (err: Error | null) => void): void {
+        if (failing.mkdir === true) {
+          cb(makeSftpError(errorCode));
+          return;
+        }
+        cb(null);
+      },
+      readdir(_path: string, cb: (err: Error | null, list?: unknown[]) => void): void {
+        if (failing.readdir === true) {
+          cb(makeSftpError(errorCode));
+          return;
+        }
+        cb(null, []);
+      },
+      // exists() always reports the file is absent so plain mkdir takes the
+      // create path (where `failing.mkdir` decides the outcome).
+      exists(_path: string, cb: (exists: boolean) => void): void {
+        cb(false);
+      },
+    };
+  }
+
+  function makeFakeKaos(sftp: unknown): SSHKaos {
+    const instance = Object.create(SSHKaos.prototype) as SSHKaos;
+    const internal = instance as unknown as { _sftp: unknown; _cwd: string; _home: string };
+    internal._sftp = sftp;
+    internal._cwd = '/';
+    internal._home = '/';
+    return instance;
+  }
+
+  // ── stat(): the one method that already wraps errors. ────────────────
+
+  it('stat() maps NO_SUCH_FILE → KaosFileNotFoundError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(NO_SUCH_FILE, { stat: true }));
+    await expect(kaos.stat('/missing')).rejects.toBeInstanceOf(KaosFileNotFoundError);
+  });
+
+  it('stat() maps PERMISSION_DENIED → KaosPermissionError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(PERMISSION_DENIED, { stat: true }));
+    await expect(kaos.stat('/forbidden')).rejects.toBeInstanceOf(KaosPermissionError);
+  });
+
+  it('stat({ followSymlinks: false }) wraps lstat errors the same way', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(NO_SUCH_FILE, { lstat: true }));
+    await expect(
+      kaos.stat('/missing', { followSymlinks: false }),
+    ).rejects.toBeInstanceOf(KaosFileNotFoundError);
+  });
+
+  it('stat() wraps unmapped failures as the base KaosSSHError', async () => {
+    // FAILURE=4 is not specifically mapped → generic KaosSSHError.
+    const kaos = makeFakeKaos(makeFakeSftp(4, { stat: true }));
+    await expect(kaos.stat('/x'))
+      .rejects.toBeInstanceOf(KaosSSHError);
+  });
+
+  // ── Other I/O methods: mapping is pushed into the promisified helpers
+  // in ssh.ts so every method gets the same wrapping for free. ─────────
+
+  it('readText() maps NO_SUCH_FILE → KaosFileNotFoundError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(NO_SUCH_FILE, { readFile: true }));
+    await expect(kaos.readText('/missing')).rejects.toBeInstanceOf(KaosFileNotFoundError);
+  });
+
+  it('readBytes() maps NO_SUCH_FILE → KaosFileNotFoundError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(NO_SUCH_FILE, { readFile: true }));
+    await expect(kaos.readBytes('/missing')).rejects.toBeInstanceOf(KaosFileNotFoundError);
+  });
+
+  it('writeText() maps PERMISSION_DENIED → KaosPermissionError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(PERMISSION_DENIED, { writeFile: true }));
+    await expect(kaos.writeText('/forbidden', 'data')).rejects.toBeInstanceOf(KaosPermissionError);
+  });
+
+  it('writeText(append) maps PERMISSION_DENIED → KaosPermissionError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(PERMISSION_DENIED, { appendFile: true }));
+    await expect(kaos.writeText('/forbidden', 'data', { mode: 'a' })).rejects.toBeInstanceOf(
+      KaosPermissionError,
+    );
+  });
+
+  it('writeBytes() maps PERMISSION_DENIED → KaosPermissionError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(PERMISSION_DENIED, { writeFile: true }));
+    await expect(kaos.writeBytes('/forbidden', Buffer.from('x'))).rejects.toBeInstanceOf(
+      KaosPermissionError,
+    );
+  });
+
+  it('mkdir() maps PERMISSION_DENIED → KaosPermissionError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(PERMISSION_DENIED, { mkdir: true }));
+    await expect(kaos.mkdir('/forbidden')).rejects.toBeInstanceOf(KaosPermissionError);
+  });
+
+  it('iterdir() maps NO_SUCH_FILE → KaosFileNotFoundError', async () => {
+    const kaos = makeFakeKaos(makeFakeSftp(NO_SUCH_FILE, { readdir: true }));
+    const gen = kaos.iterdir('/missing');
+    await expect(gen.next()).rejects.toBeInstanceOf(KaosFileNotFoundError);
+  });
+});
+
+// These tests exercise the pure command-building logic behind execWithEnv
+// without needing a live SSH connection. The actual end-to-end delivery of
+// env vars is validated by the smoke tests above when KAOS_SSH_SMOKE=1.
+describe('SSHKaos._buildExecCommand', () => {
+  // Bracket access so we can reach the private static helper from tests
+  // without changing its visibility in the public API.
+  const build = (
+    SSHKaos as unknown as {
+      _buildExecCommand: (
+        args: string[],
+        cwd: string,
+        env?: Record<string, string>,
+      ) => string;
+    }
+  )._buildExecCommand;
+
+  it('cd prefix + bare command when no env is supplied', () => {
+    expect(build(['ls', '-la'], '/home/user')).toBe("cd /home/user && ls -la");
+  });
+
+  it('injects inline assignments before the command', () => {
+    expect(build(['echo', 'x'], '/home/user', { FOO: 'bar' })).toBe(
+      "cd /home/user && FOO=bar echo x",
+    );
+  });
+
+  it('injects multiple env vars in declaration order', () => {
+    const out = build(['sh', '-c', 'echo $A $B'], '/home/user', { A: '1', B: '2' });
+    expect(out).toBe("cd /home/user && A=1 B=2 sh -c 'echo $A $B'");
+  });
+
+  it('quotes values containing shell metacharacters', () => {
+    // Single quote in value → shellQuote escapes via the '"'"' trick.
+    expect(build(['cmd'], '/home/user', { V: "it's" })).toBe(
+      `cd /home/user && V='it'"'"'s' cmd`,
+    );
+    // Dollar sign, backticks, pipe, ampersand → single-quoted wholesale.
+    expect(build(['cmd'], '/home/user', { V: '$HOME `id` | &' })).toBe(
+      `cd /home/user && V='$HOME \`id\` | &' cmd`,
+    );
+  });
+
+  it('quotes an empty value as empty single quotes', () => {
+    expect(build(['cmd'], '/home/user', { V: '' })).toBe("cd /home/user && V='' cmd");
+  });
+
+  it('rejects env var names that are not valid POSIX identifiers', () => {
+    expect(() => build(['cmd'], '/home/user', { '1BAD': 'x' })).toThrow(KaosValueError);
+    expect(() => build(['cmd'], '/home/user', { 'WITH SPACE': 'x' })).toThrow(KaosValueError);
+    expect(() => build(['cmd'], '/home/user', { 'WITH=EQUALS': 'x' })).toThrow(KaosValueError);
+    expect(() => build(['cmd'], '/home/user', { '': 'x' })).toThrow(KaosValueError);
+  });
+
+  it('accepts underscored and mixed-case identifiers', () => {
+    expect(build(['cmd'], '/home/user', { _UNDER: '1', camelCase: '2' })).toBe(
+      'cd /home/user && _UNDER=1 camelCase=2 cmd',
+    );
+  });
+
+  it('skips the cd prefix when cwd is the empty string', () => {
+    expect(build(['cmd', 'arg'], '', { FOO: 'bar' })).toBe('FOO=bar cmd arg');
+  });
+
+  it('quotes cwd paths with spaces and special characters', () => {
+    expect(build(['cmd'], "/home/u ser's dir")).toBe(`cd '/home/u ser'"'"'s dir' && cmd`);
+  });
+
+  it('omits the assignment section entirely when env is an empty object', () => {
+    // Matches the behavior of plain exec() — no leading space, no KEY=...
+    expect(build(['cmd', 'arg'], '/home/user', {})).toBe('cd /home/user && cmd arg');
   });
 });
 

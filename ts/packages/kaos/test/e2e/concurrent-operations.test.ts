@@ -28,20 +28,13 @@ describe('e2e: concurrent operations', () => {
   describe('concurrent reads and writes on different files', () => {
     it('10 concurrent writeText + readText on separate files → all consistent', async () => {
       const count = 10;
-      const promises: Promise<void>[] = [];
-
-      for (let i = 0; i < count; i++) {
+      const promises = Array.from({ length: count }, async (_, i): Promise<void> => {
         const filePath = join(tempDir, `file-${i}.txt`);
         const content = `content-${i}-${'data'.repeat(100)}`;
-
-        promises.push(
-          (async (): Promise<void> => {
-            await kaos.writeText(filePath, content);
-            const readBack = await kaos.readText(filePath);
-            expect(readBack).toBe(content);
-          })(),
-        );
-      }
+        await kaos.writeText(filePath, content);
+        const readBack = await kaos.readText(filePath);
+        expect(readBack).toBe(content);
+      });
 
       await Promise.all(promises);
     });
@@ -90,25 +83,22 @@ describe('e2e: concurrent operations', () => {
   describe('concurrent exec of multiple subprocesses', () => {
     it('5 concurrent node processes → all complete independently', async () => {
       const count = 5;
-      const promises: Promise<{ index: number; exitCode: number; stdout: string }>[] = [];
+      const promises = Array.from(
+        { length: count },
+        async (_, i): Promise<{ index: number; exitCode: number; stdout: string }> => {
+          const code = `process.stdout.write('proc-${i}');`;
+          const proc = await kaos.exec('node', '-e', code);
+          const exitCode = await proc.wait();
 
-      for (let i = 0; i < count; i++) {
-        promises.push(
-          (async (): Promise<{ index: number; exitCode: number; stdout: string }> => {
-            const code = `process.stdout.write('proc-${i}');`;
-            const proc = await kaos.exec('node', '-e', code);
-            const exitCode = await proc.wait();
+          const chunks: Buffer[] = [];
+          for await (const chunk of proc.stdout) {
+            chunks.push(Buffer.from(chunk as Buffer));
+          }
+          const stdout = Buffer.concat(chunks).toString('utf-8');
 
-            const chunks: Buffer[] = [];
-            for await (const chunk of proc.stdout) {
-              chunks.push(Buffer.from(chunk as Buffer));
-            }
-            const stdout = Buffer.concat(chunks).toString('utf-8');
-
-            return { index: i, exitCode, stdout };
-          })(),
-        );
-      }
+          return { index: i, exitCode, stdout };
+        },
+      );
 
       const results = await Promise.all(promises);
 
