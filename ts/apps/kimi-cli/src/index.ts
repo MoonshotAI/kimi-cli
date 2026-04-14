@@ -4,16 +4,23 @@
  * Parses CLI arguments via Commander.js, validates options, determines the
  * UI mode, and dispatches to the appropriate runner (shell / print / wire).
  *
- * Runner implementations are placeholders until later phases.
+ * In shell mode the Ink 7 TUI is launched with no alternate screen.
  */
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import React from 'react';
+import { render } from 'ink';
+import { MockWireClient } from '@moonshot-ai/kimi-wire-mock';
+
 import { createProgram } from './cli/commands.js';
 import type { CLIOptions, UIMode } from './cli/options.js';
 import { OptionConflictError, validateOptions } from './cli/options.js';
+import { loadConfig } from './config/loader.js';
+import type { AppState } from './app/context.js';
+import App from './app/App.js';
 
 // ---------------------------------------------------------------------------
 // Version
@@ -31,11 +38,62 @@ function getVersion(): string {
 }
 
 // ---------------------------------------------------------------------------
-// UI mode runners (placeholders -- will be implemented in later phases)
+// UI mode runners
 // ---------------------------------------------------------------------------
 
-function runShell(_opts: CLIOptions): void {
-  process.stdout.write('Shell mode: not yet implemented (Phase 4+)\n');
+function runShell(opts: CLIOptions, version: string): void {
+  // Load configuration.
+  const { config } = loadConfig({
+    config: opts.config,
+    configFile: opts.configFile,
+  });
+
+  // Determine model name.
+  const model = opts.model ?? config.default_model ?? 'mock-model';
+
+  // Determine session ID (placeholder for now).
+  const sessionId = opts.session ?? `session-${Date.now()}`;
+
+  // Determine working directory.
+  const workDir = opts.workDir ?? process.cwd();
+
+  // Create Mock Wire client.
+  const wireClient = new MockWireClient({
+    sessionId,
+    workDir,
+    model,
+    yolo: opts.yolo,
+  });
+
+  // Build initial application state.
+  const initialState: AppState = {
+    inputMode: 'agent',
+    model,
+    workDir,
+    sessionId,
+    yolo: opts.yolo,
+    planMode: opts.plan,
+    thinking: opts.thinking ?? config.default_thinking,
+    contextUsage: 0,
+    isStreaming: false,
+    theme: config.theme,
+    version,
+  };
+
+  // Render the Ink TUI -- no alternate screen, patch console, incremental rendering.
+  const instance = render(
+    React.createElement(App, { wireClient, initialState }),
+    {
+      exitOnCtrlC: false,
+      patchConsole: true,
+      incrementalRendering: true,
+    },
+  );
+
+  void instance.waitUntilExit().then(() => {
+    void wireClient.dispose();
+    process.exit(0);
+  });
 }
 
 function runPrint(_opts: CLIOptions): void {
@@ -45,12 +103,6 @@ function runPrint(_opts: CLIOptions): void {
 function runWire(_opts: CLIOptions): void {
   process.stdout.write('Wire mode: not yet implemented (Phase 11)\n');
 }
-
-const runners: Record<UIMode, (opts: CLIOptions) => void> = {
-  shell: runShell,
-  print: runPrint,
-  wire: runWire,
-};
 
 // ---------------------------------------------------------------------------
 // Main
@@ -74,7 +126,17 @@ function main(): void {
     }
 
     // -- Dispatch to the appropriate runner ----------------------------------
-    runners[uiMode](opts);
+    switch (uiMode) {
+      case 'shell':
+        runShell(opts, version);
+        break;
+      case 'print':
+        runPrint(opts);
+        break;
+      case 'wire':
+        runWire(opts);
+        break;
+    }
   });
 
   program.parse(process.argv);

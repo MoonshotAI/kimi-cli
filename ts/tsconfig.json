@@ -4,6 +4,8 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     "lib": ["ES2023"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
 
     "strict": true,
     "isolatedDeclarations": true,
@@ -35,9 +37,13 @@
   },
   "include": [
     "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.tsx",
     "packages/*/test/**/*.ts",
+    "packages/*/test/**/*.tsx",
     "apps/*/src/**/*.ts",
+    "apps/*/src/**/*.tsx",
     "apps/*/test/**/*.ts",
+    "apps/*/test/**/*.tsx",
     "mock/*/src/**/*.ts",
     "mock/*/test/**/*.ts"
   ],
