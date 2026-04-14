@@ -40,8 +40,8 @@ class DynamicInjectionProvider(ABC):
 def normalize_history(history: Sequence[Message]) -> list[Message]:
     """Merge adjacent user messages to produce a clean API input sequence.
 
-    Dynamic injections are stored as standalone user messages in history;
-    normalization merges them into the adjacent user message.
+    Dynamic injections may be appended as standalone user messages for the
+    current LLM step; normalization merges them into the adjacent user message.
 
     Only ``user`` role messages are merged. Assistant and tool messages
     are never merged because their ``tool_calls`` / ``tool_call_id``

@@ -835,17 +835,19 @@ class KimiSoul:
 
         # Dynamic injection
         injections = await self._collect_injections()
+        effective_messages = list(self._context.history)
         if injections:
             combined_reminders = "\n".join(system_reminder(inj.content).text for inj in injections)
-            await self._context.append_message(
+            effective_messages.append(
                 Message(
                     role="user",
                     content=[TextPart(text=combined_reminders)],
                 )
             )
 
-        # Normalize: merge adjacent user messages for clean API input
-        effective_history = normalize_history(self._context.history)
+        # Normalize: merge adjacent user messages for clean API input.
+        # Dynamic injections are step-local and must not be persisted into context.
+        effective_history = normalize_history(effective_messages)
 
         async def _run_step_once() -> StepResult:
             # run an LLM step (may be interrupted)
