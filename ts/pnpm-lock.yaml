@@ -129,6 +129,9 @@ importers:
       '@moonshot-ai/kosong':
         specifier: workspace:^
         version: link:../kosong
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
 
   packages/kimi-sdk:
     dependencies:

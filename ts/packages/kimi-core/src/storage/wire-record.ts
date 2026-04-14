@@ -1,0 +1,950 @@
+// WireRecord zod schemas + TypeScript interfaces (§4.3 + appendix B).
+//
+// Each record type has a hand-written TypeScript interface (authoritative
+// shape for consumers) plus a zod schema that parses incoming JSON lines.
+
+import { z } from 'zod';
+
+// ── File metadata header ────────────────────────────────────────────────
+
+export interface WireFileMetadata {
+  type: 'metadata';
+  protocol_version: string;
+  created_at: number;
+  kimi_version?: string | undefined;
+}
+
+// ── Record branches (§4.3 + appendix B) ────────────────────────────────
+
+export interface TurnBeginRecord {
+  type: 'turn_begin';
+  seq: number;
+  time: number;
+  turn_id: string;
+  agent_type: 'main' | 'sub' | 'independent';
+  user_input?: string | undefined;
+  input_kind: 'user' | 'system_trigger';
+  trigger_source?: string | undefined;
+}
+
+export interface TurnEndRecord {
+  type: 'turn_end';
+  seq: number;
+  time: number;
+  turn_id: string;
+  agent_type: 'main' | 'sub' | 'independent';
+  success: boolean;
+  reason: 'done' | 'cancelled' | 'error';
+  usage?:
+    | {
+        input_tokens: number;
+        output_tokens: number;
+        cache_read_tokens?: number | undefined;
+        cache_write_tokens?: number | undefined;
+        cost_usd?: number | undefined;
+      }
+    | undefined;
+}
+
+export interface UserMessageRecord {
+  type: 'user_message';
+  seq: number;
+  time: number;
+  turn_id: string;
+  content: string;
+}
+
+export interface AssistantMessageRecord {
+  type: 'assistant_message';
+  seq: number;
+  time: number;
+  turn_id: string;
+  text: string | null;
+  think: string | null;
+  tool_calls: Array<{ id: string; name: string; args: unknown }>;
+  model: string;
+  usage?:
+    | {
+        input_tokens: number;
+        output_tokens: number;
+        cache_read_tokens?: number | undefined;
+      }
+    | undefined;
+}
+
+export interface ToolResultRecord {
+  type: 'tool_result';
+  seq: number;
+  time: number;
+  turn_id: string;
+  tool_call_id: string;
+  output: unknown;
+  is_error?: boolean | undefined;
+}
+
+export interface CompactionRecord {
+  type: 'compaction';
+  seq: number;
+  time: number;
+  summary: string;
+  compacted_range: {
+    from_turn: number;
+    to_turn: number;
+    message_count: number;
+  };
+  pre_compact_tokens: number;
+  post_compact_tokens: number;
+  trigger: 'auto' | 'manual';
+  archive_file?: string | undefined;
+}
+
+export interface SystemPromptChangedRecord {
+  type: 'system_prompt_changed';
+  seq: number;
+  time: number;
+  new_prompt: string;
+}
+
+export interface ModelChangedRecord {
+  type: 'model_changed';
+  seq: number;
+  time: number;
+  old_model: string;
+  new_model: string;
+}
+
+export interface ThinkingChangedRecord {
+  type: 'thinking_changed';
+  seq: number;
+  time: number;
+  level: string;
+}
+
+export interface PlanModeChangedRecord {
+  type: 'plan_mode_changed';
+  seq: number;
+  time: number;
+  enabled: boolean;
+}
+
+export interface ToolsChangedRecord {
+  type: 'tools_changed';
+  seq: number;
+  time: number;
+  operation: 'register' | 'remove' | 'set_active';
+  tools: string[];
+}
+
+export interface SystemReminderRecord {
+  type: 'system_reminder';
+  seq: number;
+  time: number;
+  content: string;
+  consumed_at_turn?: number | undefined;
+}
+
+export interface NotificationRecord {
+  type: 'notification';
+  seq: number;
+  time: number;
+  data: {
+    id: string;
+    category: 'task' | 'agent' | 'system' | 'team';
+    type: string;
+    source_kind: string;
+    source_id: string;
+    title: string;
+    body: string;
+    severity: 'info' | 'success' | 'warning' | 'error';
+    payload?: Record<string, unknown> | undefined;
+    targets: Array<'llm' | 'wire' | 'shell'>;
+    dedupe_key?: string | undefined;
+    delivered_at?: number | undefined;
+  };
+}
+
+export interface PermissionModeChangedRecord {
+  type: 'permission_mode_changed';
+  seq: number;
+  time: number;
+  turn_id?: string | undefined;
+  data: {
+    from: string;
+    to: string;
+    reason: string;
+  };
+}
+
+export interface ToolCallDispatchedRecord {
+  type: 'tool_call_dispatched';
+  seq: number;
+  time: number;
+  turn_id: string;
+  step: number;
+  data: {
+    tool_call_id: string;
+    tool_name: string;
+    args: unknown;
+    assistant_message_id: string;
+  };
+}
+
+export interface ToolDeniedRecord {
+  type: 'tool_denied';
+  seq: number;
+  time: number;
+  turn_id: string;
+  step: number;
+  data: {
+    tool_call_id: string;
+    tool_name: string;
+    rule_id: string;
+    reason: string;
+  };
+}
+
+// ── Approval helper types (appendix B L6206 / L6242) ───────────────────
+
+export type ApprovalDisplay =
+  | {
+      kind: 'command';
+      command: string;
+      cwd?: string | undefined;
+      description?: string | undefined;
+    }
+  | { kind: 'diff'; path: string; diff: string }
+  | { kind: 'file_write'; path: string; content: string }
+  | { kind: 'task_stop'; task_id: string; task_description: string }
+  | { kind: 'generic'; title: string; body: string };
+
+export type ApprovalSource =
+  | { kind: 'soul'; agent_id: string }
+  | { kind: 'subagent'; agent_id: string }
+  | { kind: 'turn'; turn_id: string }
+  | { kind: 'session'; session_id: string };
+
+// ── Management-class records (Slice 4 / 7 / 8 scope) ──────────────────
+
+export interface SkillInvokedRecord {
+  type: 'skill_invoked';
+  seq: number;
+  time: number;
+  turn_id: string;
+  agent_type?: 'main' | 'sub' | 'independent' | undefined;
+  data: {
+    skill_name: string;
+    execution_mode: 'inline' | 'fork';
+    original_input: string;
+    sub_agent_id?: string | undefined;
+  };
+}
+
+export interface SkillCompletedRecord {
+  type: 'skill_completed';
+  seq: number;
+  time: number;
+  turn_id: string;
+  agent_type?: 'main' | 'sub' | 'independent' | undefined;
+  data: {
+    skill_name: string;
+    execution_mode: 'inline' | 'fork';
+    success: boolean;
+    error?: string | undefined;
+    sub_agent_id?: string | undefined;
+  };
+}
+
+export interface ApprovalRequestRecord {
+  type: 'approval_request';
+  seq: number;
+  time: number;
+  turn_id: string;
+  step: number;
+  data: {
+    request_id: string;
+    tool_call_id: string;
+    tool_name: string;
+    action: string;
+    display: ApprovalDisplay;
+    source: ApprovalSource;
+  };
+}
+
+export interface ApprovalResponseRecord {
+  type: 'approval_response';
+  seq: number;
+  time: number;
+  turn_id: string;
+  step: number;
+  data: {
+    request_id: string;
+    response: 'approved' | 'rejected' | 'cancelled';
+    feedback?: string | undefined;
+    synthetic?: boolean | undefined;
+  };
+}
+
+export interface TeamMailRecord {
+  type: 'team_mail';
+  seq: number;
+  time: number;
+  data: {
+    mail_id: string;
+    reply_to?: string | undefined;
+    from_agent: string;
+    to_agent: string;
+    content: string;
+    summary?: string | undefined;
+  };
+}
+
+export interface SubagentEventRecord {
+  type: 'subagent_event';
+  seq: number;
+  time: number;
+  agent_id: string;
+  agent_name?: string | undefined;
+  parent_tool_call_id: string;
+  /** Persisted SoulEvent snapshot — opaque to wire-level schema (§4.3). */
+  sub_event: unknown;
+}
+
+export interface OwnershipChangedRecord {
+  type: 'ownership_changed';
+  seq: number;
+  time: number;
+  old_owner: string | null;
+  new_owner: string;
+}
+
+// ── Reserved: context edit (logical rewind / edit, §4.7) ───────────────
+
+export interface ContextEditRecord {
+  type: 'context_edit';
+  seq: number;
+  time: number;
+  operation: 'edit_message' | 'delete_message' | 'rewind' | 'insert_message' | 'replace_message';
+  target_seq?: number | undefined;
+  to_turn?: number | undefined;
+  after_seq?: number | undefined;
+  new_content?: string | undefined;
+  new_role?: 'user' | 'assistant' | 'system' | undefined;
+  cascade?: boolean | undefined;
+}
+
+// ── Top-level union ─────────────────────────────────────────────────────
+
+export type WireRecord =
+  | TurnBeginRecord
+  | TurnEndRecord
+  | UserMessageRecord
+  | AssistantMessageRecord
+  | ToolResultRecord
+  | CompactionRecord
+  | SystemPromptChangedRecord
+  | ModelChangedRecord
+  | ThinkingChangedRecord
+  | PlanModeChangedRecord
+  | ToolsChangedRecord
+  | SystemReminderRecord
+  | NotificationRecord
+  | PermissionModeChangedRecord
+  | ToolCallDispatchedRecord
+  | ToolDeniedRecord
+  | SkillInvokedRecord
+  | SkillCompletedRecord
+  | ApprovalRequestRecord
+  | ApprovalResponseRecord
+  | TeamMailRecord
+  | SubagentEventRecord
+  | OwnershipChangedRecord
+  | ContextEditRecord;
+
+export type WireRecordType = WireRecord['type'];
+
+/** A WireRecord with `seq` and `time` stripped — the shape callers pass in. */
+export type JournalInput<T extends WireRecordType> = Omit<
+  Extract<WireRecord, { type: T }>,
+  'seq' | 'time'
+>;
+
+// ── Zod schemas ────────────────────────────────────────────────────────
+
+const agentTypeEnum = z.enum(['main', 'sub', 'independent']);
+
+const _rawWireFileMetadataSchema = z.object({
+  type: z.literal('metadata'),
+  protocol_version: z.string(),
+  created_at: z.number(),
+  kimi_version: z.string().optional(),
+});
+export const WireFileMetadataSchema: z.ZodType<WireFileMetadata> = _rawWireFileMetadataSchema;
+
+const _rawTurnBeginRecordSchema = z.object({
+  type: z.literal('turn_begin'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  agent_type: agentTypeEnum,
+  user_input: z.string().optional(),
+  input_kind: z.enum(['user', 'system_trigger']),
+  trigger_source: z.string().optional(),
+});
+export const TurnBeginRecordSchema: z.ZodType<TurnBeginRecord> = _rawTurnBeginRecordSchema;
+
+const _rawTurnEndRecordSchema = z.object({
+  type: z.literal('turn_end'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  agent_type: agentTypeEnum,
+  success: z.boolean(),
+  reason: z.enum(['done', 'cancelled', 'error']),
+  usage: z
+    .object({
+      input_tokens: z.number(),
+      output_tokens: z.number(),
+      cache_read_tokens: z.number().optional(),
+      cache_write_tokens: z.number().optional(),
+      cost_usd: z.number().optional(),
+    })
+    .optional(),
+});
+export const TurnEndRecordSchema: z.ZodType<TurnEndRecord> = _rawTurnEndRecordSchema;
+
+const _rawUserMessageRecordSchema = z.object({
+  type: z.literal('user_message'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  content: z.string(),
+});
+export const UserMessageRecordSchema: z.ZodType<UserMessageRecord> = _rawUserMessageRecordSchema;
+
+const _rawAssistantMessageRecordSchema = z.object({
+  type: z.literal('assistant_message'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  text: z.string().nullable(),
+  think: z.string().nullable(),
+  tool_calls: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      args: z.unknown(),
+    }),
+  ),
+  model: z.string(),
+  usage: z
+    .object({
+      input_tokens: z.number(),
+      output_tokens: z.number(),
+      cache_read_tokens: z.number().optional(),
+    })
+    .optional(),
+});
+export const AssistantMessageRecordSchema: z.ZodType<AssistantMessageRecord> =
+  _rawAssistantMessageRecordSchema;
+
+const _rawToolResultRecordSchema = z.object({
+  type: z.literal('tool_result'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  tool_call_id: z.string(),
+  output: z.unknown(),
+  is_error: z.boolean().optional(),
+});
+export const ToolResultRecordSchema: z.ZodType<ToolResultRecord> = _rawToolResultRecordSchema;
+
+const _rawCompactionRecordSchema = z.object({
+  type: z.literal('compaction'),
+  seq: z.number(),
+  time: z.number(),
+  summary: z.string(),
+  compacted_range: z.object({
+    from_turn: z.number(),
+    to_turn: z.number(),
+    message_count: z.number(),
+  }),
+  pre_compact_tokens: z.number(),
+  post_compact_tokens: z.number(),
+  trigger: z.enum(['auto', 'manual']),
+  archive_file: z.string().optional(),
+});
+export const CompactionRecordSchema: z.ZodType<CompactionRecord> = _rawCompactionRecordSchema;
+
+const _rawSystemPromptChangedRecordSchema = z.object({
+  type: z.literal('system_prompt_changed'),
+  seq: z.number(),
+  time: z.number(),
+  new_prompt: z.string(),
+});
+export const SystemPromptChangedRecordSchema: z.ZodType<SystemPromptChangedRecord> =
+  _rawSystemPromptChangedRecordSchema;
+
+const _rawModelChangedRecordSchema = z.object({
+  type: z.literal('model_changed'),
+  seq: z.number(),
+  time: z.number(),
+  old_model: z.string(),
+  new_model: z.string(),
+});
+export const ModelChangedRecordSchema: z.ZodType<ModelChangedRecord> = _rawModelChangedRecordSchema;
+
+const _rawThinkingChangedRecordSchema = z.object({
+  type: z.literal('thinking_changed'),
+  seq: z.number(),
+  time: z.number(),
+  level: z.string(),
+});
+export const ThinkingChangedRecordSchema: z.ZodType<ThinkingChangedRecord> =
+  _rawThinkingChangedRecordSchema;
+
+const _rawPlanModeChangedRecordSchema = z.object({
+  type: z.literal('plan_mode_changed'),
+  seq: z.number(),
+  time: z.number(),
+  enabled: z.boolean(),
+});
+export const PlanModeChangedRecordSchema: z.ZodType<PlanModeChangedRecord> =
+  _rawPlanModeChangedRecordSchema;
+
+const _rawToolsChangedRecordSchema = z.object({
+  type: z.literal('tools_changed'),
+  seq: z.number(),
+  time: z.number(),
+  operation: z.enum(['register', 'remove', 'set_active']),
+  tools: z.array(z.string()),
+});
+export const ToolsChangedRecordSchema: z.ZodType<ToolsChangedRecord> = _rawToolsChangedRecordSchema;
+
+const _rawSystemReminderRecordSchema = z.object({
+  type: z.literal('system_reminder'),
+  seq: z.number(),
+  time: z.number(),
+  content: z.string(),
+  consumed_at_turn: z.number().optional(),
+});
+export const SystemReminderRecordSchema: z.ZodType<SystemReminderRecord> =
+  _rawSystemReminderRecordSchema;
+
+const _rawNotificationRecordSchema = z.object({
+  type: z.literal('notification'),
+  seq: z.number(),
+  time: z.number(),
+  data: z.object({
+    id: z.string(),
+    category: z.enum(['task', 'agent', 'system', 'team']),
+    type: z.string(),
+    source_kind: z.string(),
+    source_id: z.string(),
+    title: z.string(),
+    body: z.string(),
+    severity: z.enum(['info', 'success', 'warning', 'error']),
+    payload: z.record(z.string(), z.unknown()).optional(),
+    targets: z.array(z.enum(['llm', 'wire', 'shell'])),
+    dedupe_key: z.string().optional(),
+    delivered_at: z.number().optional(),
+  }),
+});
+export const NotificationRecordSchema: z.ZodType<NotificationRecord> = _rawNotificationRecordSchema;
+
+const _rawPermissionModeChangedRecordSchema = z.object({
+  type: z.literal('permission_mode_changed'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string().optional(),
+  data: z.object({
+    from: z.string(),
+    to: z.string(),
+    reason: z.string(),
+  }),
+});
+export const PermissionModeChangedRecordSchema: z.ZodType<PermissionModeChangedRecord> =
+  _rawPermissionModeChangedRecordSchema;
+
+const _rawToolCallDispatchedRecordSchema = z.object({
+  type: z.literal('tool_call_dispatched'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  step: z.number(),
+  data: z.object({
+    tool_call_id: z.string(),
+    tool_name: z.string(),
+    args: z.unknown(),
+    assistant_message_id: z.string(),
+  }),
+});
+export const ToolCallDispatchedRecordSchema: z.ZodType<ToolCallDispatchedRecord> =
+  _rawToolCallDispatchedRecordSchema;
+
+const _rawToolDeniedRecordSchema = z.object({
+  type: z.literal('tool_denied'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  step: z.number(),
+  data: z.object({
+    tool_call_id: z.string(),
+    tool_name: z.string(),
+    rule_id: z.string(),
+    reason: z.string(),
+  }),
+});
+export const ToolDeniedRecordSchema: z.ZodType<ToolDeniedRecord> = _rawToolDeniedRecordSchema;
+
+// ── Approval helper schemas ────────────────────────────────────────────
+
+const _rawApprovalDisplaySchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('command'),
+    command: z.string(),
+    cwd: z.string().optional(),
+    description: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('diff'),
+    path: z.string(),
+    diff: z.string(),
+  }),
+  z.object({
+    kind: z.literal('file_write'),
+    path: z.string(),
+    content: z.string(),
+  }),
+  z.object({
+    kind: z.literal('task_stop'),
+    task_id: z.string(),
+    task_description: z.string(),
+  }),
+  z.object({
+    kind: z.literal('generic'),
+    title: z.string(),
+    body: z.string(),
+  }),
+]);
+export const ApprovalDisplaySchema: z.ZodType<ApprovalDisplay> = _rawApprovalDisplaySchema;
+
+const _rawApprovalSourceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('soul'),
+    agent_id: z.string(),
+  }),
+  z.object({
+    kind: z.literal('subagent'),
+    agent_id: z.string(),
+  }),
+  z.object({
+    kind: z.literal('turn'),
+    turn_id: z.string(),
+  }),
+  z.object({
+    kind: z.literal('session'),
+    session_id: z.string(),
+  }),
+]);
+export const ApprovalSourceSchema: z.ZodType<ApprovalSource> = _rawApprovalSourceSchema;
+
+// ── Management-class schemas ──────────────────────────────────────────
+
+const _rawSkillInvokedRecordSchema = z.object({
+  type: z.literal('skill_invoked'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  agent_type: agentTypeEnum.optional(),
+  data: z.object({
+    skill_name: z.string(),
+    execution_mode: z.enum(['inline', 'fork']),
+    original_input: z.string(),
+    sub_agent_id: z.string().optional(),
+  }),
+});
+export const SkillInvokedRecordSchema: z.ZodType<SkillInvokedRecord> = _rawSkillInvokedRecordSchema;
+
+const _rawSkillCompletedRecordSchema = z.object({
+  type: z.literal('skill_completed'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  agent_type: agentTypeEnum.optional(),
+  data: z.object({
+    skill_name: z.string(),
+    execution_mode: z.enum(['inline', 'fork']),
+    success: z.boolean(),
+    error: z.string().optional(),
+    sub_agent_id: z.string().optional(),
+  }),
+});
+export const SkillCompletedRecordSchema: z.ZodType<SkillCompletedRecord> =
+  _rawSkillCompletedRecordSchema;
+
+const _rawApprovalRequestRecordSchema = z.object({
+  type: z.literal('approval_request'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  step: z.number(),
+  data: z.object({
+    request_id: z.string(),
+    tool_call_id: z.string(),
+    tool_name: z.string(),
+    action: z.string(),
+    display: ApprovalDisplaySchema,
+    source: ApprovalSourceSchema,
+  }),
+});
+export const ApprovalRequestRecordSchema: z.ZodType<ApprovalRequestRecord> =
+  _rawApprovalRequestRecordSchema;
+
+const _rawApprovalResponseRecordSchema = z.object({
+  type: z.literal('approval_response'),
+  seq: z.number(),
+  time: z.number(),
+  turn_id: z.string(),
+  step: z.number(),
+  data: z.object({
+    request_id: z.string(),
+    response: z.enum(['approved', 'rejected', 'cancelled']),
+    feedback: z.string().optional(),
+    synthetic: z.boolean().optional(),
+  }),
+});
+export const ApprovalResponseRecordSchema: z.ZodType<ApprovalResponseRecord> =
+  _rawApprovalResponseRecordSchema;
+
+const _rawTeamMailRecordSchema = z.object({
+  type: z.literal('team_mail'),
+  seq: z.number(),
+  time: z.number(),
+  data: z.object({
+    mail_id: z.string(),
+    reply_to: z.string().optional(),
+    from_agent: z.string(),
+    to_agent: z.string(),
+    content: z.string(),
+    summary: z.string().optional(),
+  }),
+});
+export const TeamMailRecordSchema: z.ZodType<TeamMailRecord> = _rawTeamMailRecordSchema;
+
+const _rawSubagentEventRecordSchema = z.object({
+  type: z.literal('subagent_event'),
+  seq: z.number(),
+  time: z.number(),
+  agent_id: z.string(),
+  agent_name: z.string().optional(),
+  parent_tool_call_id: z.string(),
+  sub_event: z.unknown(),
+});
+export const SubagentEventRecordSchema: z.ZodType<SubagentEventRecord> =
+  _rawSubagentEventRecordSchema;
+
+const _rawOwnershipChangedRecordSchema = z.object({
+  type: z.literal('ownership_changed'),
+  seq: z.number(),
+  time: z.number(),
+  old_owner: z.string().nullable(),
+  new_owner: z.string(),
+});
+export const OwnershipChangedRecordSchema: z.ZodType<OwnershipChangedRecord> =
+  _rawOwnershipChangedRecordSchema;
+
+const _rawContextEditRecordSchema = z.object({
+  type: z.literal('context_edit'),
+  seq: z.number(),
+  time: z.number(),
+  operation: z.enum([
+    'edit_message',
+    'delete_message',
+    'rewind',
+    'insert_message',
+    'replace_message',
+  ]),
+  target_seq: z.number().optional(),
+  to_turn: z.number().optional(),
+  after_seq: z.number().optional(),
+  new_content: z.string().optional(),
+  new_role: z.enum(['user', 'assistant', 'system']).optional(),
+  cascade: z.boolean().optional(),
+});
+export const ContextEditRecordSchema: z.ZodType<ContextEditRecord> = _rawContextEditRecordSchema;
+
+// ── Discriminated union over all record types ──────────────────────────
+
+// ── Compile-time drift guard ────────────────────────────────────────────
+// If a hand-written record interface drifts from the zod schema it is
+// paired with, the `true` assignment below fails typecheck. Never cast or
+// suppress these — drift in a wire-level record is a hard error.
+
+type AssertEqual<T, U> = [T] extends [U] ? ([U] extends [T] ? true : false) : false;
+
+const _driftGuard_WireFileMetadata: AssertEqual<
+  z.infer<typeof _rawWireFileMetadataSchema>,
+  WireFileMetadata
+> = true;
+void _driftGuard_WireFileMetadata;
+const _driftGuard_TurnBeginRecord: AssertEqual<
+  z.infer<typeof _rawTurnBeginRecordSchema>,
+  TurnBeginRecord
+> = true;
+void _driftGuard_TurnBeginRecord;
+const _driftGuard_TurnEndRecord: AssertEqual<
+  z.infer<typeof _rawTurnEndRecordSchema>,
+  TurnEndRecord
+> = true;
+void _driftGuard_TurnEndRecord;
+const _driftGuard_UserMessageRecord: AssertEqual<
+  z.infer<typeof _rawUserMessageRecordSchema>,
+  UserMessageRecord
+> = true;
+void _driftGuard_UserMessageRecord;
+const _driftGuard_AssistantMessageRecord: AssertEqual<
+  z.infer<typeof _rawAssistantMessageRecordSchema>,
+  AssistantMessageRecord
+> = true;
+void _driftGuard_AssistantMessageRecord;
+const _driftGuard_ToolResultRecord: AssertEqual<
+  z.infer<typeof _rawToolResultRecordSchema>,
+  ToolResultRecord
+> = true;
+void _driftGuard_ToolResultRecord;
+const _driftGuard_CompactionRecord: AssertEqual<
+  z.infer<typeof _rawCompactionRecordSchema>,
+  CompactionRecord
+> = true;
+void _driftGuard_CompactionRecord;
+const _driftGuard_SystemPromptChangedRecord: AssertEqual<
+  z.infer<typeof _rawSystemPromptChangedRecordSchema>,
+  SystemPromptChangedRecord
+> = true;
+void _driftGuard_SystemPromptChangedRecord;
+const _driftGuard_ModelChangedRecord: AssertEqual<
+  z.infer<typeof _rawModelChangedRecordSchema>,
+  ModelChangedRecord
+> = true;
+void _driftGuard_ModelChangedRecord;
+const _driftGuard_ThinkingChangedRecord: AssertEqual<
+  z.infer<typeof _rawThinkingChangedRecordSchema>,
+  ThinkingChangedRecord
+> = true;
+void _driftGuard_ThinkingChangedRecord;
+const _driftGuard_PlanModeChangedRecord: AssertEqual<
+  z.infer<typeof _rawPlanModeChangedRecordSchema>,
+  PlanModeChangedRecord
+> = true;
+void _driftGuard_PlanModeChangedRecord;
+const _driftGuard_ToolsChangedRecord: AssertEqual<
+  z.infer<typeof _rawToolsChangedRecordSchema>,
+  ToolsChangedRecord
+> = true;
+void _driftGuard_ToolsChangedRecord;
+const _driftGuard_SystemReminderRecord: AssertEqual<
+  z.infer<typeof _rawSystemReminderRecordSchema>,
+  SystemReminderRecord
+> = true;
+void _driftGuard_SystemReminderRecord;
+const _driftGuard_NotificationRecord: AssertEqual<
+  z.infer<typeof _rawNotificationRecordSchema>,
+  NotificationRecord
+> = true;
+void _driftGuard_NotificationRecord;
+const _driftGuard_PermissionModeChangedRecord: AssertEqual<
+  z.infer<typeof _rawPermissionModeChangedRecordSchema>,
+  PermissionModeChangedRecord
+> = true;
+void _driftGuard_PermissionModeChangedRecord;
+const _driftGuard_ToolCallDispatchedRecord: AssertEqual<
+  z.infer<typeof _rawToolCallDispatchedRecordSchema>,
+  ToolCallDispatchedRecord
+> = true;
+void _driftGuard_ToolCallDispatchedRecord;
+const _driftGuard_ToolDeniedRecord: AssertEqual<
+  z.infer<typeof _rawToolDeniedRecordSchema>,
+  ToolDeniedRecord
+> = true;
+void _driftGuard_ToolDeniedRecord;
+const _driftGuard_ApprovalDisplay: AssertEqual<
+  z.infer<typeof _rawApprovalDisplaySchema>,
+  ApprovalDisplay
+> = true;
+void _driftGuard_ApprovalDisplay;
+const _driftGuard_ApprovalSource: AssertEqual<
+  z.infer<typeof _rawApprovalSourceSchema>,
+  ApprovalSource
+> = true;
+void _driftGuard_ApprovalSource;
+const _driftGuard_SkillInvokedRecord: AssertEqual<
+  z.infer<typeof _rawSkillInvokedRecordSchema>,
+  SkillInvokedRecord
+> = true;
+void _driftGuard_SkillInvokedRecord;
+const _driftGuard_SkillCompletedRecord: AssertEqual<
+  z.infer<typeof _rawSkillCompletedRecordSchema>,
+  SkillCompletedRecord
+> = true;
+void _driftGuard_SkillCompletedRecord;
+const _driftGuard_ApprovalRequestRecord: AssertEqual<
+  z.infer<typeof _rawApprovalRequestRecordSchema>,
+  ApprovalRequestRecord
+> = true;
+void _driftGuard_ApprovalRequestRecord;
+const _driftGuard_ApprovalResponseRecord: AssertEqual<
+  z.infer<typeof _rawApprovalResponseRecordSchema>,
+  ApprovalResponseRecord
+> = true;
+void _driftGuard_ApprovalResponseRecord;
+const _driftGuard_TeamMailRecord: AssertEqual<
+  z.infer<typeof _rawTeamMailRecordSchema>,
+  TeamMailRecord
+> = true;
+void _driftGuard_TeamMailRecord;
+const _driftGuard_SubagentEventRecord: AssertEqual<
+  z.infer<typeof _rawSubagentEventRecordSchema>,
+  SubagentEventRecord
+> = true;
+void _driftGuard_SubagentEventRecord;
+const _driftGuard_OwnershipChangedRecord: AssertEqual<
+  z.infer<typeof _rawOwnershipChangedRecordSchema>,
+  OwnershipChangedRecord
+> = true;
+void _driftGuard_OwnershipChangedRecord;
+const _driftGuard_ContextEditRecord: AssertEqual<
+  z.infer<typeof _rawContextEditRecordSchema>,
+  ContextEditRecord
+> = true;
+void _driftGuard_ContextEditRecord;
+
+// Note: WireRecordSchema is a z.ZodType<WireRecord> discriminatedUnion over
+// all the `_raw*Schema` branches above; each branch already has its own
+// drift guard so the union is drift-checked by construction.
+
+export const WireRecordSchema: z.ZodType<WireRecord> = z.discriminatedUnion('type', [
+  _rawTurnBeginRecordSchema,
+  _rawTurnEndRecordSchema,
+  _rawUserMessageRecordSchema,
+  _rawAssistantMessageRecordSchema,
+  _rawToolResultRecordSchema,
+  _rawCompactionRecordSchema,
+  _rawSystemPromptChangedRecordSchema,
+  _rawModelChangedRecordSchema,
+  _rawThinkingChangedRecordSchema,
+  _rawPlanModeChangedRecordSchema,
+  _rawToolsChangedRecordSchema,
+  _rawSystemReminderRecordSchema,
+  _rawNotificationRecordSchema,
+  _rawPermissionModeChangedRecordSchema,
+  _rawToolCallDispatchedRecordSchema,
+  _rawToolDeniedRecordSchema,
+  _rawSkillInvokedRecordSchema,
+  _rawSkillCompletedRecordSchema,
+  _rawApprovalRequestRecordSchema,
+  _rawApprovalResponseRecordSchema,
+  _rawTeamMailRecordSchema,
+  _rawSubagentEventRecordSchema,
+  _rawOwnershipChangedRecordSchema,
+  _rawContextEditRecordSchema,
+]);

@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@moonshot-ai/kaos": "workspace:^",
-    "@moonshot-ai/kosong": "workspace:^"
+    "@moonshot-ai/kosong": "workspace:^",
+    "zod": "^4.3.6"
   }
 }
