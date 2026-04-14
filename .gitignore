@@ -45,3 +45,6 @@ static/
 .memo/
 .entire
 .claude
+
+# ai workflow files
+dev_docs/
