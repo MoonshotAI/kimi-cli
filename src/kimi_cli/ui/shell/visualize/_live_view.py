@@ -100,8 +100,15 @@ async def _keyboard_listener(
 
 
 class _LiveView:
-    def __init__(self, initial_status: StatusUpdate, cancel_event: asyncio.Event | None = None):
+    def __init__(
+        self,
+        initial_status: StatusUpdate,
+        cancel_event: asyncio.Event | None = None,
+        *,
+        show_thinking_stream: bool = False,
+    ):
         self._cancel_event = cancel_event
+        self._show_thinking_stream = show_thinking_stream
 
         self._mooning_spinner: Spinner | None = None
         self._compacting_spinner: Spinner | None = None
@@ -633,11 +640,15 @@ class _LiveView:
                     return
                 is_think = isinstance(part, ThinkPart)
                 if self._current_content_block is None:
-                    self._current_content_block = _ContentBlock(is_think)
+                    self._current_content_block = _ContentBlock(
+                        is_think, show_thinking_stream=self._show_thinking_stream
+                    )
                     self.refresh_soon()
                 elif self._current_content_block.is_think != is_think:
                     self.flush_content()
-                    self._current_content_block = _ContentBlock(is_think)
+                    self._current_content_block = _ContentBlock(
+                        is_think, show_thinking_stream=self._show_thinking_stream
+                    )
                     self.refresh_soon()
                 self._current_content_block.append(text)
                 self.refresh_soon()

@@ -519,7 +519,7 @@ class KimiCLI:
                 welcome_info.append(
                     WelcomeInfoItem(
                         name="Tip",
-                        value="send /login to use Kimi for Code",
+                        value="send /login to use Kimi for Coding",
                         level=WelcomeInfoItem.Level.WARN,
                     )
                 )

@@ -379,6 +379,7 @@ class Shell:
             await replay_recent_history(
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
+                show_thinking_stream=self.soul.runtime.config.show_thinking_stream,
             )
             await self.soul.start_background_mcp_loading()
 
@@ -759,6 +760,7 @@ class Shell:
         try:
             snap = self.soul.status
             runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
+            show_thinking_stream = runtime.config.show_thinking_stream if runtime else False
             # Capture view reference via closure — _clear_active_view sets
             # _active_view=None inside visualize()'s finally (before run_soul
             # returns), so we must capture the view object independently.
@@ -788,6 +790,7 @@ class Shell:
                     unbind_running_input=self._unbind_running_input,
                     on_view_ready=_on_view_ready,
                     on_view_closed=self._clear_active_view,
+                    show_thinking_stream=show_thinking_stream,
                 ),
                 cancel_event,
                 runtime.session.wire_file if runtime else None,
@@ -839,6 +842,7 @@ class Shell:
                         unbind_running_input=self._unbind_running_input,
                         on_view_ready=_on_view_ready,
                         on_view_closed=self._clear_active_view,
+                        show_thinking_stream=show_thinking_stream,
                     ),
                     cancel_event,
                     runtime.session.wire_file if runtime else None,

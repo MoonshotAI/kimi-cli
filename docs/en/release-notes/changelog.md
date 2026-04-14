@@ -5,6 +5,7 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Shell: Fix inline diff highlights misaligned on lines containing tabs — raw-code diff offsets are now mapped to rendered positions via expandtabs column tracking so highlight spans land correctly after tab expansion
+- Shell: Add `show_thinking_stream` config option to opt back into the legacy streaming reasoning preview — when set to `true`, the live area shows the classic `Thinking...` spinner above a 6-line scrolling preview of the raw reasoning text and the full reasoning markdown is committed to history when the block ends; defaults to `false` to keep the compact 1.32 indicator
 
 ## 1.33.0 (2026-04-13)
 
