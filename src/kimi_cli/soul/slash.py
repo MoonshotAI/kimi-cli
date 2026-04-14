@@ -141,6 +141,19 @@ async def plan(soul: KimiSoul, args: str):
         wire_send(StatusUpdate(plan_mode=soul.plan_mode))
 
 
+@registry.command
+async def btw(soul: KimiSoul, args: str):
+    """Ask a quick side question without interrupting the main conversation"""
+    question = args.strip()
+    if not question:
+        wire_send(TextPart(text="Usage: /btw <question>"))
+        return
+
+    from kimi_cli.soul.btw import run_side_question
+
+    await run_side_question(soul, question)
+
+
 @registry.command(name="add-dir")
 async def add_dir(soul: KimiSoul, args: str):
     """Add a directory to the workspace. Usage: /add-dir <path>. Run without args to list added dirs"""  # noqa: E501
