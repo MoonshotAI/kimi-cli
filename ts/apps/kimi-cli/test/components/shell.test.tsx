@@ -48,6 +48,8 @@ function defaultState(overrides?: Partial<AppState>): AppState {
     thinking: false,
     contextUsage: 0,
     isStreaming: false,
+    streamingPhase: 'idle' as const,
+    streamingStartTime: 0,
     theme: 'dark',
     version: '0.1.0-test',
     ...overrides,

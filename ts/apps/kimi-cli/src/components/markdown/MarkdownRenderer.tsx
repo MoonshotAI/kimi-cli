@@ -38,10 +38,15 @@ export default function MarkdownRenderer({
     return <Text>{text}</Text>;
   }
 
+  // Filter out 'space' tokens so they don't count for margin logic
+  const visibleTokens = tokens.filter((t) => t.type !== 'space');
+
   return (
     <Box flexDirection="column">
-      {tokens.map((token, index) => (
-        <BlockToken key={index} token={token} />
+      {visibleTokens.map((token, index) => (
+        <Box key={index} marginTop={index > 0 ? 1 : 0}>
+          <BlockToken token={token} />
+        </Box>
       ))}
     </Box>
   );

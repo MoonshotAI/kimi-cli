@@ -380,9 +380,9 @@ describe('committedBoundary', () => {
 // ── ThinkingBlock tests ──────────────────────────────────────────────────
 
 describe('ThinkingBlock', () => {
-  it('renders "Thinking..." prefix with empty text', () => {
+  it('renders 💭 prefix with empty text', () => {
     const frame = renderText(<ThinkingBlock text="" />);
-    expect(frame).toContain('Thinking...');
+    expect(frame).toContain('💭');
   });
 
   it('renders short text without truncation', () => {
@@ -391,7 +391,6 @@ describe('ThinkingBlock', () => {
     expect(frame).toContain('Line 1');
     expect(frame).toContain('Line 2');
     expect(frame).toContain('Line 3');
-    expect(frame).toContain('Thinking...');
     expect(frame).not.toContain('more lines');
   });
 
@@ -399,7 +398,6 @@ describe('ThinkingBlock', () => {
     const lines = Array.from({ length: 10 }, (_, i) => `Line ${String(i + 1)}`);
     const text = lines.join('\n');
     const frame = renderText(<ThinkingBlock text={text} maxLines={6} />);
-    expect(frame).toContain('Thinking...');
     expect(frame).toContain('Line 1');
     expect(frame).toContain('Line 6');
     // Should NOT contain lines beyond maxLines

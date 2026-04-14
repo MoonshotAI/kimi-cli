@@ -9,6 +9,7 @@
  *         : <CompletedBlockView key={item.id} block={item} />}
  *     </Static>
  *     <StreamingMessage />     -- current streaming content (dynamic)
+ *     <ApprovalPanel />        -- approval request (when pending)
  *     <Spinner />              -- loading indicator
  *     <InputArea />            -- user input
  *     <StatusBar />            -- bottom status bar
@@ -25,6 +26,9 @@ import { AppContext } from '../app/context.js';
 import type { CompletedBlock } from '../app/context.js';
 import Welcome from './Welcome.js';
 import StreamingMessage from './message/StreamingMessage.js';
+import ToolCallBlock from './message/ToolCallBlock.js';
+import ToolResultBlock from './message/ToolResultBlock.js';
+import ApprovalPanel from './approval/ApprovalPanel.js';
 import Spinner from './Spinner.js';
 import InputArea from './InputArea.js';
 import StatusBar from './StatusBar.js';
@@ -69,6 +73,19 @@ function CompletedBlockView({ block }: { readonly block: CompletedBlock }): Reac
         </Box>
       );
     case 'tool_call':
+      if (block.toolCallData) {
+        return (
+          <Box marginTop={1}>
+            <ToolCallBlock
+              toolCall={block.toolCallData.toolCall}
+              result={block.toolCallData.result}
+              successColor={colors.success}
+              errorColor={colors.error}
+              dimColor={colors.textDim}
+            />
+          </Box>
+        );
+      }
       return (
         <Box>
           <Text color={colors.success}>{'● '}</Text>
@@ -76,6 +93,19 @@ function CompletedBlockView({ block }: { readonly block: CompletedBlock }): Reac
         </Box>
       );
     case 'tool_result':
+      if (block.toolResultData) {
+        return (
+          <Box marginLeft={2}>
+            <ToolResultBlock
+              toolName={block.toolResultData.toolName}
+              result={block.toolResultData.result}
+              successColor={colors.success}
+              errorColor={colors.error}
+              dimColor={colors.textDim}
+            />
+          </Box>
+        );
+      }
       return (
         <Box marginLeft={2}>
           <Text dimColor>{block.content}</Text>
@@ -93,7 +123,7 @@ function CompletedBlockView({ block }: { readonly block: CompletedBlock }): Reac
 }
 
 export default function Shell(): React.JSX.Element {
-  const { completedBlocks } = useContext(AppContext);
+  const { completedBlocks, streamingThinkText, pendingToolCall, pendingApproval, handleApprovalResponse, styles, state } = useContext(AppContext);
 
   // Prepend the welcome block so it is always the first Static item.
   const staticItems = useMemo<CompletedBlock[]>(
@@ -112,7 +142,31 @@ export default function Shell(): React.JSX.Element {
           )
         }
       </Static>
+      {/* Dynamic area: streaming thinking content */}
+      {state.streamingPhase === 'thinking' && streamingThinkText.length > 0 ? (
+        <Box marginTop={1}>
+          <ThinkingBlock text={streamingThinkText} />
+        </Box>
+      ) : null}
+      {/* Dynamic area: pending tool call with loading spinner */}
+      {pendingToolCall !== null ? (
+        <Box marginTop={1}>
+          <ToolCallBlock
+            toolCall={pendingToolCall.toolCall}
+            result={pendingToolCall.result}
+            successColor={styles.colors.success}
+            errorColor={styles.colors.error}
+            dimColor={styles.colors.textDim}
+          />
+        </Box>
+      ) : null}
       <StreamingMessage />
+      {pendingApproval !== null ? (
+        <ApprovalPanel
+          request={pendingApproval}
+          onResponse={handleApprovalResponse}
+        />
+      ) : null}
       <Spinner />
       <InputArea />
       <StatusBar />

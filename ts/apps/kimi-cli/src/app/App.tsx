@@ -27,10 +27,14 @@ export default function App({ wireClient, initialState }: AppProps): React.JSX.E
   const {
     completedBlocks,
     pushBlock,
+    streamingThinkText,
     streamingText,
     setStreamingText,
     sendMessage,
     cancelStream,
+    pendingToolCall,
+    pendingApproval,
+    handleApprovalResponse,
   } = useWire(wireClient, setState);
 
   const styles = useMemo(() => createThemeStyles(state.theme), [state.theme]);
@@ -42,10 +46,14 @@ export default function App({ wireClient, initialState }: AppProps): React.JSX.E
     styles,
     completedBlocks,
     pushBlock,
+    streamingThinkText,
     streamingText,
     setStreamingText,
     sendMessage,
     cancelStream,
+    pendingToolCall,
+    pendingApproval,
+    handleApprovalResponse,
   };
 
   return (

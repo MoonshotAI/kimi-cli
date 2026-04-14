@@ -8,7 +8,7 @@
 
 import React, { createContext } from 'react';
 
-import type { WireClient } from '@moonshot-ai/kimi-wire-mock';
+import type { WireClient, ApprovalRequestEvent, ApprovalResponsePayload } from '@moonshot-ai/kimi-wire-mock';
 
 import type { Theme } from '../config/schema.js';
 import type { ThemeStyles } from '../theme/styles.js';
@@ -34,6 +34,10 @@ export interface AppState {
   contextUsage: number;
   /** Whether an assistant turn is currently streaming. */
   isStreaming: boolean;
+  /** Current streaming phase: 'idle' | 'waiting' (moon spinner) | 'thinking' | 'composing' */
+  streamingPhase: 'idle' | 'waiting' | 'thinking' | 'composing';
+  /** Timestamp (ms) when the current content block started. */
+  streamingStartTime: number;
   /** Color theme. */
   theme: Theme;
   /** Application version string. */
@@ -51,6 +55,16 @@ export type CompletedBlockType =
   | 'thinking'
   | 'status';
 
+export interface ToolCallData {
+  toolCall: import('@moonshot-ai/kimi-wire-mock').ToolCall;
+  result?: import('@moonshot-ai/kimi-wire-mock').ToolReturnValue | undefined;
+}
+
+export interface ToolResultData {
+  toolName: string;
+  result: import('@moonshot-ai/kimi-wire-mock').ToolReturnValue;
+}
+
 export interface CompletedBlock {
   /** Unique identifier for the block (used as React key in <Static>). */
   id: string;
@@ -58,6 +72,10 @@ export interface CompletedBlock {
   type: CompletedBlockType;
   /** Text content of the block. */
   content: string;
+  /** Structured tool call data (only for type === 'tool_call'). */
+  toolCallData?: ToolCallData | undefined;
+  /** Structured tool result data (only for type === 'tool_result'). */
+  toolResultData?: ToolResultData | undefined;
 }
 
 // ── Context value ────────────────────────────────────────────────────
@@ -72,6 +90,8 @@ export interface AppContextValue {
   completedBlocks: CompletedBlock[];
   /** Push a new completed block. */
   pushBlock: (block: CompletedBlock) => void;
+  /** Current streaming thinking text (empty string when idle). */
+  streamingThinkText: string;
   /** Current streaming text (empty string when idle). */
   streamingText: string;
   /** Set the current streaming text. */
@@ -80,6 +100,12 @@ export interface AppContextValue {
   sendMessage: (input: string) => void;
   /** Cancel the current streaming turn. */
   cancelStream: () => void;
+  /** Tool call currently in progress (shown in dynamic area with spinner). */
+  pendingToolCall: ToolCallData | null;
+  /** Currently pending approval request, or null if none. */
+  pendingApproval: ApprovalRequestEvent | null;
+  /** Respond to the pending approval request. */
+  handleApprovalResponse: (response: ApprovalResponsePayload) => void;
 }
 
 // Placeholder default -- the real value is provided by <App>.

@@ -76,6 +76,8 @@ function runShell(opts: CLIOptions, version: string): void {
     thinking: opts.thinking ?? config.default_thinking,
     contextUsage: 0,
     isStreaming: false,
+    streamingPhase: 'idle',
+    streamingStartTime: 0,
     theme: config.theme,
     version,
   };

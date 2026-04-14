@@ -12,6 +12,8 @@ import { MockEventGenerator } from './mock-event-generator.js';
 import { MockSessionStore } from './mock-session-store.js';
 import { createCancellableStream, type CancellableStream } from './event-stream.js';
 import { simpleChatScenario } from './scenarios/simple-chat.js';
+import { toolCallScenario } from './scenarios/tool-call.js';
+import { approvalScenario } from './scenarios/approval.js';
 
 // ── Scenario resolver ─────────────────────────────────────────────────
 
@@ -72,46 +74,37 @@ export class MockWireClient implements WireClient {
     const stream = createCancellableStream(sourceIterable);
     this.currentStream = stream;
 
-    // Wrap to inject steer events and handle cleanup
     const self = this;
-    const wrappedIterable: AsyncIterable<WireEvent> = {
-      [Symbol.asyncIterator](): AsyncIterator<WireEvent> {
-        const inner = stream.iterable[Symbol.asyncIterator]();
-        return {
-          async next(): Promise<IteratorResult<WireEvent>> {
-            // Drain any queued steer inputs first
-            while (self.steerQueue.length > 0) {
-              const steerInput = self.steerQueue.shift()!;
-              return {
-                done: false,
-                value: { type: 'SteerInput', userInput: steerInput },
-              };
-            }
 
-            const result = await inner.next();
-            if (result.done) {
-              self.currentStream = null;
-              return result;
-            }
-            return result;
-          },
-          return(value?: WireEvent): Promise<IteratorResult<WireEvent>> {
-            self.currentStream = null;
-            if (inner.return) {
-              return inner.return(value);
-            }
-            return Promise.resolve({ done: true as const, value: undefined as unknown as WireEvent });
-          },
-        };
-      },
-    };
+    // Use an async generator so we can `await` mid-stream for approvals
+    async function* generate(): AsyncGenerator<WireEvent> {
+      for await (const event of stream.iterable) {
+        // Drain any queued steer inputs
+        while (self.steerQueue.length > 0) {
+          const steerInput = self.steerQueue.shift()!;
+          yield { type: 'SteerInput', userInput: steerInput } as WireEvent;
+        }
+
+        // Yield the event
+        yield event;
+
+        // If this was an ApprovalRequest, pause until approvalResponse() is called
+        if (event.type === 'ApprovalRequest') {
+          await new Promise<ApprovalResponsePayload>((resolve) => {
+            self.pendingApprovals.set(event.id, resolve);
+          });
+          // Approval received — stream continues with remaining events
+        }
+      }
+      self.currentStream = null;
+    }
 
     // Record the turn in the session store
     if (this.options.sessionId) {
       this.sessionStore.recordTurn(this.options.sessionId, this.turnCount);
     }
 
-    return wrappedIterable;
+    return generate();
   }
 
   // ── Steer ───────────────────────────────────────────────────────────
@@ -132,14 +125,11 @@ export class MockWireClient implements WireClient {
   // ── Approval ────────────────────────────────────────────────────────
 
   approvalResponse(requestId: string, response: ApprovalResponsePayload): void {
-    const callback = this.pendingApprovals.get(requestId);
-    if (callback !== undefined) {
-      callback(response);
+    const resolver = this.pendingApprovals.get(requestId);
+    if (resolver !== undefined) {
+      resolver(response);
       this.pendingApprovals.delete(requestId);
     }
-    // In the simple mock, approvals are handled by the scenario itself,
-    // so this is mostly a no-op. Real implementations would resolve
-    // the future that the agent core is awaiting.
   }
 
   // ── Question ────────────────────────────────────────────────────────
@@ -202,7 +192,27 @@ export class MockWireClient implements WireClient {
 // ── Default scenario resolver ─────────────────────────────────────────
 
 function defaultScenarioResolver(input: string): Scenario {
-  // Always use the simple chat scenario as default
+  const lower = input.toLowerCase();
+
+  // Route to approval scenario when input contains "approve" or "write"
+  if (lower.includes('approve') || lower.includes('write')) {
+    const { preApproval, postApproval } = approvalScenario(input);
+    // Combine pre + post into one flat scenario.
+    // The MockWireClient's async generator will pause at the ApprovalRequest
+    // event until approvalResponse() is called, then continue with post steps.
+    return {
+      name: 'approval',
+      description: 'Approval flow',
+      steps: [...preApproval.steps, ...postApproval.steps],
+    };
+  }
+
+  // Route to tool call scenario when input contains "tool" or "file"
+  if (lower.includes('tool') || lower.includes('file')) {
+    return toolCallScenario(input);
+  }
+
+  // Default: simple chat scenario
   return simpleChatScenario(input);
 }
 

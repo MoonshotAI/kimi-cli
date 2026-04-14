@@ -1,23 +1,21 @@
 /**
  * ThinkingBlock component -- renders a collapsed preview of thinking content.
  *
- * Shows the thinking text in gray italic style with a "Thinking..." prefix.
+ * Shows the thinking text with a "💭 Thinking..." prefix in themed gray italic.
  * Long text is truncated to a configurable number of lines (default 6).
- *
- * Used both in the streaming area (while thinking is in progress) and in
- * completed blocks (after the turn ends).
  */
 
-import React from 'react';
+import React, { useContext } from 'react';
 import { Box, Text } from 'ink';
+
+import { AppContext } from '../../app/context.js';
 
 /** Default maximum number of preview lines to show. */
 const DEFAULT_MAX_LINES = 6;
+const DEFAULT_THINK_COLOR = '#888888';
 
 export interface ThinkingBlockProps {
-  /** The full thinking text content. */
   readonly text: string;
-  /** Maximum number of lines to display before truncating. Default: 6. */
   readonly maxLines?: number | undefined;
 }
 
@@ -25,12 +23,13 @@ export default function ThinkingBlock({
   text,
   maxLines = DEFAULT_MAX_LINES,
 }: ThinkingBlockProps): React.JSX.Element {
+  const ctx = useContext(AppContext);
+  const thinkColor = ctx?.styles?.colors?.thinking ?? DEFAULT_THINK_COLOR;
+
   if (text.length === 0) {
     return (
       <Box>
-        <Text color="gray" italic>
-          Thinking...
-        </Text>
+        <Text color={thinkColor} italic>💭 </Text>
       </Box>
     );
   }
@@ -42,17 +41,12 @@ export default function ThinkingBlock({
 
   return (
     <Box flexDirection="column">
-      <Text color="gray" italic>
-        Thinking...
-      </Text>
-      <Box marginLeft={2}>
-        <Text color="gray" italic>
-          {displayText}
-        </Text>
+      <Box>
+        <Text color={thinkColor} italic>💭 {displayText}</Text>
       </Box>
       {isTruncated ? (
         <Box marginLeft={2}>
-          <Text color="gray" italic dimColor>
+          <Text color={thinkColor} italic dimColor>
             {`... (${String(lines.length - maxLines)} more lines)`}
           </Text>
         </Box>
