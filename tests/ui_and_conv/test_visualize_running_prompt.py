@@ -9,7 +9,7 @@ from prompt_toolkit.document import Document
 from rich.text import Text
 
 from kimi_cli.ui.shell.prompt import PromptMode, UserInput
-from kimi_cli.wire.types import ApprovalRequest, StatusUpdate, SteerInput, TextPart
+from kimi_cli.wire.types import ApprovalRequest, StatusUpdate, SteerInput, TextPart, TurnBegin
 
 shell_visualize = importlib.import_module("kimi_cli.ui.shell.visualize")
 # Sub-modules for monkeypatching internal names (Live, _keyboard_listener, console)
@@ -185,7 +185,9 @@ def test_live_view_flushes_current_output_before_printing_steer_input(monkeypatc
     view = _LiveView(StatusUpdate())
     order: list[object] = []
 
-    monkeypatch.setattr(view, "flush_content", lambda: order.append("flush_content"))
+    monkeypatch.setattr(
+        view, "flush_content", lambda *args, **kwargs: order.append("flush_content")
+    )
     monkeypatch.setattr(view, "flush_finished_tool_calls", lambda: order.append("flush_tools"))
     monkeypatch.setattr(
         shell_visualize.console,
@@ -197,6 +199,19 @@ def test_live_view_flushes_current_output_before_printing_steer_input(monkeypatc
 
     assert order[:2] == ["flush_content", "flush_tools"]
     assert order[-1] == ("print", "✨ A steer follow-up")
+
+
+def test_turn_begin_flushes_with_summary(monkeypatch) -> None:
+    view = _LiveView(StatusUpdate())
+    block = shell_visualize._ContentBlock(is_think=False)
+    block.append("hello\n\nworld")
+    view._current_content_block = block
+    called: list[bool] = []
+    monkeypatch.setattr(
+        view, "flush_content", lambda *, show_summary=False: called.append(show_summary)
+    )
+    view.dispatch_wire_message(TurnBegin(user_input=[TextPart(text="hi")]))
+    assert called == [True]
 
 
 @pytest.mark.asyncio

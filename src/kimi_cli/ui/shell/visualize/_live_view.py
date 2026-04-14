@@ -219,6 +219,7 @@ class _LiveView:
                                 live.update(self.compose(), refresh=True)
                                 self._need_recompose = False
                             continue
+                        self.flush_content(show_summary=True)
                         self.cleanup(is_interrupt=False)
                         live.update(self.compose(), refresh=True)
                         break
@@ -568,7 +569,7 @@ class _LiveView:
 
     def cleanup(self, is_interrupt: bool) -> None:
         """Cleanup the live view on step end or interruption."""
-        self.flush_content(show_summary=not is_interrupt)
+        self.flush_content()
 
         for block in self._tool_call_blocks.values():
             if not block.finished:

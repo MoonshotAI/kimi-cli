@@ -299,3 +299,74 @@ class TestContentBlockCommitment:
         # After first commit, bullet should be marked as printed
         if block._committed_len > 0:
             assert block._has_printed_bullet
+
+
+class TestContentBlockTps:
+    """Verify tokens-per-second computation and summary generation."""
+
+    def test_compute_tps_returns_none_early(self):
+        """TPS is suppressed until enough time has elapsed."""
+        block = _ContentBlock(is_think=True)
+        assert block._compute_tps(0.1, 10) is None
+        assert block._compute_tps(0.5, 10) is None
+        assert block._compute_tps(0.6, 0) is None
+
+    def test_compute_tps_after_threshold(self):
+        """TPS uses the real elapsed float and returns an int rate."""
+        block = _ContentBlock(is_think=False)
+        assert block._compute_tps(2.0, 100) == 50
+        assert block._compute_tps(1.9, 100) == 52
+        assert block._compute_tps(1.0, 10) == 10
+
+    def test_average_tps_via_elapsed(self, monkeypatch):
+        """_average_tps() reads the block's own timer."""
+        import time
+
+        block = _ContentBlock(is_think=False)
+        block._start_time = 1000.0
+        block._token_count = 100.0
+        monkeypatch.setattr(time, "monotonic", lambda: 1002.0)
+        assert block._average_tps() == 50
+
+    def test_compose_summary_returns_none_for_zero_tokens(self):
+        block = _ContentBlock(is_think=False)
+        assert block.compose_summary() is None
+
+    def test_compose_summary_includes_tps(self):
+        import time
+
+        block = _ContentBlock(is_think=False)
+        block._start_time = time.monotonic() - 2.0
+        block._token_count = 100.0
+        summary = block.compose_summary()
+        assert summary is not None
+        assert "Composed" in summary.plain
+        assert "tokens" in summary.plain
+        assert "tok/s" in summary.plain
+
+    def test_compose_summary_omits_tps_when_below_threshold(self, monkeypatch):
+        import time
+
+        block = _ContentBlock(is_think=False)
+        block._start_time = 1000.0
+        block._token_count = 10.0
+        monkeypatch.setattr(time, "monotonic", lambda: 1000.4)
+        summary = block.compose_summary()
+        assert summary is not None
+        assert "tokens" in summary.plain
+        assert "tok/s" not in summary.plain
+
+    def test_compose_final_thinking_includes_tps(self, monkeypatch):
+        import time
+
+        block = _ContentBlock(is_think=True)
+        block._start_time = 1000.0
+        block._token_count = 100.0
+        block.raw_text = "some thinking"
+        monkeypatch.setattr(time, "monotonic", lambda: 1002.0)
+        final = block.compose_final()
+        assert "tok/s" in str(final)
+
+    def test_compose_summary_for_thinking_block(self):
+        block = _ContentBlock(is_think=True)
+        assert block.compose_summary() is None

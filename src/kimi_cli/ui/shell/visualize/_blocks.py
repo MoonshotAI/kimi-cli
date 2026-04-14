@@ -246,7 +246,7 @@ class _ContentBlock:
         elapsed_str = format_elapsed(time.monotonic() - self._start_time)
         count_str = format_token_count(int(self._token_count))
         avg_tps = self._average_tps()
-        if not avg_tps and int(self._token_count) == 0:
+        if int(self._token_count) == 0:
             return None
         text = Text.assemble(
             ("Composed", ""),
@@ -258,13 +258,15 @@ class _ContentBlock:
         return text
 
     def _average_tps(self) -> int | None:
-        elapsed = time.monotonic() - self._start_time
-        tokens_int = int(self._token_count)
-        seconds = max(1, int(elapsed))
-        if tokens_int > 0:
-            rate = int(tokens_int / seconds)
-            return rate if rate > 0 else None
-        return None
+        return self._compute_tps(time.monotonic() - self._start_time, int(self._token_count))
+
+    @staticmethod
+    def _compute_tps(elapsed: float, tokens_int: int) -> int | None:
+        """Compute tokens per second; guard against early noisy samples."""
+        if elapsed <= 0.5 or tokens_int <= 0:
+            return None
+        rate = int(tokens_int / elapsed)
+        return rate if rate > 0 else None
 
     def has_pending(self) -> bool:
         """Whether there is uncommitted content to flush."""
@@ -303,20 +305,16 @@ class _ContentBlock:
         elapsed_str = format_elapsed(elapsed)
         count_str = f"{format_token_count(int(self._token_count))} tokens"
 
-        tps_str = ""
-        tokens_int = int(self._token_count)
-        seconds = max(1, int(elapsed))
-        if elapsed > 0.5 and tokens_int > 0:
-            rate = int(tokens_int / seconds)
-            if rate > 0:
-                tps_str = f" · {rate} tok/s"
-
-        self._spinner.text = Text.assemble(
+        parts: list[tuple[str, str | Style]] = [
             ("Composing...", ""),
             (f" {elapsed_str}", "grey50"),
             (f" · {count_str}", "grey50"),
-            (tps_str, "grey50"),
-        )
+        ]
+        tps = self._compute_tps(elapsed, int(self._token_count))
+        if tps:
+            parts.append((f" · {tps} tok/s", "grey50"))
+
+        self._spinner.text = Text.assemble(*parts)
         return self._spinner
 
     def _compose_thinking(self) -> Text:
@@ -335,11 +333,9 @@ class _ContentBlock:
         ]
 
         # Live tok/s pulse
-        seconds = max(1, int(elapsed))
-        if elapsed > 0.5 and tokens_int > 0:
-            rate = int(tokens_int / seconds)
-            if rate > 0:
-                parts.append((f" · {rate} tok/s", "grey50"))
+        tps = self._compute_tps(elapsed, tokens_int)
+        if tps:
+            parts.append((f" · {tps} tok/s", "grey50"))
 
         return Text.assemble(*parts)
 
