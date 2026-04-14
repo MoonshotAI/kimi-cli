@@ -7,7 +7,6 @@ import type {
   Client,
   ClientChannel,
   ConnectConfig,
-  ExecOptions as SSH2ExecOptions,
   SFTPWrapper,
   Stats as SFTPStats,
 } from 'ssh2';
@@ -206,11 +205,7 @@ function buildAuthHandler(
   username: string,
   privateKeys: readonly (Buffer | string)[],
   password?: string,
-): ConnectConfig['authHandler'] | undefined {
-  if (privateKeys.length === 0) {
-    return undefined;
-  }
-
+): ConnectConfig['authHandler'] {
   const authQueue: AnyAuthMethod[] = privateKeys.map((key) => ({
     key,
     type: 'publickey',
@@ -257,7 +252,7 @@ export class SSHProcess implements KaosProcess {
       // buffered output is flushed before we resolve.
       channel.on('close', (code: number | null) => {
         // Some ssh2 backends surface the exit status only on 'close'.
-          this._exitCode ??= code ?? 1;
+        this._exitCode ??= code ?? 1;
         resolve(this._exitCode);
       });
       channel.on('exit', (code: number | null) => {
@@ -430,24 +425,15 @@ function sftpAppendFile(sftp: SFTPWrapper, path: string, data: string | Buffer):
   });
 }
 
-function clientExec(
-  client: Client,
-  command: string,
-  options?: SSH2ExecOptions,
-): Promise<ClientChannel> {
+function clientExec(client: Client, command: string): Promise<ClientChannel> {
   return new Promise<ClientChannel>((resolve, reject) => {
-    const cb = (err: Error | undefined, channel: ClientChannel): void => {
+    client.exec(command, (err: Error | undefined, channel: ClientChannel) => {
       if (err) {
         reject(err);
       } else {
         resolve(channel);
       }
-    };
-    if (options) {
-      client.exec(command, options, cb);
-    } else {
-      client.exec(command, cb);
-    }
+    });
   });
 }
 
@@ -616,10 +602,9 @@ export class SSHKaos implements Kaos {
   async *iterdir(path: string): AsyncGenerator<string> {
     const resolved = this._resolvePath(path);
     const entries = await sftpReaddir(this._sftp, resolved);
-    const sep = '/';
     for (const entry of entries) {
       if (entry.filename === '.' || entry.filename === '..') continue;
-      yield resolved + sep + entry.filename;
+      yield posix.join(resolved, entry.filename);
     }
   }
 
@@ -678,7 +663,7 @@ export class SSHKaos implements Kaos {
 
       for (const entry of entries) {
         if (entry.filename === '.' || entry.filename === '..') continue;
-        const fullPath = basePath + '/' + entry.filename;
+        const fullPath = posix.join(basePath, entry.filename);
         if (entry.attrs.isDirectory()) {
           yield* this._globWalk(fullPath, patternParts, caseSensitive);
         } else if (remainingParts.length === 0) {
@@ -700,7 +685,7 @@ export class SSHKaos implements Kaos {
         if (entry.filename === '.' || entry.filename === '..') continue;
         if (!regex.test(entry.filename)) continue;
 
-        const fullPath = basePath + '/' + entry.filename;
+        const fullPath = posix.join(basePath, entry.filename);
 
         if (remainingParts.length === 0) {
           yield fullPath;

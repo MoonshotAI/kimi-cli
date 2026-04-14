@@ -3,7 +3,7 @@ import { setImmediate as defer, setTimeout as delay } from 'node:timers/promises
 
 import { describe, expect, it } from 'vitest';
 
-import { BufferedReadable, globPatternToRegex } from '../src/internal.js';
+import { BufferedReadable, decodeTextWithErrors, globPatternToRegex } from '../src/internal.js';
 
 async function collectBytes(readable: AsyncIterable<Uint8Array | string>): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -73,6 +73,79 @@ describe('BufferedReadable', () => {
     source.destroy();
 
     await expect(withTimeout(outputPromise, 250)).resolves.toBe('hello');
+  });
+
+  it('propagates a source error through destroy()', async () => {
+    // When the source emits an 'error' event, BufferedReadable must tear
+    // itself down with the same error so consumers see the failure rather
+    // than waiting forever for data.
+    const source = new PassThrough();
+    const buffered = new BufferedReadable(source);
+    const boom = new Error('source boom');
+
+    const errorReceived = new Promise<Error>((resolve) => {
+      buffered.on('error', (err: Error) => {
+        resolve(err);
+      });
+    });
+
+    source.emit('error', boom);
+
+    const received = await withTimeout(errorReceived, 250);
+    expect(received).toBe(boom);
+    expect(buffered.destroyed).toBe(true);
+  });
+});
+
+describe('decodeTextWithErrors', () => {
+  it('decodes utf-16le content under strict mode', () => {
+    // Covers the utf16le / ucs2 / ucs-2 alias branches that the readText
+    // tests (which only exercise utf-8) never touch.
+    const data = Buffer.from('hello', 'utf16le');
+    expect(decodeTextWithErrors(data, 'utf16le')).toBe('hello');
+  });
+
+  it('accepts the ucs2 and ucs-2 encoding aliases', () => {
+    const data = Buffer.from('hello', 'utf16le');
+    expect(decodeTextWithErrors(data, 'ucs2')).toBe('hello');
+    expect(decodeTextWithErrors(data, 'ucs-2' as BufferEncoding)).toBe('hello');
+  });
+
+  it('falls back to Buffer.toString for non-UTF encodings', () => {
+    // hex / base64 / latin1 are lossless byte↔character mappings so `errors`
+    // has no effect; the helper must take the non-TextDecoder branch.
+    const data = Buffer.from([0x68, 0x69]); // 'hi' in latin1
+    expect(decodeTextWithErrors(data, 'latin1')).toBe('hi');
+    expect(decodeTextWithErrors(data, 'hex')).toBe('6869');
+  });
+});
+
+describe('globPatternToRegex additional cases', () => {
+  it('converts ? to a single-character class that excludes /', () => {
+    const regex = globPatternToRegex('f?o.txt', true);
+    expect(regex.test('foo.txt')).toBe(true);
+    expect(regex.test('fao.txt')).toBe(true);
+    // ? must match exactly one character
+    expect(regex.test('fo.txt')).toBe(false);
+    // ? must not cross path segments
+    expect(regex.test('f/o.txt')).toBe(false);
+  });
+
+  it('treats an unclosed [ as a literal bracket', () => {
+    // Mirrors Python fnmatch/glob: a bare `[` with no closing `]` is
+    // re-emitted as an escaped literal instead of starting a char class.
+    const regex = globPatternToRegex('file[', true);
+    expect(regex.test('file[')).toBe(true);
+    expect(regex.test('file]')).toBe(false);
+  });
+
+  it('escapes regex metacharacters in the default branch', () => {
+    // `+`, `.`, `(`, `)`, `$`, `^`, `|`, `{`, `}`, `\` must be escaped so
+    // `a+b.c$d(e)` in a glob pattern matches that literal filename.
+    const regex = globPatternToRegex('a+b.c$d(e)', true);
+    expect(regex.test('a+b.c$d(e)')).toBe(true);
+    // Without escaping, `+` would make `ab` match via one-or-more repetition.
+    expect(regex.test('ab.c$d(e)')).toBe(false);
   });
 });
 

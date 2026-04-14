@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, stat as fsStat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -93,98 +93,135 @@ describe.skipIf(process.platform === 'win32')('LocalKaos shell operations', () =
     await rm(tmpDir, { recursive: true, force: true });
   });
 
+  // NOTE: These tests mirror Python test_local_kaos_sh.py one-for-one.
+  // Python pins stderr to '' on every non-error case and uses inline_snapshot
+  // for exact stdout comparisons — the TS side now matches that strength so
+  // any future drift (e.g. a rogue newline or a leaked warning) is caught.
+
   it('should run a simple command', async () => {
     const result = await runSh(kaos, "echo 'Hello World'");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('Hello World');
+    expect(result.stdout).toBe('Hello World\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should handle command with error', async () => {
-    const result = await runSh(kaos, 'ls /nonexistent_path_12345');
+    const result = await runSh(kaos, 'ls /nonexistent/directory');
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.length).toBeGreaterThan(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('No such file or directory');
   });
 
   it('should support command chaining with &&', async () => {
-    const result = await runSh(kaos, "echo 'first' && echo 'second'");
+    const result = await runSh(kaos, "echo 'First' && echo 'Second'");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('first');
-    expect(result.stdout).toContain('second');
+    expect(result.stdout).toBe('First\nSecond\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should support command pipe', async () => {
-    const result = await runSh(kaos, "echo 'one two three' | wc -w");
+    const result = await runSh(kaos, "echo 'Hello World' | wc -w");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('3');
+    expect(result.stdout.trim()).toBe('2');
+    expect(result.stderr).toBe('');
   });
 
   it('should handle command with timeout (completes before timeout)', async () => {
-    const result = await runSh(kaos, 'sleep 0.1 && echo done', { timeout: 5000 });
+    // Python asserts stdout='' for `sleep 0.1` so pin that exactly — if the
+    // helper ever introduces its own chatter we want to hear about it.
+    const result = await runSh(kaos, 'sleep 0.1', { timeout: 5000 });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('done');
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
   });
 
   it('should handle timeout expiration', async () => {
+    // Python raises TimeoutError from its helper; the TS helper surfaces the
+    // same condition as exitCode === -1 after force-killing the process.
+    // The contract pinned here is "super-short timeout kills a long sleep".
     const result = await runSh(kaos, 'sleep 60', { timeout: 100 });
-    // When timed out, we force exit code to -1
     expect(result.exitCode).toBe(-1);
   });
 
   it('should pass environment variables to shell', async () => {
-    const result = await runSh(kaos, 'export MY_VAR=hello && echo $MY_VAR');
+    const result = await runSh(kaos, 'TEST_VAR=\'test_value\'; export TEST_VAR; echo "$TEST_VAR"');
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('hello');
+    expect(result.stdout).toBe('test_value\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should perform file operations', async () => {
-    const result = await runSh(
-      kaos,
-      `echo 'file content' > "${tmpDir}/test.txt" && cat "${tmpDir}/test.txt"`,
-    );
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe('file content');
+    // Mirror Python test_file_operations: two separate kaos.exec calls so
+    // that the "file lands on disk between calls" invariant is actually
+    // exercised, plus explicit stat() check.
+    const filePath = join(tmpDir, 'test_file.txt');
+
+    const write = await runSh(kaos, `echo 'Test content' > "${filePath}"`);
+    expect(write.exitCode).toBe(0);
+    expect(write.stdout).toBe('');
+    expect(write.stderr).toBe('');
+
+    const statInfo = await fsStat(filePath);
+    expect(statInfo.isFile()).toBe(true);
+
+    const read = await runSh(kaos, `cat "${filePath}"`);
+    expect(read.exitCode).toBe(0);
+    expect(read.stdout).toBe('Test content\n');
+    expect(read.stderr).toBe('');
   });
 
   it('should handle stdin data', async () => {
-    const result = await runSh(kaos, 'cat', { stdinData: 'hello from stdin' });
+    // Mirror Python test_command_reads_stdin: use the shell `read` builtin,
+    // which requires a newline-terminated input. Previously the TS version
+    // was a trivial `cat` passthrough that did not exercise `read`.
+    const result = await runSh(kaos, 'read value; printf \'%s\\n\' "$value"', {
+      stdinData: 'from stdin\n',
+    });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe('hello from stdin');
+    expect(result.stdout).toBe('from stdin\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should execute commands sequentially with ;', async () => {
     const result = await runSh(kaos, "echo 'One'; echo 'Two'");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe('One\nTwo\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should support conditional execution with ||', async () => {
     const result = await runSh(kaos, "false || echo 'Success'");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe('Success\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should support multiple pipes', async () => {
     const result = await runSh(kaos, "printf '1\\n2\\n3\\n' | grep '2' | wc -l");
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toBe('1');
+    expect(result.stderr).toBe('');
   });
 
   it('should handle text processing with sed', async () => {
     const result = await runSh(kaos, "echo 'apple banana cherry' | sed 's/banana/orange/'");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe('apple orange cherry\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should support command substitution', async () => {
     const result = await runSh(kaos, 'echo "Result: $(echo hello)"');
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe('Result: hello\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should support arithmetic substitution', async () => {
     const result = await runSh(kaos, 'echo "Answer: $((2 + 2))"');
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe('Answer: 4\n');
+    expect(result.stderr).toBe('');
   });
 
   it('should handle very long output', async () => {
@@ -193,6 +230,7 @@ describe.skipIf(process.platform === 'win32')('LocalKaos shell operations', () =
     expect(result.stdout).toContain('1');
     expect(result.stdout).toContain('50');
     expect(result.stdout).not.toContain('51');
+    expect(result.stderr).toBe('');
   });
 
   it('should read multiple lines from stdin', async () => {
@@ -203,5 +241,6 @@ describe.skipIf(process.platform === 'win32')('LocalKaos shell operations', () =
     );
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toBe('3');
+    expect(result.stderr).toBe('');
   });
 });

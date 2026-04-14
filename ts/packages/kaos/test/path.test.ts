@@ -39,6 +39,15 @@ describe('KaosPath', () => {
       expect(child.toString()).toBe('/usr/local/bin');
     });
 
+    it('should accept another KaosPath as div() argument', () => {
+      // Exercises the `other instanceof KaosPath` branch in div() — the
+      // existing tests only pass raw strings so this covers the other
+      // side of the ternary.
+      const p = new KaosPath('/usr');
+      const sub = new KaosPath('local');
+      expect(p.div(sub).toString()).toBe('/usr/local');
+    });
+
     it('should return the parent path', () => {
       const p = new KaosPath('/usr/local/bin');
       expect(p.parent.toString()).toBe('/usr/local');
@@ -53,6 +62,13 @@ describe('KaosPath', () => {
     it('should detect absolute paths', () => {
       expect(new KaosPath('/usr').isAbsolute()).toBe(true);
       expect(new KaosPath('relative/path').isAbsolute()).toBe(false);
+    });
+
+    it('should default to "." when constructed with no arguments', () => {
+      // KaosPath() with no args represents the current directory placeholder.
+      // Used as a neutral starting point before chaining .div()/.joinpath().
+      const p = new KaosPath();
+      expect(p.toString()).toBe('.');
     });
   });
 
@@ -105,6 +121,15 @@ describe('KaosPath', () => {
       expect(c.toString()).toBe(join(process.cwd(), 'foo/bar'));
     });
 
+    it('should resolve .. in a relative path against cwd', () => {
+      // Pins the Python test_kaos_path.py::test_canonical_and_relative_to case:
+      // a relative input that also contains '..' must first rebase to cwd and
+      // then collapse the parent reference.
+      const p = new KaosPath('nested/../file.txt').canonical();
+      expect(p.isAbsolute()).toBe(true);
+      expect(p.toString()).toBe(join(process.cwd(), 'file.txt'));
+    });
+
     it('should compute relativeTo correctly', () => {
       const child = new KaosPath('/usr/local/bin');
       const base = new KaosPath('/usr/local');
@@ -121,6 +146,24 @@ describe('KaosPath', () => {
       const a = new KaosPath('/usr/local/lib');
       const base = new KaosPath('/usr/local/bin');
       expect(() => a.relativeTo(base)).toThrow(/not within/);
+    });
+
+    it('should reject when base is deeper than target', () => {
+      // The target is strictly shorter than base — there is no way for it to
+      // live "within" a deeper base. Hits the parts-length guard separately
+      // from the loop-based prefix-mismatch guard.
+      const a = new KaosPath('/usr');
+      const base = new KaosPath('/usr/local/bin');
+      expect(() => a.relativeTo(base)).toThrow(/not within/);
+    });
+
+    it('should compute relativeTo between two relative paths (empty root)', () => {
+      // Both operands have no absolute root, so splitPathLexically takes
+      // the `root.length === 0 ? path : path.slice(root.length)` else branch.
+      // Pinning this keeps the purely-relative relativeTo path honest.
+      const child = new KaosPath('a/b/c');
+      const base = new KaosPath('a/b');
+      expect(child.relativeTo(base).toString()).toBe('c');
     });
 
     it('should use win32 separators when the current kaos reports win32', () => {
@@ -228,6 +271,29 @@ describe('KaosPath', () => {
       const d = new KaosPath(tmpDir);
       // Should not throw
       await expect(d.mkdir({ existOk: true })).resolves.toBeUndefined();
+    });
+
+    it('should return false for isFile on a non-existent path', async () => {
+      // exists()/isFile()/isDir() all swallow stat errors and return false
+      // for missing paths. Pin that behavior so a regression does not
+      // silently start throwing on absent files.
+      const p = new KaosPath(join(tmpDir, 'does-not-exist.txt'));
+      expect(await p.isFile()).toBe(false);
+    });
+
+    it('should return false for isDir on a non-existent path', async () => {
+      const p = new KaosPath(join(tmpDir, 'also-missing'));
+      expect(await p.isDir()).toBe(false);
+    });
+
+    it('should append text with an explicit encoding option', async () => {
+      // appendText accepts an encoding option that threads through to
+      // kaos.writeText({ mode: 'a', encoding }). Exercising the explicit
+      // encoding branch keeps the option wiring honest.
+      const p = new KaosPath(join(tmpDir, 'enc-append.txt'));
+      await p.writeText('head-');
+      await p.appendText('tail', { encoding: 'utf-8' });
+      expect(await p.readText()).toBe('head-tail');
     });
   });
 

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, stat as fsStat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -71,29 +71,46 @@ describe.skipIf(process.platform !== 'win32')('LocalKaos cmd.exe', () => {
   });
 
   it('should run a simple command', async () => {
-    const { exitCode, stdout } = await runCmd(kaos, 'echo Hello Windows');
+    const { exitCode, stdout, stderr } = await runCmd(kaos, 'echo Hello Windows');
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe('Hello Windows');
+    expect(stderr).toBe('');
   });
 
   it('should handle command with error exit', async () => {
-    const { exitCode } = await runCmd(kaos, 'exit /b 1');
+    // `exit /b 1` must produce neither stdout nor stderr — pinning that
+    // keeps us honest if cmd.exe or the chcp prefix ever leaks output.
+    const { exitCode, stdout, stderr } = await runCmd(kaos, 'exit /b 1');
     expect(exitCode).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toBe('');
   });
 
   it('should support command chaining', async () => {
-    const { exitCode, stdout } = await runCmd(kaos, 'echo First&& echo Second');
+    const { exitCode, stdout, stderr } = await runCmd(kaos, 'echo First&& echo Second');
     expect(exitCode).toBe(0);
     expect(stdout.replaceAll('\r\n', '\n')).toBe('First\nSecond\n');
+    expect(stderr).toBe('');
   });
 
   it('should perform file operations', async () => {
-    const filePath = join(tmpDir, 'test.txt').replaceAll('/', '\\');
-    const { exitCode, stdout } = await runCmd(
-      kaos,
-      `echo file content> "${filePath}" && type "${filePath}"`,
-    );
-    expect(exitCode).toBe(0);
-    expect(stdout.replaceAll('\r\n', '\n').trim()).toContain('file content');
+    // Mirror Python test_local_kaos_cmd.py::test_file_operations: two separate
+    // kaos.exec invocations (write via redirect, then read back via type),
+    // assert the file lands on disk between them, and pin the exact stdout
+    // byte-for-byte so any CRLF drift is caught immediately.
+    const filePath = join(tmpDir, 'test_file.txt').replaceAll('/', '\\');
+
+    const write = await runCmd(kaos, `echo Test content> "${filePath}"`);
+    expect(write.exitCode).toBe(0);
+    expect(write.stdout).toBe('');
+    expect(write.stderr).toBe('');
+
+    const statInfo = await fsStat(filePath);
+    expect(statInfo.isFile()).toBe(true);
+
+    const read = await runCmd(kaos, `type "${filePath}"`);
+    expect(read.exitCode).toBe(0);
+    expect(read.stdout).toBe('Test content\r\n');
+    expect(read.stderr).toBe('');
   });
 });

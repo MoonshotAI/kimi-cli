@@ -1,5 +1,5 @@
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, test } from 'vitest';
@@ -35,9 +35,12 @@ describe('LocalKaos', () => {
       }
     });
 
-    it('should return a valid home directory', () => {
+    it('should return the home directory', () => {
+      // Python test_local_kaos.py pins `str(gethome()) == str(Path.home())`;
+      // asserting length > 0 alone was too weak — a stub returning any
+      // non-empty string would pass.
       const home = kaos.gethome();
-      expect(home.length).toBeGreaterThan(0);
+      expect(home).toBe(homedir());
     });
 
     it('should return the current working directory', () => {
@@ -59,6 +62,15 @@ describe('LocalKaos', () => {
 
       const statResult = await kaos.stat(filePath);
       expect(statResult.stSize).toBe(Buffer.byteLength('hello world', 'utf-8'));
+    });
+
+    it('should reject chdir into a regular file', async () => {
+      // chdir must explicitly refuse targets that resolve to non-directories
+      // so relative I/O calls after the chdir do not silently treat a file
+      // path as a working directory.
+      const filePath = join(tempDir, 'not-a-dir.txt');
+      await kaos.writeText(filePath, 'content');
+      await expect(kaos.chdir(filePath)).rejects.toThrow(/Not a directory/);
     });
   });
 
@@ -319,6 +331,26 @@ describe('LocalKaos', () => {
 
       expect(matches).toHaveLength(1);
     });
+
+    it('should yield basePath and every recursive entry when the whole pattern is **', async () => {
+      // A bare `**` pattern enters the final-segment branch of _globWalk and
+      // must (a) emit basePath itself for the zero-directory match and
+      // (b) walk every file/dir below it as additional matches.
+      await kaos.mkdir(join(tempDir, 'sub'));
+      await kaos.writeText(join(tempDir, 'root.txt'), 'r');
+      await kaos.writeText(join(tempDir, 'sub', 'nested.txt'), 'n');
+
+      const matches: string[] = [];
+      for await (const m of kaos.glob(tempDir, '**')) {
+        matches.push(m);
+      }
+
+      const names = new Set(matches.map((p) => p.split(/[/\\]/).pop() ?? ''));
+      expect(matches).toContain(tempDir);
+      expect(names.has('root.txt')).toBe(true);
+      expect(names.has('nested.txt')).toBe(true);
+      expect(names.has('sub')).toBe(true);
+    });
   });
 
   describe('readBytes/writeBytes', () => {
@@ -399,6 +431,20 @@ describe('LocalKaos', () => {
   describe('exec spawn failure', () => {
     it('should reject when the binary does not exist', async () => {
       await expect(kaos.exec('/absolutely/non-existent/binary')).rejects.toThrow();
+    });
+
+    it('should reject exec() with no arguments', async () => {
+      // exec(...args) requires at least one argument (the command name).
+      // Cast through the loose signature so the call even compiles.
+      await expect((kaos.exec as () => Promise<unknown>)()).rejects.toThrow(
+        /at least one argument/,
+      );
+    });
+
+    it('should reject execWithEnv() with an empty args array', async () => {
+      // Mirrors the exec() guard: execWithEnv must also demand at least
+      // one argument (the command itself).
+      await expect(kaos.execWithEnv([])).rejects.toThrow(/at least one argument/);
     });
   });
 

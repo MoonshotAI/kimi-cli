@@ -152,6 +152,25 @@ afterEach(() => {
 });
 
 describe('SSHKaos.create()', () => {
+  it('initializes cwd equal to gethome() when no cwd option is passed', async () => {
+    // Pins the Python test_ssh_kaos.py::test_pathclass_home_and_cwd invariant:
+    // on a fresh SSH connection without an explicit cwd, `getcwd()` must equal
+    // `gethome()`. The smoke-level SSH suite can't cover this because its
+    // beforeEach chdirs into a per-test remote dir; this mock harness lets us
+    // check the invariant without a live SSH server.
+    const { SSHKaos } = await loadSSHModule();
+
+    const ssh = await SSHKaos.create({
+      host: 'example.com',
+      username: 'tester',
+    });
+
+    expect(ssh.pathClass()).toBe('posix');
+    expect(ssh.gethome()).toBe('/home/tester');
+    expect(ssh.getcwd()).toBe('/home/tester');
+    expect(ssh.getcwd()).toBe(ssh.gethome());
+  });
+
   it('rejects a cwd that resolves to a regular file', async () => {
     const sftp = {
       realpath(path: string, callback: (err: Error | undefined, absPath: string) => void): void {
@@ -301,5 +320,74 @@ describe('SSHKaos.create()', () => {
     expect(cfg?.host).toBe('managed.example.com');
     expect(cfg?.username).toBe('managed');
     expect(cfg?.port).toBe(22); // default, not the 1234 from extraOptions
+  });
+
+  it('forwards a password-only connection without building an authHandler', async () => {
+    // Password auth without any private keys must wire ssh2 ConnectConfig.password
+    // directly rather than constructing an authHandler (the handler is only
+    // needed when we're rotating through multiple private keys).
+    const { SSHKaos, state } = await loadSSHModule();
+
+    const ssh = await SSHKaos.create({
+      host: 'example.com',
+      username: 'tester',
+      password: 'hunter2',
+    });
+
+    const cfg = state.connectConfigs[0];
+    expect(cfg?.password).toBe('hunter2');
+    expect(cfg?.authHandler).toBeUndefined();
+    expect(ssh.getcwd()).toBe('/home/tester');
+  });
+
+  it('queues password after private keys when both are provided', async () => {
+    // When the user supplies both keyContents and a password, buildAuthHandler
+    // should try every private key first, then fall back to password auth.
+    // We observe this by walking the handler to exhaustion and recording
+    // which auth entries it yields.
+    const yielded: string[] = [];
+    const { SSHKaos } = await loadSSHModule({
+      onConnect(client, config) {
+        const handler = config.authHandler;
+        if (typeof handler !== 'function') {
+          client.emit('error', new Error('missing authHandler'));
+          return;
+        }
+
+        // Drain the handler — it yields one auth method per call until it
+        // runs out, at which point it must emit `false` to signal "no more
+        // auth methods" (but we stop as soon as we see the password entry).
+        const pump = (): void => {
+          handler([], false, (auth: string | AnyAuthMethod | false) => {
+            if (auth === false) {
+              client.emit('error', new Error('unexpected end of auth queue'));
+              return;
+            }
+            if (typeof auth !== 'object') {
+              client.emit('error', new Error(`unexpected auth: ${auth}`));
+              return;
+            }
+            yielded.push(auth.type);
+            if (auth.type === 'password') {
+              queueMicrotask(() => {
+                client.emit('ready');
+              });
+              return;
+            }
+            pump();
+          });
+        };
+        pump();
+      },
+    });
+
+    await SSHKaos.create({
+      host: 'example.com',
+      username: 'tester',
+      keyContents: ['only-key'],
+      password: 'hunter2',
+    });
+
+    expect(yielded).toEqual(['publickey', 'password']);
   });
 });

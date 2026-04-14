@@ -4,14 +4,16 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, test 
 
 import { resetCurrentKaos, setCurrentKaos } from '../src/current.js';
 import type { KaosToken } from '../src/current.js';
-import { KaosValueError } from '../src/errors.js';
+import { KaosFileExistsError, KaosValueError } from '../src/errors.js';
 import { KaosPath } from '../src/path.js';
 import {
+  KaosConnectionError,
   KaosFileNotFoundError,
   KaosPermissionError,
   KaosSSHError,
   SSHKaos,
 } from '../src/ssh.js';
+import type { StatResult } from '../src/types.js';
 
 // Environment variable configuration for SSH connection
 const SSH_SMOKE = process.env['KAOS_SSH_SMOKE'] === '1';
@@ -138,7 +140,12 @@ describe.skipIf(process.platform === 'win32' || !SSH_SMOKE)('SSHKaos smoke', () 
 
     await sshKaos.mkdir(nestedDir, { parents: true, existOk: false });
 
-    await expect(sshKaos.mkdir(nestedDir, { existOk: false })).rejects.toThrow();
+    // Python test_mkdir_respects_exist_ok pins `pytest.raises(FileExistsError)`
+    // — match that strength by asserting the specific KaosFileExistsError class
+    // rather than any throwable.
+    await expect(sshKaos.mkdir(nestedDir, { existOk: false })).rejects.toBeInstanceOf(
+      KaosFileExistsError,
+    );
 
     // Should not throw with existOk
     await sshKaos.mkdir(nestedDir, { parents: true, existOk: true });
@@ -247,10 +254,9 @@ describe.skipIf(process.platform === 'win32' || !SSH_SMOKE)('SSHKaos smoke', () 
   // is exactly the signal we want (it reveals the silent env-drop bug that
   // the Python version has).
   test('execWithEnv delivers a single env var to the remote process', async () => {
-    const proc = await sshKaos.execWithEnv(
-      ['sh', '-c', 'printf "%s" "${KAOS_TEST_MARKER}"'],
-      { KAOS_TEST_MARKER: 'beacon42' },
-    );
+    const proc = await sshKaos.execWithEnv(['sh', '-c', 'printf "%s" "${KAOS_TEST_MARKER}"'], {
+      KAOS_TEST_MARKER: 'beacon42',
+    });
     const out = (await streamToBuffer(proc.stdout)).toString();
     const code = await proc.wait();
 
@@ -274,10 +280,9 @@ describe.skipIf(process.platform === 'win32' || !SSH_SMOKE)('SSHKaos smoke', () 
     // Single quotes, dollar signs, backticks, pipes, ampersands, redirects,
     // double quotes, and a backslash — anything an unsafe impl might mangle.
     const value = `it's $HOME \`id\`; | & < > " \\`;
-    const proc = await sshKaos.execWithEnv(
-      ['sh', '-c', 'printf "%s" "${KAOS_TEST_VALUE}"'],
-      { KAOS_TEST_VALUE: value },
-    );
+    const proc = await sshKaos.execWithEnv(['sh', '-c', 'printf "%s" "${KAOS_TEST_VALUE}"'], {
+      KAOS_TEST_VALUE: value,
+    });
     const out = (await streamToBuffer(proc.stdout)).toString();
     const code = await proc.wait();
 
@@ -542,16 +547,83 @@ describe('SSHKaos SFTP error mapping', () => {
 
   it('stat({ followSymlinks: false }) wraps lstat errors the same way', async () => {
     const kaos = makeFakeKaos(makeFakeSftp(NO_SUCH_FILE, { lstat: true }));
-    await expect(
-      kaos.stat('/missing', { followSymlinks: false }),
-    ).rejects.toBeInstanceOf(KaosFileNotFoundError);
+    await expect(kaos.stat('/missing', { followSymlinks: false })).rejects.toBeInstanceOf(
+      KaosFileNotFoundError,
+    );
   });
 
   it('stat() wraps unmapped failures as the base KaosSSHError', async () => {
     // FAILURE=4 is not specifically mapped → generic KaosSSHError.
     const kaos = makeFakeKaos(makeFakeSftp(4, { stat: true }));
-    await expect(kaos.stat('/x'))
-      .rejects.toBeInstanceOf(KaosSSHError);
+    await expect(kaos.stat('/x')).rejects.toBeInstanceOf(KaosSSHError);
+  });
+
+  it('stat() maps NO_CONNECTION → KaosConnectionError', async () => {
+    // SFTP STATUS_CODE.NO_CONNECTION = 6
+    const kaos = makeFakeKaos(makeFakeSftp(6, { stat: true }));
+    await expect(kaos.stat('/x')).rejects.toBeInstanceOf(KaosConnectionError);
+  });
+
+  it('stat() maps CONNECTION_LOST → KaosConnectionError', async () => {
+    // SFTP STATUS_CODE.CONNECTION_LOST = 7
+    const kaos = makeFakeKaos(makeFakeSftp(7, { stat: true }));
+    await expect(kaos.stat('/x')).rejects.toBeInstanceOf(KaosConnectionError);
+  });
+
+  it('stat() wraps errors without a numeric code as generic KaosSSHError', async () => {
+    // An error object whose `.code` is not a number (or absent entirely)
+    // must still be wrapped — the mapSftpError fallback should kick in.
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      stat(_p: string, cb: (err: Error | null) => void): void {
+        // Error with no .code field
+        cb(new Error('no code here'));
+      },
+    };
+    const kaos = makeFakeKaos(sftp);
+    const err = await kaos.stat('/x').catch((error: unknown) => error);
+    expect(err).toBeInstanceOf(KaosSSHError);
+    expect((err as KaosSSHError).message).toContain('no code here');
+  });
+
+  it('stat() wraps non-Error rejections by stringifying them', async () => {
+    // The helper's getErrorMessage fallback handles non-Error values by
+    // calling String(error). Reject with a plain string and verify the
+    // wrap still produces a KaosSSHError with the string in the message.
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      stat(_p: string, cb: (err: unknown) => void): void {
+        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+        cb('raw-string-rejection');
+      },
+    };
+    const kaos = makeFakeKaos(sftp);
+    const err = await kaos.stat('/x').catch((error: unknown) => error);
+    expect(err).toBeInstanceOf(KaosSSHError);
+    expect((err as KaosSSHError).message).toContain('raw-string-rejection');
+  });
+
+  it('chdir() propagates a realpath failure as a KaosSSHError', async () => {
+    // sftpRealpath now runs through mapSftpError too — pin that contract.
+    const sftp = {
+      realpath(_p: string, cb: (err: Error) => void): void {
+        const err = new Error('realpath broke');
+        (err as unknown as { code: number }).code = 2;
+        cb(err);
+      },
+      stat(_p: string, _cb: unknown): void {
+        throw new Error('should not be called');
+      },
+    };
+    const instance = Object.create(SSHKaos.prototype) as SSHKaos;
+    const internal = instance as unknown as { _sftp: unknown; _cwd: string };
+    internal._sftp = sftp;
+    internal._cwd = '/';
+    await expect(instance.chdir('/missing')).rejects.toBeInstanceOf(KaosFileNotFoundError);
   });
 
   // ── Other I/O methods: mapping is pushed into the promisified helpers
@@ -606,21 +678,17 @@ describe('SSHKaos._buildExecCommand', () => {
   // without changing its visibility in the public API.
   const build = (
     SSHKaos as unknown as {
-      _buildExecCommand: (
-        args: string[],
-        cwd: string,
-        env?: Record<string, string>,
-      ) => string;
+      _buildExecCommand: (args: string[], cwd: string, env?: Record<string, string>) => string;
     }
   )._buildExecCommand;
 
   it('cd prefix + bare command when no env is supplied', () => {
-    expect(build(['ls', '-la'], '/home/user')).toBe("cd /home/user && ls -la");
+    expect(build(['ls', '-la'], '/home/user')).toBe('cd /home/user && ls -la');
   });
 
   it('injects inline assignments before the command', () => {
     expect(build(['echo', 'x'], '/home/user', { FOO: 'bar' })).toBe(
-      "cd /home/user && FOO=bar echo x",
+      'cd /home/user && FOO=bar echo x',
     );
   });
 
@@ -631,9 +699,7 @@ describe('SSHKaos._buildExecCommand', () => {
 
   it('quotes values containing shell metacharacters', () => {
     // Single quote in value → shellQuote escapes via the '"'"' trick.
-    expect(build(['cmd'], '/home/user', { V: "it's" })).toBe(
-      `cd /home/user && V='it'"'"'s' cmd`,
-    );
+    expect(build(['cmd'], '/home/user', { V: "it's" })).toBe(`cd /home/user && V='it'"'"'s' cmd`);
     // Dollar sign, backticks, pipe, ampersand → single-quoted wholesale.
     expect(build(['cmd'], '/home/user', { V: '$HOME `id` | &' })).toBe(
       `cd /home/user && V='$HOME \`id\` | &' cmd`,
@@ -668,6 +734,672 @@ describe('SSHKaos._buildExecCommand', () => {
   it('omits the assignment section entirely when env is an empty object', () => {
     // Matches the behavior of plain exec() — no leading space, no KEY=...
     expect(build(['cmd', 'arg'], '/home/user', {})).toBe('cd /home/user && cmd arg');
+  });
+});
+
+// These tests drive the SSHKaos read/stat/glob/iterdir happy paths via
+// fake SFTP wrappers, so they run in CI without a live SSH server. Without
+// them the smoke block is the only route to those code paths, which means
+// CI only sees the error branches.
+describe('SSHKaos mock success paths', () => {
+  interface TreeNode {
+    type: 'dir' | 'file';
+    children?: Record<string, TreeNode>;
+    content?: Buffer;
+    // Permission bits only — forces buildStMode to derive the type bits
+    // from the is* helpers (the "mode without type bits" branch) when true.
+    stripTypeBits?: boolean;
+  }
+
+  function makeStats(node: TreeNode): unknown {
+    const isDir = node.type === 'dir';
+    // Either include type bits (0o040000/0o100000) or strip them to force
+    // the buildStMode helper to derive them via isDirectory()/isFile().
+    const baseMode = isDir ? 0o040755 : 0o100644;
+    const mode = node.stripTypeBits === true ? baseMode & 0o7777 : baseMode;
+    return {
+      mode,
+      size: node.content ? node.content.length : 0,
+      uid: 1000,
+      gid: 1000,
+      atime: 100,
+      mtime: 200,
+      isDirectory: () => isDir,
+      isFile: () => !isDir,
+      isSymbolicLink: () => false,
+      isSocket: () => false,
+      isCharacterDevice: () => false,
+      isBlockDevice: () => false,
+      isFIFO: () => false,
+    };
+  }
+
+  function lookup(root: TreeNode, path: string): TreeNode | undefined {
+    if (path === '/') return root;
+    const parts = path.split('/').filter(Boolean);
+    let current: TreeNode | undefined = root;
+    for (const part of parts) {
+      if (!current?.children?.[part]) return undefined;
+      current = current.children[part];
+    }
+    return current;
+  }
+
+  // Fake SFTP that exposes a tree and implements the handful of callbacks
+  // SSHKaos actually calls. Anything not needed is left unimplemented.
+  function makeTreeSftp(root: TreeNode): unknown {
+    return {
+      realpath(path: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, path);
+      },
+      stat(path: string, cb: (err: Error | null, stats?: unknown) => void): void {
+        const node = lookup(root, path);
+        if (!node) {
+          const err = new Error(`no such file: ${path}`);
+          (err as unknown as { code: number }).code = 2;
+          cb(err);
+          return;
+        }
+        cb(null, makeStats(node));
+      },
+      lstat(path: string, cb: (err: Error | null, stats?: unknown) => void): void {
+        const node = lookup(root, path);
+        if (!node) {
+          const err = new Error(`no such file: ${path}`);
+          (err as unknown as { code: number }).code = 2;
+          cb(err);
+          return;
+        }
+        cb(null, makeStats(node));
+      },
+      readdir(path: string, cb: (err: Error | null, list?: unknown[]) => void): void {
+        const node = lookup(root, path);
+        if (!node || node.type !== 'dir' || !node.children) {
+          const err = new Error(`not a directory: ${path}`);
+          (err as unknown as { code: number }).code = 2;
+          cb(err);
+          return;
+        }
+        cb(
+          null,
+          Object.entries(node.children).map(([filename, child]) => ({
+            filename,
+            attrs: makeStats(child),
+          })),
+        );
+      },
+      readFile(path: string, cb: (err: Error | null, data?: Buffer) => void): void {
+        const node = lookup(root, path);
+        if (!node || node.type !== 'file') {
+          const err = new Error(`no such file: ${path}`);
+          (err as unknown as { code: number }).code = 2;
+          cb(err);
+          return;
+        }
+        cb(null, node.content ?? Buffer.alloc(0));
+      },
+    };
+  }
+
+  function makeFakeKaos(sftp: unknown, cwd = '/'): SSHKaos {
+    const instance = Object.create(SSHKaos.prototype) as SSHKaos;
+    const internal = instance as unknown as { _sftp: unknown; _cwd: string; _home: string };
+    internal._sftp = sftp;
+    internal._cwd = cwd;
+    internal._home = '/home/tester';
+    return instance;
+  }
+
+  // ── path helpers ────────────────────────────────────────────────────
+
+  it('normpath delegates to posix.normalize', () => {
+    // No I/O — just the pure path function. Pins that normpath collapses
+    // `..` segments.
+    const kaos = makeFakeKaos(makeTreeSftp({ type: 'dir', children: {} }));
+    expect(kaos.normpath('/a/b/../c')).toBe('/a/c');
+  });
+
+  // ── stat + buildStMode variants ─────────────────────────────────────
+
+  it('stat() returns a StatResult with file-type bits preserved', async () => {
+    const root: TreeNode = {
+      type: 'dir',
+      children: {
+        'file.txt': { type: 'file', content: Buffer.from('hi') },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const fileStat: StatResult = await kaos.stat('/file.txt');
+    expect((fileStat.stMode & 0o170000) === 0o100000).toBe(true);
+    expect(fileStat.stSize).toBe(2);
+    expect(fileStat.stUid).toBe(1000);
+  });
+
+  it('stat() derives type bits from is* helpers when mode lacks them', async () => {
+    // mode = 0o755 has zero in the S_IFMT bits, so buildStMode must fall
+    // back to isDirectory()/isFile() to fill them in.
+    const root: TreeNode = {
+      type: 'dir',
+      stripTypeBits: true,
+      children: {
+        'bare.txt': { type: 'file', stripTypeBits: true, content: Buffer.from('x') },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const dirStat = await kaos.stat('/');
+    expect((dirStat.stMode & 0o170000) === 0o040000).toBe(true);
+
+    const fileStat = await kaos.stat('/bare.txt');
+    expect((fileStat.stMode & 0o170000) === 0o100000).toBe(true);
+  });
+
+  it('stat({ followSymlinks: false }) uses the lstat branch', async () => {
+    // No actual symlinks — just verify the alternate code path is taken
+    // (lstat callback is wired up, it returns stats without throwing).
+    const root: TreeNode = {
+      type: 'dir',
+      children: { 'a.txt': { type: 'file', content: Buffer.from('hi') } },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+    const result = await kaos.stat('/a.txt', { followSymlinks: false });
+    expect(result.stSize).toBe(2);
+  });
+
+  // ── iterdir ────────────────────────────────────────────────────────
+
+  it('iterdir yields directory entries and filters . / ..', async () => {
+    // readdir() in the fake returns only real children, but the SSHKaos
+    // iterdir loop filters . and .. regardless — pin the filter logic
+    // still produces the expected child set. We use a non-root base
+    // (`/tree`) to dodge the known `basePath + "/" + entry` double-slash
+    // bug at filesystem roots — reported in 02-coverage-gaps.md.
+    const root: TreeNode = {
+      type: 'dir',
+      children: {
+        tree: {
+          type: 'dir',
+          children: {
+            'a.txt': { type: 'file', content: Buffer.from('a') },
+            'b.txt': { type: 'file', content: Buffer.from('b') },
+            sub: { type: 'dir', children: {} },
+          },
+        },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const entries: string[] = [];
+    for await (const entry of kaos.iterdir('/tree')) {
+      entries.push(entry);
+    }
+    expect(new Set(entries)).toEqual(new Set(['/tree/a.txt', '/tree/b.txt', '/tree/sub']));
+  });
+
+  // ── glob ────────────────────────────────────────────────────────────
+
+  // All glob tests use `/tree` (not `/`) as the base to dodge the known
+  // root-path double-slash bug — see 02-coverage-gaps.md.
+
+  it('glob matches flat patterns against the directory', async () => {
+    const root: TreeNode = {
+      type: 'dir',
+      children: {
+        tree: {
+          type: 'dir',
+          children: {
+            'root.txt': { type: 'file', content: Buffer.from('r') },
+            'root.log': { type: 'file', content: Buffer.from('l') },
+          },
+        },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const matches: string[] = [];
+    for await (const m of kaos.glob('/tree', '*.txt')) {
+      matches.push(m);
+    }
+    expect(matches).toEqual(['/tree/root.txt']);
+  });
+
+  it('glob recurses with **/pattern to match nested files', async () => {
+    const root: TreeNode = {
+      type: 'dir',
+      children: {
+        tree: {
+          type: 'dir',
+          children: {
+            'root.txt': { type: 'file', content: Buffer.from('r') },
+            sub: {
+              type: 'dir',
+              children: {
+                'nested.txt': { type: 'file', content: Buffer.from('n') },
+                deep: {
+                  type: 'dir',
+                  children: {
+                    'deeper.txt': { type: 'file', content: Buffer.from('d') },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const matches: string[] = [];
+    for await (const m of kaos.glob('/tree', '**/*.txt')) {
+      matches.push(m);
+    }
+    const names = new Set(matches);
+    expect(names).toEqual(
+      new Set(['/tree/root.txt', '/tree/sub/nested.txt', '/tree/sub/deep/deeper.txt']),
+    );
+    // Pin the de-dup invariant — no single file should appear twice.
+    expect(matches.length).toBe(new Set(matches).size);
+  });
+
+  it('glob with bare ** yields basePath and every nested entry', async () => {
+    const root: TreeNode = {
+      type: 'dir',
+      children: {
+        tree: {
+          type: 'dir',
+          children: {
+            'root.txt': { type: 'file', content: Buffer.from('r') },
+            sub: {
+              type: 'dir',
+              children: {
+                'nested.txt': { type: 'file', content: Buffer.from('n') },
+              },
+            },
+          },
+        },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const matches: string[] = [];
+    for await (const m of kaos.glob('/tree', '**')) {
+      matches.push(m);
+    }
+    const set = new Set(matches);
+    expect(set.has('/tree')).toBe(true);
+    expect(set.has('/tree/root.txt')).toBe(true);
+    expect(set.has('/tree/sub')).toBe(true);
+    expect(set.has('/tree/sub/nested.txt')).toBe(true);
+  });
+
+  it('glob with a nested literal path recurses only into the named dir', async () => {
+    // Pattern `sub/*.txt` → literal `sub` segment, then `*.txt` inside it.
+    // Exercises the non-`**` recursive branch.
+    const root: TreeNode = {
+      type: 'dir',
+      children: {
+        tree: {
+          type: 'dir',
+          children: {
+            'root.txt': { type: 'file', content: Buffer.from('r') },
+            sub: {
+              type: 'dir',
+              children: {
+                'a.txt': { type: 'file', content: Buffer.from('a') },
+                'b.log': { type: 'file', content: Buffer.from('b') },
+              },
+            },
+          },
+        },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const matches: string[] = [];
+    for await (const m of kaos.glob('/tree', 'sub/*.txt')) {
+      matches.push(m);
+    }
+    expect(matches).toEqual(['/tree/sub/a.txt']);
+  });
+
+  it('glob silently skips unreadable directories', async () => {
+    // If readdir() fails the generator should return without throwing —
+    // makes glob tolerant of permission-limited subtrees.
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      readdir(_p: string, cb: (err: Error | null, list?: unknown[]) => void): void {
+        const err = new Error('permission denied');
+        (err as unknown as { code: number }).code = 3;
+        cb(err);
+      },
+    };
+    const kaos = makeFakeKaos(sftp);
+
+    const matches: string[] = [];
+    for await (const m of kaos.glob('/locked', '*.txt')) {
+      matches.push(m);
+    }
+    expect(matches).toEqual([]);
+  });
+
+  // ── readLines empty-file early return ─────────────────────────────
+
+  it('readLines yields nothing for an empty file', async () => {
+    // `readText` returns an empty string, so the generator must take the
+    // early-return branch instead of walking `splitlines()`.
+    const root: TreeNode = {
+      type: 'dir',
+      children: { 'empty.txt': { type: 'file', content: Buffer.alloc(0) } },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const lines: string[] = [];
+    for await (const line of kaos.readLines('/empty.txt')) {
+      lines.push(line);
+    }
+    expect(lines).toEqual([]);
+  });
+
+  // ── . / .. filter coverage ────────────────────────────────────────
+
+  it('iterdir at root "/" does not produce double-slash paths', async () => {
+    // Regression: `basePath + '/' + entry.filename` produced `//foo` when
+    // basePath was the filesystem root. Now uses `posix.join` to collapse.
+    const root: TreeNode = {
+      type: 'dir',
+      children: {
+        'a.txt': { type: 'file', content: Buffer.from('a') },
+        sub: { type: 'dir', children: {} },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root), '/');
+
+    const entries: string[] = [];
+    for await (const entry of kaos.iterdir('/')) {
+      entries.push(entry);
+    }
+    expect(new Set(entries)).toEqual(new Set(['/a.txt', '/sub']));
+    expect(entries.every((e) => !e.includes('//'))).toBe(true);
+  });
+
+  it('glob at root "/" does not produce double-slash paths', async () => {
+    const root: TreeNode = {
+      type: 'dir',
+      children: {
+        'file.txt': { type: 'file', content: Buffer.from('x') },
+      },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root), '/');
+
+    const matches: string[] = [];
+    for await (const m of kaos.glob('/', '*.txt')) {
+      matches.push(m);
+    }
+    expect(matches).toEqual(['/file.txt']);
+    expect(matches.every((p) => !p.includes('//'))).toBe(true);
+  });
+
+  it('iterdir filters out "." and ".." entries from readdir output', async () => {
+    // Some SFTP servers include `.` / `..` in readdir results, so the
+    // filter in SSHKaos.iterdir must skip them unconditionally. Inject
+    // those entries into the fake to exercise the filter branch.
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      readdir(_p: string, cb: (err: Error | null, list?: unknown[]) => void): void {
+        cb(null, [
+          { filename: '.', attrs: { isDirectory: (): boolean => true } },
+          { filename: '..', attrs: { isDirectory: (): boolean => true } },
+          { filename: 'real.txt', attrs: { isDirectory: (): boolean => false } },
+        ]);
+      },
+    };
+    const kaos = makeFakeKaos(sftp, '/tree');
+
+    const entries: string[] = [];
+    for await (const e of kaos.iterdir('/tree')) {
+      entries.push(e);
+    }
+    // Only the real entry survives — the `.` / `..` are silently dropped.
+    expect(entries).toEqual(['/tree/real.txt']);
+  });
+
+  it('glob filters "." and ".." entries in both the ** and literal branches', async () => {
+    // Same fake readdir in two walks: one with `**` (covers the `**`
+    // branch filter) and one with a literal pattern (covers the non-`**`
+    // branch filter).
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      readdir(_p: string, cb: (err: Error | null, list?: unknown[]) => void): void {
+        cb(null, [
+          {
+            filename: '.',
+            attrs: {
+              isDirectory: (): boolean => true,
+              isFile: (): boolean => false,
+            },
+          },
+          {
+            filename: '..',
+            attrs: {
+              isDirectory: (): boolean => true,
+              isFile: (): boolean => false,
+            },
+          },
+          {
+            filename: 'keeper.txt',
+            attrs: {
+              isDirectory: (): boolean => false,
+              isFile: (): boolean => true,
+            },
+          },
+        ]);
+      },
+    };
+    const kaos = makeFakeKaos(sftp, '/tree');
+
+    const viaStar: string[] = [];
+    for await (const m of kaos.glob('/tree', '*.txt')) viaStar.push(m);
+    expect(viaStar).toEqual(['/tree/keeper.txt']);
+
+    const viaStarStar: string[] = [];
+    for await (const m of kaos.glob('/tree', '**')) viaStarStar.push(m);
+    // The recursion into `.` / `..` must be skipped — we should see only
+    // the base dir and the keeper file, never an infinite loop.
+    expect(new Set(viaStarStar)).toEqual(new Set(['/tree', '/tree/keeper.txt']));
+  });
+
+  // ── glob error handling in the ** branch ──────────────────────────
+
+  it('glob ** silently aborts when readdir fails', async () => {
+    // Similar to the non-`**` readdir-error test, but forcing the code
+    // through the `**` case's own try/catch. Passing a bare `**` pattern
+    // takes the `currentPattern === '**'` branch, and the failing
+    // readdir exercises the swallow-and-return path inside it.
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      readdir(_p: string, cb: (err: Error | null, list?: unknown[]) => void): void {
+        const err = new Error('denied');
+        (err as unknown as { code: number }).code = 3;
+        cb(err);
+      },
+    };
+    const kaos = makeFakeKaos(sftp, '/tree');
+
+    const matches: string[] = [];
+    for await (const m of kaos.glob('/tree', '**')) {
+      matches.push(m);
+    }
+    // Pattern `**` with zero-directory match yields basePath itself
+    // BEFORE the readdir even runs, so we still see `/tree`. The
+    // important bit is that no exception propagates out.
+    expect(matches).toEqual(['/tree']);
+  });
+
+  // ── readBytes ──────────────────────────────────────────────────────
+
+  it('readBytes(n) returns only the first n bytes of the file', async () => {
+    const content = Buffer.from('0123456789');
+    const root: TreeNode = {
+      type: 'dir',
+      children: { 'data.bin': { type: 'file', content } },
+    };
+    const kaos = makeFakeKaos(makeTreeSftp(root));
+
+    const full = await kaos.readBytes('/data.bin');
+    expect(Buffer.compare(full, content)).toBe(0);
+
+    const first4 = await kaos.readBytes('/data.bin', 4);
+    expect(first4.toString()).toBe('0123');
+  });
+
+  // ── execWithEnv body ───────────────────────────────────────────────
+
+  it('execWithEnv calls clientExec with the env-prefixed command', async () => {
+    // We only exercise the _execInternal path via execWithEnv here — the
+    // command-building detail is already covered by the _buildExecCommand
+    // describe block. This test just pins that execWithEnv() with a valid
+    // non-empty args array routes through the internal helper.
+    const commands: string[] = [];
+    const fakeClient = {
+      exec(cmd: string, _a: unknown, _b?: unknown): void {
+        commands.push(cmd);
+        // Mimic a channel that never emits — we just want to observe the
+        // command string, not wait for real I/O.
+        throw new Error('stop');
+      },
+    };
+    const instance = Object.create(SSHKaos.prototype) as SSHKaos;
+    const internal = instance as unknown as { _client: unknown; _cwd: string; _home: string };
+    internal._client = fakeClient;
+    internal._cwd = '/home/tester';
+    internal._home = '/home/tester';
+
+    await expect(instance.execWithEnv(['echo', 'hi'], { FOO: 'bar' })).rejects.toThrow('stop');
+
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toBe('cd /home/tester && FOO=bar echo hi');
+  });
+});
+
+// These tests pin the non-race mkdir error branches in SSHKaos — the
+// "path already exists but is a file" and "parents=true with a final
+// directory already present under existOk=false" cases. All driven via
+// fake SFTP wrappers so no live server is required.
+describe('SSHKaos mkdir existOk edge cases', () => {
+  function makeFakeKaos(sftp: unknown): SSHKaos {
+    const instance = Object.create(SSHKaos.prototype) as SSHKaos;
+    const internal = instance as unknown as { _sftp: unknown; _cwd: string };
+    internal._sftp = sftp;
+    internal._cwd = '/';
+    return instance;
+  }
+
+  function makeFileStats(): unknown {
+    return {
+      mode: 0o100644,
+      size: 0,
+      uid: 0,
+      gid: 0,
+      atime: 0,
+      mtime: 0,
+      isDirectory: (): boolean => false,
+      isFile: (): boolean => true,
+      isSymbolicLink: (): boolean => false,
+      isSocket: (): boolean => false,
+      isCharacterDevice: (): boolean => false,
+      isBlockDevice: (): boolean => false,
+      isFIFO: (): boolean => false,
+    };
+  }
+
+  function makeDirStats(): unknown {
+    return {
+      mode: 0o040755,
+      size: 0,
+      uid: 0,
+      gid: 0,
+      atime: 0,
+      mtime: 0,
+      isDirectory: (): boolean => true,
+      isFile: (): boolean => false,
+      isSymbolicLink: (): boolean => false,
+      isSocket: (): boolean => false,
+      isCharacterDevice: (): boolean => false,
+      isBlockDevice: (): boolean => false,
+      isFIFO: (): boolean => false,
+    };
+  }
+
+  it('mkdir (non-parents) rejects when existOk=true but path is a file', async () => {
+    // simple mkdir branch: exists=true + existOk=true + not a directory
+    // must throw instead of silently accepting the file collision.
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      exists(_p: string, cb: (exists: boolean) => void): void {
+        cb(true);
+      },
+      stat(_p: string, cb: (err: Error | null, stats: unknown) => void): void {
+        cb(null, makeFileStats());
+      },
+    };
+    const kaos = makeFakeKaos(sftp);
+    await expect(kaos.mkdir('/existing-file', { existOk: true })).rejects.toBeInstanceOf(
+      KaosFileExistsError,
+    );
+  });
+
+  it('mkdir(parents=true) rejects when the final path exists and existOk=false', async () => {
+    // Recursive branch: walks to the final component, finds it already
+    // exists (as a directory, even), and since existOk=false the call
+    // must surface a KaosFileExistsError instead of silently succeeding.
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      exists(_p: string, cb: (exists: boolean) => void): void {
+        cb(true);
+      },
+      stat(_p: string, cb: (err: Error | null, stats: unknown) => void): void {
+        cb(null, makeDirStats());
+      },
+    };
+    const kaos = makeFakeKaos(sftp);
+    await expect(kaos.mkdir('/a/b/c', { parents: true, existOk: false })).rejects.toBeInstanceOf(
+      KaosFileExistsError,
+    );
+  });
+
+  it('mkdir(parents=true) rejects when an intermediate path is a regular file', async () => {
+    // Recursive branch: during the walk, an intermediate component
+    // already exists but is a regular file (not a directory). That must
+    // be a hard failure regardless of existOk, because the next sftpMkdir
+    // would otherwise fail with a confusing ENOTDIR.
+    const sftp = {
+      realpath(p: string, cb: (err: Error | null, abs: string) => void): void {
+        cb(null, p);
+      },
+      exists(_p: string, cb: (exists: boolean) => void): void {
+        cb(true);
+      },
+      stat(_p: string, cb: (err: Error | null, stats: unknown) => void): void {
+        cb(null, makeFileStats());
+      },
+    };
+    const kaos = makeFakeKaos(sftp);
+    await expect(kaos.mkdir('/a/b/c', { parents: true, existOk: true })).rejects.toBeInstanceOf(
+      KaosFileExistsError,
+    );
   });
 });
 
