@@ -203,6 +203,210 @@ describe('OpenAIResponsesChatProvider', () => {
       ]);
     });
 
+    it('OpenAI model name with date suffix matches the partial-prefix branch', async () => {
+      // gpt-4.1-2025-04-14 should be recognized as gpt-4.1, mapping system → developer.
+      const provider = new OpenAIResponsesChatProvider({
+        model: 'gpt-4.1-2025-04-14',
+        apiKey: 'test-key',
+      });
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'hi' }], toolCalls: [] },
+      ];
+      const body = await captureRequestBody(provider, 'You are helpful.', [], history);
+
+      expect(body['input']).toEqual([
+        { role: 'developer', content: 'You are helpful.' },
+        {
+          content: [{ type: 'input_text', text: 'hi' }],
+          role: 'user',
+          type: 'message',
+        },
+      ]);
+    });
+
+    it('non-OpenAI model name keeps system role unchanged', async () => {
+      const provider = new OpenAIResponsesChatProvider({
+        model: 'some-other-model',
+        apiKey: 'test-key',
+      });
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'hi' }], toolCalls: [] },
+      ];
+      const body = await captureRequestBody(provider, 'You are helpful.', [], history);
+
+      const input = body['input'] as Array<Record<string, unknown>>;
+      expect(input[0]).toEqual({ role: 'system', content: 'You are helpful.' });
+    });
+
+    it('user message with audio_url data URL (mp3) is encoded as input_file with base64', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Listen' },
+            { type: 'audio_url', audioUrl: { url: 'data:audio/mp3;base64,QUJD' } },
+          ],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<{ content: unknown[] }>;
+      expect(input[0]!.content).toEqual([
+        { type: 'input_text', text: 'Listen' },
+        { type: 'input_file', file_data: 'QUJD', filename: 'inline.mp3' },
+      ]);
+    });
+
+    it('user message with audio_url data URL (wav) is encoded as input_file with wav extension', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [{ type: 'audio_url', audioUrl: { url: 'data:audio/wav;base64,V0FW' } }],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<{ content: unknown[] }>;
+      expect(input[0]!.content).toEqual([
+        { type: 'input_file', file_data: 'V0FW', filename: 'inline.wav' },
+      ]);
+    });
+
+    it('user message with audio_url https URL is encoded as input_file with file_url', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [{ type: 'audio_url', audioUrl: { url: 'https://example.com/speech.mp3' } }],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<{ content: unknown[] }>;
+      expect(input[0]!.content).toEqual([
+        { type: 'input_file', file_url: 'https://example.com/speech.mp3' },
+      ]);
+    });
+
+    it('user message with unsupported audio_url format drops the audio part silently', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Bare text' },
+            { type: 'audio_url', audioUrl: { url: 'data:audio/ogg;base64,T0dH' } },
+          ],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<{ content: unknown[] }>;
+      // Only the text part survives; the unsupported ogg audio is dropped.
+      expect(input[0]!.content).toEqual([{ type: 'input_text', text: 'Bare text' }]);
+    });
+
+    it('multiple consecutive ThinkParts with the same encrypted value aggregate into one reasoning item with multiple summaries', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'Q' }], toolCalls: [] },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'think', think: 'first thought', encrypted: 'enc_shared' },
+            { type: 'think', think: 'second thought', encrypted: 'enc_shared' },
+            { type: 'think', think: 'third thought', encrypted: 'enc_shared' },
+            { type: 'text', text: 'answer' },
+          ],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<Record<string, unknown>>;
+      // After the user message, expect a SINGLE reasoning item with 3 summary_text entries.
+      const reasoningItems = input.filter((item) => item['type'] === 'reasoning');
+      expect(reasoningItems).toHaveLength(1);
+      expect(reasoningItems[0]).toEqual({
+        type: 'reasoning',
+        encrypted_content: 'enc_shared',
+        summary: [
+          { type: 'summary_text', text: 'first thought' },
+          { type: 'summary_text', text: 'second thought' },
+          { type: 'summary_text', text: 'third thought' },
+        ],
+      });
+    });
+
+    it('consecutive ThinkParts with different encrypted values produce separate reasoning items', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'Q' }], toolCalls: [] },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'think', think: 'a', encrypted: 'enc_1' },
+            { type: 'think', think: 'b', encrypted: 'enc_2' },
+            { type: 'text', text: 'done' },
+          ],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<Record<string, unknown>>;
+      const reasoningItems = input.filter((item) => item['type'] === 'reasoning');
+      expect(reasoningItems).toHaveLength(2);
+      expect(reasoningItems[0]).toMatchObject({ encrypted_content: 'enc_1' });
+      expect(reasoningItems[1]).toMatchObject({ encrypted_content: 'enc_2' });
+    });
+
+    it('toolMessageConversion=extract_text flattens tool result content to a plain string', async () => {
+      const provider = new OpenAIResponsesChatProvider({
+        model: 'gpt-4.1',
+        apiKey: 'test-key',
+        toolMessageConversion: 'extract_text',
+      });
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'Q' }], toolCalls: [] },
+        {
+          role: 'assistant',
+          content: [],
+          toolCalls: [
+            {
+              type: 'function',
+              id: 'call_x',
+              function: { name: 'lookup', arguments: '{}' },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          content: [
+            { type: 'text', text: 'header' },
+            { type: 'text', text: 'body' },
+          ],
+          toolCallId: 'call_x',
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<Record<string, unknown>>;
+      const fnOutput = input.find((item) => item['type'] === 'function_call_output');
+      expect(fnOutput).toBeDefined();
+      // extract_text mode joins text parts into a single string instead of an array.
+      expect(typeof fnOutput!['output']).toBe('string');
+      expect(fnOutput!['output']).toContain('header');
+      expect(fnOutput!['output']).toContain('body');
+    });
+
     it('parallel tool calls produce multiple function_call and function_call_output items', async () => {
       const provider = createProvider();
       const history: Message[] = [

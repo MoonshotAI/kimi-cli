@@ -298,29 +298,34 @@ describe('AnthropicChatProvider', () => {
         },
       ];
       const body = await captureRequestBody(provider, '', [], history);
-      const messages = body['messages'] as unknown[];
 
-      // Assistant message has tool_use blocks
-      expect(messages[1]).toEqual({
-        role: 'assistant',
-        content: [
-          { type: 'text', text: "I'll add those numbers for you." },
-          { type: 'tool_use', id: 'call_abc123', name: 'add', input: { a: 2, b: 3 } },
-        ],
-      });
-
-      // Tool result is a user message with tool_result block
-      expect(messages[2]).toEqual({
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: 'call_abc123',
-            content: [{ type: 'text', text: '5' }],
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-      });
+      // Full byte-for-byte match against the Python kosong snapshot:
+      // user message has NO cache_control, assistant has tool_use blocks,
+      // final user message's tool_result carries cache_control (last block).
+      expect(body['messages']).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Add 2 and 3' }],
+        },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: "I'll add those numbers for you." },
+            { type: 'tool_use', id: 'call_abc123', name: 'add', input: { a: 2, b: 3 } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'call_abc123',
+              content: [{ type: 'text', text: '5' }],
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
+        },
+      ]);
     });
 
     it('tool call with image result wraps image source inside tool_result', async () => {
@@ -419,54 +424,62 @@ describe('AnthropicChatProvider', () => {
         },
       ];
       const body = await captureRequestBody(provider, '', [ADD_TOOL, MUL_TOOL], history);
-      const messages = body['messages'] as unknown[];
 
-      // Assistant message: text + 2 tool_use blocks (in order)
-      expect(messages[1]).toEqual({
-        role: 'assistant',
-        content: [
-          { type: 'text', text: "I'll calculate both." },
-          { type: 'tool_use', id: 'call_add', name: 'add', input: { a: 2, b: 3 } },
-          { type: 'tool_use', id: 'call_mul', name: 'multiply', input: { a: 4, b: 5 } },
-        ],
-      });
-
-      // Tool results: 2 user messages, each with one tool_result block
-      // (Anthropic accepts both the "one user msg per result" and the
-      // "one user msg with multiple tool_result blocks" forms; verify
-      // whichever the converter produces is consistent.)
-      const userMessagesWithResults = (messages as Array<{ role: string; content: unknown[] }>)
-        .slice(2)
-        .filter((m) => m.role === 'user');
-      // Flatten all tool_result blocks across the user messages following the assistant.
-      const allToolResults = userMessagesWithResults.flatMap((m) =>
-        (m.content as Array<Record<string, unknown>>).filter(
-          (block) => block['type'] === 'tool_result',
-        ),
-      );
-      expect(allToolResults).toHaveLength(2);
-      expect(allToolResults[0]).toMatchObject({
-        type: 'tool_result',
-        tool_use_id: 'call_add',
-        content: [
-          {
-            type: 'text',
-            text: '<system-reminder>This is a system reminder</system-reminder>',
-          },
-          { type: 'text', text: '5' },
-        ],
-      });
-      expect(allToolResults[1]).toMatchObject({
-        type: 'tool_result',
-        tool_use_id: 'call_mul',
-        content: [
-          {
-            type: 'text',
-            text: '<system-reminder>This is a system reminder</system-reminder>',
-          },
-          { type: 'text', text: '20' },
-        ],
-      });
+      // Full byte-for-byte match against the canonical Python kosong snapshot
+      // for `parallel_tool_calls`. This asserts:
+      //  - exactly 4 messages in the expected order
+      //  - each tool_result lives in its own user message (not bundled)
+      //  - cache_control is present ONLY on the LAST content block (call_mul's
+      //    tool_result), mirroring the "cache the longest prefix" policy that
+      //    the Python provider also snapshots. Any regression in the
+      //    cache_control injection would fail this test.
+      expect(body['messages']).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Calculate 2+3 and 4*5' }],
+        },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: "I'll calculate both." },
+            { type: 'tool_use', id: 'call_add', name: 'add', input: { a: 2, b: 3 } },
+            { type: 'tool_use', id: 'call_mul', name: 'multiply', input: { a: 4, b: 5 } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'call_add',
+              content: [
+                {
+                  type: 'text',
+                  text: '<system-reminder>This is a system reminder</system-reminder>',
+                },
+                { type: 'text', text: '5' },
+              ],
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'call_mul',
+              content: [
+                {
+                  type: 'text',
+                  text: '<system-reminder>This is a system reminder</system-reminder>',
+                },
+                { type: 'text', text: '20' },
+              ],
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
+        },
+      ]);
     });
 
     it('assistant with thinking (has encrypted -> ThinkingBlockParam)', async () => {
@@ -484,15 +497,27 @@ describe('AnthropicChatProvider', () => {
         { role: 'user', content: [{ type: 'text', text: 'Thanks!' }], toolCalls: [] },
       ];
       const body = await captureRequestBody(provider, '', [], history);
-      const messages = body['messages'] as unknown[];
 
-      expect(messages[1]).toEqual({
-        role: 'assistant',
-        content: [
-          { type: 'thinking', thinking: 'Let me think...', signature: 'sig_abc123' },
-          { type: 'text', text: 'The answer is 4.' },
-        ],
-      });
+      // Full byte-for-byte match against the Python kosong snapshot:
+      // first user message has NO cache_control, assistant has thinking + text,
+      // LAST user message's text block carries cache_control.
+      expect(body['messages']).toEqual([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'What is 2+2?' }],
+        },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'Let me think...', signature: 'sig_abc123' },
+            { type: 'text', text: 'The answer is 4.' },
+          ],
+        },
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Thanks!', cache_control: { type: 'ephemeral' } }],
+        },
+      ]);
     });
 
     it('thinking without signature is stripped', async () => {

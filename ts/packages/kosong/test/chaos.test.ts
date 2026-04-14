@@ -150,10 +150,7 @@ describe('ChaosChatProvider', () => {
         async *[Symbol.asyncIterator]() {},
       }),
     };
-    const chaos = new ChaosChatProvider(
-      inner as RetryableChatProvider,
-      { errorProbability: 0 },
-    );
+    const chaos = new ChaosChatProvider(inner as RetryableChatProvider, { errorProbability: 0 });
     const result = chaos.onRetryableError(new Error('boom'));
     expect(result).toBe(true);
     expect(called).toBe(1);
@@ -163,5 +160,118 @@ describe('ChaosChatProvider', () => {
     const inner = new MockChatProvider([{ type: 'text', text: 'hi' }]);
     const chaos = new ChaosChatProvider(inner, { errorProbability: 0 });
     expect(chaos.onRetryableError(new Error('boom'))).toBe(false);
+  });
+
+  it('ChaosStreamedMessage.id and usage delegate to the wrapped stream', async () => {
+    const inner = new MockChatProvider([{ type: 'text', text: 'hi' }], {
+      id: 'mock-id-42',
+      usage: { inputOther: 10, output: 5, inputCacheRead: 0, inputCacheCreation: 0 },
+    });
+    const chaos = new ChaosChatProvider(inner, { errorProbability: 0 });
+
+    const stream = await chaos.generate('', [], []);
+    // drain
+    for await (const _ of stream) {
+      /* drain */
+    }
+    expect(stream.id).toBe('mock-id-42');
+    expect(stream.usage).toEqual({
+      inputOther: 10,
+      output: 5,
+      inputCacheRead: 0,
+      inputCacheCreation: 0,
+    });
+  });
+
+  it('corrupts tool_call_part with non-empty arguments_part by trimming the last char', async () => {
+    const inner = new MockChatProvider([{ type: 'tool_call_part', argumentsPart: '{"x":1}' }]);
+    const chaos = new ChaosChatProvider(inner, {
+      errorProbability: 0,
+      corruptToolCallProbability: 1.0,
+      seed: 7,
+    });
+
+    const stream = await chaos.generate('', [], []);
+    const parts: StreamedMessagePart[] = [];
+    for await (const p of stream) parts.push(p);
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({
+      type: 'tool_call_part',
+      argumentsPart: '{"x":1', // last char trimmed
+    });
+  });
+
+  it('leaves ToolCall with null arguments unchanged when corruption probability is 1', async () => {
+    const inner = new MockChatProvider([
+      { type: 'function', id: 'tc_null', function: { name: 'foo', arguments: null } },
+    ]);
+    const chaos = new ChaosChatProvider(inner, {
+      errorProbability: 0,
+      corruptToolCallProbability: 1.0,
+      seed: 11,
+    });
+
+    const stream = await chaos.generate('', [], []);
+    const parts: StreamedMessagePart[] = [];
+    for await (const p of stream) parts.push(p);
+
+    expect(parts[0]).toMatchObject({
+      type: 'function',
+      function: { arguments: null }, // unchanged because args was null
+    });
+  });
+
+  it('leaves ToolCall with empty-string arguments unchanged when corruption probability is 1', async () => {
+    const inner = new MockChatProvider([
+      { type: 'function', id: 'tc_empty', function: { name: 'foo', arguments: '' } },
+    ]);
+    const chaos = new ChaosChatProvider(inner, {
+      errorProbability: 0,
+      corruptToolCallProbability: 1.0,
+      seed: 13,
+    });
+
+    const stream = await chaos.generate('', [], []);
+    const parts: StreamedMessagePart[] = [];
+    for await (const p of stream) parts.push(p);
+
+    expect((parts[0] as ToolCall).function.arguments).toBe('');
+  });
+
+  it('leaves tool_call_part with null arguments_part unchanged', async () => {
+    const inner = new MockChatProvider([{ type: 'tool_call_part', argumentsPart: null }]);
+    const chaos = new ChaosChatProvider(inner, {
+      errorProbability: 0,
+      corruptToolCallProbability: 1.0,
+      seed: 17,
+    });
+
+    const stream = await chaos.generate('', [], []);
+    const parts: StreamedMessagePart[] = [];
+    for await (const p of stream) parts.push(p);
+
+    expect(parts[0]).toMatchObject({ type: 'tool_call_part', argumentsPart: null });
+  });
+
+  it('passes through non-tool-call parts even when corruption probability is 1', async () => {
+    const inner = new MockChatProvider([
+      { type: 'text', text: 'plain text' },
+      { type: 'think', think: 'thinking' },
+    ]);
+    const chaos = new ChaosChatProvider(inner, {
+      errorProbability: 0,
+      corruptToolCallProbability: 1.0,
+      seed: 19,
+    });
+
+    const stream = await chaos.generate('', [], []);
+    const parts: StreamedMessagePart[] = [];
+    for await (const p of stream) parts.push(p);
+
+    expect(parts).toEqual([
+      { type: 'text', text: 'plain text' },
+      { type: 'think', think: 'thinking' },
+    ]);
   });
 });

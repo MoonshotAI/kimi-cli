@@ -844,3 +844,112 @@ describe('OpenAILegacyChatProvider', () => {
     ]);
   });
 });
+
+describe('OpenAILegacyChatProvider — non-stream response parsing', () => {
+  function makeNonStreamResponse(message: Record<string, unknown>): Record<string, unknown> {
+    return {
+      id: 'chatcmpl-test123',
+      object: 'chat.completion',
+      created: 1234567890,
+      model: 'gpt-4.1',
+      choices: [{ index: 0, message, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    };
+  }
+
+  async function collectFromMockedResponse(
+    provider: OpenAILegacyChatProvider,
+    response: Record<string, unknown>,
+  ): Promise<StreamedMessagePart[]> {
+    (provider as any)._client.chat.completions.create = vi.fn().mockResolvedValue(response);
+
+    const stream = await provider.generate(
+      '',
+      [],
+      [{ role: 'user', content: [{ type: 'text', text: 'hi' }], toolCalls: [] }],
+    );
+    const parts: StreamedMessagePart[] = [];
+    for await (const part of stream) parts.push(part);
+    return parts;
+  }
+
+  it('yields ThinkPart from non-stream response when reasoningKey content is present', async () => {
+    const provider = new OpenAILegacyChatProvider({
+      model: 'deepseek-reasoner',
+      apiKey: 'test-key',
+      stream: false,
+      reasoningKey: 'reasoning_content',
+    });
+
+    const parts = await collectFromMockedResponse(
+      provider,
+      makeNonStreamResponse({
+        role: 'assistant',
+        content: 'Final answer',
+        reasoning_content: 'Some thinking here.',
+      }),
+    );
+
+    expect(parts).toEqual([
+      { type: 'think', think: 'Some thinking here.' },
+      { type: 'text', text: 'Final answer' },
+    ]);
+  });
+
+  it('non-stream response yields ToolCall parts when tool_calls present', async () => {
+    const provider = new OpenAILegacyChatProvider({
+      model: 'gpt-4.1',
+      apiKey: 'test-key',
+      stream: false,
+    });
+
+    const parts = await collectFromMockedResponse(
+      provider,
+      makeNonStreamResponse({
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_x',
+            type: 'function',
+            function: { name: 'lookup', arguments: '{"q":"hi"}' },
+          },
+        ],
+      }),
+    );
+
+    const toolCall = parts.find((p) => p.type === 'function');
+    expect(toolCall).toMatchObject({
+      type: 'function',
+      id: 'call_x',
+      function: { name: 'lookup', arguments: '{"q":"hi"}' },
+    });
+  });
+
+  it('non-stream response generates a fresh ID when tool_call has no id', async () => {
+    const provider = new OpenAILegacyChatProvider({
+      model: 'gpt-4.1',
+      apiKey: 'test-key',
+      stream: false,
+    });
+
+    const parts = await collectFromMockedResponse(
+      provider,
+      makeNonStreamResponse({
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            type: 'function',
+            function: { name: 'lookup', arguments: '{}' },
+          },
+        ],
+      }),
+    );
+
+    const toolCall = parts.find((p) => p.type === 'function');
+    expect(toolCall).toBeDefined();
+    expect((toolCall as ToolCall).id).toBeTruthy();
+    expect((toolCall as ToolCall).id.length).toBeGreaterThan(0);
+  });
+});

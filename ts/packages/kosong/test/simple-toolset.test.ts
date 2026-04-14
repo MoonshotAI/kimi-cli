@@ -223,8 +223,63 @@ describe('SimpleToolset', () => {
 
   it('remove() throws for non-existent tool', () => {
     const toolset = new SimpleToolset();
-    expect(() =>{  toolset.remove('does-not-exist'); }).toThrow(
-      'Tool `does-not-exist` not found in the toolset.',
+    expect(() => {
+      toolset.remove('does-not-exist');
+    }).toThrow('Tool `does-not-exist` not found in the toolset.');
+  });
+
+  it('validation error message uses "must NOT have additional property" for additionalProperties: false', async () => {
+    const toolset = new SimpleToolset();
+    toolset.add(
+      {
+        name: 'strict_tool',
+        description: 'rejects unknown keys',
+        parameters: {
+          type: 'object',
+          properties: {
+            x: { type: 'string' },
+          },
+          required: ['x'],
+          additionalProperties: false,
+        },
+      },
+      async (): Promise<ToolReturnValue> => toolOk({ output: 'ok' }),
     );
+
+    const result = await toolset.handle(makeToolCall('1', 'strict_tool', '{"x":"a","extra":1}'));
+    expect(result.returnValue.isError).toBe(true);
+    expect(result.returnValue.message).toContain("must NOT have additional property 'extra'");
+  });
+
+  it('validation error message includes instancePath for nested field errors', async () => {
+    const toolset = new SimpleToolset();
+    toolset.add(
+      {
+        name: 'nested_tool',
+        description: 'expects nested object',
+        parameters: {
+          type: 'object',
+          properties: {
+            user: {
+              type: 'object',
+              properties: {
+                age: { type: 'integer' },
+              },
+              required: ['age'],
+            },
+          },
+          required: ['user'],
+        },
+      },
+      async (): Promise<ToolReturnValue> => toolOk({ output: 'ok' }),
+    );
+
+    // Pass age as string, triggering a type error on the nested path.
+    const result = await toolset.handle(
+      makeToolCall('1', 'nested_tool', '{"user":{"age":"not a number"}}'),
+    );
+    expect(result.returnValue.isError).toBe(true);
+    // Error message should mention the instance path `/user/age`.
+    expect(result.returnValue.message).toContain('/user/age');
   });
 });

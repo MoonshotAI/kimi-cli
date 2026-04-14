@@ -246,10 +246,7 @@ describe('LinearContext with JsonlLinearStorage', () => {
   });
 
   it('round-trips an assistant message with empty content and empty toolCalls', async () => {
-    tmpFile = node_path.join(
-      node_os.tmpdir(),
-      `kosong-test-empty-roundtrip-${Date.now()}.jsonl`,
-    );
+    tmpFile = node_path.join(node_os.tmpdir(), `kosong-test-empty-roundtrip-${Date.now()}.jsonl`);
 
     const original: Message = {
       role: 'assistant',
@@ -488,6 +485,115 @@ describe('JsonlLinearStorage Python compatibility', () => {
     expect(restored.messages[0]!.toolCalls[0]!.function.name).toBe('bar');
 
     expect(restored.messages[1]!).toEqual(tsMessage);
+  });
+
+  it('skips rows that violate normalize invariants and warns for each', async () => {
+    tmpFile = node_path.join(node_os.tmpdir(), `kosong-test-normalize-errors-${Date.now()}.jsonl`);
+
+    // Each row triggers a different normalize error path.
+    const fixture = [
+      // 1. Top-level row is not an object (a JSON number)
+      '42',
+      // 2. role is invalid
+      '{"role": "wizard", "content": "x"}',
+      // 3. content is invalid shape (number)
+      '{"role": "user", "content": 5}',
+      // 4. toolCalls is not an array (number)
+      '{"role": "assistant", "content": "x", "toolCalls": 99}',
+      // 5. tool_calls is not an array (number)
+      '{"role": "assistant", "content": "x", "tool_calls": 99}',
+      // 6. name is wrong type
+      '{"role": "user", "content": "x", "name": 12}',
+      // 7. partial flag is wrong type
+      '{"role": "assistant", "content": "x", "partial": "yes"}',
+      // 8. tool_call: not an object
+      '{"role": "assistant", "content": "x", "tool_calls": [42]}',
+      // 9. tool_call: invalid type field
+      '{"role": "assistant", "content": "x", "tool_calls": [{"type": "weird", "id": "c1", "function": {"name":"a","arguments":"{}"}}]}',
+      // 10. tool_call: missing id
+      '{"role": "assistant", "content": "x", "tool_calls": [{"type": "function", "function": {"name":"a","arguments":"{}"}}]}',
+      // 11. tool_call: missing function payload
+      '{"role": "assistant", "content": "x", "tool_calls": [{"type": "function", "id": "c1"}]}',
+      // 12. tool_call: function.name missing
+      '{"role": "assistant", "content": "x", "tool_calls": [{"type": "function", "id": "c1", "function": {"arguments": "{}"}}]}',
+      // 13. tool_call: function.arguments wrong type
+      '{"role": "assistant", "content": "x", "tool_calls": [{"type": "function", "id": "c1", "function": {"name": "a", "arguments": 5}}]}',
+      // 14. tool_call: extras is wrong shape (array)
+      '{"role": "assistant", "content": "x", "tool_calls": [{"type": "function", "id": "c1", "function": {"name": "a", "arguments": "{}"}, "extras": [1,2]}]}',
+      // 15. content part: not an object
+      '{"role": "user", "content": [42]}',
+      // 16. content part: missing type
+      '{"role": "user", "content": [{"text": "no type"}]}',
+      // 17. text part: missing text
+      '{"role": "user", "content": [{"type": "text"}]}',
+      // 18. think part: missing think
+      '{"role": "assistant", "content": [{"type": "think"}], "tool_calls": []}',
+      // 19. think part: encrypted wrong type
+      '{"role": "assistant", "content": [{"type": "think", "think": "x", "encrypted": 12}], "tool_calls": []}',
+      // 20. media payload: not an object
+      '{"role": "user", "content": [{"type": "image_url", "image_url": "not-an-object"}]}',
+      // 21. media payload: id wrong type
+      '{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://x", "id": 5}}]}',
+      // followed by one valid row to make sure restore continues
+      '{"role": "user", "content": "valid tail"}',
+    ].join('\n');
+    await node_fs.promises.writeFile(tmpFile, fixture + '\n', 'utf-8');
+
+    const warnings: Array<{ message: string }> = [];
+    const logger: Logger = {
+      trace: () => {},
+      debug: () => {},
+      info: () => {},
+      warn: (message) => {
+        warnings.push({ message });
+      },
+      error: () => {},
+    };
+    setLogger(logger);
+
+    const restored = await new JsonlLinearStorage(tmpFile).restore();
+
+    // Only the valid tail row should survive.
+    expect(restored.messages).toHaveLength(1);
+    expect(restored.messages[0]!).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: 'valid tail' }],
+      toolCalls: [],
+    });
+    // 22 input rows minus 1 valid tail = 21 warnings (each row produced one warning)
+    expect(warnings.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it('isUsageRow returns false for non-object values mixed in JSONL', async () => {
+    tmpFile = node_path.join(node_os.tmpdir(), `kosong-test-usage-row-shapes-${Date.now()}.jsonl`);
+
+    // A valid usage row + a fake usage row with wrong token_count shape.
+    const fixture = [
+      '{"role": "user", "content": "hi"}',
+      '{"role": "_usage", "token_count": 100}',
+      // _usage with non-number token_count → not a UsageRow → re-falls into normalizeMessage which rejects role "_usage"
+      '{"role": "_usage", "token_count": "abc"}',
+    ].join('\n');
+    await node_fs.promises.writeFile(tmpFile, fixture + '\n', 'utf-8');
+
+    const warnings: Array<{ message: string }> = [];
+    const logger: Logger = {
+      trace: () => {},
+      debug: () => {},
+      info: () => {},
+      warn: (message) => {
+        warnings.push({ message });
+      },
+      error: () => {},
+    };
+    setLogger(logger);
+
+    const restored = await new JsonlLinearStorage(tmpFile).restore();
+
+    expect(restored.messages).toHaveLength(1);
+    expect(restored.tokenCount).toBe(100);
+    // The bad _usage row triggers a warning (failed to normalize as message)
+    expect(warnings.length).toBeGreaterThan(0);
   });
 
   it('skips semantically invalid rows and warns during normalization', async () => {

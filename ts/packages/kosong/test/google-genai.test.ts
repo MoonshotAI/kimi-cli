@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 
+import {
+  APIConnectionError,
+  APIStatusError,
+  APITimeoutError,
+  ChatProviderError,
+} from '../src/errors.js';
 import type { Message, StreamedMessagePart, ToolCall } from '../src/message.js';
 import {
+  convertGoogleGenAIError,
   GoogleGenAIChatProvider,
   GoogleGenAIStreamedMessage,
   messagesToGoogleGenAIContents,
@@ -1300,7 +1307,9 @@ describe('GoogleGenAIChatProvider', () => {
           (error: unknown) => ({ settled: 'rejected' as const, error }),
         ),
         new Promise<{ settled: 'timeout' }>((resolve) =>
-          setTimeout(() =>{  resolve({ settled: 'timeout' }); }, 100),
+          setTimeout(() => {
+            resolve({ settled: 'timeout' });
+          }, 100),
         ),
       ]);
 
@@ -1462,6 +1471,125 @@ describe('GoogleGenAIChatProvider', () => {
 
       expect(() => provider.onRetryableError(new Error('transient'))).not.toThrow();
       expect((provider as any)._client).toBeDefined();
+    });
+  });
+});
+
+describe('convertGoogleGenAIError (unit)', () => {
+  it('maps a network-keyword Error to APIConnectionError', () => {
+    const result = convertGoogleGenAIError(new Error('network connection lost'));
+    expect(result).toBeInstanceOf(APIConnectionError);
+  });
+
+  it('maps a "fetch failed" TypeError to APIConnectionError', () => {
+    const result = convertGoogleGenAIError(new TypeError('fetch failed'));
+    expect(result).toBeInstanceOf(APIConnectionError);
+  });
+
+  it('maps a timeout-keyword Error to APITimeoutError (priority over network)', () => {
+    const result = convertGoogleGenAIError(new Error('connection timed out'));
+    expect(result).toBeInstanceOf(APITimeoutError);
+  });
+
+  it('extracts numeric code property as APIStatusError', () => {
+    const error = new Error('api failure');
+    (error as Error & { code: number }).code = 503;
+    const result = convertGoogleGenAIError(error);
+    expect(result).toBeInstanceOf(APIStatusError);
+    expect((result as APIStatusError).statusCode).toBe(503);
+  });
+
+  it('falls through to ChatProviderError for plain Error without keywords or code', () => {
+    const result = convertGoogleGenAIError(new Error('something obscure'));
+    expect(result.constructor).toBe(ChatProviderError);
+    expect(result.message).toContain('something obscure');
+  });
+
+  it('handles non-Error values by stringifying them', () => {
+    const result = convertGoogleGenAIError('a bare string failure');
+    expect(result.constructor).toBe(ChatProviderError);
+    expect(result.message).toContain('a bare string failure');
+  });
+});
+
+describe('messagesToGoogleGenAIContents - extra branches', () => {
+  it('throws when assistant tool_call has malformed JSON arguments', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hi' }],
+        toolCalls: [
+          {
+            type: 'function',
+            id: 'tc_bad',
+            function: { name: 'foo', arguments: 'not valid {json' },
+          },
+        ],
+      },
+    ];
+    // Provider rejects malformed JSON arguments rather than silently sending
+    // garbage to Gemini.
+    expect(() => messagesToGoogleGenAIContents(messages)).toThrow(/Tool call arguments/);
+  });
+
+  it('media URL with png extension picks image/png mime type', async () => {
+    const provider = createProvider();
+    const history: Message[] = [
+      {
+        role: 'user',
+        content: [{ type: 'image_url', imageUrl: { url: 'https://example.com/photo.png' } }],
+        toolCalls: [],
+      },
+    ];
+    const body = await captureRequestBody(provider, '', [], history);
+    const contents = body['contents'] as Array<{ parts: Array<Record<string, unknown>> }>;
+    const fileData = contents[0]!.parts[0]!['fileData'] as { mimeType: string };
+    expect(fileData.mimeType).toBe('image/png');
+  });
+
+  it('media URL with jpg extension picks image/jpeg mime type', async () => {
+    const provider = createProvider();
+    const history: Message[] = [
+      {
+        role: 'user',
+        content: [{ type: 'image_url', imageUrl: { url: 'https://example.com/photo.jpg' } }],
+        toolCalls: [],
+      },
+    ];
+    const body = await captureRequestBody(provider, '', [], history);
+    const contents = body['contents'] as Array<{ parts: Array<Record<string, unknown>> }>;
+    const fileData = contents[0]!.parts[0]!['fileData'] as { mimeType: string };
+    expect(fileData.mimeType).toBe('image/jpeg');
+  });
+
+  it('media URL with mp3 extension picks audio/mpeg mime type', async () => {
+    const provider = createProvider();
+    const history: Message[] = [
+      {
+        role: 'user',
+        content: [{ type: 'audio_url', audioUrl: { url: 'https://example.com/song.mp3' } }],
+        toolCalls: [],
+      },
+    ];
+    const body = await captureRequestBody(provider, '', [], history);
+    const contents = body['contents'] as Array<{ parts: Array<Record<string, unknown>> }>;
+    const fileData = contents[0]!.parts[0]!['fileData'] as { mimeType: string };
+    expect(fileData.mimeType).toBe('audio/mpeg');
+  });
+
+  it('data: URL without comma falls back to file data with full URL', async () => {
+    const provider = createProvider();
+    const history: Message[] = [
+      {
+        role: 'user',
+        content: [{ type: 'image_url', imageUrl: { url: 'data:image/png' } }],
+        toolCalls: [],
+      },
+    ];
+    const body = await captureRequestBody(provider, '', [], history);
+    const contents = body['contents'] as Array<{ parts: Array<Record<string, unknown>> }>;
+    expect(contents[0]!.parts[0]).toMatchObject({
+      fileData: { fileUri: 'data:image/png' },
     });
   });
 });

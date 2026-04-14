@@ -144,6 +144,83 @@ describe('EchoChatProvider', () => {
     expect(newProvider).not.toBe(provider);
   });
 
+  it('throws on a DSL line without a colon separator', async () => {
+    const provider = new EchoChatProvider();
+    await expect(provider.generate('', [], [userMsg('this line has no colon')])).rejects.toThrow(
+      /Invalid echo DSL/,
+    );
+  });
+
+  it('throws on an unknown DSL kind', async () => {
+    const provider = new EchoChatProvider();
+    await expect(
+      provider.generate('', [], [userMsg('mystery_kind: some payload')]),
+    ).rejects.toThrow(/Unknown echo DSL kind/);
+  });
+
+  it('skips markdown fence lines and bare echo keyword', async () => {
+    const dsl = ['```', 'echo', 'text: actual content', '```'].join('\n');
+    const provider = new EchoChatProvider();
+    const stream = await provider.generate('', [], [userMsg(dsl)]);
+    const parts: StreamedMessagePart[] = [];
+    for await (const part of stream) parts.push(part);
+    expect(parts).toEqual([{ type: 'text', text: 'actual content' }]);
+  });
+
+  it('parseUsage throws for non-integer field', async () => {
+    const provider = new EchoChatProvider();
+    const dsl = 'usage: {"output": "not_a_number"}';
+    await expect(provider.generate('', [], [userMsg(dsl)])).rejects.toThrow(
+      /Usage field 'output' must be an integer/,
+    );
+  });
+
+  it('parseToolCall throws when id is missing', async () => {
+    const provider = new EchoChatProvider();
+    const dsl = 'tool_call: {"name": "search", "arguments": "{}"}';
+    await expect(provider.generate('', [], [userMsg(dsl)])).rejects.toThrow(
+      /tool_call requires string id and name/,
+    );
+  });
+
+  it('parseToolCall throws when name is missing', async () => {
+    const provider = new EchoChatProvider();
+    const dsl = 'tool_call: {"id": "call-1", "arguments": "{}"}';
+    await expect(provider.generate('', [], [userMsg(dsl)])).rejects.toThrow(
+      /tool_call requires string id and name/,
+    );
+  });
+
+  it('image_url DSL accepts a bare URL string (no id)', async () => {
+    const provider = new EchoChatProvider();
+    const dsl = 'image_url: https://example.com/img.png';
+    const stream = await provider.generate('', [], [userMsg(dsl)]);
+    const parts: StreamedMessagePart[] = [];
+    for await (const part of stream) parts.push(part);
+    expect(parts).toEqual([
+      {
+        type: 'image_url',
+        imageUrl: { url: 'https://example.com/img.png' },
+      } satisfies ImageURLPart,
+    ]);
+  });
+
+  it('parseMapping falls back to key=value form when payload is not JSON', async () => {
+    const provider = new EchoChatProvider();
+    // usage payload as space-separated key=value form (requires at least one part too)
+    const dsl = ['usage: input_other=10 output=2', 'text: hi'].join('\n');
+    const stream = await provider.generate('', [], [userMsg(dsl)]);
+    for await (const _ of stream) {
+      /* drain */
+    }
+    expect(stream.usage).toEqual({
+      inputOther: 10,
+      output: 2,
+      inputCacheRead: 0,
+      inputCacheCreation: 0,
+    });
+  });
+
   it('generate merges tool_call arguments via mergeInPlace', async () => {
     const dsl = [
       'id: echo-merge-1',
