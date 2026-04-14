@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
-import { createEventEnvelope, WIRE_PROTOCOL_VERSION } from '../src/wire/index.js';
-import type { TurnBeginEvent, TurnEndEvent, WireEvent } from '../src/wire/index.js';
+import { createEventEnvelope, WIRE_PROTOCOL_VERSION } from '../src/wire-legacy/index.js';
+import type { TurnBeginEvent, TurnEndEvent, WireEvent } from '../src/wire-legacy/index.js';
 
 describe('Wire protocol', () => {
   test('protocol version is 2.1', () => {

@@ -1,9 +1,17 @@
-// Soul layer
-export { CollectingSink, runTurn } from './soul/index.js';
-export type { EventSink, Runtime, StatusSnapshot, StepResult, TurnResult } from './soul/index.js';
+// Legacy Soul / Wire re-exports (scheduled for removal in Slice 5).
+// Slice 2's v2 Soul lives in `src/soul/` and is **not** re-exported here on
+// purpose — new call sites should import v2 Soul directly from the module
+// path while Slice 5 finishes clearing out the legacy layer.
+export { CollectingSink, runTurn } from './soul-legacy/index.js';
+export type {
+  EventSink,
+  Runtime,
+  StatusSnapshot,
+  StepResult,
+  TurnResult,
+} from './soul-legacy/index.js';
 
-// Wire protocol
-export { createEventEnvelope, WIRE_PROTOCOL_VERSION } from './wire/index.js';
+export { createEventEnvelope, WIRE_PROTOCOL_VERSION } from './wire-legacy/index.js';
 export type {
   ContentDeltaEvent,
   SessionErrorEvent,
@@ -15,4 +23,4 @@ export type {
   TurnEndEvent,
   WireEvent,
   WireMessageEnvelope,
-} from './wire/index.js';
+} from './wire-legacy/index.js';
