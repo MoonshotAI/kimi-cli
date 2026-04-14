@@ -20,6 +20,8 @@ function createMockStream(
     get usage(): TokenUsage | null {
       return opts?.usage ?? null;
     },
+    finishReason: null,
+    rawFinishReason: null,
     async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
       for (const part of parts) {
         yield part;
@@ -730,6 +732,8 @@ describe('generate()', () => {
       get usage(): TokenUsage | null {
         return null;
       },
+      finishReason: null,
+      rawFinishReason: null,
       async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
         observedParts += 1;
         yield { type: 'text', text: 'leaked' };
@@ -811,6 +815,8 @@ describe('generate()', () => {
       get usage(): TokenUsage | null {
         return null;
       },
+      finishReason: null,
+      rawFinishReason: null,
       async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
         yield { type: 'text', text: 'leaked' };
       },
@@ -863,5 +869,60 @@ describe('generate()', () => {
     });
 
     expect(received).toEqual(['first', 'second']);
+  });
+
+  describe('finishReason propagation', () => {
+    function streamWithFinish(
+      parts: StreamedMessagePart[],
+      finishReason:
+        | 'completed'
+        | 'truncated'
+        | 'tool_calls'
+        | 'filtered'
+        | 'paused'
+        | 'other'
+        | null,
+      rawFinishReason: string | null,
+    ): StreamedMessage {
+      return {
+        id: 'mock-id',
+        usage: null,
+        finishReason,
+        rawFinishReason,
+        async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
+          for (const part of parts) {
+            yield part;
+          }
+        },
+      };
+    }
+
+    it('copies stream.finishReason and stream.rawFinishReason onto the generate result', async () => {
+      const stream = streamWithFinish([{ type: 'text', text: 'hello' }], 'truncated', 'length');
+      const provider = createMockProvider(stream);
+      const result = await generate(provider, '', [], []);
+      expect(result.finishReason).toBe('truncated');
+      expect(result.rawFinishReason).toBe('length');
+    });
+
+    it('copies null finishReason when the provider did not emit one', async () => {
+      const stream = streamWithFinish([{ type: 'text', text: 'hi' }], null, null);
+      const provider = createMockProvider(stream);
+      const result = await generate(provider, '', [], []);
+      expect(result.finishReason).toBeNull();
+      expect(result.rawFinishReason).toBeNull();
+    });
+
+    it('copies filtered finishReason alongside its raw value', async () => {
+      const stream = streamWithFinish(
+        [{ type: 'text', text: 'nope' }],
+        'filtered',
+        'content_filter',
+      );
+      const provider = createMockProvider(stream);
+      const result = await generate(provider, '', [], []);
+      expect(result.finishReason).toBe('filtered');
+      expect(result.rawFinishReason).toBe('content_filter');
+    });
   });
 });

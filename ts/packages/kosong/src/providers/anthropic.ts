@@ -27,6 +27,7 @@ import {
 } from '../errors.js';
 import type { ContentPart, Message, StreamedMessagePart, ToolCall } from '../message.js';
 import type {
+  FinishReason,
   GenerateOptions,
   RetryableChatProvider,
   StreamedMessage,
@@ -34,6 +35,37 @@ import type {
 } from '../provider.js';
 import type { Tool } from '../tool.js';
 import type { TokenUsage } from '../usage.js';
+
+/**
+ * Normalize an Anthropic `stop_reason` string to the unified
+ * {@link FinishReason} enum.
+ *
+ * Source: `message.stop_reason` (non-stream) or the last `message_delta`
+ * event's `delta.stop_reason` (stream).
+ */
+function normalizeAnthropicStopReason(raw: string | null | undefined): {
+  finishReason: FinishReason | null;
+  rawFinishReason: string | null;
+} {
+  if (raw === null || raw === undefined) {
+    return { finishReason: null, rawFinishReason: null };
+  }
+  switch (raw) {
+    case 'end_turn':
+    case 'stop_sequence':
+      return { finishReason: 'completed', rawFinishReason: raw };
+    case 'max_tokens':
+      return { finishReason: 'truncated', rawFinishReason: raw };
+    case 'tool_use':
+      return { finishReason: 'tool_calls', rawFinishReason: raw };
+    case 'pause_turn':
+      return { finishReason: 'paused', rawFinishReason: raw };
+    case 'refusal':
+      return { finishReason: 'filtered', rawFinishReason: raw };
+    default:
+      return { finishReason: 'other', rawFinishReason: raw };
+  }
+}
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -268,6 +300,8 @@ class AnthropicStreamedMessage implements StreamedMessage {
     inputCacheRead: 0,
     inputCacheCreation: 0,
   };
+  private _finishReason: FinishReason | null = null;
+  private _rawFinishReason: string | null = null;
   private readonly _iter: AsyncGenerator<StreamedMessagePart>;
 
   constructor(response: unknown, isStream: boolean) {
@@ -277,6 +311,7 @@ class AnthropicStreamedMessage implements StreamedMessage {
       this._iter = this._convertNonStreamResponse(
         response as {
           id: string;
+          stop_reason?: string | null;
           usage: {
             input_tokens: number;
             output_tokens: number;
@@ -306,8 +341,22 @@ class AnthropicStreamedMessage implements StreamedMessage {
     return this._usage;
   }
 
+  get finishReason(): FinishReason | null {
+    return this._finishReason;
+  }
+
+  get rawFinishReason(): string | null {
+    return this._rawFinishReason;
+  }
+
   async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
     yield* this._iter;
+  }
+
+  private _captureStopReason(raw: string | null | undefined): void {
+    const normalized = normalizeAnthropicStopReason(raw);
+    this._finishReason = normalized.finishReason;
+    this._rawFinishReason = normalized.rawFinishReason;
   }
 
   private _extractUsage(usage: {
@@ -326,6 +375,7 @@ class AnthropicStreamedMessage implements StreamedMessage {
 
   private async *_convertNonStreamResponse(response: {
     id: string;
+    stop_reason?: string | null;
     usage: {
       input_tokens: number;
       output_tokens: number;
@@ -345,6 +395,7 @@ class AnthropicStreamedMessage implements StreamedMessage {
   }): AsyncGenerator<StreamedMessagePart> {
     this._id = response.id;
     this._extractUsage(response.usage);
+    this._captureStopReason(response.stop_reason);
 
     for (const block of response.content) {
       switch (block.type) {
@@ -475,6 +526,19 @@ class AnthropicStreamedMessage implements StreamedMessage {
             if (typeof deltaUsage['input_tokens'] === 'number') {
               this._usage.inputOther = deltaUsage['input_tokens'];
             }
+          }
+          // The terminal `stop_reason` lives on `delta.stop_reason` of the
+          // last `message_delta` event for this response. Capture it here.
+          //
+          // Accept `null` explicitly: if the key is present we forward the
+          // value (including null) to `_captureStopReason`, which maps it to
+          // `{null, null}`. Only a missing key skips the capture. This avoids
+          // a stale prior capture persisting after an explicit null reset.
+          const messageDeltaPayload = (evt as { delta?: Record<string, unknown> }).delta;
+          if (messageDeltaPayload !== undefined && 'stop_reason' in messageDeltaPayload) {
+            this._captureStopReason(
+              messageDeltaPayload['stop_reason'] as string | null | undefined,
+            );
           }
         }
         // message_stop: nothing to do

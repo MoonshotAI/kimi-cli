@@ -1366,4 +1366,31 @@ describe('AnthropicChatProvider', () => {
       }
     });
   });
+
+  describe('modelParameters getter', () => {
+    it('returns model + generation kwargs', () => {
+      const provider = new AnthropicChatProvider({
+        model: 'claude-sonnet-4-20250514',
+        apiKey: 'test-key',
+        defaultMaxTokens: 2048,
+      }).withGenerationKwargs({ temperature: 0.5 });
+
+      const params = provider.modelParameters;
+      expect(params).toMatchObject({
+        model: 'claude-sonnet-4-20250514',
+        temperature: 0.5,
+      });
+    });
+  });
+
+  describe('generate without system prompt', () => {
+    it('omits the system array when systemPrompt is empty string', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'hi' }], toolCalls: [] },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+      expect(body['system']).toBeUndefined();
+    });
+  });
 });

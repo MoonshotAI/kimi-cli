@@ -489,6 +489,9 @@ describe('GoogleGenAIChatProvider', () => {
 
     it('parallel tool calls packed into single user Content', async () => {
       const provider = createProvider();
+      // Mirror Python COMMON_CASES.parallel_tool_calls: multi-ContentPart
+      // tool results with a <system-reminder> prefix proving the provider
+      // concatenates text parts into `response.output`.
       const history: Message[] = [
         { role: 'user', content: [{ type: 'text', text: 'Calculate 2+3 and 4*5' }], toolCalls: [] },
         {
@@ -509,40 +512,70 @@ describe('GoogleGenAIChatProvider', () => {
         },
         {
           role: 'tool',
-          content: [{ type: 'text', text: '5' }],
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '5' },
+          ],
           toolCallId: 'call_add',
           toolCalls: [],
         },
         {
           role: 'tool',
-          content: [{ type: 'text', text: '20' }],
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '20' },
+          ],
           toolCallId: 'call_mul',
           toolCalls: [],
         },
       ];
       const body = await captureRequestBody(provider, '', [ADD_TOOL, MUL_TOOL], history);
 
-      const contents = body['contents'] as unknown[];
-      // The tool results should be packed in a single user Content
-      expect(contents[2]).toEqual({
-        parts: [
-          {
-            function_response: {
-              name: 'add',
-              response: { output: '5' },
-              parts: [],
+      // Full byte-for-byte match against the Python kosong snapshot:
+      // - exactly 3 contents in order (user, model with 2 function_calls, user with 2 function_responses bundled)
+      // - both tool results are N:1 packed into ONE user Content
+      // - text parts are concatenated into `response.output` (system-reminder + result)
+      // - functionCall / functionResponse never include an `id` field
+      expect(body['contents']).toEqual([
+        { parts: [{ text: 'Calculate 2+3 and 4*5' }], role: 'user' },
+        {
+          parts: [
+            { text: "I'll calculate both." },
+            { function_call: { name: 'add', args: { a: 2, b: 3 } } },
+            { function_call: { name: 'multiply', args: { a: 4, b: 5 } } },
+          ],
+          role: 'model',
+        },
+        {
+          parts: [
+            {
+              function_response: {
+                name: 'add',
+                response: {
+                  output: '<system-reminder>This is a system reminder</system-reminder>5',
+                },
+                parts: [],
+              },
             },
-          },
-          {
-            function_response: {
-              name: 'multiply',
-              response: { output: '20' },
-              parts: [],
+            {
+              function_response: {
+                name: 'multiply',
+                response: {
+                  output: '<system-reminder>This is a system reminder</system-reminder>20',
+                },
+                parts: [],
+              },
             },
-          },
-        ],
-        role: 'user',
-      });
+          ],
+          role: 'user',
+        },
+      ]);
     });
   });
 
@@ -1509,6 +1542,138 @@ describe('convertGoogleGenAIError (unit)', () => {
     const result = convertGoogleGenAIError('a bare string failure');
     expect(result.constructor).toBe(ChatProviderError);
     expect(result.message).toContain('a bare string failure');
+  });
+});
+
+describe('messagesToGoogleGenAIContents - error branches', () => {
+  it('throws when toolCall arguments is a JSON array (not object)', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hi' }],
+        toolCalls: [
+          {
+            type: 'function',
+            id: 'tc_arr',
+            function: { name: 'foo', arguments: '[1,2,3]' },
+          },
+        ],
+      },
+    ];
+    expect(() => messagesToGoogleGenAIContents(messages)).toThrow(
+      /Tool call arguments must be a JSON object/,
+    );
+  });
+
+  it('throws when tool response is missing toolCallId', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [],
+        toolCalls: [
+          {
+            type: 'function',
+            id: 'tc_1',
+            function: { name: 'foo', arguments: '{}' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [{ type: 'text', text: 'result' }],
+        toolCalls: [],
+        // toolCallId missing!
+      },
+    ];
+    expect(() => messagesToGoogleGenAIContents(messages)).toThrow(
+      /Tool response is missing `toolCallId`/,
+    );
+  });
+
+  it('throws on duplicate tool responses for same id', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [],
+        toolCalls: [
+          {
+            type: 'function',
+            id: 'tc_dup',
+            function: { name: 'foo', arguments: '{}' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [{ type: 'text', text: 'r1' }],
+        toolCallId: 'tc_dup',
+        toolCalls: [],
+      },
+      {
+        role: 'tool',
+        content: [{ type: 'text', text: 'r2' }],
+        toolCallId: 'tc_dup',
+        toolCalls: [],
+      },
+    ];
+    expect(() => messagesToGoogleGenAIContents(messages)).toThrow(/Duplicate tool response/);
+  });
+
+  it('throws when expected tool response is missing', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [],
+        toolCalls: [
+          {
+            type: 'function',
+            id: 'tc_expected',
+            function: { name: 'foo', arguments: '{}' },
+          },
+          {
+            type: 'function',
+            id: 'tc_missing',
+            function: { name: 'bar', arguments: '{}' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [{ type: 'text', text: 'only one' }],
+        toolCallId: 'tc_expected',
+        toolCalls: [],
+      },
+    ];
+    expect(() => messagesToGoogleGenAIContents(messages)).toThrow(/Missing tool responses for ids/);
+  });
+
+  it('throws on unexpected tool response for unknown id', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: [],
+        toolCalls: [
+          {
+            type: 'function',
+            id: 'tc_known',
+            function: { name: 'foo', arguments: '{}' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [{ type: 'text', text: 'r' }],
+        toolCallId: 'tc_known',
+        toolCalls: [],
+      },
+      {
+        role: 'tool',
+        content: [{ type: 'text', text: 'stray' }],
+        toolCallId: 'tc_unexpected',
+        toolCalls: [],
+      },
+    ];
+    expect(() => messagesToGoogleGenAIContents(messages)).toThrow(/Unexpected tool responses/);
   });
 });
 

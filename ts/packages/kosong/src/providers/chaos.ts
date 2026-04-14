@@ -2,6 +2,7 @@ import { APIStatusError } from '../errors.js';
 import type { Message, StreamedMessagePart, ToolCall, ToolCallPart } from '../message.js';
 import type {
   ChatProvider,
+  FinishReason,
   GenerateOptions,
   RetryableChatProvider,
   StreamedMessage,
@@ -166,6 +167,14 @@ class ChaosStreamedMessage implements StreamedMessage {
 
   get usage(): TokenUsage | null {
     return this._wrapped.usage;
+  }
+
+  get finishReason(): FinishReason | null {
+    return this._wrapped.finishReason;
+  }
+
+  get rawFinishReason(): string | null {
+    return this._wrapped.rawFinishReason;
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {

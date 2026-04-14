@@ -8,7 +8,7 @@ import {
   type StreamedMessagePart,
   type ToolCall,
 } from './message.js';
-import type { ChatProvider, GenerateOptions, StreamedMessage } from './provider.js';
+import type { ChatProvider, FinishReason, GenerateOptions, StreamedMessage } from './provider.js';
 import type { Tool } from './tool.js';
 import type { TokenUsage } from './usage.js';
 
@@ -30,6 +30,17 @@ export interface GenerateResult {
   readonly message: Message;
   /** Token usage for this generation, or `null` if not reported. */
   readonly usage: TokenUsage | null;
+  /**
+   * Normalized finish reason reported by the provider, or `null` if no
+   * finish_reason was emitted (for example, the stream was interrupted
+   * before the final event).
+   */
+  readonly finishReason: FinishReason | null;
+  /**
+   * Raw provider-specific finish_reason string preserved verbatim.
+   * `null` if the provider did not emit one.
+   */
+  readonly rawFinishReason: string | null;
 }
 
 // ── Callbacks ─────────────────────────────────────────────────────────
@@ -189,6 +200,8 @@ export async function generate(
     id: stream.id,
     message,
     usage: stream.usage,
+    finishReason: stream.finishReason,
+    rawFinishReason: stream.rawFinishReason,
   };
 }
 

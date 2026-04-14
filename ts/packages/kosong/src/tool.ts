@@ -73,8 +73,6 @@ export interface ToolReturnValue {
   message: string;
   /** UI display blocks (e.g. brief text summaries). */
   display: DisplayBlock[];
-  /** Optional extra metadata attached to the result. */
-  extras?: Record<string, JsonType>;
 }
 
 // ── Tool Result ────────────────────────────────────────────────────────

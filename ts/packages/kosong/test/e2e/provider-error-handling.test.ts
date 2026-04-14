@@ -42,6 +42,8 @@ function createStream(
     get usage(): TokenUsage | null {
       return opts?.usage ?? null;
     },
+    finishReason: null,
+    rawFinishReason: null,
     async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
       for (const part of parts) {
         yield part;
@@ -94,6 +96,8 @@ function createMidStreamThrowingProvider(
         get usage(): TokenUsage | null {
           return null;
         },
+        finishReason: null,
+        rawFinishReason: null,
         async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
           for (const part of partsBefore) {
             yield part;

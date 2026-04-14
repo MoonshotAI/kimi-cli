@@ -11,7 +11,14 @@ import type {
   VideoURLPart,
 } from './message.js';
 import { extractText } from './message.js';
-import type { ChatProvider, GenerateOptions, StreamedMessage, ThinkingEffort } from './provider.js';
+import type {
+  ChatProvider,
+  FinishReason,
+  GenerateOptions,
+  StreamedMessage,
+  ThinkingEffort,
+} from './provider.js';
+import { normalizeOpenAIFinishReason } from './providers/openai-common.js';
 import type { Tool } from './tool.js';
 import type { TokenUsage } from './usage.js';
 
@@ -23,16 +30,26 @@ interface ParseResult {
   parts: StreamedMessagePart[];
   messageId: string | null;
   usage: TokenUsage | null;
+  finishReason: FinishReason | null;
+  rawFinishReason: string | null;
 }
 
 /**
- * Parse an echo DSL script into streamed message parts, an optional id, and
- * optional token usage.
+ * Parse an echo DSL script into streamed message parts, an optional id,
+ * optional token usage, and an optional finish_reason.
+ *
+ * The `finish_reason: <raw>` keyword sets the raw finish reason verbatim and
+ * normalizes it via {@link normalizeOpenAIFinishReason} (because the echo
+ * DSL mimics the OpenAI Chat Completions wire shape). When the keyword is
+ * absent the result defaults to `'completed'` / `'stop'` so existing
+ * fixtures keep their previous behavior.
  */
 export function parseEchoScript(script: string): ParseResult {
   const parts: StreamedMessagePart[] = [];
   let messageId: string | null = null;
   let usage: TokenUsage | null = null;
+  let finishReason: FinishReason | null = 'completed';
+  let rawFinishReason: string | null = 'stop';
 
   const lines = script.split('\n');
   for (const [i, rawLine] of lines.entries()) {
@@ -63,12 +80,28 @@ export function parseEchoScript(script: string): ParseResult {
       usage = parseUsage(payload);
       continue;
     }
+    if (kind === 'finish_reason') {
+      const rawValue = stripQuotes(payload.trim());
+      if (
+        rawValue === '' ||
+        rawValue.toLowerCase() === 'null' ||
+        rawValue.toLowerCase() === 'none'
+      ) {
+        finishReason = null;
+        rawFinishReason = null;
+      } else {
+        const normalized = normalizeOpenAIFinishReason(rawValue);
+        finishReason = normalized.finishReason;
+        rawFinishReason = normalized.rawFinishReason;
+      }
+      continue;
+    }
 
     const part = parsePart(kind, payload, lineno, rawLine);
     parts.push(part);
   }
 
-  return { parts, messageId, usage };
+  return { parts, messageId, usage, finishReason, rawFinishReason };
 }
 
 function parsePart(
@@ -284,13 +317,23 @@ function stripQuotes(value: string): string {
 class EchoStreamedMessage implements StreamedMessage {
   readonly id: string | null;
   readonly usage: TokenUsage | null;
+  readonly finishReason: FinishReason | null;
+  readonly rawFinishReason: string | null;
 
   private readonly _parts: StreamedMessagePart[];
 
-  constructor(parts: StreamedMessagePart[], id: string | null, usage: TokenUsage | null) {
+  constructor(
+    parts: StreamedMessagePart[],
+    id: string | null,
+    usage: TokenUsage | null,
+    finishReason: FinishReason | null,
+    rawFinishReason: string | null,
+  ) {
     this._parts = parts;
     this.id = id;
     this.usage = usage;
+    this.finishReason = finishReason;
+    this.rawFinishReason = rawFinishReason;
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
@@ -329,11 +372,11 @@ export class EchoChatProvider implements ChatProvider {
     }
 
     const scriptText = extractText(lastMessage);
-    const { parts, messageId, usage } = parseEchoScript(scriptText);
+    const { parts, messageId, usage, finishReason, rawFinishReason } = parseEchoScript(scriptText);
     if (parts.length === 0) {
       throw new ChatProviderError('EchoChatProvider DSL produced no streamable parts.');
     }
-    return new EchoStreamedMessage(parts, messageId, usage);
+    return new EchoStreamedMessage(parts, messageId, usage, finishReason, rawFinishReason);
   }
 
   withThinking(_effort: ThinkingEffort): EchoChatProvider {
@@ -375,11 +418,11 @@ export class ScriptedEchoChatProvider implements ChatProvider {
     }
     this._cursor++;
 
-    const { parts, messageId, usage } = parseEchoScript(scriptText);
+    const { parts, messageId, usage, finishReason, rawFinishReason } = parseEchoScript(scriptText);
     if (parts.length === 0) {
       throw new ChatProviderError('ScriptedEchoChatProvider DSL produced no streamable parts.');
     }
-    return new EchoStreamedMessage(parts, messageId, usage);
+    return new EchoStreamedMessage(parts, messageId, usage, finishReason, rawFinishReason);
   }
 
   withThinking(_effort: ThinkingEffort): ScriptedEchoChatProvider {

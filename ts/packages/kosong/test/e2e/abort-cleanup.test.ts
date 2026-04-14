@@ -79,6 +79,8 @@ function createTrackingStream(
     get usage(): TokenUsage | null {
       return null;
     },
+    finishReason: null,
+    rawFinishReason: null,
     async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
       stats.started++;
       let finishedNormally = false;

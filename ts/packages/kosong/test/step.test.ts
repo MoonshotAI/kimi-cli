@@ -21,6 +21,8 @@ function createMockStream(
     get usage(): TokenUsage | null {
       return opts?.usage ?? null;
     },
+    finishReason: null,
+    rawFinishReason: null,
     async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
       for (const part of parts) {
         yield part;
@@ -236,6 +238,8 @@ describe('step()', () => {
       get usage(): TokenUsage | null {
         return null;
       },
+      finishReason: null,
+      rawFinishReason: null,
       async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
         yield tc1;
         yield tc2;
@@ -292,6 +296,8 @@ describe('step()', () => {
       get usage(): TokenUsage | null {
         return null;
       },
+      finishReason: null,
+      rawFinishReason: null,
       async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
         yield tc1;
         yield tc2;
@@ -453,5 +459,67 @@ describe('step()', () => {
 
     expect(toolResults).toHaveLength(1);
     expect(toolResults[0]!.returnValue.output).toBe('sync-result');
+  });
+
+  describe('finishReason propagation', () => {
+    function streamWithFinish(
+      parts: StreamedMessagePart[],
+      finishReason:
+        | 'completed'
+        | 'truncated'
+        | 'tool_calls'
+        | 'filtered'
+        | 'paused'
+        | 'other'
+        | null,
+      rawFinishReason: string | null,
+    ): StreamedMessage {
+      return {
+        id: 'mock',
+        usage: null,
+        finishReason,
+        rawFinishReason,
+        async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
+          for (const part of parts) {
+            yield part;
+          }
+        },
+      };
+    }
+
+    it('copies stream.finishReason onto the StepResult', async () => {
+      const stream = streamWithFinish([{ type: 'text', text: 'hi' }], 'truncated', 'length');
+      const provider = createMockProvider(stream);
+      const toolset = createSimpleMockToolset();
+      const result = await step(provider, '', toolset, []);
+      expect(result.finishReason).toBe('truncated');
+      expect(result.rawFinishReason).toBe('length');
+      await result.toolResults();
+    });
+
+    it('copies null finishReason onto the StepResult', async () => {
+      const stream = streamWithFinish([{ type: 'text', text: 'hi' }], null, null);
+      const provider = createMockProvider(stream);
+      const toolset = createSimpleMockToolset();
+      const result = await step(provider, '', toolset, []);
+      expect(result.finishReason).toBeNull();
+      expect(result.rawFinishReason).toBeNull();
+      await result.toolResults();
+    });
+
+    it('propagates tool_calls finishReason when the model requested tools', async () => {
+      const tc: ToolCall = {
+        type: 'function',
+        id: 'tc-propagate',
+        function: { name: 'plus', arguments: '{"a":1,"b":2}' },
+      };
+      const stream = streamWithFinish([tc], 'tool_calls', 'tool_calls');
+      const provider = createMockProvider(stream);
+      const toolset = createSimpleMockToolset();
+      const result = await step(provider, '', toolset, []);
+      expect(result.finishReason).toBe('tool_calls');
+      expect(result.rawFinishReason).toBe('tool_calls');
+      await result.toolResults();
+    });
   });
 });

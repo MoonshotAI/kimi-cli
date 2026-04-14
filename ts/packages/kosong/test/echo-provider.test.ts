@@ -221,6 +221,117 @@ describe('EchoChatProvider', () => {
     });
   });
 
+  describe('finish_reason DSL', () => {
+    it('defaults to completed/stop when finish_reason line is omitted', async () => {
+      const provider = new EchoChatProvider();
+      const stream = await provider.generate('', [], [userMsg('text: hi')]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBe('completed');
+      expect(stream.rawFinishReason).toBe('stop');
+    });
+
+    it('maps finish_reason: stop to completed/stop', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: stop'].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBe('completed');
+      expect(stream.rawFinishReason).toBe('stop');
+    });
+
+    it('maps finish_reason: length to truncated/length', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: length'].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBe('truncated');
+      expect(stream.rawFinishReason).toBe('length');
+    });
+
+    it('maps finish_reason: tool_calls to tool_calls/tool_calls', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: tool_calls'].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBe('tool_calls');
+      expect(stream.rawFinishReason).toBe('tool_calls');
+    });
+
+    it('maps finish_reason: content_filter to filtered/content_filter', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: content_filter'].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBe('filtered');
+      expect(stream.rawFinishReason).toBe('content_filter');
+    });
+
+    it('maps unknown finish_reason string to other and preserves raw', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: something_weird'].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBe('other');
+      expect(stream.rawFinishReason).toBe('something_weird');
+    });
+
+    it('maps finish_reason: null to {null, null}', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: null'].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBeNull();
+      expect(stream.rawFinishReason).toBeNull();
+    });
+
+    it('maps finish_reason: none to {null, null}', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: none'].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBeNull();
+      expect(stream.rawFinishReason).toBeNull();
+    });
+
+    it('maps empty finish_reason payload to {null, null}', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: '].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBeNull();
+      expect(stream.rawFinishReason).toBeNull();
+    });
+
+    it('strips quotes around finish_reason payloads', async () => {
+      const provider = new EchoChatProvider();
+      const dsl = ['text: hi', 'finish_reason: "length"'].join('\n');
+      const stream = await provider.generate('', [], [userMsg(dsl)]);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.finishReason).toBe('truncated');
+      expect(stream.rawFinishReason).toBe('length');
+    });
+  });
+
   it('generate merges tool_call arguments via mergeInPlace', async () => {
     const dsl = [
       'id: echo-merge-1',

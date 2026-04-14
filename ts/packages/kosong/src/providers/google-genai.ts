@@ -8,6 +8,7 @@ import {
 } from '../errors.js';
 import type { Message, StreamedMessagePart, ToolCall } from '../message.js';
 import type {
+  FinishReason,
   GenerateOptions,
   RetryableChatProvider,
   StreamedMessage,
@@ -15,6 +16,59 @@ import type {
 } from '../provider.js';
 import type { Tool } from '../tool.js';
 import type { TokenUsage } from '../usage.js';
+
+/**
+ * Normalize a Google GenAI (Gemini) `finishReason` value to the unified
+ * {@link FinishReason} enum.
+ *
+ * Source: `candidates[0].finishReason` (works for both stream and
+ * non-stream — the SDK normalizes them). Gemini does not emit a
+ * `tool_calls`-style reason; tool calls come via `parts[].functionCall`
+ * and `finishReason` stays `'completed'` even when the model produces
+ * function calls.
+ */
+function normalizeGoogleGenAIFinishReason(raw: unknown): {
+  finishReason: FinishReason | null;
+  rawFinishReason: string | null;
+} {
+  if (raw === null || raw === undefined) {
+    return { finishReason: null, rawFinishReason: null };
+  }
+  // The SDK normally hands us a plain string but older builds wrap it in
+  // an enum-like object. Accept both shapes and uppercase to match the
+  // documented constants. Anything else collapses to "no signal" so we
+  // never emit a junk `[object Object]` raw value.
+  let rawString: string;
+  if (typeof raw === 'string') {
+    rawString = raw.toUpperCase();
+  } else if (typeof raw === 'number' || typeof raw === 'bigint' || typeof raw === 'boolean') {
+    rawString = String(raw).toUpperCase();
+  } else {
+    return { finishReason: null, rawFinishReason: null };
+  }
+  if (rawString === 'FINISH_REASON_UNSPECIFIED' || rawString === '') {
+    return { finishReason: null, rawFinishReason: null };
+  }
+  switch (rawString) {
+    case 'STOP':
+      return { finishReason: 'completed', rawFinishReason: rawString };
+    case 'MAX_TOKENS':
+      return { finishReason: 'truncated', rawFinishReason: rawString };
+    case 'SAFETY':
+    case 'RECITATION':
+    case 'BLOCKLIST':
+    case 'PROHIBITED_CONTENT':
+    case 'SPII':
+    case 'IMAGE_SAFETY':
+      return { finishReason: 'filtered', rawFinishReason: rawString };
+    case 'MALFORMED_FUNCTION_CALL':
+    case 'OTHER':
+    case 'LANGUAGE':
+      return { finishReason: 'other', rawFinishReason: rawString };
+    default:
+      return { finishReason: 'other', rawFinishReason: rawString };
+  }
+}
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -406,6 +460,8 @@ export function messagesToGoogleGenAIContents(messages: Message[]): GoogleConten
 export class GoogleGenAIStreamedMessage implements StreamedMessage {
   private _id: string | null = null;
   private _usage: TokenUsage | null = null;
+  private _finishReason: FinishReason | null = null;
+  private _rawFinishReason: string | null = null;
   private readonly _iter: AsyncGenerator<StreamedMessagePart>;
 
   constructor(
@@ -431,8 +487,39 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
     return this._usage;
   }
 
+  get finishReason(): FinishReason | null {
+    return this._finishReason;
+  }
+
+  get rawFinishReason(): string | null {
+    return this._rawFinishReason;
+  }
+
   async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
     yield* this._iter;
+  }
+
+  private _captureFinishReason(response: Record<string, unknown>): void {
+    const candidates = response['candidates'] as unknown[] | undefined;
+    if (!candidates || candidates.length === 0) {
+      return;
+    }
+    const first = candidates[0] as Record<string, unknown> | undefined;
+    if (first === undefined) {
+      return;
+    }
+    const raw = first['finishReason'] ?? first['finish_reason'];
+    if (raw === undefined) {
+      return;
+    }
+    const normalized = normalizeGoogleGenAIFinishReason(raw);
+    // Only overwrite when we got a definitive signal — early stream
+    // chunks may contain `FINISH_REASON_UNSPECIFIED` while the model is
+    // still generating, and we treat those as "not yet known".
+    if (normalized.finishReason !== null || normalized.rawFinishReason !== null) {
+      this._finishReason = normalized.finishReason;
+      this._rawFinishReason = normalized.rawFinishReason;
+    }
   }
 
   /** Yield parts from a single (non-streamed) GenerateContentResponse. */
@@ -513,6 +600,7 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
     this._throwIfAborted(signal);
     this._extractUsage(response);
     this._extractId(response);
+    this._captureFinishReason(response);
     for (const part of this._extractChunkParts(response)) {
       this._throwIfAborted(signal);
       yield part;
@@ -531,6 +619,7 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
         this._throwIfAborted(signal);
         this._extractUsage(chunk);
         this._extractId(chunk);
+        this._captureFinishReason(chunk);
         for (const part of this._extractChunkParts(chunk)) {
           this._throwIfAborted(signal);
           yield part;

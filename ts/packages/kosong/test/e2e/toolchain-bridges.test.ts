@@ -20,6 +20,8 @@ function createStream(parts: StreamedMessagePart[], opts?: { id?: string }): Str
     get usage() {
       return null;
     },
+    finishReason: null,
+    rawFinishReason: null,
     async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
       for (const part of parts) {
         yield part;

@@ -127,6 +127,41 @@ describe('ScriptedEchoChatProvider', () => {
     expect(parts).toEqual([{ type: 'text', text: 'second' }]);
   });
 
+  it('exposes per-script finish_reason values across sequential generate() calls', async () => {
+    // Each script carries a different DSL finish_reason and the returned
+    // stream must expose the right normalized + raw pair.
+    const scripts = [
+      ['id: scripted-fr-1', 'text: turn-1', 'finish_reason: stop'].join('\n'),
+      ['id: scripted-fr-2', 'text: turn-2', 'finish_reason: length'].join('\n'),
+      ['id: scripted-fr-3', 'text: turn-3', 'finish_reason: tool_calls'].join('\n'),
+      ['id: scripted-fr-4', 'text: turn-4', 'finish_reason: null'].join('\n'),
+      ['id: scripted-fr-5', 'text: turn-5'].join('\n'), // default
+    ];
+    const provider = new ScriptedEchoChatProvider(scripts);
+
+    const expected: Array<{
+      finishReason: 'completed' | 'tool_calls' | 'truncated' | null;
+      rawFinishReason: string | null;
+    }> = [
+      { finishReason: 'completed', rawFinishReason: 'stop' },
+      { finishReason: 'truncated', rawFinishReason: 'length' },
+      { finishReason: 'tool_calls', rawFinishReason: 'tool_calls' },
+      { finishReason: null, rawFinishReason: null },
+      { finishReason: 'completed', rawFinishReason: 'stop' },
+    ];
+
+    for (const exp of expected) {
+      const stream = await provider.generate('', [], []);
+      for await (const _ of stream) {
+        // drain
+      }
+      expect({
+        finishReason: stream.finishReason,
+        rawFinishReason: stream.rawFinishReason,
+      }).toEqual(exp);
+    }
+  });
+
   it('generate merges tool_call arguments via mergeInPlace', async () => {
     const dsl = [
       'id: scripted-merge-1',

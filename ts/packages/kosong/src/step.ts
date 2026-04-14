@@ -1,7 +1,7 @@
 import { generate } from './generate.js';
 import type { GenerateCallbacks, GenerateResult } from './generate.js';
 import type { Message, StreamedMessagePart, ToolCall } from './message.js';
-import type { ChatProvider, GenerateOptions } from './provider.js';
+import type { ChatProvider, FinishReason, GenerateOptions } from './provider.js';
 import type { ToolResult, Toolset } from './tool.js';
 import type { TokenUsage } from './usage.js';
 
@@ -35,6 +35,16 @@ export interface StepResult {
   readonly message: Message;
   /** Token usage for this step's generation, or `null` if not reported. */
   readonly usage: TokenUsage | null;
+  /**
+   * Normalized finish reason reported by the provider, or `null` if no
+   * finish_reason was emitted.
+   */
+  readonly finishReason: FinishReason | null;
+  /**
+   * Raw provider-specific finish_reason string preserved verbatim.
+   * `null` if the provider did not emit one.
+   */
+  readonly rawFinishReason: string | null;
   /** Tool calls emitted by the model during this step (may be empty). */
   readonly toolCalls: ToolCall[];
   /**
@@ -123,6 +133,8 @@ export async function step(
     id: result.id,
     message: result.message,
     usage: result.usage,
+    finishReason: result.finishReason,
+    rawFinishReason: result.rawFinishReason,
     toolCalls,
     async toolResults(): Promise<ToolResult[]> {
       try {

@@ -338,23 +338,52 @@ describe('KimiChatProvider', () => {
       ];
       const body = await captureRequestBody(provider, '', [ADD_TOOL, MUL_TOOL], history);
 
-      // Verify the assistant message has parallel tool calls
-      const messages = body['messages'] as Record<string, unknown>[];
-      expect(messages[1]!['tool_calls']).toEqual([
+      // Full byte-for-byte match against the Python kosong snapshot:
+      // - 4 messages in order
+      // - user / assistant use compressed string content
+      // - both tool messages preserve multi-part content arrays
+      expect(body['messages']).toEqual([
+        { role: 'user', content: 'Calculate 2+3 and 4*5' },
         {
-          type: 'function',
-          id: 'call_add',
-          function: { name: 'add', arguments: '{"a": 2, "b": 3}' },
+          role: 'assistant',
+          content: "I'll calculate both.",
+          tool_calls: [
+            {
+              type: 'function',
+              id: 'call_add',
+              function: { name: 'add', arguments: '{"a": 2, "b": 3}' },
+            },
+            {
+              type: 'function',
+              id: 'call_mul',
+              function: { name: 'multiply', arguments: '{"a": 4, "b": 5}' },
+            },
+          ],
         },
         {
-          type: 'function',
-          id: 'call_mul',
-          function: { name: 'multiply', arguments: '{"a": 4, "b": 5}' },
+          role: 'tool',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '5' },
+          ],
+          tool_call_id: 'call_add',
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '20' },
+          ],
+          tool_call_id: 'call_mul',
         },
       ]);
-
-      // Verify tools are sent
-      expect(body['tools']).toBeDefined();
+      expect(body['tools']).toHaveLength(2);
     });
 
     it('builtin tool ($web_search)', async () => {
@@ -388,11 +417,18 @@ describe('KimiChatProvider', () => {
       ];
       const body = await captureRequestBody(provider, '', [], history);
 
-      expect((body['messages'] as unknown[])[1]).toEqual({
-        role: 'assistant',
-        content: 'The answer is 4.',
-        reasoning_content: 'Let me think...',
-      });
+      // Full byte-for-byte match against Python kosong snapshot.
+      // Kimi injects ThinkPart as `reasoning_content` field on the
+      // assistant message (Moonshot API extension).
+      expect(body['messages']).toEqual([
+        { role: 'user', content: 'What is 2+2?' },
+        {
+          role: 'assistant',
+          content: 'The answer is 4.',
+          reasoning_content: 'Let me think...',
+        },
+        { role: 'user', content: 'Thanks!' },
+      ]);
     });
   });
 
@@ -689,6 +725,226 @@ describe('KimiChatProvider', () => {
           function: { name: 'foo', arguments: '{"a":1}' },
         },
       ]);
+    });
+
+    it('handles non-indexed tool_call delta with concrete name (emit ToolCall directly)', async () => {
+      const provider = createProvider(true);
+
+      // Some OpenAI-compatible servers emit tool_calls without an `index`
+      // field. The provider must still emit a complete ToolCall with either
+      // the delta's id or a generated UUID.
+      const chunks = [
+        {
+          id: 'chatcmpl-noindex',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    // No index!
+                    id: 'call_noidx',
+                    function: { name: 'foo', arguments: '{"a":1}' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ];
+
+      (
+        provider as unknown as { _client: { chat: { completions: { create: unknown } } } }
+      )._client.chat.completions.create = vi.fn().mockResolvedValue(mockStream(chunks));
+
+      const result = await generate(
+        provider,
+        '',
+        [],
+        [{ role: 'user', content: [{ type: 'text', text: 'do it' }], toolCalls: [] }],
+      );
+
+      expect(result.message.toolCalls).toEqual([
+        {
+          type: 'function',
+          id: 'call_noidx',
+          function: { name: 'foo', arguments: '{"a":1}' },
+        },
+      ]);
+    });
+
+    it('handles non-indexed tool_call delta with arguments only (emit ToolCallPart)', async () => {
+      const provider = createProvider(true);
+
+      // A pure arguments-only delta without an index — no concrete name yet.
+      // The provider should emit a free-standing ToolCallPart to keep the
+      // generate reducer fed with argument fragments.
+      const chunks = [
+        {
+          id: 'chatcmpl-argonly',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    function: { name: 'foo' }, // first chunk with name (no index, concrete)
+                  },
+                ],
+              },
+            },
+            {
+              id: 'chatcmpl-argonly',
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    tool_calls: [
+                      {
+                        // no index, arguments-only
+                        function: { arguments: '{"x":1}' },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ];
+      void chunks;
+      // Single-chunk simpler test: non-indexed arg-only is a rare but real
+      // wire shape from some OpenAI-compatible servers.
+      const singleChunk = {
+        id: 'chatcmpl-argonly',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [{ function: { arguments: '{"x":1}' } }],
+            },
+          },
+        ],
+      };
+
+      (
+        provider as unknown as { _client: { chat: { completions: { create: unknown } } } }
+      )._client.chat.completions.create = vi.fn().mockResolvedValue(mockStream([singleChunk]));
+
+      // generate() uses the reducer which expects a ToolCall header before
+      // accumulating arguments. A pure arg-only without a prior header is
+      // dropped as "orphan", so verify the raw stream yield instead.
+      const stream = await provider.generate('', [], []);
+      const parts: Array<Record<string, unknown>> = [];
+      for await (const p of stream) {
+        parts.push(p as unknown as Record<string, unknown>);
+      }
+      expect(parts).toEqual([{ type: 'tool_call_part', argumentsPart: '{"x":1}' }]);
+    });
+
+    it('non-stream response with tool_calls yields ToolCall parts', async () => {
+      const provider = createProvider(false);
+      (provider as any)._client.chat.completions.create = vi.fn().mockResolvedValue({
+        id: 'chatcmpl-nonstream',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_ns_a',
+                  type: 'function',
+                  function: { name: 'lookup', arguments: '{"q":"hi"}' },
+                },
+              ],
+            },
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      });
+
+      const stream = await provider.generate(
+        '',
+        [],
+        [{ role: 'user', content: [{ type: 'text', text: 'hi' }], toolCalls: [] }],
+      );
+      const parts: Array<Record<string, unknown>> = [];
+      for await (const p of stream) parts.push(p as unknown as Record<string, unknown>);
+
+      const toolCall = parts.find((p) => p['type'] === 'function');
+      expect(toolCall).toBeDefined();
+      expect(toolCall).toMatchObject({
+        type: 'function',
+        id: 'call_ns_a',
+        function: { name: 'lookup', arguments: '{"q":"hi"}' },
+      });
+    });
+
+    it('non-stream response generates UUID when tool_call has no id', async () => {
+      const provider = createProvider(false);
+      (provider as any)._client.chat.completions.create = vi.fn().mockResolvedValue({
+        id: 'chatcmpl-uuid',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  type: 'function',
+                  function: { name: 'lookup', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      const stream = await provider.generate(
+        '',
+        [],
+        [{ role: 'user', content: [{ type: 'text', text: 'hi' }], toolCalls: [] }],
+      );
+      const parts: Array<Record<string, unknown>> = [];
+      for await (const p of stream) parts.push(p as unknown as Record<string, unknown>);
+
+      const toolCall = parts.find((p) => p['type'] === 'function');
+      expect(toolCall).toBeDefined();
+      expect((toolCall as { id: string }).id).toBeTruthy();
+      expect((toolCall as { id: string }).id.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('provider property accessors', () => {
+    it('modelParameters returns combined config', () => {
+      const provider = createProvider().withGenerationKwargs({ temperature: 0.5 });
+      const params = provider.modelParameters;
+      expect(params).toMatchObject({
+        model: 'kimi-k2-turbo-preview',
+        temperature: 0.5,
+      });
+      expect(params['baseUrl']).toBeDefined();
+    });
+
+    it('onRetryableError rebuilds the underlying OpenAI client and invalidates files cache', () => {
+      const provider = createProvider();
+      const originalClient = (provider as any)._client;
+      // Prime the files cache so we can verify it's invalidated.
+      void provider.files;
+      expect((provider as any)._files).toBeDefined();
+
+      const result = provider.onRetryableError(new Error('transient'));
+      expect(result).toBe(true);
+      expect((provider as any)._client).not.toBe(originalClient);
+      expect((provider as any)._files).toBeUndefined();
+    });
+  });
+
+  describe('withThinking medium', () => {
+    it('maps medium -> reasoning_effort=medium', () => {
+      const provider = createProvider().withThinking('medium');
+      expect(provider.thinkingEffort).toBe('medium');
     });
   });
 });

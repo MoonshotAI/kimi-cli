@@ -27,6 +27,7 @@ export type {
 // Provider interfaces
 export type {
   ChatProvider,
+  FinishReason,
   GenerateOptions,
   RetryableChatProvider,
   StreamedMessage,

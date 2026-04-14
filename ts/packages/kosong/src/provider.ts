@@ -6,12 +6,42 @@ import type { TokenUsage } from './usage.js';
 export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high';
 
 /**
+ * Normalized finish-reason signal indicating why a generation stopped.
+ *
+ * Each provider's native stop value is mapped to one of these, and the
+ * unmapped original string is preserved in `rawFinishReason` as an escape
+ * hatch. `null` means the provider did not emit a finish_reason (e.g. the
+ * stream was cut off before the final event).
+ *
+ * - `'completed'`: normal completion (OpenAI `'stop'`, Anthropic
+ *   `'end_turn'` / `'stop_sequence'`, Gemini `'STOP'`).
+ * - `'tool_calls'`: generation paused so the caller can dispatch tool
+ *   calls and feed their results back. Note that the OpenAI Responses API
+ *   and Google GenAI report `'completed'` here; only the Chat
+ *   Completions–style providers and Anthropic surface a dedicated value.
+ * - `'truncated'`: token budget exhausted (OpenAI `'length'`, Anthropic
+ *   `'max_tokens'`, Gemini `'MAX_TOKENS'`, Responses `'max_output_tokens'`).
+ * - `'filtered'`: content filter or safety policy blocked the response.
+ * - `'paused'`: Anthropic-specific `'pause_turn'`.
+ * - `'other'`: recognized non-null reason that does not fit the categories
+ *   above.
+ */
+export type FinishReason =
+  | 'completed'
+  | 'tool_calls'
+  | 'truncated'
+  | 'filtered'
+  | 'paused'
+  | 'other';
+
+/**
  * An async-iterable stream of message parts produced by a single LLM response.
  *
  * Consumers iterate over the stream with `for await..of` to receive
  * {@link StreamedMessagePart} chunks. After the iteration completes, the
- * {@link id} and {@link usage} properties reflect the final values reported
- * by the provider.
+ * {@link id}, {@link usage}, {@link finishReason}, and
+ * {@link rawFinishReason} properties reflect the final values reported by
+ * the provider.
  */
 export interface StreamedMessage {
   [Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart>;
@@ -19,6 +49,20 @@ export interface StreamedMessage {
   readonly id: string | null;
   /** Token usage statistics, populated after the stream completes. */
   readonly usage: TokenUsage | null;
+  /**
+   * Normalized finish reason, populated after the stream completes.
+   *
+   * `null` if the provider did not emit a finish_reason (for example, the
+   * stream was interrupted before the final event arrived).
+   */
+  readonly finishReason: FinishReason | null;
+  /**
+   * Raw provider-specific finish_reason string, preserved verbatim as an
+   * escape hatch for callers that need the original wire value.
+   *
+   * `null` if the provider did not emit a finish_reason.
+   */
+  readonly rawFinishReason: string | null;
 }
 
 /**

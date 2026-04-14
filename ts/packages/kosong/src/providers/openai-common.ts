@@ -13,7 +13,7 @@ import {
 } from '../errors.js';
 import { extractText } from '../message.js';
 import type { ContentPart, Message } from '../message.js';
-import type { ThinkingEffort } from '../provider.js';
+import type { FinishReason, ThinkingEffort } from '../provider.js';
 import type { Tool } from '../tool.js';
 import type { TokenUsage } from '../usage.js';
 
@@ -240,6 +240,47 @@ export function extractUsage(usage: unknown): TokenUsage | null {
     inputCacheRead: cached,
     inputCacheCreation: 0,
   };
+}
+
+// ── Finish reason normalization ──────────────────────────────────────
+
+/**
+ * Normalize an OpenAI Chat Completions–style `finish_reason` string to the
+ * unified {@link FinishReason} enum.
+ *
+ * Used by both the Kimi and OpenAI Legacy adapters because they share the
+ * Chat Completions wire format. Returns `{ finishReason: null,
+ * rawFinishReason: null }` when the upstream value is missing or `null` so
+ * callers can treat "no signal" uniformly.
+ *
+ * Mapping:
+ * - `'stop'` → `'completed'`
+ * - `'tool_calls'` → `'tool_calls'`
+ * - `'function_call'` → `'tool_calls'` (legacy alias)
+ * - `'length'` → `'truncated'`
+ * - `'content_filter'` → `'filtered'`
+ * - any other non-null string → `'other'`
+ */
+export function normalizeOpenAIFinishReason(raw: string | null | undefined): {
+  finishReason: FinishReason | null;
+  rawFinishReason: string | null;
+} {
+  if (raw === null || raw === undefined) {
+    return { finishReason: null, rawFinishReason: null };
+  }
+  switch (raw) {
+    case 'stop':
+      return { finishReason: 'completed', rawFinishReason: raw };
+    case 'tool_calls':
+    case 'function_call':
+      return { finishReason: 'tool_calls', rawFinishReason: raw };
+    case 'length':
+      return { finishReason: 'truncated', rawFinishReason: raw };
+    case 'content_filter':
+      return { finishReason: 'filtered', rawFinishReason: raw };
+    default:
+      return { finishReason: 'other', rawFinishReason: raw };
+  }
 }
 
 // ── Tool message content conversion ──────────────────────────────────

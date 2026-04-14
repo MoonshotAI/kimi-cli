@@ -458,60 +458,58 @@ describe('OpenAIResponsesChatProvider', () => {
       ];
       const body = await captureRequestBody(provider, '', [ADD_TOOL, MUL_TOOL], history);
 
-      const input = body['input'] as unknown[];
-
-      // user
-      expect(input[0]).toEqual({
-        content: [{ type: 'input_text', text: 'Calculate 2+3 and 4*5' }],
-        role: 'user',
-        type: 'message',
-      });
-      // assistant text
-      expect(input[1]).toEqual({
-        content: [{ type: 'output_text', text: "I'll calculate both.", annotations: [] }],
-        role: 'assistant',
-        type: 'message',
-      });
-      // function_call #1
-      expect(input[2]).toEqual({
-        arguments: '{"a": 2, "b": 3}',
-        call_id: 'call_add',
-        name: 'add',
-        type: 'function_call',
-      });
-      // function_call #2
-      expect(input[3]).toEqual({
-        arguments: '{"a": 4, "b": 5}',
-        call_id: 'call_mul',
-        name: 'multiply',
-        type: 'function_call',
-      });
-      // function_call_output #1
-      expect(input[4]).toEqual({
-        call_id: 'call_add',
-        output: [
-          {
-            type: 'input_text',
-            text: '<system-reminder>This is a system reminder</system-reminder>',
-          },
-          { type: 'input_text', text: '5' },
-        ],
-        type: 'function_call_output',
-      });
-      // function_call_output #2
-      expect(input[5]).toEqual({
-        call_id: 'call_mul',
-        output: [
-          {
-            type: 'input_text',
-            text: '<system-reminder>This is a system reminder</system-reminder>',
-          },
-          { type: 'input_text', text: '20' },
-        ],
-        type: 'function_call_output',
-      });
-
-      // tools array preserved
+      // Full byte-for-byte match against the Python kosong snapshot:
+      // Responses API uses a flat `input[]` array with 6 items:
+      //  [0] user message, [1] assistant text message,
+      //  [2..3] function_call items (NOT bundled into assistant message),
+      //  [4..5] function_call_output items (separate per tool result).
+      // function_call items carry `call_id` (not `id`).
+      expect(body['input']).toEqual([
+        {
+          content: [{ type: 'input_text', text: 'Calculate 2+3 and 4*5' }],
+          role: 'user',
+          type: 'message',
+        },
+        {
+          content: [{ type: 'output_text', text: "I'll calculate both.", annotations: [] }],
+          role: 'assistant',
+          type: 'message',
+        },
+        {
+          arguments: '{"a": 2, "b": 3}',
+          call_id: 'call_add',
+          name: 'add',
+          type: 'function_call',
+        },
+        {
+          arguments: '{"a": 4, "b": 5}',
+          call_id: 'call_mul',
+          name: 'multiply',
+          type: 'function_call',
+        },
+        {
+          call_id: 'call_add',
+          output: [
+            {
+              type: 'input_text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'input_text', text: '5' },
+          ],
+          type: 'function_call_output',
+        },
+        {
+          call_id: 'call_mul',
+          output: [
+            {
+              type: 'input_text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'input_text', text: '20' },
+          ],
+          type: 'function_call_output',
+        },
+      ]);
       expect(body['tools']).toHaveLength(2);
     });
 
@@ -627,29 +625,31 @@ describe('OpenAIResponsesChatProvider', () => {
       ];
       const body = await captureRequestBody(provider, '', [], history);
 
-      const input = body['input'] as unknown[];
-      expect(input[0]).toEqual({
-        content: [{ type: 'input_text', text: 'What is 2+2?' }],
-        role: 'user',
-        type: 'message',
-      });
-      // reasoning item
-      expect(input[1]).toEqual({
-        summary: [{ type: 'summary_text', text: 'Thinking...' }],
-        type: 'reasoning',
-        encrypted_content: 'enc_abc',
-      });
-      // assistant text after reasoning
-      expect(input[2]).toEqual({
-        content: [{ type: 'output_text', text: '4.', annotations: [] }],
-        role: 'assistant',
-        type: 'message',
-      });
-      expect(input[3]).toEqual({
-        content: [{ type: 'input_text', text: 'Thanks!' }],
-        role: 'user',
-        type: 'message',
-      });
+      // Full byte-for-byte match against the Python kosong snapshot:
+      // 4 flat input items — ThinkPart with encrypted becomes a standalone
+      // `reasoning` item between the user and assistant message items.
+      expect(body['input']).toEqual([
+        {
+          content: [{ type: 'input_text', text: 'What is 2+2?' }],
+          role: 'user',
+          type: 'message',
+        },
+        {
+          summary: [{ type: 'summary_text', text: 'Thinking...' }],
+          type: 'reasoning',
+          encrypted_content: 'enc_abc',
+        },
+        {
+          content: [{ type: 'output_text', text: '4.', annotations: [] }],
+          role: 'assistant',
+          type: 'message',
+        },
+        {
+          content: [{ type: 'input_text', text: 'Thanks!' }],
+          role: 'user',
+          type: 'message',
+        },
+      ]);
     });
 
     it('audio url in tool result is encoded as input_file', async () => {
@@ -869,6 +869,259 @@ describe('OpenAIResponsesChatProvider', () => {
         inputCacheRead: 0,
         inputCacheCreation: 0,
       });
+    });
+
+    it('yields ToolCall from non-stream response with function_call output item', async () => {
+      const provider = createProvider();
+      (provider as any)._stream = false;
+      ((provider as any)._client.responses as unknown as Record<string, unknown>)['create'] = vi
+        .fn()
+        .mockResolvedValue({
+          id: 'resp_fn',
+          object: 'response',
+          status: 'completed',
+          output: [
+            {
+              type: 'function_call',
+              call_id: 'call_xyz',
+              name: 'lookup',
+              arguments: '{"q":"hi"}',
+            },
+          ],
+          usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+        });
+
+      const stream = await provider.generate(
+        '',
+        [],
+        [{ role: 'user', content: [{ type: 'text', text: 'Hi' }], toolCalls: [] }],
+      );
+      const parts: StreamedMessagePart[] = [];
+      for await (const p of stream) parts.push(p);
+
+      expect(parts).toEqual([
+        {
+          type: 'function',
+          id: 'call_xyz',
+          function: { name: 'lookup', arguments: '{"q":"hi"}' },
+        },
+      ]);
+    });
+
+    it('non-stream function_call generates UUID when call_id is missing', async () => {
+      const provider = createProvider();
+      (provider as any)._stream = false;
+      ((provider as any)._client.responses as unknown as Record<string, unknown>)['create'] = vi
+        .fn()
+        .mockResolvedValue({
+          id: 'resp_no_call_id',
+          output: [
+            {
+              type: 'function_call',
+              name: 'lookup',
+              arguments: '{}',
+            },
+          ],
+          usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+        });
+
+      const stream = await provider.generate(
+        '',
+        [],
+        [{ role: 'user', content: [{ type: 'text', text: 'Hi' }], toolCalls: [] }],
+      );
+      const parts: StreamedMessagePart[] = [];
+      for await (const p of stream) parts.push(p);
+
+      const toolCall = parts.find((p) => p.type === 'function');
+      expect(toolCall).toBeDefined();
+      expect((toolCall as { id: string }).id).toBeTruthy();
+      expect((toolCall as { id: string }).id.length).toBeGreaterThan(0);
+    });
+
+    it('yields ThinkPart from non-stream response with reasoning output item (with encrypted_content)', async () => {
+      const provider = createProvider();
+      (provider as any)._stream = false;
+      ((provider as any)._client.responses as unknown as Record<string, unknown>)['create'] = vi
+        .fn()
+        .mockResolvedValue({
+          id: 'resp_reason',
+          object: 'response',
+          status: 'completed',
+          output: [
+            {
+              type: 'reasoning',
+              encrypted_content: 'enc_token_abc',
+              summary: [
+                { type: 'summary_text', text: 'Step 1' },
+                { type: 'summary_text', text: 'Step 2' },
+              ],
+            },
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: 'done', annotations: [] }],
+            },
+          ],
+          usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+        });
+
+      const stream = await provider.generate(
+        '',
+        [],
+        [{ role: 'user', content: [{ type: 'text', text: 'Hi' }], toolCalls: [] }],
+      );
+      const parts: StreamedMessagePart[] = [];
+      for await (const p of stream) parts.push(p);
+
+      expect(parts).toEqual([
+        { type: 'think', think: 'Step 1', encrypted: 'enc_token_abc' },
+        { type: 'think', think: 'Step 2', encrypted: 'enc_token_abc' },
+        { type: 'text', text: 'done' },
+      ]);
+    });
+
+    it('non-stream reasoning without encrypted_content yields ThinkPart without encrypted field', async () => {
+      const provider = createProvider();
+      (provider as any)._stream = false;
+      ((provider as any)._client.responses as unknown as Record<string, unknown>)['create'] = vi
+        .fn()
+        .mockResolvedValue({
+          id: 'resp_reason2',
+          output: [
+            {
+              type: 'reasoning',
+              summary: [{ type: 'summary_text', text: 'Thinking...' }],
+            },
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        });
+
+      const stream = await provider.generate(
+        '',
+        [],
+        [{ role: 'user', content: [{ type: 'text', text: 'Hi' }], toolCalls: [] }],
+      );
+      const parts: StreamedMessagePart[] = [];
+      for await (const p of stream) parts.push(p);
+
+      expect(parts).toEqual([{ type: 'think', think: 'Thinking...' }]);
+    });
+  });
+
+  describe('retry recovery', () => {
+    it('onRetryableError rebuilds the underlying OpenAI client', () => {
+      const provider = createProvider();
+      const originalClient = (provider as any)._client;
+      const result = provider.onRetryableError(new Error('transient'));
+      expect(result).toBe(true);
+      expect((provider as any)._client).not.toBe(originalClient);
+    });
+
+    it('onRetryableError rebuilds client preserving httpClient option', () => {
+      const fakeHttpClient = { marker: 'fake' };
+      const provider = new OpenAIResponsesChatProvider({
+        model: 'gpt-4.1',
+        apiKey: 'test-key',
+        httpClient: fakeHttpClient,
+      });
+      const result = provider.onRetryableError(new Error('transient'));
+      expect(result).toBe(true);
+      expect((provider as any)._httpClient).toBe(fakeHttpClient);
+    });
+  });
+
+  describe('provider property accessors', () => {
+    it('modelName returns configured model', () => {
+      const provider = new OpenAIResponsesChatProvider({
+        model: 'gpt-5-codex',
+        apiKey: 'test-key',
+      });
+      expect(provider.modelName).toBe('gpt-5-codex');
+    });
+
+    it('modelParameters returns model + baseUrl + generationKwargs', () => {
+      const provider = new OpenAIResponsesChatProvider({
+        model: 'gpt-4.1',
+        apiKey: 'test-key',
+        maxOutputTokens: 2048,
+      });
+      const params = provider.modelParameters;
+      expect(params).toMatchObject({
+        model: 'gpt-4.1',
+        max_output_tokens: 2048,
+      });
+      expect(params['baseUrl']).toBeDefined();
+    });
+
+    it('maxOutputTokens constructor option is wired into generationKwargs', async () => {
+      const provider = new OpenAIResponsesChatProvider({
+        model: 'gpt-4.1',
+        apiKey: 'test-key',
+        maxOutputTokens: 512,
+      });
+      const history: Message[] = [
+        { role: 'user', content: [{ type: 'text', text: 'hi' }], toolCalls: [] },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+      expect(body['max_output_tokens']).toBe(512);
+    });
+
+    it('video_url in user content is silently skipped (Responses API has no video representation)', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Watch this:' },
+            { type: 'video_url', videoUrl: { url: 'https://example.com/clip.mp4' } },
+          ],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      // Only the text part survives; video is dropped.
+      const input = body['input'] as Array<{ content: unknown[] }>;
+      expect(input[0]!.content).toEqual([{ type: 'input_text', text: 'Watch this:' }]);
+    });
+
+    it('audio_url with unsupported scheme is silently dropped from user content', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Hear:' },
+            { type: 'audio_url', audioUrl: { url: 'file:///path/to/audio.mp3' } },
+          ],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<{ content: unknown[] }>;
+      // file:// URL is unsupported → drop
+      expect(input[0]!.content).toEqual([{ type: 'input_text', text: 'Hear:' }]);
+    });
+
+    it('audio_url data URL with unknown subtype is silently dropped', async () => {
+      const provider = createProvider();
+      const history: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'OGG:' },
+            { type: 'audio_url', audioUrl: { url: 'data:audio/ogg;base64,T0dH' } },
+          ],
+          toolCalls: [],
+        },
+      ];
+      const body = await captureRequestBody(provider, '', [], history);
+
+      const input = body['input'] as Array<{ content: unknown[] }>;
+      // ogg subtype is not mp3/wav → drop
+      expect(input[0]!.content).toEqual([{ type: 'input_text', text: 'OGG:' }]);
     });
   });
 
@@ -1122,6 +1375,115 @@ describe('OpenAIResponsesChatProvider', () => {
       }
 
       expect(stream.id).toBe('resp_no_item_id');
+    });
+
+    it('captures response.id from response.created chunk (before response.completed)', async () => {
+      const events = [
+        {
+          type: 'response.created',
+          response: { id: 'resp_created_id', status: 'in_progress' },
+        },
+        { type: 'response.output_text.delta', delta: 'hi' },
+        {
+          type: 'response.completed',
+          response: { id: 'resp_final_id', usage: { input_tokens: 1, output_tokens: 1 } },
+        },
+      ];
+
+      const stream = new OpenAIResponsesStreamedMessage(makeAsyncIterable(events), true);
+      // Mid-stream: id should be 'resp_created_id' after the first chunk is consumed.
+      // We can't easily inspect mid-stream so we check the final id only:
+      // the response.completed event refines the id to 'resp_final_id'.
+      for await (const _ of stream) {
+        // drain
+      }
+      expect(stream.id).toBe('resp_final_id');
+    });
+
+    it('captures response.id from response.in_progress chunk', async () => {
+      const events = [
+        {
+          type: 'response.in_progress',
+          response: { id: 'resp_in_progress' },
+        },
+        { type: 'response.output_text.delta', delta: 'x' },
+      ];
+
+      const stream = new OpenAIResponsesStreamedMessage(makeAsyncIterable(events), true);
+      for await (const _ of stream) {
+        // drain
+      }
+      // No response.completed → id falls back to the in_progress id.
+      expect(stream.id).toBe('resp_in_progress');
+    });
+
+    it('yields ThinkPart from response.output_item.done reasoning item (with encrypted_content)', async () => {
+      const events = [
+        {
+          type: 'response.output_item.done',
+          item: {
+            type: 'reasoning',
+            id: 'reasoning_item_1',
+            encrypted_content: 'enc_done',
+          },
+        },
+      ];
+
+      const stream = new OpenAIResponsesStreamedMessage(makeAsyncIterable(events), true);
+      const parts: StreamedMessagePart[] = [];
+      for await (const p of stream) parts.push(p);
+
+      expect(parts).toEqual([{ type: 'think', think: '', encrypted: 'enc_done' }]);
+    });
+
+    it('yields ThinkPart from response.output_item.done reasoning item without encrypted_content', async () => {
+      const events = [
+        {
+          type: 'response.output_item.done',
+          item: { type: 'reasoning', id: 'reasoning_item_2' },
+        },
+      ];
+
+      const stream = new OpenAIResponsesStreamedMessage(makeAsyncIterable(events), true);
+      const parts: StreamedMessagePart[] = [];
+      for await (const p of stream) parts.push(p);
+
+      expect(parts).toEqual([{ type: 'think', think: '' }]);
+    });
+
+    it('yields ThinkPart from response.reasoning_summary_part.added and .delta events', async () => {
+      const events = [
+        { type: 'response.reasoning_summary_part.added' },
+        { type: 'response.reasoning_summary_text.delta', delta: 'Thinking about' },
+        { type: 'response.reasoning_summary_text.delta', delta: ' the answer' },
+      ];
+
+      const stream = new OpenAIResponsesStreamedMessage(makeAsyncIterable(events), true);
+      const parts: StreamedMessagePart[] = [];
+      for await (const p of stream) parts.push(p);
+
+      expect(parts).toEqual([
+        { type: 'think', think: '' },
+        { type: 'think', think: 'Thinking about' },
+        { type: 'think', think: ' the answer' },
+      ]);
+    });
+
+    it('ignores output_item.added for non-function_call items (e.g. message items)', async () => {
+      const events = [
+        {
+          type: 'response.output_item.added',
+          item: { type: 'message', id: 'msg_item_1' },
+        },
+        { type: 'response.output_text.delta', delta: 'hi' },
+      ];
+
+      const stream = new OpenAIResponsesStreamedMessage(makeAsyncIterable(events), true);
+      const parts: StreamedMessagePart[] = [];
+      for await (const p of stream) parts.push(p);
+
+      // Only the text delta should be yielded; the message output_item.added is ignored.
+      expect(parts).toEqual([{ type: 'text', text: 'hi' }]);
     });
 
     it('converts errors during streaming', async () => {

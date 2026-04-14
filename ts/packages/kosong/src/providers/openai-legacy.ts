@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 
 import type { ContentPart, Message, StreamedMessagePart, ToolCall } from '../message.js';
 import type {
+  FinishReason,
   GenerateOptions,
   RetryableChatProvider,
   StreamedMessage,
@@ -15,6 +16,7 @@ import {
   convertToolMessageContent,
   extractUsage,
   isFunctionToolCall,
+  normalizeOpenAIFinishReason,
   type OpenAIContentPart,
   type ToolMessageConversion,
   reasoningEffortToThinkingEffort,
@@ -250,6 +252,8 @@ function convertMessage(
 export class OpenAILegacyStreamedMessage implements StreamedMessage {
   private _id: string | null = null;
   private _usage: TokenUsage | null = null;
+  private _finishReason: FinishReason | null = null;
+  private _rawFinishReason: string | null = null;
   private readonly _iter: AsyncGenerator<StreamedMessagePart>;
 
   constructor(
@@ -278,8 +282,22 @@ export class OpenAILegacyStreamedMessage implements StreamedMessage {
     return this._usage;
   }
 
+  get finishReason(): FinishReason | null {
+    return this._finishReason;
+  }
+
+  get rawFinishReason(): string | null {
+    return this._rawFinishReason;
+  }
+
   async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
     yield* this._iter;
+  }
+
+  private _captureFinishReason(raw: string | null | undefined): void {
+    const normalized = normalizeOpenAIFinishReason(raw);
+    this._finishReason = normalized.finishReason;
+    this._rawFinishReason = normalized.rawFinishReason;
   }
 
   private async *_convertNonStreamResponse(
@@ -290,6 +308,7 @@ export class OpenAILegacyStreamedMessage implements StreamedMessage {
     if (response.usage) {
       this._usage = extractUsage(response.usage) ?? null;
     }
+    this._captureFinishReason(response.choices[0]?.finish_reason ?? null);
 
     const message = response.choices[0]?.message;
     if (!message) return;
@@ -343,6 +362,13 @@ export class OpenAILegacyStreamedMessage implements StreamedMessage {
 
         const choice = chunk.choices[0];
         if (!choice) continue;
+
+        // Capture finish_reason whenever the chunk carries one. Chat
+        // Completions only sets it on the final chunk for a given choice.
+        if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
+          this._captureFinishReason(choice.finish_reason);
+        }
+
         const delta = choice.delta;
 
         // Reasoning content via configured key

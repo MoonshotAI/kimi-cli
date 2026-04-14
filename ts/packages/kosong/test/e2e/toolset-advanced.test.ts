@@ -4,7 +4,13 @@ import type { Message, StreamedMessagePart, ToolCall } from '../../src/message.j
 import type { ChatProvider, StreamedMessage, ThinkingEffort } from '../../src/provider.js';
 import { SimpleToolset } from '../../src/simple-toolset.js';
 import { step, type StepCallbacks } from '../../src/step.js';
-import { toolOk, type JsonType, type Tool, type ToolResult, type ToolReturnValue } from '../../src/tool.js';
+import {
+  toolOk,
+  type JsonType,
+  type Tool,
+  type ToolResult,
+  type ToolReturnValue,
+} from '../../src/tool.js';
 import type { TokenUsage } from '../../src/usage.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -20,6 +26,8 @@ function buildStream(
     get usage(): TokenUsage | null {
       return opts?.usage ?? null;
     },
+    finishReason: null,
+    rawFinishReason: null,
     async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
       for (const part of parts) {
         yield part;
@@ -341,6 +349,8 @@ describe('e2e: toolset advanced', () => {
         get usage(): TokenUsage | null {
           return null;
         },
+        finishReason: null,
+        rawFinishReason: null,
         async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
           yield {
             type: 'function',

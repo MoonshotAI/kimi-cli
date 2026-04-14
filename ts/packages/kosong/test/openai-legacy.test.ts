@@ -332,20 +332,53 @@ describe('OpenAILegacyChatProvider', () => {
       ];
       const body = await captureRequestBody(provider, '', [ADD_TOOL, MUL_TOOL], history);
 
-      const messages = body['messages'] as Record<string, unknown>[];
-      expect(messages[1]!['tool_calls']).toEqual([
+      // Full byte-for-byte match against the Python kosong snapshot:
+      // - 4 messages in order: user, assistant (with 2 tool_calls), tool (call_add), tool (call_mul)
+      // - user / assistant use compressed string content (single-TextPart compression)
+      // - both tool messages preserve multi-part content arrays (not compressed)
+      // - tools array preserved
+      expect(body['messages']).toEqual([
+        { role: 'user', content: 'Calculate 2+3 and 4*5' },
         {
-          type: 'function',
-          id: 'call_add',
-          function: { name: 'add', arguments: '{"a": 2, "b": 3}' },
+          role: 'assistant',
+          content: "I'll calculate both.",
+          tool_calls: [
+            {
+              type: 'function',
+              id: 'call_add',
+              function: { name: 'add', arguments: '{"a": 2, "b": 3}' },
+            },
+            {
+              type: 'function',
+              id: 'call_mul',
+              function: { name: 'multiply', arguments: '{"a": 4, "b": 5}' },
+            },
+          ],
         },
         {
-          type: 'function',
-          id: 'call_mul',
-          function: { name: 'multiply', arguments: '{"a": 4, "b": 5}' },
+          role: 'tool',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '5' },
+          ],
+          tool_call_id: 'call_add',
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>This is a system reminder</system-reminder>',
+            },
+            { type: 'text', text: '20' },
+          ],
+          tool_call_id: 'call_mul',
         },
       ]);
-      expect(body['tools']).toBeDefined();
+      expect(body['tools']).toHaveLength(2);
     });
   });
 
@@ -951,5 +984,148 @@ describe('OpenAILegacyChatProvider — non-stream response parsing', () => {
     expect(toolCall).toBeDefined();
     expect((toolCall as ToolCall).id).toBeTruthy();
     expect((toolCall as ToolCall).id.length).toBeGreaterThan(0);
+  });
+
+  it('non-stream response yields reasoning_content as ThinkPart', async () => {
+    const provider = new OpenAILegacyChatProvider({
+      model: 'deepseek-reasoner',
+      apiKey: 'test-key',
+      stream: false,
+      reasoningKey: 'reasoning_content',
+    });
+
+    const parts = await collectFromMockedResponse(
+      provider,
+      makeNonStreamResponse({
+        role: 'assistant',
+        content: 'Final answer',
+        reasoning_content: 'Let me think step by step',
+      }),
+    );
+
+    expect(parts).toEqual([
+      { type: 'think', think: 'Let me think step by step' },
+      { type: 'text', text: 'Final answer' },
+    ]);
+  });
+});
+
+describe('OpenAILegacyChatProvider — non-indexed streaming tool_calls', () => {
+  async function* mockStream(
+    chunks: Record<string, unknown>[],
+  ): AsyncIterable<Record<string, unknown>> {
+    for (const c of chunks) yield c;
+  }
+
+  it('handles non-indexed tool_call delta with concrete name', async () => {
+    const provider = new OpenAILegacyChatProvider({
+      model: 'gpt-4.1',
+      apiKey: 'test-key',
+      stream: true,
+    });
+
+    const chunks = [
+      {
+        id: 'chatcmpl-noidx',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_noidx',
+                  function: { name: 'foo', arguments: '{"a":1}' },
+                  // No index!
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ];
+
+    (
+      provider as unknown as { _client: { chat: { completions: { create: unknown } } } }
+    )._client.chat.completions.create = vi.fn().mockResolvedValue(mockStream(chunks));
+
+    const result = await generate(
+      provider,
+      '',
+      [],
+      [{ role: 'user', content: [{ type: 'text', text: 'do' }], toolCalls: [] }],
+    );
+
+    expect(result.message.toolCalls).toEqual([
+      {
+        type: 'function',
+        id: 'call_noidx',
+        function: { name: 'foo', arguments: '{"a":1}' },
+      },
+    ]);
+  });
+
+  it('handles non-indexed tool_call delta with arguments only emits tool_call_part', async () => {
+    const provider = new OpenAILegacyChatProvider({
+      model: 'gpt-4.1',
+      apiKey: 'test-key',
+      stream: true,
+    });
+
+    const chunks = [
+      {
+        id: 'chatcmpl-argonly',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [{ function: { arguments: '{"x":1}' } }],
+            },
+          },
+        ],
+      },
+    ];
+
+    (
+      provider as unknown as { _client: { chat: { completions: { create: unknown } } } }
+    )._client.chat.completions.create = vi.fn().mockResolvedValue(mockStream(chunks));
+
+    const stream = await provider.generate('', [], []);
+    const parts: Array<Record<string, unknown>> = [];
+    for await (const p of stream) parts.push(p as unknown as Record<string, unknown>);
+
+    expect(parts).toEqual([{ type: 'tool_call_part', argumentsPart: '{"x":1}' }]);
+  });
+
+  it('handles tool_call delta with no function field (early return)', async () => {
+    const provider = new OpenAILegacyChatProvider({
+      model: 'gpt-4.1',
+      apiKey: 'test-key',
+      stream: true,
+    });
+
+    const chunks = [
+      {
+        id: 'chatcmpl-nofn',
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [{ index: 0 }], // no function field
+            },
+          },
+        ],
+      },
+    ];
+
+    (
+      provider as unknown as { _client: { chat: { completions: { create: unknown } } } }
+    )._client.chat.completions.create = vi.fn().mockResolvedValue(mockStream(chunks));
+
+    const stream = await provider.generate('', [], []);
+    const parts: Array<Record<string, unknown>> = [];
+    for await (const p of stream) parts.push(p as unknown as Record<string, unknown>);
+
+    // No parts yielded — the tool_call without function is silently ignored.
+    expect(parts).toEqual([]);
   });
 });

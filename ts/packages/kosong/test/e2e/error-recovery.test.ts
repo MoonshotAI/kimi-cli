@@ -23,6 +23,8 @@ function createMockStream(
     get usage(): TokenUsage | null {
       return opts?.usage ?? null;
     },
+    finishReason: null,
+    rawFinishReason: null,
     async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
       for (const part of parts) {
         yield part;
@@ -68,6 +70,8 @@ function createStreamErrorProvider(partsBefore: StreamedMessagePart[], error: Er
         get usage(): TokenUsage | null {
           return null;
         },
+        finishReason: null,
+        rawFinishReason: null,
         async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
           for (const part of partsBefore) {
             yield part;
@@ -391,6 +395,8 @@ describe('e2e: error recovery', () => {
             get usage(): TokenUsage | null {
               return null;
             },
+            finishReason: null,
+            rawFinishReason: null,
             async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
               yield tc;
               yield { type: 'text', text: 'some text' };

@@ -27,6 +27,8 @@ function createMockStream(
     get usage(): TokenUsage | null {
       return opts?.usage ?? null;
     },
+    finishReason: null,
+    rawFinishReason: null,
     async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
       for (const part of parts) {
         yield part;
@@ -139,9 +141,9 @@ describe('regression', () => {
     it('throws an error when removing a tool that does not exist', () => {
       const toolset = new SimpleToolset();
 
-      expect(() =>{  toolset.remove('nonexistent-tool'); }).toThrow(
-        'Tool `nonexistent-tool` not found in the toolset.',
-      );
+      expect(() => {
+        toolset.remove('nonexistent-tool');
+      }).toThrow('Tool `nonexistent-tool` not found in the toolset.');
     });
 
     it('throws after tool was already removed', () => {
@@ -152,7 +154,9 @@ describe('regression', () => {
       );
 
       toolset.remove('my-tool');
-      expect(() =>{  toolset.remove('my-tool'); }).toThrow('Tool `my-tool` not found in the toolset.');
+      expect(() => {
+        toolset.remove('my-tool');
+      }).toThrow('Tool `my-tool` not found in the toolset.');
     });
   });
 

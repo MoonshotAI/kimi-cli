@@ -56,6 +56,49 @@ describe('ChaosChatProvider', () => {
     expect(chaos.thinkingEffort).toBeNull();
   });
 
+  it('delegates finishReason and rawFinishReason from the wrapped stream', async () => {
+    const inner = new MockChatProvider([{ type: 'text', text: 'Hi' }], {
+      finishReason: 'truncated',
+      rawFinishReason: 'length',
+    });
+    const chaos = new ChaosChatProvider(inner, { errorProbability: 0 });
+    const stream = await chaos.generate(
+      '',
+      [],
+      [{ role: 'user', content: [{ type: 'text', text: 'hello' }], toolCalls: [] }],
+    );
+    for await (const _ of stream) {
+      // drain
+    }
+    expect(stream.finishReason).toBe('truncated');
+    expect(stream.rawFinishReason).toBe('length');
+  });
+
+  it('delegates finishReason through the ChaosStreamedMessage wrapper', async () => {
+    // Passing a non-zero corruptToolCallProbability forces the chaos
+    // provider onto its wrapping code path, which must still forward the
+    // inner stream's finishReason getters.
+    const inner = new MockChatProvider([{ type: 'text', text: 'Hi' }], {
+      finishReason: 'filtered',
+      rawFinishReason: 'content_filter',
+    });
+    const chaos = new ChaosChatProvider(inner, {
+      errorProbability: 0,
+      corruptToolCallProbability: 0.5,
+      seed: 7,
+    });
+    const stream = await chaos.generate(
+      '',
+      [],
+      [{ role: 'user', content: [{ type: 'text', text: 'hello' }], toolCalls: [] }],
+    );
+    for await (const _ of stream) {
+      // drain
+    }
+    expect(stream.finishReason).toBe('filtered');
+    expect(stream.rawFinishReason).toBe('content_filter');
+  });
+
   it('withThinking returns a new ChaosChatProvider', () => {
     const inner = new MockChatProvider([{ type: 'text', text: 'test' }]);
     const chaos = new ChaosChatProvider(inner, { errorProbability: 0.5 });
@@ -147,6 +190,8 @@ describe('ChaosChatProvider', () => {
       generate: async () => ({
         id: null,
         usage: null,
+        finishReason: null,
+        rawFinishReason: null,
         async *[Symbol.asyncIterator]() {},
       }),
     };

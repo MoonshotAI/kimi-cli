@@ -78,4 +78,27 @@ describe('MockChatProvider', () => {
     expect(newProvider).toBeInstanceOf(MockChatProvider);
     expect(newProvider).not.toBe(provider);
   });
+
+  it('defaults finishReason to completed and rawFinishReason to stop', async () => {
+    const provider = new MockChatProvider([{ type: 'text', text: 'hi' }]);
+    const stream = await provider.generate('', [], []);
+    for await (const _ of stream) {
+      // drain
+    }
+    expect(stream.finishReason).toBe('completed');
+    expect(stream.rawFinishReason).toBe('stop');
+  });
+
+  it('honors explicit finishReason and rawFinishReason options', async () => {
+    const provider = new MockChatProvider([{ type: 'text', text: 'hi' }], {
+      finishReason: 'truncated',
+      rawFinishReason: 'length',
+    });
+    const stream = await provider.generate('', [], []);
+    for await (const _ of stream) {
+      // drain
+    }
+    expect(stream.finishReason).toBe('truncated');
+    expect(stream.rawFinishReason).toBe('length');
+  });
 });

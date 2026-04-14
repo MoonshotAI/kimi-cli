@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { ChatProviderError } from '../errors.js';
 import type { ContentPart, Message, StreamedMessagePart, ToolCall } from '../message.js';
 import type {
+  FinishReason,
   GenerateOptions,
   RetryableChatProvider,
   StreamedMessage,
@@ -16,6 +17,7 @@ import {
   convertOpenAIError,
   extractUsage,
   isFunctionToolCall,
+  normalizeOpenAIFinishReason,
   type OpenAIContentPart,
   type OpenAIToolParam,
   reasoningEffortToThinkingEffort,
@@ -269,6 +271,8 @@ export function extractUsageFromChunk(
 class KimiStreamedMessage implements StreamedMessage {
   private _id: string | null = null;
   private _usage: TokenUsage | null = null;
+  private _finishReason: FinishReason | null = null;
+  private _rawFinishReason: string | null = null;
   private readonly _iter: AsyncGenerator<StreamedMessagePart>;
 
   constructor(
@@ -292,8 +296,22 @@ class KimiStreamedMessage implements StreamedMessage {
     return this._usage;
   }
 
+  get finishReason(): FinishReason | null {
+    return this._finishReason;
+  }
+
+  get rawFinishReason(): string | null {
+    return this._rawFinishReason;
+  }
+
   async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
     yield* this._iter;
+  }
+
+  private _captureFinishReason(raw: string | null | undefined): void {
+    const normalized = normalizeOpenAIFinishReason(raw);
+    this._finishReason = normalized.finishReason;
+    this._rawFinishReason = normalized.rawFinishReason;
   }
 
   private async *_convertNonStreamResponse(
@@ -303,6 +321,7 @@ class KimiStreamedMessage implements StreamedMessage {
     if (response.usage) {
       this._usage = extractUsage(response.usage) ?? null;
     }
+    this._captureFinishReason(response.choices[0]?.finish_reason ?? null);
 
     const message = response.choices[0]?.message;
     if (!message) return;
@@ -356,6 +375,15 @@ class KimiStreamedMessage implements StreamedMessage {
 
         const choice = chunk.choices[0];
         if (!choice) continue;
+
+        // Capture finish_reason whenever the chunk carries one. The Chat
+        // Completions API only sets it on the final chunk for a given
+        // choice, but defensively re-capturing on every non-null value
+        // keeps the latest signal available even if upstream re-emits.
+        if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
+          this._captureFinishReason(choice.finish_reason);
+        }
+
         const delta = choice.delta;
 
         // reasoning_content (Moonshot proprietary)

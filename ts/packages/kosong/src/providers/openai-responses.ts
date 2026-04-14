@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import type { ContentPart, Message, StreamedMessagePart, ToolCall } from '../message.js';
 import { extractText } from '../message.js';
 import type {
+  FinishReason,
   GenerateOptions,
   RetryableChatProvider,
   StreamedMessage,
@@ -16,6 +17,43 @@ import {
   reasoningEffortToThinkingEffort,
   thinkingEffortToReasoningEffort,
 } from './openai-common.js';
+
+/**
+ * Normalize the Responses API status / incomplete_details into the unified
+ * {@link FinishReason} enum.
+ *
+ * Note: the Responses API has no `tool_calls`-style status. When a response
+ * completes with `function_call` items inline the status is still
+ * `'completed'`; callers detect tool calls via `message.toolCalls.length`,
+ * not via finishReason.
+ */
+function normalizeResponsesFinishReason(
+  status: string | null | undefined,
+  incompleteReason: string | null | undefined,
+): { finishReason: FinishReason | null; rawFinishReason: string | null } {
+  if (status === null || status === undefined) {
+    return { finishReason: null, rawFinishReason: null };
+  }
+  if (status === 'completed') {
+    return { finishReason: 'completed', rawFinishReason: 'completed' };
+  }
+  if (status === 'incomplete') {
+    if (incompleteReason === 'max_output_tokens') {
+      return { finishReason: 'truncated', rawFinishReason: 'max_output_tokens' };
+    }
+    if (incompleteReason === 'content_filter') {
+      return { finishReason: 'filtered', rawFinishReason: 'content_filter' };
+    }
+    return {
+      finishReason: 'other',
+      rawFinishReason: incompleteReason ?? 'incomplete',
+    };
+  }
+  if (status === 'failed') {
+    return { finishReason: 'other', rawFinishReason: 'failed' };
+  }
+  return { finishReason: null, rawFinishReason: null };
+}
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -291,6 +329,8 @@ function convertTool(tool: Tool): ResponseToolParam {
 export class OpenAIResponsesStreamedMessage implements StreamedMessage {
   private _id: string | null = null;
   private _usage: TokenUsage | null = null;
+  private _finishReason: FinishReason | null = null;
+  private _rawFinishReason: string | null = null;
   private readonly _iter: AsyncGenerator<StreamedMessagePart>;
 
   constructor(response: unknown, isStream: boolean) {
@@ -309,8 +349,25 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
     return this._usage;
   }
 
+  get finishReason(): FinishReason | null {
+    return this._finishReason;
+  }
+
+  get rawFinishReason(): string | null {
+    return this._rawFinishReason;
+  }
+
   async *[Symbol.asyncIterator](): AsyncIterator<StreamedMessagePart> {
     yield* this._iter;
+  }
+
+  private _captureFinishReasonFromResponse(response: Record<string, unknown>): void {
+    const status = response['status'] as string | null | undefined;
+    const incomplete = response['incomplete_details'] as Record<string, unknown> | undefined;
+    const incompleteReason = (incomplete?.['reason'] as string | undefined) ?? null;
+    const normalized = normalizeResponsesFinishReason(status, incompleteReason);
+    this._finishReason = normalized.finishReason;
+    this._rawFinishReason = normalized.rawFinishReason;
   }
 
   private _extractUsage(usage: Record<string, unknown>): void {
@@ -336,6 +393,7 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
     if (response['usage']) {
       this._extractUsage(response['usage'] as Record<string, unknown>);
     }
+    this._captureFinishReasonFromResponse(response);
 
     const output = response['output'] as unknown[];
     if (!output) return;
@@ -448,7 +506,7 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
           yield { type: 'think', think: '' };
         } else if (chunkType === 'response.reasoning_summary_text.delta') {
           yield { type: 'think', think: chunk['delta'] as string };
-        } else if (chunkType === 'response.completed') {
+        } else if (chunkType === 'response.completed' || chunkType === 'response.incomplete') {
           const resp = chunk['response'] as Record<string, unknown>;
           // Final event confirms the Responses API `response.id`. Prefer
           // it over any earlier value in case the API refines it.
@@ -459,6 +517,7 @@ export class OpenAIResponsesStreamedMessage implements StreamedMessage {
           if (resp['usage']) {
             this._extractUsage(resp['usage'] as Record<string, unknown>);
           }
+          this._captureFinishReasonFromResponse(resp);
         }
       }
     } catch (error: unknown) {
