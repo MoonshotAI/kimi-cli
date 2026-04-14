@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Fix CLI crash on `TaskStop` — stopping a stuck background agent no longer prints `Unhandled exception in event loop / Exception None` and freezes the terminal; the cancelled task is now kept in the manager's live-tasks dict until its runner finishes cleaning up, preventing Python's GC from reaping the still-pending task
 - Shell: Fix inline diff highlights misaligned on lines containing tabs — raw-code diff offsets are now mapped to rendered positions via expandtabs column tracking so highlight spans land correctly after tab expansion
 
 ## 1.33.0 (2026-04-13)

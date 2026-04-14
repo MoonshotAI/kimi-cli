@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：修复 `TaskStop` 取消卡住的后台 agent 时 CLI 崩溃的问题——终端不再打印 `Unhandled exception in event loop / Exception None` 并冻结；已取消的 task 现在会保留在管理器的 live-tasks 字典中，直到 runner 完成清理，避免 Python GC 在 task 仍处 pending 时回收它
 - Shell：修复包含 tab 的行内 Diff 高亮偏移错位的问题——原始代码的 Diff 偏移量现在通过 expandtabs 列跟踪映射到渲染后的位置，确保 tab 展开后高亮区间落在正确位置
 
 ## 1.33.0 (2026-04-13)

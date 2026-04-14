@@ -132,6 +132,113 @@ async def test_kill_background_agent_during_soul_run(runtime, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Regression: kill() must not drop the only strong reference to the asyncio
+# task. asyncio holds tasks in a WeakSet, so dropping the strong reference
+# before cancellation has propagated lets Python's GC collect the still-pending
+# task — which fires loop.call_exception_handler with no 'exception' field.
+# prompt_toolkit then surfaces this as
+# "Unhandled exception in event loop: Exception None / Press ENTER to continue".
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_kill_keeps_strong_reference_until_runner_finishes(runtime, monkeypatch):
+    """kill() must keep the asyncio.Task in _live_agent_tasks until the runner's
+    finally block removes it, so the cancellation can propagate without the
+    task being garbage-collected mid-flight."""
+    import gc
+    import weakref
+
+    _register_coder(runtime)
+    agent_id = _create_bg_agent_instance(runtime, agent_id="agcrace1")
+
+    soul_started = asyncio.Event()
+
+    async def fake_load_agent(agent_file, rt, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="gc race test",
+            toolset=EmptyToolset(),
+            runtime=rt,
+        )
+
+    async def fake_run_soul(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        soul_started.set()
+        await asyncio.Future()  # Block forever; cancellation will unblock us.
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    runtime.background_tasks.bind_runtime(runtime)
+    view = runtime.background_tasks.create_agent_task(
+        agent_id=agent_id,
+        subagent_type="coder",
+        prompt="block forever",
+        description="gc race",
+        tool_call_id="tc-gc-race",
+        model_override=None,
+    )
+    task_id = view.spec.id
+
+    try:
+        await asyncio.wait_for(soul_started.wait(), timeout=10.0)
+    except TimeoutError:
+        pytest.fail("Background agent did not start run_soul within 10 seconds")
+
+    # Capture the live task object and a weakref before kill(). The id() is
+    # used to assert object identity after kill() — we want to be sure the
+    # *same* task object is still held, not just that some entry exists.
+    live_task_before = runtime.background_tasks._live_agent_tasks[task_id]
+    live_task_id_before = id(live_task_before)
+    task_ref = weakref.ref(live_task_before)
+    del live_task_before
+
+    # Trigger the kill. Under the bug, kill() pops the only strong reference
+    # to the task and returns immediately, leaving the task reachable only via
+    # asyncio's WeakSet. Once Python's GC runs, the still-pending task is
+    # collected and Task.__del__ fires the loop exception handler with no
+    # 'exception' field — exactly the "Exception None" symptom users see.
+    runtime.background_tasks.kill(task_id, reason="gc race")
+
+    # Primary invariant: immediately after kill() returns, _live_agent_tasks
+    # must still hold the *same* task object. Only the runner's finally block
+    # (which runs after cancellation has propagated) is allowed to remove it.
+    # This is the contract that prevents the GC race regardless of interpreter
+    # GC details.
+    assert task_id in runtime.background_tasks._live_agent_tasks, (
+        "kill() dropped the strong reference to the asyncio.Task before "
+        "cancellation propagated. asyncio holds only weak references to tasks; "
+        "the runner's finally block must be the one to clear _live_agent_tasks."
+    )
+    assert id(runtime.background_tasks._live_agent_tasks[task_id]) == live_task_id_before, (
+        "kill() replaced the asyncio.Task in _live_agent_tasks instead of "
+        "preserving the original strong reference."
+    )
+
+    # Secondary canary: with the strong reference still in the dict, the task
+    # must survive a forced collection cycle. This is implementation-detail
+    # sensitive (depends on CPython's GC behavior for cycles), so it is a
+    # best-effort additional check rather than the primary contract.
+    gc.collect()
+    assert task_ref() is not None, (
+        "Background agent asyncio.Task was garbage-collected after kill() "
+        "even though _live_agent_tasks should still hold it."
+    )
+
+    # Now let the cancellation actually propagate; the runner's finally block
+    # is responsible for removing the entry from _live_agent_tasks.
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if task_id not in runtime.background_tasks._live_agent_tasks:
+            break
+        await asyncio.sleep(0.02)
+    else:
+        pytest.fail("Runner finally block did not clear _live_agent_tasks in time")
+
+
+# ---------------------------------------------------------------------------
 # Test 2: Kill cancels pending approval requests
 # ---------------------------------------------------------------------------
 
