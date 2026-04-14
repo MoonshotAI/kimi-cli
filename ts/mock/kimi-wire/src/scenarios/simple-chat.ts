@@ -1,7 +1,10 @@
 /**
- * Simple chat scenario -- pure text streaming.
+ * Simple chat scenario -- Markdown-rich text streaming.
  *
  * Flow: TurnBegin -> StepBegin -> ThinkPart -> TextPart * N -> StatusUpdate -> TurnEnd
+ *
+ * The response includes various Markdown elements (headings, lists, code blocks,
+ * bold, inline code, links, blockquotes) to exercise the MarkdownRenderer.
  */
 
 import type { Scenario } from '../mock-event-generator.js';
@@ -10,7 +13,7 @@ import { event, delay } from '../mock-event-generator.js';
 export function simpleChatScenario(userInput: string): Scenario {
   return {
     name: 'simple-chat',
-    description: 'Simple text conversation with thinking',
+    description: 'Simple text conversation with Markdown formatting',
     steps: [
       event({ type: 'TurnBegin', userInput }),
       delay(100),
@@ -32,102 +35,102 @@ export function simpleChatScenario(userInput: string): Scenario {
         part: { type: 'think', think: ' Let me organize my thoughts and give a clear response.' },
       }),
       delay(400),
-      // Text response — longer, with realistic typing delays
+      // Text response with rich Markdown
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'Hello! ' },
+        part: { type: 'text', text: '# Hello from Kimi\n\n' },
       }),
       delay(80),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'I am Kimi, ' },
+        part: { type: 'text', text: 'I am **Kimi**, your AI coding assistant. ' },
       }),
       delay(60),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'your AI coding assistant. ' },
+        part: { type: 'text', text: 'I can help you with a wide range of *software engineering* tasks.\n\n' },
       }),
       delay(80),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'I can help you with a wide range of software engineering tasks.\n\n' },
-      }),
-      delay(100),
-      event({
-        type: 'ContentPart',
-        part: { type: 'text', text: 'Here are some things I can do:\n\n' },
+        part: { type: 'text', text: '## What I Can Do\n\n' },
       }),
       delay(80),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: '1. **Read and understand code** — ' },
+        part: { type: 'text', text: 'Here are some things I can help with:\n\n' },
+      }),
+      delay(80),
+      event({
+        type: 'ContentPart',
+        part: { type: 'text', text: '- **Read and understand code** -- I can analyze your codebase\n' },
       }),
       delay(60),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'I can analyze your codebase, ' },
-      }),
-      delay(50),
-      event({
-        type: 'ContentPart',
-        part: { type: 'text', text: 'explain how things work, ' },
-      }),
-      delay(50),
-      event({
-        type: 'ContentPart',
-        part: { type: 'text', text: 'and help you navigate complex architectures.\n' },
-      }),
-      delay(80),
-      event({
-        type: 'ContentPart',
-        part: { type: 'text', text: '2. **Write and edit code** — ' },
+        part: { type: 'text', text: '- **Write and edit code** -- from fixing bugs to new features\n' },
       }),
       delay(60),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'From fixing bugs to implementing new features, ' },
-      }),
-      delay(50),
-      event({
-        type: 'ContentPart',
-        part: { type: 'text', text: 'I can write production-quality code.\n' },
-      }),
-      delay(80),
-      event({
-        type: 'ContentPart',
-        part: { type: 'text', text: '3. **Run commands** — ' },
+        part: { type: 'text', text: '- **Run commands** -- execute shell commands and manage workflows\n' },
       }),
       delay(60),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'I can execute shell commands, ' },
-      }),
-      delay(50),
-      event({
-        type: 'ContentPart',
-        part: { type: 'text', text: 'run tests, build your project, ' },
-      }),
-      delay(50),
-      event({
-        type: 'ContentPart',
-        part: { type: 'text', text: 'and manage your development workflow.\n' },
+        part: { type: 'text', text: '- **Search and research** -- find files and look up documentation\n\n' },
       }),
       delay(80),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: '4. **Search and research** — ' },
+        part: { type: 'text', text: '### Quick Example\n\n' },
+      }),
+      delay(80),
+      event({
+        type: 'ContentPart',
+        part: { type: 'text', text: 'Here is a simple TypeScript function:\n\n' },
       }),
       delay(60),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'I can search through your codebase, ' },
+        part: { type: 'text', text: '```typescript\n' },
       }),
-      delay(50),
+      delay(40),
       event({
         type: 'ContentPart',
-        part: { type: 'text', text: 'find relevant files, and look up documentation.\n\n' },
+        part: { type: 'text', text: 'function greet(name: string): string {\n' },
       }),
-      delay(100),
+      delay(40),
+      event({
+        type: 'ContentPart',
+        part: { type: 'text', text: '  return `Hello, ${name}!`;\n' },
+      }),
+      delay(40),
+      event({
+        type: 'ContentPart',
+        part: { type: 'text', text: '}\n' },
+      }),
+      delay(40),
+      event({
+        type: 'ContentPart',
+        part: { type: 'text', text: '```\n\n' },
+      }),
+      delay(80),
+      event({
+        type: 'ContentPart',
+        part: { type: 'text', text: 'You can call it with `greet("World")`. ' },
+      }),
+      delay(60),
+      event({
+        type: 'ContentPart',
+        part: { type: 'text', text: 'Check the [TypeScript docs](https://www.typescriptlang.org) for more info.\n\n' },
+      }),
+      delay(80),
+      event({
+        type: 'ContentPart',
+        part: { type: 'text', text: '> **Tip**: Use `--strict` mode for better type safety.\n\n' },
+      }),
+      delay(80),
       event({
         type: 'ContentPart',
         part: { type: 'text', text: 'What would you like to work on today?' },

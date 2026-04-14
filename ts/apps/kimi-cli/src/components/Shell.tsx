@@ -28,6 +28,8 @@ import StreamingMessage from './message/StreamingMessage.js';
 import Spinner from './Spinner.js';
 import InputArea from './InputArea.js';
 import StatusBar from './StatusBar.js';
+import { MarkdownRenderer } from './markdown/index.js';
+import ThinkingBlock from './message/ThinkingBlock.js';
 
 // A synthetic block representing the welcome banner.
 const WELCOME_BLOCK: CompletedBlock = {
@@ -53,15 +55,17 @@ function CompletedBlockView({ block }: { readonly block: CompletedBlock }): Reac
       );
     case 'assistant':
       return (
-        <Box marginTop={1}>
+        <Box marginTop={1} flexDirection="row">
           <Text color={colors.text}>{'● '}</Text>
-          <Text>{block.content}</Text>
+          <Box flexDirection="column">
+            <MarkdownRenderer text={block.content} />
+          </Box>
         </Box>
       );
     case 'thinking':
       return (
         <Box marginTop={1}>
-          <Text color={colors.thinking} italic>{'💭 '}{block.content}</Text>
+          <ThinkingBlock text={block.content} />
         </Box>
       );
     case 'tool_call':
