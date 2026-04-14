@@ -375,7 +375,7 @@ class _LiveView:
 
         match msg:
             case TurnBegin():
-                self.flush_content()
+                self.flush_content(show_summary=True)
             case SteerInput(user_input=user_input):
                 self.cleanup(is_interrupt=False)
                 content: list[ContentPart]
@@ -568,7 +568,7 @@ class _LiveView:
 
     def cleanup(self, is_interrupt: bool) -> None:
         """Cleanup the live view on step end or interruption."""
-        self.flush_content()
+        self.flush_content(show_summary=not is_interrupt)
 
         for block in self._tool_call_blocks.values():
             if not block.finished:
@@ -597,11 +597,16 @@ class _LiveView:
             self._question_request_queue.popleft().resolve({})
         self._current_question_panel = None
 
-    def flush_content(self) -> None:
+    def flush_content(self, *, show_summary: bool = False) -> None:
         """Flush the current content block."""
         if self._current_content_block is not None:
-            if self._current_content_block.has_pending():
-                console.print(self._current_content_block.compose_final())
+            block = self._current_content_block
+            if block.has_pending():
+                console.print(block.compose_final())
+            if show_summary:
+                summary = block.compose_summary()
+                if summary is not None:
+                    console.print(summary)
             self._current_content_block = None
             self.refresh_soon()
 
