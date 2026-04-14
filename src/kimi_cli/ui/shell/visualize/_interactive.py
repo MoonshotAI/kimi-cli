@@ -220,6 +220,7 @@ class _PromptLiveView(_LiveView):
                         self.dispatch_wire_message(msg)
                         self._flush_prompt_refresh()
                         continue
+                    self.flush_content(show_summary=True)
                     self.cleanup(is_interrupt=False)
                     self._flush_prompt_refresh()
                     break

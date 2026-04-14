@@ -219,6 +219,7 @@ class _LiveView:
                                 live.update(self.compose(), refresh=True)
                                 self._need_recompose = False
                             continue
+                        self.flush_content(show_summary=True)
                         self.cleanup(is_interrupt=False)
                         live.update(self.compose(), refresh=True)
                         break
@@ -375,7 +376,7 @@ class _LiveView:
 
         match msg:
             case TurnBegin():
-                self.flush_content()
+                self.flush_content(show_summary=True)
             case SteerInput(user_input=user_input):
                 self.cleanup(is_interrupt=False)
                 content: list[ContentPart]
@@ -597,11 +598,16 @@ class _LiveView:
             self._question_request_queue.popleft().resolve({})
         self._current_question_panel = None
 
-    def flush_content(self) -> None:
+    def flush_content(self, *, show_summary: bool = False) -> None:
         """Flush the current content block."""
         if self._current_content_block is not None:
-            if self._current_content_block.has_pending():
-                console.print(self._current_content_block.compose_final())
+            block = self._current_content_block
+            if block.has_pending():
+                console.print(block.compose_final())
+            if show_summary:
+                summary = block.compose_summary()
+                if summary is not None:
+                    console.print(summary)
             self._current_content_block = None
             self.refresh_soon()
 

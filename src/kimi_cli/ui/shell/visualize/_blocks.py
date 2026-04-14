@@ -228,14 +228,45 @@ class _ContentBlock:
         if self.is_think:
             elapsed_str = format_elapsed(time.monotonic() - self._start_time)
             count_str = format_token_count(int(self._token_count))
+            avg_tps = self._average_tps()
+            tps_part = f" · {avg_tps} tok/s" if avg_tps else ""
             return Text(
-                f"Thought for {elapsed_str} · {count_str} tokens",
+                f"Thought for {elapsed_str} · {count_str} tokens{tps_part}",
                 style="grey50 italic",
             )
         remaining = self._pending_text()
         if not remaining:
             return Text("")
         return self._wrap_bullet(Markdown(remaining))
+
+    def compose_summary(self) -> Text | None:
+        """Return a summary line for the completed composing block."""
+        if self.is_think:
+            return None
+        elapsed_str = format_elapsed(time.monotonic() - self._start_time)
+        count_str = format_token_count(int(self._token_count))
+        avg_tps = self._average_tps()
+        if int(self._token_count) == 0:
+            return None
+        text = Text.assemble(
+            ("Composed", ""),
+            (f" for {elapsed_str}", "grey50"),
+            (f" · {count_str} tokens", "grey50"),
+        )
+        if avg_tps:
+            text.append_text(Text(f" · {avg_tps} tok/s", style="grey50"))
+        return text
+
+    def _average_tps(self) -> int | None:
+        return self._compute_tps(time.monotonic() - self._start_time, int(self._token_count))
+
+    @staticmethod
+    def _compute_tps(elapsed: float, tokens_int: int) -> int | None:
+        """Compute tokens per second; guard against early noisy samples."""
+        if elapsed <= 0.5 or tokens_int <= 0:
+            return None
+        rate = int(tokens_int / elapsed)
+        return rate if rate > 0 else None
 
     def has_pending(self) -> bool:
         """Whether there is uncommitted content to flush."""
@@ -274,11 +305,16 @@ class _ContentBlock:
         elapsed_str = format_elapsed(elapsed)
         count_str = f"{format_token_count(int(self._token_count))} tokens"
 
-        self._spinner.text = Text.assemble(
+        parts: list[tuple[str, str | Style]] = [
             ("Composing...", ""),
             (f" {elapsed_str}", "grey50"),
             (f" · {count_str}", "grey50"),
-        )
+        ]
+        tps = self._compute_tps(elapsed, int(self._token_count))
+        if tps:
+            parts.append((f" · {tps} tok/s", "grey50"))
+
+        self._spinner.text = Text.assemble(*parts)
         return self._spinner
 
     def _compose_thinking(self) -> Text:
@@ -296,12 +332,10 @@ class _ContentBlock:
             (f" · {count_str}", "grey50"),
         ]
 
-        # Live tok/s pulse — a real heartbeat signal that confirms the model
-        # is still streaming even when the raw content is hidden.
-        if elapsed > 0.5 and tokens_int > 0:
-            rate = int(tokens_int / elapsed)
-            if rate > 0:
-                parts.append((f" · {rate} tok/s", "grey50"))
+        # Live tok/s pulse
+        tps = self._compute_tps(elapsed, tokens_int)
+        if tps:
+            parts.append((f" · {tps} tok/s", "grey50"))
 
         return Text.assemble(*parts)
 

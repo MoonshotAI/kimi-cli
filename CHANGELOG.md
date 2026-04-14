@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Show live and average tokens per second in the shell UI — live TPS appears in the composing and thinking spinners after 0.5s, and a summary line with the average rate is printed at turn end
 - Shell: Fix inline diff highlights misaligned on lines containing tabs — raw-code diff offsets are now mapped to rendered positions via expandtabs column tracking so highlight spans land correctly after tab expansion
 
 ## 1.33.0 (2026-04-13)
