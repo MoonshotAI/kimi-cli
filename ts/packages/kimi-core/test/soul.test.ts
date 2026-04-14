@@ -21,6 +21,8 @@ function createMockStream(parts: StreamedMessagePart[]): StreamedMessage {
     },
     id: 'msg_001',
     usage: { inputOther: 10, output: 20, inputCacheRead: 0, inputCacheCreation: 0 },
+    finishReason: null,
+    rawFinishReason: null,
   };
 }
 
