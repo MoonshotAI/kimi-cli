@@ -30,6 +30,7 @@ The configuration file contains the following top-level configuration items:
 | `default_plan_mode` | `boolean` | Whether to start new sessions in plan mode by default (defaults to `false`); resumed sessions preserve their existing state |
 | `default_editor` | `string` | Default external editor command (e.g. `"vim"`, `"code --wait"`), auto-detects when empty |
 | `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |
+| `show_thinking_stream` | `boolean` | Whether to stream the raw reasoning text in the live area as a 6-line scrolling preview and commit the full reasoning markdown to history when the block ends (defaults to `false`, which shows only the compact `Thinking ...` indicator and a one-line trace summary) |
 | `merge_all_available_skills` | `boolean` | Whether to merge skills from all brand directories (defaults to `false`); see [Skills configuration](../customization/skills.md) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
@@ -47,6 +48,7 @@ default_yolo = false
 default_plan_mode = false
 default_editor = ""
 theme = "dark"
+show_thinking_stream = false
 merge_all_available_skills = false
 
 [providers.kimi-for-coding]
