@@ -102,7 +102,7 @@
     "@google/genai": "^1.49.0",
     "ajv": "^8.18.0",
     "openai": "^6.34.0",
-    "zod": "^4.3.6",
+    "zod": "catalog:",
     "zod-to-json-schema": "^3.25.2"
   }
 }

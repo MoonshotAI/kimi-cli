@@ -9,7 +9,7 @@
     "typecheck": "tsc",
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix",
-    "lint:pkg": "pnpm -r --filter '!@moonshot-ai/monorepo' exec publint && pnpm -r --filter './packages/*' exec attw --pack . --ignore-rules no-resolution",
+    "lint:pkg": "pnpm -r --filter '!@moonshot-ai/monorepo' exec publint && pnpm -r --filter './packages/*' exec attw --pack . --profile node16",
     "sherif": "sherif",
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",

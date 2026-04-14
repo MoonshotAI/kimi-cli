@@ -6,5 +6,5 @@ export default defineConfig({
   dts: true,
   outDir: 'dist',
   clean: true,
-  deps: { neverBundle: ['@moonshot-ai/core'] },
+  deps: { neverBundle: ['@moonshot-ai/core', '@moonshot-ai/kosong'] },
 });

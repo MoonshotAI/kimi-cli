@@ -2,3 +2,6 @@ packages:
   - packages/*
   - apps/*
   - mock/*
+
+catalog:
+  zod: ^4.3.6

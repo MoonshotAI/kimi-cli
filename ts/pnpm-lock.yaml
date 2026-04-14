@@ -4,6 +4,12 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    zod:
+      specifier: ^4.3.6
+      version: 4.3.6
+
 importers:
 
   .:
@@ -130,7 +136,7 @@ importers:
         specifier: workspace:^
         version: link:../kosong
       zod:
-        specifier: ^4.3.6
+        specifier: 'catalog:'
         version: 4.3.6
 
   packages/kimi-sdk:
@@ -138,6 +144,9 @@ importers:
       '@moonshot-ai/core':
         specifier: workspace:^
         version: link:../kimi-core
+      '@moonshot-ai/kosong':
+        specifier: workspace:^
+        version: link:../kosong
 
   packages/kosong:
     dependencies:
@@ -154,7 +163,7 @@ importers:
         specifier: ^6.34.0
         version: 6.34.0(ws@8.20.0)(zod@4.3.6)
       zod:
-        specifier: ^4.3.6
+        specifier: 'catalog:'
         version: 4.3.6
       zod-to-json-schema:
         specifier: ^3.25.2

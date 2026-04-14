@@ -28,6 +28,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@moonshot-ai/core": "workspace:^"
+    "@moonshot-ai/core": "workspace:^",
+    "@moonshot-ai/kosong": "workspace:^"
   }
 }
