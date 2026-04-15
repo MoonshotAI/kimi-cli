@@ -73,6 +73,8 @@ export interface SummaryMessage {
   preCompactTokens: number;
   postCompactTokens: number;
   trigger: 'auto' | 'manual';
+  /** Archive file that holds the pre-compaction conversation (M04). */
+  archiveFile?: string | undefined;
 }
 
 // ── Narrow (Soul) interface ────────────────────────────────────────────
@@ -148,6 +150,19 @@ interface BaseContextStateOptions {
   readonly initialActiveTools?: ReadonlySet<string>;
   readonly currentTurnId: () => string;
   readonly projector?: ConversationProjector;
+  /**
+   * Pre-populated conversation history for session resume. When provided,
+   * these messages become the initial in-memory projection WITHOUT being
+   * re-written to wire.jsonl. The replay-projector builds this array from
+   * the replayed WireRecords.
+   */
+  readonly initialHistory?: readonly Message[];
+  /**
+   * Pre-populated token count for session resume. Mirrors the accumulated
+   * `tokenCountWithPending` value that ContextState would have reached had
+   * all replayed assistant_message records been appended live.
+   */
+  readonly initialTokenCount?: number;
 }
 
 /**
@@ -195,6 +210,12 @@ class BaseContextState implements FullContextState {
     this._model = opts.initialModel;
     this._systemPrompt = opts.initialSystemPrompt ?? '';
     this._activeTools = new Set(opts.initialActiveTools ?? []);
+    if (opts.initialHistory !== undefined) {
+      this.history = [...opts.initialHistory];
+    }
+    if (opts.initialTokenCount !== undefined) {
+      this._tokenCountWithPending = opts.initialTokenCount;
+    }
   }
 
   // ── Synchronous reads ────────────────────────────────────────────────
@@ -430,6 +451,7 @@ class BaseContextState implements FullContextState {
       pre_compact_tokens: summary.preCompactTokens,
       post_compact_tokens: summary.postCompactTokens,
       trigger: summary.trigger,
+      ...(summary.archiveFile !== undefined ? { archive_file: summary.archiveFile } : {}),
     });
     // The live projection is replaced with a single synthetic summary
     // message; the full pre-compaction conversation still exists on disk
@@ -457,6 +479,10 @@ export interface WiredContextStateOptions {
   readonly initialActiveTools?: ReadonlySet<string>;
   readonly currentTurnId: () => string;
   readonly projector?: ConversationProjector;
+  /** Pre-populated history for session resume (Slice 3.4). */
+  readonly initialHistory?: readonly Message[];
+  /** Pre-populated token count for session resume (Slice 3.4). */
+  readonly initialTokenCount?: number;
 }
 
 export class WiredContextState extends BaseContextState {
@@ -472,6 +498,10 @@ export class WiredContextState extends BaseContextState {
         : {}),
       currentTurnId: opts.currentTurnId,
       ...(opts.projector !== undefined ? { projector: opts.projector } : {}),
+      ...(opts.initialHistory !== undefined ? { initialHistory: opts.initialHistory } : {}),
+      ...(opts.initialTokenCount !== undefined
+        ? { initialTokenCount: opts.initialTokenCount }
+        : {}),
     });
   }
 }

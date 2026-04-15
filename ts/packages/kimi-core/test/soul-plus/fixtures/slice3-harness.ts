@@ -75,8 +75,9 @@ export function createNoopCompactionProvider(): CompactionProvider {
 export function createNoopJournalCapability(): JournalCapability {
   const rotations: number[] = [];
   return {
-    async rotate(): Promise<void> {
+    async rotate() {
       rotations.push(rotations.length);
+      return { archiveFile: `wire.${rotations.length}.jsonl` };
     },
   };
 }

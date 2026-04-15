@@ -24,11 +24,13 @@ import type { Kaos, KaosProcess } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
 import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { BackgroundProcessManager } from './background/manager.js';
 import { BashInputSchema } from './types.js';
 import type { BashInput, BashOutput, BuiltinTool } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_TIMEOUT_MS = 5 * 60 * 1000;
+const MAX_BACKGROUND_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const SIGTERM_GRACE_MS = 5_000;
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 
@@ -40,6 +42,7 @@ export class BashTool implements BuiltinTool<BashInput, BashOutput> {
   constructor(
     private readonly kaos: Kaos,
     private readonly cwd: string,
+    private readonly backgroundManager?: BackgroundProcessManager | undefined,
   ) {}
 
   async execute(
@@ -50,6 +53,10 @@ export class BashTool implements BuiltinTool<BashInput, BashOutput> {
   ): Promise<ToolResult<BashOutput>> {
     if (signal.aborted) {
       return { isError: true, content: 'Aborted before command started' };
+    }
+
+    if (args.run_in_background) {
+      return this.executeInBackground(args);
     }
 
     const timeoutMs = Math.min(
@@ -175,7 +182,78 @@ export class BashTool implements BuiltinTool<BashInput, BashOutput> {
 
   getActivityDescription(args: BashInput): string {
     const preview = args.command.length > 50 ? `${args.command.slice(0, 50)}…` : args.command;
-    return `Running: ${preview}`;
+    return args.run_in_background ? `Starting background: ${preview}` : `Running: ${preview}`;
+  }
+
+  private async executeInBackground(args: BashInput): Promise<ToolResult<BashOutput>> {
+    if (!this.backgroundManager) {
+      return {
+        isError: true,
+        content: 'Background execution is not available (no BackgroundProcessManager configured).',
+      };
+    }
+
+    if (!args.description?.trim()) {
+      return {
+        isError: true,
+        content: 'description is required when run_in_background is true.',
+      };
+    }
+
+    const timeoutMs = Math.min(
+      args.timeout !== undefined ? args.timeout * 1000 : DEFAULT_TIMEOUT_MS,
+      MAX_BACKGROUND_TIMEOUT_MS,
+    );
+
+    let proc: KaosProcess;
+    try {
+      const effectiveCwd = args.cwd ?? this.cwd;
+      proc = await this.kaos.exec(
+        'bash',
+        '-c',
+        `cd ${shellQuote(effectiveCwd)} && ${args.command}`,
+      );
+    } catch (error) {
+      return {
+        isError: true,
+        content: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    // Close stdin so interactive commands get EOF.
+    try {
+      proc.stdin.end();
+    } catch {
+      /* process already gone */
+    }
+
+    // Register KaosProcess directly — no unsafe cast needed.
+    const taskId = this.backgroundManager.register(proc, args.command, args.description.trim());
+
+    // Schedule background timeout kill.
+    setTimeout(() => {
+      const info = this.backgroundManager!.getTask(taskId);
+      if (info && info.status === 'running') {
+        void this.backgroundManager!.stop(taskId);
+      }
+    }, timeoutMs);
+
+    return {
+      isError: false,
+      content:
+        `task_id: ${taskId}\n` +
+        `pid: ${String(proc.pid)}\n` +
+        `description: ${args.description.trim()}\n` +
+        `automatic_notification: true\n` +
+        'next_step: You will be automatically notified when it completes.\n' +
+        'next_step: Use TaskOutput with this task_id for a non-blocking status/output snapshot.\n' +
+        'next_step: Use TaskStop only if the task must be cancelled.',
+      output: {
+        exitCode: 0,
+        stdout: `Background task started: ${taskId}`,
+        stderr: '',
+      },
+    };
   }
 }
 

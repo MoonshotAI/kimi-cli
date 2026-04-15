@@ -85,7 +85,7 @@ describe('StateCache.write', () => {
       session_id: 'ses_roundtrip',
       created_at: 1700000000000,
       updated_at: 1700000001000,
-      model: 'claude-3',
+      model: 'k25',
       status: 'active',
       last_turn_id: 'turn_1',
       last_turn_time: 1700000001000,
@@ -96,7 +96,7 @@ describe('StateCache.write', () => {
 
     expect(loaded).not.toBeNull();
     expect(loaded!.session_id).toBe('ses_roundtrip');
-    expect(loaded!.model).toBe('claude-3');
+    expect(loaded!.model).toBe('k25');
     expect(loaded!.last_turn_id).toBe('turn_1');
   });
 

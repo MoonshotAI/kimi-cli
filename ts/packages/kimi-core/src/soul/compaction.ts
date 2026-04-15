@@ -73,6 +73,26 @@ export function shouldCompact(context: SoulContextState, config?: CompactionConf
   return false;
 }
 
+// ── Token estimation ─────────────────────────────────────────────────
+
+/**
+ * Estimate token count from text content using a character-based heuristic.
+ *
+ * ~4 chars per token for English; somewhat underestimates for CJK text,
+ * but this is a temporary estimate that gets corrected on the next LLM
+ * call — the same heuristic Python's `estimate_text_tokens` uses.
+ *
+ * Slice 3.3 M01 fix: this replaces the buggy mapping of
+ * `original_token_count` (which is the PRE-compaction token count) into
+ * the `postCompactTokens` field. Using the pre-compaction count as the
+ * post-compaction value caused `tokenCountWithPending` to remain at the
+ * high-water mark after compaction, immediately re-triggering the
+ * `shouldCompact` gate in an infinite loop.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 // ── SummaryMessage bridge ─────────────────────────────────────────────
 
 /**
@@ -83,6 +103,7 @@ function bridgeSummaryMessage(
   providerSummary: RuntimeSummaryMessage,
   messagesCount: number,
   preCompactTokens: number,
+  archiveFile?: string,
 ): StorageSummaryMessage {
   return {
     summary: providerSummary.content,
@@ -95,8 +116,12 @@ function bridgeSummaryMessage(
       messageCount: messagesCount,
     },
     preCompactTokens,
-    postCompactTokens: providerSummary.original_token_count ?? 0,
+    // M01 fix: postCompactTokens is the estimated token count of the
+    // *compressed* summary, not the original pre-compaction count.
+    // Follows Python's CompactionResult.estimated_token_count pattern.
+    postCompactTokens: estimateTokens(providerSummary.content),
     trigger: 'auto',
+    ...(archiveFile !== undefined ? { archiveFile } : {}),
   };
 }
 
@@ -130,14 +155,23 @@ export async function runCompaction(
     const summary = await runtime.compactionProvider.run(messages, signal);
     signal.throwIfAborted();
 
-    await runtime.journal.rotate({
+    // M04 fix: rotate returns the archive filename so we can record it
+    // in the CompactionRecord. The boundary record's parent_file is set
+    // to a placeholder here — the real JournalCapability implementation
+    // replaces it with the actual archive basename.
+    const rotateResult = await runtime.journal.rotate({
       type: 'compaction_boundary',
       summary,
-      parent_file: 'wire.jsonl',
+      parent_file: '',
     });
     signal.throwIfAborted();
 
-    const storageSummary = bridgeSummaryMessage(summary, messages.length, preCompactTokens);
+    const storageSummary = bridgeSummaryMessage(
+      summary,
+      messages.length,
+      preCompactTokens,
+      rotateResult.archiveFile,
+    );
     await context.resetToSummary(storageSummary);
     signal.throwIfAborted();
 

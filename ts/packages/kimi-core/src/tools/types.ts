@@ -126,6 +126,7 @@ export interface BashInput {
   cwd?: string | undefined;
   timeout?: number | undefined;
   description?: string | undefined;
+  run_in_background?: boolean | undefined;
 }
 
 export interface BashOutput {
@@ -139,6 +140,7 @@ const _rawBashInputSchema = z.object({
   cwd: z.string().optional(),
   timeout: z.number().int().positive().optional(),
   description: z.string().optional(),
+  run_in_background: z.boolean().optional(),
 });
 
 const _rawBashOutputSchema = z.object({

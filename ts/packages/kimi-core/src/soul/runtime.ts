@@ -119,8 +119,13 @@ export interface CompactionBoundaryRecord {
   parent_file: string;
 }
 
+export interface RotateResult {
+  /** Basename of the archive file created by rotation (e.g. `wire.1.jsonl`). */
+  archiveFile: string;
+}
+
 export interface JournalCapability {
-  rotate(boundaryRecord: CompactionBoundaryRecord): Promise<void>;
+  rotate(boundaryRecord: CompactionBoundaryRecord): Promise<RotateResult>;
 }
 
 // ── Runtime container ──────────────────────────────────────────────────

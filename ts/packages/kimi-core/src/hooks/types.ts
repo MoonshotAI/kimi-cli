@@ -1,15 +1,41 @@
 /**
- * Hook system — shared type definitions (Slice 4 scope, §9-C / §9-H).
+ * Hook system — shared type definitions (Slice 4 + Slice 3.6 scope, §9-C / §9-H).
  *
  * Defines the hook event types, executor interface, and result shapes.
+ * Slice 4 shipped three tool-scoped events; Slice 3.6 extends the union
+ * with lifecycle events ported from Python `kimi_cli/hooks/config.py`:
+ *
+ *   - `UserPromptSubmit` — fired before a new user prompt enters Soul.
+ *     Matches Python's event of the same name; conceptually equivalent
+ *     to a "turn start" trigger.
+ *   - `Stop` — fired after a turn settles (before lifecycle drains to
+ *     idle). Mirrors Python's `Stop` event; the optional `reason` field
+ *     distinguishes `done` / `cancelled` / `error`.
+ *   - `Notification` — fired when NotificationManager completes a
+ *     fan-out. Payload carries notification type / title / severity so
+ *     hook matchers can filter by notification class.
+ *
+ * Slice 3.6 deliberately defers `SubagentStart` / `SubagentStop` /
+ * `PreCompact` / `PostCompact` / `SessionStart` / `SessionEnd` /
+ * `StopFailure` / `PostToolUseFailure` because their trigger sites are
+ * scattered across Phase 1/2 code paths we do not want to touch. The
+ * union intentionally omits them so host code that registers a hook
+ * for a non-supported event surfaces a TS error immediately.
+ *
  * Phase 1 hardcodes two executor types: `command` and `wire`.
  */
 
 import type { ToolCall, ToolResult } from '../soul/types.js';
 
-// ── Hook event types (§9-H.2) ──────────────────────────────────────────
+// ── Hook event types (§9-H.2 + Slice 3.6 lifecycle extensions) ────────
 
-export type HookEventType = 'PreToolUse' | 'PostToolUse' | 'OnToolFailure';
+export type HookEventType =
+  | 'PreToolUse'
+  | 'PostToolUse'
+  | 'OnToolFailure'
+  | 'UserPromptSubmit'
+  | 'Stop'
+  | 'Notification';
 
 // ── Hook input (§9-H.2 + HookInputBase) ────────────────────────────────
 
@@ -40,7 +66,52 @@ export interface OnToolFailureInput extends HookInputBase {
   readonly error: Error;
 }
 
-export type HookInput = PreToolUseInput | PostToolUseInput | OnToolFailureInput;
+// ── Slice 3.6 lifecycle events ─────────────────────────────────────────
+
+/**
+ * Fired when a user prompt is accepted by TurnManager.handlePrompt and
+ * the WAL `user_message` record has been appended. Hooks cannot veto
+ * the prompt in Slice 3.6 (no `blockAction` semantics for lifecycle
+ * events) — `executeHooks` is invoked fire-and-forget so a slow hook
+ * never delays handlePrompt's return to the caller.
+ */
+export interface UserPromptSubmitInput extends HookInputBase {
+  readonly event: 'UserPromptSubmit';
+  readonly prompt: string;
+}
+
+/**
+ * Fired after the `turn_end` WAL record is durable. The `reason` field
+ * is the same three-valued outcome TurnManager writes to the journal
+ * (`done` / `cancelled` / `error`). The matcher is run against the
+ * reason string so a hook can filter by e.g. `/^error$/`.
+ */
+export interface StopInput extends HookInputBase {
+  readonly event: 'Stop';
+  readonly reason: 'done' | 'cancelled' | 'error';
+}
+
+/**
+ * Fired after NotificationManager completes its fan-out. The matcher is
+ * run against `notificationType` so a hook can filter e.g. approval vs
+ * tool-progress vs compaction notifications. Payload fields mirror the
+ * Python `notification()` builder (`kimi_cli/hooks/events.py`).
+ */
+export interface NotificationInput extends HookInputBase {
+  readonly event: 'Notification';
+  readonly notificationType: string;
+  readonly title: string;
+  readonly body: string;
+  readonly severity: string;
+}
+
+export type HookInput =
+  | PreToolUseInput
+  | PostToolUseInput
+  | OnToolFailureInput
+  | UserPromptSubmitInput
+  | StopInput
+  | NotificationInput;
 
 // ── Hook config (§9-C.2) ───────────────────────────────────────────────
 

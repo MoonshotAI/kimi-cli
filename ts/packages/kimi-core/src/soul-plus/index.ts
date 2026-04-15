@@ -146,6 +146,31 @@ export {
   parseMcpToolName,
 } from './mcp/index.js';
 
+// ── Session control (Slice 3.2) ───────────────────────────────────
+
+export { DefaultSessionControl } from './session-control.js';
+export type { SessionControlHandler, SessionControlDeps } from './session-control.js';
+
+// ── Dynamic injection (Slice 3.6) ─────────────────────────────────────
+
+export {
+  DynamicInjectionManager,
+  PlanModeInjectionProvider,
+  YoloModeInjectionProvider,
+  createDefaultDynamicInjectionManager,
+} from './dynamic-injection.js';
+export type {
+  DynamicInjectionManagerDeps,
+  DynamicInjectionProvider,
+  InjectionContext,
+} from './dynamic-injection.js';
+
+// ── Compaction providers (Slice 3.3) ─────────────────────────────────
+
+export { KosongCompactionProvider, createKosongCompactionProvider } from './compaction-provider.js';
+export { WiredJournalCapability, createWiredJournalCapability } from './journal-capability.js';
+export type { WiredJournalCapabilityDeps } from './journal-capability.js';
+
 // ── Skill subsystem (Slice 2.5) ───────────────────────────────────────
 
 export type {

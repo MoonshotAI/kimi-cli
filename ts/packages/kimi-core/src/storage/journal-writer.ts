@@ -152,6 +152,26 @@ export class WiredJournalWriter implements JournalWriter {
     }
   }
 
+  /**
+   * Reset writer state after a compaction rotation (Slice 3.3 / M04).
+   *
+   * After `rotateJournal` renames the old `wire.jsonl` → `wire.N.jsonl`
+   * and creates a fresh `wire.jsonl` with a metadata header, the writer
+   * must restart its monotonic seq from 0 (so the first record in the
+   * new file gets seq=1). The metadata header is already on disk, so we
+   * mark it as written. The new file's directory entry was durably
+   * committed by `rotateJournal`'s `syncDir`, so `directorySynced` is
+   * also set.
+   *
+   * Only the compaction path (via `WiredJournalCapability`) should call
+   * this method — normal appends must never touch the seq counter.
+   */
+  resetForRotation(): void {
+    this.seq = 0;
+    this.metadataWritten = true;
+    this.directorySynced = true;
+  }
+
   append(input: AppendInput): Promise<WireRecord> {
     return this.queue.run(async () => {
       if (this.lifecycle.state === 'completing') {

@@ -15,6 +15,7 @@ import type {
   JournalCapability,
   KosongAdapter,
   LifecycleGate,
+  RotateResult,
   Runtime,
   SummaryMessage,
 } from '../../../src/soul/index.js';
@@ -60,8 +61,9 @@ export function createSpyJournalCapability(): SpyJournalCapability {
   const rotations: CompactionBoundaryRecord[] = [];
   return {
     rotations,
-    async rotate(boundaryRecord) {
+    async rotate(boundaryRecord): Promise<RotateResult> {
       rotations.push(boundaryRecord);
+      return { archiveFile: `wire.${rotations.length}.jsonl` };
     },
   };
 }

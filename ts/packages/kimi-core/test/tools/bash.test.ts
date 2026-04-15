@@ -22,7 +22,7 @@ import type { Writable } from 'node:stream';
 import type { KaosProcess } from '@moonshot-ai/kaos';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { BashTool } from '../../src/tools/index.js';
+import { BackgroundProcessManager, BashTool } from '../../src/tools/index.js';
 import { createFakeKaos, toolContentString } from './fixtures/fake-kaos.js';
 
 function fakeProcess(opts: { exitCode: number; stdout: string; stderr: string }): KaosProcess {
@@ -242,5 +242,130 @@ describe('BashTool', () => {
     const result = await tool.execute('call_pre_abort', { command: 'echo hi' }, controller.signal);
     expect(result.isError).toBe(true);
     expect(toolContentString(result)).toContain('Aborted');
+  });
+
+  // ── run_in_background tests (M1) ─────────────────────────────────
+
+  describe('run_in_background', () => {
+    function makeBgBashTool(process?: KaosProcess, bgManager?: BackgroundProcessManager): BashTool {
+      const proc = process ?? fakeProcess({ exitCode: 0, stdout: '', stderr: '' });
+      const kaos = createFakeKaos({
+        exec: vi.fn().mockResolvedValue(proc),
+        execWithEnv: vi.fn().mockResolvedValue(proc),
+      });
+      return new BashTool(kaos, '/workspace', bgManager);
+    }
+
+    it('returns task_id and pid when run_in_background=true', async () => {
+      const bgManager = new BackgroundProcessManager();
+      const proc = fakeProcess({ exitCode: 0, stdout: '', stderr: '' });
+      const tool = makeBgBashTool(proc, bgManager);
+      const result = await tool.execute(
+        'call_bg_1',
+        {
+          command: 'sleep 60',
+          run_in_background: true,
+          description: 'long running task',
+        },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const content = toolContentString(result);
+      expect(content).toContain('task_id: bg_');
+      expect(content).toContain('pid:');
+      expect(content).toContain('long running task');
+      expect(content).toContain('automatic_notification: true');
+    });
+
+    it('returns isError when no BackgroundProcessManager is configured', async () => {
+      // Construct BashTool without backgroundManager
+      // oxlint-disable-next-line unicorn/no-useless-undefined
+      const tool = makeBgBashTool();
+      const result = await tool.execute(
+        'call_bg_no_mgr',
+        {
+          command: 'sleep 60',
+          run_in_background: true,
+          description: 'should fail',
+        },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBe(true);
+      expect(toolContentString(result)).toContain('not available');
+    });
+
+    it('returns isError when description is missing', async () => {
+      const bgManager = new BackgroundProcessManager();
+      const tool = makeBgBashTool(undefined, bgManager);
+      const result = await tool.execute(
+        'call_bg_no_desc',
+        {
+          command: 'sleep 60',
+          run_in_background: true,
+          // No description provided
+        },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBe(true);
+      expect(toolContentString(result)).toContain('description is required');
+    });
+
+    it('returns isError when description is empty/whitespace', async () => {
+      const bgManager = new BackgroundProcessManager();
+      const tool = makeBgBashTool(undefined, bgManager);
+      const result = await tool.execute(
+        'call_bg_empty_desc',
+        {
+          command: 'sleep 60',
+          run_in_background: true,
+          description: '   ',
+        },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBe(true);
+      expect(toolContentString(result)).toContain('description is required');
+    });
+
+    it('background task can be stopped via TaskStop after launch', async () => {
+      const bgManager = new BackgroundProcessManager();
+      const { proc } = pendingProcess(143);
+      const tool = makeBgBashTool(proc, bgManager);
+
+      const launchResult = await tool.execute(
+        'call_bg_stop',
+        {
+          command: 'sleep 999',
+          run_in_background: true,
+          description: 'stoppable task',
+        },
+        new AbortController().signal,
+      );
+      expect(launchResult.isError).toBeFalsy();
+
+      // Extract task_id from output.
+      const content = toolContentString(launchResult);
+      const match = /task_id: (bg_\d+)/.exec(content);
+      expect(match).not.toBeNull();
+      const taskId = match![1]!;
+
+      // Verify it is registered as running.
+      const taskInfo = bgManager.getTask(taskId);
+      expect(taskInfo).toBeDefined();
+      expect(taskInfo!.status).toBe('running');
+
+      // Stop it.
+      const stopResult = await bgManager.stop(taskId);
+      expect(stopResult).toBeDefined();
+      expect(stopResult!.status).toBe('killed');
+    });
+
+    it('getActivityDescription includes "background" prefix', () => {
+      const tool = makeBgBashTool();
+      const desc = tool.getActivityDescription({
+        command: 'sleep 60',
+        run_in_background: true,
+      });
+      expect(desc).toContain('background');
+    });
   });
 });

@@ -132,10 +132,31 @@ export class HookEngine {
 // ── Matcher value extraction ─────────────────────────────────────────────
 
 /**
- * Extracts the string fed to a hook's matcher regex. For PreToolUse /
- * PostToolUse / OnToolFailure events the matcher is run against the tool
- * name, mirroring Python's `matcher_value=toolCall.name` contract.
+ * Extracts the string fed to a hook's matcher regex. Event-dependent:
+ *
+ *   - `PreToolUse` / `PostToolUse` / `OnToolFailure` — tool name
+ *     (mirrors Python's `matcher_value=toolCall.name` contract).
+ *   - `UserPromptSubmit` — the prompt text itself (Python parity).
+ *   - `Stop` — the turn reason (`done` / `cancelled` / `error`), so
+ *     hooks can filter e.g. `/^error$/`.
+ *   - `Notification` — the notification type string, so a single hook
+ *     can subscribe to an entire notification class via regex.
  */
 function extractMatcherValue(input: HookInput): string {
-  return input.toolCall.name;
+  switch (input.event) {
+    case 'PreToolUse':
+    case 'PostToolUse':
+    case 'OnToolFailure': {
+      return input.toolCall.name;
+    }
+    case 'UserPromptSubmit': {
+      return input.prompt;
+    }
+    case 'Stop': {
+      return input.reason;
+    }
+    case 'Notification': {
+      return input.notificationType;
+    }
+  }
 }

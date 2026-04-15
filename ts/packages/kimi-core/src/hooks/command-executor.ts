@@ -50,11 +50,21 @@ export class CommandHookExecutor implements HookExecutor {
 
     if (signal.aborted) return FAIL_OPEN;
 
+    // Tool-scoped events (PreToolUse / PostToolUse / OnToolFailure) fill
+    // in TOOL_NAME / TOOL_CALL_ID; lifecycle events (UserPromptSubmit /
+    // Stop / Notification) leave those fields empty and rely on the hook
+    // script reading JSON from stdin for event-specific payload.
     const env: Record<string, string> = {
       KIMI_HOOK_EVENT: input.event,
-      KIMI_HOOK_TOOL_NAME: input.toolCall.name,
-      KIMI_HOOK_TOOL_CALL_ID: input.toolCall.id,
     };
+    if (
+      input.event === 'PreToolUse' ||
+      input.event === 'PostToolUse' ||
+      input.event === 'OnToolFailure'
+    ) {
+      env['KIMI_HOOK_TOOL_NAME'] = input.toolCall.name;
+      env['KIMI_HOOK_TOOL_CALL_ID'] = input.toolCall.id;
+    }
 
     const wrappedCommand =
       cmdHook.cwd !== undefined

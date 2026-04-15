@@ -31,6 +31,8 @@
 
 import { randomUUID } from 'node:crypto';
 
+import type { HookEngine } from '../hooks/engine.js';
+import type { NotificationInput } from '../hooks/types.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import type { NotificationRecord } from '../storage/wire-record.js';
 import type { SessionEventBus } from './session-event-bus.js';
@@ -77,6 +79,32 @@ export interface NotificationManagerDeps {
    * `console.warn`. Tests inject a spy.
    */
   readonly logger?: ((msg: string, err: unknown) => void) | undefined;
+  /**
+   * Slice 3.6 — optional hook engine reference. When set, each `emit`
+   * call fires the `Notification` hook event after the fan-out
+   * completes. Fire-and-forget: hook subscribers cannot block or
+   * modify the notification. Errors are swallowed through the same
+   * `logger` path as other per-sink failures.
+   */
+  readonly hookEngine?: HookEngine | undefined;
+  /**
+   * Slice 3.6 — session id forwarded to hook input payloads. Defaults
+   * to `'unknown'` when absent.
+   */
+  readonly sessionId?: string | undefined;
+  /**
+   * Slice 3.6 — callback that returns the currently active turn id at
+   * the moment `emit` runs. NotificationManager cannot depend on
+   * TurnManager directly (cyclic), so the host wires this callback in
+   * to keep hook input payloads accurate. Defaults to returning
+   * `'unknown'` when the session has no active turn.
+   */
+  readonly currentTurnId?: (() => string) | undefined;
+  /**
+   * Slice 3.6 — canonical agent id forwarded to hook input payloads.
+   * Defaults to `'agent_main'`.
+   */
+  readonly agentId?: string | undefined;
 }
 
 /**
@@ -222,7 +250,33 @@ export class NotificationManager {
       }
     }
 
+    // Slice 3.6 — Notification lifecycle hook. Dispatched after the
+    // three-way sink fan-out completes so a hook subscriber reading
+    // the journal sees the exact same NotificationData. Fire-and-
+    // forget: hook errors are swallowed via `logWarn` and do NOT
+    // affect the returned `EmitResult`.
+    this.dispatchNotificationHook(data);
+
     return { id, deduped: false, delivered_at: deliveredAt };
+  }
+
+  private dispatchNotificationHook(data: NotificationData): void {
+    const engine = this.deps.hookEngine;
+    if (engine === undefined) return;
+    const input: NotificationInput = {
+      event: 'Notification',
+      sessionId: this.deps.sessionId ?? 'unknown',
+      turnId: this.deps.currentTurnId?.() ?? 'unknown',
+      agentId: this.deps.agentId ?? 'agent_main',
+      notificationType: data.type,
+      title: data.title,
+      body: data.body,
+      severity: data.severity,
+    };
+    const controller = new AbortController();
+    engine.executeHooks('Notification', input, controller.signal).catch((error: unknown) => {
+      this.logWarn('notification hook dispatch failed', error);
+    });
   }
 
   /**

@@ -48,14 +48,17 @@ export function createStubCompactionProvider(): CompactionProvider {
 }
 
 /**
- * Slice 3 journal capability placeholder — Slice 6 will replace this with
- * the real wire.jsonl rotation path. The stub is a silent no-op so code
- * that optimistically calls `rotate` in a test harness does not blow up.
+ * Slice 3 journal capability placeholder — Slice 3.3 provides
+ * `WiredJournalCapability` as the real implementation. The stub is a
+ * silent no-op so code that optimistically calls `rotate` in a test
+ * harness does not blow up.
  */
 export function createStubJournalCapability(): JournalCapability {
+  let rotationCount = 0;
   return {
     async rotate() {
-      // Slice 6 lands the real rotation path.
+      rotationCount += 1;
+      return { archiveFile: `wire.${rotationCount}.jsonl` };
     },
   };
 }

@@ -68,3 +68,60 @@ export { GlobTool, MAX_MATCHES as GLOB_MAX_MATCHES } from './glob.js';
 
 export { AgentTool, AgentToolInputSchema, AgentToolOutputSchema } from './agent.js';
 export type { AgentToolInput, AgentToolOutput } from './agent.js';
+
+// ── AskUserQuestion tool (Slice 3.2) ──────────────────────────────────
+
+export { AskUserQuestionTool, AskUserQuestionInputSchema } from './ask-user.js';
+export type { AskUserQuestionInput } from './ask-user.js';
+export { AlwaysSkipQuestionRuntime } from './question-runtime.js';
+export type {
+  QuestionItem,
+  QuestionOption,
+  QuestionRequest,
+  QuestionResult,
+  QuestionRuntime,
+} from './question-runtime.js';
+
+// ── Think tool (Slice 3.5) ────────────────────────────────────────────
+
+export { ThinkTool, ThinkInputSchema } from './think.js';
+export type { ThinkInput } from './think.js';
+
+// ── Background task tools (Slice 3.5) ─────────────────────────────────
+
+export {
+  BackgroundProcessManager,
+  TaskListTool,
+  TaskListInputSchema,
+  TaskOutputTool,
+  TaskOutputInputSchema,
+  TaskStopTool,
+  TaskStopInputSchema,
+} from './background/index.js';
+export type {
+  BackgroundTaskInfo,
+  BackgroundTaskStatus,
+  TaskListInput,
+  TaskOutputInput,
+  TaskStopInput,
+} from './background/index.js';
+
+// ── Host-injected web tools (Slice 3.5) ───────────────────────────────
+
+export { WebSearchTool, WebSearchInputSchema } from './web-search.js';
+export type { WebSearchInput, WebSearchProvider, WebSearchResult } from './web-search.js';
+export { FetchURLTool, FetchURLInputSchema } from './fetch-url.js';
+export type { FetchURLInput, UrlFetcher } from './fetch-url.js';
+
+// ── ReadMediaFile tool (Slice 3.5) ────────────────────────────────────
+
+export { ReadMediaFileTool, ReadMediaFileInputSchema } from './read-media.js';
+export type { ReadMediaFileInput } from './read-media.js';
+
+// ── Plan-mode tools (Slice 3.6) ───────────────────────────────────────
+
+export { SetTodoListTool, SetTodoListInputSchema, InMemoryTodoStore } from './set-todo-list.js';
+export type { SetTodoListInput, TodoItem, TodoStatus, TodoStore } from './set-todo-list.js';
+
+export { ExitPlanModeTool, ExitPlanModeInputSchema } from './exit-plan-mode.js';
+export type { ExitPlanModeInput, ExitPlanModeDeps } from './exit-plan-mode.js';

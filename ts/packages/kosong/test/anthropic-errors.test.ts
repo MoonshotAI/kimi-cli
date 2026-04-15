@@ -95,7 +95,7 @@ describe('convertAnthropicError', () => {
 describe('non-stream error propagation', () => {
   function createNonStreamProvider(): AnthropicChatProvider {
     return new AnthropicChatProvider({
-      model: 'claude-sonnet-4-20250514',
+      model: 'k25',
       apiKey: 'test-key',
       defaultMaxTokens: 1024,
       stream: false,
@@ -201,7 +201,7 @@ describe('non-stream error propagation', () => {
 describe('stream error propagation', () => {
   function createStreamProvider(): AnthropicChatProvider {
     return new AnthropicChatProvider({
-      model: 'claude-sonnet-4-20250514',
+      model: 'k25',
       apiKey: 'test-key',
       defaultMaxTokens: 1024,
       stream: true,

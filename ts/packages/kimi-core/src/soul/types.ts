@@ -177,7 +177,5 @@ export interface SoulConfig {
   maxSteps?: number | undefined;
   beforeToolCall?: BeforeToolCallHook | undefined;
   afterToolCall?: AfterToolCallHook | undefined;
-  // TODO: Slice 3 TurnManager/SoulPlus needs to populate compactionConfig
-  // when constructing SoulConfig from the model's context window size.
   compactionConfig?: CompactionConfig | undefined;
 }

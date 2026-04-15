@@ -14,7 +14,7 @@
  * and rolls back the lowest-numbered archive to `wire.jsonl`.
  */
 
-import { readdir, rename } from 'node:fs/promises';
+import { readdir, readFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { syncDir, writeFileAtomicDurable } from './fs-durability.js';
@@ -195,41 +195,87 @@ export async function replayWireSession(
 // ── Crash recovery (§4.7) ─────────────────────────────────────────────
 
 /**
+ * Find the highest-numbered archive in a list of archive filenames.
+ * Returns the filename and its number, or `undefined` if the list is empty.
+ */
+function findHighestArchive(archives: string[]): { name: string; n: number } | undefined {
+  let highestN = 0;
+  let result: string | undefined;
+  for (const name of archives) {
+    const n = extractArchiveNumber(name);
+    if (n > highestN) {
+      highestN = n;
+      result = name;
+    }
+  }
+  return result !== undefined ? { name: result, n: highestN } : undefined;
+}
+
+/**
  * Detect and recover from a crash between file rotation steps.
  *
- * Scenario: `wire.jsonl` was renamed to `wire.N.jsonl` but the process
- * crashed before the new `wire.jsonl` was created. On resume, we detect
- * "wire.jsonl does not exist but wire.N.jsonl does" and roll back the
- * highest-numbered archive (most recently created) to `wire.jsonl`.
+ * Two scenarios are handled:
+ *
+ * 1. **wire.jsonl missing**: `wire.jsonl` was renamed to `wire.N.jsonl`
+ *    but the process crashed before the new `wire.jsonl` was created.
+ *    Recovery: roll back the highest-numbered archive to `wire.jsonl`.
+ *
+ * 2. **wire.jsonl is metadata-only** (Slice 3.3 / M04): the rename
+ *    succeeded AND the new `wire.jsonl` was created with a metadata
+ *    header, but the process crashed before the compaction record was
+ *    written. The new file has only the metadata line — no boundary /
+ *    compaction record, no conversation data. Recovery: remove the
+ *    metadata-only file and roll back the highest archive.
  *
  * Returns `true` if recovery was performed, `false` if no recovery was needed.
  */
 export async function recoverRotation(sessionDir: string): Promise<boolean> {
   const entries = await readdir(sessionDir);
-
-  // If wire.jsonl exists, no recovery needed
-  if (entries.includes('wire.jsonl')) {
-    return false;
-  }
-
-  // Find archives sorted by number ascending (lowest first)
   const archives = entries.filter((e) => ARCHIVE_PATTERN.test(e));
 
-  // Find highest-numbered archive (most recently created per "higher N = newer")
-  let highestN = 0;
-  let toRollback: string | undefined;
-  for (const name of archives) {
-    const n = extractArchiveNumber(name);
-    if (n > highestN) {
-      highestN = n;
-      toRollback = name;
+  // Case 1: wire.jsonl missing — roll back highest archive
+  if (!entries.includes('wire.jsonl')) {
+    const highest = findHighestArchive(archives);
+    if (highest === undefined) return false;
+    await rename(join(sessionDir, highest.name), join(sessionDir, 'wire.jsonl'));
+    return true;
+  }
+
+  // Case 2: wire.jsonl exists but is metadata-only AND archives exist.
+  // A metadata-only current file with archives present indicates a
+  // half-complete rotation: the physical rename + new file creation
+  // succeeded but the compaction record was never written.
+  if (archives.length > 0) {
+    const currentPath = join(sessionDir, 'wire.jsonl');
+    const content = await readFile(currentPath, 'utf8');
+    const lines = content
+      .trim()
+      .split('\n')
+      .filter((l) => l.length > 0);
+
+    // A fresh post-rotation file has exactly one line: the metadata header.
+    // If there are more lines, the compaction record (or other records)
+    // were successfully written — no recovery needed.
+    if (lines.length === 1) {
+      let isMetadata = false;
+      try {
+        const parsed = JSON.parse(lines[0] ?? '') as Record<string, unknown>;
+        isMetadata = parsed['type'] === 'metadata';
+      } catch {
+        // Malformed first line — not metadata, don't recover
+      }
+
+      if (isMetadata) {
+        const highest = findHighestArchive(archives);
+        if (highest !== undefined) {
+          // Remove the half-complete new file and restore the archive
+          await unlink(currentPath);
+          await rename(join(sessionDir, highest.name), join(sessionDir, 'wire.jsonl'));
+          return true;
+        }
+      }
     }
   }
 
-  if (toRollback === undefined) {
-    return false;
-  }
-  await rename(join(sessionDir, toRollback), join(sessionDir, 'wire.jsonl'));
-
-  return true;
+  return false;
 }

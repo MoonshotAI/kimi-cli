@@ -438,7 +438,7 @@ describe('OpenAIResponsesStreamedMessage finish reason', () => {
 
 function createAnthropicStreamProvider(): AnthropicChatProvider {
   return new AnthropicChatProvider({
-    model: 'claude-sonnet-4-20250514',
+    model: 'k25',
     apiKey: 'test-key',
     defaultMaxTokens: 1024,
     stream: true,
@@ -447,7 +447,7 @@ function createAnthropicStreamProvider(): AnthropicChatProvider {
 
 function createAnthropicNonStreamProvider(): AnthropicChatProvider {
   return new AnthropicChatProvider({
-    model: 'claude-sonnet-4-20250514',
+    model: 'k25',
     apiKey: 'test-key',
     defaultMaxTokens: 1024,
     stream: false,

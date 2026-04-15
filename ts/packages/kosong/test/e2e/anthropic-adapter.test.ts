@@ -23,7 +23,7 @@ async function collectParts(
 
 function makeAnthropicProvider(): AnthropicChatProvider {
   return new AnthropicChatProvider({
-    model: 'claude-sonnet-4-20250514',
+    model: 'k25',
     apiKey: 'test-key',
     defaultMaxTokens: 1024,
     stream: true,
@@ -65,7 +65,7 @@ describe('e2e: Anthropic adapter bridge', () => {
         expect(request.pathname).toBe('/v1/messages');
         expect(request.headers['anthropic-beta']).toContain('interleaved-thinking-2025-05-14');
         expect(request.headers['x-api-key']).toBe('test-key');
-        expect(body['model']).toBe('claude-sonnet-4-20250514');
+        expect(body['model']).toBe('k25');
         expect(body['system']).toEqual([
           { type: 'text', text: 'You are helpful.', cache_control: { type: 'ephemeral' } },
         ]);
@@ -103,7 +103,7 @@ describe('e2e: Anthropic adapter bridge', () => {
               id: 'msg_1',
               type: 'message',
               role: 'assistant',
-              model: 'claude-sonnet-4-20250514',
+              model: 'k25',
               content: [],
               stop_reason: null,
               stop_sequence: null,

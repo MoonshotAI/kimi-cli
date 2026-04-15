@@ -138,6 +138,9 @@ importers:
       '@moonshot-ai/kosong':
         specifier: workspace:^
         version: link:../kosong
+      smol-toml:
+        specifier: ^1.6.1
+        version: 1.6.1
       zod:
         specifier: 'catalog:'
         version: 4.3.6

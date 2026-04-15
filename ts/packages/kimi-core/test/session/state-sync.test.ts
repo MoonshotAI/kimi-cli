@@ -15,8 +15,6 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { PathConfig } from '../../src/session/path-config.js';
-import { SessionManager, type SessionInfo } from '../../src/session/session-manager.js';
 import { StateCache, type SessionState } from '../../src/session/state-cache.js';
 
 // ── StateCache basic round-trip tests ─────────────────────────────────
@@ -94,48 +92,10 @@ describe('StateCache round-trip', () => {
   });
 });
 
-// ── SessionManager.list from state.json tests ─────────────────────────
-
-describe('SessionManager.list', () => {
-  it('lists all created sessions', () => {
-    const paths = new PathConfig({ home: tmpdir() });
-    const mgr = new SessionManager(paths);
-    mgr.create({ session_id: 'ses_a', model: 'model-a' });
-    mgr.create({ session_id: 'ses_b', model: 'model-b' });
-    const list = mgr.list();
-    expect(list).toHaveLength(2);
-    const ids = list.map((s: SessionInfo) => s.session_id);
-    expect(ids).toContain('ses_a');
-    expect(ids).toContain('ses_b');
-  });
-
-  it('returns empty array when no sessions exist', () => {
-    const paths = new PathConfig({ home: tmpdir() });
-    const mgr = new SessionManager(paths);
-    expect(mgr.list()).toEqual([]);
-  });
-
-  it('reflects model in session list', () => {
-    const paths = new PathConfig({ home: tmpdir() });
-    const mgr = new SessionManager(paths);
-    mgr.create({ session_id: 'ses_c', model: 'gpt-4o' });
-    const list = mgr.list();
-    const session = list.find((s: SessionInfo) => s.session_id === 'ses_c');
-    expect(session).toBeDefined();
-    expect(session!.model).toBe('gpt-4o');
-  });
-
-  it('does not include destroyed sessions', async () => {
-    const paths = new PathConfig({ home: tmpdir() });
-    const mgr = new SessionManager(paths);
-    mgr.create({ session_id: 'ses_d' });
-    mgr.create({ session_id: 'ses_e' });
-    await mgr.destroy('ses_d');
-    const list = mgr.list();
-    expect(list).toHaveLength(1);
-    expect(list[0]!.session_id).toBe('ses_e');
-  });
-});
+// ── SessionManager.listSessions from state.json tests ───────────────
+// NOTE: These tests use the real async filesystem-backed SessionManager
+// (Slice 3.4). The old synchronous Map-based tests are obsolete.
+// Full SessionManager lifecycle tests live in session-manager.test.ts.
 
 // ── state.json update after wire events (integration) ─────────────────
 

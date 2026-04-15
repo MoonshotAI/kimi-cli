@@ -43,6 +43,7 @@ export type {
   KosongAdapter,
   LifecycleGate,
   LLMToolDefinition,
+  RotateResult,
   Runtime,
   SummaryMessage,
 } from './runtime.js';
@@ -55,6 +56,7 @@ export type { CompactionConfig } from './compaction.js';
 export {
   DEFAULT_RESERVED_CONTEXT_SIZE,
   DEFAULT_TRIGGER_RATIO,
+  estimateTokens,
   runCompaction,
   shouldCompact,
 } from './compaction.js';

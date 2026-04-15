@@ -32,10 +32,13 @@
  * vocabulary so the `src/soul/` layer stays clean (铁律 2).
  */
 
-import { runSoulTurn } from '../soul/index.js';
+import type { HookEngine } from '../hooks/engine.js';
+import type { StopInput, UserPromptSubmitInput } from '../hooks/types.js';
+import { runCompaction, runSoulTurn } from '../soul/index.js';
 import type {
   AfterToolCallHook,
   BeforeToolCallHook,
+  CompactionConfig,
   EventSink,
   Runtime,
   SoulConfig,
@@ -45,6 +48,7 @@ import type {
 import type { FullContextState, UserInput } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import type { ApprovalSource } from '../storage/wire-record.js';
+import type { DynamicInjectionManager, InjectionContext } from './dynamic-injection.js';
 import type { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
 import type { NotificationData } from './notification-manager.js';
 import type { ToolCallOrchestrator } from './orchestrator.js';
@@ -92,6 +96,44 @@ export interface TurnManagerDeps {
   readonly sessionRules?: readonly PermissionRule[] | undefined;
   /** Default permission mode. Default: `'default'`. */
   readonly permissionMode?: PermissionMode | undefined;
+  /**
+   * Compaction configuration (Slice 3.3 / M05). When set, the Soul
+   * while-loop checks `shouldCompact()` at every step boundary and
+   * auto-triggers compaction when token pressure crosses the threshold.
+   * When `undefined`, auto-compaction is disabled (safe default for
+   * embedded / test scenarios that don't configure a model's context
+   * window size).
+   */
+  readonly compactionConfig?: CompactionConfig | undefined;
+  /**
+   * Slice 3.6 — Dynamic injection manager. When set, `launchTurn`
+   * computes active injections (plan mode reminder / yolo mode
+   * reminder / host-supplied providers) and stashes them into
+   * ContextState so the next `buildMessages()` call surfaces them as
+   * `<system-reminder>` blocks. When `undefined`, no dynamic
+   * injections fire (embed / test default).
+   */
+  readonly dynamicInjectionManager?: DynamicInjectionManager | undefined;
+  /**
+   * Slice 3.6 — Optional hook engine reference. When set, TurnManager
+   * dispatches lifecycle hook events (`UserPromptSubmit` / `Stop`) at
+   * their trigger sites. Tool-scoped hook events
+   * (`PreToolUse` / `PostToolUse` / `OnToolFailure`) are still owned
+   * by the ToolCallOrchestrator; this reference only covers events
+   * that the orchestrator does not see.
+   */
+  readonly hookEngine?: HookEngine | undefined;
+  /**
+   * Slice 3.6 — Session id forwarded into every lifecycle hook input
+   * payload. Defaults to `'unknown'` if absent (test scenarios).
+   */
+  readonly sessionId?: string | undefined;
+  /**
+   * Slice 3.6 — Initial plan-mode flag. `setPlanMode` updates this at
+   * runtime; DynamicInjectionManager reads it when building the
+   * per-turn injection context. Default: `false`.
+   */
+  readonly planMode?: boolean | undefined;
 }
 
 export interface TurnState {
@@ -136,12 +178,30 @@ export class TurnManager {
    */
   private pendingNotifications: NotificationData[] = [];
 
+  /**
+   * Slice 3.6 — live plan-mode flag. `SessionControl.setPlanMode` drives
+   * this via `setPlanMode` below; `DynamicInjectionManager` reads it at
+   * every `launchTurn` so plan-mode reminders appear on the very next
+   * LLM step.
+   */
+  private planMode: boolean;
+
+  /**
+   * Slice 3.6 — monotonic turn counter. `allocateTurnId` generates
+   * `turn_${n}` ids from the same counter; we also use it as the
+   * `turnNumber` field on the DynamicInjectionManager context so
+   * providers that throttle by turn count have a stable input.
+   */
+  private readonly sessionId: string;
+
   constructor(deps: TurnManagerDeps) {
     this.deps = deps;
     this.agentType = deps.agentType ?? 'main';
     this.agentId = deps.agentId ?? 'agent_main';
     this.sessionRules = [...(deps.sessionRules ?? [])];
     this.permissionMode = deps.permissionMode ?? 'default';
+    this.planMode = deps.planMode ?? false;
+    this.sessionId = deps.sessionId ?? 'unknown';
   }
 
   // ── Permission control surface (Slice 2.2) ──────────────────────────
@@ -159,9 +219,35 @@ export class TurnManager {
     return this.permissionMode;
   }
 
+  /**
+   * Slice 3.6 — toggle plan mode. SessionControl.setPlanMode fan-outs to
+   * this setter so the DynamicInjectionManager reads the same state the
+   * journal records. The new flag takes effect on the next `launchTurn`
+   * (mid-turn toggles do not retroactively mutate the current turn's
+   * injection context — this matches Python parity).
+   */
+  setPlanMode(enabled: boolean): void {
+    this.planMode = enabled;
+  }
+
+  getPlanMode(): boolean {
+    return this.planMode;
+  }
+
   /** Return this TurnManager's canonical agent id. */
   getAgentId(): string {
     return this.agentId;
+  }
+
+  /**
+   * Return the active turn id, or `undefined` when no turn is in progress.
+   * Used by SessionManager (Slice 3.4) to wire the `currentTurnId` callback
+   * on WiredContextState — the callback must reflect TurnManager's live
+   * turn state so that mid-turn WAL writes (assistant_message, tool_result)
+   * carry the correct `turn_id`.
+   */
+  getCurrentTurnId(): string | undefined {
+    return this.currentTurnId;
   }
 
   /**
@@ -250,6 +336,68 @@ export class TurnManager {
     return this.pendingNotifications;
   }
 
+  // ── Dynamic injection (Slice 3.6) ──────────────────────────────────
+
+  /**
+   * Compute the active set of DynamicInjection entries for the current
+   * turn and stash each one into ContextState as a `system_reminder`
+   * ephemeral. No-op if no DynamicInjectionManager was configured.
+   *
+   * Called by `launchTurn` immediately before the notification drain,
+   * so the resulting `<system-reminder>` blocks land at the top of the
+   * synthetic message pile surfaced to the next LLM step.
+   */
+  private drainDynamicInjectionsIntoContext(turnId: string): void {
+    const manager = this.deps.dynamicInjectionManager;
+    if (manager === undefined) return;
+    const ctx: InjectionContext = {
+      planMode: this.planMode,
+      permissionMode: this.permissionMode,
+      turnNumber: this.extractTurnNumber(turnId),
+    };
+    const injections = manager.computeInjections(ctx);
+    for (const injection of injections) {
+      this.deps.contextState.stashEphemeralInjection(injection);
+    }
+  }
+
+  /**
+   * Parse the `turn_N` id format produced by `allocateTurnId` back into
+   * its integer counter, clamping to 1 on any unexpected shape. We
+   * parse instead of storing a separate counter so crash-resume /
+   * alternative turn-id allocators continue to work.
+   */
+  private extractTurnNumber(turnId: string): number {
+    const match = /^turn_(\d+)$/.exec(turnId);
+    if (match === null) return 1;
+    const parsed = Number.parseInt(match[1] ?? '1', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  }
+
+  // ── Lifecycle hook dispatch (Slice 3.6) ────────────────────────────
+
+  /**
+   * Fire-and-forget dispatch of a lifecycle hook event. Tool-scoped
+   * events (`PreToolUse` etc.) go through the ToolCallOrchestrator; this
+   * helper only handles the three lifecycle events TurnManager owns
+   * (`UserPromptSubmit` / `Stop`). NotificationManager owns
+   * `Notification` dispatch directly.
+   *
+   * Errors are swallowed because lifecycle hooks are observational —
+   * there is no `blockAction` semantics in Slice 3.6 for these events
+   * (the Python port treats `Stop` / `UserPromptSubmit` as block-capable
+   * but the TS port intentionally simplifies to fire-and-forget for now
+   * so a slow hook cannot stall turn lifecycle).
+   */
+  private dispatchLifecycleHook(input: UserPromptSubmitInput | StopInput): void {
+    const engine = this.deps.hookEngine;
+    if (engine === undefined) return;
+    const controller = new AbortController();
+    engine.executeHooks(input.event, input, controller.signal).catch(() => {
+      // swallow — lifecycle hooks are fire-and-forget
+    });
+  }
+
   // ── Conversation-channel handlers ────────────────────────────────────
 
   async handlePrompt(req: { data: { input: UserInput } }): Promise<DispatchResponse> {
@@ -299,6 +447,18 @@ export class TurnManager {
       await this.deps.contextState.appendUserMessage(input, turnId);
 
       this.deps.lifecycleStateMachine.transitionTo('active');
+
+      // Slice 3.6 — UserPromptSubmit lifecycle hook. Fires after the
+      // WAL `user_message` is durable so a hook subscriber reading the
+      // journal can safely see the same prompt. Fire-and-forget: slow
+      // hooks must not delay `handlePrompt`'s return.
+      this.dispatchLifecycleHook({
+        event: 'UserPromptSubmit',
+        sessionId: this.sessionId,
+        turnId,
+        agentId: this.agentId,
+        prompt: input.text,
+      });
 
       const trigger: TurnTrigger = { kind: 'user_prompt', input };
       const allocatedId = this.launchTurn(turnId, trigger);
@@ -356,6 +516,44 @@ export class TurnManager {
   async handleSteer(req: { data: { input: UserInput } }): Promise<DispatchResponse> {
     this.deps.contextState.pushSteer(req.data.input);
     return { ok: true };
+  }
+
+  // ── Manual compaction (Slice 3.3 — /compact) ───────────────────────
+
+  /**
+   * Trigger a manual compaction outside of a Soul turn (the `/compact`
+   * slash command path). Lifecycle dance:
+   *
+   *   idle → active → (runCompaction: active → compacting → active) →
+   *   completing → idle
+   *
+   * Throws if the session is not idle (a turn is in progress).
+   */
+  async triggerCompaction(): Promise<void> {
+    if (!this.deps.lifecycleStateMachine.isIdle() || this.currentTurnId !== undefined) {
+      throw new Error('Cannot compact while a turn is active');
+    }
+
+    const controller = new AbortController();
+    this.deps.lifecycleStateMachine.transitionTo('active');
+    try {
+      await runCompaction(
+        this.deps.contextState,
+        this.deps.runtime,
+        this.deps.sink,
+        controller.signal,
+      );
+    } finally {
+      // runCompaction's finally block transitions compacting → active.
+      // We need to drain through active → completing → idle to return
+      // the session to a quiescent state.
+      if (this.deps.lifecycleStateMachine.isActive()) {
+        this.deps.lifecycleStateMachine.transitionTo('completing');
+      }
+      if (this.deps.lifecycleStateMachine.isCompleting()) {
+        this.deps.lifecycleStateMachine.transitionTo('idle');
+      }
+    }
   }
 
   // ── Internal helpers ────────────────────────────────────────────────
@@ -473,6 +671,16 @@ export class TurnManager {
     const effectiveRules = this.computeTurnRules();
     this.pendingTurnOverrides = undefined;
 
+    // Slice 3.6 — compute dynamic injections (plan mode / yolo mode /
+    // host-supplied providers) and stash them as `system_reminder`
+    // ephemerals BEFORE the notification drain. Ordering is
+    // deliberate: dynamic injections are a more general "system
+    // context" channel and should sit at the top of the synthetic
+    // message block, with any pending notifications coming right
+    // after. Both are consumed by the same `buildMessages()` drain on
+    // the next LLM step.
+    this.drainDynamicInjectionsIntoContext(turnId);
+
     // Slice 2.4 — drain the pending notification queue into
     // ContextState right before Soul starts its LLM loop. The Soul
     // loop calls `context.buildMessages()` once per step; the stash
@@ -489,6 +697,11 @@ export class TurnManager {
       tools: wrappedTools,
       beforeToolCall: this.buildBeforeToolCall(effectiveRules),
       afterToolCall: this.buildAfterToolCall(),
+      // Slice 3.3 / M05: wire compactionConfig into SoulConfig so the
+      // Soul while-loop's shouldCompact() gate is armed.
+      ...(this.deps.compactionConfig !== undefined
+        ? { compactionConfig: this.deps.compactionConfig }
+        : {}),
     };
 
     const input = trigger.input;
@@ -611,6 +824,19 @@ export class TurnManager {
         };
       }
       await this.deps.sessionJournal.appendTurnEnd(turnEnd);
+
+      // Slice 3.6 — Stop lifecycle hook fires immediately after the
+      // WAL `turn_end` append is durable. Fire-and-forget: the 3-hop
+      // lifecycle drain in the `finally` block below must still run
+      // even if a hook subscriber is slow. Hook errors are isolated
+      // inside `dispatchLifecycleHook`.
+      this.dispatchLifecycleHook({
+        event: 'Stop',
+        sessionId: this.sessionId,
+        turnId,
+        agentId: this.agentId,
+        reason,
+      });
     } finally {
       // 3-hop drain: active → completing → idle. The `completing`
       // marker is transient — writing ends before entering it, and the

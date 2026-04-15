@@ -7,7 +7,7 @@ import type { Tool } from '../src/tool.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeAnthropicResponse(model: string = 'claude-sonnet-4-20250514') {
+function makeAnthropicResponse(model: string = 'k25') {
   return {
     id: 'msg_test_123',
     type: 'message',
@@ -20,7 +20,7 @@ function makeAnthropicResponse(model: string = 'claude-sonnet-4-20250514') {
 }
 
 function createProvider(
-  model: string = 'claude-sonnet-4-20250514',
+  model: string = 'k25',
   metadata?: Record<string, string>,
 ): AnthropicChatProvider {
   return new AnthropicChatProvider({
@@ -32,7 +32,7 @@ function createProvider(
   });
 }
 
-function createStreamProvider(model: string = 'claude-sonnet-4-20250514'): AnthropicChatProvider {
+function createStreamProvider(model: string = 'k25'): AnthropicChatProvider {
   return new AnthropicChatProvider({
     model,
     apiKey: 'test-key',
@@ -657,7 +657,7 @@ describe('AnthropicChatProvider', () => {
 
   describe('with thinking', () => {
     it('pre-4.6 model: high -> budget_tokens=32000', async () => {
-      const provider = createProvider('claude-sonnet-4-20250514').withThinking('high');
+      const provider = createProvider('k25').withThinking('high');
       const history: Message[] = [
         { role: 'user', content: [{ type: 'text', text: 'Think' }], toolCalls: [] },
       ];
@@ -667,7 +667,7 @@ describe('AnthropicChatProvider', () => {
     });
 
     it('opus-4-6: uses adaptive thinking', async () => {
-      const provider = createProvider('claude-opus-4-6-20260205').withThinking('high');
+      const provider = createProvider('opus-4-6').withThinking('high');
       const history: Message[] = [
         { role: 'user', content: [{ type: 'text', text: 'Think' }], toolCalls: [] },
       ];
@@ -682,7 +682,7 @@ describe('AnthropicChatProvider', () => {
     });
 
     it('opus-4-6 with thinking off -> disabled', async () => {
-      const provider = createProvider('claude-opus-4-6-20260205').withThinking('off');
+      const provider = createProvider('opus-4-6').withThinking('off');
       const history: Message[] = [
         { role: 'user', content: [{ type: 'text', text: 'Think' }], toolCalls: [] },
       ];
@@ -700,7 +700,7 @@ describe('AnthropicChatProvider', () => {
 
   describe('metadata', () => {
     it('forwards metadata to the request', async () => {
-      const provider = createProvider('claude-sonnet-4-20250514', {
+      const provider = createProvider('k25', {
         user_id: 'test-session-id',
       });
       const history: Message[] = [
@@ -729,12 +729,12 @@ describe('AnthropicChatProvider', () => {
     });
 
     it('opus-4-6 with thinking high -> "high" (adaptive)', () => {
-      const provider = createProvider('claude-opus-4-6-20260205').withThinking('high');
+      const provider = createProvider('k25').withThinking('high');
       expect(provider.thinkingEffort).toBe('high');
     });
 
     it('opus-4-6 with thinking off -> "off"', () => {
-      const provider = createProvider('claude-opus-4-6-20260205').withThinking('off');
+      const provider = createProvider('k25').withThinking('off');
       expect(provider.thinkingEffort).toBe('off');
     });
 
@@ -754,7 +754,7 @@ describe('AnthropicChatProvider', () => {
     it('has correct name and model', () => {
       const provider = createProvider();
       expect(provider.name).toBe('anthropic');
-      expect(provider.modelName).toBe('claude-sonnet-4-20250514');
+      expect(provider.modelName).toBe('k25');
     });
 
     it('withThinking returns a new instance', () => {
@@ -1264,7 +1264,7 @@ describe('AnthropicChatProvider', () => {
   describe('stream option', () => {
     it('defaults to stream: true and calls messages.stream', async () => {
       const provider = new AnthropicChatProvider({
-        model: 'claude-sonnet-4-20250514',
+        model: 'k25',
         apiKey: 'test-key',
         defaultMaxTokens: 1024,
       });
@@ -1349,7 +1349,7 @@ describe('AnthropicChatProvider', () => {
 
     it('preserves apiKey across rebuilds (no re-read of env)', () => {
       const provider = new AnthropicChatProvider({
-        model: 'claude-sonnet-4-20250514',
+        model: 'k25',
         apiKey: 'original-key',
         stream: false,
       });
@@ -1370,14 +1370,14 @@ describe('AnthropicChatProvider', () => {
   describe('modelParameters getter', () => {
     it('returns model + generation kwargs', () => {
       const provider = new AnthropicChatProvider({
-        model: 'claude-sonnet-4-20250514',
+        model: 'k25',
         apiKey: 'test-key',
         defaultMaxTokens: 2048,
       }).withGenerationKwargs({ temperature: 0.5 });
 
       const params = provider.modelParameters;
       expect(params).toMatchObject({
-        model: 'claude-sonnet-4-20250514',
+        model: 'k25',
         temperature: 0.5,
       });
     });
