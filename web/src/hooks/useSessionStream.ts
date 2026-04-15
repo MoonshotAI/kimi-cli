@@ -2441,7 +2441,19 @@ export function useSessionStream(
           }
           if (wsRef.current.readyState !== WebSocket.OPEN) return;
           const elapsed = Date.now() - lastWsMessageTimeRef.current;
-          if (elapsed > 45_000 && statusRef.current === "streaming") {
+          const hasUnsubmittedApproval = Array.from(
+            pendingApprovalRequestsRef.current.values(),
+          ).some((e) => !e.submitted);
+          const hasUnsubmittedQuestion = Array.from(
+            pendingQuestionRequestsRef.current.values(),
+          ).some((e) => !e.submitted);
+          const hasPendingInteraction =
+            hasUnsubmittedApproval || hasUnsubmittedQuestion;
+          if (
+            elapsed > 45_000 &&
+            statusRef.current === "streaming" &&
+            !hasPendingInteraction
+          ) {
             console.warn(
               `[SessionStream] Watchdog: no messages for ${Math.round(elapsed / 1000)}s while streaming, reconnecting...`,
             );
