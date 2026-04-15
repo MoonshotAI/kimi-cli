@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.34.0 (2026-04-14)
+
 - Core: Fix CLI crash on `TaskStop` — stopping a stuck background agent no longer prints `Unhandled exception in event loop / Exception None` and freezes the terminal; the cancelled task is now kept in the manager's live-tasks dict until its runner finishes cleaning up, preventing Python's GC from reaping the still-pending task
 - Shell: Fix inline diff highlights misaligned on lines containing tabs — raw-code diff offsets are now mapped to rendered positions via expandtabs column tracking so highlight spans land correctly after tab expansion
 - Shell: Add `show_thinking_stream` config option to opt back into the legacy streaming reasoning preview — when set to `true`, the live area shows the classic `Thinking...` spinner above a 6-line scrolling preview of the raw reasoning text and the full reasoning markdown is committed to history when the block ends; defaults to `false` to keep the compact 1.32 indicator
