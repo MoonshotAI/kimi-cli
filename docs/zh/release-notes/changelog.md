@@ -4,6 +4,15 @@
 
 ## 未发布
 
+## 1.35.0 (2026-04-15)
+
+- Shell：将 `show_thinking_stream` 默认值改为 `true`，全新安装开箱即可看到流式思考预览；如需保留 1.32 的紧凑指示器，可在配置中将其设为 `false`
+- Web：修复流式 watchdog 在待处理审批请求或问题时误触发重连的问题——当用户正在处理审批请求或回答问题时，45 秒无消息 watchdog 不再强制重连，避免交互被打断
+- Web：修复会话流错误后的恢复问题——当会话进程退出或 read loop 发生异常时，现在在广播错误前先清除过期的 in-flight prompt ID，使前端能够发送新消息而非收到 "Session is busy"；活动状态指示器现在也会显示来自流的具体错误信息
+- Core：修复 Wire 服务端 prompt 处理未捕获异常导致会话永远卡在忙碌状态的问题——SSL 错误、连接错误及其他意外失败现在会被 fallback 处理器捕获并返回 INTERNAL_ERROR，避免异常逃逸导致会话无限挂起
+
+## 1.34.0 (2026-04-14)
+
 - Core：修复 `TaskStop` 取消卡住的后台 agent 时 CLI 崩溃的问题——终端不再打印 `Unhandled exception in event loop / Exception None` 并冻结；已取消的 task 现在会保留在管理器的 live-tasks 字典中，直到 runner 完成清理，避免 Python GC 在 task 仍处 pending 时回收它
 - Shell：修复包含 tab 的行内 Diff 高亮偏移错位的问题——原始代码的 Diff 偏移量现在通过 expandtabs 列跟踪映射到渲染后的位置，确保 tab 展开后高亮区间落在正确位置
 - Shell：新增 `show_thinking_stream` 配置项，可恢复旧版的流式思考预览体验——设为 `true` 后，Live 区域会显示经典的 `Thinking...` spinner 以及 6 行原始思考文本的滚动预览，思考块结束时把完整的思考 markdown 写入历史记录；默认为 `false`，保持 1.32 版本引入的紧凑指示器

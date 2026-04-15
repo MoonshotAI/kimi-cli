@@ -4,6 +4,15 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.35.0 (2026-04-15)
+
+- Shell: Flip `show_thinking_stream` default to `true` so fresh installs see the streaming reasoning preview out of the box; set it to `false` in your config to keep the compact 1.32 indicator
+- Web: Prevent stream watchdog from reconnecting during pending approval or question — the 45-second inactivity watchdog no longer triggers a reconnect while the user is actively handling an approval request or answering a question, preventing interrupted interactions
+- Web: Fix session recovery after stream errors — when a session process exits or hits a read-loop error, stale in-flight prompt IDs are now cleared before broadcasting the error, allowing the frontend to send new messages instead of getting "Session is busy"; the activity status indicator also surfaces the actual error message from the stream
+- Core: Fix Wire server prompt handler leaving sessions stuck busy on uncaught exceptions — SSL errors, connection errors, and other unexpected failures are now caught by a fallback handler and returned as `INTERNAL_ERROR`, allowing the session to recover instead of hanging indefinitely
+
+## 1.34.0 (2026-04-14)
+
 - Core: Fix CLI crash on `TaskStop` — stopping a stuck background agent no longer prints `Unhandled exception in event loop / Exception None` and freezes the terminal; the cancelled task is now kept in the manager's live-tasks dict until its runner finishes cleaning up, preventing Python's GC from reaping the still-pending task
 - Shell: Fix inline diff highlights misaligned on lines containing tabs — raw-code diff offsets are now mapped to rendered positions via expandtabs column tracking so highlight spans land correctly after tab expansion
 - Shell: Add `show_thinking_stream` config option to opt back into the legacy streaming reasoning preview — when set to `true`, the live area shows the classic `Thinking...` spinner above a 6-line scrolling preview of the raw reasoning text and the full reasoning markdown is committed to history when the block ends; defaults to `false` to keep the compact 1.32 indicator
