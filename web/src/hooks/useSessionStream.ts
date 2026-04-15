@@ -353,6 +353,7 @@ export function useSessionStream(
     new Map(),
   );
   const pendingBtwMessageIdsRef = useRef<Map<string, string>>(new Map());
+  const ignoredBtwIdsRef = useRef<Set<string>>(new Set());
 
   // Track if current turn is a /clear command (needs UI clear on turn end)
   const pendingClearRef = useRef(false);
@@ -464,6 +465,31 @@ export function useSessionStream(
     );
   }, [setMessages]);
 
+  const clearPendingBtwMessages = useCallback(
+    (ignoreFutureEnds = false) => {
+      const pendingEntries = Array.from(pendingBtwMessageIdsRef.current);
+      pendingBtwMessageIdsRef.current.clear();
+
+      if (pendingEntries.length === 0) {
+        return;
+      }
+
+      if (ignoreFutureEnds) {
+        for (const [btwId] of pendingEntries) {
+          ignoredBtwIdsRef.current.add(btwId);
+        }
+      }
+
+      const messageIds = new Set(
+        pendingEntries.map(([, messageId]) => messageId),
+      );
+      setMessages((prev) =>
+        prev.filter((message) => !messageIds.has(message.id)),
+      );
+    },
+    [setMessages],
+  );
+
   const applySessionStatus = useCallback(
     (payload: SessionStatusPayload) => {
       const normalized = normalizeSessionStatus(payload);
@@ -492,6 +518,7 @@ export function useSessionStream(
           setStatus("error");
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
+          clearPendingBtwMessages(true);
           completeStreamingMessages();
           interruptStaleToolCalls();
           break;
@@ -501,6 +528,7 @@ export function useSessionStream(
           setStatus("ready");
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
+          clearPendingBtwMessages(true);
           completeStreamingMessages();
           interruptStaleToolCalls();
 
@@ -514,6 +542,7 @@ export function useSessionStream(
       }
     },
     [
+      clearPendingBtwMessages,
       completeStreamingMessages,
       interruptStaleToolCalls,
       normalizeSessionStatus,
@@ -852,6 +881,7 @@ export function useSessionStream(
     pendingApprovalRequestsRef.current?.clear();
     pendingQuestionRequestsRef.current?.clear();
     pendingBtwMessageIdsRef.current?.clear();
+    ignoredBtwIdsRef.current?.clear();
     pendingClearRef.current = false;
     setCurrentStep(0);
     setContextUsage(0);
@@ -1790,6 +1820,7 @@ export function useSessionStream(
           // Clear pending approval and question requests
           pendingApprovalRequestsRef.current.clear();
           pendingQuestionRequestsRef.current.clear();
+          clearPendingBtwMessages(true);
 
           setMessages((prev) =>
             prev.map((msg) => {
@@ -1959,6 +1990,7 @@ export function useSessionStream(
             clearAwaitingFirstResponse();
           }
           const btwPayload = (event as BtwBeginEvent).payload;
+          ignoredBtwIdsRef.current.delete(btwPayload.id);
           const messageId = getNextMessageId("assistant");
           pendingBtwMessageIdsRef.current.set(btwPayload.id, messageId);
           upsertMessage({
@@ -1976,6 +2008,10 @@ export function useSessionStream(
             clearAwaitingFirstResponse();
           }
           const btwPayload = (event as BtwEndEvent).payload;
+          if (ignoredBtwIdsRef.current.delete(btwPayload.id)) {
+            pendingBtwMessageIdsRef.current.delete(btwPayload.id);
+            break;
+          }
           const messageId = pendingBtwMessageIdsRef.current.get(btwPayload.id);
           pendingBtwMessageIdsRef.current.delete(btwPayload.id);
 
@@ -2026,6 +2062,7 @@ export function useSessionStream(
       updateMessageById,
       setAwaitingFirstResponse,
       processSubagentEvent,
+      clearPendingBtwMessages,
     ],
   );
 
@@ -2091,6 +2128,7 @@ export function useSessionStream(
           setStatus("error");
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
+          clearPendingBtwMessages(true);
           // Mark all streaming/subagent messages as complete
           completeStreamingMessages();
           return;
@@ -2118,6 +2156,7 @@ export function useSessionStream(
           awaitingIdleRef.current = false;
           isReplayingRef.current = false;
           setIsReplayingHistory(false);
+          clearPendingBtwMessages(true);
           completeStreamingMessages();
           return;
         }
@@ -2132,6 +2171,7 @@ export function useSessionStream(
           setIsReplayingHistory(false);
           setStatus("ready");
           awaitingIdleRef.current = false;
+          clearPendingBtwMessages();
           return;
         }
 
@@ -2229,6 +2269,7 @@ export function useSessionStream(
       setAwaitingFirstResponse,
       applySessionStatus,
       completeStreamingMessages,
+      clearPendingBtwMessages,
       sendInitialize,
     ],
   );
@@ -2563,6 +2604,7 @@ export function useSessionStream(
         wsRef.current = null;
         pendingMessageRef.current = null; // Clear pending message on close
         pendingApprovalRequestsRef.current.clear();
+        pendingQuestionRequestsRef.current.clear();
         awaitingIdleRef.current = false;
         setAwaitingFirstResponse(false);
         setSessionStatus(null);
@@ -2584,6 +2626,7 @@ export function useSessionStream(
         }
 
         // Mark all streaming/subagent messages as complete
+        clearPendingBtwMessages(true);
         completeStreamingMessages();
         setStatus("ready");
       };
@@ -2597,6 +2640,7 @@ export function useSessionStream(
       setAwaitingFirstResponse(false);
       setStatus("error");
       pendingMessageRef.current = null; // Clear pending message on error
+      clearPendingBtwMessages(true);
     }
   }, [
     sessionId,
@@ -2608,6 +2652,7 @@ export function useSessionStream(
     sendInitialize,
     sendPendingMessage,
     setAwaitingFirstResponse,
+    clearPendingBtwMessages,
     completeStreamingMessages,
   ]);
 
@@ -2638,6 +2683,7 @@ export function useSessionStream(
     lastStatusSeqRef.current = null;
     pendingApprovalRequestsRef.current.clear();
     pendingQuestionRequestsRef.current.clear();
+    clearPendingBtwMessages(true);
 
     // Remove lingering MCP loading indicator (e.g. MCPLoadingEnd was never received)
     const mcpMsgId = mcpLoadingMessageIdRef.current;
@@ -2648,7 +2694,12 @@ export function useSessionStream(
 
     // Mark all streaming/subagent messages as complete
     completeStreamingMessages();
-  }, [completeStreamingMessages, setAwaitingFirstResponse, setMessages]);
+  }, [
+    clearPendingBtwMessages,
+    completeStreamingMessages,
+    setAwaitingFirstResponse,
+    setMessages,
+  ]);
 
   // Send cancel request or disconnect if stream not ready
   const cancel = useCallback(() => {
@@ -2659,6 +2710,7 @@ export function useSessionStream(
       );
       awaitingIdleRef.current = false;
       pendingMessageRef.current = null;
+      clearPendingBtwMessages(true);
       // Clear pending approval/question requests and update message states
       pendingApprovalRequestsRef.current.clear();
       pendingQuestionRequestsRef.current.clear();
@@ -2731,6 +2783,7 @@ export function useSessionStream(
     // Clear all pending approval/question requests and update message states
     pendingApprovalRequestsRef.current.clear();
     pendingQuestionRequestsRef.current.clear();
+    clearPendingBtwMessages(true);
 
     // Always update messages (consistent with StepInterrupted handler)
     setMessages((prev) =>
@@ -2814,7 +2867,13 @@ export function useSessionStream(
     } catch (err) {
       console.error("[SessionStream] Failed to send cancel request:", err);
     }
-  }, [status, disconnect, setAwaitingFirstResponse, setMessages]);
+  }, [
+    status,
+    disconnect,
+    setAwaitingFirstResponse,
+    setMessages,
+    clearPendingBtwMessages,
+  ]);
 
   // Reconnect
   const reconnect = useCallback(() => {
