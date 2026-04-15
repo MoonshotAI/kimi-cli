@@ -1,21 +1,23 @@
 /**
  * MockEventGenerator -- configurable event sequence generator.
  *
- * Given a `Scenario` (an ordered list of event descriptors with optional
- * delays), it produces an `AsyncIterable<WireEvent>` that the
- * `MockWireClient` feeds to callers of `prompt()`.
+ * Given a `Scenario` (an ordered list of WireMessage descriptors with
+ * optional delays), it produces an `AsyncIterable<WireMessage>` that
+ * the MockDataSource feeds to the WireClient's subscribe() consumer.
  */
 
-import type { WireEvent } from './types.js';
+import type { WireMessage } from './types.js';
+import { createEvent } from './types.js';
 
 // ── Scenario Types ────────────────────────────────────────────────────
 
 /**
- * A single step in a mock scenario. Either a concrete event to emit
- * or a delay (in milliseconds) to simulate network/processing latency.
+ * A single step in a mock scenario. Either a concrete WireMessage to
+ * emit, a request message (pauses stream until resolved), or a delay.
  */
 export type ScenarioStep =
-  | { kind: 'event'; event: WireEvent }
+  | { kind: 'event'; message: WireMessage }
+  | { kind: 'request'; message: WireMessage }
   | { kind: 'delay'; ms: number };
 
 /**
@@ -30,9 +32,14 @@ export interface Scenario {
 
 // ── Helpers to build scenario steps ───────────────────────────────────
 
-/** Create an event step. */
-export function event(e: WireEvent): ScenarioStep {
-  return { kind: 'event', event: e };
+/** Create an event step from a WireMessage. */
+export function evt(message: WireMessage): ScenarioStep {
+  return { kind: 'event', message };
+}
+
+/** Create a request step (pauses until resolved). */
+export function req(message: WireMessage): ScenarioStep {
+  return { kind: 'request', message };
 }
 
 /** Create a delay step. */
@@ -48,15 +55,16 @@ export interface MockEventGeneratorOptions {
 }
 
 /**
- * Walks a `Scenario` and yields `WireEvent` values as an async iterable.
+ * Walks a `Scenario` and yields `WireMessage` values as an async iterable.
  *
  * Supports external cancellation via `cancel()`. When cancelled, the
- * generator emits a `StepInterrupted` event followed by `TurnEnd` and
+ * generator emits a `step.interrupted` event followed by `turn.end` and
  * then terminates.
  */
 export class MockEventGenerator {
   private readonly delayMultiplier: number;
   private cancelled = false;
+  private requestResolvers = new Map<string, (data: unknown) => void>();
 
   constructor(options?: MockEventGeneratorOptions) {
     this.delayMultiplier = options?.delayMultiplier ?? 1;
@@ -70,6 +78,7 @@ export class MockEventGenerator {
   /** Reset cancellation state for reuse. */
   reset(): void {
     this.cancelled = false;
+    this.requestResolvers.clear();
   }
 
   /** Whether the generator has been cancelled. */
@@ -77,18 +86,28 @@ export class MockEventGenerator {
     return this.cancelled;
   }
 
+  /** Resolve a pending request (e.g. approval response). */
+  resolveRequest(requestId: string, data: unknown): void {
+    const resolver = this.requestResolvers.get(requestId);
+    if (resolver !== undefined) {
+      resolver(data);
+      this.requestResolvers.delete(requestId);
+    }
+  }
+
   /**
    * Generate events from a scenario.
    * The iterable respects cancellation: when `cancel()` is called,
    * the remaining steps are skipped and an interruption sequence is emitted.
    */
-  async *generate(scenario: Scenario): AsyncIterable<WireEvent> {
+  async *generate(scenario: Scenario, sessionId: string = '__mock__', turnId: string = 'turn_0'): AsyncIterable<WireMessage> {
     this.cancelled = false;
+    const opts = { session_id: sessionId, turn_id: turnId };
 
     for (const step of scenario.steps) {
       if (this.cancelled) {
-        yield { type: 'StepInterrupted' };
-        yield { type: 'TurnEnd' };
+        yield createEvent('step.interrupted', { step: 0, reason: 'cancelled' }, opts);
+        yield createEvent('turn.end', { turn_id: turnId, reason: 'cancelled', success: false }, opts);
         return;
       }
 
@@ -97,14 +116,20 @@ export class MockEventGenerator {
         if (actualDelay > 0) {
           await sleep(actualDelay);
         }
-        // Check cancellation after the delay
         if (this.cancelled) {
-          yield { type: 'StepInterrupted' };
-          yield { type: 'TurnEnd' };
+          yield createEvent('step.interrupted', { step: 0, reason: 'cancelled' }, opts);
+          yield createEvent('turn.end', { turn_id: turnId, reason: 'cancelled', success: false }, opts);
           return;
         }
+      } else if (step.kind === 'request') {
+        // Yield the request and pause until resolved
+        yield step.message;
+        await new Promise<unknown>((resolve) => {
+          this.requestResolvers.set(step.message.id, resolve);
+        });
+        // After resolution, continue with the next steps
       } else {
-        yield step.event;
+        yield step.message;
       }
     }
   }

@@ -3,6 +3,10 @@
  *
  * Uses ink-testing-library to render the App into a virtual terminal
  * and assert on the rendered text output.
+ *
+ * Wire 2.1: WireClient interface uses session-scoped methods with
+ * prompt(sessionId, input) returning { turn_id }, and events arriving
+ * via subscribe(sessionId).
  */
 
 import React from 'react';
@@ -11,28 +15,120 @@ import { render } from 'ink-testing-library';
 
 import App from '../../src/app/App.js';
 import type { AppState } from '../../src/app/context.js';
-import type { WireClient } from '@moonshot-ai/kimi-wire-mock';
-import type { WireEvent } from '@moonshot-ai/kimi-wire-mock';
+import type { WireClient, WireMessage } from '../../src/wire/index.js';
+import { createEvent } from '../../src/wire/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+function emptyAsyncIterable(): AsyncIterable<WireMessage> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<WireMessage> {
+      return {
+        async next(): Promise<IteratorResult<WireMessage>> {
+          // Never resolves -- keeps subscribe alive
+          return new Promise(() => {});
+        },
+      };
+    },
+  };
+}
+
+function asyncIterableFrom(events: WireMessage[]): AsyncIterable<WireMessage> {
+  let index = 0;
+  let resolve: (() => void) | null = null;
+
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<WireMessage> {
+      return {
+        async next(): Promise<IteratorResult<WireMessage>> {
+          if (index >= events.length) {
+            // Keep the subscription alive (never close)
+            return new Promise(() => {});
+          }
+          const value = events[index]!;
+          index++;
+          return { done: false, value };
+        },
+      };
+    },
+  };
+}
+
+/** Create a mock event stream that can be pushed to. */
+function createPushableStream(): {
+  iterable: AsyncIterable<WireMessage>;
+  push: (msg: WireMessage) => void;
+  end: () => void;
+} {
+  const buffer: WireMessage[] = [];
+  let resolve: (() => void) | null = null;
+  let done = false;
+
+  const push = (msg: WireMessage): void => {
+    buffer.push(msg);
+    if (resolve !== null) {
+      const r = resolve;
+      resolve = null;
+      r();
+    }
+  };
+
+  const end = (): void => {
+    done = true;
+    if (resolve !== null) {
+      const r = resolve;
+      resolve = null;
+      r();
+    }
+  };
+
+  const iterable: AsyncIterable<WireMessage> = {
+    [Symbol.asyncIterator](): AsyncIterator<WireMessage> {
+      return {
+        async next(): Promise<IteratorResult<WireMessage>> {
+          while (buffer.length === 0 && !done) {
+            await new Promise<void>((r) => { resolve = r; });
+          }
+          if (buffer.length > 0) {
+            return { done: false, value: buffer.shift()! };
+          }
+          return { done: true, value: undefined as unknown as WireMessage };
+        },
+      };
+    },
+  };
+
+  return { iterable, push, end };
+}
+
 function createMockWireClient(overrides?: Partial<WireClient>): WireClient {
   return {
-    prompt: vi.fn(() => emptyAsyncIterable()),
-    steer: vi.fn(),
-    cancel: vi.fn(),
-    approvalResponse: vi.fn(),
-    questionResponse: vi.fn(),
-    setPlanMode: vi.fn(),
-    replay: vi.fn(() => emptyAsyncIterable()),
+    initialize: vi.fn(async () => ({ protocol_version: '2.1', capabilities: {} })),
+    createSession: vi.fn(async () => ({ session_id: 'mock-session' })),
+    listSessions: vi.fn(async () => ({ sessions: [] })),
+    destroySession: vi.fn(async () => undefined),
+    prompt: vi.fn(async () => ({ turn_id: 'turn_1' })),
+    steer: vi.fn(async () => undefined),
+    cancel: vi.fn(async () => undefined),
+    resume: vi.fn(async () => undefined),
+    fork: vi.fn(async () => ({ session_id: 'forked-session' })),
+    rename: vi.fn(async () => undefined),
+    getStatus: vi.fn(async () => ({ state: 'idle' })),
+    getUsage: vi.fn(async () => ({
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_cache_read_tokens: 0,
+      total_cache_write_tokens: 0,
+      total_cost_usd: 0,
+    })),
+    compact: vi.fn(async () => undefined),
+    setModel: vi.fn(async () => undefined),
+    setThinking: vi.fn(async () => undefined),
+    setPlanMode: vi.fn(async () => undefined),
+    setYolo: vi.fn(async () => undefined),
+    subscribe: vi.fn(() => emptyAsyncIterable()),
+    respondToRequest: vi.fn(),
     dispose: vi.fn(async () => undefined),
-    createSession: vi.fn(async () => 'mock-session'),
-    listSessions: vi.fn(async () => []),
-    listAllSessions: vi.fn(async () => []),
-    continueSession: vi.fn(async () => null),
-    deleteSession: vi.fn(async () => undefined),
-    forkSession: vi.fn(async () => 'forked-session'),
-    setSessionTitle: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -53,36 +149,6 @@ function defaultState(overrides?: Partial<AppState>): AppState {
     theme: 'dark',
     version: '0.1.0-test',
     ...overrides,
-  };
-}
-
-function emptyAsyncIterable(): AsyncIterable<WireEvent> {
-  return {
-    [Symbol.asyncIterator](): AsyncIterator<WireEvent> {
-      return {
-        async next(): Promise<IteratorResult<WireEvent>> {
-          return { done: true, value: undefined as unknown as WireEvent };
-        },
-      };
-    },
-  };
-}
-
-function asyncIterableFrom(events: WireEvent[]): AsyncIterable<WireEvent> {
-  let index = 0;
-  return {
-    [Symbol.asyncIterator](): AsyncIterator<WireEvent> {
-      return {
-        async next(): Promise<IteratorResult<WireEvent>> {
-          if (index >= events.length) {
-            return { done: true, value: undefined as unknown as WireEvent };
-          }
-          const value = events[index]!;
-          index++;
-          return { done: false, value };
-        },
-      };
-    },
   };
 }
 
@@ -172,8 +238,6 @@ describe('Shell', () => {
     );
 
     const frame = lastFrame() ?? '';
-    // Model appears both in welcome and status bar.
-    // Check the status bar line contains both model and workDir separated by |.
     expect(frame).toContain('gpt-test-model');
     expect(frame).toContain('/my/dir');
     unmount();
@@ -185,9 +249,8 @@ describe('Shell', () => {
     );
 
     const frame = lastFrame() ?? '';
-    // Bordered input box uses round border characters
-    expect(frame).toContain('╭');
-    expect(frame).toContain('╰');
+    expect(frame).toContain('\u256D');
+    expect(frame).toContain('\u2570');
     unmount();
   });
 
@@ -223,22 +286,26 @@ describe('Shell', () => {
     );
 
     const frame = lastFrame() ?? '';
-    // The status bar should not contain standalone "yolo" or "plan" as flag labels.
-    // Note: "plan" may appear inside tips text ("shift-tab: plan mode"), so we
-    // verify the flags aren't rendered by checking yolo isn't present at all
-    // (it only appears as a flag), and plan mode indicator is absent.
     expect(frame).not.toContain('yolo');
     unmount();
   });
 
   it('calls wireClient.prompt when user submits input', async () => {
-    const events: WireEvent[] = [
-      { type: 'TurnBegin', userInput: 'hello' },
-      { type: 'ContentPart', part: { type: 'text', text: 'Response' } },
-      { type: 'TurnEnd' },
-    ];
-    const promptFn = vi.fn(() => asyncIterableFrom(events));
-    mockWireClient = createMockWireClient({ prompt: promptFn });
+    const stream = createPushableStream();
+    const opts = { session_id: 'test-session-123', turn_id: 'turn_1' };
+
+    const promptFn = vi.fn(async (_sid: string, _input: string) => {
+      // Push events into the stream after prompt is called
+      stream.push(createEvent('turn.begin', { turn_id: 'turn_1', user_input: 'hello', input_kind: 'user' }, opts));
+      stream.push(createEvent('content.delta', { type: 'text', text: 'Response' }, opts));
+      stream.push(createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts));
+      return { turn_id: 'turn_1' };
+    });
+
+    mockWireClient = createMockWireClient({
+      prompt: promptFn,
+      subscribe: vi.fn(() => stream.iterable),
+    });
 
     const { stdin, unmount } = render(
       <App wireClient={mockWireClient} initialState={defaultState()} />,
@@ -250,18 +317,22 @@ describe('Shell', () => {
     stdin.write('\r');
     await wait(200);
 
-    expect(promptFn).toHaveBeenCalledWith('hello');
+    expect(promptFn).toHaveBeenCalledWith('test-session-123', 'hello');
     unmount();
   }, 5000);
 
   it('displays completed assistant text after a turn', async () => {
-    const events: WireEvent[] = [
-      { type: 'TurnBegin', userInput: 'hi' },
-      { type: 'ContentPart', part: { type: 'text', text: 'Hello from assistant!' } },
-      { type: 'TurnEnd' },
-    ];
+    const stream = createPushableStream();
+    const opts = { session_id: 'test-session-123', turn_id: 'turn_1' };
+
     mockWireClient = createMockWireClient({
-      prompt: vi.fn(() => asyncIterableFrom(events)),
+      prompt: vi.fn(async () => {
+        stream.push(createEvent('turn.begin', { turn_id: 'turn_1', user_input: 'hi', input_kind: 'user' }, opts));
+        stream.push(createEvent('content.delta', { type: 'text', text: 'Hello from assistant!' }, opts));
+        stream.push(createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts));
+        return { turn_id: 'turn_1' };
+      }),
+      subscribe: vi.fn(() => stream.iterable),
     });
 
     const { lastFrame, stdin, unmount } = render(
@@ -274,20 +345,18 @@ describe('Shell', () => {
     await wait(300);
 
     const frame = lastFrame() ?? '';
-    // The assistant text should appear as a completed block.
     expect(frame).toContain('Hello from assistant!');
     unmount();
   }, 5000);
 
   it('calls wireClient.cancel on Ctrl-C', async () => {
-    const cancelFn = vi.fn();
+    const cancelFn = vi.fn(async () => undefined);
     mockWireClient = createMockWireClient({ cancel: cancelFn });
 
     const { stdin, unmount } = render(
       <App wireClient={mockWireClient} initialState={defaultState()} />,
     );
 
-    // Send Ctrl-C. Even though nothing is streaming, cancel should be called.
     stdin.write('\x03');
     await wait(50);
 

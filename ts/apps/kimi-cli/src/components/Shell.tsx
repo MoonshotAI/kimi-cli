@@ -14,9 +14,6 @@
  *     <InputArea />            -- user input
  *     <StatusBar />            -- bottom status bar
  *   </Box>
- *
- * The `<Static>` items array starts with a synthetic "welcome" block
- * so that the welcome banner is rendered once and never redrawn.
  */
 
 import React, { useContext, useMemo } from 'react';
@@ -77,7 +74,7 @@ function CompletedBlockView({ block }: { readonly block: CompletedBlock }): Reac
         return (
           <Box marginTop={1}>
             <ToolCallBlock
-              toolCall={block.toolCallData.toolCall}
+              toolCall={block.toolCallData}
               result={block.toolCallData.result}
               successColor={colors.success}
               errorColor={colors.error}
@@ -97,8 +94,8 @@ function CompletedBlockView({ block }: { readonly block: CompletedBlock }): Reac
         return (
           <Box marginLeft={2}>
             <ToolResultBlock
-              toolName={block.toolResultData.toolName}
-              result={block.toolResultData.result}
+              toolName="tool"
+              result={block.toolResultData}
               successColor={colors.success}
               errorColor={colors.error}
               dimColor={colors.textDim}
@@ -152,7 +149,7 @@ export default function Shell(): React.JSX.Element {
       {pendingToolCall !== null ? (
         <Box marginTop={1}>
           <ToolCallBlock
-            toolCall={pendingToolCall.toolCall}
+            toolCall={pendingToolCall}
             result={pendingToolCall.result}
             successColor={styles.colors.success}
             errorColor={styles.colors.error}

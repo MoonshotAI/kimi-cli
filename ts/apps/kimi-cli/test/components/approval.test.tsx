@@ -3,6 +3,9 @@
  *
  * Tests the approval panel rendering, keyboard navigation, shortcuts,
  * and the feedback input mode.
+ *
+ * Wire 2.1: Approval uses PendingApproval (requestId + ApprovalRequestData)
+ * and ApprovalResponseData (response: 'approved' | 'approved_for_session' | 'rejected').
  */
 
 import React from 'react';
@@ -11,20 +14,23 @@ import { render } from 'ink-testing-library';
 
 import ApprovalPanel from '../../src/components/approval/ApprovalPanel.js';
 
-import type { ApprovalRequestEvent, ApprovalResponsePayload } from '@moonshot-ai/kimi-wire-mock';
+import type { PendingApproval } from '../../src/app/context.js';
+import type { ApprovalResponseData, ApprovalRequestData } from '../../src/wire/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeApprovalRequest(overrides?: Partial<ApprovalRequestEvent>): ApprovalRequestEvent {
+function makeApprovalRequest(overrides?: Partial<ApprovalRequestData>): PendingApproval {
   return {
-    type: 'ApprovalRequest',
-    id: 'apr-test-001',
-    toolCallId: 'tc-test-001',
-    sender: 'Write',
-    action: 'write file',
-    description: 'Write hello.py with a greeting script',
-    display: [],
-    ...overrides,
+    requestId: 'req_test_001',
+    data: {
+      id: 'apr-test-001',
+      tool_call_id: 'tc-test-001',
+      tool_name: 'Write',
+      action: 'write file',
+      description: 'Write hello.py with a greeting script',
+      display: [],
+      ...overrides,
+    },
   };
 }
 
@@ -35,10 +41,10 @@ function wait(ms: number): Promise<void> {
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe('ApprovalPanel', () => {
-  let onResponse: ReturnType<typeof vi.fn>;
+  let onResponse: ReturnType<typeof vi.fn<(response: ApprovalResponseData) => void>>;
 
   beforeEach(() => {
-    onResponse = vi.fn();
+    onResponse = vi.fn<(response: ApprovalResponseData) => void>();
   });
 
   it('renders all 4 options', () => {
@@ -56,7 +62,7 @@ describe('ApprovalPanel', () => {
 
   it('renders the approval request description', () => {
     const request = makeApprovalRequest({
-      sender: 'Write',
+      tool_name: 'Write',
       action: 'write file',
       description: 'Write hello.py with a greeting script',
     });
@@ -97,7 +103,6 @@ describe('ApprovalPanel', () => {
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
     const frame = lastFrame() ?? '';
-    // The arrow (\u2192) should appear before [1]
     expect(frame).toContain('\u2192 [1]');
     unmount();
   });
@@ -110,12 +115,10 @@ describe('ApprovalPanel', () => {
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Press down arrow (ESC [ B)
     stdin.write('\x1B[B');
     await wait(50);
 
     const frame = lastFrame() ?? '';
-    // Second option should now have the arrow marker
     expect(frame).toContain('\u2192 [2]');
     unmount();
   });
@@ -126,12 +129,10 @@ describe('ApprovalPanel', () => {
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Press up arrow (ESC [ A)
     stdin.write('\x1B[A');
     await wait(50);
 
     const frame = lastFrame() ?? '';
-    // Last option (4) should be selected
     expect(frame).toContain('\u2192 [4]');
     unmount();
   });
@@ -142,7 +143,6 @@ describe('ApprovalPanel', () => {
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Navigate down 4 times to wrap around
     for (let i = 0; i < 4; i++) {
       stdin.write('\x1B[B');
       await wait(20);
@@ -155,7 +155,7 @@ describe('ApprovalPanel', () => {
 
   // ── Enter key confirms ────────────────────────────────────────────
 
-  it('Enter key triggers "approve" for first option', async () => {
+  it('Enter key triggers "approved" for first option', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
@@ -165,38 +165,36 @@ describe('ApprovalPanel', () => {
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'approve',
+      response: 'approved',
       feedback: undefined,
     });
     unmount();
   });
 
-  it('Enter key triggers "approve_for_session" for second option', async () => {
+  it('Enter key triggers "approved_for_session" for second option', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Navigate down to option 2
     stdin.write('\x1B[B');
     await wait(30);
     stdin.write('\r');
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'approve_for_session',
+      response: 'approved_for_session',
       feedback: undefined,
     });
     unmount();
   });
 
-  it('Enter key triggers "reject" for third option', async () => {
+  it('Enter key triggers "rejected" for third option', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Navigate down twice to option 3
     stdin.write('\x1B[B');
     await wait(20);
     stdin.write('\x1B[B');
@@ -205,7 +203,7 @@ describe('ApprovalPanel', () => {
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'reject',
+      response: 'rejected',
       feedback: undefined,
     });
     unmount();
@@ -213,7 +211,7 @@ describe('ApprovalPanel', () => {
 
   // ── Number keys 1-4 ──────────────────────────────────────────────
 
-  it('pressing 1 triggers "approve"', async () => {
+  it('pressing 1 triggers "approved"', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
@@ -223,13 +221,13 @@ describe('ApprovalPanel', () => {
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'approve',
+      response: 'approved',
       feedback: undefined,
     });
     unmount();
   });
 
-  it('pressing 2 triggers "approve_for_session"', async () => {
+  it('pressing 2 triggers "approved_for_session"', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
@@ -239,13 +237,13 @@ describe('ApprovalPanel', () => {
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'approve_for_session',
+      response: 'approved_for_session',
       feedback: undefined,
     });
     unmount();
   });
 
-  it('pressing 3 triggers "reject"', async () => {
+  it('pressing 3 triggers "rejected"', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
@@ -255,7 +253,7 @@ describe('ApprovalPanel', () => {
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'reject',
+      response: 'rejected',
       feedback: undefined,
     });
     unmount();
@@ -270,10 +268,8 @@ describe('ApprovalPanel', () => {
     stdin.write('4');
     await wait(50);
 
-    // Should not have submitted yet -- it enters feedback mode
     expect(onResponse).not.toHaveBeenCalled();
 
-    // Should show feedback input indicator (block cursor)
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Reject:');
     expect(frame).toContain('Type your feedback');
@@ -282,7 +278,7 @@ describe('ApprovalPanel', () => {
 
   // ── Shortcut keys y/a/n/f ────────────────────────────────────────
 
-  it('pressing y triggers "approve"', async () => {
+  it('pressing y triggers "approved"', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
@@ -292,13 +288,13 @@ describe('ApprovalPanel', () => {
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'approve',
+      response: 'approved',
       feedback: undefined,
     });
     unmount();
   });
 
-  it('pressing a triggers "approve_for_session"', async () => {
+  it('pressing a triggers "approved_for_session"', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
@@ -308,13 +304,13 @@ describe('ApprovalPanel', () => {
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'approve_for_session',
+      response: 'approved_for_session',
       feedback: undefined,
     });
     unmount();
   });
 
-  it('pressing n triggers "reject"', async () => {
+  it('pressing n triggers "rejected"', async () => {
     const request = makeApprovalRequest();
     const { stdin, unmount } = render(
       <ApprovalPanel request={request} onResponse={onResponse} />,
@@ -324,7 +320,7 @@ describe('ApprovalPanel', () => {
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'reject',
+      response: 'rejected',
       feedback: undefined,
     });
     unmount();
@@ -353,11 +349,8 @@ describe('ApprovalPanel', () => {
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Enter feedback mode
     stdin.write('f');
     await wait(50);
-
-    // Type feedback
     stdin.write('please use a different approach');
     await wait(50);
 
@@ -372,20 +365,15 @@ describe('ApprovalPanel', () => {
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Enter feedback mode
     stdin.write('f');
     await wait(50);
-
-    // Type feedback
     stdin.write('use readonly');
     await wait(50);
-
-    // Press Enter to submit
     stdin.write('\r');
     await wait(50);
 
     expect(onResponse).toHaveBeenCalledWith({
-      decision: 'reject',
+      response: 'rejected',
       feedback: 'use readonly',
     });
     unmount();
@@ -397,22 +385,15 @@ describe('ApprovalPanel', () => {
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Enter feedback mode
     stdin.write('f');
     await wait(50);
-
-    // Type some feedback
     stdin.write('test');
     await wait(50);
-
-    // Press Escape to cancel
     stdin.write('\x1B');
     await wait(50);
 
-    // Should not have submitted
     expect(onResponse).not.toHaveBeenCalled();
 
-    // Should be back in menu mode
     const frame = lastFrame() ?? '';
     expect(frame).toContain('select');
     expect(frame).toContain('confirm');
@@ -427,20 +408,14 @@ describe('ApprovalPanel', () => {
       <ApprovalPanel request={request} onResponse={onResponse} />,
     );
 
-    // Enter feedback mode
     stdin.write('f');
     await wait(50);
-
-    // Type "abcxyz"
     stdin.write('abcxyz');
     await wait(50);
-
-    // Backspace (delete last char)
     stdin.write('\x7F');
     await wait(50);
 
     const frame = lastFrame() ?? '';
-    // After backspace: "abcxy" (not "abcxyz")
     expect(frame).toContain('Reject: abcxy');
     unmount();
   });
@@ -453,8 +428,8 @@ describe('ApprovalPanel', () => {
         {
           type: 'diff',
           path: 'hello.py',
-          oldText: '',
-          newText: 'print("Hello, World!")\n',
+          old_text: '',
+          new_text: 'print("Hello, World!")\n',
         },
       ],
     });

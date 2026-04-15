@@ -1,11 +1,11 @@
 /**
  * MockSessionStore -- in-memory session storage for development.
  *
- * Implements the session management operations that `MockWireClient`
- * delegates to: create, list, continue, fork, delete, set title.
+ * Implements session management operations delegated to by
+ * MockDataSource / WireClientImpl.
  */
 
-import type { SessionInfo } from './client.js';
+import type { SessionInfo } from './types.js';
 
 // ── Internal Session Record ───────────────────────────────────────────
 
@@ -16,7 +16,6 @@ interface SessionRecord {
   createdAt: number;
   updatedAt: number;
   archived: boolean;
-  /** Ordered list of turn IDs, used for fork-at-turn. */
   turns: number[];
 }
 
@@ -54,17 +53,6 @@ export class MockSessionStore {
     return this.toInfoList([...this.sessions.values()].filter((s) => !s.archived));
   }
 
-  /**
-   * Continue the most recent session for a work directory.
-   * Returns the session ID or null if none exists.
-   */
-  continue(workDir: string): string | null {
-    const candidates = [...this.sessions.values()]
-      .filter((s) => s.workDir === workDir && !s.archived)
-      .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || b.id.localeCompare(a.id));
-    return candidates[0]?.id ?? null;
-  }
-
   /** Delete a session by ID. Throws if not found. */
   delete(sessionId: string): void {
     if (!this.sessions.has(sessionId)) {
@@ -87,7 +75,6 @@ export class MockSessionStore {
     const newSession = this.sessions.get(newId)!;
     newSession.title = source.title !== null ? `${source.title} (fork)` : null;
 
-    // Copy turns up to the specified point
     if (atTurn !== undefined) {
       newSession.turns = source.turns.filter((t) => t <= atTurn);
     } else {
@@ -128,15 +115,15 @@ export class MockSessionStore {
   private toInfo(record: SessionRecord): SessionInfo {
     return {
       id: record.id,
-      workDir: record.workDir,
+      work_dir: record.workDir,
       title: record.title,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
+      created_at: record.createdAt,
+      updated_at: record.updatedAt,
       archived: record.archived,
     };
   }
 
   private toInfoList(records: SessionRecord[]): SessionInfo[] {
-    return records.map((r) => this.toInfo(r)).sort((a, b) => b.updatedAt - a.updatedAt);
+    return records.map((r) => this.toInfo(r)).sort((a, b) => b.updated_at - a.updated_at);
   }
 }

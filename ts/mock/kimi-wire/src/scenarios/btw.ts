@@ -2,68 +2,39 @@
  * BTW (side question) scenario -- a quick side question that does not
  * interrupt the main conversation.
  *
- * Flow: BtwBegin -> ContentPart(think) -> ContentPart(text) * N -> BtwEnd
- *
- * Note: BTW events are emitted outside the normal turn lifecycle.
+ * Note: In Wire 2.1 there is no dedicated "btw" event type.
+ * We model this as a mini turn with content.delta events.
  */
 
 import type { Scenario } from '../mock-event-generator.js';
-import { event, delay } from '../mock-event-generator.js';
+import { evt, delay } from '../mock-event-generator.js';
+import { createEvent } from '../types.js';
+import type { TurnBeginData, StepBeginData, StepEndData, ContentDeltaData, TurnEndData } from '../types.js';
 
-export function btwScenario(question: string): Scenario {
-  const btwId = `btw-${Date.now().toString(36)}`;
+export function btwScenario(question: string, sessionId: string = '__mock__', turnId: string = 'turn_btw'): Scenario {
+  const opts = { session_id: sessionId, turn_id: turnId };
 
   return {
     name: 'btw',
     description: 'Side question (/btw) flow',
     steps: [
-      event({
-        type: 'BtwBegin',
-        id: btwId,
-        question,
-      }),
+      evt(createEvent('turn.begin', { turn_id: turnId, user_input: question, input_kind: 'user' } satisfies TurnBeginData, opts)),
       delay(50),
+      evt(createEvent('step.begin', { step: 1 } satisfies StepBeginData, opts)),
+      delay(30),
       // BTW thinking
-      event({
-        type: 'ContentPart',
-        part: {
-          type: 'think',
-          think: 'The user has a quick side question. Let me answer it concisely.',
-        },
-      }),
+      evt(createEvent('content.delta', { type: 'think', think: 'The user has a quick side question. Let me answer it concisely.' } satisfies ContentDeltaData, opts)),
       delay(30),
       // BTW response text
-      event({
-        type: 'ContentPart',
-        part: {
-          type: 'text',
-          text: 'Quick answer: ',
-        },
-      }),
+      evt(createEvent('content.delta', { type: 'text', text: 'Quick answer: ' } satisfies ContentDeltaData, opts)),
       delay(15),
-      event({
-        type: 'ContentPart',
-        part: {
-          type: 'text',
-          text: 'TypeScript is a typed superset of JavaScript ',
-        },
-      }),
+      evt(createEvent('content.delta', { type: 'text', text: 'TypeScript is a typed superset of JavaScript ' } satisfies ContentDeltaData, opts)),
       delay(15),
-      event({
-        type: 'ContentPart',
-        part: {
-          type: 'text',
-          text: 'that compiles to plain JavaScript.',
-        },
-      }),
+      evt(createEvent('content.delta', { type: 'text', text: 'that compiles to plain JavaScript.' } satisfies ContentDeltaData, opts)),
       delay(20),
-      event({
-        type: 'BtwEnd',
-        id: btwId,
-        response:
-          'Quick answer: TypeScript is a typed superset of JavaScript that compiles to plain JavaScript.',
-        error: null,
-      }),
+      evt(createEvent('step.end', {} satisfies StepEndData, opts)),
+      delay(10),
+      evt(createEvent('turn.end', { turn_id: turnId, reason: 'done', success: true } satisfies TurnEndData, opts)),
     ],
   };
 }

@@ -2,17 +2,16 @@
  * ToolResultBlock component -- renders a completed tool result.
  *
  * Displays the outcome of a tool invocation:
- *  - Success: green checkmark + tool name + result summary
- *  - Failure: red cross + tool name + error message
- *  - Shell results: command preview + truncated output
+ *  - Success: green checkmark + tool name + output preview
+ *  - Failure: red cross + tool name + error output
  *
- * This is used in the <Static> completed blocks area.
+ * Wire 2.1: ToolResultData has `output` (string) and `is_error` (boolean).
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 
-import type { ToolReturnValue, DisplayBlock } from '@moonshot-ai/kimi-wire-mock';
+import type { ToolResultBlockData } from '../../app/context.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -27,22 +26,13 @@ function truncateOutput(output: string, maxLines: number): string {
   return `${shown}\n... (${remaining} more lines)`;
 }
 
-function getOutputText(output: string | Array<{ type: string; text?: string }>): string {
-  if (typeof output === 'string') return output;
-  // ContentPart[] -- extract text parts.
-  return output
-    .filter((p): p is { type: 'text'; text: string } => p.type === 'text' && typeof p.text === 'string')
-    .map((p) => p.text)
-    .join('');
-}
-
 // ── Component Props ──────────────────────────────────────────────────
 
 export interface ToolResultBlockProps {
   /** The tool name that produced this result. */
   readonly toolName: string;
   /** The tool result data. */
-  readonly result: ToolReturnValue;
+  readonly result: ToolResultBlockData;
   /** Theme colors. */
   readonly successColor?: string;
   readonly errorColor?: string;
@@ -58,25 +48,15 @@ export default function ToolResultBlock({
   errorColor = '#E85454',
   dimColor = '#888888',
 }: ToolResultBlockProps): React.JSX.Element {
-  const isError = result.isError;
+  const isError = result.is_error ?? false;
 
   // Status indicator
   const statusIcon = isError
     ? <Text color={errorColor}>{'✗ '}</Text>
     : <Text color={successColor}>{'✓ '}</Text>;
 
-  // Brief message
-  const message = result.message || '';
-
-  // Extract shell command from display blocks
-  const shellBlock = result.display.find(
-    (b: DisplayBlock) => b.type === 'shell',
-  );
-  const shellCommand = shellBlock?.type === 'shell' ? shellBlock.command : null;
-
   // Output preview
-  const outputText = getOutputText(result.output);
-  const truncatedOutput = outputText ? truncateOutput(outputText, MAX_OUTPUT_LINES) : '';
+  const truncatedOutput = result.output ? truncateOutput(result.output, MAX_OUTPUT_LINES) : '';
 
   return (
     <Box flexDirection="column">
@@ -84,14 +64,8 @@ export default function ToolResultBlock({
         {statusIcon}
         <Text>
           <Text color={isError ? errorColor : successColor} bold>{toolName}</Text>
-          {message ? <Text color={dimColor}>{` - ${message}`}</Text> : null}
         </Text>
       </Box>
-      {shellCommand ? (
-        <Box marginLeft={2}>
-          <Text color={dimColor}>{`$ ${shellCommand}`}</Text>
-        </Box>
-      ) : null}
       {truncatedOutput ? (
         <Box marginLeft={2}>
           <Text color={dimColor}>{truncatedOutput}</Text>

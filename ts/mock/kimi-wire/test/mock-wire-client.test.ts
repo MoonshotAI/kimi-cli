@@ -1,78 +1,104 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { WireEvent } from '../src/types.js';
-import { MockWireClient } from '../src/mock-wire-client.js';
-import type { MockWireClientOptions } from '../src/mock-wire-client.js';
+import type { WireMessage } from '../src/types.js';
+import { MockDataSource } from '../src/mock-data-source.js';
+import type { MockDataSourceOptions } from '../src/mock-data-source.js';
 import { simpleChatScenario } from '../src/scenarios/simple-chat.js';
 import { toolCallScenario } from '../src/scenarios/tool-call.js';
 import { thinkingScenario } from '../src/scenarios/thinking.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-async function collect(source: AsyncIterable<WireEvent>): Promise<WireEvent[]> {
-  const items: WireEvent[] = [];
+async function collectN(source: AsyncIterable<WireMessage>, n: number): Promise<WireMessage[]> {
+  const items: WireMessage[] = [];
   for await (const item of source) {
     items.push(item);
+    if (items.length >= n) break;
   }
   return items;
 }
 
-function createClient(overrides?: Partial<MockWireClientOptions>): MockWireClient {
-  return new MockWireClient({
-    sessionId: 'test-session',
-    workDir: '/tmp/test',
-    model: 'test-model',
-    yolo: false,
+async function collectUntilTurnEnd(source: AsyncIterable<WireMessage>): Promise<WireMessage[]> {
+  const items: WireMessage[] = [];
+  for await (const item of source) {
+    items.push(item);
+    if (item.method === 'turn.end') break;
+  }
+  return items;
+}
+
+function createDataSource(overrides?: Partial<MockDataSourceOptions>): MockDataSource {
+  return new MockDataSource({
     delayMultiplier: 0, // instant for tests
     ...overrides,
   });
 }
 
-// ── MockWireClient.prompt ─────────────────────────────────────────────
+// ── MockDataSource prompt + subscribe ────────────────────────────────
 
-describe('MockWireClient.prompt', () => {
-  it('returns a complete event sequence', async () => {
-    const client = createClient();
-    const events = await collect(client.prompt('hello'));
+describe('MockDataSource prompt + subscribe', () => {
+  it('returns a complete event sequence via subscribe', async () => {
+    const ds = createDataSource();
+    const sessionId = ds.sessions.create('/tmp/test');
+
+    // Start subscribing before prompt
+    const eventStream = ds.events(sessionId);
+    ds.startTurn(sessionId, 'turn_1', 'hello');
+
+    const events = await collectUntilTurnEnd(eventStream);
 
     expect(events.length).toBeGreaterThan(0);
-    expect(events[0]!.type).toBe('TurnBegin');
-    expect(events[events.length - 1]!.type).toBe('TurnEnd');
+    expect(events[0]!.method).toBe('turn.begin');
+    expect(events[events.length - 1]!.method).toBe('turn.end');
   });
 
   it('uses the default scenario resolver', async () => {
-    const client = createClient();
-    const events = await collect(client.prompt('anything'));
+    const ds = createDataSource();
+    const sessionId = ds.sessions.create('/tmp/test');
+
+    const eventStream = ds.events(sessionId);
+    ds.startTurn(sessionId, 'turn_1', 'anything');
+
+    const events = await collectUntilTurnEnd(eventStream);
 
     // Default resolver uses simpleChatScenario
-    const types = events.map((e) => e.type);
-    expect(types).toContain('TurnBegin');
-    expect(types).toContain('StepBegin');
-    expect(types).toContain('ContentPart');
-    expect(types).toContain('StatusUpdate');
-    expect(types).toContain('TurnEnd');
+    const methods = events.map((e) => e.method);
+    expect(methods).toContain('turn.begin');
+    expect(methods).toContain('step.begin');
+    expect(methods).toContain('content.delta');
+    expect(methods).toContain('status.update');
+    expect(methods).toContain('turn.end');
   });
 
   it('uses a custom scenario resolver', async () => {
-    const client = createClient({
-      scenarioResolver: (input) => toolCallScenario(input),
+    const ds = createDataSource({
+      scenarioResolver: (input, sid, tid) => toolCallScenario(input, sid, tid),
     });
+    const sessionId = ds.sessions.create('/tmp/test');
 
-    const events = await collect(client.prompt('list files'));
-    const types = events.map((e) => e.type);
+    const eventStream = ds.events(sessionId);
+    ds.startTurn(sessionId, 'turn_1', 'list files');
 
-    expect(types).toContain('ToolCall');
-    expect(types).toContain('ToolResult');
+    const events = await collectUntilTurnEnd(eventStream);
+    const methods = events.map((e) => e.method);
+
+    expect(methods).toContain('tool.call');
+    expect(methods).toContain('tool.result');
   });
 
-  it('includes text and think content in simple chat', async () => {
-    const client = createClient();
-    const events = await collect(client.prompt('hello'));
+  it('includes text and think content deltas in simple chat', async () => {
+    const ds = createDataSource();
+    const sessionId = ds.sessions.create('/tmp/test');
 
-    const contentEvents = events.filter((e) => e.type === 'ContentPart');
+    const eventStream = ds.events(sessionId);
+    ds.startTurn(sessionId, 'turn_1', 'hello');
+
+    const events = await collectUntilTurnEnd(eventStream);
+
+    const contentEvents = events.filter((e) => e.method === 'content.delta');
     const partTypes = new Set(
       contentEvents.map((e) => {
-        if (e.type === 'ContentPart') return e.part.type;
-        return null;
+        const data = e.data as { type: string };
+        return data.type;
       }),
     );
 
@@ -80,189 +106,139 @@ describe('MockWireClient.prompt', () => {
     expect(partTypes.has('think')).toBe(true);
   });
 
-  it('can run multiple prompts sequentially', async () => {
-    const client = createClient();
+  it('all events have session_id and turn_id', async () => {
+    const ds = createDataSource();
+    const sessionId = ds.sessions.create('/tmp/test');
 
-    const events1 = await collect(client.prompt('first'));
-    const events2 = await collect(client.prompt('second'));
+    const eventStream = ds.events(sessionId);
+    ds.startTurn(sessionId, 'turn_1', 'hello');
 
-    expect(events1[0]!.type).toBe('TurnBegin');
-    expect(events2[0]!.type).toBe('TurnBegin');
+    const events = await collectUntilTurnEnd(eventStream);
 
-    // Both should complete independently
-    expect(events1[events1.length - 1]!.type).toBe('TurnEnd');
-    expect(events2[events2.length - 1]!.type).toBe('TurnEnd');
+    for (const evt of events) {
+      expect(evt.session_id).toBe(sessionId);
+      expect(evt.turn_id).toBe('turn_1');
+    }
+  });
+
+  it('all events have type === "event"', async () => {
+    const ds = createDataSource();
+    const sessionId = ds.sessions.create('/tmp/test');
+
+    const eventStream = ds.events(sessionId);
+    ds.startTurn(sessionId, 'turn_1', 'hello');
+
+    const events = await collectUntilTurnEnd(eventStream);
+
+    for (const evt of events) {
+      expect(evt.type).toBe('event');
+    }
   });
 });
 
-// ── MockWireClient.cancel ─────────────────────────────────────────────
+// ── MockDataSource.cancelTurn ────────────────────────────────────────
 
-describe('MockWireClient.cancel', () => {
+describe('MockDataSource.cancelTurn', () => {
   it('interrupts the event stream', async () => {
-    // Use a scenario with many steps and actual delays
-    const client = createClient({
+    const ds = createDataSource({
       delayMultiplier: 1,
-      scenarioResolver: () => thinkingScenario('test'),
+      scenarioResolver: (input, sid, tid) => thinkingScenario(input, sid, tid),
     });
+    const sessionId = ds.sessions.create('/tmp/test');
 
-    const events: WireEvent[] = [];
-    for await (const e of client.prompt('test')) {
+    const eventStream = ds.events(sessionId);
+    ds.startTurn(sessionId, 'turn_1', 'test');
+
+    const events: WireMessage[] = [];
+    for await (const e of eventStream) {
       events.push(e);
-      // Cancel after receiving the first StepBegin
-      if (e.type === 'StepBegin') {
-        client.cancel();
+      // Cancel after receiving the first step.begin
+      if (e.method === 'step.begin') {
+        ds.cancelTurn(sessionId);
       }
+      if (e.method === 'turn.end') break;
     }
 
     // Stream should have terminated early
     expect(events.length).toBeLessThan(15); // Full thinking scenario has ~15+ events
-
-    // Should end with StepInterrupted and TurnEnd if the cancellation was caught
-    // during a delay; otherwise it just stops
   });
 });
 
-// ── MockWireClient.steer ──────────────────────────────────────────────
+// ── MockDataSource session management ────────────────────────────────
 
-describe('MockWireClient.steer', () => {
-  it('injects SteerInput events into the stream', async () => {
-    const client = createClient({
-      delayMultiplier: 1,
-      scenarioResolver: (input) => ({
-        name: 'steer-test',
-        description: 'test steer injection',
-        steps: [
-          { kind: 'event', event: { type: 'TurnBegin', userInput: input } },
-          { kind: 'delay', ms: 50 },
-          { kind: 'event', event: { type: 'StepBegin', n: 1 } },
-          { kind: 'delay', ms: 100 }, // Give time for steer injection
-          { kind: 'event', event: { type: 'ContentPart', part: { type: 'text', text: 'response' } } },
-          { kind: 'event', event: { type: 'TurnEnd' } },
-        ],
-      }),
-    });
-
-    const events: WireEvent[] = [];
-    let steered = false;
-
-    for await (const e of client.prompt('initial')) {
-      events.push(e);
-      if (e.type === 'StepBegin' && !steered) {
-        client.steer('follow up');
-        steered = true;
-      }
-    }
-
-    // Check that a SteerInput event was injected
-    const steerEvents = events.filter((e) => e.type === 'SteerInput');
-    expect(steerEvents.length).toBeGreaterThanOrEqual(1);
-    if (steerEvents[0]!.type === 'SteerInput') {
-      expect(steerEvents[0]!.userInput).toBe('follow up');
-    }
-  });
-});
-
-// ── MockWireClient.replay ─────────────────────────────────────────────
-
-describe('MockWireClient.replay', () => {
-  it('returns an empty stream', async () => {
-    const client = createClient();
-    const events = await collect(client.replay());
-    expect(events).toEqual([]);
-  });
-});
-
-// ── MockWireClient session management ─────────────────────────────────
-
-describe('MockWireClient session management', () => {
-  let client: MockWireClient;
+describe('MockDataSource session management', () => {
+  let ds: MockDataSource;
 
   beforeEach(() => {
-    client = createClient();
+    ds = createDataSource();
   });
 
-  it('creates and lists sessions', async () => {
-    const id1 = await client.createSession('/work/a');
-    const id2 = await client.createSession('/work/a');
-    const id3 = await client.createSession('/work/b');
+  it('creates and lists sessions', () => {
+    const id1 = ds.sessions.create('/work/a');
+    const id2 = ds.sessions.create('/work/a');
+    const id3 = ds.sessions.create('/work/b');
 
-    const sessionsA = await client.listSessions('/work/a');
+    const sessionsA = ds.sessions.list('/work/a');
     expect(sessionsA).toHaveLength(2);
     expect(sessionsA.map((s) => s.id)).toContain(id1);
     expect(sessionsA.map((s) => s.id)).toContain(id2);
 
-    const sessionsB = await client.listSessions('/work/b');
+    const sessionsB = ds.sessions.list('/work/b');
     expect(sessionsB).toHaveLength(1);
     expect(sessionsB[0]!.id).toBe(id3);
   });
 
-  it('lists all sessions across work directories', async () => {
-    await client.createSession('/work/a');
-    await client.createSession('/work/b');
-    await client.createSession('/work/c');
+  it('lists all sessions across work directories', () => {
+    ds.sessions.create('/work/a');
+    ds.sessions.create('/work/b');
+    ds.sessions.create('/work/c');
 
-    const all = await client.listAllSessions();
+    const all = ds.sessions.listAll();
     expect(all).toHaveLength(3);
   });
 
-  it('continues the most recent session', async () => {
-    await client.createSession('/work/a');
-    const id2 = await client.createSession('/work/a');
+  it('deletes a session', () => {
+    const id = ds.sessions.create('/work/a');
+    ds.sessions.delete(id);
 
-    // The most recently created session should be continued
-    const continued = await client.continueSession('/work/a');
-    expect(continued).toBe(id2);
-  });
-
-  it('returns null when no session to continue', async () => {
-    const continued = await client.continueSession('/work/empty');
-    expect(continued).toBeNull();
-  });
-
-  it('deletes a session', async () => {
-    const id = await client.createSession('/work/a');
-    await client.deleteSession(id);
-
-    const sessions = await client.listSessions('/work/a');
+    const sessions = ds.sessions.list('/work/a');
     expect(sessions).toHaveLength(0);
   });
 
-  it('throws when deleting non-existent session', async () => {
-    await expect(client.deleteSession('nonexistent')).rejects.toThrow('Session not found');
+  it('throws when deleting non-existent session', () => {
+    expect(() => ds.sessions.delete('nonexistent')).toThrow('Session not found');
   });
 
-  it('forks a session', async () => {
-    const id = await client.createSession('/work/a');
-    await client.setSessionTitle(id, 'Original');
+  it('forks a session', () => {
+    const id = ds.sessions.create('/work/a');
+    ds.sessions.setTitle(id, 'Original');
 
-    const forkedId = await client.forkSession(id);
+    const forkedId = ds.sessions.fork(id);
     expect(forkedId).not.toBe(id);
 
-    const sessions = await client.listSessions('/work/a');
+    const sessions = ds.sessions.list('/work/a');
     expect(sessions).toHaveLength(2);
   });
 
-  it('sets session title', async () => {
-    const id = await client.createSession('/work/a');
-    await client.setSessionTitle(id, 'My Session');
+  it('sets session title', () => {
+    const id = ds.sessions.create('/work/a');
+    ds.sessions.setTitle(id, 'My Session');
 
-    const sessions = await client.listSessions('/work/a');
+    const sessions = ds.sessions.list('/work/a');
     const session = sessions.find((s) => s.id === id);
     expect(session?.title).toBe('My Session');
   });
 
-  it('throws when setting title on non-existent session', async () => {
-    await expect(client.setSessionTitle('nonexistent', 'title')).rejects.toThrow(
-      'Session not found',
-    );
+  it('throws when setting title on non-existent session', () => {
+    expect(() => ds.sessions.setTitle('nonexistent', 'title')).toThrow('Session not found');
   });
-});
 
-// ── MockWireClient.dispose ────────────────────────────────────────────
-
-describe('MockWireClient.dispose', () => {
-  it('completes without error', async () => {
-    const client = createClient();
-    await expect(client.dispose()).resolves.toBeUndefined();
+  it('uses snake_case field names in SessionInfo', () => {
+    const id = ds.sessions.create('/work/a');
+    const info = ds.sessions.get(id);
+    expect(info).toBeDefined();
+    expect(info!.work_dir).toBe('/work/a');
+    expect(typeof info!.created_at).toBe('number');
+    expect(typeof info!.updated_at).toBe('number');
   });
 });

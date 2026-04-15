@@ -8,7 +8,7 @@
 
 import React, { useMemo } from 'react';
 
-import type { WireClient } from '@moonshot-ai/kimi-wire-mock';
+import type { WireClient } from '../wire/index.js';
 
 import { AppContext } from './context.js';
 import type { AppState } from './context.js';
@@ -35,7 +35,7 @@ export default function App({ wireClient, initialState }: AppProps): React.JSX.E
     pendingToolCall,
     pendingApproval,
     handleApprovalResponse,
-  } = useWire(wireClient, setState);
+  } = useWire(wireClient, state.sessionId, setState);
 
   const styles = useMemo(() => createThemeStyles(state.theme), [state.theme]);
 

@@ -1,5 +1,8 @@
 /**
  * ToolCallBlock, ToolResultBlock, and DiffPreview component tests.
+ *
+ * Wire 2.1: ToolCallBlockData uses `name` and `args` (parsed object)
+ * instead of the old `function.name` and `function.arguments` (JSON string).
  */
 
 import React from 'react';
@@ -17,24 +20,25 @@ import DiffPreview, {
   diffStats,
 } from '../../src/components/approval/DiffPreview.js';
 
-import type { ToolCall, ToolReturnValue, DiffDisplayBlock } from '@moonshot-ai/kimi-wire-mock';
+import type { ToolCallBlockData, ToolResultBlockData } from '../../src/app/context.js';
+import type { DiffDisplayBlock } from '../../src/wire/index.js';
+import type { DiffPreviewBlock } from '../../src/components/approval/DiffPreview.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeToolCall(name: string, args: string | null = null): ToolCall {
+function makeToolCall(name: string, args: Record<string, unknown> = {}): ToolCallBlockData {
   return {
-    type: 'function',
     id: `tc-${name}`,
-    function: { name, arguments: args },
+    name,
+    args,
   };
 }
 
-function makeToolResult(overrides?: Partial<ToolReturnValue>): ToolReturnValue {
+function makeToolResult(overrides?: Partial<ToolResultBlockData>): ToolResultBlockData {
   return {
-    isError: false,
+    tool_call_id: 'tc-test',
     output: 'success output',
-    message: 'Command executed successfully.',
-    display: [],
+    is_error: false,
     ...overrides,
   };
 }
@@ -47,38 +51,34 @@ function wait(ms: number): Promise<void> {
 
 describe('extractKeyArgument', () => {
   it('extracts command for Shell tool', () => {
-    const result = extractKeyArgument('Shell', '{"command":"ls -la"}');
+    const result = extractKeyArgument('Shell', { command: 'ls -la' });
     expect(result).toBe('ls -la');
   });
 
   it('extracts path for ReadFile tool', () => {
-    const result = extractKeyArgument('ReadFile', '{"path":"/foo/bar.ts"}');
+    const result = extractKeyArgument('ReadFile', { path: '/foo/bar.ts' });
     expect(result).toBe('/foo/bar.ts');
   });
 
   it('extracts url for FetchURL tool', () => {
-    const result = extractKeyArgument('FetchURL', '{"url":"https://example.com"}');
+    const result = extractKeyArgument('FetchURL', { url: 'https://example.com' });
     expect(result).toBe('https://example.com');
   });
 
-  it('returns null for null arguments', () => {
-    expect(extractKeyArgument('Shell', null)).toBe(null);
-  });
-
-  it('returns null for invalid JSON', () => {
-    expect(extractKeyArgument('Shell', 'not-json')).toBe(null);
+  it('returns null for empty args', () => {
+    expect(extractKeyArgument('Shell', {})).toBe(null);
   });
 
   it('truncates long arguments', () => {
     const longCmd = 'a'.repeat(100);
-    const result = extractKeyArgument('Shell', `{"command":"${longCmd}"}`);
+    const result = extractKeyArgument('Shell', { command: longCmd });
     expect(result).not.toBeNull();
     expect(result!.length).toBeLessThanOrEqual(60);
     expect(result!.endsWith('...')).toBe(true);
   });
 
   it('falls back to first string value for unknown tools', () => {
-    const result = extractKeyArgument('MyCustomTool', '{"query":"test query"}');
+    const result = extractKeyArgument('MyCustomTool', { query: 'test query' });
     expect(result).toBe('test query');
   });
 });
@@ -122,8 +122,8 @@ describe('renderDisplaySummary', () => {
       {
         type: 'diff',
         path: 'hello.py',
-        oldText: '',
-        newText: 'print("hello")\n',
+        old_text: '',
+        new_text: 'print("hello")\n',
       },
     ]);
     expect(lines).toEqual(['hello.py']);
@@ -139,7 +139,7 @@ describe('renderDisplaySummary', () => {
 
 describe('ToolCallBlock', () => {
   it('displays tool name', () => {
-    const tc = makeToolCall('Shell', '{"command":"ls"}');
+    const tc = makeToolCall('Shell', { command: 'ls' });
     const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Shell');
@@ -147,7 +147,7 @@ describe('ToolCallBlock', () => {
   });
 
   it('displays "Using" when pending (no result)', () => {
-    const tc = makeToolCall('ReadFile', '{"path":"foo.ts"}');
+    const tc = makeToolCall('ReadFile', { path: 'foo.ts' });
     const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Using');
@@ -156,7 +156,7 @@ describe('ToolCallBlock', () => {
   });
 
   it('displays "Used" when finished with result', () => {
-    const tc = makeToolCall('Shell', '{"command":"echo hi"}');
+    const tc = makeToolCall('Shell', { command: 'echo hi' });
     const result = makeToolResult();
     const { lastFrame, unmount } = render(
       <ToolCallBlock toolCall={tc} result={result} />,
@@ -168,7 +168,7 @@ describe('ToolCallBlock', () => {
   });
 
   it('shows key argument in parentheses', () => {
-    const tc = makeToolCall('Shell', '{"command":"git status"}');
+    const tc = makeToolCall('Shell', { command: 'git status' });
     const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('git status');
@@ -176,66 +176,49 @@ describe('ToolCallBlock', () => {
   });
 
   it('displays moon spinner when pending', async () => {
-    const tc = makeToolCall('Shell', '{"command":"ls"}');
+    const tc = makeToolCall('Shell', { command: 'ls' });
     const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} />);
 
-    // The spinner should be rendering moon phase emojis.
-    // Wait for at least one frame update.
     await wait(200);
     const frame = lastFrame() ?? '';
-    // One of the moon phases should be present
-    const moonPhases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+    const moonPhases = ['\uD83C\uDF11', '\uD83C\uDF12', '\uD83C\uDF13', '\uD83C\uDF14', '\uD83C\uDF15', '\uD83C\uDF16', '\uD83C\uDF17', '\uD83C\uDF18'];
     const hasMoon = moonPhases.some((phase) => frame.includes(phase));
     expect(hasMoon).toBe(true);
     unmount();
   });
 
   it('does not show moon spinner when finished', () => {
-    const tc = makeToolCall('Shell', '{"command":"ls"}');
+    const tc = makeToolCall('Shell', { command: 'ls' });
     const result = makeToolResult();
     const { lastFrame, unmount } = render(
       <ToolCallBlock toolCall={tc} result={result} />,
     );
     const frame = lastFrame() ?? '';
-    const moonPhases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+    const moonPhases = ['\uD83C\uDF11', '\uD83C\uDF12', '\uD83C\uDF13', '\uD83C\uDF14', '\uD83C\uDF15', '\uD83C\uDF16', '\uD83C\uDF17', '\uD83C\uDF18'];
     const hasMoon = moonPhases.some((phase) => frame.includes(phase));
     expect(hasMoon).toBe(false);
     unmount();
   });
 
-  it('shows display summary lines from result', () => {
-    const tc = makeToolCall('Shell', '{"command":"ls"}');
-    const result = makeToolResult({
-      display: [{ type: 'brief', text: 'Listed 5 files' }],
-    });
-    const { lastFrame, unmount } = render(
-      <ToolCallBlock toolCall={tc} result={result} />,
-    );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Listed 5 files');
-    unmount();
-  });
-
   it('shows error status for failed result', () => {
-    const tc = makeToolCall('Shell', '{"command":"bad-cmd"}');
-    const result = makeToolResult({ isError: true, message: 'Command failed' });
+    const tc = makeToolCall('Shell', { command: 'bad-cmd' });
+    const result = makeToolResult({ is_error: true });
     const { lastFrame, unmount } = render(
       <ToolCallBlock toolCall={tc} result={result} />,
     );
     const frame = lastFrame() ?? '';
-    // The cross marker should appear for errors
-    expect(frame).toContain('✗');
+    expect(frame).toContain('\u2717');
     unmount();
   });
 
   it('shows green bullet for successful result', () => {
-    const tc = makeToolCall('Shell', '{"command":"ls"}');
-    const result = makeToolResult({ isError: false });
+    const tc = makeToolCall('Shell', { command: 'ls' });
+    const result = makeToolResult({ is_error: false });
     const { lastFrame, unmount } = render(
       <ToolCallBlock toolCall={tc} result={result} />,
     );
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('●');
+    expect(frame).toContain('\u25CF');
     unmount();
   });
 });
@@ -250,44 +233,18 @@ describe('ToolResultBlock', () => {
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Shell');
-    expect(frame).toContain('✓');
+    expect(frame).toContain('\u2713');
     unmount();
   });
 
   it('displays error indicator for failed result', () => {
-    const result = makeToolResult({
-      isError: true,
-      message: 'Permission denied',
-    });
+    const result = makeToolResult({ is_error: true });
     const { lastFrame, unmount } = render(
       <ToolResultBlock toolName="Write" result={result} />,
     );
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Write');
-    expect(frame).toContain('✗');
-    expect(frame).toContain('Permission denied');
-    unmount();
-  });
-
-  it('displays message after tool name', () => {
-    const result = makeToolResult({ message: 'Executed OK' });
-    const { lastFrame, unmount } = render(
-      <ToolResultBlock toolName="Shell" result={result} />,
-    );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('Executed OK');
-    unmount();
-  });
-
-  it('displays shell command from display blocks', () => {
-    const result = makeToolResult({
-      display: [{ type: 'shell', language: 'bash', command: 'npm test' }],
-    });
-    const { lastFrame, unmount } = render(
-      <ToolResultBlock toolName="Shell" result={result} />,
-    );
-    const frame = lastFrame() ?? '';
-    expect(frame).toContain('$ npm test');
+    expect(frame).toContain('\u2717');
     unmount();
   });
 
@@ -298,7 +255,6 @@ describe('ToolResultBlock', () => {
       <ToolResultBlock toolName="Shell" result={result} />,
     );
     const frame = lastFrame() ?? '';
-    // Should show first few lines and truncation indicator
     expect(frame).toContain('line 1');
     expect(frame).toContain('more lines');
     unmount();
@@ -309,7 +265,7 @@ describe('ToolResultBlock', () => {
 
 describe('DiffPreview', () => {
   it('renders added lines in green with + marker', () => {
-    const block: DiffDisplayBlock = {
+    const block: DiffPreviewBlock = {
       type: 'diff',
       path: 'hello.py',
       oldText: '',
@@ -324,7 +280,7 @@ describe('DiffPreview', () => {
   });
 
   it('renders deleted lines with - marker', () => {
-    const block: DiffDisplayBlock = {
+    const block: DiffPreviewBlock = {
       type: 'diff',
       path: 'old.py',
       oldText: 'old line\n',
@@ -338,7 +294,7 @@ describe('DiffPreview', () => {
   });
 
   it('renders file path and stats in header', () => {
-    const block: DiffDisplayBlock = {
+    const block: DiffPreviewBlock = {
       type: 'diff',
       path: 'src/index.ts',
       oldText: 'old\n',
@@ -355,7 +311,7 @@ describe('DiffPreview', () => {
   it('shows overflow indicator when too many changed lines', () => {
     const oldText = Array.from({ length: 20 }, (_, i) => `old ${i}`).join('\n');
     const newText = Array.from({ length: 20 }, (_, i) => `new ${i}`).join('\n');
-    const block: DiffDisplayBlock = {
+    const block: DiffPreviewBlock = {
       type: 'diff',
       path: 'big.py',
       oldText,

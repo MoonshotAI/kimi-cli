@@ -13,7 +13,22 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 
-import type { DiffDisplayBlock } from '@moonshot-ai/kimi-wire-mock';
+// ── DiffPreview Block (component-local, camelCase) ──────────────────
+
+/**
+ * Props interface for the diff block. Uses camelCase internally.
+ * The caller (ApprovalPanel) maps from the Wire 2.1 snake_case
+ * DiffDisplayBlock to this shape.
+ */
+export interface DiffPreviewBlock {
+  type: 'diff';
+  path: string;
+  oldText: string;
+  newText: string;
+  oldStart?: number | undefined;
+  newStart?: number | undefined;
+  isSummary?: boolean | undefined;
+}
 
 // ── Diff Algorithm ───────────────────────────────────────────────────
 
@@ -115,8 +130,8 @@ export function diffStats(lines: DiffLine[]): { added: number; removed: number }
 // ── Component Props ──────────────────────────────────────────────────
 
 export interface DiffPreviewProps {
-  /** The diff display block from the wire protocol. */
-  readonly block: DiffDisplayBlock;
+  /** The diff display block (camelCase props, mapped from wire format by caller). */
+  readonly block: DiffPreviewBlock;
   /** Maximum number of changed lines to show. */
   readonly maxLines?: number;
 }

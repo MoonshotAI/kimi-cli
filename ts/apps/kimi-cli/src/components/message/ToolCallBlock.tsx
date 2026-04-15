@@ -6,50 +6,46 @@
  *  - Success: green bullet + "Used <tool>"
  *  - Failed: red cross + "Used <tool>" + error info
  *
- * Mirrors the Python `_ToolCallBlock` from `_blocks.py`.
+ * Wire 2.1: tool.call data has `name` and `args` (parsed object)
+ * instead of `function.name` and `function.arguments` (JSON string).
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 
-import type { ToolCall, ToolReturnValue, DisplayBlock } from '@moonshot-ai/kimi-wire-mock';
+import type { ToolCallBlockData, ToolResultBlockData } from '../../app/context.js';
+import type { DisplayBlock } from '../../wire/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Maximum display width for the argument summary. */
 const MAX_ARG_LENGTH = 60;
 
-/** Extract the most informative argument from a tool call's JSON arguments. */
-function extractKeyArgument(toolName: string, rawArgs: string | null): string | null {
-  if (rawArgs === null) return null;
-  try {
-    const args = JSON.parse(rawArgs) as Record<string, unknown>;
-    // Heuristic: pick the argument most likely to be the "key" for common tools.
-    const keyMap: Record<string, string[]> = {
-      Shell: ['command'],
-      ReadFile: ['path', 'file_path'],
-      Read: ['path', 'file_path'],
-      Write: ['path', 'file_path'],
-      WriteFile: ['path', 'file_path'],
-      Edit: ['path', 'file_path'],
-      EditFile: ['path', 'file_path'],
-      Grep: ['pattern'],
-      Glob: ['pattern'],
-      FetchURL: ['url'],
-      WebSearch: ['query'],
-    };
+/** Extract the most informative argument from a tool call's parsed args. */
+function extractKeyArgument(toolName: string, args: Record<string, unknown>): string | null {
+  // Heuristic: pick the argument most likely to be the "key" for common tools.
+  const keyMap: Record<string, string[]> = {
+    Shell: ['command'],
+    ReadFile: ['path', 'file_path'],
+    Read: ['path', 'file_path'],
+    Write: ['path', 'file_path'],
+    WriteFile: ['path', 'file_path'],
+    Edit: ['path', 'file_path'],
+    EditFile: ['path', 'file_path'],
+    Grep: ['pattern'],
+    Glob: ['pattern'],
+    FetchURL: ['url'],
+    WebSearch: ['query'],
+  };
 
-    const candidates = keyMap[toolName] ?? Object.keys(args);
-    for (const key of candidates) {
-      const val = args[key];
-      if (typeof val === 'string' && val.length > 0) {
-        return truncate(val, MAX_ARG_LENGTH);
-      }
+  const candidates = keyMap[toolName] ?? Object.keys(args);
+  for (const key of candidates) {
+    const val = args[key];
+    if (typeof val === 'string' && val.length > 0) {
+      return truncate(val, MAX_ARG_LENGTH);
     }
-    return null;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 function truncate(text: string, max: number): string {
@@ -83,9 +79,9 @@ function renderDisplaySummary(blocks: DisplayBlock[]): string[] {
 // ── Component Props ──────────────────────────────────────────────────
 
 export interface ToolCallBlockProps {
-  readonly toolCall: ToolCall;
+  readonly toolCall: ToolCallBlockData;
   /** When provided, the tool call has finished and this is the result. */
-  readonly result?: ToolReturnValue | undefined;
+  readonly result?: ToolResultBlockData | undefined;
   /** Color for the status bullet. */
   readonly successColor?: string;
   readonly errorColor?: string;
@@ -118,10 +114,10 @@ export default function ToolCallBlock({
   errorColor = '#E85454',
   dimColor = '#888888',
 }: ToolCallBlockProps): React.JSX.Element {
-  const toolName = toolCall.function.name;
-  const keyArg = extractKeyArgument(toolName, toolCall.function.arguments);
+  const toolName = toolCall.name;
+  const keyArg = extractKeyArgument(toolName, toolCall.args);
   const isFinished = result !== undefined;
-  const isError = result?.isError ?? false;
+  const isError = result?.is_error ?? false;
 
   // Status indicator
   const statusBullet = isFinished
@@ -132,11 +128,6 @@ export default function ToolCallBlock({
 
   // Headline: "Used <tool>" or "Using <tool>"
   const verb = isFinished ? 'Used' : 'Using';
-
-  // Display summary lines from result
-  const summaryLines = isFinished && result?.display
-    ? renderDisplaySummary(result.display)
-    : [];
 
   return (
     <Box flexDirection="column">
@@ -150,11 +141,6 @@ export default function ToolCallBlock({
           ) : null}
         </Text>
       </Box>
-      {summaryLines.map((line, i) => (
-        <Box key={`summary-${i}`} marginLeft={2}>
-          <Text color={dimColor}>{line}</Text>
-        </Box>
-      ))}
     </Box>
   );
 }

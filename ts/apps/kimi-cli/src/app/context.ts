@@ -8,7 +8,7 @@
 
 import React, { createContext } from 'react';
 
-import type { WireClient, ApprovalRequestEvent, ApprovalResponsePayload } from '@moonshot-ai/kimi-wire-mock';
+import type { WireClient, WireMessage, ApprovalRequestData, ApprovalResponseData } from '../wire/index.js';
 
 import type { Theme } from '../config/schema.js';
 import type { ThemeStyles } from '../theme/styles.js';
@@ -30,7 +30,7 @@ export interface AppState {
   planMode: boolean;
   /** Whether extended thinking is enabled. */
   thinking: boolean;
-  /** Context usage ratio (0-1) from the last StatusUpdate. */
+  /** Context usage ratio (0-1) from the last status.update. */
   contextUsage: number;
   /** Whether an assistant turn is currently streaming. */
   isStreaming: boolean;
@@ -55,14 +55,23 @@ export type CompletedBlockType =
   | 'thinking'
   | 'status';
 
-export interface ToolCallData {
-  toolCall: import('@moonshot-ai/kimi-wire-mock').ToolCall;
-  result?: import('@moonshot-ai/kimi-wire-mock').ToolReturnValue | undefined;
+export interface ToolCallBlockData {
+  /** Tool call ID. */
+  id: string;
+  /** Tool name. */
+  name: string;
+  /** Parsed arguments object. */
+  args: Record<string, unknown>;
+  /** Human-readable description. */
+  description?: string | undefined;
+  /** Tool result (populated when the tool finishes). */
+  result?: ToolResultBlockData | undefined;
 }
 
-export interface ToolResultData {
-  toolName: string;
-  result: import('@moonshot-ai/kimi-wire-mock').ToolReturnValue;
+export interface ToolResultBlockData {
+  tool_call_id: string;
+  output: string;
+  is_error?: boolean | undefined;
 }
 
 export interface CompletedBlock {
@@ -73,9 +82,19 @@ export interface CompletedBlock {
   /** Text content of the block. */
   content: string;
   /** Structured tool call data (only for type === 'tool_call'). */
-  toolCallData?: ToolCallData | undefined;
+  toolCallData?: ToolCallBlockData | undefined;
   /** Structured tool result data (only for type === 'tool_result'). */
-  toolResultData?: ToolResultData | undefined;
+  toolResultData?: ToolResultBlockData | undefined;
+}
+
+// ── Pending Approval ────────────────────────────────────────────────
+
+/** An approval request awaiting user response (derived from a WireMessage). */
+export interface PendingApproval {
+  /** The request message ID (used for respondToRequest). */
+  requestId: string;
+  /** The approval request data payload. */
+  data: ApprovalRequestData;
 }
 
 // ── Context value ────────────────────────────────────────────────────
@@ -101,11 +120,11 @@ export interface AppContextValue {
   /** Cancel the current streaming turn. */
   cancelStream: () => void;
   /** Tool call currently in progress (shown in dynamic area with spinner). */
-  pendingToolCall: ToolCallData | null;
+  pendingToolCall: ToolCallBlockData | null;
   /** Currently pending approval request, or null if none. */
-  pendingApproval: ApprovalRequestEvent | null;
+  pendingApproval: PendingApproval | null;
   /** Respond to the pending approval request. */
-  handleApprovalResponse: (response: ApprovalResponsePayload) => void;
+  handleApprovalResponse: (response: ApprovalResponseData) => void;
 }
 
 // Placeholder default -- the real value is provided by <App>.

@@ -1,6 +1,10 @@
 /**
  * ApprovalPanel component -- interactive approval request UI.
  *
+ * Wire 2.1: Approval comes as a Core-initiated request (type: 'request',
+ * method: 'approval.request'). The response is sent via
+ * wireClient.respondToRequest().
+ *
  * Displays a bordered panel with:
  *  - Description of the requested action
  *  - Display blocks (diff preview, shell commands, brief text)
@@ -11,23 +15,18 @@
  *  2. Approve for this session (a)
  *  3. Reject (n)
  *  4. Reject with feedback (f)
- *
- * Mirrors the Python `ApprovalRequestPanel` from `_approval_panel.py`.
  */
 
 import React, { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 
-import type {
-  ApprovalRequestEvent,
-  ApprovalResponsePayload,
-  DisplayBlock,
-} from '@moonshot-ai/kimi-wire-mock';
+import type { PendingApproval } from '../../app/context.js';
+import type { ApprovalResponseData, DisplayBlock } from '../../wire/index.js';
 import DiffPreview from './DiffPreview.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
-export type ApprovalDecision = 'approve' | 'approve_for_session' | 'reject';
+export type ApprovalDecision = 'approved' | 'approved_for_session' | 'rejected';
 
 interface ApprovalOption {
   label: string;
@@ -37,19 +36,19 @@ interface ApprovalOption {
 }
 
 const APPROVAL_OPTIONS: ApprovalOption[] = [
-  { label: 'Approve once', shortcut: 'y', decision: 'approve', isFeedback: false },
-  { label: 'Approve for this session', shortcut: 'a', decision: 'approve_for_session', isFeedback: false },
-  { label: 'Reject', shortcut: 'n', decision: 'reject', isFeedback: false },
-  { label: 'Reject with feedback', shortcut: 'f', decision: 'reject', isFeedback: true },
+  { label: 'Approve once', shortcut: 'y', decision: 'approved', isFeedback: false },
+  { label: 'Approve for this session', shortcut: 'a', decision: 'approved_for_session', isFeedback: false },
+  { label: 'Reject', shortcut: 'n', decision: 'rejected', isFeedback: false },
+  { label: 'Reject with feedback', shortcut: 'f', decision: 'rejected', isFeedback: true },
 ];
 
 // ── Component Props ──────────────────────────────────────────────────
 
 export interface ApprovalPanelProps {
-  /** The approval request from the wire protocol. */
-  readonly request: ApprovalRequestEvent;
+  /** The pending approval request. */
+  readonly request: PendingApproval;
   /** Callback when the user responds to the approval. */
-  readonly onResponse: (response: ApprovalResponsePayload) => void;
+  readonly onResponse: (response: ApprovalResponseData) => void;
 }
 
 // ── Display Block Renderer ───────────────────────────────────────────
@@ -57,7 +56,15 @@ export interface ApprovalPanelProps {
 function DisplayBlockView({ block }: { readonly block: DisplayBlock }): React.JSX.Element | null {
   switch (block.type) {
     case 'diff':
-      return <DiffPreview block={block} />;
+      return <DiffPreview block={{
+        type: 'diff',
+        path: block.path,
+        oldText: block.old_text,
+        newText: block.new_text,
+        oldStart: block.old_start,
+        newStart: block.new_start,
+        isSummary: block.is_summary,
+      }} />;
     case 'shell':
       return (
         <Box>
@@ -85,12 +92,14 @@ export default function ApprovalPanel({
   const [feedbackMode, setFeedbackMode] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
 
+  const { data } = request;
+
   const submit = useCallback(
     (index: number, feedback: string = '') => {
       const option = APPROVAL_OPTIONS[index];
       if (!option) return;
       onResponse({
-        decision: option.decision,
+        response: option.decision,
         feedback: feedback || undefined,
       });
     },
@@ -190,19 +199,19 @@ export default function ApprovalPanel({
       {/* Description */}
       <Box marginLeft={1}>
         <Text color="yellow">
-          {request.sender} is requesting approval to {request.action}:
+          {data.tool_name} is requesting approval to {data.action}:
         </Text>
       </Box>
-      {request.description ? (
+      {data.description ? (
         <Box marginLeft={1}>
-          <Text color="gray">{request.description}</Text>
+          <Text color="gray">{data.description}</Text>
         </Box>
       ) : null}
 
       {/* Display blocks */}
-      {request.display.length > 0 ? (
+      {data.display.length > 0 ? (
         <Box flexDirection="column" marginLeft={1} marginTop={1}>
-          {request.display.map((block, idx) => (
+          {data.display.map((block, idx) => (
             <DisplayBlockView key={`display-${idx}`} block={block} />
           ))}
         </Box>

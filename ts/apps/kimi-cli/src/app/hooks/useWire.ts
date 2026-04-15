@@ -1,30 +1,24 @@
 /**
- * Wire client integration hook.
+ * Wire client integration hook (Wire 2.1).
  *
  * Manages the streaming lifecycle:
  *  1. User calls `sendMessage(input)`.
- *  2. The hook calls `wireClient.prompt(input)` and iterates the event stream.
- *  3. ContentPart(text) events are appended to `streamingText`.
- *  4. ToolCall events push a tool_call block with structured data.
- *  5. ToolResult events push a tool_result block with structured data.
- *  6. ApprovalRequest events pause the stream and expose `pendingApproval`.
- *  7. On TurnEnd the accumulated text is pushed into `completedBlocks` and
- *     `streamingText` is reset.
+ *  2. The hook calls `wireClient.prompt(sessionId, input)` (non-blocking).
+ *  3. Events arrive via `subscribe()` (started at mount time).
+ *  4. content.delta events are appended to streamingText / streamingThinkText.
+ *  5. tool.call events push a pending tool call with structured data.
+ *  6. tool.result events complete the tool call and push it to completedBlocks.
+ *  7. approval.request (type: 'request') pauses and exposes pendingApproval.
+ *  8. On turn.end the accumulated text is pushed into completedBlocks.
  *
  * Also handles cancellation via `cancelStream()`.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type {
-  WireClient,
-  WireEvent,
-  ApprovalRequestEvent,
-  ApprovalResponsePayload,
-  ToolCall,
-} from '@moonshot-ai/kimi-wire-mock';
+import type { WireClient, WireMessage, ContentDeltaData, ToolCallData, ToolResultData, StatusUpdateData, ApprovalRequestData, ApprovalResponseData } from '../../wire/index.js';
 
-import type { AppState, CompletedBlock, ToolCallData } from '../context.js';
+import type { AppState, CompletedBlock, ToolCallBlockData, ToolResultBlockData, PendingApproval } from '../context.js';
 
 export interface UseWireResult {
   completedBlocks: CompletedBlock[];
@@ -34,9 +28,9 @@ export interface UseWireResult {
   setStreamingText: (text: string) => void;
   sendMessage: (input: string) => void;
   cancelStream: () => void;
-  pendingToolCall: import('../context.js').ToolCallData | null;
-  pendingApproval: ApprovalRequestEvent | null;
-  handleApprovalResponse: (response: ApprovalResponsePayload) => void;
+  pendingToolCall: ToolCallBlockData | null;
+  pendingApproval: PendingApproval | null;
+  handleApprovalResponse: (response: ApprovalResponseData) => void;
 }
 
 let blockIdCounter = 0;
@@ -48,99 +42,63 @@ function nextBlockId(): string {
 
 export function useWire(
   wireClient: WireClient,
+  sessionId: string,
   setState: (patch: Partial<AppState>) => void,
 ): UseWireResult {
   const [completedBlocks, setCompletedBlocks] = useState<CompletedBlock[]>([]);
   const [streamingThinkText, setStreamingThinkText] = useState('');
   const [streamingText, setStreamingText] = useState('');
-  const [pendingToolCall, setPendingToolCall] = useState<ToolCallData | null>(null);
-  const [pendingApproval, setPendingApproval] = useState<ApprovalRequestEvent | null>(null);
+  const [pendingToolCall, setPendingToolCall] = useState<ToolCallBlockData | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const isStreamingRef = useRef(false);
   const accumulatedTextRef = useRef('');
   const accumulatedThinkRef = useRef('');
 
   // Track active tool calls by ID so we can pair them with results.
-  const activeToolCallsRef = useRef<Map<string, ToolCall>>(new Map());
-
-  // Approval resolution callback -- set during stream processing.
-  const approvalResolverRef = useRef<((response: ApprovalResponsePayload) => void) | null>(null);
+  const activeToolCallsRef = useRef<Map<string, ToolCallBlockData>>(new Map());
 
   const pushBlock = useCallback((block: CompletedBlock) => {
     setCompletedBlocks((prev) => [...prev, block]);
   }, []);
 
   const cancelStream = useCallback(() => {
-    wireClient.cancel();
-  }, [wireClient]);
+    void wireClient.cancel(sessionId);
+  }, [wireClient, sessionId]);
 
   const handleApprovalResponse = useCallback(
-    (response: ApprovalResponsePayload) => {
+    (response: ApprovalResponseData) => {
       const approval = pendingApproval;
       if (approval === null) return;
 
-      // Send response to the wire client.
-      wireClient.approvalResponse(approval.id, response);
+      // Send response via respondToRequest.
+      wireClient.respondToRequest(approval.requestId, response);
 
       // Clear the pending approval state.
       setPendingApproval(null);
-
-      // If there is a resolver (for the async stream pause), call it.
-      if (approvalResolverRef.current !== null) {
-        approvalResolverRef.current(response);
-        approvalResolverRef.current = null;
-      }
     },
     [pendingApproval, wireClient],
   );
 
-  const sendMessage = useCallback(
-    (input: string) => {
-      if (isStreamingRef.current) {
-        return; // Already streaming, ignore.
+  // ── Event processing ────────────────────────────────────────────
+
+  function processMessage(msg: WireMessage): void {
+    // Handle Core-initiated requests (e.g. approval.request)
+    if (msg.type === 'request') {
+      if (msg.method === 'approval.request') {
+        flushStreamingText();
+        const data = msg.data as ApprovalRequestData;
+        setPendingApproval({ requestId: msg.id, data });
       }
+      return;
+    }
 
-      // Push user message as a completed block.
-      const userBlock: CompletedBlock = {
-        id: nextBlockId(),
-        type: 'user',
-        content: input,
-      };
-      setCompletedBlocks((prev) => [...prev, userBlock]);
+    // Handle events
+    if (msg.type !== 'event') return;
 
-      // Reset streaming state.
-      accumulatedTextRef.current = '';
-      accumulatedThinkRef.current = '';
-      activeToolCallsRef.current.clear();
-      setStreamingThinkText('');
-      setStreamingText('');
-      setPendingToolCall(null);
-      setPendingApproval(null);
-      isStreamingRef.current = true;
-      setState({ isStreaming: true, streamingPhase: 'waiting', streamingStartTime: Date.now() });
-
-      // Consume the event stream asynchronously.
-      const eventStream = wireClient.prompt(input);
-
-      void (async () => {
-        try {
-          for await (const event of eventStream) {
-            processEvent(event);
-          }
-        } catch {
-          // Stream was cancelled or errored -- treat as end-of-turn.
-        } finally {
-          // Finalize: push any remaining streamed text as a completed block.
-          finalizeTurn();
-        }
-      })();
-    },
-    [wireClient, setState],
-  );
-
-  function processEvent(event: WireEvent): void {
-    switch (event.type) {
-      case 'ContentPart': {
-        if (event.part.type === 'text') {
+    switch (msg.method) {
+      case 'content.delta': {
+        const data = msg.data as ContentDeltaData;
+        if (data.type === 'text' && data.text !== undefined) {
           // If we were thinking, flush thinking to Static first
           if (accumulatedThinkRef.current.length > 0) {
             const thinkBlock: CompletedBlock = {
@@ -152,70 +110,75 @@ export function useWire(
             accumulatedThinkRef.current = '';
             setStreamingThinkText('');
           }
-          accumulatedTextRef.current += event.part.text;
+          accumulatedTextRef.current += data.text;
           setStreamingText(accumulatedTextRef.current);
           setState({ streamingPhase: 'composing', streamingStartTime: Date.now() });
-        } else if (event.part.type === 'think') {
-          accumulatedThinkRef.current += event.part.think;
+        } else if (data.type === 'think' && data.think !== undefined) {
+          accumulatedThinkRef.current += data.think;
           setStreamingThinkText(accumulatedThinkRef.current);
           setState({ streamingPhase: 'thinking' });
         }
         break;
       }
-      case 'ToolCall': {
-        const tc = event.toolCall;
-        activeToolCallsRef.current.set(tc.id, tc);
+      case 'tool.call': {
+        const data = msg.data as ToolCallData;
+        const tcBlockData: ToolCallBlockData = {
+          id: data.id,
+          name: data.name,
+          args: data.args,
+          description: data.description,
+        };
+        activeToolCallsRef.current.set(data.id, tcBlockData);
 
         // Flush any accumulated text before showing tool call
         flushStreamingText();
 
         // Show in dynamic area with loading spinner (no result yet)
-        setPendingToolCall({ toolCall: tc });
+        setPendingToolCall(tcBlockData);
         break;
       }
-      case 'ToolResult': {
-        const matchedCall = activeToolCallsRef.current.get(event.toolCallId);
-        const toolName = matchedCall?.function.name ?? 'unknown';
+      case 'tool.result': {
+        const data = msg.data as ToolResultData;
+        const matchedCall = activeToolCallsRef.current.get(data.tool_call_id);
 
-        // Move from dynamic area to Static — now with result (green/red)
+        // Move from dynamic area to Static
         setPendingToolCall(null);
 
         if (matchedCall) {
+          const resultData: ToolResultBlockData = {
+            tool_call_id: data.tool_call_id,
+            output: data.output,
+            is_error: data.is_error,
+          };
           const toolCallBlock: CompletedBlock = {
             id: nextBlockId(),
             type: 'tool_call',
-            content: `Used ${toolName}`,
-            toolCallData: {
-              toolCall: matchedCall,
-              result: event.returnValue,
-            },
+            content: `Used ${matchedCall.name}`,
+            toolCallData: { ...matchedCall, result: resultData },
           };
           setCompletedBlocks((prev) => [...prev, toolCallBlock]);
         }
 
         // Clean up the active tool call
-        activeToolCallsRef.current.delete(event.toolCallId);
+        activeToolCallsRef.current.delete(data.tool_call_id);
         break;
       }
-      case 'ApprovalRequest': {
-        // Flush any accumulated text before showing the approval panel.
-        flushStreamingText();
-        setPendingApproval(event);
-        break;
-      }
-      case 'ApprovalResponse': {
-        // This event comes from the mock scenario after we respond.
-        // Just clear the approval state if it somehow wasn't cleared.
-        setPendingApproval(null);
-        break;
-      }
-      case 'StatusUpdate': {
-        if (event.contextUsage !== undefined) {
-          setState({ contextUsage: event.contextUsage });
+      case 'status.update': {
+        const data = msg.data as StatusUpdateData;
+        if (data.context_usage !== undefined) {
+          setState({ contextUsage: data.context_usage });
         }
         break;
       }
-      case 'TurnEnd': {
+      case 'turn.begin': {
+        // Mark streaming as active
+        if (!isStreamingRef.current) {
+          isStreamingRef.current = true;
+          setState({ isStreaming: true, streamingPhase: 'waiting', streamingStartTime: Date.now() });
+        }
+        break;
+      }
+      case 'turn.end': {
         finalizeTurn();
         break;
       }
@@ -259,9 +222,66 @@ export function useWire(
     accumulatedTextRef.current = '';
     accumulatedThinkRef.current = '';
     setStreamingText('');
+    setStreamingThinkText('');
     isStreamingRef.current = false;
     setState({ isStreaming: false, streamingPhase: 'idle' });
   }
+
+  // ── Subscribe to events at mount time ───────────────────────────
+
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      try {
+        for await (const msg of wireClient.subscribe(sessionId)) {
+          if (!active) break;
+          processMessage(msg);
+        }
+      } catch {
+        // Stream ended or errored
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+    // We intentionally only subscribe once at mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wireClient, sessionId]);
+
+  // ── Send message ────────────────────────────────────────────────
+
+  const sendMessage = useCallback(
+    (input: string) => {
+      if (isStreamingRef.current) {
+        return; // Already streaming, ignore.
+      }
+
+      // Push user message as a completed block.
+      const userBlock: CompletedBlock = {
+        id: nextBlockId(),
+        type: 'user',
+        content: input,
+      };
+      setCompletedBlocks((prev) => [...prev, userBlock]);
+
+      // Reset streaming state.
+      accumulatedTextRef.current = '';
+      accumulatedThinkRef.current = '';
+      activeToolCallsRef.current.clear();
+      setStreamingThinkText('');
+      setStreamingText('');
+      setPendingToolCall(null);
+      setPendingApproval(null);
+      isStreamingRef.current = true;
+      setState({ isStreaming: true, streamingPhase: 'waiting', streamingStartTime: Date.now() });
+
+      // Non-blocking prompt -- events arrive via subscribe()
+      void wireClient.prompt(sessionId, input);
+    },
+    [wireClient, sessionId, setState],
+  );
 
   return {
     completedBlocks,

@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url';
 
 import React from 'react';
 import { render } from 'ink';
-import { MockWireClient } from '@moonshot-ai/kimi-wire-mock';
+import { MockDataSource } from '@moonshot-ai/kimi-wire-mock';
 
+import { WireClientImpl } from './wire/client.js';
 import { createProgram } from './cli/commands.js';
 import type { CLIOptions, UIMode } from './cli/options.js';
 import { OptionConflictError, validateOptions } from './cli/options.js';
@@ -51,19 +52,15 @@ function runShell(opts: CLIOptions, version: string): void {
   // Determine model name.
   const model = opts.model ?? config.default_model ?? 'mock-model';
 
-  // Determine session ID (placeholder for now).
-  const sessionId = opts.session ?? `session-${Date.now()}`;
-
   // Determine working directory.
   const workDir = opts.workDir ?? process.cwd();
 
-  // Create Mock Wire client.
-  const wireClient = new MockWireClient({
-    sessionId,
-    workDir,
-    model,
-    yolo: opts.yolo,
-  });
+  // Create MockDataSource and WireClientImpl.
+  const dataSource = new MockDataSource();
+  const wireClient = new WireClientImpl(dataSource);
+
+  // Create a session.
+  const sessionId = dataSource.sessions.create(workDir);
 
   // Build initial application state.
   const initialState: AppState = {
