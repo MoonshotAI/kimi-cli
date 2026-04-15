@@ -21,4 +21,5 @@ def new_client_session(
     return aiohttp.ClientSession(
         connector=aiohttp.TCPConnector(ssl=_ssl_context),
         timeout=timeout or _DEFAULT_TIMEOUT,
+        trust_env=True,
     )
