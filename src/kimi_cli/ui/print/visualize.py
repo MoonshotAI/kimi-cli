@@ -8,6 +8,8 @@ from kimi_cli.soul.message import tool_result_to_message
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
 from kimi_cli.wire.types import (
+    BtwBegin,
+    BtwEnd,
     ContentPart,
     Notification,
     PlanDisplay,
@@ -32,7 +34,16 @@ def _merge_content(buffer: list[ContentPart], part: ContentPart) -> None:
 
 class TextPrinter(Printer):
     def feed(self, msg: WireMessage) -> None:
-        rich.print(msg)
+        match msg:
+            case BtwEnd(response=response, error=error):
+                if response:
+                    print(response, flush=True)
+                elif error:
+                    print(f"Error: {error}", flush=True)
+            case BtwBegin():
+                pass
+            case _:
+                rich.print(msg)
 
     def flush(self) -> None:
         pass
@@ -78,6 +89,10 @@ class JsonPrinter(Printer):
                 self._flush_assistant_message()
                 self._flush_notifications()
                 print(plan.model_dump_json(exclude_none=True), flush=True)
+            case BtwBegin() | BtwEnd() as btw_msg:
+                self._flush_assistant_message()
+                self._flush_notifications()
+                print(btw_msg.model_dump_json(exclude_none=True), flush=True)
             case _:
                 # ignore other messages
                 pass
@@ -120,6 +135,10 @@ class FinalOnlyTextPrinter(Printer):
                 self._content_buffer.clear()
             case ContentPart() as part:
                 _merge_content(self._content_buffer, part)
+            case BtwEnd(response=response, error=error):
+                text = response or error
+                if text:
+                    print(text, flush=True)
             case _:
                 pass
 
@@ -143,6 +162,11 @@ class FinalOnlyJsonPrinter(Printer):
                 self._content_buffer.clear()
             case ContentPart() as part:
                 _merge_content(self._content_buffer, part)
+            case BtwEnd(response=response, error=error):
+                text = response or error
+                if text:
+                    final_message = Message(role="assistant", content=text)
+                    print(final_message.model_dump_json(exclude_none=True), flush=True)
             case _:
                 pass
 
