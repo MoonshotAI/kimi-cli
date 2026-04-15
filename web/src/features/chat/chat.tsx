@@ -90,6 +90,8 @@ type ChatWorkspaceProps = {
   maxContextSize?: number;
   /** Fork session at a specific turn */
   onForkSession?: (turnIndex: number) => void;
+  /** Error message from the session stream */
+  errorMessage?: string;
 };
 
 type ToolApproval = NonNullable<LiveMessage["toolCall"]>["approval"];
@@ -121,6 +123,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
   planMode = false,
   onPlanModeChange,
   onForkSession,
+  errorMessage,
 }: ChatWorkspaceProps): ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
   const [isFilesPanelOpen, setIsFilesPanelOpen] = useState(false);
@@ -151,6 +154,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
       isReplayingHistory,
       isUploadingFiles,
       messages,
+      errorMessage,
     });
 
     // If status and description haven't changed, return cached reference

@@ -690,6 +690,15 @@ class WireServer:
                 id=msg.id,
                 result={"status": Statuses.CANCELLED},
             )
+        except Exception as e:
+            logger.exception("Unexpected error in prompt handler")
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INTERNAL_ERROR,
+                    message=f"{type(e).__name__}: {e}",
+                ),
+            )
         finally:
             # Clean up any remaining pending requests from this turn.
             # After run_soul() returns, the soul and all subagents are done,
