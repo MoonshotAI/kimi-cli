@@ -16,7 +16,6 @@ import pytest
 from kimi_cli.web.models import SessionStatus
 from kimi_cli.web.runner.process import SessionProcess
 
-
 # ---------------------------------------------------------------------------
 # Tests: SessionProcess.clear_in_flight
 # ---------------------------------------------------------------------------
