@@ -1,12 +1,12 @@
 /**
  * Top-level Ink application component.
  *
- * Initialises the AppContext with state, Wire client hooks, and renders
- * the <Shell> component. All children can access the context via
- * `useContext(AppContext)`.
+ * Initialises the AppContext with state, Wire client hooks, session
+ * management, and renders the <Shell> component. All children can
+ * access the context via `useContext(AppContext)`.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 
 import type { WireClient } from '../wire/index.js';
 
@@ -14,6 +14,7 @@ import { AppContext } from './context.js';
 import type { AppState } from './context.js';
 import { useAppState } from './hooks/useApp.js';
 import { useWire } from './hooks/useWire.js';
+import { useSession } from './hooks/useSession.js';
 import { createThemeStyles } from '../theme/styles.js';
 import Shell from '../components/Shell.js';
 
@@ -37,6 +38,15 @@ export default function App({ wireClient, initialState }: AppProps): React.JSX.E
     handleApprovalResponse,
   } = useWire(wireClient, state.sessionId, setState);
 
+  const {
+    sessions,
+    loadingSessions,
+    refreshSessions,
+    switchSession,
+  } = useSession({ wireClient, sessionId: state.sessionId, setState });
+
+  const [showSessionPicker, setShowSessionPicker] = useState(false);
+
   const styles = useMemo(() => createThemeStyles(state.theme), [state.theme]);
 
   const contextValue = {
@@ -54,6 +64,12 @@ export default function App({ wireClient, initialState }: AppProps): React.JSX.E
     pendingToolCall,
     pendingApproval,
     handleApprovalResponse,
+    sessions,
+    loadingSessions,
+    refreshSessions,
+    switchSession,
+    showSessionPicker,
+    setShowSessionPicker,
   };
 
   return (

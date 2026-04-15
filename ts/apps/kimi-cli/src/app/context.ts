@@ -9,6 +9,7 @@
 import React, { createContext } from 'react';
 
 import type { WireClient, WireMessage, ApprovalRequestData, ApprovalResponseData } from '../wire/index.js';
+import type { SessionInfo } from '../wire/methods.js';
 
 import type { Theme } from '../config/schema.js';
 import type { ThemeStyles } from '../theme/styles.js';
@@ -16,8 +17,6 @@ import type { ThemeStyles } from '../theme/styles.js';
 // ── AppState ─────────────────────────────────────────────────────────
 
 export interface AppState {
-  /** Current input mode: 'agent' sends to AI, 'shell' executes commands (Ctrl-X toggle). */
-  inputMode: 'agent' | 'shell';
   /** Active model name. */
   model: string;
   /** Working directory path. */
@@ -125,6 +124,20 @@ export interface AppContextValue {
   pendingApproval: PendingApproval | null;
   /** Respond to the pending approval request. */
   handleApprovalResponse: (response: ApprovalResponseData) => void;
+
+  // ── Phase 7: Session management ──────────────────────────────────
+  /** List of sessions from Wire. */
+  sessions: SessionInfo[];
+  /** Whether the session list is loading. */
+  loadingSessions: boolean;
+  /** Refresh the session list. */
+  refreshSessions: () => Promise<void>;
+  /** Switch to a different session. */
+  switchSession: (sessionId: string) => void;
+  /** Whether the SessionPicker overlay is open. */
+  showSessionPicker: boolean;
+  /** Open / close the SessionPicker. */
+  setShowSessionPicker: (show: boolean) => void;
 }
 
 // Placeholder default -- the real value is provided by <App>.

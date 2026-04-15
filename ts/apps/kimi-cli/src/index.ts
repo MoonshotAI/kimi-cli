@@ -59,12 +59,37 @@ function runShell(opts: CLIOptions, version: string): void {
   const dataSource = new MockDataSource();
   const wireClient = new WireClientImpl(dataSource);
 
-  // Create a session.
-  const sessionId = dataSource.sessions.create(workDir);
+  // Resolve session ID based on CLI flags.
+  let sessionId: string;
+
+  if (opts.session) {
+    // --session <id>: resume a specific session.
+    // Verify it exists in the mock store (create it if not found).
+    const existing = dataSource.sessions.get(opts.session);
+    if (existing) {
+      sessionId = opts.session;
+    } else {
+      // Session not found -- create a new one and warn.
+      sessionId = dataSource.sessions.create(workDir);
+      process.stderr.write(
+        `Warning: session "${opts.session}" not found, created new session ${sessionId}\n`,
+      );
+    }
+  } else if (opts.continue) {
+    // --continue: resume the most recent session for this workDir.
+    const existing = dataSource.sessions.list(workDir);
+    if (existing.length > 0) {
+      sessionId = existing[0]!.id; // sorted by updatedAt descending
+    } else {
+      sessionId = dataSource.sessions.create(workDir);
+    }
+  } else {
+    // Default: create a new session.
+    sessionId = dataSource.sessions.create(workDir);
+  }
 
   // Build initial application state.
   const initialState: AppState = {
-    inputMode: 'agent',
     model,
     workDir,
     sessionId,

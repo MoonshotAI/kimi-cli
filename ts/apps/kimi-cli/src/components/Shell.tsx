@@ -10,13 +10,14 @@
  *     </Static>
  *     <StreamingMessage />     -- current streaming content (dynamic)
  *     <ApprovalPanel />        -- approval request (when pending)
+ *     <SessionPicker />        -- session selection overlay (when open)
  *     <Spinner />              -- loading indicator
  *     <InputArea />            -- user input
  *     <StatusBar />            -- bottom status bar
  *   </Box>
  */
 
-import React, { useContext, useMemo } from 'react';
+import React, { useCallback, useContext, useMemo } from 'react';
 import { Box, Static, Text } from 'ink';
 
 import { AppContext } from '../app/context.js';
@@ -26,6 +27,7 @@ import StreamingMessage from './message/StreamingMessage.js';
 import ToolCallBlock from './message/ToolCallBlock.js';
 import ToolResultBlock from './message/ToolResultBlock.js';
 import ApprovalPanel from './approval/ApprovalPanel.js';
+import SessionPicker from './session/SessionPicker.js';
 import Spinner from './Spinner.js';
 import InputArea from './InputArea.js';
 import StatusBar from './StatusBar.js';
@@ -120,13 +122,38 @@ function CompletedBlockView({ block }: { readonly block: CompletedBlock }): Reac
 }
 
 export default function Shell(): React.JSX.Element {
-  const { completedBlocks, streamingThinkText, pendingToolCall, pendingApproval, handleApprovalResponse, styles, state } = useContext(AppContext);
+  const {
+    completedBlocks,
+    streamingThinkText,
+    pendingToolCall,
+    pendingApproval,
+    handleApprovalResponse,
+    styles,
+    state,
+    sessions,
+    loadingSessions,
+    switchSession,
+    showSessionPicker,
+    setShowSessionPicker,
+  } = useContext(AppContext);
 
   // Prepend the welcome block so it is always the first Static item.
   const staticItems = useMemo<CompletedBlock[]>(
     () => [WELCOME_BLOCK, ...completedBlocks],
     [completedBlocks],
   );
+
+  const handleSessionSelect = useCallback(
+    (sessionId: string) => {
+      switchSession(sessionId);
+      setShowSessionPicker(false);
+    },
+    [switchSession, setShowSessionPicker],
+  );
+
+  const handleSessionCancel = useCallback(() => {
+    setShowSessionPicker(false);
+  }, [setShowSessionPicker]);
 
   return (
     <Box flexDirection="column">
@@ -162,6 +189,17 @@ export default function Shell(): React.JSX.Element {
         <ApprovalPanel
           request={pendingApproval}
           onResponse={handleApprovalResponse}
+        />
+      ) : null}
+      {/* Session picker overlay */}
+      {showSessionPicker ? (
+        <SessionPicker
+          sessions={sessions}
+          loading={loadingSessions}
+          currentSessionId={state.sessionId}
+          colors={styles.colors}
+          onSelect={handleSessionSelect}
+          onCancel={handleSessionCancel}
         />
       ) : null}
       <Spinner />
