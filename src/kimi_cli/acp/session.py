@@ -22,6 +22,8 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
+    BtwBegin,
+    BtwEnd,
     CompactionBegin,
     CompactionEnd,
     ContentPart,
@@ -181,6 +183,12 @@ class ACPSession:
                         pass
                     case Notification():
                         await self._send_notification(msg)
+                    case BtwEnd(response=response, error=error):
+                        text = response or (f"Error: {error}" if error else None)
+                        if text:
+                            await self._send_text(text)
+                    case BtwBegin():
+                        pass
                     case ThinkPart(think=think):
                         await self._send_thinking(think)
                     case TextPart(text=text):
