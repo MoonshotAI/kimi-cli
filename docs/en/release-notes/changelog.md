@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Prevent stream watchdog from reconnecting during pending approval or question — the 45-second inactivity watchdog no longer triggers a reconnect while the user is actively handling an approval request or answering a question, preventing interrupted interactions
 - Web: Fix session recovery after stream errors — when a session process exits or hits a read-loop error, stale in-flight prompt IDs are now cleared before broadcasting the error, allowing the frontend to send new messages instead of getting "Session is busy"; the activity status indicator also surfaces the actual error message from the stream
 - Core: Fix Wire server prompt handler leaving sessions stuck busy on uncaught exceptions — SSL errors, connection errors, and other unexpected failures are now caught by a fallback handler and returned as `INTERNAL_ERROR`, allowing the session to recover instead of hanging indefinitely
 
