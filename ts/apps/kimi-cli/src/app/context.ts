@@ -125,6 +125,10 @@ export interface AppContextValue {
   /** Respond to the pending approval request. */
   handleApprovalResponse: (response: ApprovalResponseData) => void;
 
+  // ── Phase 8: Slash commands ─────────────────────────────────────
+  /** Execute a slash command input (e.g. "/help", "/yolo on"). Returns result message or null. */
+  executeSlashCommand: (input: string) => Promise<string | null>;
+
   // ── Phase 7: Session management ──────────────────────────────────
   /** List of sessions from Wire. */
   sessions: SessionInfo[];
