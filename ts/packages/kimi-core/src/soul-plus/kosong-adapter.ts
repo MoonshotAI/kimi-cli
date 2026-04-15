@@ -60,7 +60,12 @@ export class KosongAdapter implements KosongAdapterInterface {
     }));
 
     const generateOpts: KosongGenerateOptions = { signal: params.signal };
-    const streamed = await this.provider.generate('', kosongTools, params.messages, generateOpts);
+    const streamed = await this.provider.generate(
+      params.systemPrompt,
+      kosongTools,
+      params.messages,
+      generateOpts,
+    );
 
     const contentBlocks: ContentBlock[] = [];
     const toolCalls: ToolCall[] = [];

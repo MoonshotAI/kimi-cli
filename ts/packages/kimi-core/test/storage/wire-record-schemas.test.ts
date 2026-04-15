@@ -182,6 +182,72 @@ describe('assistant_message record', () => {
   });
 });
 
+describe('assistant_message record — Slice 2.0 new fields (Fix 1 + Fix 2)', () => {
+  it('accepts think_signature as optional field', () => {
+    const parsed = AssistantMessageRecordSchema.parse({
+      type: 'assistant_message',
+      seq: 5,
+      time: 1,
+      turn_id: 't1',
+      text: 'ok',
+      think: 'reasoning',
+      think_signature: 'sig_xyz',
+      tool_calls: [],
+      model: 'moonshot-v1',
+    });
+    expect(parsed.think_signature).toBe('sig_xyz');
+  });
+
+  it('old wire format (no think_signature) replays without error', () => {
+    const parsed = AssistantMessageRecordSchema.parse({
+      type: 'assistant_message',
+      seq: 5,
+      time: 1,
+      turn_id: 't1',
+      text: 'ok',
+      think: null,
+      tool_calls: [],
+      model: 'moonshot-v1',
+    });
+    expect(parsed.think_signature).toBeUndefined();
+  });
+
+  it('accepts cache_write_tokens in usage', () => {
+    const parsed = AssistantMessageRecordSchema.parse({
+      type: 'assistant_message',
+      seq: 5,
+      time: 1,
+      turn_id: 't1',
+      text: 'ok',
+      think: null,
+      tool_calls: [],
+      model: 'moonshot-v1',
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_tokens: 20,
+        cache_write_tokens: 30,
+      },
+    });
+    expect(parsed.usage?.cache_write_tokens).toBe(30);
+  });
+
+  it('old wire format (no cache_write_tokens in usage) replays without error', () => {
+    const parsed = AssistantMessageRecordSchema.parse({
+      type: 'assistant_message',
+      seq: 5,
+      time: 1,
+      turn_id: 't1',
+      text: 'ok',
+      think: null,
+      tool_calls: [],
+      model: 'moonshot-v1',
+      usage: { input_tokens: 100, output_tokens: 50 },
+    });
+    expect(parsed.usage?.cache_write_tokens).toBeUndefined();
+  });
+});
+
 describe('tool_result record', () => {
   it('allows is_error to be omitted', () => {
     const parsed = ToolResultRecordSchema.parse({

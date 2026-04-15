@@ -25,6 +25,7 @@ function makeParams(overrides: Partial<ChatParams> = {}): ChatParams {
     messages: [],
     tools: [],
     model: 'mock-model',
+    systemPrompt: '',
     signal: new AbortController().signal,
     ...overrides,
   };

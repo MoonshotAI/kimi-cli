@@ -84,6 +84,11 @@ export function adaptAssistantMessage(chat: ChatResponse, model: string): Assist
   );
   const text = textParts.length > 0 ? textParts.map((b) => b.text).join('') : null;
   const think = thinkParts.length > 0 ? thinkParts.map((b) => b.thinking).join('') : null;
+  // Extract the signature from the last thinking block that carries one.
+  // Anthropic streaming yields a single final signature; when multiple
+  // thinking blocks exist (e.g. concatenated non-stream chunks) the last
+  // one with a signature is authoritative.
+  const lastSigned = thinkParts.findLast((b) => b.signature !== undefined);
   const payload: AssistantMessagePayload = {
     text,
     think,
@@ -94,6 +99,9 @@ export function adaptAssistantMessage(chat: ChatResponse, model: string): Assist
     })),
     model,
   };
+  if (lastSigned !== undefined) {
+    payload.thinkSignature = lastSigned.signature;
+  }
   if (chat.usage !== undefined) {
     const u: AssistantMessagePayload['usage'] = {
       input_tokens: chat.usage.input,
@@ -101,6 +109,9 @@ export function adaptAssistantMessage(chat: ChatResponse, model: string): Assist
     };
     if (chat.usage.cache_read !== undefined) {
       (u as { cache_read_tokens?: number }).cache_read_tokens = chat.usage.cache_read;
+    }
+    if (chat.usage.cache_write !== undefined) {
+      (u as { cache_write_tokens?: number }).cache_write_tokens = chat.usage.cache_write;
     }
     payload.usage = u;
   }

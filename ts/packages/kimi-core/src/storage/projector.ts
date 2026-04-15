@@ -31,15 +31,17 @@ export interface ConversationProjector {
 
 /**
  * Phase 1 projector (§4.5.7). Responsibilities:
- *   - prepend a `system` Message carrying `snapshot.systemPrompt` when non-empty
- *     (§4.5.7 / appendix D.1 — the system prompt must participate in the
- *     provider-neutral `Message[]` so `system_prompt_changed` events actually
- *     move the LLM input)
  *   - pass through persisted history
  *   - merge adjacent user messages with `\n\n` (Q6 decision)
  *   - inject ephemeralInjections as synthetic user messages so the LLM sees
  *     them without them ever touching the durable transcript
  *   - produce provider-neutral Message[]
+ *
+ * NOT responsible for system prompt injection — system prompt is forwarded
+ * as a dedicated `ChatParams.systemPrompt` field to the provider (方案 B,
+ * aligned with Python). This avoids double-injection: the provider receives
+ * `systemPrompt` via its generate() first arg, so the history MUST NOT
+ * contain a synthetic system message.
  *
  * Not responsible for:
  *   - dangling tool call repair (belongs to Replay / Recovery)
@@ -61,28 +63,11 @@ export class DefaultConversationProjector implements ConversationProjector {
         ? []
         : ephemeralInjections.map((injection) => renderInjection(injection));
 
-    // Prepend the system message when a non-empty system prompt is set. An
-    // empty string is treated the same as "no system prompt" so callers can
-    // clear it without leaving a spurious empty system turn in the LLM input.
-    const systemMessage = buildSystemMessage(snapshot.systemPrompt);
-    const head: Message[] = systemMessage === null ? [] : [systemMessage];
-
-    // Ephemeral injections still sit before the first history message
+    // Ephemeral injections sit before the first history message
     // (before_user) so things like system_reminder land right before the
-    // user turn they contextualise — but after the persistent system prompt.
-    return [...head, ...injectionMessages, ...merged];
+    // user turn they contextualise.
+    return [...injectionMessages, ...merged];
   }
-}
-
-function buildSystemMessage(systemPrompt: string): Message | null {
-  if (systemPrompt.length === 0) {
-    return null;
-  }
-  return {
-    role: 'system',
-    content: [{ type: 'text', text: systemPrompt }],
-    toolCalls: [],
-  };
 }
 
 function renderInjection(injection: EphemeralInjection): Message {

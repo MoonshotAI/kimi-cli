@@ -34,6 +34,7 @@ export interface ChatParams {
   messages: Message[];
   tools: LLMToolDefinition[];
   model: string;
+  systemPrompt: string;
   effort?: string | undefined;
   signal: AbortSignal;
   onDelta?: ((delta: string) => void) | undefined;

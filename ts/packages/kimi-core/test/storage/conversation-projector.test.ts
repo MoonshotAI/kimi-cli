@@ -131,15 +131,11 @@ describe('DefaultConversationProjector — provider-neutral guarantee', () => {
   });
 });
 
-// Slice 1 audit M2 regression coverage:
-//   Before the fix, `DefaultConversationProjector.project()` ignored
-//   `snapshot.systemPrompt` entirely. The tests below lock in the
-//   projector-level invariant: a non-empty systemPrompt produces a leading
-//   `role: 'system'` message; an empty systemPrompt produces no such
-//   message, so existing tests that don't care about system prompts keep
-//   their baseline length semantics.
-describe('DefaultConversationProjector — system prompt projection (Slice 1 audit M2)', () => {
-  it('prepends a system Message when snapshot.systemPrompt is non-empty', () => {
+// Slice 2.0 方案 B: system prompt is NO LONGER injected by the projector.
+// It is forwarded as ChatParams.systemPrompt → provider.generate() directly.
+// The projector must NOT prepend a system message, to avoid double injection.
+describe('DefaultConversationProjector — system prompt NOT projected (Slice 2.0 方案 B)', () => {
+  it('does NOT prepend a system Message even when snapshot.systemPrompt is non-empty', () => {
     const projector = new DefaultConversationProjector();
     const history: Message[] = [createUserMessage('hi')];
     const out = projector.project(
@@ -148,28 +144,12 @@ describe('DefaultConversationProjector — system prompt projection (Slice 1 aud
       {},
     );
 
-    expect(out.length).toBe(2);
-    const first = out[0]!;
-    expect(first.role).toBe('system');
-    const text = first.content
-      .filter((p: ContentPart): p is TextPart => p.type === 'text')
-      .map((p) => p.text)
-      .join('');
-    expect(text).toBe('you are a helpful assistant');
-    // And the history still follows the system message.
-    expect(out[1]?.role).toBe('user');
-  });
-
-  it('does NOT prepend a system Message when snapshot.systemPrompt is empty ""', () => {
-    const projector = new DefaultConversationProjector();
-    const history: Message[] = [createUserMessage('hi')];
-    const out = projector.project(makeSnapshot(history, { systemPrompt: '' }), [], {});
-
+    // No system message — only the user message.
     expect(out.length).toBe(1);
     expect(out[0]?.role).toBe('user');
   });
 
-  it('places the system Message before ephemeral injections and before history', () => {
+  it('ephemeral injections appear before history (no system message prefix)', () => {
     const projector = new DefaultConversationProjector();
     const history: Message[] = [createUserMessage('question')];
     const injections: EphemeralInjection[] = [
@@ -181,24 +161,18 @@ describe('DefaultConversationProjector — system prompt projection (Slice 1 aud
       {},
     );
 
-    // Expected order: [system, injection-as-user, user].
-    expect(out.map((m) => m.role)).toEqual(['system', 'user', 'user']);
-    const systemText = out[0]!.content
-      .filter((p: ContentPart): p is TextPart => p.type === 'text')
-      .map((p) => p.text)
-      .join('');
-    expect(systemText).toBe('you are helpful');
-    const injectionText = out[1]!.content
+    // Expected order: [injection-as-user, user]. No system message.
+    expect(out.map((m) => m.role)).toEqual(['user', 'user']);
+    const injectionText = out[0]!.content
       .filter((p: ContentPart): p is TextPart => p.type === 'text')
       .map((p) => p.text)
       .join('');
     expect(injectionText).toContain('remember the rules');
   });
 
-  it('when systemPrompt is non-empty but history is empty, the output is exactly [system]', () => {
+  it('when systemPrompt is non-empty but history is empty, the output is empty', () => {
     const projector = new DefaultConversationProjector();
     const out = projector.project(makeSnapshot([], { systemPrompt: 'sp only' }), [], {});
-    expect(out.length).toBe(1);
-    expect(out[0]?.role).toBe('system');
+    expect(out.length).toBe(0);
   });
 });

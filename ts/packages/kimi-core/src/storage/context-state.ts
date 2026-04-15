@@ -12,12 +12,14 @@ export interface UserInput {
 export interface AssistantMessagePayload {
   text: string | null;
   think: string | null;
+  thinkSignature?: string | undefined;
   toolCalls: Array<{ id: string; name: string; args: unknown }>;
   model: string;
   usage?: {
     input_tokens: number;
     output_tokens: number;
     cache_read_tokens?: number;
+    cache_write_tokens?: number;
   };
 }
 
@@ -224,6 +226,7 @@ class BaseContextState implements FullContextState {
       turn_id: this.currentTurnId(),
       text: msg.text,
       think: msg.think,
+      ...(msg.thinkSignature !== undefined ? { think_signature: msg.thinkSignature } : {}),
       tool_calls: msg.toolCalls,
       model: msg.model,
       ...(msg.usage !== undefined ? { usage: msg.usage } : {}),
@@ -232,7 +235,11 @@ class BaseContextState implements FullContextState {
 
     const content: ContentPart[] = [];
     if (msg.think !== null && msg.think.length > 0) {
-      content.push({ type: 'think', think: msg.think });
+      const thinkPart: ContentPart = { type: 'think', think: msg.think };
+      if (msg.thinkSignature !== undefined) {
+        (thinkPart as { encrypted?: string }).encrypted = msg.thinkSignature;
+      }
+      content.push(thinkPart);
     }
     if (msg.text !== null && msg.text.length > 0) {
       content.push({ type: 'text', text: msg.text });

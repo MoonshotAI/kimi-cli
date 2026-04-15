@@ -80,11 +80,10 @@ describe('WiredContextState — initial state', () => {
     expect(state.model).toBe('moonshot-v1');
     expect(state.systemPrompt).toBe('you are helpful');
     expect(state.tokenCountWithPending).toBe(0);
-    // A non-empty system prompt is now projected as the first Message —
-    // locked in by Slice 1 audit M2 fix.
+    // Slice 2.0 方案 B: projector no longer injects system message into
+    // buildMessages(). System prompt is forwarded via ChatParams.systemPrompt.
     const messages = state.buildMessages();
-    expect(messages.length).toBe(1);
-    expect(messages[0]?.role).toBe('system');
+    expect(messages.length).toBe(0);
   });
 });
 

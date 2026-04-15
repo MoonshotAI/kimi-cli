@@ -63,6 +63,7 @@ export interface AssistantMessageRecord {
   turn_id: string;
   text: string | null;
   think: string | null;
+  think_signature?: string | undefined;
   tool_calls: Array<{ id: string; name: string; args: unknown }>;
   model: string;
   usage?:
@@ -70,6 +71,7 @@ export interface AssistantMessageRecord {
         input_tokens: number;
         output_tokens: number;
         cache_read_tokens?: number | undefined;
+        cache_write_tokens?: number | undefined;
       }
     | undefined;
 }
@@ -433,6 +435,7 @@ const _rawAssistantMessageRecordSchema = z.object({
   turn_id: z.string(),
   text: z.string().nullable(),
   think: z.string().nullable(),
+  think_signature: z.string().optional(),
   tool_calls: z.array(
     z.object({
       id: z.string(),
@@ -446,6 +449,7 @@ const _rawAssistantMessageRecordSchema = z.object({
       input_tokens: z.number(),
       output_tokens: z.number(),
       cache_read_tokens: z.number().optional(),
+      cache_write_tokens: z.number().optional(),
     })
     .optional(),
 });

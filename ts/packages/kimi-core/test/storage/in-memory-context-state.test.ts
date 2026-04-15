@@ -26,11 +26,10 @@ describe('InMemoryContextState — interface parity', () => {
     });
     expect(state.model).toBe('moonshot-v1');
     expect(state.systemPrompt).toBe('sp');
-    // A non-empty system prompt is now projected as the first Message —
-    // locked in by Slice 1 audit M2 fix.
+    // Slice 2.0 方案 B: projector no longer injects system message into
+    // buildMessages(). System prompt is forwarded via ChatParams.systemPrompt.
     const msgs = state.buildMessages();
-    expect(msgs.length).toBe(1);
-    expect(msgs[0]?.role).toBe('system');
+    expect(msgs.length).toBe(0);
   });
 
   it('appendUserMessage + appendAssistantMessage round-trip through buildMessages', async () => {
@@ -87,6 +86,46 @@ describe('InMemoryContextState — interface parity', () => {
     });
 
     expect(state.buildMessages().length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('InMemoryContextState — thinkSignature round-trip (Slice 2.0 Fix 1)', () => {
+  it('rebuilds ThinkPart with encrypted field when thinkSignature is present', async () => {
+    const state = make();
+    await state.appendUserMessage({ text: 'hi' });
+    await state.appendAssistantMessage({
+      text: 'response',
+      think: 'reasoning here',
+      thinkSignature: 'sig_abc123',
+      toolCalls: [],
+      model: 'moonshot-v1',
+    });
+
+    const msgs = state.buildMessages();
+    const assistantMsg = msgs.find((m) => m.role === 'assistant');
+    expect(assistantMsg).toBeDefined();
+    const thinkPart = assistantMsg!.content.find((p) => p.type === 'think');
+    expect(thinkPart).toBeDefined();
+    expect(thinkPart!.type).toBe('think');
+    expect((thinkPart as { think: string }).think).toBe('reasoning here');
+    expect((thinkPart as { encrypted?: string }).encrypted).toBe('sig_abc123');
+  });
+
+  it('rebuilds ThinkPart without encrypted field when thinkSignature is absent', async () => {
+    const state = make();
+    await state.appendUserMessage({ text: 'hi' });
+    await state.appendAssistantMessage({
+      text: 'response',
+      think: 'some thought',
+      toolCalls: [],
+      model: 'moonshot-v1',
+    });
+
+    const msgs = state.buildMessages();
+    const assistantMsg = msgs.find((m) => m.role === 'assistant');
+    const thinkPart = assistantMsg!.content.find((p) => p.type === 'think');
+    expect(thinkPart).toBeDefined();
+    expect((thinkPart as { encrypted?: string }).encrypted).toBeUndefined();
   });
 });
 

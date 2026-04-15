@@ -49,7 +49,7 @@ export async function runSoulTurn(
   overrides?: SoulTurnOverrides,
 ): Promise<TurnResult> {
   const maxSteps = config.maxSteps ?? DEFAULT_MAX_STEPS;
-  const usage: TokenUsage = { input: 0, output: 0 };
+  const usage: TokenUsage = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
   let steps = 0;
   // §5.1.7 L1343: default `end_turn` — the loop always runs at least one
   // step that overwrites it, but the default matches spec so any downstream
@@ -94,6 +94,7 @@ export async function runSoulTurn(
         messages,
         tools: visibleTools,
         model,
+        systemPrompt: context.systemPrompt,
         ...(overrides?.effort !== undefined ? { effort: overrides.effort } : {}),
         signal,
         onDelta: (delta) => {
@@ -107,6 +108,8 @@ export async function runSoulTurn(
 
       usage.input += response.usage.input;
       usage.output += response.usage.output;
+      usage.cache_read = (usage.cache_read ?? 0) + (response.usage.cache_read ?? 0);
+      usage.cache_write = (usage.cache_write ?? 0) + (response.usage.cache_write ?? 0);
 
       const assistantPayload = adaptAssistantMessage(response, model);
       await context.appendAssistantMessage(assistantPayload);
