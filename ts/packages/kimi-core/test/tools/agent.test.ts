@@ -377,6 +377,44 @@ describe('AgentTool — parentToolCallId threading', () => {
   });
 });
 
+// ── Signal threading (Slice 2.1) ─────────────────────────────────────
+
+describe('AgentTool — signal threading into SpawnRequest', () => {
+  it('foreground: forwards parent AbortSignal via SpawnRequest.signal', async () => {
+    const host = makeHost();
+    const tool = new AgentTool(host, 'agent_main');
+    const parentController = new AbortController();
+
+    await tool.execute(
+      'tc_sig_1',
+      { prompt: 'work', description: 'work' },
+      parentController.signal,
+    );
+
+    const call = host.spawnSpy.mock.calls[0]![0] as SpawnRequest;
+    expect(call.signal).toBe(parentController.signal);
+  });
+
+  it('background: forwards parent AbortSignal via SpawnRequest.signal', async () => {
+    // The coordinator decision is that the signal field is wired through for
+    // both modes; AgentTool itself doesn't diverge behavior based on it. The
+    // background-independence invariant is enforced by the SubagentHost
+    // implementation (SoulRegistry), not by AgentTool.
+    const host = makeHost();
+    const tool = new AgentTool(host, 'agent_main');
+    const parentController = new AbortController();
+
+    await tool.execute(
+      'tc_sig_2',
+      { prompt: 'bg', description: 'bg', runInBackground: true },
+      parentController.signal,
+    );
+
+    const call = host.spawnSpy.mock.calls[0]![0] as SpawnRequest;
+    expect(call.signal).toBe(parentController.signal);
+  });
+});
+
 // ── Model override ────────────────────────────────────────────────────
 
 describe('AgentTool — model override', () => {

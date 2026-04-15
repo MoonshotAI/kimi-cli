@@ -90,6 +90,28 @@ export class SoulRegistry implements SubagentHost {
 
     const soulHandle = this.getOrCreate(soulKey);
 
+    // Slice 2.1 — foreground abort cascade. When the parent turn forwards
+    // its AbortSignal via `SpawnRequest.signal`, link it to the child
+    // soul's AbortController so a parent `controller.abort()` reaches the
+    // subagent (Python parity: `asyncio.CancelledError` propagates through
+    // `await` chains). Background spawns are excluded because their
+    // independence invariant (kimi-cli §5.9) requires the child to outlive
+    // parent abort.
+    const parentSignal = request.signal;
+    if (parentSignal !== undefined && request.runInBackground !== true) {
+      if (parentSignal.aborted) {
+        soulHandle.abortController.abort(parentSignal.reason);
+      } else {
+        parentSignal.addEventListener(
+          'abort',
+          () => {
+            soulHandle.abortController.abort(parentSignal.reason);
+          },
+          { once: true },
+        );
+      }
+    }
+
     const completion: Promise<AgentResult> = this.runSubagentTurnFn
       ? this.runSubagentTurnFn(request, soulHandle.abortController.signal)
       : Promise.resolve({ result: '', usage: { input: 0, output: 0 } });

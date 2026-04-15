@@ -13,6 +13,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import {
   AlwaysAllowApprovalRuntime,
+  NotImplementedError,
   type ApprovalRequest,
   type ApprovalResponseData,
   type ApprovalResult,
@@ -112,5 +113,28 @@ describe('AlwaysAllowApprovalRuntime', () => {
         runtime.cancelBySource(source);
       }).not.toThrow();
     }
+  });
+
+  // ── Slice 2.3 stubs for TeamDaemon hooks (§9-G.2) ───────────────────
+
+  it('ingestRemoteRequest() throws NotImplementedError on the stub', async () => {
+    const runtime = new AlwaysAllowApprovalRuntime();
+    await expect(
+      runtime.ingestRemoteRequest({
+        request_id: 'x',
+        tool_call_id: 'tc',
+        tool_name: 'Bash',
+        action: 'run command',
+        display: { kind: 'command', command: 'ls' },
+        source: { kind: 'soul', agent_id: 'agent_main' },
+      }),
+    ).rejects.toBeInstanceOf(NotImplementedError);
+  });
+
+  it('resolveRemote() throws NotImplementedError on the stub', () => {
+    const runtime = new AlwaysAllowApprovalRuntime();
+    expect(() => {
+      runtime.resolveRemote({ request_id: 'x', response: 'approved' });
+    }).toThrow(NotImplementedError);
   });
 });

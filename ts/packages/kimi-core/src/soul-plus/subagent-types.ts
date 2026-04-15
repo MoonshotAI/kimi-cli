@@ -50,6 +50,15 @@ export interface SpawnRequest {
   runInBackground?: boolean | undefined;
   description?: string | undefined;
   model?: string | undefined;
+  /**
+   * Parent-turn AbortSignal forwarded from `AgentTool.execute()` (Slice 2.1
+   * foreground abort cascade). Hosts that honor cascade (e.g.
+   * `SoulRegistry`) should wire this into the child soul so that a parent
+   * abort propagates to the subagent. Background spawns typically ignore
+   * this field — the background-independence invariant is a host concern,
+   * not an AgentTool concern.
+   */
+  signal?: AbortSignal | undefined;
 }
 
 // ── AgentResult (v2 附录 E / §7.2) ───────────────────────────────────

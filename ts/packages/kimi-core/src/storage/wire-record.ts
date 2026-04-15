@@ -165,7 +165,21 @@ export interface NotificationRecord {
     payload?: Record<string, unknown> | undefined;
     targets: Array<'llm' | 'wire' | 'shell'>;
     dedupe_key?: string | undefined;
-    delivered_at?: number | undefined;
+    /**
+     * Per-sink delivery timestamps (Slice 2.4). Each key is the epoch
+     * millisecond the notification was successfully fanned out to that
+     * target. `0` means the sink was intentionally skipped (e.g. no
+     * shell callback registered). Absent key = not delivered / failed.
+     * The map itself is optional so historical (Slice 8) records with
+     * no `delivered_at` still parse.
+     */
+    delivered_at?:
+      | {
+          llm?: number | undefined;
+          wire?: number | undefined;
+          shell?: number | undefined;
+        }
+      | undefined;
   };
 }
 
@@ -556,7 +570,13 @@ const _rawNotificationRecordSchema = z.object({
     payload: z.record(z.string(), z.unknown()).optional(),
     targets: z.array(z.enum(['llm', 'wire', 'shell'])),
     dedupe_key: z.string().optional(),
-    delivered_at: z.number().optional(),
+    delivered_at: z
+      .object({
+        llm: z.number().optional(),
+        wire: z.number().optional(),
+        shell: z.number().optional(),
+      })
+      .optional(),
   }),
 });
 export const NotificationRecordSchema: z.ZodType<NotificationRecord> = _rawNotificationRecordSchema;

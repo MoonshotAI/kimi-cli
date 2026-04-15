@@ -119,6 +119,94 @@ describe('DefaultConversationProjector — ephemeralInjections', () => {
   });
 });
 
+// Slice 2.4 — XML wrapper + merge-guard regression suite
+describe('DefaultConversationProjector — Slice 2.4 notification XML wrapping', () => {
+  it('renders a pending_notification object as a <notification> XML tag with attributes', () => {
+    const projector = new DefaultConversationProjector();
+    const history: Message[] = [createUserMessage('hi')];
+    const injections: EphemeralInjection[] = [
+      {
+        kind: 'pending_notification',
+        content: {
+          id: 'n_abc123',
+          category: 'task',
+          type: 'task.succeeded',
+          source_kind: 'background_task',
+          source_id: 'bg_7',
+          title: 'Build done',
+          body: 'All tests passed',
+          severity: 'success',
+          targets: ['llm', 'wire'],
+        },
+      },
+    ];
+    const out = projector.project(makeSnapshot(history), injections, {});
+    const firstText = (out[0]!.content[0] as TextPart).text;
+    expect(firstText).toMatch(/^<notification id="n_abc123"/);
+    expect(firstText).toContain('category="task"');
+    expect(firstText).toContain('type="task.succeeded"');
+    expect(firstText).toContain('source_kind="background_task"');
+    expect(firstText).toContain('source_id="bg_7"');
+    expect(firstText).toContain('Title: Build done');
+    expect(firstText).toContain('Severity: success');
+    expect(firstText).toContain('All tests passed');
+    expect(firstText.trimEnd()).toMatch(/<\/notification>$/);
+  });
+
+  it('renders a system_reminder injection as <system-reminder> XML', () => {
+    const projector = new DefaultConversationProjector();
+    const out = projector.project(
+      makeSnapshot([createUserMessage('hi')]),
+      [{ kind: 'system_reminder', content: 'you are in plan mode' }],
+      {},
+    );
+    const firstText = (out[0]!.content[0] as TextPart).text;
+    expect(firstText).toMatch(/^<system-reminder>/);
+    expect(firstText).toContain('plan mode');
+    expect(firstText.trimEnd()).toMatch(/<\/system-reminder>$/);
+  });
+
+  it('does not merge an injected notification user message with the following real user message', () => {
+    const projector = new DefaultConversationProjector();
+    const history: Message[] = [createUserMessage('what is next?')];
+    const injections: EphemeralInjection[] = [
+      {
+        kind: 'pending_notification',
+        content: {
+          id: 'n_x',
+          category: 'task',
+          type: 'task.done',
+          source_kind: 'bg',
+          source_id: 'bg_1',
+          title: 't',
+          body: 'b',
+          severity: 'info',
+          targets: ['llm'],
+        },
+      },
+    ];
+    const out = projector.project(makeSnapshot(history), injections, {});
+    // Without the merge-guard, mergeAdjacentUserMessages would fold
+    // the two user messages into one and smear the XML into the
+    // user's prompt. We assert that both messages survive as
+    // distinct entries.
+    expect(out).toHaveLength(2);
+    const injectionText = (out[0]!.content[0] as TextPart).text;
+    const userText = (out[1]!.content[0] as TextPart).text;
+    expect(injectionText).toMatch(/^<notification /);
+    expect(userText).toBe('what is next?');
+  });
+
+  it('still merges two real user messages (no false positive on non-injection content)', () => {
+    const projector = new DefaultConversationProjector();
+    const history: Message[] = [createUserMessage('hello'), createUserMessage('there')];
+    const out = projector.project(makeSnapshot(history), [], {});
+    expect(out).toHaveLength(1);
+    const mergedText = (out[0]!.content[0] as TextPart).text;
+    expect(mergedText).toBe('hello\n\nthere');
+  });
+});
+
 describe('DefaultConversationProjector — provider-neutral guarantee', () => {
   it('never includes provider-specific fields like response_format or tool_choice', () => {
     const projector = new DefaultConversationProjector();

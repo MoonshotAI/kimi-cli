@@ -2,27 +2,58 @@
  * KosongAdapter — wraps a `ChatProvider` from `@moonshot-ai/kosong` so it
  * satisfies the Slice 2 `KosongAdapter` interface (v2 §5.8.2 / §11.1).
  *
- * Responsibilities:
- *   - Translate Soul-side `ChatParams` (messages already in kosong `Message`
- *     shape, `LLMToolDefinition[]`, model, signal, onDelta) into kosong's
- *     `provider.generate(systemPrompt, tools, history, opts)` signature.
- *   - Consume the streamed response: collect text / thinking / tool-call
- *     parts into a v2 `AssistantMessage`, forward `text` chunks to the
- *     optional `onDelta` callback, and extract any completed tool calls.
+ * Slice 2.1 rewrite: this adapter delegates to kosong's `generate()`
+ * aggregator rather than driving `provider.generate()` directly. The
+ * aggregator owns three things that the adapter previously half-implemented:
+ *   - merging of `ToolCallPart` argument deltas into fully-assembled
+ *     `ToolCall` objects (Phase 1 audit Slice 3 M4: parallel tool calls
+ *     streamed as interleaved headers + delta chunks used to collapse to
+ *     `{}` because `consumePart` ignored `tool_call_part`)
+ *   - parallel-tool-call index routing so argument streams that interleave
+ *     across calls (`tc0-header → tc1-header → tc0-args → tc1-args`) are
+ *     demultiplexed correctly
+ *   - empty / think-only response detection raised as
+ *     `APIEmptyResponseError`
+ *
+ * Responsibilities that remain in the adapter:
+ *   - Translate Soul-side `ChatParams` into kosong's `generate()` shape:
+ *     `LLMToolDefinition[]` → kosong `Tool[]`, `ChatParams.effort` →
+ *     `provider.withThinking()` (per Q2: only when defined), `onDelta` →
+ *     `GenerateCallbacks.onMessagePart` for text parts.
+ *   - Map the returned kosong `Message` into Soul's `AssistantMessage` +
+ *     `ToolCall[]` shapes (note the name difference: kosong `ToolCall` is
+ *     `{ function: { name, arguments: string|null } }` whereas Soul
+ *     `ToolCall` is `{ name, args: unknown }`).
  *   - Map kosong `TokenUsage` (inputOther / output / inputCacheRead /
  *     inputCacheCreation) into Soul `TokenUsage` (input / output /
  *     cache_read / cache_write), where `input` is the combined total.
  *   - Map kosong `FinishReason` into Soul `StopReason`.
- *   - Honour `params.signal` at both the pre-flight check and between
- *     streamed parts.
+ *   - Report `provider.modelName` back to the caller via
+ *     `ChatResponse.actualModel` so the transcript can record the model
+ *     that was really used (Q1 / Q3).
+ *
+ * Coordinator decisions (Slice 2.1):
+ *   - Q1: `ChatParams.model` is retained on the wire but ignored for
+ *     provider selection. A mismatch between the requested model and
+ *     `provider.modelName` is silently tolerated (no throw) — per-call
+ *     model switch would require a provider factory above the adapter.
+ *   - Q2: `ChatParams.effort === undefined` means "use the provider's
+ *     default thinking state" — we must NOT call `withThinking()` in that
+ *     case, or we would overwrite an effort configured at provider
+ *     construction time.
+ *   - Q3: The transcript model is the provider's `modelName` snapshot
+ *     taken on the same provider instance that handled this call (i.e.
+ *     after any per-call `withThinking()` copy, which preserves
+ *     `modelName`).
  */
 
+import { generate } from '@moonshot-ai/kosong';
 import type {
   ChatProvider,
-  GenerateOptions as KosongGenerateOptions,
   StreamedMessagePart as KosongStreamedPart,
   Tool as KosongTool,
   FinishReason as KosongFinishReason,
+  ThinkingEffort as KosongThinkingEffort,
   TokenUsage as KosongTokenUsage,
 } from '@moonshot-ai/kosong';
 
@@ -51,7 +82,21 @@ export class KosongAdapter implements KosongAdapterInterface {
   async chat(params: ChatParams): Promise<ChatResponse> {
     // Pre-flight abort check so callers that abort before invoking the
     // adapter get an immediate rejection without touching the provider.
+    // (kosong generate() also does its own pre-flight check, but surfacing
+    // the rejection here keeps stack traces tidy for Soul-level callers.)
     params.signal.throwIfAborted();
+
+    // Q2: only route effort through withThinking() when the caller
+    // provided one. `undefined` means "use the provider's default" — which
+    // was configured at provider construction time. Calling
+    // withThinking(undefined) or withThinking('off') would overwrite that.
+    //
+    // `withThinking()` returns a shallow copy of the provider that shares
+    // the underlying HTTP client, so per-call copies are cheap.
+    const activeProvider: ChatProvider =
+      params.effort !== undefined
+        ? this.provider.withThinking(params.effort as KosongThinkingEffort)
+        : this.provider;
 
     const kosongTools: KosongTool[] = params.tools.map((t) => ({
       name: t.name,
@@ -59,26 +104,52 @@ export class KosongAdapter implements KosongAdapterInterface {
       parameters: isRecord(t.input_schema) ? t.input_schema : { type: 'object' },
     }));
 
-    const generateOpts: KosongGenerateOptions = { signal: params.signal };
-    const streamed = await this.provider.generate(
+    // Drive kosong's aggregator. Text deltas are forwarded to the caller's
+    // onDelta via the onMessagePart callback — we only surface `text`
+    // parts, matching the pre-Slice-2.1 behaviour where thinking / tool
+    // call deltas were not exposed as content.delta events.
+    const onDelta = params.onDelta;
+    const result = await generate(
+      activeProvider,
       params.systemPrompt,
       kosongTools,
       params.messages,
-      generateOpts,
+      onDelta !== undefined
+        ? {
+            onMessagePart: (part: KosongStreamedPart): void => {
+              if (part.type === 'text') {
+                onDelta(part.text);
+              }
+            },
+          }
+        : undefined,
+      { signal: params.signal },
     );
 
+    // Map kosong Message content → Soul ContentBlock[]. Images / audio /
+    // video are intentionally dropped at this layer, matching the pre-
+    // Slice-2.1 behaviour (see Slice 4 for structured content persistence).
     const contentBlocks: ContentBlock[] = [];
-    const toolCalls: ToolCall[] = [];
-
-    for await (const part of streamed) {
-      if (params.signal.aborted) {
-        params.signal.throwIfAborted();
+    for (const part of result.message.content) {
+      if (part.type === 'text') {
+        contentBlocks.push({ type: 'text', text: part.text });
+      } else if (part.type === 'think') {
+        const block: ContentBlock = { type: 'thinking', thinking: part.think };
+        if (part.encrypted !== undefined) {
+          block.signature = part.encrypted;
+        }
+        contentBlocks.push(block);
       }
-      consumePart(part, contentBlocks, toolCalls, params.onDelta);
     }
 
-    const usage = mapUsage(streamed.usage);
-    const stopReason = mapFinishReason(streamed.finishReason);
+    const toolCalls: ToolCall[] = result.message.toolCalls.map((tc) => ({
+      id: tc.id,
+      name: tc.function.name,
+      args: parseToolArgs(tc.function.arguments),
+    }));
+
+    const usage = mapUsage(result.usage);
+    const stopReason = mapFinishReason(result.finishReason);
 
     const message: AssistantMessage = {
       role: 'assistant',
@@ -91,6 +162,7 @@ export class KosongAdapter implements KosongAdapterInterface {
       message,
       toolCalls,
       usage,
+      actualModel: activeProvider.modelName,
       ...(stopReason !== undefined ? { stopReason } : {}),
     };
     return response;
@@ -105,50 +177,6 @@ export function createKosongAdapter(options: KosongAdapterOptions): KosongAdapte
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function consumePart(
-  part: KosongStreamedPart,
-  contentBlocks: ContentBlock[],
-  toolCalls: ToolCall[],
-  onDelta: ((delta: string) => void) | undefined,
-): void {
-  switch (part.type) {
-    case 'text': {
-      contentBlocks.push({ type: 'text', text: part.text });
-      onDelta?.(part.text);
-      return;
-    }
-    case 'think': {
-      const block: ContentBlock = { type: 'thinking', thinking: part.think };
-      if (part.encrypted !== undefined) {
-        block.signature = part.encrypted;
-      }
-      contentBlocks.push(block);
-      return;
-    }
-    case 'function': {
-      toolCalls.push({
-        id: part.id,
-        name: part.function.name,
-        args: parseToolArgs(part.function.arguments),
-      });
-      return;
-    }
-    case 'audio_url':
-    case 'image_url':
-    case 'video_url':
-    case 'tool_call_part': {
-      // Slice 3 does not surface image / audio / video parts to Soul,
-      // and streaming `tool_call_part` deltas are ignored — only
-      // fully-assembled `function` parts become v2 ToolCalls.
-      return;
-    }
-    default: {
-      const _exhaustive: never = part;
-      void _exhaustive;
-    }
-  }
 }
 
 function parseToolArgs(raw: string | null): unknown {

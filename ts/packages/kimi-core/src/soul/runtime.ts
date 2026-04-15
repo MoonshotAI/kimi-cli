@@ -33,6 +33,15 @@ export interface LLMToolDefinition {
 export interface ChatParams {
   messages: Message[];
   tools: LLMToolDefinition[];
+  /**
+   * Caller-requested model alias. Per Slice 2.1 coordinator Q1 decision B,
+   * this field is retained on the wire for UI display / transcript-shaping
+   * purposes but is **not** used by KosongAdapter to select a provider.
+   * Per-call provider selection would require a provider factory, which is
+   * out of scope for the current slice — adapters bind a single provider at
+   * construction time and read the real model name back via
+   * {@link ChatResponse.actualModel}.
+   */
   model: string;
   systemPrompt: string;
   effort?: string | undefined;
@@ -45,6 +54,13 @@ export interface ChatResponse {
   toolCalls: ToolCall[];
   stopReason?: StopReason | undefined;
   usage: TokenUsage;
+  /**
+   * The real model name used by the provider for this call. KosongAdapter
+   * populates this from `provider.modelName` so the transcript can record
+   * what was actually invoked, not what was requested (Slice 2.1 Q3). May
+   * be absent for test-only adapters that do not bind a concrete provider.
+   */
+  actualModel?: string | undefined;
 }
 
 export interface KosongAdapter {

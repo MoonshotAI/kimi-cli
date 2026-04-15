@@ -148,3 +148,12 @@ export { SessionManager } from './session/index.js';
 export type { SessionInfo, CreateSessionParams } from './session/index.js';
 export { StateCache } from './session/index.js';
 export type { SessionState } from './session/index.js';
+
+// ── Migration (Slice 2.7) ──────────────────────────────────────────────
+export {
+  migratePythonSession,
+  MigrationError,
+  DEFAULT_TOOL_NAME_MAP,
+  mapToolName,
+} from './migrate/index.js';
+export type { MigratePythonSessionOptions, MigrationResult } from './migrate/index.js';

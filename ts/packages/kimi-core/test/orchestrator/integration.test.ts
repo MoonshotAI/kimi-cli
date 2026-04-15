@@ -15,6 +15,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { HookEngine } from '../../src/hooks/engine.js';
 import type { HookEventType, HookExecutor, HookInput } from '../../src/hooks/types.js';
 import {
+  AlwaysAllowApprovalRuntime,
   LifecycleGateFacade,
   SessionEventBus,
   SessionLifecycleStateMachine,
@@ -62,6 +63,7 @@ function buildIntegrationHarness(opts: {
     hookEngine,
     sessionId: 'sess_integration',
     agentId: 'agent_main',
+    approvalRuntime: new AlwaysAllowApprovalRuntime(),
   });
 
   const stateMachine = new SessionLifecycleStateMachine();

@@ -65,7 +65,7 @@ describe('SessionJournal.appendSystemReminder', () => {
 // ── ConversationProjector ephemeralInjections tests ───────────────────
 
 describe('ConversationProjector system_reminder injection', () => {
-  it('injects system_reminder as a user message with [system-reminder] prefix', () => {
+  it('injects system_reminder as a user message wrapped in <system-reminder> XML', () => {
     const projector = new DefaultConversationProjector();
     const injections: EphemeralInjection[] = [
       {
@@ -98,8 +98,9 @@ describe('ConversationProjector system_reminder injection', () => {
       .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
       .map((p) => p.text)
       .join('');
-    expect(text).toContain('[system-reminder]');
+    expect(text).toMatch(/^<system-reminder>/);
     expect(text).toContain('Do not use bash rm -rf');
+    expect(text.trimEnd()).toMatch(/<\/system-reminder>$/);
   });
 
   it('does NOT inject into the durable transcript (history unchanged)', () => {

@@ -224,6 +224,77 @@ describe('SoulRegistry — subagent abort', () => {
     mainController!.abort();
     expect(subController!.signal.aborted).toBe(false);
   });
+
+  // ── Slice 2.1: parent signal → child cascade via SpawnRequest.signal ──
+
+  it('foreground spawn: parent signal aborting cascades into child controller', async () => {
+    const controllers: Map<string, AbortController> = new Map();
+    const registry = new SoulRegistry({
+      createHandle: (key) => {
+        const c = new AbortController();
+        controllers.set(key, c);
+        return { key, agentId: `id_for_${key}`, abortController: c };
+      },
+      runSubagentTurn: () => pendingCompletion(),
+    });
+
+    const parentController = new AbortController();
+    const host = registry as unknown as SubagentHost;
+
+    const handle = await host.spawn(
+      makeSpawnRequest({ runInBackground: false, signal: parentController.signal }),
+    );
+    const subController = controllers.get(`sub:${handle.agentId}`);
+    expect(subController!.signal.aborted).toBe(false);
+
+    parentController.abort();
+    expect(subController!.signal.aborted).toBe(true);
+  });
+
+  it('foreground spawn with already-aborted parent signal: child is born aborted', async () => {
+    const controllers: Map<string, AbortController> = new Map();
+    const registry = new SoulRegistry({
+      createHandle: (key) => {
+        const c = new AbortController();
+        controllers.set(key, c);
+        return { key, agentId: `id_for_${key}`, abortController: c };
+      },
+      runSubagentTurn: () => pendingCompletion(),
+    });
+
+    const parentController = new AbortController();
+    parentController.abort();
+
+    const host = registry as unknown as SubagentHost;
+    const handle = await host.spawn(
+      makeSpawnRequest({ runInBackground: false, signal: parentController.signal }),
+    );
+    const subController = controllers.get(`sub:${handle.agentId}`);
+    expect(subController!.signal.aborted).toBe(true);
+  });
+
+  it('background spawn: parent signal abort does NOT cascade into child controller', async () => {
+    const controllers: Map<string, AbortController> = new Map();
+    const registry = new SoulRegistry({
+      createHandle: (key) => {
+        const c = new AbortController();
+        controllers.set(key, c);
+        return { key, agentId: `id_for_${key}`, abortController: c };
+      },
+      runSubagentTurn: () => pendingCompletion(),
+    });
+
+    const parentController = new AbortController();
+    const host = registry as unknown as SubagentHost;
+
+    const handle = await host.spawn(
+      makeSpawnRequest({ runInBackground: true, signal: parentController.signal }),
+    );
+    const subController = controllers.get(`sub:${handle.agentId}`);
+
+    parentController.abort();
+    expect(subController!.signal.aborted).toBe(false);
+  });
 });
 
 // ── Subagent state machine (7-state, §7.2 L3031-3048) ────────────────

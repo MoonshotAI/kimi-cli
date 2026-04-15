@@ -16,6 +16,13 @@ export interface SessionState {
   last_turn_time?: number | undefined;
   created_at: number;
   updated_at: number;
+  /**
+   * Session-scoped auto-approve action labels learned via
+   * "approve for session" (Slice 2.3). Stored alongside session metadata
+   * so a restart keeps the decisions intact without depending on
+   * wire.jsonl replay.
+   */
+  auto_approve_actions?: string[] | undefined;
 }
 
 export class StateCache {

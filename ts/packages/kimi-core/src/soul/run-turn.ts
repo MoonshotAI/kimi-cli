@@ -111,7 +111,12 @@ export async function runSoulTurn(
       usage.cache_read = (usage.cache_read ?? 0) + (response.usage.cache_read ?? 0);
       usage.cache_write = (usage.cache_write ?? 0) + (response.usage.cache_write ?? 0);
 
-      const assistantPayload = adaptAssistantMessage(response, model);
+      // §5.1.5 / Slice 2.1 Q3: record the model the adapter *actually*
+      // used, not the one the caller requested. `ChatResponse.actualModel`
+      // is populated from `provider.modelName` by KosongAdapter; test-only
+      // fixtures that skip it fall back to the caller-requested `model`.
+      const transcriptModel = response.actualModel ?? model;
+      const assistantPayload = adaptAssistantMessage(response, transcriptModel);
       await context.appendAssistantMessage(assistantPayload);
       // Intentional: no `signal.throwIfAborted()` between here and the
       // first `tool.execute` call. The microtask hop from

@@ -22,7 +22,9 @@
  *   - No hook engine invocation (Slice 4).
  *   - No compaction trigger (Slice 6).
  *   - No subagent spawn (Slice 7).
- *   - No notification queue flushing (Slice 8).
+ *   - Slice 2.4 adds `pendingNotifications` ingress +
+ *     `drainPendingNotificationsIntoContext` called at `launchTurn`
+ *     to flush NotificationManager-fed injections into ContextState.
  *
  * Vocabulary note: `buildBeforeToolCall` / `buildAfterToolCall` return
  * opaque async closures. Slice 3 produces no-op closures — Soul treats
@@ -42,10 +44,27 @@ import type {
 } from '../soul/index.js';
 import type { FullContextState, UserInput } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
+import type { ApprovalSource } from '../storage/wire-record.js';
 import type { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
+import type { NotificationData } from './notification-manager.js';
 import type { ToolCallOrchestrator } from './orchestrator.js';
+import type { PermissionMode, PermissionRule } from './permission/index.js';
 import type { SoulRegistry } from './soul-registry.js';
 import type { DispatchResponse, TurnTrigger } from './types.js';
+
+/**
+ * Per-turn permission overrides (v2 §9-E.6 — "FullTurnOverrides").
+ * Expressed in tool-name terms and converted to `turn-override` scope
+ * PermissionRule entries at `launchTurn` time. Drained after each
+ * `launchTurn` so the next turn starts from a clean slate (Q6
+ * regression guarantee).
+ */
+export interface TurnPermissionOverrides {
+  /** Tools that are explicitly allowed this turn (implicit allow rules). */
+  readonly activeTools?: readonly string[] | undefined;
+  /** Tools that are explicitly denied this turn (implicit deny rules). */
+  readonly disallowedTools?: readonly string[] | undefined;
+}
 
 export interface TurnManagerDeps {
   readonly contextState: FullContextState;
@@ -56,7 +75,23 @@ export interface TurnManagerDeps {
   readonly soulRegistry: SoulRegistry;
   readonly tools: readonly Tool[];
   readonly agentType?: 'main' | 'sub' | 'independent' | undefined;
+  /**
+   * Canonical agent id for this TurnManager. Used as `approvalSource.agent_id`
+   * for every outbound ApprovalRequest so `cancelBySource({kind:'soul' |
+   * 'subagent', agent_id})` can precisely match pending approvals.
+   * Slice 2.3 drops the hardcoded `'agent_main'` placeholder
+   * (Slice 2.2 reviewer N1). Defaults to `'agent_main'` for the main
+   * Soul and the raw subagent handle id for subagents.
+   */
+  readonly agentId?: string | undefined;
   readonly orchestrator?: ToolCallOrchestrator | undefined;
+  /**
+   * Static (session-long) permission rules. Project / user scope rules
+   * loaded at SoulPlus startup land here. Default: empty array.
+   */
+  readonly sessionRules?: readonly PermissionRule[] | undefined;
+  /** Default permission mode. Default: `'default'`. */
+  readonly permissionMode?: PermissionMode | undefined;
 }
 
 export interface TurnState {
@@ -68,14 +103,151 @@ export interface TurnState {
 export class TurnManager {
   private readonly deps: TurnManagerDeps;
   private readonly agentType: 'main' | 'sub' | 'independent';
+  private readonly agentId: string;
   private readonly turnPromises = new Map<string, Promise<TurnResult | undefined>>();
   private readonly turnStates = new Map<string, TurnState>();
   private currentTurnId: string | undefined;
   private turnIdCounter = 0;
+  /**
+   * Session-wide static rules. Slice 2.3 made this mutable so a
+   * `WiredApprovalRuntime` rule injector can append `session-runtime`
+   * scope rules learned via approve_for_session. `setPermissionMode`
+   * still drives the top-level posture.
+   */
+  private readonly sessionRules: PermissionRule[];
+  private permissionMode: PermissionMode;
+  /**
+   * Pending overrides for the *next* turn. Drained in `launchTurn`
+   * immediately after closure construction so the subsequent turn
+   * cannot observe a stale override (Q6 regression guarantee).
+   */
+  private pendingTurnOverrides: TurnPermissionOverrides | undefined;
+
+  /**
+   * Slice 2.4 — per-turn pending notification queue (v2 §5.2.2 L1985).
+   * `NotificationManager.emit()` pushes into this via
+   * `addPendingNotification`. The queue is drained as
+   * `EphemeralInjection[]` by `drainPendingNotifications` and handed to
+   * `ContextState.stashEphemeralInjection` BEFORE the next LLM step's
+   * `buildMessages` call. Ownership lives on TurnManager rather than
+   * ContextState because notifications are a SoulPlus concept
+   * (NotificationManager is §5.2.4) and Soul / ContextState should not
+   * know about notification lifecycle.
+   */
+  private pendingNotifications: NotificationData[] = [];
 
   constructor(deps: TurnManagerDeps) {
     this.deps = deps;
     this.agentType = deps.agentType ?? 'main';
+    this.agentId = deps.agentId ?? 'agent_main';
+    this.sessionRules = [...(deps.sessionRules ?? [])];
+    this.permissionMode = deps.permissionMode ?? 'default';
+  }
+
+  // ── Permission control surface (Slice 2.2) ──────────────────────────
+
+  /**
+   * Apply a new permission mode starting with the next tool call. The
+   * mode is re-read every `launchTurn`, so callers can flip the mode
+   * between turns without touching the in-flight closure.
+   */
+  setPermissionMode(mode: PermissionMode): void {
+    this.permissionMode = mode;
+  }
+
+  getPermissionMode(): PermissionMode {
+    return this.permissionMode;
+  }
+
+  /** Return this TurnManager's canonical agent id. */
+  getAgentId(): string {
+    return this.agentId;
+  }
+
+  /**
+   * Append a new session-scope permission rule (Slice 2.3 approve_for_session
+   * rule injector). Rules appended here become part of the merged
+   * snapshot consumed by the *next* `launchTurn`; the closure of any
+   * in-flight turn is left untouched so mid-turn injection cannot
+   * surprise Soul with a changed decision table.
+   *
+   * Safe to call from any thread: a single append is atomic in the
+   * JavaScript single-threaded model, and downstream consumers only
+   * read the list inside `launchTurn` which runs on the main event loop.
+   */
+  addSessionRule(rule: PermissionRule): void {
+    this.sessionRules.push(rule);
+  }
+
+  /** Test / recovery helper — read-only view of session rules. */
+  getSessionRules(): readonly PermissionRule[] {
+    return this.sessionRules;
+  }
+
+  /**
+   * Set pending FullTurnOverrides for the next `launchTurn`. Passing
+   * `undefined` clears any previously-set override. The orchestrator
+   * consumes and clears this slot at turn start, so it is physically
+   * impossible for a subsequent turn to inherit stale overrides
+   * without the caller setting them again.
+   */
+  setPendingTurnOverrides(overrides: TurnPermissionOverrides | undefined): void {
+    this.pendingTurnOverrides = overrides;
+  }
+
+  getPendingTurnOverrides(): TurnPermissionOverrides | undefined {
+    return this.pendingTurnOverrides;
+  }
+
+  // ── Notification queue (Slice 2.4) ──────────────────────────────────
+
+  /**
+   * Slice 2.4 — NotificationManager.emit() calls this synchronously as
+   * part of the LLM-sink fan-out. The notification is buffered until
+   * either:
+   *   - the next LLM step within the current turn (if a turn is active)
+   *     calls `stashPendingNotificationsForBuildMessages`, or
+   *   - a brand-new turn launches (same drain path).
+   *
+   * No journal I/O happens here — the WAL append already occurred
+   * inside `NotificationManager.emit()` before this method was called
+   * (WAL-then-mirror, §4.5.6).
+   */
+  addPendingNotification(notif: NotificationData): void {
+    this.pendingNotifications.push(notif);
+  }
+
+  /**
+   * Drain the pending notification queue and stash each entry into
+   * ContextState as a `pending_notification` ephemeral injection. Called
+   * by `launchTurn` right before kicking off the Soul turn and can also
+   * be called inline between steps if TurnManager later grows a
+   * "mid-turn drain" hook.
+   *
+   * Idempotent-ish: after draining, the queue is empty, so a second
+   * call with no new emits is a no-op. Order is preserved (FIFO).
+   */
+  drainPendingNotificationsIntoContext(): void {
+    if (this.pendingNotifications.length === 0) return;
+    const drained = this.pendingNotifications;
+    this.pendingNotifications = [];
+    for (const notif of drained) {
+      // `stashEphemeralInjection` is a synchronous push — it is safe
+      // to call from anywhere on the main event loop.
+      this.deps.contextState.stashEphemeralInjection({
+        kind: 'pending_notification',
+        content: notif as unknown as Record<string, unknown>,
+      });
+    }
+  }
+
+  /**
+   * Test / inspection helper — read-only view of the pending queue.
+   * Production code must use `addPendingNotification` /
+   * `drainPendingNotificationsIntoContext`.
+   */
+  getPendingNotifications(): readonly NotificationData[] {
+    return this.pendingNotifications;
   }
 
   // ── Conversation-channel handlers ────────────────────────────────────
@@ -194,14 +366,61 @@ export class TurnManager {
     return existing;
   }
 
-  private buildBeforeToolCall(): BeforeToolCallHook {
+  private buildBeforeToolCall(rules: readonly PermissionRule[]): BeforeToolCallHook {
     if (this.deps.orchestrator !== undefined) {
+      // Slice 2.3 (N1): use the real agentId instead of the hardcoded
+      // `'agent_main'` placeholder. Subagent TurnManagers get their id
+      // from `deps.agentId` at construction (piped in from
+      // `SubagentHandle.agentId`).
+      const approvalSource: ApprovalSource =
+        this.agentType === 'sub'
+          ? { kind: 'subagent', agent_id: this.agentId }
+          : { kind: 'soul', agent_id: this.agentId };
       return this.deps.orchestrator.buildBeforeToolCall({
         turnId: this.currentTurnId ?? 'unknown',
+        permissionRules: rules,
+        permissionMode: this.permissionMode,
+        approvalSource,
       });
     }
     // oxlint-disable-next-line unicorn/no-useless-undefined
     return async () => undefined;
+  }
+
+  /**
+   * Compute the effective PermissionRule list for the *current* turn.
+   * This is called exactly once per `launchTurn` and the result is
+   * baked into a fresh `beforeToolCall` closure. The pending overrides
+   * slot is drained inside `launchTurn` (not here) so this helper
+   * remains side-effect free.
+   */
+  private computeTurnRules(): readonly PermissionRule[] {
+    const overrides = this.pendingTurnOverrides;
+    if (overrides === undefined) {
+      return this.sessionRules;
+    }
+    const turnRules: PermissionRule[] = [];
+    if (overrides.activeTools !== undefined) {
+      for (const toolName of overrides.activeTools) {
+        turnRules.push({
+          decision: 'allow',
+          scope: 'turn-override',
+          pattern: toolName,
+          reason: 'activeTools turn override',
+        });
+      }
+    }
+    if (overrides.disallowedTools !== undefined) {
+      for (const toolName of overrides.disallowedTools) {
+        turnRules.push({
+          decision: 'deny',
+          scope: 'turn-override',
+          pattern: toolName,
+          reason: 'disallowedTools turn override',
+        });
+      }
+    }
+    return [...this.sessionRules, ...turnRules];
   }
 
   private buildAfterToolCall(): AfterToolCallHook {
@@ -245,9 +464,30 @@ export class TurnManager {
         ? this.deps.orchestrator.wrapTools(this.deps.tools)
         : [...this.deps.tools];
 
+    // Slice 2.2: compute the effective rule set and immediately drain
+    // the pending turn-override slot. The order matters — the closure
+    // below captures `effectiveRules` by reference but the drained slot
+    // guarantees that if `launchTurn` is called again before the
+    // current turn completes, the *next* turn starts from a clean
+    // pending-overrides state (Q6 regression).
+    const effectiveRules = this.computeTurnRules();
+    this.pendingTurnOverrides = undefined;
+
+    // Slice 2.4 — drain the pending notification queue into
+    // ContextState right before Soul starts its LLM loop. The Soul
+    // loop calls `context.buildMessages()` once per step; the stash
+    // we prime here is consumed by the first `buildMessages` call and
+    // renders as `<notification ...>` / `<system-reminder>` user
+    // messages prepended to history. Doing the drain here (rather
+    // than inside Soul or ContextState) keeps Soul ignorant of
+    // SoulPlus-level notification lifecycle — runSoulTurn sees a
+    // plain ContextState whose buildMessages just happens to include
+    // the injections.
+    this.drainPendingNotificationsIntoContext();
+
     const soulConfig: SoulConfig = {
       tools: wrappedTools,
-      beforeToolCall: this.buildBeforeToolCall(),
+      beforeToolCall: this.buildBeforeToolCall(effectiveRules),
       afterToolCall: this.buildAfterToolCall(),
     };
 

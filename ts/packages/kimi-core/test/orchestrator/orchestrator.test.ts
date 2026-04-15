@@ -19,6 +19,7 @@ import { z } from 'zod';
 
 import { HookEngine } from '../../src/hooks/engine.js';
 import type { HookExecutor, HookInput, HookEventType } from '../../src/hooks/types.js';
+import { AlwaysAllowApprovalRuntime } from '../../src/soul-plus/approval-runtime.js';
 import { ToolCallOrchestrator } from '../../src/soul-plus/orchestrator.js';
 import type {
   BeforeToolCallContext,
@@ -33,6 +34,7 @@ function makeOrchestrator(hookEngine: HookEngine): ToolCallOrchestrator {
     hookEngine,
     sessionId: 'sess_1',
     agentId: 'agent_main',
+    approvalRuntime: new AlwaysAllowApprovalRuntime(),
   });
 }
 

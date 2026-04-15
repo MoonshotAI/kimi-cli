@@ -22,7 +22,16 @@ export { LifecycleGateFacade } from './lifecycle-gate.js';
 export { KosongAdapter, createKosongAdapter } from './kosong-adapter.js';
 export type { KosongAdapterOptions } from './kosong-adapter.js';
 export { SessionEventBus } from './session-event-bus.js';
-export type { SessionEventListener } from './session-event-bus.js';
+export type { NotificationListener, SessionEventListener } from './session-event-bus.js';
+export { NotificationManager } from './notification-manager.js';
+export type {
+  EmitInput as NotificationEmitInput,
+  EmitResult as NotificationEmitResult,
+  LlmDeliverCallback,
+  NotificationData,
+  NotificationManagerDeps,
+  ShellDeliverCallback,
+} from './notification-manager.js';
 export { SoulRegistry } from './soul-registry.js';
 export type { SoulRegistryDeps } from './soul-registry.js';
 export {
@@ -32,7 +41,27 @@ export {
 } from './runtime-factory.js';
 export type { RuntimeFactoryDeps } from './runtime-factory.js';
 export { TurnManager } from './turn-manager.js';
-export type { TurnManagerDeps, TurnState } from './turn-manager.js';
+export type { TurnManagerDeps, TurnPermissionOverrides, TurnState } from './turn-manager.js';
+
+// ── Permission subsystem (Slice 2.2) ──────────────────────────────────
+
+export type {
+  PermissionMode,
+  PermissionRule,
+  PermissionRuleDecision,
+  PermissionRuleScope,
+} from './permission/index.js';
+export {
+  ApprovalTimeoutError,
+  DEFAULT_APPROVAL_TIMEOUT_MS,
+  ToolPermissionDeniedError,
+  buildBeforeToolCall as buildPermissionBeforeToolCall,
+  checkRules,
+  globToRegex,
+  matchesRule,
+  parsePattern,
+  withTimeout,
+} from './permission/index.js';
 export { SoulPlus } from './soul-plus.js';
 export type { SoulPlusDeps } from './soul-plus.js';
 export { TransactionalHandlerRegistry } from './transactional-handler-registry.js';
@@ -51,12 +80,98 @@ export type {
   SubagentStatus,
 } from './subagent-types.js';
 
-// ── Approval Runtime (Slice 8) ───────────────────────────────────────
+// ── Approval Runtime (Slice 8 stub + Slice 2.3 wired) ────────────────
 
 export type {
   ApprovalRequest,
+  ApprovalRequestPayload,
   ApprovalResponseData,
   ApprovalResult,
   ApprovalRuntime,
 } from './approval-runtime.js';
-export { AlwaysAllowApprovalRuntime } from './approval-runtime.js';
+export { AlwaysAllowApprovalRuntime, NotImplementedError } from './approval-runtime.js';
+export { WiredApprovalRuntime, WIRED_APPROVAL_TIMEOUT_MS } from './wired-approval-runtime.js';
+export type { WiredApprovalRuntimeDeps } from './wired-approval-runtime.js';
+export {
+  InMemoryApprovalStateStore,
+  SessionStateApprovalStateStore,
+} from './approval-state-store.js';
+export type { ApprovalStateStore } from './approval-state-store.js';
+export { describeApprovalAction, actionToRulePattern } from './permission/action-label.js';
+export { checkRulesDetailed } from './permission/check-rules.js';
+export type { CheckRulesResult } from './permission/check-rules.js';
+
+// ── MCP subsystem (Slice 2.6) ─────────────────────────────────────────
+
+export type {
+  CallToolOptions as McpCallToolOptions,
+  HttpServerConfig,
+  MCPClient,
+  MCPManagerOptions,
+  MCPServerStatus,
+  MCPToolDefinition,
+  MCPToolResult,
+  McpClientFactory,
+  McpConfig,
+  McpContentBlock,
+  McpLoadNotification,
+  McpNotifyCallback,
+  McpServerConfig,
+  McpStderrCallback,
+  McpToolAdapterOptions,
+  McpToolResultInput,
+  StdioServerConfig,
+} from './mcp/index.js';
+export {
+  DEFAULT_MCP_TOOL_CALL_TIMEOUT_MS,
+  HttpMcpClient,
+  HttpServerConfigSchema,
+  MCPConfigError,
+  MCPManager,
+  MCPRuntimeError,
+  MCPTimeoutError,
+  MCP_MAX_OUTPUT_CHARS,
+  MCP_TOOL_NAME_PREFIX,
+  McpConfigSchema,
+  McpServerConfigSchema,
+  StdioMcpClient,
+  StdioServerConfigSchema,
+  convertBlock as convertMcpBlock,
+  convertMcpToolResult,
+  isHttpServer,
+  isStdioServer,
+  mcpToolName,
+  mcpToolToKimiTool,
+  parseMcpConfig,
+  parseMcpToolName,
+} from './mcp/index.js';
+
+// ── Skill subsystem (Slice 2.5) ───────────────────────────────────────
+
+export type {
+  DiscoverSkillsOptions,
+  ParseSkillFromFileOptions,
+  ParsedFrontmatter,
+  ResolveSkillRootsOptions,
+  SkillActivationContext,
+  SkillDefinition,
+  SkillManager,
+  SkillManagerOptions,
+  SkillMetadata,
+  SkillRoot,
+  SkillSource,
+} from './skill/index.js';
+export {
+  DefaultSkillManager,
+  FrontmatterError,
+  SkillNotFoundError,
+  SkillParseError,
+  UnsupportedSkillTypeError,
+  buildInlinePrompt,
+  discoverSkills,
+  extendWorkspaceWithSkillRoots,
+  normalizeSkillName,
+  parseFrontmatter,
+  parseSkillFromFile,
+  resolveSkillRoots,
+} from './skill/index.js';

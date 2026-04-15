@@ -1,0 +1,441 @@
+/**
+ * WiredApprovalRuntime — end-to-end regression suite for Slice 2.3.
+ *
+ * Coverage map (§9 坑位清单 + §5 Python parity):
+ *   - Happy path: request → journal append → resolve → waiter settles
+ *   - Short-circuit on auto-approve cache
+ *   - P0-1: journal append ordering — waiter never settles before WAL
+ *   - P0-2: timeout / abort / cancelBySource all write synthetic
+ *   - P0-3: approve_for_session cascade resolves same-action pending
+ *     without re-entrant recursion
+ *   - recoverPendingOnStartup idempotency
+ *   - State.json persistence + rule injection
+ *   - ingestRemoteRequest / resolveRemote NotImplementedError
+ */
+
+import { describe, expect, it, vi } from 'vitest';
+
+import { NotImplementedError } from '../../src/soul-plus/approval-runtime.js';
+import { InMemoryApprovalStateStore } from '../../src/soul-plus/approval-state-store.js';
+import type { PermissionRule } from '../../src/soul-plus/permission/types.js';
+import { WiredApprovalRuntime } from '../../src/soul-plus/wired-approval-runtime.js';
+import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js';
+import type { ApprovalDisplay, ApprovalSource, WireRecord } from '../../src/storage/wire-record.js';
+
+function buildRequest(
+  overrides: Partial<Parameters<WiredApprovalRuntime['request']>[0]> = {},
+): Parameters<WiredApprovalRuntime['request']>[0] {
+  return {
+    toolCallId: 'tc_1',
+    toolName: 'Bash',
+    action: 'run command',
+    display: { kind: 'command', command: 'ls' } satisfies ApprovalDisplay,
+    source: { kind: 'soul', agent_id: 'agent_main' } satisfies ApprovalSource,
+    turnId: 'turn_1',
+    step: 1,
+    ...overrides,
+  };
+}
+
+function makeRuntime(opts?: {
+  timeoutMs?: number;
+  records?: readonly WireRecord[];
+  initialActions?: Iterable<string>;
+  ruleInjector?: (rule: PermissionRule) => void;
+}): {
+  runtime: WiredApprovalRuntime;
+  journal: InMemorySessionJournalImpl;
+  store: InMemoryApprovalStateStore;
+} {
+  const journal = new InMemorySessionJournalImpl();
+  const store = new InMemoryApprovalStateStore(opts?.initialActions);
+  const runtime = new WiredApprovalRuntime({
+    sessionJournal: journal,
+    stateStore: store,
+    loadJournalRecords: async () => opts?.records ?? [],
+    ruleInjector: opts?.ruleInjector,
+    timeoutMs: opts?.timeoutMs ?? 300_000,
+    allocateRequestId: (() => {
+      let counter = 0;
+      return () => {
+        counter += 1;
+        return `req_${String(counter)}`;
+      };
+    })(),
+  });
+  return { runtime, journal, store };
+}
+
+describe('WiredApprovalRuntime — happy path', () => {
+  it('request → journal append → resolve → waiter settles approved', async () => {
+    const { runtime, journal } = makeRuntime();
+    const promise = runtime.request(buildRequest());
+
+    // Let the WAL append tick so the waiter is installed.
+    await new Promise((r) => setImmediate(r));
+
+    expect(runtime.pendingCount).toBe(1);
+    const requests = journal.getRecordsByType('approval_request');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.data.request_id).toBe('req_1');
+
+    runtime.resolve('req_1', { response: 'approved' });
+    const result = await promise;
+    expect(result.approved).toBe(true);
+
+    const responses = journal.getRecordsByType('approval_response');
+    expect(responses).toHaveLength(1);
+    expect(responses[0]!.data).toMatchObject({ request_id: 'req_1', response: 'approved' });
+    expect(runtime.pendingCount).toBe(0);
+  });
+
+  it('unknown requestId resolve is a silent no-op', async () => {
+    const { runtime } = makeRuntime();
+    expect(() => {
+      runtime.resolve('missing', { response: 'approved' });
+    }).not.toThrow();
+  });
+});
+
+describe('WiredApprovalRuntime — auto-approve cache short-circuit', () => {
+  it('skips wire append when action is already in the cache', async () => {
+    const { runtime, journal } = makeRuntime({ initialActions: ['run command'] });
+    const result = await runtime.request(buildRequest());
+    expect(result.approved).toBe(true);
+    expect(journal.getRecordsByType('approval_request')).toHaveLength(0);
+    expect(journal.getRecordsByType('approval_response')).toHaveLength(0);
+  });
+});
+
+describe('WiredApprovalRuntime — journal ordering (P0-1)', () => {
+  it('appendApprovalRequest must settle BEFORE waiter is installed', async () => {
+    // Mock sessionJournal that delays the append completion and lets us
+    // assert the waiter map is empty during the await window.
+    let releaseAppend: (() => void) | undefined;
+    const appendGate = new Promise<void>((resolve) => {
+      releaseAppend = resolve;
+    });
+
+    const store = new InMemoryApprovalStateStore();
+    const records: WireRecord[] = [];
+    const journal = {
+      appendApprovalRequest: vi.fn(async (rec) => {
+        records.push(rec as WireRecord);
+        await appendGate;
+      }),
+      appendApprovalResponse: vi.fn(async (rec) => {
+        records.push(rec as WireRecord);
+      }),
+      // Unused methods — stub as throws so accidental use is loud.
+      appendTurnBegin: vi.fn(),
+      appendTurnEnd: vi.fn(),
+      appendSkillInvoked: vi.fn(),
+      appendSkillCompleted: vi.fn(),
+      appendTeamMail: vi.fn(),
+      appendToolCallDispatched: vi.fn(),
+      appendPermissionModeChanged: vi.fn(),
+      appendToolDenied: vi.fn(),
+      appendNotification: vi.fn(),
+      appendSystemReminder: vi.fn(),
+      appendSubagentEvent: vi.fn(),
+      appendOwnershipChanged: vi.fn(),
+    };
+
+    const runtime = new WiredApprovalRuntime({
+      sessionJournal: journal as never,
+      stateStore: store,
+      loadJournalRecords: async () => [],
+      allocateRequestId: () => 'req_1',
+    });
+
+    const requestPromise = runtime.request(buildRequest());
+
+    // Wait a tick so `request()` has kicked off the append.
+    await new Promise((r) => setImmediate(r));
+    expect(journal.appendApprovalRequest).toHaveBeenCalledTimes(1);
+    // Waiter is NOT installed until the append resolves.
+    expect(runtime.pendingCount).toBe(0);
+
+    // Now release the append — waiter must appear on the next tick.
+    releaseAppend!();
+    await new Promise((r) => setImmediate(r));
+    expect(runtime.pendingCount).toBe(1);
+
+    // Resolve and let the caller await settle.
+    runtime.resolve('req_1', { response: 'approved' });
+    const result = await requestPromise;
+    expect(result.approved).toBe(true);
+  });
+});
+
+describe('WiredApprovalRuntime — timeout / abort / cancelBySource (P0-2)', () => {
+  it('hard timeout writes a synthetic cancelled response', async () => {
+    const { runtime, journal } = makeRuntime({ timeoutMs: 20 });
+    const result = await runtime.request(buildRequest());
+    expect(result.approved).toBe(false);
+    expect(result.feedback).toContain('timed out');
+    const responses = journal.getRecordsByType('approval_response');
+    expect(responses).toHaveLength(1);
+    expect(responses[0]!.data.synthetic).toBe(true);
+    expect(responses[0]!.data.response).toBe('cancelled');
+  });
+
+  it('abort signal writes a synthetic cancelled response', async () => {
+    const { runtime, journal } = makeRuntime();
+    const controller = new AbortController();
+    const promise = runtime.request(buildRequest(), controller.signal);
+    await new Promise((r) => setImmediate(r));
+    controller.abort();
+    const result = await promise;
+    expect(result.approved).toBe(false);
+    expect(result.feedback).toContain('cancelled');
+    const responses = journal.getRecordsByType('approval_response');
+    expect(responses).toHaveLength(1);
+    expect(responses[0]!.data.synthetic).toBe(true);
+  });
+
+  it('M1 — signal aborted during WAL await still resolves immediately (no 300 s leak)', async () => {
+    // Repro: caller aborts the signal while `appendApprovalRequest` is
+    // still pending. With the old code the listener was attached AFTER
+    // the await, so the already-dispatched abort event was lost and the
+    // pending entry sat there until the runtime's hard 300 s timeout
+    // cleaned it up. Reviewer M1.
+    let releaseAppend: (() => void) | undefined;
+    const appendGate = new Promise<void>((resolve) => {
+      releaseAppend = resolve;
+    });
+
+    const store = new InMemoryApprovalStateStore();
+    const responses: unknown[] = [];
+    const journal = {
+      appendApprovalRequest: vi.fn(async () => {
+        await appendGate;
+      }),
+      appendApprovalResponse: vi.fn(async (rec) => {
+        responses.push(rec);
+      }),
+      appendTurnBegin: vi.fn(),
+      appendTurnEnd: vi.fn(),
+      appendSkillInvoked: vi.fn(),
+      appendSkillCompleted: vi.fn(),
+      appendTeamMail: vi.fn(),
+      appendToolCallDispatched: vi.fn(),
+      appendPermissionModeChanged: vi.fn(),
+      appendToolDenied: vi.fn(),
+      appendNotification: vi.fn(),
+      appendSystemReminder: vi.fn(),
+      appendSubagentEvent: vi.fn(),
+      appendOwnershipChanged: vi.fn(),
+    };
+
+    // Note the very large `timeoutMs` — the test would *only* finish in
+    // reasonable time if the M1 retroactive trigger fires. Without the
+    // fix, the request would hang here for 1 hour (until the runtime
+    // hard timeout) and the vitest default 5 s test timeout kills it.
+    const runtime = new WiredApprovalRuntime({
+      sessionJournal: journal as never,
+      stateStore: store,
+      loadJournalRecords: async () => [],
+      timeoutMs: 60 * 60 * 1000, // 1 hour — must NOT be reached
+      allocateRequestId: () => 'req_race',
+    });
+
+    const controller = new AbortController();
+    const promise = runtime.request(buildRequest(), controller.signal);
+
+    // Let `request()` enter the `await appendApprovalRequest` window.
+    await new Promise((r) => setImmediate(r));
+
+    // Abort while WAL append is still pending — the abort event is
+    // dispatched but no listener is installed yet.
+    controller.abort();
+
+    // Now release the WAL append so the listener installation finishes.
+    releaseAppend!();
+
+    const result = await promise;
+    expect(result.approved).toBe(false);
+    expect(result.feedback).toContain('cancelled');
+    expect(responses).toHaveLength(1);
+    expect((responses[0] as { data: { synthetic?: boolean } }).data.synthetic).toBe(true);
+    expect(runtime.pendingCount).toBe(0);
+  });
+
+  it('cancelBySource writes synthetic cancelled record and matches source', async () => {
+    const { runtime, journal } = makeRuntime();
+    const pending1 = runtime.request(
+      buildRequest({ toolCallId: 'tc_1', source: { kind: 'subagent', agent_id: 'sub_a' } }),
+    );
+    const pending2 = runtime.request(
+      buildRequest({
+        toolCallId: 'tc_2',
+        source: { kind: 'subagent', agent_id: 'sub_b' },
+      }),
+    );
+    await new Promise((r) => setImmediate(r));
+    expect(runtime.pendingCount).toBe(2);
+
+    runtime.cancelBySource({ kind: 'subagent', agent_id: 'sub_a' });
+    const r1 = await pending1;
+    expect(r1.approved).toBe(false);
+    expect(runtime.pendingCount).toBe(1);
+
+    const responses = journal.getRecordsByType('approval_response');
+    expect(responses).toHaveLength(1);
+    expect(responses[0]!.data.synthetic).toBe(true);
+
+    // Resolve pending2 separately to drain.
+    runtime.resolve('req_2', { response: 'approved' });
+    await pending2;
+  });
+});
+
+describe('WiredApprovalRuntime — approve_for_session cascade (P0-3)', () => {
+  it('cascades resolve to other same-action pending on approve_for_session', async () => {
+    const rules: PermissionRule[] = [];
+    const { runtime, store } = makeRuntime({
+      ruleInjector: (r) => rules.push(r),
+    });
+
+    const p1 = runtime.request(buildRequest({ toolCallId: 'tc_1', action: 'edit file' }));
+    const p2 = runtime.request(buildRequest({ toolCallId: 'tc_2', action: 'edit file' }));
+    const p3 = runtime.request(buildRequest({ toolCallId: 'tc_3', action: 'run command' }));
+    await new Promise((r) => setImmediate(r));
+    expect(runtime.pendingCount).toBe(3);
+
+    runtime.resolve('req_1', { response: 'approved', scope: 'session' });
+
+    const r1 = await p1;
+    const r2 = await p2;
+    expect(r1.approved).toBe(true);
+    expect(r2.approved).toBe(true);
+    // p3 has a different action — still pending.
+    expect(runtime.pendingCount).toBe(1);
+
+    // Session state + rule injected once per approve_for_session call.
+    expect(store.snapshot().has('edit file')).toBe(true);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({
+      decision: 'allow',
+      scope: 'session-runtime',
+    });
+
+    // Drain p3.
+    runtime.resolve('req_3', { response: 'rejected', feedback: 'nope' });
+    const r3 = await p3;
+    expect(r3.approved).toBe(false);
+  });
+
+  it('subsequent same-action requests hit the auto-approve short-circuit', async () => {
+    const { runtime, journal } = makeRuntime();
+    const p1 = runtime.request(buildRequest({ action: 'edit file' }));
+    await new Promise((r) => setImmediate(r));
+    runtime.resolve('req_1', { response: 'approved', scope: 'session' });
+    await p1;
+
+    const requestCountBefore = journal.getRecordsByType('approval_request').length;
+    const r2 = await runtime.request(buildRequest({ action: 'edit file' }));
+    expect(r2.approved).toBe(true);
+    // No new wire record appended — short-circuited.
+    expect(journal.getRecordsByType('approval_request').length).toBe(requestCountBefore);
+  });
+});
+
+describe('WiredApprovalRuntime — recoverPendingOnStartup', () => {
+  it('writes synthetic cancelled responses for dangling requests', async () => {
+    const danglingRequest: WireRecord = {
+      type: 'approval_request',
+      seq: 1,
+      time: 0,
+      turn_id: 'turn_x',
+      step: 7,
+      data: {
+        request_id: 'dangling_1',
+        tool_call_id: 'tc_a',
+        tool_name: 'Bash',
+        action: 'run command',
+        display: { kind: 'command', command: 'echo' },
+        source: { kind: 'soul', agent_id: 'agent_main' },
+      },
+    };
+
+    const { runtime, journal } = makeRuntime({ records: [danglingRequest] });
+    await runtime.recoverPendingOnStartup();
+
+    const responses = journal.getRecordsByType('approval_response');
+    expect(responses).toHaveLength(1);
+    expect(responses[0]!.data).toMatchObject({
+      request_id: 'dangling_1',
+      response: 'cancelled',
+      synthetic: true,
+    });
+    expect(responses[0]!.turn_id).toBe('turn_x');
+    expect(responses[0]!.step).toBe(7);
+  });
+
+  it('is idempotent — running a second time sees no dangling', async () => {
+    // After first run, subsequent loadJournalRecords() should reflect the
+    // now-balanced state. Simulate with a records supplier that switches.
+    const journal = new InMemorySessionJournalImpl();
+    const store = new InMemoryApprovalStateStore();
+    let records: WireRecord[] = [
+      {
+        type: 'approval_request',
+        seq: 1,
+        time: 0,
+        turn_id: 'turn_x',
+        step: 1,
+        data: {
+          request_id: 'd1',
+          tool_call_id: 'tc_a',
+          tool_name: 'Bash',
+          action: 'run command',
+          display: { kind: 'command', command: 'ls' },
+          source: { kind: 'soul', agent_id: 'agent_main' },
+        },
+      },
+    ];
+
+    const runtime = new WiredApprovalRuntime({
+      sessionJournal: journal,
+      stateStore: store,
+      loadJournalRecords: async () => records,
+    });
+
+    await runtime.recoverPendingOnStartup();
+    expect(journal.getRecordsByType('approval_response')).toHaveLength(1);
+
+    // The next boot sees both the original request + the synthetic
+    // response we just wrote — so `pendingMap` becomes empty.
+    records = [
+      ...records,
+      ...journal.getRecordsByType('approval_response').map((r) => r as WireRecord),
+    ];
+    await runtime.recoverPendingOnStartup();
+    // Still only 1 response — no duplicate synthetic written.
+    expect(journal.getRecordsByType('approval_response')).toHaveLength(1);
+  });
+});
+
+describe('WiredApprovalRuntime — remote stubs', () => {
+  it('ingestRemoteRequest throws NotImplementedError', async () => {
+    const { runtime } = makeRuntime();
+    await expect(
+      runtime.ingestRemoteRequest({
+        request_id: 'x',
+        tool_call_id: 'tc',
+        tool_name: 'Bash',
+        action: 'run command',
+        display: { kind: 'command', command: 'ls' },
+        source: { kind: 'soul', agent_id: 'agent_main' },
+      }),
+    ).rejects.toBeInstanceOf(NotImplementedError);
+  });
+
+  it('resolveRemote throws NotImplementedError', () => {
+    const { runtime } = makeRuntime();
+    expect(() => {
+      runtime.resolveRemote({ request_id: 'x', response: 'approved' });
+    }).toThrow(NotImplementedError);
+  });
+});

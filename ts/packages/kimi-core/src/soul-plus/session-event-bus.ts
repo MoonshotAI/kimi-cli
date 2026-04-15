@@ -23,6 +23,7 @@
  */
 
 import type { EventSink, SoulEvent } from '../soul/index.js';
+import type { NotificationData } from './notification-manager.js';
 
 /**
  * Listener signature. `void | Promise<void>` (rather than bare `void`) so
@@ -31,37 +32,37 @@ import type { EventSink, SoulEvent } from '../soul/index.js';
  */
 export type SessionEventListener = (event: SoulEvent) => void | Promise<void>;
 
+/**
+ * Notification listener signature (Slice 2.4). Same async-safe shape as
+ * `SessionEventListener`; rejections are isolated by the bus.
+ */
+export type NotificationListener = (notif: NotificationData) => void | Promise<void>;
+
 export class SessionEventBus implements EventSink {
   private readonly listeners: SessionEventListener[] = [];
+  private readonly notificationListeners: NotificationListener[] = [];
 
   emit(event: SoulEvent): void {
     // Iterate over a stable snapshot so a listener that mutates the bus
     // cannot shift the iteration it is part of.
     const snapshot = this.listeners.slice();
     for (const listener of snapshot) {
-      let maybePromise: void | Promise<void>;
-      try {
-        maybePromise = listener(event);
-      } catch {
-        // §4.6.3 rule 3: sync listener throw — never reaches Soul or
-        // blocks siblings.
-        continue;
-      }
-      // Slice 3 audit M3: if the listener returned a thenable (async
-      // function, or a function that returned a Promise), attach a
-      // terminal `.catch` so a rejected promise cannot escape as an
-      // unhandled rejection at the Node process level. Mirrors the
-      // Slice 2 `safeEmit` pattern in `src/soul/run-turn.ts`.
-      if (
-        maybePromise !== undefined &&
-        maybePromise !== null &&
-        typeof (maybePromise as { then?: unknown }).then === 'function' &&
-        typeof (maybePromise as { catch?: unknown }).catch === 'function'
-      ) {
-        maybePromise.catch(() => {
-          // swallow async listener rejection
-        });
-      }
+      safeDispatch(listener, event);
+    }
+  }
+
+  /**
+   * Fan out a notification to all notification subscribers (Slice 2.4).
+   * Kept as a dedicated channel rather than folded into `SoulEvent` so
+   * the Soul layer stays ignorant of SoulPlus-level concepts
+   * (notification is an §5.2.4 SoulPlus concern, not a §5.2.1 Soul one).
+   * Listener errors are swallowed with the same safeEmit discipline as
+   * `emit` — a misbehaving wire subscriber cannot block other sinks.
+   */
+  emitNotification(notif: NotificationData): void {
+    const snapshot = this.notificationListeners.slice();
+    for (const listener of snapshot) {
+      safeDispatch(listener, notif);
     }
   }
 
@@ -76,7 +77,48 @@ export class SessionEventBus implements EventSink {
     }
   }
 
+  /** Subscribe to notification fan-out (Slice 2.4). */
+  subscribeNotifications(listener: NotificationListener): void {
+    this.notificationListeners.push(listener);
+  }
+
+  unsubscribeNotifications(listener: NotificationListener): void {
+    const idx = this.notificationListeners.indexOf(listener);
+    if (idx !== -1) {
+      this.notificationListeners.splice(idx, 1);
+    }
+  }
+
   listenerCount(): number {
     return this.listeners.length;
+  }
+
+  notificationListenerCount(): number {
+    return this.notificationListeners.length;
+  }
+}
+
+/**
+ * Shared sync+async safe-dispatch helper for both channels. Mirrors the
+ * pattern in `src/soul/run-turn.ts::safeEmit`. A sync throw is caught
+ * and swallowed; an async rejection is caught via a terminal `.catch`
+ * so nothing reaches Node's unhandled-rejection handler.
+ */
+function safeDispatch<A>(fn: (arg: A) => void | Promise<void>, arg: A): void {
+  let maybePromise: void | Promise<void>;
+  try {
+    maybePromise = fn(arg);
+  } catch {
+    return;
+  }
+  if (
+    maybePromise !== undefined &&
+    maybePromise !== null &&
+    typeof (maybePromise as { then?: unknown }).then === 'function' &&
+    typeof (maybePromise as { catch?: unknown }).catch === 'function'
+  ) {
+    maybePromise.catch(() => {
+      // swallow async listener rejection
+    });
   }
 }

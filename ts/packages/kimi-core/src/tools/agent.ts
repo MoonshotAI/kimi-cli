@@ -101,10 +101,15 @@ export class AgentTool {
   async execute(
     toolCallId: string,
     args: AgentToolInput,
-    _signal: AbortSignal,
+    signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult> {
     try {
+      // Slice 2.1 — forward the parent turn's AbortSignal into the spawn
+      // request so the host (SoulRegistry) can wire foreground abort
+      // cascade to the child soul. Background spawns still receive the
+      // signal; the background-independence invariant is enforced by the
+      // host implementation, not by AgentTool.
       const request: SpawnRequest = {
         parentAgentId: this.parentAgentId,
         parentToolCallId: toolCallId,
@@ -113,6 +118,7 @@ export class AgentTool {
         description: args.description,
         runInBackground: args.runInBackground ?? false,
         model: args.model,
+        signal,
       };
 
       const handle = await this.subagentHost.spawn(request);

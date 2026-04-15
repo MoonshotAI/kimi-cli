@@ -28,6 +28,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@moonshot-ai/kaos": "workspace:^",
     "@moonshot-ai/kosong": "workspace:^",
     "zod": "catalog:"

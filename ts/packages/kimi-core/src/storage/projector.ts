@@ -70,12 +70,30 @@ export class DefaultConversationProjector implements ConversationProjector {
   }
 }
 
+/**
+ * Render an EphemeralInjection into a synthetic user message. Slice 2.4:
+ *
+ * Both `system_reminder` and `pending_notification` now render as
+ * XML-wrapped payloads rather than bracket-prefixed free text. The
+ * wrapper gives the LLM an unambiguous signal that the "user" message
+ * it's reading is a system-injected annotation, not a genuine user
+ * turn, and exposes the notification's metadata (id / category / type
+ * / source) so the model can reason about it. The format is ported
+ * from Python `kimi_cli/notifications/llm.py:21-29` +
+ * `kimi_cli/soul/message.py:23-25`.
+ *
+ * `memory_recall` keeps its previous free-text rendering — there is no
+ * Python precedent and the Slice 2.4 decision (Phase 2 MemoryRuntime is
+ * deferred to D14) is to leave it unchanged.
+ *
+ * The merge-guard logic downstream (`mergeAdjacentUserMessages`) uses
+ * the `<notification ` / `<system-reminder>` opening tag to detect
+ * these messages, so the exact tag names are load-bearing for
+ * projector correctness — do not rename without also updating
+ * `isInjectionUserMessage` below.
+ */
 function renderInjection(injection: EphemeralInjection): Message {
-  const body =
-    typeof injection.content === 'string' ? injection.content : JSON.stringify(injection.content);
-  const prefix = injection.kind === 'system_reminder' ? '[system-reminder]\n' : '';
-  const text =
-    injection.kind === 'pending_notification' ? `[notification]\n${body}` : `${prefix}${body}`;
+  const text = renderInjectionText(injection);
   return {
     role: 'user',
     content: [{ type: 'text', text }],
@@ -83,11 +101,95 @@ function renderInjection(injection: EphemeralInjection): Message {
   };
 }
 
+function renderInjectionText(injection: EphemeralInjection): string {
+  const { kind, content } = injection;
+  if (kind === 'pending_notification') {
+    // `content` is expected to be the full NotificationData shape; we
+    // accept a plain string as a degenerate fallback so tests that
+    // pre-date Slice 2.4 (passing a bare string) still produce a
+    // valid XML tag rather than crashing. Production callers always
+    // pass the NotificationData object.
+    if (typeof content === 'string') {
+      return `<notification>\n${content}\n</notification>`;
+    }
+    return renderNotificationXml(content);
+  }
+  if (kind === 'system_reminder') {
+    const body = typeof content === 'string' ? content : JSON.stringify(content);
+    return `<system-reminder>\n${body}\n</system-reminder>`;
+  }
+  // memory_recall — free text, Slice 2.4 leaves unchanged
+  const body = typeof content === 'string' ? content : JSON.stringify(content);
+  return body;
+}
+
+function renderNotificationXml(data: Record<string, unknown>): string {
+  // Pull the well-known attributes for the opening tag. Unknown /
+  // extra fields stay in the body (Title / Severity / body text) so
+  // downstream schema evolution is forward-compatible.
+  const id = stringAttr(data['id'], 'unknown');
+  const category = stringAttr(data['category'], 'unknown');
+  const type = stringAttr(data['type'], 'unknown');
+  const sourceKind = stringAttr(data['source_kind'], 'unknown');
+  const sourceId = stringAttr(data['source_id'], 'unknown');
+  const title = typeof data['title'] === 'string' ? data['title'] : '';
+  const severity = typeof data['severity'] === 'string' ? data['severity'] : '';
+  const body = typeof data['body'] === 'string' ? data['body'] : '';
+
+  const lines: string[] = [
+    `<notification id="${id}" category="${category}" type="${type}" source_kind="${sourceKind}" source_id="${sourceId}">`,
+  ];
+  if (title.length > 0) lines.push(`Title: ${title}`);
+  if (severity.length > 0) lines.push(`Severity: ${severity}`);
+  if (body.length > 0) lines.push(body);
+  lines.push('</notification>');
+  return lines.join('\n');
+}
+
+function stringAttr(value: unknown, fallback: string): string {
+  if (typeof value !== 'string' || value.length === 0) return fallback;
+  // Minimal attribute escaping — the notification tag never carries
+  // HTML/XML-sensitive payload in practice (ids are hex, categories
+  // are enums), but we still neutralise the double-quote and
+  // ampersand boundaries just in case a downstream source_kind feeds
+  // free text through.
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+}
+
+/**
+ * Detect whether a user message was produced by the ephemeral injection
+ * pipeline (system_reminder or notification XML tag). Such messages
+ * must never be merged with an adjacent real user turn — doing so would
+ * smear the injection's XML wrapper into the user's actual prompt and
+ * confuse the LLM about where the system annotation ends.
+ *
+ * Ported from Python `soul/dynamic_injection.py:54-66` (`is_notification_message` /
+ * `is_system_reminder_message`).
+ */
+function isInjectionUserMessage(message: Message): boolean {
+  if (message.role !== 'user') return false;
+  const text = extractTextOnly(message);
+  // Cheap leading-fragment check — injections always have the opening
+  // tag at the start. We purposely do NOT regex-scan the whole body;
+  // the projector's input is trusted (either history text or
+  // renderInjection output) and leading-tag detection matches Python's
+  // cheaper logic.
+  if (text.startsWith('<notification')) return true;
+  if (text.startsWith('<system-reminder>')) return true;
+  return false;
+}
+
 function mergeAdjacentUserMessages(history: readonly Message[]): Message[] {
   const out: Message[] = [];
   for (const message of history) {
     const previous = out.at(-1);
-    if (message.role === 'user' && previous !== undefined && previous.role === 'user') {
+    if (
+      message.role === 'user' &&
+      previous !== undefined &&
+      previous.role === 'user' &&
+      !isInjectionUserMessage(message) &&
+      !isInjectionUserMessage(previous)
+    ) {
       out[out.length - 1] = mergeTwoUserMessages(previous, message);
       continue;
     }

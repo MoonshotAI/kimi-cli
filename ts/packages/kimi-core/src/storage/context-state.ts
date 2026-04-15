@@ -1,7 +1,11 @@
 import type { ContentPart, Message, ToolCall } from '@moonshot-ai/kosong';
 
 import { NoopJournalWriter, type JournalWriter } from './journal-writer.js';
-import { DefaultConversationProjector, type ConversationProjector } from './projector.js';
+import {
+  DefaultConversationProjector,
+  type ConversationProjector,
+  type EphemeralInjection,
+} from './projector.js';
 
 // ── Payload types for ContextState write methods ───────────────────────
 
@@ -79,6 +83,14 @@ export interface SoulContextState {
   readonly activeTools: ReadonlySet<string>;
   readonly tokenCountWithPending: number;
 
+  /**
+   * Build the messages that the next LLM call will see. Reads the
+   * durable history from memory + drains the one-shot
+   * `pendingEphemeralInjections` stash that TurnManager primed at the
+   * start of the turn (Slice 2.4). Must remain synchronous and
+   * side-effect-free apart from clearing the stash — buildMessages is
+   * a nullary pure read from Soul's perspective.
+   */
   buildMessages(): Message[];
 
   /** Drain the steer buffer. Side-effect: empties the buffer. */
@@ -110,6 +122,21 @@ export interface FullContextState extends SoulContextState {
 
   /** Push a steer into the buffer for the next `drainSteerMessages()` call. */
   pushSteer(input: UserInput): void;
+
+  /**
+   * Slice 2.4 — push an EphemeralInjection into the one-shot stash. The
+   * stash is consumed (and cleared) by the next `buildMessages()` call,
+   * so callers MUST prime it *before* Soul's LLM step asks for messages.
+   * TurnManager is the canonical owner: it drains
+   * `pendingNotifications` at the top of every turn step and stashes
+   * them here.
+   *
+   * This is a synchronous push so NotificationManager's `emit()` can
+   * invoke it from within a fan-out block without touching any
+   * Promise / journal write. Multiple pushes accumulate; the order is
+   * preserved.
+   */
+  stashEphemeralInjection(injection: EphemeralInjection): void;
 }
 
 // ── Shared implementation ─────────────────────────────────────────────
@@ -146,6 +173,20 @@ class BaseContextState implements FullContextState {
   private _activeTools: Set<string>;
   private _tokenCountWithPending = 0;
   private steerBuffer: UserInput[] = [];
+  /**
+   * One-shot ephemeral injection stash (Slice 2.4). TurnManager /
+   * NotificationManager pushes into this via `stashEphemeralInjection`;
+   * the next `buildMessages()` call drains it atomically. The stash
+   * lives on ContextState (not on TurnManager) because:
+   *   1. `buildMessages()` must be synchronous AND reachable from Soul
+   *      without a TurnManager reference;
+   *   2. Soul's Slice 2 Runtime contract forbids a TurnManager dep
+   *      (铁律 6), so ContextState is the only synchronous surface
+   *      Soul already holds.
+   * This buffer is NOT persisted — drop on process exit; crash
+   * recovery replays from the journal (NotificationRecord) separately.
+   */
+  private pendingEphemeralInjections: EphemeralInjection[] = [];
 
   constructor(opts: BaseContextStateOptions) {
     this.journalWriter = opts.journalWriter;
@@ -175,6 +216,17 @@ class BaseContextState implements FullContextState {
   }
 
   buildMessages(): Message[] {
+    // Slice 2.4: atomically drain the ephemeral stash here. Draining
+    // inside `buildMessages` rather than in a separate helper keeps
+    // the "injection appears exactly once" invariant local to the
+    // single read path — any second call to buildMessages within the
+    // same turn sees an empty stash, matching v2 §4.5.7 one-shot
+    // semantics. Soul's LLM loop only calls buildMessages once per
+    // step, so this is safe.
+    const injections = this.pendingEphemeralInjections;
+    if (injections.length > 0) {
+      this.pendingEphemeralInjections = [];
+    }
     return this.projector.project(
       {
         history: this.history,
@@ -182,7 +234,7 @@ class BaseContextState implements FullContextState {
         model: this._model,
         activeTools: this._activeTools,
       },
-      [],
+      injections,
       {},
     );
   }
@@ -195,6 +247,10 @@ class BaseContextState implements FullContextState {
 
   pushSteer(input: UserInput): void {
     this.steerBuffer.push({ ...input });
+  }
+
+  stashEphemeralInjection(injection: EphemeralInjection): void {
+    this.pendingEphemeralInjections.push(injection);
   }
 
   // ── Async writes (WAL-then-mirror) ──────────────────────────────────
