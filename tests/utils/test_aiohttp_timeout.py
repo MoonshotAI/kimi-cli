@@ -27,6 +27,12 @@ async def test_custom_timeout_override():
         assert session.timeout.sock_read == 10
 
 
+async def test_session_trusts_proxy_env():
+    """new_client_session() should honor http_proxy / https_proxy env vars."""
+    async with new_client_session() as session:
+        assert session.trust_env is True
+
+
 async def test_slow_server_is_interrupted():
     """A server that accepts but never responds should be interrupted by timeout."""
     hang_forever = asyncio.Event()
