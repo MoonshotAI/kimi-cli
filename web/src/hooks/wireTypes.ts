@@ -251,6 +251,23 @@ export type PlanDisplayEvent = {
   };
 };
 
+export type BtwBeginEvent = {
+  type: "BtwBegin";
+  payload: {
+    id: string;
+    question: string;
+  };
+};
+
+export type BtwEndEvent = {
+  type: "BtwEnd";
+  payload: {
+    id: string;
+    response?: string | null;
+    error?: string | null;
+  };
+};
+
 // Union of all event types
 export type WireEvent =
   | TurnBeginEvent
@@ -271,7 +288,9 @@ export type WireEvent =
   | QuestionRequestEvent
   | SubagentEventWire
   | SteerInputEvent
-  | PlanDisplayEvent;
+  | PlanDisplayEvent
+  | BtwBeginEvent
+  | BtwEndEvent;
 
 // Parsed wire message
 export type WireMessage = {

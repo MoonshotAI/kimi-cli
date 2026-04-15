@@ -132,6 +132,8 @@ import {
   type SessionStatusPayload,
   type SubagentEventWire,
   type PlanDisplayEvent,
+  type BtwBeginEvent,
+  type BtwEndEvent,
   extractEvent,
 } from "./wireTypes";
 import { createMessageId, getApiBaseUrl } from "./utils";
@@ -350,6 +352,7 @@ export function useSessionStream(
   const pendingQuestionRequestsRef = useRef<Map<string, PendingQuestionEntry>>(
     new Map(),
   );
+  const pendingBtwMessageIdsRef = useRef<Map<string, string>>(new Map());
 
   // Track if current turn is a /clear command (needs UI clear on turn end)
   const pendingClearRef = useRef(false);
@@ -848,6 +851,7 @@ export function useSessionStream(
     currentToolCallIdRef.current = null;
     pendingApprovalRequestsRef.current?.clear();
     pendingQuestionRequestsRef.current?.clear();
+    pendingBtwMessageIdsRef.current?.clear();
     pendingClearRef.current = false;
     setCurrentStep(0);
     setContextUsage(0);
@@ -1947,6 +1951,63 @@ export function useSessionStream(
             content: planPayload.content,
             isStreaming: false,
           });
+          break;
+        }
+
+        case "BtwBegin": {
+          if (!isReplay) {
+            clearAwaitingFirstResponse();
+          }
+          const btwPayload = (event as BtwBeginEvent).payload;
+          const messageId = getNextMessageId("assistant");
+          pendingBtwMessageIdsRef.current.set(btwPayload.id, messageId);
+          upsertMessage({
+            id: messageId,
+            role: "assistant",
+            variant: "status",
+            content: `Answering side question: ${btwPayload.question}`,
+            isStreaming: !isReplay,
+          });
+          break;
+        }
+
+        case "BtwEnd": {
+          if (!isReplay) {
+            clearAwaitingFirstResponse();
+          }
+          const btwPayload = (event as BtwEndEvent).payload;
+          const messageId = pendingBtwMessageIdsRef.current.get(btwPayload.id);
+          pendingBtwMessageIdsRef.current.delete(btwPayload.id);
+
+          const content =
+            btwPayload.response ??
+            (btwPayload.error ? `Error: ${btwPayload.error}` : undefined);
+          if (!content) {
+            if (messageId) {
+              setMessages((prev) =>
+                prev.filter((message) => message.id !== messageId),
+              );
+            }
+            break;
+          }
+
+          const message: LiveMessage = {
+            id: messageId ?? getNextMessageId("assistant"),
+            role: "assistant",
+            variant: "text",
+            turnIndex:
+              turnCounterRef.current > 0
+                ? turnCounterRef.current - 1
+                : undefined,
+            content,
+            isStreaming: false,
+          };
+
+          if (messageId) {
+            updateMessageById(messageId, () => message);
+          } else {
+            upsertMessage(message);
+          }
           break;
         }
 
