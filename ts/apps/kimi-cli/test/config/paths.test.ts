@@ -31,9 +31,9 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('getDataDir', () => {
-  it('returns ~/.kimi-next when KIMI_SHARE_DIR is not set', () => {
+  it('returns ~/.kimi when KIMI_SHARE_DIR is not set', () => {
     delete process.env['KIMI_SHARE_DIR'];
-    expect(getDataDir()).toBe(join(homedir(), '.kimi-next'));
+    expect(getDataDir()).toBe(join(homedir(), '.kimi'));
   });
 
   it('returns KIMI_SHARE_DIR when set', () => {
@@ -56,7 +56,7 @@ describe('getSessionsDir', () => {
     delete process.env['KIMI_SHARE_DIR'];
     const workDir = '/home/user/project';
     const hash = createHash('md5').update(workDir, 'utf-8').digest('hex');
-    const expected = join(homedir(), '.kimi-next', 'sessions', hash);
+    const expected = join(homedir(), '.kimi', 'sessions', hash);
     expect(getSessionsDir(workDir)).toBe(expected);
   });
 
@@ -93,7 +93,7 @@ describe('getSessionsDir', () => {
 describe('getConfigPath', () => {
   it('returns <dataDir>/config.toml', () => {
     delete process.env['KIMI_SHARE_DIR'];
-    expect(getConfigPath()).toBe(join(homedir(), '.kimi-next', 'config.toml'));
+    expect(getConfigPath()).toBe(join(homedir(), '.kimi', 'config.toml'));
   });
 
   it('respects KIMI_SHARE_DIR', () => {
@@ -109,7 +109,7 @@ describe('getConfigPath', () => {
 describe('getMCPConfigPath', () => {
   it('returns <dataDir>/mcp.json', () => {
     delete process.env['KIMI_SHARE_DIR'];
-    expect(getMCPConfigPath()).toBe(join(homedir(), '.kimi-next', 'mcp.json'));
+    expect(getMCPConfigPath()).toBe(join(homedir(), '.kimi', 'mcp.json'));
   });
 
   it('respects KIMI_SHARE_DIR', () => {
@@ -125,7 +125,7 @@ describe('getMCPConfigPath', () => {
 describe('getLogDir', () => {
   it('returns <dataDir>/logs', () => {
     delete process.env['KIMI_SHARE_DIR'];
-    expect(getLogDir()).toBe(join(homedir(), '.kimi-next', 'logs'));
+    expect(getLogDir()).toBe(join(homedir(), '.kimi', 'logs'));
   });
 
   it('respects KIMI_SHARE_DIR', () => {

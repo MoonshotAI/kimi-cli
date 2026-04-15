@@ -99,16 +99,19 @@ export function useWire(
       case 'content.delta': {
         const data = msg.data as ContentDeltaData;
         if (data.type === 'text' && data.text !== undefined) {
-          // If we were thinking, flush thinking to Static first
+          // If we were thinking, flush thinking to Static.
+          // Clear dynamic state BEFORE pushing to Static to avoid
+          // a frame where both dynamic and static thinking are visible.
           if (accumulatedThinkRef.current.length > 0) {
+            const thinkContent = accumulatedThinkRef.current;
+            accumulatedThinkRef.current = '';
+            setStreamingThinkText('');
             const thinkBlock: CompletedBlock = {
               id: nextBlockId(),
               type: 'thinking',
-              content: accumulatedThinkRef.current,
+              content: thinkContent,
             };
             setCompletedBlocks((prev) => [...prev, thinkBlock]);
-            accumulatedThinkRef.current = '';
-            setStreamingThinkText('');
           }
           accumulatedTextRef.current += data.text;
           setStreamingText(accumulatedTextRef.current);

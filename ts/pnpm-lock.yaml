@@ -68,6 +68,9 @@ importers:
       '@moonshot-ai/kimi-wire-mock':
         specifier: workspace:*
         version: link:../../mock/kimi-wire
+      '@moonshot-ai/kosong':
+        specifier: workspace:^
+        version: link:../../packages/kosong
       chalk:
         specifier: ^5.4.1
         version: 5.6.2

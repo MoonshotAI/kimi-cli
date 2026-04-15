@@ -175,28 +175,28 @@ describe('ToolCallBlock', () => {
     unmount();
   });
 
-  it('displays moon spinner when pending', async () => {
+  it('displays dots spinner when pending', async () => {
     const tc = makeToolCall('Shell', { command: 'ls' });
     const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} />);
 
     await wait(200);
     const frame = lastFrame() ?? '';
-    const moonPhases = ['\uD83C\uDF11', '\uD83C\uDF12', '\uD83C\uDF13', '\uD83C\uDF14', '\uD83C\uDF15', '\uD83C\uDF16', '\uD83C\uDF17', '\uD83C\uDF18'];
-    const hasMoon = moonPhases.some((phase) => frame.includes(phase));
-    expect(hasMoon).toBe(true);
+    const dotsFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const hasDots = dotsFrames.some((d) => frame.includes(d));
+    expect(hasDots).toBe(true);
     unmount();
   });
 
-  it('does not show moon spinner when finished', () => {
+  it('does not show dots spinner when finished', () => {
     const tc = makeToolCall('Shell', { command: 'ls' });
     const result = makeToolResult();
     const { lastFrame, unmount } = render(
       <ToolCallBlock toolCall={tc} result={result} />,
     );
     const frame = lastFrame() ?? '';
-    const moonPhases = ['\uD83C\uDF11', '\uD83C\uDF12', '\uD83C\uDF13', '\uD83C\uDF14', '\uD83C\uDF15', '\uD83C\uDF16', '\uD83C\uDF17', '\uD83C\uDF18'];
-    const hasMoon = moonPhases.some((phase) => frame.includes(phase));
-    expect(hasMoon).toBe(false);
+    const dotsFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const hasDots = dotsFrames.some((d) => frame.includes(d));
+    expect(hasDots).toBe(false);
     unmount();
   });
 

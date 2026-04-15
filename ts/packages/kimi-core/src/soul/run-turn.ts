@@ -99,6 +99,9 @@ export async function runSoulTurn(
         onDelta: (delta) => {
           safeEmit(sink, { type: 'content.delta', delta });
         },
+        onThinkDelta: (delta) => {
+          safeEmit(sink, { type: 'thinking.delta', delta });
+        },
       });
       // §5.1.7 L1407: checkpoint after kosong.chat catches any abort that
       // landed while the chat promise was pending but that the adapter

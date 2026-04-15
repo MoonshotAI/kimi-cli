@@ -17,6 +17,7 @@ export type SoulEvent =
   | { type: 'step.end'; step: number }
   | { type: 'step.interrupted'; step: number; reason: string }
   | { type: 'content.delta'; delta: string }
+  | { type: 'thinking.delta'; delta: string }
   | {
       type: 'tool.call';
       toolCallId: string;

@@ -7,8 +7,8 @@
  *  - Core-initiated requests (approval, question, hook) are responded
  *    to via `respondToRequest()`.
  *
- * `WireClientImpl` is the development-period implementation that
- * delegates to a `MockDataSource` for event generation.
+ * `WireClientImpl` delegates to a `DataSource` for event generation.
+ * In production this is `CoreDataSource` (backed by kimi-core SoulPlus).
  */
 
 import type { WireMessage } from './wire-message.js';
@@ -21,12 +21,11 @@ import type {
   ApprovalResponseData,
 } from './methods.js';
 
-// ── MockDataSource interface ────────────────────────────────────────
+// ── DataSource interface ────────────────────────────────────────────
 
 /**
  * The data source contract that WireClientImpl consumes.
- * During development this is satisfied by MockDataSource from the mock
- * module; in production it will be replaced by a stdio transport.
+ * Implemented by CoreDataSource (backed by kimi-core SoulPlus).
  */
 export interface DataSource {
   /** Start producing events for a new turn. */

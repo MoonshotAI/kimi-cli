@@ -69,7 +69,7 @@ export class KosongAdapter implements KosongAdapterInterface {
       if (params.signal.aborted) {
         params.signal.throwIfAborted();
       }
-      consumePart(part, contentBlocks, toolCalls, params.onDelta);
+      consumePart(part, contentBlocks, toolCalls, params.onDelta, params.onThinkDelta);
     }
 
     const usage = mapUsage(streamed.usage);
@@ -107,6 +107,7 @@ function consumePart(
   contentBlocks: ContentBlock[],
   toolCalls: ToolCall[],
   onDelta: ((delta: string) => void) | undefined,
+  onThinkDelta: ((delta: string) => void) | undefined,
 ): void {
   switch (part.type) {
     case 'text': {
@@ -120,6 +121,7 @@ function consumePart(
         block.signature = part.encrypted;
       }
       contentBlocks.push(block);
+      onThinkDelta?.(part.think);
       return;
     }
     case 'function': {
@@ -130,13 +132,27 @@ function consumePart(
       });
       return;
     }
+    case 'tool_call_part': {
+      // Streaming tool_call_part carries incremental argument chunks.
+      const argsPart = (part as { argumentsPart?: string }).argumentsPart;
+      if (argsPart && toolCalls.length > 0) {
+        const last = toolCalls[toolCalls.length - 1]!;
+        if ((last as { _rawArgs?: string })._rawArgs === undefined) {
+          (last as { _rawArgs?: string })._rawArgs = '';
+        }
+        (last as { _rawArgs: string })._rawArgs += argsPart;
+        try {
+          last.args = JSON.parse((last as { _rawArgs: string })._rawArgs);
+        } catch {
+          // Incomplete JSON — will be complete on a later chunk.
+        }
+      }
+      return;
+    }
     case 'audio_url':
     case 'image_url':
-    case 'video_url':
-    case 'tool_call_part': {
-      // Slice 3 does not surface image / audio / video parts to Soul,
-      // and streaming `tool_call_part` deltas are ignored — only
-      // fully-assembled `function` parts become v2 ToolCalls.
+    case 'video_url': {
+      // Slice 3 does not surface multimodal parts to Soul.
       return;
     }
     default: {

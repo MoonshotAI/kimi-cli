@@ -13,9 +13,10 @@ import { fileURLToPath } from 'node:url';
 
 import React from 'react';
 import { render } from 'ink';
-import { MockDataSource } from '@moonshot-ai/kimi-wire-mock';
 
 import { WireClientImpl } from './wire/client.js';
+import { createEngine } from './core/create-engine.js';
+import { CoreDataSource } from './core/data-source.js';
 import { createProgram } from './cli/commands.js';
 import type { CLIOptions, UIMode } from './cli/options.js';
 import { OptionConflictError, validateOptions } from './cli/options.js';
@@ -30,9 +31,6 @@ import App from './app/App.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function getVersion(): string {
-  // In the built bundle the dist/ directory sits one level below the package
-  // root, so package.json is at `../package.json`.  During development with
-  // tsx the source file is at `src/`, same relative depth.
   const pkgPath = resolve(__dirname, '..', 'package.json');
   const pkg: { version: string } = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   return pkg.version;
@@ -50,41 +48,37 @@ function runShell(opts: CLIOptions, version: string): void {
   });
 
   // Determine model name.
-  const model = opts.model ?? config.default_model ?? 'mock-model';
+  const model = opts.model ?? config.default_model ?? '';
 
   // Determine working directory.
   const workDir = opts.workDir ?? process.cwd();
 
-  // Create MockDataSource and WireClientImpl.
-  const dataSource = new MockDataSource();
+  // Create engine and data source.
+  const engine = createEngine({ sessionId: 'pending', model, workDir, config });
+  const dataSource = new CoreDataSource(engine);
   const wireClient = new WireClientImpl(dataSource);
 
   // Resolve session ID based on CLI flags.
   let sessionId: string;
 
   if (opts.session) {
-    // --session <id>: resume a specific session.
-    // Verify it exists in the mock store (create it if not found).
     const existing = dataSource.sessions.get(opts.session);
     if (existing) {
       sessionId = opts.session;
     } else {
-      // Session not found -- create a new one and warn.
       sessionId = dataSource.sessions.create(workDir);
       process.stderr.write(
         `Warning: session "${opts.session}" not found, created new session ${sessionId}\n`,
       );
     }
   } else if (opts.continue) {
-    // --continue: resume the most recent session for this workDir.
     const existing = dataSource.sessions.list(workDir);
     if (existing.length > 0) {
-      sessionId = existing[0]!.id; // sorted by updatedAt descending
+      sessionId = existing[0]!.id;
     } else {
       sessionId = dataSource.sessions.create(workDir);
     }
   } else {
-    // Default: create a new session.
     sessionId = dataSource.sessions.create(workDir);
   }
 
@@ -136,7 +130,6 @@ function main(): void {
   const version = getVersion();
 
   const program = createProgram(version, (opts) => {
-    // -- Validate and resolve UI mode ----------------------------------------
     let uiMode: UIMode;
     try {
       const result = validateOptions(opts);
@@ -149,7 +142,6 @@ function main(): void {
       throw err;
     }
 
-    // -- Dispatch to the appropriate runner ----------------------------------
     switch (uiMode) {
       case 'shell':
         runShell(opts, version);
