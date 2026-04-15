@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Echo slash command inputs to the console in interactive shell mode — previously hidden commands like `/skill:coding` or `/help` are now displayed alongside regular user messages
+
 ## 1.34.0 (2026-04-14)
 
 - Core: Fix CLI crash on `TaskStop` — stopping a stuck background agent no longer prints `Unhandled exception in event loop / Exception None` and freezes the terminal; the cancelled task is now kept in the manager's live-tasks dict until its runner finishes cleaning up, preventing Python's GC from reaping the still-pending task

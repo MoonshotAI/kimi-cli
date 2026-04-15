@@ -146,7 +146,7 @@ async def test_shell_run_dispatches_visible_slash_with_expanded_placeholder_args
     assert command_call.name == "fakecmd"
     assert command_call.args == "line1\nline2\nline3"
     assert command_call.raw_input == "/fakecmd line1\nline2\nline3"
-    assert printed == ["Bye!"]
+    assert printed == ["✨ /fakecmd [Pasted text #1 +3 lines]", "Bye!"]
 
 
 @pytest.mark.asyncio

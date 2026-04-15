@@ -108,10 +108,20 @@ def test_should_echo_agent_input_for_plain_agent_message() -> None:
     assert Shell._should_echo_agent_input(_make_user_input("hi")) is True
 
 
-def test_should_not_echo_agent_input_for_exit_or_slash_commands() -> None:
+def test_should_not_echo_agent_input_for_exit_commands() -> None:
     assert Shell._should_echo_agent_input(_make_user_input("exit")) is False
     assert Shell._should_echo_agent_input(_make_user_input("/exit")) is False
-    assert Shell._should_echo_agent_input(_make_user_input("/help")) is False
+    assert Shell._should_echo_agent_input(_make_user_input("/quit")) is False
+
+
+def test_should_echo_agent_input_for_slash_commands() -> None:
+    assert (
+        Shell._should_echo_agent_input(_make_user_input("/skill:coding 帮我写一个登录页")) is True
+    )
+    assert Shell._should_echo_agent_input(_make_user_input("/help something")) is True
+    assert Shell._should_echo_agent_input(_make_user_input("/theme dark")) is True
+    assert Shell._should_echo_agent_input(_make_user_input("/skill:coding")) is True
+    assert Shell._should_echo_agent_input(_make_user_input("/help")) is True
 
 
 def test_hidden_slash_in_placeholder_is_not_treated_as_local_command() -> None:
@@ -147,7 +157,7 @@ def test_visible_slash_command_keeps_expanded_placeholder_args() -> None:
         args="line1\nline2\nline3",
         raw_input="/echo line1\nline2\nline3",
     )
-    assert Shell._should_echo_agent_input(user_input) is False
+    assert Shell._should_echo_agent_input(user_input) is True
 
 
 def test_should_not_echo_non_agent_input() -> None:

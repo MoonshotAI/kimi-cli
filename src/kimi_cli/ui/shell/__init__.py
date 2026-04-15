@@ -257,9 +257,7 @@ class Shell:
     def _should_echo_agent_input(user_input: UserInput) -> bool:
         if user_input.mode != PromptMode.AGENT:
             return False
-        if Shell._should_exit_input(user_input):
-            return False
-        return Shell._agent_slash_command_call(user_input) is None
+        return not Shell._should_exit_input(user_input)
 
     @staticmethod
     def _echo_agent_input(user_input: UserInput) -> None:
