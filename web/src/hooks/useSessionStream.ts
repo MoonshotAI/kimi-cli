@@ -2441,9 +2441,14 @@ export function useSessionStream(
           }
           if (wsRef.current.readyState !== WebSocket.OPEN) return;
           const elapsed = Date.now() - lastWsMessageTimeRef.current;
+          const hasUnsubmittedApproval = Array.from(
+            pendingApprovalRequestsRef.current.values(),
+          ).some((e) => !e.submitted);
+          const hasUnsubmittedQuestion = Array.from(
+            pendingQuestionRequestsRef.current.values(),
+          ).some((e) => !e.submitted);
           const hasPendingInteraction =
-            pendingApprovalRequestsRef.current.size > 0 ||
-            pendingQuestionRequestsRef.current.size > 0;
+            hasUnsubmittedApproval || hasUnsubmittedQuestion;
           if (
             elapsed > 45_000 &&
             statusRef.current === "streaming" &&
