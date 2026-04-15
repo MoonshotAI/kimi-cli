@@ -135,7 +135,6 @@ function createMockWireClient(overrides?: Partial<WireClient>): WireClient {
 
 function defaultState(overrides?: Partial<AppState>): AppState {
   return {
-    inputMode: 'agent',
     model: 'test-model',
     workDir: '/test/work/dir',
     sessionId: 'test-session-123',

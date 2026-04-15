@@ -2,8 +2,8 @@
  * StatusBar component -- two-line bottom toolbar, matching Python version.
  *
  * Line 1: ──────────────────────────────────  (separator)
- * Line 2: [yolo] [plan] mode (model ●) cwd [git] tips...
- * Line 3: (left toast)              context: 5.0% (500/100k)
+ * Line 2: [yolo] [plan] mode (model ●) cwd tips...
+ * Line 3: context: 5.0% (500/100k)
  */
 
 import React, { useContext } from 'react';
@@ -60,7 +60,7 @@ export default function StatusBar(): React.JSX.Element {
   const thinkingDot = state.thinking ? '●' : '○';
 
   // Mode + model
-  const modeLabel = state.inputMode;
+  const modeLabel = 'agent';
   const modeText = state.model
     ? `${modeLabel} (${state.model} ${thinkingDot})`
     : modeLabel;
@@ -68,8 +68,8 @@ export default function StatusBar(): React.JSX.Element {
   // Shortened CWD
   const cwd = shortenCwd(state.workDir);
 
-  // Tips (rotating, hardcoded for now)
-  const tips = 'ctrl-x: toggle mode | shift-tab: plan mode';
+  // Tips
+  const tips = '/help: show commands';
 
   // Context status (right-aligned on line 2)
   const contextText = formatContextStatus(state.contextUsage, 0, 0);

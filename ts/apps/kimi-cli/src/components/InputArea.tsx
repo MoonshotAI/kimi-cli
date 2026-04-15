@@ -1,5 +1,5 @@
 /**
- * InputArea component -- bordered input box with cursor, Claude Code style.
+ * InputArea component -- bordered input box with cursor.
  *
  * Layout (rounded border, theme-colored):
  *   ╭──────────────────────────────────╮
@@ -10,6 +10,7 @@
  *  - Enter: submit the current input text
  *  - Ctrl-C: cancel the current streaming turn
  *  - Ctrl-D: exit the application
+ *  - Ctrl-O: open external editor
  *  - Backspace: delete the last character
  *  - Regular characters: append to input buffer
  */
