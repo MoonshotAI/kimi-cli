@@ -3,7 +3,7 @@
 斜杠命令是 Kimi Code CLI 的内置命令，用于控制会话、配置和调试。在输入框中输入 `/` 开头的命令即可触发。
 
 ::: tip Shell 模式
-部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/editor`、`/theme`、`/changelog`、`/feedback`、`/export`、`/import` 和 `/task`。
+部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/setting`、`/editor`、`/theme`、`/changelog`、`/feedback`、`/export`、`/import` 和 `/task`。
 :::
 
 ## 帮助与信息
@@ -59,6 +59,23 @@
 
 ::: tip 提示
 此命令仅在使用默认配置文件时可用。如果通过 `--config` 或 `--config-file` 指定了配置，则无法使用此命令。
+:::
+
+### `/setting`
+
+打开统一设置面板。提供一个全屏的平铺 TUI，可在一处管理所有常用配置项：
+
+- **Theme** — 切换 `dark` / `light` 主题
+- **Model** — 选择默认模型和 Thinking 模式（与 `/model` 相同的交互流程）
+- **Editor** — 设置外部编辑器（与 `/editor` 相同的交互流程）
+- **YOLO** — 开启或关闭自动审批模式
+- **Plan mode** — 开启或关闭计划模式
+- **Show thinking stream** — 开启后，实时区域会显示 `Thinking...` 进度指示器，并在下方展示 6 行滚动的原始推理文本预览；思考块结束时将完整推理内容提交到历史记录
+
+修改主题或模型后会自动重新加载会话。别名 `/settings` 同样可用。
+
+::: tip 提示
+此命令仅在使用默认配置文件时可用。
 :::
 
 ### `/editor`

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
@@ -9,7 +10,7 @@ from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 from kimi_cli import logger
 from kimi_cli.auth.platforms import get_platform_name_for_provider, refresh_managed_models
 from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
-from kimi_cli.config import load_config, save_config
+from kimi_cli.config import Config, load_config, save_config
 from kimi_cli.exception import ConfigError
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -141,30 +142,16 @@ def version(app: Shell, args: str):
     console.print(f"kimi, version {VERSION}")
 
 
-@registry.command
-async def model(app: Shell, args: str):
-    """Switch LLM model or thinking mode"""
-    from kimi_cli.llm import derive_model_capabilities
-
-    soul = ensure_kimi_soul(app)
-    if soul is None:
-        return
+async def _switch_model_and_thinking(
+    soul: KimiSoul,
+    selected_model_name: str,
+    new_thinking: bool,
+) -> bool:
+    """
+    Persist model/thinking changes to config and return True if a reload is needed.
+    Raises Reload on success; caller is responsible for catching if needed.
+    """
     config = soul.runtime.config
-
-    await refresh_managed_models(config)
-
-    if not config.models:
-        console.print('[yellow]No models configured, send "/login" to login.[/yellow]')
-        return
-
-    if not config.is_from_default_location:
-        console.print(
-            "[yellow]Model switching requires the default config file; "
-            "restart without --config/--config-file.[/yellow]"
-        )
-        return
-
-    # Find current model/thinking from runtime (may be overridden by --model/--thinking)
     curr_model_cfg = soul.runtime.llm.model_config if soul.runtime.llm else None
     curr_model_name: str | None = None
     if curr_model_cfg is not None:
@@ -174,7 +161,59 @@ async def model(app: Shell, args: str):
                 break
     curr_thinking = soul.thinking
 
-    # Step 1: Select model
+    model_changed = curr_model_name != selected_model_name
+    thinking_changed = curr_thinking != new_thinking
+
+    if not model_changed and not thinking_changed:
+        console.print(
+            f"[yellow]Already using {selected_model_name} "
+            f"with thinking {'on' if new_thinking else 'off'}.[/yellow]"
+        )
+        return False
+
+    prev_model = config.default_model
+    prev_thinking = config.default_thinking
+    config.default_model = selected_model_name
+    config.default_thinking = new_thinking
+    try:
+        config_for_save = load_config()
+        config_for_save.default_model = selected_model_name
+        config_for_save.default_thinking = new_thinking
+        save_config(config_for_save)
+    except (ConfigError, OSError) as exc:
+        config.default_model = prev_model
+        config.default_thinking = prev_thinking
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return False
+
+    console.print(
+        f"[green]Switched to {selected_model_name} "
+        f"with thinking {'on' if new_thinking else 'off'}. "
+        "Reloading...[/green]"
+    )
+    raise Reload(session_id=soul.runtime.session.id)
+
+
+async def _pick_model_and_thinking(soul: KimiSoul) -> tuple[str, bool] | None:
+    """Interactive model + thinking selection. Returns (model_name, thinking) or None."""
+    from kimi_cli.llm import derive_model_capabilities
+
+    config = soul.runtime.config
+    await refresh_managed_models(config)
+
+    if not config.models:
+        console.print('[yellow]No models configured, send "/login" to login.[/yellow]')
+        return None
+
+    curr_model_cfg = soul.runtime.llm.model_config if soul.runtime.llm else None
+    curr_model_name: str | None = None
+    if curr_model_cfg is not None:
+        for name, model_cfg in config.models.items():
+            if model_cfg == curr_model_cfg:
+                curr_model_name = name
+                break
+    curr_thinking = soul.thinking
+
     model_choices: list[tuple[str, str]] = []
     for name in sorted(config.models):
         model_cfg = config.models[name]
@@ -190,18 +229,17 @@ async def model(app: Shell, args: str):
             default=curr_model_name or model_choices[0][0],
         ).prompt_async()
     except (EOFError, KeyboardInterrupt):
-        return
+        return None
 
     if not selected_model_name:
-        return
+        return None
 
     selected_model_cfg = config.models[selected_model_name]
     selected_provider = config.providers.get(selected_model_cfg.provider)
     if selected_provider is None:
         console.print(f"[red]Provider not found: {selected_model_cfg.provider}[/red]")
-        return
+        return None
 
-    # Step 2: Determine thinking mode
     capabilities = derive_model_capabilities(selected_model_cfg)
     new_thinking: bool
 
@@ -219,56 +257,110 @@ async def model(app: Shell, args: str):
                 default="on" if curr_thinking else "off",
             ).prompt_async()
         except (EOFError, KeyboardInterrupt):
-            return
+            return None
 
         if not thinking_selection:
-            return
+            return None
 
         new_thinking = thinking_selection == "on"
     else:
         new_thinking = False
 
-    # Check if anything changed
-    model_changed = curr_model_name != selected_model_name
-    thinking_changed = curr_thinking != new_thinking
+    return selected_model_name, new_thinking
 
-    if not model_changed and not thinking_changed:
+
+def _set_editor(config: Config, config_file: Path, new_editor: str) -> bool:
+    """Persist editor change to disk and update in-memory config. Returns True on success."""
+    from kimi_cli.utils.editor import get_editor_command
+
+    current_editor = config.default_editor
+    if new_editor == current_editor:
+        console.print(f"[yellow]Editor is already set to: {new_editor or 'auto-detect'}[/yellow]")
+        return False
+
+    if new_editor:
+        import shlex
+        import shutil
+
+        try:
+            parts = shlex.split(new_editor)
+        except ValueError:
+            console.print(f"[red]Invalid editor command: {new_editor}[/red]")
+            return False
+
+        binary = parts[0]
+        if not shutil.which(binary):
+            console.print(
+                f"[yellow]Warning: '{binary}' not found in PATH. "
+                f"Saving anyway — make sure it's installed before using Ctrl-O.[/yellow]"
+            )
+
+    try:
+        config_for_save = load_config(config_file)
+        config_for_save.default_editor = new_editor
+        save_config(config_for_save, config_file)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return False
+
+    config.default_editor = new_editor
+
+    if new_editor:
+        console.print(f"[green]Editor set to: {new_editor}[/green]")
+    else:
+        resolved = get_editor_command()
+        label = " ".join(resolved) if resolved else "none"
+        console.print(f"[green]Editor set to auto-detect (resolved: {label})[/green]")
+    return True
+
+
+def _set_theme(config: Config, config_file: Path, new_theme: str) -> bool:
+    """Persist theme change to disk. Returns True if reload is needed."""
+    from kimi_cli.ui.theme import get_active_theme
+
+    current = get_active_theme()
+    if new_theme == current:
+        console.print(f"[yellow]Already using {new_theme} theme.[/yellow]")
+        return False
+
+    try:
+        config_for_save = load_config(config_file)
+        config_for_save.theme = new_theme  # type: ignore[assignment]
+        save_config(config_for_save, config_file)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return False
+
+    console.print(f"[green]Switched to {new_theme} theme. Reloading...[/green]")
+    return True
+
+
+@registry.command
+async def model(app: Shell, args: str):
+    """Switch LLM model or thinking mode"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+    config = soul.runtime.config
+
+    if not config.is_from_default_location:
         console.print(
-            f"[yellow]Already using {selected_model_name} "
-            f"with thinking {'on' if new_thinking else 'off'}.[/yellow]"
+            "[yellow]Model switching requires the default config file; "
+            "restart without --config/--config-file.[/yellow]"
         )
         return
 
-    # Save and reload
-    prev_model = config.default_model
-    prev_thinking = config.default_thinking
-    config.default_model = selected_model_name
-    config.default_thinking = new_thinking
-    try:
-        config_for_save = load_config()
-        config_for_save.default_model = selected_model_name
-        config_for_save.default_thinking = new_thinking
-        save_config(config_for_save)
-    except (ConfigError, OSError) as exc:
-        config.default_model = prev_model
-        config.default_thinking = prev_thinking
-        console.print(f"[red]Failed to save config: {exc}[/red]")
+    picked = await _pick_model_and_thinking(soul)
+    if picked is None:
         return
-
-    console.print(
-        f"[green]Switched to {selected_model_name} "
-        f"with thinking {'on' if new_thinking else 'off'}. "
-        "Reloading...[/green]"
-    )
-    raise Reload(session_id=soul.runtime.session.id)
+    selected_model_name, new_thinking = picked
+    await _switch_model_and_thinking(soul, selected_model_name, new_thinking)
 
 
 @registry.command
 @shell_mode_registry.command
 async def editor(app: Shell, args: str):
     """Set default external editor for Ctrl-O"""
-    from kimi_cli.utils.editor import get_editor_command
-
     soul = ensure_kimi_soul(app)
     if soul is None:
         return
@@ -283,7 +375,6 @@ async def editor(app: Shell, args: str):
 
     current_editor = config.default_editor
 
-    # If args provided directly, use as editor command
     if args.strip():
         new_editor = args.strip()
     else:
@@ -293,7 +384,6 @@ async def editor(app: Shell, args: str):
             ("nano", "Nano"),
             ("", "Auto-detect (use $VISUAL/$EDITOR)"),
         ]
-        # Mark current selection
         options = [
             (val, label + (" ← current" if val == current_editor else "")) for val, label in options
         ]
@@ -318,46 +408,7 @@ async def editor(app: Shell, args: str):
             return
         new_editor = choice
 
-    # Validate the editor binary is available
-    if new_editor:
-        import shlex
-        import shutil
-
-        try:
-            parts = shlex.split(new_editor)
-        except ValueError:
-            console.print(f"[red]Invalid editor command: {new_editor}[/red]")
-            return
-
-        binary = parts[0]
-        if not shutil.which(binary):
-            console.print(
-                f"[yellow]Warning: '{binary}' not found in PATH. "
-                f"Saving anyway — make sure it's installed before using Ctrl-O.[/yellow]"
-            )
-
-    if new_editor == current_editor:
-        console.print(f"[yellow]Editor is already set to: {new_editor or 'auto-detect'}[/yellow]")
-        return
-
-    # Save to disk
-    try:
-        config_for_save = load_config(config_file)
-        config_for_save.default_editor = new_editor
-        save_config(config_for_save, config_file)
-    except (ConfigError, OSError) as exc:
-        console.print(f"[red]Failed to save config: {exc}[/red]")
-        return
-
-    # Sync in-memory config so Ctrl-O picks it up immediately
-    config.default_editor = new_editor
-
-    if new_editor:
-        console.print(f"[green]Editor set to: {new_editor}[/green]")
-    else:
-        resolved = get_editor_command()
-        label = " ".join(resolved) if resolved else "none"
-        console.print(f"[green]Editor set to auto-detect (resolved: {label})[/green]")
+    _set_editor(config, config_file, new_editor)
 
 
 @registry.command(aliases=["release-notes"])
@@ -622,17 +673,85 @@ def theme(app: Shell, args: str):
         )
         return
 
-    # Persist to disk first — only update in-memory state after success
-    try:
-        config_for_save = load_config(config_file)
-        config_for_save.theme = arg  # type: ignore[assignment]
-        save_config(config_for_save, config_file)
-    except (ConfigError, OSError) as exc:
-        console.print(f"[red]Failed to save config: {exc}[/red]")
+    if _set_theme(soul.runtime.config, config_file, arg):
+        raise Reload(session_id=soul.runtime.session.id)
+
+
+@registry.command(aliases=["settings"])
+@shell_mode_registry.command(aliases=["settings"])
+async def setting(app: Shell, args: str) -> None:
+    """Unified settings configuration"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+    config = soul.runtime.config
+    config_file = config.source_file
+
+    if config_file is None:
+        console.print(
+            "[yellow]Settings changes require a config file; "
+            "restart without --config to use this command.[/yellow]"
+        )
         return
 
-    console.print(f"[green]Switched to {arg} theme. Reloading...[/green]")
-    raise Reload(session_id=soul.runtime.session.id)
+    from kimi_cli.ui.shell.settings_app import SettingsApp
+
+    last_key: str | None = None
+    while True:
+        settings_app = SettingsApp(soul, default_key=last_key)  # type: ignore[arg-type]
+        result_key = await settings_app.run()
+        last_key = result_key
+
+        if settings_app.needs_reload:
+            raise Reload(session_id=soul.runtime.session.id)
+
+        if result_key == "model":
+            if not config.is_from_default_location:
+                console.print(
+                    "[yellow]Model switching requires the default config file; "
+                    "restart without --config/--config-file.[/yellow]"
+                )
+                continue
+            picked = await _pick_model_and_thinking(soul)
+            if picked is None:
+                continue
+            selected_model_name, new_thinking = picked
+            await _switch_model_and_thinking(soul, selected_model_name, new_thinking)
+            continue
+
+        if result_key == "editor":
+            current_editor = config.default_editor
+            options: list[tuple[str, str]] = [
+                ("code --wait", "VS Code (code --wait)"),
+                ("vim", "Vim"),
+                ("nano", "Nano"),
+                ("", "Auto-detect (use $VISUAL/$EDITOR)"),
+            ]
+            options = [
+                (val, label + (" ← current" if val == current_editor else ""))
+                for val, label in options
+            ]
+            try:
+                choice = cast(
+                    str | None,
+                    await ChoiceInput(
+                        message="Select an editor (↑↓ navigate, Enter select, Ctrl+C cancel):",
+                        options=options,
+                        default=(
+                            current_editor
+                            if current_editor in {v for v, _ in options}
+                            else "code --wait"
+                        ),
+                    ).prompt_async(),
+                )
+            except (EOFError, KeyboardInterrupt):
+                continue
+            if choice is None:
+                continue
+            _set_editor(config, config_file, choice)
+            continue
+
+        break
 
 
 @registry.command

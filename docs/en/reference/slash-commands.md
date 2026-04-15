@@ -3,7 +3,7 @@
 Slash commands are built-in commands for Kimi Code CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
-Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/theme`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/setting`, `/editor`, `/theme`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
 :::
 
 ## Help and info
@@ -59,6 +59,23 @@ After selection, Kimi Code CLI will automatically update the configuration file 
 
 ::: tip
 This command is only available when using the default configuration file. If a configuration was specified via `--config` or `--config-file`, this command cannot be used.
+:::
+
+### `/setting`
+
+Open the unified settings panel. Provides a flat, full-screen TUI for managing all common configuration options in one place:
+
+- **Theme** — toggle between `dark` and `light`
+- **Model** — select the default model and thinking mode (same flow as `/model`)
+- **Editor** — set the external editor (same flow as `/editor`)
+- **YOLO** — enable or disable auto-approve mode
+- **Plan mode** — enable or disable plan mode
+- **Show thinking stream** — when enabled, the live area shows a `Thinking...` spinner above a 6-line scrolling preview of the raw reasoning text, and commits the full reasoning markdown to history when the block ends
+
+Changes to theme or model trigger an automatic session reload. The alias `/settings` is also supported.
+
+::: tip
+This command is only available when using the default configuration file.
 :::
 
 ### `/editor`
