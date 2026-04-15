@@ -181,10 +181,15 @@ export async function repairJournal(options: RepairOptions): Promise<RepairResul
   // Phase 2: repair dangling tool_calls → synthetic error tool_result
   const danglingToolCalls = findDanglingToolCalls(records);
   for (const dtc of danglingToolCalls) {
-    await contextState.appendToolResult(dtc.toolCallId, {
-      output: 'crashed_before_execution',
-      isError: true,
-    });
+    await contextState.appendToolResult(
+      dtc.toolCallId,
+      {
+        output: 'crashed_before_execution',
+        isError: true,
+        synthetic: true,
+      },
+      dtc.turnId,
+    );
     syntheticCount += 1;
   }
 

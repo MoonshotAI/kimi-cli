@@ -24,6 +24,7 @@ export interface AssistantMessagePayload {
 export interface ToolResultPayload {
   output: unknown;
   isError?: boolean;
+  synthetic?: boolean | undefined;
 }
 
 /**
@@ -80,6 +81,11 @@ export interface SoulContextState {
 
 export interface FullContextState extends SoulContextState {
   appendUserMessage(input: UserInput): Promise<void>;
+  appendToolResult(
+    toolCallId: string,
+    result: ToolResultPayload,
+    turnIdOverride?: string,
+  ): Promise<void>;
 
   /** Push a steer into the buffer for the next `drainSteerMessages()` call. */
   pushSteer(input: UserInput): void;
@@ -223,13 +229,19 @@ class BaseContextState implements FullContextState {
     }
   }
 
-  async appendToolResult(toolCallId: string, result: ToolResultPayload): Promise<void> {
+  async appendToolResult(
+    toolCallId: string,
+    result: ToolResultPayload,
+    turnIdOverride?: string,
+  ): Promise<void> {
+    const turnId = turnIdOverride ?? this.currentTurnId();
     const append: Parameters<JournalWriter['append']>[0] = {
       type: 'tool_result',
-      turn_id: this.currentTurnId(),
+      turn_id: turnId,
       tool_call_id: toolCallId,
       output: result.output,
       ...(result.isError !== undefined ? { is_error: result.isError } : {}),
+      ...(result.synthetic !== undefined ? { synthetic: result.synthetic } : {}),
     };
     await this.journalWriter.append(append);
 

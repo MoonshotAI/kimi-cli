@@ -173,20 +173,7 @@ describe('Subagent event bubbling — integration', () => {
 // ── Independent wire per subagent ────────────────────────────────────
 
 describe('Subagent wire isolation', () => {
-  it('each subagent has independent context state', () => {
-    // This is a behavioral contract test — when SoulRegistry.spawn()
-    // creates a subagent, it should get its own ContextState (either
-    // fresh or cloned from main). The subagent's writes to context
-    // must not affect the parent's context.
-    //
-    // Since the spawn implementation is not yet done, this test
-    // documents the expected isolation property.
-    //
-    // Real implementation: SubagentHost.spawn creates a fresh
-    // InMemoryContextState for the child, or clones from parent
-    // if request.contextState is provided.
-    expect(true).toBe(true); // Placeholder — will be filled with real assertions
-  });
+  it.todo('each subagent has independent context state');
 
   it('subagent wire path follows sessions/<main>/subagents/<sub_id>/wire.jsonl convention', () => {
     // The file path for a subagent's wire is:
