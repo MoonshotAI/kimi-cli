@@ -27,7 +27,7 @@ def test_default_config_dump():
             "default_plan_mode": False,
             "default_editor": "",
             "theme": "dark",
-            "show_thinking_stream": False,
+            "show_thinking_stream": True,
             "models": {},
             "providers": {},
             "loop_control": {
