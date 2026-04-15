@@ -21,6 +21,7 @@ import {
   buildLLMVisibleTools,
   toToolCallArgs,
 } from './adapters.js';
+import { runCompaction, shouldCompact } from './compaction.js';
 import { MaxStepsExceededError } from './errors.js';
 import type { EventSink, SoulEvent } from './event-sink.js';
 import type { ChatResponse, Runtime } from './runtime.js';
@@ -60,9 +61,10 @@ export async function runSoulTurn(
       // §5.1.7 L1359: while-top safe point.
       signal.throwIfAborted();
 
-      // §5.1.7 L1361-L1366: compaction gate. Slice 2 only asserts the
-      // negative path — `shouldCompact` returns false until Slice 6.
-      if (shouldCompact(context)) {
+      // §5.1.7 L1361-L1366: compaction gate. Triggers when token count
+      // crosses the configured threshold. Disabled when compactionConfig
+      // is not provided (shouldCompact returns false for undefined config).
+      if (shouldCompact(context, config.compactionConfig)) {
         await runCompaction(context, runtime, sink, signal);
         continue;
       }
@@ -200,14 +202,28 @@ export async function runSoulTurn(
           });
         } catch (error) {
           const aborted = isAbortError(error) || signal.aborted;
-          await context.appendToolResult(toolCall.id, {
-            output: aborted
+          const syntheticResult: ToolResult = {
+            content: aborted
               ? `Tool "${toolCall.name}" was aborted`
               : `Tool "${toolCall.name}" failed: ${errorMessage(error)}`,
             isError: true,
+          };
+          await context.appendToolResult(toolCall.id, {
+            output: syntheticResult.content as string,
+            isError: true,
           });
-          // If aborted, next iteration's `signal.throwIfAborted()` breaks
-          // out; otherwise the loop continues with the next tool call.
+          // Fire afterToolCall with the synthetic error result so
+          // OnToolFailure hooks can observe tool exceptions (Slice 4).
+          if (config.afterToolCall !== undefined) {
+            try {
+              await config.afterToolCall(
+                { toolCall, args: effectiveInput, result: syntheticResult, context },
+                signal,
+              );
+            } catch {
+              // swallow — same policy as the normal afterToolCall path
+            }
+          }
           continue;
         }
 
@@ -294,22 +310,4 @@ function errorMessage(err: unknown): string {
 
 function findTool(tools: readonly Tool[], name: string): Tool | undefined {
   return tools.find((t) => t.name === name);
-}
-
-function shouldCompact(_context: SoulContextState): boolean {
-  // Slice 2: negative-only path. Real threshold lands in Slice 6.
-  return false;
-}
-
-async function runCompaction(
-  _context: SoulContextState,
-  _runtime: Runtime,
-  _sink: EventSink,
-  _signal: AbortSignal,
-): Promise<void> {
-  // Slice 2 placeholder — `shouldCompact` always returns false so this
-  // function is unreachable until Slice 6 lands the real threshold. The
-  // signature matches §5.1.7 L1534 so Slice 6 can drop in the real body
-  // (which will call `context.buildMessages()` / `context.resetToSummary`).
-  throw new Error('runCompaction is not implemented until Slice 6');
 }

@@ -37,3 +37,26 @@ export { SoulPlus } from './soul-plus.js';
 export type { SoulPlusDeps } from './soul-plus.js';
 export { TransactionalHandlerRegistry } from './transactional-handler-registry.js';
 export type { TransactionalHandler } from './transactional-handler-registry.js';
+export { ToolCallOrchestrator } from './orchestrator.js';
+export type { ToolCallOrchestratorContext, ToolCallOrchestratorDeps } from './orchestrator.js';
+
+// ── Subagent types (Slice 7) ──────────────────────────────────────────
+
+export type {
+  AgentResult,
+  SpawnRequest,
+  SubagentHandle,
+  SubagentHost,
+  SubagentStateJson,
+  SubagentStatus,
+} from './subagent-types.js';
+
+// ── Approval Runtime (Slice 8) ───────────────────────────────────────
+
+export type {
+  ApprovalRequest,
+  ApprovalResponseData,
+  ApprovalResult,
+  ApprovalRuntime,
+} from './approval-runtime.js';
+export { AlwaysAllowApprovalRuntime } from './approval-runtime.js';

@@ -15,6 +15,7 @@
 import type { z } from 'zod';
 
 import type { SoulContextState } from '../storage/context-state.js';
+import type { CompactionConfig } from './compaction.js';
 
 // Slice 1 already defines `UserInput` as `{ text: string }` for the
 // SoulContextState write path. v2 §附录 D.3 widens the shape with optional
@@ -176,4 +177,7 @@ export interface SoulConfig {
   maxSteps?: number | undefined;
   beforeToolCall?: BeforeToolCallHook | undefined;
   afterToolCall?: AfterToolCallHook | undefined;
+  // TODO: Slice 3 TurnManager/SoulPlus needs to populate compactionConfig
+  // when constructing SoulConfig from the model's context window size.
+  compactionConfig?: CompactionConfig | undefined;
 }

@@ -43,6 +43,7 @@ import type {
 import type { FullContextState, UserInput } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import type { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
+import type { ToolCallOrchestrator } from './orchestrator.js';
 import type { SoulRegistry } from './soul-registry.js';
 import type { DispatchResponse, TurnTrigger } from './types.js';
 
@@ -55,6 +56,7 @@ export interface TurnManagerDeps {
   readonly soulRegistry: SoulRegistry;
   readonly tools: readonly Tool[];
   readonly agentType?: 'main' | 'sub' | 'independent' | undefined;
+  readonly orchestrator?: ToolCallOrchestrator | undefined;
 }
 
 export interface TurnState {
@@ -137,20 +139,22 @@ export class TurnManager {
     return existing;
   }
 
-  /**
-   * Slice 3 always-allow `beforeToolCall` builder. Slice 4 will replace
-   * this with a real hook / permission closure.
-   */
-  buildBeforeToolCall(): BeforeToolCallHook {
+  private buildBeforeToolCall(): BeforeToolCallHook {
+    if (this.deps.orchestrator !== undefined) {
+      return this.deps.orchestrator.buildBeforeToolCall({
+        turnId: this.currentTurnId ?? 'unknown',
+      });
+    }
     // oxlint-disable-next-line unicorn/no-useless-undefined
     return async () => undefined;
   }
 
-  /**
-   * Slice 3 no-op `afterToolCall` builder. Slice 4 will replace this with
-   * a real PostToolUse hook dispatcher.
-   */
-  buildAfterToolCall(): AfterToolCallHook {
+  private buildAfterToolCall(): AfterToolCallHook {
+    if (this.deps.orchestrator !== undefined) {
+      return this.deps.orchestrator.buildAfterToolCall({
+        turnId: this.currentTurnId ?? 'unknown',
+      });
+    }
     // oxlint-disable-next-line unicorn/no-useless-undefined
     return async () => undefined;
   }

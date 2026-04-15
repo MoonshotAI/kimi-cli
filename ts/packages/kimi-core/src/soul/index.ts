@@ -50,3 +50,11 @@ export type {
 export { MaxStepsExceededError } from './errors.js';
 
 export { runSoulTurn } from './run-turn.js';
+
+export type { CompactionConfig } from './compaction.js';
+export {
+  DEFAULT_RESERVED_CONTEXT_SIZE,
+  DEFAULT_TRIGGER_RATIO,
+  runCompaction,
+  shouldCompact,
+} from './compaction.js';

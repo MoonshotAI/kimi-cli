@@ -328,7 +328,7 @@ class BaseContextState implements FullContextState {
     // turn something to condition on.
     this.history = [
       {
-        role: 'user',
+        role: 'assistant',
         content: [{ type: 'text', text: summary.summary }],
         toolCalls: [],
       },

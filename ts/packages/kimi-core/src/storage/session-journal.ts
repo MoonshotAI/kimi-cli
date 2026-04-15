@@ -17,6 +17,7 @@ export type SessionJournalRecord = Extract<
       | 'permission_mode_changed'
       | 'tool_denied'
       | 'notification'
+      | 'system_reminder'
       | 'subagent_event'
       | 'ownership_changed';
   }
@@ -38,6 +39,8 @@ export interface SessionJournal {
   appendPermissionModeChanged(data: JournalInput<'permission_mode_changed'>): Promise<void>;
   appendToolDenied(data: JournalInput<'tool_denied'>): Promise<void>;
   appendNotification(data: JournalInput<'notification'>): Promise<void>;
+  /** Append a system_reminder record (§3.5 addSystemReminder wire method). */
+  appendSystemReminder(data: JournalInput<'system_reminder'>): Promise<void>;
   appendSubagentEvent(data: JournalInput<'subagent_event'>): Promise<void>;
   appendOwnershipChanged(data: JournalInput<'ownership_changed'>): Promise<void>;
 }
@@ -101,6 +104,10 @@ export class WiredSessionJournalImpl implements SessionJournal {
   }
 
   async appendNotification(data: JournalInput<'notification'>): Promise<void> {
+    await this.journalWriter.append(data);
+  }
+
+  async appendSystemReminder(data: JournalInput<'system_reminder'>): Promise<void> {
     await this.journalWriter.append(data);
   }
 
@@ -178,6 +185,10 @@ export class InMemorySessionJournalImpl implements InMemorySessionJournal {
 
   async appendNotification(data: JournalInput<'notification'>): Promise<void> {
     this.push<'notification'>(data);
+  }
+
+  async appendSystemReminder(data: JournalInput<'system_reminder'>): Promise<void> {
+    this.push<'system_reminder'>(data);
   }
 
   async appendSubagentEvent(data: JournalInput<'subagent_event'>): Promise<void> {

@@ -1,18 +1,17 @@
 /**
  * SoulRegistry — per-session `Map<SoulKey, SoulHandle>` (v2 §5.2.3).
  *
- * Slice 3 scope: only the `main` Soul is created; subagent / team-member
- * extension is Slice 7 (when `SubagentHost.spawn` is filled in).
+ * Slice 3: only the `main` Soul is created.
+ * Slice 7: SubagentHost.spawn for same-process subagents.
  *
  * Responsibilities:
- *   - `getOrCreate(key)` — idempotent handle creation. The caller-supplied
- *     factory decides what a handle looks like; the registry only owns the
- *     key → handle table.
- *   - `has(key)` — lookup without side-effects.
- *   - `destroy(key)` — abort the handle's AbortController, then drop the
- *     registry entry. Unknown keys are a silent no-op.
+ *   - `getOrCreate(key)` — idempotent handle creation
+ *   - `has(key)` / `keys()` — lookup without side-effects
+ *   - `destroy(key)` — abort + drop entry
+ *   - `spawn(request)` — SubagentHost: creates `sub:<id>` entry, returns SubagentHandle
  */
 
+import type { AgentResult, SpawnRequest, SubagentHandle, SubagentHost } from './subagent-types.js';
 import type { SoulHandle, SoulKey } from './types.js';
 
 export interface SoulRegistryDeps {
@@ -22,14 +21,28 @@ export interface SoulRegistryDeps {
    * inside a handle.
    */
   readonly createHandle: (key: SoulKey) => SoulHandle;
+
+  /**
+   * Optional callback invoked by `spawn()` to run the subagent Soul turn.
+   * When omitted, completion resolves immediately with a stub AgentResult
+   * (used by unit tests that only exercise registry mechanics).
+   */
+  readonly runSubagentTurn?:
+    | ((request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
+    | undefined;
 }
 
-export class SoulRegistry {
+export class SoulRegistry implements SubagentHost {
   private readonly handles = new Map<SoulKey, SoulHandle>();
   private readonly createHandle: (key: SoulKey) => SoulHandle;
+  private readonly runSubagentTurnFn:
+    | ((request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
+    | undefined;
+  private subagentSeq = 0;
 
   constructor(deps: SoulRegistryDeps) {
     this.createHandle = deps.createHandle;
+    this.runSubagentTurnFn = deps.runSubagentTurn;
   }
 
   getOrCreate(key: SoulKey): SoulHandle {
@@ -57,5 +70,21 @@ export class SoulRegistry {
 
   keys(): readonly SoulKey[] {
     return [...this.handles.keys()];
+  }
+
+  // ── SubagentHost implementation (Slice 7) ────────────────────────────
+
+  async spawn(request: SpawnRequest): Promise<SubagentHandle> {
+    this.subagentSeq += 1;
+    const agentId = `sub_${this.subagentSeq}`;
+    const soulKey: SoulKey = `sub:${agentId}`;
+
+    const soulHandle = this.getOrCreate(soulKey);
+
+    const completion: Promise<AgentResult> = this.runSubagentTurnFn
+      ? this.runSubagentTurnFn(request, soulHandle.abortController.signal)
+      : Promise.resolve({ result: '', usage: { input: 0, output: 0 } });
+
+    return { agentId, completion };
   }
 }
