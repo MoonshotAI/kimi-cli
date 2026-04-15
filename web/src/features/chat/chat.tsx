@@ -169,7 +169,7 @@ export const ChatWorkspace = memo(function ChatWorkspaceComponent({
 
     prevActivityRef.current = newStatus;
     return newStatus;
-  }, [status, isAwaitingFirstResponse, isReplayingHistory, isUploadingFiles, messages]);
+  }, [status, isAwaitingFirstResponse, isReplayingHistory, isUploadingFiles, messages, errorMessage]);
 
   const maxTokens = maxContextSize ?? 64000;
   const usedTokens = Math.round(contextUsage * maxTokens);

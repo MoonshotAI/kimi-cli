@@ -51,7 +51,7 @@ async def test_read_loop_clears_in_flight_on_exception() -> None:
 
     # Create a mock process whose stdout has one line then EOF
     mock_stdout = asyncio.StreamReader()
-    mock_stdout.feed_data(b'not-valid-json\n')
+    mock_stdout.feed_data(b"not-valid-json\n")
     mock_stdout.feed_eof()
 
     mock_stderr = asyncio.StreamReader()
