@@ -1891,6 +1891,9 @@ class CustomPromptSession:
     def _active_edit_buffer(self) -> Buffer | None:
         if not self._placeholder_editing_enabled() or not hasattr(self, "_session"):
             return None
+        app = get_app_or_none()
+        if app is not None and app.current_buffer is not self._session.default_buffer:
+            return None
         return self._session.default_buffer
 
     def _selected_placeholder_span(self, buffer: Buffer) -> PlaceholderSpan | None:
