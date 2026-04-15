@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add `/setting` unified configuration command — flat TUI panel for managing theme, model, editor, yolo, plan_mode, and show_thinking_stream in one place; aliases `/settings` also supported
 - Web: Fix session recovery after stream errors — when a session process exits or hits a read-loop error, stale in-flight prompt IDs are now cleared before broadcasting the error, allowing the frontend to send new messages instead of getting "Session is busy"; the activity status indicator also surfaces the actual error message from the stream
 - Core: Fix Wire server prompt handler leaving sessions stuck busy on uncaught exceptions — SSL errors, connection errors, and other unexpected failures are now caught by a fallback handler and returned as `INTERNAL_ERROR`, allowing the session to recover instead of hanging indefinitely
 

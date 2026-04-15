@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Shell：新增 `/setting` 统一设置命令——提供一个平铺的全屏 TUI 面板，可在一处管理 theme、model、editor、yolo、plan_mode 和 show_thinking_stream 等所有常用配置；别名 `/settings` 同样可用
 - Web：修复会话流错误后的恢复问题——当会话进程退出或 read loop 发生异常时，现在在广播错误前先清除过期的 in-flight prompt ID，使前端能够发送新消息而非收到 "Session is busy"；活动状态指示器现在也会显示来自流的具体错误信息
 - Core：修复 Wire 服务端 prompt 处理未捕获异常导致会话永远卡在忙碌状态的问题——SSL 错误、连接错误及其他意外失败现在会被 fallback 处理器捕获并返回 INTERNAL_ERROR，避免异常逃逸导致会话无限挂起
 
