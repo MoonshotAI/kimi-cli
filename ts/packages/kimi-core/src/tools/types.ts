@@ -97,9 +97,12 @@ export interface EditOutput {
   replacementCount: number;
 }
 
+// `old_string` must be non-empty: the non-replace_all branch walks
+// occurrences with `content.indexOf("", pos)`, which would loop forever
+// on an empty search string (Slice 4 audit M7).
 const _rawEditInputSchema = z.object({
   path: z.string(),
-  old_string: z.string(),
+  old_string: z.string().min(1),
   new_string: z.string(),
   replace_all: z.boolean().optional(),
 });

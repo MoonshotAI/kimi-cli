@@ -40,6 +40,20 @@ export {
 // ── Registry ───────────────────────────────────────────────────────────
 
 export { ToolRegistry } from './registry.js';
+export type { ToolSource, ToolConflict, ToolRegistryOptions } from './registry.js';
+
+// ── Workspace + path safety (§14.3 D11) ────────────────────────────────
+
+export type { WorkspaceConfig } from './workspace.js';
+export {
+  PathSecurityError,
+  assertPathAllowed,
+  canonicalizePath,
+  isWithinDirectory,
+  isWithinWorkspace,
+} from './path-guard.js';
+export type { PathSecurityCode, AssertPathOptions } from './path-guard.js';
+export { isSensitiveFile } from './sensitive.js';
 
 // ── Built-in tools ─────────────────────────────────────────────────────
 
@@ -48,7 +62,7 @@ export { WriteTool } from './write.js';
 export { EditTool } from './edit.js';
 export { BashTool } from './bash.js';
 export { GrepTool } from './grep.js';
-export { GlobTool } from './glob.js';
+export { GlobTool, MAX_MATCHES as GLOB_MAX_MATCHES } from './glob.js';
 
 // ── Collaboration tools (Slice 7) ─────────────────────────────────────
 

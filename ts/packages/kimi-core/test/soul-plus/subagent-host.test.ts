@@ -40,10 +40,20 @@ function makeHandle(key: SoulKey, agentId: string): SoulHandle {
 function makeSpawnRequest(overrides?: Partial<SpawnRequest>): SpawnRequest {
   return {
     parentAgentId: 'agent_main',
+    parentToolCallId: 'tc_default',
     agentName: 'general-purpose',
     prompt: 'Do the task',
     ...overrides,
   };
+}
+
+/**
+ * Stays pending forever — used when a test needs to observe registry
+ * state while a subagent is still "running" (auto-destroy would
+ * otherwise fire as soon as the stub completion settles).
+ */
+function pendingCompletion(): Promise<AgentResult> {
+  return new Promise<AgentResult>(() => {});
 }
 
 // ── SoulRegistry.spawn (SubagentHost interface) ──────────────────────
@@ -313,6 +323,9 @@ describe('SoulRegistry — sub:* key management', () => {
   it('keys() lists sub:* alongside main', async () => {
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      // keep completions pending so auto-destroy (Finding #5) does not
+      // fire during this test — we want to observe both handles alive
+      runSubagentTurn: () => pendingCompletion(),
     });
 
     registry.getOrCreate('main');
@@ -341,6 +354,224 @@ describe('SoulRegistry — sub:* key management', () => {
 
     expect(registry.has('main')).toBe(true);
     expect(registry.has(subKey)).toBe(false);
+  });
+});
+
+// ── Finding #1: parent_tool_call_id threading ────────────────────────
+
+describe('SoulRegistry.spawn — parentToolCallId threading (Finding #1)', () => {
+  it('echoes SpawnRequest.parentToolCallId onto the returned handle', async () => {
+    const registry = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () => pendingCompletion(),
+    });
+
+    const host = registry as unknown as SubagentHost;
+    const handle = await host.spawn(makeSpawnRequest({ parentToolCallId: 'tc_parent_123' }));
+
+    expect(handle.parentToolCallId).toBe('tc_parent_123');
+  });
+
+  it('propagates parentToolCallId into the runSubagentTurn callback', async () => {
+    let seenRequest: SpawnRequest | undefined;
+    const registry = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: (request) => {
+        seenRequest = request;
+        return pendingCompletion();
+      },
+    });
+
+    const host = registry as unknown as SubagentHost;
+    await host.spawn(makeSpawnRequest({ parentToolCallId: 'tc_runner' }));
+
+    expect(seenRequest?.parentToolCallId).toBe('tc_runner');
+  });
+
+  it('different parentToolCallIds produce handles with distinct parent ids', async () => {
+    const registry = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () => pendingCompletion(),
+    });
+
+    const host = registry as unknown as SubagentHost;
+    const h1 = await host.spawn(makeSpawnRequest({ parentToolCallId: 'tc_aaa' }));
+    const h2 = await host.spawn(makeSpawnRequest({ parentToolCallId: 'tc_bbb' }));
+
+    expect(h1.parentToolCallId).toBe('tc_aaa');
+    expect(h2.parentToolCallId).toBe('tc_bbb');
+    expect(h1.parentToolCallId).not.toBe(h2.parentToolCallId);
+  });
+});
+
+// ── Finding #4: UUID-based subagent ids ──────────────────────────────
+
+describe('SoulRegistry.spawn — UUID-based agent ids (Finding #4)', () => {
+  it('generates UUID-format ids, not a process-local sequence', async () => {
+    const registry = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () => pendingCompletion(),
+    });
+
+    const host = registry as unknown as SubagentHost;
+    const handle = await host.spawn(makeSpawnRequest());
+
+    // `sub_` prefix + RFC 4122 v4 UUID
+    expect(handle.agentId).toMatch(
+      /^sub_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    // Explicitly verify we are NOT using the old `sub_1` / `sub_2` shape
+    expect(handle.agentId).not.toMatch(/^sub_\d+$/);
+  });
+
+  it('three consecutive spawns all produce distinct ids', async () => {
+    const registry = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () => pendingCompletion(),
+    });
+
+    const host = registry as unknown as SubagentHost;
+    const h1 = await host.spawn(makeSpawnRequest());
+    const h2 = await host.spawn(makeSpawnRequest());
+    const h3 = await host.spawn(makeSpawnRequest());
+
+    const ids = new Set([h1.agentId, h2.agentId, h3.agentId]);
+    expect(ids.size).toBe(3);
+  });
+
+  it('fresh registry does not restart ids from sub_1 (resume safety)', async () => {
+    // Simulate two sequential sessions over the lifetime of a process:
+    // if we were still using an in-process counter, both registries
+    // would hand out the same `sub_1` id on their first spawn, which
+    // would collide with the persisted `subagents/<id>` directory.
+    const registryA = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () => pendingCompletion(),
+    });
+    const registryB = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () => pendingCompletion(),
+    });
+
+    const hostA = registryA as unknown as SubagentHost;
+    const hostB = registryB as unknown as SubagentHost;
+    const hA = await hostA.spawn(makeSpawnRequest());
+    const hB = await hostB.spawn(makeSpawnRequest());
+
+    expect(hA.agentId).not.toBe(hB.agentId);
+  });
+});
+
+// ── Finding #5: auto-destroy on terminal state ───────────────────────
+
+describe('SoulRegistry.spawn — auto-destroy on completion (Finding #5)', () => {
+  it('completed subagent is removed from the registry once completion resolves', async () => {
+    let resolveRun: ((v: AgentResult) => void) | undefined;
+    const runPromise = new Promise<AgentResult>((resolve) => {
+      resolveRun = resolve;
+    });
+    const registry = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () => runPromise,
+    });
+
+    const host = registry as unknown as SubagentHost;
+    const handle = await host.spawn(makeSpawnRequest());
+    const subKey: SoulKey = `sub:${handle.agentId}`;
+
+    // While the subagent is still running, the handle is live
+    expect(registry.has(subKey)).toBe(true);
+
+    // Subagent reaches terminal state: completed
+    resolveRun!({ result: 'ok', usage: { input: 10, output: 5 } });
+    await handle.completion;
+    // The auto-destroy hook is attached via `.then(cleanup)`, which is
+    // scheduled on the same resolution as the caller's `.then` chain.
+    // Flush microtasks so the cleanup reaction runs before we assert.
+    await Promise.resolve();
+
+    expect(registry.has(subKey)).toBe(false);
+  });
+
+  it('failed subagent is removed from the registry once completion rejects', async () => {
+    let rejectRun: ((err: Error) => void) | undefined;
+    const runPromise = new Promise<AgentResult>((_resolve, reject) => {
+      rejectRun = reject;
+    });
+    const registry = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () => runPromise,
+    });
+
+    const host = registry as unknown as SubagentHost;
+    const handle = await host.spawn(makeSpawnRequest());
+    const subKey: SoulKey = `sub:${handle.agentId}`;
+
+    expect(registry.has(subKey)).toBe(true);
+
+    rejectRun!(new Error('subagent crashed'));
+    await handle.completion.catch(() => {});
+    await Promise.resolve();
+
+    expect(registry.has(subKey)).toBe(false);
+  });
+
+  it('only the settled subagent is destroyed; siblings remain live', async () => {
+    const runFns: Array<(v: AgentResult) => void> = [];
+    const registry = new SoulRegistry({
+      createHandle: (key) => makeHandle(key, `id_for_${key}`),
+      runSubagentTurn: () =>
+        new Promise<AgentResult>((resolve) => {
+          runFns.push(resolve);
+        }),
+    });
+
+    const host = registry as unknown as SubagentHost;
+    const h1 = await host.spawn(makeSpawnRequest());
+    const h2 = await host.spawn(makeSpawnRequest());
+    const k1: SoulKey = `sub:${h1.agentId}`;
+    const k2: SoulKey = `sub:${h2.agentId}`;
+
+    expect(registry.has(k1)).toBe(true);
+    expect(registry.has(k2)).toBe(true);
+
+    // Resolve only the first subagent
+    runFns[0]!({ result: 'a', usage: { input: 0, output: 0 } });
+    await h1.completion;
+    await Promise.resolve();
+
+    expect(registry.has(k1)).toBe(false);
+    expect(registry.has(k2)).toBe(true);
+  });
+
+  it('aborts the subagent AbortController as part of cleanup', async () => {
+    const controllers: Map<string, AbortController> = new Map();
+    let resolveRun: ((v: AgentResult) => void) | undefined;
+    const registry = new SoulRegistry({
+      createHandle: (key) => {
+        const c = new AbortController();
+        controllers.set(key, c);
+        return { key, agentId: `id_for_${key}`, abortController: c };
+      },
+      runSubagentTurn: () =>
+        new Promise<AgentResult>((resolve) => {
+          resolveRun = resolve;
+        }),
+    });
+
+    const host = registry as unknown as SubagentHost;
+    const handle = await host.spawn(makeSpawnRequest());
+    const subKey: SoulKey = `sub:${handle.agentId}`;
+    const controller = controllers.get(subKey);
+    expect(controller!.signal.aborted).toBe(false);
+
+    resolveRun!({ result: 'done', usage: { input: 0, output: 0 } });
+    await handle.completion;
+    await Promise.resolve();
+
+    // Auto-destroy ran `handle.abortController.abort()` as part of
+    // `destroy(subKey)` — we do not leak the controller after terminal.
+    expect(controller!.signal.aborted).toBe(true);
   });
 });
 

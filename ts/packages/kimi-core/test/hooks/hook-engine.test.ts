@@ -183,4 +183,109 @@ describe('HookEngine', () => {
     expect(result.blockAction).toBe(false);
     expect(result.additionalContext).toEqual([]);
   });
+
+  // ── M4 regression: matcher regex filters by tool name ────────────────
+
+  it('hook with matcher="Bash" does NOT fire for Read tool', async () => {
+    const executor = makeExecutor('command', { ok: true });
+    const engine = makeEngine(new Map([['command', executor]]));
+    engine.register(makeCommandHook({ matcher: 'Bash' }));
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_r', name: 'Read', args: {} } }),
+      new AbortController().signal,
+    );
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    expect(executor.execute).not.toHaveBeenCalled();
+  });
+
+  it('hook with matcher="Bash|Grep" fires for both Bash and Grep', async () => {
+    const executor = makeExecutor('command', { ok: true });
+    const engine = makeEngine(new Map([['command', executor]]));
+    engine.register(makeCommandHook({ matcher: 'Bash|Grep' }));
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_b', name: 'Bash', args: {} } }),
+      new AbortController().signal,
+    );
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_g', name: 'Grep', args: {} } }),
+      new AbortController().signal,
+    );
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_r', name: 'Read', args: {} } }),
+      new AbortController().signal,
+    );
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('hook without matcher fires for every tool (match-all)', async () => {
+    const executor = makeExecutor('command', { ok: true });
+    const engine = makeEngine(new Map([['command', executor]]));
+    engine.register(makeCommandHook()); // no matcher
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_r', name: 'Read', args: {} } }),
+      new AbortController().signal,
+    );
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_b', name: 'Bash', args: {} } }),
+      new AbortController().signal,
+    );
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('hook with empty-string matcher matches all tools', async () => {
+    const executor = makeExecutor('command', { ok: true });
+    const engine = makeEngine(new Map([['command', executor]]));
+    engine.register(makeCommandHook({ matcher: '' }));
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_w', name: 'Write', args: {} } }),
+      new AbortController().signal,
+    );
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    expect(executor.execute).toHaveBeenCalledOnce();
+  });
+
+  it('invalid regex matcher fails open (match-all) and notifies observer', async () => {
+    const executor = makeExecutor('command', { ok: true });
+    const invalidCalls: string[] = [];
+    const engine = new HookEngine({
+      executors: new Map([['command', executor]]),
+      onInvalidMatcher: (_hook, pattern) => invalidCalls.push(pattern),
+    });
+    engine.register(makeCommandHook({ matcher: '[invalid(' }));
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_r', name: 'Read', args: {} } }),
+      new AbortController().signal,
+    );
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    expect(executor.execute).toHaveBeenCalledOnce();
+    expect(invalidCalls).toEqual(['[invalid(']);
+  });
+
+  it('getMatchingHooks exposes the pre-filter used by executeHooks', () => {
+    const engine = makeEngine();
+    const bashHook = makeCommandHook({ matcher: 'Bash' });
+    const allHook = makeCommandHook({ command: 'echo all' });
+    engine.register(bashHook);
+    engine.register(allHook);
+    const forBash = engine.getMatchingHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_b', name: 'Bash', args: {} } }),
+    );
+    expect(forBash).toEqual([bashHook, allHook]);
+    const forRead = engine.getMatchingHooks(
+      'PostToolUse',
+      makePostToolUseInput({ toolCall: { id: 'tc_r', name: 'Read', args: {} } }),
+    );
+    expect(forRead).toEqual([allHook]);
+  });
 });

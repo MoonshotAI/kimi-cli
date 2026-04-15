@@ -228,6 +228,7 @@ export async function runSoulTurn(
         }
 
         let finalResult = toolResult;
+        let afterError: unknown;
         if (config.afterToolCall !== undefined) {
           try {
             const afterResult = await config.afterToolCall(
@@ -242,12 +243,32 @@ export async function runSoulTurn(
             if (afterResult?.resultOverride !== undefined) {
               finalResult = afterResult.resultOverride;
             }
-          } catch {
-            // afterToolCall errors (abort or non-abort) fall through:
-            // the original result is still written so the transcript
-            // stays balanced. An aborted signal is caught by the next
-            // `signal.throwIfAborted()`.
+          } catch (error) {
+            afterError = error;
           }
+        }
+
+        if (afterError !== undefined) {
+          // afterToolCall is a redaction/truncation seam (§5.1.3). When it
+          // fails we MUST NOT durable-write the raw `toolResult`, because
+          // the seam's job may have been to strip sensitive content out of
+          // it. Instead:
+          //   - abort: write a synthetic aborted tool_result and rethrow
+          //     so the outer catch converges on stopReason='aborted'.
+          //   - non-abort: write a synthetic error tool_result explaining
+          //     the hook failure and continue to the next tool call.
+          if (isAbortError(afterError) || signal.aborted) {
+            await context.appendToolResult(toolCall.id, {
+              output: `Tool "${toolCall.name}" aborted during afterToolCall hook.`,
+              isError: true,
+            });
+            throw afterError instanceof Error ? afterError : new Error(errorMessage(afterError));
+          }
+          await context.appendToolResult(toolCall.id, {
+            output: `afterToolCall hook failed for "${toolCall.name}": ${errorMessage(afterError)}`,
+            isError: true,
+          });
+          continue;
         }
 
         await context.appendToolResult(toolCall.id, adaptToolResult(finalResult));
@@ -289,10 +310,34 @@ export async function runSoulTurn(
 // ── Private helpers ────────────────────────────────────────────────────
 
 function safeEmit(sink: EventSink, event: SoulEvent): void {
+  // §4.6.3 rule 3: listener errors must never reach Soul.
+  //
+  // EventSink.emit is declared `void` (§4.6.2) but TypeScript structurally
+  // allows an `async emit()` implementation to be assigned to a
+  // `(event) => void` slot. Soul deliberately does not await the return,
+  // but a rejected promise from an async listener would still surface as
+  // an unhandled rejection at the Node process level. We attach a
+  // terminal `.catch()` to thenable returns so the rejection is contained
+  // here instead of crashing the host under strict mode.
+  let maybePromise: unknown;
   try {
-    sink.emit(event);
+    // Invoke through the bound method so `this` is preserved for class
+    // implementations. Soul never awaits the return — it only attaches a
+    // terminal .catch for rejection containment.
+    maybePromise = (sink.emit.bind(sink) as (event: SoulEvent) => unknown)(event);
   } catch {
-    // §4.6.3 rule 3: listener errors must never reach Soul.
+    // swallow sync listener throw
+    return;
+  }
+  if (
+    maybePromise !== undefined &&
+    maybePromise !== null &&
+    typeof (maybePromise as { then?: unknown }).then === 'function' &&
+    typeof (maybePromise as { catch?: unknown }).catch === 'function'
+  ) {
+    (maybePromise as Promise<unknown>).catch(() => {
+      // swallow async listener rejection
+    });
   }
 }
 

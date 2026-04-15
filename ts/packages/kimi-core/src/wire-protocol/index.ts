@@ -54,6 +54,8 @@ export {
 
 export { WireCodec } from './codec.js';
 
+export { InvalidWireEnvelopeError, MalformedWireFrameError } from './errors.js';
+
 export { createWireEvent, createWireRequest, createWireResponse } from './message-factory.js';
 export type {
   CreateEventOptions,

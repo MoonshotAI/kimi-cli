@@ -22,8 +22,20 @@ export interface AssistantMessagePayload {
 }
 
 export interface ToolResultPayload {
+  /**
+   * The tool's JSON-serialisable output. `unknown` on purpose — tools may
+   * return any JSON value (string / number / object / array / null).
+   *
+   * NOTE: `undefined` is accepted at the type level for ergonomics (some
+   * tools legitimately return `void`), but `appendToolResult()` normalises
+   * `undefined` to `null` before persisting. This is load-bearing: without
+   * the normalisation, `JSON.stringify({output: undefined})` silently drops
+   * the key, so the resulting `tool_result` record is missing the `output`
+   * field and the in-memory mirror sees `text: undefined`, both of which
+   * corrupt the session on replay.
+   */
   output: unknown;
-  isError?: boolean;
+  isError?: boolean | undefined;
   synthetic?: boolean | undefined;
 }
 
@@ -80,7 +92,14 @@ export interface SoulContextState {
 // ── Wide (SoulPlus) interface ──────────────────────────────────────────
 
 export interface FullContextState extends SoulContextState {
-  appendUserMessage(input: UserInput): Promise<void>;
+  /**
+   * Append a user message. `turnIdOverride` lets TurnManager explicitly
+   * bind the first user_message of a brand-new turn to the freshly
+   * allocated `turn_id`, instead of relying on the `currentTurnId()`
+   * callback (which is set asynchronously and races the WAL write).
+   * Slice 3 audit C1.
+   */
+  appendUserMessage(input: UserInput, turnIdOverride?: string): Promise<void>;
   appendToolResult(
     toolCallId: string,
     result: ToolResultPayload,
@@ -178,10 +197,18 @@ class BaseContextState implements FullContextState {
 
   // ── Async writes (WAL-then-mirror) ──────────────────────────────────
 
-  async appendUserMessage(input: UserInput): Promise<void> {
+  async appendUserMessage(input: UserInput, turnIdOverride?: string): Promise<void> {
+    // Slice 3 audit C1: the first `user_message` of a brand-new turn must
+    // be durable-bound to the turn_id that TurnManager just allocated. The
+    // `currentTurnId()` callback is set asynchronously in TurnManager and
+    // would otherwise return the previous turn's id (or a placeholder) at
+    // the moment this append runs. `turnIdOverride`, when provided, takes
+    // precedence; callers inside Soul (steer drain via `addUserMessages`)
+    // still fall back to `currentTurnId()` because they run mid-turn.
+    const turnId = turnIdOverride ?? this.currentTurnId();
     await this.journalWriter.append({
       type: 'user_message',
-      turn_id: this.currentTurnId(),
+      turn_id: turnId,
       content: input.text,
     });
     this.history.push({
@@ -234,18 +261,27 @@ class BaseContextState implements FullContextState {
     result: ToolResultPayload,
     turnIdOverride?: string,
   ): Promise<void> {
+    // Normalise `undefined` to `null` BEFORE the record is built. Without
+    // this, `JSON.stringify({..., output: undefined})` silently drops the
+    // `output` key, producing a `tool_result` row that is missing a
+    // contract-required field, and the in-memory mirror below would push
+    // `text: undefined` into the history, corrupting any future projection.
+    // (Slice 1 audit M3.)
+    const normalisedOutput: unknown = result.output === undefined ? null : result.output;
+
     const turnId = turnIdOverride ?? this.currentTurnId();
     const append: Parameters<JournalWriter['append']>[0] = {
       type: 'tool_result',
       turn_id: turnId,
       tool_call_id: toolCallId,
-      output: result.output,
+      output: normalisedOutput,
       ...(result.isError !== undefined ? { is_error: result.isError } : {}),
       ...(result.synthetic !== undefined ? { synthetic: result.synthetic } : {}),
     };
     await this.journalWriter.append(append);
 
-    const text = typeof result.output === 'string' ? result.output : JSON.stringify(result.output);
+    const text =
+      typeof normalisedOutput === 'string' ? normalisedOutput : JSON.stringify(normalisedOutput);
     this.history.push({
       role: 'tool',
       content: [{ type: 'text', text }],

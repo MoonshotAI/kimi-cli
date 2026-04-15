@@ -156,6 +156,56 @@ describe('EventSink contract', () => {
     expect(result.stopReason).toBe('end_turn');
   });
 
+  it('async emit() that rejects is isolated — no unhandled rejection, Soul still finishes', async () => {
+    // M2 regression: EventSink.emit is typed `void` but TypeScript
+    // structurally allows an `async emit()` to be assigned. If such a
+    // listener throws, the old safeEmit only caught sync errors — the
+    // rejection would surface as a process-level unhandled rejection
+    // (strict runtimes crash). safeEmit now detects thenable returns and
+    // attaches a terminal .catch to contain the rejection.
+    const context = new FakeContextState();
+    const kosong = new ScriptedKosongAdapter({
+      responses: [makeEndTurnResponse('done')],
+    });
+    const { runtime } = createFakeRuntime({ kosong });
+    // Genuine async listener — no in-body workaround. The rejection
+    // escapes via the returned Promise, and safeEmit must contain it.
+    // We cast the async function through `unknown` because EventSink.emit
+    // is typed `void`, and this test is the one place where we exercise
+    // the structural assignability of `async () => Promise<void>` into
+    // that slot — exactly the hazard M2 is guarding against.
+    const asyncEmit = async (_event: SoulEvent): Promise<void> => {
+      throw new Error('async listener rejected');
+    };
+    const sink: EventSink = {
+      emit: asyncEmit as unknown as (event: SoulEvent) => void,
+    };
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const result = await runSoulTurn(
+        { text: 'go' },
+        { tools: [] },
+        context,
+        runtime,
+        sink,
+        new AbortController().signal,
+      );
+      // Let microtask queue + one macrotask drain so that any leaked
+      // unhandled rejection from the rejected promise would be surfaced
+      // by the Node process.
+      await new Promise<void>((r) => setImmediate(r));
+      expect(result.stopReason).toBe('end_turn');
+      expect(unhandled).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('content.delta events are emitted from the onDelta callback Soul wires into kosong.chat', async () => {
     const context = new FakeContextState();
     // Simulate a streaming kosong that fires onDelta twice during the turn

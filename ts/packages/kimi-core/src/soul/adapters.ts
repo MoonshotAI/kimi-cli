@@ -111,15 +111,38 @@ export function adaptAssistantMessage(chat: ChatResponse, model: string): Assist
  * v2 `ToolResult` → Slice 1 `ToolResultPayload`.
  *
  * `ToolResult.content` is `string | ToolResultContent[]`; Slice 1 stores a
- * single `output: unknown` — for content-block arrays we concatenate the
- * text blocks and placeholder image blocks. Slice 4 (Tool system) may
- * revisit this if the projector needs richer tool_result rendering.
+ * single `output: unknown`. For content-block arrays we concatenate the
+ * text blocks; non-text blocks (image) are dropped with a placeholder
+ * marker. Slice 4 (Tool system / projector) is expected to replace this
+ * with structured `ToolResultContent[]` persistence so image round-trip
+ * is preserved.
+ *
+ * Two Python-parity fallbacks guard provider rejection of empty/non-text
+ * tool messages (`/Users/moonshot/Developer/kimi-cli/src/kimi_cli/soul/message.py:51-56`):
+ *   - empty content → `'Tool output is empty.'`
+ *   - only non-text blocks → `'Tool returned non-text content.'`
  */
+const TOOL_OUTPUT_EMPTY = 'Tool output is empty.';
+const TOOL_OUTPUT_NON_TEXT = 'Tool returned non-text content.';
+
 export function adaptToolResult(r: ToolResult): ToolResultPayload {
-  const output =
-    typeof r.content === 'string'
-      ? r.content
-      : r.content.map((c) => (c.type === 'text' ? c.text : '[image]')).join('');
+  let output: string;
+  if (typeof r.content === 'string') {
+    output = r.content.length > 0 ? r.content : TOOL_OUTPUT_EMPTY;
+  } else if (r.content.length === 0) {
+    output = TOOL_OUTPUT_EMPTY;
+  } else {
+    const hasTextBlock = r.content.some((c) => c.type === 'text');
+    if (!hasTextBlock) {
+      output = TOOL_OUTPUT_NON_TEXT;
+    } else {
+      const textJoined = r.content
+        .filter((c): c is Extract<typeof c, { type: 'text' }> => c.type === 'text')
+        .map((c) => c.text)
+        .join('');
+      output = textJoined.length > 0 ? textJoined : TOOL_OUTPUT_EMPTY;
+    }
+  }
   const payload: ToolResultPayload = { output };
   if (r.isError === true) payload.isError = true;
   return payload;

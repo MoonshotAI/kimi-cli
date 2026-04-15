@@ -126,6 +126,84 @@ describe('SessionEventBus', () => {
     }).not.toThrow();
   });
 
+  // ── Slice 3 audit M3: async listener isolation ──────────────────
+
+  it('M3 — async listener rejection does not escape as an unhandled rejection', async () => {
+    // Regression guard for Slice 3 audit M3. Before the fix, `emit`
+    // only caught synchronous listener throws; a listener written as
+    // `async` that threw (or returned a rejected promise) would
+    // escape as an unhandled rejection at the Node process level.
+    //
+    // Slice 2 fix wired the same pattern into Soul's `safeEmit`; this
+    // test locks the `SessionEventBus` side of the same contract.
+    const bus = new SessionEventBus();
+
+    // A real async listener — `async` function syntax so the rejected
+    // promise is what the language gives us, not a hand-rolled
+    // `Promise.reject().catch(...)` workaround.
+    bus.on(async () => {
+      throw new Error('async listener failure');
+    });
+
+    // A second async listener that awaits before throwing — exercises
+    // the "rejection surfaces after a microtask hop" path.
+    bus.on(async () => {
+      await Promise.resolve();
+      throw new Error('delayed async listener failure');
+    });
+
+    // Sync listener that throws — prior behaviour already handled;
+    // included to prove the mix still works.
+    bus.on(() => {
+      throw new Error('sync listener failure');
+    });
+
+    // A good listener that must still fire.
+    const good = vi.fn();
+    bus.on(good);
+
+    const unhandled: unknown[] = [];
+    const handler = (err: unknown): void => {
+      unhandled.push(err);
+    };
+    process.on('unhandledRejection', handler);
+
+    try {
+      bus.emit({ type: 'step.begin', step: 1 });
+
+      // Drain microtasks so any rejected promise has a chance to
+      // surface at the process level. Two `setImmediate` hops is
+      // enough for a single `await Promise.resolve()` followed by a
+      // rethrow to settle.
+      await new Promise<void>((resolve) => {
+        setImmediate(() => {
+          setImmediate(() => {
+            resolve();
+          });
+        });
+      });
+
+      expect(unhandled).toHaveLength(0);
+      expect(good).toHaveBeenCalledTimes(1);
+    } finally {
+      process.off('unhandledRejection', handler);
+    }
+  });
+
+  it('M3 — emit remains void even when listener returns a promise', () => {
+    // `emit` signature contract (铁律 4): the bus must not award Soul
+    // a handle onto the listener's completion. Even if a listener
+    // returns a promise, the caller sees plain `void`.
+    const bus = new SessionEventBus();
+    bus.on(async () => {
+      await Promise.resolve();
+    });
+    bus.emit({ type: 'step.end', step: 1 });
+    // Type-level assertion: the signature stays `void` regardless of
+    // what listeners return.
+    expectTypeOf<typeof SessionEventBus.prototype.emit>().returns.toBeVoid();
+  });
+
   it('delivers all event kinds verbatim (discriminated union passthrough)', () => {
     const bus = new SessionEventBus();
     const seen: SoulEvent[] = [];

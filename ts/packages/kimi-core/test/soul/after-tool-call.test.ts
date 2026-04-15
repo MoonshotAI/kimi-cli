@@ -117,6 +117,96 @@ describe('runSoulTurn — afterToolCall hook', () => {
     expect(receivedSignal).toBe(controller.signal);
   });
 
+  it('non-abort throw from afterToolCall → synthetic error tool_result, loop continues', async () => {
+    // M1 regression: hook failures are a redaction/truncation seam. When
+    // it fails, Soul MUST NOT persist the raw `toolResult` (which may have
+    // been the exact content the seam was supposed to strip). Instead,
+    // write a synthetic error tool_result and continue.
+    const context = new FakeContextState();
+    const kosong = new ScriptedKosongAdapter({
+      responses: [
+        makeToolUseResponse([makeToolCall('echo', { text: 'SENSITIVE-PAYLOAD' }, 'call_1')]),
+        makeEndTurnResponse('done'),
+      ],
+    });
+    const { runtime } = createFakeRuntime({ kosong });
+    const sink = new CollectingEventSink();
+    const config: SoulConfig = {
+      tools: [new EchoTool()],
+      afterToolCall: async () => {
+        throw new Error('redaction hook crashed');
+      },
+    };
+
+    const result = await runSoulTurn(
+      { text: 'go' },
+      config,
+      context,
+      runtime,
+      sink,
+      new AbortController().signal,
+    );
+
+    expect(result.stopReason).toBe('end_turn');
+    const toolResults = context.toolResultCalls();
+    expect(toolResults).toHaveLength(1);
+    const persisted = toolResults[0]?.result;
+    // The raw echo output ('SENSITIVE-PAYLOAD') MUST NOT have been written.
+    expect(persisted?.output).not.toBe('SENSITIVE-PAYLOAD');
+    expect(persisted?.isError).toBe(true);
+    expect(String(persisted?.output)).toContain('afterToolCall hook failed');
+    expect(String(persisted?.output)).toContain('redaction hook crashed');
+    // The loop should still have reached the follow-up end_turn response.
+    expect(kosong.callCount).toBe(2);
+  });
+
+  it('AbortError thrown by afterToolCall → aborted tool_result + stopReason=aborted', async () => {
+    // M1 regression: an AbortError (or a signal.aborted observation) from
+    // the hook must converge on the same aborted path as a cancelled tool
+    // execution. Soul writes a synthetic aborted tool_result and the outer
+    // catch resolves with stopReason='aborted'.
+    const context = new FakeContextState();
+    const kosong = new ScriptedKosongAdapter({
+      responses: [
+        makeToolUseResponse([makeToolCall('echo', { text: 'raw' }, 'call_1')]),
+        makeEndTurnResponse('should not run'),
+      ],
+    });
+    const { runtime } = createFakeRuntime({ kosong });
+    const sink = new CollectingEventSink();
+    const config: SoulConfig = {
+      tools: [new EchoTool()],
+      afterToolCall: async () => {
+        const err = new Error('hook aborted mid-redaction');
+        err.name = 'AbortError';
+        throw err;
+      },
+    };
+
+    const result = await runSoulTurn(
+      { text: 'go' },
+      config,
+      context,
+      runtime,
+      sink,
+      new AbortController().signal,
+    );
+
+    expect(result.stopReason).toBe('aborted');
+    const toolResults = context.toolResultCalls();
+    expect(toolResults).toHaveLength(1);
+    const persisted = toolResults[0]?.result;
+    expect(persisted?.isError).toBe(true);
+    expect(String(persisted?.output)).toContain('aborted');
+    // The synthetic tool_result must not be the raw echo output.
+    expect(persisted?.output).not.toBe('raw');
+    // Only one kosong call — the second step was never reached.
+    expect(kosong.callCount).toBe(1);
+    const interrupted = sink.byType('step.interrupted');
+    expect(interrupted).toHaveLength(1);
+    expect(interrupted[0]?.reason).toBe('aborted');
+  });
+
   it('afterToolCall runs AFTER tool.execute (ordering contract)', async () => {
     const context = new FakeContextState();
     const kosong = new ScriptedKosongAdapter({

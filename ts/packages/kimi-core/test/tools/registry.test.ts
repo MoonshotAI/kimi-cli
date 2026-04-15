@@ -5,12 +5,14 @@
  *   - register / get / getOrThrow / list / has / unregister lifecycle
  *   - `__` namespace collision protection
  *   - duplicate name handling
+ *   - Source precedence: builtin > sdk > mcp > plugin (Slice 4 audit m1)
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import type { Tool, ToolResult } from '../../src/soul/types.js';
+import type { ToolConflict } from '../../src/tools/index.js';
 import { ToolRegistry } from '../../src/tools/index.js';
 
 function makeTool(name: string): Tool {
@@ -91,5 +93,71 @@ describe('ToolRegistry', () => {
   it('list returns empty array when no tools registered', () => {
     const registry = new ToolRegistry();
     expect(registry.list()).toEqual([]);
+  });
+
+  // ── m1 regression: source precedence (builtin > sdk > mcp > plugin) ──
+
+  it('higher-precedence source wins over lower when registered second', () => {
+    const conflicts: ToolConflict[] = [];
+    const registry = new ToolRegistry({ onConflict: (c) => conflicts.push(c) });
+    const pluginRead = makeTool('Read');
+    const builtinRead = makeTool('Read');
+    registry.register(pluginRead, 'plugin');
+    registry.register(builtinRead, 'builtin');
+    expect(registry.get('Read')).toBe(builtinRead);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toEqual({
+      name: 'Read',
+      keptSource: 'builtin',
+      droppedSource: 'plugin',
+    });
+  });
+
+  it('lower-precedence source is dropped when higher already registered', () => {
+    const onConflict = vi.fn();
+    const registry = new ToolRegistry({ onConflict });
+    const builtinRead = makeTool('Read');
+    const pluginRead = makeTool('Read');
+    registry.register(builtinRead, 'builtin');
+    registry.register(pluginRead, 'plugin');
+    expect(registry.get('Read')).toBe(builtinRead);
+    expect(onConflict).toHaveBeenCalledTimes(1);
+    expect(onConflict).toHaveBeenCalledWith({
+      name: 'Read',
+      keptSource: 'builtin',
+      droppedSource: 'plugin',
+    });
+  });
+
+  it('same-source collision still throws (plugin vs plugin)', () => {
+    const registry = new ToolRegistry();
+    registry.register(makeTool('Read'), 'plugin');
+    expect(() => {
+      registry.register(makeTool('Read'), 'plugin');
+    }).toThrow();
+  });
+
+  it('default source is builtin — two defaultless registers still throw', () => {
+    const registry = new ToolRegistry();
+    registry.register(makeTool('Read'));
+    expect(() => {
+      registry.register(makeTool('Read'));
+    }).toThrow();
+  });
+
+  it('mcp beats plugin, sdk beats mcp, builtin beats sdk', () => {
+    const registry = new ToolRegistry();
+    const plugin = makeTool('X');
+    const mcp = makeTool('X');
+    const sdk = makeTool('X');
+    const builtin = makeTool('X');
+    registry.register(plugin, 'plugin');
+    expect(registry.get('X')).toBe(plugin);
+    registry.register(mcp, 'mcp');
+    expect(registry.get('X')).toBe(mcp);
+    registry.register(sdk, 'sdk');
+    expect(registry.get('X')).toBe(sdk);
+    registry.register(builtin, 'builtin');
+    expect(registry.get('X')).toBe(builtin);
   });
 });

@@ -13,11 +13,11 @@
  * the stubs with real logic.
  */
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   listWireFiles,
@@ -27,6 +27,8 @@ import {
   rotateJournal,
 } from '../../src/storage/compaction.js';
 import { InMemoryContextState, type SummaryMessage } from '../../src/storage/context-state.js';
+import * as fsDurability from '../../src/storage/fs-durability.js';
+import { replayWire } from '../../src/storage/replay.js';
 
 // ── resetToSummary semantic lock-down (§8 row 1) ─────────────────────
 
@@ -248,6 +250,79 @@ describe('rotateJournal — file rotation', () => {
     expect(result.archivePath).toContain('wire.2.jsonl');
     const archive2 = await readFile(join(workDir, 'wire.2.jsonl'), 'utf8');
     expect(archive2).toBe(wireContent);
+  });
+
+  it('leaves no .tmp leftover and is replay-healthy after rotate (Slice 6 audit M03)', async () => {
+    const wireContent =
+      [
+        '{"type":"metadata","protocol_version":"2.1","created_at":1000}',
+        '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}',
+      ].join('\n') + '\n';
+    await writeFile(join(workDir, 'wire.jsonl'), wireContent, 'utf8');
+
+    await rotateJournal(workDir);
+
+    // No `.tmp` file must be left behind by the durable write pattern
+    const entries = await readdir(workDir);
+    expect(entries.some((e) => e.endsWith('.tmp'))).toBe(false);
+
+    // Archive replay still healthy
+    const archiveReplay = await replayWire(join(workDir, 'wire.1.jsonl'), { supportedMajor: 2 });
+    expect(archiveReplay.health).toBe('ok');
+    expect(archiveReplay.records.length).toBe(1);
+
+    // New wire.jsonl replay healthy (metadata-only is acceptable — zero
+    // records is a valid parse per replayWire semantics)
+    const currentReplay = await replayWire(join(workDir, 'wire.jsonl'), { supportedMajor: 2 });
+    expect(currentReplay.health).toBe('ok');
+    expect(currentReplay.records.length).toBe(0);
+  });
+
+  it('fsyncs the session directory via the durable helpers (Slice 6 audit M03)', async () => {
+    await writeFile(
+      join(workDir, 'wire.jsonl'),
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n',
+      'utf8',
+    );
+
+    const writeSpy = vi.spyOn(fsDurability, 'writeFileAtomicDurable');
+    const syncDirSpy = vi.spyOn(fsDurability, 'syncDir');
+
+    await rotateJournal(workDir);
+
+    // Durable write for the new wire.jsonl must have gone through the
+    // atomic helper, and the session directory must have been fsynced
+    // at least once (the defensive post-rotate sync; the one inside
+    // writeFileAtomicDurable is internal and not counted by the spy).
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    expect(syncDirSpy).toHaveBeenCalled();
+
+    writeSpy.mockRestore();
+    syncDirSpy.mockRestore();
+  });
+
+  it('cleans up the .tmp file and leaves the archive intact when the durable write throws', async () => {
+    const wireContent =
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"pre-rotate"}\n';
+    await writeFile(join(workDir, 'wire.jsonl'), wireContent, 'utf8');
+
+    // Simulate an fs error somewhere inside the durable helper.
+    const writeSpy = vi
+      .spyOn(fsDurability, 'writeFileAtomicDurable')
+      .mockRejectedValueOnce(new Error('simulated write failure'));
+
+    await expect(rotateJournal(workDir)).rejects.toThrow('simulated write failure');
+
+    // rename already happened, so the archive must exist intact…
+    const archive = await readFile(join(workDir, 'wire.1.jsonl'), 'utf8');
+    expect(archive).toBe(wireContent);
+
+    // …and no `.tmp` artefact must be left behind in the session dir.
+    const entries = await readdir(workDir);
+    expect(entries.some((e) => e.endsWith('.tmp'))).toBe(false);
+
+    writeSpy.mockRestore();
   });
 
   it('preserves original content in frozen archive (append-only invariant)', async () => {

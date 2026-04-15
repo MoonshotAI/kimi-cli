@@ -8,10 +8,15 @@
  *   - Handles sender timeout gracefully
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WireHookConfig, PostToolUseInput } from '../../src/hooks/types.js';
 import { WireHookExecutor } from '../../src/hooks/wire-executor.js';
+import type {
+  WireHookMessage,
+  WireHookResponse,
+  WireHookSender,
+} from '../../src/hooks/wire-executor.js';
 import { FakeWireHookSender } from './fixtures/fake-wire-sender.js';
 
 function makeInput(): PostToolUseInput {
@@ -35,7 +40,37 @@ function makeWireHook(overrides?: Partial<WireHookConfig>): WireHookConfig {
   };
 }
 
+/** Sender whose `send()` never resolves until we explicitly signal it. */
+class PendingWireSender implements WireHookSender {
+  readonly sentMessages: WireHookMessage[] = [];
+  readonly cancelled: string[] = [];
+  private resolvers = new Map<string, (response: WireHookResponse) => void>();
+
+  async send(message: WireHookMessage): Promise<WireHookResponse> {
+    this.sentMessages.push(message);
+    return new Promise<WireHookResponse>((resolve) => {
+      this.resolvers.set(message.requestId, resolve);
+    });
+  }
+
+  cancel(requestId: string): void {
+    this.cancelled.push(requestId);
+  }
+
+  resolve(requestId: string, response: WireHookResponse): void {
+    const r = this.resolvers.get(requestId);
+    if (r !== undefined) {
+      r(response);
+      this.resolvers.delete(requestId);
+    }
+  }
+}
+
 describe('WireHookExecutor', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('sends a hook request via the wire sender', async () => {
     const sender = new FakeWireHookSender({ ok: true });
     const executor = new WireHookExecutor(sender);
@@ -101,5 +136,48 @@ describe('WireHookExecutor', () => {
     );
     expect(result.ok).toBe(true);
     expect(result.blockAction).toBeFalsy();
+  });
+
+  // ── M3 regression: timeout / abort / fail-open / cancel ────────────
+
+  it('fail-opens when sender never responds and timeoutMs elapses', async () => {
+    vi.useFakeTimers();
+    const sender = new PendingWireSender();
+    const executor = new WireHookExecutor(sender);
+    const pending = executor.execute(
+      makeWireHook({ timeoutMs: 50 }),
+      makeInput(),
+      new AbortController().signal,
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    const result = await pending;
+    expect(result.ok).toBe(true);
+    expect(result.blockAction).toBeFalsy();
+    expect(sender.cancelled.length).toBe(1);
+    expect(sender.cancelled[0]).toMatch(/^hook_req_/);
+  });
+
+  it('fail-opens when the ambient signal aborts before response arrives', async () => {
+    const sender = new PendingWireSender();
+    const executor = new WireHookExecutor(sender);
+    const controller = new AbortController();
+    const pending = executor.execute(makeWireHook(), makeInput(), controller.signal);
+    queueMicrotask(() => {
+      controller.abort();
+    });
+    const result = await pending;
+    expect(result.ok).toBe(true);
+    expect(result.blockAction).toBeFalsy();
+    expect(sender.cancelled.length).toBe(1);
+  });
+
+  it('returns immediately (fail-open) when signal is already aborted at entry', async () => {
+    const sender = new PendingWireSender();
+    const executor = new WireHookExecutor(sender);
+    const controller = new AbortController();
+    controller.abort();
+    const result = await executor.execute(makeWireHook(), makeInput(), controller.signal);
+    expect(result.ok).toBe(true);
+    expect(sender.sentMessages.length).toBe(0);
   });
 });

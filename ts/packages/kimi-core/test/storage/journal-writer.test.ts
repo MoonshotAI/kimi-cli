@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { JournalGatedError } from '../../src/storage/errors.js';
 import {
@@ -15,6 +15,7 @@ import {
   type LifecycleState,
   WiredJournalWriter,
 } from '../../src/storage/journal-writer.js';
+import { replayWire } from '../../src/storage/replay.js';
 
 class StubGate implements LifecycleGate {
   state: LifecycleState = 'active';
@@ -133,7 +134,7 @@ describe('WiredJournalWriter — serialisation', () => {
 });
 
 describe('WiredJournalWriter — lifecycle gate', () => {
-  it('rejects appends while gate is compacting', async () => {
+  it('rejects non-compaction appends while gate is compacting', async () => {
     const gate = new StubGate();
     const writer = new WiredJournalWriter({
       filePath: join(workDir, 'wire.jsonl'),
@@ -169,6 +170,30 @@ describe('WiredJournalWriter — lifecycle gate', () => {
     expect(err.recordType).toBe('user_message');
   });
 
+  it('completing state rejects every record type, including compaction', async () => {
+    const gate = new StubGate();
+    const writer = new WiredJournalWriter({
+      filePath: join(workDir, 'wire.jsonl'),
+      lifecycle: gate,
+    });
+
+    gate.state = 'completing';
+
+    await expect(
+      writer.append({ type: 'user_message', turn_id: 't1', content: 'x' }),
+    ).rejects.toBeInstanceOf(JournalGatedError);
+    await expect(
+      writer.append({
+        type: 'compaction',
+        summary: 's',
+        compacted_range: { from_turn: 1, to_turn: 1, message_count: 1 },
+        pre_compact_tokens: 100,
+        post_compact_tokens: 20,
+        trigger: 'auto',
+      }),
+    ).rejects.toBeInstanceOf(JournalGatedError);
+  });
+
   it('resumes accepting appends after gate returns to active', async () => {
     const gate = new StubGate();
     const writer = new WiredJournalWriter({
@@ -191,6 +216,107 @@ describe('WiredJournalWriter — lifecycle gate', () => {
   });
 });
 
+// ── Slice 6 audit M02: compaction-own-write whitelist ─────────────────
+//
+// Regression coverage for `PHASE1_AUDIT_slice6.md` M02:
+//   During `compacting`, the gate must still reject upstream Soul output
+//   (turn_begin / assistant_message / etc.) to drain writes, but it must
+//   let the compaction path's own CompactionRecord through — otherwise
+//   `resetToSummary()` self-deadlocks against the gate and compaction
+//   never completes.
+describe('WiredJournalWriter — compaction whitelist (Slice 6 audit M02)', () => {
+  it('accepts a compaction record while gate is compacting', async () => {
+    const gate = new StubGate();
+    const filePath = join(workDir, 'wire.jsonl');
+    const writer = new WiredJournalWriter({
+      filePath,
+      lifecycle: gate,
+      now: () => 2000,
+    });
+
+    gate.state = 'compacting';
+
+    const record = await writer.append({
+      type: 'compaction',
+      summary: 'compact history',
+      compacted_range: { from_turn: 1, to_turn: 3, message_count: 3 },
+      pre_compact_tokens: 5000,
+      post_compact_tokens: 500,
+      trigger: 'auto',
+    });
+
+    expect(record.type).toBe('compaction');
+    expect(record.seq).toBe(1);
+
+    const lines = await readWireLines(filePath);
+    // metadata header + compaction record
+    expect(lines.length).toBe(2);
+    const persisted = JSON.parse(lines[1]!) as Record<string, unknown>;
+    expect(persisted['type']).toBe('compaction');
+    expect(persisted['summary']).toBe('compact history');
+  });
+
+  it('still rejects non-compaction writes while gate is compacting', async () => {
+    const gate = new StubGate();
+    const writer = new WiredJournalWriter({
+      filePath: join(workDir, 'wire.jsonl'),
+      lifecycle: gate,
+    });
+
+    gate.state = 'compacting';
+
+    for (const input of [
+      { type: 'user_message' as const, turn_id: 't1', content: 'x' },
+      {
+        type: 'turn_begin' as const,
+        turn_id: 't1',
+        agent_type: 'main' as const,
+        input_kind: 'user' as const,
+      },
+      {
+        type: 'assistant_message' as const,
+        turn_id: 't1',
+        text: 'hi',
+        think: null,
+        tool_calls: [],
+        model: 'm',
+      },
+    ]) {
+      await expect(writer.append(input)).rejects.toBeInstanceOf(JournalGatedError);
+    }
+  });
+
+  it('accepts all record types once the gate returns to active', async () => {
+    const gate = new StubGate();
+    const filePath = join(workDir, 'wire.jsonl');
+    const writer = new WiredJournalWriter({
+      filePath,
+      lifecycle: gate,
+    });
+
+    // First a compaction record while compacting (opens + seeds the file)
+    gate.state = 'compacting';
+    await writer.append({
+      type: 'compaction',
+      summary: 's',
+      compacted_range: { from_turn: 1, to_turn: 1, message_count: 1 },
+      pre_compact_tokens: 100,
+      post_compact_tokens: 20,
+      trigger: 'auto',
+    });
+
+    // Back to active — the ordinary append path must work again.
+    gate.state = 'active';
+    const user = await writer.append({
+      type: 'user_message',
+      turn_id: 't1',
+      content: 'after compaction',
+    });
+    expect(user.type).toBe('user_message');
+    expect(user.seq).toBe(2);
+  });
+});
+
 describe('WiredJournalWriter — fsync semantics', () => {
   it('does not resolve the append promise before data is readable from disk', async () => {
     // This is the canonical "did the content survive across a plain open()?"
@@ -210,5 +336,132 @@ describe('WiredJournalWriter — fsync semantics', () => {
 
     const text = await readFile(filePath, 'utf8');
     expect(text).toMatch(/durable/);
+  });
+});
+
+// ── Slice 1 audit M1: resume bootstrap ──────────────────────────────
+//
+// Regression coverage for `PHASE1_AUDIT_slice1.md` M1:
+//   Before the fix, a second `new WiredJournalWriter(...)` pointed at an
+//   existing `wire.jsonl` would re-write the metadata header and reset
+//   `seq` to 1, producing a file with two `metadata` rows and colliding
+//   seq numbers. The resume-bootstrap options now let callers carry
+//   `lastSeq + metadataAlreadyWritten` across the instance boundary.
+describe('WiredJournalWriter — resume bootstrap (Slice 1 audit M1)', () => {
+  it('does not re-write metadata and continues seq from initialSeq on resume', async () => {
+    const filePath = join(workDir, 'wire.jsonl');
+
+    // Pass 1: simulate an original writer that creates the file and lays
+    // down metadata + three records.
+    const first = new WiredJournalWriter({
+      filePath,
+      lifecycle: new StubGate(),
+      protocolVersion: '2.1',
+      now: () => 1_000,
+    });
+    await first.append({ type: 'user_message', turn_id: 't1', content: 'a' });
+    await first.append({ type: 'user_message', turn_id: 't1', content: 'b' });
+    const last = await first.append({ type: 'user_message', turn_id: 't1', content: 'c' });
+    expect(last.seq).toBe(3);
+
+    // Pass 2: simulate process restart. A fresh writer that knows the
+    // on-disk state (lastSeq = 3, metadata already written) must NOT emit
+    // a second metadata row and must allocate seq=4 for the next record.
+    const resumed = new WiredJournalWriter({
+      filePath,
+      lifecycle: new StubGate(),
+      protocolVersion: '2.1',
+      now: () => 2_000,
+      initialSeq: last.seq,
+      metadataAlreadyWritten: true,
+    });
+    const d = await resumed.append({ type: 'user_message', turn_id: 't2', content: 'd' });
+    const e = await resumed.append({ type: 'user_message', turn_id: 't2', content: 'e' });
+    expect(d.seq).toBe(4);
+    expect(e.seq).toBe(5);
+
+    // Whole-file replay must see exactly one metadata header and
+    // contiguous seq 1..5 in call order.
+    const result = await replayWire(filePath, { supportedMajor: 2 });
+    expect(result.health).toBe('ok');
+    expect(result.records.map((r) => r.seq)).toEqual([1, 2, 3, 4, 5]);
+    // Only one metadata header in the raw file (replayWire strips it,
+    // so check the raw text too for extra safety).
+    const rawLines = (await readFile(filePath, 'utf8'))
+      .split('\n')
+      .filter((l) => l.length > 0)
+      .map((l) => JSON.parse(l) as { type: string });
+    const metadataCount = rawLines.filter((l) => l.type === 'metadata').length;
+    expect(metadataCount).toBe(1);
+  });
+
+  it('rejects a negative initialSeq', () => {
+    expect(
+      () =>
+        new WiredJournalWriter({
+          filePath: join(workDir, 'wire.jsonl'),
+          lifecycle: new StubGate(),
+          initialSeq: -1,
+          metadataAlreadyWritten: true,
+        }),
+    ).toThrow(RangeError);
+  });
+});
+
+// ── Slice 1 audit M4: parent directory fsync ─────────────────────────
+//
+// Regression coverage for `PHASE1_AUDIT_slice1.md` M4:
+//   POSIX durability: `fh.sync()` only flushes file *contents*. A fresh
+//   file's directory entry is not guaranteed durable until the parent
+//   directory itself is fsynced. The writer must do this exactly once,
+//   on the first successful append, and never again.
+describe('WiredJournalWriter — parent directory fsync (Slice 1 audit M4)', () => {
+  it('fsyncs the parent directory exactly once, on the first successful append', async () => {
+    const filePath = join(workDir, 'wire.jsonl');
+    const writer = new WiredJournalWriter({
+      filePath,
+      lifecycle: new StubGate(),
+    });
+
+    // `syncParentDir` is a private method at the TS level but a regular
+    // function at runtime — spy on it via the instance.
+    const writerAny = writer as unknown as { syncParentDir: () => Promise<void> };
+    const spy = vi.spyOn(writerAny, 'syncParentDir');
+
+    await writer.append({ type: 'user_message', turn_id: 't1', content: 'first' });
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // Subsequent appends must NOT re-fsync the directory — it's only
+    // needed once to make the freshly-created dirent durable.
+    await writer.append({ type: 'user_message', turn_id: 't1', content: 'second' });
+    await writer.append({ type: 'user_message', turn_id: 't1', content: 'third' });
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    spy.mockRestore();
+  });
+
+  it('skips the parent directory fsync when resuming from an existing file', async () => {
+    // Seed a pre-existing file (simulate a prior process).
+    const filePath = join(workDir, 'wire.jsonl');
+    const seeder = new WiredJournalWriter({
+      filePath,
+      lifecycle: new StubGate(),
+    });
+    const first = await seeder.append({ type: 'user_message', turn_id: 't0', content: 'seed' });
+
+    // Resume: the dirent is already durable, so we must NOT fsync again.
+    const resumed = new WiredJournalWriter({
+      filePath,
+      lifecycle: new StubGate(),
+      initialSeq: first.seq,
+      metadataAlreadyWritten: true,
+    });
+    const resumedAny = resumed as unknown as { syncParentDir: () => Promise<void> };
+    const spy = vi.spyOn(resumedAny, 'syncParentDir');
+
+    await resumed.append({ type: 'user_message', turn_id: 't1', content: 'resumed' });
+    expect(spy).not.toHaveBeenCalled();
+
+    spy.mockRestore();
   });
 });

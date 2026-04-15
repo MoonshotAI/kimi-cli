@@ -10,16 +10,27 @@ import { InMemoryContextState } from '../../src/storage/context-state.js';
 function make(): InMemoryContextState {
   return new InMemoryContextState({
     initialModel: 'moonshot-v1',
-    initialSystemPrompt: 'sp',
+    // Baseline state uses an empty system prompt so tests about history
+    // length / merge semantics aren't thrown off by a leading system
+    // Message. System-prompt-specific behaviour is exercised in its own
+    // describe block below.
+    initialSystemPrompt: '',
   });
 }
 
 describe('InMemoryContextState — interface parity', () => {
   it('exposes the constructor defaults', () => {
-    const state = make();
+    const state = new InMemoryContextState({
+      initialModel: 'moonshot-v1',
+      initialSystemPrompt: 'sp',
+    });
     expect(state.model).toBe('moonshot-v1');
     expect(state.systemPrompt).toBe('sp');
-    expect(state.buildMessages()).toEqual([]);
+    // A non-empty system prompt is now projected as the first Message —
+    // locked in by Slice 1 audit M2 fix.
+    const msgs = state.buildMessages();
+    expect(msgs.length).toBe(1);
+    expect(msgs[0]?.role).toBe('system');
   });
 
   it('appendUserMessage + appendAssistantMessage round-trip through buildMessages', async () => {

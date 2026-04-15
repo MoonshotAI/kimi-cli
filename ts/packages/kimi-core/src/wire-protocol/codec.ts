@@ -7,6 +7,7 @@
  *   - `decode(frame: string): WireMessage` — JSON.parse + zod validation
  */
 
+import { InvalidWireEnvelopeError, MalformedWireFrameError } from './errors.js';
 import type { WireMessage } from './types.js';
 import { WireMessageSchema } from './types.js';
 
@@ -20,13 +21,16 @@ export class WireCodec {
     try {
       raw = JSON.parse(frame);
     } catch (error) {
-      throw new Error(`WireCodec.decode: malformed JSON — ${(error as Error).message}`, {
-        cause: error,
-      });
+      throw new MalformedWireFrameError(
+        `WireCodec.decode: malformed JSON — ${(error as Error).message}`,
+        { cause: error },
+      );
     }
     const result = WireMessageSchema.safeParse(raw);
     if (!result.success) {
-      throw new Error(`WireCodec.decode: invalid message — ${result.error.message}`);
+      throw new InvalidWireEnvelopeError(
+        `WireCodec.decode: invalid envelope — ${result.error.message}`,
+      );
     }
     return result.data;
   }

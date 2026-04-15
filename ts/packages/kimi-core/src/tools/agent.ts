@@ -3,7 +3,7 @@
  *
  * This is a "collaboration tool" (v2 §9-F.5), distinct from builtin tools
  * (Read/Write/Edit/Bash/Grep/Glob). It uses `SubagentHost` (injected via
- * constructor, NOT via Runtime — CLAUDE.md §7) to create same-process
+ * constructor, NOT via Runtime — to create same-process
  * subagent Soul instances.
  *
  * Two modes:
@@ -99,7 +99,7 @@ export class AgentTool {
   ) {}
 
   async execute(
-    _toolCallId: string,
+    toolCallId: string,
     args: AgentToolInput,
     _signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
@@ -107,6 +107,7 @@ export class AgentTool {
     try {
       const request: SpawnRequest = {
         parentAgentId: this.parentAgentId,
+        parentToolCallId: toolCallId,
         agentName: args.agentName ?? 'general-purpose',
         prompt: args.prompt,
         description: args.description,

@@ -9,12 +9,17 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { type ConfigChangeEvent, WiredContextState } from '../../src/storage/context-state.js';
+import {
+  type ConfigChangeEvent,
+  InMemoryContextState,
+  WiredContextState,
+} from '../../src/storage/context-state.js';
 import {
   type LifecycleGate,
   type LifecycleState,
   WiredJournalWriter,
 } from '../../src/storage/journal-writer.js';
+import { replayWire } from '../../src/storage/replay.js';
 
 class StubGate implements LifecycleGate {
   state: LifecycleState = 'active';
@@ -50,7 +55,10 @@ function makeState(): {
   const state = new WiredContextState({
     journalWriter: writer,
     initialModel: 'moonshot-v1',
-    initialSystemPrompt: 'you are helpful',
+    // Baseline state uses an empty system prompt so tests about history
+    // length aren't thrown off by a leading system Message. System prompt
+    // projection semantics are exercised in their own describe block below.
+    initialSystemPrompt: '',
     currentTurnId: () => 't1',
   });
   return { state, filePath };
@@ -58,11 +66,25 @@ function makeState(): {
 
 describe('WiredContextState — initial state', () => {
   it('exposes the constructor-provided defaults synchronously', () => {
-    const { state } = makeState();
+    const filePath = join(workDir, 'wire.jsonl');
+    const writer = new WiredJournalWriter({
+      filePath,
+      lifecycle: new StubGate(),
+    });
+    const state = new WiredContextState({
+      journalWriter: writer,
+      initialModel: 'moonshot-v1',
+      initialSystemPrompt: 'you are helpful',
+      currentTurnId: () => 't1',
+    });
     expect(state.model).toBe('moonshot-v1');
     expect(state.systemPrompt).toBe('you are helpful');
     expect(state.tokenCountWithPending).toBe(0);
-    expect(state.buildMessages()).toEqual([]);
+    // A non-empty system prompt is now projected as the first Message —
+    // locked in by Slice 1 audit M2 fix.
+    const messages = state.buildMessages();
+    expect(messages.length).toBe(1);
+    expect(messages[0]?.role).toBe('system');
   });
 });
 
@@ -225,6 +247,88 @@ describe('WiredContextState — drainSteerMessages', () => {
 
     const second = state.drainSteerMessages();
     expect(second).toEqual([]);
+  });
+});
+
+// ── Slice 1 audit M3: `undefined` output normalisation ─────────────────
+//
+// Regression coverage for `PHASE1_AUDIT_slice1.md` M3:
+//   `ToolResultPayload.output` is typed `unknown`, which includes
+//   `undefined`. Before the fix, `appendToolResult({output: undefined})`
+//   produced two correlated bugs:
+//     1. `JSON.stringify({..., output: undefined})` silently drops the
+//        `output` field, so the persisted `tool_result` row is missing a
+//        contract-required field, and replay has to decide whether to
+//        break the session.
+//     2. The in-memory mirror pushed `text: undefined` into a TextPart,
+//        which would crash any downstream reader.
+//   The fix normalises `undefined` → `null` inside `appendToolResult`.
+describe('WiredContextState — appendToolResult undefined output (Slice 1 audit M3)', () => {
+  it('normalises `output: undefined` to null in the InMemory history mirror', async () => {
+    const state = new InMemoryContextState({ initialModel: 'moonshot-v1' });
+    await state.appendAssistantMessage({
+      text: null,
+      think: null,
+      toolCalls: [{ id: 'tc_x', name: 'Noop', args: {} }],
+      model: 'moonshot-v1',
+    });
+    await state.appendToolResult('tc_x', { output: undefined });
+
+    const messages = state.buildMessages();
+    const toolMsg = messages.find((m) => m.role === 'tool');
+    expect(toolMsg).toBeDefined();
+    // The in-memory mirror must carry a real text string (`JSON.stringify(null)`
+    // = "null"), NOT literal `undefined` — any `text: undefined` is a bug.
+    const textPart = toolMsg!.content.find((p) => p.type === 'text') as
+      | { type: 'text'; text: string }
+      | undefined;
+    expect(textPart).toBeDefined();
+    expect(typeof textPart!.text).toBe('string');
+    expect(textPart!.text).toBe('null');
+  });
+
+  it('persists `output: undefined` as `output: null`, replayable with schema ok', async () => {
+    const { state, filePath } = makeState();
+    await state.appendAssistantMessage({
+      text: null,
+      think: null,
+      toolCalls: [{ id: 'tc_1', name: 'Noop', args: {} }],
+      model: 'moonshot-v1',
+    });
+    await state.appendToolResult('tc_1', { output: undefined });
+
+    // Raw disk check: the persisted row must contain the literal key
+    // `"output":null`, never a missing key.
+    const records = await readWireRecords(filePath);
+    const toolResultRow = records.find((r) => r['type'] === 'tool_result');
+    expect(toolResultRow).toBeDefined();
+    expect('output' in toolResultRow!).toBe(true);
+    expect(toolResultRow!['output']).toBeNull();
+
+    // Replay must produce a valid record — no schema violation, no broken
+    // session, and the replayed `output` is `null` (not `undefined`).
+    const result = await replayWire(filePath, { supportedMajor: 2 });
+    expect(result.health).toBe('ok');
+    const replayedToolResult = result.records.find((r) => r.type === 'tool_result');
+    if (replayedToolResult === undefined || replayedToolResult.type !== 'tool_result') {
+      throw new Error('expected a replayed tool_result record');
+    }
+    expect(replayedToolResult.output).toBeNull();
+  });
+
+  it('leaves non-undefined outputs untouched (normal path)', async () => {
+    const { state, filePath } = makeState();
+    await state.appendAssistantMessage({
+      text: null,
+      think: null,
+      toolCalls: [{ id: 'tc_2', name: 'Echo', args: {} }],
+      model: 'moonshot-v1',
+    });
+    await state.appendToolResult('tc_2', { output: 'normal string' });
+
+    const records = await readWireRecords(filePath);
+    const toolResultRow = records.find((r) => r['type'] === 'tool_result');
+    expect(toolResultRow!['output']).toBe('normal string');
   });
 });
 

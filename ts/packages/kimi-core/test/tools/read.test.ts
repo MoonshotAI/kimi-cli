@@ -8,12 +8,19 @@
  *   - Empty file → empty content
  *   - getActivityDescription format
  *   - Tool name and schema shape
+ *
+ * Audit C1 regression:
+ *   - Absolute path outside workspace → isError PATH_OUTSIDE_WORKSPACE
+ *   - `..` traversal normalizes outside workspace → isError
+ *   - Sensitive file (`.env`) → isError PATH_SENSITIVE
+ *   - No `kaos.readText` call when guard rejects (never reaches kaos)
  */
 
 import { describe, expect, it, vi } from 'vitest';
 
+import type { WorkspaceConfig } from '../../src/tools/index.js';
 import { ReadTool } from '../../src/tools/index.js';
-import { createFakeKaos } from './fixtures/fake-kaos.js';
+import { PERMISSIVE_WORKSPACE, createFakeKaos, toolContentString } from './fixtures/fake-kaos.js';
 
 function makeReadTool(fileContent?: string): ReadTool {
   const kaos = createFakeKaos({
@@ -27,8 +34,13 @@ function makeReadTool(fileContent?: string): ReadTool {
       mode: 0o644,
     }),
   });
-  return new ReadTool(kaos);
+  return new ReadTool(kaos, PERMISSIVE_WORKSPACE);
 }
+
+const NARROW_WORKSPACE: WorkspaceConfig = {
+  workspaceDir: '/workspace',
+  additionalDirs: [],
+};
 
 describe('ReadTool', () => {
   it('has name "Read" and a non-empty description', () => {
@@ -89,7 +101,7 @@ describe('ReadTool', () => {
     const kaos = createFakeKaos({
       readText: vi.fn().mockRejectedValue(new Error('ENOENT: no such file')),
     });
-    const tool = new ReadTool(kaos);
+    const tool = new ReadTool(kaos, PERMISSIVE_WORKSPACE);
     const result = await tool.execute(
       'call_3',
       { path: '/missing.txt' },
@@ -113,5 +125,83 @@ describe('ReadTool', () => {
     const tool = makeReadTool();
     const desc = tool.getActivityDescription({ path: '/foo/bar.ts' });
     expect(desc).toBe('Reading /foo/bar.ts');
+  });
+
+  // ── C1 regression: path safety ─────────────────────────────────────
+
+  it('rejects reads outside the workspace (absolute path)', async () => {
+    const readTextFn = vi.fn();
+    const kaos = createFakeKaos({ readText: readTextFn });
+    const tool = new ReadTool(kaos, NARROW_WORKSPACE);
+    const result = await tool.execute(
+      'call_guard_abs',
+      { path: '/etc/hosts' },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(toolContentString(result)).toContain('outside the workspace');
+    expect(readTextFn).not.toHaveBeenCalled();
+  });
+
+  it('rejects path traversal that normalizes outside the workspace', async () => {
+    const readTextFn = vi.fn();
+    const kaos = createFakeKaos({ readText: readTextFn });
+    const tool = new ReadTool(kaos, NARROW_WORKSPACE);
+    const result = await tool.execute(
+      'call_guard_rel',
+      { path: '../../../etc/passwd' },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(readTextFn).not.toHaveBeenCalled();
+  });
+
+  it('rejects reads of sensitive files (`.env`) even when inside workspace', async () => {
+    const readTextFn = vi.fn();
+    const kaos = createFakeKaos({ readText: readTextFn });
+    const tool = new ReadTool(kaos, NARROW_WORKSPACE);
+    const result = await tool.execute(
+      'call_guard_env',
+      { path: '/workspace/.env' },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(toolContentString(result)).toContain('sensitive');
+    expect(readTextFn).not.toHaveBeenCalled();
+  });
+
+  it('rejects shared-prefix escape (`/workspace-evil`)', async () => {
+    const readTextFn = vi.fn();
+    const kaos = createFakeKaos({ readText: readTextFn });
+    const tool = new ReadTool(kaos, NARROW_WORKSPACE);
+    const result = await tool.execute(
+      'call_guard_prefix',
+      { path: '/workspace-evil/secrets.txt' },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(readTextFn).not.toHaveBeenCalled();
+  });
+
+  it('allows reads inside workspace and inside additionalDirs', async () => {
+    const readTextFn = vi.fn().mockResolvedValue('hello');
+    const kaos = createFakeKaos({ readText: readTextFn });
+    const tool = new ReadTool(kaos, {
+      workspaceDir: '/workspace',
+      additionalDirs: ['/extra'],
+    });
+    const r1 = await tool.execute(
+      'call_ok_1',
+      { path: '/workspace/README.md' },
+      new AbortController().signal,
+    );
+    const r2 = await tool.execute(
+      'call_ok_2',
+      { path: '/extra/notes.txt' },
+      new AbortController().signal,
+    );
+    expect(r1.isError).toBeFalsy();
+    expect(r2.isError).toBeFalsy();
+    expect(readTextFn).toHaveBeenCalledTimes(2);
   });
 });

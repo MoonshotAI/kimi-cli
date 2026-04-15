@@ -123,6 +123,134 @@ describe('StdioTransport NDJSON', () => {
     expect(received[0]).toBe('{"id":"req_004"}');
   });
 
+  // ── UTF-8 stream decoding (S5-M-3 regression) ──
+
+  it('reassembles a Chinese character split across two chunks', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const transport = new StdioTransport({ stdin, stdout });
+    const received: string[] = [];
+    transport.onMessage = (frame) => received.push(frame);
+
+    await transport.connect();
+
+    // "你" is 3 bytes in UTF-8: E4 BD A0. Split as 1 + 2.
+    const char = Buffer.from('你', 'utf-8');
+    expect(char.length).toBe(3);
+    stdin.write(char.subarray(0, 1));
+    stdin.write(Buffer.concat([char.subarray(1), Buffer.from('\n', 'utf-8')]));
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(received).toEqual(['你']);
+  });
+
+  it('reassembles an emoji split 2+2 across chunks', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const transport = new StdioTransport({ stdin, stdout });
+    const received: string[] = [];
+    transport.onMessage = (frame) => received.push(frame);
+
+    await transport.connect();
+
+    // "🙂" (U+1F642) is 4 bytes in UTF-8: F0 9F 99 82. Split 2+2.
+    const emoji = Buffer.from('🙂', 'utf-8');
+    expect(emoji.length).toBe(4);
+    stdin.write(emoji.subarray(0, 2));
+    stdin.write(Buffer.concat([emoji.subarray(2), Buffer.from('\n', 'utf-8')]));
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(received).toEqual(['🙂']);
+  });
+
+  it('reassembles an emoji split 1+3 across chunks', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const transport = new StdioTransport({ stdin, stdout });
+    const received: string[] = [];
+    transport.onMessage = (frame) => received.push(frame);
+
+    await transport.connect();
+
+    const emoji = Buffer.from('🙂', 'utf-8');
+    stdin.write(emoji.subarray(0, 1));
+    stdin.write(Buffer.concat([emoji.subarray(1), Buffer.from('\n', 'utf-8')]));
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(received).toEqual(['🙂']);
+  });
+
+  it('reassembles an emoji split 3+1 across chunks', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const transport = new StdioTransport({ stdin, stdout });
+    const received: string[] = [];
+    transport.onMessage = (frame) => received.push(frame);
+
+    await transport.connect();
+
+    const emoji = Buffer.from('🙂', 'utf-8');
+    stdin.write(emoji.subarray(0, 3));
+    stdin.write(Buffer.concat([emoji.subarray(3), Buffer.from('\n', 'utf-8')]));
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(received).toEqual(['🙂']);
+  });
+
+  it('delivers JSON containing multi-byte UTF-8 when split mid-char', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const transport = new StdioTransport({ stdin, stdout });
+    const received: string[] = [];
+    transport.onMessage = (frame) => received.push(frame);
+
+    await transport.connect();
+
+    // Frame: {"msg":"你好🙂"}\n
+    const frame = Buffer.from('{"msg":"你好🙂"}\n', 'utf-8');
+    // Split mid-character: 10 bytes + rest
+    stdin.write(frame.subarray(0, 10));
+    stdin.write(frame.subarray(10));
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(received).toHaveLength(1);
+    expect(received[0]).toBe('{"msg":"你好🙂"}');
+    expect(JSON.parse(received[0] as string)).toEqual({ msg: '你好🙂' });
+  });
+
+  it('passes ASCII unchanged through the decoder', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const transport = new StdioTransport({ stdin, stdout });
+    const received: string[] = [];
+    transport.onMessage = (frame) => received.push(frame);
+
+    await transport.connect();
+
+    stdin.write(Buffer.from('{"ascii":"hello"}\n', 'utf-8'));
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(received).toEqual(['{"ascii":"hello"}']);
+  });
+
   it('fires onClose when stdin ends', async () => {
     const stdin = new PassThrough();
     const stdout = new PassThrough();

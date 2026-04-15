@@ -65,8 +65,8 @@ class RecordingContextState implements FullContextState {
     this.pushSteerCalls.push({ ...input });
     this.inner.pushSteer(input);
   }
-  appendUserMessage(input: UserInput): Promise<void> {
-    return this.inner.appendUserMessage(input);
+  appendUserMessage(...args: Parameters<FullContextState['appendUserMessage']>): Promise<void> {
+    return this.inner.appendUserMessage(...args);
   }
   appendAssistantMessage(
     ...args: Parameters<FullContextState['appendAssistantMessage']>

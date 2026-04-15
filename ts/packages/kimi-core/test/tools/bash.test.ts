@@ -9,16 +9,21 @@
  *   - stdout / stderr in structured output
  *   - getActivityDescription truncation
  *   - Execution goes through Kaos, not direct child_process
+ *
+ * Audit M1 regression:
+ *   - Timeout kills the subprocess and fail-reports (fake timers + pending proc)
+ *   - Abort signal kills the subprocess and fail-reports
+ *   - stdin is closed immediately after spawn (interactive commands get EOF)
  */
 
 import { Readable } from 'node:stream';
 import type { Writable } from 'node:stream';
 
 import type { KaosProcess } from '@moonshot-ai/kaos';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BashTool } from '../../src/tools/index.js';
-import { createFakeKaos } from './fixtures/fake-kaos.js';
+import { createFakeKaos, toolContentString } from './fixtures/fake-kaos.js';
 
 function fakeProcess(opts: { exitCode: number; stdout: string; stderr: string }): KaosProcess {
   return {
@@ -42,7 +47,51 @@ function makeBashTool(process?: KaosProcess): BashTool {
   return new BashTool(kaos, '/workspace');
 }
 
+/**
+ * Process that never exits on its own. `.kill()` flips the exit code
+ * and resolves the pending `wait()` promise, emulating a real subprocess
+ * that only exits once killed.
+ */
+interface PendingProcessHandles {
+  readonly proc: KaosProcess;
+  readonly killSpy: ReturnType<typeof vi.fn>;
+  readonly stdinEndSpy: ReturnType<typeof vi.fn>;
+}
+
+function pendingProcess(exitOnKill = 143): PendingProcessHandles {
+  let resolveWait: (n: number) => void = () => {
+    /* replaced below */
+  };
+  const waitPromise = new Promise<number>((res) => {
+    resolveWait = res;
+  });
+  let currentExitCode: number | null = null;
+  const killSpy = vi.fn(async () => {
+    if (currentExitCode === null) {
+      currentExitCode = exitOnKill;
+      resolveWait(exitOnKill);
+    }
+  });
+  const stdinEndSpy = vi.fn();
+  const proc: KaosProcess = {
+    stdin: { write: vi.fn(), end: stdinEndSpy } as unknown as Writable,
+    stdout: Readable.from([]),
+    stderr: Readable.from([]),
+    pid: 54321,
+    get exitCode(): number | null {
+      return currentExitCode;
+    },
+    wait: () => waitPromise,
+    kill: killSpy as unknown as KaosProcess['kill'],
+  };
+  return { proc, killSpy, stdinEndSpy };
+}
+
 describe('BashTool', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('has name "Bash" and a non-empty description', () => {
     const tool = makeBashTool();
     expect(tool.name).toBe('Bash');
@@ -60,7 +109,7 @@ describe('BashTool', () => {
     const result = tool.inputSchema.safeParse({
       command: 'ls',
       cwd: '/tmp',
-      timeout: 30000,
+      timeout: 30,
     });
     expect(result.success).toBe(true);
   });
@@ -101,7 +150,6 @@ describe('BashTool', () => {
       { command: 'pwd', cwd: '/custom' },
       new AbortController().signal,
     );
-    // The tool should use the provided cwd, not the default
     expect(result.output?.stdout).toContain('/custom');
   });
 
@@ -110,7 +158,7 @@ describe('BashTool', () => {
     const tool = makeBashTool(proc);
     const result = await tool.execute(
       'call_4',
-      { command: 'sleep 999', timeout: 100 },
+      { command: 'sleep 999', timeout: 1 },
       new AbortController().signal,
     );
     expect(result.isError).toBe(true);
@@ -120,7 +168,7 @@ describe('BashTool', () => {
     const tool = makeBashTool();
     const longCommand = 'a'.repeat(100);
     const desc = tool.getActivityDescription({ command: longCommand });
-    expect(desc.length).toBeLessThanOrEqual(60); // "Running: " + 50 + "…"
+    expect(desc.length).toBeLessThanOrEqual(60);
     expect(desc).toContain('…');
   });
 
@@ -128,5 +176,71 @@ describe('BashTool', () => {
     const tool = makeBashTool();
     const desc = tool.getActivityDescription({ command: 'ls -la' });
     expect(desc).toBe('Running: ls -la');
+  });
+
+  // ── M1 regression: timeout / abort / stdin close ───────────────────
+
+  it('closes stdin immediately after spawn (so interactive commands get EOF)', async () => {
+    const { proc, stdinEndSpy } = pendingProcess(0);
+    const tool = makeBashTool(proc);
+    // Kick off execution; we don't await because wait() is pending until kill
+    const pending = tool.execute(
+      'call_stdin',
+      { command: 'cat', timeout: 1 },
+      new AbortController().signal,
+    );
+    // Give the microtask queue a chance to run the stdin.end() call
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(stdinEndSpy).toHaveBeenCalled();
+    // Clean up: advance fake timers would require enabling them; resolve
+    // the pending proc via kill instead.
+    await proc.kill();
+    await pending;
+  });
+
+  it('kills subprocess when timeout elapses and reports timeout error', async () => {
+    vi.useFakeTimers();
+    const { proc, killSpy } = pendingProcess(124);
+    const tool = makeBashTool(proc);
+    const resultPromise = tool.execute(
+      'call_timeout',
+      { command: 'sleep 999', timeout: 1 },
+      new AbortController().signal,
+    );
+    // Advance past the 1-second timeout
+    await vi.advanceTimersByTimeAsync(1500);
+    const result = await resultPromise;
+    expect(killSpy).toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(toolContentString(result)).toContain('timeout');
+  });
+
+  it('kills subprocess when the ambient signal aborts', async () => {
+    const { proc, killSpy } = pendingProcess(143);
+    const tool = makeBashTool(proc);
+    const controller = new AbortController();
+    const resultPromise = tool.execute(
+      'call_abort',
+      { command: 'sleep 999', timeout: 60 },
+      controller.signal,
+    );
+    // Fire abort on the next microtask
+    queueMicrotask(() => {
+      controller.abort();
+    });
+    const result = await resultPromise;
+    expect(killSpy).toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(toolContentString(result)).toContain('aborted');
+  });
+
+  it('returns immediately when the signal is already aborted at entry', async () => {
+    const tool = makeBashTool();
+    const controller = new AbortController();
+    controller.abort();
+    const result = await tool.execute('call_pre_abort', { command: 'echo hi' }, controller.signal);
+    expect(result.isError).toBe(true);
+    expect(toolContentString(result)).toContain('Aborted');
   });
 });

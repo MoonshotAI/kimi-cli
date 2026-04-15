@@ -6,16 +6,31 @@
  *   - `cwd`  — default working directory for commands
  *
  * Execution goes through Kaos, never directly via node:child_process.
+ *
+ * Audit M1 hardening (ports Python `tools/shell/__init__.py:21-35, 108-124,
+ * 226-246`):
+ *   - `args.timeout` (seconds) and the ambient `signal` both drive
+ *     `Promise.race`; fire-a-kill on either edge.
+ *   - stdin is closed immediately so interactive commands (`cat`, `read`,
+ *     `python -c 'input()'`) receive EOF instead of hanging.
+ *   - Two-phase kill: SIGTERM → 5s grace → SIGKILL.
+ *   - stdout/stderr each capped at MAX_OUTPUT_BYTES; excess is replaced
+ *     with a truncation marker so a runaway command cannot OOM the host.
  */
 
-import { text } from 'node:stream/consumers';
+import type { Readable } from 'node:stream';
 
-import type { Kaos } from '@moonshot-ai/kaos';
+import type { Kaos, KaosProcess } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
 import type { ToolResult, ToolUpdate } from '../soul/types.js';
 import { BashInputSchema } from './types.js';
 import type { BashInput, BashOutput, BuiltinTool } from './types.js';
+
+const DEFAULT_TIMEOUT_MS = 60_000;
+const MAX_TIMEOUT_MS = 5 * 60 * 1000;
+const SIGTERM_GRACE_MS = 5_000;
+const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 
 export class BashTool implements BuiltinTool<BashInput, BashOutput> {
   readonly name = 'Bash' as const;
@@ -30,36 +45,131 @@ export class BashTool implements BuiltinTool<BashInput, BashOutput> {
   async execute(
     _toolCallId: string,
     args: BashInput,
-    _signal: AbortSignal,
+    signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult<BashOutput>> {
+    if (signal.aborted) {
+      return { isError: true, content: 'Aborted before command started' };
+    }
+
+    const timeoutMs = Math.min(
+      args.timeout !== undefined ? args.timeout * 1000 : DEFAULT_TIMEOUT_MS,
+      MAX_TIMEOUT_MS,
+    );
+
+    let proc: KaosProcess;
     try {
       const effectiveCwd = args.cwd ?? this.cwd;
-      const proc = await this.kaos.exec(
+      proc = await this.kaos.exec(
         'bash',
         '-c',
         `cd ${shellQuote(effectiveCwd)} && ${args.command}`,
       );
+    } catch (error) {
+      return {
+        isError: true,
+        content: error instanceof Error ? error.message : String(error),
+      };
+    }
 
-      const [stdout, stderr, exitCode] = await Promise.all([
-        text(proc.stdout),
-        text(proc.stderr),
+    try {
+      proc.stdin.end();
+    } catch {
+      // Closing stdin on a process that has already exited is a no-op on
+      // some platforms and throws on others — either is safe to ignore.
+    }
+
+    let timedOut = false;
+    let aborted = false;
+    let killed = false;
+
+    const killProc = async (): Promise<void> => {
+      if (killed) return;
+      killed = true;
+      try {
+        await proc.kill('SIGTERM');
+      } catch {
+        /* process already gone */
+      }
+      const exited = proc
+        .wait()
+        .then(() => true)
+        .catch(() => true);
+      const raced = await Promise.race([
+        exited,
+        new Promise<false>((resolve) => {
+          setTimeout(() => {
+            resolve(false);
+          }, SIGTERM_GRACE_MS);
+        }),
+      ]);
+      if (!raced && proc.exitCode === null) {
+        try {
+          await proc.kill('SIGKILL');
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    const onAbort = (): void => {
+      aborted = true;
+      void killProc();
+    };
+    signal.addEventListener('abort', onAbort);
+
+    const timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      void killProc();
+    }, timeoutMs);
+
+    try {
+      const [stdoutResult, stderrResult, exitCode] = await Promise.all([
+        readStreamWithCap(proc.stdout, MAX_OUTPUT_BYTES),
+        readStreamWithCap(proc.stderr, MAX_OUTPUT_BYTES),
         proc.wait(),
       ]);
 
-      const output: BashOutput = { exitCode, stdout, stderr };
+      if (timedOut) {
+        return {
+          isError: true,
+          content: `Command killed by timeout (${String(Math.floor(timeoutMs / 1000))}s)`,
+          output: {
+            exitCode,
+            stdout: appendTruncationMarker(stdoutResult),
+            stderr: appendTruncationMarker(stderrResult),
+          },
+        };
+      }
+      if (aborted) {
+        return {
+          isError: true,
+          content: 'Command aborted',
+          output: {
+            exitCode,
+            stdout: appendTruncationMarker(stdoutResult),
+            stderr: appendTruncationMarker(stderrResult),
+          },
+        };
+      }
+
+      const stdout = appendTruncationMarker(stdoutResult);
+      const stderr = appendTruncationMarker(stderrResult);
       const isError = exitCode !== 0;
 
       return {
         isError: isError || undefined,
         content: isError ? stderr || `Process exited with code ${String(exitCode)}` : stdout,
-        output,
+        output: { exitCode, stdout, stderr },
       };
     } catch (error) {
       return {
         isError: true,
         content: error instanceof Error ? error.message : String(error),
       };
+    } finally {
+      clearTimeout(timeoutHandle);
+      signal.removeEventListener('abort', onAbort);
     }
   }
 
@@ -67,6 +177,37 @@ export class BashTool implements BuiltinTool<BashInput, BashOutput> {
     const preview = args.command.length > 50 ? `${args.command.slice(0, 50)}…` : args.command;
     return `Running: ${preview}`;
   }
+}
+
+interface CappedStreamResult {
+  readonly text: string;
+  readonly truncated: boolean;
+}
+
+async function readStreamWithCap(stream: Readable, maxBytes: number): Promise<CappedStreamResult> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  let truncated = false;
+  for await (const chunk of stream) {
+    const buf: Buffer = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : (chunk as Buffer);
+    if (truncated) continue;
+    if (total + buf.length > maxBytes) {
+      const remaining = maxBytes - total;
+      if (remaining > 0) chunks.push(buf.subarray(0, remaining));
+      total = maxBytes;
+      truncated = true;
+      continue;
+    }
+    chunks.push(buf);
+    total += buf.length;
+  }
+  return { text: Buffer.concat(chunks).toString('utf8'), truncated };
+}
+
+function appendTruncationMarker(result: CappedStreamResult): string {
+  return result.truncated
+    ? `${result.text}\n[output truncated at ${String(MAX_OUTPUT_BYTES)} bytes]`
+    : result.text;
 }
 
 function shellQuote(s: string): string {

@@ -15,6 +15,8 @@ import {
   type WireMessage,
   type WireRequest,
   type WireResponse,
+  InvalidWireEnvelopeError,
+  MalformedWireFrameError,
   PROCESS_SESSION_ID,
   WIRE_PROTOCOL_VERSION,
   WireCodec,
@@ -156,6 +158,167 @@ describe('WireMessageSchema', () => {
       expect(result.data.seq).toBeUndefined();
     }
   });
+
+  // ── Conditional required fields (S5-M-1 regression) ──
+
+  it('rejects request envelope missing method', () => {
+    const raw = {
+      id: 'req_100',
+      time: Date.now(),
+      session_id: '__process__',
+      type: 'request',
+      from: 'client',
+      to: 'core',
+      // method absent
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects request envelope with empty-string method', () => {
+    const raw = {
+      id: 'req_101',
+      time: Date.now(),
+      session_id: '__process__',
+      type: 'request',
+      from: 'client',
+      to: 'core',
+      method: '',
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects response envelope missing request_id', () => {
+    const raw = {
+      id: 'res_100',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'response',
+      from: 'core',
+      to: 'client',
+      // request_id absent
+      data: { ok: true },
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects response envelope with empty-string request_id', () => {
+    const raw = {
+      id: 'res_101',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'response',
+      from: 'core',
+      to: 'client',
+      request_id: '',
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects event envelope missing method', () => {
+    const raw = {
+      id: 'evt_100',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'event',
+      from: 'core',
+      to: 'client',
+      seq: 1,
+      // method absent
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects event envelope missing seq', () => {
+    const raw = {
+      id: 'evt_101',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'event',
+      from: 'core',
+      to: 'client',
+      method: 'turn.begin',
+      // seq absent
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects event envelope with negative seq', () => {
+    const raw = {
+      id: 'evt_102',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'event',
+      from: 'core',
+      to: 'client',
+      method: 'turn.begin',
+      seq: -1,
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects envelope with wrong id prefix', () => {
+    const raw = {
+      id: 'bad_001',
+      time: Date.now(),
+      session_id: '__process__',
+      type: 'request',
+      from: 'client',
+      to: 'core',
+      method: 'initialize',
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects envelope with non-positive time', () => {
+    const raw = {
+      id: 'req_200',
+      time: 0,
+      session_id: '__process__',
+      type: 'request',
+      from: 'client',
+      to: 'core',
+      method: 'initialize',
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects envelope with non-integer time', () => {
+    const raw = {
+      id: 'req_201',
+      time: 1.5,
+      session_id: '__process__',
+      type: 'request',
+      from: 'client',
+      to: 'core',
+      method: 'initialize',
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts event envelope with seq === 0', () => {
+    const raw = {
+      id: 'evt_200',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'event',
+      from: 'core',
+      to: 'client',
+      method: 'turn.begin',
+      seq: 0,
+    };
+    const result = WireMessageSchema.safeParse(raw);
+    expect(result.success).toBe(true);
+  });
 });
 
 // ── WireCodec (v2-only) ─────────────────────────────────────────────────
@@ -232,13 +395,51 @@ describe('WireCodec', () => {
       expect(msg.method).toBe('initialize');
     });
 
-    it('throws on invalid JSON', () => {
-      expect(() => codec.decode('not json')).toThrow();
+    it('throws MalformedWireFrameError on invalid JSON', () => {
+      expect(() => codec.decode('not json')).toThrow(MalformedWireFrameError);
     });
 
-    it('throws on JSON missing required fields', () => {
+    it('throws InvalidWireEnvelopeError on JSON missing required fields', () => {
       const frame = JSON.stringify({ id: 'req_001' });
-      expect(() => codec.decode(frame)).toThrow();
+      expect(() => codec.decode(frame)).toThrow(InvalidWireEnvelopeError);
+    });
+
+    it('throws InvalidWireEnvelopeError for response missing request_id', () => {
+      const frame = JSON.stringify({
+        id: 'res_303',
+        time: Date.now(),
+        session_id: 'ses_abc',
+        type: 'response',
+        from: 'core',
+        to: 'client',
+        data: { ok: true },
+      });
+      expect(() => codec.decode(frame)).toThrow(InvalidWireEnvelopeError);
+    });
+
+    it('throws InvalidWireEnvelopeError for event missing seq', () => {
+      const frame = JSON.stringify({
+        id: 'evt_303',
+        time: Date.now(),
+        session_id: 'ses_abc',
+        type: 'event',
+        from: 'core',
+        to: 'client',
+        method: 'turn.begin',
+      });
+      expect(() => codec.decode(frame)).toThrow(InvalidWireEnvelopeError);
+    });
+
+    it('throws InvalidWireEnvelopeError for request missing method', () => {
+      const frame = JSON.stringify({
+        id: 'req_303',
+        time: Date.now(),
+        session_id: '__process__',
+        type: 'request',
+        from: 'client',
+        to: 'core',
+      });
+      expect(() => codec.decode(frame)).toThrow(InvalidWireEnvelopeError);
     });
 
     it('round-trips a request message', () => {

@@ -5,7 +5,7 @@
  * `src/soul-plus/` because subagent orchestration is a SoulPlus concern —
  * Soul (the pure function) never sees these types (铁律 3).
  *
- * Key design constraint (CLAUDE.md §7 / v2 §7.2):
+ * Key design constraint
  *   `SubagentHost` is NOT part of Runtime. It is injected into `AgentTool`
  *   via constructor injection. `SoulRegistry` is the canonical implementation.
  */
@@ -36,6 +36,14 @@ export type SubagentStatus =
 
 export interface SpawnRequest {
   parentAgentId: string;
+  /**
+   * Tool call id of the parent `AgentTool` invocation that triggered this
+   * spawn. Required because `SubagentStateJson.parent_tool_call_id` and
+   * `SubagentEventRecord.parent_tool_call_id` are load-bearing keys for
+   * audit trails, parent-child tracing, and event bubbling. Must not
+   * fall back to ambient state (Slice 7 audit Finding #1).
+   */
+  parentToolCallId: string;
   agentName: string;
   prompt: string;
   contextState?: FullContextState | undefined;
@@ -65,6 +73,14 @@ export interface AgentResult {
  */
 export interface SubagentHandle {
   readonly agentId: string;
+  /**
+   * Tool call id of the `AgentTool` invocation that spawned this
+   * subagent. Echoed from `SpawnRequest.parentToolCallId` so downstream
+   * consumers (state.json writers, subagent.event publishers, hooks)
+   * can bind child work to the originating parent tool call without
+   * an ambient context (Slice 7 audit Finding #1).
+   */
+  readonly parentToolCallId: string;
   readonly completion: Promise<AgentResult>;
 }
 
@@ -74,7 +90,7 @@ export interface SubagentHandle {
  * Host-side interface for spawning subagents. `SoulRegistry` is the
  * canonical implementation (v2 §5.2.3 / §7.2).
  *
- * NOT part of Runtime (CLAUDE.md §7). Injected into `AgentTool` via
+ * NOT part of Runtime Injected into `AgentTool` via
  * constructor.
  */
 export interface SubagentHost {

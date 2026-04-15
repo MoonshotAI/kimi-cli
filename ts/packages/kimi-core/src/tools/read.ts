@@ -2,22 +2,28 @@
  * ReadTool — read text file content with optional line range (§9-F / Appendix E.1).
  *
  * Dependencies injected via constructor (§9-F.3):
- *   - `Kaos` — file system abstraction (readText / readLines / stat)
+ *   - `Kaos`             — file system abstraction (readText / stat)
+ *   - `WorkspaceConfig`  — path safety boundary (§14.3 D11)
  */
 
 import type { Kaos } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
 import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { ReadInputSchema } from './types.js';
 import type { BuiltinTool, ReadInput, ReadOutput } from './types.js';
+import type { WorkspaceConfig } from './workspace.js';
 
 export class ReadTool implements BuiltinTool<ReadInput, ReadOutput> {
   readonly name = 'Read' as const;
   readonly description = 'Read the contents of a file from the local filesystem.';
   readonly inputSchema: z.ZodType<ReadInput> = ReadInputSchema;
 
-  constructor(private readonly kaos: Kaos) {}
+  constructor(
+    private readonly kaos: Kaos,
+    private readonly workspace: WorkspaceConfig,
+  ) {}
 
   async execute(
     _toolCallId: string,
@@ -25,8 +31,20 @@ export class ReadTool implements BuiltinTool<ReadInput, ReadOutput> {
     _signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult<ReadOutput>> {
+    let safePath: string;
     try {
-      const raw = await this.kaos.readText(args.path);
+      safePath = assertPathAllowed(args.path, this.workspace.workspaceDir, this.workspace, {
+        mode: 'read',
+      });
+    } catch (error) {
+      if (error instanceof PathSecurityError) {
+        return { isError: true, content: error.message };
+      }
+      throw error;
+    }
+
+    try {
+      const raw = await this.kaos.readText(safePath);
       if (raw === '') {
         return {
           content: '',

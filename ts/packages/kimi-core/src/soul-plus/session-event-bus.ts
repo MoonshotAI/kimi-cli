@@ -11,15 +11,25 @@
  *
  * Contract guarantees (v2 §4.6.3):
  *   - Listener errors must NOT propagate back to Soul. The bus catches them
- *     internally so a bad UI listener cannot crash the agent loop.
+ *     internally — both synchronous `throw` and any rejected `Promise`
+ *     returned by an `async` listener — so a bad UI listener cannot crash
+ *     the agent loop or surface as an unhandled rejection at the Node
+ *     process level. Slice 3 audit M3 (parallels Slice 2 `safeEmit`).
  *   - Listeners MUST NOT call back into `ContextState` write methods or
  *     `JournalWriter.append` (铁律 5). Enforcement is convention-level.
- *   - `emit` fans out synchronously in listener registration order.
+ *   - `emit` fans out synchronously in listener registration order. Async
+ *     listeners are dispatched fire-and-forget — the bus does NOT await
+ *     them (铁律 4: Soul cannot be back-pressured).
  */
 
 import type { EventSink, SoulEvent } from '../soul/index.js';
 
-export type SessionEventListener = (event: SoulEvent) => void;
+/**
+ * Listener signature. `void | Promise<void>` (rather than bare `void`) so
+ * callers can legitimately write `async` listeners — the bus will isolate
+ * any rejected promise via a terminal `.catch` attached inside `emit`.
+ */
+export type SessionEventListener = (event: SoulEvent) => void | Promise<void>;
 
 export class SessionEventBus implements EventSink {
   private readonly listeners: SessionEventListener[] = [];
@@ -29,11 +39,28 @@ export class SessionEventBus implements EventSink {
     // cannot shift the iteration it is part of.
     const snapshot = this.listeners.slice();
     for (const listener of snapshot) {
+      let maybePromise: void | Promise<void>;
       try {
-        listener(event);
+        maybePromise = listener(event);
       } catch {
-        // §4.6.3 rule 3: listener errors must never reach Soul or block
-        // siblings. Swallow silently.
+        // §4.6.3 rule 3: sync listener throw — never reaches Soul or
+        // blocks siblings.
+        continue;
+      }
+      // Slice 3 audit M3: if the listener returned a thenable (async
+      // function, or a function that returned a Promise), attach a
+      // terminal `.catch` so a rejected promise cannot escape as an
+      // unhandled rejection at the Node process level. Mirrors the
+      // Slice 2 `safeEmit` pattern in `src/soul/run-turn.ts`.
+      if (
+        maybePromise !== undefined &&
+        maybePromise !== null &&
+        typeof (maybePromise as { then?: unknown }).then === 'function' &&
+        typeof (maybePromise as { catch?: unknown }).catch === 'function'
+      ) {
+        maybePromise.catch(() => {
+          // swallow async listener rejection
+        });
       }
     }
   }

@@ -4,21 +4,27 @@
  * Replaces the first occurrence of `old_string` with `new_string` by default.
  * When `replace_all` is true, replaces all occurrences.
  * Errors when `old_string` is not found or not unique (when replace_all=false).
+ * Path safety is enforced before any Kaos I/O (§14.3 D11).
  */
 
 import type { Kaos } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
 import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { EditInputSchema } from './types.js';
 import type { BuiltinTool, EditInput, EditOutput } from './types.js';
+import type { WorkspaceConfig } from './workspace.js';
 
 export class EditTool implements BuiltinTool<EditInput, EditOutput> {
   readonly name = 'Edit' as const;
   readonly description = 'Perform exact string replacements in a file.';
   readonly inputSchema: z.ZodType<EditInput> = EditInputSchema;
 
-  constructor(private readonly kaos: Kaos) {}
+  constructor(
+    private readonly kaos: Kaos,
+    private readonly workspace: WorkspaceConfig,
+  ) {}
 
   async execute(
     _toolCallId: string,
@@ -26,8 +32,20 @@ export class EditTool implements BuiltinTool<EditInput, EditOutput> {
     _signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult<EditOutput>> {
+    let safePath: string;
     try {
-      const content = await this.kaos.readText(args.path);
+      safePath = assertPathAllowed(args.path, this.workspace.workspaceDir, this.workspace, {
+        mode: 'write',
+      });
+    } catch (error) {
+      if (error instanceof PathSecurityError) {
+        return { isError: true, content: error.message };
+      }
+      throw error;
+    }
+
+    try {
+      const content = await this.kaos.readText(safePath);
       const replaceAll = args.replace_all ?? false;
 
       if (!replaceAll) {
@@ -51,7 +69,7 @@ export class EditTool implements BuiltinTool<EditInput, EditOutput> {
         }
 
         const newContent = content.replace(args.old_string, args.new_string);
-        await this.kaos.writeText(args.path, newContent);
+        await this.kaos.writeText(safePath, newContent);
         return {
           content: `Replaced 1 occurrence in ${args.path}`,
           output: { replacementCount: 1 },
@@ -65,7 +83,7 @@ export class EditTool implements BuiltinTool<EditInput, EditOutput> {
       }
 
       const newContent = parts.join(args.new_string);
-      await this.kaos.writeText(args.path, newContent);
+      await this.kaos.writeText(safePath, newContent);
       return {
         content: `Replaced ${String(replacementCount)} occurrences in ${args.path}`,
         output: { replacementCount },

@@ -10,7 +10,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { MemoryTransport, createLinkedTransportPair } from '../../src/transport/index.js';
+import {
+  MemoryTransport,
+  TransportClosedError,
+  createLinkedTransportPair,
+} from '../../src/transport/index.js';
 
 // ── State machine ────────────────────────────────────────────────────────
 
@@ -166,6 +170,115 @@ describe('createLinkedTransportPair', () => {
 
     // Should not throw
     await expect(a.send('ignored')).resolves.toBeUndefined();
+  });
+
+  // ── Close race (S5-M-2 regression) ──
+  //
+  // The race scenario (per audit): caller fires send() and close() in the
+  // same synchronous block, without awaiting the send. close() must cancel
+  // the queued delivery before its microtask fires. We intentionally skip
+  // `await` on send() because awaiting yields to the microtask queue and
+  // would let the stale delivery fire before close() even starts — that
+  // case is philosophically "delivery already happened".
+
+  it('send() → close() (no await) does not deliver pre-close frames to peer', async () => {
+    const [a, b] = createLinkedTransportPair();
+    const received: string[] = [];
+    b.onMessage = (frame) => received.push(frame);
+
+    await a.connect();
+    await b.connect();
+
+    const sendPromise = a.send('ghost_frame');
+    await a.close();
+    await sendPromise;
+
+    // Wait several microtasks + macrotask to let any stale deliveries fire.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+
+    expect(received).toEqual([]);
+  });
+
+  it('close() on sender cancels peer-to-sender pending deliveries', async () => {
+    const [a, b] = createLinkedTransportPair();
+    const receivedByA: string[] = [];
+    a.onMessage = (frame) => receivedByA.push(frame);
+
+    await a.connect();
+    await b.connect();
+
+    // B queues a frame for A, then A closes before microtask fires.
+    const sendPromise = b.send('B→A_ghost');
+    await a.close();
+    await sendPromise;
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+
+    expect(receivedByA).toEqual([]);
+  });
+
+  it('send() after close() rejects with TransportClosedError', async () => {
+    const transport = new MemoryTransport();
+    await transport.connect();
+    await transport.close();
+
+    await expect(transport.send('after_close')).rejects.toBeInstanceOf(TransportClosedError);
+  });
+
+  it('closing one end transitions peer to closed', async () => {
+    const [a, b] = createLinkedTransportPair();
+    await a.connect();
+    await b.connect();
+
+    await a.close();
+
+    // Peer synchronously transitions to closed so subsequent sends reject.
+    expect(b.state).toBe('closed');
+    await expect(b.send('after_peer_close')).rejects.toBeInstanceOf(TransportClosedError);
+  });
+
+  it('close() fires peer.onClose exactly once', async () => {
+    const [a, b] = createLinkedTransportPair();
+    let bCloseCalls = 0;
+    b.onClose = () => {
+      bCloseCalls += 1;
+    };
+
+    await a.connect();
+    await b.connect();
+    await a.close();
+    await a.close(); // double close is no-op
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+
+    expect(bCloseCalls).toBe(1);
+  });
+
+  it('multiple queued sends before close all get dropped', async () => {
+    const [a, b] = createLinkedTransportPair();
+    const received: string[] = [];
+    b.onMessage = (frame) => received.push(frame);
+
+    await a.connect();
+    await b.connect();
+
+    const p1 = a.send('m1');
+    const p2 = a.send('m2');
+    const p3 = a.send('m3');
+    await a.close();
+    await Promise.all([p1, p2, p3]);
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+
+    expect(received).toEqual([]);
   });
 });
 

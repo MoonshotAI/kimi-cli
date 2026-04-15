@@ -8,6 +8,12 @@
  *
  * Error isolation: a single executor failure does not affect other hooks
  * (learned from Slice 3 SessionEventBus — listener errors must be isolated).
+ *
+ * Matcher semantics (Slice 4 audit M4, ports Python `hooks/engine.py:196-230`):
+ *   - `matcher` is a regex applied to the tool name (or "" for non-tool events)
+ *   - absent / empty `matcher` → match-all
+ *   - invalid regex → fail-open, matches everything, with a log-only warning
+ *     (v2 §9-C requires hooks never to brick a turn)
  */
 
 import type {
@@ -21,6 +27,7 @@ import type {
 export interface HookEngineDeps {
   readonly executors: ReadonlyMap<string, HookExecutor>;
   readonly onExecutorError?: ((hook: HookConfig, error: Error) => void) | undefined;
+  readonly onInvalidMatcher?: ((hook: HookConfig, matcher: string) => void) | undefined;
 }
 
 export class HookEngine {
@@ -42,12 +49,43 @@ export class HookEngine {
     return this.hooks.filter((h) => h.event === event);
   }
 
+  /**
+   * Pre-filters hooks by both `event` and `matcher` regex against the
+   * target value (tool name for tool-scoped events). Exported-ish via
+   * `executeHooks` — v2 §9-C.3 requires "getMatchingHooks(event, input)
+   * then concurrent execute" ordering.
+   */
+  getMatchingHooks(event: HookEventType, input: HookInput): HookConfig[] {
+    const matcherValue = extractMatcherValue(input);
+    return this.hooks.filter((h) => {
+      if (h.event !== event) return false;
+      return this.matchesTarget(h, matcherValue);
+    });
+  }
+
+  private matchesTarget(hook: HookConfig, value: string): boolean {
+    const matcher = hook.matcher;
+    if (matcher === undefined || matcher === '') return true;
+    let re: RegExp;
+    try {
+      re = new RegExp(matcher);
+    } catch {
+      // Invalid regex: fail-open (match-all). Notify caller via the
+      // optional observability callback so mis-configured hooks are
+      // visible, but never brick the turn. (Task spec deviates from
+      // Python here — Python treats invalid regex as no-match.)
+      this.deps.onInvalidMatcher?.(hook, matcher);
+      return true;
+    }
+    return re.test(value);
+  }
+
   async executeHooks(
     event: HookEventType,
     input: HookInput,
     signal: AbortSignal,
   ): Promise<AggregatedHookResult> {
-    const matching = this.hooks.filter((h) => h.event === event);
+    const matching = this.getMatchingHooks(event, input);
     if (matching.length === 0) {
       return { blockAction: false, additionalContext: [] };
     }
@@ -89,4 +127,15 @@ export class HookEngine {
 
     return { blockAction, reason, additionalContext };
   }
+}
+
+// ── Matcher value extraction ─────────────────────────────────────────────
+
+/**
+ * Extracts the string fed to a hook's matcher regex. For PreToolUse /
+ * PostToolUse / OnToolFailure events the matcher is run against the tool
+ * name, mirroring Python's `matcher_value=toolCall.name` contract.
+ */
+function extractMatcherValue(input: HookInput): string {
+  return input.toolCall.name;
 }

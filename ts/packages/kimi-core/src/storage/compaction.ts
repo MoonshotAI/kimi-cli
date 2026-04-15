@@ -14,9 +14,10 @@
  * and rolls back the lowest-numbered archive to `wire.jsonl`.
  */
 
-import { readdir, rename, writeFile } from 'node:fs/promises';
+import { readdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { syncDir, writeFileAtomicDurable } from './fs-durability.js';
 import { replayWire, type ReplayOptions, type ReplayResult } from './replay.js';
 
 // ── Archive naming helpers ───────────────────────────────────────────
@@ -84,9 +85,18 @@ export interface RotateResult {
 }
 
 /**
- * Atomically rotate `wire.jsonl`:
+ * Durably rotate `wire.jsonl`:
  *   1. Rename current `wire.jsonl` → `wire.N.jsonl`
- *   2. Create new `wire.jsonl` with metadata header
+ *   2. Write new `wire.jsonl` via `.tmp` → fsync → rename → parent-dir fsync
+ *      (see `writeFileAtomicDurable`)
+ *   3. fsync the session directory a second time so the initial rename's
+ *      directory-entry change is definitely durable before we return
+ *
+ * Slice 6 audit M03: previously this function was a bare
+ * `rename + writeFile` with no fsync of either the new file contents or
+ * the parent directory, reopening the Slice 1 M4 durability hole inside
+ * the compaction path. The implementation now reuses the same low-level
+ * primitives `WiredJournalWriter` relies on.
  *
  * The caller (compaction path) writes the CompactionRecord into the new
  * file immediately after rotation completes.
@@ -98,21 +108,33 @@ export async function rotateJournal(
   const version = protocolVersion ?? '2.1';
   const currentPath = join(sessionDir, 'wire.jsonl');
 
-  // Find existing archives to determine next number
   const entries = await readdir(sessionDir);
   const archiveNames = entries.filter((e) => ARCHIVE_PATTERN.test(e));
   const archivePath = nextArchiveName(sessionDir, archiveNames);
 
-  // 1. Rename current → archive
+  // Step 1: rename the current wire file into its frozen archive slot.
+  // The rename is atomic but the *directory entry change* is not
+  // guaranteed durable until the parent directory is fsynced below.
   await rename(currentPath, archivePath);
 
-  // 2. Create new wire.jsonl with metadata header
+  // Step 2: materialise the new wire.jsonl durably. `writeFileAtomicDurable`
+  // writes a `.tmp` file, fsyncs its contents, renames it into place, and
+  // fsyncs the parent directory. That final directory fsync also commits
+  // the earlier rename in step 1, because POSIX directory fsync flushes
+  // all outstanding dirent changes for the directory.
   const metadata = JSON.stringify({
     type: 'metadata',
     protocol_version: version,
     created_at: Date.now(),
   });
-  await writeFile(currentPath, metadata + '\n', 'utf8');
+  await writeFileAtomicDurable(currentPath, metadata + '\n');
+
+  // Step 3: defensive second directory fsync. On most POSIX kernels this
+  // is redundant with the one inside `writeFileAtomicDurable`, but the
+  // ordering guarantee between two separate dirent-changing operations
+  // (rename + rename-into-place) under a single directory fsync is not
+  // universally documented, so we pay the extra syscall to be safe.
+  await syncDir(sessionDir);
 
   return { archivePath, newCurrentPath: currentPath };
 }

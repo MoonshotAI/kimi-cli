@@ -8,8 +8,12 @@
  *   - `getOrCreate(key)` — idempotent handle creation
  *   - `has(key)` / `keys()` — lookup without side-effects
  *   - `destroy(key)` — abort + drop entry
- *   - `spawn(request)` — SubagentHost: creates `sub:<id>` entry, returns SubagentHandle
+ *   - `spawn(request)` — SubagentHost: creates `sub:<id>` entry, returns SubagentHandle;
+ *                       the entry is automatically destroyed once the subagent
+ *                       completion settles (Slice 7 audit Finding #5).
  */
+
+import { randomUUID } from 'node:crypto';
 
 import type { AgentResult, SpawnRequest, SubagentHandle, SubagentHost } from './subagent-types.js';
 import type { SoulHandle, SoulKey } from './types.js';
@@ -38,7 +42,6 @@ export class SoulRegistry implements SubagentHost {
   private readonly runSubagentTurnFn:
     | ((request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
     | undefined;
-  private subagentSeq = 0;
 
   constructor(deps: SoulRegistryDeps) {
     this.createHandle = deps.createHandle;
@@ -75,8 +78,14 @@ export class SoulRegistry implements SubagentHost {
   // ── SubagentHost implementation (Slice 7) ────────────────────────────
 
   async spawn(request: SpawnRequest): Promise<SubagentHandle> {
-    this.subagentSeq += 1;
-    const agentId = `sub_${this.subagentSeq}`;
+    // Slice 7 audit Finding #4: subagent ids must be stable across
+    // session resume. A process-local counter collides on restart and
+    // stomps the persisted `subagents/<id>` directory of the previous
+    // session. Use a UUID (matches Python parity in
+    // `kimi_cli.tools.agent.__init__.py:202` /
+    // `kimi_cli.subagents.runner.py:373`, which derive their random
+    // ids from `uuid.uuid4()`).
+    const agentId = `sub_${randomUUID()}`;
     const soulKey: SoulKey = `sub:${agentId}`;
 
     const soulHandle = this.getOrCreate(soulKey);
@@ -85,6 +94,31 @@ export class SoulRegistry implements SubagentHost {
       ? this.runSubagentTurnFn(request, soulHandle.abortController.signal)
       : Promise.resolve({ result: '', usage: { input: 0, output: 0 } });
 
-    return { agentId, completion };
+    // Slice 7 audit Finding #5: subagent handle lifecycle is bound to
+    // the completion promise. When the subagent reaches a terminal
+    // state (resolved = completed; rejected = failed / killed), the
+    // registry entry is destroyed so it stops counting against
+    // `keys()` / shutdown / recovery and the AbortController does not
+    // leak. Matches the same explicit-transition pattern used for the
+    // `main` Soul cleanup path introduced by Slice 3 M2.
+    //
+    // The cleanup is re-queued via `queueMicrotask` so it always runs
+    // after the caller's `await host.spawn(...)` continuation. Without
+    // this deferral, an already-settled completion (e.g. the stub path
+    // in unit tests) would have its cleanup reaction dispatched before
+    // the async-function-return microtask, destroying the handle
+    // before the caller ever observes it.
+    const cleanup = (): void => {
+      queueMicrotask(() => {
+        this.destroy(soulKey);
+      });
+    };
+    void completion.then(cleanup, cleanup);
+
+    return {
+      agentId,
+      parentToolCallId: request.parentToolCallId,
+      completion,
+    };
   }
 }

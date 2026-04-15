@@ -343,24 +343,69 @@ const _rawWireErrorSchema = z.object({
   details: z.unknown().optional(),
 });
 
+/**
+ * Envelope base schema — field-level validation only.
+ *
+ * Conditional cross-field rules (type → method/request_id/seq) live in the
+ * exported `WireMessageSchema` below via `.superRefine`. Splitting avoids the
+ * refine running on values that already failed base parsing and lets zod emit
+ * accurate per-field error paths.
+ *
+ * Field constraints mirror §3 appendix A of `kimi-core-ts-design-v2.md`:
+ *   - `id` must carry one of the `req_` / `res_` / `evt_` prefixes
+ *   - `time` must be a positive integer (Unix ms)
+ *   - `seq` (if present) must be a non-negative integer
+ */
 const _rawWireMessageSchema = z.object({
-  id: z.string(),
-  time: z.number(),
-  session_id: z.string(),
+  id: z.string().regex(/^(req|res|evt)_/, {
+    message: 'id must start with req_, res_, or evt_',
+  }),
+  time: z.number().int().positive(),
+  session_id: z.string().min(1),
   type: z.enum(['request', 'response', 'event']),
-  from: z.string(),
-  to: z.string(),
-  method: z.string().optional(),
-  request_id: z.string().optional(),
+  from: z.string().min(1),
+  to: z.string().min(1),
+  method: z.string().min(1).optional(),
+  request_id: z.string().min(1).optional(),
   data: z.unknown().optional(),
   error: _rawWireErrorSchema.optional(),
   turn_id: z.string().optional(),
   agent_type: z.enum(['main', 'sub', 'independent']).optional(),
-  seq: z.number().optional(),
+  seq: z.number().int().nonnegative().optional(),
+});
+
+const _refinedWireMessageSchema = _rawWireMessageSchema.superRefine((msg, ctx) => {
+  // Rule 1: request/event must have a non-empty `method`.
+  if (
+    (msg.type === 'request' || msg.type === 'event') &&
+    (msg.method === undefined || msg.method === '')
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['method'],
+      message: `${msg.type} envelope must include non-empty "method"`,
+    });
+  }
+  // Rule 2: response must have a non-empty `request_id` (for RPC pairing).
+  if (msg.type === 'response' && (msg.request_id === undefined || msg.request_id === '')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['request_id'],
+      message: 'response envelope must include non-empty "request_id"',
+    });
+  }
+  // Rule 3: event must have a `seq` (monotonic event ordering for resume/replay).
+  if (msg.type === 'event' && msg.seq === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['seq'],
+      message: 'event envelope must include "seq"',
+    });
+  }
 });
 
 export const WireErrorSchema: z.ZodType<WireError> = _rawWireErrorSchema;
-export const WireMessageSchema: z.ZodType<WireMessage> = _rawWireMessageSchema;
+export const WireMessageSchema: z.ZodType<WireMessage> = _refinedWireMessageSchema;
 
 const _dg_WireError: AssertEqual<z.infer<typeof _rawWireErrorSchema>, WireError> = true;
 const _dg_WireMessage: AssertEqual<z.infer<typeof _rawWireMessageSchema>, WireMessage> = true;
