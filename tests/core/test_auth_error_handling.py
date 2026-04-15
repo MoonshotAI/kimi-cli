@@ -523,9 +523,7 @@ async def test_acp_session_returns_internal_error_for_401_without_oauth() -> Non
 
 
 @pytest.mark.asyncio
-async def test_wire_server_catches_ssl_error(
-    runtime: Runtime, tmp_path: Path
-) -> None:
+async def test_wire_server_catches_ssl_error(runtime: Runtime, tmp_path: Path) -> None:
     """SSLError should be caught by the fallback except clause and return
     INTERNAL_ERROR instead of escaping and leaving the session busy forever.
     """
@@ -545,9 +543,7 @@ async def test_wire_server_catches_ssl_error(
 
 
 @pytest.mark.asyncio
-async def test_wire_server_catches_connection_error(
-    runtime: Runtime, tmp_path: Path
-) -> None:
+async def test_wire_server_catches_connection_error(runtime: Runtime, tmp_path: Path) -> None:
     """ConnectionError should be caught by the fallback except clause."""
     soul = _make_soul(runtime, ConnectionErrorProvider(), tmp_path)
     server = WireServer(soul)
