@@ -133,6 +133,7 @@ def git_index_mtime(root: Path) -> float | None:
             capture_output=True,
             text=True,
             timeout=2,
+            encoding="utf-8",
         )
         if result.returncode != 0:
             return None
@@ -194,6 +195,7 @@ def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
             capture_output=True,
             text=True,
             timeout=_GIT_LS_FILES_TIMEOUT,
+            encoding="utf-8",
         )
         if result.returncode == 0:
             return {e for e in result.stdout.split("\0") if e}
@@ -237,6 +239,7 @@ def list_files_git(
             capture_output=True,
             text=True,
             timeout=_GIT_LS_FILES_TIMEOUT,
+            encoding="utf-8",
         )
         if result.returncode != 0:
             return None
@@ -266,6 +269,7 @@ def list_files_git(
                 capture_output=True,
                 text=True,
                 timeout=_GIT_LS_FILES_TIMEOUT,
+                encoding="utf-8",
             )
             if others.returncode == 0:
                 tracked = set(paths)
