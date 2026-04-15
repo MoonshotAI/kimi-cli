@@ -169,8 +169,10 @@ class KimiSoul:
         # Bind plan mode state to tools that support it
         self._bind_plan_mode_tools()
 
+        self._registered_plugin_skill_names: set[str] = set()
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
+        self._plugin_capability_index: Any = None
 
     @property
     def name(self) -> str:
@@ -515,6 +517,8 @@ class KimiSoul:
                     ret = command.func(self, command_call.args)
                     if isinstance(ret, Awaitable):
                         await ret
+            elif await self._dispatch_bare_plugin_invocation(text_input):
+                pass  # bare plugin capability name handled
             elif self._loop_control.max_ralph_iterations != 0:
                 runner = FlowRunner.ralph_loop(
                     user_message,
@@ -590,11 +594,21 @@ class KimiSoul:
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
         commands: list[SlashCommand[Any]] = list(soul_slash_registry.list_commands())
         seen_names = {cmd.name for cmd in commands}
+        self._registered_plugin_skill_names.clear()
 
         for skill in self._runtime.skills.values():
             if skill.type not in ("standard", "flow"):
                 continue
-            name = f"{SKILL_COMMAND_PREFIX}{skill.name}"
+            # Plugin skills are already namespaced (e.g. "plugin:skill-name"),
+            # so register them directly without the "skill:" prefix.
+            # Plugin flow skills are deferred to the flow loop below so that
+            # FlowRunner is used instead of the plain skill runner.
+            if skill.is_plugin:
+                if skill.type == "flow" and skill.flow is not None:
+                    continue
+                name = skill.name
+            else:
+                name = f"{SKILL_COMMAND_PREFIX}{skill.name}"
             if name in seen_names:
                 logger.warning(
                     "Skipping skill slash command /{name}: name already registered",
@@ -610,6 +624,8 @@ class KimiSoul:
                 )
             )
             seen_names.add(name)
+            if skill.is_plugin:
+                self._registered_plugin_skill_names.add(skill.name)
 
         for skill in self._runtime.skills.values():
             if skill.type != "flow":
@@ -617,14 +633,18 @@ class KimiSoul:
             if skill.flow is None:
                 logger.warning("Flow skill {name} has no flow; skipping", name=skill.name)
                 continue
-            command_name = f"{FLOW_COMMAND_PREFIX}{skill.name}"
+            command_name = skill.name if skill.is_plugin else f"{FLOW_COMMAND_PREFIX}{skill.name}"
             if command_name in seen_names:
                 logger.warning(
                     "Skipping prompt flow slash command /{name}: name already registered",
                     name=command_name,
                 )
                 continue
-            runner = FlowRunner(skill.flow, name=skill.name)
+            runner = FlowRunner(
+                skill.flow,
+                name=skill.name,
+                display_command=f"/{command_name}",
+            )
             commands.append(
                 SlashCommand(
                     name=command_name,
@@ -634,6 +654,8 @@ class KimiSoul:
                 )
             )
             seen_names.add(command_name)
+            if skill.is_plugin:
+                self._registered_plugin_skill_names.add(skill.name)
 
         return commands
 
@@ -655,9 +677,11 @@ class KimiSoul:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
             skill_text = await read_skill_text(_skill)
             if skill_text is None:
-                wire_send(
-                    TextPart(text=f'Failed to load skill "/{SKILL_COMMAND_PREFIX}{_skill.name}".')
+                cmd_name = (
+                    f"/{_skill.name}" if _skill.is_plugin
+                    else f"/{SKILL_COMMAND_PREFIX}{_skill.name}"
                 )
+                wire_send(TextPart(text=f'Failed to load skill "{cmd_name}".'))
                 return
             extra = args.strip()
             if extra:
@@ -666,6 +690,116 @@ class KimiSoul:
 
         _run_skill.__doc__ = skill.description
         return _run_skill
+
+    def register_plugin_commands(self, bundle: Any) -> None:
+        """Register Claude plugin commands as slash commands on this soul.
+
+        *bundle* is a ``ClaudePluginBundle``.  Each plugin command becomes a
+        dynamic slash command under ``/<plugin>:<command>``.
+
+        Also builds the bare-invocation index for direct name dispatch.
+        """
+        from kimi_cli.claude_plugin.commands import (
+            build_frontmatter_context,
+            expand_arguments,
+        )
+        from kimi_cli.claude_plugin.router import build_plugin_capability_index
+
+        seen = {cmd.name for cmd in self._slash_commands}
+        all_plugin_commands: dict[str, Any] = {}
+
+        for plugin_rt in bundle.plugins.values():
+            for cmd_spec in plugin_rt.commands.values():
+                if cmd_spec.full_name in seen:
+                    logger.warning(
+                        "Skipping plugin command /{name}: name already registered",
+                        name=cmd_spec.full_name,
+                    )
+                    continue
+
+                async def _run_cmd(
+                    soul: KimiSoul,
+                    args: str,
+                    *,
+                    _spec: Any = cmd_spec,
+                ) -> None:
+                    rendered = expand_arguments(
+                        _spec.body, args, plugin_root=_spec.plugin_root,
+                    )
+                    rendered += build_frontmatter_context(_spec)
+                    await soul._turn(Message(role="user", content=rendered))
+
+                _run_cmd.__doc__ = cmd_spec.description
+                slash_cmd: SlashCommand[Any] = SlashCommand(
+                    name=cmd_spec.full_name,
+                    func=_run_cmd,
+                    description=cmd_spec.description,
+                    aliases=[],
+                )
+                self._slash_commands.append(slash_cmd)
+                self._slash_command_map[cmd_spec.full_name] = slash_cmd
+                seen.add(cmd_spec.full_name)
+                all_plugin_commands[cmd_spec.full_name] = cmd_spec
+
+        # Build bare-invocation index for direct name dispatch
+        effective_plugin_skills = {
+            name: skill
+            for name, skill in self._runtime.skills.items()
+            if skill.is_plugin and skill.name in self._registered_plugin_skill_names
+        }
+        self._plugin_capability_index = build_plugin_capability_index(
+            effective_plugin_skills,
+            commands=all_plugin_commands or None,
+        )
+
+    async def _dispatch_bare_plugin_invocation(self, text_input: str) -> bool:
+        """Dispatch if *text_input* is a bare plugin capability name.
+
+        Only matches when the input is essentially just the capability name
+        (± trivial filler).  All other inputs fall through to the model.
+        """
+        if self._plugin_capability_index is None:
+            return False
+
+        cap = self._plugin_capability_index.match(text_input)
+        if cap is None:
+            return False
+
+        logger.info(
+            "Bare-invocation dispatch to plugin capability '{name}'",
+            name=cap.name,
+        )
+
+        if cap.kind == "flow_skill" and cap.skill is not None and cap.skill.flow is not None:
+            runner = FlowRunner(
+                cap.skill.flow,
+                name=cap.skill.name,
+                display_command=f"/{cap.skill.name}",
+            )
+            await runner.run(self, "")
+            return True
+
+        if cap.kind == "skill" and cap.skill is not None:
+            run_fn = self._make_skill_runner(cap.skill)
+            ret = run_fn(self, "")
+            if isinstance(ret, Awaitable):
+                await ret
+            return True
+
+        if cap.kind == "command" and cap.command is not None:
+            from kimi_cli.claude_plugin.commands import (
+                build_frontmatter_context,
+                expand_arguments,
+            )
+
+            rendered = expand_arguments(
+                cap.command.body, "", plugin_root=cap.command.plugin_root,
+            )
+            rendered += build_frontmatter_context(cap.command)
+            await self._turn(Message(role="user", content=rendered))
+            return True
+
+        return False
 
     async def _agent_loop(self) -> TurnOutcome:
         """The main agent loop for one run."""
@@ -1166,10 +1300,12 @@ class FlowRunner:
         flow: Flow,
         *,
         name: str | None = None,
+        display_command: str | None = None,
         max_moves: int = DEFAULT_MAX_FLOW_MOVES,
     ) -> None:
         self._flow = flow
         self._name = name
+        self._display_command = display_command
         self._max_moves = max_moves
 
     @staticmethod
@@ -1214,7 +1350,11 @@ class FlowRunner:
 
     async def run(self, soul: KimiSoul, args: str) -> None:
         if args.strip():
-            command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
+            command = (
+                self._display_command
+                if self._display_command is not None
+                else (f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow")
+            )
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
 
