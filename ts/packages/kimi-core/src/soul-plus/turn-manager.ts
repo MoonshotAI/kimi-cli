@@ -50,7 +50,6 @@ import type { SessionJournal } from '../storage/session-journal.js';
 import type { ApprovalSource } from '../storage/wire-record.js';
 import type { DynamicInjectionManager, InjectionContext } from './dynamic-injection.js';
 import type { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
-import type { NotificationData } from './notification-manager.js';
 import type { ToolCallOrchestrator } from './orchestrator.js';
 import type { PermissionMode, PermissionRule } from './permission/index.js';
 import type { SoulRegistry } from './soul-registry.js';
@@ -192,19 +191,6 @@ export class TurnManager {
   private pendingTurnOverrides: TurnPermissionOverrides | undefined;
 
   /**
-   * Slice 2.4 — per-turn pending notification queue (v2 §5.2.2 L1985).
-   * `NotificationManager.emit()` pushes into this via
-   * `addPendingNotification`. The queue is drained as
-   * `EphemeralInjection[]` by `drainPendingNotifications` and handed to
-   * `ContextState.stashEphemeralInjection` BEFORE the next LLM step's
-   * `buildMessages` call. Ownership lives on TurnManager rather than
-   * ContextState because notifications are a SoulPlus concept
-   * (NotificationManager is §5.2.4) and Soul / ContextState should not
-   * know about notification lifecycle.
-   */
-  private pendingNotifications: NotificationData[] = [];
-
-  /**
    * Slice 3.6 — live plan-mode flag. `SessionControl.setPlanMode` drives
    * this via `setPlanMode` below; `DynamicInjectionManager` reads it at
    * every `launchTurn` so plan-mode reminders appear on the very next
@@ -237,14 +223,6 @@ export class TurnManager {
     this.permissionMode = deps.permissionMode ?? 'default';
     this.planMode = deps.planMode ?? false;
     this.sessionId = deps.sessionId ?? 'unknown';
-
-    // M3: wire the pre-step drain hook so mid-turn notifications are
-    // flushed into ContextState's ephemeral stash before each
-    // buildMessages() call inside runSoulTurn. This aligns with
-    // Python's per-step `deliver_pending("llm")` semantics.
-    this.deps.contextState.setBeforeStepHook(() => {
-      this.drainPendingNotificationsIntoContext();
-    });
   }
 
   // ── Permission control surface (Slice 2.2) ──────────────────────────
@@ -358,67 +336,21 @@ export class TurnManager {
     return this.pendingTurnOverrides;
   }
 
-  // ── Notification queue (Slice 2.4) ──────────────────────────────────
-
-  /**
-   * Slice 2.4 — NotificationManager.emit() calls this synchronously as
-   * part of the LLM-sink fan-out. The notification is buffered until
-   * either:
-   *   - the next LLM step within the current turn (if a turn is active)
-   *     calls `stashPendingNotificationsForBuildMessages`, or
-   *   - a brand-new turn launches (same drain path).
-   *
-   * No journal I/O happens here — the WAL append already occurred
-   * inside `NotificationManager.emit()` before this method was called
-   * (WAL-then-mirror, §4.5.6).
-   */
-  addPendingNotification(notif: NotificationData): void {
-    this.pendingNotifications.push(notif);
-  }
-
-  /**
-   * Drain the pending notification queue and stash each entry into
-   * ContextState as a `pending_notification` ephemeral injection. Called
-   * by `launchTurn` right before kicking off the Soul turn and can also
-   * be called inline between steps if TurnManager later grows a
-   * "mid-turn drain" hook.
-   *
-   * Idempotent-ish: after draining, the queue is empty, so a second
-   * call with no new emits is a no-op. Order is preserved (FIFO).
-   */
-  drainPendingNotificationsIntoContext(): void {
-    if (this.pendingNotifications.length === 0) return;
-    const drained = this.pendingNotifications;
-    this.pendingNotifications = [];
-    for (const notif of drained) {
-      // `stashEphemeralInjection` is a synchronous push — it is safe
-      // to call from anywhere on the main event loop.
-      this.deps.contextState.stashEphemeralInjection({
-        kind: 'pending_notification',
-        content: notif as unknown as Record<string, unknown>,
-      });
-    }
-  }
-
-  /**
-   * Test / inspection helper — read-only view of the pending queue.
-   * Production code must use `addPendingNotification` /
-   * `drainPendingNotificationsIntoContext`.
-   */
-  getPendingNotifications(): readonly NotificationData[] {
-    return this.pendingNotifications;
-  }
-
   // ── Dynamic injection (Slice 3.6) ──────────────────────────────────
 
   /**
    * Compute the active set of DynamicInjection entries for the current
-   * turn and stash each one into ContextState as a `system_reminder`
-   * ephemeral. No-op if no DynamicInjectionManager was configured.
+   * turn and write each one durably via ContextState.appendSystemReminder
+   * (Phase 1, Decision #89). No-op if no DynamicInjectionManager was
+   * configured.
    *
-   * Called by `launchTurn` immediately before the notification drain,
-   * so the resulting `<system-reminder>` blocks land at the top of the
-   * synthetic message pile surfaced to the next LLM step.
+   * Called by `launchTurn` at the top of the turn so the resulting
+   * `<system-reminder>` messages are in the transcript before the
+   * first LLM step.
+   *
+   * Dedup is handled by the providers: they scan `ctx.history` to
+   * avoid re-injecting a reminder already present with no new user
+   * message since.
    */
   private drainDynamicInjectionsIntoContext(turnId: string): void {
     const manager = this.deps.dynamicInjectionManager;
@@ -427,11 +359,12 @@ export class TurnManager {
       planMode: this.planMode,
       permissionMode: this.permissionMode,
       turnNumber: this.extractTurnNumber(turnId),
+      history: this.deps.contextState.getHistory(),
     };
-    const injections = manager.computeInjections(ctx);
-    for (const injection of injections) {
-      this.deps.contextState.stashEphemeralInjection(injection);
-    }
+    // Phase 1: pass contextState so providers write durably via
+    // appendSystemReminder. Providers return void when they write
+    // durable, so the returned array is empty.
+    manager.computeInjections(ctx, this.deps.contextState);
   }
 
   /**
@@ -784,28 +717,6 @@ export class TurnManager {
     const effectiveRules = this.computeTurnRules();
     this.pendingTurnOverrides = undefined;
 
-    // Slice 3.6 — compute dynamic injections (plan mode / yolo mode /
-    // host-supplied providers) and stash them as `system_reminder`
-    // ephemerals BEFORE the notification drain. Ordering is
-    // deliberate: dynamic injections are a more general "system
-    // context" channel and should sit at the top of the synthetic
-    // message block, with any pending notifications coming right
-    // after. Both are consumed by the same `buildMessages()` drain on
-    // the next LLM step.
-    this.drainDynamicInjectionsIntoContext(turnId);
-
-    // Slice 2.4 — drain the pending notification queue into
-    // ContextState right before Soul starts its LLM loop. The Soul
-    // loop calls `context.buildMessages()` once per step; the stash
-    // we prime here is consumed by the first `buildMessages` call and
-    // renders as `<notification ...>` / `<system-reminder>` user
-    // messages prepended to history. Doing the drain here (rather
-    // than inside Soul or ContextState) keeps Soul ignorant of
-    // SoulPlus-level notification lifecycle — runSoulTurn sees a
-    // plain ContextState whose buildMessages just happens to include
-    // the injections.
-    this.drainPendingNotificationsIntoContext();
-
     const soulConfig: SoulConfig = {
       tools: wrappedTools,
       beforeToolCall: this.buildBeforeToolCall(effectiveRules),
@@ -853,6 +764,13 @@ export class TurnManager {
     soulConfig: SoulConfig,
     signal: AbortSignal,
   ): Promise<TurnResult | undefined> {
+    // Phase 1 (Decision #89): compute dynamic injections (plan mode /
+    // yolo mode / host-supplied providers) and write them durably via
+    // ContextState.appendSystemReminder. Must await before runSoulTurn
+    // so the WAL write + in-memory mirror completes before Soul's first
+    // buildMessages() call. Providers scan ctx.history for dedup.
+    await this.drainDynamicInjectionsIntoContext(turnId);
+
     let result: TurnResult | undefined;
     let reason: 'done' | 'cancelled' | 'error';
     try {

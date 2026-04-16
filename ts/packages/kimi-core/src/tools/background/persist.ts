@@ -6,13 +6,14 @@
  * notifications. Single-file-per-task mirrors Python's layout in
  * `~/.kimi/sessions/<...>/tasks/`.
  *
- * Writes use the same tmp+rename pattern as state-cache.ts so a crash
- * mid-write never leaves a half-truncated file.
+ * Writes use `atomicWrite` (write-tmp-fsync-rename, Decision #104) so a
+ * crash mid-write never leaves a half-truncated file.
  */
 
-import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+
+import { atomicWrite } from '../../storage/atomic-write.js';
 
 import type { BackgroundTaskStatus } from './manager.js';
 
@@ -45,18 +46,7 @@ function taskFile(sessionDir: string, taskId: string): string {
 export async function writeTask(sessionDir: string, task: PersistedTask): Promise<void> {
   await mkdir(tasksDirOf(sessionDir), { recursive: true, mode: 0o700 });
   const target = taskFile(sessionDir, task.task_id);
-  const tmp = `${target}.tmp.${process.pid}.${randomBytes(4).toString('hex')}`;
-  try {
-    await writeFile(tmp, JSON.stringify(task, null, 2), 'utf-8');
-    await rename(tmp, target);
-  } catch (err) {
-    try {
-      await unlink(tmp);
-    } catch {
-      /* best effort */
-    }
-    throw err;
-  }
+  await atomicWrite(target, JSON.stringify(task, null, 2));
 }
 
 /** Read a single task file. Returns undefined when missing/corrupt. */

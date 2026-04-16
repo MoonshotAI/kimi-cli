@@ -85,29 +85,8 @@ describe('WiredSessionJournalImpl', () => {
     expect((row!['usage'] as Record<string, number>)['output_tokens']).toBe(10);
   });
 
-  it('writes a notification record', async () => {
-    const { journal, filePath } = makeWired();
-    await journal.appendNotification({
-      type: 'notification',
-      data: {
-        id: 'n_00001',
-        category: 'task',
-        type: 'task.succeeded',
-        source_kind: 'background_task',
-        source_id: 'bg_1',
-        title: 'Task complete',
-        body: '',
-        severity: 'success',
-        targets: ['llm', 'wire'],
-      },
-    });
-
-    const records = await readWireRecords(filePath);
-    const row = records.find((r) => r['type'] === 'notification');
-    expect(row).toBeDefined();
-    const data = row?.['data'] as Record<string, unknown>;
-    expect(data['id']).toBe('n_00001');
-  });
+  // Phase 1 (方案 A): notification records are now written by
+  // ContextState.appendNotification, not SessionJournal. Test removed.
 
   it('writes a permission_mode_changed record with optional turn_id omitted', async () => {
     const { journal, filePath } = makeWired();
@@ -189,25 +168,18 @@ describe('InMemorySessionJournalImpl', () => {
       input_kind: 'user',
       user_input: 'hi',
     });
-    await journal.appendNotification({
-      type: 'notification',
-      data: {
-        id: 'n1',
-        category: 'task',
-        type: 'x',
-        source_kind: 'y',
-        source_id: 'z',
-        title: 't',
-        body: 'b',
-        severity: 'info',
-        targets: [],
-      },
+    await journal.appendTurnEnd({
+      type: 'turn_end',
+      turn_id: 't1',
+      agent_type: 'main',
+      success: true,
+      reason: 'done',
     });
 
     const all = journal.getRecords();
     expect(all.length).toBe(2);
     expect(journal.getRecordsByType('turn_begin').length).toBe(1);
-    expect(journal.getRecordsByType('notification').length).toBe(1);
+    expect(journal.getRecordsByType('turn_end').length).toBe(1);
   });
 
   it('clear() empties the in-memory buffer', async () => {

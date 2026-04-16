@@ -384,17 +384,29 @@ describe('renderNotificationXml — task-notification tail output (Slice 6.1)', 
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// 3. NotificationManager.hasPendingForLlm()
+// 3. NotificationManager durable LLM path (Phase 1 — Decision #89)
+//
+// Phase 1 removed hasPendingForLlm / markLlmDrained / pendingLlmCount.
+// Notifications are now written durably to contextState.appendNotification
+// instead of being buffered as pending ephemeral injections.
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('NotificationManager.hasPendingForLlm() (Slice 6.1)', () => {
-  it('returns false when no notifications have been emitted', () => {
-    const { manager } = createNotificationManager();
-    expect(manager.hasPendingForLlm()).toBe(false);
-  });
+describe('NotificationManager — durable LLM path (Phase 1)', () => {
+  it('notification with llm target writes to contextState.appendNotification', async () => {
+    const appendCalls: NotificationData[] = [];
+    const fakeContextState = {
+      appendNotification: async (data: NotificationData) => {
+        appendCalls.push(data);
+      },
+    };
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: fakeContextState,
+    } as unknown as ConstructorParameters<typeof NotificationManager>[0]);
 
-  it('returns true after a notification is emitted to LLM', async () => {
-    const { manager } = createNotificationManager();
     await manager.emit({
       category: 'task',
       type: 'task.completed',
@@ -405,35 +417,25 @@ describe('NotificationManager.hasPendingForLlm() (Slice 6.1)', () => {
       severity: 'success',
     });
 
-    expect(manager.hasPendingForLlm()).toBe(true);
+    expect(appendCalls).toHaveLength(1);
+    expect(appendCalls[0]!.title).toBe('Done');
   });
 
-  it('returns false after pending notifications are drained into context', async () => {
-    const pendingQueue: NotificationData[] = [];
-    const { manager } = createNotificationManager({
-      onEmittedToLlm: (n) => pendingQueue.push(n),
-    });
+  it('notification without llm target does NOT write to contextState', async () => {
+    const appendCalls: NotificationData[] = [];
+    const fakeContextState = {
+      appendNotification: async (data: NotificationData) => {
+        appendCalls.push(data);
+      },
+    };
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: fakeContextState,
+    } as unknown as ConstructorParameters<typeof NotificationManager>[0]);
 
-    await manager.emit({
-      category: 'task',
-      type: 'task.completed',
-      source_kind: 'background_task',
-      source_id: 'bg_2',
-      title: 'Done',
-      body: 'OK',
-      severity: 'success',
-    });
-
-    expect(manager.hasPendingForLlm()).toBe(true);
-
-    // Simulate draining: mark all pending as consumed
-    manager.markLlmDrained();
-
-    expect(manager.hasPendingForLlm()).toBe(false);
-  });
-
-  it('returns false when notification targets do not include llm', async () => {
-    const { manager } = createNotificationManager();
     await manager.emit({
       category: 'task',
       type: 'task.completed',
@@ -445,7 +447,66 @@ describe('NotificationManager.hasPendingForLlm() (Slice 6.1)', () => {
       targets: ['wire'],
     });
 
-    // Notification was not targeted at LLM, so no pending for LLM
-    expect(manager.hasPendingForLlm()).toBe(false);
+    // No LLM target → contextState.appendNotification not called
+    expect(appendCalls).toHaveLength(0);
+  });
+
+  it('multiple LLM notifications produce multiple durable writes', async () => {
+    const appendCalls: NotificationData[] = [];
+    const fakeContextState = {
+      appendNotification: async (data: NotificationData) => {
+        appendCalls.push(data);
+      },
+    };
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: fakeContextState,
+    } as unknown as ConstructorParameters<typeof NotificationManager>[0]);
+
+    await manager.emit({
+      category: 'task',
+      type: 'task.completed',
+      source_kind: 'background_task',
+      source_id: 'bg_a',
+      title: 'First',
+      body: 'OK',
+      severity: 'success',
+    });
+    await manager.emit({
+      category: 'task',
+      type: 'task.completed',
+      source_kind: 'background_task',
+      source_id: 'bg_b',
+      title: 'Second',
+      body: 'OK',
+      severity: 'info',
+    });
+
+    expect(appendCalls).toHaveLength(2);
+    expect(appendCalls[0]!.title).toBe('First');
+    expect(appendCalls[1]!.title).toBe('Second');
+  });
+
+  it('falls back to onEmittedToLlm when contextState is absent (backward compat)', async () => {
+    const llmSink: NotificationData[] = [];
+    const { manager } = createNotificationManager({
+      onEmittedToLlm: (n) => llmSink.push(n),
+    });
+
+    await manager.emit({
+      category: 'task',
+      type: 'task.completed',
+      source_kind: 'background_task',
+      source_id: 'bg_4',
+      title: 'Legacy path',
+      body: 'OK',
+      severity: 'success',
+    });
+
+    expect(llmSink).toHaveLength(1);
+    expect(llmSink[0]!.title).toBe('Legacy path');
   });
 });

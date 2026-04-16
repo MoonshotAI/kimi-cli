@@ -65,8 +65,14 @@ class RecordingContextState implements FullContextState {
     this.pushSteerCalls.push({ ...input });
     this.inner.pushSteer(input);
   }
-  stashEphemeralInjection(...args: Parameters<FullContextState['stashEphemeralInjection']>): void {
-    this.inner.stashEphemeralInjection(...args);
+  appendNotification(...args: Parameters<FullContextState['appendNotification']>): Promise<void> {
+    return this.inner.appendNotification(...args);
+  }
+  appendSystemReminder(...args: Parameters<FullContextState['appendSystemReminder']>): Promise<void> {
+    return this.inner.appendSystemReminder(...args);
+  }
+  getHistory(): ReturnType<FullContextState['getHistory']> {
+    return this.inner.getHistory();
   }
   appendUserMessage(...args: Parameters<FullContextState['appendUserMessage']>): Promise<void> {
     return this.inner.appendUserMessage(...args);

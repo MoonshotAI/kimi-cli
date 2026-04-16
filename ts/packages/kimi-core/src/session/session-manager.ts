@@ -330,10 +330,22 @@ export class SessionManager {
       throw new Error(`Session already active: ${sessionId}`);
     }
 
+    // ── Startup recovery sequence (Phase 0.6 — 6 canonical steps) ────
+    //
+    // Step 1: Compaction rollback
+    // Step 2: Replay wire.jsonl → ContextState + SessionJournal
+    // Step 3: ApprovalRuntime.recoverPendingOnStartup()
+    // Step 4: SkillManager 无状态启动
+    // Step 5: MCP 连接重建
+    // Step 6: TeamDaemon 恢复 (占位)
+    //
+    // The steps below implement 1-2 fully; 3-6 are wired in SoulPlus
+    // construction or remain placeholders for future slices.
+
     const sessionDir = this.paths.sessionDir(sessionId);
     const wirePath = this.paths.wirePath(sessionId);
 
-    // 0. Recover from a half-done compaction rotation (Codex Round 2 M1).
+    // Step 1: Compaction rollback (Codex Round 2 M1).
     // If the previous process crashed between rotateJournal (rename old
     // wire.jsonl → wire.N.jsonl + create new wire.jsonl) and writing the
     // CompactionRecord, the current wire.jsonl is metadata-only or missing.
@@ -465,12 +477,9 @@ export class SessionManager {
       const notificationManager = soulPlus.getNotificationManager();
       // Prime dedupe so subsequent emit() with same dedupe_key is a no-op.
       notificationManager.primeDedupeIndex(notificationRecords);
-      const deliveredIds = NotificationManager.extractDeliveredIds(projected.messages);
-      notificationManager.replayPendingForResume(
-        notificationRecords,
-        contextState,
-        deliveredIds,
-      );
+      // Phase 1 (Decision #89): replayPendingForResume removed — notifications
+      // are durable entries in history, replayed naturally from wire.jsonl via
+      // the replay-projector's initialHistory. No ephemeral re-inject needed.
     }
 
     const sessionControl = new DefaultSessionControl({

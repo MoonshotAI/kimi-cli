@@ -559,3 +559,83 @@ describe('TurnManager.handlePrompt', () => {
     }
   });
 });
+
+// ── Phase 1 Step 4: TurnManager no pendingNotifications ───────────────
+//
+// Decision #89: notifications are durable (written to ContextState at
+// emit time by NotificationManager), so TurnManager no longer owns a
+// pending notification queue. The following methods/behaviours are removed:
+//   - addPendingNotification
+//   - drainPendingNotificationsIntoContext
+//   - getPendingNotifications
+//   - launchTurn draining notifications (they are already in contextState)
+//
+// These tests FAIL on the current codebase because the methods still exist.
+
+describe('TurnManager — no pendingNotifications (Phase 1 Step 4)', () => {
+  function buildManagerForPhase1(opts: {
+    readonly kosong: ScriptedKosongAdapter;
+  }): TurnManager {
+    const stateMachine = new SessionLifecycleStateMachine();
+    const gate = new LifecycleGateFacade(stateMachine);
+    const context = createHarnessContextState();
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const runtime = createRuntime({
+      kosong: opts.kosong,
+      lifecycle: gate,
+      compactionProvider: createNoopCompactionProvider(),
+      journal: createNoopJournalCapability(),
+    });
+    const soulRegistry = new SoulRegistry({
+      createHandle: (key) => ({
+        key,
+        agentId: 'agent_main',
+        abortController: new AbortController(),
+      }),
+    });
+    return new TurnManager({
+      contextState: context,
+      sessionJournal: journal,
+      runtime,
+      sink: eventBus,
+      lifecycleStateMachine: stateMachine,
+      soulRegistry,
+      tools: [],
+    });
+  }
+
+  it('does NOT have addPendingNotification method', () => {
+    const kosong = new ScriptedKosongAdapter({ responses: [makeEndTurnResponse('ok')] });
+    const manager = buildManagerForPhase1({ kosong });
+
+    // Phase 1: addPendingNotification is removed — notifications go
+    // directly to contextState.appendNotification via NotificationManager.
+    expect((manager as unknown as Record<string, unknown>)['addPendingNotification']).toBeUndefined();
+  });
+
+  it('does NOT have drainPendingNotificationsIntoContext method', () => {
+    const kosong = new ScriptedKosongAdapter({ responses: [makeEndTurnResponse('ok')] });
+    const manager = buildManagerForPhase1({ kosong });
+
+    // Phase 1: drainPendingNotificationsIntoContext is removed — no
+    // ephemeral drain needed because notifications are durable.
+    expect(
+      (manager as unknown as Record<string, unknown>)['drainPendingNotificationsIntoContext'],
+    ).toBeUndefined();
+  });
+
+  it('does NOT have getPendingNotifications method', () => {
+    const kosong = new ScriptedKosongAdapter({ responses: [makeEndTurnResponse('ok')] });
+    const manager = buildManagerForPhase1({ kosong });
+
+    // Phase 1: the inspection helper is removed with the queue.
+    expect((manager as unknown as Record<string, unknown>)['getPendingNotifications']).toBeUndefined();
+  });
+
+  // "launchTurn does not drain notifications into ephemeral stash" test
+  // removed: the intent is fully covered by the three "does NOT have"
+  // assertions above (addPendingNotification / drainPendingNotificationsIntoContext /
+  // getPendingNotifications are all absent). The original test called
+  // addPendingNotification which no longer exists in Phase 1.
+});

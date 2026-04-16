@@ -125,6 +125,38 @@ export class SoulPlus {
     this.contextState = deps.contextState;
     this.skillManager = deps.skillManager;
 
+    // ── Startup recovery sequence (Phase 0.6) ─────────────────────────
+    //
+    // When SoulPlus is constructed during a session resume, the caller
+    // (SessionManager.resumeSession) has already executed:
+    //
+    //   Recovery Step 1: Compaction rollback
+    //     检测 "wire.jsonl 不存在但 wire.N.jsonl 存在" → 回滚
+    //     必须最先执行，否则后续 replay 读到错误文件
+    //
+    //   Recovery Step 2: Replay wire.jsonl → ContextState + SessionJournal
+    //     包含 dangling tool_call / turn_end repair
+    //     依赖 Step 1 完成
+    //
+    // The remaining steps are wired below in construction order:
+    //
+    //   Recovery Step 3: ApprovalRuntime.recoverPendingOnStartup()
+    //     扫描 wire.jsonl 中未配对的 approval_request
+    //     依赖 Step 2 的 replay 完成
+    //     (wired via deps.orchestrator when provided)
+    //
+    //   Recovery Step 4: SkillManager 无状态启动
+    //     加载 skill 定义文件，不依赖 session 状态
+    //     (wired via deps.skillManager — stateless, no session deps)
+    //
+    //   Recovery Step 5: MCP 连接重建
+    //     连接是 transient state，崩溃后重新建立
+    //     (external to SoulPlus — MCPManager lifecycle is host-driven)
+    //
+    //   Recovery Step 6: TeamDaemon 恢复 (占位)
+    //     当前未实现
+    //
+
     // Lifecycle state machine setup:
     //   When `deps.lifecycleStateMachine` is provided (production path via
     //   SessionManager — Codex Round 2 M3), we reuse the externally-owned
@@ -217,12 +249,13 @@ export class SoulPlus {
     // NotificationManager is held as a field so `addSystemReminder` and
     // future slice 2.5 / 2.6 producers (skill / MCP completion events)
     // can reach it without going through TurnManager.
+    // Phase 1 (Decision #89): notifications go directly to
+    // contextState.appendNotification (durable) instead of the ephemeral
+    // TurnManager.addPendingNotification path.
     this.notificationManager = new NotificationManager({
       sessionJournal: deps.sessionJournal,
       sessionEventBus: deps.eventBus,
-      onEmittedToLlm: (notif) => {
-        this.turnManager.addPendingNotification(notif);
-      },
+      contextState: deps.contextState,
       ...(deps.onShellDeliver !== undefined ? { onShellDeliver: deps.onShellDeliver } : {}),
     });
   }
@@ -255,18 +288,10 @@ export class SoulPlus {
    * UI requirements justify it.
    */
   async addSystemReminder(text: string): Promise<void> {
-    await this.sessionJournal.appendSystemReminder({
-      type: 'system_reminder',
-      content: text,
-    });
-    // Synchronous mirror — the WAL write above is the durability
-    // boundary; this push is the in-memory projection that the next
-    // `buildMessages()` actually reads. Both steps together mirror
-    // §4.5.6's WAL-then-mirror invariant.
-    this.contextState.stashEphemeralInjection({
-      kind: 'system_reminder',
-      content: text,
-    });
+    // Phase 1 (Decision #89): write directly to contextState durable
+    // history instead of the ephemeral stash path. The WAL write and
+    // in-memory mirror are both handled inside appendSystemReminder.
+    await this.contextState.appendSystemReminder({ content: text });
   }
 
   /**
