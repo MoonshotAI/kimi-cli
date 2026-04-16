@@ -263,6 +263,14 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     kimiSkills,
   });
 
+  // 3c. Slice 5.0 — OAuth bootstrap. Resolve whether the active provider
+  //     needs OAuth and, if so, ensure a valid token is on disk.
+  const { managers: oauthManagers } = await ensureOAuthIfNeeded(
+    kimiConfig,
+    modelAlias,
+    pathConfig,
+  );
+
   // 4. Assemble Runtime — kosong adapter + kosong-backed compaction
   //    + stub journal capability (Slice 4.1 does not exercise compaction).
   const runtime: Runtime = createRuntime({
