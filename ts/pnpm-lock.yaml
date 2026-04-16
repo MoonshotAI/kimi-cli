@@ -68,9 +68,6 @@ importers:
       '@moonshot-ai/kaos':
         specifier: workspace:^
         version: link:../../packages/kaos
-      '@moonshot-ai/kimi-wire-mock':
-        specifier: workspace:*
-        version: link:../../mock/kimi-wire
       '@moonshot-ai/kosong':
         specifier: workspace:^
         version: link:../../packages/kosong
