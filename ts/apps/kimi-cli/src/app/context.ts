@@ -90,6 +90,8 @@ export interface TranscriptEntry {
   renderMode: 'markdown' | 'plain';
   /** Text content. */
   content: string;
+  /** Optional Ink color override for status entries. */
+  color?: string | undefined;
   /** Structured tool call payload when kind === 'tool_call'. */
   toolCallData?: ToolCallBlockData | undefined;
 }
@@ -172,7 +174,7 @@ export interface ActionsContextValue {
   handleApprovalResponse: (response: ApprovalResponseData) => void;
   handleQuestionResponse: (answers: string[]) => void;
   dismissToast: (id: string) => void;
-  executeSlashCommand: (input: string) => Promise<string | null>;
+  executeSlashCommand: (input: string) => Promise<{ message: string; color?: string } | null>;
   refreshSessions: () => Promise<void>;
   switchSession: (sessionId: string) => void;
   setShowSessionPicker: (show: boolean) => void;

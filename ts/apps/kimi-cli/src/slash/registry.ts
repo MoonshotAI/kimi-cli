@@ -17,10 +17,12 @@ export interface SlashCommandContext {
   wireClient: WireClient;
   appState: AppState;
   setAppState: (patch: Partial<AppState>) => void;
+  /** Push a status message to the transcript while the command is still running. */
+  showStatus: (message: string) => void;
 }
 
 export type SlashCommandResult =
-  | { type: 'ok'; message?: string }
+  | { type: 'ok'; message?: string; color?: string }
   | { type: 'reload' }
   | { type: 'exit' };
 
