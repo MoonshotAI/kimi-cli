@@ -398,6 +398,19 @@ export function useWire(
         }
         break;
       }
+      case 'step.begin': {
+        patchLivePane({
+          mode: 'waiting',
+          pendingToolCall: null,
+          pendingApproval: null,
+          pendingQuestion: null,
+        });
+        patchAppState({
+          streamingPhase: 'waiting',
+          streamingStartTime: Date.now(),
+        });
+        break;
+      }
       case 'turn.begin': {
         isStreamingRef.current = true;
         patchLivePane({
