@@ -43,6 +43,13 @@ export interface SessionState {
    * (e.g. first user message) in `listSessions()`.
    */
   custom_title?: string | undefined;
+  /**
+   * Slice 5.2 — persisted plan mode flag. Written by `closeSession()`
+   * as a fallback for scenarios where WAL replay is truncated.
+   * `projectReplayState.planMode` (from `plan_mode_changed` WAL
+   * records) takes precedence when available.
+   */
+  plan_mode?: boolean | undefined;
 }
 
 export class StateCache {

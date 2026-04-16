@@ -488,6 +488,39 @@ export class KimiCoreClient implements WireClient {
     await record.managed.sessionControl.compact();
   }
 
+  // ── Slice 5.2 — resume-time plan mode conflict (D4) ─────────────
+
+  /**
+   * Check whether the CLI `--plan` flag conflicts with the session's
+   * persisted plan mode and, if so, schedule a system reminder for the
+   * LLM's next turn so the user is informed of the override.
+   *
+   * Call from `bootstrapCoreShell` after resume; no-op for new sessions.
+   */
+  async schedulePlanModeReminder(
+    sessionId: string,
+    cliPlanFlag: boolean,
+  ): Promise<void> {
+    const record = this.sessions.get(sessionId);
+    if (record === undefined) return;
+    const turnManager = record.managed.soulPlus.getTurnManager();
+    const persisted = turnManager.getPlanMode();
+    if (cliPlanFlag && !persisted) {
+      // N1: activate plan mode BEFORE writing the reminder so a WAL
+      // failure in setPlanMode doesn't leave an orphaned reminder.
+      await record.managed.sessionControl.setPlanMode(true);
+      await record.managed.soulPlus.addSystemReminder(
+        'The user started this session with --plan, but the session was ' +
+        'not previously in plan mode. Plan mode is now activated.',
+      );
+    } else if (!cliPlanFlag && persisted) {
+      await record.managed.soulPlus.addSystemReminder(
+        'This session was previously in plan mode. Plan mode remains ' +
+        'active from the prior session. Use /plan off to deactivate.',
+      );
+    }
+  }
+
   // ── Configuration ───────────────────────────────────────────────
 
   async setModel(_sessionId: string, _model: string): Promise<void> {

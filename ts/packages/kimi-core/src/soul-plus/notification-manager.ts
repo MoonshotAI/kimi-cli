@@ -33,6 +33,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { HookEngine } from '../hooks/engine.js';
 import type { NotificationInput } from '../hooks/types.js';
+import type { EphemeralInjection } from '../storage/projector.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import type { NotificationRecord } from '../storage/wire-record.js';
 import type { SessionEventBus } from './session-event-bus.js';
@@ -340,6 +341,83 @@ export class NotificationManager {
         this.dedupeIndex.set(r.data.dedupe_key, r.data.id);
       }
     }
+  }
+
+  /**
+   * Slice 5.2 (T3.1+T3.6) — push-only resume re-inject for llm
+   * notifications.
+   *
+   * For each persisted notification record whose targets include `llm`
+   * AND whose id never appeared in any persisted message body as
+   * `<notification id="${id}"`, push it as an EphemeralInjection so the
+   * next buildMessages() includes it. This recovers notifications that
+   * were emitted before the previous CLI process exited but never
+   * reached an actual LLM turn.
+   *
+   * Idempotent: caller must scan delivered ids from the *projected*
+   * messages (i.e. `projectReplayState(records).messages`) to know
+   * which notifications already landed in transcript.
+   *
+   * Returns the injections it stashed (mostly for telemetry / tests).
+   */
+  replayPendingForResume(
+    notificationRecords: readonly NotificationRecord[],
+    contextState: { stashEphemeralInjection(injection: EphemeralInjection): void },
+    deliveredIds: ReadonlySet<string>,
+  ): EphemeralInjection[] {
+    const injected: EphemeralInjection[] = [];
+    for (const r of notificationRecords) {
+      const targets = r.data.targets ?? ['llm', 'wire', 'shell'];
+      if (!targets.includes('llm')) continue;
+      if (deliveredIds.has(r.data.id)) continue;
+      const injection: EphemeralInjection = {
+        kind: 'pending_notification',
+        content: r.data,
+      };
+      contextState.stashEphemeralInjection(injection);
+      injected.push(injection);
+    }
+    return injected;
+  }
+
+  /**
+   * Slice 5.2 helper — scan replayed conversation messages for any
+   * `<notification id="${id}">` markers so callers can build the
+   * delivered-id set for `replayPendingForResume`. Lives here (vs.
+   * projector.ts) to keep the notification XML format encoding/decoding
+   * in one place.
+   */
+  static extractDeliveredIds(
+    messages: readonly { role?: string; content: unknown }[],
+  ): Set<string> {
+    const ids = new Set<string>();
+    const re = /<notification[^>]*\bid="([^"]+)"/g;
+    for (const m of messages) {
+      // Codex M1: only scan user-role messages (notifications are injected as
+      // synthetic user messages). Scanning assistant/tool output would pick up
+      // false positives where the LLM echoes or quotes notification XML.
+      if (m.role !== undefined && m.role !== 'user') continue;
+      const c = m.content;
+      if (typeof c === 'string') {
+        for (const match of c.matchAll(re)) ids.add(match[1]!);
+        continue;
+      }
+      if (Array.isArray(c)) {
+        for (const part of c) {
+          if (
+            typeof part === 'object' &&
+            part !== null &&
+            'text' in part &&
+            typeof (part as { text?: unknown }).text === 'string'
+          ) {
+            for (const match of (part as { text: string }).text.matchAll(re)) {
+              ids.add(match[1]!);
+            }
+          }
+        }
+      }
+    }
+    return ids;
   }
 
   private logWarn(msg: string, err: unknown): void {

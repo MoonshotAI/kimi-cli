@@ -15,6 +15,7 @@
  *   - `system_prompt_changed` → update systemPrompt
  *   - `tools_changed`         → update activeTools
  *   - `permission_mode_changed` → update permissionMode
+ *   - `plan_mode_changed`     → update planMode (Slice 5.2)
  *
  * All other record types (turn_begin, turn_end, approval_*, notification,
  * etc.) are management-class and do not affect conversation projection.
@@ -47,6 +48,12 @@ export interface ReplayProjectedState {
   readonly permissionMode: PermissionMode | undefined;
   /** Accumulated token count (mirrors ContextState._tokenCountWithPending). */
   readonly tokenCount: number;
+  /**
+   * Slice 5.2: last plan mode set via `plan_mode_changed`, or `undefined`
+   * when the session never toggled plan mode. Resume passes this into
+   * TurnManager so a session paused mid-plan-mode comes back in plan mode.
+   */
+  readonly planMode: boolean | undefined;
 }
 
 /**
@@ -64,6 +71,7 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
   let lastSeq = 0;
   let permissionMode: PermissionMode | undefined;
   let tokenCount = 0;
+  let planMode: boolean | undefined;
 
   for (const r of records) {
     if (r.seq > lastSeq) {
@@ -162,6 +170,12 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
         break;
       }
 
+      case 'plan_mode_changed': {
+        // Slice 5.2 — last write wins; resume passes this into TurnManager.
+        planMode = r.enabled;
+        break;
+      }
+
       // Management-class records — no effect on conversation projection.
       default:
         break;
@@ -176,5 +190,6 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
     lastSeq,
     permissionMode,
     tokenCount,
+    planMode,
   };
 }

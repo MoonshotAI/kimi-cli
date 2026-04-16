@@ -26,7 +26,7 @@ import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
 import { LifecycleGateFacade } from '../soul-plus/lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
-import type { ShellDeliverCallback } from '../soul-plus/notification-manager.js';
+import { NotificationManager, type ShellDeliverCallback } from '../soul-plus/notification-manager.js';
 import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
 import type { PermissionMode, PermissionRule } from '../soul-plus/permission/index.js';
 import { DefaultSessionControl, type SessionControlHandler } from '../soul-plus/session-control.js';
@@ -35,6 +35,7 @@ import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
 import type { CompactionConfig, Runtime, Tool } from '../soul/index.js';
+import type { NotificationRecord } from '../storage/wire-record.js';
 import { recoverRotation } from '../storage/compaction.js';
 import type { FullContextState } from '../storage/context-state.js';
 import { WiredContextState } from '../storage/context-state.js';
@@ -444,6 +445,34 @@ export class SessionManager {
       turnManagerRef.setPermissionMode(effectivePermissionMode);
     }
 
+    // Slice 5.2 (T3.5) — restore plan_mode. Replay value wins over
+    // state.json (it carries finer-grained sequencing); state.json
+    // serves as a fallback for sessions whose wire was truncated.
+    const persistedPlanMode = stateData?.plan_mode;
+    const effectivePlanMode = projected.planMode ?? persistedPlanMode;
+    if (effectivePlanMode === true) {
+      turnManagerRef.setPlanMode(true);
+    }
+
+    // Slice 5.2 (T3.1+T3.6) — push-only re-inject pending llm notifications.
+    // Records that target llm but whose ids never appeared as
+    // `<notification id="...">` in transcript get stashed as ephemeral
+    // injections for the next buildMessages().
+    const notificationRecords = replayResult.records.filter(
+      (r): r is NotificationRecord => r.type === 'notification',
+    );
+    if (notificationRecords.length > 0) {
+      const notificationManager = soulPlus.getNotificationManager();
+      // Prime dedupe so subsequent emit() with same dedupe_key is a no-op.
+      notificationManager.primeDedupeIndex(notificationRecords);
+      const deliveredIds = NotificationManager.extractDeliveredIds(projected.messages);
+      notificationManager.replayPendingForResume(
+        notificationRecords,
+        contextState,
+        deliveredIds,
+      );
+    }
+
     const sessionControl = new DefaultSessionControl({
       turnManager: turnManagerRef,
       contextState,
@@ -644,13 +673,23 @@ export class SessionManager {
       // so a rename that landed during our wait is preserved.
       const existing = await managed.stateCache.read();
       const now = Date.now();
+      // Slice 5.2 — persist plan_mode so a WAL-truncated resume still
+      // restores the flag (replay is primary, state.json is fallback).
+      const turnManager = managed.soulPlus.getTurnManager();
+      const currentPlanMode = turnManager.getPlanMode();
       const stateToFlush: SessionState = existing
-        ? { ...existing, status: 'closed', updated_at: now }
+        ? {
+            ...existing,
+            status: 'closed',
+            updated_at: now,
+            ...(currentPlanMode ? { plan_mode: true } : { plan_mode: false }),
+          }
         : {
             session_id: sessionId,
             status: 'closed',
             created_at: now,
             updated_at: now,
+            plan_mode: currentPlanMode,
           };
       await managed.stateCache.write(stateToFlush);
 

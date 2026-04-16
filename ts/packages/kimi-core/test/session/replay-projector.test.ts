@@ -280,4 +280,41 @@ describe('projectReplayState', () => {
     const result = projectReplayState(records);
     expect(result.tokenCount).toBe(450);
   });
+
+  // ── Slice 5.2 — plan_mode_changed + system_prompt_changed ─────────
+
+  it('projects last plan_mode_changed (Slice 5.2)', () => {
+    const records: WireRecord[] = [
+      { type: 'plan_mode_changed', seq: 1, time: 1, enabled: true },
+      { type: 'plan_mode_changed', seq: 2, time: 2, enabled: false },
+      { type: 'plan_mode_changed', seq: 3, time: 3, enabled: true },
+    ];
+    const result = projectReplayState(records);
+    expect(result.planMode).toBe(true);
+  });
+
+  it('planMode is undefined when no plan_mode_changed records exist', () => {
+    const records: WireRecord[] = [
+      { type: 'model_changed', seq: 1, time: 1, old_model: 'a', new_model: 'b' },
+    ];
+    const result = projectReplayState(records);
+    expect(result.planMode).toBeUndefined();
+  });
+
+  it('planMode reflects single plan_mode_changed record', () => {
+    const records: WireRecord[] = [
+      { type: 'plan_mode_changed', seq: 1, time: 1, enabled: true },
+    ];
+    const result = projectReplayState(records);
+    expect(result.planMode).toBe(true);
+  });
+
+  it('projects last system_prompt_changed (T3.4 verification)', () => {
+    const records: WireRecord[] = [
+      { type: 'system_prompt_changed', seq: 1, time: 1, new_prompt: 'first agent' },
+      { type: 'system_prompt_changed', seq: 2, time: 2, new_prompt: 'second agent' },
+    ];
+    const result = projectReplayState(records);
+    expect(result.systemPrompt).toBe('second agent');
+  });
 });

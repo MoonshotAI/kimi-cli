@@ -271,7 +271,7 @@ describe('BashTool', () => {
       );
       expect(result.isError).toBeFalsy();
       const content = toolContentString(result);
-      expect(content).toContain('task_id: bg_');
+      expect(content).toMatch(/task_id: bg_[0-9a-f]+/);
       expect(content).toContain('pid:');
       expect(content).toContain('long running task');
       expect(content).toContain('automatic_notification: true');
@@ -344,7 +344,7 @@ describe('BashTool', () => {
 
       // Extract task_id from output.
       const content = toolContentString(launchResult);
-      const match = /task_id: (bg_\d+)/.exec(content);
+      const match = /task_id: (bg_[0-9a-f]+)/.exec(content);
       expect(match).not.toBeNull();
       const taskId = match![1]!;
 

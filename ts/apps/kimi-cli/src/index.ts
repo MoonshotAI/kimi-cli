@@ -383,6 +383,11 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   // pointers into `~/.kimi/skills/<name>/`.
   const workspace = extendWorkspaceWithSkillRoots(baseWorkspace, skillManager.getSkillRoots());
   const backgroundManager = new BackgroundProcessManager();
+
+  // Slice 5.2 (Codex C2) — bind persistence + reconcile so resume shows
+  // previously-running tasks as "lost" rather than silently dropping them.
+  // sessionId isn't resolved yet; we defer attach to after session resolve
+  // below. The `buildTools` closure captures backgroundManager by ref.
   const todoStore = new InMemoryTodoStore();
   const stubWebSearch = new StubWebSearchProvider();
   const stubUrlFetcher = new StubUrlFetcher();
@@ -457,7 +462,10 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
           'Start a new session without --continue.',
       );
     } else {
-      const [latest] = scoped.toSorted((a, b) => b.created_at - a.created_at);
+      // Codex M4: use last_activity (already sorted desc by listSessions)
+      // instead of created_at so --continue resumes the most-recently-USED
+      // session, not the most-recently-CREATED one.
+      const [latest] = scoped;
       if (latest === undefined) {
         throw new Error(
           'Unreachable: scoped session list reported non-empty but toSorted returned nothing',
@@ -467,6 +475,30 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     }
   } else {
     ({ session_id: sessionId } = await wireClient.createSession(workDir));
+  }
+
+  // Slice 5.2 (Codex C2) — now that sessionId is resolved, attach
+  // persistence and reconcile stale background tasks from disk.
+  const sessionDir = pathConfig.sessionDir(sessionId);
+  backgroundManager.attachSessionDir(sessionDir);
+  await backgroundManager.loadFromDisk();
+  const reconcileResult = await backgroundManager.reconcile();
+  if (reconcileResult.lost.length > 0) {
+    process.stderr.write(
+      `[kimi] ${reconcileResult.lost.length} background task(s) from a ` +
+        'prior session were lost (process exited). Use /task list to see details.\n',
+    );
+  }
+
+  // Slice 5.2 (D4) — plan mode management on bootstrap.
+  if (opts.session !== undefined || opts.continue) {
+    // Resume path: detect conflict between CLI flag and persisted state.
+    await wireClient.schedulePlanModeReminder(sessionId, opts.plan === true);
+  } else if (opts.plan === true) {
+    // Codex C4: fresh session with --plan must activate plan mode in core,
+    // not just the TUI state. Without this, TurnManager stays in default
+    // mode and the LLM never sees plan-mode dynamic injections.
+    await wireClient.setPlanMode(sessionId, true);
   }
 
   return {
