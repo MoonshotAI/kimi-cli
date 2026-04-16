@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Increase default `max_steps_per_turn` from 100 to 500 to allow longer uninterrupted agent runs out of the box
+
 ## 1.35.0 (2026-04-15)
 
 - Shell: Flip `show_thinking_stream` default to `true` so fresh installs see the streaming reasoning preview out of the box; set it to `false` in your config to keep the compact 1.32 indicator
