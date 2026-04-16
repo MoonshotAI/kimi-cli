@@ -138,9 +138,9 @@ function WaitingPane(): React.JSX.Element {
 function phaseLabel(phase: string): string | null {
   switch (phase) {
     case 'thinking':
-      return 'thinking';
+      return 'thinking...';
     case 'composing':
-      return 'composing';
+      return 'composing...';
     default:
       return null;
   }
