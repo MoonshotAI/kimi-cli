@@ -345,6 +345,7 @@ export function useWire(
       };
       setCompletedBlocks((prev) => [...prev, thinkBlock]);
       accumulatedThinkRef.current = '';
+      setStreamingThinkText('');
     }
 
     if (accumulatedTextRef.current.length > 0) {

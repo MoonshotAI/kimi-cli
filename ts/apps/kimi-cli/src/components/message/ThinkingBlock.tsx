@@ -22,16 +22,14 @@ export default function ThinkingBlock({ text }: ThinkingBlockProps): React.JSX.E
   if (text.length === 0) {
     return (
       <Box>
-        <Text color={thinkColor} italic>
-        </Text>
+        <Text color={thinkColor} italic>{''}</Text>
       </Box>
     );
   }
 
   return (
     <Box>
-      <Text color={thinkColor} italic>
-      </Text>
+      <Text color={thinkColor} italic>{text}</Text>
     </Box>
   );
 }
