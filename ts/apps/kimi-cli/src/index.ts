@@ -114,6 +114,7 @@ interface ShellBootstrap {
   model: string;
   defaultThinking: boolean;
   theme: AppState['theme'];
+  maxContextSize: number;
   /**
    * Slice 5.0.1 (M3) — initial yolo state derived from
    * `KIMI_YOLO` / config.yolo / config.defaultYolo. The runner merges
@@ -382,6 +383,8 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   //      --continue     → resume the most recent session in this workDir,
   //                       or create a new one when none exist
   //      otherwise      → create a new session
+  const maxContextSize = kimiConfig.models?.[modelAlias]?.maxContextSize ?? 200_000;
+
   const wireClient = new KimiCoreClient({
     sessionManager,
     runtime,
@@ -389,6 +392,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     systemPrompt,
     buildTools,
     skillManager,
+    maxContextSize,
   });
 
   let sessionId: string;
@@ -466,6 +470,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     // config.defaultYolo. CLI --yolo takes precedence in runShell.
     defaultYolo: kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false,
     theme: (kimiConfig.theme as 'dark' | 'light') ?? 'dark',
+    maxContextSize,
     ...(mcpManager !== undefined ? { mcpManager } : {}),
     ...(oauthManagers.size > 0 ? { oauthManagers } : {}),
   };
@@ -504,6 +509,8 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     planMode: opts.plan,
     thinking: opts.thinking ?? bootstrap.defaultThinking,
     contextUsage: 0,
+    contextTokens: 0,
+    maxContextTokens: bootstrap.maxContextSize,
     isStreaming: false,
     streamingPhase: 'idle',
     streamingStartTime: 0,

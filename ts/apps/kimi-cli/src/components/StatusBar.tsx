@@ -72,8 +72,8 @@ export default function StatusBar(): React.JSX.Element {
   const tips = '/help: show commands';
 
   // Context status (right-aligned on line 2)
-  const contextText = formatContextStatus(state.contextUsage, 0, 0);
-  const contextClr = contextColor(state.contextUsage, colors);
+  const contextText = formatContextStatus(state.contextUsage, state.contextTokens, state.maxContextTokens);
+  const contextClr = 'white';
 
   // Separator line
   const separator = '─'.repeat(columns);

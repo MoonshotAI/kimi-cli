@@ -380,6 +380,12 @@ export function useWire(
         if (data.context_usage !== undefined) {
           patch.contextUsage = data.context_usage;
         }
+        if (data.context_tokens !== undefined) {
+          patch.contextTokens = data.context_tokens;
+        }
+        if (data.max_context_tokens !== undefined) {
+          patch.maxContextTokens = data.max_context_tokens;
+        }
         if (data.plan_mode !== undefined) {
           patch.planMode = data.plan_mode;
         }

@@ -64,6 +64,13 @@ import { createEvent, type WireMessage } from './wire-message.js';
 
 // ── Client session record ──────────────────────────────────────────
 
+interface CumulativeUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
 interface ClientSession {
   readonly sessionId: string;
   readonly managed: ManagedSession;
@@ -74,6 +81,7 @@ interface ClientSession {
   readonly unsubscribeLifecycle: () => void;
   seqCounter: number;
   currentTurnId: string | undefined;
+  cumulativeUsage: CumulativeUsage;
 }
 
 /**
@@ -152,6 +160,8 @@ export interface KimiCoreClientDeps {
    * LLM can see the available skills.
    */
   readonly skillManager?: SkillManager | undefined;
+  /** Model's context window size in tokens. Used for compaction + status display. */
+  readonly maxContextSize?: number | undefined;
 }
 
 // ── KimiCoreClient ─────────────────────────────────────────────────
@@ -319,6 +329,9 @@ export class KimiCoreClient implements WireClient {
       orchestrator,
       onShellDeliver,
       ...(this.deps.skillManager !== undefined ? { skillManager: this.deps.skillManager } : {}),
+      ...(this.deps.maxContextSize !== undefined
+        ? { compactionConfig: { maxContextSize: this.deps.maxContextSize } }
+        : {}),
     };
 
     const managed =
@@ -340,6 +353,15 @@ export class KimiCoreClient implements WireClient {
         queue.push(msg);
       },
       () => sessionRef.current,
+      (session, usage) => {
+        if (usage !== undefined) {
+          session.cumulativeUsage.inputTokens += usage.input;
+          session.cumulativeUsage.outputTokens += usage.output;
+          session.cumulativeUsage.cacheReadTokens += usage.cache_read ?? 0;
+          session.cumulativeUsage.cacheWriteTokens += usage.cache_write ?? 0;
+        }
+        this.emitStatusUpdate(session);
+      },
     );
 
     const record: ClientSession = {
@@ -352,6 +374,7 @@ export class KimiCoreClient implements WireClient {
       unsubscribeLifecycle,
       seqCounter: 0,
       currentTurnId: undefined,
+      cumulativeUsage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
     sessionRef.current = record;
     this.sessions.set(managedId, record);
@@ -365,6 +388,9 @@ export class KimiCoreClient implements WireClient {
       });
       if (msg !== null) {
         queue.push(msg);
+      }
+      if (event.type === 'step.end') {
+        this.emitStatusUpdate(record);
       }
     });
 
@@ -694,6 +720,29 @@ export class KimiCoreClient implements WireClient {
     }
   }
 
+  // ── Status emission ─────────────────────────────────────────────
+
+  private emitStatusUpdate(record: ClientSession): void {
+    const tokens = record.managed.contextState.tokenCountWithPending;
+    const maxTokens = this.deps.maxContextSize ?? 0;
+    const usage = maxTokens > 0 ? Math.min(tokens / maxTokens, 1) : 0;
+    record.queue.push(
+      createEvent(
+        'status.update',
+        {
+          context_usage: usage,
+          context_tokens: tokens,
+          max_context_tokens: maxTokens,
+        },
+        {
+          session_id: record.sessionId,
+          ...(record.currentTurnId !== undefined ? { turn_id: record.currentTurnId } : {}),
+          seq: (record.seqCounter += 1),
+        },
+      ),
+    );
+  }
+
   // ── Lifecycle ───────────────────────────────────────────────────
 
   async dispose(): Promise<void> {
@@ -738,6 +787,7 @@ function subscribeLifecycle(
   turnManager: TurnManager,
   push: (msg: WireMessage) => void,
   getSession: () => ClientSession | null,
+  onTurnEnd?: (session: ClientSession, usage?: { input: number; output: number; cache_read?: number | undefined; cache_write?: number | undefined }) => void,
 ): () => void {
   const listener: TurnLifecycleListener = (event) => {
     const session = getSession();
@@ -790,6 +840,7 @@ function subscribeLifecycle(
           },
         ),
       );
+      onTurnEnd?.(session, event.usage);
       if (session.currentTurnId === endedTurnId) {
         session.currentTurnId = undefined;
       }

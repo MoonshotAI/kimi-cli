@@ -34,6 +34,10 @@ export interface AppState {
   thinking: boolean;
   /** Context usage ratio (0-1) from the last status.update. */
   contextUsage: number;
+  /** Current context token count. */
+  contextTokens: number;
+  /** Model's max context window size in tokens. */
+  maxContextTokens: number;
   /** Whether an assistant turn is currently streaming. */
   isStreaming: boolean;
   /** Current streaming phase: 'idle' | 'waiting' | 'thinking' | 'composing'. */
