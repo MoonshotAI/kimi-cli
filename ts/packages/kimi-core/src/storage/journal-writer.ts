@@ -40,7 +40,8 @@ export type AppendInput = {
  * "compaction's own writes" and allowed through the gate.
  *
  * Keep this list narrow: only record types that are *only* emitted from
- * inside `runCompaction` belong here. Any future compaction-path record
+ * inside `TurnManager.executeCompaction` (Phase 2; previously
+ * `runCompaction`) belong here. Any future compaction-path record
  * must be added explicitly.
  */
 const COMPACTION_OWN_WRITE_TYPES: ReadonlySet<WireRecordType> = new Set<WireRecordType>([

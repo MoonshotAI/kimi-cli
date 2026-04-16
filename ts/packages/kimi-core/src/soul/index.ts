@@ -53,10 +53,12 @@ export { MaxStepsExceededError } from './errors.js';
 export { runSoulTurn } from './run-turn.js';
 
 export type { CompactionConfig } from './compaction.js';
+// Phase 2 (todo/phase-2-compaction-out-of-soul.md): `runCompaction` is
+// removed. Soul no longer executes compaction — the equivalent pipeline
+// now lives on `TurnManager.executeCompaction` in `src/soul-plus/`.
 export {
   DEFAULT_RESERVED_CONTEXT_SIZE,
   DEFAULT_TRIGGER_RATIO,
   estimateTokens,
-  runCompaction,
   shouldCompact,
 } from './compaction.js';

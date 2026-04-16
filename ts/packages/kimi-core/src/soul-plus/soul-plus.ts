@@ -21,14 +21,23 @@
  *   - Real wire protocol envelope (Slice 5)
  */
 
-import type { CompactionConfig, Runtime, Tool } from '../soul/index.js';
+import type {
+  CompactionConfig,
+  CompactionProvider,
+  JournalCapability,
+  Runtime,
+  Tool,
+} from '../soul/index.js';
 import type { FullContextState } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import { AgentTool } from '../tools/agent.js';
 import type { AgentTypeRegistry } from './agent-type-registry.js';
 import { createDefaultDynamicInjectionManager } from './dynamic-injection.js';
-import { LifecycleGateFacade } from './lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
+import {
+  createStubCompactionProvider,
+  createStubJournalCapability,
+} from './runtime-factory.js';
 import { NotificationManager, type ShellDeliverCallback } from './notification-manager.js';
 import type { SessionEventBus } from './session-event-bus.js';
 import type { SkillManager } from './skill/index.js';
@@ -83,6 +92,22 @@ export interface SoulPlusDeps {
    * armed in the real session path, not just in unit tests.
    */
   readonly compactionConfig?: CompactionConfig | undefined;
+  /**
+   * Phase 2 — compaction provider used by `TurnManager.executeCompaction`.
+   * Runtime collapsed to `{kosong}`, so capabilities that used to ride
+   * on Runtime now arrive as their own top-level fields. Optional for
+   * tests and embedders that do not exercise compaction; `SoulPlus`
+   * installs a throwing stub when absent so accidental compaction
+   * attempts fail loudly instead of silently no-op'ing.
+   */
+  readonly compactionProvider?: CompactionProvider | undefined;
+  /**
+   * Phase 2 — journal capability used by
+   * `TurnManager.executeCompaction` to rotate wire.jsonl at the
+   * compaction boundary. Same optional / stub-default semantics as
+   * `compactionProvider`.
+   */
+  readonly journalCapability?: JournalCapability | undefined;
   /**
    * Slice 4.2 — optional tool-call orchestrator. When provided, SoulPlus
    * forwards it to TurnManager so the per-turn `beforeToolCall` /
@@ -160,18 +185,19 @@ export class SoulPlus {
     // Lifecycle state machine setup:
     //   When `deps.lifecycleStateMachine` is provided (production path via
     //   SessionManager — Codex Round 2 M3), we reuse the externally-owned
-    //   instance so JournalWriter, Runtime.lifecycle, and TurnManager all
-    //   share the SAME physical state machine. When absent (tests that
-    //   construct SoulPlus directly), we create a local one for backward
-    //   compatibility.
+    //   instance so JournalWriter and TurnManager share the SAME physical
+    //   state machine. When absent (tests that construct SoulPlus
+    //   directly), we create a local one for backward compatibility.
+    //
+    // Phase 2: Runtime collapsed to `{kosong}`; compaction/journal/
+    // lifecycle capabilities now live on TurnManagerDeps directly, not
+    // on Runtime.
     const stateMachine = deps.lifecycleStateMachine ?? new SessionLifecycleStateMachine();
-    const facade = new LifecycleGateFacade(stateMachine);
     const runtime: Runtime = {
       kosong: deps.runtime.kosong,
-      compactionProvider: deps.runtime.compactionProvider,
-      lifecycle: facade,
-      journal: deps.runtime.journal,
     };
+    const compactionProvider = deps.compactionProvider ?? createStubCompactionProvider();
+    const journalCapability = deps.journalCapability ?? createStubJournalCapability();
 
     // Slice 5.3 — wire subagent support when both store + registry are provided
     const hasSubagentInfra =
@@ -230,6 +256,10 @@ export class SoulPlus {
       soulRegistry,
       tools,
       dynamicInjectionManager,
+      // Phase 2: compaction/journal capabilities moved off of Runtime
+      // and onto TurnManagerDeps directly.
+      compactionProvider,
+      journalCapability,
       // Codex Round 2 M2: pass compactionConfig so auto-compaction is
       // armed in the real session path (not just unit tests).
       ...(deps.compactionConfig !== undefined ? { compactionConfig: deps.compactionConfig } : {}),

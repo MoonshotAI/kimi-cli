@@ -21,10 +21,6 @@ function createTestSoulPlus() {
   const eventBus = new SessionEventBus();
   const runtime: Runtime = {
     kosong: { chat: vi.fn() },
-    compactionProvider: { run: vi.fn() },
-    // oxlint-disable-next-line unicorn/no-useless-undefined
-    lifecycle: { transitionTo: vi.fn().mockResolvedValue(undefined) },
-    journal: { rotate: vi.fn() },
   };
 
   return { soulPlus: new SoulPlus({

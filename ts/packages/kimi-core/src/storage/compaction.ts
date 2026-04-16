@@ -2,7 +2,8 @@
  * Storage-layer compaction utilities — file rotation and cross-file replay
  * (§4.7 / §4.1.1).
  *
- * File rotation is the physical counterpart to Soul's `runCompaction`:
+ * File rotation is the physical counterpart to TurnManager's
+ * `executeCompaction` (Phase 2; previously Soul's `runCompaction`):
  *   1. Rename `wire.jsonl` → `wire.N.jsonl` (frozen archive)
  *   2. Create new `wire.jsonl` with metadata header + CompactionRecord
  *

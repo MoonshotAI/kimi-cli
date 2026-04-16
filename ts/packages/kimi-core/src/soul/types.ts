@@ -40,8 +40,15 @@ export interface TokenUsage {
 // reaches a `TurnResult`. A TurnManager wanting to represent "stopped at
 // max_steps" on a wire record should use its own enum; this Soul-facing
 // type only enumerates values that actually flow back via `TurnResult`.
+//
+// Phase 2 (todo/phase-2-compaction-out-of-soul.md 铁律 7): `'needs_compaction'`
+// is the signal Soul returns when `shouldCompact` fires at the while-top
+// safe point. Soul does no lifecycle / provider / journal / context-reset
+// work itself; TurnManager catches this stop reason and runs
+// `executeCompaction` before re-entering Soul on the same turn_id.
 export type StopReason =
   | 'end_turn'
+  | 'needs_compaction'
   | 'max_tokens'
   | 'stop_sequence'
   | 'tool_use'

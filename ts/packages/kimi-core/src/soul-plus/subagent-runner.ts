@@ -19,10 +19,6 @@ import type { AgentResult, SpawnRequest } from './subagent-types.js';
 import type { AgentTypeRegistry } from './agent-type-registry.js';
 import { collectGitContext } from './git-context.js';
 import type { SubagentStore } from './subagent-store.js';
-import {
-  SubagentRuntimeLifecycleGate,
-  SUBAGENT_JOURNAL_CAPABILITY,
-} from './subagent-lifecycle-gate.js';
 
 // ── Summary continuation constants (Python parity: runner.py) ────────
 
@@ -101,13 +97,13 @@ export async function runSubagentTurn(
     ...(childSystemPrompt !== undefined ? { initialSystemPrompt: childSystemPrompt } : {}),
   });
 
-  // Child runtime reuses parent's kosong + compactionProvider.
-  // Lifecycle and journal are stubs — subagents don't compact.
+  // Phase 2: Runtime narrowed to `{kosong}`. Subagents never compact
+  // (their history is ephemeral and discarded on agent_end), so the
+  // parent's compactionProvider / lifecycle / journal don't need to
+  // flow through — compaction infra is wired via TurnManagerDeps on the
+  // parent's TurnManager, not on Soul-level Runtime.
   const childRuntime: Runtime = {
     kosong: parentRuntime.kosong,
-    compactionProvider: parentRuntime.compactionProvider,
-    lifecycle: new SubagentRuntimeLifecycleGate(),
-    journal: SUBAGENT_JOURNAL_CAPABILITY,
   };
 
   // Child event sink: collects content deltas for the final response

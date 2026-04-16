@@ -38,7 +38,15 @@ export type {
   ToolUpdate,
   TurnResult,
 } from './soul/types.js';
-export type { Runtime } from './soul/runtime.js';
+export type {
+  CompactionBoundaryRecord,
+  CompactionOptions,
+  CompactionProvider,
+  JournalCapability,
+  RotateResult,
+  Runtime,
+  SummaryMessage as RuntimeSummaryMessage,
+} from './soul/runtime.js';
 export { MaxStepsExceededError } from './soul/errors.js';
 
 // ── SoulPlus (Slice 3) ──────────────────────────────────────────────────

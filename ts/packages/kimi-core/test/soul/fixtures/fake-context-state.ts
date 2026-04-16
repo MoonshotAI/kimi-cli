@@ -58,6 +58,30 @@ export type FakeContextCall =
   | ApplyConfigChangeCall
   | ResetToSummaryCall;
 
+/**
+ * Phase 2 visibility note:
+ *
+ * `FakeContextState` declares `implements SoulContextState` but also
+ * carries a `resetToSummary` method. This is **intentional** and does
+ * NOT contradict the Phase 2 migration (铁律 7):
+ *
+ *   - T4 (`test/storage/context-state-reset-summary-visibility.test.ts`)
+ *     enforces the visibility contract at the *type* level using
+ *     `declare const sc: SoulContextState; sc.resetToSummary(...)`
+ *     + `@ts-expect-error`. That check is independent of any concrete
+ *     class: adding a method to an implementing class does not widen
+ *     the interface's own member set.
+ *   - T1 (`test/soul/run-turn-compaction-signal.test.ts`) spies on
+ *     `resetToSummary` to prove Soul does NOT call it. That assertion
+ *     needs the method to exist on the fixture instance, even though
+ *     nothing in `runSoulTurn` can reach it through a
+ *     `SoulContextState`-typed handle.
+ *
+ * Put differently: the method is a test-only extension beyond the
+ * `SoulContextState` shape. It is kept here because T1's spy needs a
+ * target; the Soul-facing visibility contract is owned by T4, not by
+ * this fixture's `implements` clause.
+ */
 export class FakeContextState implements SoulContextState {
   readonly calls: FakeContextCall[] = [];
   beforeStep: (() => void) | undefined = undefined;

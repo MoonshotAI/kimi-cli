@@ -21,7 +21,7 @@ import {
   buildLLMVisibleTools,
   toToolCallArgs,
 } from './adapters.js';
-import { runCompaction, shouldCompact } from './compaction.js';
+import { shouldCompact } from './compaction.js';
 import { MaxStepsExceededError } from './errors.js';
 import type { EventSink, SoulEvent } from './event-sink.js';
 import type { ChatResponse, Runtime } from './runtime.js';
@@ -61,12 +61,15 @@ export async function runSoulTurn(
       // §5.1.7 L1359: while-top safe point.
       signal.throwIfAborted();
 
-      // §5.1.7 L1361-L1366: compaction gate. Triggers when token count
-      // crosses the configured threshold. Disabled when compactionConfig
-      // is not provided (shouldCompact returns false for undefined config).
+      // Phase 2 (铁律 7): Soul detects compaction need and reports via
+      // `TurnResult.stopReason='needs_compaction'`. TurnManager catches
+      // this signal and runs `executeCompaction` (lifecycle +
+      // compactionProvider + journal.rotate + context.resetToSummary)
+      // before re-entering Soul on the same turn_id. Soul itself never
+      // drives compaction — see src/soul-plus/turn-manager.ts.
       if (shouldCompact(context, config.compactionConfig)) {
-        await runCompaction(context, runtime, sink, signal);
-        continue;
+        stopReason = 'needs_compaction';
+        break;
       }
 
       // §5.1.3 maxSteps guard.

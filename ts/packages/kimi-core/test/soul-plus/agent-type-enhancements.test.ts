@@ -26,8 +26,8 @@ import type {
   SubagentHandle,
   SubagentHost,
 } from '../../src/soul-plus/subagent-types.js';
-import type { EventSink, SoulEvent } from '../../src/soul/event-sink.js';
-import type { Runtime, KosongAdapter, CompactionProvider } from '../../src/soul/runtime.js';
+import type { EventSink } from '../../src/soul/event-sink.js';
+import type { Runtime, KosongAdapter } from '../../src/soul/runtime.js';
 import type { Tool, ToolResult } from '../../src/soul/types.js';
 import { AgentTool } from '../../src/tools/agent.js';
 import type { AgentToolInput } from '../../src/tools/agent.js';
@@ -114,15 +114,9 @@ function createFailOnSecondKosong(firstResponse: string): KosongAdapter {
 }
 
 function createFakeRuntime(kosong: KosongAdapter): Runtime {
-  const compactionProvider: CompactionProvider = {
-    run: vi.fn().mockRejectedValue(new Error('not implemented')),
-  };
-  return {
-    kosong,
-    compactionProvider,
-    lifecycle: { transitionTo: vi.fn().mockResolvedValue(undefined) },
-    journal: { rotate: vi.fn().mockRejectedValue(new Error('not implemented')) },
-  };
+  // Phase 2: Runtime narrowed to `{kosong}`. Compaction / lifecycle /
+  // journal capabilities live on TurnManagerDeps now, not here.
+  return { kosong };
 }
 
 function fakeTool(name: string): Tool {

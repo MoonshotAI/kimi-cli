@@ -32,20 +32,30 @@
  * vocabulary so the `src/soul/` layer stays clean (铁律 2).
  */
 
+import type { Message } from '@moonshot-ai/kosong';
+
 import type { HookEngine } from '../hooks/engine.js';
 import type { StopInput, UserPromptSubmitInput } from '../hooks/types.js';
-import { runCompaction, runSoulTurn } from '../soul/index.js';
+import { runSoulTurn } from '../soul/index.js';
 import type {
   AfterToolCallHook,
   BeforeToolCallHook,
   CompactionConfig,
+  CompactionProvider,
   EventSink,
+  JournalCapability,
   Runtime,
   SoulConfig,
+  SummaryMessage as RuntimeSummaryMessage,
   Tool,
   TurnResult,
 } from '../soul/index.js';
-import type { FullContextState, UserInput } from '../storage/context-state.js';
+import { estimateTokens } from '../soul/compaction.js';
+import type {
+  FullContextState,
+  SummaryMessage as StorageSummaryMessage,
+  UserInput,
+} from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import type { ApprovalSource } from '../storage/wire-record.js';
 import type { DynamicInjectionManager, InjectionContext } from './dynamic-injection.js';
@@ -104,6 +114,21 @@ export interface TurnManagerDeps {
    * window size).
    */
   readonly compactionConfig?: CompactionConfig | undefined;
+  /**
+   * Phase 2 (todo/phase-2-compaction-out-of-soul.md Step 5): provider
+   * that produces a summary message from the current conversation
+   * messages. Used by `TurnManager.executeCompaction` (which replaces
+   * Soul's old `runCompaction`). Optional so existing embed/test
+   * scenarios that don't exercise compaction keep compiling.
+   */
+  readonly compactionProvider?: CompactionProvider | undefined;
+  /**
+   * Phase 2 (Step 5): physical rotation of the wire journal at
+   * compaction boundaries. Used by `executeCompaction` to archive the
+   * old wire.jsonl before resetting the in-memory projection. Optional
+   * for the same reason as `compactionProvider`.
+   */
+  readonly journalCapability?: JournalCapability | undefined;
   /**
    * Slice 3.6 — Dynamic injection manager. When set, `launchTurn`
    * computes active injections (plan mode reminder / yolo mode
@@ -166,6 +191,15 @@ export type TurnLifecycleEvent =
     };
 
 export type TurnLifecycleListener = (event: TurnLifecycleEvent) => void;
+
+/**
+ * Phase 2 (todo Step 7): hard cap on how many compaction round-trips a
+ * single turn is allowed. After the cap is exceeded the turn is
+ * terminated with a `session.error` / `stopReason='error'` so a
+ * misbehaving provider cannot lock the session in an infinite
+ * compaction loop.
+ */
+const MAX_COMPACTIONS_PER_TURN = 3;
 
 export class TurnManager {
   private readonly deps: TurnManagerDeps;
@@ -544,7 +578,7 @@ export class TurnManager {
    * Trigger a manual compaction outside of a Soul turn (the `/compact`
    * slash command path). Lifecycle dance:
    *
-   *   idle → active → (runCompaction: active → compacting → active) →
+   *   idle → active → (executeCompaction: active → compacting → active) →
    *   completing → idle
    *
    * Throws if the session is not idle (a turn is in progress).
@@ -569,13 +603,15 @@ export class TurnManager {
 
     const tokensBefore = this.deps.contextState.tokenCountWithPending;
     try {
-      await runCompaction(
-        this.deps.contextState,
-        this.deps.runtime,
-        this.deps.sink,
-        controller.signal,
-        customInstruction,
-      );
+      // Phase 2 (todo Step 8): route manual compaction through the same
+      // executeCompaction pipeline runTurn uses for the Soul-signalled
+      // path. customInstruction becomes `options.userInstructions` on
+      // the CompactionProvider call so `/compact <reason>` is
+      // wire-compatible end-to-end. `trigger: 'manual'` stamps the WAL
+      // compaction record so downstream consumers can distinguish a
+      // `/compact` slash command from an auto-compaction fired by the
+      // threshold gate (storage SummaryMessage.trigger union).
+      await this.executeCompaction(controller.signal, customInstruction, 'manual');
     } finally {
       // Slice 5.6 — fire PostCompact hook (fire-and-forget)
       const tokensAfter = this.deps.contextState.tokenCountWithPending;
@@ -590,9 +626,10 @@ export class TurnManager {
         }, controller.signal).catch(() => {});
       }
 
-      // runCompaction's finally block transitions compacting → active.
-      // We need to drain through active → completing → idle to return
-      // the session to a quiescent state.
+      // executeCompaction's finally block transitions compacting →
+      // active. We still need to drain through active → completing →
+      // idle to return the session to a quiescent state after a manual
+      // `/compact` call.
       if (this.deps.lifecycleStateMachine.isActive()) {
         this.deps.lifecycleStateMachine.transitionTo('completing');
       }
@@ -774,15 +811,51 @@ export class TurnManager {
     let result: TurnResult | undefined;
     let reason: 'done' | 'cancelled' | 'error';
     try {
-      result = await runSoulTurn(
-        input,
-        soulConfig,
-        this.deps.contextState,
-        this.deps.runtime,
-        this.deps.sink,
-        signal,
-      );
-      reason = result.stopReason === 'aborted' ? 'cancelled' : 'done';
+      // Phase 2 (todo Step 7): needs_compaction loop. Soul reports
+      // `stopReason='needs_compaction'` when the shouldCompact gate
+      // fires; TurnManager runs executeCompaction (the old
+      // `runCompaction` work, now owned by SoulPlus) and re-enters
+      // Soul on the same turn_id. Bounded by MAX_COMPACTIONS_PER_TURN
+      // so a misbehaving provider can't lock the session.
+      let compactionCount = 0;
+      while (true) {
+        signal.throwIfAborted();
+        const soulResult = await runSoulTurn(
+          input,
+          soulConfig,
+          this.deps.contextState,
+          this.deps.runtime,
+          this.deps.sink,
+          signal,
+        );
+        if (soulResult.stopReason !== 'needs_compaction') {
+          result = soulResult;
+          break;
+        }
+        compactionCount += 1;
+        if (compactionCount > MAX_COMPACTIONS_PER_TURN) {
+          // Circuit breaker — emit a session.error and terminate the
+          // turn with stopReason='error'. The event is cast because
+          // Phase 2 intentionally does not extend SoulEvent with
+          // lifecycle-class errors; that widening is a Phase 4 item.
+          this.deps.sink.emit({
+            type: 'session.error',
+            error: `Compaction limit exceeded (${MAX_COMPACTIONS_PER_TURN})`,
+            error_type: 'context_overflow',
+          } as never);
+          result = {
+            stopReason: 'error',
+            steps: soulResult.steps,
+            usage: soulResult.usage,
+          };
+          break;
+        }
+        await this.executeCompaction(signal);
+      }
+      reason = result !== undefined && result.stopReason === 'aborted' ? 'cancelled' : 'done';
+      if (result !== undefined && result.stopReason === 'error') {
+        reason = 'error';
+      }
     } catch (error) {
       // `MaxStepsExceededError` and any non-abort error from runSoulTurn
       // both land here. Soul catches abort internally and returns a
@@ -805,6 +878,79 @@ export class TurnManager {
     // `onTurnEnd` itself rejected.
     await this.onTurnEnd(turnId, result, reason);
     return result;
+  }
+
+  /**
+   * Phase 2 (todo Step 6): compaction execution pipeline, ported from
+   * the old `src/soul/compaction.ts:runCompaction`. Lifecycle / provider
+   * / journal / context-reset work now lives here; Soul's
+   * `needs_compaction` signal is what triggers it.
+   *
+   * Called from two sites:
+   *   - `runTurn` while-loop when Soul returns `needs_compaction`
+   *   - `triggerCompaction` (the `/compact` slash command)
+   *
+   * Uses the synchronous `lifecycleStateMachine.transitionTo` rather
+   * than a separate `LifecycleGate` facade — matches the existing
+   * `onTurnEnd` / `triggerCompaction` style and avoids a redundant
+   * `lifecycleGate` dep (team-lead decision 2026-04-17).
+   */
+  private async executeCompaction(
+    signal: AbortSignal,
+    customInstruction?: string,
+    trigger: 'auto' | 'manual' = 'auto',
+  ): Promise<void> {
+    const compactionProvider = this.deps.compactionProvider;
+    const journalCapability = this.deps.journalCapability;
+    if (compactionProvider === undefined || journalCapability === undefined) {
+      throw new Error(
+        'TurnManager.executeCompaction requires `compactionProvider` and `journalCapability` on TurnManagerDeps',
+      );
+    }
+
+    const machine = this.deps.lifecycleStateMachine;
+    machine.transitionTo('compacting');
+    try {
+      this.deps.sink.emit({ type: 'compaction.begin' });
+      signal.throwIfAborted();
+
+      const messages: Message[] = this.deps.contextState.buildMessages();
+      const preCompactTokens = this.deps.contextState.tokenCountWithPending;
+
+      const summary = await compactionProvider.run(
+        messages,
+        signal,
+        customInstruction !== undefined ? { userInstructions: customInstruction } : undefined,
+      );
+      signal.throwIfAborted();
+
+      // Critical section: rotate + resetToSummary must complete together.
+      // No abort check between them — once rotate() has renamed the old
+      // wire.jsonl to an archive, an abort here would leave the fresh
+      // wire.jsonl without its CompactionRecord (Codex Round 2 C1).
+      const rotateResult = await journalCapability.rotate({
+        type: 'compaction_boundary',
+        summary,
+        parent_file: '',
+      });
+
+      const storageSummary = bridgeSummaryMessage(
+        summary,
+        messages.length,
+        preCompactTokens,
+        trigger,
+        rotateResult.archiveFile,
+      );
+      await this.deps.contextState.resetToSummary(storageSummary);
+
+      this.deps.sink.emit({
+        type: 'compaction.end',
+        tokensBefore: preCompactTokens,
+        tokensAfter: storageSummary.postCompactTokens,
+      });
+    } finally {
+      machine.transitionTo('active');
+    }
   }
 
   private async onTurnEnd(
@@ -914,4 +1060,35 @@ export class TurnManager {
       });
     }
   }
+}
+
+/**
+ * Convert the provider's `RuntimeSummaryMessage` (the Soul-facing
+ * interface) into the storage layer's `StorageSummaryMessage` (the
+ * ContextState.resetToSummary contract). Ported from the deleted
+ * `src/soul/compaction.ts:bridgeSummaryMessage` now that Soul no longer
+ * constructs this record (铁律 7).
+ */
+function bridgeSummaryMessage(
+  providerSummary: RuntimeSummaryMessage,
+  messagesCount: number,
+  preCompactTokens: number,
+  trigger: 'auto' | 'manual',
+  archiveFile?: string,
+): StorageSummaryMessage {
+  return {
+    summary: providerSummary.content,
+    // compactedRange is relative to the current wire file, not the
+    // session-global turn index. fromTurn=1 is correct even after prior
+    // compactions because each wire file starts numbering from 1.
+    compactedRange: {
+      fromTurn: 1,
+      toTurn: providerSummary.original_turn_count ?? messagesCount,
+      messageCount: messagesCount,
+    },
+    preCompactTokens,
+    postCompactTokens: estimateTokens(providerSummary.content),
+    trigger,
+    ...(archiveFile !== undefined ? { archiveFile } : {}),
+  };
 }

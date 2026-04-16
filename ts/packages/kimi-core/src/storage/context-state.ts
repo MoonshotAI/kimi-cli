@@ -108,12 +108,26 @@ export interface SoulContextState {
   appendToolResult(toolCallId: string, result: ToolResultPayload): Promise<void>;
   addUserMessages(steers: UserInput[]): Promise<void>;
   applyConfigChange(event: ConfigChangeEvent): Promise<void>;
-  resetToSummary(summary: SummaryMessage): Promise<void>;
+  // Phase 2: `resetToSummary` moved down to FullContextState. Soul must
+  // not have reset power — compaction is orchestrated by TurnManager
+  // which uses the FullContextState view.
 }
 
 // ── Wide (SoulPlus) interface ──────────────────────────────────────────
 
 export interface FullContextState extends SoulContextState {
+  /**
+   * Replace the in-memory conversation projection with a synthetic
+   * summary message and reset the token counter. Called by
+   * `TurnManager.executeCompaction` after the compaction provider
+   * produces a summary and `journal.rotate` archives the old wire.jsonl.
+   *
+   * Phase 2: this was previously declared on `SoulContextState`; it has
+   * moved to `FullContextState` so Soul's type view cannot observe
+   * compaction state (铁律 7).
+   */
+  resetToSummary(summary: SummaryMessage): Promise<void>;
+
   /**
    * Append a user message. `turnIdOverride` lets TurnManager explicitly
    * bind the first user_message of a brand-new turn to the freshly

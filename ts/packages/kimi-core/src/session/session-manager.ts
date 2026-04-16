@@ -26,7 +26,7 @@ import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
 import { LifecycleGateFacade } from '../soul-plus/lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
-import { NotificationManager, type ShellDeliverCallback } from '../soul-plus/notification-manager.js';
+import type { ShellDeliverCallback } from '../soul-plus/notification-manager.js';
 import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
 import type { PermissionMode, PermissionRule } from '../soul-plus/permission/index.js';
 import { DefaultSessionControl, type SessionControlHandler } from '../soul-plus/session-control.js';
@@ -34,7 +34,13 @@ import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
 import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
-import type { CompactionConfig, Runtime, Tool } from '../soul/index.js';
+import type {
+  CompactionConfig,
+  CompactionProvider,
+  JournalCapability,
+  Runtime,
+  Tool,
+} from '../soul/index.js';
 import type { NotificationRecord } from '../storage/wire-record.js';
 import { recoverRotation } from '../storage/compaction.js';
 import type { FullContextState } from '../storage/context-state.js';
@@ -101,7 +107,12 @@ export interface SessionInfo {
 export interface CreateSessionOptions {
   /** Override session id — default: auto-generated `ses_<uuid12>`. */
   sessionId?: string | undefined;
-  /** LLM runtime (kosong + compaction provider + journal capability). */
+  /**
+   * Soul-visible runtime. Phase 2 (todo/phase-2-compaction-out-of-soul.md):
+   * this is now a single-field `{kosong}` bag; compaction / journal
+   * capabilities have been promoted to their own top-level options
+   * (`compactionProvider` / `journalCapability`).
+   */
   runtime: Runtime;
   /** Available tools for this session. */
   tools: readonly Tool[];
@@ -124,6 +135,17 @@ export interface CreateSessionOptions {
   /** Compaction configuration (Slice 3.3). */
   compactionConfig?: CompactionConfig | undefined;
   /**
+   * Phase 2 — compaction provider forwarded into SoulPlus. Optional so
+   * tests that do not exercise compaction don't need to plumb anything
+   * through; SoulPlus falls back to a throwing stub when absent.
+   */
+  compactionProvider?: CompactionProvider | undefined;
+  /**
+   * Phase 2 — journal capability forwarded into SoulPlus. Same optional
+   * / stub-default semantics as `compactionProvider`.
+   */
+  journalCapability?: JournalCapability | undefined;
+  /**
    * Workspace directory at session creation (Slice 4.3 Part 5).
    * Persisted to state.json and returned by listSessions so `--continue`
    * can filter candidates by the current working directory. Required so
@@ -135,7 +157,10 @@ export interface CreateSessionOptions {
 }
 
 export interface ResumeSessionOptions {
-  /** LLM runtime. */
+  /**
+   * Soul-visible runtime. Phase 2: see note on
+   * `CreateSessionOptions.runtime`.
+   */
   runtime: Runtime;
   /** Available tools for this session. */
   tools: readonly Tool[];
@@ -157,6 +182,10 @@ export interface ResumeSessionOptions {
   permissionMode?: PermissionMode | undefined;
   /** Compaction configuration. */
   compactionConfig?: CompactionConfig | undefined;
+  /** Phase 2 — compaction provider forwarded into SoulPlus. */
+  compactionProvider?: CompactionProvider | undefined;
+  /** Phase 2 — journal capability forwarded into SoulPlus. */
+  journalCapability?: JournalCapability | undefined;
 }
 
 /** A fully-assembled, running session. */
@@ -284,6 +313,14 @@ export class SessionManager {
       ...(options.skillManager !== undefined ? { skillManager: options.skillManager } : {}),
       ...(options.compactionConfig !== undefined
         ? { compactionConfig: options.compactionConfig }
+        : {}),
+      // Phase 2 — forward compaction capabilities that used to ride on
+      // Runtime but now live as their own top-level options.
+      ...(options.compactionProvider !== undefined
+        ? { compactionProvider: options.compactionProvider }
+        : {}),
+      ...(options.journalCapability !== undefined
+        ? { journalCapability: options.journalCapability }
         : {}),
       // Slice 4.2 — forward the optional orchestrator into SoulPlus so
       // TurnManager's beforeToolCall closure runs the full hook +
@@ -442,6 +479,13 @@ export class SessionManager {
       ...(options.skillManager !== undefined ? { skillManager: options.skillManager } : {}),
       ...(options.compactionConfig !== undefined
         ? { compactionConfig: options.compactionConfig }
+        : {}),
+      // Phase 2 — forward compaction capabilities on the resume path too.
+      ...(options.compactionProvider !== undefined
+        ? { compactionProvider: options.compactionProvider }
+        : {}),
+      ...(options.journalCapability !== undefined
+        ? { journalCapability: options.journalCapability }
         : {}),
       // Slice 4.2 — forward the optional orchestrator on the resume
       // path too so resumed sessions run the same tool pipeline.

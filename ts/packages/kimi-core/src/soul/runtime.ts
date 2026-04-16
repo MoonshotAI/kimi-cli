@@ -2,8 +2,19 @@
  * Runtime — the sole capability surface SoulPlus exposes to Soul (§5.0 rule
  * 6 / §5.1.5 / §5.8).
  *
- * Four fields, no more: `kosong` / `compactionProvider` / `lifecycle` /
- * `journal`. Adding a fifth field is an explicit ADR-level decision — in
+ * Phase 2 (todo/phase-2-compaction-out-of-soul.md): Runtime collapsed to
+ * a single field, `kosong`. The previous 4-field shape (kosong /
+ * compactionProvider / lifecycle / journal) was Soul driving compaction
+ * through three SoulPlus-owned capabilities — that violated 铁律 7.
+ *
+ * Compaction is now orchestrated by `TurnManager.executeCompaction`; Soul
+ * only reports `TurnResult.stopReason='needs_compaction'` when the
+ * threshold gate fires. The `CompactionProvider` / `LifecycleGate` /
+ * `JournalCapability` interfaces below are retained as exported types so
+ * `TurnManagerDeps` and tests can reference them, but they are no longer
+ * members of `Runtime`.
+ *
+ * Adding any field beyond `kosong` is an explicit ADR-level decision — in
  * particular `tools`, `subagentHost`, `clock`, `logger`, `idGenerator` are
  * all intentionally absent and must be injected via `SoulConfig.tools` or
  * tool-constructor dependency injection.
@@ -98,8 +109,13 @@ export interface CompactionProvider {
 
 /**
  * `transitionTo` exposes exactly three of the five internal lifecycle
- * states to Soul. `idle` / `destroying` are managed by SoulPlus and
+ * states. `idle` / `destroying` are managed by SoulPlus and
  * intentionally invisible at this layer.
+ *
+ * Phase 2: no longer part of the Runtime aggregate — SoulPlus and
+ * TurnManager use `SessionLifecycleStateMachine.transitionTo` directly.
+ * This interface is retained as an exported type so existing test
+ * fixtures and Phase 4 refactors can still reference it.
  */
 export interface LifecycleGate {
   transitionTo(state: 'active' | 'compacting' | 'completing'): Promise<void>;
@@ -133,7 +149,4 @@ export interface JournalCapability {
 
 export interface Runtime {
   kosong: KosongAdapter;
-  compactionProvider: CompactionProvider;
-  lifecycle: LifecycleGate;
-  journal: JournalCapability;
 }

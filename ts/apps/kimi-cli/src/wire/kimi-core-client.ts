@@ -141,6 +141,19 @@ export interface KimiCoreClientDeps {
   readonly sessionManager: SessionManager;
   /** Runtime factory — caller supplies ready kosong + stubs. */
   readonly runtime: Runtime;
+  /**
+   * Phase 2 — compaction provider used by `TurnManager.executeCompaction`.
+   * Must be forwarded separately now that `Runtime` collapsed to
+   * `{kosong}`. Optional so tests that don't exercise compaction keep
+   * compiling; the CLI production path supplies a real Kosong-backed
+   * provider.
+   */
+  readonly compactionProvider?: import('@moonshot-ai/core').CompactionProvider | undefined;
+  /**
+   * Phase 2 — journal capability used by `TurnManager.executeCompaction`.
+   * Same optional semantics as `compactionProvider`.
+   */
+  readonly journalCapability?: import('@moonshot-ai/core').JournalCapability | undefined;
   /** Model name recorded on the session (transcript / state.json). */
   readonly model: string;
   /** Assembled system prompt from the agent layer. */
@@ -340,6 +353,13 @@ export class KimiCoreClient implements WireClient {
       ...(this.deps.skillManager !== undefined ? { skillManager: this.deps.skillManager } : {}),
       ...(this.deps.maxContextSize !== undefined
         ? { compactionConfig: { maxContextSize: this.deps.maxContextSize } }
+        : {}),
+      // Phase 2 — compaction capabilities promoted off of Runtime.
+      ...(this.deps.compactionProvider !== undefined
+        ? { compactionProvider: this.deps.compactionProvider }
+        : {}),
+      ...(this.deps.journalCapability !== undefined
+        ? { journalCapability: this.deps.journalCapability }
         : {}),
     };
 
