@@ -9,7 +9,6 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { hostname, platform, arch, release } from 'node:os';
 import { resolve } from 'node:path';
 
 import {
@@ -51,6 +50,7 @@ import {
   loadConfig as loadKimiCoreConfig,
   parseMcpConfig,
   resolveSkillRoots,
+  getDeviceHeaders,
   setCliVersion,
 } from '@moonshot-ai/core';
 import type {
@@ -94,13 +94,10 @@ function getVersion(): string {
 }
 
 function buildKimiDefaultHeaders(version: string): Record<string, string> {
+  setCliVersion(version);
   return {
     'User-Agent': `KimiCLI/${version}`,
-    'X-Msh-Platform': 'kimi_cli',
-    'X-Msh-Version': version,
-    'X-Msh-Device-Name': hostname(),
-    'X-Msh-Device-Model': `${platform()} ${release()} ${arch()}`,
-    'X-Msh-Os-Version': release(),
+    ...getDeviceHeaders(),
   };
 }
 
@@ -223,6 +220,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
 
   // 2a. Slice 5.0 — OAuth pre-flight + default headers.
   setCliVersion(getVersion());
+  //     the oauthResolver can supply a fresh access token when needed.
   const { oauthResolver, managers: oauthManagers } = await ensureOAuthIfNeeded(
     kimiConfig,
     modelAlias,
@@ -475,6 +473,13 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     await wireClient.setPlanMode(sessionId, true);
   }
 
+  // Yolo mode: sync CLI --yolo / config default into core so
+  // TurnManager uses bypassPermissions, not just the TUI label.
+  const effectiveYolo = opts.yolo || (kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false);
+  if (effectiveYolo) {
+    await wireClient.setYolo(sessionId, true);
+  }
+
   return {
     wireClient,
     sessionId,
@@ -558,6 +563,7 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
         // shutdown never hangs on a misbehaving transport.
       }
     }
+    process.stderr.write(`\nTo resume this session: kimi -r ${bootstrap.sessionId}\n\n`);
     process.exit(0);
   });
 }

@@ -40,8 +40,9 @@ const WELCOME_ENTRY: TranscriptEntry = {
   content: '',
 };
 
-const INPUT_DOCK_HEIGHT = 3;
 const STATUS_BAR_HEIGHT = 3;
+const INPUT_BORDER_ROWS = 2;
+const DEFAULT_MAX_INPUT_LINES = 10;
 const PHASE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const PHASE_INTERVAL_MS = 80;
 
@@ -111,8 +112,10 @@ function StaticTranscript(): React.JSX.Element {
   const continuationIds = useMemo(() => {
     const set = new Set<string>();
     for (let i = 1; i < items.length; i++) {
-      if (items[i]?.kind === 'assistant' && items[i - 1]?.kind === 'assistant') {
-        set.add(items[i]!.id);
+      const curr = items[i]!;
+      const prev = items[i - 1]!;
+      if (curr.kind === 'assistant' && prev.kind === 'assistant') {
+        set.add(curr.id);
       }
     }
     return set;
@@ -301,17 +304,21 @@ function ActivityPane({ maxHeight }: { readonly maxHeight: number }): React.JSX.
 }
 
 function LiveFrame(): React.JSX.Element {
-  const { rows } = useWindowSize();
+  const { rows, columns } = useWindowSize();
+  const [inputContentLines, setInputContentLines] = useState(1);
 
-  const maxActivityHeight = Math.max(
-    1,
-    rows - INPUT_DOCK_HEIGHT - STATUS_BAR_HEIGHT,
-  );
+  const effectiveInputLines = Math.min(inputContentLines, DEFAULT_MAX_INPUT_LINES);
+  const inputDockHeight = effectiveInputLines + INPUT_BORDER_ROWS;
+  const maxActivityHeight = Math.max(1, rows - inputDockHeight - STATUS_BAR_HEIGHT);
 
   return (
     <Box flexDirection="column">
       <ActivityPane maxHeight={maxActivityHeight} />
-      <InputArea />
+      <InputArea
+        columns={columns}
+        maxInputLines={DEFAULT_MAX_INPUT_LINES}
+        onContentLines={setInputContentLines}
+      />
       <StatusBar />
     </Box>
   );
