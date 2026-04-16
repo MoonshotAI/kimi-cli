@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   aggregateUsage,
   createCachedUsageAggregator,
+  type SessionUsageTotals,
 } from '../../src/session/usage-aggregator.js';
 
 let tmp: string;
