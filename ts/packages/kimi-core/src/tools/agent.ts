@@ -18,6 +18,7 @@ import { z } from 'zod';
 
 import type { SpawnRequest, SubagentHost } from '../soul-plus/subagent-types.js';
 import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { BackgroundProcessManager } from './background/manager.js';
 
 // ── Drift-guard utility ──────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export class AgentTool {
   constructor(
     private readonly subagentHost: SubagentHost,
     private readonly parentAgentId: string,
+    private readonly backgroundManager?: BackgroundProcessManager | undefined,
   ) {}
 
   async execute(
@@ -105,15 +107,10 @@ export class AgentTool {
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult> {
     try {
-      // Slice 2.1 — forward the parent turn's AbortSignal into the spawn
-      // request so the host (SoulRegistry) can wire foreground abort
-      // cascade to the child soul. Background spawns still receive the
-      // signal; the background-independence invariant is enforced by the
-      // host implementation, not by AgentTool.
       const request: SpawnRequest = {
         parentAgentId: this.parentAgentId,
         parentToolCallId: toolCallId,
-        agentName: args.agentName ?? 'general-purpose',
+        agentName: args.agentName ?? 'coder',
         prompt: args.prompt,
         description: args.description,
         runInBackground: args.runInBackground ?? false,
@@ -124,12 +121,39 @@ export class AgentTool {
       const handle = await this.subagentHost.spawn(request);
 
       if (args.runInBackground) {
-        void handle.completion.catch(() => {});
-        return { content: `subagent ${handle.agentId} started` };
+        // Background: register with BPM if available, else fire-and-forget
+        let taskId = 'none';
+        if (this.backgroundManager !== undefined) {
+          taskId = this.backgroundManager.registerAgentTask(
+            handle.completion,
+            args.description,
+          );
+        } else {
+          void handle.completion.catch(() => {});
+        }
+        const lines = [
+          `task_id: ${taskId}`,
+          'status: running',
+          `agent_id: ${handle.agentId}`,
+          'automatic_notification: true',
+          '',
+          `description: ${args.description}`,
+        ];
+        return { content: lines.join('\n') };
       }
 
+      // Foreground: await completion, format Python-parity output
       const result = await handle.completion;
-      return { content: result.result };
+      const lines = [
+        `agent_id: ${handle.agentId}`,
+        'resumed: false',
+        `actual_subagent_type: ${request.agentName}`,
+        'status: completed',
+        '',
+        '[summary]',
+        result.result,
+      ];
+      return { content: lines.join('\n') };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { content: `subagent error: ${message}`, isError: true };

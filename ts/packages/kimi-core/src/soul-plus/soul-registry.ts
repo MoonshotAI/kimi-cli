@@ -32,7 +32,7 @@ export interface SoulRegistryDeps {
    * (used by unit tests that only exercise registry mechanics).
    */
   readonly runSubagentTurn?:
-    | ((request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
+    | ((agentId: string, request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
     | undefined;
 }
 
@@ -40,7 +40,7 @@ export class SoulRegistry implements SubagentHost {
   private readonly handles = new Map<SoulKey, SoulHandle>();
   private readonly createHandle: (key: SoulKey) => SoulHandle;
   private readonly runSubagentTurnFn:
-    | ((request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
+    | ((agentId: string, request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
     | undefined;
 
   constructor(deps: SoulRegistryDeps) {
@@ -113,7 +113,7 @@ export class SoulRegistry implements SubagentHost {
     }
 
     const completion: Promise<AgentResult> = this.runSubagentTurnFn
-      ? this.runSubagentTurnFn(request, soulHandle.abortController.signal)
+      ? this.runSubagentTurnFn(agentId, request, soulHandle.abortController.signal)
       : Promise.resolve({ result: '', usage: { input: 0, output: 0 } });
 
     // Slice 7 audit Finding #5: subagent handle lifecycle is bound to

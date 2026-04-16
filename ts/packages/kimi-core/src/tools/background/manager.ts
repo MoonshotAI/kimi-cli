@@ -254,6 +254,66 @@ export class BackgroundProcessManager {
     return this.toInfo(entry);
   }
 
+  /**
+   * Slice 5.3 — register a Promise-based agent task (no KaosProcess).
+   * Used by AgentTool for background subagent dispatch. Agent tasks
+   * appear in `list()` / `getTask()` but have pid=0 and empty output.
+   */
+  registerAgentTask(
+    completion: Promise<{ result: string }>,
+    description: string,
+  ): string {
+    const taskId = generateTaskId();
+    const entry: ManagedProcess = {
+      taskId,
+      command: `[agent] ${description}`,
+      description,
+      // Dummy KaosProcess — agent tasks are Promise-based, not process-based
+      proc: {
+        stdin: { write: () => false, end: () => {} } as never,
+        stdout: { setEncoding: () => {}, on: () => {} } as never,
+        stderr: { setEncoding: () => {}, on: () => {} } as never,
+        pid: 0,
+        exitCode: null,
+        wait: () => completion.then(() => 0),
+        kill: async () => {},
+      } as unknown as KaosProcess,
+      outputChunks: [],
+      status: 'running',
+      exitCode: null,
+      startedAt: Date.now(),
+      endedAt: null,
+      waiters: [],
+    };
+    this.processes.set(taskId, entry);
+    this.persistLive(entry);
+
+    void completion
+      .then((r) => {
+        // Guard: if stop() already set status to 'killed', don't overwrite.
+        // The dummy kill() is a no-op so the completion may resolve after
+        // stop(), but the user-visible status must stay 'killed'.
+        if (entry.status === 'killed') return;
+        entry.status = 'completed';
+        entry.exitCode = 0;
+        entry.endedAt = Date.now();
+        entry.outputChunks.push(r.result);
+      })
+      .catch(() => {
+        if (entry.status === 'killed') return;
+        entry.status = 'failed';
+        entry.exitCode = 1;
+        entry.endedAt = Date.now();
+      })
+      .finally(() => {
+        this.persistLive(entry);
+        for (const resolve of entry.waiters) resolve();
+        entry.waiters.length = 0;
+      });
+
+    return taskId;
+  }
+
   /** Reset internal state (for testing). */
   _reset(): void {
     this.processes.clear();

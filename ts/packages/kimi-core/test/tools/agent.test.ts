@@ -117,7 +117,7 @@ describe('AgentTool — foreground mode', () => {
     expect(result.content).toContain('done');
   });
 
-  it('defaults agentName to "general-purpose" when not provided', async () => {
+  it('defaults agentName to "coder" when not provided', async () => {
     const host = makeHost();
     const tool = new AgentTool(host, 'agent_main');
     const signal = new AbortController().signal;
@@ -126,7 +126,7 @@ describe('AgentTool — foreground mode', () => {
 
     expect(host.spawnSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        agentName: 'general-purpose',
+        agentName: 'coder',
       }),
     );
   });
@@ -216,9 +216,10 @@ describe('AgentTool — background mode', () => {
       signal,
     );
 
-    // Should return immediately
+    // Should return immediately with task_id, agent_id and status
     expect(result.content).toContain('sub_bg');
-    expect(result.content).toContain('started');
+    expect(result.content).toContain('status: running');
+    expect(result.content).toContain('task_id:');
     expect(result.isError).toBeFalsy();
 
     // Resolve the completion to avoid unhandled rejection

@@ -235,7 +235,7 @@ describe('SoulRegistry — subagent abort', () => {
         controllers.set(key, c);
         return { key, agentId: `id_for_${key}`, abortController: c };
       },
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     const parentController = new AbortController();
@@ -259,7 +259,7 @@ describe('SoulRegistry — subagent abort', () => {
         controllers.set(key, c);
         return { key, agentId: `id_for_${key}`, abortController: c };
       },
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     const parentController = new AbortController();
@@ -281,7 +281,7 @@ describe('SoulRegistry — subagent abort', () => {
         controllers.set(key, c);
         return { key, agentId: `id_for_${key}`, abortController: c };
       },
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     const parentController = new AbortController();
@@ -396,7 +396,7 @@ describe('SoulRegistry — sub:* key management', () => {
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
       // keep completions pending so auto-destroy (Finding #5) does not
       // fire during this test — we want to observe both handles alive
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     registry.getOrCreate('main');
@@ -434,7 +434,7 @@ describe('SoulRegistry.spawn — parentToolCallId threading (Finding #1)', () =>
   it('echoes SpawnRequest.parentToolCallId onto the returned handle', async () => {
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     const host = registry as unknown as SubagentHost;
@@ -447,7 +447,7 @@ describe('SoulRegistry.spawn — parentToolCallId threading (Finding #1)', () =>
     let seenRequest: SpawnRequest | undefined;
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: (request) => {
+      runSubagentTurn: (_id, request) => {
         seenRequest = request;
         return pendingCompletion();
       },
@@ -462,7 +462,7 @@ describe('SoulRegistry.spawn — parentToolCallId threading (Finding #1)', () =>
   it('different parentToolCallIds produce handles with distinct parent ids', async () => {
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     const host = registry as unknown as SubagentHost;
@@ -481,7 +481,7 @@ describe('SoulRegistry.spawn — UUID-based agent ids (Finding #4)', () => {
   it('generates UUID-format ids, not a process-local sequence', async () => {
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     const host = registry as unknown as SubagentHost;
@@ -498,7 +498,7 @@ describe('SoulRegistry.spawn — UUID-based agent ids (Finding #4)', () => {
   it('three consecutive spawns all produce distinct ids', async () => {
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     const host = registry as unknown as SubagentHost;
@@ -517,11 +517,11 @@ describe('SoulRegistry.spawn — UUID-based agent ids (Finding #4)', () => {
     // would collide with the persisted `subagents/<id>` directory.
     const registryA = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
     const registryB = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () => pendingCompletion(),
+      runSubagentTurn: (_id) => pendingCompletion(),
     });
 
     const hostA = registryA as unknown as SubagentHost;
@@ -543,7 +543,7 @@ describe('SoulRegistry.spawn — auto-destroy on completion (Finding #5)', () =>
     });
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () => runPromise,
+      runSubagentTurn: (_id) => runPromise,
     });
 
     const host = registry as unknown as SubagentHost;
@@ -571,7 +571,7 @@ describe('SoulRegistry.spawn — auto-destroy on completion (Finding #5)', () =>
     });
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () => runPromise,
+      runSubagentTurn: (_id) => runPromise,
     });
 
     const host = registry as unknown as SubagentHost;
@@ -591,7 +591,7 @@ describe('SoulRegistry.spawn — auto-destroy on completion (Finding #5)', () =>
     const runFns: Array<(v: AgentResult) => void> = [];
     const registry = new SoulRegistry({
       createHandle: (key) => makeHandle(key, `id_for_${key}`),
-      runSubagentTurn: () =>
+      runSubagentTurn: (_id) =>
         new Promise<AgentResult>((resolve) => {
           runFns.push(resolve);
         }),
@@ -624,7 +624,7 @@ describe('SoulRegistry.spawn — auto-destroy on completion (Finding #5)', () =>
         controllers.set(key, c);
         return { key, agentId: `id_for_${key}`, abortController: c };
       },
-      runSubagentTurn: () =>
+      runSubagentTurn: (_id) =>
         new Promise<AgentResult>((resolve) => {
           resolveRun = resolve;
         }),

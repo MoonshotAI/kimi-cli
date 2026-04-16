@@ -24,12 +24,16 @@
 import type { CompactionConfig, Runtime, Tool } from '../soul/index.js';
 import type { FullContextState } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
+import { AgentTool } from '../tools/agent.js';
+import type { AgentTypeRegistry } from './agent-type-registry.js';
 import { LifecycleGateFacade } from './lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
 import { NotificationManager, type ShellDeliverCallback } from './notification-manager.js';
 import type { SessionEventBus } from './session-event-bus.js';
 import type { SkillManager } from './skill/index.js';
 import { SoulRegistry } from './soul-registry.js';
+import type { SubagentStore } from './subagent-store.js';
+import { runSubagentTurn } from './subagent-runner.js';
 import { TurnManager } from './turn-manager.js';
 import type { DispatchRequest, DispatchResponse } from './types.js';
 
@@ -92,6 +96,16 @@ export interface SoulPlusDeps {
    * (already at 11 pre-Slice 4.2 — baseline policy gap, not new).
    */
   readonly orchestrator?: import('./orchestrator.js').ToolCallOrchestrator | undefined;
+  /**
+   * Slice 5.3 — optional subagent infrastructure. When both `subagentStore`
+   * and `agentTypeRegistry` are provided, SoulPlus wires the AgentTool into
+   * the tool set and connects `runSubagentTurn` to the SoulRegistry. When
+   * absent (tests, embedders), the Agent tool is not available.
+   */
+  readonly subagentStore?: SubagentStore | undefined;
+  readonly agentTypeRegistry?: AgentTypeRegistry | undefined;
+  /** Session directory path (required when subagent infra is provided). */
+  readonly sessionDir?: string | undefined;
 }
 
 export class SoulPlus {
@@ -124,13 +138,48 @@ export class SoulPlus {
       journal: deps.runtime.journal,
     };
 
+    // Slice 5.3 — wire subagent support when both store + registry are provided
+    const hasSubagentInfra =
+      deps.subagentStore !== undefined && deps.agentTypeRegistry !== undefined;
+
     const soulRegistry = new SoulRegistry({
       createHandle: (key) => ({
         key,
-        agentId: 'agent_main',
+        agentId: key === 'main' ? 'agent_main' : key.replace('sub:', ''),
         abortController: new AbortController(),
       }),
+      ...(hasSubagentInfra
+        ? {
+            runSubagentTurn: (agentId, request, signal) =>
+              runSubagentTurn(
+                {
+                  store: deps.subagentStore!,
+                  typeRegistry: deps.agentTypeRegistry!,
+                  parentTools: deps.tools,
+                  parentRuntime: runtime,
+                  parentSink: deps.eventBus,
+                  sessionDir: deps.sessionDir ?? '',
+                  parentModel: deps.contextState.model,
+                },
+                agentId,
+                request,
+                signal,
+              ),
+          }
+        : {}),
     });
+
+    // Build the tool set. When subagent infra is present, add AgentTool.
+    // Note: AgentTool is added to the parent's tool set but NOT to
+    // deps.tools (which is passed as parentTools to runSubagentTurn).
+    // Child tool sets are filtered via AgentTypeRegistry.resolveToolSet(),
+    // and the YAML exclude_tools lists 'Agent' for all child types.
+    // Even if deps.tools doesn't contain AgentTool, the YAML excludeTools
+    // provides a second layer of protection against recursive spawn.
+    const tools: Tool[] = [...deps.tools];
+    if (hasSubagentInfra) {
+      tools.push(new AgentTool(soulRegistry, 'agent_main'));
+    }
 
     this.turnManager = new TurnManager({
       contextState: deps.contextState,
@@ -139,7 +188,7 @@ export class SoulPlus {
       sink: deps.eventBus,
       lifecycleStateMachine: stateMachine,
       soulRegistry,
-      tools: deps.tools,
+      tools,
       // Codex Round 2 M2: pass compactionConfig so auto-compaction is
       // armed in the real session path (not just unit tests).
       ...(deps.compactionConfig !== undefined ? { compactionConfig: deps.compactionConfig } : {}),

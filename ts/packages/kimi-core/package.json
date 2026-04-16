@@ -31,7 +31,11 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@moonshot-ai/kaos": "workspace:^",
     "@moonshot-ai/kosong": "workspace:^",
+    "js-yaml": "^4.1.1",
     "smol-toml": "^1.6.1",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9"
   }
 }

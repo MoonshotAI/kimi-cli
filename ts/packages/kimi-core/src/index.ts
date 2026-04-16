@@ -361,5 +361,17 @@ export {
 } from './config/index.js';
 export type { OAuthResolver, ProviderFactoryDeps } from './config/index.js';
 
+// ── Subagent (Slice 5.3) ────────────────────────────────────────────────
+export { SubagentStore } from './soul-plus/subagent-store.js';
+export type { SubagentInstanceRecord, CreateInstanceOpts } from './soul-plus/subagent-store.js';
+export { AgentTypeRegistry } from './soul-plus/agent-type-registry.js';
+export type { AgentTypeDefinition } from './soul-plus/agent-type-registry.js';
+export { loadAgentSpec, loadSubagentTypes } from './soul-plus/agent-yaml-loader.js';
+export type { ResolvedAgentSpec } from './soul-plus/agent-yaml-loader.js';
+export { runSubagentTurn, cleanupStaleSubagents } from './soul-plus/subagent-runner.js';
+export type { SubagentRunnerDeps } from './soul-plus/subagent-runner.js';
+export { AgentTool } from './tools/agent.js';
+export type { AgentToolInput, AgentToolOutput } from './tools/agent.js';
+
 // ── Auth (Slice 5.0) ────────────────────────────────────────────────────
 export * from './auth/index.js';
