@@ -24,6 +24,13 @@ import {
   SUBAGENT_JOURNAL_CAPABILITY,
 } from './subagent-lifecycle-gate.js';
 
+// ── Summary continuation constants (Python parity: runner.py) ────────
+
+const SUMMARY_MIN_LENGTH = 200;
+const SUMMARY_CONTINUATION_ATTEMPTS = 1;
+const SUMMARY_CONTINUATION_PROMPT =
+  'Your response was too short. Please provide a more detailed summary of what you did, what you found, and any relevant details.';
+
 // ── Dependencies ──────────────────────────────────────────────────────
 
 export interface SubagentRunnerDeps {
@@ -167,8 +174,36 @@ export async function runSubagentTurn(
   }
 
   // 7. Extract result and update status
-  const resultText = contentCollector.join('');
+  let resultText = contentCollector.join('');
   const usage = turnResult.usage;
+
+  // 7.5 Summary continuation: if response is too short, ask for more detail.
+  // Python parity: runner.py SUMMARY_MIN_LENGTH / SUMMARY_CONTINUATION_ATTEMPTS
+  if (resultText.length < SUMMARY_MIN_LENGTH) {
+    const originalResult = resultText;
+    for (let i = 0; i < SUMMARY_CONTINUATION_ATTEMPTS; i++) {
+      try {
+        contentCollector.length = 0; // reset collector
+        // Append continuation prompt as a user message so the child context
+        // includes it in buildMessages() for the next runSoulTurn call.
+        await childContext.appendUserMessage({ text: SUMMARY_CONTINUATION_PROMPT });
+        await runSoulTurn(
+          { text: SUMMARY_CONTINUATION_PROMPT },
+          childConfig,
+          childContext, // reuse same context (has history)
+          childRuntime,
+          childSink,
+          signal,
+        );
+        resultText = contentCollector.join('');
+        if (resultText.length >= SUMMARY_MIN_LENGTH) break;
+      } catch {
+        // Continuation failed — fall back to first response
+        resultText = originalResult;
+        break;
+      }
+    }
+  }
 
   // Python writes 'idle' here (runner.py:338) to signal "reusable for resume".
   // TS uses 'completed' as the terminal success state — SubagentStatus doesn't
