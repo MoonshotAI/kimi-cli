@@ -11,13 +11,13 @@
  * Mirrors the Python `_print_welcome_info()` in `ui/shell/__init__.py`.
  */
 
-import React, { useContext } from 'react';
+import React from 'react';
 import { Box, Text } from 'ink';
 
-import { AppContext } from '../app/context.js';
+import { useChrome } from '../app/context.js';
 
 export default function Welcome(): React.JSX.Element {
-  const { state, styles } = useContext(AppContext);
+  const { state, styles } = useChrome();
 
   return (
     <Box

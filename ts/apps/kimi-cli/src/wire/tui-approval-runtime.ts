@@ -315,10 +315,10 @@ function describeApproval(req: ApprovalRequest): string {
 
 /**
  * Translate kimi-core's `ApprovalDisplay` union into the TUI's
- * `DisplayBlock[]` shape consumed by `ApprovalPanel`. Every kind maps
- * to one display block; unknown / richer kinds degrade to a `brief`
- * textual fallback so the panel still renders something meaningful
- * during incremental rollout of new display kinds.
+ * `DisplayBlock[]` shape consumed by `ApprovalPanel`. Most kinds map
+ * to one display block; the `generic` body is already surfaced via the
+ * top-level `description` field, so it intentionally emits no extra
+ * display block to avoid duplicate content in the approval dialog.
  */
 function adaptDisplay(display: ApprovalDisplay): DisplayBlock[] {
   switch (display.kind) {
@@ -358,11 +358,6 @@ function adaptDisplay(display: ApprovalDisplay): DisplayBlock[] {
         },
       ];
     case 'generic':
-      return [
-        {
-          type: 'brief',
-          text: `${display.title}\n${display.body}`,
-        },
-      ];
+      return [];
   }
 }

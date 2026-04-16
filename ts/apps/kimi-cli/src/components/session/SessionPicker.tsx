@@ -29,6 +29,7 @@ export interface SessionPickerProps {
   };
   readonly onSelect: (sessionId: string) => void;
   readonly onCancel: () => void;
+  readonly maxVisibleSessions?: number;
 }
 
 /** Format a timestamp as a short relative-time string. */
@@ -64,6 +65,7 @@ export default function SessionPicker({
   colors,
   onSelect,
   onCancel,
+  maxVisibleSessions = 6,
 }: SessionPickerProps): React.JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -122,6 +124,18 @@ export default function SessionPicker({
     );
   }
 
+  const visibleWindowStart = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(maxVisibleSessions / 2),
+      Math.max(0, sessions.length - maxVisibleSessions),
+    ),
+  );
+  const visibleSessions = sessions.slice(
+    visibleWindowStart,
+    visibleWindowStart + maxVisibleSessions,
+  );
+
   return (
     <Box
       borderStyle="round"
@@ -129,14 +143,14 @@ export default function SessionPicker({
       paddingX={1}
       paddingY={0}
       flexDirection="column"
-      marginTop={1}
     >
       <Box marginBottom={0}>
         <Text color={colors.primary} bold>Sessions </Text>
         <Text color={colors.textMuted}>(↑↓ navigate, Enter select, Esc cancel)</Text>
       </Box>
 
-      {sessions.map((session, index) => {
+      {visibleSessions.map((session, visibleIndex) => {
+        const index = visibleWindowStart + visibleIndex;
         const isSelected = index === selectedIndex;
         const isCurrent = session.id === currentSessionId;
         const pointer = isSelected ? '❯' : ' ';
@@ -159,6 +173,13 @@ export default function SessionPicker({
           </Box>
         );
       })}
+      {sessions.length > visibleSessions.length ? (
+        <Box>
+          <Text color={colors.textMuted}>
+            {`Showing ${String(visibleWindowStart + 1)}-${String(visibleWindowStart + visibleSessions.length)} of ${String(sessions.length)} sessions`}
+          </Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }

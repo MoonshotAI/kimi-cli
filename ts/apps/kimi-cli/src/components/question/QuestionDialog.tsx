@@ -14,21 +14,23 @@
  */
 
 import { Box, Text, useInput } from 'ink';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
-import { AppContext } from '../../app/context.js';
+import { useChrome } from '../../app/context.js';
 import type { PendingQuestion } from '../../app/context.js';
 
 export interface QuestionDialogProps {
   readonly request: PendingQuestion;
   readonly onAnswer: (answers: string[]) => void;
+  readonly maxVisibleOptions?: number;
 }
 
 export default function QuestionDialog({
   request,
   onAnswer,
+  maxVisibleOptions = 4,
 }: QuestionDialogProps): React.JSX.Element {
-  const { styles } = useContext(AppContext);
+  const { styles } = useChrome();
   const { colors } = styles;
 
   const [index, setIndex] = useState(0);
@@ -82,6 +84,15 @@ export default function QuestionDialog({
     return <Box />;
   }
 
+  const visibleWindowStart = Math.max(
+    0,
+    Math.min(
+      cursor - Math.floor(maxVisibleOptions / 2),
+      Math.max(0, options.length - maxVisibleOptions),
+    ),
+  );
+  const visibleOptions = options.slice(visibleWindowStart, visibleWindowStart + maxVisibleOptions);
+
   return (
     <Box
       flexDirection="column"
@@ -89,7 +100,6 @@ export default function QuestionDialog({
       borderColor={colors.primary}
       paddingLeft={1}
       paddingRight={1}
-      marginTop={1}
     >
       <Box>
         <Text color={colors.textDim}>
@@ -108,10 +118,11 @@ export default function QuestionDialog({
         <Text color={colors.text}>{current.question}</Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
-        {options.map((opt, i) => {
-          const selected = i === cursor;
+        {visibleOptions.map((opt, visibleIndex) => {
+          const optionIndex = visibleWindowStart + visibleIndex;
+          const selected = optionIndex === cursor;
           return (
-            <Box key={`${String(index)}-${String(i)}`}>
+            <Box key={`${String(index)}-${String(optionIndex)}`}>
               <Text color={selected ? colors.primary : colors.text}>
                 {selected ? '› ' : '  '}
                 {opt.label}
@@ -123,6 +134,13 @@ export default function QuestionDialog({
           );
         })}
       </Box>
+      {options.length > visibleOptions.length ? (
+        <Box>
+          <Text color={colors.textDim}>
+            {`Showing ${String(visibleWindowStart + 1)}-${String(visibleWindowStart + visibleOptions.length)} of ${String(options.length)} options`}
+          </Text>
+        </Box>
+      ) : null}
       <Box marginTop={1}>
         <Text color={colors.textDim}>↑/↓ select · Enter confirm · Esc dismiss</Text>
       </Box>

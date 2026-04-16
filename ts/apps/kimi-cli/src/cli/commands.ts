@@ -116,11 +116,6 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
   // Loop control
   // ---------------------------------------------------------------------------
   program
-    .option(
-      '--offline',
-      'Run against the mock data source instead of real kimi-core (for UI development).',
-      false,
-    )
     .option('--max-steps-per-turn <n>', 'Maximum steps per turn.', parseIntOption)
     .option('--max-retries-per-step <n>', 'Maximum retries per step.', parseIntOption)
     .option(
@@ -169,7 +164,6 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
       maxStepsPerTurn: raw['maxStepsPerTurn'] as number | undefined,
       maxRetriesPerStep: raw['maxRetriesPerStep'] as number | undefined,
       maxRalphIterations: raw['maxRalphIterations'] as number | undefined,
-      offline: raw['offline'] as boolean,
     };
 
     onMain(opts);

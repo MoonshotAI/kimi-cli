@@ -2,7 +2,7 @@
  * Wire Protocol 2.1 -- public API surface for the CLI.
  *
  * Re-exports the unified message envelope, event/method payload types,
- * WireClient interface, and the development-period WireClientImpl.
+ * and the WireClient interface.
  */
 
 // Envelope + factory functions
@@ -88,12 +88,9 @@ export type {
   HookResponseData,
 } from './methods.js';
 
-// Client interface + implementation
+// Client interface
 export type {
   WireClient,
-  DataSource,
-  SessionStore,
   SlashCommandResult,
   SlashCommandStateUpdate,
 } from './client.js';
-export { WireClientImpl } from './client.js';

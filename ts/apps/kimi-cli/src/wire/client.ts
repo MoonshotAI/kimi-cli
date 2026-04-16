@@ -7,49 +7,18 @@
  *  - Core-initiated requests (approval, question, hook) are responded
  *    to via `respondToRequest()`.
  *
- * `WireClientImpl` delegates to a `DataSource` for event generation.
- * In production this is `CoreDataSource` (backed by kimi-core SoulPlus).
+ * The production implementation is `KimiCoreClient` in `kimi-core-client.ts`.
  */
 
 import type {
+  ApprovalResponseData,
   InitializeParams,
   InitializeResult,
   SessionInfo,
   SessionStatusResult,
   SessionUsageResult,
-  ApprovalResponseData,
 } from './methods.js';
 import type { WireMessage } from './wire-message.js';
-
-// ── DataSource interface ────────────────────────────────────────────
-
-/**
- * The data source contract that WireClientImpl consumes.
- * Implemented by CoreDataSource (backed by kimi-core SoulPlus).
- */
-export interface DataSource {
-  /** Start producing events for a new turn. */
-  startTurn(sessionId: string, turnId: string, input: string): void;
-  /** Consume events (called by subscribe). */
-  events(sessionId: string): AsyncIterable<WireMessage>;
-  /** Resolve a Core-initiated request (e.g. approval). */
-  resolveRequest(requestId: string, data: unknown): void;
-  /** Cancel the current turn. */
-  cancelTurn(sessionId: string): void;
-  /** Session management store. */
-  sessions: SessionStore;
-}
-
-export interface SessionStore {
-  create(workDir: string): string;
-  list(workDir: string): SessionInfo[];
-  listAll(): SessionInfo[];
-  delete(sessionId: string): void;
-  fork(sessionId: string, atTurn?: number): string;
-  setTitle(sessionId: string, title: string): void;
-  get(sessionId: string): SessionInfo | undefined;
-  recordTurn(sessionId: string, turnNumber: number): void;
-}
 
 // ── WireClient Interface ────────────────────────────────────────────
 
@@ -135,130 +104,6 @@ export interface SlashCommandStateUpdate {
   readonly yolo?: boolean | undefined;
   readonly thinking?: boolean | undefined;
   readonly model?: string | undefined;
-}
-
-// ── WireClientImpl (development period) ─────────────────────────────
-
-export class WireClientImpl implements WireClient {
-  private readonly dataSource: DataSource;
-  private turnCounter = 0;
-
-  constructor(dataSource: DataSource) {
-    this.dataSource = dataSource;
-  }
-
-  // ── Handshake ───────────────────────────────────────────────────
-
-  async initialize(_params: InitializeParams): Promise<InitializeResult> {
-    return {
-      protocol_version: '2.1',
-      capabilities: {},
-    };
-  }
-
-  // ── Session management ──────────────────────────────────────────
-
-  async createSession(workDir: string): Promise<{ session_id: string }> {
-    const id = this.dataSource.sessions.create(workDir);
-    return { session_id: id };
-  }
-
-  async listSessions(): Promise<{ sessions: SessionInfo[] }> {
-    return { sessions: this.dataSource.sessions.listAll() };
-  }
-
-  async destroySession(sessionId: string): Promise<void> {
-    this.dataSource.sessions.delete(sessionId);
-  }
-
-  // ── Conversation ────────────────────────────────────────────────
-
-  async prompt(sessionId: string, input: string): Promise<{ turn_id: string }> {
-    this.turnCounter += 1;
-    const turnId = `turn_${this.turnCounter}`;
-    this.dataSource.startTurn(sessionId, turnId, input);
-    this.dataSource.sessions.recordTurn(sessionId, this.turnCounter);
-    return { turn_id: turnId };
-  }
-
-  async steer(_sessionId: string, _input: string): Promise<void> {
-    // TODO: implement steer via data source
-  }
-
-  async cancel(sessionId: string): Promise<void> {
-    this.dataSource.cancelTurn(sessionId);
-  }
-
-  async resume(_sessionId: string): Promise<void> {
-    // No-op in mock
-  }
-
-  // ── Management ──────────────────────────────────────────────────
-
-  async fork(sessionId: string, atTurn?: number): Promise<{ session_id: string }> {
-    const id = this.dataSource.sessions.fork(sessionId, atTurn);
-    return { session_id: id };
-  }
-
-  async rename(sessionId: string, title: string): Promise<void> {
-    this.dataSource.sessions.setTitle(sessionId, title);
-  }
-
-  async getStatus(_sessionId: string): Promise<SessionStatusResult> {
-    return { state: 'idle' };
-  }
-
-  async getUsage(_sessionId: string): Promise<SessionUsageResult> {
-    return {
-      total_input_tokens: 0,
-      total_output_tokens: 0,
-      total_cache_read_tokens: 0,
-      total_cache_write_tokens: 0,
-      total_cost_usd: 0,
-    };
-  }
-
-  async compact(_sessionId: string, _customInstruction?: string): Promise<void> {
-    // No-op in mock
-  }
-
-  // ── Configuration ───────────────────────────────────────────────
-
-  async setModel(_sessionId: string, _model: string): Promise<void> {}
-  async setThinking(_sessionId: string, _level: string): Promise<void> {}
-  async setPlanMode(_sessionId: string, _enabled: boolean): Promise<void> {}
-  async setYolo(_sessionId: string, _enabled: boolean): Promise<void> {}
-
-  // ── Event subscription ──────────────────────────────────────────
-
-  subscribe(sessionId: string): AsyncIterable<WireMessage> {
-    return this.dataSource.events(sessionId);
-  }
-
-  // ── Bidirectional RPC ───────────────────────────────────────────
-
-  respondToRequest(requestId: string, data: unknown): void {
-    this.dataSource.resolveRequest(requestId, data);
-  }
-
-  async handleSlashCommand(
-    _sessionId: string,
-    name: string,
-    _args: readonly string[],
-  ): Promise<SlashCommandResult> {
-    // Offline/mock mode: slash commands are no-ops. Surface a polite
-    // message so the user knows the command is recognised but inert.
-    return {
-      ok: true,
-      message: `(offline) /${name} has no effect in mock mode`,
-    };
-  }
-
-  // ── Lifecycle ───────────────────────────────────────────────────
-
-  async dispose(): Promise<void> {
-    // No-op in mock
-  }
 }
 
 // ── Re-export for convenience ───────────────────────────────────────

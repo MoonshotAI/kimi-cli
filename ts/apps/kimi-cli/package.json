@@ -1,6 +1,6 @@
 {
   "name": "@moonshot-ai/cli",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Kimi CLI - AI assistant in your terminal",
   "license": "MIT",
   "bin": {
@@ -23,7 +23,6 @@
   "dependencies": {
     "@moonshot-ai/core": "workspace:^",
     "@moonshot-ai/kaos": "workspace:^",
-    "@moonshot-ai/kimi-wire-mock": "workspace:*",
     "@moonshot-ai/kosong": "workspace:^",
     "chalk": "^5.4.1",
     "cli-highlight": "^2.1.11",

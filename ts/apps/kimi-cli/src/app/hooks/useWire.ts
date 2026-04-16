@@ -1,20 +1,15 @@
 /**
- * Wire client integration hook (Wire 2.1).
+ * Wire client integration hook.
  *
- * Manages the streaming lifecycle:
- *  1. User calls `sendMessage(input)`.
- *  2. The hook calls `wireClient.prompt(sessionId, input)` (non-blocking).
- *  3. Events arrive via `subscribe()` (started at mount time).
- *  4. content.delta events are appended to streamingText / streamingThinkText.
- *  5. tool.call events push a pending tool call with structured data.
- *  6. tool.result events complete the tool call and push it to completedBlocks.
- *  7. approval.request (type: 'request') pauses and exposes pendingApproval.
- *  8. On turn.end the accumulated text is pushed into completedBlocks.
+ * The TUI is split into:
+ *  - append-only transcript entries rendered through `<Static>`
+ *  - a small live pane for the current turn
+ *  - low-frequency chrome state
  *
- * Also handles cancellation via `cancelStream()`.
+ * This keeps token-by-token updates confined to a small subtree.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 
 import type {
   WireClient,
@@ -31,42 +26,44 @@ import type {
   StepInterruptedData,
   SessionErrorData,
 } from '../../wire/index.js';
+import { committedBoundary } from '../../components/markdown/index.js';
 import type {
   AppState,
-  CompletedBlock,
+  TranscriptEntry,
   ToolCallBlockData,
   ToolResultBlockData,
-  PendingApproval,
-  PendingQuestion,
+  LivePaneState,
   ToastNotification,
 } from '../context.js';
 
 export interface UseWireResult {
-  completedBlocks: CompletedBlock[];
-  pushBlock: (block: CompletedBlock) => void;
-  streamingThinkText: string;
-  streamingText: string;
-  setStreamingText: (text: string) => void;
+  transcriptEntries: TranscriptEntry[];
+  appendTranscriptEntry: (entry: TranscriptEntry) => void;
+  livePane: LivePaneState;
   sendMessage: (input: string) => void;
   cancelStream: () => void;
-  pendingToolCall: ToolCallBlockData | null;
-  pendingApproval: PendingApproval | null;
   handleApprovalResponse: (response: ApprovalResponseData) => void;
-  pendingQuestion: PendingQuestion | null;
   handleQuestionResponse: (answers: string[]) => void;
-  /** Active shell-target notifications rendered as top-of-shell toasts. */
   toasts: ToastNotification[];
-  /** Dismiss a toast by id (e.g. when its timer expires). */
   dismissToast: (id: string) => void;
 }
 
 const TOAST_TTL_MS = 5000;
 
-let blockIdCounter = 0;
+const INITIAL_LIVE_PANE: LivePaneState = {
+  mode: 'idle',
+  thinkingText: '',
+  assistantText: '',
+  pendingToolCall: null,
+  pendingApproval: null,
+  pendingQuestion: null,
+};
 
-function nextBlockId(): string {
-  blockIdCounter += 1;
-  return `block-${String(blockIdCounter)}`;
+let transcriptIdCounter = 0;
+
+function nextTranscriptId(): string {
+  transcriptIdCounter += 1;
+  return `entry-${String(transcriptIdCounter)}`;
 }
 
 export function useWire(
@@ -74,24 +71,113 @@ export function useWire(
   sessionId: string,
   setState: (patch: Partial<AppState>) => void,
 ): UseWireResult {
-  const [completedBlocks, setCompletedBlocks] = useState<CompletedBlock[]>([]);
-  const [streamingThinkText, setStreamingThinkText] = useState('');
-  const [streamingText, setStreamingText] = useState('');
-  const [pendingToolCall, setPendingToolCall] = useState<ToolCallBlockData | null>(null);
-  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
-  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+  const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
+  const [livePane, setLivePane] = useState<LivePaneState>(INITIAL_LIVE_PANE);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
   const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const isStreamingRef = useRef(false);
-  const accumulatedTextRef = useRef('');
-  const accumulatedThinkRef = useRef('');
-
-  // Track active tool calls by ID so we can pair them with results.
+  const currentTurnIdRef = useRef<string | undefined>(undefined);
+  const assistantDraftRef = useRef('');
+  const assistantCommittedLengthRef = useRef(0);
+  const thinkingDraftRef = useRef('');
   const activeToolCallsRef = useRef<Map<string, ToolCallBlockData>>(new Map());
 
-  const pushBlock = useCallback((block: CompletedBlock) => {
-    setCompletedBlocks((prev) => [...prev, block]);
+  const appendTranscriptEntries = useCallback((entries: TranscriptEntry[]) => {
+    if (entries.length === 0) return;
+    startTransition(() => {
+      setTranscriptEntries((prev) => [...prev, ...entries]);
+    });
   }, []);
+
+  const appendTranscriptEntry = useCallback((entry: TranscriptEntry) => {
+    appendTranscriptEntries([entry]);
+  }, [appendTranscriptEntries]);
+
+  const patchLivePane = useCallback((patch: Partial<LivePaneState>) => {
+    startTransition(() => {
+      setLivePane((prev) => ({ ...prev, ...patch }));
+    });
+  }, []);
+
+  const resetLivePane = useCallback(() => {
+    startTransition(() => {
+      setLivePane(INITIAL_LIVE_PANE);
+    });
+  }, []);
+
+  const patchAppState = useCallback((patch: Partial<AppState>) => {
+    startTransition(() => {
+      setState(patch);
+    });
+  }, [setState]);
+
+  const makeEntry = useCallback(
+    (
+      kind: TranscriptEntry['kind'],
+      content: string,
+      renderMode: TranscriptEntry['renderMode'],
+      extras?: Pick<TranscriptEntry, 'toolCallData'>,
+    ): TranscriptEntry => ({
+      id: nextTranscriptId(),
+      kind,
+      turnId: currentTurnIdRef.current,
+      renderMode,
+      content,
+      toolCallData: extras?.toolCallData,
+    }),
+    [],
+  );
+
+  const flushThinkingToTranscript = useCallback(
+    (nextMode: LivePaneState['mode'] = 'idle') => {
+      if (thinkingDraftRef.current.length === 0) {
+        patchLivePane({ thinkingText: '', mode: nextMode });
+        return;
+      }
+
+      const content = thinkingDraftRef.current;
+      thinkingDraftRef.current = '';
+      appendTranscriptEntry(makeEntry('thinking', content, 'plain'));
+      patchLivePane({
+        mode: nextMode,
+        thinkingText: '',
+      });
+    },
+    [appendTranscriptEntry, makeEntry, patchLivePane],
+  );
+
+  const flushCommittedAssistantBlocks = useCallback(() => {
+    if (assistantDraftRef.current.length === 0) return;
+
+    const { committed } = committedBoundary(assistantDraftRef.current);
+    if (committed.length <= assistantCommittedLengthRef.current) return;
+
+    const content = committed.slice(assistantCommittedLengthRef.current);
+    assistantCommittedLengthRef.current = committed.length;
+    appendTranscriptEntry(makeEntry('assistant', content, 'markdown'));
+  }, [appendTranscriptEntry, makeEntry]);
+
+  const flushAssistantDraft = useCallback(() => {
+    flushCommittedAssistantBlocks();
+
+    const remaining = assistantDraftRef.current.slice(assistantCommittedLengthRef.current);
+    if (remaining.length > 0) {
+      appendTranscriptEntry(makeEntry('assistant', remaining, 'markdown'));
+    }
+
+    assistantDraftRef.current = '';
+    assistantCommittedLengthRef.current = 0;
+    patchLivePane({ assistantText: '' });
+  }, [appendTranscriptEntry, flushCommittedAssistantBlocks, makeEntry, patchLivePane]);
+
+  const flushTurnBuffers = useCallback(
+    (nextMode: LivePaneState['mode'] = 'idle') => {
+      flushThinkingToTranscript(nextMode);
+      flushAssistantDraft();
+    },
+    [flushAssistantDraft, flushThinkingToTranscript],
+  );
 
   const cancelStream = useCallback(() => {
     void wireClient.cancel(sessionId);
@@ -99,26 +185,24 @@ export function useWire(
 
   const handleApprovalResponse = useCallback(
     (response: ApprovalResponseData) => {
-      const approval = pendingApproval;
+      const approval = livePane.pendingApproval;
       if (approval === null) return;
 
-      // Send response via respondToRequest.
       wireClient.respondToRequest(approval.requestId, response);
-
-      // Clear the pending approval state.
-      setPendingApproval(null);
+      patchLivePane({ pendingApproval: null, mode: isStreamingRef.current ? 'waiting' : 'idle' });
     },
-    [pendingApproval, wireClient],
+    [livePane.pendingApproval, patchLivePane, wireClient],
   );
 
   const handleQuestionResponse = useCallback(
     (answers: string[]) => {
-      const question = pendingQuestion;
+      const question = livePane.pendingQuestion;
       if (question === null) return;
+
       wireClient.respondToRequest(question.requestId, { answers });
-      setPendingQuestion(null);
+      patchLivePane({ pendingQuestion: null, mode: isStreamingRef.current ? 'waiting' : 'idle' });
     },
-    [pendingQuestion, wireClient],
+    [livePane.pendingQuestion, patchLivePane, wireClient],
   );
 
   const dismissToast = useCallback((id: string) => {
@@ -127,144 +211,219 @@ export function useWire(
       clearTimeout(timer);
       toastTimersRef.current.delete(id);
     }
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const pushToast = useCallback((notif: NotificationData) => {
-    // Skip duplicates: a notification with a known id is ignored so
-    // a notification that targets both wire + shell cannot render
-    // twice (the wire channel is not subscribed today but the guard
-    // is cheap and future-proof).
+  const pushToast = useCallback((notification: NotificationData) => {
     setToasts((prev) => {
-      if (prev.some((t) => t.id === notif.id)) return prev;
+      if (prev.some((toast) => toast.id === notification.id)) {
+        return prev;
+      }
+
       const toast: ToastNotification = {
-        id: notif.id,
-        category: notif.category,
-        type: notif.type,
-        title: notif.title,
-        body: notif.body,
-        severity: notif.severity,
+        id: notification.id,
+        category: notification.category,
+        type: notification.type,
+        title: notification.title,
+        body: notification.body,
+        severity: notification.severity,
       };
+
       return [...prev, toast];
     });
-    // Reset any prior timer with the same id and start a fresh one.
-    const existing = toastTimersRef.current.get(notif.id);
-    if (existing !== undefined) clearTimeout(existing);
+
+    const existing = toastTimersRef.current.get(notification.id);
+    if (existing !== undefined) {
+      clearTimeout(existing);
+    }
+
     const timer = setTimeout(() => {
-      toastTimersRef.current.delete(notif.id);
-      setToasts((prev) => prev.filter((t) => t.id !== notif.id));
+      toastTimersRef.current.delete(notification.id);
+      setToasts((prev) => prev.filter((toast) => toast.id !== notification.id));
     }, TOAST_TTL_MS);
-    toastTimersRef.current.set(notif.id, timer);
+
+    toastTimersRef.current.set(notification.id, timer);
   }, []);
 
-  // ── Event processing ────────────────────────────────────────────
+  const finalizeTurn = useCallback(() => {
+    if (!isStreamingRef.current) {
+      return;
+    }
 
-  function processMessage(msg: WireMessage): void {
-    // Handle Core-initiated requests (e.g. approval.request)
+    flushTurnBuffers('idle');
+    activeToolCallsRef.current.clear();
+    currentTurnIdRef.current = undefined;
+    isStreamingRef.current = false;
+
+    patchAppState({
+      isStreaming: false,
+      streamingPhase: 'idle',
+    });
+    resetLivePane();
+  }, [flushTurnBuffers, patchAppState, resetLivePane]);
+
+  const processMessage = useCallback((msg: WireMessage) => {
+    if (msg.turn_id !== undefined) {
+      currentTurnIdRef.current = msg.turn_id;
+    }
+
     if (msg.type === 'request') {
       if (msg.method === 'approval.request') {
-        flushStreamingText();
+        flushTurnBuffers('approval');
         const data = msg.data as ApprovalRequestData;
-        setPendingApproval({ requestId: msg.id, data });
+        patchLivePane({
+          mode: 'approval',
+          pendingApproval: { requestId: msg.id, data },
+          pendingQuestion: null,
+          pendingToolCall: null,
+        });
       } else if (msg.method === 'question.request') {
-        flushStreamingText();
+        flushTurnBuffers('question');
         const data = msg.data as QuestionRequestData;
-        setPendingQuestion({ requestId: msg.id, data });
+        patchLivePane({
+          mode: 'question',
+          pendingApproval: null,
+          pendingQuestion: { requestId: msg.id, data },
+          pendingToolCall: null,
+        });
       }
       return;
     }
 
-    // Handle events
     if (msg.type !== 'event') return;
 
     switch (msg.method) {
       case 'content.delta': {
         const data = msg.data as ContentDeltaData;
-        if (data.type === 'text' && data.text !== undefined) {
-          // If we were thinking, flush thinking to Static.
-          // Clear dynamic state BEFORE pushing to Static to avoid
-          // a frame where both dynamic and static thinking are visible.
-          if (accumulatedThinkRef.current.length > 0) {
-            const thinkContent = accumulatedThinkRef.current;
-            accumulatedThinkRef.current = '';
-            setStreamingThinkText('');
-            const thinkBlock: CompletedBlock = {
-              id: nextBlockId(),
-              type: 'thinking',
-              content: thinkContent,
-            };
-            setCompletedBlocks((prev) => [...prev, thinkBlock]);
-          }
-          accumulatedTextRef.current += data.text;
-          setStreamingText(accumulatedTextRef.current);
-          setState({ streamingPhase: 'composing', streamingStartTime: Date.now() });
-        } else if (data.type === 'think' && data.think !== undefined) {
-          accumulatedThinkRef.current += data.think;
-          setStreamingThinkText(accumulatedThinkRef.current);
-          setState({ streamingPhase: 'thinking' });
+
+        if (data.type === 'think' && data.think !== undefined) {
+          thinkingDraftRef.current += data.think;
+          patchLivePane({
+            mode: 'thinking',
+            thinkingText: thinkingDraftRef.current,
+          });
+          patchAppState({ streamingPhase: 'thinking' });
+          break;
         }
+
+        if (data.type === 'text' && data.text !== undefined) {
+          if (thinkingDraftRef.current.length > 0) {
+            flushThinkingToTranscript('idle');
+          }
+
+          assistantDraftRef.current += data.text;
+          flushCommittedAssistantBlocks();
+          patchLivePane({
+            mode: 'idle',
+            pendingToolCall: null,
+            pendingApproval: null,
+            pendingQuestion: null,
+          });
+          patchAppState({
+            streamingPhase: 'composing',
+            streamingStartTime: Date.now(),
+          });
+        }
+
         break;
       }
       case 'tool.call': {
         const data = msg.data as ToolCallData;
-        const tcBlockData: ToolCallBlockData = {
+        const toolCall: ToolCallBlockData = {
           id: data.id,
           name: data.name,
           args: data.args,
           description: data.description,
         };
-        activeToolCallsRef.current.set(data.id, tcBlockData);
 
-        // Flush any accumulated text before showing tool call
-        flushStreamingText();
-
-        // Show in dynamic area with loading spinner (no result yet)
-        setPendingToolCall(tcBlockData);
+        activeToolCallsRef.current.set(data.id, toolCall);
+        flushTurnBuffers('tool');
+        patchLivePane({
+          mode: 'tool',
+          pendingToolCall: toolCall,
+          pendingApproval: null,
+          pendingQuestion: null,
+        });
         break;
       }
       case 'tool.result': {
         const data = msg.data as ToolResultData;
         const matchedCall = activeToolCallsRef.current.get(data.tool_call_id);
+        const resultData: ToolResultBlockData = {
+          tool_call_id: data.tool_call_id,
+          output: data.output,
+          is_error: data.is_error,
+        };
 
-        // Move from dynamic area to Static
-        setPendingToolCall(null);
-
-        if (matchedCall) {
-          const resultData: ToolResultBlockData = {
-            tool_call_id: data.tool_call_id,
-            output: data.output,
-            is_error: data.is_error,
-          };
-          const toolCallBlock: CompletedBlock = {
-            id: nextBlockId(),
-            type: 'tool_call',
-            content: `Used ${matchedCall.name}`,
-            toolCallData: { ...matchedCall, result: resultData },
-          };
-          setCompletedBlocks((prev) => [...prev, toolCallBlock]);
+        if (matchedCall !== undefined) {
+          appendTranscriptEntry(
+            makeEntry('tool_call', `Used ${matchedCall.name}`, 'plain', {
+              toolCallData: { ...matchedCall, result: resultData },
+            }),
+          );
         }
 
-        // Clean up the active tool call
         activeToolCallsRef.current.delete(data.tool_call_id);
+        patchLivePane({
+          mode: 'idle',
+          pendingToolCall: null,
+        });
         break;
       }
       case 'status.update': {
         const data = msg.data as StatusUpdateData;
+        const patch: Partial<AppState> = {};
+
         if (data.context_usage !== undefined) {
-          setState({ contextUsage: data.context_usage });
+          patch.contextUsage = data.context_usage;
+        }
+        if (data.context_tokens !== undefined) {
+          patch.contextTokens = data.context_tokens;
+        }
+        if (data.max_context_tokens !== undefined) {
+          patch.maxContextTokens = data.max_context_tokens;
+        }
+        if (data.plan_mode !== undefined) {
+          patch.planMode = data.plan_mode;
+        }
+        if (data.model !== undefined) {
+          patch.model = data.model;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          patchAppState(patch);
         }
         break;
       }
+      case 'step.begin': {
+        patchLivePane({
+          mode: 'waiting',
+          pendingToolCall: null,
+          pendingApproval: null,
+          pendingQuestion: null,
+        });
+        patchAppState({
+          streamingPhase: 'waiting',
+          streamingStartTime: Date.now(),
+        });
+        break;
+      }
       case 'turn.begin': {
-        // Mark streaming as active
-        if (!isStreamingRef.current) {
-          isStreamingRef.current = true;
-          setState({
-            isStreaming: true,
-            streamingPhase: 'waiting',
-            streamingStartTime: Date.now(),
-          });
-        }
+        isStreamingRef.current = true;
+        patchLivePane({
+          mode: 'waiting',
+          thinkingText: '',
+          assistantText: '',
+          pendingToolCall: null,
+          pendingApproval: null,
+          pendingQuestion: null,
+        });
+        patchAppState({
+          isStreaming: true,
+          streamingPhase: 'waiting',
+          streamingStartTime: Date.now(),
+        });
         break;
       }
       case 'turn.end': {
@@ -273,28 +432,19 @@ export function useWire(
       }
       case 'step.interrupted': {
         const data = msg.data as StepInterruptedData;
-        flushStreamingText();
-        setCompletedBlocks((prev) => [
-          ...prev,
-          {
-            id: nextBlockId(),
-            type: 'status',
-            content: `Step ${String(data.step)} interrupted: ${data.reason}`,
-          },
-        ]);
+        flushTurnBuffers('idle');
+        appendTranscriptEntry(
+          makeEntry('status', `Step ${String(data.step)} interrupted: ${data.reason}`, 'plain'),
+        );
         break;
       }
       case 'compaction.begin': {
-        flushStreamingText();
-        setState({ streamingPhase: 'waiting', streamingStartTime: Date.now() });
-        setCompletedBlocks((prev) => [
-          ...prev,
-          {
-            id: nextBlockId(),
-            type: 'status',
-            content: 'Compacting context...',
-          },
-        ]);
+        flushTurnBuffers('waiting');
+        patchAppState({
+          streamingPhase: 'waiting',
+          streamingStartTime: Date.now(),
+        });
+        appendTranscriptEntry(makeEntry('status', 'Compacting context...', 'plain'));
         break;
       }
       case 'compaction.end': {
@@ -305,77 +455,24 @@ export function useWire(
           before !== undefined && after !== undefined
             ? `Compaction complete: ${String(before)} → ${String(after)} tokens`
             : 'Compaction complete.';
-        setCompletedBlocks((prev) => [
-          ...prev,
-          { id: nextBlockId(), type: 'status', content: summary },
-        ]);
+        appendTranscriptEntry(makeEntry('status', summary, 'plain'));
         break;
       }
       case 'notification': {
-        const data = msg.data as NotificationData;
-        pushToast(data);
+        pushToast(msg.data as NotificationData);
         break;
       }
       case 'session.error': {
         const data = msg.data as SessionErrorData;
-        flushStreamingText();
+        flushTurnBuffers('idle');
         const detail = data.error_type !== undefined ? ` (${data.error_type})` : '';
-        setCompletedBlocks((prev) => [
-          ...prev,
-          {
-            id: nextBlockId(),
-            type: 'status',
-            content: `Error${detail}: ${data.error}`,
-          },
-        ]);
+        appendTranscriptEntry(makeEntry('status', `Error${detail}: ${data.error}`, 'plain'));
         break;
       }
       default:
-        // Other events not yet handled.
         break;
     }
-  }
-
-  function flushStreamingText(): void {
-    if (accumulatedThinkRef.current.length > 0) {
-      const thinkBlock: CompletedBlock = {
-        id: nextBlockId(),
-        type: 'thinking',
-        content: accumulatedThinkRef.current,
-      };
-      setCompletedBlocks((prev) => [...prev, thinkBlock]);
-      accumulatedThinkRef.current = '';
-    }
-
-    if (accumulatedTextRef.current.length > 0) {
-      const assistantBlock: CompletedBlock = {
-        id: nextBlockId(),
-        type: 'assistant',
-        content: accumulatedTextRef.current,
-      };
-      setCompletedBlocks((prev) => [...prev, assistantBlock]);
-      accumulatedTextRef.current = '';
-      setStreamingText('');
-    }
-  }
-
-  function finalizeTurn(): void {
-    if (!isStreamingRef.current) {
-      return;
-    }
-
-    flushStreamingText();
-
-    // Reset streaming state.
-    accumulatedTextRef.current = '';
-    accumulatedThinkRef.current = '';
-    setStreamingText('');
-    setStreamingThinkText('');
-    isStreamingRef.current = false;
-    setState({ isStreaming: false, streamingPhase: 'idle' });
-  }
-
-  // ── Subscribe to events at mount time ───────────────────────────
+  }, [appendTranscriptEntry, finalizeTurn, flushCommittedAssistantBlocks, flushThinkingToTranscript, flushTurnBuffers, makeEntry, patchAppState, patchLivePane, pushToast]);
 
   useEffect(() => {
     let active = true;
@@ -387,57 +484,52 @@ export function useWire(
           processMessage(msg);
         }
       } catch {
-        // Stream ended or errored
+        // Ignore stream shutdown errors.
       }
     })();
 
     return () => {
       active = false;
     };
-    // We intentionally only subscribe once at mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wireClient, sessionId]);
+  }, [processMessage, sessionId, wireClient]);
 
-  // ── Send message ────────────────────────────────────────────────
+  const sendMessage = useCallback((input: string) => {
+    if (isStreamingRef.current) {
+      return;
+    }
 
-  const sendMessage = useCallback(
-    (input: string) => {
-      if (isStreamingRef.current) {
-        return; // Already streaming, ignore.
-      }
+    appendTranscriptEntry({
+      id: nextTranscriptId(),
+      kind: 'user',
+      turnId: undefined,
+      renderMode: 'plain',
+      content: input,
+    });
 
-      // Slash-command routing moved to `InputArea → App.executeSlashCommand`
-      // (Slice 4.x merge). The SlashCommandRegistry now owns parsing and
-      // dispatching, so `sendMessage` only handles plain user prompts.
+    currentTurnIdRef.current = undefined;
+    assistantDraftRef.current = '';
+    assistantCommittedLengthRef.current = 0;
+    thinkingDraftRef.current = '';
+    activeToolCallsRef.current.clear();
+    isStreamingRef.current = true;
 
-      // Push user message as a completed block.
-      const userBlock: CompletedBlock = {
-        id: nextBlockId(),
-        type: 'user',
-        content: input,
-      };
-      setCompletedBlocks((prev) => [...prev, userBlock]);
+    patchLivePane({
+      mode: 'waiting',
+      thinkingText: '',
+      assistantText: '',
+      pendingToolCall: null,
+      pendingApproval: null,
+      pendingQuestion: null,
+    });
+    patchAppState({
+      isStreaming: true,
+      streamingPhase: 'waiting',
+      streamingStartTime: Date.now(),
+    });
 
-      // Reset streaming state.
-      accumulatedTextRef.current = '';
-      accumulatedThinkRef.current = '';
-      activeToolCallsRef.current.clear();
-      setStreamingThinkText('');
-      setStreamingText('');
-      setPendingToolCall(null);
-      setPendingApproval(null);
-      setPendingQuestion(null);
-      isStreamingRef.current = true;
-      setState({ isStreaming: true, streamingPhase: 'waiting', streamingStartTime: Date.now() });
+    void wireClient.prompt(sessionId, input);
+  }, [appendTranscriptEntry, patchAppState, patchLivePane, sessionId, wireClient]);
 
-      // Non-blocking prompt -- events arrive via subscribe()
-      void wireClient.prompt(sessionId, input);
-    },
-    [wireClient, sessionId, setState],
-  );
-
-  // Clear pending toast timers when the hook unmounts so a late
-  // firing timeout cannot call setState after unmount.
   useEffect(() => {
     return () => {
       for (const timer of toastTimersRef.current.values()) {
@@ -448,17 +540,12 @@ export function useWire(
   }, []);
 
   return {
-    completedBlocks,
-    pushBlock,
-    streamingThinkText,
-    streamingText,
-    setStreamingText,
+    transcriptEntries,
+    appendTranscriptEntry,
+    livePane,
     sendMessage,
     cancelStream,
-    pendingToolCall,
-    pendingApproval,
     handleApprovalResponse,
-    pendingQuestion,
     handleQuestionResponse,
     toasts,
     dismissToast,

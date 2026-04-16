@@ -17,8 +17,9 @@
  *   --workdir <dir>    workspace directory (default: /tmp/kimi-e2e)
  */
 
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { hostname, platform, arch, release } from 'node:os';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
 
 import {
@@ -106,7 +107,17 @@ async function main(): Promise<void> {
   process.stderr.write(`[smoke] config loaded, defaultModel=${String(kimiConfig.defaultModel)}\n`);
 
   // 2. Provider
-  const provider = await createProviderFromConfig(kimiConfig, args.model);
+  const __dirname = import.meta.dirname;
+  const version: string = (JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8')) as { version: string }).version;
+  const kimiHeaders: Record<string, string> = {
+    'User-Agent': `KimiCLI/${version}`,
+    'X-Msh-Platform': 'kimi_cli',
+    'X-Msh-Version': version,
+    'X-Msh-Device-Name': hostname(),
+    'X-Msh-Device-Model': `${platform()} ${release()} ${arch()}`,
+    'X-Msh-Os-Version': release(),
+  };
+  const provider = createProviderFromConfig(kimiConfig, args.model, kimiHeaders);
   process.stderr.write(`[smoke] provider created: ${provider.constructor.name}\n`);
 
   // 3. Agent / skills / system prompt

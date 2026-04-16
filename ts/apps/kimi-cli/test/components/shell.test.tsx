@@ -351,4 +351,234 @@ describe('Shell', () => {
     expect(cancelFn).toHaveBeenCalled();
     unmount();
   }, 5000);
+
+  it('keeps the input dock mounted while thinking is streaming', async () => {
+    const stream = createPushableStream();
+    const opts = { session_id: 'test-session-123', turn_id: 'turn_1' };
+
+    mockWireClient = createMockWireClient({
+      prompt: vi.fn(async () => {
+        stream.push(
+          createEvent(
+            'turn.begin',
+            { turn_id: 'turn_1', user_input: 'hi', input_kind: 'user' },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent(
+            'content.delta',
+            { type: 'think', think: 'Thought 1\nThought 2\nThought 3' },
+            opts,
+          ),
+        );
+        return { turn_id: 'turn_1' };
+      }),
+      subscribe: vi.fn(() => stream.iterable),
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <App wireClient={mockWireClient} initialState={defaultState()} />,
+    );
+
+    stdin.write('hi');
+    await wait(50);
+    stdin.write('\r');
+    await wait(200);
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('thinking');
+    expect(frame).toContain('Streaming in progress');
+    expect(frame).toContain('\u256D');
+    expect(frame).toContain('\u2570');
+    unmount();
+  }, 5000);
+
+  it('shows unfinished assistant text in the live composing pane before turn end', async () => {
+    const stream = createPushableStream();
+    const opts = { session_id: 'test-session-123', turn_id: 'turn_1' };
+
+    mockWireClient = createMockWireClient({
+      prompt: vi.fn(async () => {
+        stream.push(
+          createEvent(
+            'turn.begin',
+            { turn_id: 'turn_1', user_input: 'hi', input_kind: 'user' },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent('content.delta', { type: 'text', text: 'partial response' }, opts),
+        );
+        return { turn_id: 'turn_1' };
+      }),
+      subscribe: vi.fn(() => stream.iterable),
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <App wireClient={mockWireClient} initialState={defaultState()} />,
+    );
+
+    stdin.write('hi');
+    await wait(50);
+    stdin.write('\r');
+    await wait(150);
+
+    const streamingFrame = lastFrame() ?? '';
+    expect(streamingFrame).toContain('composing');
+    expect(streamingFrame).toContain('partial response');
+    expect(streamingFrame.indexOf('composing')).toBeLessThan(streamingFrame.indexOf('Streaming in progress'));
+
+    stream.push(
+      createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts),
+    );
+    await wait(150);
+
+    expect(lastFrame() ?? '').toContain('partial response');
+    unmount();
+  }, 5000);
+
+  it('moves completed assistant blocks into static output while keeping the pending tail live', async () => {
+    const stream = createPushableStream();
+    const opts = { session_id: 'test-session-123', turn_id: 'turn_1' };
+
+    mockWireClient = createMockWireClient({
+      prompt: vi.fn(async () => {
+        stream.push(
+          createEvent(
+            'turn.begin',
+            { turn_id: 'turn_1', user_input: 'hi', input_kind: 'user' },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent('content.delta', { type: 'text', text: 'First paragraph.' }, opts),
+        );
+        stream.push(
+          createEvent('content.delta', { type: 'text', text: '\n\nSecond paragraph' }, opts),
+        );
+        return { turn_id: 'turn_1' };
+      }),
+      subscribe: vi.fn(() => stream.iterable),
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <App wireClient={mockWireClient} initialState={defaultState()} />,
+    );
+
+    stdin.write('hi');
+    await wait(50);
+    stdin.write('\r');
+    await wait(250);
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('First paragraph.');
+    expect(frame).toContain('Second paragraph');
+    expect(frame.match(/First paragraph\./g)?.length).toBe(1);
+    expect(frame.indexOf('composing')).toBeLessThan(frame.indexOf('Second paragraph'));
+    unmount();
+  }, 5000);
+
+  it('renders a gray thinking marker when thinking is flushed to the transcript', async () => {
+    const stream = createPushableStream();
+    const opts = { session_id: 'test-session-123', turn_id: 'turn_1' };
+
+    mockWireClient = createMockWireClient({
+      prompt: vi.fn(async () => {
+        stream.push(
+          createEvent(
+            'turn.begin',
+            { turn_id: 'turn_1', user_input: 'hi', input_kind: 'user' },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent(
+            'content.delta',
+            { type: 'think', think: 'Thought 1\nThought 2' },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts),
+        );
+        return { turn_id: 'turn_1' };
+      }),
+      subscribe: vi.fn(() => stream.iterable),
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <App wireClient={mockWireClient} initialState={defaultState()} />,
+    );
+
+    stdin.write('hi');
+    await wait(50);
+    stdin.write('\r');
+    await wait(250);
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('● Thought 1');
+    expect(frame).toContain('Thought 2');
+    unmount();
+  }, 5000);
+
+  it('keeps tool transcript rows compact without showing argument or result details', async () => {
+    const stream = createPushableStream();
+    const opts = { session_id: 'test-session-123', turn_id: 'turn_1' };
+
+    mockWireClient = createMockWireClient({
+      prompt: vi.fn(async () => {
+        stream.push(
+          createEvent(
+            'turn.begin',
+            { turn_id: 'turn_1', user_input: 'hi', input_kind: 'user' },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent(
+            'tool.call',
+            {
+              id: 'tool_1',
+              name: 'Shell',
+              args: { command: 'git status' },
+              description: 'Run git status',
+            },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent(
+            'tool.result',
+            {
+              tool_call_id: 'tool_1',
+              output: 'On branch main\nnothing to commit',
+              is_error: false,
+            },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts),
+        );
+        return { turn_id: 'turn_1' };
+      }),
+      subscribe: vi.fn(() => stream.iterable),
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <App wireClient={mockWireClient} initialState={defaultState()} />,
+    );
+
+    stdin.write('hi');
+    await wait(50);
+    stdin.write('\r');
+    await wait(250);
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Used Shell');
+    expect(frame).not.toContain('git status');
+    expect(frame).not.toContain('On branch main');
+    unmount();
+  }, 5000);
 });
