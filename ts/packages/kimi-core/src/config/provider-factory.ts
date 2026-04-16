@@ -44,6 +44,7 @@ export function createProvider(
   name: string,
   config: ProviderConfig,
   modelOverride?: string,
+  defaultHeaders?: Record<string, string>,
 ): ChatProvider {
   if (config.oauth && (!config.apiKey || config.apiKey === '')) {
     throw new ProviderFactoryError(
@@ -91,6 +92,7 @@ export function createProvider(
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
         model,
+        defaultHeaders,
       });
     }
 
@@ -173,6 +175,8 @@ export interface ProviderFactoryDeps {
   readonly oauthResolver?: OAuthResolver | undefined;
   /** Override for `process.env` (test hook). */
   readonly env?: Record<string, string | undefined> | undefined;
+  /** Default HTTP headers injected into provider constructors (e.g. User-Agent). */
+  readonly defaultHeaders?: Record<string, string> | undefined;
 }
 
 /**
@@ -241,5 +245,5 @@ export async function createProviderFromConfig(
     effectiveProviderConfig = { ...providerConfig, apiKey: accessToken };
   }
 
-  return createProvider(providerName, effectiveProviderConfig, modelName);
+  return createProvider(providerName, effectiveProviderConfig, modelName, deps?.defaultHeaders);
 }
