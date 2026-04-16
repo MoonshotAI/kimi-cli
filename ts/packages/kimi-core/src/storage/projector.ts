@@ -142,8 +142,37 @@ function renderNotificationXml(data: Record<string, unknown>): string {
   if (title.length > 0) lines.push(`Title: ${title}`);
   if (severity.length > 0) lines.push(`Severity: ${severity}`);
   if (body.length > 0) lines.push(body);
+
+  // Slice 6.1 — append <task-notification> block with truncated tail
+  // output when the notification originates from a background task.
+  if (data['source_kind'] === 'background_task') {
+    const tailRaw = typeof data['tail_output'] === 'string' ? data['tail_output'] : '';
+    if (tailRaw.length > 0) {
+      const truncated = truncateTailOutput(tailRaw, 20, 3000);
+      lines.push('<task-notification>');
+      lines.push(truncated);
+      lines.push('</task-notification>');
+    }
+    // When tail is empty, skip the block entirely (no empty tags)
+  }
+
   lines.push('</notification>');
   return lines.join('\n');
+}
+
+/**
+ * Slice 6.1 — truncate tail output to at most `maxLines` lines and
+ * `maxChars` characters. Takes the *last* N lines (tail), then trims
+ * from the front if the character budget is exceeded.
+ */
+function truncateTailOutput(raw: string, maxLines: number, maxChars: number): string {
+  const allLines = raw.split('\n');
+  const tailLines = allLines.length > maxLines ? allLines.slice(-maxLines) : allLines;
+  let result = tailLines.join('\n');
+  if (result.length > maxChars) {
+    result = result.slice(-maxChars);
+  }
+  return result;
 }
 
 function stringAttr(value: unknown, fallback: string): string {

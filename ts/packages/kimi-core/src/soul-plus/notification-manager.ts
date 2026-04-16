@@ -159,7 +159,30 @@ export class NotificationManager {
    */
   private readonly inFlightDedupe = new Map<string, Promise<string>>();
 
+  /**
+   * Slice 6.1 — count of notifications emitted to the LLM sink that have
+   * not yet been drained by `markLlmDrained()`. This enables the host
+   * loop to poll `hasPendingForLlm()` without scanning the journal.
+   */
+  private pendingLlmCount = 0;
+
   constructor(private readonly deps: NotificationManagerDeps) {}
+
+  /**
+   * Slice 6.1 — returns `true` when at least one notification has been
+   * emitted to the LLM sink but not yet consumed by `markLlmDrained()`.
+   */
+  hasPendingForLlm(): boolean {
+    return this.pendingLlmCount > 0;
+  }
+
+  /**
+   * Slice 6.1 — mark all pending LLM notifications as consumed. Called
+   * by the turn loop after injecting pending notifications into context.
+   */
+  markLlmDrained(): void {
+    this.pendingLlmCount = 0;
+  }
 
   /**
    * Emit a notification. WAL-then-mirror order (§4.5.6):
@@ -267,6 +290,8 @@ export class NotificationManager {
       try {
         this.deps.onEmittedToLlm(data);
         deliveredAt.llm = Date.now();
+        // Slice 6.1 — track pending LLM notifications
+        this.pendingLlmCount += 1;
       } catch (error) {
         this.logWarn('notification llm sink failed', error);
       }
@@ -377,6 +402,8 @@ export class NotificationManager {
       contextState.stashEphemeralInjection(injection);
       injected.push(injection);
     }
+    // Slice 6.1: replayed notifications count as pending for LLM
+    this.pendingLlmCount += injected.length;
     return injected;
   }
 
