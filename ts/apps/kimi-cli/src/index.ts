@@ -5,11 +5,11 @@
  * UI mode, and dispatches to the appropriate runner (shell / print / wire).
  *
  * In shell mode the Ink 7 TUI is launched with no alternate screen. The
- * shell runner boots a real `KimiCoreClient` wrapping `@moonshot-ai/core`
- * by default. `--offline` falls back to the development `MockDataSource`.
+ * shell runner boots a `KimiCoreClient` wrapping `@moonshot-ai/core`.
  */
 
 import { readFileSync } from 'node:fs';
+import { hostname, platform, arch, release } from 'node:os';
 import { resolve } from 'node:path';
 
 import {
@@ -63,7 +63,6 @@ import type {
   WorkspaceConfig,
 } from '@moonshot-ai/core';
 import { localKaos } from '@moonshot-ai/kaos';
-import { MockDataSource } from '@moonshot-ai/kimi-wire-mock';
 import { render } from 'ink';
 import React from 'react';
 
@@ -73,10 +72,8 @@ import { runPrintMode } from './app/PrintMode.js';
 import { createProgram } from './cli/commands.js';
 import type { CLIOptions, UIMode } from './cli/options.js';
 import { OptionConflictError, validateOptions } from './cli/options.js';
-import { loadConfig as loadCliConfig } from './config/loader.js';
 import { StubUrlFetcher } from './providers/stub-fetch-url.js';
 import { StubWebSearchProvider } from './providers/stub-web-search.js';
-import { WireClientImpl } from './wire/client.js';
 import type { WireClient } from './wire/client.js';
 import { KimiCoreClient } from './wire/kimi-core-client.js';
 import type { PerSessionToolContext } from './wire/kimi-core-client.js';
@@ -94,6 +91,17 @@ function getVersion(): string {
   const pkgPath = resolve(__dirname, '..', 'package.json');
   const pkg: { version: string } = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   return pkg.version;
+}
+
+function buildKimiDefaultHeaders(version: string): Record<string, string> {
+  return {
+    'User-Agent': `KimiCLI/${version}`,
+    'X-Msh-Platform': 'kimi_cli',
+    'X-Msh-Version': version,
+    'X-Msh-Device-Name': hostname(),
+    'X-Msh-Device-Model': `${platform()} ${release()} ${arch()}`,
+    'X-Msh-Os-Version': release(),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -198,46 +206,6 @@ async function ensureOAuthIfNeeded(
   return { oauthResolver, managers };
 }
 
-async function bootstrapOfflineShell(opts: CLIOptions): Promise<ShellBootstrap> {
-  const { config } = loadCliConfig({
-    config: opts.config,
-    configFile: opts.configFile,
-  });
-
-  const model = opts.model ?? config.default_model ?? 'mock-model';
-  const workDir = opts.workDir ?? process.cwd();
-
-  const dataSource = new MockDataSource();
-  const wireClient = new WireClientImpl(dataSource);
-
-  let sessionId: string;
-  if (opts.session) {
-    const existing = dataSource.sessions.get(opts.session);
-    if (existing) {
-      sessionId = opts.session;
-    } else {
-      sessionId = dataSource.sessions.create(workDir);
-      process.stderr.write(
-        `Warning: session "${opts.session}" not found, created new session ${sessionId}\n`,
-      );
-    }
-  } else if (opts.continue) {
-    const existing = dataSource.sessions.list(workDir);
-    sessionId = existing.length > 0 ? existing[0]!.id : dataSource.sessions.create(workDir);
-  } else {
-    sessionId = dataSource.sessions.create(workDir);
-  }
-
-  return {
-    wireClient,
-    sessionId,
-    model,
-    defaultThinking: config.default_thinking,
-    defaultYolo: config.default_yolo,
-    theme: config.theme,
-  };
-}
-
 async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   // 1. Load kimi-core config (~/.kimi/config.toml + project override).
   const workDir = opts.workDir ?? process.cwd();
@@ -251,19 +219,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
       'No default model configured. Set `default_model` in ~/.kimi/config.toml or pass --model.',
     );
   }
-
-  // 2a. Slice 5.0 — OAuth pre-flight. Publishes device-code dialog when the
-  // selected provider requires a managed login and no token is persisted.
-  setCliVersion(getVersion());
-  const { oauthResolver, managers: oauthManagers } = await ensureOAuthIfNeeded(
-    kimiConfig,
-    modelAlias,
-    pathConfig,
-  );
-
-  const provider = await createProviderFromConfig(kimiConfig, modelAlias, {
-    ...(oauthResolver !== undefined ? { oauthResolver } : {}),
-  });
+  const provider = createProviderFromConfig(kimiConfig, modelAlias, buildKimiDefaultHeaders(getVersion()));
 
   // 3. Resolve the agent spec — Slice 4.1 only uses the built-in default.
   const agentRegistry = new AgentRegistry();
@@ -535,9 +491,7 @@ function extractMcpConfig(raw: Record<string, unknown> | undefined): McpConfig |
 }
 
 async function runShell(opts: CLIOptions, version: string): Promise<void> {
-  const bootstrap = opts.offline
-    ? await bootstrapOfflineShell(opts)
-    : await bootstrapCoreShell(opts);
+  const bootstrap = await bootstrapCoreShell(opts);
 
   const workDir = opts.workDir ?? process.cwd();
 
@@ -587,9 +541,7 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
 }
 
 async function runPrint(opts: CLIOptions): Promise<void> {
-  const bootstrap = opts.offline
-    ? await bootstrapOfflineShell(opts)
-    : await bootstrapCoreShell(opts);
+  const bootstrap = await bootstrapCoreShell(opts);
 
   try {
     const exitCode = await runPrintMode({

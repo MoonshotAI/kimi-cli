@@ -44,6 +44,7 @@ export function createProvider(
   name: string,
   config: ProviderConfig,
   modelOverride?: string,
+  defaultHeaders?: Record<string, string>,
 ): ChatProvider {
   if (config.oauth && (!config.apiKey || config.apiKey === '')) {
     throw new ProviderFactoryError(
@@ -91,6 +92,7 @@ export function createProvider(
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
         model,
+        defaultHeaders,
       });
     }
 

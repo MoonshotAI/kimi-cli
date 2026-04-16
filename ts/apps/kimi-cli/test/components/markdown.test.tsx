@@ -379,11 +379,6 @@ describe('committedBoundary', () => {
 // ── ThinkingBlock tests ──────────────────────────────────────────────────
 
 describe('ThinkingBlock', () => {
-  it('renders 💭 prefix with empty text', () => {
-    const frame = renderText(<ThinkingBlock text="" />);
-    expect(frame).toContain('💭');
-  });
-
   it('renders short text without truncation', () => {
     const text = 'Line 1\nLine 2\nLine 3';
     const frame = renderText(<ThinkingBlock text={text} />);

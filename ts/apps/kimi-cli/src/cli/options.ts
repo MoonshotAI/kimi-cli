@@ -59,9 +59,6 @@ export interface CLIOptions {
   maxRetriesPerStep: number | undefined;
   maxRalphIterations: number | undefined;
 
-  // -- Development ----------------------------------------------------------
-  /** When true, boot the TUI with MockDataSource instead of real kimi-core. */
-  offline: boolean;
 }
 
 // ---------------------------------------------------------------------------

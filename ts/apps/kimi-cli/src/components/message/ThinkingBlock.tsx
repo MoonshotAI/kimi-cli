@@ -1,7 +1,7 @@
 /**
  * ThinkingBlock component -- renders thinking content in full.
  *
- * Shows the thinking text with a "💭" prefix in themed gray italic.
+ * Shows the thinking text in themed gray italic.
  */
 
 import { Box, Text } from 'ink';
@@ -23,7 +23,6 @@ export default function ThinkingBlock({ text }: ThinkingBlockProps): React.JSX.E
     return (
       <Box>
         <Text color={thinkColor} italic>
-          💭{' '}
         </Text>
       </Box>
     );
@@ -32,7 +31,6 @@ export default function ThinkingBlock({ text }: ThinkingBlockProps): React.JSX.E
   return (
     <Box>
       <Text color={thinkColor} italic>
-        💭 {text}
       </Text>
     </Box>
   );
