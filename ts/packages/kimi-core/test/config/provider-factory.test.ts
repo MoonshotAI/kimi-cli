@@ -157,57 +157,145 @@ describe('createProviderFromConfig', () => {
     },
   };
 
-  it('resolves alias to correct provider', () => {
-    const provider = createProviderFromConfig(config, 'sonnet');
+  it('resolves alias to correct provider', async () => {
+    const provider = await createProviderFromConfig(config, 'sonnet');
     expect(provider.name).toBe('anthropic');
     expect(provider.modelName).toBe('k25');
   });
 
-  it('resolves alias to different provider', () => {
-    const provider = createProviderFromConfig(config, 'gpt4');
+  it('resolves alias to different provider', async () => {
+    const provider = await createProviderFromConfig(config, 'gpt4');
     expect(provider.name).toBe('openai');
     expect(provider.modelName).toBe('gpt-4o');
   });
 
-  it('uses defaultModel when no model specified', () => {
-    const provider = createProviderFromConfig(config);
+  it('uses defaultModel when no model specified', async () => {
+    const provider = await createProviderFromConfig(config);
     // defaultModel is "sonnet" which is an alias → anthropic
     expect(provider.name).toBe('anthropic');
     expect(provider.modelName).toBe('k25');
   });
 
-  it('falls back to defaultProvider for raw model name', () => {
-    const provider = createProviderFromConfig(config, 'k25');
+  it('falls back to defaultProvider for raw model name', async () => {
+    const provider = await createProviderFromConfig(config, 'k25');
     expect(provider.name).toBe('anthropic');
     expect(provider.modelName).toBe('k25');
   });
 
-  it('throws when alias references unconfigured provider', () => {
+  it('throws when alias references unconfigured provider', async () => {
     const badConfig: KimiConfig = {
       providers: {},
       models: {
         ghost: { provider: 'nonexistent', model: 'x' },
       },
     };
-    expect(() => createProviderFromConfig(badConfig, 'ghost')).toThrow(ProviderFactoryError);
-    expect(() => createProviderFromConfig(badConfig, 'ghost')).toThrow(/not configured/);
+    await expect(createProviderFromConfig(badConfig, 'ghost')).rejects.toBeInstanceOf(
+      ProviderFactoryError,
+    );
+    await expect(createProviderFromConfig(badConfig, 'ghost')).rejects.toThrow(/not configured/);
   });
 
-  it('throws when no provider can be determined', () => {
+  it('throws when no provider can be determined', async () => {
     const emptyConfig: KimiConfig = {
       providers: {},
     };
-    expect(() => createProviderFromConfig(emptyConfig)).toThrow(ProviderFactoryError);
-    expect(() => createProviderFromConfig(emptyConfig)).toThrow(/No provider could be determined/);
+    await expect(createProviderFromConfig(emptyConfig)).rejects.toBeInstanceOf(
+      ProviderFactoryError,
+    );
+    await expect(createProviderFromConfig(emptyConfig)).rejects.toThrow(
+      /No provider could be determined/,
+    );
   });
 
-  it('throws when defaultProvider is not in providers map', () => {
+  it('throws when defaultProvider is not in providers map', async () => {
     const badConfig: KimiConfig = {
       providers: {},
       defaultProvider: 'missing',
     };
-    expect(() => createProviderFromConfig(badConfig, 'some-model')).toThrow(ProviderFactoryError);
-    expect(() => createProviderFromConfig(badConfig, 'some-model')).toThrow(/not configured/);
+    await expect(createProviderFromConfig(badConfig, 'some-model')).rejects.toBeInstanceOf(
+      ProviderFactoryError,
+    );
+    await expect(createProviderFromConfig(badConfig, 'some-model')).rejects.toThrow(
+      /not configured/,
+    );
+  });
+
+  it('calls oauthResolver for OAuth-backed provider', async () => {
+    const oauthConfig: KimiConfig = {
+      providers: {
+        'managed:kimi-code': {
+          type: 'kimi',
+          apiKey: '',
+          baseUrl: 'https://api.kimi.com',
+          oauth: { storage: 'file', key: 'oauth/kimi-code' },
+        },
+      },
+      defaultProvider: 'managed:kimi-code',
+      models: {
+        'kimi-code/kimi-for-coding': {
+          provider: 'managed:kimi-code',
+          model: 'kimi-for-coding',
+        },
+      },
+    };
+    let called = false;
+    const oauthResolver = async (name: string): Promise<string> => {
+      called = true;
+      expect(name).toBe('managed:kimi-code');
+      return 'resolved-access-token';
+    };
+    const provider = await createProviderFromConfig(
+      oauthConfig,
+      'kimi-code/kimi-for-coding',
+      { oauthResolver },
+    );
+    expect(called).toBe(true);
+    expect(provider.name).toBe('kimi');
+  });
+
+  it('throws when OAuth provider has no resolver', async () => {
+    const oauthConfig: KimiConfig = {
+      providers: {
+        'managed:kimi-code': {
+          type: 'kimi',
+          apiKey: '',
+          baseUrl: 'https://api.kimi.com',
+          oauth: { storage: 'file', key: 'oauth/kimi-code' },
+        },
+      },
+      defaultProvider: 'managed:kimi-code',
+      models: {
+        'kimi-code/kimi-for-coding': {
+          provider: 'managed:kimi-code',
+          model: 'kimi-for-coding',
+        },
+      },
+    };
+    await expect(
+      createProviderFromConfig(oauthConfig, 'kimi-code/kimi-for-coding'),
+    ).rejects.toThrow(/requires OAuth/);
+  });
+
+  it('applies env overrides before provider creation', async () => {
+    const baseCfg: KimiConfig = {
+      providers: {
+        'kimi-internal': {
+          type: 'kimi',
+          apiKey: 'config-key',
+          baseUrl: 'https://config/v1',
+          defaultModel: 'kimi-k2.5',
+        },
+      },
+      defaultProvider: 'kimi-internal',
+      defaultModel: 'kimi-k2-5',
+      models: {
+        'kimi-k2-5': { provider: 'kimi-internal', model: 'kimi-k2.5' },
+      },
+    };
+    const provider = await createProviderFromConfig(baseCfg, undefined, {
+      env: { KIMI_MODEL_NAME: 'kimi-latest' },
+    });
+    expect(provider.modelName).toBe('kimi-latest');
   });
 });
 

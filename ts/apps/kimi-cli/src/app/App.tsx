@@ -10,6 +10,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import Shell from '../components/Shell.js';
 import { createDefaultRegistry, parseSlashInput } from '../slash/index.js';
 import type { SlashCommandContext } from '../slash/index.js';
+import { createAuthCommands } from '../slash/auth-commands.js';
 import { createThemeStyles } from '../theme/styles.js';
 import type { WireClient } from '../wire/index.js';
 import { AppContext } from './context.js';
@@ -18,12 +19,28 @@ import { useAppState } from './hooks/useApp.js';
 import { useSession } from './hooks/useSession.js';
 import { useWire } from './hooks/useWire.js';
 
+export interface AppOAuthManager {
+  logout(): Promise<void>;
+  hasToken(): Promise<boolean>;
+}
+
 export interface AppProps {
   readonly wireClient: WireClient;
   readonly initialState: AppState;
+  /**
+   * Slice 5.0 — OAuth managers registered with `/logout`. Keys are
+   * provider names (e.g. "managed:kimi-code"). When present and
+   * non-empty, `createAuthCommands` is merged into the default
+   * registry.
+   */
+  readonly oauthManagers?: ReadonlyMap<string, AppOAuthManager> | undefined;
 }
 
-export default function App({ wireClient, initialState }: AppProps): React.JSX.Element {
+export default function App({
+  wireClient,
+  initialState,
+  oauthManagers,
+}: AppProps): React.JSX.Element {
   const { state, setState } = useAppState(initialState);
   const {
     completedBlocks,
@@ -52,8 +69,25 @@ export default function App({ wireClient, initialState }: AppProps): React.JSX.E
 
   const styles = useMemo(() => createThemeStyles(state.theme), [state.theme]);
 
-  // Slash command registry (created once).
-  const registry = useMemo(() => createDefaultRegistry(), []);
+  // Slash command registry (created once). Auth commands are registered when
+  // the host injects OAuth managers (Slice 5.0).
+  const registry = useMemo(() => {
+    const reg = createDefaultRegistry();
+    if (oauthManagers !== undefined && oauthManagers.size > 0) {
+      const managersMap = new Map<string, { logout: () => Promise<void> }>();
+      for (const [name, mgr] of oauthManagers) {
+        managersMap.set(name, mgr);
+      }
+      const firstName = [...oauthManagers.keys()][0];
+      for (const cmd of createAuthCommands({
+        managers: managersMap,
+        ...(firstName !== undefined ? { defaultProviderName: firstName } : {}),
+      })) {
+        reg.register(cmd);
+      }
+    }
+    return reg;
+  }, [oauthManagers]);
 
   // ── Slash command execution ────────────────────────────────────
 

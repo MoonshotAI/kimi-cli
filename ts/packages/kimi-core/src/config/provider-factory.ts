@@ -1,8 +1,15 @@
 /**
  * Provider factory — create kosong ChatProvider instances from config.
  *
- * Each provider type maps to its concrete kosong class, imported from
- * the subpath exports to avoid polluting downstream type bundles.
+ * Public entry point is `createProviderFromConfig` which:
+ *  1. Applies env_overrides (`KIMI_BASE_URL`, `OPENAI_BASE_URL`, etc.)
+ *  2. Resolves model alias → providerConfig + modelOverride
+ *  3. If provider has `oauth`, resolves an access token via the injected
+ *     OAuthResolver (caller-managed OAuthManager); uses it as `apiKey`.
+ *  4. Delegates to `createProvider()` which constructs the kosong class.
+ *
+ * `createProvider()` is the low-level synchronous builder used by callers
+ * that already resolved the apiKey themselves (e.g. tests).
  */
 
 import type { ChatProvider } from '@moonshot-ai/kosong';
@@ -12,6 +19,7 @@ import { KimiChatProvider } from '@moonshot-ai/kosong/providers/kimi';
 import { OpenAILegacyChatProvider } from '@moonshot-ai/kosong/providers/openai-legacy';
 import { OpenAIResponsesChatProvider } from '@moonshot-ai/kosong/providers/openai-responses';
 
+import { applyEnvOverrides } from './env-overrides.js';
 import type { KimiConfig, ProviderConfig } from './schema.js';
 
 // ── Error ───────────────────────────────────────────────────────────────
@@ -23,14 +31,14 @@ export class ProviderFactoryError extends Error {
   }
 }
 
-// ── Factory ─────────────────────────────────────────────────────────────
+// ── Low-level synchronous factory ──────────────────────────────────────
 
 /**
- * Create a kosong {@link ChatProvider} from a single provider config entry.
+ * Create a kosong {@link ChatProvider} from a resolved provider config.
  *
- * @param name - Logical provider name (for error messages).
- * @param config - The provider configuration block.
- * @param modelOverride - If given, overrides `config.defaultModel`.
+ * @param name - Logical provider name (error messages only).
+ * @param config - Provider configuration block.
+ * @param modelOverride - When given, overrides `config.defaultModel`.
  */
 export function createProvider(
   name: string,
@@ -39,7 +47,8 @@ export function createProvider(
 ): ChatProvider {
   if (config.oauth && (!config.apiKey || config.apiKey === '')) {
     throw new ProviderFactoryError(
-      `Provider "${name}": OAuth authentication is not yet supported. Provide an apiKey or remove the OAuth configuration.`,
+      `Provider "${name}" requires OAuth authentication. ` +
+        'Use createProviderFromConfig() with an OAuth resolver, or run /login first.',
     );
   }
 
@@ -49,7 +58,7 @@ export function createProvider(
     case 'anthropic': {
       if (!model) {
         throw new ProviderFactoryError(
-          `Provider "${name}" (anthropic): no model specified. Set defaultModel in the provider config or pass a model name.`,
+          `Provider "${name}" (anthropic): no model specified.`,
         );
       }
       return new AnthropicChatProvider({
@@ -62,7 +71,7 @@ export function createProvider(
     case 'openai': {
       if (!model) {
         throw new ProviderFactoryError(
-          `Provider "${name}" (openai): no model specified. Set defaultModel in the provider config or pass a model name.`,
+          `Provider "${name}" (openai): no model specified.`,
         );
       }
       return new OpenAILegacyChatProvider({
@@ -75,7 +84,7 @@ export function createProvider(
     case 'kimi': {
       if (!model) {
         throw new ProviderFactoryError(
-          `Provider "${name}" (kimi): no model specified. Set defaultModel in the provider config or pass a model name.`,
+          `Provider "${name}" (kimi): no model specified.`,
         );
       }
       return new KimiChatProvider({
@@ -88,7 +97,7 @@ export function createProvider(
     case 'google-genai': {
       if (!model) {
         throw new ProviderFactoryError(
-          `Provider "${name}" (google-genai): no model specified. Set defaultModel in the provider config or pass a model name.`,
+          `Provider "${name}" (google-genai): no model specified.`,
         );
       }
       return new GoogleGenAIChatProvider({
@@ -100,7 +109,7 @@ export function createProvider(
     case 'openai_responses': {
       if (!model) {
         throw new ProviderFactoryError(
-          `Provider "${name}" (openai_responses): no model specified. Set defaultModel in the provider config or pass a model name.`,
+          `Provider "${name}" (openai_responses): no model specified.`,
         );
       }
       return new OpenAIResponsesChatProvider({
@@ -113,7 +122,7 @@ export function createProvider(
     case 'vertexai': {
       if (!model) {
         throw new ProviderFactoryError(
-          `Provider "${name}" (vertexai): no model specified. Set defaultModel in the provider config or pass a model name.`,
+          `Provider "${name}" (vertexai): no model specified.`,
         );
       }
       return new GoogleGenAIChatProvider({
@@ -130,84 +139,104 @@ export function createProvider(
   }
 }
 
-// ── Model alias resolution ──────────────────────────────────────────────
+// ── Model alias resolution ─────────────────────────────────────────────
 
 export interface ResolvedModel {
   providerName: string;
   modelName: string;
 }
 
-/**
- * Resolve a model name or alias to the concrete provider + model.
- *
- * Resolution order:
- *   1. Exact match in `config.models` (alias map).
- *   2. Treat as a raw model name on `config.defaultProvider`.
- *
- * Returns `undefined` if the alias cannot be resolved.
- */
 export function resolveModelAlias(
   config: KimiConfig,
   nameOrAlias: string,
 ): ResolvedModel | undefined {
-  // Check alias map
   const alias = config.models?.[nameOrAlias];
   if (alias !== undefined) {
     return { providerName: alias.provider, modelName: alias.model };
   }
-
-  // Fallback: use as raw model name on defaultProvider
   if (config.defaultProvider !== undefined) {
     return { providerName: config.defaultProvider, modelName: nameOrAlias };
   }
-
   return undefined;
 }
 
-// ── High-level: config → provider ───────────────────────────────────────
+// ── High-level async factory ────────────────────────────────────────────
 
 /**
- * Create a {@link ChatProvider} from a full config, resolving model aliases
- * and defaulting to the config-level `defaultProvider`/`defaultModel`.
- *
- * @param config - Full KimiConfig.
- * @param modelNameOrAlias - Optional model name or alias. When omitted,
- *   uses `config.defaultModel`.
+ * Resolver that, given a provider name, returns a fresh OAuth access token.
+ * Host (kimi-cli) constructs an OAuthManager per OAuth-backed provider and
+ * wires it through this callback.
  */
-export function createProviderFromConfig(
+export type OAuthResolver = (providerName: string) => Promise<string>;
+
+export interface ProviderFactoryDeps {
+  readonly oauthResolver?: OAuthResolver | undefined;
+  /** Override for `process.env` (test hook). */
+  readonly env?: Record<string, string | undefined> | undefined;
+}
+
+/**
+ * Resolve a model alias → provider + model and return a kosong provider.
+ *
+ * Async because OAuth-backed providers await `oauthResolver(name)` for the
+ * current access token before constructing.
+ */
+export async function createProviderFromConfig(
   config: KimiConfig,
   modelNameOrAlias?: string,
-): ChatProvider {
-  const requestedModel = modelNameOrAlias ?? config.defaultModel;
+  deps?: ProviderFactoryDeps,
+): Promise<ChatProvider> {
+  const effectiveConfig = applyEnvOverrides(config, deps?.env);
+  const requestedModel = modelNameOrAlias ?? effectiveConfig.defaultModel;
+
+  let providerName: string;
+  let modelName: string | undefined;
 
   if (requestedModel !== undefined) {
-    // Try to resolve as alias first
-    const resolved = resolveModelAlias(config, requestedModel);
+    const resolved = resolveModelAlias(effectiveConfig, requestedModel);
     if (resolved !== undefined) {
-      const providerConfig = config.providers[resolved.providerName];
-      if (providerConfig === undefined) {
-        throw new ProviderFactoryError(
-          `Model alias "${requestedModel}" references provider "${resolved.providerName}" which is not configured.`,
-        );
-      }
-      return createProvider(resolved.providerName, providerConfig, resolved.modelName);
+      providerName = resolved.providerName;
+      modelName = resolved.modelName;
+    } else if (effectiveConfig.defaultProvider !== undefined) {
+      providerName = effectiveConfig.defaultProvider;
+      modelName = requestedModel;
+    } else {
+      throw new ProviderFactoryError(
+        'No provider could be determined. Set defaultProvider or use a model alias.',
+      );
     }
-  }
-
-  // No alias match — use defaultProvider with the given model (or its own defaultModel)
-  const providerName = config.defaultProvider;
-  if (providerName === undefined) {
+  } else if (effectiveConfig.defaultProvider !== undefined) {
+    providerName = effectiveConfig.defaultProvider;
+    modelName = undefined;
+  } else {
     throw new ProviderFactoryError(
-      'No provider could be determined. Set defaultProvider in config or use a model alias.',
+      'No provider could be determined. Set defaultProvider or pass a model alias.',
     );
   }
 
-  const providerConfig = config.providers[providerName];
+  const providerConfig = effectiveConfig.providers[providerName];
   if (providerConfig === undefined) {
     throw new ProviderFactoryError(
-      `Default provider "${providerName}" is not configured in providers.`,
+      `Provider "${providerName}" is not configured in providers.`,
     );
   }
 
-  return createProvider(providerName, providerConfig, requestedModel);
+  // OAuth-backed provider: resolve access token via the caller-managed
+  // OAuthManager and splice it into providerConfig as apiKey.
+  let effectiveProviderConfig = providerConfig;
+  if (
+    providerConfig.oauth !== undefined &&
+    (providerConfig.apiKey === undefined || providerConfig.apiKey === '')
+  ) {
+    if (deps?.oauthResolver === undefined) {
+      throw new ProviderFactoryError(
+        `Provider "${providerName}" requires OAuth authentication. ` +
+          'Pass an oauthResolver in ProviderFactoryDeps.',
+      );
+    }
+    const accessToken = await deps.oauthResolver(providerName);
+    effectiveProviderConfig = { ...providerConfig, apiKey: accessToken };
+  }
+
+  return createProvider(providerName, effectiveProviderConfig, modelName);
 }

@@ -21,11 +21,14 @@ import {
   EditTool,
   ExitPlanModeTool,
   FetchURLTool,
+  FileTokenStorage,
   GlobTool,
   GrepTool,
   InMemoryTodoStore,
+  KIMI_CODE_FLOW_CONFIG,
   MCPConfigError,
   MCPManager,
+  OAuthManager,
   PathConfig,
   ReadMediaFileTool,
   ReadTool,
@@ -37,6 +40,7 @@ import {
   ThinkTool,
   WebSearchTool,
   WriteTool,
+  applyEnvOverrides,
   assembleSystemPrompt,
   createKosongAdapter,
   createKosongCompactionProvider,
@@ -47,10 +51,13 @@ import {
   loadConfig as loadKimiCoreConfig,
   parseMcpConfig,
   resolveSkillRoots,
+  setCliVersion,
 } from '@moonshot-ai/core';
 import type {
+  KimiConfig,
   McpConfig,
   McpLoadNotification,
+  OAuthResolver,
   Runtime,
   Tool,
   WorkspaceConfig,
@@ -72,6 +79,9 @@ import { WireClientImpl } from './wire/client.js';
 import type { WireClient } from './wire/client.js';
 import { KimiCoreClient } from './wire/kimi-core-client.js';
 import type { PerSessionToolContext } from './wire/kimi-core-client.js';
+import { join } from 'node:path';
+
+import { runLoginFlow } from './auth/login-flow.js';
 
 // ---------------------------------------------------------------------------
 // Version
@@ -100,6 +110,83 @@ interface ShellBootstrap {
    * runner closes it on exit so subprocess transports do not leak.
    */
   mcpManager?: MCPManager | undefined;
+  /**
+   * Slice 5.0 — OAuth managers for `/logout` slash command. Keyed by
+   * provider name; empty map when no OAuth-backed provider is in use.
+   */
+  oauthManagers?: Map<string, OAuthManager> | undefined;
+}
+
+/**
+ * Slice 5.0 — determine whether the selected provider needs OAuth and, if so,
+ * prepare an OAuthManager + ensure there's a valid token on disk (running
+ * the device flow inline if not).
+ */
+async function ensureOAuthIfNeeded(
+  kimiConfig: KimiConfig,
+  modelAlias: string,
+  pathConfig: PathConfig,
+): Promise<{
+  oauthResolver: OAuthResolver | undefined;
+  managers: Map<string, OAuthManager>;
+}> {
+  const managers = new Map<string, OAuthManager>();
+
+  // Use the same env-override pass the factory will apply, so KIMI_API_KEY
+  // can short-circuit OAuth if the user prefers an explicit key.
+  const effectiveConfig = applyEnvOverrides(kimiConfig);
+
+  // Resolve which provider would back the requested model.
+  const alias = effectiveConfig.models?.[modelAlias];
+  const providerName = alias?.provider ?? effectiveConfig.defaultProvider;
+  if (providerName === undefined) {
+    return { oauthResolver: undefined, managers };
+  }
+
+  const providerConfig = effectiveConfig.providers[providerName];
+  const needsOAuth =
+    providerConfig?.oauth !== undefined &&
+    (providerConfig.apiKey === undefined || providerConfig.apiKey === '');
+  if (!needsOAuth) {
+    return { oauthResolver: undefined, managers };
+  }
+
+  // Slice 5.0 MVP: only `managed:kimi-code` uses Device Code Flow with the
+  // hard-coded `KIMI_CODE_FLOW_CONFIG`. Adding a second OAuth-backed
+  // provider (e.g. another managed: vendor) requires plumbing its
+  // OAuthFlowConfig through `providerConfig.oauth.key` lookup. For now,
+  // refuse at startup so users see a clear error instead of a silent
+  // mis-configured token request.
+  if (providerName !== 'managed:kimi-code') {
+    throw new Error(
+      `OAuth provider "${providerName}" is not yet supported. ` +
+      'Slice 5.0 only implements managed:kimi-code; track a follow-up to ' +
+      'extend OAuthFlowConfig per-provider.',
+    );
+  }
+
+  const credentialsDir = join(pathConfig.home, 'credentials');
+  const storage = new FileTokenStorage(credentialsDir);
+  const manager = new OAuthManager({
+    config: KIMI_CODE_FLOW_CONFIG,
+    storage,
+  });
+  managers.set(providerName, manager);
+
+  const hasToken = await manager.hasToken();
+  if (!hasToken) {
+    await runLoginFlow({ providerName, manager });
+  }
+
+  const oauthResolver: OAuthResolver = async (name) => {
+    const m = managers.get(name);
+    if (m === undefined) {
+      throw new Error(`No OAuth manager configured for provider "${name}".`);
+    }
+    return m.ensureFresh();
+  };
+
+  return { oauthResolver, managers };
 }
 
 async function bootstrapOfflineShell(opts: CLIOptions): Promise<ShellBootstrap> {
@@ -154,7 +241,19 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
       'No default model configured. Set `default_model` in ~/.kimi/config.toml or pass --model.',
     );
   }
-  const provider = createProviderFromConfig(kimiConfig, modelAlias);
+
+  // 2a. Slice 5.0 — OAuth pre-flight. Publishes device-code dialog when the
+  // selected provider requires a managed login and no token is persisted.
+  setCliVersion(getVersion());
+  const { oauthResolver, managers: oauthManagers } = await ensureOAuthIfNeeded(
+    kimiConfig,
+    modelAlias,
+    pathConfig,
+  );
+
+  const provider = await createProviderFromConfig(kimiConfig, modelAlias, {
+    ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+  });
 
   // 3. Resolve the agent spec — Slice 4.1 only uses the built-in default.
   const agentRegistry = new AgentRegistry();
@@ -367,6 +466,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     defaultThinking: kimiConfig.defaultThinking ?? false,
     theme: (kimiConfig.theme as 'dark' | 'light') ?? 'dark',
     ...(mcpManager !== undefined ? { mcpManager } : {}),
+    ...(oauthManagers.size > 0 ? { oauthManagers } : {}),
   };
 }
 
@@ -415,6 +515,9 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     React.createElement(App, {
       wireClient: bootstrap.wireClient,
       initialState,
+      ...(bootstrap.oauthManagers !== undefined
+        ? { oauthManagers: bootstrap.oauthManagers }
+        : {}),
     }),
     {
       exitOnCtrlC: false,

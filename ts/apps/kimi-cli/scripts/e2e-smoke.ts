@@ -106,7 +106,7 @@ async function main(): Promise<void> {
   process.stderr.write(`[smoke] config loaded, defaultModel=${String(kimiConfig.defaultModel)}\n`);
 
   // 2. Provider
-  const provider = createProviderFromConfig(kimiConfig, args.model);
+  const provider = await createProviderFromConfig(kimiConfig, args.model);
   process.stderr.write(`[smoke] provider created: ${provider.constructor.name}\n`);
 
   // 3. Agent / skills / system prompt

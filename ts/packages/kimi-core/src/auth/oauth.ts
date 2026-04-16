@@ -1,0 +1,240 @@
+/**
+ * Device Code OAuth flow — pure HTTP wrappers.
+ *
+ * Three endpoints, all POST form-encoded to the OAuth host:
+ *  - `/api/oauth/device_authorization` → DeviceAuthorization
+ *  - `/api/oauth/token` (grant_type=device_code) → polling result
+ *  - `/api/oauth/token` (grant_type=refresh_token) → refreshed TokenInfo
+ *
+ * Matches Python kimi_cli/auth/oauth.py: same paths, same body params, same
+ * device header set. No state is kept here — `OAuthManager` drives the flow
+ * and decides when to poll / refresh / store.
+ */
+
+import {
+  OAuthError,
+  OAuthUnauthorizedError,
+  RetryableRefreshError,
+} from './errors.js';
+import { getDeviceHeaders } from './device.js';
+import type {
+  DeviceAuthorization,
+  DeviceHeaders,
+  OAuthFlowConfig,
+  TokenInfo,
+} from './types.js';
+
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function tokenFromResponse(payload: Record<string, unknown>): TokenInfo {
+  const expiresIn = Number(payload['expires_in'] ?? 0);
+  return {
+    accessToken: String(payload['access_token'] ?? ''),
+    refreshToken: String(payload['refresh_token'] ?? ''),
+    expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
+    scope: String(payload['scope'] ?? ''),
+    tokenType: String(payload['token_type'] ?? 'Bearer'),
+    expiresIn,
+  };
+}
+
+async function postForm(
+  url: string,
+  params: Record<string, string>,
+  deviceHeaders: DeviceHeaders,
+): Promise<{ status: number; data: Record<string, unknown> }> {
+  const body = new URLSearchParams(params).toString();
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...deviceHeaders,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body,
+    });
+  } catch (err) {
+    throw new OAuthError(
+      `OAuth request to ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const status = response.status;
+  let data: Record<string, unknown> = {};
+  try {
+    const text = await response.text();
+    if (text.length > 0) {
+      const parsed: unknown = JSON.parse(text);
+      if (isRecord(parsed)) data = parsed;
+    }
+  } catch {
+    // Non-JSON response — leave data empty; caller interprets by status.
+  }
+  return { status, data };
+}
+
+// ── requestDeviceAuthorization ────────────────────────────────────────
+
+export async function requestDeviceAuthorization(
+  config: OAuthFlowConfig,
+): Promise<DeviceAuthorization> {
+  const url = `${config.oauthHost.replace(/\/$/, '')}/api/oauth/device_authorization`;
+  const { status, data } = await postForm(
+    url,
+    { client_id: config.clientId },
+    getDeviceHeaders(),
+  );
+
+  if (status !== 200) {
+    throw new OAuthError(
+      `Device authorization failed (HTTP ${status}): ${
+        String(data['error_description'] ?? data['error'] ?? 'unknown')
+      }`,
+    );
+  }
+
+  return {
+    userCode: String(data['user_code'] ?? ''),
+    deviceCode: String(data['device_code'] ?? ''),
+    verificationUri: String(data['verification_uri'] ?? ''),
+    verificationUriComplete: String(data['verification_uri_complete'] ?? ''),
+    expiresIn: data['expires_in'] !== undefined ? Number(data['expires_in']) : null,
+    interval: Number(data['interval'] ?? 5),
+  };
+}
+
+// ── pollDeviceToken ───────────────────────────────────────────────────
+
+export type DevicePollResult =
+  | { readonly kind: 'success'; readonly token: TokenInfo }
+  | { readonly kind: 'pending'; readonly errorCode: string; readonly description: string }
+  | { readonly kind: 'expired' }
+  | { readonly kind: 'denied'; readonly description: string };
+
+export async function pollDeviceToken(
+  config: OAuthFlowConfig,
+  deviceCode: string,
+): Promise<DevicePollResult> {
+  const url = `${config.oauthHost.replace(/\/$/, '')}/api/oauth/token`;
+  const { status, data } = await postForm(
+    url,
+    {
+      client_id: config.clientId,
+      device_code: deviceCode,
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    },
+    getDeviceHeaders(),
+  );
+
+  if (status === 200 && typeof data['access_token'] === 'string') {
+    return { kind: 'success', token: tokenFromResponse(data) };
+  }
+
+  if (status >= 500) {
+    throw new OAuthError(
+      `Device token polling server error (HTTP ${status}): ${
+        String(data['error_description'] ?? data['error'] ?? 'unknown')
+      }`,
+    );
+  }
+
+  const errorCode = String(data['error'] ?? 'unknown_error');
+  const description = String(data['error_description'] ?? '');
+  switch (errorCode) {
+    case 'authorization_pending':
+    case 'slow_down':
+      return { kind: 'pending', errorCode, description };
+    case 'expired_token':
+      return { kind: 'expired' };
+    case 'access_denied':
+      return { kind: 'denied', description };
+    default:
+      throw new OAuthError(
+        `Device token polling failed (HTTP ${status}): ${errorCode} ${description}`,
+      );
+  }
+}
+
+// ── refreshAccessToken ────────────────────────────────────────────────
+
+export interface RefreshOptions {
+  readonly maxRetries?: number | undefined;
+  /**
+   * Backoff between retries in ms. Defaults to `2 ** attempt * 1000` (1s, 2s).
+   * Accepts an attempt-indexed callable for testability (set to `() => 0`).
+   */
+  readonly backoffMs?: ((attempt: number) => number) | undefined;
+  readonly sleep?: ((ms: number) => Promise<void>) | undefined;
+}
+
+export async function refreshAccessToken(
+  config: OAuthFlowConfig,
+  refreshToken: string,
+  options: RefreshOptions = {},
+): Promise<TokenInfo> {
+  const maxRetries = options.maxRetries ?? 3;
+  const backoff = options.backoffMs ?? ((attempt) => 2 ** attempt * 1000);
+  const sleep =
+    options.sleep ??
+    ((ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }));
+  const url = `${config.oauthHost.replace(/\/$/, '')}/api/oauth/token`;
+
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+    let status: number;
+    let data: Record<string, unknown>;
+    try {
+      ({ status, data } = await postForm(
+        url,
+        {
+          client_id: config.clientId,
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+        },
+        getDeviceHeaders(),
+      ));
+    } catch (err) {
+      // Transport-level failure (DNS, connection refused, timeout). Treat
+      // as retryable to match Python's `aiohttp.ClientError` handling.
+      lastError = err instanceof Error ? err : new OAuthError(String(err));
+      if (attempt < maxRetries - 1) {
+        await sleep(backoff(attempt));
+        continue;
+      }
+      throw lastError;
+    }
+
+    if (status === 200 && typeof data['access_token'] === 'string') {
+      return tokenFromResponse(data);
+    }
+
+    if (status === 401 || status === 403) {
+      throw new OAuthUnauthorizedError(
+        String(data['error_description'] ?? 'Token refresh unauthorized.'),
+      );
+    }
+
+    const desc = String(
+      data['error_description'] ?? `Token refresh failed (HTTP ${status}).`,
+    );
+    if (RETRYABLE_STATUSES.has(status)) {
+      lastError = new RetryableRefreshError(desc);
+      if (attempt < maxRetries - 1) {
+        await sleep(backoff(attempt));
+        continue;
+      }
+      // fall through: out of retries, surface the retryable error
+    } else {
+      throw new OAuthError(desc);
+    }
+  }
+
+  throw lastError ?? new OAuthError('Token refresh failed after retries.');
+}
+
+export type { DeviceHeaders };

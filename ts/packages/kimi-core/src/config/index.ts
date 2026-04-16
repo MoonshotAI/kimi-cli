@@ -36,4 +36,11 @@ export {
   resolveModelAlias,
   ProviderFactoryError,
 } from './provider-factory.js';
-export type { ResolvedModel } from './provider-factory.js';
+export type {
+  OAuthResolver,
+  ProviderFactoryDeps,
+  ResolvedModel,
+} from './provider-factory.js';
+
+// env overrides
+export { applyEnvOverrides } from './env-overrides.js';

@@ -347,4 +347,9 @@ export {
   createProviderFromConfig,
   resolveModelAlias,
   ProviderFactoryError,
+  applyEnvOverrides,
 } from './config/index.js';
+export type { OAuthResolver, ProviderFactoryDeps } from './config/index.js';
+
+// ── Auth (Slice 5.0) ────────────────────────────────────────────────────
+export * from './auth/index.js';
