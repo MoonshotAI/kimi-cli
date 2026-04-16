@@ -97,14 +97,15 @@ export default function InputArea({
       setViewportStart(0);
 
       if (expanded.startsWith('/')) {
-        void executeSlashCommand(expanded).then((message) => {
-          if (!message) return;
+        void executeSlashCommand(expanded).then((result) => {
+          if (!result) return;
           appendTranscriptEntry({
             id: `slash-${Date.now()}`,
             kind: 'status',
             turnId: undefined,
             renderMode: 'plain',
-            content: message,
+            content: result.message,
+            ...(result.color !== undefined ? { color: result.color } : {}),
           });
         });
       } else {

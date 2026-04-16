@@ -97,7 +97,9 @@ function TranscriptEntryView({ entry, showBullet }: { readonly entry: Transcript
     case 'status':
       return (
         <Box marginLeft={2}>
-          <Text dimColor>{entry.content}</Text>
+          {entry.color
+            ? <Text color={entry.color}>{entry.content}</Text>
+            : <Text dimColor>{entry.content}</Text>}
         </Box>
       );
     default:

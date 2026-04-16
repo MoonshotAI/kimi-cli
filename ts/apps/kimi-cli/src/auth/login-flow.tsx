@@ -7,6 +7,8 @@
  * user completes the authorization, or rejects on failure / timeout.
  */
 
+import { execFile } from 'node:child_process';
+
 import { render } from 'ink';
 import React from 'react';
 
@@ -23,6 +25,16 @@ export interface LoginFlowOptions {
   readonly signal?: AbortSignal | undefined;
 }
 
+function openUrl(url: string): void {
+  const args =
+    process.platform === 'darwin'
+      ? ['open', [url]]
+      : process.platform === 'win32'
+        ? ['cmd', ['/c', 'start', '', url]]
+        : ['xdg-open', [url]];
+  execFile(args[0] as string, args[1] as string[], () => {});
+}
+
 export async function runLoginFlow(options: LoginFlowOptions): Promise<TokenInfo> {
   let current: DeviceCodeState = { status: 'requesting' };
   const view = render(
@@ -36,22 +48,23 @@ export async function runLoginFlow(options: LoginFlowOptions): Promise<TokenInfo
     );
   };
 
+  let succeeded = false;
+
   try {
     const token = await options.manager.login({
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
       onDeviceCode: (auth) => {
+        openUrl(auth.verificationUriComplete);
         update({
           status: 'pending',
           userCode: auth.userCode,
           verificationUri: auth.verificationUri,
           verificationUriComplete: auth.verificationUriComplete,
-          intervalSeconds: auth.interval,
         });
       },
     });
+    succeeded = true;
     update({ status: 'success' });
-    // Hold the success state for ~600ms so the user registers the transition.
-    await new Promise<void>((resolve) => { setTimeout(resolve, 600); });
     return token;
   } catch (err) {
     const message = err instanceof OAuthError || err instanceof Error ? err.message : String(err);
@@ -59,11 +72,11 @@ export async function runLoginFlow(options: LoginFlowOptions): Promise<TokenInfo
     await new Promise<void>((resolve) => { setTimeout(resolve, 1200); });
     throw err;
   } finally {
-    // Ink's `clear()` wipes the rendered output using the still-live output
-    // stream; `unmount()` releases it. Calling them in reverse order can
-    // throw on some terminals because `clear()` would target a disposed
-    // stream.
-    view.clear();
-    view.unmount();
+    if (succeeded) {
+      view.unmount();
+    } else {
+      view.clear();
+      view.unmount();
+    }
   }
 }
