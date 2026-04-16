@@ -21,7 +21,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   SessionEventBus,
   SessionLifecycleStateMachine,
   SoulRegistry,
@@ -41,6 +41,7 @@ import {
   createNoopCompactionProvider,
   createNoopJournalCapability,
 } from './fixtures/slice3-harness.js';
+import { makeRealSubcomponents } from './fixtures/real-subcomponents.js';
 
 function buildManager(opts: {
   readonly kosong: ScriptedKosongAdapter;
@@ -54,7 +55,7 @@ function buildManager(opts: {
   runtime: Runtime;
 } {
   const stateMachine = new SessionLifecycleStateMachine();
-  const gate = new LifecycleGateFacade(stateMachine);
+  const gate = new SoulLifecycleGate(stateMachine);
   const context = createHarnessContextState();
   const journal = new InMemorySessionJournalImpl();
   const eventBus = new SessionEventBus();
@@ -71,6 +72,11 @@ function buildManager(opts: {
       abortController: new AbortController(),
     }),
   });
+  const subcomponents = makeRealSubcomponents({
+    contextState: context,
+    lifecycleStateMachine: stateMachine,
+    sink: eventBus,
+  });
   const manager = new TurnManager({
     contextState: context,
     sessionJournal: journal,
@@ -79,6 +85,10 @@ function buildManager(opts: {
     lifecycleStateMachine: stateMachine,
     soulRegistry,
     tools: opts.tools ?? [],
+    compaction: subcomponents.compaction,
+    permissionBuilder: subcomponents.permissionBuilder,
+    lifecycle: subcomponents.lifecycle,
+    wakeScheduler: subcomponents.wakeScheduler,
   });
   return { manager, context, journal, stateMachine, eventBus, runtime };
 }
@@ -291,7 +301,7 @@ describe('TurnManager.handlePrompt', () => {
       responses: [makeEndTurnResponse('hi')],
     });
     const stateMachine = new SessionLifecycleStateMachine();
-    const gate = new LifecycleGateFacade(stateMachine);
+    const gate = new SoulLifecycleGate(stateMachine);
     const sessionJournal = new InMemorySessionJournalImpl();
     const eventBus = new SessionEventBus();
     const runtime = createRuntime({
@@ -315,6 +325,11 @@ describe('TurnManager.handlePrompt', () => {
       lifecycleStateMachine: stateMachine,
       soulRegistry,
       tools: [],
+      ...makeRealSubcomponents({
+        contextState: context,
+        lifecycleStateMachine: stateMachine,
+        sink: eventBus,
+      }),
     });
 
     const response = await manager.handlePrompt({ data: { input: { text: 'hi' } } });
@@ -364,7 +379,7 @@ describe('TurnManager.handlePrompt', () => {
     });
 
     const stateMachine = new SessionLifecycleStateMachine();
-    const gate = new LifecycleGateFacade(stateMachine);
+    const gate = new SoulLifecycleGate(stateMachine);
     const context = createHarnessContextState();
     const eventBus = new SessionEventBus();
     const runtime = createRuntime({
@@ -388,6 +403,11 @@ describe('TurnManager.handlePrompt', () => {
       lifecycleStateMachine: stateMachine,
       soulRegistry,
       tools: [],
+      ...makeRealSubcomponents({
+        contextState: context,
+        lifecycleStateMachine: stateMachine,
+        sink: eventBus,
+      }),
     });
 
     // First prompt: fails inside the reservation block because the
@@ -437,7 +457,7 @@ describe('TurnManager.handlePrompt', () => {
     });
 
     const stateMachine = new SessionLifecycleStateMachine();
-    const gate = new LifecycleGateFacade(stateMachine);
+    const gate = new SoulLifecycleGate(stateMachine);
     const context = createHarnessContextState();
     const eventBus = new SessionEventBus();
     const runtime = createRuntime({
@@ -461,6 +481,11 @@ describe('TurnManager.handlePrompt', () => {
       lifecycleStateMachine: stateMachine,
       soulRegistry,
       tools: [],
+      ...makeRealSubcomponents({
+        contextState: context,
+        lifecycleStateMachine: stateMachine,
+        sink: eventBus,
+      }),
     });
 
     const started = await manager.handlePrompt({ data: { input: { text: 'hi' } } });
@@ -512,7 +537,7 @@ describe('TurnManager.handlePrompt', () => {
     });
 
     const stateMachine = new SessionLifecycleStateMachine();
-    const gate = new LifecycleGateFacade(stateMachine);
+    const gate = new SoulLifecycleGate(stateMachine);
     const context = createHarnessContextState();
     const eventBus = new SessionEventBus();
     const runtime = createRuntime({
@@ -536,6 +561,11 @@ describe('TurnManager.handlePrompt', () => {
       lifecycleStateMachine: stateMachine,
       soulRegistry,
       tools: [],
+      ...makeRealSubcomponents({
+        contextState: context,
+        lifecycleStateMachine: stateMachine,
+        sink: eventBus,
+      }),
     });
 
     const unhandled: unknown[] = [];
@@ -584,7 +614,7 @@ describe('TurnManager — no pendingNotifications (Phase 1 Step 4)', () => {
     readonly kosong: ScriptedKosongAdapter;
   }): TurnManager {
     const stateMachine = new SessionLifecycleStateMachine();
-    const gate = new LifecycleGateFacade(stateMachine);
+    const gate = new SoulLifecycleGate(stateMachine);
     const context = createHarnessContextState();
     const journal = new InMemorySessionJournalImpl();
     const eventBus = new SessionEventBus();
@@ -609,6 +639,11 @@ describe('TurnManager — no pendingNotifications (Phase 1 Step 4)', () => {
       lifecycleStateMachine: stateMachine,
       soulRegistry,
       tools: [],
+      ...makeRealSubcomponents({
+        contextState: context,
+        lifecycleStateMachine: stateMachine,
+        sink: eventBus,
+      }),
     });
   }
 

@@ -62,7 +62,7 @@ export type {
   TurnTrigger,
 } from './soul-plus/types.js';
 export { SessionLifecycleStateMachine } from './soul-plus/lifecycle-state-machine.js';
-export { LifecycleGateFacade } from './soul-plus/lifecycle-gate.js';
+export { SoulLifecycleGate } from './soul-plus/soul-lifecycle-gate.js';
 export { TurnManager } from './soul-plus/turn-manager.js';
 export { SoulRegistry } from './soul-plus/soul-registry.js';
 export { TransactionalHandlerRegistry } from './soul-plus/transactional-handler-registry.js';

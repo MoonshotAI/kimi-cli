@@ -24,7 +24,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
-import { LifecycleGateFacade } from '../soul-plus/lifecycle-gate.js';
+import { SoulLifecycleGate } from '../soul-plus/soul-lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
 import type { ShellDeliverCallback } from '../soul-plus/notification-manager.js';
 import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
@@ -262,11 +262,11 @@ export class SessionManager {
     const eventBus = options.eventBus ?? new EventBusCtor();
 
     // Codex Round 2 M3: SessionManager owns the single lifecycle state
-    // machine. The LifecycleGateFacade is shared between JournalWriter
+    // machine. The SoulLifecycleGate is shared between JournalWriter
     // and SoulPlus (via Runtime.lifecycle + TurnManager) so the
     // compacting/completing gate actually takes effect in production.
     const lifecycleStateMachine = new SessionLifecycleStateMachine();
-    const lifecycleGate = new LifecycleGateFacade(lifecycleStateMachine);
+    const lifecycleGate = new SoulLifecycleGate(lifecycleStateMachine);
 
     const journalWriter = new WiredJournalWriter({
       filePath: this.paths.wirePath(sessionId),
@@ -413,7 +413,7 @@ export class SessionManager {
     // 3. Create JournalWriter in resume mode — same lifecycle sharing
     //    pattern as createSession (Codex Round 2 M3).
     const lifecycleStateMachine = new SessionLifecycleStateMachine();
-    const lifecycleGate = new LifecycleGateFacade(lifecycleStateMachine);
+    const lifecycleGate = new SoulLifecycleGate(lifecycleStateMachine);
 
     const journalWriter = new WiredJournalWriter({
       filePath: wirePath,

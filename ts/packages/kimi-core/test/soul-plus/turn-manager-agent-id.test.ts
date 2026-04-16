@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { HookEngine } from '../../src/hooks/engine.js';
 import type { HookExecutor } from '../../src/hooks/types.js';
 import {
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   SessionLifecycleStateMachine,
   SoulRegistry,
   TurnManager,
@@ -26,6 +26,7 @@ import {
   createNoopCompactionProvider,
   createNoopJournalCapability,
 } from './fixtures/slice3-harness.js';
+import { makeRealSubcomponents } from './fixtures/real-subcomponents.js';
 
 function buildManager(opts: { agentType?: 'main' | 'sub' | 'independent'; agentId?: string }): {
   manager: TurnManager;
@@ -66,7 +67,7 @@ function buildManager(opts: { agentType?: 'main' | 'sub' | 'independent'; agentI
     responses: [makeEndTurnResponse('done')],
   });
   const stateMachine = new SessionLifecycleStateMachine();
-  const gate = new LifecycleGateFacade(stateMachine);
+  const gate = new SoulLifecycleGate(stateMachine);
   const context = createHarnessContextState();
   const journal = new InMemorySessionJournalImpl();
   const eventBus = new SessionEventBus();
@@ -94,6 +95,12 @@ function buildManager(opts: { agentType?: 'main' | 'sub' | 'independent'; agentI
     orchestrator,
     agentId: opts.agentId,
     agentType: opts.agentType,
+    ...makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+      orchestrator,
+    }),
   });
 
   return { manager, sourceCaptured };

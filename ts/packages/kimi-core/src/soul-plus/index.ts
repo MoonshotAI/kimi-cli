@@ -18,7 +18,7 @@ export type {
 } from './types.js';
 
 export { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
-export { LifecycleGateFacade } from './lifecycle-gate.js';
+export { SoulLifecycleGate } from './soul-lifecycle-gate.js';
 export { KosongAdapter, createKosongAdapter } from './kosong-adapter.js';
 export type { KosongAdapterOptions } from './kosong-adapter.js';
 export { SessionEventBus } from './session-event-bus.js';

@@ -66,7 +66,7 @@ import type {
   TurnResult,
 } from '../../src/soul/index.js';
 import {
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   SessionEventBus,
   SessionLifecycleStateMachine,
   SoulRegistry,
@@ -76,6 +76,10 @@ import type { TurnManagerDeps } from '../../src/soul-plus/index.js';
 import { InMemoryContextState } from '../../src/storage/context-state.js';
 import type { FullContextState } from '../../src/storage/context-state.js';
 import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js';
+import { CompactionOrchestrator } from '../../src/soul-plus/compaction-orchestrator.js';
+import { PermissionClosureBuilder } from '../../src/soul-plus/permission-closure-builder.js';
+import { TurnLifecycleTracker } from '../../src/soul-plus/turn-lifecycle-tracker.js';
+import { WakeQueueScheduler } from '../../src/soul-plus/wake-queue-scheduler.js';
 
 // ── vi.mock — intercept `runSoulTurn` on the SAME module specifier TurnManager imports ──
 
@@ -180,7 +184,7 @@ function buildHarness(): Harness {
   // on compacting↔active (and completing↔idle) ordering, instead of
   // adding a separate `lifecycleGate` facade field.
   const transitionSpy = vi.spyOn(stateMachine, 'transitionTo');
-  const gateFacade = new LifecycleGateFacade(stateMachine);
+  const gateFacade = new SoulLifecycleGate(stateMachine);
   const contextState = new InMemoryContextState({ initialModel: 'test-model' });
   const sessionJournal = new InMemorySessionJournalImpl();
   const sink = new SessionEventBus();
@@ -211,9 +215,23 @@ function buildHarness(): Harness {
     }),
   });
 
-  // Phase 2 decision (2026-04-17): only `compactionProvider` and
-  // `journalCapability` are added to TurnManagerDeps. `lifecycleStateMachine`
-  // is reused from the existing dep; no `lifecycleGate` facade field.
+  // Phase 4 (决策 #109): TurnManagerDeps adds required subcomponents
+  // (compaction / permissionBuilder / lifecycle). We build real
+  // instances so the needs_compaction loop and /compact path drive the
+  // same underlying compactionProvider / journalCapability / resetToSummary
+  // the pre-Phase-4 tests asserted on.
+  const compaction = new CompactionOrchestrator({
+    contextState,
+    compactionProvider,
+    lifecycleStateMachine: stateMachine,
+    journalCapability,
+    sink,
+    journalWriter: contextState.journalWriter,
+  });
+  const permissionBuilder = new PermissionClosureBuilder({});
+  const lifecycle = new TurnLifecycleTracker();
+  const wakeScheduler = new WakeQueueScheduler();
+
   const deps = {
     contextState,
     sessionJournal,
@@ -222,8 +240,10 @@ function buildHarness(): Harness {
     lifecycleStateMachine: stateMachine,
     soulRegistry,
     tools: [],
-    compactionProvider,
-    journalCapability,
+    compaction,
+    permissionBuilder,
+    lifecycle,
+    wakeScheduler,
   } as unknown as TurnManagerDeps;
 
   const manager = new TurnManager(deps);

@@ -4,12 +4,15 @@
  * `shouldCompact` is the threshold gate called at every while-top safe
  * point inside `runSoulTurn`. When it returns true, Soul sets
  * `stopReason='needs_compaction'` and breaks; the actual lifecycle /
- * provider / journal / context-reset work is owned by
- * `TurnManager.executeCompaction` in the `src/soul-plus/` layer.
+ * provider / journal / context-reset work is owned by the
+ * `CompactionOrchestrator` in `src/soul-plus/compaction-orchestrator.ts`
+ * (Phase 4 split from TurnManager — 决策 #109).
  *
  * This module previously also exported `runCompaction` and
- * `bridgeSummaryMessage`. Both moved to `src/soul-plus/turn-manager.ts`
- * in Phase 2 when compaction execution was pulled out of Soul.
+ * `bridgeSummaryMessage`. Both moved to
+ * `src/soul-plus/compaction-orchestrator.ts` (Phase 4); Phase 2
+ * transitioned them out of Soul into `src/soul-plus/turn-manager.ts`,
+ * and Phase 4 further extracted them into a dedicated orchestrator.
  */
 
 import type { SoulContextState } from '../storage/context-state.js';

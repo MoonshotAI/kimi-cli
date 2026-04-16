@@ -49,6 +49,10 @@ import {
   WiredJournalWriter,
 } from '../../src/storage/journal-writer.js';
 import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js';
+import { CompactionOrchestrator } from '../../src/soul-plus/compaction-orchestrator.js';
+import { PermissionClosureBuilder } from '../../src/soul-plus/permission-closure-builder.js';
+import { TurnLifecycleTracker } from '../../src/soul-plus/turn-lifecycle-tracker.js';
+import { WakeQueueScheduler } from '../../src/soul-plus/wake-queue-scheduler.js';
 
 class StubGate implements JournalLifecycleGate {
   state: JournalLifecycleState = 'active';
@@ -157,6 +161,14 @@ describe('TurnManager.executeCompaction — flush before rotate (Phase 3)', () =
       original_token_count: 100,
     });
     const runtime: Runtime = { kosong: noopKosong };
+    const compaction = new CompactionOrchestrator({
+      contextState,
+      compactionProvider,
+      lifecycleStateMachine: stateMachine,
+      journalCapability,
+      sink,
+      journalWriter: writer,
+    });
     const deps = {
       contextState,
       sessionJournal,
@@ -165,8 +177,10 @@ describe('TurnManager.executeCompaction — flush before rotate (Phase 3)', () =
       lifecycleStateMachine: stateMachine,
       soulRegistry,
       tools: [],
-      compactionProvider,
-      journalCapability,
+      compaction,
+      permissionBuilder: new PermissionClosureBuilder({}),
+      lifecycle: new TurnLifecycleTracker(),
+      wakeScheduler: new WakeQueueScheduler(),
     } as unknown as TurnManagerDeps;
     const manager = new TurnManager(deps);
 

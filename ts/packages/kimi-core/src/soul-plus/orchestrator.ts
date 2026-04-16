@@ -209,6 +209,19 @@ export class ToolCallOrchestrator {
     };
   }
 
+  /**
+   * Phase 4 — abort-contract (v2 §7.2) second step. TurnManager.abortTurn
+   * calls this between `approvalRuntime.cancelBySource` and
+   * `tracker.cancelTurn`. Phase 4 implementation is a no-op: real
+   * streaming cancellation wiring lands in Phase 5 when the orchestrator
+   * owns an explicit streaming side-channel. Kept as a concrete method
+   * (not `undefined`) so structural stubs in tests can rely on the
+   * property being callable.
+   */
+  discardStreaming(reason: 'aborted' | 'timeout'): void {
+    void reason;
+  }
+
   buildAfterToolCall(ctx: ToolCallOrchestratorContext): AfterToolCallHook {
     return async (
       atcCtx: AfterToolCallContext,

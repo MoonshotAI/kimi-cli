@@ -12,7 +12,7 @@
  *   2. Slice 1 real implementations — `InMemoryContextState`,
  *      `InMemorySessionJournalImpl`
  *   3. Slice 3 stubs — `SessionLifecycleStateMachine`,
- *      `LifecycleGateFacade`, `SessionEventBus`, `SoulRegistry`,
+ *      `SoulLifecycleGate`, `SessionEventBus`, `SoulRegistry`,
  *      `createRuntime`, `TurnManager`, `SoulPlus`
  */
 

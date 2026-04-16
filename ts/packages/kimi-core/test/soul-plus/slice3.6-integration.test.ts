@@ -30,7 +30,7 @@ import type {
 } from '../../src/hooks/types.js';
 import {
   DynamicInjectionManager,
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   NotificationManager,
   PlanModeInjectionProvider,
   SessionEventBus,
@@ -48,6 +48,7 @@ import {
   createNoopCompactionProvider,
   createNoopJournalCapability,
 } from './fixtures/slice3-harness.js';
+import { makeRealSubcomponents } from './fixtures/real-subcomponents.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ function buildManager(opts: BuildOpts): {
   runtime: Runtime;
 } {
   const stateMachine = new SessionLifecycleStateMachine();
-  const gate = new LifecycleGateFacade(stateMachine);
+  const gate = new SoulLifecycleGate(stateMachine);
   const context = createHarnessContextState();
   const journal = new InMemorySessionJournalImpl();
   const eventBus = new SessionEventBus();
@@ -120,6 +121,11 @@ function buildManager(opts: BuildOpts): {
       ? { dynamicInjectionManager: opts.dynamicInjectionManager }
       : {}),
     ...(opts.hookEngine !== undefined ? { hookEngine: opts.hookEngine } : {}),
+    ...makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+    }),
   });
   return { manager, context, journal, stateMachine, eventBus, runtime };
 }

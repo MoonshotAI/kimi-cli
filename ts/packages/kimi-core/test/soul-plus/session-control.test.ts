@@ -14,6 +14,10 @@ import { SessionLifecycleStateMachine } from '../../src/soul-plus/lifecycle-stat
 import { DefaultSessionControl } from '../../src/soul-plus/session-control.js';
 import { SoulRegistry } from '../../src/soul-plus/soul-registry.js';
 import { TurnManager } from '../../src/soul-plus/turn-manager.js';
+import { CompactionOrchestrator } from '../../src/soul-plus/compaction-orchestrator.js';
+import { PermissionClosureBuilder } from '../../src/soul-plus/permission-closure-builder.js';
+import { TurnLifecycleTracker } from '../../src/soul-plus/turn-lifecycle-tracker.js';
+import { WakeQueueScheduler } from '../../src/soul-plus/wake-queue-scheduler.js';
 import type { EventSink, SoulEvent } from '../../src/soul/event-sink.js';
 import type {
   CompactionProvider,
@@ -68,16 +72,27 @@ function makeSessionControl() {
     }),
   });
 
+  const stubSink = makeStubSink();
+  const compaction = new CompactionOrchestrator({
+    contextState,
+    compactionProvider: makeStubCompactionProvider(),
+    lifecycleStateMachine,
+    journalCapability: makeStubJournalCapability(),
+    sink: stubSink,
+    journalWriter: contextState.journalWriter,
+  });
   const turnManager = new TurnManager({
     contextState,
     sessionJournal,
     runtime: makeStubRuntime(),
-    sink: makeStubSink(),
+    sink: stubSink,
     lifecycleStateMachine,
     soulRegistry,
     tools: [],
-    compactionProvider: makeStubCompactionProvider(),
-    journalCapability: makeStubJournalCapability(),
+    compaction,
+    permissionBuilder: new PermissionClosureBuilder({}),
+    lifecycle: new TurnLifecycleTracker(),
+    wakeScheduler: new WakeQueueScheduler(),
   });
 
   const sessionControl = new DefaultSessionControl({
