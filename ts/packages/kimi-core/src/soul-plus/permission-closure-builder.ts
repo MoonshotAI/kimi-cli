@@ -22,7 +22,7 @@
  * coordinator without baking permission semantics into it.
  */
 
-import type { AfterToolCallHook, BeforeToolCallHook } from '../soul/types.js';
+import type { AfterToolCallHook, BeforeToolCallHook, Tool } from '../soul/types.js';
 import type { HookEngine } from '../hooks/engine.js';
 import type { ApprovalSource } from '../storage/wire-record.js';
 import type { ToolCallOrchestrator } from './orchestrator.js';
@@ -53,6 +53,14 @@ export interface PermissionClosureContext {
   readonly approvalSource: ApprovalSource;
   readonly stepNumber?: number | undefined;
   readonly approvalTimeoutMs?: number | undefined;
+  /**
+   * Slice 5 / 决策 #96 L1 — name-keyed lookup of the tools the
+   * orchestrator wrapped for this turn. Threaded into
+   * `orchestrator.buildAfterToolCall` so the budget seam can resolve
+   * the live `maxResultSizeChars` for every tool call. Optional so
+   * tests / embed scenarios that don't care about budget can omit it.
+   */
+  readonly toolsByName?: ReadonlyMap<string, Tool> | undefined;
 }
 
 export class PermissionClosureBuilder {
@@ -119,10 +127,13 @@ export class PermissionClosureBuilder {
   buildAfterToolCall(ctx: PermissionClosureContext): AfterToolCallHook {
     const orchestrator = this.deps.orchestrator;
     if (orchestrator !== undefined) {
-      return orchestrator.buildAfterToolCall({
-        turnId: ctx.turnId,
-        ...(ctx.stepNumber !== undefined ? { stepNumber: ctx.stepNumber } : {}),
-      });
+      return orchestrator.buildAfterToolCall(
+        {
+          turnId: ctx.turnId,
+          ...(ctx.stepNumber !== undefined ? { stepNumber: ctx.stepNumber } : {}),
+        },
+        ctx.toolsByName,
+      );
     }
     // oxlint-disable-next-line unicorn/no-useless-undefined
     return async () => undefined;

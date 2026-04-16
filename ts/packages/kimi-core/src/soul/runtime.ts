@@ -26,7 +26,7 @@
 
 import type { Message } from '@moonshot-ai/kosong';
 
-import type { AssistantMessage, StopReason, TokenUsage, ToolCall } from './types.js';
+import type { AssistantMessage, StopReason, TokenUsage, ToolCall, ToolResult } from './types.js';
 
 // ── LLM adapter ────────────────────────────────────────────────────────
 
@@ -59,6 +59,19 @@ export interface ChatParams {
   signal: AbortSignal;
   onDelta?: ((delta: string) => void) | undefined;
   onThinkDelta?: ((delta: string) => void) | undefined;
+  /**
+   * Slice 5 / 决策 #97 — fired by streaming wrappers as each tool_use
+   * block finishes streaming so the orchestrator can prefetch ahead of
+   * the assistant message completing. Phase 5 callers do not set this.
+   */
+  onToolCallReady?: ((toolCall: ToolCall) => void) | undefined;
+  /**
+   * Slice 5 / 决策 #96 L3 — caller-known context window in tokens used
+   * by `KosongAdapter.chat` to detect silent overflow (usage breaches
+   * the window even though the provider returned successfully). Omitted
+   * → silent-overflow detection is skipped.
+   */
+  contextWindow?: number | undefined;
 }
 
 export interface ChatResponse {
@@ -73,6 +86,14 @@ export interface ChatResponse {
    * be absent for test-only adapters that do not bind a concrete provider.
    */
   actualModel?: string | undefined;
+  /**
+   * Slice 5 / 决策 #97 — when the streaming orchestrator finishes a tool
+   * call ahead of Soul reaching it, the result lands here keyed by
+   * `ToolCall.id`. Soul checks this map before invoking `tool.execute`
+   * and reuses the prefetched result on a hit. Phase 5 default adapters
+   * never populate the map (Soul always falls through to execute).
+   */
+  _prefetchedToolResults?: ReadonlyMap<string, ToolResult> | undefined;
 }
 
 export interface KosongAdapter {

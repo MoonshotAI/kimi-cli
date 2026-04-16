@@ -24,12 +24,17 @@ export type {
   TokenUsage,
   Tool,
   ToolCall,
+  ToolDisplayHooks,
+  ToolInputDisplay,
   ToolResult,
   ToolResultContent,
+  ToolResultDisplay,
   ToolUpdate,
   TurnResult,
   UserInput,
 } from './types.js';
+
+export { ToolInputDisplaySchema, ToolResultDisplaySchema } from './types.js';
 
 export type { EventSink, SoulEvent } from './event-sink.js';
 
@@ -48,7 +53,7 @@ export type {
   SummaryMessage,
 } from './runtime.js';
 
-export { MaxStepsExceededError } from './errors.js';
+export { ContextOverflowError, MaxStepsExceededError } from './errors.js';
 
 export { runSoulTurn } from './run-turn.js';
 

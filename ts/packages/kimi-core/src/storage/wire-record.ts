@@ -5,6 +5,9 @@
 
 import { z } from 'zod';
 
+import type { ToolInputDisplay } from '../soul/types.js';
+import { ToolInputDisplaySchema } from '../soul/types.js';
+
 // ── File metadata header ────────────────────────────────────────────────
 
 export interface WireFileMetadata {
@@ -225,17 +228,11 @@ export interface ToolDeniedRecord {
 
 // ── Approval helper types (appendix B L6206 / L6242) ───────────────────
 
-export type ApprovalDisplay =
-  | {
-      kind: 'command';
-      command: string;
-      cwd?: string | undefined;
-      description?: string | undefined;
-    }
-  | { kind: 'diff'; path: string; diff: string }
-  | { kind: 'file_write'; path: string; content: string }
-  | { kind: 'task_stop'; task_id: string; task_description: string }
-  | { kind: 'generic'; title: string; body: string };
+// Slice 5 / 决策 #98 — `ApprovalDisplay` is now a structural alias of
+// `ToolInputDisplay` so a single rendering hint flows through both
+// approval prompts and tool transcript widgets without the consumer
+// having to inspect two slightly-different unions.
+export type ApprovalDisplay = ToolInputDisplay;
 
 export type ApprovalSource =
   | { kind: 'soul'; agent_id: string }
@@ -628,35 +625,11 @@ export const ToolDeniedRecordSchema: z.ZodType<ToolDeniedRecord> = _rawToolDenie
 
 // ── Approval helper schemas ────────────────────────────────────────────
 
-const _rawApprovalDisplaySchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('command'),
-    command: z.string(),
-    cwd: z.string().optional(),
-    description: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('diff'),
-    path: z.string(),
-    diff: z.string(),
-  }),
-  z.object({
-    kind: z.literal('file_write'),
-    path: z.string(),
-    content: z.string(),
-  }),
-  z.object({
-    kind: z.literal('task_stop'),
-    task_id: z.string(),
-    task_description: z.string(),
-  }),
-  z.object({
-    kind: z.literal('generic'),
-    title: z.string(),
-    body: z.string(),
-  }),
-]);
-export const ApprovalDisplaySchema: z.ZodType<ApprovalDisplay> = _rawApprovalDisplaySchema;
+// Slice 5 / 决策 #98 — re-export the canonical `ToolInputDisplay` schema
+// under the legacy `ApprovalDisplaySchema` name so existing consumers
+// keep compiling. Drift between the type alias and the schema is
+// guaranteed by `_driftGuard_ToolInputDisplay` in `src/soul/types.ts`.
+export const ApprovalDisplaySchema: z.ZodType<ApprovalDisplay> = ToolInputDisplaySchema;
 
 const _rawApprovalSourceSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -897,11 +870,6 @@ const _driftGuard_ToolDeniedRecord: AssertEqual<
   ToolDeniedRecord
 > = true;
 void _driftGuard_ToolDeniedRecord;
-const _driftGuard_ApprovalDisplay: AssertEqual<
-  z.infer<typeof _rawApprovalDisplaySchema>,
-  ApprovalDisplay
-> = true;
-void _driftGuard_ApprovalDisplay;
 const _driftGuard_ApprovalSource: AssertEqual<
   z.infer<typeof _rawApprovalSourceSchema>,
   ApprovalSource

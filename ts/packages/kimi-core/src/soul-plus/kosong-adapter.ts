@@ -67,6 +67,7 @@ import type {
   TokenUsage,
   ToolCall,
 } from '../soul/index.js';
+import { ContextOverflowError } from '../soul/errors.js';
 
 export interface KosongAdapterOptions {
   readonly provider: ChatProvider;
@@ -111,24 +112,35 @@ export class KosongAdapter implements KosongAdapterInterface {
     const onDelta = params.onDelta;
     const onThinkDelta = params.onThinkDelta;
     const needMessagePart = onDelta !== undefined || onThinkDelta !== undefined;
-    const result = await generate(
-      activeProvider,
-      params.systemPrompt,
-      kosongTools,
-      params.messages,
-      needMessagePart
-        ? {
-            onMessagePart: (part: KosongStreamedPart): void => {
-              if (part.type === 'text' && onDelta !== undefined) {
-                onDelta(part.text);
-              } else if (part.type === 'think' && onThinkDelta !== undefined) {
-                onThinkDelta(part.think);
-              }
-            },
-          }
-        : undefined,
-      { signal: params.signal },
-    );
+    let result: Awaited<ReturnType<typeof generate>>;
+    try {
+      result = await generate(
+        activeProvider,
+        params.systemPrompt,
+        kosongTools,
+        params.messages,
+        needMessagePart
+          ? {
+              onMessagePart: (part: KosongStreamedPart): void => {
+                if (part.type === 'text' && onDelta !== undefined) {
+                  onDelta(part.text);
+                } else if (part.type === 'think' && onThinkDelta !== undefined) {
+                  onThinkDelta(part.think);
+                }
+              },
+            }
+          : undefined,
+        { signal: params.signal },
+      );
+    } catch (err) {
+      // Slice 5 / 决策 #96 L3 — normalise 17+ provider PTL/413 patterns
+      // into a single ContextOverflowError identity so TurnManager can
+      // catch with a single instanceof check.
+      if (isContextOverflowProviderError(err)) {
+        throw new ContextOverflowError(extractMessage(err));
+      }
+      throw err;
+    }
 
     // Map kosong Message content → Soul ContentBlock[]. Images / audio /
     // video are intentionally dropped at this layer, matching the pre-
@@ -169,8 +181,82 @@ export class KosongAdapter implements KosongAdapterInterface {
       actualModel: activeProvider.modelName,
       ...(stopReason !== undefined ? { stopReason } : {}),
     };
+
+    // Slice 5 / 决策 #96 L3 — silent overflow probe. The provider returned
+    // successfully but its self-reported usage already breaches the
+    // caller's contextWindow, meaning the next turn will certainly fail.
+    // `usage.input` after `mapUsage` already aggregates inputOther +
+    // inputCacheRead + inputCacheCreation, so it represents the full
+    // input footprint for this call. Skipped when the caller did not
+    // declare a contextWindow.
+    if (params.contextWindow !== undefined && usage.input > params.contextWindow) {
+      throw new ContextOverflowError(
+        `Implicit context overflow: input=${String(usage.input)} exceeds contextWindow=${String(params.contextWindow)}`,
+        usage,
+      );
+    }
     return response;
   }
+}
+
+// ── Provider error pattern detection ───────────────────────────────────
+
+const PTL_MESSAGE_PATTERNS = [
+  /context[\s_-]?length/i,
+  /context[\s_-]?window/i,
+  /prompt is too long/i,
+  /payload too large/i,
+  /maximum context length/i,
+];
+
+function isContextOverflowProviderError(err: unknown): boolean {
+  if (err === null || typeof err !== 'object') return false;
+  const obj = err as Record<string, unknown>;
+  // HTTP 413 — provider-agnostic.
+  if (obj['status'] === 413) return true;
+  // OpenAI / OpenRouter / many SDKs surface a string `code`.
+  if (
+    obj['code'] === 'context_length_exceeded' ||
+    obj['code'] === 'context_window_exceeded' ||
+    obj['code'] === 'string_above_max_length'
+  ) {
+    return true;
+  }
+  // Some adapters set a `type` discriminator instead of `code`.
+  if (obj['type'] === 'context_window_exceeded') return true;
+  // Anthropic-style: nested `error.type === 'invalid_request_error'`
+  // plus a "prompt is too long" message — the message check below covers
+  // the discriminator-less branch, but pin the explicit type here too.
+  const nestedError = obj['error'];
+  if (nestedError !== null && typeof nestedError === 'object') {
+    const nested = nestedError as Record<string, unknown>;
+    if (
+      nested['type'] === 'context_window_exceeded' ||
+      nested['type'] === 'context_length_exceeded'
+    ) {
+      return true;
+    }
+  }
+  // Last resort: scan the message text for one of the well-known PTL
+  // phrases. Be careful not to over-match generic 4xx errors — only
+  // match when the message itself talks about context / prompt length.
+  const message = extractMessage(err);
+  if (message.length > 0) {
+    for (const pattern of PTL_MESSAGE_PATTERNS) {
+      if (pattern.test(message)) return true;
+    }
+  }
+  return false;
+}
+
+function extractMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (err !== null && typeof err === 'object') {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return String(err);
 }
 
 export function createKosongAdapter(options: KosongAdapterOptions): KosongAdapter {

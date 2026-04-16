@@ -53,4 +53,13 @@ export class PathConfig {
   archivePath(sessionId: string, n: number): string {
     return join(this.sessionDir(sessionId), `wire.${n}.jsonl`);
   }
+
+  /**
+   * Slice 5 / 决策 #96 L1 — destination for over-budget tool results that
+   * the orchestrator persists to disk. Layout follows v2 §10.6.3:
+   * `<sessionDir>/tool-results/<toolCallId>.txt`.
+   */
+  toolResultArchivePath(sessionId: string, toolCallId: string): string {
+    return join(this.sessionDir(sessionId), 'tool-results', `${toolCallId}.txt`);
+  }
 }

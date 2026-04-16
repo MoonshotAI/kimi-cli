@@ -95,6 +95,10 @@ export type {
   ApprovalResult,
   ApprovalRuntime,
 } from './approval-runtime.js';
+// Slice 5 — `ApprovalDisplay` is the SoulPlus-side alias of
+// `ToolInputDisplay`; re-export here so callers can import it from a
+// single approval-shaped entry point.
+export type { ApprovalDisplay } from '../storage/wire-record.js';
 export { AlwaysAllowApprovalRuntime, NotImplementedError } from './approval-runtime.js';
 export { WiredApprovalRuntime, WIRED_APPROVAL_TIMEOUT_MS } from './wired-approval-runtime.js';
 export type { WiredApprovalRuntimeDeps } from './wired-approval-runtime.js';

@@ -36,6 +36,7 @@
 import type { HookEngine } from '../hooks/engine.js';
 import type { StopInput, UserPromptSubmitInput } from '../hooks/types.js';
 import { runSoulTurn } from '../soul/index.js';
+import { ContextOverflowError } from '../soul/errors.js';
 import type {
   CompactionConfig,
   EventSink,
@@ -146,6 +147,10 @@ export interface TurnManagerDeps {
  * compaction loop.
  */
 const MAX_COMPACTIONS_PER_TURN = 3;
+
+function zeroUsage(): TurnResult['usage'] {
+  return { input: 0, output: 0 };
+}
 
 export class TurnManager {
   private readonly deps: TurnManagerDeps;
@@ -414,11 +419,21 @@ export class TurnManager {
         ? { kind: 'subagent', agent_id: this.agentId }
         : { kind: 'soul', agent_id: this.agentId };
 
+    // Slice 5 — name → wrapped-tool lookup so the orchestrator's
+    // afterToolCall budget seam can resolve `Tool.maxResultSizeChars`
+    // and `Tool.display` on the fly. We index the wrapped tools (not
+    // raw `this.deps.tools`) because Soul invokes the wrappers; the
+    // wrapper preserves the Phase 5 optional fields verbatim.
+    const toolsByName: ReadonlyMap<string, Tool> = new Map(
+      wrappedTools.map((t) => [t.name, t]),
+    );
+
     const closureContext: PermissionClosureContext = {
       turnId,
       permissionRules: effectiveRules,
       permissionMode: this.permissionMode,
       approvalSource,
+      toolsByName,
     };
 
     const soulConfig: SoulConfig = {
@@ -426,7 +441,14 @@ export class TurnManager {
       beforeToolCall: this.deps.permissionBuilder.buildBeforeToolCall(closureContext),
       afterToolCall: this.deps.permissionBuilder.buildAfterToolCall(closureContext),
       ...(this.deps.compactionConfig !== undefined
-        ? { compactionConfig: this.deps.compactionConfig }
+        ? {
+            compactionConfig: this.deps.compactionConfig,
+            // Slice 5 / 决策 #96 L3 — `maxContextSize` and the silent-
+            // overflow `contextWindow` are the same physical value;
+            // forward it so KosongAdapter can detect overflows the
+            // shouldCompact gate didn't anticipate.
+            contextWindow: this.deps.compactionConfig.maxContextSize,
+          }
         : {}),
     };
 
@@ -467,16 +489,41 @@ export class TurnManager {
       // MAX_COMPACTIONS_PER_TURN so a misbehaving provider cannot lock
       // the session.
       let compactionCount = 0;
+      let overflowTripped = false;
       while (true) {
         signal.throwIfAborted();
-        const soulResult = await runSoulTurn(
-          input,
-          soulConfig,
-          this.deps.contextState,
-          this.deps.runtime,
-          this.deps.sink,
-          signal,
-        );
+        let soulResult: TurnResult;
+        try {
+          soulResult = await runSoulTurn(
+            input,
+            soulConfig,
+            this.deps.contextState,
+            this.deps.runtime,
+            this.deps.sink,
+            signal,
+          );
+        } catch (error) {
+          // Slice 5 / 决策 #96 L3 — reactive overflow recovery shares the
+          // MAX_COMPACTIONS_PER_TURN budget with the needs_compaction
+          // branch. ContextOverflowError → compactionCount++ → either
+          // trip the breaker or executeCompaction + retry.
+          if (error instanceof ContextOverflowError) {
+            compactionCount += 1;
+            if (compactionCount > MAX_COMPACTIONS_PER_TURN) {
+              this.deps.sink.emit({
+                type: 'session.error',
+                error: `Compaction limit exceeded (${MAX_COMPACTIONS_PER_TURN})`,
+                error_type: 'context_overflow',
+              } as never);
+              result = { stopReason: 'error', steps: 0, usage: zeroUsage() };
+              overflowTripped = true;
+              break;
+            }
+            await this.deps.compaction.executeCompaction(signal);
+            continue;
+          }
+          throw error;
+        }
         if (soulResult.stopReason !== 'needs_compaction') {
           result = soulResult;
           break;
@@ -501,6 +548,7 @@ export class TurnManager {
       if (result !== undefined && result.stopReason === 'error') {
         reason = 'error';
       }
+      void overflowTripped;
     } catch (error) {
       void error;
       result = undefined;

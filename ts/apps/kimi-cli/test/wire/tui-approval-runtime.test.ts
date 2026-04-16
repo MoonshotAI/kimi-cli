@@ -23,7 +23,7 @@ function makeRequest(overrides?: Partial<ApprovalRequest>): ApprovalRequest {
     toolCallId: 'tc_1',
     toolName: 'Bash',
     action: 'run command',
-    display: { kind: 'generic', title: 'Approve Bash', body: 'echo hi' },
+    display: { kind: 'generic', summary: 'Approve Bash', detail: 'echo hi' },
     source,
     turnId: 'turn_1',
     step: 1,

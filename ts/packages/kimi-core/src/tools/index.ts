@@ -42,6 +42,19 @@ export {
 export { ToolRegistry } from './registry.js';
 export type { ToolSource, ToolConflict, ToolRegistryOptions } from './registry.js';
 
+// ── Display defaults + size constants (Slice 5 / 决策 #96 / #98) ───────
+
+export {
+  DEFAULT_BUILTIN_MAX_RESULT_CHARS,
+  DEFAULT_MCP_MAX_RESULT_CHARS,
+  defaultGetActivityDescription,
+  defaultGetCollapsedSummary,
+  defaultGetInputDisplay,
+  defaultGetProgressDescription,
+  defaultGetResultDisplay,
+  defaultGetUserFacingName,
+} from './display-defaults.js';
+
 // ── Workspace + path safety (§14.3 D11) ────────────────────────────────
 
 export type { WorkspaceConfig } from './workspace.js';

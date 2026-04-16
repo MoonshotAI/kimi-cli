@@ -112,6 +112,7 @@ export async function runSoulTurn(
         onThinkDelta: (delta) => {
           safeEmit(sink, { type: 'thinking.delta', delta });
         },
+        ...(config.contextWindow !== undefined ? { contextWindow: config.contextWindow } : {}),
       });
       // §5.1.7 L1407: checkpoint after kosong.chat catches any abort that
       // landed while the chat promise was pending but that the adapter
@@ -209,13 +210,24 @@ export async function runSoulTurn(
 
         let toolResult: ToolResult;
         try {
-          toolResult = await tool.execute(toolCall.id, effectiveInput, signal, (update) => {
-            safeEmit(sink, {
-              type: 'tool.progress',
-              toolCallId: toolCall.id,
-              update,
+          // Slice 5 / 决策 #97 — streaming prefetch shortcut. When the
+          // KosongAdapter wraps a streaming provider it may stash an
+          // already-computed result for this `toolCall.id`; on a hit Soul
+          // reuses the result verbatim and skips `tool.execute`. Phase 5
+          // adapters never populate the map, so the else branch always
+          // runs.
+          const prefetched = response._prefetchedToolResults?.get(toolCall.id);
+          if (prefetched !== undefined) {
+            toolResult = prefetched;
+          } else {
+            toolResult = await tool.execute(toolCall.id, effectiveInput, signal, (update) => {
+              safeEmit(sink, {
+                type: 'tool.progress',
+                toolCallId: toolCall.id,
+                update,
+              });
             });
-          });
+          }
         } catch (error) {
           const aborted = isAbortError(error) || signal.aborted;
           const syntheticResult: ToolResult = {
