@@ -647,13 +647,21 @@ class Shell:
                     self._approval_modal = None
                 self._prompt_session = None
                 self._cancel_background_tasks()
-                # Track exit and flush remaining telemetry events
+                # Track exit and flush remaining telemetry events.
+                # Cap the exit-path flush at 3 s so we don't block for ~50 s
+                # when the endpoint is unreachable (in-process retry backoff).
+                # On timeout the CancelledError handler in transport.send()
+                # persists in-flight events to disk; flush_sync() catches any
+                # events still in the buffer.
                 from kimi_cli.telemetry import track
 
                 track("exit", duration_s=time.monotonic() - _run_start_time)
                 if _telemetry_sink is not None:
                     _telemetry_sink.stop_periodic_flush()
-                    await _telemetry_sink.flush()
+                    try:
+                        await asyncio.wait_for(_telemetry_sink.flush(), timeout=3.0)
+                    except (TimeoutError, Exception):
+                        _telemetry_sink.flush_sync()
                 ensure_tty_sane()
 
         return shell_ok

@@ -97,28 +97,29 @@ class AsyncTransport:
         # persists the bare client-side names.
         payload = {"events": _apply_server_prefix(events)}
 
-        for attempt_idx in range(len(self._retry_backoffs) + 1):
-            try:
-                await self._send_http(payload)
-                return
-            except _TransientError as exc:
-                if attempt_idx >= len(self._retry_backoffs):
-                    logger.debug(
-                        "Telemetry send transient failure after {attempts} attempts: {err}",
-                        attempts=attempt_idx + 1,
-                        err=exc,
-                    )
-                    break
-                backoff = self._retry_backoffs[attempt_idx]
+        try:
+            for attempt_idx in range(len(self._retry_backoffs) + 1):
                 try:
+                    await self._send_http(payload)
+                    return
+                except _TransientError as exc:
+                    if attempt_idx >= len(self._retry_backoffs):
+                        logger.debug(
+                            "Telemetry send transient failure after {attempts} attempts: {err}",
+                            attempts=attempt_idx + 1,
+                            err=exc,
+                        )
+                        break
+                    backoff = self._retry_backoffs[attempt_idx]
                     await asyncio.sleep(backoff)
-                except asyncio.CancelledError:
-                    # Process is shutting down — persist and exit loop
-                    self.save_to_disk(events)
-                    raise
-            except Exception:
-                logger.debug("Telemetry send failed unexpectedly")
-                break
+                except Exception:
+                    logger.debug("Telemetry send failed unexpectedly")
+                    break
+        except asyncio.CancelledError:
+            # Task cancelled (e.g. exit timeout) — persist events before propagating.
+            # This covers cancellation during _send_http OR asyncio.sleep.
+            self.save_to_disk(events)
+            raise
 
         self.save_to_disk(events)
 
