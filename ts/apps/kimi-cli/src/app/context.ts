@@ -9,6 +9,7 @@ import React, { createContext, useContext } from 'react';
 
 import type { Theme } from '../config/schema.js';
 import type { ThemeStyles } from '../theme/styles.js';
+import type { SlashCommandRegistry } from '../slash/registry.js';
 import type {
   WireClient,
   ApprovalRequestData,
@@ -165,6 +166,7 @@ export interface ChromeContextValue {
   sessions: SessionInfo[];
   loadingSessions: boolean;
   showSessionPicker: boolean;
+  registry: SlashCommandRegistry;
 }
 
 export interface ActionsContextValue {

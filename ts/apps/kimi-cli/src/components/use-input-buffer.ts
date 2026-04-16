@@ -29,6 +29,7 @@ export interface UseInputBufferReturn {
   deleteBack: () => void;
   moveCursor: (dir: 'left' | 'right' | 'up' | 'down') => void;
   clear: () => void;
+  setText: (text: string) => void;
 }
 
 function makeEmpty(): InputBufferState {
@@ -179,6 +180,17 @@ export function useInputBuffer(): UseInputBufferReturn {
     bump();
   }, [bump]);
 
+  const setText = useCallback(
+    (newText: string) => {
+      const parts = newText.split('\n');
+      const lastLine = parts[parts.length - 1] ?? '';
+      ref.current = { lines: parts, cursor: { line: parts.length - 1, col: lastLine.length } };
+      stickyCol.current = null;
+      bump();
+    },
+    [bump],
+  );
+
   return {
     buffer: buf,
     isEmpty,
@@ -189,5 +201,6 @@ export function useInputBuffer(): UseInputBufferReturn {
     deleteBack,
     moveCursor,
     clear,
+    setText,
   };
 }

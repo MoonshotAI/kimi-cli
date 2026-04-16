@@ -305,11 +305,13 @@ function ActivityPane({ maxHeight }: { readonly maxHeight: number }): React.JSX.
   return <Box flexDirection="column" marginTop={1}>{content}</Box>;
 }
 
+const MAX_SLASH_PANEL_ROWS = 9;
+
 function LiveFrame(): React.JSX.Element {
   const { rows, columns } = useWindowSize();
   const [inputContentLines, setInputContentLines] = useState(1);
 
-  const effectiveInputLines = Math.min(inputContentLines, DEFAULT_MAX_INPUT_LINES);
+  const effectiveInputLines = Math.min(inputContentLines, DEFAULT_MAX_INPUT_LINES + MAX_SLASH_PANEL_ROWS);
   const inputDockHeight = effectiveInputLines + INPUT_BORDER_ROWS;
   const maxActivityHeight = Math.max(1, rows - inputDockHeight - STATUS_BAR_HEIGHT);
 

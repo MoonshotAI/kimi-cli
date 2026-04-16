@@ -185,8 +185,9 @@ export default function App({
       sessions,
       loadingSessions,
       showSessionPicker,
+      registry,
     }),
-    [state, setState, wireClient, styles, sessions, loadingSessions, showSessionPicker],
+    [state, setState, wireClient, styles, sessions, loadingSessions, showSessionPicker, registry],
   );
 
   const actionsValue = useMemo(

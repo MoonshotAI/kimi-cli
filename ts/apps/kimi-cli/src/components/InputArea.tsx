@@ -6,15 +6,17 @@
  */
 
 import { Box, Text, useApp as useInkApp, useInput, usePaste } from 'ink';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useActions, useChrome } from '../app/context.js';
 import { PastePlaceholderManager } from './paste-placeholder.js';
+import SlashCommandPanel from './SlashCommandPanel.js';
 import { computeDisplayHeight, useInputBuffer } from './use-input-buffer.js';
 
 const CURSOR = '▎';
 const DEFAULT_MAX_INPUT_LINES = 10;
 const BORDER_ROWS = 2;
+const MAX_PANEL_ITEMS = 8;
 
 export interface InputAreaProps {
   readonly columns: number;
@@ -27,7 +29,7 @@ export default function InputArea({
   maxInputLines = DEFAULT_MAX_INPUT_LINES,
   onContentLines,
 }: InputAreaProps): React.JSX.Element {
-  const { state, styles, showSessionPicker } = useChrome();
+  const { state, styles, showSessionPicker, registry } = useChrome();
   const { appendTranscriptEntry, cancelStream, executeSlashCommand, sendMessage } = useActions();
   // eslint-disable-next-line @typescript-eslint/unbound-method -- Ink's useApp().exit is a stable callback, not a class method.
   const { exit } = useInkApp();
@@ -35,8 +37,40 @@ export default function InputArea({
   const buf = useInputBuffer();
   const pasteManager = useRef(new PastePlaceholderManager());
   const [cursorVisible, setCursorVisible] = useState(true);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [panelDismissed, setPanelDismissed] = useState(false);
 
   const isLocked = state.isStreaming || showSessionPicker;
+
+  // Detect slash mode: input starts with "/" and no space yet (still typing command name)
+  const currentText = buf.text();
+  const slashPrefix = useMemo(() => {
+    if (!currentText.startsWith('/')) return null;
+    const spaceIdx = currentText.indexOf(' ');
+    if (spaceIdx !== -1) return null;
+    return currentText.slice(1);
+  }, [currentText]);
+
+  const showPanel = slashPrefix !== null && !isLocked && !panelDismissed;
+
+  const filteredCommands = useMemo(() => {
+    if (slashPrefix === null) return [];
+    return registry.search(slashPrefix);
+  }, [registry, slashPrefix]);
+
+  // Reset selection when filtered list changes
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [filteredCommands.length, slashPrefix]);
+
+  // Reset dismissed state when slash prefix changes or input is cleared
+  useEffect(() => {
+    setPanelDismissed(false);
+  }, [slashPrefix]);
+
+  const panelRows = showPanel && filteredCommands.length > 0
+    ? Math.min(filteredCommands.length, MAX_PANEL_ITEMS) + (filteredCommands.length > MAX_PANEL_ITEMS ? 1 : 0)
+    : 0;
 
   // Blink cursor
   useEffect(() => {
@@ -57,10 +91,10 @@ export default function InputArea({
 
   const effectiveLines = Math.min(displayLines, maxInputLines);
 
-  // Notify parent of content line count
+  // Notify parent of content line count (including panel)
   useEffect(() => {
-    onContentLines?.(displayLines);
-  }, [displayLines, onContentLines]);
+    onContentLines?.(displayLines + panelRows);
+  }, [displayLines, panelRows, onContentLines]);
 
   // Viewport scrolling when content exceeds max visible lines
   const [viewportStart, setViewportStart] = useState(0);
@@ -86,7 +120,58 @@ export default function InputArea({
 
     if (isLocked) return;
 
-    // Submit on plain Enter
+    // When the slash panel is visible, intercept navigation keys
+    if (showPanel && filteredCommands.length > 0) {
+      if (key.upArrow) {
+        setSelectedIndex((prev) => Math.max(0, prev - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSelectedIndex((prev) => Math.min(filteredCommands.length - 1, prev + 1));
+        return;
+      }
+
+      // Tab: complete command name without executing
+      if (key.tab) {
+        const selected = filteredCommands[selectedIndex];
+        if (selected) {
+          buf.setText(`/${selected.name} `);
+        }
+        return;
+      }
+
+      // Escape: dismiss the panel
+      if (key.escape) {
+        setPanelDismissed(true);
+        return;
+      }
+
+      // Enter: select and execute the command
+      if (key.return && !key.ctrl && !key.meta) {
+        const selected = filteredCommands[selectedIndex];
+        if (selected) {
+          const commandText = `/${selected.name}`;
+          buf.clear();
+          pasteManager.current.reset();
+          setViewportStart(0);
+
+          void executeSlashCommand(commandText).then((result) => {
+            if (!result) return;
+            appendTranscriptEntry({
+              id: `slash-${Date.now()}`,
+              kind: 'status',
+              turnId: undefined,
+              renderMode: 'plain',
+              content: result.message,
+              ...(result.color !== undefined ? { color: result.color } : {}),
+            });
+          });
+        }
+        return;
+      }
+    }
+
+    // Submit on plain Enter (normal, non-panel behavior)
     if (key.return && !key.ctrl && !key.meta) {
       const trimmed = buf.text().trim();
       if (trimmed.length === 0) return;
@@ -166,9 +251,10 @@ export default function InputArea({
   const visibleCursorLine = cursor.line - viewportStart;
 
   const inputHeight = effectiveLines + BORDER_ROWS;
+  const totalHeight = inputHeight + panelRows;
 
   return (
-    <Box height={inputHeight} flexDirection="column">
+    <Box height={totalHeight} flexDirection="column">
       <Box
         borderStyle="round"
         borderColor={isLocked ? styles.colors.border : styles.colors.textDim}
@@ -200,6 +286,14 @@ export default function InputArea({
           ))
         )}
       </Box>
+      {showPanel && filteredCommands.length > 0 ? (
+        <SlashCommandPanel
+          commands={filteredCommands}
+          selectedIndex={selectedIndex}
+          maxVisible={MAX_PANEL_ITEMS}
+          width={innerWidth}
+        />
+      ) : null}
     </Box>
   );
 }
