@@ -231,7 +231,8 @@ class _PromptLiveView(_LiveView):
                     break
 
                 if isinstance(msg, TurnEnd):
-                    self._turn_ended = True
+                    self._active_turn_depth = max(0, self._active_turn_depth - 1)
+                    self._turn_ended = self._active_turn_depth == 0
                     self._flush_prompt_refresh()
                     continue
 
