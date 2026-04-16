@@ -185,6 +185,7 @@ async function ensureOAuthIfNeeded(
   const manager = new OAuthManager({
     config: KIMI_CODE_FLOW_CONFIG,
     storage,
+    sleep: (ms) => new Promise((r) => { setTimeout(r, Math.min(ms, 1000)); }),
   });
   managers.set(providerName, manager);
 

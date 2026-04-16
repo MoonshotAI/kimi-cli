@@ -17,10 +17,12 @@ export interface SlashCommandContext {
   wireClient: WireClient;
   appState: AppState;
   setAppState: (patch: Partial<AppState>) => void;
+  /** Push a status message to the transcript while the command is still running. */
+  showStatus: (message: string) => void;
 }
 
 export type SlashCommandResult =
-  | { type: 'ok'; message?: string }
+  | { type: 'ok'; message?: string; color?: string }
   | { type: 'reload' }
   | { type: 'exit' };
 
@@ -35,6 +37,30 @@ export interface SlashCommandDef {
   mode: SlashCommandMode;
   /** Execute the command. `args` is the trimmed text after the command name. */
   execute(args: string, ctx: SlashCommandContext): Promise<SlashCommandResult>;
+}
+
+// ── Fuzzy matching ──────────────────────────────────────────────────
+
+function fuzzyScore(query: string, target: string): number {
+  if (query.length === 0) return 1;
+  if (target.startsWith(query)) return 1000 + query.length;
+
+  let qi = 0;
+  let score = 0;
+  let consecutive = 0;
+
+  for (let ti = 0; ti < target.length && qi < query.length; ti++) {
+    if (query[qi] === target[ti]) {
+      consecutive++;
+      score += consecutive * 2;
+      if (ti === 0) score += 5;
+      qi++;
+    } else {
+      consecutive = 0;
+    }
+  }
+
+  return qi === query.length ? score : 0;
 }
 
 // ── Registry ────────────────────────────────────────────────────────
@@ -63,21 +89,28 @@ export class SlashCommandRegistry {
   }
 
   /**
-   * Fuzzy-search commands whose name or alias starts with `prefix`.
-   * Used for autocomplete.
+   * Fuzzy-search commands whose name or alias matches `prefix`.
+   * Supports both prefix matching and fuzzy matching (e.g. "clog" → "changelog").
+   * Results are sorted by match quality (prefix matches first, then fuzzy).
    */
   search(prefix: string): SlashCommandDef[] {
-    const seen = new Set<string>();
-    const results: SlashCommandDef[] = [];
+    if (prefix.length === 0) return this.listAll();
+
+    const bestScores = new Map<string, { def: SlashCommandDef; score: number }>();
 
     for (const [key, def] of this.lookup) {
-      if (key.startsWith(prefix) && !seen.has(def.name)) {
-        seen.add(def.name);
-        results.push(def);
+      const s = fuzzyScore(prefix, key);
+      if (s > 0) {
+        const existing = bestScores.get(def.name);
+        if (!existing || s > existing.score) {
+          bestScores.set(def.name, { def, score: s });
+        }
       }
     }
 
-    return results.toSorted((a, b) => a.name.localeCompare(b.name));
+    return [...bestScores.values()]
+      .toSorted((a, b) => b.score - a.score || a.def.name.localeCompare(b.def.name))
+      .map(({ def }) => def);
   }
 
   /** List all registered commands, optionally filtered by mode. */

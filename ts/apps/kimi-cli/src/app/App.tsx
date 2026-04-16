@@ -7,10 +7,11 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 
+import type { LoginOptions } from '@moonshot-ai/core';
+
 import Shell from '../components/Shell.js';
 import { createDefaultRegistry, parseSlashInput } from '../slash/index.js';
 import type { SlashCommandContext } from '../slash/index.js';
-import { createAuthCommands } from '../slash/auth-commands.js';
 import { createThemeStyles } from '../theme/styles.js';
 import type { WireClient } from '../wire/index.js';
 import type { AppState } from './context.js';
@@ -27,6 +28,7 @@ import { useWire } from './hooks/useWire.js';
 
 export interface AppOAuthManager {
   logout(): Promise<void>;
+  login(options?: LoginOptions): Promise<unknown>;
   hasToken(): Promise<boolean>;
 }
 
@@ -36,8 +38,8 @@ export interface AppProps {
   /**
    * Slice 5.0 — OAuth managers registered with `/logout`. Keys are
    * provider names (e.g. "managed:kimi-code"). When present and
-   * non-empty, `createAuthCommands` is merged into the default
-   * registry.
+   * non-empty, they are passed to `createDefaultRegistry` so slash
+   * commands like `/login` and `/logout` use the pre-existing manager.
    */
   readonly oauthManagers?: ReadonlyMap<string, AppOAuthManager> | undefined;
 }
@@ -70,40 +72,43 @@ export default function App({
 
   const styles = useMemo(() => createThemeStyles(state.theme), [state.theme]);
 
-  // Slash command registry (created once). Auth commands are registered when
-  // the host injects OAuth managers (Slice 5.0).
   const registry = useMemo(() => {
-    const reg = createDefaultRegistry();
     if (oauthManagers !== undefined && oauthManagers.size > 0) {
-      const managersMap = new Map<string, { logout: () => Promise<void> }>();
+      const managersMap = new Map<string, AppOAuthManager>();
       for (const [name, mgr] of oauthManagers) {
         managersMap.set(name, mgr);
       }
       const firstName = [...oauthManagers.keys()][0];
-      for (const cmd of createAuthCommands({
+      return createDefaultRegistry({
         managers: managersMap,
         ...(firstName !== undefined ? { defaultProviderName: firstName } : {}),
-      })) {
-        reg.register(cmd);
-      }
+      });
     }
-    return reg;
+    return createDefaultRegistry();
   }, [oauthManagers]);
 
   // ── Slash command execution ────────────────────────────────────
 
   const executeSlashCommand = useCallback(
-    async (input: string): Promise<string | null> => {
+    async (input: string): Promise<{ message: string; color?: string } | null> => {
       const parsed = parseSlashInput(input);
       if (!parsed) return null;
 
       const def = registry.find(parsed.name);
-      if (!def) return `Unknown command: /${parsed.name}`;
+      if (!def) return { message: `Unknown command: /${parsed.name}` };
 
       const ctx: SlashCommandContext = {
         wireClient,
         appState: state,
         setAppState: setState,
+        showStatus: (message: string) => {
+          appendTranscriptEntry({
+            id: `status-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            kind: 'status',
+            renderMode: 'plain',
+            content: message,
+          });
+        },
       };
 
       let result;
@@ -113,7 +118,7 @@ export default function App({
         // Slash command implementations may throw (e.g. setModel stub).
         // Surface as a status message instead of letting the rejection
         // escape to an unhandled promise.
-        return error instanceof Error ? error.message : String(error);
+        return { message: error instanceof Error ? error.message : String(error) };
       }
 
       switch (result.type) {
@@ -123,7 +128,7 @@ export default function App({
         case 'reload':
           // For now, just clear completed blocks by pushing a status message.
           // Full reload (new session) will be implemented later.
-          return 'Session reset. (Full reload not yet implemented)';
+          return { message: 'Session reset. (Full reload not yet implemented)' };
         case 'ok': {
           if (!result.message) return null;
 
@@ -136,7 +141,7 @@ export default function App({
                 c.aliases.length > 0 ? ` (${c.aliases.map((a) => '/' + a).join(', ')})` : '';
               return `  /${c.name}${aliases} -- ${c.description}`;
             });
-            return 'Available commands:\n' + lines.join('\n');
+            return { message: 'Available commands:\n' + lines.join('\n') };
           }
 
           if (result.message === '__show_sessions__') {
@@ -151,12 +156,12 @@ export default function App({
             return null;
           }
 
-          return result.message;
+          return { message: result.message, ...(result.color !== undefined ? { color: result.color } : {}) };
         }
       }
       return null;
     },
-    [wireClient, state, setState, registry, refreshSessions, setShowSessionPicker, sendMessage],
+    [wireClient, state, setState, registry, refreshSessions, setShowSessionPicker, sendMessage, appendTranscriptEntry],
   );
 
   const transcriptValue = useMemo(
@@ -180,8 +185,9 @@ export default function App({
       sessions,
       loadingSessions,
       showSessionPicker,
+      registry,
     }),
-    [state, setState, wireClient, styles, sessions, loadingSessions, showSessionPicker],
+    [state, setState, wireClient, styles, sessions, loadingSessions, showSessionPicker, registry],
   );
 
   const actionsValue = useMemo(

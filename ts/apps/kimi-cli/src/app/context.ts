@@ -9,6 +9,7 @@ import React, { createContext, useContext } from 'react';
 
 import type { Theme } from '../config/schema.js';
 import type { ThemeStyles } from '../theme/styles.js';
+import type { SlashCommandRegistry } from '../slash/registry.js';
 import type {
   WireClient,
   ApprovalRequestData,
@@ -90,6 +91,8 @@ export interface TranscriptEntry {
   renderMode: 'markdown' | 'plain';
   /** Text content. */
   content: string;
+  /** Optional Ink color override for status entries. */
+  color?: string | undefined;
   /** Structured tool call payload when kind === 'tool_call'. */
   toolCallData?: ToolCallBlockData | undefined;
 }
@@ -163,6 +166,7 @@ export interface ChromeContextValue {
   sessions: SessionInfo[];
   loadingSessions: boolean;
   showSessionPicker: boolean;
+  registry: SlashCommandRegistry;
 }
 
 export interface ActionsContextValue {
@@ -172,7 +176,7 @@ export interface ActionsContextValue {
   handleApprovalResponse: (response: ApprovalResponseData) => void;
   handleQuestionResponse: (answers: string[]) => void;
   dismissToast: (id: string) => void;
-  executeSlashCommand: (input: string) => Promise<string | null>;
+  executeSlashCommand: (input: string) => Promise<{ message: string; color?: string } | null>;
   refreshSessions: () => Promise<void>;
   switchSession: (sessionId: string) => void;
   setShowSessionPicker: (show: boolean) => void;

@@ -16,7 +16,6 @@ export type DeviceCodeState =
       readonly userCode: string;
       readonly verificationUri: string;
       readonly verificationUriComplete: string;
-      readonly intervalSeconds: number;
     }
   | { readonly status: 'success' }
   | { readonly status: 'error'; readonly message: string };
@@ -61,12 +60,12 @@ export default function DeviceCodeDialog(props: DeviceCodeDialogProps): React.JS
             </Text>
           </Box>
           <Text color="gray">
-            Polling every {state.intervalSeconds}s. Press Ctrl-C to cancel.
+            Waiting for authorization… Press Ctrl-C to cancel.
           </Text>
         </>
       )}
       {state.status === 'success' && (
-        <Text color="green">✓ Authorized. Starting shell…</Text>
+        <Text color="green">✓ Authorized successfully.</Text>
       )}
       {state.status === 'error' && (
         <Text color="red">✗ {state.message}</Text>
