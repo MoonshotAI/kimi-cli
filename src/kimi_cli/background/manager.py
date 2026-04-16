@@ -581,7 +581,12 @@ class BackgroundTaskManager:
 
         if runtime.started_at and runtime.finished_at:
             duration = runtime.finished_at - runtime.started_at
-            track("kimi_background_task_completed", success=False, duration_s=duration)
+            track(
+                "kimi_background_task_completed",
+                success=False,
+                duration_s=duration,
+                reason="error",
+            )
 
     def _mark_task_timed_out(self, task_id: str, reason: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -598,7 +603,12 @@ class BackgroundTaskManager:
 
         if runtime.started_at and runtime.finished_at:
             duration = runtime.finished_at - runtime.started_at
-            track("kimi_background_task_completed", success=False, duration_s=duration)
+            track(
+                "kimi_background_task_completed",
+                success=False,
+                duration_s=duration,
+                reason="timeout",
+            )
 
     def _mark_task_killed(self, task_id: str, reason: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -614,4 +624,9 @@ class BackgroundTaskManager:
 
         if runtime.started_at and runtime.finished_at:
             duration = runtime.finished_at - runtime.started_at
-            track("kimi_background_task_completed", success=False, duration_s=duration)
+            track(
+                "kimi_background_task_completed",
+                success=False,
+                duration_s=duration,
+                reason="killed",
+            )

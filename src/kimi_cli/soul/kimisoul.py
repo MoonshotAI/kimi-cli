@@ -693,10 +693,18 @@ class KimiSoul:
                     mcp_snap = self._mcp_status_snapshot()
                     if mcp_snap:
                         if mcp_snap.connected > 0:
-                            _track_mcp("kimi_mcp_connected", server_count=mcp_snap.connected)
+                            _track_mcp(
+                                "kimi_mcp_connected",
+                                server_count=mcp_snap.connected,
+                                total_count=mcp_snap.total,
+                            )
                         _failed = mcp_snap.total - mcp_snap.connected
                         if _failed > 0:
-                            _track_mcp("kimi_mcp_failed")
+                            _track_mcp(
+                                "kimi_mcp_failed",
+                                failed_count=_failed,
+                                total_count=mcp_snap.total,
+                            )
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
@@ -761,12 +769,28 @@ class KimiSoul:
                         error_type = "rate_limit"
                     elif status in (401, 403):
                         error_type = "auth"
+                    elif status >= 500:
+                        error_type = "5xx_server"
+                    elif 400 <= status < 500:
+                        msg_lower = str(e).lower()
+                        if (
+                            "context length" in msg_lower
+                            or "context_length" in msg_lower
+                            or "max tokens" in msg_lower
+                            or "maximum context" in msg_lower
+                            or "too many tokens" in msg_lower
+                        ):
+                            error_type = "context_overflow"
+                        else:
+                            error_type = "4xx_client"
                     else:
                         error_type = "api"
                 elif isinstance(e, APIConnectionError):
                     error_type = "network"
                 elif isinstance(e, (APITimeoutError, TimeoutError)):
                     error_type = "timeout"
+                elif isinstance(e, APIEmptyResponseError):
+                    error_type = "empty_response"
                 track("kimi_api_error", error_type=error_type)
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events

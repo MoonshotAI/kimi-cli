@@ -967,6 +967,9 @@ class OAuthManager:
                         "OAuth credentials rejected: {error}",
                         error=exc,
                     )
+                    from kimi_cli.telemetry import track
+
+                    track("kimi_oauth_refresh", success=False)
                     return
                 except Exception as exc:
                     if force:

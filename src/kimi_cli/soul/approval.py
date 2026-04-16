@@ -133,9 +133,23 @@ class Approval:
             description=description,
         )
         if self._state.yolo:
+            from kimi_cli.telemetry import track
+
+            track(
+                "kimi_tool_approved",
+                tool_name=tool_call.function.name,
+                approval_mode="yolo",
+            )
             return ApprovalResult(approved=True)
 
         if action in self._state.auto_approve_actions:
+            from kimi_cli.telemetry import track
+
+            track(
+                "kimi_tool_approved",
+                tool_name=tool_call.function.name,
+                approval_mode="auto_session",
+            )
             return ApprovalResult(approved=True)
 
         request_id = str(uuid.uuid4())
@@ -158,16 +172,28 @@ class Approval:
         except ApprovalCancelledError:
             from kimi_cli.telemetry import track
 
-            track("kimi_tool_rejected", tool_name=tool_call.function.name)
+            track(
+                "kimi_tool_rejected",
+                tool_name=tool_call.function.name,
+                approval_mode="cancelled",
+            )
             return ApprovalResult(approved=False)
         from kimi_cli.telemetry import track
 
         match response:
             case "approve":
-                track("kimi_tool_approved", tool_name=tool_call.function.name)
+                track(
+                    "kimi_tool_approved",
+                    tool_name=tool_call.function.name,
+                    approval_mode="manual",
+                )
                 return ApprovalResult(approved=True)
             case "approve_for_session":
-                track("kimi_tool_approved", tool_name=tool_call.function.name)
+                track(
+                    "kimi_tool_approved",
+                    tool_name=tool_call.function.name,
+                    approval_mode="manual",
+                )
                 self._state.auto_approve_actions.add(action)
                 self._state.notify_change()
                 for pending in self._runtime.list_pending():
@@ -175,8 +201,16 @@ class Approval:
                         self._runtime.resolve(pending.id, "approve")
                 return ApprovalResult(approved=True)
             case "reject":
-                track("kimi_tool_rejected", tool_name=tool_call.function.name)
+                track(
+                    "kimi_tool_rejected",
+                    tool_name=tool_call.function.name,
+                    approval_mode="manual",
+                )
                 return ApprovalResult(approved=False, feedback=feedback)
             case _:
-                track("kimi_tool_rejected", tool_name=tool_call.function.name)
+                track(
+                    "kimi_tool_rejected",
+                    tool_name=tool_call.function.name,
+                    approval_mode="manual",
+                )
                 return ApprovalResult(approved=False)
