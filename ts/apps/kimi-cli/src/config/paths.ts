@@ -8,8 +8,8 @@
  * - MCP config:            `<dataDir>/mcp.json`
  * - Logs:                  `<dataDir>/logs/`
  *
- * Note: The TS version uses `~/.kimi-next` (not `~/.kimi`) to avoid conflicts
- * with the Python installation during the migration period.
+ * Now reads from `~/.kimi` (same as Python version) so we can share the
+ * config, API keys, and session data. Override with `KIMI_SHARE_DIR`.
  */
 
 import { createHash } from 'node:crypto';
@@ -23,14 +23,14 @@ import { join } from 'node:path';
 /**
  * Return the root data directory for kimi-cli.
  *
- * Priority: `KIMI_SHARE_DIR` env var > `~/.kimi-next`
+ * Priority: `KIMI_SHARE_DIR` env var > `~/.kimi`
  */
 export function getDataDir(): string {
   const envDir = process.env['KIMI_SHARE_DIR'];
   if (envDir) {
     return envDir;
   }
-  return join(homedir(), '.kimi-next');
+  return join(homedir(), '.kimi');
 }
 
 // ---------------------------------------------------------------------------

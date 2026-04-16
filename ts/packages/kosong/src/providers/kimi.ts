@@ -31,6 +31,7 @@ export interface KimiOptions {
   baseUrl?: string | undefined;
   model: string;
   stream?: boolean | undefined;
+  defaultHeaders?: Record<string, string> | undefined;
 }
 
 export interface GenerationKwargs {
@@ -439,6 +440,7 @@ export class KimiChatProvider implements RetryableChatProvider {
     this._client = new OpenAI({
       apiKey: this._apiKey,
       baseURL: this._baseUrl,
+      defaultHeaders: options.defaultHeaders,
     });
   }
 

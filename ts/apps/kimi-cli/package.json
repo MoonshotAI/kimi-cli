@@ -24,6 +24,7 @@
     "@moonshot-ai/core": "workspace:^",
     "@moonshot-ai/kaos": "workspace:^",
     "@moonshot-ai/kimi-wire-mock": "workspace:*",
+    "@moonshot-ai/kosong": "workspace:^",
     "chalk": "^5.4.1",
     "cli-highlight": "^2.1.11",
     "clipboardy": "^4.0.0",

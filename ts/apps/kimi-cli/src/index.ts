@@ -10,8 +10,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 import {
   AgentRegistry,
@@ -81,9 +80,6 @@ import type { PerSessionToolContext } from './wire/kimi-core-client.js';
 const __dirname = import.meta.dirname;
 
 function getVersion(): string {
-  // In the built bundle the dist/ directory sits one level below the package
-  // root, so package.json is at `../package.json`.  During development with
-  // tsx the source file is at `src/`, same relative depth.
   const pkgPath = resolve(__dirname, '..', 'package.json');
   const pkg: { version: string } = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   return pkg.version;
@@ -457,7 +453,6 @@ function main(): void {
   const version = getVersion();
 
   const program = createProgram(version, (opts) => {
-    // -- Validate and resolve UI mode ----------------------------------------
     let uiMode: UIMode;
     try {
       const result = validateOptions(opts);
@@ -470,7 +465,6 @@ function main(): void {
       throw error;
     }
 
-    // -- Dispatch to the appropriate runner ----------------------------------
     switch (uiMode) {
       case 'shell':
         void runShell(opts, version).catch((error: unknown) => {

@@ -52,6 +52,12 @@ export function adaptSoulEventToWireMessage(
       // Slice 2.1). Map to the TUI `{type:'text', text}` shape.
       return createEvent('content.delta', { type: 'text', text: event.delta }, common);
 
+    case 'thinking.delta':
+      // Thinking deltas flow through their own wire event so the TUI
+      // renders them in the dedicated ThinkingBlock rather than the
+      // main assistant text stream.
+      return createEvent('content.delta', { type: 'think', think: event.delta }, common);
+
     case 'tool.call':
       return createEvent(
         'tool.call',

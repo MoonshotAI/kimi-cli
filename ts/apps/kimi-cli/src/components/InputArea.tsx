@@ -24,7 +24,8 @@ import { AppContext } from '../app/context.js';
 const CURSOR = '▎';
 
 export default function InputArea(): React.JSX.Element {
-  const { state, styles, sendMessage, cancelStream } = useContext(AppContext);
+  const { state, styles, sendMessage, cancelStream, executeSlashCommand, pushBlock } =
+    useContext(AppContext);
   // eslint-disable-next-line @typescript-eslint/unbound-method -- Ink's useApp().exit is a stable callback, not a class method.
   const { exit } = useInkApp();
   const [inputText, setInputText] = useState('');
@@ -61,10 +62,24 @@ export default function InputArea(): React.JSX.Element {
     // Enter: submit.
     if (key.return) {
       const trimmed = inputRef.current.trim();
-      if (trimmed.length > 0) {
+      if (trimmed.length === 0) return;
+
+      inputRef.current = '';
+      setInputText('');
+
+      // Slash command?
+      if (trimmed.startsWith('/')) {
+        void executeSlashCommand(trimmed).then((msg) => {
+          if (msg) {
+            pushBlock({
+              id: `slash-${Date.now()}`,
+              type: 'status',
+              content: msg,
+            });
+          }
+        });
+      } else {
         sendMessage(trimmed);
-        inputRef.current = '';
-        setInputText('');
       }
       return;
     }

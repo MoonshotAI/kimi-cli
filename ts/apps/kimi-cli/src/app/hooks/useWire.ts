@@ -181,16 +181,19 @@ export function useWire(
       case 'content.delta': {
         const data = msg.data as ContentDeltaData;
         if (data.type === 'text' && data.text !== undefined) {
-          // If we were thinking, flush thinking to Static first
+          // If we were thinking, flush thinking to Static.
+          // Clear dynamic state BEFORE pushing to Static to avoid
+          // a frame where both dynamic and static thinking are visible.
           if (accumulatedThinkRef.current.length > 0) {
+            const thinkContent = accumulatedThinkRef.current;
+            accumulatedThinkRef.current = '';
+            setStreamingThinkText('');
             const thinkBlock: CompletedBlock = {
               id: nextBlockId(),
               type: 'thinking',
-              content: accumulatedThinkRef.current,
+              content: thinkContent,
             };
             setCompletedBlocks((prev) => [...prev, thinkBlock]);
-            accumulatedThinkRef.current = '';
-            setStreamingThinkText('');
           }
           accumulatedTextRef.current += data.text;
           setStreamingText(accumulatedTextRef.current);
@@ -403,68 +406,9 @@ export function useWire(
         return; // Already streaming, ignore.
       }
 
-      // Slice 4.3 Part 1 — intercept slash commands before they reach
-      // the LLM. Leading `/` means "slash command", not a user message.
-      // The raw command text is echoed as a user block for transcript
-      // continuity, then the result is pushed as a status block.
-      if (input.startsWith('/')) {
-        const trimmed = input.slice(1).trim();
-        if (trimmed.length > 0) {
-          const userBlock: CompletedBlock = {
-            id: nextBlockId(),
-            type: 'user',
-            content: input,
-          };
-          setCompletedBlocks((prev) => [...prev, userBlock]);
-
-          const [name, ...args] = trimmed.split(/\s+/);
-          void (async () => {
-            try {
-              const result = await wireClient.handleSlashCommand(sessionId, name!, args);
-              // Apply kimi-core's authoritative state delta so
-              // StatusBar flags (planMode / yolo / etc.) reflect what
-              // SessionControl actually committed. Done before the
-              // status block so the user sees the flag flip and the
-              // message land in the same React render.
-              if (result.ok && result.stateUpdate !== undefined) {
-                const patch: Partial<AppState> = {};
-                if (result.stateUpdate.planMode !== undefined) {
-                  patch.planMode = result.stateUpdate.planMode;
-                }
-                if (result.stateUpdate.yolo !== undefined) {
-                  patch.yolo = result.stateUpdate.yolo;
-                }
-                if (result.stateUpdate.thinking !== undefined) {
-                  patch.thinking = result.stateUpdate.thinking;
-                }
-                if (result.stateUpdate.model !== undefined) {
-                  patch.model = result.stateUpdate.model;
-                }
-                if (Object.keys(patch).length > 0) {
-                  setState(patch);
-                }
-              }
-              const statusBlock: CompletedBlock = {
-                id: nextBlockId(),
-                type: 'status',
-                content: result.ok ? result.message : `error: ${result.message}`,
-              };
-              setCompletedBlocks((prev) => [...prev, statusBlock]);
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              setCompletedBlocks((prev) => [
-                ...prev,
-                {
-                  id: nextBlockId(),
-                  type: 'status',
-                  content: `error: ${message}`,
-                },
-              ]);
-            }
-          })();
-          return;
-        }
-      }
+      // Slash-command routing moved to `InputArea → App.executeSlashCommand`
+      // (Slice 4.x merge). The SlashCommandRegistry now owns parsing and
+      // dispatching, so `sendMessage` only handles plain user prompts.
 
       // Push user message as a completed block.
       const userBlock: CompletedBlock = {

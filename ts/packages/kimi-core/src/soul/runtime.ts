@@ -47,6 +47,7 @@ export interface ChatParams {
   effort?: string | undefined;
   signal: AbortSignal;
   onDelta?: ((delta: string) => void) | undefined;
+  onThinkDelta?: ((delta: string) => void) | undefined;
 }
 
 export interface ChatResponse {

@@ -393,34 +393,12 @@ describe('ThinkingBlock', () => {
     expect(frame).not.toContain('more lines');
   });
 
-  it('truncates text longer than maxLines', () => {
-    const lines = Array.from({ length: 10 }, (_, i) => `Line ${String(i + 1)}`);
-    const text = lines.join('\n');
-    const frame = renderText(<ThinkingBlock text={text} maxLines={6} />);
-    expect(frame).toContain('Line 1');
-    expect(frame).toContain('Line 6');
-    // Should NOT contain lines beyond maxLines
-    expect(frame).not.toContain('Line 7');
-    // Should show truncation indicator
-    expect(frame).toContain('more lines');
-  });
-
-  it('uses default maxLines of 6', () => {
+  it('shows all lines without truncation', () => {
     const lines = Array.from({ length: 12 }, (_, i) => `Thought ${String(i + 1)}`);
     const text = lines.join('\n');
     const frame = renderText(<ThinkingBlock text={text} />);
     expect(frame).toContain('Thought 1');
-    expect(frame).toContain('Thought 6');
-    expect(frame).not.toContain('Thought 7');
-    expect(frame).toContain('6 more lines');
-  });
-
-  it('does not truncate text with exactly maxLines', () => {
-    const lines = Array.from({ length: 6 }, (_, i) => `Line ${String(i + 1)}`);
-    const text = lines.join('\n');
-    const frame = renderText(<ThinkingBlock text={text} maxLines={6} />);
-    expect(frame).toContain('Line 1');
-    expect(frame).toContain('Line 6');
+    expect(frame).toContain('Thought 12');
     expect(frame).not.toContain('more lines');
   });
 });
