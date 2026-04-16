@@ -69,6 +69,7 @@ import React from 'react';
 
 import App from './app/App.js';
 import type { AppState } from './app/context.js';
+import { runPrintMode } from './app/PrintMode.js';
 import { createProgram } from './cli/commands.js';
 import type { CLIOptions, UIMode } from './cli/options.js';
 import { OptionConflictError, validateOptions } from './cli/options.js';
@@ -553,8 +554,31 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
   });
 }
 
-function runPrint(_opts: CLIOptions): void {
-  process.stdout.write('Print mode: not yet implemented (Phase 10)\n');
+async function runPrint(opts: CLIOptions): Promise<void> {
+  const bootstrap = opts.offline
+    ? await bootstrapOfflineShell(opts)
+    : await bootstrapCoreShell(opts);
+
+  try {
+    const exitCode = await runPrintMode({
+      wireClient: bootstrap.wireClient,
+      sessionId: bootstrap.sessionId,
+      prompt: opts.prompt,
+      inputFormat: opts.inputFormat ?? 'text',
+      outputFormat: opts.outputFormat ?? 'text',
+      finalMessageOnly: opts.finalMessageOnly,
+    });
+    process.exit(exitCode);
+  } finally {
+    await bootstrap.wireClient.dispose();
+    if (bootstrap.mcpManager !== undefined) {
+      try {
+        await bootstrap.mcpManager.close();
+      } catch {
+        // Swallow — MCPManager.close() already logs close errors.
+      }
+    }
+  }
 }
 
 function runWire(_opts: CLIOptions): void {
@@ -591,7 +615,12 @@ function main(): void {
         });
         break;
       case 'print':
-        runPrint(opts);
+        void runPrint(opts).catch((error: unknown) => {
+          process.stderr.write(
+            `error: failed to start print mode: ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+          process.exit(1);
+        });
         break;
       case 'wire':
         runWire(opts);
