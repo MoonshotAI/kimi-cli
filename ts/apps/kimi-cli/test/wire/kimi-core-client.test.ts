@@ -102,6 +102,24 @@ function createFakeStack(): {
     return managed;
   }
 
+  // Slice 5.1 — wire-level test capture for the four upgraded methods.
+  const renameCalls: Array<{ id: string; title: string }> = [];
+  let stubStatusReturn: string = 'idle';
+  let stubUsageReturn = {
+    total_input_tokens: 0,
+    total_output_tokens: 0,
+    total_cache_read_tokens: 0,
+    total_cache_write_tokens: 0,
+    total_cost_usd: 0,
+  };
+  let stubListReturn: Array<{
+    session_id: string;
+    created_at: number;
+    workspace_dir?: string;
+    title?: string;
+    last_activity?: number;
+  }> = [];
+
   const sessionManager = {
     async createSession(options: CreateSessionOptions): Promise<ManagedSession> {
       nextId += 1;
@@ -118,17 +136,35 @@ function createFakeStack(): {
       return buildManaged(sessionId, eventBus);
     },
     async listSessions() {
+      if (stubListReturn.length > 0) return stubListReturn;
       return [...states.keys()].map((id) => ({ session_id: id, created_at: 0 }));
     },
     async closeSession(_sessionId: string): Promise<void> {
       states.delete(_sessionId);
+    },
+    async renameSession(sessionId: string, title: string): Promise<void> {
+      renameCalls.push({ id: sessionId, title });
+    },
+    async getSessionStatus(_sessionId: string): Promise<string> {
+      return stubStatusReturn;
+    },
+    async getSessionUsage(_sessionId: string): Promise<typeof stubUsageReturn> {
+      return stubUsageReturn;
     },
     get(sessionId: string): unknown {
       return states.get(sessionId);
     },
   };
 
-  return { sessionManager, states, resumeCalls };
+  return {
+    sessionManager,
+    states,
+    resumeCalls,
+    renameCalls,
+    setStubStatus: (s: string): void => { stubStatusReturn = s; },
+    setStubUsage: (u: typeof stubUsageReturn): void => { stubUsageReturn = u; },
+    setStubList: (l: typeof stubListReturn): void => { stubListReturn = l; },
+  };
 }
 
 function fakeRuntime(): Runtime {
@@ -294,6 +330,102 @@ describe('KimiCoreClient', () => {
     expect(msg!.method).toBe('content.delta');
     expect(msg!.data).toEqual({ type: 'text', text: 'resumed' });
 
+    await client.dispose();
+  });
+});
+
+// ── Slice 5.1 — wire-level coverage of session-info methods ──────────
+
+describe('KimiCoreClient session-info methods (Slice 5.1)', () => {
+  it('rename forwards to sessionManager.renameSession', async () => {
+    const stack = createFakeStack();
+    const client = new KimiCoreClient({
+      sessionManager: stack.sessionManager as never,
+      runtime: fakeRuntime(),
+      model: 'm',
+      systemPrompt: '',
+      buildTools: (): Tool[] => [],
+    });
+    await client.rename('ses_x', 'My title');
+    expect(stack.renameCalls).toEqual([{ id: 'ses_x', title: 'My title' }]);
+    await client.dispose();
+  });
+
+  it('getStatus surfaces sessionManager.getSessionStatus', async () => {
+    const stack = createFakeStack();
+    stack.setStubStatus('active');
+    const client = new KimiCoreClient({
+      sessionManager: stack.sessionManager as never,
+      runtime: fakeRuntime(),
+      model: 'm',
+      systemPrompt: '',
+      buildTools: (): Tool[] => [],
+    });
+    expect(await client.getStatus('ses_x')).toEqual({ state: 'active' });
+    await client.dispose();
+  });
+
+  it('getUsage surfaces sessionManager.getSessionUsage', async () => {
+    const stack = createFakeStack();
+    stack.setStubUsage({
+      total_input_tokens: 100,
+      total_output_tokens: 50,
+      total_cache_read_tokens: 10,
+      total_cache_write_tokens: 5,
+      total_cost_usd: 0,
+    });
+    const client = new KimiCoreClient({
+      sessionManager: stack.sessionManager as never,
+      runtime: fakeRuntime(),
+      model: 'm',
+      systemPrompt: '',
+      buildTools: (): Tool[] => [],
+    });
+    const usage = await client.getUsage('ses_x');
+    expect(usage.total_input_tokens).toBe(100);
+    expect(usage.total_output_tokens).toBe(50);
+    expect(usage.total_cost_usd).toBe(0);
+    await client.dispose();
+  });
+
+  it('listSessions forwards title and last_activity through wire layer (B1 fix)', async () => {
+    const stack = createFakeStack();
+    stack.setStubList([
+      {
+        session_id: 'ses_titled',
+        created_at: 1_700_000_000,
+        workspace_dir: '/proj',
+        title: 'My demo',
+        last_activity: 1_700_010_000,
+      },
+      {
+        session_id: 'ses_legacy',
+        created_at: 1_690_000_000,
+      },
+    ]);
+    const client = new KimiCoreClient({
+      sessionManager: stack.sessionManager as never,
+      runtime: fakeRuntime(),
+      model: 'm',
+      systemPrompt: '',
+      buildTools: (): Tool[] => [],
+    });
+    const { sessions } = await client.listSessions();
+    expect(sessions).toHaveLength(2);
+    expect(sessions[0]).toMatchObject({
+      id: 'ses_titled',
+      work_dir: '/proj',
+      title: 'My demo',
+      created_at: 1_700_000_000,
+      updated_at: 1_700_010_000,
+    });
+    // Legacy session: title falls back to null, updated_at to created_at
+    expect(sessions[1]).toMatchObject({
+      id: 'ses_legacy',
+      title: null,
+      created_at: 1_690_000_000,
+      updated_at: 1_690_000_000,
+    });
     await client.dispose();
   });
 });

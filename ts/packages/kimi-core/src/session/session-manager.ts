@@ -22,7 +22,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
 import { LifecycleGateFacade } from '../soul-plus/lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
@@ -45,8 +45,31 @@ import { WiredSessionJournalImpl, type SessionJournal } from '../storage/session
 import type { PathConfig } from './path-config.js';
 import { projectReplayState } from './replay-projector.js';
 import { StateCache, type SessionState } from './state-cache.js';
+import {
+  createCachedUsageAggregator,
+  type CachedUsageAggregator,
+  type SessionUsageTotals,
+} from './usage-aggregator.js';
 
 // ── Public types ──────────────────────────────────────────────────────
+
+/**
+ * Slice 5.1 — runtime status reported by `getSessionStatus()`. Mirrors
+ * `SessionLifecycleState` from soul-plus plus the persisted-only `'closed'`
+ * value `closeSession()` writes when a session is gracefully released
+ * from memory. Callers should treat `'closed'` as "exists on disk but no
+ * longer live"; live lifecycle states (`active`/`completing`/etc.) only
+ * appear when the session is currently loaded.
+ */
+export type SessionStatus =
+  | 'idle'
+  | 'active'
+  | 'completing'
+  | 'compacting'
+  | 'destroying'
+  | 'closed';
+
+export type { SessionUsageTotals } from './usage-aggregator.js';
 
 export interface SessionInfo {
   session_id: string;
@@ -60,6 +83,18 @@ export interface SessionInfo {
    * Slice 4.3 or for sessions whose state.json is missing / corrupt.
    */
   workspace_dir?: string | undefined;
+  /**
+   * User-set session title via `/title` (Slice 5.1). Sources `state.custom_title`
+   * if present; otherwise undefined. Hosts may render `session_id` as a
+   * fallback display label.
+   */
+  title?: string | undefined;
+  /**
+   * Unix seconds — file mtime of state.json (Slice 5.1). Used as a proxy
+   * for "last user activity" in `/sessions` listings. Undefined when
+   * state.json is missing.
+   */
+  last_activity?: number | undefined;
 }
 
 export interface CreateSessionOptions {
@@ -132,6 +167,11 @@ export interface ManagedSession {
   readonly stateCache: StateCache;
   readonly sessionJournal: SessionJournal;
   readonly journalWriter: JournalWriter;
+  /**
+   * Slice 5.1 — exposed so `getSessionStatus()` can read the live lifecycle
+   * state for active sessions. Same instance owned by SoulPlus.
+   */
+  readonly lifecycleStateMachine: SessionLifecycleStateMachine;
 }
 
 // ── Supported protocol major version ────────────────────────────────
@@ -143,9 +183,36 @@ const SUPPORTED_MAJOR = 2;
 export class SessionManager {
   private readonly paths: PathConfig;
   private readonly sessions = new Map<string, ManagedSession>();
+  private readonly usageAggregator: CachedUsageAggregator;
+  /**
+   * Slice 5.1 (Codex M2): per-session write serialization. Read-merge-write
+   * flows (rename, close, etc.) chain onto the same Promise so concurrent
+   * mutations don't drop each other's fields.
+   */
+  private readonly stateWriteMutex = new Map<string, Promise<void>>();
 
   constructor(paths: PathConfig) {
     this.paths = paths;
+    this.usageAggregator = createCachedUsageAggregator();
+  }
+
+  /**
+   * Run `task` while holding a per-session write lock. Subsequent calls
+   * for the same `sessionId` queue behind it. The lock is released when
+   * `task` settles (success or failure).
+   */
+  private withStateLock<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
+    const prev = this.stateWriteMutex.get(sessionId) ?? Promise.resolve();
+    const next = prev.then(task, task);
+    // Track the void-typed continuation so future callers wait.
+    this.stateWriteMutex.set(
+      sessionId,
+      next.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return next;
   }
 
   // ── Create ────────────────────────────────────────────────────────
@@ -248,6 +315,7 @@ export class SessionManager {
       stateCache,
       sessionJournal,
       journalWriter,
+      lifecycleStateMachine,
     };
 
     this.sessions.set(sessionId, managed);
@@ -390,6 +458,7 @@ export class SessionManager {
       stateCache,
       sessionJournal,
       journalWriter,
+      lifecycleStateMachine,
     };
 
     this.sessions.set(sessionId, managed);
@@ -408,29 +477,147 @@ export class SessionManager {
       return [];
     }
 
-    const results: SessionInfo[] = [];
-    for (const entry of entries) {
-      const statePath = this.paths.statePath(entry);
-      const cache = new StateCache(statePath);
-      const state = await cache.read();
-      if (state !== null) {
-        results.push({
-          session_id: state.session_id,
-          created_at: state.created_at,
-          model: state.model,
-          status: state.status,
-          workspace_dir: state.workspace_dir,
-        });
-      } else {
+    // Slice 5.1 — read each session's state.json + mtime in parallel.
+    // The host typically renders this in a picker so latency matters.
+    const infos = await Promise.all(
+      entries.map(async (entry): Promise<SessionInfo> => {
+        const statePath = this.paths.statePath(entry);
+        const cache = new StateCache(statePath);
+        const [state, lastActivity] = await Promise.all([
+          cache.read(),
+          stat(statePath).then(
+            (st) => Math.floor(st.mtimeMs / 1000) as number | undefined,
+            () => undefined,
+          ),
+        ]);
+        if (state !== null) {
+          return {
+            session_id: state.session_id,
+            created_at: state.created_at,
+            ...(state.model !== undefined ? { model: state.model } : {}),
+            ...(state.status !== undefined ? { status: state.status } : {}),
+            ...(state.workspace_dir !== undefined
+              ? { workspace_dir: state.workspace_dir }
+              : {}),
+            ...(state.custom_title !== undefined
+              ? { title: state.custom_title }
+              : {}),
+            ...(lastActivity !== undefined ? { last_activity: lastActivity } : {}),
+          };
+        }
         // state.json missing or corrupt — include with minimal info.
-        results.push({
+        return {
           session_id: entry,
           created_at: 0,
-        });
-      }
-    }
+          ...(lastActivity !== undefined ? { last_activity: lastActivity } : {}),
+        };
+      }),
+    );
 
-    return results;
+    // Slice 5.1 (Codex M1) — sort by recency descending so /sessions
+    // picker shows the most-recent first. Tie-break by session_id for
+    // stable ordering. Mirrors Python session.py:list_sessions().
+    //
+    // Normalize timestamps to seconds before comparing: created_at is
+    // currently written in ms (Date.now()) while last_activity is
+    // mtime in seconds. Mixing units would break the order for sessions
+    // straddling the migration. Anything > 1e12 is ms.
+    const toSec = (n: number | undefined): number => {
+      if (n === undefined || !Number.isFinite(n) || n <= 0) return 0;
+      return n > 1e12 ? Math.floor(n / 1000) : n;
+    };
+    return infos.sort((a, b) => {
+      const aTs = toSec(a.last_activity) || toSec(a.created_at);
+      const bTs = toSec(b.last_activity) || toSec(b.created_at);
+      if (aTs !== bTs) return bTs - aTs;
+      return a.session_id.localeCompare(b.session_id);
+    });
+  }
+
+  // ── Rename / Status / Usage (Slice 5.1) ───────────────────────────
+
+  /**
+   * Persist a user-set title to state.json. Read-merge-write semantics
+   * preserve other fields written by concurrent flows (auto-approve list,
+   * status, etc.). Throws if the session does not exist on disk.
+   */
+  async renameSession(sessionId: string, title: string): Promise<void> {
+    const trimmed = title.trim();
+    if (trimmed.length === 0) {
+      throw new Error('renameSession: title cannot be empty or whitespace-only');
+    }
+    return this.withStateLock(sessionId, async () => {
+      const statePath = this.paths.statePath(sessionId);
+      const cache = new StateCache(statePath);
+      const existing = await cache.read();
+      if (existing === null) {
+        throw new Error(`renameSession: session "${sessionId}" not found`);
+      }
+      await cache.write({
+        ...existing,
+        custom_title: trimmed,
+        updated_at: Date.now(),
+      });
+      // Drop any cached usage for this wire — rename touched state, not
+      // wire.jsonl, but the cache window may have produced stale answers
+      // for callers that re-read immediately after a turn boundary.
+      this.usageAggregator.invalidate(this.paths.wirePath(sessionId));
+    });
+  }
+
+  /**
+   * Return the runtime status of a session. When the session is live,
+   * returns the lifecycle state machine's current state. Otherwise reads
+   * `status` from state.json, defaulting to 'idle'.
+   */
+  async getSessionStatus(sessionId: string): Promise<SessionStatus> {
+    // Live session — query lifecycle directly.
+    const live = this.sessions.get(sessionId);
+    if (live !== undefined) {
+      return live.lifecycleStateMachine.state as SessionStatus;
+    }
+    // Persisted — read state.json; throw if missing.
+    const cache = new StateCache(this.paths.statePath(sessionId));
+    const state = await cache.read();
+    if (state === null) {
+      throw new Error(`getSessionStatus: session "${sessionId}" not found`);
+    }
+    // Persisted `status` is free-form; treat unknown values as 'idle'.
+    const validStatuses: ReadonlySet<string> = new Set([
+      'idle', 'active', 'completing', 'compacting', 'destroying', 'closed',
+    ]);
+    if (state.status !== undefined && validStatuses.has(state.status)) {
+      return state.status as SessionStatus;
+    }
+    return 'idle';
+  }
+
+  /**
+   * Return aggregated token usage for a session.
+   *
+   * Streams `wire.jsonl` and sums `usage` blocks from every `turn_end`
+   * record. Result is cached in-process for 5 seconds keyed by wire
+   * path; back-to-back `/usage` invocations within the window return
+   * the cached snapshot rather than re-reading. The cache is invalidated
+   * by `renameSession()` to flush any pre-rename snapshot a host might
+   * have just fetched, but is intentionally NOT invalidated by ongoing
+   * turn writes — the 5s window is the upper bound on staleness for
+   * actively running sessions, which is fine for status displays.
+   *
+   * Returns zeros when wire.jsonl is missing (a freshly-created session
+   * before its first turn is normal). Throws when the session has no
+   * state.json (i.e. does not exist).
+   */
+  async getSessionUsage(sessionId: string): Promise<SessionUsageTotals> {
+    // Existence check — wire.jsonl may legitimately be missing (no turns
+    // yet), so we anchor existence on state.json.
+    const cache = new StateCache(this.paths.statePath(sessionId));
+    const state = await cache.read();
+    if (state === null) {
+      throw new Error(`getSessionUsage: session "${sessionId}" not found`);
+    }
+    const wirePath = this.paths.wirePath(sessionId);
+    return this.usageAggregator(wirePath);
   }
 
   // ── Delete ────────────────────────────────────────────────────────
@@ -452,22 +639,24 @@ export class SessionManager {
     if (managed === undefined) {
       return;
     }
+    return this.withStateLock(sessionId, async () => {
+      // Flush state.json with latest metadata. Re-read inside the lock
+      // so a rename that landed during our wait is preserved.
+      const existing = await managed.stateCache.read();
+      const now = Date.now();
+      const stateToFlush: SessionState = existing
+        ? { ...existing, status: 'closed', updated_at: now }
+        : {
+            session_id: sessionId,
+            status: 'closed',
+            created_at: now,
+            updated_at: now,
+          };
+      await managed.stateCache.write(stateToFlush);
 
-    // Flush state.json with latest metadata.
-    const existing = await managed.stateCache.read();
-    const now = Date.now();
-    const stateToFlush: SessionState = existing
-      ? { ...existing, status: 'closed', updated_at: now }
-      : {
-          session_id: sessionId,
-          status: 'closed',
-          created_at: now,
-          updated_at: now,
-        };
-    await managed.stateCache.write(stateToFlush);
-
-    // Remove from active sessions map.
-    this.sessions.delete(sessionId);
+      // Remove from active sessions map.
+      this.sessions.delete(sessionId);
+    });
   }
 
   // ── Get ───────────────────────────────────────────────────────────

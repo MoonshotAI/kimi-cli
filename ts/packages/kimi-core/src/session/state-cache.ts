@@ -4,9 +4,16 @@
  * Reads / writes `state.json` in a session directory. Used by
  * SessionManager to persist quick-access session metadata (model,
  * status, last turn timestamp) without replaying the full wire.jsonl.
+ *
+ * Slice 5.1 (Codex M2): writes go through `tmp + rename` (POSIX atomic)
+ * so a crash mid-write never leaves a half-truncated state.json that
+ * subsequent reads would treat as "missing". Read-modify-write callers
+ * still need their own concurrency guard for "merge then write" races
+ * across processes — see SessionManager.renameSession.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { readFile, rename, unlink, writeFile } from 'node:fs/promises';
 
 export interface SessionState {
   session_id: string;
@@ -30,6 +37,12 @@ export interface SessionState {
    * wire.jsonl replay.
    */
   auto_approve_actions?: string[] | undefined;
+  /**
+   * User-set session title via the `/title` (rename) slash command
+   * (Slice 5.1). When set, takes precedence over any synthesised title
+   * (e.g. first user message) in `listSessions()`.
+   */
+  custom_title?: string | undefined;
 }
 
 export class StateCache {
@@ -48,6 +61,19 @@ export class StateCache {
   }
 
   async write(state: SessionState): Promise<void> {
-    await writeFile(this.statePath, JSON.stringify(state, null, 2), 'utf-8');
+    // Atomic write: write to tmp file then rename. Avoids leaving a
+    // half-truncated state.json if the process crashes mid-write.
+    const tmp = `${this.statePath}.tmp.${process.pid}.${randomBytes(4).toString('hex')}`;
+    try {
+      await writeFile(tmp, JSON.stringify(state, null, 2), 'utf-8');
+      await rename(tmp, this.statePath);
+    } catch (err) {
+      try {
+        await unlink(tmp);
+      } catch {
+        // best effort cleanup
+      }
+      throw err;
+    }
   }
 }

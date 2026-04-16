@@ -99,6 +99,21 @@ export interface PerSessionToolContext {
  * `no` → false. Anything else throws so the slash handler can report
  * `ok: false` with a clear message instead of silently enabling.
  */
+/**
+ * Slice 5.1 (Codex M6) — normalize a timestamp value to unix seconds.
+ *
+ * Internal SessionManager mixes `Date.now()` (milliseconds) for
+ * created_at/updated_at and file mtime (already seconds via the
+ * Math.floor(mtimeMs / 1000) computed in listSessions) for
+ * last_activity. The wire layer always reports seconds. Anything > 1e12
+ * is assumed to be ms (post-2001 epoch in ms is ~1e12+); anything else
+ * is treated as already-seconds.
+ */
+function toUnixSeconds(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return value > 1e12 ? Math.floor(value / 1000) : value;
+}
+
 function parseToggle(args: readonly string[], defaultValue: boolean): boolean {
   if (args.length === 0) return defaultValue;
   const first = args[0]!.toLowerCase();
@@ -361,9 +376,20 @@ export class KimiCoreClient implements WireClient {
     const sessions: SessionInfo[] = records.map((info) => ({
       id: info.session_id,
       work_dir: info.workspace_dir ?? '',
-      title: null,
-      created_at: info.created_at,
-      updated_at: info.created_at,
+      // Slice 5.1: SessionManager populates `title` from state.custom_title;
+      // forward as null when absent (wire schema requires nullable, not
+      // optional).
+      title: info.title ?? null,
+      // Slice 5.1 (Codex M6): wire timestamps are unix seconds. Internal
+      // state.json keeps ms (Date.now()) for backward compat with
+      // existing on-disk sessions; we normalize to seconds here so
+      // `created_at` and `updated_at` share units across all responses.
+      // Heuristic: numbers > 1e12 are ms (post-2001 in ms), <= 1e12 are
+      // seconds — covers both old (ms) and new (sec from mtime) formats.
+      created_at: toUnixSeconds(info.created_at),
+      // Prefer state.json mtime as last-activity proxy; fall back to
+      // created_at for sessions whose state.json never landed.
+      updated_at: toUnixSeconds(info.last_activity ?? info.created_at),
       archived: false,
     }));
     return { sessions };
@@ -439,22 +465,21 @@ export class KimiCoreClient implements WireClient {
     return { session_id: sessionId };
   }
 
-  async rename(_sessionId: string, _title: string): Promise<void> {
-    // Slice 4.3 — rename not implemented yet.
+  async rename(sessionId: string, title: string): Promise<void> {
+    // Slice 5.1 — persists user-set title via SessionManager.
+    await this.deps.sessionManager.renameSession(sessionId, title);
   }
 
-  async getStatus(_sessionId: string): Promise<SessionStatusResult> {
-    return { state: 'idle' };
+  async getStatus(sessionId: string): Promise<SessionStatusResult> {
+    // Slice 5.1 — read from SessionLifecycleStateMachine (live) or
+    // state.json (persisted), no longer hardcoded.
+    const state = await this.deps.sessionManager.getSessionStatus(sessionId);
+    return { state };
   }
 
-  async getUsage(_sessionId: string): Promise<SessionUsageResult> {
-    return {
-      total_input_tokens: 0,
-      total_output_tokens: 0,
-      total_cache_read_tokens: 0,
-      total_cache_write_tokens: 0,
-      total_cost_usd: 0,
-    };
+  async getUsage(sessionId: string): Promise<SessionUsageResult> {
+    // Slice 5.1 — replay wire.jsonl turn_end records (5s cached).
+    return this.deps.sessionManager.getSessionUsage(sessionId);
   }
 
   async compact(sessionId: string): Promise<void> {

@@ -223,7 +223,7 @@ export type { StdioTransportOptions } from './transport/index.js';
 export { RequestRouter } from './router/index.js';
 export type { RouteHandler, RequestRouterDeps, SessionManagerLike } from './router/index.js';
 
-// ── Session (Slice 5 / Slice 3.4) ─────────────────────────────────────
+// ── Session (Slice 5 / Slice 3.4 / Slice 5.1) ────────────────────────
 export { PathConfig } from './session/index.js';
 export { SessionManager } from './session/index.js';
 export type {
@@ -231,11 +231,21 @@ export type {
   ManagedSession,
   ResumeSessionOptions,
   SessionInfo,
+  SessionStatus,
+  SessionUsageTotals,
 } from './session/index.js';
 export { StateCache } from './session/index.js';
 export type { SessionState } from './session/index.js';
 export { projectReplayState } from './session/index.js';
 export type { ReplayProjectedState } from './session/index.js';
+export {
+  aggregateUsage,
+  createCachedUsageAggregator,
+} from './session/index.js';
+export type {
+  CachedAggregatorOptions,
+  CachedUsageAggregator,
+} from './session/index.js';
 
 // ── Migration (Slice 2.7) ──────────────────────────────────────────────
 export {
