@@ -262,3 +262,89 @@ describe('runSubagentTurn', () => {
     expect(chatCall.model).toBe('type-default-model');
   });
 });
+
+// ── git-context injection tests (Slice 6.0) ──────────────────────────
+
+const EXPLORE_DEF: AgentTypeDefinition = {
+  name: 'explore',
+  description: 'Explore agent',
+  whenToUse: 'For exploration',
+  systemPromptSuffix: 'You are an explore subagent.',
+  allowedTools: ['Bash', 'Read'],
+  excludeTools: ['Agent'],
+  defaultModel: null,
+};
+
+/**
+ * Serialize all kosong.chat call args to a single string for broad
+ * content matching. The git-context block may appear in messages,
+ * system prompt, or the input text — this helper captures all paths.
+ */
+function serializeChatCallArgs(kosong: KosongAdapter): string {
+  const calls = (kosong.chat as ReturnType<typeof vi.fn>).mock.calls;
+  return JSON.stringify(calls);
+}
+
+describe('runSubagentTurn git-context injection', () => {
+  it('explore agent prompt includes <git-context> block', async () => {
+    const exploreRegistry = new AgentTypeRegistry();
+    exploreRegistry.register('explore', EXPLORE_DEF);
+
+    const kosong = createFakeKosong('explored');
+    const deps = {
+      ...makeDeps(kosong),
+      typeRegistry: exploreRegistry,
+    };
+    const request = makeRequest({ agentName: 'explore', prompt: 'Find the auth module' });
+
+    await runSubagentTurn(deps, 'sub_explore_001', request, new AbortController().signal);
+
+    // The git-context block should appear somewhere in the data sent to
+    // kosong.chat — either in messages, system prompt, or input text.
+    // We serialize all call args and search broadly.
+    const serialized = serializeChatCallArgs(kosong);
+    expect(serialized).toContain('<git-context>');
+  });
+
+  it('coder agent prompt does NOT include <git-context>', async () => {
+    const kosong = createFakeKosong('coded');
+    const deps = makeDeps(kosong);
+    const request = makeRequest({ agentName: 'coder', prompt: 'Write hello world' });
+
+    await runSubagentTurn(deps, 'sub_coder_001', request, new AbortController().signal);
+
+    // Coder agents should never receive git-context injection.
+    const serialized = serializeChatCallArgs(kosong);
+    expect(serialized).not.toContain('<git-context>');
+  });
+
+  it('explore agent prompt is unchanged when git context is empty', async () => {
+    // When collectGitContext returns empty string (not a git repo),
+    // the prompt should be the original prompt without any git-context block.
+    //
+    // In the red-bar phase, this test fails because the runner does not yet
+    // call collectGitContext at all. After implementation, the runner should:
+    //   1. Call collectGitContext for explore agents
+    //   2. When it returns "", skip injection
+    //   3. The original prompt should still reach kosong.chat intact
+    const exploreRegistry = new AgentTypeRegistry();
+    exploreRegistry.register('explore', EXPLORE_DEF);
+
+    const kosong = createFakeKosong('explored');
+    const deps = {
+      ...makeDeps(kosong),
+      typeRegistry: exploreRegistry,
+      workDir: tmp, // tmp is not a git repo → collectGitContext returns ''
+    };
+    const originalPrompt = 'Find all YAML files';
+    const request = makeRequest({ agentName: 'explore', prompt: originalPrompt });
+
+    await runSubagentTurn(deps, 'sub_explore_002', request, new AbortController().signal);
+
+    // The original prompt must appear in the data sent to kosong.chat
+    const serialized = serializeChatCallArgs(kosong);
+    expect(serialized).toContain(originalPrompt);
+    // No git-context block when the git context is empty
+    expect(serialized).not.toContain('<git-context>');
+  });
+});

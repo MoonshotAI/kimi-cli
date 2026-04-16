@@ -17,6 +17,7 @@ import type { SoulEvent } from '../soul/event-sink.js';
 import { InMemoryContextState } from '../storage/context-state.js';
 import type { AgentResult, SpawnRequest } from './subagent-types.js';
 import type { AgentTypeRegistry } from './agent-type-registry.js';
+import { collectGitContext } from './git-context.js';
 import type { SubagentStore } from './subagent-store.js';
 import {
   SubagentRuntimeLifecycleGate,
@@ -34,6 +35,11 @@ export interface SubagentRunnerDeps {
   readonly sessionDir: string;
   /** Model name to use for child context (parent's current model). */
   readonly parentModel: string;
+  /**
+   * Working directory for git context injection (explore agents).
+   * When absent, defaults to `process.cwd()`.
+   */
+  readonly workDir?: string | undefined;
 }
 
 // ── runSubagentTurn ───────────────────────────────────────────────────
@@ -71,10 +77,10 @@ export async function runSubagentTurn(
 
   // 3. Create child infrastructure
 
-  // Build system prompt for child (inject ROLE_ADDITIONAL suffix).
-  // Note: Python also reads system_prompt_path (e.g. system.md) as the
-  // base prompt. In 5.3 we only use the ROLE_ADDITIONAL suffix — the full
-  // system prompt file loading is deferred to a future slice.
+  // Build system prompt for child. Since Slice 6.0, loadSubagentTypes()
+  // reads system_prompt_path (system.md) and renders the full template
+  // with nunjucks, so systemPromptSuffix now contains the complete
+  // system prompt (base + ROLE_ADDITIONAL), not just the suffix.
   const childSystemPrompt = typeDef.systemPromptSuffix || undefined;
 
   // Determine child model: request override > type default > parent model
@@ -117,11 +123,27 @@ export async function runSubagentTurn(
   // 4. Update status to running
   await store.updateInstance(agentId, { status: 'running' });
 
+  // 4.5. Git-context injection for explore agents (Slice 6.0)
+  let prompt = request.prompt;
+  if (request.agentName === 'explore') {
+    const effectiveWorkDir = deps.workDir ?? process.cwd();
+    const gitCtx = await collectGitContext(effectiveWorkDir);
+    if (gitCtx) {
+      prompt = `${gitCtx}\n\n${prompt}`;
+    }
+  }
+
+  // 4.6. Append user message to child context so runSoulTurn can see it
+  // in context.buildMessages(). runSoulTurn's _input parameter is unused;
+  // TurnManager calls appendUserMessage before runSoulTurn, and the
+  // subagent runner must do the same.
+  await childContext.appendUserMessage({ text: prompt });
+
   // 5. Run the Soul turn
   let turnResult;
   try {
     turnResult = await runSoulTurn(
-      { text: request.prompt },
+      { text: prompt },
       childConfig,
       childContext,
       childRuntime,

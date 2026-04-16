@@ -10,9 +10,10 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 
 import { load as yamlLoad } from 'js-yaml';
+import nunjucks from 'nunjucks';
 
 import type { AgentTypeDefinition } from './agent-type-registry.js';
 
@@ -87,6 +88,8 @@ interface RawAgentBlock {
 
 export interface ResolvedAgentSpec {
   name: string;
+  /** Path to the system prompt template file (e.g. system.md), or null if not specified. */
+  systemPromptPath: string | null;
   systemPromptArgs: Record<string, string>;
   model: string | null;
   whenToUse: string;
@@ -185,6 +188,7 @@ function mergeAgentBlocks(base: RawAgentBlock, child: RawAgentBlock): RawAgentBl
 function resolveSpec(raw: RawAgentBlock): ResolvedAgentSpec {
   return {
     name: raw.name ?? '',
+    systemPromptPath: raw.system_prompt_path ?? null,
     systemPromptArgs: raw.system_prompt_args ?? {},
     model: raw.model ?? null,
     whenToUse: raw.when_to_use ?? '',
@@ -197,11 +201,107 @@ function resolveSpec(raw: RawAgentBlock): ResolvedAgentSpec {
 
 // ── High-level: load all subagent type definitions ────────────────────
 
+// ── System prompt template rendering ─────────────────────────────────
+
+/**
+ * Compute the built-in template variables (Python parity:
+ * `BuiltinSystemPromptArgs` in `agent.py`).
+ *
+ * Note: KIMI_AGENTS_MD, KIMI_SKILLS, KIMI_WORK_DIR_LS, and
+ * KIMI_ADDITIONAL_DIRS_INFO are expensive to compute and depend on
+ * runtime state. In Slice 6.0 we pass empty strings — the full
+ * values are injected at session init time (future slice).
+ */
+function getBuiltinVars(): Record<string, string> {
+  const platform = process.platform;
+  let osName: string;
+  if (platform === 'win32') {
+    osName = 'Windows';
+  } else if (platform === 'darwin') {
+    osName = 'macOS';
+  } else {
+    osName = 'Linux';
+  }
+
+  const shell = process.env['SHELL'] ?? (platform === 'win32' ? 'powershell' : '/bin/sh');
+  const shellName = basename(shell);
+
+  return {
+    KIMI_OS: osName,
+    KIMI_SHELL: `${shellName} (\`${shell}\`)`,
+    KIMI_NOW: new Date().toISOString(),
+    KIMI_WORK_DIR: process.cwd(),
+    KIMI_WORK_DIR_LS: '',
+    KIMI_AGENTS_MD: '',
+    KIMI_SKILLS: '',
+    KIMI_ADDITIONAL_DIRS_INFO: '',
+  };
+}
+
+/**
+ * Render a system.md template with the given variables.
+ *
+ * The template uses `${VAR}` syntax (Jinja2/Python parity) and
+ * `{% if %}` blocks (standard Jinja2). Since nunjucks uses `{{ }}`
+ * for variables, we pre-process `${VAR}` → `{{ VAR }}` before
+ * rendering.
+ *
+ * Python parity: `agent.py:_load_system_prompt`
+ */
+function renderSystemPromptTemplate(
+  templateText: string,
+  vars: Record<string, string>,
+): string {
+  // Convert ${VAR_NAME} → {{ VAR_NAME }} for nunjucks compatibility.
+  // Only match known variable patterns (word chars).
+  const converted = templateText.replaceAll(/\$\{(\w+)\}/g, '{{ $1 }}');
+
+  const env = new nunjucks.Environment(null, {
+    autoescape: false,
+    trimBlocks: true,
+    lstripBlocks: true,
+    // Python parity: Jinja2 StrictUndefined — undefined vars throw
+    // instead of silently rendering as empty string.
+    throwOnUndefined: true,
+  });
+
+  return env.renderString(converted, vars);
+}
+
+/**
+ * Try to load and render a system prompt template.
+ * Returns null if the file doesn't exist or can't be read.
+ */
+async function tryLoadSystemPrompt(
+  systemPromptPath: string,
+  args: Record<string, string>,
+): Promise<string | null> {
+  let templateText: string;
+  try {
+    templateText = await readFile(systemPromptPath, 'utf-8');
+  } catch {
+    // File doesn't exist or can't be read — fall back gracefully
+    return null;
+  }
+
+  const builtinVars = getBuiltinVars();
+  const allVars = { ...builtinVars, ...args };
+
+  return renderSystemPromptTemplate(templateText.trim(), allVars);
+}
+
+// ── High-level: load all subagent type definitions ────────────────────
+
 /**
  * Given the parent agent.yaml path, discover and load all subagent type
  * definitions. Maps Python tool paths to TS names.
  *
- * Python parity: `agent.py:421-442` (labor_market registration loop).
+ * When the parent spec has a `system_prompt_path`, the template is loaded
+ * and rendered with built-in variables + each child's `ROLE_ADDITIONAL`.
+ * If the template file is missing, falls back to bare `ROLE_ADDITIONAL`.
+ *
+ * Python parity: `agent.py:421-442` (labor_market registration loop)
+ * + `agent.py:_load_system_prompt` (template rendering).
  */
 export async function loadSubagentTypes(
   parentAgentYamlPath: string,
@@ -209,15 +309,36 @@ export async function loadSubagentTypes(
   const parentSpec = await loadAgentSpec(parentAgentYamlPath);
   const types: AgentTypeDefinition[] = [];
 
+  // Resolve the system prompt path relative to the parent YAML directory
+  const parentDir = dirname(parentAgentYamlPath);
+  const systemPromptAbsPath =
+    parentSpec.systemPromptPath !== null
+      ? resolve(parentDir, parentSpec.systemPromptPath)
+      : null;
+
   for (const [name, ref] of Object.entries(parentSpec.subagents)) {
-    const childPath = resolve(dirname(parentAgentYamlPath), ref.path);
+    const childPath = resolve(parentDir, ref.path);
     const childSpec = await loadAgentSpec(childPath);
+
+    const roleAdditional = childSpec.systemPromptArgs['ROLE_ADDITIONAL'] ?? '';
+
+    // Try to render the full system prompt with ROLE_ADDITIONAL substituted
+    let systemPromptSuffix: string;
+    if (systemPromptAbsPath !== null) {
+      const rendered = await tryLoadSystemPrompt(systemPromptAbsPath, {
+        ...childSpec.systemPromptArgs,
+        ROLE_ADDITIONAL: roleAdditional,
+      });
+      systemPromptSuffix = rendered ?? roleAdditional;
+    } else {
+      systemPromptSuffix = roleAdditional;
+    }
 
     types.push({
       name,
       description: ref.description,
       whenToUse: childSpec.whenToUse,
-      systemPromptSuffix: childSpec.systemPromptArgs['ROLE_ADDITIONAL'] ?? '',
+      systemPromptSuffix,
       allowedTools: childSpec.allowedTools !== null ? mapToolNames(childSpec.allowedTools) : null,
       excludeTools: mapToolNames(childSpec.excludeTools),
       defaultModel: childSpec.model,

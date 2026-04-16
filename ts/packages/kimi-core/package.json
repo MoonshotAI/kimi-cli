@@ -32,10 +32,12 @@
     "@moonshot-ai/kaos": "workspace:^",
     "@moonshot-ai/kosong": "workspace:^",
     "js-yaml": "^4.1.1",
+    "nunjucks": "^3.2.4",
     "smol-toml": "^1.6.1",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9"
+    "@types/js-yaml": "^4.0.9",
+    "@types/nunjucks": "^3.2.6"
   }
 }

@@ -107,6 +107,8 @@ export interface SoulPlusDeps {
   readonly agentTypeRegistry?: AgentTypeRegistry | undefined;
   /** Session directory path (required when subagent infra is provided). */
   readonly sessionDir?: string | undefined;
+  /** Working directory for git context injection (explore agents). Defaults to `process.cwd()`. */
+  readonly workDir?: string | undefined;
 }
 
 export class SoulPlus {
@@ -161,6 +163,7 @@ export class SoulPlus {
                   parentSink: deps.eventBus,
                   sessionDir: deps.sessionDir ?? '',
                   parentModel: deps.contextState.model,
+                  workDir: deps.workDir ?? process.cwd(),
                 },
                 agentId,
                 request,
