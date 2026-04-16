@@ -117,6 +117,14 @@ export interface SoulContextState {
 
 export interface FullContextState extends SoulContextState {
   /**
+   * Phase 3 (Slice 3) — the `JournalWriter` backing this context state.
+   * Exposed on the wide interface only so SoulPlus-layer callers (e.g.
+   * `TurnManager.executeCompaction`) can `flush()` the async-batch
+   * buffer before a rotation. Soul must not observe this.
+   */
+  readonly journalWriter: JournalWriter;
+
+  /**
    * Replace the in-memory conversation projection with a synthetic
    * summary message and reset the token counter. Called by
    * `TurnManager.executeCompaction` after the compaction provider
@@ -216,7 +224,7 @@ interface BaseContextStateOptions {
  * If step 2 throws, the in-memory state is unchanged.
  */
 class BaseContextState implements FullContextState {
-  private readonly journalWriter: JournalWriter;
+  readonly journalWriter: JournalWriter;
   private readonly projector: ConversationProjector;
   private readonly currentTurnId: () => string;
 

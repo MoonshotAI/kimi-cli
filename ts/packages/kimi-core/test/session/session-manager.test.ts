@@ -121,6 +121,9 @@ describe('SessionManager.createSession', () => {
       user_input: 'hello',
       input_kind: 'user',
     });
+    // Phase 3: default fsyncMode is batched; drain the pending buffer
+    // before inspecting wire.jsonl directly.
+    await session.journalWriter.flush();
 
     const wireContent = await readFile(paths.wirePath('ses_wire'), 'utf-8');
     const lines = wireContent.trim().split('\n');
@@ -585,6 +588,9 @@ describe('Codex Round 2 M3 — JournalWriter shares lifecycle with SoulPlus', ()
       user_input: 'hello',
       input_kind: 'user',
     });
+    // Phase 3: drain the async-batch pending buffer before reading
+    // wire.jsonl directly.
+    await session.journalWriter.flush();
 
     // Get the TurnManager to transition the shared state machine to
     // 'active' then 'compacting'. The SoulPlus facade and TurnManager

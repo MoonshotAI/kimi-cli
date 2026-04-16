@@ -746,6 +746,12 @@ export class SessionManager {
           };
       await managed.stateCache.write(stateToFlush);
 
+      // Phase 3 (Slice 3) — drain the async-batch pending buffer and
+      // stop the drain timer before we drop the managed reference.
+      // Otherwise the setInterval keeps the writer alive and pending
+      // records never land on disk at shutdown.
+      await managed.journalWriter.close();
+
       // Remove from active sessions map.
       this.sessions.delete(sessionId);
     });

@@ -273,6 +273,13 @@ describe('TurnManager.handlePrompt', () => {
         contextRecords.push(record);
         return record;
       },
+      async flush(): Promise<void> {
+        /* no-op: capturing writer keeps everything in memory synchronously */
+      },
+      async close(): Promise<void> {
+        /* no-op */
+      },
+      pendingRecords: [],
     };
     const context = new WiredContextState({
       journalWriter: capturingWriter,

@@ -51,6 +51,10 @@ describe('WiredJournalWriter.append — basic writes', () => {
       turn_id: 't1',
       content: 'hello',
     });
+    // Phase 3: default `fsyncMode: 'batched'` means a non-force-flush
+    // record is only durable after `flush()` (or the drain timer ticks).
+    // An explicit flush lets this pre-async-batch assertion stay valid.
+    await writer.flush();
 
     const lines = await readWireLines(filePath);
     expect(lines.length).toBe(2);
@@ -99,6 +103,8 @@ describe('WiredJournalWriter.append — basic writes', () => {
       tool_calls: [],
       model: 'moonshot-v1',
     });
+    // Phase 3: force the async-batch queue to drain before reading disk.
+    await writer.flush();
 
     const lines = await readWireLines(filePath);
     const lastLine = JSON.parse(lines.at(-1)!) as Record<string, unknown>;
@@ -124,6 +130,9 @@ describe('WiredJournalWriter — serialisation', () => {
 
     // Seq must reflect the order the calls were made in, not completion order.
     expect(all.map((r) => r.seq)).toEqual([all[0].seq, all[0].seq + 1, all[0].seq + 2]);
+
+    // Phase 3: drain the async-batch buffer before inspecting disk.
+    await writer.flush();
 
     const lines = await readWireLines(filePath);
     // 1 metadata header + 3 records.
@@ -248,6 +257,10 @@ describe('WiredJournalWriter — compaction whitelist (Slice 6 audit M02)', () =
     expect(record.type).toBe('compaction');
     expect(record.seq).toBe(1);
 
+    // Phase 3: a `compaction` record is not in FORCE_FLUSH_KINDS, so
+    // under default batched mode we must flush before reading the file.
+    await writer.flush();
+
     const lines = await readWireLines(filePath);
     // metadata header + compaction record
     expect(lines.length).toBe(2);
@@ -317,15 +330,19 @@ describe('WiredJournalWriter — compaction whitelist (Slice 6 audit M02)', () =
   });
 });
 
-describe('WiredJournalWriter — fsync semantics', () => {
-  it('does not resolve the append promise before data is readable from disk', async () => {
-    // This is the canonical "did the content survive across a plain open()?"
-    // assertion. We do not reach inside to observe fsync() syscalls, we
-    // just verify the post-condition: a fresh read() sees the line.
+describe('WiredJournalWriter — fsync semantics (per-record mode)', () => {
+  it('per-record mode: append promise does not resolve until data is readable from disk', async () => {
+    // Phase 3: in the new default `fsyncMode: 'batched'`, a non-force-flush
+    // `user_message` append resolves BEFORE fsync (see
+    // journal-writer-async-batch.test.ts for that contract). The original
+    // "append resolve implies disk readability" invariant is still load-
+    // bearing for SDK-embedded callers that opt into the legacy path via
+    // `fsyncMode: 'per-record'` — pin that invariant here.
     const filePath = join(workDir, 'wire.jsonl');
     const writer = new WiredJournalWriter({
       filePath,
       lifecycle: new StubGate(),
+      config: { fsyncMode: 'per-record' },
     });
 
     await writer.append({
@@ -363,6 +380,9 @@ describe('WiredJournalWriter — resume bootstrap (Slice 1 audit M1)', () => {
     await first.append({ type: 'user_message', turn_id: 't1', content: 'b' });
     const last = await first.append({ type: 'user_message', turn_id: 't1', content: 'c' });
     expect(last.seq).toBe(3);
+    // Phase 3: drain the first writer's async-batch buffer so its records
+    // are on disk before a second writer tries to resume from the file.
+    await first.flush();
 
     // Pass 2: simulate process restart. A fresh writer that knows the
     // on-disk state (lastSeq = 3, metadata already written) must NOT emit
@@ -379,6 +399,8 @@ describe('WiredJournalWriter — resume bootstrap (Slice 1 audit M1)', () => {
     const e = await resumed.append({ type: 'user_message', turn_id: 't2', content: 'e' });
     expect(d.seq).toBe(4);
     expect(e.seq).toBe(5);
+    // Phase 3: drain the resumed writer's batch queue before replay.
+    await resumed.flush();
 
     // Whole-file replay must see exactly one metadata header and
     // contiguous seq 1..5 in call order.
@@ -417,10 +439,16 @@ describe('WiredJournalWriter — resume bootstrap (Slice 1 audit M1)', () => {
 //   on the first successful append, and never again.
 describe('WiredJournalWriter — parent directory fsync (Slice 1 audit M4)', () => {
   it('fsyncs the parent directory exactly once, on the first successful append', async () => {
+    // Phase 3: pin the invariant against the legacy per-record path so
+    // the once-only guarantee is checked deterministically without being
+    // coupled to the async-batch drain timer. The batched path's own
+    // once-only guarantee is covered separately in
+    // journal-writer-async-batch.test.ts.
     const filePath = join(workDir, 'wire.jsonl');
     const writer = new WiredJournalWriter({
       filePath,
       lifecycle: new StubGate(),
+      config: { fsyncMode: 'per-record' },
     });
 
     // `syncParentDir` is a private method at the TS level but a regular
@@ -441,11 +469,13 @@ describe('WiredJournalWriter — parent directory fsync (Slice 1 audit M4)', () 
   });
 
   it('skips the parent directory fsync when resuming from an existing file', async () => {
-    // Seed a pre-existing file (simulate a prior process).
+    // Phase 3: pin the once-only guarantee against per-record mode on
+    // both ends (seed + resume) — same rationale as the previous test.
     const filePath = join(workDir, 'wire.jsonl');
     const seeder = new WiredJournalWriter({
       filePath,
       lifecycle: new StubGate(),
+      config: { fsyncMode: 'per-record' },
     });
     const first = await seeder.append({ type: 'user_message', turn_id: 't0', content: 'seed' });
 
@@ -455,6 +485,7 @@ describe('WiredJournalWriter — parent directory fsync (Slice 1 audit M4)', () 
       lifecycle: new StubGate(),
       initialSeq: first.seq,
       metadataAlreadyWritten: true,
+      config: { fsyncMode: 'per-record' },
     });
     const resumedAny = resumed as unknown as { syncParentDir: () => Promise<void> };
     const spy = vi.spyOn(resumedAny, 'syncParentDir');

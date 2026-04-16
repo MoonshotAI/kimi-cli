@@ -924,6 +924,13 @@ export class TurnManager {
       );
       signal.throwIfAborted();
 
+      // Phase 3 (Slice 3) — drain the async-batch pending buffer BEFORE
+      // rotate(). Otherwise any record still in memory lands in the fresh
+      // post-rotation wire.jsonl after rotation renames the old file,
+      // violating the §9.x contract that pre-compaction records live
+      // only in the archive file.
+      await this.deps.contextState.journalWriter.flush();
+
       // Critical section: rotate + resetToSummary must complete together.
       // No abort check between them — once rotate() has renamed the old
       // wire.jsonl to an archive, an abort here would leave the fresh

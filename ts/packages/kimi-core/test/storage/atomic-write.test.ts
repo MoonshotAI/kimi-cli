@@ -109,6 +109,9 @@ describe('atomicWrite — append-only paths stay unaffected', () => {
         turn_id: 'turn_1',
         content: 'hello',
       });
+      // Phase 3: default fsyncMode is `batched`, so drain the pending
+      // buffer before reading the file back.
+      await writer.flush();
 
       const lines = (await readFile(filePath, 'utf-8')).trim().split('\n');
       // Both the seed metadata line AND the new record must be present.

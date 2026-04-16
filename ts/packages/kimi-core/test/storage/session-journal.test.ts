@@ -48,6 +48,12 @@ describe('WiredSessionJournalImpl', () => {
     const writer = new WiredJournalWriter({
       filePath,
       lifecycle: new StubGate(),
+      // Phase 3: management-class records (turn_begin / permission /
+      // tool_call_dispatched / tool_denied) are not in FORCE_FLUSH_KINDS,
+      // so under the default batched mode they stay in memory until the
+      // drain timer fires. Pin this suite to per-record mode to preserve
+      // its "append → read back from disk" assertions.
+      config: { fsyncMode: 'per-record' },
     });
     return { journal: new WiredSessionJournalImpl(writer), filePath };
   }

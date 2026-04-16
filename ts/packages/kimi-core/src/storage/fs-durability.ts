@@ -14,6 +14,7 @@
  * design (§14.3), so we don't guard against Windows semantics here.
  */
 
+import { closeSync, fsyncSync, openSync } from 'node:fs';
 import { open, rename, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -27,6 +28,20 @@ export async function syncDir(dirPath: string): Promise<void> {
     await dirFh.sync();
   } finally {
     await dirFh.close();
+  }
+}
+
+/**
+ * Synchronous variant of `syncDir`. Used by the batched drain path so a
+ * single timer fire is an atomic event-loop step (see
+ * `WiredJournalWriter.writeBatchAndSync` for the rationale).
+ */
+export function syncDirSync(dirPath: string): void {
+  const fd = openSync(dirPath, 'r');
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
   }
 }
 

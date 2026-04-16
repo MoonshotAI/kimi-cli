@@ -43,6 +43,9 @@ class RecordingContextState implements FullContextState {
 
   constructor(private readonly inner: FullContextState) {}
 
+  get journalWriter(): FullContextState['journalWriter'] {
+    return this.inner.journalWriter;
+  }
   get model(): string {
     return this.inner.model;
   }
