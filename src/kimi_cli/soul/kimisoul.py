@@ -96,6 +96,46 @@ FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
 
 
+def classify_api_error(e: Exception) -> tuple[str, int | None]:
+    """Classify an LLM API exception into (error_type, status_code).
+
+    Exposed at module level so telemetry tests can import the real function
+    instead of duplicating the classification table.
+
+    Returns:
+        (error_type, status_code) where status_code is None for non-HTTP errors.
+    """
+    status_code: int | None = None
+    if isinstance(e, APIStatusError):
+        status = getattr(e, "status_code", getattr(e, "status", 0))
+        status_code = int(status) if status else None
+        if status == 429:
+            return "rate_limit", status_code
+        if status in (401, 403):
+            return "auth", status_code
+        if status >= 500:
+            return "5xx_server", status_code
+        if 400 <= status < 500:
+            msg_lower = str(e).lower()
+            if (
+                "context length" in msg_lower
+                or "context_length" in msg_lower
+                or "max tokens" in msg_lower
+                or "maximum context" in msg_lower
+                or "too many tokens" in msg_lower
+            ):
+                return "context_overflow", status_code
+            return "4xx_client", status_code
+        return "api", status_code
+    if isinstance(e, APIConnectionError):
+        return "network", None
+    if isinstance(e, (APITimeoutError, TimeoutError)):
+        return "timeout", None
+    if isinstance(e, APIEmptyResponseError):
+        return "empty_response", None
+    return "other", None
+
+
 type StepStopReason = Literal["no_tool_calls", "tool_rejected"]
 
 
@@ -762,36 +802,11 @@ class KimiSoul:
                 # Track API/step errors
                 from kimi_cli.telemetry import track
 
-                error_type = "other"
-                if isinstance(e, APIStatusError):
-                    status = getattr(e, "status_code", getattr(e, "status", 0))
-                    if status == 429:
-                        error_type = "rate_limit"
-                    elif status in (401, 403):
-                        error_type = "auth"
-                    elif status >= 500:
-                        error_type = "5xx_server"
-                    elif 400 <= status < 500:
-                        msg_lower = str(e).lower()
-                        if (
-                            "context length" in msg_lower
-                            or "context_length" in msg_lower
-                            or "max tokens" in msg_lower
-                            or "maximum context" in msg_lower
-                            or "too many tokens" in msg_lower
-                        ):
-                            error_type = "context_overflow"
-                        else:
-                            error_type = "4xx_client"
-                    else:
-                        error_type = "api"
-                elif isinstance(e, APIConnectionError):
-                    error_type = "network"
-                elif isinstance(e, (APITimeoutError, TimeoutError)):
-                    error_type = "timeout"
-                elif isinstance(e, APIEmptyResponseError):
-                    error_type = "empty_response"
-                track("kimi_api_error", error_type=error_type)
+                error_type, status_code = classify_api_error(e)
+                if status_code is not None:
+                    track("kimi_api_error", error_type=error_type, status_code=status_code)
+                else:
+                    track("kimi_api_error", error_type=error_type)
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
@@ -1047,6 +1062,7 @@ class KimiSoul:
             )
 
         trigger_reason = "manual" if custom_instruction else "auto"
+        before_tokens = self._context.token_count
         from kimi_cli.hooks import events
 
         await self._hook_engine.trigger(
@@ -1056,12 +1072,23 @@ class KimiSoul:
                 session_id=self._runtime.session.id,
                 cwd=str(Path.cwd()),
                 trigger=trigger_reason,
-                token_count=self._context.token_count,
+                token_count=before_tokens,
             ),
         )
 
         wire_send(CompactionBegin())
-        compaction_result = await _compact_with_retry()
+        try:
+            compaction_result = await _compact_with_retry()
+        except Exception:
+            from kimi_cli.telemetry import track
+
+            track(
+                "kimi_compaction_triggered",
+                trigger_type=trigger_reason,
+                before_tokens=before_tokens,
+                success=False,
+            )
+            raise
         await self._context.clear()
         await self._context.write_system_prompt(self._agent.system_prompt)
         await self._checkpoint()
@@ -1088,6 +1115,16 @@ class KimiSoul:
         await self._context.update_token_count(estimated_token_count)
 
         wire_send(CompactionEnd())
+
+        from kimi_cli.telemetry import track
+
+        track(
+            "kimi_compaction_triggered",
+            trigger_type=trigger_reason,
+            before_tokens=before_tokens,
+            after_tokens=estimated_token_count,
+            success=True,
+        )
 
         _hook_task = asyncio.create_task(
             self._hook_engine.trigger(

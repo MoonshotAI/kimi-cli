@@ -215,12 +215,18 @@ class KimiToolset:
                     )
                     from kimi_cli.telemetry import track
 
-                    track("kimi_tool_error", tool_name=tool_call.function.name)
+                    _error_type = type(e).__name__
+                    track(
+                        "kimi_tool_error",
+                        tool_name=tool_call.function.name,
+                        error_type=_error_type,
+                    )
                     track(
                         "kimi_tool_call",
                         tool_name=tool_call.function.name,
                         success=False,
                         duration_ms=int(tool_elapsed * 1000),
+                        error_type=_error_type,
                     )
                     return ToolResult(
                         tool_call_id=tool_call.id,

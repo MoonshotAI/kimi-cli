@@ -36,6 +36,7 @@ class EventSink:
         # Static context enrichment
         self._context: dict[str, Any] = {
             "version": version,
+            "runtime": "python",
             "platform": platform.system().lower(),
             "arch": platform.machine(),
             "python_version": platform.python_version(),
@@ -53,6 +54,15 @@ class EventSink:
         ctx = {**self._context, "ui_mode": self._ui_mode}
         if self._model:
             ctx["model"] = self._model
+        # Read the client_info tuple atomically (single pointer load) so we
+        # never observe a half-updated pair.
+        from kimi_cli import telemetry as _telemetry_module
+
+        client_info = _telemetry_module._client_info
+        if client_info is not None:
+            ctx["client_name"] = client_info[0]
+            if client_info[1]:
+                ctx["client_version"] = client_info[1]
         enriched = {**event, "context": ctx}
 
         with self._lock:

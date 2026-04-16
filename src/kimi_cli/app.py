@@ -152,11 +152,14 @@ class KimiCLI:
                 connected.
         """
         _create_t0 = time.monotonic()
+        _phase_timings_ms: dict[str, int] = {}
 
         if startup_progress is not None:
             startup_progress("Loading configuration...")
 
+        _phase_t = time.monotonic()
         config = config if isinstance(config, Config) else load_config(config)
+        _phase_timings_ms["config_ms"] = int((time.monotonic() - _phase_t) * 1000)
         if max_steps_per_turn is not None:
             config.loop_control.max_steps_per_turn = max_steps_per_turn
         if max_retries_per_step is not None:
@@ -165,6 +168,7 @@ class KimiCLI:
             config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
 
+        _phase_t = time.monotonic()
         oauth = OAuthManager(config)
 
         model: LLMModel | None = None
@@ -225,6 +229,7 @@ class KimiCLI:
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
+        _phase_timings_ms["oauth_ms"] = int((time.monotonic() - _phase_t) * 1000)
 
         # Refresh plugin configs with fresh credentials (e.g. OAuth tokens)
         try:
@@ -245,12 +250,14 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Loading agent...")
 
+        _phase_t = time.monotonic()
         agent = await load_agent(
             agent_file,
             runtime,
             mcp_configs=mcp_configs or [],
             start_mcp_loading=not defer_mcp_loading,
         )
+        _phase_timings_ms["mcp_ms"] = int((time.monotonic() - _phase_t) * 1000)
 
         if startup_progress is not None:
             startup_progress("Restoring conversation...")
@@ -305,7 +312,13 @@ class KimiCLI:
         from kimi_cli.telemetry import track
 
         track("kimi_started", resumed=resumed, yolo=yolo)
-        track("kimi_startup_perf", duration_ms=int((time.monotonic() - _create_t0) * 1000))
+        track(
+            "kimi_startup_perf",
+            duration_ms=int((time.monotonic() - _create_t0) * 1000),
+            config_ms=_phase_timings_ms.get("config_ms", 0),
+            oauth_ms=_phase_timings_ms.get("oauth_ms", 0),
+            mcp_ms=_phase_timings_ms.get("mcp_ms", 0),
+        )
 
         return KimiCLI(soul, runtime, env_overrides)
 

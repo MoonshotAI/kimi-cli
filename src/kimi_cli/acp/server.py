@@ -58,6 +58,14 @@ class ACPServer:
         )
         self.client_capabilities = client_capabilities
 
+        if client_info is not None:
+            from kimi_cli.telemetry import set_client_info
+
+            set_client_info(
+                name=client_info.name,
+                version=getattr(client_info, "version", None),
+            )
+
         # get command and args of current process for terminal-auth
         command = sys.argv[0]
         args: list[str] = []

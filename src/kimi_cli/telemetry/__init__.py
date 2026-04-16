@@ -39,6 +39,8 @@ _event_queue: deque[dict[str, Any]] = deque(maxlen=_MAX_QUEUE_SIZE)
 
 _device_id: str | None = None
 _session_id: str | None = None
+_client_info: tuple[str, str | None] | None = None
+"""(name, version) tuple, set atomically via set_client_info."""
 _sink: EventSink | None = None
 _disabled: bool = False
 
@@ -48,6 +50,19 @@ def set_context(*, device_id: str, session_id: str) -> None:
     global _device_id, _session_id
     _device_id = device_id
     _session_id = session_id
+
+
+def set_client_info(*, name: str, version: str | None = None) -> None:
+    """Set the wire/acp client name and version (e.g. VSCode 1.90.0, zed 0.180.0).
+
+    Called by wire/acp servers after receiving the client's initialize message.
+    Values are passed through verbatim — backend is responsible for any
+    validation, normalization or alerting on anomalous values.
+    """
+    global _client_info
+    if not name:
+        return
+    _client_info = (name, version)
 
 
 def disable() -> None:

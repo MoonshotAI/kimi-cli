@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from pathlib import Path
@@ -22,12 +23,14 @@ def _reset_telemetry_state():
     telemetry_mod._event_queue.clear()
     telemetry_mod._device_id = None
     telemetry_mod._session_id = None
+    telemetry_mod._client_info = None
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
     yield
     telemetry_mod._event_queue.clear()
     telemetry_mod._device_id = None
     telemetry_mod._session_id = None
+    telemetry_mod._client_info = None
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
 
@@ -237,8 +240,8 @@ class TestAsyncTransport:
 
     @pytest.mark.asyncio
     async def test_send_falls_back_on_error(self):
-        """HTTP errors trigger disk fallback."""
-        transport = AsyncTransport(endpoint="https://mock.test/events")
+        """HTTP errors trigger disk fallback after retries are exhausted."""
+        transport = AsyncTransport(endpoint="https://mock.test/events", retry_backoffs_s=())
 
         # Make _send_http raise a transient error
         from kimi_cli.telemetry.transport import _TransientError
@@ -251,6 +254,81 @@ class TestAsyncTransport:
         ):
             await transport.send([{"event": "test", "timestamp": 1.0}])
             mock_save.assert_called_once()
+
+    def test_default_retry_schedule(self):
+        """Lock down the production backoff schedule so it isn't silently changed."""
+        from kimi_cli.telemetry.transport import RETRY_BACKOFFS_S
+
+        assert RETRY_BACKOFFS_S == (1.0, 4.0, 16.0)
+
+    @pytest.mark.asyncio
+    async def test_send_retries_transient_then_falls_back(self):
+        """send() retries transient errors (without sleeping) then falls back to disk."""
+        transport = AsyncTransport(
+            endpoint="https://mock.test/events",
+            # 3 attempts total: initial + 2 retries (zero sleep for test speed)
+            retry_backoffs_s=(0.0, 0.0),
+        )
+        from kimi_cli.telemetry.transport import _TransientError
+
+        send_mock = AsyncMock(side_effect=_TransientError("503"))
+        with (
+            patch.object(transport, "_send_http", send_mock),
+            patch.object(transport, "save_to_disk") as mock_save,
+        ):
+            await transport.send([{"event": "test", "timestamp": 1.0}])
+            assert send_mock.await_count == 3
+            mock_save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_send_retry_succeeds_no_fallback(self):
+        """send() retries transient errors and succeeds without hitting disk."""
+        transport = AsyncTransport(
+            endpoint="https://mock.test/events",
+            retry_backoffs_s=(0.0, 0.0),
+        )
+        from kimi_cli.telemetry.transport import _TransientError
+
+        # Fail once, succeed on second attempt
+        send_mock = AsyncMock(side_effect=[_TransientError("503"), None])
+        with (
+            patch.object(transport, "_send_http", send_mock),
+            patch.object(transport, "save_to_disk") as mock_save,
+        ):
+            await transport.send([{"event": "test", "timestamp": 1.0}])
+            assert send_mock.await_count == 2
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_cancelled_during_backoff_saves_to_disk(self):
+        """If the send task is cancelled mid-backoff, events must be persisted."""
+        transport = AsyncTransport(
+            endpoint="https://mock.test/events",
+            # Non-zero backoff so there's a real sleep point to cancel
+            retry_backoffs_s=(60.0,),
+        )
+        from kimi_cli.telemetry.transport import _TransientError
+
+        # _send_http always raises _TransientError; first attempt fails,
+        # then asyncio.sleep(60) gives us a window to cancel the task.
+        send_mock = AsyncMock(side_effect=_TransientError("503"))
+
+        with (
+            patch.object(transport, "_send_http", send_mock),
+            patch.object(transport, "save_to_disk") as mock_save,
+        ):
+            task = asyncio.create_task(transport.send([{"event": "test", "timestamp": 1.0}]))
+            # Let the first attempt fail and enter the backoff sleep
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            # Events must have been persisted to disk before the cancel propagated
+            mock_save.assert_called_once()
+            saved_events = mock_save.call_args[0][0]
+            assert len(saved_events) == 1
+            assert saved_events[0]["event"] == "test"
 
     @pytest.mark.asyncio
     async def test_send_success_no_fallback(self):
@@ -346,6 +424,7 @@ class TestAsyncTransport:
         transport = AsyncTransport(
             get_access_token=lambda: None,  # no token
             endpoint="https://mock.test/events",
+            retry_backoffs_s=(),
         )
 
         mock_resp = MagicMock()
@@ -436,6 +515,7 @@ class TestAsyncTransport:
         transport = AsyncTransport(
             get_access_token=lambda: "valid-token",
             endpoint="https://mock.test/events",
+            retry_backoffs_s=(),
         )
 
         resp_401 = MagicMock()

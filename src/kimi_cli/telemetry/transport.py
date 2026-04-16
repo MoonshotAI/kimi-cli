@@ -4,6 +4,7 @@ AsyncTransport: HTTP sending with 401 fallback, disk persistence, startup retry.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -22,6 +23,11 @@ TELEMETRY_ENDPOINT = "https://telemetry.kimi.com/api/v1/events"
 SEND_TIMEOUT = aiohttp.ClientTimeout(total=10, sock_connect=5)
 DISK_EVENT_MAX_AGE_S = 7 * 24 * 3600  # 7 days
 
+# In-process retry schedule: 1s, 4s, 16s backoff between attempts.
+# Total attempts = len(RETRY_BACKOFFS_S) + 1 initial = 4 attempts max.
+# Transient failures exhausted here are written to disk for next-startup retry.
+RETRY_BACKOFFS_S = (1.0, 4.0, 16.0)
+
 
 def _telemetry_dir() -> Path:
     path = get_share_dir() / "telemetry"
@@ -37,31 +43,53 @@ class AsyncTransport:
         *,
         get_access_token: Callable[[], str | None] | None = None,
         endpoint: str = TELEMETRY_ENDPOINT,
+        retry_backoffs_s: tuple[float, ...] | None = None,
     ) -> None:
         """
         Args:
             get_access_token: Callable that returns the current OAuth access token
                 (or None if not logged in). Read-only, must not trigger refresh.
             endpoint: HTTP endpoint to POST events to.
+            retry_backoffs_s: Sleep durations between attempts on transient errors.
+                Pass an empty tuple in tests to disable in-process retry.
         """
         self._get_access_token = get_access_token
         self._endpoint = endpoint
+        self._retry_backoffs = (
+            retry_backoffs_s if retry_backoffs_s is not None else RETRY_BACKOFFS_S
+        )
 
     async def send(self, events: list[dict[str, Any]]) -> None:
-        """Send a batch of events. Falls back to disk on failure."""
+        """Send a batch of events with in-process retry, falling back to disk."""
         if not events:
             return
 
         payload = {"events": events}
 
-        try:
-            await self._send_http(payload)
-        except _TransientError:
-            # Network/server error — save to disk for retry
-            self.save_to_disk(events)
-        except Exception:
-            logger.debug("Telemetry send failed unexpectedly")
-            self.save_to_disk(events)
+        for attempt_idx in range(len(self._retry_backoffs) + 1):
+            try:
+                await self._send_http(payload)
+                return
+            except _TransientError as exc:
+                if attempt_idx >= len(self._retry_backoffs):
+                    logger.debug(
+                        "Telemetry send transient failure after {attempts} attempts: {err}",
+                        attempts=attempt_idx + 1,
+                        err=exc,
+                    )
+                    break
+                backoff = self._retry_backoffs[attempt_idx]
+                try:
+                    await asyncio.sleep(backoff)
+                except asyncio.CancelledError:
+                    # Process is shutting down — persist and exit loop
+                    self.save_to_disk(events)
+                    raise
+            except Exception:
+                logger.debug("Telemetry send failed unexpectedly")
+                break
+
+        self.save_to_disk(events)
 
     async def _send_http(self, payload: dict[str, Any]) -> None:
         """Attempt HTTP POST with 401 anonymous fallback."""
