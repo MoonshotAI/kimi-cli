@@ -25,7 +25,8 @@ function immediateProcess(exitCode: number, stdoutText = ''): KaosProcess {
     pid: 10000 + exitCode,
     exitCode,
     wait: vi.fn().mockResolvedValue(exitCode) as KaosProcess['wait'],
-    kill: vi.fn().mockResolvedValue() as KaosProcess['kill'],
+    // oxlint-disable-next-line unicorn/no-useless-undefined
+    kill: vi.fn().mockResolvedValue(undefined) as KaosProcess['kill'],
   };
 }
 

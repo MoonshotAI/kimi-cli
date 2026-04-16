@@ -144,7 +144,8 @@ describe('mapTokenUsage', () => {
 
   it('returns undefined for null input', () => {
     expect(mapTokenUsage(null)).toBeUndefined();
-    expect(mapTokenUsage()).toBeUndefined();
+    // oxlint-disable-next-line unicorn/no-useless-undefined
+    expect(mapTokenUsage(undefined)).toBeUndefined();
   });
 });
 

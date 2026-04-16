@@ -15,12 +15,12 @@
 | **5.2** | Resume/Continue | ✅ done | `9d5d0abd` | +28 |
 | **5.3** | Subagent runtime | ✅ done | `00cf913b` | +52 |
 | **5.4** | Runtime switches + EnterPlanMode | ✅ done | `94f81ad3` | +17 |
-| **5.5** | Hook + /init | 🟡 Stage 1 starting | — | — |
-| 5.6 | Compaction 完成 | pending | — | — |
-| 5.7 | 清理 + Full E2E | pending | — | — |
+| **5.5** | Hook config + event types | ✅ done | `fda1ba8a` | +12 |
+| **5.6** | Compaction 完成 | ✅ done | `81ef9a53` | +0 (fix only) |
+| **5.7** | 清理 + typecheck fix | ✅ done | see below | +0 (fix only) |
 
-**全套测试**: 1555 passed（kimi-core 单包）
-**Typecheck**: kimi-core + kimi-cli 都 clean（kimi-core 有 3 个 pre-existing test errors in migrate/python + background/manager/task-tools）
+**全套测试**: 1567 passed（kimi-core 单包）
+**Typecheck**: kimi-core + kimi-cli 都 **fully clean**（0 errors，3 个 pre-existing errors 在 5.7 修复）
 
 ---
 
