@@ -104,21 +104,25 @@ export class KosongAdapter implements KosongAdapterInterface {
       parameters: isRecord(t.input_schema) ? t.input_schema : { type: 'object' },
     }));
 
-    // Drive kosong's aggregator. Text deltas are forwarded to the caller's
-    // onDelta via the onMessagePart callback — we only surface `text`
-    // parts, matching the pre-Slice-2.1 behaviour where thinking / tool
-    // call deltas were not exposed as content.delta events.
+    // Drive kosong's aggregator. Text and thinking deltas are forwarded to
+    // the caller via `onDelta` / `onThinkDelta` through `onMessagePart`.
+    // Tool call deltas are not exposed as streaming events — they arrive
+    // aggregated in `result.message.toolCalls` below.
     const onDelta = params.onDelta;
+    const onThinkDelta = params.onThinkDelta;
+    const needMessagePart = onDelta !== undefined || onThinkDelta !== undefined;
     const result = await generate(
       activeProvider,
       params.systemPrompt,
       kosongTools,
       params.messages,
-      onDelta !== undefined
+      needMessagePart
         ? {
             onMessagePart: (part: KosongStreamedPart): void => {
-              if (part.type === 'text') {
+              if (part.type === 'text' && onDelta !== undefined) {
                 onDelta(part.text);
+              } else if (part.type === 'think' && onThinkDelta !== undefined) {
+                onThinkDelta(part.think);
               }
             },
           }
