@@ -26,7 +26,7 @@ import SessionPicker from './session/SessionPicker.js';
 import Spinner from './Spinner.js';
 import StatusBar from './StatusBar.js';
 import Welcome from './Welcome.js';
-import ComposingViewport from './message/ComposingViewport.js';
+
 import ThinkingBlock from './message/ThinkingBlock.js';
 import ThinkingViewport from './message/ThinkingViewport.js';
 import ToolCallBlock from './message/ToolCallBlock.js';
@@ -284,7 +284,11 @@ function ActivityPane({ maxHeight }: { readonly maxHeight: number }): React.JSX.
         content = <ToolPane height={5} />;
         break;
       default:
-        content = null;
+        if (state.streamingPhase === 'composing') {
+          content = <StreamPhaseLine phase="composing" />;
+        } else {
+          content = null;
+        }
         break;
     }
   }
@@ -298,27 +302,15 @@ function ActivityPane({ maxHeight }: { readonly maxHeight: number }): React.JSX.
 
 function LiveFrame(): React.JSX.Element {
   const { rows } = useWindowSize();
-  const { state } = useChrome();
-  const { pane } = useLiveTurn();
 
   const maxActivityHeight = Math.max(
     1,
     rows - INPUT_DOCK_HEIGHT - STATUS_BAR_HEIGHT,
   );
-  const maxComposingHeight = computeThinkingMaxHeight(
-    rows,
-    Math.max(1, rows - INPUT_DOCK_HEIGHT - STATUS_BAR_HEIGHT),
-  );
 
   return (
     <Box flexDirection="column">
       <ActivityPane maxHeight={maxActivityHeight} />
-      {state.streamingPhase === 'composing' ? (
-        <Box flexDirection="column" marginTop={1}>
-          <ComposingViewport text={pane.assistantText} maxHeight={maxComposingHeight} />
-          <StreamPhaseLine phase="composing" />
-        </Box>
-      ) : null}
       <InputArea />
       <StatusBar />
     </Box>

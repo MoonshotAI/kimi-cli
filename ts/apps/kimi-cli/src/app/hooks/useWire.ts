@@ -314,10 +314,8 @@ export function useWire(
 
           assistantDraftRef.current += data.text;
           flushCommittedAssistantBlocks();
-          const pendingAssistantText = assistantDraftRef.current.slice(assistantCommittedLengthRef.current);
           patchLivePane({
             mode: 'idle',
-            assistantText: pendingAssistantText,
             pendingToolCall: null,
             pendingApproval: null,
             pendingQuestion: null,
