@@ -1,15 +1,15 @@
 /**
- * StatusBar component -- two-line bottom toolbar, matching Python version.
+ * StatusBar component.
  *
- * Line 1: ──────────────────────────────────  (separator)
- * Line 2: [yolo] [plan] mode (model ●) cwd tips...
- * Line 3: context: 5.0% (500/100k)
+ * Line 1: separator
+ * Line 2: flags + mode + cwd + tips
+ * Line 3: context usage
  */
 
-import React, { useContext } from 'react';
+import React from 'react';
 import { Box, Text, useStdout } from 'ink';
 
-import { AppContext } from '../app/context.js';
+import { useChrome } from '../app/context.js';
 
 const MAX_CWD_COLS = 30;
 
@@ -51,7 +51,7 @@ function contextColor(usage: number, colors: { success: string; warning: string;
 }
 
 export default function StatusBar(): React.JSX.Element {
-  const { state, styles } = useContext(AppContext);
+  const { state, styles } = useChrome();
   const { stdout } = useStdout();
   const { colors } = styles;
   const columns = stdout?.columns ?? 80;
@@ -79,7 +79,7 @@ export default function StatusBar(): React.JSX.Element {
   const separator = '─'.repeat(columns);
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column">
       {/* Separator */}
       <Text color={colors.border}>{separator}</Text>
 
@@ -92,7 +92,7 @@ export default function StatusBar(): React.JSX.Element {
         <Text color={colors.textMuted}>{tips}</Text>
       </Box>
 
-      {/* Line 2: context usage right-aligned */}
+      {/* Line 2: context usage */}
       <Box justifyContent="flex-end">
         <Text color={contextClr}>{contextText}</Text>
       </Box>

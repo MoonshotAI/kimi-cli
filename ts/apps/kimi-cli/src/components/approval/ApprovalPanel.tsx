@@ -49,11 +49,19 @@ export interface ApprovalPanelProps {
   readonly request: PendingApproval;
   /** Callback when the user responds to the approval. */
   readonly onResponse: (response: ApprovalResponseData) => void;
+  /** Approximate vertical budget for display content. */
+  readonly maxBodyHeight?: number;
 }
 
 // ── Display Block Renderer ───────────────────────────────────────────
 
-function DisplayBlockView({ block }: { readonly block: DisplayBlock }): React.JSX.Element | null {
+function DisplayBlockView({
+  block,
+  maxDiffLines,
+}: {
+  readonly block: DisplayBlock;
+  readonly maxDiffLines: number;
+}): React.JSX.Element | null {
   switch (block.type) {
     case 'diff':
       return <DiffPreview block={{
@@ -64,7 +72,7 @@ function DisplayBlockView({ block }: { readonly block: DisplayBlock }): React.JS
         oldStart: block.old_start,
         newStart: block.new_start,
         isSummary: block.is_summary,
-      }} />;
+      }} maxLines={maxDiffLines} />;
     case 'shell':
       return (
         <Box>
@@ -82,17 +90,56 @@ function DisplayBlockView({ block }: { readonly block: DisplayBlock }): React.JS
   }
 }
 
+function normalizeApprovalText(text: string): string {
+  return text.replace(/\r\n/g, '\n').trim();
+}
+
+function isDuplicateBriefBlock(block: DisplayBlock, description: string): boolean {
+  if (block.type !== 'brief' || block.text.trim().length === 0) {
+    return false;
+  }
+
+  const normalizedDescription = normalizeApprovalText(description);
+  if (normalizedDescription.length === 0) {
+    return false;
+  }
+
+  const normalizedBlockText = normalizeApprovalText(block.text);
+  if (normalizedBlockText === normalizedDescription) {
+    return true;
+  }
+
+  const blockLines = normalizedBlockText.split('\n');
+  if (blockLines.length <= 1) {
+    return false;
+  }
+
+  const normalizedBlockBody = normalizeApprovalText(blockLines.slice(1).join('\n'));
+  return normalizedBlockBody === normalizedDescription;
+}
+
 // ── ApprovalPanel ────────────────────────────────────────────────────
 
 export default function ApprovalPanel({
   request,
   onResponse,
+  maxBodyHeight = 12,
 }: ApprovalPanelProps): React.JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [feedbackMode, setFeedbackMode] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
 
   const { data } = request;
+  const dedupedDisplayBlocks = data.display.filter((block) => (
+    !isDuplicateBriefBlock(block, data.description)
+  ));
+  const maxDiffLines = Math.max(2, maxBodyHeight - 8);
+  const maxDisplayBlocks = Math.max(
+    1,
+    Math.min(dedupedDisplayBlocks.length, Math.floor(maxBodyHeight / 4)),
+  );
+  const visibleDisplayBlocks = dedupedDisplayBlocks.slice(0, maxDisplayBlocks);
+  const hiddenDisplayBlocks = dedupedDisplayBlocks.length - visibleDisplayBlocks.length;
 
   const submit = useCallback(
     (index: number, feedback: string = '') => {
@@ -189,7 +236,6 @@ export default function ApprovalPanel({
       borderColor="yellow"
       paddingLeft={1}
       paddingRight={1}
-      marginTop={1}
     >
       {/* Title */}
       <Box marginBottom={1}>
@@ -209,11 +255,18 @@ export default function ApprovalPanel({
       ) : null}
 
       {/* Display blocks */}
-      {data.display.length > 0 ? (
+      {visibleDisplayBlocks.length > 0 ? (
         <Box flexDirection="column" marginLeft={1} marginTop={1}>
-          {data.display.map((block, idx) => (
-            <DisplayBlockView key={`display-${idx}`} block={block} />
+          {visibleDisplayBlocks.map((block, idx) => (
+            <DisplayBlockView
+              key={`display-${idx}`}
+              block={block}
+              maxDiffLines={maxDiffLines}
+            />
           ))}
+          {hiddenDisplayBlocks > 0 ? (
+            <Text dimColor>{`... ${hiddenDisplayBlocks} more items hidden`}</Text>
+          ) : null}
         </Box>
       ) : null}
 

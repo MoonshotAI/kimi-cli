@@ -10,9 +10,9 @@
  */
 
 import { Box, Text } from 'ink';
-import React, { useContext } from 'react';
+import React from 'react';
 
-import { AppContext } from '../app/context.js';
+import { useToastState } from '../app/context.js';
 
 const SEVERITY_COLOR: Record<string, string> = {
   info: 'cyan',
@@ -22,7 +22,7 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 export default function NotificationToast(): React.JSX.Element | null {
-  const { toasts } = useContext(AppContext);
+  const { toasts } = useToastState();
 
   if (toasts.length === 0) return null;
 

@@ -522,6 +522,7 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     {
       exitOnCtrlC: false,
       patchConsole: true,
+      maxFps: 15,
       incrementalRendering: true,
     },
   );

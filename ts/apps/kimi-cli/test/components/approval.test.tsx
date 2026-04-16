@@ -469,4 +469,26 @@ describe('ApprovalPanel', () => {
     expect(frame).toContain('Creating new file with 10 lines');
     unmount();
   });
+
+  it('hides a brief block when it only repeats the approval description', () => {
+    const request = makeApprovalRequest({
+      tool_name: 'Read',
+      action: 'call Read',
+      description: '{\n  "path": "/tmp/example.txt"\n}',
+      display: [
+        {
+          type: 'brief',
+          text: 'Approve Read\n{\n  "path": "/tmp/example.txt"\n}',
+        },
+      ],
+    });
+    const { lastFrame, unmount } = render(
+      <ApprovalPanel request={request} onResponse={onResponse} />,
+    );
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Read is requesting approval to call Read');
+    expect(frame).toContain('/tmp/example.txt');
+    expect(frame).not.toContain('Approve Read');
+    unmount();
+  });
 });

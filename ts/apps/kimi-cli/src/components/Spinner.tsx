@@ -1,42 +1,33 @@
 /**
- * Spinner component -- context-aware streaming indicator.
+ * Spinner component.
  *
- * Only shows during the "waiting" phase (before first token arrives).
  * Uses moon phase animation: 🌑🌒🌓🌔🌕🌖🌗🌘
- *
- * Once content starts streaming (composing/thinking), the spinner hides.
  */
 
 import { Box, Text } from 'ink';
-import React, { useContext, useState, useEffect } from 'react';
-
-import { AppContext } from '../app/context.js';
+import React, { useEffect, useState } from 'react';
 
 const MOON_PHASES = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
 const MOON_INTERVAL = 120;
 
-export default function Spinner(): React.JSX.Element | null {
-  const { state } = useContext(AppContext);
+export interface SpinnerProps {
+  readonly active: boolean;
+}
+
+export default function Spinner({ active }: SpinnerProps): React.JSX.Element | null {
   const [frame, setFrame] = useState(0);
 
-  // Only show during 'waiting' phase (before first token).
-  const isActive = state.streamingPhase === 'waiting';
-
   useEffect(() => {
-    if (!isActive) return;
+    if (!active) return;
     const timer = setInterval(() => {
       setFrame((f) => f + 1);
     }, MOON_INTERVAL);
     return () => clearInterval(timer);
-  }, [isActive]);
+  }, [active]);
 
-  if (!isActive) {
+  if (!active) {
     return null;
   }
 
-  return (
-    <Box marginTop={1}>
-      <Text>{MOON_PHASES[frame % MOON_PHASES.length]}</Text>
-    </Box>
-  );
+  return <Box><Text>{MOON_PHASES[frame % MOON_PHASES.length]}</Text></Box>;
 }

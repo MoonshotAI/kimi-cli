@@ -161,11 +161,12 @@ describe('ToolCallBlock', () => {
     unmount();
   });
 
-  it('shows key argument in parentheses', () => {
+  it('hides key argument details from the compact tool row', () => {
     const tc = makeToolCall('Shell', { command: 'git status' });
     const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} />);
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('git status');
+    expect(frame).toContain('Shell');
+    expect(frame).not.toContain('git status');
     unmount();
   });
 

@@ -1,65 +1,56 @@
 /**
- * InputArea component -- bordered input box with cursor.
+ * Bottom input dock.
  *
- * Layout (rounded border, theme-colored):
- *   ╭──────────────────────────────────╮
- *   │ hello world▎                     │
- *   ╰──────────────────────────────────╯
- *
- * Uses Ink's `useInput` hook to capture keystrokes.
- *  - Enter: submit the current input text
- *  - Ctrl-C: cancel the current streaming turn
- *  - Ctrl-D: exit the application
- *  - Ctrl-O: open external editor
- *  - Backspace: delete the last character
- *  - Regular characters: append to input buffer
+ * The input box stays mounted while streaming so the bottom chrome keeps
+ * a stable height. During streaming it becomes read-only and surfaces the
+ * active hint instead of disappearing.
  */
 
-import { Box, Text, useInput, useApp as useInkApp } from 'ink';
-import React, { useContext, useState, useRef, useEffect } from 'react';
+import { Box, Text, useApp as useInkApp, useInput } from 'ink';
+import React, { useEffect, useRef, useState } from 'react';
 
-import { AppContext } from '../app/context.js';
+import { useActions, useChrome } from '../app/context.js';
 
-/** Blinking cursor character */
 const CURSOR = '▎';
 
 export default function InputArea(): React.JSX.Element {
-  const { state, styles, sendMessage, cancelStream, executeSlashCommand, pushBlock } =
-    useContext(AppContext);
+  const { state, styles, showSessionPicker } = useChrome();
+  const { appendTranscriptEntry, cancelStream, executeSlashCommand, sendMessage } = useActions();
   // eslint-disable-next-line @typescript-eslint/unbound-method -- Ink's useApp().exit is a stable callback, not a class method.
   const { exit } = useInkApp();
   const [inputText, setInputText] = useState('');
   const inputRef = useRef('');
   const [cursorVisible, setCursorVisible] = useState(true);
 
-  // Blink cursor every 530ms
+  const isLocked = state.isStreaming || showSessionPicker;
+
   useEffect(() => {
-    if (state.isStreaming) return;
+    if (isLocked) {
+      setCursorVisible(true);
+      return;
+    }
+
     const timer = setInterval(() => {
-      setCursorVisible((v) => !v);
+      setCursorVisible((value) => !value);
     }, 530);
     return () => clearInterval(timer);
-  }, [state.isStreaming]);
+  }, [isLocked]);
 
   useInput((input, key) => {
-    // Ctrl-D: exit the application (always active).
     if (key.ctrl && input === 'd') {
       exit();
       return;
     }
 
-    // Ctrl-C: cancel the current stream.
     if (key.ctrl && input === 'c') {
       cancelStream();
       return;
     }
 
-    // When streaming, ignore all other input.
-    if (state.isStreaming) {
+    if (isLocked) {
       return;
     }
 
-    // Enter: submit.
     if (key.return) {
       const trimmed = inputRef.current.trim();
       if (trimmed.length === 0) return;
@@ -67,16 +58,16 @@ export default function InputArea(): React.JSX.Element {
       inputRef.current = '';
       setInputText('');
 
-      // Slash command?
       if (trimmed.startsWith('/')) {
-        void executeSlashCommand(trimmed).then((msg) => {
-          if (msg) {
-            pushBlock({
-              id: `slash-${Date.now()}`,
-              type: 'status',
-              content: msg,
-            });
-          }
+        void executeSlashCommand(trimmed).then((message) => {
+          if (!message) return;
+          appendTranscriptEntry({
+            id: `slash-${Date.now()}`,
+            kind: 'status',
+            turnId: undefined,
+            renderMode: 'plain',
+            content: message,
+          });
         });
       } else {
         sendMessage(trimmed);
@@ -84,14 +75,12 @@ export default function InputArea(): React.JSX.Element {
       return;
     }
 
-    // Backspace: delete last character.
     if (key.backspace || key.delete) {
       inputRef.current = inputRef.current.slice(0, -1);
       setInputText(inputRef.current);
       return;
     }
 
-    // Tab, arrows, escape, etc. -- ignore for now.
     if (
       key.tab ||
       key.escape ||
@@ -107,37 +96,40 @@ export default function InputArea(): React.JSX.Element {
       return;
     }
 
-    // Regular character input.
     if (input.length > 0 && !key.ctrl && !key.meta) {
       inputRef.current += input;
       setInputText(inputRef.current);
     }
   });
 
-  // Hide the input area while streaming.
-  if (state.isStreaming) {
-    return <Box />;
-  }
+  const placeholder = showSessionPicker
+    ? 'Session picker is active above. Press Esc to close it.'
+    : state.isStreaming
+      ? 'Streaming in progress. Press Ctrl-C to interrupt the current turn.'
+      : 'Ask Kimi anything or type / for commands...';
 
   return (
-    <Box
-      borderStyle="round"
-      borderColor={styles.colors.textDim}
-      paddingLeft={1}
-      paddingRight={1}
-      marginTop={1}
-    >
-      {inputText.length === 0 ? (
-        <Text>
-          <Text color={styles.colors.primary}>{cursorVisible ? CURSOR : ' '}</Text>
-          <Text color={styles.colors.textMuted}> Ask Kimi anything or type / for commands...</Text>
-        </Text>
-      ) : (
-        <Text>
-          {inputText}
-          <Text color={styles.colors.primary}>{cursorVisible ? CURSOR : ' '}</Text>
-        </Text>
-      )}
+    <Box height={3} flexDirection="column">
+      <Box
+        borderStyle="round"
+        borderColor={isLocked ? styles.colors.border : styles.colors.textDim}
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        {inputText.length === 0 || isLocked ? (
+          <Text>
+            {!isLocked ? (
+              <Text color={styles.colors.primary}>{cursorVisible ? CURSOR : ' '}</Text>
+            ) : null}
+            <Text color={styles.colors.textMuted}>{placeholder}</Text>
+          </Text>
+        ) : (
+          <Text>
+            {inputText}
+            <Text color={styles.colors.primary}>{cursorVisible ? CURSOR : ' '}</Text>
+          </Text>
+        )}
+      </Box>
     </Box>
   );
 }

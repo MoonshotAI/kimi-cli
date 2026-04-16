@@ -396,4 +396,9 @@ describe('ThinkingBlock', () => {
     expect(frame).toContain('Thought 12');
     expect(frame).not.toContain('more lines');
   });
+
+  it('renders a transcript marker when requested', () => {
+    const frame = renderText(<ThinkingBlock text="Thought" showMarker={true} />);
+    expect(frame).toContain('● Thought');
+  });
 });

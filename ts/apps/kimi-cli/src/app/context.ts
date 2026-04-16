@@ -1,12 +1,11 @@
 /**
- * React Context for the Ink TUI application.
+ * React contexts for the Ink TUI application.
  *
- * Provides shared application state and the Wire client to all components
- * in the tree. The context is initialised at the `<App>` level and consumed
- * by hooks and components below it.
+ * The shell is split into smaller subscription domains so high-frequency
+ * streaming updates do not force the bottom chrome to re-render.
  */
 
-import React, { createContext } from 'react';
+import React, { createContext, useContext } from 'react';
 
 import type { Theme } from '../config/schema.js';
 import type { ThemeStyles } from '../theme/styles.js';
@@ -37,7 +36,7 @@ export interface AppState {
   contextUsage: number;
   /** Whether an assistant turn is currently streaming. */
   isStreaming: boolean;
-  /** Current streaming phase: 'idle' | 'waiting' (moon spinner) | 'thinking' | 'composing' */
+  /** Current streaming phase: 'idle' | 'waiting' | 'thinking' | 'composing'. */
   streamingPhase: 'idle' | 'waiting' | 'thinking' | 'composing';
   /** Timestamp (ms) when the current content block started. */
   streamingStartTime: number;
@@ -47,16 +46,7 @@ export interface AppState {
   version: string;
 }
 
-// ── CompletedBlock ───────────────────────────────────────────────────
-
-export type CompletedBlockType =
-  | 'welcome'
-  | 'user'
-  | 'assistant'
-  | 'tool_call'
-  | 'tool_result'
-  | 'thinking'
-  | 'status';
+// ── Transcript / Tool Types ──────────────────────────────────────────
 
 export interface ToolCallBlockData {
   /** Tool call ID. */
@@ -77,22 +67,31 @@ export interface ToolResultBlockData {
   is_error?: boolean | undefined;
 }
 
-export interface CompletedBlock {
-  /** Unique identifier for the block (used as React key in <Static>). */
+export type TranscriptEntryKind =
+  | 'welcome'
+  | 'user'
+  | 'assistant'
+  | 'tool_call'
+  | 'thinking'
+  | 'status';
+
+export interface TranscriptEntry {
+  /** Unique identifier for use as a React key in `<Static>`. */
   id: string;
-  /** Discriminant for rendering. */
-  type: CompletedBlockType;
-  /** Text content of the block. */
+  /** Render kind. */
+  kind: TranscriptEntryKind;
+  /** Turn identifier when the entry belongs to a turn. */
+  turnId?: string | undefined;
+  /** Rendering mode for text content. */
+  renderMode: 'markdown' | 'plain';
+  /** Text content. */
   content: string;
-  /** Structured tool call data (only for type === 'tool_call'). */
+  /** Structured tool call payload when kind === 'tool_call'. */
   toolCallData?: ToolCallBlockData | undefined;
-  /** Structured tool result data (only for type === 'tool_result'). */
-  toolResultData?: ToolResultBlockData | undefined;
 }
 
-// ── Pending Approval ────────────────────────────────────────────────
+// ── Pending Approval / Question ─────────────────────────────────────
 
-/** An approval request awaiting user response (derived from a WireMessage). */
 export interface PendingApproval {
   /** The request message ID (used for respondToRequest). */
   requestId: string;
@@ -100,9 +99,6 @@ export interface PendingApproval {
   data: ApprovalRequestData;
 }
 
-// ── Pending Question ────────────────────────────────────────────────
-
-/** A structured-question request awaiting user response. */
 export interface PendingQuestion {
   /** The request message ID (used for respondToRequest). */
   requestId: string;
@@ -110,14 +106,8 @@ export interface PendingQuestion {
   data: QuestionRequestData;
 }
 
-// ── Toast Notification (Slice 4.4 Part 2) ──────────────────────────
+// ── Toast Notification ──────────────────────────────────────────────
 
-/**
- * A shell-target notification currently being rendered as a top-of-
- * shell toast. Slim projection of the kimi-core NotificationData with
- * just the fields the Ink component needs. Entries expire after
- * `TOAST_TTL_MS` inside `useWire`.
- */
 export interface ToastNotification {
   readonly id: string;
   readonly category: string;
@@ -127,63 +117,99 @@ export interface ToastNotification {
   readonly severity: string;
 }
 
-// ── Context value ────────────────────────────────────────────────────
+// ── Live Pane ───────────────────────────────────────────────────────
 
-export interface AppContextValue {
+export type LivePaneMode =
+  | 'idle'
+  | 'waiting'
+  | 'thinking'
+  | 'tool'
+  | 'approval'
+  | 'question'
+  | 'session';
+
+export interface LivePaneState {
+  mode: LivePaneMode;
+  thinkingText: string;
+  assistantText: string;
+  pendingToolCall: ToolCallBlockData | null;
+  pendingApproval: PendingApproval | null;
+  pendingQuestion: PendingQuestion | null;
+}
+
+// ── Context values ──────────────────────────────────────────────────
+
+export interface TranscriptContextValue {
+  entries: TranscriptEntry[];
+}
+
+export interface LiveTurnContextValue {
+  pane: LivePaneState;
+}
+
+export interface ToastContextValue {
+  toasts: ToastNotification[];
+}
+
+export interface ChromeContextValue {
   state: AppState;
   setState: (patch: Partial<AppState>) => void;
   wireClient: WireClient;
-  /** Theme-aware style helpers (derived from state.theme). */
   styles: ThemeStyles;
-  /** All blocks that have been finalised and rendered into <Static>. */
-  completedBlocks: CompletedBlock[];
-  /** Push a new completed block. */
-  pushBlock: (block: CompletedBlock) => void;
-  /** Current streaming thinking text (empty string when idle). */
-  streamingThinkText: string;
-  /** Current streaming text (empty string when idle). */
-  streamingText: string;
-  /** Set the current streaming text. */
-  setStreamingText: (text: string) => void;
-  /** Send user input to the wire client and start streaming. */
-  sendMessage: (input: string) => void;
-  /** Cancel the current streaming turn. */
-  cancelStream: () => void;
-  /** Tool call currently in progress (shown in dynamic area with spinner). */
-  pendingToolCall: ToolCallBlockData | null;
-  /** Currently pending approval request, or null if none. */
-  pendingApproval: PendingApproval | null;
-  /** Respond to the pending approval request. */
-  handleApprovalResponse: (response: ApprovalResponseData) => void;
-  /** Currently pending structured-question request, or null if none. */
-  pendingQuestion: PendingQuestion | null;
-  /** Respond to the pending question request. */
-  handleQuestionResponse: (answers: string[]) => void;
-  /** Active shell-target notifications — rendered as top-of-shell toasts. */
-  toasts: ToastNotification[];
-  /** Dismiss a toast by id (auto-fires when the TTL elapses). */
-  dismissToast: (id: string) => void;
-
-  // ── Phase 8: Slash commands ─────────────────────────────────────
-  /** Execute a slash command input (e.g. "/help", "/yolo on"). Returns result message or null. */
-  executeSlashCommand: (input: string) => Promise<string | null>;
-
-  // ── Phase 7: Session management ──────────────────────────────────
-  /** List of sessions from Wire. */
   sessions: SessionInfo[];
-  /** Whether the session list is loading. */
   loadingSessions: boolean;
-  /** Refresh the session list. */
-  refreshSessions: () => Promise<void>;
-  /** Switch to a different session. */
-  switchSession: (sessionId: string) => void;
-  /** Whether the SessionPicker overlay is open. */
   showSessionPicker: boolean;
-  /** Open / close the SessionPicker. */
+}
+
+export interface ActionsContextValue {
+  appendTranscriptEntry: (entry: TranscriptEntry) => void;
+  sendMessage: (input: string) => void;
+  cancelStream: () => void;
+  handleApprovalResponse: (response: ApprovalResponseData) => void;
+  handleQuestionResponse: (answers: string[]) => void;
+  dismissToast: (id: string) => void;
+  executeSlashCommand: (input: string) => Promise<string | null>;
+  refreshSessions: () => Promise<void>;
+  switchSession: (sessionId: string) => void;
   setShowSessionPicker: (show: boolean) => void;
 }
 
-// Placeholder default -- the real value is provided by <App>.
-export const AppContext: React.Context<AppContextValue> = createContext<AppContextValue>(
-  undefined as unknown as AppContextValue,
-);
+const MISSING_PROVIDER = 'Kimi CLI context provider is missing.';
+
+export const TranscriptContext: React.Context<TranscriptContextValue | null> =
+  createContext<TranscriptContextValue | null>(null);
+export const LiveTurnContext: React.Context<LiveTurnContextValue | null> =
+  createContext<LiveTurnContextValue | null>(null);
+export const ToastContext: React.Context<ToastContextValue | null> =
+  createContext<ToastContextValue | null>(null);
+export const ChromeContext: React.Context<ChromeContextValue | null> =
+  createContext<ChromeContextValue | null>(null);
+export const ActionsContext: React.Context<ActionsContextValue | null> =
+  createContext<ActionsContextValue | null>(null);
+
+function assertContext<T>(value: T | null): T {
+  if (value === null) {
+    throw new Error(MISSING_PROVIDER);
+  }
+  return value;
+}
+
+export function useTranscript(): TranscriptContextValue {
+  return assertContext(useContext(TranscriptContext));
+}
+
+export function useLiveTurn(): LiveTurnContextValue {
+  return assertContext(useContext(LiveTurnContext));
+}
+
+export function useToastState(): ToastContextValue {
+  return assertContext(useContext(ToastContext));
+}
+
+export function useChrome(): ChromeContextValue {
+  return assertContext(useContext(ChromeContext));
+}
+
+export function useActions(): ActionsContextValue {
+  return assertContext(useContext(ActionsContext));
+}

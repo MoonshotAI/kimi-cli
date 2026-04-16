@@ -1,8 +1,8 @@
 /**
  * Top-level Ink application component.
  *
- * Initialises the AppContext with state, Wire client hooks, session
- * management, slash command registry, and renders the <Shell> component.
+ * Initializes the app state, session hooks, and the split render contexts
+ * used by the shell.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -13,8 +13,14 @@ import type { SlashCommandContext } from '../slash/index.js';
 import { createAuthCommands } from '../slash/auth-commands.js';
 import { createThemeStyles } from '../theme/styles.js';
 import type { WireClient } from '../wire/index.js';
-import { AppContext } from './context.js';
 import type { AppState } from './context.js';
+import {
+  ActionsContext,
+  ChromeContext,
+  LiveTurnContext,
+  ToastContext,
+  TranscriptContext,
+} from './context.js';
 import { useAppState } from './hooks/useApp.js';
 import { useSession } from './hooks/useSession.js';
 import { useWire } from './hooks/useWire.js';
@@ -43,17 +49,12 @@ export default function App({
 }: AppProps): React.JSX.Element {
   const { state, setState } = useAppState(initialState);
   const {
-    completedBlocks,
-    pushBlock,
-    streamingThinkText,
-    streamingText,
-    setStreamingText,
+    transcriptEntries,
+    appendTranscriptEntry,
+    livePane,
     sendMessage,
     cancelStream,
-    pendingToolCall,
-    pendingApproval,
     handleApprovalResponse,
-    pendingQuestion,
     handleQuestionResponse,
     toasts,
     dismissToast,
@@ -158,37 +159,69 @@ export default function App({
     [wireClient, state, setState, registry, refreshSessions, setShowSessionPicker, sendMessage],
   );
 
-  const contextValue = {
-    state,
-    setState,
-    wireClient,
-    styles,
-    completedBlocks,
-    pushBlock,
-    streamingThinkText,
-    streamingText,
-    setStreamingText,
-    sendMessage,
-    cancelStream,
-    pendingToolCall,
-    pendingApproval,
-    handleApprovalResponse,
-    pendingQuestion,
-    handleQuestionResponse,
-    toasts,
-    dismissToast,
-    executeSlashCommand,
-    sessions,
-    loadingSessions,
-    refreshSessions,
-    switchSession,
-    showSessionPicker,
-    setShowSessionPicker,
-  };
+  const transcriptValue = useMemo(
+    () => ({ entries: transcriptEntries }),
+    [transcriptEntries],
+  );
+
+  const liveTurnValue = useMemo(
+    () => ({ pane: showSessionPicker ? { ...livePane, mode: 'session' as const } : livePane }),
+    [livePane, showSessionPicker],
+  );
+
+  const toastValue = useMemo(() => ({ toasts }), [toasts]);
+
+  const chromeValue = useMemo(
+    () => ({
+      state,
+      setState,
+      wireClient,
+      styles,
+      sessions,
+      loadingSessions,
+      showSessionPicker,
+    }),
+    [state, setState, wireClient, styles, sessions, loadingSessions, showSessionPicker],
+  );
+
+  const actionsValue = useMemo(
+    () => ({
+      appendTranscriptEntry,
+      sendMessage,
+      cancelStream,
+      handleApprovalResponse,
+      handleQuestionResponse,
+      dismissToast,
+      executeSlashCommand,
+      refreshSessions,
+      switchSession,
+      setShowSessionPicker,
+    }),
+    [
+      appendTranscriptEntry,
+      sendMessage,
+      cancelStream,
+      handleApprovalResponse,
+      handleQuestionResponse,
+      dismissToast,
+      executeSlashCommand,
+      refreshSessions,
+      switchSession,
+      setShowSessionPicker,
+    ],
+  );
 
   return (
-    <AppContext.Provider value={contextValue}>
-      <Shell />
-    </AppContext.Provider>
+    <TranscriptContext.Provider value={transcriptValue}>
+      <LiveTurnContext.Provider value={liveTurnValue}>
+        <ToastContext.Provider value={toastValue}>
+          <ChromeContext.Provider value={chromeValue}>
+            <ActionsContext.Provider value={actionsValue}>
+              <Shell />
+            </ActionsContext.Provider>
+          </ChromeContext.Provider>
+        </ToastContext.Provider>
+      </LiveTurnContext.Provider>
+    </TranscriptContext.Provider>
   );
 }

@@ -1,10 +1,10 @@
 /**
  * ToolCallBlock component -- renders a tool invocation with status.
  *
- * Displays the tool name, a key argument summary, and a status indicator:
+ * Displays the tool name and a status indicator:
  *  - Pending: dots spinner + "Using <tool>"
  *  - Success: green bullet + "Used <tool>"
- *  - Failed: red cross + "Used <tool>" + error info
+ *  - Failed: red cross + "Used <tool>"
  */
 
 import { Box, Text } from 'ink';
@@ -103,10 +103,8 @@ export default function ToolCallBlock({
   result,
   successColor = '#4EC87E',
   errorColor = '#E85454',
-  dimColor = '#888888',
 }: ToolCallBlockProps): React.JSX.Element {
   const toolName = toolCall.name;
-  const keyArg = extractKeyArgument(toolName, toolCall.args);
   const isFinished = result !== undefined;
   const isError = result?.is_error ?? false;
 
@@ -121,6 +119,7 @@ export default function ToolCallBlock({
   );
 
   const verb = isFinished ? 'Used' : 'Using';
+  const keyArg = extractKeyArgument(toolName, toolCall.args);
 
   return (
     <Box flexDirection="column">
@@ -131,7 +130,7 @@ export default function ToolCallBlock({
           <Text color="#5B9BF7" bold>
             {toolName}
           </Text>
-          {keyArg ? <Text color={dimColor}>{` (${keyArg})`}</Text> : null}
+          {keyArg ? <Text dimColor>{` (${keyArg})`}</Text> : null}
         </Text>
       </Box>
     </Box>

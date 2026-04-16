@@ -14,6 +14,7 @@ import type { ApprovalRequest, ApprovalSource } from '@moonshot-ai/core';
 import { describe, it, expect } from 'vitest';
 
 import { TUIApprovalRuntime } from '../../src/wire/tui-approval-runtime.js';
+import type { ApprovalRequestData } from '../../src/wire/index.js';
 import type { WireMessage } from '../../src/wire/wire-message.js';
 
 function makeRequest(overrides?: Partial<ApprovalRequest>): ApprovalRequest {
@@ -53,6 +54,9 @@ describe('TUIApprovalRuntime', () => {
     expect(env.id).toBe('appr_1');
     expect(env.session_id).toBe('ses_1');
     expect(env.turn_id).toBe('turn_1');
+    const data = env.data as ApprovalRequestData;
+    expect(data.description).toBe('echo hi');
+    expect(data.display).toEqual([]);
 
     // Route the TUI response back.
     runtime.resolveFromClient('appr_1', { response: 'approved' });
