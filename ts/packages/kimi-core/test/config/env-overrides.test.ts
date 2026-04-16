@@ -164,3 +164,58 @@ describe('applyEnvOverrides — provider resolution', () => {
     expect(out.providers['kimi-a']?.baseUrl).toBeUndefined();
   });
 });
+
+describe('applyEnvOverrides — requestedModel target (M2 fix)', () => {
+  function multiModelConfig(): KimiConfig {
+    return {
+      defaultProvider: 'kimi-default',
+      defaultModel: 'default-alias',
+      providers: {
+        'kimi-default': {
+          type: 'kimi',
+          baseUrl: 'https://default/v1',
+          apiKey: 'default-key',
+        },
+        'kimi-other': {
+          type: 'kimi',
+          baseUrl: 'https://other/v1',
+          apiKey: 'other-key',
+        },
+      },
+      models: {
+        'default-alias': { provider: 'kimi-default', model: 'k25' },
+        'other-alias': { provider: 'kimi-other', model: 'k25-other' },
+      },
+    };
+  }
+
+  it('overrides target requestedModel provider when requestedModel given', () => {
+    const out = applyEnvOverrides(
+      multiModelConfig(),
+      { KIMI_BASE_URL: 'https://env/v1' },
+      'other-alias',
+    );
+    expect(out.providers['kimi-other']?.baseUrl).toBe('https://env/v1');
+    // default provider should be untouched
+    expect(out.providers['kimi-default']?.baseUrl).toBe('https://default/v1');
+  });
+
+  it('falls back to defaultModel when requestedModel is undefined', () => {
+    const out = applyEnvOverrides(
+      multiModelConfig(),
+      { KIMI_BASE_URL: 'https://env/v1' },
+    );
+    expect(out.providers['kimi-default']?.baseUrl).toBe('https://env/v1');
+    expect(out.providers['kimi-other']?.baseUrl).toBe('https://other/v1');
+  });
+
+  it('overrides model fields on requestedModel alias', () => {
+    const out = applyEnvOverrides(
+      multiModelConfig(),
+      { KIMI_MODEL_NAME: 'kimi-overridden' },
+      'other-alias',
+    );
+    expect(out.models?.['other-alias']?.model).toBe('kimi-overridden');
+    expect(out.models?.['default-alias']?.model).toBe('k25');
+  });
+});

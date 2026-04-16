@@ -197,6 +197,34 @@ describe('requestDeviceAuthorization', () => {
     });
     await expect(requestDeviceAuthorization(flowConfig())).rejects.toBeInstanceOf(OAuthError);
   });
+
+  it('throws when device_code is missing (M7 validation)', async () => {
+    server.enqueue('/api/oauth/device_authorization', {
+      status: 200,
+      body: {
+        user_code: 'X',
+        verification_uri_complete: 'https://x',
+        expires_in: 60,
+        interval: 5,
+        // device_code missing
+      },
+    });
+    await expect(requestDeviceAuthorization(flowConfig())).rejects.toBeInstanceOf(OAuthError);
+  });
+
+  it('throws when verification_uri_complete is missing (M7 validation)', async () => {
+    server.enqueue('/api/oauth/device_authorization', {
+      status: 200,
+      body: {
+        user_code: 'X',
+        device_code: 'D',
+        expires_in: 60,
+        interval: 5,
+        // verification_uri_complete missing
+      },
+    });
+    await expect(requestDeviceAuthorization(flowConfig())).rejects.toBeInstanceOf(OAuthError);
+  });
 });
 
 // ── pollDeviceToken ───────────────────────────────────────────────────
@@ -266,6 +294,34 @@ describe('pollDeviceToken', () => {
     server.enqueue('/api/oauth/token', {
       status: 500,
       body: { error: 'server_error' },
+    });
+    await expect(pollDeviceToken(flowConfig(), 'd')).rejects.toBeInstanceOf(OAuthError);
+  });
+
+  it('throws when success response is missing refresh_token (M7 validation)', async () => {
+    server.enqueue('/api/oauth/token', {
+      status: 200,
+      body: {
+        access_token: 'at-1',
+        // refresh_token missing
+        expires_in: 60,
+        scope: '',
+        token_type: 'Bearer',
+      },
+    });
+    await expect(pollDeviceToken(flowConfig(), 'd')).rejects.toBeInstanceOf(OAuthError);
+  });
+
+  it('throws when success response has zero/missing expires_in (M7 validation)', async () => {
+    server.enqueue('/api/oauth/token', {
+      status: 200,
+      body: {
+        access_token: 'at-1',
+        refresh_token: 'rt-1',
+        scope: '',
+        token_type: 'Bearer',
+        // expires_in missing
+      },
     });
     await expect(pollDeviceToken(flowConfig(), 'd')).rejects.toBeInstanceOf(OAuthError);
   });

@@ -35,14 +35,23 @@ function nonEmpty(value: string | undefined): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
+/**
+ * Resolve the (provider, model) the env overrides should target.
+ *
+ * Slice 5.0.1 (M2 fix): callers must be able to override env vars for the
+ * model that will actually be used (`--model X`), not just `defaultModel`.
+ * `requestedModel` takes precedence; falls back to `defaultModel`, then
+ * `defaultProvider`. Returns undefined if none can be resolved.
+ */
 function resolveSelectedProvider(
   config: KimiConfig,
+  requestedModel: string | undefined,
 ): { providerName: string; modelKey: string | undefined } | undefined {
-  const modelKey = config.defaultModel;
-  if (nonEmpty(modelKey)) {
-    const alias = config.models?.[modelKey];
+  const candidate = requestedModel ?? config.defaultModel;
+  if (nonEmpty(candidate)) {
+    const alias = config.models?.[candidate];
     if (alias !== undefined) {
-      return { providerName: alias.provider, modelKey };
+      return { providerName: alias.provider, modelKey: candidate };
     }
     if (nonEmpty(config.defaultProvider)) {
       return { providerName: config.defaultProvider, modelKey: undefined };
@@ -116,9 +125,22 @@ function openaiOverrides(
   return next;
 }
 
-export function applyEnvOverrides(config: KimiConfig, env?: Env): KimiConfig {
+/**
+ * Apply env-driven overrides to a KimiConfig.
+ *
+ * @param config - the loaded config to overlay overrides onto
+ * @param env - process env replacement (test hook)
+ * @param requestedModel - the model alias the caller will actually use;
+ *   when provided, env overrides target THIS provider/model rather than
+ *   the config's `defaultModel`. Pass `--model X` here.
+ */
+export function applyEnvOverrides(
+  config: KimiConfig,
+  env?: Env,
+  requestedModel?: string,
+): KimiConfig {
   const actualEnv: Env = env ?? (process.env as Env);
-  const selected = resolveSelectedProvider(config);
+  const selected = resolveSelectedProvider(config, requestedModel);
   if (selected === undefined) {
     return config;
   }

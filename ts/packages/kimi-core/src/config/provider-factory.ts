@@ -186,8 +186,11 @@ export async function createProviderFromConfig(
   modelNameOrAlias?: string,
   deps?: ProviderFactoryDeps,
 ): Promise<ChatProvider> {
-  const effectiveConfig = applyEnvOverrides(config, deps?.env);
-  const requestedModel = modelNameOrAlias ?? effectiveConfig.defaultModel;
+  // Slice 5.0.1 (M2): apply env overrides AFTER resolving the requested
+  // model. Otherwise `--model X` would silently inherit the env
+  // overrides intended for `defaultModel`.
+  const requestedModel = modelNameOrAlias ?? config.defaultModel;
+  const effectiveConfig = applyEnvOverrides(config, deps?.env, requestedModel);
 
   let providerName: string;
   let modelName: string | undefined;

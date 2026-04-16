@@ -173,7 +173,22 @@ export class OAuthManager {
       return refreshed.accessToken;
     } catch (err) {
       if (err instanceof OAuthUnauthorizedError) {
-        // Refresh token no longer valid — delete so caller knows to re-login.
+        // 401/403 might mean (a) refresh_token genuinely revoked or
+        // (b) another process rotated the refresh_token while we were
+        // mid-flight. Check (b) first: re-read storage, and if the
+        // current refresh_token differs from what we sent, treat the
+        // 401 as a stale-token race and use the rotated value.
+        // (Mirrors Python `_refresh_tokens` 943-950.)
+        await this.sleep(100);
+        const latestAfterFail = await this.storage.load(this.config.name);
+        if (
+          latestAfterFail !== undefined &&
+          latestAfterFail.refreshToken !== activeToken.refreshToken &&
+          latestAfterFail.accessToken.length > 0
+        ) {
+          return latestAfterFail.accessToken;
+        }
+        // Genuine revoke — delete so caller drives /login.
         await this.storage.remove(this.config.name);
       }
       throw err;

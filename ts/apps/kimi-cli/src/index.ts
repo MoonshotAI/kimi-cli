@@ -106,6 +106,12 @@ interface ShellBootstrap {
   defaultThinking: boolean;
   theme: AppState['theme'];
   /**
+   * Slice 5.0.1 (M3) — initial yolo state derived from
+   * `KIMI_YOLO` / config.yolo / config.defaultYolo. The runner merges
+   * with `opts.yolo` (CLI flag) so explicit CLI takes precedence.
+   */
+  defaultYolo: boolean;
+  /**
    * Slice 4.4 Part 4 — optional MCPManager bound to the session; the
    * runner closes it on exit so subprocess transports do not leak.
    */
@@ -133,8 +139,10 @@ async function ensureOAuthIfNeeded(
   const managers = new Map<string, OAuthManager>();
 
   // Use the same env-override pass the factory will apply, so KIMI_API_KEY
-  // can short-circuit OAuth if the user prefers an explicit key.
-  const effectiveConfig = applyEnvOverrides(kimiConfig);
+  // can short-circuit OAuth if the user prefers an explicit key. Pass the
+  // requested model so overrides target the *actual* provider in use, not
+  // the config default (Slice 5.0.1 M2 fix).
+  const effectiveConfig = applyEnvOverrides(kimiConfig, undefined, modelAlias);
 
   // Resolve which provider would back the requested model.
   const alias = effectiveConfig.models?.[modelAlias];
@@ -224,6 +232,7 @@ async function bootstrapOfflineShell(opts: CLIOptions): Promise<ShellBootstrap> 
     sessionId,
     model,
     defaultThinking: config.default_thinking,
+    defaultYolo: config.default_yolo,
     theme: config.theme,
   };
 }
@@ -464,6 +473,9 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     sessionId,
     model: modelAlias,
     defaultThinking: kimiConfig.defaultThinking ?? false,
+    // Slice 5.0.1 (M3): honor KIMI_YOLO (loader writes config.yolo) +
+    // config.defaultYolo. CLI --yolo takes precedence in runShell.
+    defaultYolo: kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false,
     theme: (kimiConfig.theme as 'dark' | 'light') ?? 'dark',
     ...(mcpManager !== undefined ? { mcpManager } : {}),
     ...(oauthManagers.size > 0 ? { oauthManagers } : {}),
@@ -500,7 +512,8 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     model: bootstrap.model,
     workDir,
     sessionId: bootstrap.sessionId,
-    yolo: opts.yolo,
+    // Slice 5.0.1 (M3): merge CLI flag with config-derived default.
+    yolo: opts.yolo || bootstrap.defaultYolo,
     planMode: opts.plan,
     thinking: opts.thinking ?? bootstrap.defaultThinking,
     contextUsage: 0,

@@ -153,6 +153,51 @@ describe('OAuthManager.ensureFresh', () => {
     expect(await storage.load('kimi-code')).toBeUndefined();
   });
 
+  it('does NOT delete file if 401 happens after another process rotated (M5)', async () => {
+    const storage = new InMemoryStorage();
+    await storage.save(
+      'kimi-code',
+      makeToken({
+        accessToken: 'at-old',
+        refreshToken: 'rt-old',
+        expiresAt: currentNow + 100,
+      }),
+    );
+    // Simulate: our refresh attempt fails 401 because rt-old was rotated by
+    // another process; the new token is already in storage.
+    let refreshAttempts = 0;
+    const refreshImpl = vi.fn().mockImplementation(async (_cfg, rt: string) => {
+      refreshAttempts += 1;
+      if (rt === 'rt-old') {
+        // Race: while we were calling refresh, another process rotated.
+        await storage.save(
+          'kimi-code',
+          makeToken({
+            accessToken: 'at-rotated',
+            refreshToken: 'rt-rotated',
+            expiresAt: currentNow + 7200,
+          }),
+        );
+        throw new OAuthUnauthorizedError('rt-old already rotated');
+      }
+      return makeToken({ accessToken: 'should-not-reach' });
+    });
+    const mgr = new OAuthManager({
+      config,
+      storage,
+      now,
+      refreshTokenImpl: refreshImpl,
+      sleep: async () => undefined,
+    });
+    // Should NOT throw — should re-read the rotated token and return it
+    const access = await mgr.ensureFresh();
+    expect(access).toBe('at-rotated');
+    // File should still have the rotated token
+    expect((await storage.load('kimi-code'))?.accessToken).toBe('at-rotated');
+    expect(refreshAttempts).toBe(1);
+  });
+
+
   it('uses fresh stored token when another process already rotated', async () => {
     const storage = new InMemoryStorage();
     await storage.save(

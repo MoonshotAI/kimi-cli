@@ -31,10 +31,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function tokenFromResponse(payload: Record<string, unknown>): TokenInfo {
-  const expiresIn = Number(payload['expires_in'] ?? 0);
+  // M7: required-field validation. Reject responses that are missing
+  // any of the three load-bearing fields rather than persisting empty
+  // strings that will fail mysteriously later.
+  const accessToken = payload['access_token'];
+  if (typeof accessToken !== 'string' || accessToken.length === 0) {
+    throw new OAuthError('OAuth response missing access_token');
+  }
+  const refreshToken = payload['refresh_token'];
+  if (typeof refreshToken !== 'string' || refreshToken.length === 0) {
+    throw new OAuthError('OAuth response missing refresh_token');
+  }
+  const expiresInRaw = payload['expires_in'];
+  const expiresIn = Number(expiresInRaw);
+  if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
+    throw new OAuthError('OAuth response missing or invalid expires_in');
+  }
   return {
-    accessToken: String(payload['access_token'] ?? ''),
-    refreshToken: String(payload['refresh_token'] ?? ''),
+    accessToken,
+    refreshToken,
     expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
     scope: String(payload['scope'] ?? ''),
     tokenType: String(payload['token_type'] ?? 'Bearer'),
@@ -42,12 +57,21 @@ function tokenFromResponse(payload: Record<string, unknown>): TokenInfo {
   };
 }
 
+/** M6: HTTP client default timeout. Mirrors Python aiohttp 30s total. */
+const DEFAULT_HTTP_TIMEOUT_MS = 30_000;
+
 async function postForm(
   url: string,
   params: Record<string, string>,
   deviceHeaders: DeviceHeaders,
+  options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<{ status: number; data: Record<string, unknown> }> {
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS;
   const body = new URLSearchParams(params).toString();
+  // Compose a timeout signal with the optional caller signal.
+  const signals: AbortSignal[] = [AbortSignal.timeout(timeoutMs)];
+  if (options?.signal !== undefined) signals.push(options.signal);
+  const signal = AbortSignal.any(signals);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -58,6 +82,7 @@ async function postForm(
         Accept: 'application/json',
       },
       body,
+      signal,
     });
   } catch (err) {
     throw new OAuthError(
@@ -98,11 +123,27 @@ export async function requestDeviceAuthorization(
     );
   }
 
+  // M7: required-field validation for device authorization response.
+  const userCode = data['user_code'];
+  const deviceCode = data['device_code'];
+  const verificationUriComplete = data['verification_uri_complete'];
+  if (typeof userCode !== 'string' || userCode.length === 0) {
+    throw new OAuthError('Device authorization response missing user_code');
+  }
+  if (typeof deviceCode !== 'string' || deviceCode.length === 0) {
+    throw new OAuthError('Device authorization response missing device_code');
+  }
+  if (typeof verificationUriComplete !== 'string' || verificationUriComplete.length === 0) {
+    throw new OAuthError(
+      'Device authorization response missing verification_uri_complete',
+    );
+  }
+
   return {
-    userCode: String(data['user_code'] ?? ''),
-    deviceCode: String(data['device_code'] ?? ''),
+    userCode,
+    deviceCode,
     verificationUri: String(data['verification_uri'] ?? ''),
-    verificationUriComplete: String(data['verification_uri_complete'] ?? ''),
+    verificationUriComplete,
     expiresIn: data['expires_in'] !== undefined ? Number(data['expires_in']) : null,
     interval: Number(data['interval'] ?? 5),
   };
