@@ -19,6 +19,8 @@ After configuration, Kimi Code CLI will automatically save settings to `~/.kimi/
 | Kimi Code | Kimi Code platform, supports search and fetch services |
 | Moonshot AI Open Platform (moonshot.cn) | China region API endpoint |
 | Moonshot AI Open Platform (moonshot.ai) | Global region API endpoint |
+| Alibaba Cloud Coding Plan | Coding Plan subscription with `sk-sp-xxxxx` keys |
+| Alibaba Cloud Dashscope Standard | Standard pay-as-you-go API with `sk-xxxxx` keys |
 
 For other platforms, please manually edit the configuration file.
 
@@ -56,6 +58,44 @@ type = "openai_legacy"
 base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
+
+#### Alibaba Cloud Coding Plan
+
+For Alibaba Cloud's Coding Plan subscription (API key format: `sk-sp-xxxxx`):
+
+```toml
+[providers.dashscope-coding]
+type = "openai_legacy"
+base_url = "https://coding-intl.dashscope.aliyuncs.com/v1"
+api_key = "sk-sp-xxx"
+
+[models."dashscope-coding/qwen3.5-plus"]
+provider = "managed:dashscope-coding"
+model = "qwen3.5-plus"
+max_context_size = 131072
+capabilities = ["thinking", "image_in"]
+```
+
+Supported models: `qwen3.5-plus`, `kimi-k2.5`, `glm-5`, `MiniMax-M2.5`, `qwen3-coder-next`, `qwen3-coder-plus`, `qwen3-max`, `glm-4.7`
+
+#### Alibaba Cloud Dashscope Standard
+
+For standard pay-as-you-go Dashscope API (API key format: `sk-xxxxx`):
+
+```toml
+[providers.dashscope]
+type = "openai_legacy"
+base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+api_key = "sk-xxx"
+
+[models."dashscope/qwen-plus"]
+provider = "managed:dashscope"
+model = "qwen-plus"
+max_context_size = 32768
+capabilities = ["thinking"]
+```
+
+Supported models: `qwen-turbo`, `qwen-plus`, `qwen-max`, `qwen-long`, `qwen-vl-max`, `qwen-coder-plus`, `qwen-coder-turbo`
 
 ### `openai_responses`
 
