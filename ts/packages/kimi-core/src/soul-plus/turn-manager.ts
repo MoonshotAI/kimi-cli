@@ -616,21 +616,47 @@ export class TurnManager {
    *
    * Throws if the session is not idle (a turn is in progress).
    */
-  async triggerCompaction(): Promise<void> {
+  async triggerCompaction(customInstruction?: string): Promise<void> {
     if (!this.deps.lifecycleStateMachine.isIdle() || this.currentTurnId !== undefined) {
       throw new Error('Cannot compact while a turn is active');
     }
 
     const controller = new AbortController();
     this.deps.lifecycleStateMachine.transitionTo('active');
+
+    // Slice 5.5/5.6 — fire PreCompact hook (fire-and-forget, fail-open)
+    if (this.deps.hookEngine !== undefined) {
+      void this.deps.hookEngine.executeHooks('PreCompact', {
+        event: 'PreCompact',
+        sessionId: this.sessionId,
+        turnId: 'compact',
+        agentId: 'agent_main',
+      }, controller.signal).catch(() => {});
+    }
+
+    const tokensBefore = this.deps.contextState.tokenCountWithPending;
     try {
       await runCompaction(
         this.deps.contextState,
         this.deps.runtime,
         this.deps.sink,
         controller.signal,
+        customInstruction,
       );
     } finally {
+      // Slice 5.6 — fire PostCompact hook (fire-and-forget)
+      const tokensAfter = this.deps.contextState.tokenCountWithPending;
+      if (this.deps.hookEngine !== undefined) {
+        void this.deps.hookEngine.executeHooks('PostCompact', {
+          event: 'PostCompact',
+          sessionId: this.sessionId,
+          turnId: 'compact',
+          agentId: 'agent_main',
+          tokensBefore,
+          tokensAfter,
+        }, controller.signal).catch(() => {});
+      }
+
       // runCompaction's finally block transitions compacting → active.
       // We need to drain through active → completing → idle to return
       // the session to a quiescent state.

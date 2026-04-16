@@ -17,8 +17,9 @@ const compactCommand: SlashCommandDef = {
   aliases: [],
   description: 'Compact the conversation context',
   mode: 'both',
-  async execute(_args, ctx) {
-    await ctx.wireClient.compact(ctx.appState.sessionId);
+  async execute(args, ctx) {
+    const customInstruction = args.trim() || undefined;
+    await ctx.wireClient.compact(ctx.appState.sessionId, customInstruction);
     return ok('Context compacted.');
   },
 };

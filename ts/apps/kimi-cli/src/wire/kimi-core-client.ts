@@ -491,10 +491,10 @@ export class KimiCoreClient implements WireClient {
     return this.deps.sessionManager.getSessionUsage(sessionId);
   }
 
-  async compact(sessionId: string): Promise<void> {
+  async compact(sessionId: string, customInstruction?: string): Promise<void> {
     const record = this.sessions.get(sessionId);
     if (record === undefined) return;
-    await record.managed.sessionControl.compact();
+    await record.managed.sessionControl.compact(customInstruction);
   }
 
   // ── Slice 5.2 — resume-time plan mode conflict (D4) ─────────────

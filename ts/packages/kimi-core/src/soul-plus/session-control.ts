@@ -68,11 +68,10 @@ export class DefaultSessionControl implements SessionControlHandler {
     this.sessionJournal = deps.sessionJournal;
   }
 
-  async compact(_customInstruction?: string): Promise<void> {
-    // Slice 3.3: delegate to TurnManager.triggerCompaction() which
-    // handles the lifecycle dance (idle → active → compacting → active
-    // → completing → idle) and runs the full compaction pipeline.
-    await this.turnManager.triggerCompaction();
+  async compact(customInstruction?: string): Promise<void> {
+    // Slice 5.6: pass custom instruction through to TurnManager so it
+    // reaches the CompactionProvider (e.g. "keep database discussions").
+    await this.turnManager.triggerCompaction(customInstruction);
   }
 
   async clear(): Promise<void> {

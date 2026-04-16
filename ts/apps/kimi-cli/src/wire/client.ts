@@ -81,8 +81,8 @@ export interface WireClient {
   getStatus(sessionId: string): Promise<SessionStatusResult>;
   /** Get token usage statistics. */
   getUsage(sessionId: string): Promise<SessionUsageResult>;
-  /** Trigger manual compaction. */
-  compact(sessionId: string): Promise<void>;
+  /** Trigger manual compaction. Optional custom instruction for the summary. */
+  compact(sessionId: string, customInstruction?: string): Promise<void>;
 
   /** Runtime model switch. */
   setModel(sessionId: string, model: string): Promise<void>;
@@ -218,7 +218,7 @@ export class WireClientImpl implements WireClient {
     };
   }
 
-  async compact(_sessionId: string): Promise<void> {
+  async compact(_sessionId: string, _customInstruction?: string): Promise<void> {
     // No-op in mock
   }
 

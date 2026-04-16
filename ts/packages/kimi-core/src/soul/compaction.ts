@@ -144,6 +144,7 @@ export async function runCompaction(
   runtime: Runtime,
   sink: EventSink,
   signal: AbortSignal,
+  customInstruction?: string,
 ): Promise<void> {
   await runtime.lifecycle.transitionTo('compacting');
   try {
@@ -152,7 +153,11 @@ export async function runCompaction(
 
     const messages = context.buildMessages();
     const preCompactTokens = context.tokenCountWithPending;
-    const summary = await runtime.compactionProvider.run(messages, signal);
+    const summary = await runtime.compactionProvider.run(
+      messages,
+      signal,
+      customInstruction !== undefined ? { userInstructions: customInstruction } : undefined,
+    );
     signal.throwIfAborted();
 
     // Critical section: rotate + resetToSummary must complete together.
