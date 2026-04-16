@@ -62,7 +62,7 @@ describe('DynamicInjectionManager wiring (Slice 5.4)', () => {
     expect(stashSpy).toHaveBeenCalled();
     const injections = stashSpy.mock.calls.map((c) => c[0]);
     const planInjection = injections.find(
-      (inj) => inj.kind === 'system_reminder' && inj.content.includes('Plan mode is active'),
+      (inj) => inj.kind === 'system_reminder' && typeof inj.content === 'string' && inj.content.includes('Plan mode is active'),
     );
     expect(planInjection).toBeDefined();
   });
@@ -80,7 +80,7 @@ describe('DynamicInjectionManager wiring (Slice 5.4)', () => {
     // No plan-mode injection should appear
     const injections = stashSpy.mock.calls.map((c) => c[0]);
     const planInjection = injections.find(
-      (inj) => inj.kind === 'system_reminder' && inj.content.includes('Plan mode is active'),
+      (inj) => inj.kind === 'system_reminder' && typeof inj.content === 'string' && inj.content.includes('Plan mode is active'),
     );
     expect(planInjection).toBeUndefined();
   });

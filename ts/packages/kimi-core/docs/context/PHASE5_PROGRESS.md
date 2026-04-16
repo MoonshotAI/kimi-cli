@@ -14,12 +14,12 @@
 | **5.1** | Session 管理核心 | ✅ done | `dc91edf2` | +52 |
 | **5.2** | Resume/Continue | ✅ done | `9d5d0abd` | +28 |
 | **5.3** | Subagent runtime | ✅ done | `00cf913b` | +52 |
-| **5.4** | Runtime switches + EnterPlanMode | 🟡 Stage 1 starting | — | — |
-| 5.5 | Hook + /init | pending | — | — |
+| **5.4** | Runtime switches + EnterPlanMode | ✅ done | `94f81ad3` | +17 |
+| **5.5** | Hook + /init | 🟡 Stage 1 starting | — | — |
 | 5.6 | Compaction 完成 | pending | — | — |
 | 5.7 | 清理 + Full E2E | pending | — | — |
 
-**全套测试**: 1539 passed（kimi-core 单包）
+**全套测试**: 1555 passed（kimi-core 单包）
 **Typecheck**: kimi-core + kimi-cli 都 clean（kimi-core 有 3 个 pre-existing test errors in migrate/python + background/manager/task-tools）
 
 ---

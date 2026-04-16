@@ -158,5 +158,18 @@ function extractMatcherValue(input: HookInput): string {
     case 'Notification': {
       return input.notificationType;
     }
+    case 'StopFailure': {
+      return input.error;
+    }
+    case 'SubagentStart':
+    case 'SubagentStop': {
+      return input.agentName;
+    }
+    case 'SessionStart':
+    case 'SessionEnd':
+    case 'PreCompact':
+    case 'PostCompact': {
+      return '';
+    }
   }
 }

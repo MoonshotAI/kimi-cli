@@ -433,6 +433,8 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     systemPrompt,
     buildTools,
     skillManager,
+    kaos: localKaos,
+    config: kimiConfig,
   });
 
   let sessionId: string;

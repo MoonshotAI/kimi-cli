@@ -35,7 +35,14 @@ export type HookEventType =
   | 'OnToolFailure'
   | 'UserPromptSubmit'
   | 'Stop'
-  | 'Notification';
+  | 'StopFailure'
+  | 'Notification'
+  | 'SubagentStart'
+  | 'SubagentStop'
+  | 'SessionStart'
+  | 'SessionEnd'
+  | 'PreCompact'
+  | 'PostCompact';
 
 // ── Hook input (§9-H.2 + HookInputBase) ────────────────────────────────
 
@@ -105,13 +112,65 @@ export interface NotificationInput extends HookInputBase {
   readonly severity: string;
 }
 
+// ── Slice 5.5 lifecycle events ─────────────────────────────────────────
+
+/** Fired when a turn ends with an error (vs Stop which is success/cancel). */
+export interface StopFailureInput extends HookInputBase {
+  readonly event: 'StopFailure';
+  readonly error: string;
+}
+
+/** Fired before a subagent Soul turn starts. Matcher runs against agent type name. */
+export interface SubagentStartInput extends HookInputBase {
+  readonly event: 'SubagentStart';
+  readonly agentName: string;
+  readonly prompt: string;
+}
+
+/** Fired after a subagent Soul turn completes (success, failure, or kill). */
+export interface SubagentStopInput extends HookInputBase {
+  readonly event: 'SubagentStop';
+  readonly agentName: string;
+  readonly response: string;
+}
+
+/** Fired when a new session is created. */
+export interface SessionStartInput extends HookInputBase {
+  readonly event: 'SessionStart';
+  readonly cwd: string;
+}
+
+/** Fired when a session is closed. */
+export interface SessionEndInput extends HookInputBase {
+  readonly event: 'SessionEnd';
+}
+
+/** Fired before compaction begins. */
+export interface PreCompactInput extends HookInputBase {
+  readonly event: 'PreCompact';
+}
+
+/** Fired after compaction completes. */
+export interface PostCompactInput extends HookInputBase {
+  readonly event: 'PostCompact';
+  readonly tokensBefore: number;
+  readonly tokensAfter: number;
+}
+
 export type HookInput =
   | PreToolUseInput
   | PostToolUseInput
   | OnToolFailureInput
   | UserPromptSubmitInput
   | StopInput
-  | NotificationInput;
+  | StopFailureInput
+  | NotificationInput
+  | SubagentStartInput
+  | SubagentStopInput
+  | SessionStartInput
+  | SessionEndInput
+  | PreCompactInput
+  | PostCompactInput;
 
 // ── Hook config (§9-C.2) ───────────────────────────────────────────────
 

@@ -154,6 +154,8 @@ export type {
   AggregatedHookResult,
 } from './hooks/types.js';
 export { ToolCallOrchestrator } from './soul-plus/orchestrator.js';
+export { parseHookConfigs } from './hooks/config-loader.js';
+export { CommandHookExecutor } from './hooks/command-executor.js';
 
 // ── Wire Protocol (Slice 5) ────────────────────────────────────────────
 export type {

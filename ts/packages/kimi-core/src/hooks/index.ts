@@ -13,11 +13,23 @@ export type {
   HookInput,
   HookInputBase,
   HookResult,
+  NotificationInput,
   OnToolFailureInput,
+  PostCompactInput,
   PostToolUseInput,
+  PreCompactInput,
   PreToolUseInput,
+  SessionEndInput,
+  SessionStartInput,
+  StopFailureInput,
+  StopInput,
+  SubagentStartInput,
+  SubagentStopInput,
+  UserPromptSubmitInput,
   WireHookConfig,
 } from './types.js';
+
+export { parseHookConfigs } from './config-loader.js';
 
 export { HookEngine } from './engine.js';
 export type { HookEngineDeps } from './engine.js';

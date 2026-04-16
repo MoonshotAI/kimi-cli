@@ -29,10 +29,12 @@
  */
 
 import {
+  CommandHookExecutor,
   HookEngine,
   SessionEventBus,
   SkillNotFoundError,
   ToolCallOrchestrator,
+  parseHookConfigs,
   type HookExecutor,
   type ManagedSession,
   type NotificationData,
@@ -135,6 +137,10 @@ export interface KimiCoreClientDeps {
   readonly model: string;
   /** Assembled system prompt from the agent layer. */
   readonly systemPrompt: string;
+  /** Kaos instance for CommandHookExecutor subprocess execution. */
+  readonly kaos: import('@moonshot-ai/kaos').Kaos;
+  /** Loaded KimiConfig (for hook definitions). */
+  readonly config: import('@moonshot-ai/core').KimiConfig;
   /**
    * Factory invoked once per session with the per-session tool
    * context. Tools that require session-local state (AskUserQuestion,
@@ -285,13 +291,16 @@ export class KimiCoreClient implements WireClient {
       );
     };
 
+    // Slice 5.5 — load hook configs from settings and register CommandHookExecutor.
+    // Hooks are defined as [[hooks]] entries in config.toml (Python parity).
+    const commandExecutor = new CommandHookExecutor(this.deps.kaos);
     const hookEngine = new HookEngine({
-      // Slice 4.2 ships with no pre-registered HookExecutors. The
-      // HookEngine still matches no hooks and short-circuits every
-      // `executeHooks` call with `{ok: true}`, so the orchestrator
-      // falls through to the permission + approval phases unchanged.
-      executors: new Map<string, HookExecutor>(),
+      executors: new Map<string, HookExecutor>([['command', commandExecutor]]),
     });
+    const parsedHooks = parseHookConfigs(this.deps.config.hooks);
+    for (const hook of parsedHooks) {
+      hookEngine.register(hook);
+    }
 
     const orchestrator = new ToolCallOrchestrator({
       hookEngine,
