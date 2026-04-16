@@ -26,6 +26,7 @@ import type { FullContextState } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import { AgentTool } from '../tools/agent.js';
 import type { AgentTypeRegistry } from './agent-type-registry.js';
+import { createDefaultDynamicInjectionManager } from './dynamic-injection.js';
 import { LifecycleGateFacade } from './lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
 import { NotificationManager, type ShellDeliverCallback } from './notification-manager.js';
@@ -181,6 +182,10 @@ export class SoulPlus {
       tools.push(new AgentTool(soulRegistry, 'agent_main'));
     }
 
+    // Slice 5.4 — create DynamicInjectionManager with built-in providers
+    // (plan-mode + yolo-mode reminders). Auto-created, not host-injected (D2=A).
+    const dynamicInjectionManager = createDefaultDynamicInjectionManager();
+
     this.turnManager = new TurnManager({
       contextState: deps.contextState,
       sessionJournal: deps.sessionJournal,
@@ -189,6 +194,7 @@ export class SoulPlus {
       lifecycleStateMachine: stateMachine,
       soulRegistry,
       tools,
+      dynamicInjectionManager,
       // Codex Round 2 M2: pass compactionConfig so auto-compaction is
       // armed in the real session path (not just unit tests).
       ...(deps.compactionConfig !== undefined ? { compactionConfig: deps.compactionConfig } : {}),

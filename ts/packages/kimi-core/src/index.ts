@@ -372,6 +372,8 @@ export { runSubagentTurn, cleanupStaleSubagents } from './soul-plus/subagent-run
 export type { SubagentRunnerDeps } from './soul-plus/subagent-runner.js';
 export { AgentTool } from './tools/agent.js';
 export type { AgentToolInput, AgentToolOutput } from './tools/agent.js';
+export { EnterPlanModeTool, EnterPlanModeInputSchema } from './tools/enter-plan-mode.js';
+export type { EnterPlanModeInput, EnterPlanModeDeps } from './tools/enter-plan-mode.js';
 
 // ── Auth (Slice 5.0) ────────────────────────────────────────────────────
 export * from './auth/index.js';
