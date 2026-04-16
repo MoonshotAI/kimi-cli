@@ -695,7 +695,7 @@ class KimiSoul:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
             from kimi_cli.telemetry import track
 
-            track("kimi_skill_invoked", skill_name=_skill.name)
+            track("skill_invoked", skill_name=_skill.name)
             skill_text = await read_skill_text(_skill)
             if skill_text is None:
                 wire_send(
@@ -734,14 +734,14 @@ class KimiSoul:
                     if mcp_snap:
                         if mcp_snap.connected > 0:
                             _track_mcp(
-                                "kimi_mcp_connected",
+                                "mcp_connected",
                                 server_count=mcp_snap.connected,
                                 total_count=mcp_snap.total,
                             )
                         _failed = mcp_snap.total - mcp_snap.connected
                         if _failed > 0:
                             _track_mcp(
-                                "kimi_mcp_failed",
+                                "mcp_failed",
                                 failed_count=_failed,
                                 total_count=mcp_snap.total,
                             )
@@ -804,9 +804,9 @@ class KimiSoul:
 
                 error_type, status_code = classify_api_error(e)
                 if status_code is not None:
-                    track("kimi_api_error", error_type=error_type, status_code=status_code)
+                    track("api_error", error_type=error_type, status_code=status_code)
                 else:
-                    track("kimi_api_error", error_type=error_type)
+                    track("api_error", error_type=error_type)
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
@@ -1083,7 +1083,7 @@ class KimiSoul:
             from kimi_cli.telemetry import track
 
             track(
-                "kimi_compaction_triggered",
+                "compaction_triggered",
                 trigger_type=trigger_reason,
                 before_tokens=before_tokens,
                 success=False,
@@ -1119,7 +1119,7 @@ class KimiSoul:
         from kimi_cli.telemetry import track
 
         track(
-            "kimi_compaction_triggered",
+            "compaction_triggered",
             trigger_type=trigger_reason,
             before_tokens=before_tokens,
             after_tokens=estimated_token_count,
@@ -1310,7 +1310,7 @@ class FlowRunner:
         if self._name:
             from kimi_cli.telemetry import track
 
-            track("kimi_flow_invoked", flow_name=self._name)
+            track("flow_invoked", flow_name=self._name)
         if args.strip():
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)

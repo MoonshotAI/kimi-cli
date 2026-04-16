@@ -9,7 +9,7 @@ Usage:
     from kimi_cli.telemetry import track, set_context, attach_sink
 
     # Early in startup — events queue in memory
-    track("kimi_first_launch")
+    track("first_launch")
 
     # After app init — attach sink to start flushing
     set_context(device_id="abc", session_id="def")
@@ -106,7 +106,7 @@ def track(event: str, **properties: bool | int | float | str | None) -> None:
     Safe to call from synchronous prompt_toolkit key handlers.
 
     Args:
-        event: Event name (e.g. "kimi_input_command").
+        event: Event name (e.g. "input_command").
         **properties: Event properties. String values should only be used for
             known enum-like values (command names, mode names, error types).
             NEVER pass user input, file paths, or code snippets.

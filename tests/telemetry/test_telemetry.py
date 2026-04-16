@@ -261,6 +261,102 @@ class TestAsyncTransport:
 
         assert RETRY_BACKOFFS_S == (1.0, 4.0, 16.0)
 
+    def test_server_prefix_constant(self):
+        """Lock down the production server prefix so it isn't silently changed."""
+        from kimi_cli.telemetry.transport import SERVER_EVENT_PREFIX
+
+        assert SERVER_EVENT_PREFIX == "kfc_"
+
+    def test_apply_server_prefix_does_not_mutate_input(self):
+        """_apply_server_prefix must build a new outbound list without mutating input."""
+        from kimi_cli.telemetry.transport import _apply_server_prefix
+
+        events = [
+            {"event": "started", "timestamp": 1.0, "properties": {"a": 1}},
+            {"event": "kfc_already", "timestamp": 2.0, "properties": {}},
+        ]
+        snapshot = [dict(e) for e in events]
+        out = _apply_server_prefix(events)
+        assert [e["event"] for e in events] == [s["event"] for s in snapshot]
+        assert events[0]["properties"] is out[0]["properties"]  # shallow sharing OK
+        assert [e["event"] for e in out] == ["kfc_started", "kfc_already"]
+
+    def test_apply_server_prefix_passthrough_edge_cases(self):
+        """Missing / empty / non-string event values pass through unchanged."""
+        from kimi_cli.telemetry.transport import _apply_server_prefix
+
+        events = [
+            {"timestamp": 1.0},  # event field missing
+            {"event": "", "timestamp": 2.0},  # empty string
+            {"event": 42, "timestamp": 3.0},  # non-string (shouldn't happen but guard)
+        ]
+        out = _apply_server_prefix(events)
+        assert "event" not in out[0]
+        assert out[1]["event"] == ""
+        assert out[2]["event"] == 42
+        # And input objects are forwarded (no copy wasted on these edge cases)
+        assert out[0] is events[0]
+        assert out[1] is events[1]
+        assert out[2] is events[2]
+
+    @pytest.mark.asyncio
+    async def test_send_adds_server_prefix_to_event_names(self):
+        """Outbound payload carries kfc_ prefix; in-memory events stay bare."""
+        transport = AsyncTransport(endpoint="https://mock.test/events", retry_backoffs_s=())
+
+        captured: dict[str, Any] = {}
+
+        async def capture(payload: dict[str, Any]) -> None:
+            captured.update(payload)
+
+        events_in = [
+            {"event": "started", "timestamp": 1.0, "properties": {}},
+            {"event": "tool_call", "timestamp": 2.0, "properties": {"success": True}},
+        ]
+        with patch.object(transport, "_send_http", new=capture):
+            await transport.send(events_in)
+
+        outbound = captured["events"]
+        assert [e["event"] for e in outbound] == ["kfc_started", "kfc_tool_call"]
+        # Original events list untouched (so save_to_disk would keep bare names)
+        assert [e["event"] for e in events_in] == ["started", "tool_call"]
+        # Properties / timestamp preserved
+        assert outbound[1]["properties"] == {"success": True}
+        assert outbound[1]["timestamp"] == 2.0
+
+    @pytest.mark.asyncio
+    async def test_send_is_idempotent_on_already_prefixed_events(self):
+        """Events already carrying the prefix are not double-prefixed."""
+        transport = AsyncTransport(endpoint="https://mock.test/events", retry_backoffs_s=())
+
+        captured: dict[str, Any] = {}
+
+        async def capture(payload: dict[str, Any]) -> None:
+            captured.update(payload)
+
+        events_in = [{"event": "kfc_legacy", "timestamp": 1.0, "properties": {}}]
+        with patch.object(transport, "_send_http", new=capture):
+            await transport.send(events_in)
+
+        assert captured["events"][0]["event"] == "kfc_legacy"  # not "kfc_kfc_legacy"
+
+    @pytest.mark.asyncio
+    async def test_disk_fallback_keeps_bare_names(self):
+        """Transient failure saves events to disk with the bare (unprefixed) name."""
+        transport = AsyncTransport(endpoint="https://mock.test/events", retry_backoffs_s=())
+        from kimi_cli.telemetry.transport import _TransientError
+
+        events_in = [{"event": "exit", "timestamp": 1.0, "properties": {}}]
+        with (
+            patch.object(
+                transport, "_send_http", new_callable=AsyncMock, side_effect=_TransientError("503")
+            ),
+            patch.object(transport, "save_to_disk") as mock_save,
+        ):
+            await transport.send(events_in)
+            saved = mock_save.call_args[0][0]
+            assert saved[0]["event"] == "exit"  # bare name for disk retry
+
     @pytest.mark.asyncio
     async def test_send_retries_transient_then_falls_back(self):
         """send() retries transient errors (without sleeping) then falls back to disk."""
@@ -344,10 +440,12 @@ class TestAsyncTransport:
 
     @pytest.mark.asyncio
     async def test_retry_disk_events_success(self, tmp_path: Path):
-        """Disk events are retried and deleted on success."""
-        # Create a failed events file
+        """Disk events are retried, carry the server prefix, and the file is deleted."""
+        # Mix of bare names (new format) and already-prefixed (legacy format).
         failed_file = tmp_path / "failed_abc123.jsonl"
-        failed_file.write_text('{"event":"old","timestamp":1.0}\n')
+        failed_file.write_text(
+            '{"event":"old","timestamp":1.0}\n{"event":"kfc_legacy","timestamp":2.0}\n'
+        )
 
         transport = AsyncTransport(endpoint="https://mock.test/events")
 
@@ -357,6 +455,9 @@ class TestAsyncTransport:
         ):
             await transport.retry_disk_events()
             mock_send.assert_called_once()
+            # Payload must carry the server prefix; already-prefixed events are NOT doubled.
+            payload = mock_send.call_args[0][0]
+            assert [e["event"] for e in payload["events"]] == ["kfc_old", "kfc_legacy"]
             # File should be deleted after successful retry
             assert not failed_file.exists()
 

@@ -46,7 +46,7 @@ async def export(app: Shell, args: str):
     output, count = result
     from kimi_cli.telemetry import track
 
-    track("kimi_export")
+    track("export")
     display = shorten_home(KaosPath(str(output)))
     console.print(f"[green]Exported {count} messages to {display}[/green]")
     console.print(
@@ -98,7 +98,7 @@ async def import_context(app: Shell, args: str):
     source_desc, content_len = result
     from kimi_cli.telemetry import track
 
-    track("kimi_import")
+    track("import")
 
     # Write to wire file so the import appears in session replay
     await soul.wire_file.append_message(

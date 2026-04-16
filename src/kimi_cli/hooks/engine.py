@@ -240,7 +240,7 @@ class HookEngine:
             from kimi_cli.telemetry import track
 
             has_block = any(r.action == "block" for r in results)
-            track("kimi_hook_triggered", event_type=event, action="block" if has_block else "allow")
+            track("hook_triggered", event_type=event, action="block" if has_block else "allow")
             return results
         except Exception:
             logger.warning("Hook engine error for {}, failing open", event)

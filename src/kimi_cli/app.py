@@ -311,9 +311,9 @@ class KimiCLI:
 
         from kimi_cli.telemetry import track
 
-        track("kimi_started", resumed=resumed, yolo=yolo)
+        track("started", resumed=resumed, yolo=yolo)
         track(
-            "kimi_startup_perf",
+            "startup_perf",
             duration_ms=int((time.monotonic() - _create_t0) * 1000),
             config_ms=_phase_timings_ms.get("config_ms", 0),
             oauth_ms=_phase_timings_ms.get("oauth_ms", 0),

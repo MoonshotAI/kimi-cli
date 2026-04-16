@@ -136,7 +136,7 @@ class Approval:
             from kimi_cli.telemetry import track
 
             track(
-                "kimi_tool_approved",
+                "tool_approved",
                 tool_name=tool_call.function.name,
                 approval_mode="yolo",
             )
@@ -146,7 +146,7 @@ class Approval:
             from kimi_cli.telemetry import track
 
             track(
-                "kimi_tool_approved",
+                "tool_approved",
                 tool_name=tool_call.function.name,
                 approval_mode="auto_session",
             )
@@ -173,7 +173,7 @@ class Approval:
             from kimi_cli.telemetry import track
 
             track(
-                "kimi_tool_rejected",
+                "tool_rejected",
                 tool_name=tool_call.function.name,
                 approval_mode="cancelled",
             )
@@ -183,14 +183,14 @@ class Approval:
         match response:
             case "approve":
                 track(
-                    "kimi_tool_approved",
+                    "tool_approved",
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
                 )
                 return ApprovalResult(approved=True)
             case "approve_for_session":
                 track(
-                    "kimi_tool_approved",
+                    "tool_approved",
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
                 )
@@ -202,14 +202,14 @@ class Approval:
                 return ApprovalResult(approved=True)
             case "reject":
                 track(
-                    "kimi_tool_rejected",
+                    "tool_rejected",
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
                 )
                 return ApprovalResult(approved=False, feedback=feedback)
             case _:
                 track(
-                    "kimi_tool_rejected",
+                    "tool_rejected",
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
                 )

@@ -383,7 +383,7 @@ class ForegroundSubagentRunner:
         )
         from kimi_cli.telemetry import track
 
-        track("kimi_subagent_created")
+        track("subagent_created")
         return PreparedInstance(
             record=record,
             actual_type=actual_type,

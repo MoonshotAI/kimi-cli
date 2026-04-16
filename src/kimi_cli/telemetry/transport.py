@@ -28,6 +28,34 @@ DISK_EVENT_MAX_AGE_S = 7 * 24 * 3600  # 7 days
 # Transient failures exhausted here are written to disk for next-startup retry.
 RETRY_BACKOFFS_S = (1.0, 4.0, 16.0)
 
+# Server-side event namespace. Client code uses bare business names
+# (``track("started")``); the prefix is applied only at the outbound
+# HTTP boundary. Keeping it as a single constant means changing the
+# server-side namespace in the future is a one-line change.
+SERVER_EVENT_PREFIX = "kfc_"
+
+
+def _apply_server_prefix(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build an outbound copy of ``events`` with ``SERVER_EVENT_PREFIX`` prepended.
+
+    Never mutates the input: bare-name events get a new dict with the prefixed
+    ``event`` field, while already-prefixed / empty / non-string event values
+    are forwarded as-is (no copy, no mutation). So a send failure that falls
+    back to ``save_to_disk`` still persists the original client-side name.
+
+    Idempotent: events already carrying the prefix are passed through, which
+    keeps disk-cached files from older releases working when a new version
+    reads them back.
+    """
+    out: list[dict[str, Any]] = []
+    for event in events:
+        name = event.get("event", "")
+        if isinstance(name, str) and name and not name.startswith(SERVER_EVENT_PREFIX):
+            out.append({**event, "event": SERVER_EVENT_PREFIX + name})
+        else:
+            out.append(event)
+    return out
+
 
 def _telemetry_dir() -> Path:
     path = get_share_dir() / "telemetry"
@@ -64,7 +92,10 @@ class AsyncTransport:
         if not events:
             return
 
-        payload = {"events": events}
+        # Apply the server-side prefix only at the outbound boundary.
+        # ``events`` itself is kept untouched so ``save_to_disk`` below
+        # persists the bare client-side names.
+        payload = {"events": _apply_server_prefix(events)}
 
         for attempt_idx in range(len(self._retry_backoffs) + 1):
             try:
@@ -168,7 +199,9 @@ class AsyncTransport:
                         if line:
                             events.append(json.loads(line))
                 if events:
-                    await self._send_http({"events": events})
+                    # Same outbound-only prefix rule as ``send``; disk JSONL
+                    # preserves the bare client-side names.
+                    await self._send_http({"events": _apply_server_prefix(events)})
                 # Success — delete the file
                 path.unlink(missing_ok=True)
                 logger.debug(

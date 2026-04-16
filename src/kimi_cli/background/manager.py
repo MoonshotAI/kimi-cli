@@ -171,7 +171,7 @@ class BackgroundTaskManager:
         self._store.create_task(spec)
         from kimi_cli.telemetry import track
 
-        track("kimi_background_task_created")
+        track("background_task_created")
 
         runtime = self._store.read_runtime(task_id)
         task_dir = self._store.task_dir(task_id)
@@ -566,7 +566,7 @@ class BackgroundTaskManager:
 
         if runtime.started_at and runtime.finished_at:
             duration = runtime.finished_at - runtime.started_at
-            track("kimi_background_task_completed", success=True, duration_s=duration)
+            track("background_task_completed", success=True, duration_s=duration)
 
     def _mark_task_failed(self, task_id: str, reason: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -582,7 +582,7 @@ class BackgroundTaskManager:
         if runtime.started_at and runtime.finished_at:
             duration = runtime.finished_at - runtime.started_at
             track(
-                "kimi_background_task_completed",
+                "background_task_completed",
                 success=False,
                 duration_s=duration,
                 reason="error",
@@ -604,7 +604,7 @@ class BackgroundTaskManager:
         if runtime.started_at and runtime.finished_at:
             duration = runtime.finished_at - runtime.started_at
             track(
-                "kimi_background_task_completed",
+                "background_task_completed",
                 success=False,
                 duration_s=duration,
                 reason="timeout",
@@ -625,7 +625,7 @@ class BackgroundTaskManager:
         if runtime.started_at and runtime.finished_at:
             duration = runtime.finished_at - runtime.started_at
             track(
-                "kimi_background_task_completed",
+                "background_task_completed",
                 success=False,
                 duration_s=duration,
                 reason="killed",

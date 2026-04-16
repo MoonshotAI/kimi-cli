@@ -217,12 +217,12 @@ class KimiToolset:
 
                     _error_type = type(e).__name__
                     track(
-                        "kimi_tool_error",
+                        "tool_error",
                         tool_name=tool_call.function.name,
                         error_type=_error_type,
                     )
                     track(
-                        "kimi_tool_call",
+                        "tool_call",
                         tool_name=tool_call.function.name,
                         success=False,
                         duration_ms=int(tool_elapsed * 1000),
@@ -243,7 +243,7 @@ class KimiToolset:
                 from kimi_cli.telemetry import track as _track_tool_call
 
                 _track_tool_call(
-                    "kimi_tool_call",
+                    "tool_call",
                     tool_name=tool_call.function.name,
                     success=not isinstance(ret, ToolError),
                     duration_ms=int(tool_elapsed * 1000),

@@ -168,7 +168,7 @@ class _LiveView:
                     if self.has_expandable_panel():
                         from kimi_cli.telemetry import track
 
-                        track("kimi_shortcut_expand")
+                        track("shortcut_expand")
                         await listener.pause()
                         live.stop()
                         try:
@@ -473,7 +473,7 @@ class _LiveView:
         if all_done:
             from kimi_cli.telemetry import track
 
-            track("kimi_question_answered", method=method)
+            track("question_answered", method=method)
             panel.request.resolve(panel.get_answers())
             self.show_next_question_request()
 
@@ -500,7 +500,7 @@ class _LiveView:
                 case KeyEvent.ESCAPE:
                     from kimi_cli.telemetry import track
 
-                    track("kimi_question_dismissed")
+                    track("question_dismissed")
                     self._current_question_panel.request.resolve({})
                     self.show_next_question_request()
                 case (
@@ -537,7 +537,7 @@ class _LiveView:
         if event == KeyEvent.ESCAPE and self._cancel_event is not None:
             from kimi_cli.telemetry import track
 
-            track("kimi_cancel")
+            track("cancel")
             self._cancel_event.set()
             return
 

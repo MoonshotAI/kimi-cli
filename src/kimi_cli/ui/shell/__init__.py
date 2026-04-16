@@ -599,7 +599,7 @@ class Shell:
                     if action.kind == InputAction.BTW and isinstance(self.soul, KimiSoul):
                         from kimi_cli.telemetry import track
 
-                        track("kimi_input_btw")
+                        track("input_btw")
                         await self._run_btw_modal(action.args, prompt_session)
                         resume_prompt.set()
                         continue
@@ -616,7 +616,7 @@ class Shell:
                         if is_soul_slash:
                             from kimi_cli.telemetry import track
 
-                            track("kimi_input_command", command=slash_cmd_call.name)
+                            track("input_command", command=slash_cmd_call.name)
                             background_autotrigger_armed = True
                             resume_prompt.set()
                             await self.run_soul_command(slash_cmd_call.raw_input)
@@ -650,7 +650,7 @@ class Shell:
                 # Track exit and flush remaining telemetry events
                 from kimi_cli.telemetry import track
 
-                track("kimi_exit", duration_s=time.monotonic() - _run_start_time)
+                track("exit", duration_s=time.monotonic() - _run_start_time)
                 if _telemetry_sink is not None:
                     _telemetry_sink.stop_periodic_flush()
                     await _telemetry_sink.flush()
@@ -692,7 +692,7 @@ class Shell:
         logger.info("Running shell command: {cmd}", cmd=command)
         from kimi_cli.telemetry import track
 
-        track("kimi_input_bash")
+        track("input_bash")
 
         proc: asyncio.subprocess.Process | None = None
 
@@ -724,14 +724,14 @@ class Shell:
 
         if command_call.name not in self._available_slash_commands:
             logger.info("Unknown slash command /{command}", command=command_call.name)
-            track("kimi_input_command_invalid")
+            track("input_command_invalid")
             console.print(
                 f'[red]Unknown slash command "/{command_call.name}", '
                 'type "/" for all available commands[/red]'
             )
             return
 
-        track("kimi_input_command", command=command_call.name)
+        track("input_command", command=command_call.name)
 
         command = shell_slash_registry.find_command(command_call.name)
         if command is None:
@@ -955,7 +955,7 @@ class Shell:
             _at_step = (
                 getattr(self.soul, "_current_step_no", 0) if isinstance(self.soul, KimiSoul) else 0
             )
-            track("kimi_turn_interrupted", at_step=_at_step)
+            track("turn_interrupted", at_step=_at_step)
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")
@@ -1476,7 +1476,7 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
                     )
                     from kimi_cli.telemetry import track
 
-                    track("kimi_update_prompted", current=current_version, latest=latest_version)
+                    track("update_prompted", current=current_version, latest=latest_version)
 
     console.print(
         Panel(

@@ -75,7 +75,7 @@ async def login(app: Shell, args: str) -> None:
         return
     from kimi_cli.telemetry import track
 
-    track("kimi_login", provider=platform.id)
+    track("login", provider=platform.id)
     await asyncio.sleep(1)
     console.clear()
     raise Reload
@@ -143,7 +143,7 @@ async def logout(app: Shell, args: str) -> None:
 
     from kimi_cli.telemetry import track
 
-    track("kimi_logout")
+    track("logout")
     await asyncio.sleep(1)
     console.clear()
     raise Reload

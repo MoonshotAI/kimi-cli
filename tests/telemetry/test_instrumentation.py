@@ -61,44 +61,44 @@ def _collect_sink_events(sink_mock: MagicMock) -> list[dict[str, Any]]:
 
 
 class TestSlashCommandCounting:
-    """Verify that slash commands emit exactly one kimi_input_command event."""
+    """Verify that slash commands emit exactly one input_command event."""
 
     def test_shell_slash_command_tracks_once(self):
-        """A shell-level slash command emits kimi_input_command with the command name."""
+        """A shell-level slash command emits input_command with the command name."""
         # Simulate what _run_slash_command does: one track call
-        track("kimi_input_command", command="model")
+        track("input_command", command="model")
         events = _collect_events()
-        matching = [e for e in events if e["event"] == "kimi_input_command"]
+        matching = [e for e in events if e["event"] == "input_command"]
         assert len(matching) == 1
         assert matching[0]["properties"]["command"] == "model"
 
     def test_soul_slash_command_tracks_once(self):
-        """A soul-level slash command emits kimi_input_command (not double-counted)."""
+        """A soul-level slash command emits input_command (not double-counted)."""
         # Soul-level commands are tracked at the shell layer before dispatch
-        track("kimi_input_command", command="compact")
+        track("input_command", command="compact")
         events = _collect_events()
-        matching = [e for e in events if e["event"] == "kimi_input_command"]
+        matching = [e for e in events if e["event"] == "input_command"]
         assert len(matching) == 1
         assert matching[0]["properties"]["command"] == "compact"
 
     def test_invalid_command_tracks_separate_event(self):
-        """Invalid slash commands emit kimi_input_command_invalid, not kimi_input_command."""
-        track("kimi_input_command_invalid")
+        """Invalid slash commands emit input_command_invalid, not input_command."""
+        track("input_command_invalid")
         events = _collect_events()
-        assert any(e["event"] == "kimi_input_command_invalid" for e in events)
-        assert not any(e["event"] == "kimi_input_command" for e in events)
+        assert any(e["event"] == "input_command_invalid" for e in events)
+        assert not any(e["event"] == "input_command" for e in events)
 
     def test_no_double_counting_shell_and_soul(self):
         """Shell and soul layers must not both emit for the same command invocation."""
         # Simulate: only one track call per command execution path
-        track("kimi_input_command", command="yolo")
+        track("input_command", command="yolo")
         events = _collect_events()
-        cmd_events = [e for e in events if e["event"] == "kimi_input_command"]
+        cmd_events = [e for e in events if e["event"] == "input_command"]
         assert len(cmd_events) == 1
 
     def test_command_property_is_string_enum(self):
         """Command property must be a string (enum-like), not an int or bool."""
-        track("kimi_input_command", command="clear")
+        track("input_command", command="clear")
         event = _collect_events()[-1]
         assert isinstance(event["properties"]["command"], str)
 
@@ -112,59 +112,57 @@ class TestToolApprovalPaths:
     """Every approval path must emit exactly one of the two tool tracking events."""
 
     def test_manual_approve(self):
-        """User clicking approve emits kimi_tool_approved with approval_mode=manual."""
-        track("kimi_tool_approved", tool_name="Bash", approval_mode="manual")
+        """User clicking approve emits tool_approved with approval_mode=manual."""
+        track("tool_approved", tool_name="Bash", approval_mode="manual")
         events = _collect_events()
-        assert events[-1]["event"] == "kimi_tool_approved"
+        assert events[-1]["event"] == "tool_approved"
         assert events[-1]["properties"]["tool_name"] == "Bash"
         assert events[-1]["properties"]["approval_mode"] == "manual"
 
     def test_approve_for_session(self):
-        """'Approve for session' emits kimi_tool_approved with approval_mode=manual."""
-        track("kimi_tool_approved", tool_name="WriteFile", approval_mode="manual")
+        """'Approve for session' emits tool_approved with approval_mode=manual."""
+        track("tool_approved", tool_name="WriteFile", approval_mode="manual")
         events = _collect_events()
-        assert events[-1]["event"] == "kimi_tool_approved"
+        assert events[-1]["event"] == "tool_approved"
         assert events[-1]["properties"]["approval_mode"] == "manual"
 
     def test_yolo_approve(self):
-        """Yolo auto-approval emits kimi_tool_approved with approval_mode=yolo."""
-        track("kimi_tool_approved", tool_name="Bash", approval_mode="yolo")
+        """Yolo auto-approval emits tool_approved with approval_mode=yolo."""
+        track("tool_approved", tool_name="Bash", approval_mode="yolo")
         event = _collect_events()[-1]
         assert event["properties"]["approval_mode"] == "yolo"
 
     def test_auto_session_approve(self):
         """Session-cached auto-approval emits approval_mode=auto_session."""
-        track("kimi_tool_approved", tool_name="ReadFile", approval_mode="auto_session")
+        track("tool_approved", tool_name="ReadFile", approval_mode="auto_session")
         event = _collect_events()[-1]
         assert event["properties"]["approval_mode"] == "auto_session"
 
     def test_manual_reject(self):
-        """User clicking reject emits kimi_tool_rejected with approval_mode=manual."""
-        track("kimi_tool_rejected", tool_name="Bash", approval_mode="manual")
+        """User clicking reject emits tool_rejected with approval_mode=manual."""
+        track("tool_rejected", tool_name="Bash", approval_mode="manual")
         events = _collect_events()
-        assert events[-1]["event"] == "kimi_tool_rejected"
+        assert events[-1]["event"] == "tool_rejected"
         assert events[-1]["properties"]["tool_name"] == "Bash"
         assert events[-1]["properties"]["approval_mode"] == "manual"
 
     def test_cancelled_approval(self):
-        """ApprovalCancelledError (e.g. Esc) emits kimi_tool_rejected with approval_mode=cancelled."""
-        track("kimi_tool_rejected", tool_name="Bash", approval_mode="cancelled")
+        """ApprovalCancelledError (e.g. Esc) emits tool_rejected with approval_mode=cancelled."""
+        track("tool_rejected", tool_name="Bash", approval_mode="cancelled")
         events = _collect_events()
-        assert events[-1]["event"] == "kimi_tool_rejected"
+        assert events[-1]["event"] == "tool_rejected"
         assert events[-1]["properties"]["approval_mode"] == "cancelled"
 
     def test_approval_events_are_mutually_exclusive(self):
         """Each approval path emits exactly one event — they never overlap."""
-        track("kimi_tool_approved", tool_name="Bash")
+        track("tool_approved", tool_name="Bash")
         events = _collect_events()
-        approval_events = [
-            e for e in events if e["event"] in ("kimi_tool_approved", "kimi_tool_rejected")
-        ]
+        approval_events = [e for e in events if e["event"] in ("tool_approved", "tool_rejected")]
         assert len(approval_events) == 1
 
     def test_tool_name_always_present(self):
         """All tool approval events include tool_name."""
-        for event_name in ("kimi_tool_approved", "kimi_tool_rejected"):
+        for event_name in ("tool_approved", "tool_rejected"):
             telemetry_mod._event_queue.clear()
             track(event_name, tool_name="SomeTool")
             event = _collect_events()[-1]
@@ -177,7 +175,7 @@ class TestToolApprovalPaths:
 
 
 class TestAPIErrorClassification:
-    """Verify the error_type mapping in kimi_api_error events.
+    """Verify the error_type mapping in api_error events.
 
     Tests call the real classifier function, so any drift in the production
     mapping shows up here.
@@ -303,15 +301,15 @@ class TestAPIErrorClassification:
 
     def test_classification_emits_correct_track_call(self):
         """The classified error_type is passed as a string property."""
-        track("kimi_api_error", error_type="rate_limit")
+        track("api_error", error_type="rate_limit")
         event = _collect_events()[-1]
-        assert event["event"] == "kimi_api_error"
+        assert event["event"] == "api_error"
         assert event["properties"]["error_type"] == "rate_limit"
         assert isinstance(event["properties"]["error_type"], str)
 
     def test_api_error_with_status_code_field(self):
         """When status_code is available it is included in the event properties."""
-        track("kimi_api_error", error_type="5xx_server", status_code=503)
+        track("api_error", error_type="5xx_server", status_code=503)
         event = _collect_events()[-1]
         assert event["properties"]["status_code"] == 503
         assert isinstance(event["properties"]["status_code"], int)
@@ -325,40 +323,40 @@ class TestAPIErrorClassification:
 class TestCancelInterrupt:
     """Verify cancel and interrupt events."""
 
-    def test_esc_emits_kimi_cancel(self):
-        """Pressing Esc during streaming emits kimi_cancel."""
-        track("kimi_cancel")
+    def test_esc_emits_cancel(self):
+        """Pressing Esc during streaming emits cancel."""
+        track("cancel")
         events = _collect_events()
-        assert events[-1]["event"] == "kimi_cancel"
+        assert events[-1]["event"] == "cancel"
 
     def test_esc_in_question_panel_emits_dismissed(self):
-        """Pressing Esc on question panel emits kimi_question_dismissed, not kimi_cancel."""
-        track("kimi_question_dismissed")
+        """Pressing Esc on question panel emits question_dismissed, not cancel."""
+        track("question_dismissed")
         events = _collect_events()
-        assert events[-1]["event"] == "kimi_question_dismissed"
-        assert not any(e["event"] == "kimi_cancel" for e in events)
+        assert events[-1]["event"] == "question_dismissed"
+        assert not any(e["event"] == "cancel" for e in events)
 
     def test_run_cancelled_emits_turn_interrupted(self):
-        """RunCancelled exception emits kimi_turn_interrupted with at_step."""
-        track("kimi_turn_interrupted", at_step=3)
+        """RunCancelled exception emits turn_interrupted with at_step."""
+        track("turn_interrupted", at_step=3)
         event = _collect_events()[-1]
-        assert event["event"] == "kimi_turn_interrupted"
+        assert event["event"] == "turn_interrupted"
         assert event["properties"]["at_step"] == 3
 
     def test_turn_interrupted_at_step_is_int(self):
         """at_step property must be an integer."""
-        track("kimi_turn_interrupted", at_step=0)
+        track("turn_interrupted", at_step=0)
         event = _collect_events()[-1]
         assert isinstance(event["properties"]["at_step"], int)
 
     def test_cancel_and_dismissed_are_distinct(self):
-        """kimi_cancel and kimi_question_dismissed are different events."""
-        track("kimi_cancel")
-        track("kimi_question_dismissed")
+        """cancel and question_dismissed are different events."""
+        track("cancel")
+        track("question_dismissed")
         events = _collect_events()
         event_names = [e["event"] for e in events]
-        assert "kimi_cancel" in event_names
-        assert "kimi_question_dismissed" in event_names
+        assert "cancel" in event_names
+        assert "question_dismissed" in event_names
 
 
 # ---------------------------------------------------------------------------
@@ -458,45 +456,45 @@ class TestEventPropertyCorrectness:
     """Verify specific events carry the right property types and values."""
 
     def test_yolo_toggle_enabled_bool(self):
-        """kimi_yolo_toggle.enabled is a bool."""
-        track("kimi_yolo_toggle", enabled=True)
+        """yolo_toggle.enabled is a bool."""
+        track("yolo_toggle", enabled=True)
         event = _collect_events()[-1]
         assert isinstance(event["properties"]["enabled"], bool)
         assert event["properties"]["enabled"] is True
 
         telemetry_mod._event_queue.clear()
-        track("kimi_yolo_toggle", enabled=False)
+        track("yolo_toggle", enabled=False)
         event = _collect_events()[-1]
         assert event["properties"]["enabled"] is False
 
     def test_shortcut_mode_switch_to_mode(self):
-        """kimi_shortcut_mode_switch.to_mode is a string enum."""
-        track("kimi_shortcut_mode_switch", to_mode="agent")
+        """shortcut_mode_switch.to_mode is a string enum."""
+        track("shortcut_mode_switch", to_mode="agent")
         event = _collect_events()[-1]
         assert event["properties"]["to_mode"] == "agent"
         assert isinstance(event["properties"]["to_mode"], str)
 
     def test_question_answered_method_enum(self):
-        """kimi_question_answered.method is a string enum."""
+        """question_answered.method is a string enum."""
         for method in ("number_key", "enter", "escape"):
             telemetry_mod._event_queue.clear()
-            track("kimi_question_answered", method=method)
+            track("question_answered", method=method)
             event = _collect_events()[-1]
             assert event["properties"]["method"] == method
 
     def test_tool_error_has_tool_name_and_error_type(self):
-        """kimi_tool_error includes tool_name and error_type (Python exception class name)."""
-        track("kimi_tool_error", tool_name="Bash", error_type="RuntimeError")
+        """tool_error includes tool_name and error_type (Python exception class name)."""
+        track("tool_error", tool_name="Bash", error_type="RuntimeError")
         event = _collect_events()[-1]
-        assert event["event"] == "kimi_tool_error"
+        assert event["event"] == "tool_error"
         assert event["properties"]["tool_name"] == "Bash"
         assert event["properties"]["error_type"] == "RuntimeError"
 
     def test_tool_call_success_has_no_error_type(self):
-        """kimi_tool_call success path: tool_name + success=True + duration_ms, no error_type."""
-        track("kimi_tool_call", tool_name="ReadFile", success=True, duration_ms=123)
+        """tool_call success path: tool_name + success=True + duration_ms, no error_type."""
+        track("tool_call", tool_name="ReadFile", success=True, duration_ms=123)
         event = _collect_events()[-1]
-        assert event["event"] == "kimi_tool_call"
+        assert event["event"] == "tool_call"
         assert event["properties"]["tool_name"] == "ReadFile"
         assert event["properties"]["success"] is True
         assert event["properties"]["duration_ms"] == 123
@@ -504,9 +502,9 @@ class TestEventPropertyCorrectness:
         assert "error_type" not in event["properties"]
 
     def test_tool_call_failure_has_error_type(self):
-        """kimi_tool_call failure path includes error_type from Python exception name."""
+        """tool_call failure path includes error_type from Python exception name."""
         track(
-            "kimi_tool_call",
+            "tool_call",
             tool_name="Bash",
             success=False,
             duration_ms=42,
@@ -517,57 +515,57 @@ class TestEventPropertyCorrectness:
         assert event["properties"]["error_type"] == "TimeoutError"
 
     def test_oauth_refresh_success_has_no_reason(self):
-        """kimi_oauth_refresh success: only success=True, no reason field."""
-        track("kimi_oauth_refresh", success=True)
+        """oauth_refresh success: only success=True, no reason field."""
+        track("oauth_refresh", success=True)
         event = _collect_events()[-1]
         assert event["properties"]["success"] is True
         assert "reason" not in event["properties"]
 
     def test_oauth_refresh_unauthorized_has_reason(self):
         """OAuthUnauthorized path: success=False + reason=unauthorized."""
-        track("kimi_oauth_refresh", success=False, reason="unauthorized")
+        track("oauth_refresh", success=False, reason="unauthorized")
         event = _collect_events()[-1]
         assert event["properties"]["success"] is False
         assert event["properties"]["reason"] == "unauthorized"
 
     def test_oauth_refresh_generic_failure_has_reason(self):
         """Generic Exception path: success=False + reason=network_or_other."""
-        track("kimi_oauth_refresh", success=False, reason="network_or_other")
+        track("oauth_refresh", success=False, reason="network_or_other")
         event = _collect_events()[-1]
         assert event["properties"]["reason"] == "network_or_other"
 
     def test_mcp_connected_has_total_count(self):
-        """kimi_mcp_connected has server_count and total_count."""
-        track("kimi_mcp_connected", server_count=2, total_count=3)
+        """mcp_connected has server_count and total_count."""
+        track("mcp_connected", server_count=2, total_count=3)
         event = _collect_events()[-1]
         assert event["properties"]["server_count"] == 2
         assert event["properties"]["total_count"] == 3
 
     def test_mcp_failed_has_failed_count(self):
-        """kimi_mcp_failed has failed_count and total_count."""
-        track("kimi_mcp_failed", failed_count=1, total_count=3)
+        """mcp_failed has failed_count and total_count."""
+        track("mcp_failed", failed_count=1, total_count=3)
         event = _collect_events()[-1]
         assert event["properties"]["failed_count"] == 1
         assert event["properties"]["total_count"] == 3
 
     def test_session_load_failed_has_reason(self):
-        """kimi_session_load_failed includes the Python exception class name as reason."""
-        track("kimi_session_load_failed", reason="JSONDecodeError")
+        """session_load_failed includes the Python exception class name as reason."""
+        track("session_load_failed", reason="JSONDecodeError")
         event = _collect_events()[-1]
-        assert event["event"] == "kimi_session_load_failed"
+        assert event["event"] == "session_load_failed"
         assert event["properties"]["reason"] == "JSONDecodeError"
         assert isinstance(event["properties"]["reason"], str)
 
     def test_exit_event_has_duration(self):
-        """kimi_exit includes duration_s (float)."""
-        track("kimi_exit", duration_s=123.456)
+        """exit includes duration_s (float)."""
+        track("exit", duration_s=123.456)
         event = _collect_events()[-1]
         assert isinstance(event["properties"]["duration_s"], float)
 
     def test_startup_perf_has_four_phase_timings(self):
-        """kimi_startup_perf has duration_ms + config_ms + oauth_ms + mcp_ms (all int)."""
+        """startup_perf has duration_ms + config_ms + oauth_ms + mcp_ms (all int)."""
         track(
-            "kimi_startup_perf",
+            "startup_perf",
             duration_ms=342,
             config_ms=42,
             oauth_ms=100,
@@ -579,29 +577,29 @@ class TestEventPropertyCorrectness:
             assert isinstance(event["properties"][field], int)
 
     def test_model_switch_has_model_string(self):
-        """kimi_model_switch.model is a string."""
-        track("kimi_model_switch", model="kimi-k2.5")
+        """model_switch.model is a string."""
+        track("model_switch", model="kimi-k2.5")
         event = _collect_events()[-1]
         assert event["properties"]["model"] == "kimi-k2.5"
 
     def test_hook_triggered_properties(self):
-        """kimi_hook_triggered has event_type and action."""
-        track("kimi_hook_triggered", event_type="PreToolUse", action="block")
+        """hook_triggered has event_type and action."""
+        track("hook_triggered", event_type="PreToolUse", action="block")
         event = _collect_events()[-1]
         assert event["properties"]["event_type"] == "PreToolUse"
         assert event["properties"]["action"] == "block"
 
     def test_started_event_has_yolo(self):
-        """kimi_started includes resumed (bool) and yolo (bool)."""
-        track("kimi_started", resumed=False, yolo=True)
+        """started includes resumed (bool) and yolo (bool)."""
+        track("started", resumed=False, yolo=True)
         event = _collect_events()[-1]
-        assert event["event"] == "kimi_started"
+        assert event["event"] == "started"
         assert event["properties"]["resumed"] is False
         assert event["properties"]["yolo"] is True
 
     def test_background_task_completed_success_no_reason(self):
         """Success path: no `reason` field."""
-        track("kimi_background_task_completed", success=True, duration_s=45.2)
+        track("background_task_completed", success=True, duration_s=45.2)
         event = _collect_events()[-1]
         assert event["properties"]["success"] is True
         assert isinstance(event["properties"]["duration_s"], float)
@@ -610,7 +608,7 @@ class TestEventPropertyCorrectness:
     def test_background_task_completed_failure_reason_error(self):
         """_mark_task_failed emits reason='error'."""
         track(
-            "kimi_background_task_completed",
+            "background_task_completed",
             success=False,
             duration_s=10.0,
             reason="error",
@@ -621,7 +619,7 @@ class TestEventPropertyCorrectness:
     def test_background_task_completed_failure_reason_timeout(self):
         """_mark_task_timed_out emits reason='timeout'."""
         track(
-            "kimi_background_task_completed",
+            "background_task_completed",
             success=False,
             duration_s=300.0,
             reason="timeout",
@@ -632,7 +630,7 @@ class TestEventPropertyCorrectness:
     def test_background_task_completed_failure_reason_killed(self):
         """_mark_task_killed emits reason='killed'."""
         track(
-            "kimi_background_task_completed",
+            "background_task_completed",
             success=False,
             duration_s=5.0,
             reason="killed",
@@ -658,7 +656,7 @@ class TestEventPropertyCorrectness:
         mock_track.assert_not_called()
 
     def test_mark_task_killed_emits_completed_event(self):
-        """_mark_task_killed must emit kimi_background_task_completed(success=False)."""
+        """_mark_task_killed must emit background_task_completed(success=False)."""
         from kimi_cli.background.manager import BackgroundTaskManager
         from kimi_cli.background.models import TaskRuntime
 
@@ -675,7 +673,7 @@ class TestEventPropertyCorrectness:
 
         mock_track.assert_called_once()
         call_args = mock_track.call_args
-        assert call_args[0][0] == "kimi_background_task_completed"
+        assert call_args[0][0] == "background_task_completed"
         assert call_args[1]["success"] is False
         assert "duration_s" in call_args[1]
 
@@ -699,7 +697,7 @@ class TestEventPropertyCorrectness:
     def test_timestamp_is_recent(self):
         """All events get a timestamp close to now."""
         before = time.time()
-        track("kimi_test")
+        track("test")
         after = time.time()
         event = _collect_events()[-1]
         assert before <= event["timestamp"] <= after
@@ -854,7 +852,7 @@ class TestClientInfo:
 
 
 class TestCompactionTracking:
-    """kimi_compaction_triggered must fire on both success and failure paths."""
+    """compaction_triggered must fire on both success and failure paths."""
 
     def _make_soul(self, *, before_tokens: int, estimated_after: int) -> Any:
         """Construct a minimal KimiSoul stub bypassing __init__."""
@@ -914,10 +912,10 @@ class TestCompactionTracking:
 
         # Filter to the compaction event — other events (hook triggers etc.)
         # shouldn't go through telemetry.track.
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "kimi_compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
         assert len(calls) == 1
         args, kwargs = calls[0]
-        assert args[0] == "kimi_compaction_triggered"
+        assert args[0] == "compaction_triggered"
         assert kwargs["trigger_type"] == "auto"
         assert kwargs["before_tokens"] == 12000
         assert kwargs["after_tokens"] == 3000
@@ -934,7 +932,7 @@ class TestCompactionTracking:
         ):
             await soul.compact_context(custom_instruction="focus on auth")
 
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "kimi_compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
         assert len(calls) == 1
         assert calls[0][1]["trigger_type"] == "manual"
         assert calls[0][1]["success"] is True
@@ -953,7 +951,7 @@ class TestCompactionTracking:
         ):
             await soul.compact_context()
 
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "kimi_compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
         assert len(calls) == 1
         kwargs = calls[0][1]
         assert kwargs["trigger_type"] == "auto"
