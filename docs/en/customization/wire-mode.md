@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.7`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.9`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -498,6 +498,8 @@ type Event =
   | ToolResult
   | ApprovalResponse
   | SubagentEvent
+  | BtwBegin
+  | BtwEnd
   | SteerInput
   | PlanDisplay
   | HookTriggered
@@ -717,6 +719,42 @@ interface ApprovalResponse {
   response: "approve" | "approve_for_session" | "reject"
   /** Optional feedback text when rejecting, may be absent in JSON */
   feedback?: string
+}
+```
+
+### `BtwBegin`
+
+::: info Added
+Added in Wire 1.9.
+:::
+
+A side question (`/btw`) has started processing.
+
+```typescript
+interface BtwBegin {
+  /** Unique ID to pair with the corresponding BtwEnd */
+  id: string
+  /** The user's original side question text */
+  question: string
+}
+```
+
+### `BtwEnd`
+
+::: info Added
+Added in Wire 1.9.
+:::
+
+A side question (`/btw`) has finished processing.
+
+```typescript
+interface BtwEnd {
+  /** Unique ID matching the corresponding BtwBegin */
+  id: string
+  /** The LLM's response text, or null if it failed */
+  response?: string | null
+  /** Error message if the side question failed */
+  error?: string | null
 }
 ```
 
@@ -1043,6 +1081,8 @@ interface DiffDisplayBlock {
   old_text: string
   /** New content */
   new_text: string
+  /** Whether this is a summary block (shows line count summary instead of actual diff for large files). May not be present in JSON. Added in Wire 1.8 */
+  is_summary?: boolean
 }
 
 interface TodoDisplayBlock {

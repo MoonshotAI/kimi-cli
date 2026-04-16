@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.7`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.9`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -498,6 +498,8 @@ type Event =
   | ToolResult
   | ApprovalResponse
   | SubagentEvent
+  | BtwBegin
+  | BtwEnd
   | SteerInput
   | PlanDisplay
   | HookTriggered
@@ -717,6 +719,42 @@ interface ApprovalResponse {
   response: "approve" | "approve_for_session" | "reject"
   /** 拒绝时的可选反馈文本，JSON 中可能不存在 */
   feedback?: string
+}
+```
+
+### `BtwBegin`
+
+::: info 新增
+新增于 Wire 1.9。
+:::
+
+侧问（`/btw`）开始处理。
+
+```typescript
+interface BtwBegin {
+  /** 唯一 ID，用于与对应的 BtwEnd 配对 */
+  id: string
+  /** 用户的侧问文本 */
+  question: string
+}
+```
+
+### `BtwEnd`
+
+::: info 新增
+新增于 Wire 1.9。
+:::
+
+侧问（`/btw`）处理完成。
+
+```typescript
+interface BtwEnd {
+  /** 唯一 ID，与对应的 BtwBegin 匹配 */
+  id: string
+  /** LLM 的回复文本，失败时为 null */
+  response?: string | null
+  /** 失败时的错误信息 */
+  error?: string | null
 }
 ```
 
@@ -1043,6 +1081,8 @@ interface DiffDisplayBlock {
   old_text: string
   /** 新内容 */
   new_text: string
+  /** 是否为摘要块（文件过大时显示行数摘要而非实际 diff），JSON 中可能不存在。新增于 Wire 1.8 */
+  is_summary?: boolean
 }
 
 interface TodoDisplayBlock {

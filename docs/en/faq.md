@@ -42,6 +42,10 @@ Solutions:
 - **Switch to an image-capable model**: Use a model that supports the `image_in` capability.
 - **Check clipboard content**: Make sure the clipboard contains actual image data, not just a file path to an image.
 
+### Working directory deleted or removed
+
+If the working directory becomes inaccessible during a session (external drive unplugged, directory deleted, or filesystem unmounted), Kimi Code CLI detects the situation and displays a crash report containing the session ID and work directory path, then exits cleanly. You can recover the session with `kimi -r <session-id>` from the correct directory.
+
 ## ACP issues
 
 ### IDE cannot connect to Kimi Code CLI
@@ -135,12 +139,20 @@ uv tool upgrade kimi-cli --no-cache
 
 Adding `--no-cache` ensures you get the latest version.
 
-### How to disable auto-update check
+### Update prompt on startup
 
-If you don't want Kimi Code CLI to check for updates in the background, set the environment variable:
+When a newer version is detected by the background check, Kimi Code CLI shows a blocking update prompt before the shell loads, displaying the current and latest version information. You can choose an action with the following keys:
+
+- `Enter`: Upgrade to the latest version immediately
+- `q`: Skip for now; you will be reminded on next startup
+- `s`: Skip this version and suppress future reminders (until a newer version is released)
+
+### How to disable update reminders
+
+If you don't want Kimi Code CLI to check for updates or show update prompts on startup, set the environment variable:
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE=1
 ```
 
-You can add this line to your shell configuration file (like `~/.zshrc` or `~/.bashrc`).
+This disables background update checks, the blocking update gate on startup, and the version hint in the welcome panel. You can add this line to your shell configuration file (like `~/.zshrc` or `~/.bashrc`).

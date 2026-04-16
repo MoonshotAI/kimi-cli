@@ -128,7 +128,7 @@
 
 别名：`/resume`
 
-使用方向键选择会话，按 `Enter` 确认切换，按 `Ctrl-C` 取消。
+使用方向键选择会话，按 `Enter` 确认切换，按 `Ctrl-C` 取消。按 `Ctrl-A` 可在 「仅当前目录」 和 「所有目录」 之间切换会话范围。
 
 ### `/title`
 
@@ -313,6 +313,10 @@ YOLO 模式会跳过所有确认，请确保你了解可能的风险。
 ### `/web`
 
 切换到 Web UI。执行后 Kimi Code CLI 会启动 Web UI 服务器并在浏览器中打开当前会话，你可以在 Web UI 中继续对话。详见 [Web UI](./kimi-web.md)。
+
+### `/vis`
+
+切换到 Agent Tracing Visualizer。执行后 Kimi Code CLI 会启动可视化面板服务器并在浏览器中打开当前会话的追踪视图，你可以在其中检查 Wire 事件时间线、上下文消息和用量统计。详见 [Agent Tracing Visualizer](./kimi-vis.md)。
 
 ## 命令补全
 

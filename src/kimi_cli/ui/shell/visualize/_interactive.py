@@ -72,8 +72,9 @@ class _PromptLiveView(_LiveView):
         steer: Callable[[str | list[ContentPart]], None],
         btw_runner: BtwRunner | None = None,
         cancel_event: asyncio.Event | None = None,
+        show_thinking_stream: bool = False,
     ) -> None:
-        super().__init__(initial_status, cancel_event)
+        super().__init__(initial_status, cancel_event, show_thinking_stream=show_thinking_stream)
         self._prompt_session = prompt_session
         self._steer = steer
         self._btw_runner = btw_runner

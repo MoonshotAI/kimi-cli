@@ -79,15 +79,30 @@ kimi --thinking
 Thinking mode requires support from the current model. Some models (like `kimi-k2-thinking-turbo`) always use thinking mode and cannot be disabled.
 :::
 
-## Sending messages while running (steer)
+## Sending messages while running
 
-While the AI is executing a task, you can type and send follow-up messages in the input box without waiting for the current turn to finish. This feature is called "steering" and allows you to adjust the AI's direction mid-turn.
+While the AI is executing a task, you can send follow-up messages in two ways without waiting for the current turn to finish:
 
-Steer messages are appended to the context after the current step completes, and the AI will see and respond to your message before the next step begins. Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
+- **Queue (Enter)**: Press `Enter` to queue your message for delivery after the current turn completes. The queued message count is shown in the input area title (e.g. `── input · 2 queued ──`). Press `↑` in an empty input box to recall the last queued message for editing.
+- **Inject immediately (Ctrl+S)**: Press `Ctrl+S` to inject your message directly into the running turn context — the model sees it right away.
+
+Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
 
 ::: tip
-Steer messages do not interrupt the AI's currently executing step — they are processed between steps. To interrupt immediately, use `Ctrl-C`.
+To interrupt the AI's execution immediately, use `Ctrl-C`.
 :::
+
+## Side questions
+
+While the AI is working, you can use the `/btw` command to ask a quick side question without interrupting the main conversation flow.
+
+```
+/btw What is the return type of this function?
+```
+
+Side questions run in an isolated context: they can see the conversation history but do not modify it, and tools are disabled. The response is displayed in a scrollable modal panel — use `↑`/`↓` to scroll, `Escape` to close.
+
+See [Slash commands reference](../reference/slash-commands.md#btw) for details.
 
 ## Background tasks
 
@@ -135,7 +150,7 @@ When you type `@` in a message, Kimi Code CLI will auto-complete file and direct
 Check if there are any issues with @src/components/Button.tsx
 ```
 
-After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion.
+After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion. In Git repositories, file discovery uses `git ls-files` first, enabling fast lookups even in large repos with tens of thousands of files; non-Git projects fall back to directory scanning.
 
 ## Structured questions
 

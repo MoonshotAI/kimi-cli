@@ -128,7 +128,7 @@ List all sessions in the current working directory, allowing switching to other 
 
 Alias: `/resume`
 
-Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel.
+Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel. Press `Ctrl-A` to toggle between showing sessions for the current directory only or across all directories.
 
 ### `/title`
 
@@ -313,6 +313,10 @@ YOLO mode skips all confirmations. Make sure you understand the potential risks.
 ### `/web`
 
 Switch to Web UI. Kimi Code CLI will start a Web UI server and open the current session in your browser, allowing you to continue the conversation in the Web UI. See [Web UI](./kimi-web.md) for details.
+
+### `/vis`
+
+Switch to the Agent Tracing Visualizer. Kimi Code CLI will start the visualizer server and open the current session's tracing view in the browser, where you can inspect Wire event timelines, context messages, and usage statistics. See [Agent Tracing Visualizer](./kimi-vis.md) for details.
 
 ## Command completion
 

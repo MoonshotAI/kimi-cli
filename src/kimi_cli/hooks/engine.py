@@ -87,7 +87,40 @@ class HookEngine:
         self._on_wire_hook = on_wire_hook
         self._by_event: dict[str, list[HookDef]] = {}
         self._wire_by_event: dict[str, list[WireHookSubscription]] = {}
+        self._pending_fire_and_forget: set[asyncio.Task[Any]] = set()
         self._rebuild_index()
+
+    def fire_and_forget_trigger(
+        self,
+        event: HookEventType,
+        *,
+        matcher_value: str = "",
+        input_data: dict[str, Any],
+    ) -> asyncio.Task[list[HookResult]]:
+        """Trigger a hook in the background and keep a strong reference to the
+        task. asyncio holds tasks in a WeakSet, so naively writing
+        ``asyncio.create_task(engine.trigger(...))`` and discarding the local
+        variable lets Python's GC collect the still-pending task — which fires
+        ``loop.call_exception_handler`` with no exception field and surfaces as
+        ``Unhandled exception in event loop / Exception None`` in the
+        prompt_toolkit terminal. Use this helper any time the caller wants to
+        fire a hook without awaiting its completion.
+        """
+        task: asyncio.Task[list[HookResult]] = asyncio.create_task(
+            self.trigger(event, matcher_value=matcher_value, input_data=input_data)
+        )
+        self._pending_fire_and_forget.add(task)
+        task.add_done_callback(self._pending_fire_and_forget.discard)
+        task.add_done_callback(self._log_fire_and_forget_failure)
+        return task
+
+    @staticmethod
+    def _log_fire_and_forget_failure(task: asyncio.Task[Any]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.opt(exception=exc).warning("Fire-and-forget hook task failed")
 
     def _rebuild_index(self) -> None:
         self._by_event.clear()
