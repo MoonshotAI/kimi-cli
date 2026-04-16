@@ -944,9 +944,7 @@ class TestCompactionTracking:
         """On compaction failure: track success=False (no after_tokens), then re-raise."""
         soul = self._make_soul(before_tokens=50000, estimated_after=0)
         # Force the compaction to fail with a non-retryable error
-        soul._run_with_connection_recovery = AsyncMock(
-            side_effect=RuntimeError("compaction boom")
-        )
+        soul._run_with_connection_recovery = AsyncMock(side_effect=RuntimeError("compaction boom"))
 
         with (
             patch("kimi_cli.soul.kimisoul.wire_send"),

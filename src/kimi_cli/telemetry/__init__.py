@@ -65,6 +65,14 @@ def set_client_info(*, name: str, version: str | None = None) -> None:
     _client_info = (name, version)
 
 
+def get_client_info() -> tuple[str, str | None] | None:
+    """Return the current (name, version) tuple, or None if unset.
+
+    Exposed for the sink to enrich events with the latest client info.
+    """
+    return _client_info
+
+
 def disable() -> None:
     """Permanently disable telemetry for this process. Events are silently dropped."""
     global _disabled

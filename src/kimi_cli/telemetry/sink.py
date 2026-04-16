@@ -56,9 +56,9 @@ class EventSink:
             ctx["model"] = self._model
         # Read the client_info tuple atomically (single pointer load) so we
         # never observe a half-updated pair.
-        from kimi_cli import telemetry as _telemetry_module
+        from kimi_cli.telemetry import get_client_info
 
-        client_info = _telemetry_module._client_info
+        client_info = get_client_info()
         if client_info is not None:
             ctx["client_name"] = client_info[0]
             if client_info[1]:
