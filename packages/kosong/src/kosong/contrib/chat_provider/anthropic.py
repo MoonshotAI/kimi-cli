@@ -8,6 +8,7 @@ except ModuleNotFoundError as exc:
 
 import copy
 import json
+import re
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, Unpack, cast
 
@@ -237,7 +238,13 @@ class Anthropic:
     def _use_adaptive_thinking(self) -> bool:
         """Whether to use adaptive thinking (Opus 4.6+) instead of budget-based thinking."""
         model = self._model.lower()
-        return "opus-4.6" in model or "opus-4-6" in model
+        if "opus" not in model:
+            return False
+        match = re.search(r"opus[.-]?(\d+)[.-](\d+)", model)
+        if match:
+            major, minor = int(match.group(1)), int(match.group(2))
+            return (major, minor) >= (4, 6)
+        return False
 
     def with_thinking(self, effort: "ThinkingEffort") -> Self:
         thinking_config: ThinkingConfigParam
