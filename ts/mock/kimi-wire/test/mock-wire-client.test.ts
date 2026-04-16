@@ -1,21 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { WireMessage } from '../src/types.js';
+
 import { MockDataSource } from '../src/mock-data-source.js';
 import type { MockDataSourceOptions } from '../src/mock-data-source.js';
-import { simpleChatScenario } from '../src/scenarios/simple-chat.js';
-import { toolCallScenario } from '../src/scenarios/tool-call.js';
 import { thinkingScenario } from '../src/scenarios/thinking.js';
+import { toolCallScenario } from '../src/scenarios/tool-call.js';
+import type { WireMessage } from '../src/types.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────
-
-async function collectN(source: AsyncIterable<WireMessage>, n: number): Promise<WireMessage[]> {
-  const items: WireMessage[] = [];
-  for await (const item of source) {
-    items.push(item);
-    if (items.length >= n) break;
-  }
-  return items;
-}
 
 async function collectUntilTurnEnd(source: AsyncIterable<WireMessage>): Promise<WireMessage[]> {
   const items: WireMessage[] = [];
@@ -48,7 +39,7 @@ describe('MockDataSource prompt + subscribe', () => {
 
     expect(events.length).toBeGreaterThan(0);
     expect(events[0]!.method).toBe('turn.begin');
-    expect(events[events.length - 1]!.method).toBe('turn.end');
+    expect(events.at(-1)!.method).toBe('turn.end');
   });
 
   it('uses the default scenario resolver', async () => {

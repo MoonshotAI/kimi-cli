@@ -86,17 +86,18 @@ export function describeApprovalAction(
   if (mapped !== undefined) return mapped;
 
   // MCP tool naming (Slice 2.6 / v2 §9-F.5): `mcp__<server>__<tool>`
-  // gets a coarse `"call MCP tool: <tool>"` label so one
+  // gets a coarse `"call MCP tool: <server>:<tool>"` label so one
   // approve-for-session click unlocks every future call to the same
-  // server+tool combo — without this rule every call would get
-  // `"call mcp__<server>__<tool>"` which the cache couldn't group.
+  // server+tool combo. The server name is preserved to prevent
+  // cross-server privilege escalation (Codex R2 M4).
   if (toolName.startsWith('mcp__')) {
     const rest = toolName.slice('mcp__'.length);
     const sep = rest.indexOf('__');
     if (sep >= 0) {
+      const serverName = rest.slice(0, sep);
       const innerTool = rest.slice(sep + 2);
       if (innerTool.length > 0) {
-        return `call MCP tool: ${innerTool}`;
+        return `call MCP tool: ${serverName}:${innerTool}`;
       }
     }
   }

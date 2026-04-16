@@ -33,15 +33,16 @@ import type { BuiltinTool } from './types.js';
 
 // ── Input schema ─────────────────────────────────────────────────────
 
-const _rawExitPlanModeInputSchema = z.object({
+export interface ExitPlanModeInput {
+  plan: string;
+}
+
+export const ExitPlanModeInputSchema: z.ZodType<ExitPlanModeInput> = z.object({
   plan: z
     .string()
     .min(1)
     .describe('The finalised plan to present to the user. Markdown is rendered in the UI.'),
 });
-
-export type ExitPlanModeInput = z.infer<typeof _rawExitPlanModeInputSchema>;
-export const ExitPlanModeInputSchema: z.ZodType<ExitPlanModeInput> = _rawExitPlanModeInputSchema;
 
 // ── Tool description ─────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ export interface ExitPlanModeDeps {
 
 export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput, { plan: string }> {
   readonly name = 'ExitPlanMode' as const;
-  readonly description = DESCRIPTION;
+  readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<ExitPlanModeInput> = ExitPlanModeInputSchema;
 
   constructor(private readonly deps: ExitPlanModeDeps) {}

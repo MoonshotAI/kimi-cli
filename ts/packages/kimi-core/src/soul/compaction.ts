@@ -155,16 +155,23 @@ export async function runCompaction(
     const summary = await runtime.compactionProvider.run(messages, signal);
     signal.throwIfAborted();
 
-    // M04 fix: rotate returns the archive filename so we can record it
-    // in the CompactionRecord. The boundary record's parent_file is set
-    // to a placeholder here — the real JournalCapability implementation
-    // replaces it with the actual archive basename.
+    // Critical section: rotate + resetToSummary must complete together.
+    // Once rotate() finishes, the old wire.jsonl has been renamed to an
+    // archive and a fresh wire.jsonl exists with only a metadata header.
+    // If we checked `signal.throwIfAborted()` between rotate and
+    // resetToSummary, an abort would leave the new wire.jsonl without
+    // the CompactionRecord. The subsequent `onTurnEnd` would append a
+    // `turn_end` as the second line, defeating `recoverRotation`'s
+    // metadata-only detection (Codex Round 2 C1).
+    //
+    // By omitting abort checks here, we guarantee that either:
+    //   (a) both rotate + resetToSummary complete, or
+    //   (b) rotate itself throws (recoverRotation handles this on restart)
     const rotateResult = await runtime.journal.rotate({
       type: 'compaction_boundary',
       summary,
       parent_file: '',
     });
-    signal.throwIfAborted();
 
     const storageSummary = bridgeSummaryMessage(
       summary,
@@ -173,7 +180,6 @@ export async function runCompaction(
       rotateResult.archiveFile,
     );
     await context.resetToSummary(storageSummary);
-    signal.throwIfAborted();
 
     sink.emit({
       type: 'compaction.end',

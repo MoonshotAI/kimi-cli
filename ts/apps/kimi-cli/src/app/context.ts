@@ -8,11 +8,15 @@
 
 import React, { createContext } from 'react';
 
-import type { WireClient, WireMessage, ApprovalRequestData, ApprovalResponseData } from '../wire/index.js';
-import type { SessionInfo } from '../wire/methods.js';
-
 import type { Theme } from '../config/schema.js';
 import type { ThemeStyles } from '../theme/styles.js';
+import type {
+  WireClient,
+  ApprovalRequestData,
+  ApprovalResponseData,
+  QuestionRequestData,
+} from '../wire/index.js';
+import type { SessionInfo } from '../wire/methods.js';
 
 // ── AppState ─────────────────────────────────────────────────────────
 
@@ -96,6 +100,33 @@ export interface PendingApproval {
   data: ApprovalRequestData;
 }
 
+// ── Pending Question ────────────────────────────────────────────────
+
+/** A structured-question request awaiting user response. */
+export interface PendingQuestion {
+  /** The request message ID (used for respondToRequest). */
+  requestId: string;
+  /** The question request data payload. */
+  data: QuestionRequestData;
+}
+
+// ── Toast Notification (Slice 4.4 Part 2) ──────────────────────────
+
+/**
+ * A shell-target notification currently being rendered as a top-of-
+ * shell toast. Slim projection of the kimi-core NotificationData with
+ * just the fields the Ink component needs. Entries expire after
+ * `TOAST_TTL_MS` inside `useWire`.
+ */
+export interface ToastNotification {
+  readonly id: string;
+  readonly category: string;
+  readonly type: string;
+  readonly title: string;
+  readonly body: string;
+  readonly severity: string;
+}
+
 // ── Context value ────────────────────────────────────────────────────
 
 export interface AppContextValue {
@@ -124,6 +155,14 @@ export interface AppContextValue {
   pendingApproval: PendingApproval | null;
   /** Respond to the pending approval request. */
   handleApprovalResponse: (response: ApprovalResponseData) => void;
+  /** Currently pending structured-question request, or null if none. */
+  pendingQuestion: PendingQuestion | null;
+  /** Respond to the pending question request. */
+  handleQuestionResponse: (answers: string[]) => void;
+  /** Active shell-target notifications — rendered as top-of-shell toasts. */
+  toasts: ToastNotification[];
+  /** Dismiss a toast by id (auto-fires when the TTL elapses). */
+  dismissToast: (id: string) => void;
 
   // ── Phase 7: Session management ──────────────────────────────────
   /** List of sessions from Wire. */

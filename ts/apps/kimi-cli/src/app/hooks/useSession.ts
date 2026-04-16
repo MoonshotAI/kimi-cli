@@ -35,7 +35,7 @@ export interface UseSessionResult {
 
 export function useSession({
   wireClient,
-  sessionId,
+  sessionId: _sessionId,
   setState,
 }: UseSessionOptions): UseSessionResult {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);

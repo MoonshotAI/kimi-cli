@@ -168,4 +168,47 @@ describe('SoulPlus.emitNotification (Slice 2.4 fan-out via facade)', () => {
     expect(firstText).toContain('CI green');
     expect(firstText.trimEnd()).toMatch(/<\/notification>$/);
   });
+
+  it('M3 — mid-turn notifications flush via ContextState.beforeStep wired by TurnManager', async () => {
+    const { soulPlus, contextState } = buildSoulPlus();
+
+    // Emit a notification mid-turn — it lands in
+    // TurnManager.pendingNotifications (the LLM sink), NOT in the
+    // ContextState stash. Without the M3 fix, only a fresh
+    // `launchTurn` would drain it, so the CURRENT turn's next step
+    // would never see it via `buildMessages()`.
+    await soulPlus.emitNotification({
+      category: 'task',
+      type: 'task.succeeded',
+      source_kind: 'background_task',
+      source_id: 'bg_mid',
+      title: 'Mid-turn notification',
+      body: 'Emitted while a turn is running',
+      severity: 'info',
+    });
+
+    // Precondition: the notification is queued on TurnManager.
+    expect(soulPlus.getTurnManager().getPendingNotifications()).toHaveLength(1);
+
+    // TurnManager should have wired beforeStep on contextState at
+    // construction (M3 fix). This is what `runSoulTurn` calls before
+    // each step's `buildMessages()` — simulate that sequence here.
+    expect(contextState.beforeStep).toBeDefined();
+    contextState.beforeStep!();
+    const messages = contextState.buildMessages();
+
+    // The notification now appears as a <notification ...> prefix —
+    // without the beforeStep hook, buildMessages would return empty
+    // because its one-shot stash would not have been primed.
+    expect(messages).toHaveLength(1);
+    const text = messages[0]!.content
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
+      .join('');
+    expect(text).toMatch(/^<notification /);
+    expect(text).toContain('Mid-turn notification');
+
+    // And the TurnManager queue has been drained.
+    expect(soulPlus.getTurnManager().getPendingNotifications()).toHaveLength(0);
+  });
 });

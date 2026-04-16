@@ -89,6 +89,12 @@ class RecordingContextState implements FullContextState {
   resetToSummary(...args: Parameters<FullContextState['resetToSummary']>): Promise<void> {
     return this.inner.resetToSummary(...args);
   }
+  setBeforeStepHook(fn: (() => void) | undefined): void {
+    this.inner.setBeforeStepHook(fn);
+  }
+  get beforeStep(): (() => void) | undefined {
+    return this.inner.beforeStep;
+  }
 }
 
 function buildManager(kosong: ScriptedKosongAdapter): {

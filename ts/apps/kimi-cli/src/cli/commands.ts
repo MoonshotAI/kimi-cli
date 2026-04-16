@@ -36,8 +36,8 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
     .helpOption('-h, --help', 'Show help.')
     .addHelpText(
       'after',
-      '\nDocumentation:        https://moonshotai.github.io/kimi-cli/\n'
-      + 'LLM friendly version: https://moonshotai.github.io/kimi-cli/llms.txt',
+      '\nDocumentation:        https://moonshotai.github.io/kimi-cli/\n' +
+        'LLM friendly version: https://moonshotai.github.io/kimi-cli/llms.txt',
     );
 
   // ---------------------------------------------------------------------------
@@ -57,29 +57,21 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
       'Add additional directories to the workspace scope (repeatable).',
     )
     .addOption(
-      new Option('-S, --session [id]', 'Resume a session. With ID: resume that session. Without ID: interactively pick.')
-        .argParser((val: string) => val),
+      new Option(
+        '-S, --session [id]',
+        'Resume a session. With ID: resume that session. Without ID: interactively pick.',
+      ).argParser((val: string) => val),
     )
     .addOption(
       // -r / --resume is a hidden alias for --session
-      new Option('-r, --resume [id]')
-        .hideHelp()
-        .argParser((val: string) => val),
+      new Option('-r, --resume [id]').hideHelp().argParser((val: string) => val),
     )
-    .option(
-      '-C, --continue',
-      'Continue the previous session for the working directory.',
-      false,
-    )
+    .option('-C, --continue', 'Continue the previous session for the working directory.', false)
     .option('--config <toml>', 'Config TOML/JSON string to load.')
     .option('--config-file <path>', 'Config TOML/JSON file to load.')
     .option('-m, --model <name>', 'LLM model to use.')
-    .addOption(
-      new Option('--thinking', 'Enable thinking mode.').conflicts('noThinking'),
-    )
-    .addOption(
-      new Option('--no-thinking', 'Disable thinking mode.'),
-    );
+    .addOption(new Option('--thinking', 'Enable thinking mode.').conflicts('noThinking'))
+    .addOption(new Option('--no-thinking', 'Disable thinking mode.'));
 
   // ---------------------------------------------------------------------------
   // Run mode
@@ -91,63 +83,46 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
     .option('--plan', 'Start in plan mode.', false)
     .option('-p, --prompt <text>', 'User prompt to the agent.')
     .addOption(new Option('-c, --command <text>').hideHelp())
-    .option(
-      '--print',
-      'Run in print mode (non-interactive). Implies --yolo.',
-      false,
-    )
+    .option('--print', 'Run in print mode (non-interactive). Implies --yolo.', false)
     .option('--wire', 'Run as Wire server (experimental).', false)
     .addOption(
-      new Option('--input-format <format>', 'Input format (print mode only).')
-        .choices(['text', 'stream-json']),
+      new Option('--input-format <format>', 'Input format (print mode only).').choices([
+        'text',
+        'stream-json',
+      ]),
     )
     .addOption(
-      new Option('--output-format <format>', 'Output format (print mode only).')
-        .choices(['text', 'stream-json']),
+      new Option('--output-format <format>', 'Output format (print mode only).').choices([
+        'text',
+        'stream-json',
+      ]),
     )
     .option('--final-message-only', 'Only output the final assistant message (print mode).', false)
-    .option(
-      '--quiet',
-      'Alias for --print --output-format text --final-message-only.',
-      false,
-    );
+    .option('--quiet', 'Alias for --print --output-format text --final-message-only.', false);
 
   // ---------------------------------------------------------------------------
   // Customisation
   // ---------------------------------------------------------------------------
   program
     .addOption(
-      new Option('--agent <name>', 'Builtin agent specification.')
-        .choices(['default', 'okabe']),
+      new Option('--agent <name>', 'Builtin agent specification.').choices(['default', 'okabe']),
     )
     .option('--agent-file <path>', 'Custom agent specification file.')
-    .option(
-      '--mcp-config-file <path...>',
-      'MCP config file to load (repeatable).',
-    )
-    .option(
-      '--mcp-config <json...>',
-      'MCP config JSON string to load (repeatable).',
-    )
-    .option(
-      '--skills-dir <path...>',
-      'Custom skills directories (repeatable).',
-    );
+    .option('--mcp-config-file <path...>', 'MCP config file to load (repeatable).')
+    .option('--mcp-config <json...>', 'MCP config JSON string to load (repeatable).')
+    .option('--skills-dir <path...>', 'Custom skills directories (repeatable).');
 
   // ---------------------------------------------------------------------------
   // Loop control
   // ---------------------------------------------------------------------------
   program
     .option(
-      '--max-steps-per-turn <n>',
-      'Maximum steps per turn.',
-      parseIntOption,
+      '--offline',
+      'Run against the mock data source instead of real kimi-core (for UI development).',
+      false,
     )
-    .option(
-      '--max-retries-per-step <n>',
-      'Maximum retries per step.',
-      parseIntOption,
-    )
+    .option('--max-steps-per-turn <n>', 'Maximum steps per turn.', parseIntOption)
+    .option('--max-retries-per-step <n>', 'Maximum retries per step.', parseIntOption)
     .option(
       '--max-ralph-iterations <n>',
       'Extra iterations in Ralph mode (-1 for unlimited).',
@@ -194,6 +169,7 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
       maxStepsPerTurn: raw['maxStepsPerTurn'] as number | undefined,
       maxRetriesPerStep: raw['maxRetriesPerStep'] as number | undefined,
       maxRalphIterations: raw['maxRalphIterations'] as number | undefined,
+      offline: raw['offline'] as boolean,
     };
 
     onMain(opts);
@@ -217,7 +193,7 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
 function parseIntOption(value: string): number {
   const n = Number.parseInt(value, 10);
   if (Number.isNaN(n)) {
-    throw new Error(`Expected an integer but got: ${value}`);
+    throw new TypeError(`Expected an integer but got: ${value}`);
   }
   return n;
 }

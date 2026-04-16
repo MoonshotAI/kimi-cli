@@ -17,6 +17,13 @@ export interface SessionState {
   created_at: number;
   updated_at: number;
   /**
+   * Workspace directory at session creation time (Slice 4.3 Part 5).
+   * Used by `--continue` to filter sessions by the current workdir so
+   * resuming from a different project does not pick up an unrelated
+   * session. Legacy sessions written before Slice 4.3 omit this field.
+   */
+  workspace_dir?: string | undefined;
+  /**
    * Session-scoped auto-approve action labels learned via
    * "approve for session" (Slice 2.3). Stored alongside session metadata
    * so a restart keeps the decisions intact without depending on

@@ -16,9 +16,30 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { WireClient, WireMessage, ContentDeltaData, ToolCallData, ToolResultData, StatusUpdateData, ApprovalRequestData, ApprovalResponseData } from '../../wire/index.js';
-
-import type { AppState, CompletedBlock, ToolCallBlockData, ToolResultBlockData, PendingApproval } from '../context.js';
+import type {
+  WireClient,
+  WireMessage,
+  ContentDeltaData,
+  ToolCallData,
+  ToolResultData,
+  StatusUpdateData,
+  ApprovalRequestData,
+  ApprovalResponseData,
+  QuestionRequestData,
+  NotificationData,
+  CompactionEndData,
+  StepInterruptedData,
+  SessionErrorData,
+} from '../../wire/index.js';
+import type {
+  AppState,
+  CompletedBlock,
+  ToolCallBlockData,
+  ToolResultBlockData,
+  PendingApproval,
+  PendingQuestion,
+  ToastNotification,
+} from '../context.js';
 
 export interface UseWireResult {
   completedBlocks: CompletedBlock[];
@@ -31,7 +52,15 @@ export interface UseWireResult {
   pendingToolCall: ToolCallBlockData | null;
   pendingApproval: PendingApproval | null;
   handleApprovalResponse: (response: ApprovalResponseData) => void;
+  pendingQuestion: PendingQuestion | null;
+  handleQuestionResponse: (answers: string[]) => void;
+  /** Active shell-target notifications rendered as top-of-shell toasts. */
+  toasts: ToastNotification[];
+  /** Dismiss a toast by id (e.g. when its timer expires). */
+  dismissToast: (id: string) => void;
 }
+
+const TOAST_TTL_MS = 5000;
 
 let blockIdCounter = 0;
 
@@ -50,6 +79,9 @@ export function useWire(
   const [streamingText, setStreamingText] = useState('');
   const [pendingToolCall, setPendingToolCall] = useState<ToolCallBlockData | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const isStreamingRef = useRef(false);
   const accumulatedTextRef = useRef('');
   const accumulatedThinkRef = useRef('');
@@ -79,6 +111,52 @@ export function useWire(
     [pendingApproval, wireClient],
   );
 
+  const handleQuestionResponse = useCallback(
+    (answers: string[]) => {
+      const question = pendingQuestion;
+      if (question === null) return;
+      wireClient.respondToRequest(question.requestId, { answers });
+      setPendingQuestion(null);
+    },
+    [pendingQuestion, wireClient],
+  );
+
+  const dismissToast = useCallback((id: string) => {
+    const timer = toastTimersRef.current.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      toastTimersRef.current.delete(id);
+    }
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const pushToast = useCallback((notif: NotificationData) => {
+    // Skip duplicates: a notification with a known id is ignored so
+    // a notification that targets both wire + shell cannot render
+    // twice (the wire channel is not subscribed today but the guard
+    // is cheap and future-proof).
+    setToasts((prev) => {
+      if (prev.some((t) => t.id === notif.id)) return prev;
+      const toast: ToastNotification = {
+        id: notif.id,
+        category: notif.category,
+        type: notif.type,
+        title: notif.title,
+        body: notif.body,
+        severity: notif.severity,
+      };
+      return [...prev, toast];
+    });
+    // Reset any prior timer with the same id and start a fresh one.
+    const existing = toastTimersRef.current.get(notif.id);
+    if (existing !== undefined) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      toastTimersRef.current.delete(notif.id);
+      setToasts((prev) => prev.filter((t) => t.id !== notif.id));
+    }, TOAST_TTL_MS);
+    toastTimersRef.current.set(notif.id, timer);
+  }, []);
+
   // ── Event processing ────────────────────────────────────────────
 
   function processMessage(msg: WireMessage): void {
@@ -88,6 +166,10 @@ export function useWire(
         flushStreamingText();
         const data = msg.data as ApprovalRequestData;
         setPendingApproval({ requestId: msg.id, data });
+      } else if (msg.method === 'question.request') {
+        flushStreamingText();
+        const data = msg.data as QuestionRequestData;
+        setPendingQuestion({ requestId: msg.id, data });
       }
       return;
     }
@@ -174,12 +256,75 @@ export function useWire(
         // Mark streaming as active
         if (!isStreamingRef.current) {
           isStreamingRef.current = true;
-          setState({ isStreaming: true, streamingPhase: 'waiting', streamingStartTime: Date.now() });
+          setState({
+            isStreaming: true,
+            streamingPhase: 'waiting',
+            streamingStartTime: Date.now(),
+          });
         }
         break;
       }
       case 'turn.end': {
         finalizeTurn();
+        break;
+      }
+      case 'step.interrupted': {
+        const data = msg.data as StepInterruptedData;
+        flushStreamingText();
+        setCompletedBlocks((prev) => [
+          ...prev,
+          {
+            id: nextBlockId(),
+            type: 'status',
+            content: `Step ${String(data.step)} interrupted: ${data.reason}`,
+          },
+        ]);
+        break;
+      }
+      case 'compaction.begin': {
+        flushStreamingText();
+        setState({ streamingPhase: 'waiting', streamingStartTime: Date.now() });
+        setCompletedBlocks((prev) => [
+          ...prev,
+          {
+            id: nextBlockId(),
+            type: 'status',
+            content: 'Compacting context...',
+          },
+        ]);
+        break;
+      }
+      case 'compaction.end': {
+        const data = msg.data as CompactionEndData;
+        const before = data.tokens_before;
+        const after = data.tokens_after;
+        const summary =
+          before !== undefined && after !== undefined
+            ? `Compaction complete: ${String(before)} → ${String(after)} tokens`
+            : 'Compaction complete.';
+        setCompletedBlocks((prev) => [
+          ...prev,
+          { id: nextBlockId(), type: 'status', content: summary },
+        ]);
+        break;
+      }
+      case 'notification': {
+        const data = msg.data as NotificationData;
+        pushToast(data);
+        break;
+      }
+      case 'session.error': {
+        const data = msg.data as SessionErrorData;
+        flushStreamingText();
+        const detail = data.error_type !== undefined ? ` (${data.error_type})` : '';
+        setCompletedBlocks((prev) => [
+          ...prev,
+          {
+            id: nextBlockId(),
+            type: 'status',
+            content: `Error${detail}: ${data.error}`,
+          },
+        ]);
         break;
       }
       default:
@@ -258,6 +403,69 @@ export function useWire(
         return; // Already streaming, ignore.
       }
 
+      // Slice 4.3 Part 1 — intercept slash commands before they reach
+      // the LLM. Leading `/` means "slash command", not a user message.
+      // The raw command text is echoed as a user block for transcript
+      // continuity, then the result is pushed as a status block.
+      if (input.startsWith('/')) {
+        const trimmed = input.slice(1).trim();
+        if (trimmed.length > 0) {
+          const userBlock: CompletedBlock = {
+            id: nextBlockId(),
+            type: 'user',
+            content: input,
+          };
+          setCompletedBlocks((prev) => [...prev, userBlock]);
+
+          const [name, ...args] = trimmed.split(/\s+/);
+          void (async () => {
+            try {
+              const result = await wireClient.handleSlashCommand(sessionId, name!, args);
+              // Apply kimi-core's authoritative state delta so
+              // StatusBar flags (planMode / yolo / etc.) reflect what
+              // SessionControl actually committed. Done before the
+              // status block so the user sees the flag flip and the
+              // message land in the same React render.
+              if (result.ok && result.stateUpdate !== undefined) {
+                const patch: Partial<AppState> = {};
+                if (result.stateUpdate.planMode !== undefined) {
+                  patch.planMode = result.stateUpdate.planMode;
+                }
+                if (result.stateUpdate.yolo !== undefined) {
+                  patch.yolo = result.stateUpdate.yolo;
+                }
+                if (result.stateUpdate.thinking !== undefined) {
+                  patch.thinking = result.stateUpdate.thinking;
+                }
+                if (result.stateUpdate.model !== undefined) {
+                  patch.model = result.stateUpdate.model;
+                }
+                if (Object.keys(patch).length > 0) {
+                  setState(patch);
+                }
+              }
+              const statusBlock: CompletedBlock = {
+                id: nextBlockId(),
+                type: 'status',
+                content: result.ok ? result.message : `error: ${result.message}`,
+              };
+              setCompletedBlocks((prev) => [...prev, statusBlock]);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              setCompletedBlocks((prev) => [
+                ...prev,
+                {
+                  id: nextBlockId(),
+                  type: 'status',
+                  content: `error: ${message}`,
+                },
+              ]);
+            }
+          })();
+          return;
+        }
+      }
+
       // Push user message as a completed block.
       const userBlock: CompletedBlock = {
         id: nextBlockId(),
@@ -274,6 +482,7 @@ export function useWire(
       setStreamingText('');
       setPendingToolCall(null);
       setPendingApproval(null);
+      setPendingQuestion(null);
       isStreamingRef.current = true;
       setState({ isStreaming: true, streamingPhase: 'waiting', streamingStartTime: Date.now() });
 
@@ -282,6 +491,17 @@ export function useWire(
     },
     [wireClient, sessionId, setState],
   );
+
+  // Clear pending toast timers when the hook unmounts so a late
+  // firing timeout cannot call setState after unmount.
+  useEffect(() => {
+    return () => {
+      for (const timer of toastTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      toastTimersRef.current.clear();
+    };
+  }, []);
 
   return {
     completedBlocks,
@@ -294,5 +514,9 @@ export function useWire(
     pendingToolCall,
     pendingApproval,
     handleApprovalResponse,
+    pendingQuestion,
+    handleQuestionResponse,
+    toasts,
+    dismissToast,
   };
 }

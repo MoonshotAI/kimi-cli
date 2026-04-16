@@ -66,7 +66,7 @@ const DESCRIPTION =
 
 export class WebSearchTool implements BuiltinTool<WebSearchInput, void> {
   readonly name = 'WebSearch' as const;
-  readonly description = DESCRIPTION;
+  readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<WebSearchInput> = WebSearchInputSchema;
 
   constructor(private readonly provider: WebSearchProvider) {}

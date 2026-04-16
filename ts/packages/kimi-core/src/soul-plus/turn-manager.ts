@@ -142,6 +142,32 @@ export interface TurnState {
   readonly promise: Promise<TurnResult | undefined>;
 }
 
+/**
+ * Slice 4.2 — TurnManager lifecycle listener event payloads (event-
+ * driven replacement for the Slice 4.1 40 ms watchdog poll). TUI
+ * bridges subscribe via `addTurnLifecycleListener` and translate these
+ * payloads into `turn.begin` / `turn.end` wire messages synchronously
+ * at the exact transition points.
+ */
+export type TurnLifecycleEvent =
+  | {
+      readonly kind: 'begin';
+      readonly turnId: string;
+      readonly userInput: string;
+      readonly inputKind: 'user' | 'system_trigger';
+      readonly agentType: 'main' | 'sub' | 'independent';
+    }
+  | {
+      readonly kind: 'end';
+      readonly turnId: string;
+      readonly reason: 'done' | 'cancelled' | 'error';
+      readonly success: boolean;
+      readonly agentType: 'main' | 'sub' | 'independent';
+      readonly usage?: TurnResult['usage'] | undefined;
+    };
+
+export type TurnLifecycleListener = (event: TurnLifecycleEvent) => void;
+
 export class TurnManager {
   private readonly deps: TurnManagerDeps;
   private readonly agentType: 'main' | 'sub' | 'independent';
@@ -194,6 +220,15 @@ export class TurnManager {
    */
   private readonly sessionId: string;
 
+  /**
+   * Slice 4.2 — lifecycle observer subscribers. Populated via
+   * `addTurnLifecycleListener`. Fired synchronously at `begin` (after
+   * lifecycle transitions to `active`) and `end` (inside `onTurnEnd`'s
+   * `finally`, after the machine drains to `idle`). Listener errors
+   * are caught and swallowed — a subscriber must never brick a turn.
+   */
+  private readonly turnLifecycleListeners = new Set<TurnLifecycleListener>();
+
   constructor(deps: TurnManagerDeps) {
     this.deps = deps;
     this.agentType = deps.agentType ?? 'main';
@@ -202,6 +237,14 @@ export class TurnManager {
     this.permissionMode = deps.permissionMode ?? 'default';
     this.planMode = deps.planMode ?? false;
     this.sessionId = deps.sessionId ?? 'unknown';
+
+    // M3: wire the pre-step drain hook so mid-turn notifications are
+    // flushed into ContextState's ephemeral stash before each
+    // buildMessages() call inside runSoulTurn. This aligns with
+    // Python's per-step `deliver_pending("llm")` semantics.
+    this.deps.contextState.setBeforeStepHook(() => {
+      this.drainPendingNotificationsIntoContext();
+    });
   }
 
   // ── Permission control surface (Slice 2.2) ──────────────────────────
@@ -237,6 +280,36 @@ export class TurnManager {
   /** Return this TurnManager's canonical agent id. */
   getAgentId(): string {
     return this.agentId;
+  }
+
+  /**
+   * Slice 4.2 — subscribe to turn lifecycle transitions. The listener is
+   * invoked with `{kind:'begin', ...}` right after the WAL `turn_begin`
+   * + lifecycle `active` transition, and `{kind:'end', ...}` from inside
+   * `onTurnEnd`'s `finally` after the 3-hop drain lands on `idle`. The
+   * returned callback unsubscribes the listener — callers (TUI bridge)
+   * should invoke it when the session is torn down.
+   *
+   * Listener errors are isolated and never propagate back to the turn
+   * loop. Synchronous firing is deliberate: back-to-back prompts must
+   * see a `turn.end` emit before the next `turn.begin` can fire.
+   */
+  addTurnLifecycleListener(listener: TurnLifecycleListener): () => void {
+    this.turnLifecycleListeners.add(listener);
+    return () => {
+      this.turnLifecycleListeners.delete(listener);
+    };
+  }
+
+  private fireTurnLifecycle(event: TurnLifecycleEvent): void {
+    for (const listener of this.turnLifecycleListeners) {
+      try {
+        listener(event);
+      } catch {
+        // Listener errors are isolated — consistent with the
+        // SessionEventBus / HookEngine "never brick a turn" invariant.
+      }
+    }
   }
 
   /**
@@ -447,6 +520,20 @@ export class TurnManager {
       await this.deps.contextState.appendUserMessage(input, turnId);
 
       this.deps.lifecycleStateMachine.transitionTo('active');
+
+      // Slice 4.2 — fire the `begin` lifecycle event BEFORE `launchTurn`
+      // kicks off the Soul promise. Subscribers (TUI bridge) translate
+      // this synchronously into a `turn.begin` wire message, replacing
+      // Slice 4.1's 40 ms poll watchdog. The emit happens after
+      // `transitionTo('active')` so a listener that inspects lifecycle
+      // state sees the fully armed turn.
+      this.fireTurnLifecycle({
+        kind: 'begin',
+        turnId,
+        userInput: input.text,
+        inputKind: 'user',
+        agentType: this.agentType,
+      });
 
       // Slice 3.6 — UserPromptSubmit lifecycle hook. Fires after the
       // WAL `user_message` is durable so a hook subscriber reading the
@@ -866,6 +953,21 @@ export class TurnManager {
       this.turnStates.delete(turnId);
       // Keep the turn promise in the map so `awaitTurn(turnId)` called
       // after settlement still returns the settled promise.
+
+      // Slice 4.2 — fire the `end` lifecycle event LAST inside the
+      // `finally`. By this point the machine has drained to `idle`,
+      // `currentTurnId` is cleared, and the next `handlePrompt` is
+      // free to proceed. Subscribers (TUI bridge) emit their
+      // `turn.end` wire message at this exact edge, guaranteeing
+      // back-to-back prompts see `end#N` strictly before `begin#N+1`.
+      this.fireTurnLifecycle({
+        kind: 'end',
+        turnId,
+        reason,
+        success: reason === 'done',
+        agentType: this.agentType,
+        usage: result?.usage,
+      });
     }
   }
 }

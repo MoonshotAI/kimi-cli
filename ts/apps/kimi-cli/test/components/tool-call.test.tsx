@@ -5,24 +5,22 @@
  * instead of the old `function.name` and `function.arguments` (JSON string).
  */
 
+import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render } from 'ink-testing-library';
 
+import type { ToolCallBlockData, ToolResultBlockData } from '../../src/app/context.js';
+import DiffPreview, {
+  computeDiffLines,
+  diffStats,
+} from '../../src/components/approval/DiffPreview.js';
+import type { DiffPreviewBlock } from '../../src/components/approval/DiffPreview.js';
 import ToolCallBlock, {
   extractKeyArgument,
   truncate,
   renderDisplaySummary,
 } from '../../src/components/message/ToolCallBlock.js';
 import ToolResultBlock from '../../src/components/message/ToolResultBlock.js';
-import DiffPreview, {
-  computeDiffLines,
-  diffStats,
-} from '../../src/components/approval/DiffPreview.js';
-
-import type { ToolCallBlockData, ToolResultBlockData } from '../../src/app/context.js';
-import type { DiffDisplayBlock } from '../../src/wire/index.js';
-import type { DiffPreviewBlock } from '../../src/components/approval/DiffPreview.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -111,9 +109,7 @@ describe('renderDisplaySummary', () => {
   });
 
   it('renders shell display blocks with $ prefix', () => {
-    const lines = renderDisplaySummary([
-      { type: 'shell', language: 'bash', command: 'ls -la' },
-    ]);
+    const lines = renderDisplaySummary([{ type: 'shell', language: 'bash', command: 'ls -la' }]);
     expect(lines).toEqual(['$ ls -la']);
   });
 
@@ -158,9 +154,7 @@ describe('ToolCallBlock', () => {
   it('displays "Used" when finished with result', () => {
     const tc = makeToolCall('Shell', { command: 'echo hi' });
     const result = makeToolResult();
-    const { lastFrame, unmount } = render(
-      <ToolCallBlock toolCall={tc} result={result} />,
-    );
+    const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} result={result} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Used');
     expect(frame).toContain('Shell');
@@ -181,7 +175,16 @@ describe('ToolCallBlock', () => {
 
     await wait(200);
     const frame = lastFrame() ?? '';
-    const moonPhases = ['\uD83C\uDF11', '\uD83C\uDF12', '\uD83C\uDF13', '\uD83C\uDF14', '\uD83C\uDF15', '\uD83C\uDF16', '\uD83C\uDF17', '\uD83C\uDF18'];
+    const moonPhases = [
+      '\uD83C\uDF11',
+      '\uD83C\uDF12',
+      '\uD83C\uDF13',
+      '\uD83C\uDF14',
+      '\uD83C\uDF15',
+      '\uD83C\uDF16',
+      '\uD83C\uDF17',
+      '\uD83C\uDF18',
+    ];
     const hasMoon = moonPhases.some((phase) => frame.includes(phase));
     expect(hasMoon).toBe(true);
     unmount();
@@ -190,11 +193,18 @@ describe('ToolCallBlock', () => {
   it('does not show moon spinner when finished', () => {
     const tc = makeToolCall('Shell', { command: 'ls' });
     const result = makeToolResult();
-    const { lastFrame, unmount } = render(
-      <ToolCallBlock toolCall={tc} result={result} />,
-    );
+    const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} result={result} />);
     const frame = lastFrame() ?? '';
-    const moonPhases = ['\uD83C\uDF11', '\uD83C\uDF12', '\uD83C\uDF13', '\uD83C\uDF14', '\uD83C\uDF15', '\uD83C\uDF16', '\uD83C\uDF17', '\uD83C\uDF18'];
+    const moonPhases = [
+      '\uD83C\uDF11',
+      '\uD83C\uDF12',
+      '\uD83C\uDF13',
+      '\uD83C\uDF14',
+      '\uD83C\uDF15',
+      '\uD83C\uDF16',
+      '\uD83C\uDF17',
+      '\uD83C\uDF18',
+    ];
     const hasMoon = moonPhases.some((phase) => frame.includes(phase));
     expect(hasMoon).toBe(false);
     unmount();
@@ -203,9 +213,7 @@ describe('ToolCallBlock', () => {
   it('shows error status for failed result', () => {
     const tc = makeToolCall('Shell', { command: 'bad-cmd' });
     const result = makeToolResult({ is_error: true });
-    const { lastFrame, unmount } = render(
-      <ToolCallBlock toolCall={tc} result={result} />,
-    );
+    const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} result={result} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('\u2717');
     unmount();
@@ -214,9 +222,7 @@ describe('ToolCallBlock', () => {
   it('shows green bullet for successful result', () => {
     const tc = makeToolCall('Shell', { command: 'ls' });
     const result = makeToolResult({ is_error: false });
-    const { lastFrame, unmount } = render(
-      <ToolCallBlock toolCall={tc} result={result} />,
-    );
+    const { lastFrame, unmount } = render(<ToolCallBlock toolCall={tc} result={result} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('\u25CF');
     unmount();
@@ -228,9 +234,7 @@ describe('ToolCallBlock', () => {
 describe('ToolResultBlock', () => {
   it('displays tool name for success', () => {
     const result = makeToolResult();
-    const { lastFrame, unmount } = render(
-      <ToolResultBlock toolName="Shell" result={result} />,
-    );
+    const { lastFrame, unmount } = render(<ToolResultBlock toolName="Shell" result={result} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Shell');
     expect(frame).toContain('\u2713');
@@ -239,9 +243,7 @@ describe('ToolResultBlock', () => {
 
   it('displays error indicator for failed result', () => {
     const result = makeToolResult({ is_error: true });
-    const { lastFrame, unmount } = render(
-      <ToolResultBlock toolName="Write" result={result} />,
-    );
+    const { lastFrame, unmount } = render(<ToolResultBlock toolName="Write" result={result} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Write');
     expect(frame).toContain('\u2717');
@@ -251,9 +253,7 @@ describe('ToolResultBlock', () => {
   it('truncates long output', () => {
     const longOutput = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join('\n');
     const result = makeToolResult({ output: longOutput });
-    const { lastFrame, unmount } = render(
-      <ToolResultBlock toolName="Shell" result={result} />,
-    );
+    const { lastFrame, unmount } = render(<ToolResultBlock toolName="Shell" result={result} />);
     const frame = lastFrame() ?? '';
     expect(frame).toContain('line 1');
     expect(frame).toContain('more lines');

@@ -18,6 +18,54 @@ import { parse as parseToml } from 'smol-toml';
 import { PathConfig } from '../session/path-config.js';
 import { type KimiConfig, KimiConfigSchema, getDefaultConfig } from './schema.js';
 
+// ── snake_case → camelCase transform ───────────────────────────────────
+
+export function snakeToCamel(key: string): string {
+  return key.replaceAll(/_([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function transformFieldKeys(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = snakeToCamel(key);
+    if (isPlainObject(value)) {
+      result[camelKey] = transformFieldKeys(value);
+    } else {
+      result[camelKey] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * Transform TOML-parsed data from snake_case to camelCase.
+ * Record keys (provider names, model names) are preserved as-is.
+ */
+export function transformTomlData(data: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    const camelKey = snakeToCamel(key);
+    if ((camelKey === 'providers' || camelKey === 'models') && isPlainObject(value)) {
+      const record: Record<string, unknown> = {};
+      for (const [entryName, entryConfig] of Object.entries(value)) {
+        record[entryName] = isPlainObject(entryConfig)
+          ? transformFieldKeys(entryConfig)
+          : entryConfig;
+      }
+      result[camelKey] = record;
+    } else if (isPlainObject(value)) {
+      result[camelKey] = transformFieldKeys(value);
+    } else {
+      result[camelKey] = value;
+    }
+  }
+  return result;
+}
+
 // ── Types ───────────────────────────────────────────────────────────────
 
 export interface LoadConfigOptions {
@@ -57,10 +105,6 @@ function readTomlFile(filePath: string): Record<string, unknown> | null {
 
 // ── Deep merge ──────────────────────────────────────────────────────────
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * Deep-merge `source` into `target`. Scalars and arrays in `source`
  * overwrite those in `target`; nested objects are recursively merged.
@@ -92,8 +136,10 @@ function deepMerge(
 const ENV_API_KEY_MAP: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
+  openai_responses: 'OPENAI_API_KEY',
   kimi: 'KIMI_API_KEY',
   'google-genai': 'GOOGLE_AI_API_KEY',
+  vertexai: 'GOOGLE_AI_API_KEY',
 };
 
 function injectEnvVars(config: KimiConfig): KimiConfig {
@@ -165,14 +211,23 @@ export function loadConfig(options?: LoadConfigOptions): KimiConfig {
     }
   }
 
-  // Merge: global → project → overrides
-  let merged = deepMerge(globalData, projectData);
-  merged = deepMerge(merged, overrideData);
+  // Merge: global → project (file layers only — overrides are programmatic)
+  const fileMerged = deepMerge(globalData, projectData);
+
+  // Store raw from file layers only (before programmatic overrides pollute it)
+  const raw = JSON.parse(JSON.stringify(fileMerged)) as Record<string, unknown>;
+
+  // Apply programmatic overrides on top
+  const merged = deepMerge(fileMerged, overrideData);
+
+  // snake_case → camelCase
+  const transformed = transformTomlData(merged);
+  transformed['raw'] = raw;
 
   // Validate with zod
   let config: KimiConfig;
   try {
-    config = KimiConfigSchema.parse(merged);
+    config = KimiConfigSchema.parse(transformed);
   } catch (error) {
     throw new ConfigError(
       `Invalid configuration: ${error instanceof Error ? error.message : String(error)}`,
@@ -200,8 +255,13 @@ export function parseConfigString(tomlText: string): KimiConfig {
       `Invalid TOML: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+
+  const raw = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+  const transformed = transformTomlData(data);
+  transformed['raw'] = raw;
+
   try {
-    return KimiConfigSchema.parse(data);
+    return KimiConfigSchema.parse(transformed);
   } catch (error) {
     throw new ConfigError(
       `Invalid configuration: ${error instanceof Error ? error.message : String(error)}`,

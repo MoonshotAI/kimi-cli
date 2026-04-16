@@ -38,7 +38,6 @@ function buildRequest(
 }
 
 function makeRuntime(opts?: {
-  timeoutMs?: number;
   records?: readonly WireRecord[];
   initialActions?: Iterable<string>;
   ruleInjector?: (rule: PermissionRule) => void;
@@ -54,7 +53,6 @@ function makeRuntime(opts?: {
     stateStore: store,
     loadJournalRecords: async () => opts?.records ?? [],
     ruleInjector: opts?.ruleInjector,
-    timeoutMs: opts?.timeoutMs ?? 300_000,
     allocateRequestId: (() => {
       let counter = 0;
       return () => {
@@ -169,17 +167,6 @@ describe('WiredApprovalRuntime — journal ordering (P0-1)', () => {
 });
 
 describe('WiredApprovalRuntime — timeout / abort / cancelBySource (P0-2)', () => {
-  it('hard timeout writes a synthetic cancelled response', async () => {
-    const { runtime, journal } = makeRuntime({ timeoutMs: 20 });
-    const result = await runtime.request(buildRequest());
-    expect(result.approved).toBe(false);
-    expect(result.feedback).toContain('timed out');
-    const responses = journal.getRecordsByType('approval_response');
-    expect(responses).toHaveLength(1);
-    expect(responses[0]!.data.synthetic).toBe(true);
-    expect(responses[0]!.data.response).toBe('cancelled');
-  });
-
   it('abort signal writes a synthetic cancelled response', async () => {
     const { runtime, journal } = makeRuntime();
     const controller = new AbortController();
@@ -228,15 +215,13 @@ describe('WiredApprovalRuntime — timeout / abort / cancelBySource (P0-2)', () 
       appendOwnershipChanged: vi.fn(),
     };
 
-    // Note the very large `timeoutMs` — the test would *only* finish in
-    // reasonable time if the M1 retroactive trigger fires. Without the
-    // fix, the request would hang here for 1 hour (until the runtime
-    // hard timeout) and the vitest default 5 s test timeout kills it.
+    // With no internal runtime timeout (Codex R2 M3), this test relies
+    // purely on the abort retroactive trigger — if the trigger fails the
+    // request hangs and vitest's default 5 s test timeout kills it.
     const runtime = new WiredApprovalRuntime({
       sessionJournal: journal as never,
       stateStore: store,
       loadJournalRecords: async () => [],
-      timeoutMs: 60 * 60 * 1000, // 1 hour — must NOT be reached
       allocateRequestId: () => 'req_race',
     });
 
@@ -414,6 +399,220 @@ describe('WiredApprovalRuntime — recoverPendingOnStartup', () => {
     await runtime.recoverPendingOnStartup();
     // Still only 1 response — no duplicate synthetic written.
     expect(journal.getRecordsByType('approval_response')).toHaveLength(1);
+  });
+});
+
+// ── Codex Round 2 regression tests ──────────────────────────────────
+
+describe('WiredApprovalRuntime — C1: WAL failure rejects waiter instead of orphan', () => {
+  it('resolve path rejects the caller when appendApprovalResponse throws', async () => {
+    const store = new InMemoryApprovalStateStore();
+    const journal = {
+      appendApprovalRequest: vi.fn(async () => {}),
+      appendApprovalResponse: vi.fn(async () => {
+        throw new Error('disk full');
+      }),
+      appendTurnBegin: vi.fn(),
+      appendTurnEnd: vi.fn(),
+      appendSkillInvoked: vi.fn(),
+      appendSkillCompleted: vi.fn(),
+      appendTeamMail: vi.fn(),
+      appendToolCallDispatched: vi.fn(),
+      appendPermissionModeChanged: vi.fn(),
+      appendToolDenied: vi.fn(),
+      appendNotification: vi.fn(),
+      appendSystemReminder: vi.fn(),
+      appendSubagentEvent: vi.fn(),
+      appendOwnershipChanged: vi.fn(),
+    };
+
+    const runtime = new WiredApprovalRuntime({
+      sessionJournal: journal as never,
+      stateStore: store,
+      loadJournalRecords: async () => [],
+      allocateRequestId: () => 'req_1',
+    });
+
+    const pending = runtime.request(buildRequest());
+    // Attach rejection handler early to prevent PromiseRejectionHandledWarning
+    const guarded = pending.catch((error: unknown) => {
+      throw error;
+    });
+    await new Promise((r) => setImmediate(r));
+
+    runtime.resolve('req_1', { response: 'approved' });
+    await expect(guarded).rejects.toThrow('disk full');
+    expect(runtime.pendingCount).toBe(0);
+  });
+
+  it('cancelOne path rejects the caller when appendApprovalResponse throws', async () => {
+    const store = new InMemoryApprovalStateStore();
+    const journal = {
+      appendApprovalRequest: vi.fn(async () => {}),
+      appendApprovalResponse: vi.fn(async () => {
+        throw new Error('disk full');
+      }),
+      appendTurnBegin: vi.fn(),
+      appendTurnEnd: vi.fn(),
+      appendSkillInvoked: vi.fn(),
+      appendSkillCompleted: vi.fn(),
+      appendTeamMail: vi.fn(),
+      appendToolCallDispatched: vi.fn(),
+      appendPermissionModeChanged: vi.fn(),
+      appendToolDenied: vi.fn(),
+      appendNotification: vi.fn(),
+      appendSystemReminder: vi.fn(),
+      appendSubagentEvent: vi.fn(),
+      appendOwnershipChanged: vi.fn(),
+    };
+
+    const runtime = new WiredApprovalRuntime({
+      sessionJournal: journal as never,
+      stateStore: store,
+      loadJournalRecords: async () => [],
+      allocateRequestId: () => 'req_1',
+    });
+
+    const controller = new AbortController();
+    const pending = runtime.request(buildRequest(), controller.signal);
+    // Attach rejection handler early to prevent PromiseRejectionHandledWarning
+    const guarded = pending.catch((error: unknown) => {
+      throw error;
+    });
+    await new Promise((r) => setImmediate(r));
+
+    controller.abort();
+    await expect(guarded).rejects.toThrow('disk full');
+    expect(runtime.pendingCount).toBe(0);
+  });
+});
+
+describe('WiredApprovalRuntime — M1: approve_for_session catches WAL-window request', () => {
+  it('retroactively auto-approves a request stuck in WAL window during approve_for_session', async () => {
+    let releaseB!: () => void;
+    const gateB = new Promise<void>((r) => (releaseB = r));
+
+    const store = new InMemoryApprovalStateStore();
+    let idCounter = 0;
+    const journal = {
+      appendApprovalRequest: vi.fn(async (rec: { data: { request_id: string } }) => {
+        if (rec.data.request_id === 'req_2') await gateB;
+      }),
+      appendApprovalResponse: vi.fn(async () => {}),
+      appendTurnBegin: vi.fn(),
+      appendTurnEnd: vi.fn(),
+      appendSkillInvoked: vi.fn(),
+      appendSkillCompleted: vi.fn(),
+      appendTeamMail: vi.fn(),
+      appendToolCallDispatched: vi.fn(),
+      appendPermissionModeChanged: vi.fn(),
+      appendToolDenied: vi.fn(),
+      appendNotification: vi.fn(),
+      appendSystemReminder: vi.fn(),
+      appendSubagentEvent: vi.fn(),
+      appendOwnershipChanged: vi.fn(),
+    };
+
+    const runtime = new WiredApprovalRuntime({
+      sessionJournal: journal as never,
+      stateStore: store,
+      loadJournalRecords: async () => [],
+      allocateRequestId: () => {
+        idCounter += 1;
+        return `req_${String(idCounter)}`;
+      },
+    });
+
+    const pA = runtime.request(buildRequest({ toolCallId: 'a', action: 'edit file' }));
+    await new Promise((r) => setImmediate(r));
+
+    // req_2 starts but blocks in WAL append — not yet in pending
+    const pB = runtime.request(buildRequest({ toolCallId: 'b', action: 'edit file' }));
+    await new Promise((r) => setImmediate(r));
+
+    // approve_for_session resolves req_1 and adds "edit file" to cache
+    runtime.resolve('req_1', { response: 'approved', scope: 'session' });
+    await pA;
+
+    // Release req_2 from WAL — it should retroactively auto-approve
+    releaseB();
+    const resultB = await pB;
+    expect(resultB.approved).toBe(true);
+    expect(runtime.pendingCount).toBe(0);
+  });
+});
+
+describe('WiredApprovalRuntime — M2: cancelBySource catches WAL-window request', () => {
+  it('retroactively cancels a request stuck in WAL window during cancelBySource', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+
+    const store = new InMemoryApprovalStateStore();
+    const journal = {
+      appendApprovalRequest: vi.fn(async () => {
+        await gate;
+      }),
+      appendApprovalResponse: vi.fn(async () => {}),
+      appendTurnBegin: vi.fn(),
+      appendTurnEnd: vi.fn(),
+      appendSkillInvoked: vi.fn(),
+      appendSkillCompleted: vi.fn(),
+      appendTeamMail: vi.fn(),
+      appendToolCallDispatched: vi.fn(),
+      appendPermissionModeChanged: vi.fn(),
+      appendToolDenied: vi.fn(),
+      appendNotification: vi.fn(),
+      appendSystemReminder: vi.fn(),
+      appendSubagentEvent: vi.fn(),
+      appendOwnershipChanged: vi.fn(),
+    };
+
+    const runtime = new WiredApprovalRuntime({
+      sessionJournal: journal as never,
+      stateStore: store,
+      loadJournalRecords: async () => [],
+      allocateRequestId: () => 'req_1',
+    });
+
+    const p = runtime.request(buildRequest({ source: { kind: 'subagent', agent_id: 'sub_a' } }));
+    await new Promise((r) => setImmediate(r));
+
+    // Cancel while request is still in WAL window
+    runtime.cancelBySource({ kind: 'subagent', agent_id: 'sub_a' });
+
+    // Release WAL — retroactive check should cancel
+    release();
+    const result = await p;
+    expect(result.approved).toBe(false);
+    expect(result.feedback).toContain('cancelled by source');
+    expect(runtime.pendingCount).toBe(0);
+  });
+});
+
+describe('WiredApprovalRuntime — M3: no internal timer, timeout from outer wrapper', () => {
+  it('runtime has no internal timeout — pending entry survives until signal abort', async () => {
+    // Without internal timeout, the runtime entry stays pending
+    // indefinitely. Only signal abort cleans it up.
+    const { runtime, journal } = makeRuntime();
+    const controller = new AbortController();
+    const promise = runtime.request(buildRequest(), controller.signal);
+    await new Promise((r) => setImmediate(r));
+
+    // No internal timer — entry is still pending well after any realistic
+    // inner timeout would have fired.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(runtime.pendingCount).toBe(1);
+
+    // Signal abort cleans up
+    controller.abort();
+    const result = await promise;
+    expect(result.approved).toBe(false);
+    expect(result.feedback).toContain('cancelled');
+    expect(runtime.pendingCount).toBe(0);
+
+    const responses = journal.getRecordsByType('approval_response');
+    expect(responses).toHaveLength(1);
+    expect(responses[0]!.data.synthetic).toBe(true);
   });
 });
 

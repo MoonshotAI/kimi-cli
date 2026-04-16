@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   getConfigPath,
@@ -63,7 +64,7 @@ describe('getSessionsDir', () => {
   it('produces a 32-char hex hash segment', () => {
     const sessDir = getSessionsDir('/some/path');
     const parts = sessDir.split(sep);
-    const hashPart = parts[parts.length - 1]!;
+    const hashPart = parts.at(-1)!;
     expect(hashPart).toMatch(/^[0-9a-f]{32}$/);
   });
 
@@ -80,9 +81,7 @@ describe('getSessionsDir', () => {
   it('respects KIMI_SHARE_DIR override', () => {
     process.env['KIMI_SHARE_DIR'] = '/custom/data';
     const hash = createHash('md5').update('/proj', 'utf-8').digest('hex');
-    expect(getSessionsDir('/proj')).toBe(
-      join('/custom/data', 'sessions', hash),
-    );
+    expect(getSessionsDir('/proj')).toBe(join('/custom/data', 'sessions', hash));
   });
 });
 

@@ -44,17 +44,22 @@ const QuestionItemSchema = z.object({
     .describe('Whether the user can select multiple options.'),
 });
 
-const _rawAskUserQuestionInputSchema = z.object({
+export interface AskUserQuestionInput {
+  questions: Array<{
+    question: string;
+    header: string;
+    options: Array<{ label: string; description: string }>;
+    multi_select: boolean;
+  }>;
+}
+
+export const AskUserQuestionInputSchema: z.ZodType<AskUserQuestionInput> = z.object({
   questions: z
     .array(QuestionItemSchema)
     .min(1)
     .max(4)
     .describe('The questions to ask the user (1-4 questions).'),
 });
-
-export type AskUserQuestionInput = z.infer<typeof _rawAskUserQuestionInputSchema>;
-export const AskUserQuestionInputSchema: z.ZodType<AskUserQuestionInput> =
-  _rawAskUserQuestionInputSchema;
 
 // ── Tool description ─────────────────────────────────────────────────
 
@@ -82,7 +87,7 @@ Overusing this tool interrupts the user's flow. Only use it when the user's inpu
 
 export class AskUserQuestionTool {
   readonly name = 'AskUserQuestion' as const;
-  readonly description = DESCRIPTION;
+  readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<AskUserQuestionInput> = AskUserQuestionInputSchema;
 
   constructor(

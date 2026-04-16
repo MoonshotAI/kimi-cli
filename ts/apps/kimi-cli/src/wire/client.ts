@@ -11,7 +11,6 @@
  * delegates to a `MockDataSource` for event generation.
  */
 
-import type { WireMessage } from './wire-message.js';
 import type {
   InitializeParams,
   InitializeResult,
@@ -20,6 +19,7 @@ import type {
   SessionUsageResult,
   ApprovalResponseData,
 } from './methods.js';
+import type { WireMessage } from './wire-message.js';
 
 // ── MockDataSource interface ────────────────────────────────────────
 
@@ -100,8 +100,42 @@ export interface WireClient {
   /** Respond to a Core-initiated request (approval, question, hook). */
   respondToRequest(requestId: string, data: unknown): void;
 
+  /**
+   * Dispatch a parsed slash command (e.g. `/compact`, `/plan off`) to
+   * the underlying runtime. Returns a user-facing result that the TUI
+   * can surface in the transcript. Implementations should never throw —
+   * unexpected failures should be reported via `ok: false`.
+   */
+  handleSlashCommand(
+    sessionId: string,
+    name: string,
+    args: readonly string[],
+  ): Promise<SlashCommandResult>;
+
   /** Release resources. */
   dispose(): Promise<void>;
+}
+
+/** Result of {@link WireClient.handleSlashCommand}. */
+export interface SlashCommandResult {
+  readonly ok: boolean;
+  readonly message: string;
+  /**
+   * Optional state delta the host should apply after a successful
+   * command. `kimi-core` is the source of truth for `planMode` / `yolo`
+   * / `thinking`, so the TUI mirrors whatever session control reports
+   * back rather than guessing from the parsed arguments. Present only
+   * when the command mutated host-observable state.
+   */
+  readonly stateUpdate?: SlashCommandStateUpdate | undefined;
+}
+
+/** State patch emitted by a slash command that mutates host state. */
+export interface SlashCommandStateUpdate {
+  readonly planMode?: boolean | undefined;
+  readonly yolo?: boolean | undefined;
+  readonly thinking?: boolean | undefined;
+  readonly model?: string | undefined;
 }
 
 // ── WireClientImpl (development period) ─────────────────────────────
@@ -206,6 +240,19 @@ export class WireClientImpl implements WireClient {
 
   respondToRequest(requestId: string, data: unknown): void {
     this.dataSource.resolveRequest(requestId, data);
+  }
+
+  async handleSlashCommand(
+    _sessionId: string,
+    name: string,
+    _args: readonly string[],
+  ): Promise<SlashCommandResult> {
+    // Offline/mock mode: slash commands are no-ops. Surface a polite
+    // message so the user knows the command is recognised but inert.
+    return {
+      ok: true,
+      message: `(offline) /${name} has no effect in mock mode`,
+    };
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────

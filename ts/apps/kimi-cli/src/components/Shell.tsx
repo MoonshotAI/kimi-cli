@@ -17,22 +17,24 @@
  *   </Box>
  */
 
-import React, { useCallback, useContext, useMemo } from 'react';
 import { Box, Static, Text } from 'ink';
+import React, { useCallback, useContext, useMemo } from 'react';
 
 import { AppContext } from '../app/context.js';
 import type { CompletedBlock } from '../app/context.js';
-import Welcome from './Welcome.js';
+import ApprovalPanel from './approval/ApprovalPanel.js';
+import InputArea from './InputArea.js';
+import { MarkdownRenderer } from './markdown/index.js';
 import StreamingMessage from './message/StreamingMessage.js';
+import ThinkingBlock from './message/ThinkingBlock.js';
 import ToolCallBlock from './message/ToolCallBlock.js';
 import ToolResultBlock from './message/ToolResultBlock.js';
-import ApprovalPanel from './approval/ApprovalPanel.js';
+import NotificationToast from './NotificationToast.js';
+import QuestionDialog from './question/QuestionDialog.js';
 import SessionPicker from './session/SessionPicker.js';
 import Spinner from './Spinner.js';
-import InputArea from './InputArea.js';
 import StatusBar from './StatusBar.js';
-import { MarkdownRenderer } from './markdown/index.js';
-import ThinkingBlock from './message/ThinkingBlock.js';
+import Welcome from './Welcome.js';
 
 // A synthetic block representing the welcome banner.
 const WELCOME_BLOCK: CompletedBlock = {
@@ -52,7 +54,9 @@ function CompletedBlockView({ block }: { readonly block: CompletedBlock }): Reac
     case 'user':
       return (
         <Box marginTop={1}>
-          <Text color={colors.user} bold>{'✨ '}</Text>
+          <Text color={colors.user} bold>
+            {'✨ '}
+          </Text>
           <Text color={colors.user}>{block.content}</Text>
         </Box>
       );
@@ -128,6 +132,8 @@ export default function Shell(): React.JSX.Element {
     pendingToolCall,
     pendingApproval,
     handleApprovalResponse,
+    pendingQuestion,
+    handleQuestionResponse,
     styles,
     state,
     sessions,
@@ -186,10 +192,10 @@ export default function Shell(): React.JSX.Element {
       ) : null}
       <StreamingMessage />
       {pendingApproval !== null ? (
-        <ApprovalPanel
-          request={pendingApproval}
-          onResponse={handleApprovalResponse}
-        />
+        <ApprovalPanel request={pendingApproval} onResponse={handleApprovalResponse} />
+      ) : null}
+      {pendingQuestion !== null ? (
+        <QuestionDialog request={pendingQuestion} onAnswer={handleQuestionResponse} />
       ) : null}
       {/* Session picker overlay */}
       {showSessionPicker ? (
@@ -202,6 +208,7 @@ export default function Shell(): React.JSX.Element {
           onCancel={handleSessionCancel}
         />
       ) : null}
+      <NotificationToast />
       <Spinner />
       <InputArea />
       <StatusBar />

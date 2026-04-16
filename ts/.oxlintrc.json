@@ -51,7 +51,8 @@
     "unicorn/consistent-function-scoping": "off",
     "typescript/no-deprecated": "off",
     "typescript/no-unsafe-type-assertion": "off",
-    "typescript/strict-boolean-expressions": "off"
+    "typescript/strict-boolean-expressions": "off",
+    "typescript/no-duplicate-type-constituents": "off"
   },
   "overrides": [
     {
@@ -65,13 +66,22 @@
       }
     },
     {
-      "files": ["**/*.test.ts", "**/*.spec.ts", "**/test/**/*.ts"],
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/test/**/*.ts",
+        "**/test/**/*.tsx"
+      ],
       "plugins": ["vitest"],
       "rules": {
         "typescript/no-explicit-any": "off",
         "typescript/no-unsafe-assignment": "off",
         "typescript/no-unsafe-argument": "off",
         "typescript/no-non-null-assertion": "off",
+        "typescript/unbound-method": "off",
+        "typescript/no-redundant-type-constituents": "off",
         "eslint/no-console": "off",
         "eslint/no-promise-executor-return": "off",
         "typescript/no-unsafe-member-access": "off",
@@ -90,5 +100,5 @@
       }
     }
   ],
-  "ignorePatterns": ["dist/", "coverage/", "node_modules/"]
+  "ignorePatterns": ["dist/", "coverage/", "node_modules/", "apps/*/scripts/"]
 }

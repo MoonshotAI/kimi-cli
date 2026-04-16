@@ -4,7 +4,13 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { KimiConfigSchema, getDefaultConfig } from '../../src/config/schema.js';
+import {
+  KimiConfigSchema,
+  ModelAliasSchema,
+  OAuthRefSchema,
+  ProviderConfigSchema,
+  getDefaultConfig,
+} from '../../src/config/schema.js';
 
 describe('KimiConfigSchema', () => {
   it('accepts empty object and fills defaults', () => {
@@ -72,5 +78,118 @@ describe('getDefaultConfig', () => {
     expect(config.providers).toEqual({});
     // Should pass schema validation
     expect(() => KimiConfigSchema.parse(config)).not.toThrow();
+  });
+});
+
+// ── Extended provider types ───────────────────────────────────────────
+
+describe('KimiConfigSchema — extended types', () => {
+  it('accepts all six provider types', () => {
+    for (const type of [
+      'anthropic',
+      'openai',
+      'kimi',
+      'google-genai',
+      'openai_responses',
+      'vertexai',
+    ] as const) {
+      const result = KimiConfigSchema.parse({
+        providers: { p: { type } },
+      });
+      expect(result.providers['p']?.type).toBe(type);
+    }
+  });
+
+  it('accepts new top-level fields from Python config', () => {
+    const result = KimiConfigSchema.parse({
+      defaultThinking: true,
+      defaultYolo: false,
+      defaultPlanMode: false,
+      defaultEditor: 'vim',
+      theme: 'dark',
+      hooks: [],
+      mergeAllAvailableSkills: false,
+      showThinkingStream: true,
+    });
+    expect(result.defaultThinking).toBe(true);
+    expect(result.defaultYolo).toBe(false);
+    expect(result.defaultPlanMode).toBe(false);
+    expect(result.defaultEditor).toBe('vim');
+    expect(result.theme).toBe('dark');
+    expect(result.hooks).toEqual([]);
+    expect(result.mergeAllAvailableSkills).toBe(false);
+    expect(result.showThinkingStream).toBe(true);
+  });
+
+  it('accepts raw field', () => {
+    const result = KimiConfigSchema.parse({
+      raw: { loop_control: { max_steps_per_turn: 100 } },
+    });
+    expect(result.raw).toBeDefined();
+    expect((result.raw!['loop_control'] as Record<string, unknown>)['max_steps_per_turn']).toBe(
+      100,
+    );
+  });
+});
+
+// ── OAuth ref schema ──────────────────────────────────────────────────
+
+describe('OAuthRefSchema', () => {
+  it('accepts valid oauth ref', () => {
+    const result = OAuthRefSchema.parse({ storage: 'file', key: 'oauth/kimi-code' });
+    expect(result.storage).toBe('file');
+    expect(result.key).toBe('oauth/kimi-code');
+  });
+
+  it('accepts empty object', () => {
+    const result = OAuthRefSchema.parse({});
+    expect(result.storage).toBeUndefined();
+    expect(result.key).toBeUndefined();
+  });
+});
+
+// ── Provider config with OAuth ────────────────────────────────────────
+
+describe('ProviderConfigSchema — OAuth', () => {
+  it('accepts provider with oauth field', () => {
+    const result = ProviderConfigSchema.parse({
+      type: 'kimi',
+      apiKey: 'sk-test',
+      oauth: { storage: 'file', key: 'oauth/test' },
+    });
+    expect(result.oauth).toBeDefined();
+    expect(result.oauth!.storage).toBe('file');
+  });
+
+  it('accepts provider without oauth field', () => {
+    const result = ProviderConfigSchema.parse({
+      type: 'kimi',
+      apiKey: 'sk-test',
+    });
+    expect(result.oauth).toBeUndefined();
+  });
+});
+
+// ── Model alias extensions ────────────────────────────────────────────
+
+describe('ModelAliasSchema — extensions', () => {
+  it('accepts maxContextSize and capabilities', () => {
+    const result = ModelAliasSchema.parse({
+      provider: 'kimi',
+      model: 'kimi-k2.5',
+      maxContextSize: 262144,
+      capabilities: ['thinking', 'image_in', 'video_in'],
+    });
+    expect(result.maxContextSize).toBe(262144);
+    expect(result.capabilities).toEqual(['thinking', 'image_in', 'video_in']);
+  });
+
+  it('allows omitting maxContextSize and capabilities', () => {
+    const result = ModelAliasSchema.parse({
+      provider: 'anthropic',
+      model: 'claude-sonnet',
+    });
+    expect(result.maxContextSize).toBeUndefined();
+    expect(result.capabilities).toBeUndefined();
   });
 });

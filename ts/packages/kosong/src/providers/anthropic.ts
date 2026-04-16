@@ -71,6 +71,7 @@ function normalizeAnthropicStopReason(raw: string | null | undefined): {
 
 export interface AnthropicOptions {
   apiKey?: string | undefined;
+  baseUrl?: string | undefined;
   model: string;
   defaultMaxTokens?: number | undefined;
   betaFeatures?: string[] | undefined;
@@ -559,17 +560,18 @@ export class AnthropicChatProvider implements RetryableChatProvider {
   private _client: Anthropic;
   private _generationKwargs: AnthropicGenerationKwargs;
   private _metadata: Record<string, string> | undefined;
-  // Stored so onRetryableError can rebuild a fresh client without the caller
-  // re-supplying credentials.
   private _apiKey: string;
+  private _baseUrl: string | undefined;
 
   constructor(options: AnthropicOptions) {
     this._model = options.model;
     this._stream = options.stream ?? true;
     this._metadata = options.metadata;
     this._apiKey = options.apiKey ?? process.env['ANTHROPIC_API_KEY'] ?? '';
+    this._baseUrl = options.baseUrl;
     this._client = new Anthropic({
       apiKey: this._apiKey,
+      ...(this._baseUrl ? { baseURL: this._baseUrl } : {}),
     });
     this._generationKwargs = {
       max_tokens: options.defaultMaxTokens ?? 4096,
@@ -589,6 +591,7 @@ export class AnthropicChatProvider implements RetryableChatProvider {
   onRetryableError(_error: Error): boolean {
     this._client = new Anthropic({
       apiKey: this._apiKey,
+      ...(this._baseUrl ? { baseURL: this._baseUrl } : {}),
     });
     return true;
   }

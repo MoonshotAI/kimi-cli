@@ -218,8 +218,11 @@ describe('AskUserQuestionTool — error handling', () => {
   it('returns generic message for non-Error throws', async () => {
     const runtime: QuestionRuntime = {
       async askQuestion() {
-        // oxlint-disable-next-line no-throw-literal
-        throw 'string-error'; // eslint-disable-line no-throw-literal
+        // Non-Error throw is intentional: the tool must normalise the
+        // payload into a generic ToolResult message without assuming
+        // the thrown value implements `.message`.
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'string-error' as unknown as Error;
       },
     };
     const tool = makeTool(runtime);

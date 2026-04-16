@@ -60,6 +60,49 @@ export { SoulRegistry } from './soul-plus/soul-registry.js';
 export { TransactionalHandlerRegistry } from './soul-plus/transactional-handler-registry.js';
 export { DefaultSessionControl } from './soul-plus/session-control.js';
 export type { SessionControlHandler, SessionControlDeps } from './soul-plus/session-control.js';
+export { KosongAdapter, createKosongAdapter } from './soul-plus/kosong-adapter.js';
+export type { KosongAdapterOptions } from './soul-plus/kosong-adapter.js';
+export {
+  createRuntime,
+  createStubCompactionProvider,
+  createStubJournalCapability,
+} from './soul-plus/runtime-factory.js';
+export type { RuntimeFactoryDeps } from './soul-plus/runtime-factory.js';
+export {
+  KosongCompactionProvider,
+  createKosongCompactionProvider,
+} from './soul-plus/compaction-provider.js';
+export {
+  WiredJournalCapability,
+  createWiredJournalCapability,
+} from './soul-plus/journal-capability.js';
+export type { WiredJournalCapabilityDeps } from './soul-plus/journal-capability.js';
+export { SessionEventBus } from './soul-plus/session-event-bus.js';
+export type { SessionEventListener, NotificationListener } from './soul-plus/session-event-bus.js';
+export { NotificationManager } from './soul-plus/notification-manager.js';
+export type {
+  NotificationData,
+  NotificationManagerDeps,
+  ShellDeliverCallback,
+  LlmDeliverCallback,
+  EmitInput as NotificationEmitInput,
+  EmitResult as NotificationEmitResult,
+} from './soul-plus/notification-manager.js';
+export { AlwaysAllowApprovalRuntime, NotImplementedError } from './soul-plus/approval-runtime.js';
+export type {
+  ApprovalRequest,
+  ApprovalRequestPayload,
+  ApprovalResponseData,
+  ApprovalResult,
+  ApprovalRuntime,
+} from './soul-plus/approval-runtime.js';
+export { WiredApprovalRuntime } from './soul-plus/wired-approval-runtime.js';
+export type { WiredApprovalRuntimeDeps } from './soul-plus/wired-approval-runtime.js';
+export type { TurnLifecycleEvent, TurnLifecycleListener } from './soul-plus/turn-manager.js';
+export type { ApprovalDisplay, ApprovalSource } from './storage/wire-record.js';
+
+// ── Permission (Slice 4) ────────────────────────────────────────────────
+export type { PermissionMode, PermissionRule } from './soul-plus/permission/index.js';
 
 // ── Tools (Slice 4) ─────────────────────────────────────────────────────
 export { ToolRegistry } from './tools/registry.js';
@@ -87,6 +130,19 @@ export type { WebSearchProvider, WebSearchResult } from './tools/web-search.js';
 export { FetchURLTool } from './tools/fetch-url.js';
 export type { UrlFetcher } from './tools/fetch-url.js';
 export { ReadMediaFileTool } from './tools/read-media.js';
+
+// ── Slice 4.3 tools (host-injected collaboration set) ─────────────────
+export { ReadTool } from './tools/read.js';
+export { WriteTool } from './tools/write.js';
+export { EditTool } from './tools/edit.js';
+export { BashTool } from './tools/bash.js';
+export { GrepTool } from './tools/grep.js';
+export { GlobTool } from './tools/glob.js';
+export { SetTodoListTool, InMemoryTodoStore } from './tools/set-todo-list.js';
+export type { TodoStore, TodoItem, TodoStatus } from './tools/set-todo-list.js';
+export { ExitPlanModeTool } from './tools/exit-plan-mode.js';
+export type { ExitPlanModeDeps } from './tools/exit-plan-mode.js';
+export type { WorkspaceConfig } from './tools/workspace.js';
 
 // ── Hooks (Slice 4) ─────────────────────────────────────────────────────
 export { HookEngine } from './hooks/engine.js';
@@ -216,6 +272,58 @@ export {
   parseAgentYaml,
   resolveInheritance,
 } from './agent/index.js';
+
+// ── Skill subsystem (Slice 2.5) ──────────────────────────────────────
+export type {
+  SkillActivationContext,
+  SkillDefinition,
+  SkillManager,
+  SkillManagerOptions,
+  SkillMetadata,
+  SkillRoot,
+  SkillSource,
+} from './soul-plus/skill/index.js';
+export {
+  DefaultSkillManager,
+  SkillNotFoundError,
+  SkillParseError,
+  UnsupportedSkillTypeError,
+  FrontmatterError,
+  discoverSkills,
+  extendWorkspaceWithSkillRoots,
+  normalizeSkillName,
+  resolveSkillRoots,
+} from './soul-plus/skill/index.js';
+
+// ── MCP subsystem (Slice 2.6) ────────────────────────────────────────
+export type {
+  HttpServerConfig,
+  McpConfig,
+  McpServerConfig,
+  McpClientFactory,
+  McpLoadNotification,
+  McpNotifyCallback,
+  McpStderrCallback,
+  MCPClient,
+  MCPManagerOptions,
+  MCPServerStatus,
+  MCPToolDefinition,
+  MCPToolResult,
+  StdioServerConfig,
+} from './soul-plus/mcp/index.js';
+export {
+  HttpMcpClient,
+  MCPConfigError,
+  MCPManager,
+  MCPRuntimeError,
+  MCPTimeoutError,
+  StdioMcpClient,
+  isHttpServer,
+  isStdioServer,
+  mcpToolName,
+  parseMcpConfig,
+  parseMcpToolName,
+} from './soul-plus/mcp/index.js';
 
 // ── Config (Slice 3) ─────────────────────────────────────────────────────
 export type {

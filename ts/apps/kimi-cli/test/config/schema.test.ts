@@ -23,6 +23,7 @@ describe('ConfigSchema defaults', () => {
     expect(config.default_editor).toBe('');
     expect(config.theme).toBe('dark');
     expect(config.merge_all_available_skills).toBe(false);
+    expect(config.show_thinking_stream).toBe(false);
 
     // Nested defaults
     expect(config.loop_control.max_steps_per_turn).toBe(100);
@@ -66,6 +67,7 @@ describe('ConfigSchema full parsing', () => {
       default_editor: 'vim',
       theme: 'light',
       merge_all_available_skills: true,
+      show_thinking_stream: true,
       loop_control: {
         max_steps_per_turn: 50,
         max_retries_per_step: 5,
@@ -140,6 +142,7 @@ describe('ConfigSchema full parsing', () => {
 
     expect(config.default_model).toBe('my-model');
     expect(config.default_thinking).toBe(true);
+    expect(config.show_thinking_stream).toBe(true);
     expect(config.theme).toBe('light');
     expect(config.loop_control.max_steps_per_turn).toBe(50);
     expect(config.loop_control.max_ralph_iterations).toBe(-1);
@@ -162,9 +165,7 @@ describe('ConfigSchema full parsing', () => {
     expect(model!.capabilities).toEqual(['thinking', 'image_in']);
 
     // Services
-    expect(config.services.moonshot_search?.base_url).toBe(
-      'https://search.example.com',
-    );
+    expect(config.services.moonshot_search?.base_url).toBe('https://search.example.com');
     expect(config.services.moonshot_fetch?.api_key).toBe('sk-fetch');
 
     // Hooks
@@ -283,11 +284,7 @@ describe('models nested parsing', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.capabilities).toEqual([
-        'thinking',
-        'image_in',
-        'video_in',
-      ]);
+      expect(result.data.capabilities).toEqual(['thinking', 'image_in', 'video_in']);
     }
   });
 

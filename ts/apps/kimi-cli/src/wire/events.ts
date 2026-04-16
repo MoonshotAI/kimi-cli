@@ -141,10 +141,36 @@ export interface ApprovalRequestData {
   display: DisplayBlock[];
 }
 
+/** method: "question.request" (Core -> Client request, data field) */
+export interface QuestionRequestData {
+  id: string;
+  tool_call_id: string;
+  questions: QuestionRequestItem[];
+}
+
+export interface QuestionRequestItem {
+  question: string;
+  header?: string | undefined;
+  multi_select: boolean;
+  options: QuestionRequestOption[];
+}
+
+export interface QuestionRequestOption {
+  label: string;
+  description?: string | undefined;
+}
+
 /** method: "session.error" */
 export interface SessionErrorData {
   error: string;
-  error_type?: 'rate_limit' | 'context_overflow' | 'api_error' | 'auth_error' | 'tool_error' | 'internal' | undefined;
+  error_type?:
+    | 'rate_limit'
+    | 'context_overflow'
+    | 'api_error'
+    | 'auth_error'
+    | 'tool_error'
+    | 'internal'
+    | undefined;
   retry_after_ms?: number | undefined;
   details?: unknown;
 }

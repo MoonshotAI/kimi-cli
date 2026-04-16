@@ -64,7 +64,7 @@ const DESCRIPTION =
 
 export class ReadMediaFileTool implements BuiltinTool<ReadMediaFileInput, void> {
   readonly name = 'ReadMediaFile' as const;
-  readonly description = DESCRIPTION;
+  readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<ReadMediaFileInput> = ReadMediaFileInputSchema;
 
   constructor(

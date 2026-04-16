@@ -8,15 +8,14 @@
 
 import React, { useMemo, useState } from 'react';
 
+import Shell from '../components/Shell.js';
+import { createThemeStyles } from '../theme/styles.js';
 import type { WireClient } from '../wire/index.js';
-
 import { AppContext } from './context.js';
 import type { AppState } from './context.js';
 import { useAppState } from './hooks/useApp.js';
-import { useWire } from './hooks/useWire.js';
 import { useSession } from './hooks/useSession.js';
-import { createThemeStyles } from '../theme/styles.js';
-import Shell from '../components/Shell.js';
+import { useWire } from './hooks/useWire.js';
 
 export interface AppProps {
   readonly wireClient: WireClient;
@@ -36,14 +35,17 @@ export default function App({ wireClient, initialState }: AppProps): React.JSX.E
     pendingToolCall,
     pendingApproval,
     handleApprovalResponse,
+    pendingQuestion,
+    handleQuestionResponse,
+    toasts,
+    dismissToast,
   } = useWire(wireClient, state.sessionId, setState);
 
-  const {
-    sessions,
-    loadingSessions,
-    refreshSessions,
-    switchSession,
-  } = useSession({ wireClient, sessionId: state.sessionId, setState });
+  const { sessions, loadingSessions, refreshSessions, switchSession } = useSession({
+    wireClient,
+    sessionId: state.sessionId,
+    setState,
+  });
 
   const [showSessionPicker, setShowSessionPicker] = useState(false);
 
@@ -64,6 +66,10 @@ export default function App({ wireClient, initialState }: AppProps): React.JSX.E
     pendingToolCall,
     pendingApproval,
     handleApprovalResponse,
+    pendingQuestion,
+    handleQuestionResponse,
+    toasts,
+    dismissToast,
     sessions,
     loadingSessions,
     refreshSessions,

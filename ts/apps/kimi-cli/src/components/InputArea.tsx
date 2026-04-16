@@ -15,8 +15,8 @@
  *  - Regular characters: append to input buffer
  */
 
-import React, { useContext, useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput, useApp as useInkApp } from 'ink';
+import React, { useContext, useState, useRef, useEffect } from 'react';
 
 import { AppContext } from '../app/context.js';
 
@@ -25,6 +25,7 @@ const CURSOR = '▎';
 
 export default function InputArea(): React.JSX.Element {
   const { state, styles, sendMessage, cancelStream } = useContext(AppContext);
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- Ink's useApp().exit is a stable callback, not a class method.
   const { exit } = useInkApp();
   const [inputText, setInputText] = useState('');
   const inputRef = useRef('');

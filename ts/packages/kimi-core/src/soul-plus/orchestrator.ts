@@ -54,7 +54,15 @@ import type { PermissionMode, PermissionRule } from './permission/index.js';
 
 export interface ToolCallOrchestratorDeps {
   readonly hookEngine: HookEngine;
-  readonly sessionId: string;
+  /**
+   * Session id stamped onto every hook input payload. Accepts either a
+   * literal string (static sessions / tests) or a closure evaluated
+   * lazily on each access (late-bound binding used by the TUI bridge —
+   * `KimiCoreClient` constructs the orchestrator before
+   * `SessionManager.createSession` has allocated the id, and resolves
+   * the real id via a closure over its per-session record).
+   */
+  readonly sessionId: string | (() => string);
   readonly agentId: string;
   readonly approvalRuntime: ApprovalRuntime;
 }
@@ -89,6 +97,17 @@ export class ToolCallOrchestrator {
   private readonly toolOutcomes = new Map<string, ToolOutcome>();
 
   constructor(private readonly deps: ToolCallOrchestratorDeps) {}
+
+  /**
+   * Resolve the session id. When `deps.sessionId` is a closure (late-
+   * bound binding from the TUI bridge), this calls it fresh on every
+   * access so a session id that is allocated AFTER the orchestrator
+   * is constructed still lands on each hook input payload.
+   */
+  private resolveSessionId(): string {
+    const slot = this.deps.sessionId;
+    return typeof slot === 'function' ? slot() : slot;
+  }
 
   /**
    * Wrap all tools so the orchestrator can detect execute-level throws
@@ -169,7 +188,7 @@ export class ToolCallOrchestrator {
     ): Promise<BeforeToolCallResult | undefined> => {
       const hookInput = {
         event: 'PreToolUse' as const,
-        sessionId: this.deps.sessionId,
+        sessionId: this.resolveSessionId(),
         turnId: ctx.turnId,
         stepNumber: ctx.stepNumber,
         agentId: this.deps.agentId,
@@ -208,7 +227,7 @@ export class ToolCallOrchestrator {
       if (outcome?.kind === 'throw') {
         const hookInput = {
           event: 'OnToolFailure' as const,
-          sessionId: this.deps.sessionId,
+          sessionId: this.resolveSessionId(),
           turnId: ctx.turnId,
           stepNumber: ctx.stepNumber,
           agentId: this.deps.agentId,
@@ -223,7 +242,7 @@ export class ToolCallOrchestrator {
       // (c) Normal return (success or soft isError=true) — PostToolUse.
       const hookInput = {
         event: 'PostToolUse' as const,
-        sessionId: this.deps.sessionId,
+        sessionId: this.resolveSessionId(),
         turnId: ctx.turnId,
         stepNumber: ctx.stepNumber,
         agentId: this.deps.agentId,

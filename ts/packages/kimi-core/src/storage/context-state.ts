@@ -86,6 +86,15 @@ export interface SoulContextState {
   readonly tokenCountWithPending: number;
 
   /**
+   * Optional pre-step hook. When set, `runSoulTurn` calls this before
+   * each `buildMessages()` so mid-turn notifications can be drained
+   * into the ephemeral stash (M3 fix — aligns with Python's per-step
+   * `deliver_pending("llm")` semantics). Kept optional so pure-Soul
+   * tests and embeddings that don't use TurnManager are unaffected.
+   */
+  readonly beforeStep?: (() => void) | undefined;
+
+  /**
    * Build the messages that the next LLM call will see. Reads the
    * durable history from memory + drains the one-shot
    * `pendingEphemeralInjections` stash that TurnManager primed at the
@@ -124,6 +133,13 @@ export interface FullContextState extends SoulContextState {
 
   /** Push a steer into the buffer for the next `drainSteerMessages()` call. */
   pushSteer(input: UserInput): void;
+
+  /**
+   * Wire a pre-step hook that `runSoulTurn` calls before each
+   * `buildMessages()`. TurnManager uses this to drain mid-turn
+   * notifications into ContextState's ephemeral stash (M3).
+   */
+  setBeforeStepHook(fn: (() => void) | undefined): void;
 
   /**
    * Slice 2.4 — push an EphemeralInjection into the one-shot stash. The
@@ -203,6 +219,9 @@ class BaseContextState implements FullContextState {
    */
   private pendingEphemeralInjections: EphemeralInjection[] = [];
 
+  /** M3 — pre-step hook wired by TurnManager (see setBeforeStepHook). */
+  beforeStep: (() => void) | undefined = undefined;
+
   constructor(opts: BaseContextStateOptions) {
     this.journalWriter = opts.journalWriter;
     this.projector = opts.projector ?? new DefaultConversationProjector();
@@ -268,6 +287,10 @@ class BaseContextState implements FullContextState {
 
   pushSteer(input: UserInput): void {
     this.steerBuffer.push({ ...input });
+  }
+
+  setBeforeStepHook(fn: (() => void) | undefined): void {
+    this.beforeStep = fn;
   }
 
   stashEphemeralInjection(injection: EphemeralInjection): void {

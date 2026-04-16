@@ -182,4 +182,34 @@ describe('runSoulTurn — happy path', () => {
     expect(toolCallEvents[0]?.name).toBe('echo');
     expect(toolCallEvents[0]?.args).toEqual({ text: 'one' });
   });
+
+  it('calls context.beforeStep() before each buildMessages() in a multi-step turn (M3)', async () => {
+    const callOrder: string[] = [];
+    const context = new FakeContextState();
+    context.beforeStep = () => callOrder.push('beforeStep');
+    // Intercept buildMessages to track call order
+    const origBuildMessages = context.buildMessages.bind(context);
+    context.buildMessages = () => {
+      callOrder.push('buildMessages');
+      return origBuildMessages();
+    };
+
+    const kosong = new ScriptedKosongAdapter({
+      responses: [
+        makeToolUseResponse([makeToolCall('echo', { text: 'hi' }, 'call_1')], {
+          input: 5,
+          output: 3,
+        }),
+        makeEndTurnResponse('done', { input: 4, output: 2 }),
+      ],
+    });
+    const { runtime } = createFakeRuntime({ kosong });
+    const sink = new CollectingEventSink();
+    const config: SoulConfig = { tools: [new EchoTool()] };
+
+    await runSoulTurn({ text: 'go' }, config, context, runtime, sink, new AbortController().signal);
+
+    // Two steps → two pairs of beforeStep + buildMessages
+    expect(callOrder).toEqual(['beforeStep', 'buildMessages', 'beforeStep', 'buildMessages']);
+  });
 });

@@ -34,7 +34,7 @@ const DESCRIPTION =
 
 export class ThinkTool implements BuiltinTool<ThinkInput, void> {
   readonly name = 'Think' as const;
-  readonly description = DESCRIPTION;
+  readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<ThinkInput> = ThinkInputSchema;
 
   async execute(

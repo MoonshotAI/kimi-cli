@@ -21,7 +21,7 @@
  *   - Real wire protocol envelope (Slice 5)
  */
 
-import type { Runtime, Tool } from '../soul/index.js';
+import type { CompactionConfig, Runtime, Tool } from '../soul/index.js';
 import type { FullContextState } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import { LifecycleGateFacade } from './lifecycle-gate.js';
@@ -63,6 +63,35 @@ export interface SoulPlusDeps {
    * skill registry on behalf of callers.
    */
   readonly skillManager?: SkillManager | undefined;
+  /**
+   * Externally-owned lifecycle state machine (Codex Round 2 M3).
+   * When provided, SoulPlus uses this instead of creating its own.
+   * SessionManager passes the same state machine to JournalWriter
+   * (via LifecycleGateFacade) so both gate on a single physical
+   * state machine. When absent, SoulPlus creates its own (backward
+   * compat for tests that construct SoulPlus directly).
+   */
+  readonly lifecycleStateMachine?: SessionLifecycleStateMachine | undefined;
+  /**
+   * Compaction configuration (Codex Round 2 M2). Passed through to
+   * TurnManager so the Soul while-loop's shouldCompact() gate is
+   * armed in the real session path, not just in unit tests.
+   */
+  readonly compactionConfig?: CompactionConfig | undefined;
+  /**
+   * Slice 4.2 — optional tool-call orchestrator. When provided, SoulPlus
+   * forwards it to TurnManager so the per-turn `beforeToolCall` /
+   * `afterToolCall` closures run the full Hook → Permission → Approval
+   * pipeline via `ToolCallOrchestrator`. When absent (tests, embedders
+   * that bypass permissions entirely), TurnManager falls back to the
+   * always-allow closures exactly as before.
+   *
+   * The type is inlined (`import('./orchestrator.js')`) rather than
+   * imported at the top of the file so the file-level dependency
+   * count does not tip over the `import/max-dependencies` threshold
+   * (already at 11 pre-Slice 4.2 — baseline policy gap, not new).
+   */
+  readonly orchestrator?: import('./orchestrator.js').ToolCallOrchestrator | undefined;
 }
 
 export class SoulPlus {
@@ -79,23 +108,14 @@ export class SoulPlus {
     this.contextState = deps.contextState;
     this.skillManager = deps.skillManager;
 
-    // Slice 3 construction:
-    //   1. Build a local SessionLifecycleStateMachine (the one physical
-    //      state machine for this session).
-    //   2. Wrap it in a LifecycleGateFacade — the facade is what
-    //      `Runtime.lifecycle` / `JournalWriter.lifecycle` consume.
-    //   3. Rebuild `runtime` with `lifecycle: facade` so Soul (via
-    //      `runtime.lifecycle.transitionTo`) and TurnManager (via
-    //      `lifecycleStateMachine.transitionTo`) drive the SAME physical
-    //      state machine. This avoids the desync trap the Round 1 review
-    //      flagged: without this rewiring, Soul's compaction path would
-    //      mutate the caller's state machine while TurnManager mutated
-    //      an independent local one, and the two would diverge.
-    //
-    // Slice 5 RequestRouter will lift state machine ownership one level
-    // up to SessionManager and pass it in via deps; at that point this
-    // local construction disappears.
-    const stateMachine = new SessionLifecycleStateMachine();
+    // Lifecycle state machine setup:
+    //   When `deps.lifecycleStateMachine` is provided (production path via
+    //   SessionManager — Codex Round 2 M3), we reuse the externally-owned
+    //   instance so JournalWriter, Runtime.lifecycle, and TurnManager all
+    //   share the SAME physical state machine. When absent (tests that
+    //   construct SoulPlus directly), we create a local one for backward
+    //   compatibility.
+    const stateMachine = deps.lifecycleStateMachine ?? new SessionLifecycleStateMachine();
     const facade = new LifecycleGateFacade(stateMachine);
     const runtime: Runtime = {
       kosong: deps.runtime.kosong,
@@ -120,6 +140,12 @@ export class SoulPlus {
       lifecycleStateMachine: stateMachine,
       soulRegistry,
       tools: deps.tools,
+      // Codex Round 2 M2: pass compactionConfig so auto-compaction is
+      // armed in the real session path (not just unit tests).
+      ...(deps.compactionConfig !== undefined ? { compactionConfig: deps.compactionConfig } : {}),
+      // Slice 4.2 — forward the optional orchestrator so TurnManager
+      // builds real hook/permission/approval closures for tool calls.
+      ...(deps.orchestrator !== undefined ? { orchestrator: deps.orchestrator } : {}),
     });
 
     // Slice 2.4 — NotificationManager wires the three sinks:

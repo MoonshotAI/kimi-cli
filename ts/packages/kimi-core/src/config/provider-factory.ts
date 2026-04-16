@@ -10,6 +10,7 @@ import { AnthropicChatProvider } from '@moonshot-ai/kosong/providers/anthropic';
 import { GoogleGenAIChatProvider } from '@moonshot-ai/kosong/providers/google-genai';
 import { KimiChatProvider } from '@moonshot-ai/kosong/providers/kimi';
 import { OpenAILegacyChatProvider } from '@moonshot-ai/kosong/providers/openai-legacy';
+import { OpenAIResponsesChatProvider } from '@moonshot-ai/kosong/providers/openai-responses';
 
 import type { KimiConfig, ProviderConfig } from './schema.js';
 
@@ -36,6 +37,12 @@ export function createProvider(
   config: ProviderConfig,
   modelOverride?: string,
 ): ChatProvider {
+  if (config.oauth && (!config.apiKey || config.apiKey === '')) {
+    throw new ProviderFactoryError(
+      `Provider "${name}": OAuth authentication is not yet supported. Provide an apiKey or remove the OAuth configuration.`,
+    );
+  }
+
   const model = modelOverride ?? config.defaultModel;
 
   switch (config.type) {
@@ -47,6 +54,7 @@ export function createProvider(
       }
       return new AnthropicChatProvider({
         apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
         model,
       });
     }
@@ -86,6 +94,32 @@ export function createProvider(
       return new GoogleGenAIChatProvider({
         apiKey: config.apiKey,
         model,
+      });
+    }
+
+    case 'openai_responses': {
+      if (!model) {
+        throw new ProviderFactoryError(
+          `Provider "${name}" (openai_responses): no model specified. Set defaultModel in the provider config or pass a model name.`,
+        );
+      }
+      return new OpenAIResponsesChatProvider({
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        model,
+      });
+    }
+
+    case 'vertexai': {
+      if (!model) {
+        throw new ProviderFactoryError(
+          `Provider "${name}" (vertexai): no model specified. Set defaultModel in the provider config or pass a model name.`,
+        );
+      }
+      return new GoogleGenAIChatProvider({
+        apiKey: config.apiKey,
+        model,
+        vertexai: true,
       });
     }
 

@@ -210,3 +210,105 @@ describe('createProviderFromConfig', () => {
     expect(() => createProviderFromConfig(badConfig, 'some-model')).toThrow(/not configured/);
   });
 });
+
+// ── OpenAI Responses and VertexAI provider types ─────────────────────
+
+describe('createProvider — openai_responses and vertexai', () => {
+  it('creates OpenAIResponsesChatProvider', () => {
+    const config: ProviderConfig = {
+      type: 'openai_responses',
+      apiKey: 'test-key',
+      baseUrl: 'https://openai.app.msh.team/raw/x/v1',
+      defaultModel: 'gpt-5',
+    };
+    const provider = createProvider('qianxun', config);
+    expect(provider.modelName).toBe('gpt-5');
+  });
+
+  it('creates GoogleGenAIChatProvider for vertexai with vertexai flag', () => {
+    const config: ProviderConfig = {
+      type: 'vertexai',
+      apiKey: 'test-key',
+      defaultModel: 'gemini-3-pro',
+    };
+    const provider = createProvider('vertex', config);
+    expect(provider.modelName).toBe('gemini-3-pro');
+  });
+});
+
+// ── Anthropic baseUrl passthrough ────────────────────────────────────
+
+describe('createProvider — Anthropic baseUrl passthrough', () => {
+  it('passes baseUrl to Anthropic provider', () => {
+    const config: ProviderConfig = {
+      type: 'anthropic',
+      apiKey: 'test-key',
+      baseUrl: 'https://api.kimi.com/coding',
+      defaultModel: 'claude-sonnet',
+    };
+    const provider = createProvider('anthropic-kimi', config);
+    expect(provider.name).toBe('anthropic');
+    expect(provider.modelName).toBe('claude-sonnet');
+  });
+
+  it('passes baseUrl to google-genai provider', () => {
+    const config: ProviderConfig = {
+      type: 'google-genai',
+      apiKey: 'test-key',
+      baseUrl: 'https://custom-google-proxy.com',
+      defaultModel: 'gemini-2.5-flash',
+    };
+    const provider = createProvider('google-proxy', config);
+    expect(provider.name).toBe('google_genai');
+    expect(provider.modelName).toBe('gemini-2.5-flash');
+  });
+});
+
+// ── OAuth provider check ──────────────────────────────────────────────
+
+describe('createProvider — OAuth check', () => {
+  it('throws when provider has oauth but no apiKey', () => {
+    const config: ProviderConfig = {
+      type: 'kimi',
+      apiKey: '',
+      baseUrl: 'https://api.kimi.com/v1',
+      oauth: { storage: 'file', key: 'oauth/test' },
+    };
+    expect(() => createProvider('managed:test', config, 'test-model')).toThrow(
+      ProviderFactoryError,
+    );
+    expect(() => createProvider('managed:test', config, 'test-model')).toThrow(/OAuth/);
+  });
+
+  it('throws when provider has oauth and apiKey is undefined', () => {
+    const config: ProviderConfig = {
+      type: 'kimi',
+      baseUrl: 'https://api.kimi.com/v1',
+      oauth: { storage: 'file', key: 'oauth/test' },
+    };
+    expect(() => createProvider('managed:test', config, 'test-model')).toThrow(
+      ProviderFactoryError,
+    );
+  });
+
+  it('allows provider with oauth when apiKey is present', () => {
+    const config: ProviderConfig = {
+      type: 'kimi',
+      apiKey: 'real-api-key',
+      baseUrl: 'https://api.moonshot.cn/v1',
+      oauth: { storage: 'file', key: 'oauth/test' },
+    };
+    const provider = createProvider('managed:moonshot', config, 'test-model');
+    expect(provider.name).toBe('kimi');
+  });
+
+  it('allows provider without oauth normally', () => {
+    const config: ProviderConfig = {
+      type: 'kimi',
+      apiKey: 'test-key',
+      baseUrl: 'https://api.msh.team/v1',
+    };
+    const provider = createProvider('kimi-internal', config, 'test-model');
+    expect(provider.name).toBe('kimi');
+  });
+});

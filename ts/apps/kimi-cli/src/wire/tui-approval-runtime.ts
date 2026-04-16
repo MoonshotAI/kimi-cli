@@ -1,0 +1,368 @@
+/**
+ * TUIApprovalRuntime — bridge ApprovalRuntime impl for the Ink TUI
+ * (Slice 4.2).
+ *
+ * ToolCallOrchestrator owns an `ApprovalRuntime` reference and calls
+ * `request()` whenever a tool falls into the `ask` permission bucket.
+ * This implementation forwards each request to the TUI as a wire
+ * `request` message (`method: 'approval.request'`) and then blocks on
+ * a `Deferred` promise. The TUI renders `ApprovalPanel`, the user
+ * makes a choice, and `useWire.handleApprovalResponse` calls
+ * `wireClient.respondToRequest(requestId, data)`. `KimiCoreClient`
+ * routes that call into `resolveFromClient(requestId, data)`, which
+ * resolves the Deferred and unblocks the orchestrator.
+ *
+ * Scope note: Slice 4.2 intentionally does NOT wire this runtime
+ * through `WiredApprovalRuntime`, so approvals are not persisted to
+ * `wire.jsonl` on the TUI path. Crash recovery of in-flight approvals
+ * is a follow-up for a later slice (see the matching entry in the
+ * Slice 4.2 status report).
+ */
+
+import { randomUUID } from 'node:crypto';
+
+import type {
+  ApprovalDisplay,
+  ApprovalRequest,
+  ApprovalRequestPayload,
+  ApprovalResponseData,
+  ApprovalResult,
+  ApprovalRuntime,
+  ApprovalSource,
+} from '@moonshot-ai/core';
+import { NotImplementedError } from '@moonshot-ai/core';
+
+import type { ApprovalRequestData, DisplayBlock } from './events.js';
+import { createRequest } from './wire-message.js';
+import type { WireMessage } from './wire-message.js';
+
+// ── Deps ────────────────────────────────────────────────────────────
+
+export interface TUIApprovalRuntimeDeps {
+  /**
+   * Session id accessor — may be a fixed string or a late-bound
+   * function. `KimiCoreClient` uses the function form because the
+   * real session id is only known after `SessionManager.createSession`
+   * resolves, but the runtime has to be constructed beforehand so
+   * it can be handed to the `ToolCallOrchestrator`.
+   */
+  readonly sessionId: string | (() => string);
+  /**
+   * Called once per outbound `approval.request`. The bridge pushes the
+   * returned envelope onto the per-session wire queue; `KimiCoreClient`
+   * owns the queue.
+   */
+  readonly emit: (msg: WireMessage) => void;
+  /**
+   * Current turn id accessor. Optional — the envelope is still valid
+   * without one, but wiring it when known keeps TUI correlation clean.
+   */
+  readonly currentTurnId?: (() => string | undefined) | undefined;
+  /**
+   * Deterministic id allocator for tests. Production uses `randomUUID`.
+   */
+  readonly allocateRequestId?: (() => string) | undefined;
+}
+
+// ── Internal Deferred ───────────────────────────────────────────────
+
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+  reject(reason: unknown): void;
+}
+
+function makeDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+interface Pending {
+  readonly requestId: string;
+  readonly request: ApprovalRequest;
+  readonly deferred: Deferred<ApprovalResult>;
+  abortCleanup: (() => void) | undefined;
+  settled: boolean;
+}
+
+// ── Implementation ──────────────────────────────────────────────────
+
+export class TUIApprovalRuntime implements ApprovalRuntime {
+  private readonly deps: TUIApprovalRuntimeDeps;
+  private readonly allocateRequestId: () => string;
+  private readonly pending = new Map<string, Pending>();
+  /** Sources passed to `cancelBySource` that had no matching entry at
+   * the time — checked retroactively inside `request()` so a cancel
+   * in the WAL-free bridge still catches a racing incoming request. */
+  private readonly cancelledSources: ApprovalSource[] = [];
+
+  constructor(deps: TUIApprovalRuntimeDeps) {
+    this.deps = deps;
+    this.allocateRequestId = deps.allocateRequestId ?? (() => `appr_${randomUUID()}`);
+  }
+
+  async request(req: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalResult> {
+    // Bail immediately if the caller already aborted — do NOT emit a
+    // request the TUI will never see a response for.
+    if (signal !== undefined && signal.aborted) {
+      throw signal.reason instanceof Error ? signal.reason : new Error('aborted');
+    }
+
+    const requestId = this.allocateRequestId();
+    const deferred = makeDeferred<ApprovalResult>();
+
+    // Abort propagation: on signal, settle the deferred with a synthetic
+    // cancelled result so the permission closure returns a clean block.
+    let abortCleanup: (() => void) | undefined;
+    let listener: (() => void) | undefined;
+    if (signal !== undefined) {
+      listener = (): void => {
+        this.cancelOne(requestId, 'cancelled by signal');
+      };
+      signal.addEventListener('abort', listener, { once: true });
+      abortCleanup = () => {
+        // `listener` is set synchronously in the branch above before
+        // this closure captures it; the cast narrows the nullable slot.
+        signal.removeEventListener('abort', listener as () => void);
+      };
+    }
+
+    const entry: Pending = {
+      requestId,
+      request: req,
+      deferred,
+      abortCleanup,
+      settled: false,
+    };
+    this.pending.set(requestId, entry);
+
+    // Emit the TUI wire request AFTER the pending entry is installed
+    // so a racing `respondToRequest` call (from a test harness) still
+    // sees the waiter. The payload shape matches `ApprovalRequestData`
+    // (`apps/kimi-cli/src/wire/events.ts`) which `useWire.processMessage`
+    // consumes — NOT kimi-core's internal `ApprovalRequestPayload`.
+    // The display union is adapted on the fly so the TUI's existing
+    // `DiffPreview` / shell / brief renderers work unchanged.
+    const data: ApprovalRequestData = {
+      id: requestId,
+      tool_call_id: req.toolCallId,
+      tool_name: req.toolName,
+      action: req.action,
+      description: describeApproval(req),
+      display: adaptDisplay(req.display),
+    };
+    const resolvedSessionId =
+      typeof this.deps.sessionId === 'string' ? this.deps.sessionId : this.deps.sessionId();
+    const msg = createRequest('approval.request', data, {
+      session_id: resolvedSessionId,
+      ...(this.deps.currentTurnId?.() !== undefined
+        ? { turn_id: this.deps.currentTurnId?.() as string }
+        : {}),
+    });
+    // Re-use the allocated approval request id as the envelope id so
+    // `wireClient.respondToRequest(msg.id, ...)` routes cleanly back
+    // to `resolveFromClient(requestId, ...)` without a second lookup.
+    msg.id = requestId;
+    this.deps.emit(msg);
+
+    // Retroactive source-cancel check — if `cancelBySource` fired while
+    // we were between `pending.set` and the emit, catch it now.
+    for (const src of this.cancelledSources) {
+      if (matchesSource(req.source, src)) {
+        this.cancelOne(requestId, 'cancelled by source');
+        break;
+      }
+    }
+
+    return deferred.promise;
+  }
+
+  /**
+   * Route a TUI response into the runtime. Called from
+   * `KimiCoreClient.respondToRequest` — the primary entry point for
+   * user-initiated approval responses.
+   */
+  resolveFromClient(requestId: string, data: unknown): void {
+    // Validate the response payload shape defensively — the TUI may
+    // send arbitrary data and we should never crash the turn loop on
+    // a bad response.
+    if (!isApprovalResponseData(data)) {
+      return;
+    }
+    this.resolve(requestId, data);
+  }
+
+  resolve(requestId: string, response: ApprovalResponseData): void {
+    const entry = this.claim(requestId);
+    if (entry === undefined) return;
+
+    const result: ApprovalResult = {
+      approved: response.response === 'approved',
+      ...(response.feedback !== undefined ? { feedback: response.feedback } : {}),
+    };
+    entry.deferred.resolve(result);
+  }
+
+  async recoverPendingOnStartup(): Promise<void> {
+    // WAL-free bridge: nothing durable to recover. The outer
+    // KimiCoreClient is responsible for clearing stale UI state on
+    // session boot.
+  }
+
+  cancelBySource(source: ApprovalSource): void {
+    this.cancelledSources.push(source);
+    const matches: string[] = [];
+    for (const entry of this.pending.values()) {
+      if (!entry.settled && matchesSource(entry.request.source, source)) {
+        matches.push(entry.requestId);
+      }
+    }
+    for (const requestId of matches) {
+      this.cancelOne(requestId, 'cancelled by source');
+    }
+  }
+
+  async ingestRemoteRequest(_data: ApprovalRequestPayload): Promise<void> {
+    throw new NotImplementedError('TUIApprovalRuntime.ingestRemoteRequest');
+  }
+
+  resolveRemote(_data: { request_id: string } & ApprovalResponseData): void {
+    throw new NotImplementedError('TUIApprovalRuntime.resolveRemote');
+  }
+
+  /** Cancel all outstanding requests — called when the session tears down. */
+  disposeAll(reason = 'session closed'): void {
+    for (const requestId of Array.from(this.pending.keys())) {
+      this.cancelOne(requestId, reason);
+    }
+  }
+
+  /** Test helper — number of in-flight approvals. */
+  get pendingCount(): number {
+    return this.pending.size;
+  }
+
+  // ── Internal ──────────────────────────────────────────────────────
+
+  private claim(requestId: string): Pending | undefined {
+    const entry = this.pending.get(requestId);
+    if (entry === undefined || entry.settled) return undefined;
+    entry.settled = true;
+    if (entry.abortCleanup !== undefined) {
+      entry.abortCleanup();
+      entry.abortCleanup = undefined;
+    }
+    this.pending.delete(requestId);
+    return entry;
+  }
+
+  private cancelOne(requestId: string, feedback: string): void {
+    const entry = this.claim(requestId);
+    if (entry === undefined) return;
+    entry.deferred.resolve({ approved: false, feedback });
+  }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function matchesSource(candidate: ApprovalSource, filter: ApprovalSource): boolean {
+  if (candidate.kind !== filter.kind) return false;
+  if (filter.kind === 'soul' && candidate.kind === 'soul') {
+    return candidate.agent_id === filter.agent_id;
+  }
+  if (filter.kind === 'subagent' && candidate.kind === 'subagent') {
+    return candidate.agent_id === filter.agent_id;
+  }
+  if (filter.kind === 'turn' && candidate.kind === 'turn') {
+    return candidate.turn_id === filter.turn_id;
+  }
+  if (filter.kind === 'session' && candidate.kind === 'session') {
+    return candidate.session_id === filter.session_id;
+  }
+  return false;
+}
+
+function isApprovalResponseData(value: unknown): value is ApprovalResponseData {
+  if (typeof value !== 'object' || value === null) return false;
+  const response = (value as { response?: unknown }).response;
+  return response === 'approved' || response === 'rejected' || response === 'cancelled';
+}
+
+/**
+ * Produce a one-line human-readable description for the approval
+ * panel subtitle. The TUI's `ApprovalPanel` renders this under the
+ * `{tool_name} is requesting approval to {action}` header.
+ */
+function describeApproval(req: ApprovalRequest): string {
+  switch (req.display.kind) {
+    case 'generic':
+      return req.display.body;
+    case 'command':
+      return req.display.description ?? req.display.command;
+    case 'diff':
+      return `edit ${req.display.path}`;
+    case 'file_write':
+      return `write ${req.display.path}`;
+    case 'task_stop':
+      return `stop task: ${req.display.task_description}`;
+  }
+}
+
+/**
+ * Translate kimi-core's `ApprovalDisplay` union into the TUI's
+ * `DisplayBlock[]` shape consumed by `ApprovalPanel`. Every kind maps
+ * to one display block; unknown / richer kinds degrade to a `brief`
+ * textual fallback so the panel still renders something meaningful
+ * during incremental rollout of new display kinds.
+ */
+function adaptDisplay(display: ApprovalDisplay): DisplayBlock[] {
+  switch (display.kind) {
+    case 'command':
+      return [
+        {
+          type: 'shell',
+          language: 'bash',
+          command: display.command,
+        },
+      ];
+    case 'diff':
+      // The legacy diff display passes a unified-diff string rather
+      // than structured old/new text; there is no lossless mapping to
+      // the TUI's `DiffDisplayBlock`. Fall back to a `brief` block so
+      // the panel shows the diff as preformatted text.
+      return [
+        {
+          type: 'brief',
+          text: display.diff,
+        },
+      ];
+    case 'file_write':
+      return [
+        {
+          type: 'diff',
+          path: display.path,
+          old_text: '',
+          new_text: display.content,
+        },
+      ];
+    case 'task_stop':
+      return [
+        {
+          type: 'brief',
+          text: `Stop task ${display.task_id}: ${display.task_description}`,
+        },
+      ];
+    case 'generic':
+      return [
+        {
+          type: 'brief',
+          text: `${display.title}\n${display.body}`,
+        },
+      ];
+  }
+}

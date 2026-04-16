@@ -98,7 +98,10 @@ function asOptionalString(raw: Record<string, unknown>, key: string): string | u
   const val = raw[key];
   if (val === undefined || val === null) return undefined;
   if (typeof val === 'string') return val;
-  return String(val);
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  // Non-scalar TOML values (tables, arrays, nested objects) are rejected
+  // to avoid `[object Object]` leaking into agent spec fields.
+  return undefined;
 }
 
 function asThinkingMode(raw: Record<string, unknown>): 'auto' | 'on' | 'off' | undefined {

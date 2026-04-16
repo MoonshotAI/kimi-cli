@@ -58,6 +58,10 @@ export interface CLIOptions {
   maxStepsPerTurn: number | undefined;
   maxRetriesPerStep: number | undefined;
   maxRalphIterations: number | undefined;
+
+  // -- Development ----------------------------------------------------------
+  /** When true, boot the TUI with MockDataSource instead of real kimi-core. */
+  offline: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,14 +96,10 @@ export function validateOptions(opts: CLIOptions): ValidatedOptions {
   // -- `--quiet` implies `--print --output-format text --final-message-only` -
   if (opts.quiet) {
     if (opts.wire) {
-      throw new OptionConflictError(
-        'Cannot combine --quiet with --wire.',
-      );
+      throw new OptionConflictError('Cannot combine --quiet with --wire.');
     }
     if (opts.outputFormat !== undefined && opts.outputFormat !== 'text') {
-      throw new OptionConflictError(
-        '--quiet implies --output-format text; cannot override.',
-      );
+      throw new OptionConflictError('--quiet implies --output-format text; cannot override.');
     }
     opts.print = true;
     opts.outputFormat = 'text';
@@ -132,22 +132,16 @@ export function validateOptions(opts: CLIOptions): ValidatedOptions {
       .filter(([, v]) => v)
       .map(([k]) => k);
     if (active.length > 1) {
-      throw new OptionConflictError(
-        `Cannot combine ${active.join(', ')}.`,
-      );
+      throw new OptionConflictError(`Cannot combine ${active.join(', ')}.`);
     }
   }
 
   // -- Format-only flags require print mode -----------------------------------
   if (opts.inputFormat !== undefined && !opts.print) {
-    throw new OptionConflictError(
-      '--input-format is only supported in print mode (--print).',
-    );
+    throw new OptionConflictError('--input-format is only supported in print mode (--print).');
   }
   if (opts.outputFormat !== undefined && !opts.print) {
-    throw new OptionConflictError(
-      '--output-format is only supported in print mode (--print).',
-    );
+    throw new OptionConflictError('--output-format is only supported in print mode (--print).');
   }
   if (opts.finalMessageOnly && !opts.print) {
     throw new OptionConflictError(

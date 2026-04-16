@@ -6,13 +6,13 @@
  * events via MockEventGenerator.
  */
 
-import type { WireMessage } from './types.js';
 import type { Scenario } from './mock-event-generator.js';
 import { MockEventGenerator } from './mock-event-generator.js';
 import { MockSessionStore } from './mock-session-store.js';
+import { approvalScenario } from './scenarios/approval.js';
 import { simpleChatScenario } from './scenarios/simple-chat.js';
 import { toolCallScenario } from './scenarios/tool-call.js';
-import { approvalScenario } from './scenarios/approval.js';
+import type { WireMessage } from './types.js';
 
 // ── Scenario Resolver ───────────────────────────────────────────────
 
@@ -39,10 +39,13 @@ export class MockDataSource {
   private readonly scenarioResolver: ScenarioResolver;
 
   /** Currently active event iterables per session. */
-  private activeStreams = new Map<string, {
-    push: (msg: WireMessage) => void;
-    end: () => void;
-  }>();
+  private activeStreams = new Map<
+    string,
+    {
+      push: (msg: WireMessage) => void;
+      end: () => void;
+    }
+  >();
 
   constructor(options?: MockDataSourceOptions) {
     this.sessions = new MockSessionStore();
@@ -71,8 +74,6 @@ export class MockDataSource {
 
   /** Consume events for a session (called by WireClient.subscribe). */
   events(sessionId: string): AsyncIterable<WireMessage> {
-    const self = this;
-
     // Create a push-based async iterable
     const buffer: WireMessage[] = [];
     let resolve: (() => void) | null = null;
@@ -96,7 +97,8 @@ export class MockDataSource {
       }
     };
 
-    self.activeStreams.set(sessionId, { push, end });
+    this.activeStreams.set(sessionId, { push, end });
+    const activeStreams = this.activeStreams;
 
     return {
       [Symbol.asyncIterator](): AsyncIterator<WireMessage> {
@@ -114,7 +116,7 @@ export class MockDataSource {
           },
           return(): Promise<IteratorResult<WireMessage>> {
             done = true;
-            self.activeStreams.delete(sessionId);
+            activeStreams.delete(sessionId);
             return Promise.resolve({ done: true, value: undefined as unknown as WireMessage });
           },
         };

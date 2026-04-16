@@ -66,9 +66,7 @@ export function loadConfig(opts: LoadConfigOptions = {}): LoadConfigResult {
   // -- Priority 2: explicit config file path ---------------------------------
   if (opts.configFile !== undefined) {
     if (!existsSync(opts.configFile)) {
-      throw new ConfigLoadError(
-        `Config file not found: ${opts.configFile}`,
-      );
+      throw new ConfigLoadError(`Config file not found: ${opts.configFile}`);
     }
     const raw = readFileSync(opts.configFile, 'utf-8');
     const data = parseConfigText(raw, opts.configFile);
@@ -134,10 +132,8 @@ function parseConfigString(text: string): unknown {
 
   try {
     return parseTOML(text);
-  } catch (tomlErr) {
-    throw new ConfigLoadError(
-      `Invalid config string (not valid JSON or TOML): ${String(tomlErr)}`,
-    );
+  } catch (error) {
+    throw new ConfigLoadError(`Invalid config string (not valid JSON or TOML): ${String(error)}`);
   }
 }
 
@@ -149,19 +145,15 @@ function parseConfigText(text: string, filePath: string): unknown {
   if (filePath.endsWith('.json')) {
     try {
       return JSON.parse(text) as unknown;
-    } catch (err) {
-      throw new ConfigLoadError(
-        `Invalid JSON in ${filePath}: ${String(err)}`,
-      );
+    } catch (error) {
+      throw new ConfigLoadError(`Invalid JSON in ${filePath}: ${String(error)}`);
     }
   }
 
   try {
     return parseTOML(text);
-  } catch (err) {
-    throw new ConfigLoadError(
-      `Invalid TOML in ${filePath}: ${String(err)}`,
-    );
+  } catch (error) {
+    throw new ConfigLoadError(`Invalid TOML in ${filePath}: ${String(error)}`);
   }
 }
 
@@ -171,9 +163,7 @@ function parseConfigText(text: string, filePath: string): unknown {
 function validateConfig(data: unknown, label: string): Config {
   const result = ConfigSchema.safeParse(data);
   if (!result.success) {
-    throw new ConfigLoadError(
-      `Invalid configuration (${label}):\n${formatZodError(result.error)}`,
-    );
+    throw new ConfigLoadError(`Invalid configuration (${label}):\n${formatZodError(result.error)}`);
   }
   return result.data;
 }
@@ -183,11 +173,7 @@ function validateConfig(data: unknown, label: string): Config {
  * instead of throwing.  Used for the default config path so that a broken
  * config file does not block the CLI entirely.
  */
-function validateConfigSafe(
-  data: unknown,
-  label: string,
-  warnings: string[],
-): Config {
+function validateConfigSafe(data: unknown, label: string, warnings: string[]): Config {
   const result = ConfigSchema.safeParse(data);
   if (!result.success) {
     warnings.push(
@@ -222,15 +208,18 @@ function configToSerializable(config: Config): Record<string, unknown> {
   // For default config, produce a minimal file with just a comment-like
   // structure.  We include the top-level scalar defaults so the user sees
   // what can be customised.
-  return JSON.parse(JSON.stringify({
-    default_model: config.default_model,
-    default_thinking: config.default_thinking,
-    default_yolo: config.default_yolo,
-    default_plan_mode: config.default_plan_mode,
-    default_editor: config.default_editor,
-    theme: config.theme,
-    merge_all_available_skills: config.merge_all_available_skills,
-  })) as Record<string, unknown>;
+  return JSON.parse(
+    JSON.stringify({
+      default_model: config.default_model,
+      default_thinking: config.default_thinking,
+      default_yolo: config.default_yolo,
+      default_plan_mode: config.default_plan_mode,
+      default_editor: config.default_editor,
+      theme: config.theme,
+      merge_all_available_skills: config.merge_all_available_skills,
+      show_thinking_stream: config.show_thinking_stream,
+    }),
+  ) as Record<string, unknown>;
 }
 
 /**

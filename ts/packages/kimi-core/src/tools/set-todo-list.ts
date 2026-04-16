@@ -34,22 +34,23 @@ export interface TodoItem {
 
 // ── Schema ───────────────────────────────────────────────────────────
 
-const _rawTodoItemSchema = z.object({
+const TodoItemSchema = z.object({
   title: z.string().min(1).describe('Short, actionable title for the todo.'),
   status: z.enum(['pending', 'in_progress', 'done']).describe('Current status of the todo.'),
 });
 
-const _rawSetTodoListInputSchema = z.object({
+export interface SetTodoListInput {
+  todos?: Array<{ title: string; status: TodoStatus }> | undefined;
+}
+
+export const SetTodoListInputSchema: z.ZodType<SetTodoListInput> = z.object({
   todos: z
-    .array(_rawTodoItemSchema)
+    .array(TodoItemSchema)
     .optional()
     .describe(
       'The updated todo list. Omit to read the current todo list without making changes. Pass an empty array to clear the list.',
     ),
 });
-
-export type SetTodoListInput = z.infer<typeof _rawSetTodoListInputSchema>;
-export const SetTodoListInputSchema: z.ZodType<SetTodoListInput> = _rawSetTodoListInputSchema;
 
 // ── Storage ───────────────────────────────────────────────────────────
 
@@ -127,7 +128,7 @@ function statusMarker(status: TodoStatus): string {
 
 export class SetTodoListTool implements BuiltinTool<SetTodoListInput, TodoItem[]> {
   readonly name = 'SetTodoList' as const;
-  readonly description = DESCRIPTION;
+  readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<SetTodoListInput> = SetTodoListInputSchema;
 
   constructor(private readonly store: TodoStore) {}

@@ -46,7 +46,7 @@ const DESCRIPTION =
 
 export class FetchURLTool implements BuiltinTool<FetchURLInput, void> {
   readonly name = 'FetchURL' as const;
-  readonly description = DESCRIPTION;
+  readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<FetchURLInput> = FetchURLInputSchema;
 
   constructor(private readonly fetcher: UrlFetcher) {}

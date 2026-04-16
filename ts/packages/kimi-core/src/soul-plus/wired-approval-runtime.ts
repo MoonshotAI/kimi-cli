@@ -8,9 +8,10 @@
  *     this order).
  *   - Await the user response. On settle, write the `approval_response`
  *     record **before** the waiter is resolved.
- *   - Honor a hard 300 s request timeout and abort signals. Timeout /
- *     abort / `cancelBySource` all write a synthetic cancelled record so
- *     the next `recoverPendingOnStartup` is idempotent (P0-2).
+ *   - Honor abort signals and `cancelBySource`. These write a synthetic
+ *     cancelled record so `recoverPendingOnStartup` is idempotent (P0-2).
+ *     Hard timeout is managed by the outer `withTimeout` wrapper in
+ *     `buildBeforeToolCall`, not here (single source of truth — Codex R2 M3).
  *   - Persist session-scoped `auto_approve_actions` to `state.json` via
  *     an injected `ApprovalStateStore`. Short-circuit requests whose
  *     action is already in the cache (§9-G Python parity with
@@ -54,14 +55,17 @@ export const WIRED_APPROVAL_TIMEOUT_MS = 300_000;
 interface Deferred<T> {
   readonly promise: Promise<T>;
   resolve(value: T): void;
+  reject(reason: unknown): void;
 }
 
 function makeDeferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
     resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 interface Pending {
@@ -70,7 +74,6 @@ interface Pending {
   readonly turnId: string;
   readonly step: number;
   readonly deferred: Deferred<ApprovalResult>;
-  timer: ReturnType<typeof setTimeout> | undefined;
   abortCleanup: (() => void) | undefined;
   /** `true` once a terminal path has claimed the entry. */
   settled: boolean;
@@ -96,8 +99,6 @@ export interface WiredApprovalRuntimeDeps {
    * still works via the runtime short-circuit).
    */
   readonly ruleInjector?: ((rule: PermissionRule) => void) | undefined;
-  /** Default per-request hard timeout in ms. Defaults to 300 000 ms. */
-  readonly timeoutMs?: number | undefined;
   /** Deterministic id allocator for tests. */
   readonly allocateRequestId?: (() => string) | undefined;
 }
@@ -109,9 +110,15 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
   private readonly stateStore: ApprovalStateStore;
   private readonly loadJournalRecords: () => Promise<readonly WireRecord[]>;
   private readonly ruleInjector: ((rule: PermissionRule) => void) | undefined;
-  private readonly timeoutMs: number;
   private readonly allocateRequestId: () => string;
   private readonly pending = new Map<string, Pending>();
+
+  /**
+   * Sources that have been passed to `cancelBySource`. Checked
+   * retroactively by `request()` after `pending.set` so that entries
+   * still in the WAL window at cancel time are caught. (Codex R2 M2)
+   */
+  private readonly cancelledSources: ApprovalSource[] = [];
 
   /**
    * Session-level auto-approve cache. Populated lazily on first access
@@ -126,7 +133,6 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
     this.stateStore = deps.stateStore;
     this.loadJournalRecords = deps.loadJournalRecords;
     this.ruleInjector = deps.ruleInjector;
-    this.timeoutMs = deps.timeoutMs ?? WIRED_APPROVAL_TIMEOUT_MS;
     this.allocateRequestId = deps.allocateRequestId ?? (() => `appr_${randomUUID()}`);
   }
 
@@ -187,13 +193,9 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
 
     const deferred = makeDeferred<ApprovalResult>();
 
-    // Hard timeout — writes a synthetic cancelled record and resolves
-    // the waiter as `{approved: false, feedback: 'timed out'}`.
-    const timer = setTimeout(() => {
-      void this.cancelOne(requestId, 'approval timed out');
-    }, this.timeoutMs);
-
     // Signal-driven cancel (§9-G.5: abort propagates into the waiter).
+    // Timeout is NOT managed here — the single source of truth is the
+    // outer `withTimeout` wrapper in `buildBeforeToolCall` (Codex R2 M3).
     let abortCleanup: (() => void) | undefined;
     let listener: (() => void) | undefined;
     if (signal !== undefined) {
@@ -212,22 +214,39 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
       turnId,
       step,
       deferred,
-      timer,
       abortCleanup,
       settled: false,
     };
 
     this.pending.set(requestId, entry);
 
-    // M1 fix — abort race retroactive trigger. If the caller aborted the
-    // signal **during** the `await sessionJournal.appendApprovalRequest`
-    // window above, the abort event was dispatched before our listener
-    // was attached, so the listener will never fire on its own. Re-check
-    // `signal.aborted` after install + after the entry is in the map and
-    // call the listener by hand. Order is critical: the entry must be in
-    // `this.pending` first so `cancelOne` can claim it. Reviewer M1.
+    // Retroactive abort trigger (Round 1 M1). If the caller aborted the
+    // signal during the WAL window, the abort event was dispatched before
+    // our listener was attached. Re-check after the entry is in the map
+    // so `cancelOne` can claim it.
     if (isAborted(signal) && listener !== undefined) {
       listener();
+    }
+
+    // Retroactive auto-approve check (Codex R2 M1). If a concurrent
+    // approve_for_session added this action to the cache while we were
+    // in the WAL window, the cascade snapshot missed us.
+    if (this.autoApproveActions !== undefined && this.autoApproveActions.has(req.action)) {
+      queueMicrotask(() => {
+        this.resolve(requestId, { response: 'approved' });
+      });
+    }
+
+    // Retroactive source-cancel check (Codex R2 M2). If cancelBySource
+    // ran while we were in the WAL window, it only scanned entries
+    // already in `this.pending` and missed us.
+    for (const src of this.cancelledSources) {
+      if (matchesSource(req.source, src)) {
+        queueMicrotask(() => {
+          void this.cancelOne(requestId, 'cancelled by source');
+        });
+        break;
+      }
     }
 
     return deferred.promise;
@@ -245,10 +264,6 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
     const entry = this.pending.get(requestId);
     if (entry === undefined || entry.settled) return undefined;
     entry.settled = true;
-    if (entry.timer !== undefined) {
-      clearTimeout(entry.timer);
-      entry.timer = undefined;
-    }
     if (entry.abortCleanup !== undefined) {
       entry.abortCleanup();
       entry.abortCleanup = undefined;
@@ -271,49 +286,53 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
     const entry = this.claim(requestId);
     if (entry === undefined) return;
 
-    // approve_for_session: persist + rule inject. We must do this
-    // BEFORE building the cascade snapshot so any new request that
-    // enters the short-circuit fast path observes the cached state.
-    if (response.scope === 'session' && response.response === 'approved') {
-      await this.recordSessionApproval(entry.request.action, entry.request.toolName);
-    }
+    try {
+      // approve_for_session: persist + rule inject. We must do this
+      // BEFORE building the cascade snapshot so any new request that
+      // enters the short-circuit fast path observes the cached state.
+      if (response.scope === 'session' && response.response === 'approved') {
+        await this.recordSessionApproval(entry.request.action, entry.request.toolName);
+      }
 
-    // Snapshot of remaining pending with the same action. These get
-    // cascade-resolved on the next microtask to avoid re-entrant
-    // recursion through `doResolve` (P0-3).
-    const cascadeTargets: Pending[] = [];
-    if (response.scope === 'session' && response.response === 'approved') {
-      for (const other of this.pending.values()) {
-        if (!other.settled && other.request.action === entry.request.action) {
-          cascadeTargets.push(other);
+      // Snapshot of remaining pending with the same action. These get
+      // cascade-resolved on the next microtask to avoid re-entrant
+      // recursion through `doResolve` (P0-3).
+      const cascadeTargets: Pending[] = [];
+      if (response.scope === 'session' && response.response === 'approved') {
+        for (const other of this.pending.values()) {
+          if (!other.settled && other.request.action === entry.request.action) {
+            cascadeTargets.push(other);
+          }
         }
       }
-    }
 
-    // P0-1: append the approval_response wire record BEFORE resolving
-    // the in-memory waiter.
-    const responseRecord: JournalInput<'approval_response'> = {
-      type: 'approval_response',
-      turn_id: entry.turnId,
-      step: entry.step,
-      data: {
-        request_id: requestId,
-        response: response.response,
+      // P0-1: append the approval_response wire record BEFORE resolving
+      // the in-memory waiter.
+      const responseRecord: JournalInput<'approval_response'> = {
+        type: 'approval_response',
+        turn_id: entry.turnId,
+        step: entry.step,
+        data: {
+          request_id: requestId,
+          response: response.response,
+          ...(response.feedback !== undefined ? { feedback: response.feedback } : {}),
+        },
+      };
+      await this.sessionJournal.appendApprovalResponse(responseRecord);
+
+      const result: ApprovalResult = {
+        approved: response.response === 'approved',
         ...(response.feedback !== undefined ? { feedback: response.feedback } : {}),
-      },
-    };
-    await this.sessionJournal.appendApprovalResponse(responseRecord);
+      };
+      entry.deferred.resolve(result);
 
-    const result: ApprovalResult = {
-      approved: response.response === 'approved',
-      ...(response.feedback !== undefined ? { feedback: response.feedback } : {}),
-    };
-    entry.deferred.resolve(result);
-
-    for (const target of cascadeTargets) {
-      queueMicrotask(() => {
-        void this.doResolve(target.requestId, { response: 'approved' });
-      });
+      for (const target of cascadeTargets) {
+        queueMicrotask(() => {
+          void this.doResolve(target.requestId, { response: 'approved' });
+        });
+      }
+    } catch (error) {
+      entry.deferred.reject(error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -336,6 +355,10 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
   // ── cancelBySource / cancelOne — synthetic cancelled response ──────
 
   cancelBySource(source: ApprovalSource): void {
+    // Record the source so retroactive checks in `request()` can catch
+    // entries that are still in the WAL window (Codex R2 M2).
+    this.cancelledSources.push(source);
+
     // Snapshot request ids — we mutate `pending` via cancelOne below.
     const matches: string[] = [];
     for (const entry of this.pending.values()) {
@@ -352,20 +375,24 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
     const entry = this.claim(requestId);
     if (entry === undefined) return;
 
-    const responseRecord: JournalInput<'approval_response'> = {
-      type: 'approval_response',
-      turn_id: entry.turnId,
-      step: entry.step,
-      data: {
-        request_id: requestId,
-        response: 'cancelled',
-        feedback,
-        synthetic: true,
-      },
-    };
-    await this.sessionJournal.appendApprovalResponse(responseRecord);
+    try {
+      const responseRecord: JournalInput<'approval_response'> = {
+        type: 'approval_response',
+        turn_id: entry.turnId,
+        step: entry.step,
+        data: {
+          request_id: requestId,
+          response: 'cancelled',
+          feedback,
+          synthetic: true,
+        },
+      };
+      await this.sessionJournal.appendApprovalResponse(responseRecord);
 
-    entry.deferred.resolve({ approved: false, feedback });
+      entry.deferred.resolve({ approved: false, feedback });
+    } catch (error) {
+      entry.deferred.reject(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 
   // ── recoverPendingOnStartup (§9-G.4) ───────────────────────────────

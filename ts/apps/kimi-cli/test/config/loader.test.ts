@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ConfigLoadError, loadConfig, getDefaultConfig } from '../../src/config/loader.js';
@@ -67,9 +68,7 @@ describe('loadConfig with inline --config string', () => {
   });
 
   it('throws on valid TOML but invalid config values', () => {
-    expect(() =>
-      loadConfig({ config: 'theme = "blue"' }),
-    ).toThrow(ConfigLoadError);
+    expect(() => loadConfig({ config: 'theme = "blue"' })).toThrow(ConfigLoadError);
   });
 });
 
@@ -101,9 +100,9 @@ describe('loadConfig with --config-file', () => {
   });
 
   it('throws when file does not exist', () => {
-    expect(() =>
-      loadConfig({ configFile: join(testDir, 'nonexistent.toml') }),
-    ).toThrow(ConfigLoadError);
+    expect(() => loadConfig({ configFile: join(testDir, 'nonexistent.toml') })).toThrow(
+      ConfigLoadError,
+    );
   });
 
   it('throws on invalid TOML in file', () => {
@@ -308,9 +307,7 @@ command = "echo stop"
     expect(model!.max_context_size).toBe(128_000);
     expect(model!.capabilities).toEqual(['thinking', 'image_in']);
 
-    expect(config.services.moonshot_search?.base_url).toBe(
-      'https://search.example.com',
-    );
+    expect(config.services.moonshot_search?.base_url).toBe('https://search.example.com');
 
     expect(config.hooks).toHaveLength(2);
     expect(config.hooks[0]!.event).toBe('PreToolUse');

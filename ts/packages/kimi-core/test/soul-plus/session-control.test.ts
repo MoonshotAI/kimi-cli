@@ -124,7 +124,7 @@ describe('SessionControl — /plan', () => {
 
 describe('SessionControl — /yolo', () => {
   it('enables yolo: sets bypassPermissions mode on TurnManager', async () => {
-    const { sessionControl } = makeSessionControl();
+    const { sessionControl, turnManager } = makeSessionControl();
 
     expect(turnManager.getPermissionMode()).toBe('default');
 

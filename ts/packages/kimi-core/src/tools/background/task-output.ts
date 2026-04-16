@@ -41,7 +41,7 @@ export const TaskOutputInputSchema: z.ZodType<TaskOutputInput> = _rawTaskOutputI
 
 export class TaskOutputTool implements BuiltinTool<TaskOutputInput, void> {
   readonly name = 'TaskOutput' as const;
-  readonly description =
+  readonly description: string =
     'Read the output of a background task. Use block=true to wait for completion.';
   readonly inputSchema: z.ZodType<TaskOutputInput> = TaskOutputInputSchema;
 

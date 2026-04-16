@@ -60,6 +60,7 @@ export type FakeContextCall =
 
 export class FakeContextState implements SoulContextState {
   readonly calls: FakeContextCall[] = [];
+  beforeStep: (() => void) | undefined = undefined;
 
   private _model: string;
   private _systemPrompt: string;

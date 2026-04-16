@@ -170,12 +170,15 @@ function isInjectionUserMessage(message: Message): boolean {
   if (message.role !== 'user') return false;
   const text = extractTextOnly(message);
   // Cheap leading-fragment check — injections always have the opening
-  // tag at the start. We purposely do NOT regex-scan the whole body;
-  // the projector's input is trusted (either history text or
-  // renderInjection output) and leading-tag detection matches Python's
-  // cheaper logic.
-  if (text.startsWith('<notification')) return true;
-  if (text.startsWith('<system-reminder>')) return true;
+  // tag at the start. We use `trimStart()` so leading whitespace
+  // doesn't defeat the check, and require `'<notification '` (with
+  // trailing space) so user text like `<notificationally` or the
+  // bare `<notification>` tag (no attributes) is not misidentified.
+  // Ported from Python `notifications/llm.py:73-77` which uses
+  // `lstrip().startswith("<notification ")`.
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith('<notification ')) return true;
+  if (trimmed.startsWith('<system-reminder>')) return true;
   return false;
 }
 

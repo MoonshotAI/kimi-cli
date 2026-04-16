@@ -233,6 +233,125 @@ describe('M04 — archiveFile is threaded to resetToSummary', () => {
   });
 });
 
+// ── C1: cancel during rotate — critical section integrity ────────────
+
+describe('C1 — abort after rotate does not break critical section', () => {
+  const noopKosong: KosongAdapter = {
+    async chat() {
+      throw new Error('runCompaction should not call kosong.chat');
+    },
+  };
+
+  it('abort signalled during rotate still completes resetToSummary', async () => {
+    // Setup: an AbortController that fires abort DURING the rotate await.
+    // The journal capability's rotate() triggers the abort, simulating
+    // a cancel arriving while rotate is in-flight. After rotate resolves,
+    // the critical section must NOT check signal — it must proceed to
+    // resetToSummary and complete it.
+    const controller = new AbortController();
+    const summaryContent = 'Compacted conversation summary.';
+    const summaryFromProvider: RuntimeSummaryMessage = {
+      content: summaryContent,
+    };
+
+    const ctx = new FakeContextState({
+      buildMessagesReturn: [
+        { role: 'user', content: [{ type: 'text', text: 'hello' }], toolCalls: [] },
+      ],
+      initialTokenCountWithPending: 150_000,
+    });
+    const sink = new CollectingEventSink();
+    const compactionProvider = createSpyCompactionProvider(summaryFromProvider);
+    const lifecycleGate = createSpyLifecycleGate();
+
+    // Custom journal capability that aborts mid-rotate
+    const journalCapability = createSpyJournalCapability();
+    const originalRotate = journalCapability.rotate.bind(journalCapability);
+    const abortingJournal: typeof journalCapability = {
+      rotations: journalCapability.rotations,
+      async rotate(boundaryRecord) {
+        const result = await originalRotate(boundaryRecord);
+        // Simulate abort arriving while rotate is executing
+        controller.abort();
+        return result;
+      },
+    };
+
+    const { runtime } = createFakeRuntime({
+      kosong: noopKosong,
+      compactionProvider,
+      lifecycle: lifecycleGate,
+      journal: abortingJournal,
+    });
+
+    // runCompaction should complete successfully — the abort after
+    // rotate must not interrupt the critical section.
+    await runCompaction(ctx, runtime, sink, controller.signal);
+
+    // Verify rotate was called
+    expect(abortingJournal.rotations.length).toBe(1);
+
+    // Verify resetToSummary was called (the critical section completed)
+    const resetCalls = ctx.calls.filter((c) => c.kind === 'resetToSummary');
+    expect(resetCalls.length).toBe(1);
+    expect(resetCalls[0]!.summary.archiveFile).toBe('wire.1.jsonl');
+
+    // Verify lifecycle returned to active
+    expect(lifecycleGate.transitions).toContain('compacting');
+    expect(lifecycleGate.transitions.at(-1)).toBe('active');
+
+    // Verify compaction events were emitted
+    expect(sink.typesIn()).toContain('compaction.begin');
+    expect(sink.typesIn()).toContain('compaction.end');
+  });
+
+  it('abort before rotate (during provider.run) still aborts compaction', async () => {
+    // This verifies the signal.throwIfAborted() BEFORE rotate is preserved.
+    const controller = new AbortController();
+
+    const ctx = new FakeContextState({
+      buildMessagesReturn: [
+        { role: 'user', content: [{ type: 'text', text: 'hello' }], toolCalls: [] },
+      ],
+      initialTokenCountWithPending: 150_000,
+    });
+    const sink = new CollectingEventSink();
+    const lifecycleGate = createSpyLifecycleGate();
+    const journalCapability = createSpyJournalCapability();
+
+    // Compaction provider that aborts mid-run
+    const abortingProvider = {
+      calls: [] as unknown[],
+      async run() {
+        controller.abort();
+        return { content: 'should not matter' };
+      },
+    };
+
+    const { runtime } = createFakeRuntime({
+      kosong: noopKosong,
+      compactionProvider: abortingProvider as unknown as ReturnType<
+        typeof createSpyCompactionProvider
+      >,
+      lifecycle: lifecycleGate,
+      journal: journalCapability,
+    });
+
+    // Should throw AbortError because the abort happens before the critical section
+    await expect(runCompaction(ctx, runtime, sink, controller.signal)).rejects.toThrow();
+
+    // rotate should NOT have been called
+    expect(journalCapability.rotations.length).toBe(0);
+
+    // resetToSummary should NOT have been called
+    const resetCalls = ctx.calls.filter((c) => c.kind === 'resetToSummary');
+    expect(resetCalls.length).toBe(0);
+
+    // lifecycle should still return to active (finally block)
+    expect(lifecycleGate.transitions.at(-1)).toBe('active');
+  });
+});
+
 // ── M05: TurnManager wires compactionConfig ──────────────────────────
 
 describe('M05 — TurnManager compactionConfig wiring', () => {

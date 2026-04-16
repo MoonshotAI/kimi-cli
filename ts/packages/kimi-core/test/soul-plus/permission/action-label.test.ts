@@ -63,13 +63,13 @@ describe('describeApprovalAction', () => {
     ).toBe('call UnknownTool');
   });
 
-  it('MCP tools collapse to a per-inner-tool label so approve_for_session groups calls', () => {
+  it('MCP tools include server name so approve_for_session does not cross servers', () => {
     const display: ApprovalDisplay = { kind: 'generic', title: 'x', body: 'y' };
     expect(describeApprovalAction('mcp__files__get_files', {}, display)).toBe(
-      'call MCP tool: get_files',
+      'call MCP tool: files:get_files',
     );
     expect(describeApprovalAction('mcp__other__get_files', {}, display)).toBe(
-      'call MCP tool: get_files',
+      'call MCP tool: other:get_files',
     );
   });
 

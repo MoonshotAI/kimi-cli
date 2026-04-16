@@ -197,6 +197,52 @@ describe('DefaultConversationProjector — Slice 2.4 notification XML wrapping',
     expect(userText).toBe('what is next?');
   });
 
+  it('does not treat "<notificationally ..." as an injection (Minor1 — narrow predicate)', () => {
+    const projector = new DefaultConversationProjector();
+    const history: Message[] = [
+      createUserMessage('<notificationally this is user text'),
+      createUserMessage('follow up'),
+    ];
+    const out = projector.project(makeSnapshot(history), [], {});
+    // These should merge because "<notificationally" is NOT a notification tag
+    expect(out).toHaveLength(1);
+    const mergedText = (out[0]!.content[0] as TextPart).text;
+    expect(mergedText).toContain('<notificationally');
+    expect(mergedText).toContain('follow up');
+  });
+
+  it('does not treat "<notification>" (no attributes) as an injection (Minor1)', () => {
+    const projector = new DefaultConversationProjector();
+    const history: Message[] = [
+      createUserMessage('<notification>user typed this literally'),
+      createUserMessage('another message'),
+    ];
+    const out = projector.project(makeSnapshot(history), [], {});
+    // No space after <notification → not an injection → should merge
+    expect(out).toHaveLength(1);
+  });
+
+  it('detects injection with leading whitespace via trimStart (Minor1)', () => {
+    const projector = new DefaultConversationProjector();
+    // Simulate an injection message that has leading whitespace
+    const history: Message[] = [
+      {
+        role: 'user' as const,
+        content: [
+          {
+            type: 'text' as const,
+            text: '  <notification id="n_1" category="task" type="t" source_kind="s" source_id="s1">\nbody\n</notification>',
+          },
+        ],
+        toolCalls: [],
+      },
+      createUserMessage('real user message'),
+    ];
+    const out = projector.project(makeSnapshot(history), [], {});
+    // Should NOT merge — the leading-whitespace notification is still an injection
+    expect(out).toHaveLength(2);
+  });
+
   it('still merges two real user messages (no false positive on non-injection content)', () => {
     const projector = new DefaultConversationProjector();
     const history: Message[] = [createUserMessage('hello'), createUserMessage('there')];

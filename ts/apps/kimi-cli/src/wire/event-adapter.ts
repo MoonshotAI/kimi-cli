@@ -1,0 +1,105 @@
+/**
+ * Soul → Wire event adapter (Slice 4.1).
+ *
+ * kimi-core emits `SoulEvent`s via `SessionEventBus` — a narrow union that
+ * covers `step.*`, `content.delta`, `tool.*`, and `compaction.*`. The TUI
+ * consumes the richer `WireMessage` envelope with event data shapes from
+ * `./events.ts`. This adapter is a pure function mapping one to the other
+ * so the `KimiCoreClient` bridge stays thin.
+ *
+ * SoulEvent does NOT carry `turn.begin` or `turn.end` — those are
+ * synthesised from lifecycle observer events in `kimi-core-client.ts`.
+ * `tool.result` is first-class as of Slice 4.2. Events without a TUI
+ * counterpart map to `null` and are skipped.
+ */
+
+import type { SoulEvent } from '@moonshot-ai/core';
+
+import { createEvent } from './wire-message.js';
+import type { WireMessage } from './wire-message.js';
+
+export interface EventAdaptContext {
+  readonly sessionId: string;
+  readonly turnId: string | undefined;
+  readonly nextSeq: () => number;
+}
+
+export function adaptSoulEventToWireMessage(
+  event: SoulEvent,
+  ctx: EventAdaptContext,
+): WireMessage | null {
+  const common = {
+    session_id: ctx.sessionId,
+    ...(ctx.turnId !== undefined ? { turn_id: ctx.turnId } : {}),
+    seq: ctx.nextSeq(),
+  };
+
+  switch (event.type) {
+    case 'step.begin':
+      return createEvent('step.begin', { step: event.step }, common);
+
+    case 'step.end':
+      return createEvent('step.end', {}, common);
+
+    case 'step.interrupted':
+      return createEvent('step.interrupted', { step: event.step, reason: event.reason }, common);
+
+    case 'content.delta':
+      // SoulEvent `content.delta` carries raw `delta: string` with no
+      // discriminator. The kosong adapter only forwards assistant text
+      // parts through `onDelta`, so all deltas are text (thinking deltas
+      // are absorbed inside the adapter and emitted separately — see
+      // Slice 2.1). Map to the TUI `{type:'text', text}` shape.
+      return createEvent('content.delta', { type: 'text', text: event.delta }, common);
+
+    case 'tool.call':
+      return createEvent(
+        'tool.call',
+        { id: event.toolCallId, name: event.name, args: event.args },
+        common,
+      );
+
+    case 'tool.progress':
+      return createEvent(
+        'tool.progress',
+        { tool_call_id: event.toolCallId, update: event.update },
+        common,
+      );
+
+    case 'tool.result':
+      // Slice 4.2 — runSoulTurn emits `tool.result` SoulEvents at every
+      // `appendToolResult` call site (normal + synthetic paths). The
+      // bridge just forwards them verbatim; the per-tool wrapper that
+      // Slice 4.1 used in KimiCoreClient is deleted.
+      return createEvent(
+        'tool.result',
+        {
+          tool_call_id: event.toolCallId,
+          output: event.output,
+          ...(event.isError === true ? { is_error: true } : {}),
+        },
+        common,
+      );
+
+    case 'compaction.begin':
+      return createEvent('compaction.begin', {}, common);
+
+    case 'compaction.end':
+      return createEvent(
+        'compaction.end',
+        {
+          ...(event.tokensBefore !== undefined ? { tokens_before: event.tokensBefore } : {}),
+          ...(event.tokensAfter !== undefined ? { tokens_after: event.tokensAfter } : {}),
+        },
+        common,
+      );
+
+    default: {
+      // Exhaustive guard — adding a new SoulEvent variant without
+      // extending this switch is a compile error.
+      const _exhaustive: never = event;
+      void _exhaustive;
+      return null;
+    }
+  }
+}

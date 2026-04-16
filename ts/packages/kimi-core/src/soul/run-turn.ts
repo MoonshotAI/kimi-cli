@@ -86,6 +86,12 @@ export async function runSoulTurn(
       // §5.1.7 L1384: checkpoint after addUserMessages.
       signal.throwIfAborted();
 
+      // M3: drain mid-turn state (notifications) into the ephemeral
+      // stash before building messages. Aligns with Python's per-step
+      // `deliver_pending("llm")` semantics. No-op when hook is unset
+      // (pure-Soul tests / embeddings without TurnManager).
+      context.beforeStep?.();
+
       const model = overrides?.model ?? context.model;
       const visibleTools = buildLLMVisibleTools(config.tools, overrides?.activeTools);
       const messages = context.buildMessages();
@@ -147,19 +153,17 @@ export async function runSoulTurn(
 
         const tool = findTool(config.tools, toolCall.name);
         if (tool === undefined) {
-          await context.appendToolResult(toolCall.id, {
-            output: `Tool "${toolCall.name}" not found`,
-            isError: true,
-          });
+          const output = `Tool "${toolCall.name}" not found`;
+          emitToolResultEvent(sink, toolCall.id, output, true);
+          await context.appendToolResult(toolCall.id, { output, isError: true });
           continue;
         }
 
         const parsed = tool.inputSchema.safeParse(toolCall.args);
         if (!parsed.success) {
-          await context.appendToolResult(toolCall.id, {
-            output: `Invalid input for tool "${toolCall.name}": ${parsed.error.message}`,
-            isError: true,
-          });
+          const output = `Invalid input for tool "${toolCall.name}": ${parsed.error.message}`;
+          emitToolResultEvent(sink, toolCall.id, output, true);
+          await context.appendToolResult(toolCall.id, { output, isError: true });
           continue;
         }
 
@@ -178,20 +182,18 @@ export async function runSoulTurn(
               signal,
             );
           } catch (error) {
-            await context.appendToolResult(toolCall.id, {
-              output: `beforeToolCall hook failed for "${toolCall.name}": ${errorMessage(error)}`,
-              isError: true,
-            });
+            const output = `beforeToolCall hook failed for "${toolCall.name}": ${errorMessage(error)}`;
+            emitToolResultEvent(sink, toolCall.id, output, true);
+            await context.appendToolResult(toolCall.id, { output, isError: true });
             // Next iteration's `signal.throwIfAborted()` picks up an
             // abort-flavoured failure; non-abort errors just continue.
             continue;
           }
 
           if (hookResult?.block === true) {
-            await context.appendToolResult(toolCall.id, {
-              output: hookResult.reason ?? `Tool call "${toolCall.name}" was blocked`,
-              isError: true,
-            });
+            const output = hookResult.reason ?? `Tool call "${toolCall.name}" was blocked`;
+            emitToolResultEvent(sink, toolCall.id, output, true);
+            await context.appendToolResult(toolCall.id, { output, isError: true });
             continue;
           }
           if (hookResult?.updatedInput !== undefined) {
@@ -216,6 +218,7 @@ export async function runSoulTurn(
               : `Tool "${toolCall.name}" failed: ${errorMessage(error)}`,
             isError: true,
           };
+          emitToolResultEvent(sink, toolCall.id, syntheticResult.content as string, true);
           await context.appendToolResult(toolCall.id, {
             output: syntheticResult.content as string,
             isError: true,
@@ -266,20 +269,27 @@ export async function runSoulTurn(
           //   - non-abort: write a synthetic error tool_result explaining
           //     the hook failure and continue to the next tool call.
           if (isAbortError(afterError) || signal.aborted) {
-            await context.appendToolResult(toolCall.id, {
-              output: `Tool "${toolCall.name}" aborted during afterToolCall hook.`,
-              isError: true,
-            });
+            const output = `Tool "${toolCall.name}" aborted during afterToolCall hook.`;
+            emitToolResultEvent(sink, toolCall.id, output, true);
+            await context.appendToolResult(toolCall.id, { output, isError: true });
             throw afterError instanceof Error ? afterError : new Error(errorMessage(afterError));
           }
-          await context.appendToolResult(toolCall.id, {
-            output: `afterToolCall hook failed for "${toolCall.name}": ${errorMessage(afterError)}`,
-            isError: true,
-          });
+          const output = `afterToolCall hook failed for "${toolCall.name}": ${errorMessage(afterError)}`;
+          emitToolResultEvent(sink, toolCall.id, output, true);
+          await context.appendToolResult(toolCall.id, { output, isError: true });
           continue;
         }
 
-        await context.appendToolResult(toolCall.id, adaptToolResult(finalResult));
+        const adapted = adaptToolResult(finalResult);
+        // `adapted.output` is `unknown` at the type level but always
+        // comes from `adaptToolResult` which coalesces every shape
+        // into a string. Normalise defensively so the SoulEvent
+        // variant (which constrains `output: string`) type-checks
+        // without a cast at the call site.
+        const adaptedText =
+          typeof adapted.output === 'string' ? adapted.output : JSON.stringify(adapted.output);
+        emitToolResultEvent(sink, toolCall.id, adaptedText, finalResult.isError === true);
+        await context.appendToolResult(toolCall.id, adapted);
       }
 
       // §5.1.7 L1500: checkpoint after the tool for loop (catches any
@@ -363,4 +373,25 @@ function errorMessage(err: unknown): string {
 
 function findTool(tools: readonly Tool[], name: string): Tool | undefined {
   return tools.find((t) => t.name === name);
+}
+
+/**
+ * Slice 4.2 — emit a `tool.result` SoulEvent right before each
+ * `context.appendToolResult` call so TUI bridges can close the
+ * `tool.call` → `tool.result` pair without wrapping every tool.
+ * `isError` is optional on the event variant; only set when true so
+ * the wire message stays close to Python parity (omit-on-false).
+ */
+function emitToolResultEvent(
+  sink: EventSink,
+  toolCallId: string,
+  output: string,
+  isError: boolean,
+): void {
+  safeEmit(sink, {
+    type: 'tool.result',
+    toolCallId,
+    output,
+    ...(isError ? { isError: true } : {}),
+  });
 }

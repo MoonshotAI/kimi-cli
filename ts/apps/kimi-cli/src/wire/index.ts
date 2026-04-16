@@ -6,8 +6,21 @@
  */
 
 // Envelope + factory functions
-export type { WireMessage, WireError, EventOpts, RequestOpts, ResponseOpts } from './wire-message.js';
-export { WIRE_PROTOCOL_VERSION, createEvent, createRequest, createResponse, createErrorResponse, _resetIdCounter } from './wire-message.js';
+export type {
+  WireMessage,
+  WireError,
+  EventOpts,
+  RequestOpts,
+  ResponseOpts,
+} from './wire-message.js';
+export {
+  WIRE_PROTOCOL_VERSION,
+  createEvent,
+  createRequest,
+  createResponse,
+  createErrorResponse,
+  _resetIdCounter,
+} from './wire-message.js';
 
 // Event payload types
 export type {
@@ -27,6 +40,9 @@ export type {
   MCPStatus,
   NotificationData,
   ApprovalRequestData,
+  QuestionRequestData,
+  QuestionRequestItem,
+  QuestionRequestOption,
   SessionErrorData,
   CompactionBeginData,
   CompactionEndData,
@@ -73,5 +89,11 @@ export type {
 } from './methods.js';
 
 // Client interface + implementation
-export type { WireClient, DataSource, SessionStore } from './client.js';
+export type {
+  WireClient,
+  DataSource,
+  SessionStore,
+  SlashCommandResult,
+  SlashCommandStateUpdate,
+} from './client.js';
 export { WireClientImpl } from './client.js';

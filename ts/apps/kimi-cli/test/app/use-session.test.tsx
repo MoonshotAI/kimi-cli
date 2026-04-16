@@ -5,14 +5,14 @@
  * using ink-testing-library.
  */
 
-import React, { useEffect, useState } from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from 'ink-testing-library';
 import { Text } from 'ink';
+import { render } from 'ink-testing-library';
+import React, { useEffect } from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import type { AppState } from '../../src/app/context.js';
 import { useSession } from '../../src/app/hooks/useSession.js';
 import type { WireClient, WireMessage } from '../../src/wire/index.js';
-import type { AppState } from '../../src/app/context.js';
 import type { SessionInfo } from '../../src/wire/methods.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -34,13 +34,13 @@ function createMockWireClient(sessions: SessionInfo[] = []): WireClient {
     initialize: vi.fn(async () => ({ protocol_version: '2.1', capabilities: {} })),
     createSession: vi.fn(async () => ({ session_id: 'new-session' })),
     listSessions: vi.fn(async () => ({ sessions })),
-    destroySession: vi.fn(async () => undefined),
+    destroySession: vi.fn(async () => {}),
     prompt: vi.fn(async () => ({ turn_id: 'turn_1' })),
-    steer: vi.fn(async () => undefined),
-    cancel: vi.fn(async () => undefined),
-    resume: vi.fn(async () => undefined),
+    steer: vi.fn(async () => {}),
+    cancel: vi.fn(async () => {}),
+    resume: vi.fn(async () => {}),
     fork: vi.fn(async () => ({ session_id: 'forked' })),
-    rename: vi.fn(async () => undefined),
+    rename: vi.fn(async () => {}),
     getStatus: vi.fn(async () => ({ state: 'idle' })),
     getUsage: vi.fn(async () => ({
       total_input_tokens: 0,
@@ -49,14 +49,15 @@ function createMockWireClient(sessions: SessionInfo[] = []): WireClient {
       total_cache_write_tokens: 0,
       total_cost_usd: 0,
     })),
-    compact: vi.fn(async () => undefined),
-    setModel: vi.fn(async () => undefined),
-    setThinking: vi.fn(async () => undefined),
-    setPlanMode: vi.fn(async () => undefined),
-    setYolo: vi.fn(async () => undefined),
+    compact: vi.fn(async () => {}),
+    setModel: vi.fn(async () => {}),
+    setThinking: vi.fn(async () => {}),
+    setPlanMode: vi.fn(async () => {}),
+    setYolo: vi.fn(async () => {}),
     subscribe: vi.fn(() => emptyAsyncIterable()),
     respondToRequest: vi.fn(),
-    dispose: vi.fn(async () => undefined),
+    handleSlashCommand: vi.fn(async () => ({ ok: true, message: 'noop' })),
+    dispose: vi.fn(async () => {}),
   };
 }
 
@@ -87,7 +88,7 @@ function TestHarness({
 
 describe('useSession', () => {
   let mockWireClient: WireClient;
-  let mockSetState: ReturnType<typeof vi.fn>;
+  let mockSetState: ReturnType<typeof vi.fn<(patch: Partial<AppState>) => void>>;
 
   const mockSessions: SessionInfo[] = [
     {
@@ -120,11 +121,19 @@ describe('useSession', () => {
         wireClient={mockWireClient}
         sessionId="session-0001"
         setState={mockSetState}
-        onResult={(r) => { latestResult = r; }}
+        onResult={(r) => {
+          latestResult = r;
+        }}
       />,
     );
 
-    await wait(50);
+    // First-test cold start (module import, React boot) can extend the
+    // microtask drain past 50 ms — poll until the async listSessions()
+    // has flushed through the useEffect → setSessions → re-render path.
+    for (let i = 0; i < 40; i += 1) {
+      await wait(25);
+      if (latestResult !== undefined && latestResult.sessions.length > 0) break;
+    }
     expect(mockWireClient.listSessions).toHaveBeenCalledTimes(1);
     expect(latestResult!.sessions).toHaveLength(2);
     unmount();
@@ -137,7 +146,9 @@ describe('useSession', () => {
         wireClient={mockWireClient}
         sessionId="session-0001"
         setState={mockSetState}
-        onResult={(r) => { latestResult = r; }}
+        onResult={(r) => {
+          latestResult = r;
+        }}
       />,
     );
 
@@ -156,7 +167,9 @@ describe('useSession', () => {
         wireClient={mockWireClient}
         sessionId="session-0001"
         setState={mockSetState}
-        onResult={(r) => { latestResult = r; }}
+        onResult={(r) => {
+          latestResult = r;
+        }}
       />,
     );
 
@@ -173,7 +186,9 @@ describe('useSession', () => {
         wireClient={mockWireClient}
         sessionId="session-0001"
         setState={mockSetState}
-        onResult={(r) => { latestResult = r; }}
+        onResult={(r) => {
+          latestResult = r;
+        }}
       />,
     );
 

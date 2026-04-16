@@ -12,6 +12,7 @@
  *   - SessionJournal creation
  *   - StateCache management (flush on close)
  *   - Replay + repair on resume
+ *   - Compaction rotation crash recovery on resume
  *
  * The SessionManager is NOT responsible for:
  *   - Provider creation (Config module — Slice 3.0)
@@ -23,6 +24,8 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm } from 'node:fs/promises';
 
+import { LifecycleGateFacade } from '../soul-plus/lifecycle-gate.js';
+import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
 import type { ShellDeliverCallback } from '../soul-plus/notification-manager.js';
 import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
 import type { PermissionMode, PermissionRule } from '../soul-plus/permission/index.js';
@@ -32,6 +35,7 @@ import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
 import type { CompactionConfig, Runtime, Tool } from '../soul/index.js';
+import { recoverRotation } from '../storage/compaction.js';
 import type { FullContextState } from '../storage/context-state.js';
 import { WiredContextState } from '../storage/context-state.js';
 import { WiredJournalWriter, type JournalWriter } from '../storage/journal-writer.js';
@@ -49,6 +53,13 @@ export interface SessionInfo {
   created_at: number;
   model?: string | undefined;
   status?: string | undefined;
+  /**
+   * Workspace directory at session creation time (Slice 4.3 Part 5).
+   * Hosts use this to filter `--continue` candidates by the current
+   * working directory. Undefined for legacy sessions written before
+   * Slice 4.3 or for sessions whose state.json is missing / corrupt.
+   */
+  workspace_dir?: string | undefined;
 }
 
 export interface CreateSessionOptions {
@@ -76,6 +87,15 @@ export interface CreateSessionOptions {
   permissionMode?: PermissionMode | undefined;
   /** Compaction configuration (Slice 3.3). */
   compactionConfig?: CompactionConfig | undefined;
+  /**
+   * Workspace directory at session creation (Slice 4.3 Part 5).
+   * Persisted to state.json and returned by listSessions so `--continue`
+   * can filter candidates by the current working directory. Required so
+   * every host must make an explicit decision — tests that don't care
+   * about workspace filtering should pass a deterministic fixture path
+   * (typically the OS temp dir).
+   */
+  workspaceDir: string;
 }
 
 export interface ResumeSessionOptions {
@@ -144,10 +164,16 @@ export class SessionManager {
     const { SessionEventBus: EventBusCtor } = await import('../soul-plus/session-event-bus.js');
     const eventBus = options.eventBus ?? new EventBusCtor();
 
-    const lifecycle = { state: 'active' as const };
+    // Codex Round 2 M3: SessionManager owns the single lifecycle state
+    // machine. The LifecycleGateFacade is shared between JournalWriter
+    // and SoulPlus (via Runtime.lifecycle + TurnManager) so the
+    // compacting/completing gate actually takes effect in production.
+    const lifecycleStateMachine = new SessionLifecycleStateMachine();
+    const lifecycleGate = new LifecycleGateFacade(lifecycleStateMachine);
+
     const journalWriter = new WiredJournalWriter({
       filePath: this.paths.wirePath(sessionId),
-      lifecycle,
+      lifecycle: lifecycleGate,
     });
 
     const sessionJournal = new WiredSessionJournalImpl(journalWriter);
@@ -172,10 +198,12 @@ export class SessionManager {
       status: 'active',
       created_at: now,
       updated_at: now,
+      workspace_dir: options.workspaceDir,
     });
 
-    // Assemble SoulPlus — it creates its own lifecycle state machine,
-    // TurnManager, and NotificationManager internally.
+    // Assemble SoulPlus — shares the lifecycle state machine created
+    // above so JournalWriter, Runtime.lifecycle, and TurnManager all
+    // gate on the same physical state (Codex Round 2 M3).
     const soulPlusDeps: SoulPlusDeps = {
       sessionId,
       contextState,
@@ -183,8 +211,17 @@ export class SessionManager {
       runtime: options.runtime,
       eventBus,
       tools: options.tools,
+      lifecycleStateMachine,
       ...(options.onShellDeliver !== undefined ? { onShellDeliver: options.onShellDeliver } : {}),
       ...(options.skillManager !== undefined ? { skillManager: options.skillManager } : {}),
+      ...(options.compactionConfig !== undefined
+        ? { compactionConfig: options.compactionConfig }
+        : {}),
+      // Slice 4.2 — forward the optional orchestrator into SoulPlus so
+      // TurnManager's beforeToolCall closure runs the full hook +
+      // permission + approval pipeline. Absent the option, TurnManager
+      // continues to use its always-allow default.
+      ...(options.orchestrator !== undefined ? { orchestrator: options.orchestrator } : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -224,7 +261,22 @@ export class SessionManager {
       throw new Error(`Session already active: ${sessionId}`);
     }
 
+    const sessionDir = this.paths.sessionDir(sessionId);
     const wirePath = this.paths.wirePath(sessionId);
+
+    // 0. Recover from a half-done compaction rotation (Codex Round 2 M1).
+    // If the previous process crashed between rotateJournal (rename old
+    // wire.jsonl → wire.N.jsonl + create new wire.jsonl) and writing the
+    // CompactionRecord, the current wire.jsonl is metadata-only or missing.
+    // recoverRotation detects this and rolls back to the pre-rotation state.
+    // Ignore ENOENT — if the session directory doesn't exist, there's
+    // nothing to recover and the subsequent replayWire will produce the
+    // proper error message.
+    try {
+      await recoverRotation(sessionDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
 
     // 1. Replay wire.jsonl → records + health
     let replayResult: ReplayResult;
@@ -240,11 +292,14 @@ export class SessionManager {
     // 2. Project records → initial state
     const projected = projectReplayState(replayResult.records);
 
-    // 3. Create JournalWriter in resume mode
-    const lifecycle = { state: 'active' as const };
+    // 3. Create JournalWriter in resume mode — same lifecycle sharing
+    //    pattern as createSession (Codex Round 2 M3).
+    const lifecycleStateMachine = new SessionLifecycleStateMachine();
+    const lifecycleGate = new LifecycleGateFacade(lifecycleStateMachine);
+
     const journalWriter = new WiredJournalWriter({
       filePath: wirePath,
-      lifecycle,
+      lifecycle: lifecycleGate,
       initialSeq: projected.lastSeq,
       metadataAlreadyWritten: true,
     });
@@ -301,8 +356,15 @@ export class SessionManager {
       runtime: options.runtime,
       eventBus,
       tools: options.tools,
+      lifecycleStateMachine,
       ...(options.onShellDeliver !== undefined ? { onShellDeliver: options.onShellDeliver } : {}),
       ...(options.skillManager !== undefined ? { skillManager: options.skillManager } : {}),
+      ...(options.compactionConfig !== undefined
+        ? { compactionConfig: options.compactionConfig }
+        : {}),
+      // Slice 4.2 — forward the optional orchestrator on the resume
+      // path too so resumed sessions run the same tool pipeline.
+      ...(options.orchestrator !== undefined ? { orchestrator: options.orchestrator } : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -357,6 +419,7 @@ export class SessionManager {
           created_at: state.created_at,
           model: state.model,
           status: state.status,
+          workspace_dir: state.workspace_dir,
         });
       } else {
         // state.json missing or corrupt — include with minimal info.

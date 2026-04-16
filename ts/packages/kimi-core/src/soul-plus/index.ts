@@ -41,7 +41,13 @@ export {
 } from './runtime-factory.js';
 export type { RuntimeFactoryDeps } from './runtime-factory.js';
 export { TurnManager } from './turn-manager.js';
-export type { TurnManagerDeps, TurnPermissionOverrides, TurnState } from './turn-manager.js';
+export type {
+  TurnLifecycleEvent,
+  TurnLifecycleListener,
+  TurnManagerDeps,
+  TurnPermissionOverrides,
+  TurnState,
+} from './turn-manager.js';
 
 // ── Permission subsystem (Slice 2.2) ──────────────────────────────────
 

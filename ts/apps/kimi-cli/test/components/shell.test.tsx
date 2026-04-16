@@ -9,9 +9,9 @@
  * via subscribe(sessionId).
  */
 
+import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from 'ink-testing-library';
 
 import App from '../../src/app/App.js';
 import type { AppState } from '../../src/app/context.js';
@@ -27,27 +27,6 @@ function emptyAsyncIterable(): AsyncIterable<WireMessage> {
         async next(): Promise<IteratorResult<WireMessage>> {
           // Never resolves -- keeps subscribe alive
           return new Promise(() => {});
-        },
-      };
-    },
-  };
-}
-
-function asyncIterableFrom(events: WireMessage[]): AsyncIterable<WireMessage> {
-  let index = 0;
-  let resolve: (() => void) | null = null;
-
-  return {
-    [Symbol.asyncIterator](): AsyncIterator<WireMessage> {
-      return {
-        async next(): Promise<IteratorResult<WireMessage>> {
-          if (index >= events.length) {
-            // Keep the subscription alive (never close)
-            return new Promise(() => {});
-          }
-          const value = events[index]!;
-          index++;
-          return { done: false, value };
         },
       };
     },
@@ -87,7 +66,9 @@ function createPushableStream(): {
       return {
         async next(): Promise<IteratorResult<WireMessage>> {
           while (buffer.length === 0 && !done) {
-            await new Promise<void>((r) => { resolve = r; });
+            await new Promise<void>((r) => {
+              resolve = r;
+            });
           }
           if (buffer.length > 0) {
             return { done: false, value: buffer.shift()! };
@@ -106,13 +87,13 @@ function createMockWireClient(overrides?: Partial<WireClient>): WireClient {
     initialize: vi.fn(async () => ({ protocol_version: '2.1', capabilities: {} })),
     createSession: vi.fn(async () => ({ session_id: 'mock-session' })),
     listSessions: vi.fn(async () => ({ sessions: [] })),
-    destroySession: vi.fn(async () => undefined),
+    destroySession: vi.fn(async () => {}),
     prompt: vi.fn(async () => ({ turn_id: 'turn_1' })),
-    steer: vi.fn(async () => undefined),
-    cancel: vi.fn(async () => undefined),
-    resume: vi.fn(async () => undefined),
+    steer: vi.fn(async () => {}),
+    cancel: vi.fn(async () => {}),
+    resume: vi.fn(async () => {}),
     fork: vi.fn(async () => ({ session_id: 'forked-session' })),
-    rename: vi.fn(async () => undefined),
+    rename: vi.fn(async () => {}),
     getStatus: vi.fn(async () => ({ state: 'idle' })),
     getUsage: vi.fn(async () => ({
       total_input_tokens: 0,
@@ -121,14 +102,15 @@ function createMockWireClient(overrides?: Partial<WireClient>): WireClient {
       total_cache_write_tokens: 0,
       total_cost_usd: 0,
     })),
-    compact: vi.fn(async () => undefined),
-    setModel: vi.fn(async () => undefined),
-    setThinking: vi.fn(async () => undefined),
-    setPlanMode: vi.fn(async () => undefined),
-    setYolo: vi.fn(async () => undefined),
+    compact: vi.fn(async () => {}),
+    setModel: vi.fn(async () => {}),
+    setThinking: vi.fn(async () => {}),
+    setPlanMode: vi.fn(async () => {}),
+    setYolo: vi.fn(async () => {}),
     subscribe: vi.fn(() => emptyAsyncIterable()),
     respondToRequest: vi.fn(),
-    dispose: vi.fn(async () => undefined),
+    handleSlashCommand: vi.fn(async () => ({ ok: true, message: 'noop' })),
+    dispose: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -166,9 +148,10 @@ describe('Shell', () => {
   });
 
   it('renders without throwing', () => {
-    const { unmount } = render(
+    const { unmount, lastFrame } = render(
       <App wireClient={mockWireClient} initialState={defaultState()} />,
     );
+    expect(lastFrame()).toBeDefined();
     unmount();
   });
 
@@ -188,10 +171,7 @@ describe('Shell', () => {
 
   it('displays the model name in the welcome banner', () => {
     const { lastFrame, unmount } = render(
-      <App
-        wireClient={mockWireClient}
-        initialState={defaultState({ model: 'kimi-k2.5' })}
-      />,
+      <App wireClient={mockWireClient} initialState={defaultState({ model: 'kimi-k2.5' })} />,
     );
 
     const frame = lastFrame() ?? '';
@@ -214,10 +194,7 @@ describe('Shell', () => {
 
   it('displays the version in the welcome banner', () => {
     const { lastFrame, unmount } = render(
-      <App
-        wireClient={mockWireClient}
-        initialState={defaultState({ version: '1.2.3' })}
-      />,
+      <App wireClient={mockWireClient} initialState={defaultState({ version: '1.2.3' })} />,
     );
 
     const frame = lastFrame() ?? '';
@@ -255,10 +232,7 @@ describe('Shell', () => {
 
   it('shows yolo indicator when yolo mode is enabled', () => {
     const { lastFrame, unmount } = render(
-      <App
-        wireClient={mockWireClient}
-        initialState={defaultState({ yolo: true })}
-      />,
+      <App wireClient={mockWireClient} initialState={defaultState({ yolo: true })} />,
     );
 
     const frame = lastFrame() ?? '';
@@ -268,10 +242,7 @@ describe('Shell', () => {
 
   it('shows plan indicator when plan mode is enabled', () => {
     const { lastFrame, unmount } = render(
-      <App
-        wireClient={mockWireClient}
-        initialState={defaultState({ planMode: true })}
-      />,
+      <App wireClient={mockWireClient} initialState={defaultState({ planMode: true })} />,
     );
 
     const frame = lastFrame() ?? '';
@@ -295,9 +266,17 @@ describe('Shell', () => {
 
     const promptFn = vi.fn(async (_sid: string, _input: string) => {
       // Push events into the stream after prompt is called
-      stream.push(createEvent('turn.begin', { turn_id: 'turn_1', user_input: 'hello', input_kind: 'user' }, opts));
+      stream.push(
+        createEvent(
+          'turn.begin',
+          { turn_id: 'turn_1', user_input: 'hello', input_kind: 'user' },
+          opts,
+        ),
+      );
       stream.push(createEvent('content.delta', { type: 'text', text: 'Response' }, opts));
-      stream.push(createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts));
+      stream.push(
+        createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts),
+      );
       return { turn_id: 'turn_1' };
     });
 
@@ -326,9 +305,19 @@ describe('Shell', () => {
 
     mockWireClient = createMockWireClient({
       prompt: vi.fn(async () => {
-        stream.push(createEvent('turn.begin', { turn_id: 'turn_1', user_input: 'hi', input_kind: 'user' }, opts));
-        stream.push(createEvent('content.delta', { type: 'text', text: 'Hello from assistant!' }, opts));
-        stream.push(createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts));
+        stream.push(
+          createEvent(
+            'turn.begin',
+            { turn_id: 'turn_1', user_input: 'hi', input_kind: 'user' },
+            opts,
+          ),
+        );
+        stream.push(
+          createEvent('content.delta', { type: 'text', text: 'Hello from assistant!' }, opts),
+        );
+        stream.push(
+          createEvent('turn.end', { turn_id: 'turn_1', reason: 'done', success: true }, opts),
+        );
         return { turn_id: 'turn_1' };
       }),
       subscribe: vi.fn(() => stream.iterable),
@@ -349,14 +338,14 @@ describe('Shell', () => {
   }, 5000);
 
   it('calls wireClient.cancel on Ctrl-C', async () => {
-    const cancelFn = vi.fn(async () => undefined);
+    const cancelFn = vi.fn(async () => {});
     mockWireClient = createMockWireClient({ cancel: cancelFn });
 
     const { stdin, unmount } = render(
       <App wireClient={mockWireClient} initialState={defaultState()} />,
     );
 
-    stdin.write('\x03');
+    stdin.write('\u0003');
     await wait(50);
 
     expect(cancelFn).toHaveBeenCalled();

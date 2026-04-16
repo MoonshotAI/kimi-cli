@@ -24,6 +24,21 @@ export type SoulEvent =
       args: Record<string, unknown>;
     }
   | { type: 'tool.progress'; toolCallId: string; update: ToolUpdate }
+  /**
+   * Slice 4.2 — emitted by `runSoulTurn` immediately before every
+   * `context.appendToolResult` call, regardless of whether the result
+   * comes from a normal `tool.execute` return, a synthetic "tool not
+   * found" / "schema parse error" / "beforeToolCall block" branch, or
+   * an execute throw. Downstream consumers (TUI bridge) rely on this
+   * event to close the `tool.call` → `tool.result` pair without having
+   * to wrap each tool's execute.
+   */
+  | {
+      type: 'tool.result';
+      toolCallId: string;
+      output: string;
+      isError?: boolean | undefined;
+    }
   | { type: 'compaction.begin' }
   | {
       type: 'compaction.end';

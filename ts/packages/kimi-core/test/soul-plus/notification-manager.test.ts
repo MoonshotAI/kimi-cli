@@ -205,6 +205,88 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
     expect(result.delivered_at.shell).toBeUndefined();
   });
 
+  it('concurrent emits with same dedupe_key only write one journal record and fan-out once (M1)', async () => {
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    let llmCallCount = 0;
+
+    // Delay appendNotification to widen the race window
+    const originalAppend = journal.appendNotification.bind(journal);
+    journal.appendNotification = async (data) => {
+      await new Promise((r) => setTimeout(r, 50));
+      return originalAppend(data);
+    };
+
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      onEmittedToLlm: () => {
+        llmCallCount += 1;
+      },
+    });
+
+    const [r1, r2] = await Promise.all([
+      manager.emit(baseInput({ dedupe_key: 'race_key' })),
+      manager.emit(baseInput({ dedupe_key: 'race_key' })),
+    ]);
+
+    // Both should return the same id
+    expect(r1.id).toBe(r2.id);
+    // Exactly one was deduped (the concurrent follower)
+    const deduped = [r1.deduped, r2.deduped].filter(Boolean);
+    expect(deduped).toHaveLength(1);
+    // Only one journal record + one fan-out
+    expect(llmCallCount).toBe(1);
+    expect(journal.getRecordsByType('notification')).toHaveLength(1);
+  });
+
+  it('wire sink: delivered_at.wire is set even when async listener rejects (M2 bus-accepted semantics)', async () => {
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    eventBus.subscribeNotifications(async () => {
+      throw new Error('async wire boom');
+    });
+
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      onEmittedToLlm: () => {
+        // noop
+      },
+      logger: () => {
+        // noop
+      },
+    });
+
+    const result = await manager.emit(baseInput());
+    // delivered_at.wire = timestamp because bus accepted the dispatch;
+    // per-listener async rejection is swallowed by SessionEventBus.
+    expect(result.delivered_at.wire).toBeGreaterThan(0);
+  });
+
+  it('wire sink: delivered_at.wire is set even when sync listener throws (M2 bus-accepted semantics)', async () => {
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    eventBus.subscribeNotifications(() => {
+      throw new Error('sync wire boom');
+    });
+
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      onEmittedToLlm: () => {
+        // noop
+      },
+      logger: () => {
+        // noop
+      },
+    });
+
+    const result = await manager.emit(baseInput());
+    // Bus-accepted semantics: wire timestamp is set regardless of listener errors
+    expect(result.delivered_at.wire).toBeGreaterThan(0);
+  });
+
   it('primes its dedupe index from existing records (replay path)', async () => {
     const journal = new InMemorySessionJournalImpl();
     const eventBus = new SessionEventBus();

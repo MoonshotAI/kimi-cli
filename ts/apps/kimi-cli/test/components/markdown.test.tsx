@@ -5,18 +5,17 @@
  * committed boundary algorithm, and ThinkingBlock component.
  */
 
+import { render } from 'ink-testing-library';
+import { lexer, type Tokens } from 'marked';
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render } from 'ink-testing-library';
-import { Text } from 'ink';
 
-import MarkdownRenderer from '../../src/components/markdown/MarkdownRenderer.js';
 import CodeBlock from '../../src/components/markdown/CodeBlock.js';
-import InlineStyles from '../../src/components/markdown/InlineStyles.js';
-import Table from '../../src/components/markdown/Table.js';
 import { committedBoundary } from '../../src/components/markdown/committed-boundary.js';
+import InlineStyles from '../../src/components/markdown/InlineStyles.js';
+import MarkdownRenderer from '../../src/components/markdown/MarkdownRenderer.js';
+import Table from '../../src/components/markdown/Table.js';
 import ThinkingBlock from '../../src/components/message/ThinkingBlock.js';
-import { lexer, type Tokens } from 'marked';
 
 // ── Helper ──────────────────────────────────────────────────────────────
 

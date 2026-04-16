@@ -150,22 +150,40 @@ function generateNotificationId(): string {
 
 export class NotificationManager {
   private readonly dedupeIndex = new Map<string, string>();
+  /**
+   * In-flight dedupe promises. While a `doEmit` for a given `dedupe_key`
+   * is awaiting its journal append, concurrent `emit` calls with the same
+   * key coalesce onto the same promise instead of each proceeding
+   * independently (M1 race fix).
+   */
+  private readonly inFlightDedupe = new Map<string, Promise<string>>();
 
   constructor(private readonly deps: NotificationManagerDeps) {}
 
   /**
    * Emit a notification. WAL-then-mirror order (§4.5.6):
    *   1. dedupe_key check — return existing id if matched.
+   *   1b. in-flight check — if another emit with the same dedupe_key is
+   *       still awaiting journal append, coalesce onto its promise (M1).
    *   2. `await sessionJournal.appendNotification(record)`.
    *   3. fan out to llm / wire / shell with per-sink try/catch.
    *   4. return the id + per-sink delivered_at map.
    *
-   * Fan-out exceptions are swallowed and logged. A failed sink marks its
-   * `delivered_at` entry as `undefined`; a skipped shell sink (no
-   * callback) marks `delivered_at.shell = 0`. The WAL record itself is
-   * written with an empty `delivered_at` map — delivery state is NOT
-   * persisted in v2 (per §5 decision: single append, no second write).
-   * Slice 2.4 treats delivery state as derived, not durable.
+   * Fan-out exceptions are swallowed and logged. A failed llm or shell
+   * sink marks its `delivered_at` entry as `undefined`; a skipped shell
+   * sink (no callback) marks `delivered_at.shell = 0`.
+   *
+   * N.B. `delivered_at.wire` represents "bus accepted the dispatch" —
+   * per-listener errors (sync throw / async reject) are swallowed inside
+   * `SessionEventBus.safeDispatch` and are not observable here.
+   * NotificationManager records a wire timestamp whenever
+   * `emitNotification` returns without throwing. This is intentional:
+   * wire delivery is fire-and-forget at the bus level (§4.6.3).
+   *
+   * The WAL record itself is written with an empty `delivered_at` map —
+   * delivery state is NOT persisted in v2 (per §5 decision: single
+   * append, no second write). Slice 2.4 treats delivery state as
+   * derived, not durable.
    */
   async emit(input: EmitInput): Promise<EmitResult> {
     // ── 1. Dedupe check ────────────────────────────────────────────
@@ -174,8 +192,40 @@ export class NotificationManager {
       if (existing !== undefined) {
         return { id: existing, deduped: true, delivered_at: {} };
       }
+      // ── 1b. In-flight check (M1 race fix) ─────────────────────
+      // Another concurrent emit with the same dedupe_key is still
+      // awaiting its journal append. Coalesce onto the same promise
+      // so only one WAL record + one fan-out fires.
+      const inFlight = this.inFlightDedupe.get(input.dedupe_key);
+      if (inFlight !== undefined) {
+        const id = await inFlight;
+        return { id, deduped: true, delivered_at: {} };
+      }
+      // First writer: register in-flight before any await so
+      // concurrent callers coalesce rather than both proceeding.
+      const resultPromise = this.doEmit(input);
+      const idPromise = resultPromise.then((r) => r.id);
+      // Prevent unhandled rejection when no concurrent caller awaits
+      idPromise.catch(() => {});
+      this.inFlightDedupe.set(input.dedupe_key, idPromise);
+      try {
+        const result = await resultPromise;
+        this.dedupeIndex.set(input.dedupe_key, result.id);
+        return result;
+      } finally {
+        this.inFlightDedupe.delete(input.dedupe_key);
+      }
     }
+    // No dedupe_key → direct emit, no coalescing needed
+    return this.doEmit(input);
+  }
 
+  /**
+   * Core emit path: generate id, WAL-append, fan-out to sinks.
+   * Extracted from `emit()` so the dedupe + in-flight coordination
+   * lives in the caller and this method stays straightforward.
+   */
+  private async doEmit(input: EmitInput): Promise<EmitResult> {
     const id = input.id ?? generateNotificationId();
     const targets = input.targets ?? ['llm', 'wire', 'shell'];
 
@@ -202,10 +252,6 @@ export class NotificationManager {
       data,
     });
 
-    if (input.dedupe_key !== undefined) {
-      this.dedupeIndex.set(input.dedupe_key, id);
-    }
-
     // ── 3. Three-way fan-out with per-sink isolation ──────────────
     const deliveredAt: {
       llm?: number | undefined;
@@ -227,6 +273,9 @@ export class NotificationManager {
 
     if (wantsWire) {
       try {
+        // delivered_at.wire = "bus accepted the dispatch". Per-listener
+        // errors are swallowed by SessionEventBus.safeDispatch; see the
+        // emit() JSDoc N.B. for the full semantics.
         this.deps.sessionEventBus.emitNotification(data);
         deliveredAt.wire = Date.now();
       } catch (error) {
