@@ -72,13 +72,18 @@ async def _setup_platform(platform: Platform) -> _SetupResult | None:
     if not api_key:
         return None
 
-    # list models
-    try:
-        models = await list_models(platform, api_key)
-    except Exception as e:
-        logger.error("Failed to get models: {error}", error=e)
-        console.print(f"[red]Failed to get models: {e}[/red]")
-        return None
+    # list models - use predefined if available, otherwise fetch from API
+    models: list[ModelInfo]
+    if platform.predefined_models:
+        console.print(f"[dim]Using predefined model list for {platform.name}[/dim]")
+        models = list(platform.predefined_models)
+    else:
+        try:
+            models = await list_models(platform, api_key)
+        except Exception as e:
+            logger.error("Failed to get models: {error}", error=e)
+            console.print(f"[red]Failed to get models: {e}[/red]")
+            return None
 
     # select the model
     if not models:
@@ -126,8 +131,12 @@ def _apply_setup_result(result: _SetupResult) -> None:
     config = load_config()
     provider_key = managed_provider_key(result.platform.id)
     model_key = managed_model_key(result.platform.id, result.selected_model.id)
+
+    # Determine provider type based on platform
+    provider_type = "openai_legacy" if result.platform.id == "dashscope" else "kimi"
+
     config.providers[provider_key] = LLMProvider(
-        type="kimi",
+        type=provider_type,
         base_url=result.platform.base_url,
         api_key=result.api_key,
     )

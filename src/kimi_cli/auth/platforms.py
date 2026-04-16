@@ -47,6 +47,7 @@ class Platform(NamedTuple):
     search_url: str | None = None
     fetch_url: str | None = None
     allowed_prefixes: list[str] | None = None
+    predefined_models: list[ModelInfo] | None = None
 
 
 def _kimi_code_base_url() -> str:
@@ -74,6 +75,37 @@ PLATFORMS: list[Platform] = [
         name="Moonshot AI Open Platform (moonshot.ai)",
         base_url="https://api.moonshot.ai/v1",
         allowed_prefixes=["kimi-k"],
+    ),
+    Platform(
+        id="dashscope-coding",
+        name="Alibaba Cloud Coding Plan (coding-intl.dashscope)",
+        base_url="https://coding-intl.dashscope.aliyuncs.com/v1",
+        allowed_prefixes=["qwen-", "claude-"],
+        predefined_models=[
+            ModelInfo(id="qwen3.5-plus", context_length=131072, supports_reasoning=True, supports_image_in=True, supports_video_in=False),
+            ModelInfo(id="kimi-k2.5", context_length=262144, supports_reasoning=True, supports_image_in=True, supports_video_in=True),
+            ModelInfo(id="glm-5", context_length=131072, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="MiniMax-M2.5", context_length=262144, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="qwen3-max-2026-01-23", context_length=131072, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="qwen3-coder-next", context_length=131072, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="qwen3-coder-plus", context_length=131072, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="glm-4.7", context_length=131072, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+        ],
+    ),
+    Platform(
+        id="dashscope",
+        name="Alibaba Cloud Dashscope Standard (dashscope-intl.aliyuncs.com)",
+        base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        allowed_prefixes=["qwen-"],
+        predefined_models=[
+            ModelInfo(id="qwen-turbo", context_length=8192, supports_reasoning=False, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="qwen-plus", context_length=32768, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="qwen-max", context_length=32768, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="qwen-long", context_length=1000000, supports_reasoning=False, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="qwen-vl-max", context_length=32768, supports_reasoning=True, supports_image_in=True, supports_video_in=False),
+            ModelInfo(id="qwen-coder-plus", context_length=32768, supports_reasoning=True, supports_image_in=False, supports_video_in=False),
+            ModelInfo(id="qwen-coder-turbo", context_length=32768, supports_reasoning=False, supports_image_in=False, supports_video_in=False),
+        ],
     ),
 ]
 
@@ -152,15 +184,20 @@ async def refresh_managed_models(config: Config) -> bool:
                 provider=provider_key,
             )
             continue
-        try:
-            models = await list_models(platform, api_key)
-        except Exception as exc:
-            logger.error(
-                "Failed to refresh models for {platform}: {error}",
-                platform=platform_id,
-                error=exc,
-            )
-            continue
+
+        # Use predefined models if available
+        if platform.predefined_models:
+            models = list(platform.predefined_models)
+        else:
+            try:
+                models = await list_models(platform, api_key)
+            except Exception as exc:
+                logger.error(
+                    "Failed to refresh models for {platform}: {error}",
+                    platform=platform_id,
+                    error=exc,
+                )
+                continue
 
         updates.append((provider_key, platform_id, models))
         if _apply_models(config, provider_key, platform_id, models):
@@ -183,6 +220,7 @@ async def list_models(platform: Platform, api_key: str) -> list[ModelInfo]:
             session,
             base_url=platform.base_url,
             api_key=api_key,
+            platform_id=platform.id,
         )
     if platform.allowed_prefixes is None:
         return models
@@ -195,6 +233,7 @@ async def _list_models(
     *,
     base_url: str,
     api_key: str,
+    platform_id: str = "",
 ) -> list[ModelInfo]:
     models_url = f"{base_url.rstrip('/')}/models"
     try:
@@ -216,10 +255,11 @@ async def _list_models(
         model_id = item.get("id")
         if not model_id:
             continue
+        # Dashscope API may not return all these fields, so we use safe defaults
         result.append(
             ModelInfo(
                 id=str(model_id),
-                context_length=int(item.get("context_length") or 0),
+                context_length=int(item.get("context_length") or item.get("max_tokens") or 0),
                 supports_reasoning=bool(item.get("supports_reasoning")),
                 supports_image_in=bool(item.get("supports_image_in")),
                 supports_video_in=bool(item.get("supports_video_in")),
