@@ -1184,6 +1184,9 @@ export class InteractiveMode implements WireHandlerDelegate {
   // ── User input handling ─────────────────────────────────────────
 
   private handleUserInput(text: string): void {
+    // Ignore empty / whitespace-only submissions — pressing Enter on an
+    // empty input box should be a no-op, not a wire round-trip.
+    if (text.trim().length === 0) return;
     void this.persistInputHistory(text);
     if (text.startsWith('/')) {
       void this.executeSlashCommand(text);
