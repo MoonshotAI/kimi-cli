@@ -434,9 +434,11 @@ export async function runSubagentTurn(
 // ── Stale cleanup (T4.4) ──────────────────────────────────────────────
 
 /**
- * Mark all subagent instances with status='running' as 'lost'.
- * Called during session resume to clean up subagents that were running
- * when the session was interrupted.
+ * Mark all subagent instances with status='running' as 'lost' and
+ * return the list of affected agent ids so the caller can emit the
+ * corresponding `task.lost` notifications once SoulPlus is ready
+ * (v2 §8.2 — "emit NotificationEvent(category: 'task', type:
+ * 'task.lost') supplies UI out-of-band visibility").
  *
  * Per v2 §8.2: residual running records become 'lost', NOT 'failed' —
  * 'failed' is reserved for subagents that hit a runtime error during
@@ -444,8 +446,15 @@ export async function runSubagentTurn(
  * semantically captures "was running when the parent process died, final
  * outcome unknown".
  *
- * Python parity: `app.py:_cleanup_stale_foreground_subagents()` writes
- * `'failed'` in Python; TS intentionally diverges here to track v2.
+ * Python parity divergences (intentional; v2 is the source of truth):
+ *   1. Python's `_cleanup_stale_foreground_subagents` writes `'failed'`;
+ *      TS writes `'lost'`.
+ *   2. Python's subagent state machine splits running into
+ *      `running_foreground` / `running_background` and cleanup only
+ *      touches the foreground variant. v2 §8.2 collapses these into a
+ *      single `'running'` state, so TS cleanup treats both equivalently
+ *      and marks any residual `'running'` record as `'lost'` regardless
+ *      of fg/bg lineage.
  */
 export async function cleanupStaleSubagents(store: SubagentStore): Promise<string[]> {
   const instances = await store.listInstances();

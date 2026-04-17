@@ -503,11 +503,13 @@ export class SessionManager {
     // construction so the AgentTool sees a clean store. Safe no-op when
     // `subagents/` doesn't exist yet (`listInstances()` returns []).
     // v2 §8.2: residual `status='running'` records are rewritten as
-    // `'lost'` (NOT `'failed'`). See `cleanupStaleSubagents`.
+    // `'lost'` (NOT `'failed'`). The returned ids drive `task.lost`
+    // notifications once SoulPlus is available (see below).
     let subagentStore: SubagentStore | undefined;
+    let lostSubagentIds: string[] = [];
     if (options.agentTypeRegistry !== undefined) {
       subagentStore = new SubagentStore(sessionDir);
-      await cleanupStaleSubagents(subagentStore);
+      lostSubagentIds = await cleanupStaleSubagents(subagentStore);
     }
 
     const soulPlusDeps: SoulPlusDeps = {
@@ -586,6 +588,27 @@ export class SessionManager {
       // Phase 1 (Decision #89): replayPendingForResume removed — notifications
       // are durable entries in history, replayed naturally from wire.jsonl via
       // the replay-projector's initialHistory. No ephemeral re-inject needed.
+    }
+
+    // Slice 5.3 (Round 2) — emit `task.lost` notifications for any
+    // subagent records that were marked `'lost'` above (v2 §8.2 "emit
+    // NotificationEvent(category: 'task', type: 'task.lost') out-of-band
+    // for UI visibility"). Must run AFTER `primeDedupeIndex` so replayed
+    // task.lost records from prior resumes dedupe this re-emit; the
+    // per-agent dedupe_key makes the sequence idempotent across resumes.
+    for (const agentId of lostSubagentIds) {
+      await soulPlus.emitNotification({
+        category: 'task',
+        type: 'task.lost',
+        source_kind: 'subagent',
+        source_id: agentId,
+        title: 'Subagent lost on resume',
+        body:
+          `Subagent ${agentId} was running when the session was interrupted; ` +
+          `its status has been marked 'lost' and its final outcome is unknown.`,
+        severity: 'warning',
+        dedupe_key: `task.lost:${sessionId}:${agentId}`,
+      });
     }
 
     const sessionControl = new DefaultSessionControl({

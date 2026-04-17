@@ -11,6 +11,7 @@
 
 import { readFile, stat } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { load as yamlLoad } from 'js-yaml';
 import nunjucks from 'nunjucks';
@@ -366,7 +367,10 @@ export async function loadSubagentTypes(
  * Throws when neither candidate resolves — a packaging regression.
  */
 export async function getBundledAgentYamlPath(): Promise<string> {
-  const moduleDir = import.meta.dirname;
+  // `import.meta.dirname` is Node ≥21.2; fall back to the ES2020
+  // fileURLToPath + dirname recipe so the helper works on Node 18 / 20
+  // LTS without bumping the package's `engines.node` floor.
+  const moduleDir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
   // Dev layout: this file lives at `src/soul-plus/` so `../../agents`
   // lands on the package root `agents/` directory. Bundled layout:
   // the flattened `dist/` sits one level below the package root so

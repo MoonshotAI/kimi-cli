@@ -19,7 +19,7 @@
  * for the mapping.
  */
 
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -218,6 +218,20 @@ describe('SessionManager AgentTool wiring (Slice 5.3 T1)', () => {
       expect(afterResume[0]!.status).toBe('lost');
 
       await mgr.closeSession(resumed.sessionId);
+
+      // v2 §8.2 also requires `task.lost` NotificationEvent be emitted
+      // out-of-band so the UI can surface the zombie. Verify via the
+      // durable wire.jsonl (notifications WAL-write through
+      // ContextState.appendNotification).
+      const wirePath = join(paths.sessionDir('ses_stale_subagent'), 'wire.jsonl');
+      const wireLines = (await readFile(wirePath, 'utf-8'))
+        .split('\n')
+        .filter((line) => line.length > 0);
+      const taskLostRecords = wireLines
+        .map((line) => JSON.parse(line) as { type?: string; data?: { type?: string; source_id?: string } })
+        .filter((r) => r.type === 'notification' && r.data?.type === 'task.lost');
+      expect(taskLostRecords).toHaveLength(1);
+      expect(taskLostRecords[0]?.data?.source_id).toBe('sub_zombie');
     },
   );
 });
