@@ -263,7 +263,9 @@ describe('Slash commands', () => {
     const cmd = registry.find('compact')!;
     const { ctx } = makeCtx();
     await cmd.execute('', ctx);
-    expect(ctx.wireClient.compact).toHaveBeenCalledWith('session-001');
+    // Phase 17 §D.2 — src calls `compact(sessionId, customInstruction?)`;
+    // the second param is undefined when `/compact` had no extra text.
+    expect(ctx.wireClient.compact).toHaveBeenCalledWith('session-001', undefined);
   });
 
   it('/thinking toggles thinking mode', async () => {

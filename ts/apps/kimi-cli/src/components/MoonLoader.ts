@@ -23,7 +23,11 @@ export class MoonLoader extends Text {
     this.ui = ui;
     this.frames = style === 'moon' ? MOON_PHASES : BRAILLE_FRAMES;
     this.interval = style === 'moon' ? MOON_INTERVAL : BRAILLE_INTERVAL;
-    this.colorFn = colorFn;
+    // Phase 17 §D.3 — `exactOptionalPropertyTypes: true` rejects
+    // assigning `(s: string) => string | undefined` to an optional
+    // field declared without `| undefined`. Narrow at the assignment
+    // site so the optional field only ever holds a real function.
+    if (colorFn !== undefined) this.colorFn = colorFn;
     this.label = label;
     this.start();
   }
