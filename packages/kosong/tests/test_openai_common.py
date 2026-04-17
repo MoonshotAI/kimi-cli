@@ -11,8 +11,68 @@ from kosong.chat_provider import (
     ChatProviderError,
     openai_common,
 )
-from kosong.chat_provider.openai_common import convert_error
+from kosong.chat_provider.openai_common import (
+    convert_error,
+    reasoning_effort_to_thinking_effort,
+    thinking_effort_to_reasoning_effort,
+)
 from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+
+class TestThinkingEffortMapping:
+    """OpenAI's reasoning_effort accepts: none, minimal, low, medium, high, xhigh
+    (xhigh added for models after gpt-5.1-codex-max). Kosong's ThinkingEffort
+    is: off, low, medium, high, xhigh, max. The bidirectional mapping must
+    preserve xhigh round-trip and clamp max sensibly.
+    """
+
+    @pytest.mark.parametrize(
+        "thinking_effort,expected_reasoning",
+        [
+            ("off", None),
+            ("low", "low"),
+            ("medium", "medium"),
+            ("high", "high"),
+            # xhigh must pass through — OpenAI supports it natively for
+            # gpt-5.1-codex-max and later models.
+            ("xhigh", "xhigh"),
+            # max is Anthropic-specific; OpenAI's highest is xhigh, so we
+            # clamp max -> xhigh (not -> high, which would lose a level).
+            ("max", "xhigh"),
+        ],
+    )
+    def test_thinking_to_reasoning(
+        self, thinking_effort: str, expected_reasoning: str | None
+    ) -> None:
+        assert (
+            thinking_effort_to_reasoning_effort(
+                thinking_effort  # type: ignore[arg-type]
+            )
+            == expected_reasoning
+        )
+
+    @pytest.mark.parametrize(
+        "reasoning_effort,expected_thinking",
+        [
+            (None, "off"),
+            ("none", "off"),
+            ("minimal", "low"),
+            ("low", "low"),
+            ("medium", "medium"),
+            ("high", "high"),
+            # xhigh is a valid kosong level and a valid OpenAI level — round-trip.
+            ("xhigh", "xhigh"),
+        ],
+    )
+    def test_reasoning_to_thinking(
+        self, reasoning_effort: str | None, expected_thinking: str
+    ) -> None:
+        assert (
+            reasoning_effort_to_thinking_effort(
+                reasoning_effort  # type: ignore[arg-type]
+            )
+            == expected_thinking
+        )
 
 
 def test_create_openai_client_does_not_inject_max_retries(monkeypatch: pytest.MonkeyPatch) -> None:
