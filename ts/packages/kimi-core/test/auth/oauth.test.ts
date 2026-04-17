@@ -25,6 +25,12 @@ import type { OAuthFlowConfig } from '../../src/auth/types.js';
 interface FakeResponse {
   status: number;
   body: string | Record<string, unknown>;
+  /**
+   * When true, destroy the socket before writing any status / body.
+   * Used by Phase 11.1 "network error retry" test to surface a
+   * transport-level failure (fetch throws) on the first N attempts.
+   */
+  drop?: boolean;
 }
 
 interface Recorded {
@@ -84,6 +90,11 @@ class FakeOAuthServer {
       if (!next) {
         res.statusCode = 404;
         res.end(JSON.stringify({ error: 'no fake response queued', key }));
+        return;
+      }
+      if (next.drop === true) {
+        // Destroy the socket so `fetch` rejects with a transport error.
+        req.socket.destroy();
         return;
       }
       res.statusCode = next.status;
@@ -443,5 +454,67 @@ describe('refreshAccessToken', () => {
     const recorded = server.recorded[0]!;
     expect(recorded.body).toContain('grant_type=refresh_token');
     expect(recorded.body).toContain('refresh_token=old-rt-xyz');
+  });
+
+  // ── Phase 11.1 — network error retry / 400 fail-fast ──────────────────
+
+  it('Phase 11.1: retries transport-level failures N times, then succeeds', async () => {
+    // Python parity: tests/auth/test_oauth_refresh.py:66 — transport error
+    // fails the first two attempts, third succeeds. TS already marks
+    // fetch() throws as retryable (oauth.ts:242-251) but no test exercises
+    // N-times recovery. We prime the fake server with two force-drop
+    // responses that destroy the socket before writing headers, which
+    // surfaces as `fetch` throwing.
+    server.enqueue('/api/oauth/token', { status: 0, body: '', drop: true });
+    server.enqueue('/api/oauth/token', { status: 0, body: '', drop: true });
+    server.enqueue('/api/oauth/token', {
+      status: 200,
+      body: {
+        access_token: 'recovered-at',
+        refresh_token: 'recovered-rt',
+        expires_in: 3600,
+        scope: '',
+        token_type: 'Bearer',
+      },
+    });
+    const token = await refreshAccessToken(flowConfig(), 'old-rt', {
+      maxRetries: 3,
+      backoffMs: () => 0,
+    });
+    expect(token.accessToken).toBe('recovered-at');
+    // All three attempts hit the server (two destroyed + one success)
+    expect(server.recorded.length).toBe(3);
+  });
+
+  it('Phase 11.1: 400 Bad Request fails fast (not retried, non-retryable)', async () => {
+    // Python parity: tests/auth/test_oauth_refresh.py:218 — 400 bad
+    // request is a client-side fault and must surface immediately as a
+    // bare OAuthError (never RetryableRefreshError, never retried).
+    server.enqueue('/api/oauth/token', {
+      status: 400,
+      body: { error: 'invalid_request', error_description: 'bad client id' },
+    });
+    // Second enqueue exists to prove a retry would hit it — if the
+    // implementation incorrectly retried, the second call would succeed
+    // and the test would miss the regression.
+    server.enqueue('/api/oauth/token', {
+      status: 200,
+      body: {
+        access_token: 'should-not-reach',
+        refresh_token: 'r',
+        expires_in: 60,
+        scope: '',
+        token_type: 'Bearer',
+      },
+    });
+    const err = await refreshAccessToken(flowConfig(), 'rt', {
+      maxRetries: 5,
+      backoffMs: () => 0,
+    }).catch((error: unknown) => error);
+    expect(err).toBeInstanceOf(OAuthError);
+    expect(err).not.toBeInstanceOf(RetryableRefreshError);
+    expect(err).not.toBeInstanceOf(OAuthUnauthorizedError);
+    // Only one request — no retry.
+    expect(server.recorded.length).toBe(1);
   });
 });

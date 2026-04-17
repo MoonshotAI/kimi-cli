@@ -13,6 +13,7 @@ import {
   NotificationManager,
   SessionEventBus,
   type NotificationData,
+  type NotificationManagerDeps,
 } from '../../src/soul-plus/index.js';
 import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js';
 import type { NotificationRecord } from '../../src/storage/wire-record.js';
@@ -379,5 +380,196 @@ describe('NotificationManager — durable path (Phase 1 Step 5)', () => {
     // the replay-projector, so there is no need for a special replay
     // re-inject path.
     expect((manager as unknown as Record<string, unknown>)['replayPendingForResume']).toBeUndefined();
+  });
+});
+
+// ── Phase 11.4 — v2 gaps not covered by existing tests ─────────────────
+
+describe('NotificationManager — Phase 11.4 envelope_id passthrough (Decision #103)', () => {
+  it('forwards envelope_id to the durable contextState.appendNotification payload', async () => {
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const captured: NotificationData[] = [];
+    const deps: NotificationManagerDeps = {
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: {
+        appendNotification: async (data: NotificationData) => {
+          captured.push(data);
+        },
+      },
+    };
+    const manager = new NotificationManager(deps);
+
+    await manager.emit(baseInput({ envelope_id: 'env_12345' }));
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.envelope_id).toBe('env_12345');
+  });
+
+  it('omits envelope_id when the emit caller did not supply one (non-mail path)', async () => {
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const captured: NotificationData[] = [];
+    const deps: NotificationManagerDeps = {
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: {
+        appendNotification: async (data: NotificationData) => {
+          captured.push(data);
+        },
+      },
+    };
+    const manager = new NotificationManager(deps);
+
+    await manager.emit(baseInput());
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.envelope_id).toBeUndefined();
+  });
+});
+
+describe('NotificationManager — Phase 11.4 cross-turn dedupe persistence', () => {
+  it('primeDedupeIndex from a prior-turn record still dedupes a later emit', async () => {
+    // Simulates Turn N emitting a durable notification, the session
+    // restarting / replaying, primeDedupeIndex re-seeding the in-memory
+    // map, and Turn N+K emitting the same dedupe_key — the second emit
+    // must short-circuit to the original id without a new WAL write.
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+
+    // First manager instance: emit + confirm it lands.
+    const captured1: NotificationData[] = [];
+    const deps1: NotificationManagerDeps = {
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: {
+        appendNotification: async (d: NotificationData) => {
+          captured1.push(d);
+        },
+      },
+    };
+    const mgr1 = new NotificationManager(deps1);
+    const first = await mgr1.emit(baseInput({ dedupe_key: 'turn_1:done' }));
+    expect(captured1).toHaveLength(1);
+
+    // Second manager (simulating a fresh session-resume); prime with
+    // the replayed record and emit the same key.
+    const captured2: NotificationData[] = [];
+    const deps2: NotificationManagerDeps = {
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: {
+        appendNotification: async (d: NotificationData) => {
+          captured2.push(d);
+        },
+      },
+    };
+    const mgr2 = new NotificationManager(deps2);
+    mgr2.primeDedupeIndex([
+      {
+        type: 'notification',
+        seq: 10,
+        time: 10,
+        data: captured1[0]!,
+      } satisfies NotificationRecord,
+    ]);
+
+    const second = await mgr2.emit(baseInput({ dedupe_key: 'turn_1:done' }));
+    expect(second.id).toBe(first.id);
+    expect(second.deduped).toBe(true);
+    // Second manager made NO durable write.
+    expect(captured2).toHaveLength(0);
+  });
+});
+
+describe('NotificationManager — Phase 11.4 async shell handler rejection', () => {
+  it('async shell callback rejection is isolated; llm + wire still deliver', async () => {
+    // TS existing coverage exercises SYNC shell throw (Case 6). Python
+    // L172 additionally asserts async rejection is contained. The shell
+    // callback is typed `(notif) => void`, but structural typing lets an
+    // async function fit. The manager's try/catch only guards the sync
+    // call; any Promise rejection escapes as an unhandled rejection.
+    // This test installs a `process.once('unhandledRejection', ...)`
+    // listener and drains microtasks deterministically (no wall-clock
+    // setTimeout) so the assertion is stable.
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const wireSeen: NotificationData[] = [];
+    eventBus.subscribeNotifications((n) => {
+      wireSeen.push(n);
+    });
+    let llmCalled = false;
+
+    const caught: unknown[] = [];
+    const listener = (reason: unknown): void => {
+      caught.push(reason);
+    };
+    process.once('unhandledRejection', listener);
+
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      onEmittedToLlm: () => {
+        llmCalled = true;
+      },
+      // Async shell handler that rejects. Cast to the sync signature to
+      // mimic a caller that wired up `async () => { throw ... }`.
+      onShellDeliver: (() =>
+        Promise.reject(new Error('async shell boom'))) as unknown as (
+        n: NotificationData,
+      ) => void,
+    });
+
+    try {
+      const result = await manager.emit(baseInput());
+
+      // llm + wire paths still complete.
+      expect(llmCalled).toBe(true);
+      expect(wireSeen).toHaveLength(1);
+      expect(result.id).toBeTruthy();
+
+      // Drain two microtask rounds so the async rejection has been
+      // dispatched through Node's unhandled-rejection machinery.
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+
+      expect(
+        caught.some(
+          (e) => e instanceof Error && e.message.includes('async shell boom'),
+        ),
+      ).toBe(true);
+    } finally {
+      process.off('unhandledRejection', listener);
+    }
+  });
+});
+
+describe('NotificationManager — Phase 11.4 dedupe_key absence', () => {
+  it('two emits without dedupe_key are independent (not deduped)', async () => {
+    // Python parity: L11 implicitly covers this; TS tests only exercise
+    // WITH-key dedupe. Locking the absence branch so a regression that
+    // treats "missing key" as the same dedupe bucket is caught.
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const captured: NotificationData[] = [];
+    const deps: NotificationManagerDeps = {
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: {
+        appendNotification: async (d: NotificationData) => {
+          captured.push(d);
+        },
+      },
+    };
+    const manager = new NotificationManager(deps);
+
+    const r1 = await manager.emit(baseInput({ title: 'first' }));
+    const r2 = await manager.emit(baseInput({ title: 'second' }));
+
+    expect(r1.id).not.toBe(r2.id);
+    expect(r1.deduped).toBe(false);
+    expect(r2.deduped).toBe(false);
+    expect(captured).toHaveLength(2);
   });
 });
