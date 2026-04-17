@@ -139,10 +139,15 @@ export type {
   McpContentBlock,
   McpLoadNotification,
   McpNotifyCallback,
+  McpOAuthProviderOptions,
   McpServerConfig,
   McpStderrCallback,
   McpToolAdapterOptions,
   McpToolResultInput,
+  OAuthCallbackPayload,
+  OAuthCallbackServerHandle,
+  OAuthClientProvider,
+  StartOAuthCallbackServerOptions,
   StdioServerConfig,
 } from './mcp/index.js';
 export {
@@ -156,6 +161,7 @@ export {
   MCP_MAX_OUTPUT_CHARS,
   MCP_TOOL_NAME_PREFIX,
   McpConfigSchema,
+  McpOAuthProvider,
   McpServerConfigSchema,
   StdioMcpClient,
   StdioServerConfigSchema,
@@ -167,6 +173,7 @@ export {
   mcpToolToKimiTool,
   parseMcpConfig,
   parseMcpToolName,
+  startOAuthCallbackServer,
 } from './mcp/index.js';
 
 // ── Session control (Slice 3.2) ───────────────────────────────────

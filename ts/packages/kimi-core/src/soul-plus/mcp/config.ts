@@ -1,5 +1,5 @@
 /**
- * MCP server config — Slice 2.6.
+ * MCP server config — Slice 2.6 + Phase 19 Slice D (`auth: 'oauth'`).
  *
  * Claude Desktop–compatible schema (`{"mcpServers": {name: serverConfig}}`)
  * so users can copy an existing `mcp.json` verbatim. Two transport
@@ -7,9 +7,11 @@
  *
  *   - **stdio** — `{command, args?, env?}` spawns a child process the
  *     way Python does via `fastmcp`.
- *   - **http** (Streamable HTTP / SSE) — `{url, transport, headers?}`.
- *     OAuth is deliberately NOT modelled here; the `auth` field from
- *     Python is deferred to a future slice (coordinator Q1).
+ *   - **http** (Streamable HTTP / SSE) — `{url, transport, headers?,
+ *     auth?}`. Phase 19 Slice D adds the optional `auth: 'oauth'`
+ *     marker, enabling the PKCE Authorization Code Flow via
+ *     {@link McpOAuthProvider}. The stdio schema still rejects any
+ *     `auth` key.
  *
  * Parsing goes through {@link parseMcpConfig} which upgrades zod
  * failures into {@link MCPConfigError} for a consistent error surface
@@ -54,6 +56,13 @@ export interface HttpServerConfig {
    */
   readonly transport: 'http' | 'sse';
   readonly headers?: Readonly<Record<string, string>> | undefined;
+  /**
+   * OAuth marker — Phase 19 Slice D. Set to `'oauth'` to enable the
+   * PKCE Authorization Code Flow via {@link McpOAuthProvider}. The
+   * strict schema rejects any other literal, and the field is only
+   * accepted on HTTP servers (stdio schema still refuses it).
+   */
+  readonly auth?: 'oauth' | undefined;
 }
 
 const _rawHttpServerConfigSchema = z
@@ -61,6 +70,7 @@ const _rawHttpServerConfigSchema = z
     url: z.string().url('http server "url" must be a valid URL'),
     transport: z.union([z.literal('http'), z.literal('sse')]),
     headers: z.record(z.string(), z.string()).optional(),
+    auth: z.literal('oauth').optional(),
   })
   .strict();
 

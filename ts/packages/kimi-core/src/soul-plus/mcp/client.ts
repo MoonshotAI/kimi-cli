@@ -17,8 +17,12 @@
  *
  *   - {@link HttpMcpClient} — talks to a remote server via
  *     `StreamableHTTPClientTransport`. Extra `headers` from config are
- *     passed through `requestInit.headers`. OAuth is intentionally
- *     out of scope for Slice 2.6.
+ *     passed through `requestInit.headers`. Phase 19 Slice D adds
+ *     optional `authProvider` injection so callers can thread a PKCE
+ *     `OAuthClientProvider` (e.g. `McpOAuthProvider`) into the SDK
+ *     transport; `UnauthorizedError` from `connect()` is how the CLI
+ *     knows to kick off the OAuth dance and later call
+ *     `transport.finishAuth(code)`.
  *
  * Both classes defer connection to `connect()` so construction is
  * cheap and `MCPManager` can own the lifecycle.
@@ -26,6 +30,7 @@
 
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
 import type { StdioClientTransport as SdkStdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { StreamableHTTPClientTransport as SdkStreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -225,29 +230,49 @@ export class StdioMcpClient implements MCPClient {
 }
 
 /**
- * Streamable-HTTP / SSE MCP client. Auth is limited to simple bearer
- * tokens / custom headers for Slice 2.6 (OAuth deferred).
+ * Streamable-HTTP / SSE MCP client. Slice 2.6 supported only simple
+ * bearer tokens / custom headers; Phase 19 Slice D adds optional
+ * `authProvider` injection so callers can wire the MCP SDK's PKCE
+ * OAuth orchestrator (see `src/soul-plus/mcp/oauth.ts`).
+ *
+ * The underlying SDK transport is kept in the public {@link transport}
+ * getter after `connect()` sets it (including on throw — the instance
+ * is assigned before the SDK's handshake), so `kimi mcp auth` can call
+ * `transport.finishAuth(code)` to complete the code exchange without
+ * the CLI reaching into the SDK types directly.
  */
 export class HttpMcpClient implements MCPClient {
   private client: SdkClient | null = null;
-  private transport: SdkStreamableHTTPClientTransport | null = null;
+  private _transport: SdkStreamableHTTPClientTransport | null = null;
 
   constructor(
     private readonly serverName: string,
     private readonly config: HttpServerConfig,
+    private readonly authProvider?: OAuthClientProvider | undefined,
   ) {}
+
+  /**
+   * The live SDK transport, populated during `connect()`. Stays
+   * non-null even if the SDK handshake throws `UnauthorizedError`
+   * (assignment happens before the throw) so the OAuth flow can call
+   * `.finishAuth(code)` to trade the callback-received authorization
+   * code for tokens before retrying `connect()`.
+   */
+  get transport(): SdkStreamableHTTPClientTransport | null {
+    return this._transport;
+  }
 
   async connect(): Promise<void> {
     const { StreamableHTTPClientTransport } =
       await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
     const url = new URL(this.config.url);
-    const transport = new StreamableHTTPClientTransport(
-      url,
-      this.config.headers !== undefined
+    const transport = new StreamableHTTPClientTransport(url, {
+      ...(this.config.headers !== undefined
         ? { requestInit: { headers: { ...this.config.headers } } }
-        : {},
-    );
-    this.transport = transport;
+        : {}),
+      ...(this.authProvider !== undefined ? { authProvider: this.authProvider } : {}),
+    });
+    this._transport = transport;
 
     this.client = await newSdkClient();
     // The SDK's `Transport` interface sets `sessionId?: string`, while
@@ -287,7 +312,7 @@ export class HttpMcpClient implements MCPClient {
   async close(): Promise<void> {
     const client = this.client;
     this.client = null;
-    this.transport = null;
+    this._transport = null;
     if (client !== null) {
       await client.close();
     }
