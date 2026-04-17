@@ -9,6 +9,7 @@ export class CustomEditor extends Editor {
   public onCtrlD?: () => void;
   public onCtrlC?: () => void;
   public onToggleToolExpand?: () => void;
+  public onOpenExternalEditor?: () => void;
   public onCtrlS?: () => void;
   /**
    * Called when ↑ is pressed in an empty editor. Return `true` to consume
@@ -36,6 +37,11 @@ export class CustomEditor extends Editor {
     }
 
     if (matchesKey(data, Key.ctrl('o'))) {
+      this.onOpenExternalEditor?.();
+      return;
+    }
+
+    if (matchesKey(data, Key.ctrl('t'))) {
       this.onToggleToolExpand?.();
       return;
     }

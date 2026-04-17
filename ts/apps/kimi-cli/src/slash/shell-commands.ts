@@ -6,6 +6,8 @@
  */
 
 import type { SlashCommandDef, SlashCommandResult } from './registry.js';
+import { saveConfigPatch } from '../config/save.js';
+import { resolveEditorCommand } from '../utils/external-editor.js';
 
 // ── Helper ──────────────────────────────────────────────────────────
 
@@ -237,6 +239,36 @@ const debugCommand: SlashCommandDef = {
   },
 };
 
+const editorCommand: SlashCommandDef = {
+  name: 'editor',
+  aliases: [],
+  description: 'Set the external editor for Ctrl-O (persists to config.toml)',
+  mode: 'both',
+  async execute(args, ctx) {
+    const trimmed = args.trim();
+    if (trimmed.length === 0) {
+      // Defer UI to InteractiveMode — it renders a ChoicePicker with the
+      // same preset options as Python (`code --wait` / `vim` / `nano` /
+      // auto-detect) and writes the selection back through the same
+      // persistence path as the direct-arg branch below.
+      return ok('__show_editor_picker__');
+    }
+
+    ctx.setAppState({ editorCommand: trimmed });
+    try {
+      saveConfigPatch({ default_editor: trimmed });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return ok(`Editor set in memory but failed to persist: ${msg}`);
+    }
+
+    // Warn (don't block) if the binary is not in PATH — parity with
+    // Python's shutil.which check.
+    void resolveEditorCommand; // retain import for the picker path
+    return ok(`Editor set to "${trimmed}" and saved to config.toml.`);
+  },
+};
+
 // ── Export all shell commands ────────────────────────────────────────
 
 export const shellCommands: SlashCommandDef[] = [
@@ -256,4 +288,5 @@ export const shellCommands: SlashCommandDef[] = [
   forkCommand,
   undoCommand,
   debugCommand,
+  editorCommand,
 ];

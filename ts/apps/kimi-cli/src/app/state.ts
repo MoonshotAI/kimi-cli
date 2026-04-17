@@ -32,6 +32,13 @@ export interface AppState {
   streamingStartTime: number;
   theme: Theme;
   version: string;
+  /**
+   * External editor command (e.g. `vim`, `code --wait`). Seeded from
+   * `config.toml` `default_editor`; overridable via `/editor <cmd>`
+   * which persists back to config.toml. Falls through to `$VISUAL` /
+   * `$EDITOR` when empty.
+   */
+  editorCommand: string | null;
 }
 
 // ── Transcript / Tool Types ──────────────────────────────────────────

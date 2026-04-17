@@ -41,8 +41,11 @@ import { INITIAL_LIVE_PANE } from './state.js';
 import { WireHandler, type WireHandlerDelegate } from './WireHandler.js';
 
 import { CustomEditor } from '../components/CustomEditor.js';
+import { ChoicePickerComponent, type ChoiceOption } from '../components/ChoicePickerComponent.js';
 import { getInputHistoryFile } from '../config/paths.js';
 import { loadInputHistory, appendInputHistory } from '../utils/input-history.js';
+import { editInExternalEditor, resolveEditorCommand } from '../utils/external-editor.js';
+import { saveConfigPatch } from '../config/save.js';
 import { WelcomeComponent } from '../components/WelcomeComponent.js';
 import { FooterComponent } from '../components/FooterComponent.js';
 import { UserMessageComponent } from '../components/UserMessageComponent.js';
@@ -175,6 +178,10 @@ export class InteractiveMode implements WireHandlerDelegate {
 
     this.editor.onShiftTab = () => {
       void this.togglePlanMode();
+    };
+
+    this.editor.onOpenExternalEditor = () => {
+      void this.openExternalEditor();
     };
 
     this.editor.onToggleToolExpand = () => {
@@ -612,6 +619,78 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.ui.requestRender();
   }
 
+  private showEditorPicker(): void {
+    const currentValue = this.state.editorCommand ?? '';
+    const options: ChoiceOption[] = [
+      { value: 'code --wait', label: 'VS Code (code --wait)' },
+      { value: 'vim', label: 'Vim' },
+      { value: 'nvim', label: 'Neovim' },
+      { value: 'nano', label: 'Nano' },
+      { value: '', label: 'Auto-detect ($VISUAL / $EDITOR)' },
+    ];
+    this.editorContainer.clear();
+    const picker = new ChoicePickerComponent({
+      title: 'Select external editor',
+      hint: '↑↓ navigate · Enter select · Esc cancel',
+      options,
+      currentValue,
+      colors: this.colors,
+      onSelect: (value) => {
+        this.closeEditorPicker();
+        this.applyEditorChoice(value);
+      },
+      onCancel: () => {
+        this.closeEditorPicker();
+      },
+    });
+    this.editorContainer.addChild(picker);
+    this.ui.setFocus(picker);
+    this.ui.requestRender();
+  }
+
+  private closeEditorPicker(): void {
+    this.editorContainer.clear();
+    this.editorContainer.addChild(this.editor);
+    this.ui.setFocus(this.editor);
+    this.ui.requestRender();
+  }
+
+  private applyEditorChoice(value: string): void {
+    const previous = this.state.editorCommand ?? '';
+    if (value === previous) {
+      this.addTranscriptEntry({
+        id: `editor-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Editor unchanged: ${value.length > 0 ? value : 'auto-detect'}`,
+      });
+      return;
+    }
+
+    this.setState({ editorCommand: value.length > 0 ? value : null });
+    try {
+      saveConfigPatch({ default_editor: value });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `editor-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Editor updated in memory but failed to persist: ${msg}`,
+        color: this.colors.error,
+      });
+      return;
+    }
+    this.addTranscriptEntry({
+      id: `editor-${String(Date.now())}`,
+      kind: 'status',
+      renderMode: 'plain',
+      content: value.length > 0
+        ? `Editor set to "${value}" and saved to config.toml.`
+        : 'Editor set to auto-detect ($VISUAL / $EDITOR).',
+    });
+  }
+
   // ── Session management ──────────────────────────────────────────
 
   private async fetchSessions(): Promise<void> {
@@ -641,6 +720,59 @@ export class InteractiveMode implements WireHandlerDelegate {
       this.wireHandler.sendMessage(text);
       this.updateQueueDisplay();
       this.ui.requestRender();
+    }
+  }
+
+  private externalEditorRunning = false;
+
+  private async openExternalEditor(): Promise<void> {
+    if (this.externalEditorRunning) return;
+    const cmd = resolveEditorCommand(this.state.editorCommand);
+    if (cmd === undefined) {
+      this.addTranscriptEntry({
+        id: `editor-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'No editor configured. Set $VISUAL / $EDITOR, or run /editor <command>.',
+        color: this.colors.error,
+      });
+      return;
+    }
+    this.externalEditorRunning = true;
+    const seed = this.editor.getExpandedText?.() ?? this.editor.getText();
+    this.ui.stop();
+    // Let pi-tui's terminal reset escape sequences flush before the
+    // child takes over the TTY; otherwise the child occasionally sees
+    // the tail of "\x1b[?2004l" etc. as its first input on slow TTYs.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    try {
+      const result = await editInExternalEditor(seed, cmd);
+      if (result !== undefined) {
+        this.editor.setText(result.replace(/\r\n/g, '\n').replace(/\n$/, ''));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `editor-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `External editor failed: ${msg}`,
+        color: this.colors.error,
+      });
+    } finally {
+      // The child held stdin with `stdio:'inherit'` — Node's stdin can
+      // end up in a half-paused state after it exits. Pause explicitly
+      // so pi-tui's Terminal.start can re-take ownership from a known
+      // baseline (setRawMode(true) + resume()).
+      if (typeof process.stdin.pause === 'function') {
+        process.stdin.pause();
+      }
+      this.ui.start();
+      // Refocus the editor and force a full repaint — previousLines
+      // inside pi-tui was invalidated by the child's screen output.
+      this.ui.setFocus(this.editor);
+      this.ui.requestRender(true);
+      this.externalEditorRunning = false;
     }
   }
 
@@ -761,6 +893,11 @@ export class InteractiveMode implements WireHandlerDelegate {
         if (result.message === '__show_sessions__') {
           await this.fetchSessions();
           void this.showSessionPicker();
+          return;
+        }
+
+        if (result.message === '__show_editor_picker__') {
+          this.showEditorPicker();
           return;
         }
 

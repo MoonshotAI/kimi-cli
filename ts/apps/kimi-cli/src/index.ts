@@ -117,6 +117,8 @@ interface ShellBootstrap {
    * with `opts.yolo` (CLI flag) so explicit CLI takes precedence.
    */
   defaultYolo: boolean;
+  /** External editor command from config.toml (empty when unset). */
+  defaultEditor: string;
   /**
    * Slice 4.4 Part 4 — optional MCPManager bound to the session; the
    * runner closes it on exit so subprocess transports do not leak.
@@ -484,6 +486,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     // config.defaultYolo. CLI --yolo takes precedence in runShell.
     defaultYolo: kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false,
     theme: (kimiConfig.theme as 'dark' | 'light') ?? 'dark',
+    defaultEditor: kimiConfig.defaultEditor ?? '',
     maxContextSize,
     ...(mcpManager !== undefined ? { mcpManager } : {}),
     ...(oauthManagers.size > 0 ? { oauthManagers } : {}),
@@ -530,6 +533,7 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     streamingStartTime: 0,
     theme: bootstrap.theme,
     version,
+    editorCommand: bootstrap.defaultEditor.length > 0 ? bootstrap.defaultEditor : null,
   };
 
   const mode = new InteractiveMode(bootstrap.wireClient, initialState, {
