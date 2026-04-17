@@ -176,3 +176,144 @@ export function buildErrorResponse(
     error,
   });
 }
+
+// ── ScriptedTurn tool-call helpers (Phase 12) ──────────────────────────
+//
+// Phase 12 wire E2E tests feed `FakeKosongAdapter.script({toolCalls: [...]})`
+// to drive a tool-use turn. The helpers below are thin constructors that
+// mint a `ScriptedToolCall`-shaped object for each builtin tool's TS
+// argument schema so test bodies stay readable. Names match the TS tool
+// registry (`src/tools/index.ts`): Bash / Write / Edit / SetTodoList /
+// Agent. Python's `Shell` / `WriteFile` / `StrReplaceFile` names are
+// **not** re-used here — v2 tool registry is the source of truth.
+
+/** Shape of a scripted tool-call entry — mirrors FakeKosongAdapter's
+ *  `ScriptedToolCall`. We redefine it structurally so callers don't have
+ *  to pull in the Fake adapter types for one helper. */
+export interface ScriptedToolCallBuilder {
+  readonly id: string;
+  readonly name: string;
+  readonly arguments: Record<string, unknown>;
+}
+
+export function buildShellToolCall(
+  id: string,
+  command: string,
+  extras?: { description?: string; timeoutMs?: number },
+): ScriptedToolCallBuilder {
+  return {
+    id,
+    name: 'Bash',
+    arguments: {
+      command,
+      ...(extras?.description !== undefined ? { description: extras.description } : {}),
+      ...(extras?.timeoutMs !== undefined ? { timeout_ms: extras.timeoutMs } : {}),
+    },
+  };
+}
+
+export function buildWriteFileCall(
+  id: string,
+  path: string,
+  content: string,
+): ScriptedToolCallBuilder {
+  // TS WriteTool uses `path` (see src/tools/types.ts:WriteInput); Python
+  // used `file_path`. Schema rename — v2 registry is source of truth.
+  return {
+    id,
+    name: 'Write',
+    arguments: { path, content },
+  };
+}
+
+export function buildStrReplaceFileCall(
+  id: string,
+  path: string,
+  oldText: string,
+  newText: string,
+): ScriptedToolCallBuilder {
+  // TS Edit tool is the rename of Python `StrReplaceFile`. v2 uses
+  // `path` + `old_string` + `new_string` (see src/tools/types.ts:EditInput).
+  return {
+    id,
+    name: 'Edit',
+    arguments: { path, old_string: oldText, new_string: newText },
+  };
+}
+
+export function buildSetTodoCall(
+  id: string,
+  items: ReadonlyArray<{ id?: string; content: string; status?: string }>,
+): ScriptedToolCallBuilder {
+  return {
+    id,
+    name: 'SetTodoList',
+    arguments: {
+      items: items.map((it, idx) => ({
+        id: it.id ?? `t${idx + 1}`,
+        content: it.content,
+        status: it.status ?? 'pending',
+      })),
+    },
+  };
+}
+
+export function buildAgentToolCall(
+  id: string,
+  opts: {
+    prompt: string;
+    description: string;
+    agentName?: string;
+    runInBackground?: boolean;
+    model?: string;
+  },
+): ScriptedToolCallBuilder {
+  return {
+    id,
+    name: 'Agent',
+    arguments: {
+      prompt: opts.prompt,
+      description: opts.description,
+      ...(opts.agentName !== undefined ? { agentName: opts.agentName } : {}),
+      ...(opts.runInBackground !== undefined ? { runInBackground: opts.runInBackground } : {}),
+      ...(opts.model !== undefined ? { model: opts.model } : {}),
+    },
+  };
+}
+
+// ── Hook subscription builders (Phase 12.4) ────────────────────────────
+//
+// `initialize.params.hooks` is a structured list (v2 §3.5). Each entry
+// describes a wire-channel hook the client wants the core to fire when
+// the named event triggers. `matcher` is optional regex-like string
+// (core matches against the tool/prompt body per event semantics).
+//
+// NOTE (lift-time src gap): `InitializeRequestData.hooks` in
+// `src/wire-protocol/types.ts` currently has element shape
+// `{event, matcher?}` without an `id` field, while v2 §3.5 prescribes
+// `{id, event, matcher?}`. When Phase 12.4 tests are lifted, the src
+// schema must be widened to accept `id` and key `configured` counts by
+// it. Tracked as **R12.4-hook-wire-bridge** in migration-report §12.4.
+
+export interface HookSubscription {
+  readonly id: string;
+  readonly event: string;
+  readonly matcher?: string;
+}
+
+// Monotonic counter for deterministic default ids — avoids Math.random
+// flake if a future lift asserts on subscription id equality. Tests that
+// need explicit ids should pass `id` directly.
+let hookSubCounter = 0;
+
+export function buildHookSubscription(
+  event: string,
+  id?: string,
+  matcher?: string,
+): HookSubscription {
+  return {
+    id: id ?? `hk_${event}_${++hookSubCounter}`,
+    event,
+    ...(matcher !== undefined ? { matcher } : {}),
+  };
+}

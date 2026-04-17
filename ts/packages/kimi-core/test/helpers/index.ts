@@ -105,20 +105,28 @@ export {
   type WireSubprocessHarness,
 } from './wire/wire-subprocess-harness.js';
 export {
+  buildAgentToolCall,
   buildApprovalResponse,
   buildCancelRequest,
   buildErrorResponse,
+  buildHookSubscription,
   buildInitializeRequest,
   buildPromptRequest,
   buildQuestionResponse,
   buildSessionCreateRequest,
+  buildSetTodoCall,
+  buildShellToolCall,
   buildSteerRequest,
+  buildStrReplaceFileCall,
   buildToolResultResponse,
+  buildWriteFileCall,
   type ApprovalWireResponse,
   type BuildInitializeOptions,
   type BuildPromptOptions,
   type BuildSessionCreateOptions,
   type BuildToolResultOptions,
+  type HookSubscription,
+  type ScriptedToolCallBuilder,
 } from './wire/wire-message-builder.js';
 export {
   normalizeLineEndings,
