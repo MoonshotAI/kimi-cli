@@ -21,34 +21,56 @@ export class WelcomeComponent implements Component {
   invalidate(): void {}
 
   render(width: number): string[] {
-    const c = (s: string) => chalk.hex(this.colors.primary)(s);
+    const primary = (s: string): string => chalk.hex(this.colors.primary)(s);
     const innerWidth = Math.max(10, width - 4);
     const pad = '  ';
 
-    const contentLines = [
+    // Logo + side-by-side text, parity with Python `_LOGO` in
+    // `kimi_cli/ui/shell/__init__.py:1381`.
+    const logo = ['▐█▛█▛█▌', '▐█████▌'];
+    const logoWidth = Math.max(...logo.map((row) => visibleWidth(row)));
+    const gap = '  ';
+    const textWidth = Math.max(4, innerWidth - logoWidth - gap.length);
+
+    const rightRow0 = truncateToWidth(
       chalk.bold.hex(this.colors.primary)('Welcome to Kimi Code CLI!'),
+      textWidth,
+      '…',
+    );
+    const rightRow1 = truncateToWidth(
       chalk.dim('Send /help for help information.'),
-      '',
+      textWidth,
+      '…',
+    );
+
+    const headerLines = [
+      primary(logo[0]!.padEnd(logoWidth)) + gap + rightRow0,
+      primary(logo[1]!.padEnd(logoWidth)) + gap + rightRow1,
+    ];
+
+    const infoLines = [
       chalk.dim.bold('Directory: ') + this.state.workDir,
       chalk.dim.bold('Session:   ') + this.state.sessionId,
       chalk.dim.bold('Model:     ') + this.state.model,
       chalk.dim.bold('Version:   ') + this.state.version,
     ];
 
+    const contentLines: string[] = [...headerLines, '', ...infoLines];
+
     const lines: string[] = [];
     lines.push('');
-    lines.push(c('╭' + '─'.repeat(width - 2) + '╮'));
-    lines.push(c('│') + ' '.repeat(width - 2) + c('│'));
+    lines.push(primary('╭' + '─'.repeat(width - 2) + '╮'));
+    lines.push(primary('│') + ' '.repeat(width - 2) + primary('│'));
 
     for (const content of contentLines) {
       const truncated = truncateToWidth(content, innerWidth, '…');
       const vis = visibleWidth(truncated);
       const rightPad = Math.max(0, innerWidth - vis);
-      lines.push(c('│') + pad + truncated + ' '.repeat(rightPad) + c('│'));
+      lines.push(primary('│') + pad + truncated + ' '.repeat(rightPad) + primary('│'));
     }
 
-    lines.push(c('│') + ' '.repeat(width - 2) + c('│'));
-    lines.push(c('╰' + '─'.repeat(width - 2) + '╯'));
+    lines.push(primary('│') + ' '.repeat(width - 2) + primary('│'));
+    lines.push(primary('╰' + '─'.repeat(width - 2) + '╯'));
     lines.push('');
 
     return lines;
