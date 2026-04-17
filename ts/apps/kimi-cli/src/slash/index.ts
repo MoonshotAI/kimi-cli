@@ -10,6 +10,7 @@ export type {
   SlashCommandContext,
   SlashCommandResult,
   SlashCommandMode,
+  ReloadAction,
 } from './registry.js';
 
 import { SlashCommandRegistry } from './registry.js';

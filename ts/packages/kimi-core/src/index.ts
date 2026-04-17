@@ -86,7 +86,12 @@ export {
 } from './soul-plus/journal-capability.js';
 export type { WiredJournalCapabilityDeps } from './soul-plus/journal-capability.js';
 export { SessionEventBus } from './soul-plus/session-event-bus.js';
-export type { SessionEventListener, NotificationListener } from './soul-plus/session-event-bus.js';
+export type {
+  SessionEventListener,
+  NotificationListener,
+  BusEvent,
+  EventSource,
+} from './soul-plus/session-event-bus.js';
 export { NotificationManager } from './soul-plus/notification-manager.js';
 export type {
   NotificationData,

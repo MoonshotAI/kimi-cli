@@ -6,6 +6,7 @@
  */
 
 import type { Theme } from '../config/schema.js';
+import type { ModelAlias } from '@moonshot-ai/core';
 import type { ThemeStyles } from '../theme/styles.js';
 import type {
   WireClient,
@@ -32,6 +33,15 @@ export interface AppState {
   streamingStartTime: number;
   theme: Theme;
   version: string;
+  /**
+   * External editor command (e.g. `vim`, `code --wait`). Seeded from
+   * `config.toml` `default_editor`; overridable via `/editor <cmd>`
+   * which persists back to config.toml. Falls through to `$VISUAL` /
+   * `$EDITOR` when empty.
+   */
+  editorCommand: string | null;
+  /** All model aliases loaded from config.toml — for /model picker. */
+  availableModels: Record<string, ModelAlias>;
 }
 
 // ── Transcript / Tool Types ──────────────────────────────────────────

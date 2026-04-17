@@ -67,8 +67,6 @@ export class FooterComponent implements Component {
     const colors = this.colors;
     const state = this.state;
 
-    const separator = chalk.hex(colors.border)('─'.repeat(width));
-
     const thinkingDot = state.thinking ? '●' : '○';
     const modeLabel = 'agent';
     const modeText = state.model
@@ -110,9 +108,6 @@ export class FooterComponent implements Component {
       }
     }
 
-    return [
-      truncateToWidth(separator, width),
-      truncateToWidth(contextLine, width),
-    ];
+    return [truncateToWidth(contextLine, width)];
   }
 }

@@ -46,6 +46,7 @@ import {
   type ShellDeliverCallback,
   type SkillManager,
   type SoulEvent,
+  type BusEvent,
   type Tool,
   type TurnLifecycleListener,
   type TurnManager,
@@ -181,16 +182,45 @@ export interface KimiCoreClientDeps {
   readonly skillManager?: SkillManager | undefined;
   /** Model's context window size in tokens. Used for compaction + status display. */
   readonly maxContextSize?: number | undefined;
+  /**
+   * Host-supplied factory for rebuilding the Runtime when the user
+   * switches models. When omitted, `switchModel` throws "not supported".
+   */
+  readonly rebuildRuntimeForModel?: RuntimeForModelFactory | undefined;
 }
 
 // ── KimiCoreClient ─────────────────────────────────────────────────
 
+/**
+ * Factory returned by the host so `KimiCoreClient.switchModel` can
+ * rebuild the per-runtime state without knowing how to assemble a
+ * provider itself. Capture `kimiConfig`, OAuth resolver, version
+ * headers etc. in the closure; return a fresh Runtime + companions.
+ */
+export interface RebuildRuntimeResult {
+  runtime: Runtime;
+  compactionProvider?: import('@moonshot-ai/core').CompactionProvider | undefined;
+  maxContextSize?: number | undefined;
+}
+export type RuntimeForModelFactory = (modelAlias: string) => Promise<RebuildRuntimeResult>;
+
 export class KimiCoreClient implements WireClient {
   private readonly deps: KimiCoreClientDeps;
   private readonly sessions = new Map<string, ClientSession>();
+  // Live (mutable) copies of the runtime / model / maxContextSize
+  // originally supplied via deps. `switchModel` replaces these so
+  // subsequent session creation + resume picks up the new Provider.
+  private runtime: Runtime;
+  private model: string;
+  private compactionProvider: import('@moonshot-ai/core').CompactionProvider | undefined;
+  private maxContextSize: number | undefined;
 
   constructor(deps: KimiCoreClientDeps) {
     this.deps = deps;
+    this.runtime = deps.runtime;
+    this.model = deps.model;
+    this.compactionProvider = deps.compactionProvider;
+    this.maxContextSize = deps.maxContextSize;
   }
 
   // ── Handshake ───────────────────────────────────────────────────
@@ -354,20 +384,20 @@ export class KimiCoreClient implements WireClient {
     });
 
     const commonOptions = {
-      runtime: this.deps.runtime,
+      runtime: this.runtime,
       tools: [...sessionTools],
-      model: this.deps.model,
+      model: this.model,
       systemPrompt: this.deps.systemPrompt,
       eventBus,
       orchestrator,
       onShellDeliver,
       ...(this.deps.skillManager !== undefined ? { skillManager: this.deps.skillManager } : {}),
-      ...(this.deps.maxContextSize !== undefined
-        ? { compactionConfig: { maxContextSize: this.deps.maxContextSize } }
+      ...(this.maxContextSize !== undefined
+        ? { compactionConfig: { maxContextSize: this.maxContextSize } }
         : {}),
       // Phase 2 — compaction capabilities promoted off of Runtime.
-      ...(this.deps.compactionProvider !== undefined
-        ? { compactionProvider: this.deps.compactionProvider }
+      ...(this.compactionProvider !== undefined
+        ? { compactionProvider: this.compactionProvider }
         : {}),
       ...(this.deps.journalCapability !== undefined
         ? { journalCapability: this.deps.journalCapability }
@@ -420,12 +450,42 @@ export class KimiCoreClient implements WireClient {
     this.sessions.set(managedId, record);
 
     // Fan SoulEvents → WireMessage → queue.
-    eventBus.on((event: SoulEvent) => {
-      const msg = adaptSoulEventToWireMessage(event, {
+    //
+    // Subagent events (source.kind === 'subagent') are wrapped in a
+    // `subagent.event` envelope that carries the parent tool call id,
+    // so the TUI can graft them onto the spawning tool call's block.
+    // Main-agent events (source === undefined) flow through unchanged.
+    eventBus.on((event: BusEvent) => {
+      const ctx = {
         sessionId: record.sessionId,
         turnId: record.currentTurnId,
         nextSeq: () => (record.seqCounter += 1),
-      });
+      };
+
+      if (event.source !== undefined && event.source.kind === 'subagent') {
+        const parentId = event.source.parent_tool_call_id;
+        if (parentId === undefined) return;
+        const inner = adaptSoulEventToWireMessage(event, ctx);
+        if (inner === null || inner.type !== 'event') return;
+        const envelope = createEvent(
+          'subagent.event',
+          {
+            parent_tool_call_id: parentId,
+            agent_id: event.source.id,
+            ...(event.source.name !== undefined ? { agent_name: event.source.name } : {}),
+            sub_event: { method: inner.method, data: inner.data },
+          },
+          {
+            session_id: record.sessionId,
+            ...(record.currentTurnId !== undefined ? { turn_id: record.currentTurnId } : {}),
+            seq: (record.seqCounter += 1),
+          },
+        );
+        queue.push(envelope);
+        return;
+      }
+
+      const msg = adaptSoulEventToWireMessage(event, ctx);
       if (msg !== null) {
         queue.push(msg);
       }
@@ -590,13 +650,38 @@ export class KimiCoreClient implements WireClient {
   // ── Configuration ───────────────────────────────────────────────
 
   async setModel(_sessionId: string, _model: string): Promise<void> {
-    // Slice 4.3 — runtime model switching is not implemented. `/model`
-    // slash parsing lives in `handleSlashCommand`; this method is kept
-    // for wire-protocol compatibility but throws so callers learn the
-    // feature is not available yet.
+    // Superseded by `switchModel`; the legacy WireClient.setModel is
+    // kept for interface compatibility but delegates callers to the
+    // higher-level helper because setting model alone without rebuilding
+    // the Provider / Kosong adapter has no effect on the running LLM.
     throw new Error(
-      'Model switching is not yet implemented — restart with --model <alias> to change models.',
+      'setModel is deprecated — use `switchModel(sessionId, modelAlias)` instead.',
     );
+  }
+
+  /**
+   * Live model switch. Rebuilds the Provider/Kosong adapter via the
+   * host-supplied `rebuildRuntimeForModel` factory, tears the old
+   * ManagedSession down, and re-creates it with the new runtime under
+   * the same `sessionId` so wire.jsonl / context state / workspace etc.
+   * carry over untouched.
+   *
+   * Returns the (same) session id so callers can update UI state.
+   */
+  async switchModel(sessionId: string, modelAlias: string): Promise<{ session_id: string }> {
+    if (this.deps.rebuildRuntimeForModel === undefined) {
+      throw new Error('switchModel is not configured on this client (no rebuild factory).');
+    }
+    const { runtime, compactionProvider, maxContextSize } =
+      await this.deps.rebuildRuntimeForModel(modelAlias);
+    // Tear down current session first so resumeSession below hits a
+    // clean slate inside SessionManager.
+    await this.destroySession(sessionId);
+    this.runtime = runtime;
+    this.model = modelAlias;
+    this.compactionProvider = compactionProvider;
+    this.maxContextSize = maxContextSize;
+    return this.resumeSession(sessionId);
   }
   async setThinking(_sessionId: string, _level: string): Promise<void> {}
   async setPlanMode(sessionId: string, enabled: boolean): Promise<void> {
@@ -764,7 +849,7 @@ export class KimiCoreClient implements WireClient {
 
   private emitStatusUpdate(record: ClientSession): void {
     const tokens = record.managed.contextState.tokenCountWithPending;
-    const maxTokens = this.deps.maxContextSize ?? 0;
+    const maxTokens = this.maxContextSize ?? 0;
     const usage = maxTokens > 0 ? Math.min(tokens / maxTokens, 1) : 0;
     record.queue.push(
       createEvent(

@@ -157,7 +157,7 @@ export class ApprovalPanelComponent extends Container implements Focusable {
   public onToggleToolExpand?: () => void;
 
   handleInput(data: string): void {
-    if (matchesKey(data, Key.ctrl('o'))) {
+    if (matchesKey(data, Key.ctrl('t'))) {
       this.onToggleToolExpand?.();
       return;
     }

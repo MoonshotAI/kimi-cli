@@ -38,11 +38,26 @@ import type {
   ToastNotification,
 } from './state.js';
 import { INITIAL_LIVE_PANE } from './state.js';
+import { decideSessionSwitch } from './session-switch.js';
 import { WireHandler, type WireHandlerDelegate } from './WireHandler.js';
 
 import { CustomEditor } from '../components/CustomEditor.js';
+import { ChoicePickerComponent, type ChoiceOption } from '../components/ChoicePickerComponent.js';
 import { getInputHistoryFile } from '../config/paths.js';
 import { loadInputHistory, appendInputHistory } from '../utils/input-history.js';
+import { editInExternalEditor, resolveEditorCommand } from '../utils/external-editor.js';
+import { saveConfigPatch } from '../config/save.js';
+import {
+  formatTokenCount,
+  renderProgressBar,
+  ratioSeverity,
+} from '../utils/usage-format.js';
+import {
+  fetchManagedUsage,
+  isManagedKimiCode,
+  kimiCodeUsageUrl,
+  type UsageRow,
+} from '../utils/managed-usage.js';
 import { WelcomeComponent } from '../components/WelcomeComponent.js';
 import { FooterComponent } from '../components/FooterComponent.js';
 import { UserMessageComponent } from '../components/UserMessageComponent.js';
@@ -53,6 +68,8 @@ import { ToolCallComponent } from '../components/ToolCallComponent.js';
 import { ApprovalPanelComponent } from '../components/ApprovalPanelComponent.js';
 import { QuestionDialogComponent } from '../components/QuestionDialogComponent.js';
 import { SessionPickerComponent } from '../components/SessionPickerComponent.js';
+import { HelpPanelComponent } from '../components/HelpPanelComponent.js';
+import { TodoPanelComponent, type TodoItem } from '../components/TodoPanelComponent.js';
 import { MoonLoader } from '../components/MoonLoader.js';
 
 interface Expandable {
@@ -67,6 +84,8 @@ export interface AppOAuthManager {
   logout(): Promise<void>;
   login(options?: LoginOptions): Promise<unknown>;
   hasToken(): Promise<boolean>;
+  /** Refresh if needed and return a valid access_token. */
+  ensureFresh(options?: { force?: boolean }): Promise<string>;
 }
 
 export interface InteractiveModeOptions {
@@ -85,6 +104,8 @@ export class InteractiveMode implements WireHandlerDelegate {
 
   private transcriptContainer: Container;
   private activityContainer: Container;
+  private todoPanelContainer: Container;
+  private todoPanel: TodoPanelComponent;
   private queueContainer: Container;
   private editorContainer: Container;
   private footer: FooterComponent;
@@ -96,6 +117,9 @@ export class InteractiveMode implements WireHandlerDelegate {
   private pendingToolComponents = new Map<string, ToolCallComponent>();
   private toolOutputExpanded = false;
   private lastHistoryContent: string | undefined;
+  /** Raw transcript entries — kept so `/theme` and `/clear` can rebuild
+   * the corresponding components from the same source data. */
+  private transcriptEntries: TranscriptEntry[] = [];
 
   private toasts: ToastNotification[] = [];
   private sessions: SessionInfo[] = [];
@@ -125,9 +149,12 @@ export class InteractiveMode implements WireHandlerDelegate {
 
     this.transcriptContainer = new Container();
     this.activityContainer = new Container();
+    this.todoPanelContainer = new Container();
+    this.todoPanel = new TodoPanelComponent(this.colors);
     this.queueContainer = new Container();
     this.editorContainer = new Container();
     this.editor = new CustomEditor(this.ui, editorTheme);
+    this.editor.slashHighlightHex = this.colors.primary;
     this.footer = new FooterComponent(this.state, this.colors);
 
     this.wireHandler = new WireHandler(wireClient, initialState.sessionId, this, this.colors);
@@ -155,6 +182,10 @@ export class InteractiveMode implements WireHandlerDelegate {
       this.handleUserInput(text);
     };
 
+    this.editor.onChange = (text: string) => {
+      this.updateEditorBorderHighlight(text);
+    };
+
     this.editor.onCtrlC = () => {
       this.wireHandler.cancelStream();
     };
@@ -175,6 +206,10 @@ export class InteractiveMode implements WireHandlerDelegate {
 
     this.editor.onShiftTab = () => {
       void this.togglePlanMode();
+    };
+
+    this.editor.onOpenExternalEditor = () => {
+      void this.openExternalEditor();
     };
 
     this.editor.onToggleToolExpand = () => {
@@ -213,6 +248,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   private setupLayout(): void {
     this.ui.addChild(this.transcriptContainer);
     this.ui.addChild(this.activityContainer);
+    this.ui.addChild(this.todoPanelContainer);
     this.ui.addChild(this.queueContainer);
     this.ui.addChild(this.editorContainer);
     this.ui.addChild(this.footer);
@@ -321,6 +357,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   }
 
   addTranscriptEntry(entry: TranscriptEntry): void {
+    this.transcriptEntries.push(entry);
     const component = this.createTranscriptComponent(entry);
     if (component) {
       this.transcriptContainer.addChild(component);
@@ -371,6 +408,52 @@ export class InteractiveMode implements WireHandlerDelegate {
       this.pendingToolComponents.delete(toolCallId);
       this.ui.requestRender();
     }
+  }
+
+  setTodoList(todos: readonly TodoItem[]): void {
+    this.todoPanel.setTodos(todos);
+    this.todoPanelContainer.clear();
+    if (!this.todoPanel.isEmpty()) {
+      this.todoPanelContainer.addChild(this.todoPanel);
+    }
+    this.ui.requestRender();
+  }
+
+  routeSubagentEvent(
+    parentToolCallId: string,
+    payload: import('./WireHandler.js').SubagentRoutedPayload,
+  ): void {
+    // pendingToolComponents only tracks still-streaming tool calls; for
+    // sub events that arrive after the parent tool call resolved we'd
+    // need a separate lookup. For now we drop late events silently —
+    // Python does the same.
+    const tc = this.pendingToolComponents.get(parentToolCallId);
+    if (tc === undefined) return;
+    tc.setSubagentMeta(payload.agent_id, payload.agent_name);
+
+    const { method, data } = payload.sub_event;
+    if (method === 'tool.call') {
+      const d = data as { id?: unknown; name?: unknown; args?: unknown };
+      if (typeof d.id === 'string' && typeof d.name === 'string') {
+        tc.appendSubToolCall({
+          id: d.id,
+          name: d.name,
+          args: typeof d.args === 'object' && d.args !== null
+            ? (d.args as Record<string, unknown>)
+            : {},
+        });
+      }
+    } else if (method === 'tool.result') {
+      const d = data as { tool_call_id?: unknown; output?: unknown; is_error?: unknown };
+      if (typeof d.tool_call_id === 'string') {
+        tc.finishSubToolCall({
+          tool_call_id: d.tool_call_id,
+          output: typeof d.output === 'string' ? d.output : '',
+          ...(typeof d.is_error === 'boolean' ? { is_error: d.is_error } : {}),
+        });
+      }
+    }
+    // content.delta / thinking.delta / step.* 等忽略（与 Python 对齐）
   }
 
   // ── Transcript rendering ────────────────────────────────────────
@@ -592,7 +675,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       colors: this.colors,
       onSelect: (sessionId: string) => {
         this.hideSessionPicker();
-        this.switchSession(sessionId);
+        void this.switchSession(sessionId);
       },
       onCancel: () => {
         this.hideSessionPicker();
@@ -604,12 +687,404 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.ui.requestRender();
   }
 
+  // ── /help panel ─────────────────────────────────────────────────
+
+  private showingHelpPanel = false;
+
+  private showHelpPanel(): void {
+    this.showingHelpPanel = true;
+    this.editorContainer.clear();
+    const panel = new HelpPanelComponent({
+      commands: this.registry.listAll(),
+      colors: this.colors,
+      onClose: () => this.hideHelpPanel(),
+    });
+    this.editorContainer.addChild(panel);
+    this.ui.setFocus(panel);
+    this.ui.requestRender();
+  }
+
+  private hideHelpPanel(): void {
+    this.showingHelpPanel = false;
+    this.editorContainer.clear();
+    this.editorContainer.addChild(this.editor);
+    this.ui.setFocus(this.editor);
+    this.ui.requestRender();
+  }
+
+  // ── /usage renderer ─────────────────────────────────────────────
+
+  private async showUsage(): Promise<void> {
+    const lines = await this.buildUsageReport();
+    this.addTranscriptEntry({
+      id: `usage-${String(Date.now())}`,
+      kind: 'status',
+      renderMode: 'plain',
+      content: lines.join('\n'),
+    });
+  }
+
+  private async buildUsageReport(): Promise<string[]> {
+    const accent = chalk.hex(this.colors.primary);
+    const dim = chalk.hex(this.colors.textDim);
+    const severityHex = (sev: 'ok' | 'warn' | 'danger'): string =>
+      sev === 'danger' ? this.colors.error
+        : sev === 'warn' ? this.colors.warning
+          : this.colors.success;
+
+    const lines: string[] = [];
+
+    // Session usage — wire-aggregated token totals.
+    let tokenErr: string | undefined;
+    let tokens = {
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_cache_read_tokens: 0,
+      total_cache_write_tokens: 0,
+      total_cost_usd: 0,
+    };
+    try {
+      tokens = await this.wireClient.getUsage(this.state.sessionId);
+    } catch (err) {
+      tokenErr = err instanceof Error ? err.message : String(err);
+    }
+    lines.push(accent('Session usage'));
+    if (tokenErr !== undefined) {
+      lines.push(chalk.hex(this.colors.error)(`  (failed: ${tokenErr})`));
+    } else {
+      lines.push(dim(`  Input      ${formatTokenCount(tokens.total_input_tokens)}`));
+      lines.push(dim(`  Output     ${formatTokenCount(tokens.total_output_tokens)}`));
+      lines.push(dim(`  Cache read ${formatTokenCount(tokens.total_cache_read_tokens)}`));
+      lines.push(dim(`  Cache wrt  ${formatTokenCount(tokens.total_cache_write_tokens)}`));
+      lines.push(
+        dim(
+          `  Cost       ${
+            tokens.total_cost_usd > 0
+              ? `$${tokens.total_cost_usd.toFixed(4)}`
+              : '— (not tracked)'
+          }`,
+        ),
+      );
+    }
+
+    // Context window — live utilisation from status.update events.
+    const ctxTokens = this.state.contextTokens;
+    const maxCtx = this.state.maxContextTokens;
+    if (maxCtx > 0) {
+      const ratio = Math.max(0, Math.min(ctxTokens / maxCtx, 1));
+      const bar = renderProgressBar(ratio, 20);
+      const pct = `${(ratio * 100).toFixed(1)}%`;
+      const barColoured = chalk.hex(severityHex(ratioSeverity(ratio)))(bar);
+      lines.push('');
+      lines.push(accent('Context window'));
+      lines.push(
+        `  ${barColoured} ${pct} ` +
+          dim(`(${formatTokenCount(ctxTokens)} / ${formatTokenCount(maxCtx)})`),
+      );
+    }
+
+    // Managed-platform quotas — only for managed:kimi-code.
+    const platformSection = await this.tryBuildManagedUsageSection(accent, dim, severityHex);
+    if (platformSection.length > 0) {
+      lines.push('');
+      lines.push(...platformSection);
+    }
+
+    return lines;
+  }
+
+  private async tryBuildManagedUsageSection(
+    accent: (s: string) => string,
+    dim: (s: string) => string,
+    severityHex: (sev: 'ok' | 'warn' | 'danger') => string,
+  ): Promise<string[]> {
+    const alias = this.state.model;
+    const providerKey = this.state.availableModels[alias]?.provider;
+    if (!isManagedKimiCode(providerKey)) return [];
+    const manager = this.oauthManagers?.get(providerKey ?? '');
+    if (manager === undefined) {
+      return [
+        accent('Plan usage'),
+        dim('  No OAuth session for this provider. Run /login to enable plan quotas.'),
+      ];
+    }
+    let token: string;
+    try {
+      token = await manager.ensureFresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return [
+        accent('Plan usage'),
+        chalk.hex(this.colors.error)(`  Failed to obtain access token: ${msg}`),
+      ];
+    }
+    const res = await fetchManagedUsage(kimiCodeUsageUrl(), token);
+    if (res.kind === 'error') {
+      return [accent('Plan usage'), chalk.hex(this.colors.error)(`  ${res.message}`)];
+    }
+    const { summary, limits } = res.parsed;
+    if (summary === null && limits.length === 0) {
+      return [accent('Plan usage'), dim('  No usage data available.')];
+    }
+
+    const rows: UsageRow[] = [];
+    if (summary !== null) rows.push(summary);
+    rows.push(...limits);
+    const labelWidth = Math.max(10, ...rows.map((r) => r.label.length));
+    const out: string[] = [accent('Plan usage')];
+    for (const row of rows) {
+      const ratioUsed = row.limit > 0 ? row.used / row.limit : 0;
+      const leftRatio = 1 - Math.max(0, Math.min(ratioUsed, 1));
+      const bar = renderProgressBar(Math.max(0, Math.min(ratioUsed, 1)), 20);
+      const pct = `${Math.round(leftRatio * 100)}% left`;
+      const barColoured = chalk.hex(severityHex(ratioSeverity(ratioUsed)))(bar);
+      const label = row.label.padEnd(labelWidth, ' ');
+      const resetStr = row.resetHint ? dim(` (${row.resetHint})`) : '';
+      out.push(`  ${dim(label)} ${barColoured} ${pct}${resetStr}`);
+    }
+    return out;
+  }
+
   hideSessionPicker(): void {
     this.showingSessionPicker = false;
     this.editorContainer.clear();
     this.editorContainer.addChild(this.editor);
     this.ui.setFocus(this.editor);
     this.ui.requestRender();
+  }
+
+  private showEditorPicker(): void {
+    const currentValue = this.state.editorCommand ?? '';
+    const options: ChoiceOption[] = [
+      { value: 'code --wait', label: 'VS Code (code --wait)' },
+      { value: 'vim', label: 'Vim' },
+      { value: 'nvim', label: 'Neovim' },
+      { value: 'nano', label: 'Nano' },
+      { value: '', label: 'Auto-detect ($VISUAL / $EDITOR)' },
+    ];
+    this.editorContainer.clear();
+    const picker = new ChoicePickerComponent({
+      title: 'Select external editor',
+      hint: '↑↓ navigate · Enter select · Esc cancel',
+      options,
+      currentValue,
+      colors: this.colors,
+      onSelect: (value) => {
+        this.closeEditorPicker();
+        this.applyEditorChoice(value);
+      },
+      onCancel: () => {
+        this.closeEditorPicker();
+      },
+    });
+    this.editorContainer.addChild(picker);
+    this.ui.setFocus(picker);
+    this.ui.requestRender();
+  }
+
+  private closeEditorPicker(): void {
+    this.editorContainer.clear();
+    this.editorContainer.addChild(this.editor);
+    this.ui.setFocus(this.editor);
+    this.ui.requestRender();
+  }
+
+  private applyEditorChoice(value: string): void {
+    const previous = this.state.editorCommand ?? '';
+    if (value === previous) {
+      this.addTranscriptEntry({
+        id: `editor-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Editor unchanged: ${value.length > 0 ? value : 'auto-detect'}`,
+      });
+      return;
+    }
+
+    this.setState({ editorCommand: value.length > 0 ? value : null });
+    try {
+      saveConfigPatch({ default_editor: value });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `editor-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Editor updated in memory but failed to persist: ${msg}`,
+        color: this.colors.error,
+      });
+      return;
+    }
+    this.addTranscriptEntry({
+      id: `editor-${String(Date.now())}`,
+      kind: 'status',
+      renderMode: 'plain',
+      content: value.length > 0
+        ? `Editor set to "${value}" and saved to config.toml.`
+        : 'Editor set to auto-detect ($VISUAL / $EDITOR).',
+    });
+  }
+
+  // ── Model picker ─────────────────────────────────────────────────
+
+  private showModelPicker(): void {
+    const entries = Object.entries(this.state.availableModels);
+    if (entries.length === 0) {
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'No models configured. Edit ~/.kimi/config.toml to add one.',
+        color: this.colors.error,
+      });
+      return;
+    }
+    const options: ChoiceOption[] = entries.map(([alias, cfg]) => ({
+      value: alias,
+      label: `${cfg.model} (${cfg.provider})`,
+    }));
+    this.editorContainer.clear();
+    const picker = new ChoicePickerComponent({
+      title: 'Select a model',
+      hint: '↑↓ navigate · Enter select · Esc cancel',
+      options,
+      currentValue: this.state.model,
+      colors: this.colors,
+      onSelect: (alias) => {
+        this.closeModelPicker();
+        this.showThinkingPicker(alias);
+      },
+      onCancel: () => this.closeModelPicker(),
+    });
+    this.editorContainer.addChild(picker);
+    this.ui.setFocus(picker);
+    this.ui.requestRender();
+  }
+
+  private showThinkingPicker(alias: string): void {
+    const model = this.state.availableModels[alias];
+    const caps = model?.capabilities ?? [];
+    // Parity with Python: always_thinking forces on; thinking asks;
+    // otherwise force off.
+    if (caps.includes('always_thinking')) {
+      void this.performModelSwitch(alias, true);
+      return;
+    }
+    if (!caps.includes('thinking')) {
+      void this.performModelSwitch(alias, false);
+      return;
+    }
+    const options: ChoiceOption[] = [
+      { value: 'on', label: 'Thinking: on' },
+      { value: 'off', label: 'Thinking: off' },
+    ];
+    this.editorContainer.clear();
+    const picker = new ChoicePickerComponent({
+      title: `Enable thinking for ${alias}?`,
+      hint: '↑↓ navigate · Enter select · Esc cancel',
+      options,
+      currentValue: this.state.thinking ? 'on' : 'off',
+      colors: this.colors,
+      onSelect: (value) => {
+        this.closeModelPicker();
+        void this.performModelSwitch(alias, value === 'on');
+      },
+      onCancel: () => this.closeModelPicker(),
+    });
+    this.editorContainer.addChild(picker);
+    this.ui.setFocus(picker);
+    this.ui.requestRender();
+  }
+
+  private closeModelPicker(): void {
+    this.editorContainer.clear();
+    this.editorContainer.addChild(this.editor);
+    this.ui.setFocus(this.editor);
+    this.ui.requestRender();
+  }
+
+  private async performModelSwitch(alias: string, thinking: boolean): Promise<void> {
+    if (this.state.isStreaming) {
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'Cannot switch models while streaming — press Esc or Ctrl-C first.',
+        color: this.colors.error,
+      });
+      return;
+    }
+
+    if (alias === this.state.model && thinking === this.state.thinking) {
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Already using ${alias} with thinking ${thinking ? 'on' : 'off'}.`,
+        color: this.colors.textDim,
+      });
+      return;
+    }
+
+    if (typeof this.wireClient.switchModel !== 'function') {
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'Model switching not configured on this build.',
+        color: this.colors.error,
+      });
+      return;
+    }
+
+    const prevModel = this.state.model;
+    const sessionId = this.state.sessionId;
+    try {
+      this.wireHandler.stop();
+      const { session_id: newId } = await this.wireClient.switchModel(sessionId, alias);
+      // The new ManagedSession (same id) has a fresh queue; rebuild the
+      // WireHandler so its subscribe loop listens on the right one.
+      this.wireHandler = new WireHandler(this.wireClient, newId, this, this.colors);
+      void this.wireHandler.start();
+      this.setState({ sessionId: newId, model: alias, thinking });
+      try {
+        saveConfigPatch({ default_model: alias, default_thinking: thinking });
+      } catch (persistErr) {
+        const msg = persistErr instanceof Error ? persistErr.message : String(persistErr);
+        this.addTranscriptEntry({
+          id: `model-warn-${String(Date.now())}`,
+          kind: 'status',
+          renderMode: 'plain',
+          content: `Switched but failed to persist to config.toml: ${msg}`,
+          color: this.colors.warning,
+        });
+      }
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Switched to ${alias} with thinking ${thinking ? 'on' : 'off'}.`,
+        color: this.colors.success,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `model-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Failed to switch model: ${msg}`,
+        color: this.colors.error,
+      });
+      // Best-effort recovery: try to resume the previous session so the
+      // user is not stranded.
+      try {
+        this.wireHandler = new WireHandler(this.wireClient, sessionId, this, this.colors);
+        void this.wireHandler.start();
+      } catch {
+        // nothing useful left to do
+      }
+      void prevModel;
+    }
   }
 
   // ── Session management ──────────────────────────────────────────
@@ -626,14 +1101,97 @@ export class InteractiveMode implements WireHandlerDelegate {
     }
   }
 
-  private switchSession(newSessionId: string): void {
-    this.setState({ sessionId: newSessionId });
-    void this.wireClient.resume(newSessionId);
+  /**
+   * Swap the active session. Mirrors the /new + /model live-rebuild
+   * pattern: stop the old WireHandler, destroy the old ManagedSession
+   * so its event queue closes, resume the target session through
+   * KimiCoreClient (which triggers wire.jsonl replay + fresh SoulPlus),
+   * then wire up a brand-new WireHandler on the new queue.
+   *
+   * Guard decisions live in {@link decideSessionSwitch}; this method
+   * only does the side-effects that follow a 'proceed' verdict.
+   */
+  private async switchSession(newSessionId: string): Promise<void> {
+    const decision = decideSessionSwitch({
+      currentSessionId: this.state.sessionId,
+      targetSessionId: newSessionId,
+      isStreaming: this.state.isStreaming,
+      currentWorkDir: this.state.workDir,
+      sessions: this.sessions,
+      clientSupportsResumeSession: typeof this.wireClient.resumeSession === 'function',
+    });
+    if (decision.kind === 'noop') {
+      this.addTranscriptEntry({
+        id: `session-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'Already on this session.',
+        color: this.colors.textDim,
+      });
+      return;
+    }
+    if (decision.kind === 'error') {
+      this.addTranscriptEntry({
+        id: `session-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: decision.message,
+        color: this.colors.error,
+      });
+      return;
+    }
+
+    const target = decision.target;
+    const oldId = this.state.sessionId;
+    try {
+      this.wireHandler.stop();
+      await this.wireClient.destroySession(oldId);
+      // Type narrowing: decideSessionSwitch already verified this.
+      const { session_id: resumedId } = await this.wireClient.resumeSession!(newSessionId);
+      this.wireHandler = new WireHandler(this.wireClient, resumedId, this, this.colors);
+      void this.wireHandler.start();
+      this.setState({ sessionId: resumedId });
+      this.clearTranscriptAndRedraw();
+      const label = target.title !== null && target.title.length > 0
+        ? `${target.title} (${resumedId})`
+        : resumedId;
+      this.addTranscriptEntry({
+        id: `session-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Switched to session ${label}.`,
+        color: this.colors.success,
+      });
+      void this.fetchSessions();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `session-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Failed to switch session: ${msg}`,
+        color: this.colors.error,
+      });
+      // Best-effort recovery: re-resume the old session so the user
+      // isn't stranded without a live WireHandler.
+      try {
+        if (typeof this.wireClient.resumeSession === 'function') {
+          await this.wireClient.resumeSession(oldId);
+        }
+        this.wireHandler = new WireHandler(this.wireClient, oldId, this, this.colors);
+        void this.wireHandler.start();
+      } catch {
+        // No safe recovery left — user should restart.
+      }
+    }
   }
 
   // ── User input handling ─────────────────────────────────────────
 
   private handleUserInput(text: string): void {
+    // Ignore empty / whitespace-only submissions — pressing Enter on an
+    // empty input box should be a no-op, not a wire round-trip.
+    if (text.trim().length === 0) return;
     void this.persistInputHistory(text);
     if (text.startsWith('/')) {
       void this.executeSlashCommand(text);
@@ -641,6 +1199,182 @@ export class InteractiveMode implements WireHandlerDelegate {
       this.wireHandler.sendMessage(text);
       this.updateQueueDisplay();
       this.ui.requestRender();
+    }
+  }
+
+  // ── Reload / re-render ───────────────────────────────────────────
+
+  private async performReload(action: import('../slash/index.js').ReloadAction): Promise<void> {
+    if (this.state.isStreaming) {
+      this.addTranscriptEntry({
+        id: `reload-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Cannot /${action} while streaming — press Esc or Ctrl-C first.`,
+        color: this.colors.error,
+      });
+      return;
+    }
+
+    switch (action) {
+      case 'clear':
+        this.clearTranscriptAndRedraw();
+        this.addTranscriptEntry({
+          id: `reload-${String(Date.now())}`,
+          kind: 'status',
+          renderMode: 'plain',
+          content: 'Transcript cleared.',
+          color: this.colors.textDim,
+        });
+        break;
+      case 'new':
+        await this.spawnFreshSession();
+        break;
+      case 'theme':
+        this.applyThemeChange();
+        break;
+    }
+    this.ui.requestRender();
+  }
+
+  private clearTranscriptAndRedraw(): void {
+    this.transcriptEntries = [];
+    this.transcriptContainer.clear();
+    this.pendingToolComponents.clear();
+    this.streamingComponent = undefined;
+    this.todoPanel.clear();
+    this.todoPanelContainer.clear();
+    this.renderWelcome();
+  }
+
+  private rebuildTranscriptFromEntries(): void {
+    this.transcriptContainer.clear();
+    this.pendingToolComponents.clear();
+    this.streamingComponent = undefined;
+    this.renderWelcome();
+    for (const entry of this.transcriptEntries) {
+      const component = this.createTranscriptComponent(entry);
+      if (component !== null) {
+        this.transcriptContainer.addChild(component);
+      }
+    }
+  }
+
+  private applyThemeChange(): void {
+    this.colors = getColorPalette(this.state.theme);
+    this.markdownTheme = createMarkdownTheme(this.colors);
+    this.footer.setColors(this.colors);
+    this.todoPanel.setColors(this.colors);
+    // Re-apply the border colour with the new palette, respecting the
+    // current slash-highlight state.
+    this.updateEditorBorderHighlight(this.editor.getText());
+    this.rebuildTranscriptFromEntries();
+  }
+
+  /**
+   * Re-apply slash highlighting state for the current editor text.
+   * Two visual signals are combined:
+   *   - editor border flips to `colors.primary` when input starts with `/`
+   *   - the leading `/token` itself is re-coloured via CustomEditor's
+   *     ANSI-aware post-processor (`slashHighlightHex`)
+   * Called from `onChange` and on theme changes.
+   */
+  private updateEditorBorderHighlight(text: string): void {
+    const editorTheme = createEditorTheme(this.colors);
+    const trimmed = text.trimStart();
+    if (trimmed.startsWith('/')) {
+      const primary = this.colors.primary;
+      this.editor.borderColor = (s: string) => chalk.hex(primary)(s);
+    } else {
+      this.editor.borderColor = editorTheme.borderColor;
+    }
+    // Keep the token colour in sync with the palette — the editor only
+    // paints when the input actually starts with `/` so it's safe to
+    // set unconditionally.
+    this.editor.slashHighlightHex = this.colors.primary;
+    this.ui.requestRender();
+  }
+
+  private async spawnFreshSession(): Promise<void> {
+    try {
+      this.wireHandler.stop();
+      const { session_id: newId } = await this.wireClient.createSession(this.state.workDir);
+      // Build a new WireHandler rooted at the new session so its
+      // subscribe loop listens on the right queue.
+      this.wireHandler = new WireHandler(this.wireClient, newId, this, this.colors);
+      void this.wireHandler.start();
+      this.setState({ sessionId: newId });
+      this.clearTranscriptAndRedraw();
+      this.addTranscriptEntry({
+        id: `reload-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Started a new session (${newId}).`,
+        color: this.colors.textDim,
+      });
+      void this.fetchSessions();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `reload-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Failed to start a new session: ${msg}`,
+        color: this.colors.error,
+      });
+    }
+  }
+
+  private externalEditorRunning = false;
+
+  private async openExternalEditor(): Promise<void> {
+    if (this.externalEditorRunning) return;
+    const cmd = resolveEditorCommand(this.state.editorCommand);
+    if (cmd === undefined) {
+      this.addTranscriptEntry({
+        id: `editor-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'No editor configured. Set $VISUAL / $EDITOR, or run /editor <command>.',
+        color: this.colors.error,
+      });
+      return;
+    }
+    this.externalEditorRunning = true;
+    const seed = this.editor.getExpandedText?.() ?? this.editor.getText();
+    this.ui.stop();
+    // Let pi-tui's terminal reset escape sequences flush before the
+    // child takes over the TTY; otherwise the child occasionally sees
+    // the tail of "\x1b[?2004l" etc. as its first input on slow TTYs.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    try {
+      const result = await editInExternalEditor(seed, cmd);
+      if (result !== undefined) {
+        this.editor.setText(result.replace(/\r\n/g, '\n').replace(/\n$/, ''));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `editor-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `External editor failed: ${msg}`,
+        color: this.colors.error,
+      });
+    } finally {
+      // The child held stdin with `stdio:'inherit'` — Node's stdin can
+      // end up in a half-paused state after it exits. Pause explicitly
+      // so pi-tui's Terminal.start can re-take ownership from a known
+      // baseline (setRawMode(true) + resume()).
+      if (typeof process.stdin.pause === 'function') {
+        process.stdin.pause();
+      }
+      this.ui.start();
+      // Refocus the editor and force a full repaint — previousLines
+      // inside pi-tui was invalidated by the child's screen output.
+      this.ui.setFocus(this.editor);
+      this.ui.requestRender(true);
+      this.externalEditorRunning = false;
     }
   }
 
@@ -732,35 +1466,39 @@ export class InteractiveMode implements WireHandlerDelegate {
         void this.stop();
         break;
       case 'reload':
-        this.addTranscriptEntry({
-          id: `slash-${Date.now()}`,
-          kind: 'status',
-          renderMode: 'plain',
-          content: 'Session reset. (Full reload not yet implemented)',
-        });
+        void this.performReload(result.action);
         break;
       case 'ok': {
         if (!result.message) return;
 
         if (result.message === '__show_help__') {
-          const cmds = this.registry.listAll();
-          const lines = cmds.map((c) => {
-            const aliases =
-              c.aliases.length > 0 ? ` (${c.aliases.map((a) => '/' + a).join(', ')})` : '';
-            return `  /${c.name}${aliases} -- ${c.description}`;
-          });
-          this.addTranscriptEntry({
-            id: `slash-${Date.now()}`,
-            kind: 'status',
-            renderMode: 'plain',
-            content: 'Available commands:\n' + lines.join('\n'),
-          });
+          this.showHelpPanel();
           return;
         }
 
         if (result.message === '__show_sessions__') {
           await this.fetchSessions();
           void this.showSessionPicker();
+          return;
+        }
+
+        if (result.message === '__show_editor_picker__') {
+          this.showEditorPicker();
+          return;
+        }
+
+        if (result.message === '__show_model_picker__') {
+          this.showModelPicker();
+          return;
+        }
+
+        if (result.message === '__show_usage__') {
+          void this.showUsage();
+          return;
+        }
+        if (result.message.startsWith('__show_model_picker__:')) {
+          const alias = result.message.slice('__show_model_picker__:'.length);
+          this.showThinkingPicker(alias);
           return;
         }
 

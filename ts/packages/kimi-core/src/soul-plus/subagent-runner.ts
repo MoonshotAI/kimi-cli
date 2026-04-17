@@ -265,6 +265,7 @@ export async function runSubagentTurn(
     const source: EventSource = {
       id: agentId,
       kind: 'subagent',
+      parent_tool_call_id: request.parentToolCallId,
       ...(request.agentName !== undefined ? { name: request.agentName } : {}),
     };
     baseSink = createSubagentSinkWrapper({

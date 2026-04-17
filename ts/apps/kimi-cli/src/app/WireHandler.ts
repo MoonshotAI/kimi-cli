@@ -53,6 +53,22 @@ export interface WireHandlerDelegate {
   onStreamingTextEnd(): void;
   onToolCallStart(toolCall: ToolCallBlockData): void;
   onToolCallEnd(toolCallId: string, result: ToolResultBlockData): void;
+  routeSubagentEvent(parentToolCallId: string, payload: SubagentRoutedPayload): void;
+  /**
+   * Called when the `SetTodoList` tool finishes. `todos` is the
+   * authoritative new list (empty → cleared). Host implementations
+   * should mirror the Python UX by pinning this above the input.
+   */
+  setTodoList(todos: readonly { title: string; status: 'pending' | 'in_progress' | 'done' }[]): void;
+}
+
+export interface SubagentRoutedPayload {
+  readonly agent_id: string;
+  readonly agent_name?: string | undefined;
+  readonly sub_event: {
+    readonly method: string;
+    readonly data: unknown;
+  };
 }
 
 export class WireHandler {
@@ -263,6 +279,19 @@ export class WireHandler {
         };
         if (matchedCall !== undefined) {
           this.delegate.onToolCallEnd(data.tool_call_id, resultData);
+          // SetTodoList: surface the authoritative todo list to the
+          // host so it can pin the pane above the input. `args.todos`
+          // is the LLM-sent list (undefined = query-only, which we
+          // intentionally don't propagate since no state changed).
+          if (matchedCall.name === 'SetTodoList' && !data.is_error) {
+            const rawTodos = (matchedCall.args as { todos?: unknown }).todos;
+            if (Array.isArray(rawTodos)) {
+              const sanitized = rawTodos
+                .filter(isTodoItemShape)
+                .map((t) => ({ title: t.title, status: t.status }));
+              this.delegate.setTodoList(sanitized);
+            }
+          }
         }
         this.activeToolCalls.delete(data.tool_call_id);
         this.delegate.patchLivePane({ mode: 'idle', pendingToolCall: null });
@@ -349,6 +378,30 @@ export class WireHandler {
         this.delegate.addTranscriptEntry(
           this.makeEntry('status', `Error${detail}: ${data.error}`, 'plain'),
         );
+        break;
+      }
+      case 'subagent.event': {
+        const data = msg.data as {
+          parent_tool_call_id?: unknown;
+          agent_id?: unknown;
+          agent_name?: unknown;
+          sub_event?: unknown;
+        };
+        if (
+          typeof data.parent_tool_call_id !== 'string' ||
+          typeof data.agent_id !== 'string' ||
+          typeof data.sub_event !== 'object' ||
+          data.sub_event === null
+        ) {
+          break;
+        }
+        const se = data.sub_event as { method?: unknown; data?: unknown };
+        if (typeof se.method !== 'string') break;
+        this.delegate.routeSubagentEvent(data.parent_tool_call_id, {
+          agent_id: data.agent_id,
+          ...(typeof data.agent_name === 'string' ? { agent_name: data.agent_name } : {}),
+          sub_event: { method: se.method, data: se.data },
+        });
         break;
       }
       default:
@@ -498,4 +551,13 @@ export class WireHandler {
     }
     this.delegate.removeToast(id);
   }
+}
+
+function isTodoItemShape(
+  value: unknown,
+): value is { title: string; status: 'pending' | 'in_progress' | 'done' } {
+  if (typeof value !== 'object' || value === null) return false;
+  const rec = value as { title?: unknown; status?: unknown };
+  if (typeof rec.title !== 'string' || rec.title.length === 0) return false;
+  return rec.status === 'pending' || rec.status === 'in_progress' || rec.status === 'done';
 }

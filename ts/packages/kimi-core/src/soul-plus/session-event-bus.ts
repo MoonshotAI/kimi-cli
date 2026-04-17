@@ -39,6 +39,13 @@ export interface EventSource {
   kind: 'subagent' | 'teammate' | 'remote';
   /** Optional human-readable name (e.g. agent type, teammate handle). */
   name?: string;
+  /**
+   * The parent tool call that spawned this source (subagent path only).
+   * Host UIs use this to graft child events onto the parent tool call's
+   * block. Transport-only — like the rest of `EventSource`, it never
+   * reaches wire.jsonl.
+   */
+  parent_tool_call_id?: string;
 }
 
 /**

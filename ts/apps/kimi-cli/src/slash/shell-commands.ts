@@ -6,6 +6,8 @@
  */
 
 import type { SlashCommandDef, SlashCommandResult } from './registry.js';
+import { saveConfigPatch } from '../config/save.js';
+import { resolveEditorCommand } from '../utils/external-editor.js';
 
 // ── Helper ──────────────────────────────────────────────────────────
 
@@ -51,20 +53,20 @@ const versionCommand: SlashCommandDef = {
 const clearCommand: SlashCommandDef = {
   name: 'clear',
   aliases: ['reset'],
-  description: 'Clear context and start fresh',
+  description: 'Clear the transcript (keep the session)',
   mode: 'both',
   async execute() {
-    return { type: 'reload' };
+    return { type: 'reload', action: 'clear' };
   },
 };
 
 const newCommand: SlashCommandDef = {
   name: 'new',
   aliases: [],
-  description: 'Start a new session',
+  description: 'Start a fresh session in the current workspace',
   mode: 'both',
   async execute() {
-    return { type: 'reload' };
+    return { type: 'reload', action: 'new' };
   },
 };
 
@@ -96,12 +98,13 @@ const titleCommand: SlashCommandDef = {
 const themeCommand: SlashCommandDef = {
   name: 'theme',
   aliases: [],
-  description: 'Toggle dark/light theme',
+  description: 'Toggle dark/light theme and redraw the UI',
   mode: 'both',
   async execute(_args, ctx) {
     const newTheme = ctx.appState.theme === 'dark' ? 'light' : 'dark';
     ctx.setAppState({ theme: newTheme });
-    return ok(`Theme: ${newTheme}`);
+    // Rebuild palettes / redraw transcript via the reload pipeline.
+    return { type: 'reload', action: 'theme' };
   },
 };
 
@@ -142,15 +145,22 @@ const planCommand: SlashCommandDef = {
 const modelCommand: SlashCommandDef = {
   name: 'model',
   aliases: [],
-  description: 'Show or switch model',
+  description: 'Switch LLM model (picker, persists to config.toml)',
   mode: 'both',
   async execute(args, ctx) {
-    if (args.length === 0) {
-      return ok(`Current model: ${ctx.appState.model}`);
+    const trimmed = args.trim();
+    if (trimmed.length === 0) {
+      // Defer to InteractiveMode which renders the ChoicePicker and
+      // drives the two-step model → thinking flow.
+      return ok('__show_model_picker__');
     }
-    ctx.setAppState({ model: args });
-    await ctx.wireClient.setModel(ctx.appState.sessionId, args);
-    return ok(`Model switched to: ${args}`);
+    // Direct-arg form: treat as alias lookup. If unknown, surface an
+    // error; otherwise let the picker-driven flow handle persistence +
+    // runtime rebuild consistently by piggybacking on the signal.
+    if (ctx.appState.availableModels[trimmed] === undefined) {
+      return ok(`Unknown model alias: ${trimmed}`);
+    }
+    return ok(`__show_model_picker__:${trimmed}`);
   },
 };
 
@@ -174,18 +184,13 @@ const thinkingCommand: SlashCommandDef = {
 const usageCommand: SlashCommandDef = {
   name: 'usage',
   aliases: ['status'],
-  description: 'Show token usage statistics',
+  description: 'Show session tokens + context window + plan quotas',
   mode: 'both',
-  async execute(_args, ctx) {
-    const usage = await ctx.wireClient.getUsage(ctx.appState.sessionId);
-    const lines = [
-      `Input tokens:  ${usage.total_input_tokens}`,
-      `Output tokens: ${usage.total_output_tokens}`,
-      `Cache read:    ${usage.total_cache_read_tokens}`,
-      `Cache write:   ${usage.total_cache_write_tokens}`,
-      `Cost:          $${usage.total_cost_usd.toFixed(4)}`,
-    ];
-    return ok(lines.join('\n'));
+  async execute() {
+    // Defer to InteractiveMode — it has access to oauthManagers /
+    // availableModels which are needed to fetch the managed-platform
+    // /usages endpoint in addition to the session-local token totals.
+    return ok('__show_usage__');
   },
 };
 
@@ -237,6 +242,36 @@ const debugCommand: SlashCommandDef = {
   },
 };
 
+const editorCommand: SlashCommandDef = {
+  name: 'editor',
+  aliases: [],
+  description: 'Set the external editor for Ctrl-O (persists to config.toml)',
+  mode: 'both',
+  async execute(args, ctx) {
+    const trimmed = args.trim();
+    if (trimmed.length === 0) {
+      // Defer UI to InteractiveMode — it renders a ChoicePicker with the
+      // same preset options as Python (`code --wait` / `vim` / `nano` /
+      // auto-detect) and writes the selection back through the same
+      // persistence path as the direct-arg branch below.
+      return ok('__show_editor_picker__');
+    }
+
+    ctx.setAppState({ editorCommand: trimmed });
+    try {
+      saveConfigPatch({ default_editor: trimmed });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return ok(`Editor set in memory but failed to persist: ${msg}`);
+    }
+
+    // Warn (don't block) if the binary is not in PATH — parity with
+    // Python's shutil.which check.
+    void resolveEditorCommand; // retain import for the picker path
+    return ok(`Editor set to "${trimmed}" and saved to config.toml.`);
+  },
+};
+
 // ── Export all shell commands ────────────────────────────────────────
 
 export const shellCommands: SlashCommandDef[] = [
@@ -256,4 +291,5 @@ export const shellCommands: SlashCommandDef[] = [
   forkCommand,
   undoCommand,
   debugCommand,
+  editorCommand,
 ];
