@@ -41,6 +41,12 @@ export interface WireClient {
   cancel(sessionId: string): Promise<void>;
   /** Resume a session from persisted state. */
   resume(sessionId: string): Promise<void>;
+  /**
+   * Re-open an existing on-disk session under the same id (reload
+   * wire.jsonl, rebuild SoulPlus). Returns the (unchanged) session id.
+   * Optional because mock/offline clients may not support it.
+   */
+  resumeSession?(sessionId: string): Promise<{ session_id: string }>;
 
   /** Fork a session. */
   fork(sessionId: string, atTurn?: number): Promise<{ session_id: string }>;

@@ -226,16 +226,11 @@ describe('Slash commands', () => {
     expect(set2).toHaveBeenCalledWith({ theme: 'dark' });
   });
 
-  it('/usage returns token stats', async () => {
+  it('/usage emits the usage signal (InteractiveMode renders the report)', async () => {
     const cmd = registry.find('usage')!;
     const { ctx } = makeCtx();
     const result = await cmd.execute('', ctx);
-    expect(result.type).toBe('ok');
-    if (result.type === 'ok') {
-      expect(result.message).toContain('100');
-      expect(result.message).toContain('200');
-      expect(result.message).toContain('0.0042');
-    }
+    expect(result).toEqual({ type: 'ok', message: '__show_usage__' });
   });
 
   it('/fork calls wireClient.fork', async () => {

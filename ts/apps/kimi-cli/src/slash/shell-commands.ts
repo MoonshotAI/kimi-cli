@@ -184,18 +184,13 @@ const thinkingCommand: SlashCommandDef = {
 const usageCommand: SlashCommandDef = {
   name: 'usage',
   aliases: ['status'],
-  description: 'Show token usage statistics',
+  description: 'Show session tokens + context window + plan quotas',
   mode: 'both',
-  async execute(_args, ctx) {
-    const usage = await ctx.wireClient.getUsage(ctx.appState.sessionId);
-    const lines = [
-      `Input tokens:  ${usage.total_input_tokens}`,
-      `Output tokens: ${usage.total_output_tokens}`,
-      `Cache read:    ${usage.total_cache_read_tokens}`,
-      `Cache write:   ${usage.total_cache_write_tokens}`,
-      `Cost:          $${usage.total_cost_usd.toFixed(4)}`,
-    ];
-    return ok(lines.join('\n'));
+  async execute() {
+    // Defer to InteractiveMode — it has access to oauthManagers /
+    // availableModels which are needed to fetch the managed-platform
+    // /usages endpoint in addition to the session-local token totals.
+    return ok('__show_usage__');
   },
 };
 

@@ -8,10 +8,14 @@ import type { SessionInfo } from '../wire/methods.js';
 import type { ColorPalette } from '../theme/colors.js';
 
 function formatRelativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
+  // SessionInfo timestamps are unix seconds (wire protocol normalises
+  // via `toUnixSeconds` in kimi-core-client); `Date.now()` returns
+  // milliseconds. Convert both to seconds before subtracting.
+  if (!Number.isFinite(ts) || ts <= 0) return '';
+  const nowSec = Math.floor(Date.now() / 1000);
+  const diffSec = Math.max(0, nowSec - ts);
+  if (diffSec < 60) return 'just now';
+  const minutes = Math.floor(diffSec / 60);
   if (minutes < 60) return `${String(minutes)}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${String(hours)}h ago`;

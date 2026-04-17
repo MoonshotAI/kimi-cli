@@ -38,6 +38,7 @@ import type {
   ToastNotification,
 } from './state.js';
 import { INITIAL_LIVE_PANE } from './state.js';
+import { decideSessionSwitch } from './session-switch.js';
 import { WireHandler, type WireHandlerDelegate } from './WireHandler.js';
 
 import { CustomEditor } from '../components/CustomEditor.js';
@@ -46,6 +47,17 @@ import { getInputHistoryFile } from '../config/paths.js';
 import { loadInputHistory, appendInputHistory } from '../utils/input-history.js';
 import { editInExternalEditor, resolveEditorCommand } from '../utils/external-editor.js';
 import { saveConfigPatch } from '../config/save.js';
+import {
+  formatTokenCount,
+  renderProgressBar,
+  ratioSeverity,
+} from '../utils/usage-format.js';
+import {
+  fetchManagedUsage,
+  isManagedKimiCode,
+  kimiCodeUsageUrl,
+  type UsageRow,
+} from '../utils/managed-usage.js';
 import { WelcomeComponent } from '../components/WelcomeComponent.js';
 import { FooterComponent } from '../components/FooterComponent.js';
 import { UserMessageComponent } from '../components/UserMessageComponent.js';
@@ -70,6 +82,8 @@ export interface AppOAuthManager {
   logout(): Promise<void>;
   login(options?: LoginOptions): Promise<unknown>;
   hasToken(): Promise<boolean>;
+  /** Refresh if needed and return a valid access_token. */
+  ensureFresh(options?: { force?: boolean }): Promise<string>;
 }
 
 export interface InteractiveModeOptions {
@@ -640,7 +654,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       colors: this.colors,
       onSelect: (sessionId: string) => {
         this.hideSessionPicker();
-        this.switchSession(sessionId);
+        void this.switchSession(sessionId);
       },
       onCancel: () => {
         this.hideSessionPicker();
@@ -650,6 +664,139 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.editorContainer.addChild(picker);
     this.ui.setFocus(picker);
     this.ui.requestRender();
+  }
+
+  // ── /usage renderer ─────────────────────────────────────────────
+
+  private async showUsage(): Promise<void> {
+    const lines = await this.buildUsageReport();
+    this.addTranscriptEntry({
+      id: `usage-${String(Date.now())}`,
+      kind: 'status',
+      renderMode: 'plain',
+      content: lines.join('\n'),
+    });
+  }
+
+  private async buildUsageReport(): Promise<string[]> {
+    const accent = chalk.hex(this.colors.primary);
+    const dim = chalk.hex(this.colors.textDim);
+    const severityHex = (sev: 'ok' | 'warn' | 'danger'): string =>
+      sev === 'danger' ? this.colors.error
+        : sev === 'warn' ? this.colors.warning
+          : this.colors.success;
+
+    const lines: string[] = [];
+
+    // Session usage — wire-aggregated token totals.
+    let tokenErr: string | undefined;
+    let tokens = {
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_cache_read_tokens: 0,
+      total_cache_write_tokens: 0,
+      total_cost_usd: 0,
+    };
+    try {
+      tokens = await this.wireClient.getUsage(this.state.sessionId);
+    } catch (err) {
+      tokenErr = err instanceof Error ? err.message : String(err);
+    }
+    lines.push(accent('Session usage'));
+    if (tokenErr !== undefined) {
+      lines.push(chalk.hex(this.colors.error)(`  (failed: ${tokenErr})`));
+    } else {
+      lines.push(dim(`  Input      ${formatTokenCount(tokens.total_input_tokens)}`));
+      lines.push(dim(`  Output     ${formatTokenCount(tokens.total_output_tokens)}`));
+      lines.push(dim(`  Cache read ${formatTokenCount(tokens.total_cache_read_tokens)}`));
+      lines.push(dim(`  Cache wrt  ${formatTokenCount(tokens.total_cache_write_tokens)}`));
+      lines.push(
+        dim(
+          `  Cost       ${
+            tokens.total_cost_usd > 0
+              ? `$${tokens.total_cost_usd.toFixed(4)}`
+              : '— (not tracked)'
+          }`,
+        ),
+      );
+    }
+
+    // Context window — live utilisation from status.update events.
+    const ctxTokens = this.state.contextTokens;
+    const maxCtx = this.state.maxContextTokens;
+    if (maxCtx > 0) {
+      const ratio = Math.max(0, Math.min(ctxTokens / maxCtx, 1));
+      const bar = renderProgressBar(ratio, 20);
+      const pct = `${(ratio * 100).toFixed(1)}%`;
+      const barColoured = chalk.hex(severityHex(ratioSeverity(ratio)))(bar);
+      lines.push('');
+      lines.push(accent('Context window'));
+      lines.push(
+        `  ${barColoured} ${pct} ` +
+          dim(`(${formatTokenCount(ctxTokens)} / ${formatTokenCount(maxCtx)})`),
+      );
+    }
+
+    // Managed-platform quotas — only for managed:kimi-code.
+    const platformSection = await this.tryBuildManagedUsageSection(accent, dim, severityHex);
+    if (platformSection.length > 0) {
+      lines.push('');
+      lines.push(...platformSection);
+    }
+
+    return lines;
+  }
+
+  private async tryBuildManagedUsageSection(
+    accent: (s: string) => string,
+    dim: (s: string) => string,
+    severityHex: (sev: 'ok' | 'warn' | 'danger') => string,
+  ): Promise<string[]> {
+    const alias = this.state.model;
+    const providerKey = this.state.availableModels[alias]?.provider;
+    if (!isManagedKimiCode(providerKey)) return [];
+    const manager = this.oauthManagers?.get(providerKey ?? '');
+    if (manager === undefined) {
+      return [
+        accent('Plan usage'),
+        dim('  No OAuth session for this provider. Run /login to enable plan quotas.'),
+      ];
+    }
+    let token: string;
+    try {
+      token = await manager.ensureFresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return [
+        accent('Plan usage'),
+        chalk.hex(this.colors.error)(`  Failed to obtain access token: ${msg}`),
+      ];
+    }
+    const res = await fetchManagedUsage(kimiCodeUsageUrl(), token);
+    if (res.kind === 'error') {
+      return [accent('Plan usage'), chalk.hex(this.colors.error)(`  ${res.message}`)];
+    }
+    const { summary, limits } = res.parsed;
+    if (summary === null && limits.length === 0) {
+      return [accent('Plan usage'), dim('  No usage data available.')];
+    }
+
+    const rows: UsageRow[] = [];
+    if (summary !== null) rows.push(summary);
+    rows.push(...limits);
+    const labelWidth = Math.max(10, ...rows.map((r) => r.label.length));
+    const out: string[] = [accent('Plan usage')];
+    for (const row of rows) {
+      const ratioUsed = row.limit > 0 ? row.used / row.limit : 0;
+      const leftRatio = 1 - Math.max(0, Math.min(ratioUsed, 1));
+      const bar = renderProgressBar(Math.max(0, Math.min(ratioUsed, 1)), 20);
+      const pct = `${Math.round(leftRatio * 100)}% left`;
+      const barColoured = chalk.hex(severityHex(ratioSeverity(ratioUsed)))(bar);
+      const label = row.label.padEnd(labelWidth, ' ');
+      const resetStr = row.resetHint ? dim(` (${row.resetHint})`) : '';
+      out.push(`  ${dim(label)} ${barColoured} ${pct}${resetStr}`);
+    }
+    return out;
   }
 
   hideSessionPicker(): void {
@@ -908,9 +1055,89 @@ export class InteractiveMode implements WireHandlerDelegate {
     }
   }
 
-  private switchSession(newSessionId: string): void {
-    this.setState({ sessionId: newSessionId });
-    void this.wireClient.resume(newSessionId);
+  /**
+   * Swap the active session. Mirrors the /new + /model live-rebuild
+   * pattern: stop the old WireHandler, destroy the old ManagedSession
+   * so its event queue closes, resume the target session through
+   * KimiCoreClient (which triggers wire.jsonl replay + fresh SoulPlus),
+   * then wire up a brand-new WireHandler on the new queue.
+   *
+   * Guard decisions live in {@link decideSessionSwitch}; this method
+   * only does the side-effects that follow a 'proceed' verdict.
+   */
+  private async switchSession(newSessionId: string): Promise<void> {
+    const decision = decideSessionSwitch({
+      currentSessionId: this.state.sessionId,
+      targetSessionId: newSessionId,
+      isStreaming: this.state.isStreaming,
+      currentWorkDir: this.state.workDir,
+      sessions: this.sessions,
+      clientSupportsResumeSession: typeof this.wireClient.resumeSession === 'function',
+    });
+    if (decision.kind === 'noop') {
+      this.addTranscriptEntry({
+        id: `session-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'Already on this session.',
+        color: this.colors.textDim,
+      });
+      return;
+    }
+    if (decision.kind === 'error') {
+      this.addTranscriptEntry({
+        id: `session-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: decision.message,
+        color: this.colors.error,
+      });
+      return;
+    }
+
+    const target = decision.target;
+    const oldId = this.state.sessionId;
+    try {
+      this.wireHandler.stop();
+      await this.wireClient.destroySession(oldId);
+      // Type narrowing: decideSessionSwitch already verified this.
+      const { session_id: resumedId } = await this.wireClient.resumeSession!(newSessionId);
+      this.wireHandler = new WireHandler(this.wireClient, resumedId, this, this.colors);
+      void this.wireHandler.start();
+      this.setState({ sessionId: resumedId });
+      this.clearTranscriptAndRedraw();
+      const label = target.title !== null && target.title.length > 0
+        ? `${target.title} (${resumedId})`
+        : resumedId;
+      this.addTranscriptEntry({
+        id: `session-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Switched to session ${label}.`,
+        color: this.colors.success,
+      });
+      void this.fetchSessions();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `session-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Failed to switch session: ${msg}`,
+        color: this.colors.error,
+      });
+      // Best-effort recovery: re-resume the old session so the user
+      // isn't stranded without a live WireHandler.
+      try {
+        if (typeof this.wireClient.resumeSession === 'function') {
+          await this.wireClient.resumeSession(oldId);
+        }
+        this.wireHandler = new WireHandler(this.wireClient, oldId, this, this.colors);
+        void this.wireHandler.start();
+      } catch {
+        // No safe recovery left — user should restart.
+      }
+    }
   }
 
   // ── User input handling ─────────────────────────────────────────
@@ -1196,6 +1423,11 @@ export class InteractiveMode implements WireHandlerDelegate {
 
         if (result.message === '__show_model_picker__') {
           this.showModelPicker();
+          return;
+        }
+
+        if (result.message === '__show_usage__') {
+          void this.showUsage();
           return;
         }
         if (result.message.startsWith('__show_model_picker__:')) {
