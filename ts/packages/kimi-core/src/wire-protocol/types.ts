@@ -238,8 +238,33 @@ export interface SessionCreateResponseData {
 
 // ── Session prompt data (§3.5 — non-blocking) ───────────────────────────
 
+// Phase 14 §3.5 — user-input parts (multi-modal).
+export interface TextPart {
+  type: 'text';
+  text: string;
+}
+export interface ImageURLPart {
+  type: 'image_url';
+  image_url: { url: string };
+}
+export interface VideoURLPart {
+  type: 'video_url';
+  video_url: { url: string };
+}
+export type UserInputPart = TextPart | ImageURLPart | VideoURLPart;
+
+/** Coerce a legacy string input into the canonical part array form. */
+export function normalizeUserInput(
+  input: string | readonly UserInputPart[],
+): readonly UserInputPart[] {
+  if (typeof input === 'string') {
+    return [{ type: 'text', text: input }];
+  }
+  return input;
+}
+
 export interface SessionPromptRequestData {
-  input: string;
+  input: string | readonly UserInputPart[];
   input_kind?: 'user' | 'system_trigger' | undefined;
   trigger_source?: string | undefined;
 }
@@ -314,7 +339,7 @@ export interface SessionListToolsResponseData {
 
 export interface TurnBeginEventData {
   turn_id: string;
-  user_input: string;
+  user_input: string | readonly UserInputPart[];
   input_kind: 'user' | 'system_trigger';
   trigger_source?: string | undefined;
 }

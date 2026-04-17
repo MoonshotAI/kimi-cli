@@ -198,6 +198,60 @@ describe('OAuthManager.ensureFresh', () => {
   });
 
 
+  // ── Phase 11.1 — force=true propagates errors (no silent swallow) ────
+
+  it('Phase 11.1: force=true surfaces OAuthUnauthorizedError to the caller', async () => {
+    // Python parity: tests/auth/test_oauth_refresh.py:364 — force=true
+    // must not paper over a genuinely revoked refresh_token. Caller
+    // drives /login to recover; ensureFresh throws so the error is
+    // observable.
+    const storage = new InMemoryStorage();
+    await storage.save(
+      'kimi-code',
+      makeToken({ expiresAt: currentNow + 7200, refreshToken: 'rt-revoked' }),
+    );
+    const refreshImpl = vi.fn().mockRejectedValue(
+      new OAuthUnauthorizedError('refresh_token revoked'),
+    );
+    const mgr = new OAuthManager({
+      config,
+      storage,
+      now,
+      refreshTokenImpl: refreshImpl,
+      sleep: () => Promise.resolve(),
+    });
+
+    await expect(mgr.ensureFresh({ force: true })).rejects.toBeInstanceOf(
+      OAuthUnauthorizedError,
+    );
+    // Current behaviour also clears the storage on 401 so the caller
+    // knows the user must re-login. Assert the contract so a regression
+    // that silently reverts the clear is caught.
+    expect(await storage.load('kimi-code')).toBeUndefined();
+  });
+
+  it('Phase 11.1: force=true surfaces network errors without swallowing', async () => {
+    // Python parity: tests/auth/test_oauth_refresh.py:381 — a transport
+    // error inside force=true must reach the caller. Per briefing §11.1
+    // decision (b): caller owns the try/catch policy, not ensureFresh.
+    const storage = new InMemoryStorage();
+    await storage.save('kimi-code', makeToken({ expiresAt: currentNow + 7200 }));
+    const refreshImpl = vi.fn().mockRejectedValue(
+      new Error('ECONNRESET: network unreachable'),
+    );
+    const mgr = new OAuthManager({
+      config,
+      storage,
+      now,
+      refreshTokenImpl: refreshImpl,
+      sleep: () => Promise.resolve(),
+    });
+
+    await expect(mgr.ensureFresh({ force: true })).rejects.toThrow(/ECONNRESET/);
+    // Network error is NOT a revocation signal — storage must stay intact.
+    expect(await storage.load('kimi-code')).toBeDefined();
+  });
+
   it('uses fresh stored token when another process already rotated', async () => {
     const storage = new InMemoryStorage();
     await storage.save(

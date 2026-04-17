@@ -80,9 +80,24 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
 
     switch (r.type) {
       case 'user_message': {
+        // Phase 14 §3.5 — `content` may now be a UserInputPart[]. Reduce
+        // back to the legacy text-only shape for replay consumers by
+        // concatenating text parts; non-text attachments are surfaced as
+        // `<image|video path=...>` placeholders so they survive replay
+        // without needing multi-modal pipes here.
+        const text =
+          typeof r.content === 'string'
+            ? r.content
+            : r.content
+                .map((part) => {
+                  if (part.type === 'text') return part.text;
+                  if (part.type === 'image_url') return `<image url="${part.image_url.url}">`;
+                  return `<video url="${part.video_url.url}">`;
+                })
+                .join('');
         messages.push({
           role: 'user',
-          content: [{ type: 'text', text: r.content }],
+          content: [{ type: 'text', text }],
           toolCalls: [],
         });
         break;

@@ -1,3 +1,7 @@
+/* oxlint-disable vitest/warn-todo -- Phase 11 intentionally records src-gap
+   placeholders via `it.todo`. Each todo carries a P-level + unblock recipe
+   pointing at MIGRATION_REPORT_phase_11.md §附录 B. Do not convert to
+   passing tests without landing the referenced src change. */
 /**
  * WiredApprovalRuntime — end-to-end regression suite for Slice 2.3.
  *
@@ -608,6 +612,65 @@ describe('WiredApprovalRuntime — M3: no internal timer, timeout from outer wra
     expect(responses).toHaveLength(1);
     expect(responses[0]!.data.synthetic).toBe(true);
   });
+});
+
+// ── Phase 11.5 — caller-driven timeout + subagent_type passthrough ───
+
+describe('WiredApprovalRuntime — Phase 11.5 caller-driven timeout', () => {
+  it('caller AbortController + setTimeout() cancels pending request with synthetic response', async () => {
+    // Python parity: `tests/core/test_approval_runtime.py:208` wait_for_response(timeout=0.05).
+    // TS v2 M3: runtime has NO internal timer. Caller is the sole timeout source.
+    // Fake timers per Phase 11 R3 — advance the clock deterministically so
+    // the test is not wall-clock bound.
+    vi.useFakeTimers();
+    try {
+      const { runtime, journal } = makeRuntime();
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort();
+      }, 50);
+
+      const resultPromise = runtime.request(buildRequest(), controller.signal);
+
+      // Advance past the caller-configured deadline. The abort fires,
+      // synthetic cancelled response lands on the waiter.
+      await vi.advanceTimersByTimeAsync(50);
+      const result = await resultPromise;
+
+      expect(result.approved).toBe(false);
+      expect(result.feedback).toContain('cancelled');
+
+      const responses = journal.getRecordsByType('approval_response');
+      expect(responses).toHaveLength(1);
+      expect(responses[0]!.data).toMatchObject({
+        response: 'cancelled',
+        synthetic: true,
+      });
+      expect(runtime.pendingCount).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('WiredApprovalRuntime — Phase 11.5 subagent_type passthrough', () => {
+  // P2 — see MIGRATION_REPORT_phase_11.md §附录 B gap #1.
+  // Python L122 asserts the ApprovalRequest envelope carries source_kind /
+  // agent_id / subagent_type to the wire hub. TS ApprovalSource.subagent
+  // currently carries only {kind, agent_id}.
+  //
+  // Unblock recipe (when Phase 8 / 12 decides to add the field):
+  //   1. Extend `src/storage/wire-record.ts:246-251` ApprovalSource union
+  //      with `subagent_type?: string` on the subagent branch.
+  //   2. Extend `ApprovalSourceSchema` zod schema likewise (~ :695-718).
+  //   3. Propagate from `turn-manager.ts:417-420` where `approvalSource`
+  //      is constructed for subagent turns — read the agent's type from
+  //      `this.agentType` / SubagentStore record.
+  //   4. Replace this todo with a passing assertion on the appended
+  //      `approval_request` wire record's `data.source.subagent_type`.
+  it.todo(
+    '[P2] subagent source carries subagent_type end-to-end (src gap: ApprovalSource.subagent.subagent_type — see MIGRATION_REPORT §B#1)',
+  );
 });
 
 describe('WiredApprovalRuntime — remote stubs', () => {

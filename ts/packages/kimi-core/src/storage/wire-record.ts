@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import type { ToolInputDisplay, TokenUsage } from '../soul/types.js';
 import { ToolInputDisplaySchema } from '../soul/types.js';
+import type { UserInputPart } from '../wire-protocol/types.js';
 
 // ── File metadata header ────────────────────────────────────────────────
 
@@ -56,7 +57,10 @@ export interface UserMessageRecord {
   seq: number;
   time: number;
   turn_id: string;
-  content: string;
+  // Phase 14 §3.5 — widened from `string` to union to carry multi-modal
+  // attachments (image_url / video_url). Legacy string payload still
+  // accepted for backward replay compatibility.
+  content: string | readonly UserInputPart[];
 }
 
 export interface AssistantMessageRecord {
@@ -490,12 +494,18 @@ const _rawTurnEndRecordSchema = z.object({
 });
 export const TurnEndRecordSchema: z.ZodType<TurnEndRecord> = _rawTurnEndRecordSchema;
 
+const _userInputPartSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({ type: z.literal('image_url'), image_url: z.object({ url: z.string() }) }),
+  z.object({ type: z.literal('video_url'), video_url: z.object({ url: z.string() }) }),
+]);
+
 const _rawUserMessageRecordSchema = z.object({
   type: z.literal('user_message'),
   seq: z.number(),
   time: z.number(),
   turn_id: z.string(),
-  content: z.string(),
+  content: z.union([z.string(), z.array(_userInputPartSchema).readonly()]),
 });
 export const UserMessageRecordSchema: z.ZodType<UserMessageRecord> = _rawUserMessageRecordSchema;
 

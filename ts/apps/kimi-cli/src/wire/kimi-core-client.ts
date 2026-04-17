@@ -924,7 +924,7 @@ function subscribeLifecycle(
           'turn.begin',
           {
             turn_id: event.turnId,
-            user_input: event.userInput,
+            user_input: event.userInputParts ?? event.userInput,
             input_kind: event.inputKind,
           },
           {

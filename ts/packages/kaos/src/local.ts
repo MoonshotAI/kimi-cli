@@ -75,6 +75,31 @@ class LocalProcess implements KaosProcess {
       return Promise.resolve();
     }
 
+    // Phase 14 §1.3 / v2-update §7.7 — on Windows, `ChildProcess.kill()`
+    // only signals the shell parent, leaving grandchildren alive. We
+    // dispatch `taskkill /T /PID <pid>` (tree; without `/F`) for the
+    // grace phase, and `/T /F /PID` for the force phase so the caller's
+    // SIGTERM → 5s → SIGKILL two-phase contract keeps its meaning on
+    // Windows. On POSIX the host already spawns in a new process group
+    // so ChildProcess.kill reaches the tree.
+    if (isWindows) {
+      const useForce = signal === 'SIGKILL';
+      const taskkillArgs = useForce
+        ? ['/T', '/F', '/PID', String(this.pid)]
+        : ['/T', '/PID', String(this.pid)];
+      return new Promise<void>((resolve) => {
+        const killer = spawn('taskkill', taskkillArgs, {
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+        const done = (): void => {
+          resolve();
+        };
+        killer.once('error', done);
+        killer.once('close', done);
+      });
+    }
+
     // Use ChildProcess.kill() instead of process.kill() — it handles the
     // process lifecycle correctly and is safer.
     try {

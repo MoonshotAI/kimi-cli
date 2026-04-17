@@ -33,6 +33,7 @@ import {
   PathConfig,
   ReadMediaFileTool,
   ReadTool,
+  SkipThisTool,
   SessionManager,
   SetTodoListTool,
   TaskListTool,
@@ -48,6 +49,7 @@ import {
   createProviderFromConfig,
   createRuntime,
   createStubJournalCapability,
+  detectEnvironmentFromNode,
   extendWorkspaceWithSkillRoots,
   loadConfig as loadKimiCoreConfig,
   parseMcpConfig,
@@ -381,39 +383,56 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   const stubWebSearch = new StubWebSearchProvider();
   const stubUrlFetcher = new StubUrlFetcher();
 
-  const buildTools = (ctx: PerSessionToolContext): Tool[] => [
-    new ReadTool(localKaos, workspace),
-    new WriteTool(localKaos, workspace),
-    new EditTool(localKaos, workspace),
-    new GrepTool(localKaos, workspace),
-    new GlobTool(localKaos, workspace),
-    new BashTool(localKaos, workDir, backgroundManager),
-    new ReadMediaFileTool(localKaos, workspace),
-    new ThinkTool(),
-    new SetTodoListTool(todoStore),
-    new ExitPlanModeTool({
-      isPlanModeActive: ctx.isPlanModeActive,
-      setPlanMode: ctx.setPlanMode,
-    }),
-    new EnterPlanModeTool({
-      isPlanModeActive: ctx.isPlanModeActive,
-      setPlanMode: ctx.setPlanMode,
-      isYoloMode: () => ctx.getPermissionMode() === 'bypassPermissions',
-      questionRuntime: ctx.questionRuntime,
-    }),
-    new AskUserQuestionTool(ctx.questionRuntime, ctx.getPermissionMode),
-    // Background-process control surface: BashTool spawns a
-    // `KaosProcess` via `backgroundManager` when `run_in_background`
-    // is true; these three tools let the LLM list / drain / stop the
-    // resulting tasks. All three share the same BackgroundProcessManager
-    // instance created above so task ids resolve consistently.
-    new TaskListTool(backgroundManager),
-    new TaskOutputTool(backgroundManager),
-    new TaskStopTool(backgroundManager),
-    new WebSearchTool(stubWebSearch),
-    new FetchURLTool(stubUrlFetcher),
-    ...mcpTools,
-  ];
+  // Phase 14 §1.2 — resolve the shell Environment once at boot. All
+  // per-session ShellTool instances share it so PowerShell vs bash is
+  // picked consistently for the whole process.
+  const hostEnvironment = await detectEnvironmentFromNode();
+
+  // Phase 14 §3.3 — resolve model-declared capabilities (image_in /
+  // video_in). The full capability surface is sessioned per-model in
+  // v2, but at boot we only have the default alias, so expose a
+  // permissive set derived from the model config when present.
+  const defaultCapabilities = new Set<string>(
+    kimiConfig.models?.[modelAlias]?.capabilities ?? ['image_in'],
+  );
+
+  const buildTools = (ctx: PerSessionToolContext): Tool[] => {
+    const tools: Tool[] = [
+      new ReadTool(localKaos, workspace),
+      new WriteTool(localKaos, workspace),
+      new EditTool(localKaos, workspace),
+      new GrepTool(localKaos, workspace),
+      new GlobTool(localKaos, workspace),
+      new BashTool(localKaos, workDir, hostEnvironment, backgroundManager),
+    ];
+    try {
+      tools.push(new ReadMediaFileTool(localKaos, workspace, defaultCapabilities));
+    } catch (err) {
+      if (!(err instanceof SkipThisTool)) throw err;
+    }
+    return [
+      ...tools,
+      new ThinkTool(),
+      new SetTodoListTool(todoStore),
+      new EnterPlanModeTool({
+        isPlanModeActive: ctx.isPlanModeActive,
+        setPlanMode: ctx.setPlanMode,
+        isYoloMode: () => ctx.getPermissionMode() === 'bypassPermissions',
+        questionRuntime: ctx.questionRuntime,
+      }),
+      new ExitPlanModeTool({
+        isPlanModeActive: ctx.isPlanModeActive,
+        setPlanMode: ctx.setPlanMode,
+      }),
+      new AskUserQuestionTool(ctx.questionRuntime, ctx.getPermissionMode),
+      new TaskListTool(backgroundManager),
+      new TaskOutputTool(backgroundManager),
+      new TaskStopTool(backgroundManager),
+      new WebSearchTool(stubWebSearch),
+      new FetchURLTool(stubUrlFetcher),
+      ...mcpTools,
+    ];
+  };
 
   // 7. Build the client + resolve the initial session. Three branches
   //    mirror `bootstrapOfflineShell`:

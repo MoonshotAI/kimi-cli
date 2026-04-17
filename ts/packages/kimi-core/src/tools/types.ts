@@ -135,13 +135,31 @@ export interface BashOutput {
   stderr: string;
 }
 
-const _rawBashInputSchema = z.object({
-  command: z.string(),
-  cwd: z.string().optional(),
-  timeout: z.number().int().positive().optional(),
-  description: z.string().optional(),
-  run_in_background: z.boolean().optional(),
-});
+// Phase 14 §1.5 — foreground timeout capped at 5 min; background up to 24h.
+// Mirrors the runtime clamps (`bash.ts:37-38`) and pushes validation to the
+// schema level so Tool callers can't sneak past with oversized values.
+const MAX_FG_TIMEOUT_SEC = 5 * 60;
+const MAX_BG_TIMEOUT_SEC = 24 * 60 * 60;
+
+const _rawBashInputSchema = z
+  .object({
+    command: z.string(),
+    cwd: z.string().optional(),
+    timeout: z.number().int().positive().optional(),
+    description: z.string().optional(),
+    run_in_background: z.boolean().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.timeout === undefined) return;
+    const cap = val.run_in_background ? MAX_BG_TIMEOUT_SEC : MAX_FG_TIMEOUT_SEC;
+    if (val.timeout > cap) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['timeout'],
+        message: `timeout must be ≤ ${String(cap)}s (${val.run_in_background ? 'background' : 'foreground'})`,
+      });
+    }
+  });
 
 const _rawBashOutputSchema = z.object({
   exitCode: z.number().int(),

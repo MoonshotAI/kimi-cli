@@ -93,4 +93,29 @@ describe('BashTool.display (决策 #98 demo path)', () => {
     if (hook === undefined) return; // allowed; fallback to tool.name is fine.
     expect(hook(undefined)).toBe('Bash');
   });
+
+  // Phase 14 §1.1 — language field pins the UI dialect hint so the
+  // renderer can pick between bash and powershell highlighting.
+  it("getInputDisplay returns language='bash' on a POSIX environment", () => {
+    const tool = makeBashTool();
+    const hint = tool.display!.getInputDisplay!({ command: 'ls' }) as ToolInputDisplay;
+    if (hint.kind !== 'command') throw new Error('expected command');
+    expect(hint.language).toBe('bash');
+  });
+
+  it("getInputDisplay returns language='powershell' when shellName is Windows PowerShell", () => {
+    const kaos = createFakeKaos();
+    const env = {
+      osKind: 'Windows' as const,
+      osArch: 'x64',
+      osVersion: '10',
+      shellName: 'Windows PowerShell' as const,
+      shellPath: 'C:\\\\powershell.exe',
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = new (BashTool as any)(kaos, '/workspace', env) as BashTool;
+    const hint = tool.display!.getInputDisplay!({ command: 'dir' }) as ToolInputDisplay;
+    if (hint.kind !== 'command') throw new Error('expected command');
+    expect(hint.language).toBe('powershell');
+  });
 });

@@ -2,10 +2,10 @@
  * Wire protocol 2.1 — envelope, codec, factory, and schema tests.
  *
  * Rewritten from Python `tests/core/test_wire_message.py` (serde, validation,
- * type predicates) + new v2-only tests for WireCodec and message factory.
- *
- * All tests are expected to FAIL (red bar) until Slice 5 Phase 3 implements
- * the codec and factory functions.
+ * type predicates) + v2-only tests for WireCodec and message factory. All
+ * tests pass as of Phase 10 (src/wire-protocol/ 100% v8 coverage); Phase 10
+ * extended this file with +6 superRefine negative cases (empty from/to /
+ * session_id, invalid agent_type, non-integer seq, non-number error.code).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -318,6 +318,90 @@ describe('WireMessageSchema', () => {
     };
     const result = WireMessageSchema.safeParse(raw);
     expect(result.success).toBe(true);
+  });
+
+  // ── Additional superRefine negative coverage (Phase 10 B) ──
+
+  it('rejects envelope with empty-string from', () => {
+    const raw = {
+      id: 'req_300',
+      time: Date.now(),
+      session_id: '__process__',
+      type: 'request',
+      from: '',
+      to: 'core',
+      method: 'initialize',
+    };
+    expect(WireMessageSchema.safeParse(raw).success).toBe(false);
+  });
+
+  it('rejects envelope with empty-string to', () => {
+    const raw = {
+      id: 'req_301',
+      time: Date.now(),
+      session_id: '__process__',
+      type: 'request',
+      from: 'client',
+      to: '',
+      method: 'initialize',
+    };
+    expect(WireMessageSchema.safeParse(raw).success).toBe(false);
+  });
+
+  it('rejects envelope with empty-string session_id', () => {
+    const raw = {
+      id: 'req_302',
+      time: Date.now(),
+      session_id: '',
+      type: 'request',
+      from: 'client',
+      to: 'core',
+      method: 'initialize',
+    };
+    expect(WireMessageSchema.safeParse(raw).success).toBe(false);
+  });
+
+  it('rejects invalid agent_type enum value', () => {
+    const raw = {
+      id: 'evt_400',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'event',
+      from: 'core',
+      to: 'client',
+      method: 'turn.begin',
+      seq: 1,
+      agent_type: 'bogus',
+    };
+    expect(WireMessageSchema.safeParse(raw).success).toBe(false);
+  });
+
+  it('rejects non-integer seq (fractional)', () => {
+    const raw = {
+      id: 'evt_401',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'event',
+      from: 'core',
+      to: 'client',
+      method: 'turn.begin',
+      seq: 1.5,
+    };
+    expect(WireMessageSchema.safeParse(raw).success).toBe(false);
+  });
+
+  it('rejects error.code that is not a number', () => {
+    const raw = {
+      id: 'res_400',
+      time: Date.now(),
+      session_id: 'ses_abc',
+      type: 'response',
+      from: 'core',
+      to: 'client',
+      request_id: 'req_400',
+      error: { code: 'oops', message: 'bad' },
+    };
+    expect(WireMessageSchema.safeParse(raw).success).toBe(false);
   });
 });
 

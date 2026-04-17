@@ -85,6 +85,11 @@ export type ToolResultContent =
   | {
       type: 'image';
       source: { type: 'base64'; data: string; media_type: string };
+    }
+  | {
+      // Phase 14 §3.3 / decision #3 — additive video variant.
+      type: 'video';
+      source: { type: 'base64'; data: string; media_type: string };
     };
 
 export interface ToolResult<Output = unknown> {
@@ -113,7 +118,17 @@ export interface ToolUpdate {
 // Soul carries no `permission` vocabulary — these are pure data shapes.
 
 export type ToolInputDisplay =
-  | { kind: 'command'; command: string; cwd?: string | undefined; description?: string | undefined }
+  | {
+      kind: 'command';
+      command: string;
+      cwd?: string | undefined;
+      description?: string | undefined;
+      /**
+       * Phase 14 §1.1 — shell dialect hint ('bash' | 'powershell').
+       * Clients that don't recognise it ignore the field (additive).
+       */
+      language?: 'bash' | 'powershell' | undefined;
+    }
   | {
       kind: 'file_io';
       operation: 'read' | 'write' | 'edit' | 'glob' | 'grep';
@@ -221,6 +236,7 @@ const _rawToolInputDisplaySchema = z.discriminatedUnion('kind', [
     command: z.string(),
     cwd: z.string().optional(),
     description: z.string().optional(),
+    language: z.enum(['bash', 'powershell']).optional(),
   }),
   z.object({
     kind: z.literal('file_io'),

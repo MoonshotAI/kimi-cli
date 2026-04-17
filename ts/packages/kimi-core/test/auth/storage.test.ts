@@ -162,4 +162,54 @@ describe('FileTokenStorage', () => {
   it('refuses empty name', async () => {
     await expect(storage.save('', sampleToken())).rejects.toThrow(/Invalid token name/);
   });
+
+  // ── Phase 11.1 — atomic save leaves no .tmp sibling ────────────────────
+
+  it('Phase 11.1: save() leaves no *.tmp.* sibling once the rename completes', async () => {
+    // Python parity: tests/auth/test_oauth_refresh.py:317 — atomic save
+    // must clean up its temp artefact after rename. TS uses
+    // `target.tmp.<pid>.<rand>` then renameSync; this test asserts the
+    // resulting directory contains only the canonical file.
+    await storage.save('kimi-code', sampleToken());
+    const { readdirSync } = await import('node:fs');
+    const entries = readdirSync(dir);
+    const tmps = entries.filter((name) => name.startsWith('kimi-code.json.tmp.'));
+    expect(tmps).toEqual([]);
+    expect(entries).toContain('kimi-code.json');
+  });
+
+  it('Phase 11.1: save() + load() preserves expires_in and expires_at roundtrip', async () => {
+    // Python parity: tests/auth/test_oauth_refresh.py:332 — the wire
+    // format records both `expires_at` and `expires_in`; the load path
+    // must restore both fields without loss.
+    const token = sampleToken({ expiresAt: 1_800_000_000, expiresIn: 7200 });
+    await storage.save('kimi-code', token);
+    const loaded = await storage.load('kimi-code');
+    expect(loaded?.expiresAt).toBe(1_800_000_000);
+    expect(loaded?.expiresIn).toBe(7200);
+  });
+
+  it('Phase 11.1: load() of a wire payload missing scope/token_type uses safe defaults', async () => {
+    // Python parity: tests/auth/test_oauth_refresh.py:347 — a legacy file
+    // written without the optional `scope` / `token_type` fields must
+    // still load; the defaults come from `tokenFromWire`.
+    const file = join(dir, 'kimi-code.json');
+    writeFileSync(
+      file,
+      JSON.stringify({
+        access_token: 'a',
+        refresh_token: 'r',
+        expires_at: 1,
+        expires_in: 60,
+      }),
+      'utf-8',
+    );
+    chmodSync(file, 0o600);
+    const loaded = await storage.load('kimi-code');
+    expect(loaded?.accessToken).toBe('a');
+    expect(loaded?.refreshToken).toBe('r');
+    // Defaults should be strings (empty / 'Bearer'), never undefined.
+    expect(typeof loaded?.scope).toBe('string');
+    expect(typeof loaded?.tokenType).toBe('string');
+  });
 });

@@ -75,12 +75,63 @@ describe('BackgroundProcessManager', () => {
   it('register returns a task ID and tracks the process', () => {
     const proc = immediateProcess(0);
     const taskId = manager.register(proc, 'echo hello', 'test echo');
-    expect(taskId).toMatch(/^bg_/);
+    // Phase 13 D-6 — id format is `{bash|agent}-{8 base36}`.
+    expect(taskId).toMatch(/^bash-[0-9a-z]{8}$/);
     const info = manager.getTask(taskId);
     expect(info).toBeDefined();
     expect(info!.command).toBe('echo hello');
     expect(info!.description).toBe('test echo');
     expect(info!.pid).toBe(proc.pid);
+  });
+
+  // ── Phase 13 §1.1 — migrated from Python test_manager.py ─────────────
+
+  it('records failed runtime when proc.wait() rejects (§1.1 #4)', async () => {
+    // Simulate a Kaos launch that resolves into a KaosProcess whose
+    // subsequent wait() rejects (e.g. shell fork failure mid-exec).
+    const proc: KaosProcess = {
+      stdin: { write: vi.fn(), end: vi.fn() } as unknown as Writable,
+      stdout: Readable.from([]),
+      stderr: Readable.from([]),
+      pid: 99999,
+      exitCode: null,
+      wait: vi.fn().mockRejectedValue(new Error('launch failed')) as KaosProcess['wait'],
+      // oxlint-disable-next-line unicorn/no-useless-undefined
+      kill: vi.fn().mockResolvedValue(undefined) as KaosProcess['kill'],
+    };
+    const taskId = manager.register(proc, '/bogus/cmd', 'broken launch');
+
+    // Let the wait() rejection propagate through the .finally block.
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
+
+    const info = manager.getTask(taskId);
+    expect(info!.status).toBe('failed');
+    expect(info!.endedAt).not.toBeNull();
+  });
+
+  it('registerAgentTask registers as running with agent- id prefix (§1.1 #5)', () => {
+    // Promise that never resolves — we only inspect the initial register
+    // snapshot here.
+    const taskId = manager.registerAgentTask(new Promise(() => {}), 'agent task');
+    expect(taskId).toMatch(/^agent-[0-9a-z]{8}$/);
+    const info = manager.getTask(taskId);
+    expect(info).toBeDefined();
+    expect(info!.status).toBe('running');
+    // Agent tasks use pid=0 (dummy KaosProcess).
+    expect(info!.pid).toBe(0);
+    // Spec marker: command includes the `[agent]` tag so LLM renderers
+    // can distinguish bash vs agent entries when scrolling tasks.
+    expect(info!.command).toContain('[agent]');
+  });
+
+  it('getTask on an unknown id does not touch disk or create state (§1.1 #11)', () => {
+    // Live + ghost maps stay untouched; no partial creation.
+    const before = manager.list(false).length;
+    expect(manager.getTask('bash-deadbeef')).toBeUndefined();
+    const after = manager.list(false).length;
+    expect(after).toBe(before);
   });
 
   it('list returns active tasks by default', () => {
@@ -152,11 +203,11 @@ describe('BackgroundProcessManager', () => {
   });
 
   it('getTask returns undefined for unknown ID', () => {
-    expect(manager.getTask('bg_nonexistent')).toBeUndefined();
+    expect(manager.getTask('bash-nonexist')).toBeUndefined();
   });
 
   it('getOutput returns empty string for unknown ID', () => {
-    expect(manager.getOutput('bg_nonexistent')).toBe('');
+    expect(manager.getOutput('bash-nonexist')).toBe('');
   });
 
   it('stop returns terminal info for already-exited task', async () => {

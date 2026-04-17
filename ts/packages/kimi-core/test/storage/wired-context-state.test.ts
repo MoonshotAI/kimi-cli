@@ -107,6 +107,42 @@ describe('WiredContextState — appendUserMessage', () => {
     expect(messages.length).toBe(1);
     expect(messages[0]?.role).toBe('user');
   });
+
+  it('persists multi-modal parts verbatim and replay round-trips them (Phase 14 §3.5)', async () => {
+    // Phase 14 review BLK-1 — appendUserMessage must write `content`
+    // as the parts array when `input.parts` is supplied so session
+    // resume can reconstruct image_url / video_url attachments.
+    const { state, filePath } = makeState();
+
+    const parts = [
+      { type: 'text', text: 'describe this' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+    ] as const;
+
+    await state.appendUserMessage({ text: 'describe this', parts });
+
+    const records = await readWireRecords(filePath);
+    const userRecord = records.find((r) => r['type'] === 'user_message');
+    expect(userRecord).toBeDefined();
+    // WAL stores the parts array (not the folded text).
+    expect(Array.isArray(userRecord?.['content'])).toBe(true);
+    expect(userRecord?.['content']).toEqual(parts);
+
+    // Replay round-trip — reading the WAL back via replayWire surfaces
+    // the same parts, so a resume path can hand them to Soul.
+    const replay = await replayWire(filePath, { supportedMajor: 2 });
+    const replayedUser = replay.records.find((r) => r.type === 'user_message');
+    expect(replayedUser).toBeDefined();
+    if (replayedUser?.type === 'user_message') {
+      expect(replayedUser.content).toEqual(parts);
+    }
+
+    // In-memory history stays text-only so Soul remains multi-modal
+    // transparent (铁律 L1).
+    const messages = state.buildMessages();
+    expect(messages.length).toBe(1);
+    expect(messages[0]?.role).toBe('user');
+  });
 });
 
 describe('WiredContextState — appendAssistantMessage', () => {

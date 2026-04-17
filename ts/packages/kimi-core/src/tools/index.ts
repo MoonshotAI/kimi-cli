@@ -42,6 +42,22 @@ export {
 export { ToolRegistry } from './registry.js';
 export type { ToolSource, ToolConflict, ToolRegistryOptions } from './registry.js';
 
+// ── SkipThisTool (Phase 14 §3.3 / decision #5) ────────────────────────
+
+export { SkipThisTool } from './skip-this-tool.js';
+
+// ── file-type detection (Phase 14 §3.2) ───────────────────────────────
+
+export {
+  MEDIA_SNIFF_BYTES,
+  IMAGE_MIME_BY_SUFFIX,
+  VIDEO_MIME_BY_SUFFIX,
+  NON_TEXT_SUFFIXES,
+  sniffMediaFromMagic,
+  detectFileType,
+} from './file-type.js';
+export type { FileType } from './file-type.js';
+
 // ── Display defaults + size constants (Slice 5 / 决策 #96 / #98) ───────
 
 export {

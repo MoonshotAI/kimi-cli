@@ -317,6 +317,7 @@ export class TurnManager {
         kind: 'begin',
         turnId,
         userInput: input.text,
+        ...(input.parts !== undefined ? { userInputParts: input.parts } : {}),
         inputKind: 'user',
         agentType: this.agentType,
       });
