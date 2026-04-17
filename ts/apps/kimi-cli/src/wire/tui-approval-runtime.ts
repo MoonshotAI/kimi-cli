@@ -29,8 +29,9 @@ import type {
   ApprovalResult,
   ApprovalRuntime,
   ApprovalSource,
+  PermissionRule,
 } from '@moonshot-ai/core';
-import { NotImplementedError } from '@moonshot-ai/core';
+import { NotImplementedError, actionToRulePattern } from '@moonshot-ai/core';
 
 import type { ApprovalRequestData, DisplayBlock } from './events.js';
 import { createRequest } from './wire-message.js';
@@ -62,6 +63,26 @@ export interface TUIApprovalRuntimeDeps {
    * Deterministic id allocator for tests. Production uses `randomUUID`.
    */
   readonly allocateRequestId?: (() => string) | undefined;
+  /**
+   * Optional callback invoked when an `approve_for_session` response lands.
+   * Host wires this to `TurnManager.addSessionRule` so the next same-action
+   * tool call short-circuits without another prompt. Mirrors
+   * `WiredApprovalRuntimeDeps.ruleInjector`; when omitted, rule injection
+   * is skipped and the approve-for-session still cascades in-memory for
+   * currently-pending peers.
+   */
+  readonly ruleInjector?: ((rule: PermissionRule) => void) | undefined;
+}
+
+/**
+ * TUI-side approval response shape. The UI's `ApprovalPanelComponent`
+ * emits a four-state enum (`approved_for_session` is the extra one), and
+ * `resolveFromClient` normalises it into kimi-core's three-state
+ * `ApprovalResponseData` (`{ response, scope? }`) before handing off.
+ */
+interface TuiApprovalResponseData {
+  readonly response: 'approved' | 'approved_for_session' | 'rejected' | 'cancelled';
+  readonly feedback?: string | undefined;
 }
 
 // ── Internal Deferred ───────────────────────────────────────────────
@@ -95,15 +116,27 @@ interface Pending {
 export class TUIApprovalRuntime implements ApprovalRuntime {
   private readonly deps: TUIApprovalRuntimeDeps;
   private readonly allocateRequestId: () => string;
+  private readonly ruleInjector: ((rule: PermissionRule) => void) | undefined;
   private readonly pending = new Map<string, Pending>();
   /** Sources passed to `cancelBySource` that had no matching entry at
    * the time — checked retroactively inside `request()` so a cancel
    * in the WAL-free bridge still catches a racing incoming request. */
   private readonly cancelledSources: ApprovalSource[] = [];
+  /**
+   * In-memory auto-approve cache. Mirrors `WiredApprovalRuntime.autoApproveActions`
+   * (wired-approval-runtime.ts:128) so an `approve_for_session` decision
+   * short-circuits subsequent same-action calls inside the **current**
+   * turn. Without this, the next call still goes through the approval
+   * panel because the injected `PermissionRule` is only picked up when
+   * `TurnManager.launchTurn` builds the next turn's permission closure.
+   * WAL-free: not persisted, lives only for the runtime's lifetime.
+   */
+  private readonly approvedActions = new Set<string>();
 
   constructor(deps: TUIApprovalRuntimeDeps) {
     this.deps = deps;
     this.allocateRequestId = deps.allocateRequestId ?? (() => `appr_${randomUUID()}`);
+    this.ruleInjector = deps.ruleInjector;
   }
 
   async request(req: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalResult> {
@@ -111,6 +144,14 @@ export class TUIApprovalRuntime implements ApprovalRuntime {
     // request the TUI will never see a response for.
     if (signal !== undefined && signal.aborted) {
       throw signal.reason instanceof Error ? signal.reason : new Error('aborted');
+    }
+
+    // Auto-approve fast path — matches WiredApprovalRuntime.request
+    // (wired-approval-runtime.ts:158-163). Required for in-turn
+    // short-circuit because injected session rules only take effect on
+    // the NEXT turn's permission closure.
+    if (this.approvedActions.has(req.action)) {
+      return { approved: true };
     }
 
     const requestId = this.allocateRequestId();
@@ -186,26 +227,80 @@ export class TUIApprovalRuntime implements ApprovalRuntime {
    * Route a TUI response into the runtime. Called from
    * `KimiCoreClient.respondToRequest` — the primary entry point for
    * user-initiated approval responses.
+   *
+   * The TUI uses a four-state enum that includes `approved_for_session`;
+   * kimi-core's internal `ApprovalResponseData` is three-state with a
+   * separate `scope: 'session'` field. Normalise here so downstream
+   * `resolve()` only deals with the canonical shape.
    */
   resolveFromClient(requestId: string, data: unknown): void {
-    // Validate the response payload shape defensively — the TUI may
-    // send arbitrary data and we should never crash the turn loop on
-    // a bad response.
-    if (!isApprovalResponseData(data)) {
+    if (!isTuiApprovalResponseData(data)) {
       return;
     }
-    this.resolve(requestId, data);
+    const normalized: ApprovalResponseData =
+      data.response === 'approved_for_session'
+        ? {
+            response: 'approved',
+            scope: 'session',
+            ...(data.feedback !== undefined ? { feedback: data.feedback } : {}),
+          }
+        : {
+            response: data.response,
+            ...(data.feedback !== undefined ? { feedback: data.feedback } : {}),
+          };
+    this.resolve(requestId, normalized);
   }
 
   resolve(requestId: string, response: ApprovalResponseData): void {
     const entry = this.claim(requestId);
     if (entry === undefined) return;
 
+    const isSessionApprove =
+      response.scope === 'session' && response.response === 'approved';
+
+    // Snapshot cascade targets BEFORE resolving the current entry. The
+    // current entry has already been removed from `pending` by `claim`,
+    // so this loop only sees unrelated peers.
+    const cascadeTargets: Pending[] = [];
+    if (isSessionApprove) {
+      // Populate the auto-approve cache BEFORE the cascade snapshot so
+      // any racing in-flight `request()` entering the fast path observes
+      // the cached state (matches WiredApprovalRuntime ordering).
+      this.approvedActions.add(entry.request.action);
+
+      for (const other of this.pending.values()) {
+        if (!other.settled && other.request.action === entry.request.action) {
+          cascadeTargets.push(other);
+        }
+      }
+    }
+
+    // Rule injection — mirrors `WiredApprovalRuntime.recordSessionApproval`
+    // so the NEXT turn's permission closure short-circuits via the
+    // session rule walk. The current turn relies on `approvedActions`
+    // above instead, because closures are built once at turn launch.
+    if (isSessionApprove && this.ruleInjector !== undefined) {
+      this.ruleInjector({
+        decision: 'allow',
+        scope: 'session-runtime',
+        pattern: actionToRulePattern(entry.request.action, entry.request.toolName),
+        reason: `approve_for_session: ${entry.request.action}`,
+      });
+    }
+
     const result: ApprovalResult = {
       approved: response.response === 'approved',
       ...(response.feedback !== undefined ? { feedback: response.feedback } : {}),
     };
     entry.deferred.resolve(result);
+
+    // Cascade — queueMicrotask avoids re-entrant recursion through
+    // `resolve`, matching WiredApprovalRuntime's cascade ordering.
+    for (const target of cascadeTargets) {
+      queueMicrotask(() => {
+        this.resolve(target.requestId, { response: 'approved' });
+      });
+    }
   }
 
   async recoverPendingOnStartup(): Promise<void> {
@@ -287,10 +382,15 @@ function matchesSource(candidate: ApprovalSource, filter: ApprovalSource): boole
   return false;
 }
 
-function isApprovalResponseData(value: unknown): value is ApprovalResponseData {
+function isTuiApprovalResponseData(value: unknown): value is TuiApprovalResponseData {
   if (typeof value !== 'object' || value === null) return false;
   const response = (value as { response?: unknown }).response;
-  return response === 'approved' || response === 'rejected' || response === 'cancelled';
+  return (
+    response === 'approved' ||
+    response === 'approved_for_session' ||
+    response === 'rejected' ||
+    response === 'cancelled'
+  );
 }
 
 /**

@@ -16,7 +16,7 @@ import {
   PathConfig,
 } from '@moonshot-ai/core';
 
-import { runLoginFlow } from '../../auth/login-flow.js';
+import { runLoginFlow } from '../../auth/login-flow-tui.js';
 
 export function registerLoginCommand(parent: Command): void {
   parent

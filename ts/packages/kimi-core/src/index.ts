@@ -111,6 +111,7 @@ export type { ApprovalDisplay, ApprovalSource } from './storage/wire-record.js';
 
 // ── Permission (Slice 4) ────────────────────────────────────────────────
 export type { PermissionMode, PermissionRule } from './soul-plus/permission/index.js';
+export { actionToRulePattern, describeApprovalAction } from './soul-plus/permission/action-label.js';
 
 // ── Tools (Slice 4) ─────────────────────────────────────────────────────
 export { ToolRegistry } from './tools/registry.js';

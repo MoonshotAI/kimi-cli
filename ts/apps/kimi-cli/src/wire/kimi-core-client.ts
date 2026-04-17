@@ -240,6 +240,17 @@ export class KimiCoreClient implements WireClient {
         }
       },
       currentTurnId: () => sessionRef.current?.currentTurnId,
+      // On `approve_for_session`, append a session-runtime rule so the
+      // next same-action tool call short-circuits through the permission
+      // walk instead of prompting the user again. The turn manager only
+      // exists after `sessionManager.createSession` resolves; approvals
+      // are always emitted mid-turn (i.e. after that), so sessionRef is
+      // guaranteed to be populated by the time this closure fires.
+      ruleInjector: (rule) => {
+        const session = sessionRef.current;
+        if (session === null) return;
+        session.managed.soulPlus.getTurnManager().addSessionRule(rule);
+      },
     });
 
     // Slice 4.3 Part 2 — per-session question runtime, same late-bound
