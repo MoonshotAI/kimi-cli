@@ -5,8 +5,10 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Anthropic: Fix Claude Opus 4.7 returning `invalid_request_error` — Opus 4.7 (which rejects the legacy `{type: "enabled", budget_tokens: N}` thinking config) now correctly uses adaptive thinking, and the client explicitly sets `display: "summarized"` so thinking content still streams back (Opus 4.7 silently changed the default to `"omitted"`); Bedrock/Vertex name variants (e.g., `aws/claude-opus-4-7`, `anthropic.claude-opus-4-7-v1:0`) and `claude-mythos-preview` are also recognised, and future Claude versions ≥ 4.6 are detected automatically via version extrapolation instead of hard-coded substring matching
+- Web: Fix markdown rendering spacing in the web UI — restore proper vertical spacing between paragraphs, lists, code blocks, blockquotes, and headings instead of collapsing all margins to zero
 - Shell: Fix missing loading indicator during active turns — the moon spinner now shows as a fallback whenever the model is working but no other indicator is visible, covering gaps after tool calls finish, between turn start and first step, and when an empty thinking block arrives from the provider
 - Core: Increase default `max_steps_per_turn` from 100 to 500 to allow longer uninterrupted agent runs out of the box
+- Web: Fix unresponsive copy, download, and preview buttons on rendered code blocks
 
 ## 1.35.0 (2026-04-15)
 
