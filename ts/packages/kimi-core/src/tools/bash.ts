@@ -273,36 +273,34 @@ export class ShellTool implements BuiltinTool<BashInput, BashOutput> {
         proc.wait(),
       ]);
 
+      const stdout = appendTruncationMarker(stdoutResult);
+      const stderr = appendTruncationMarker(stderrResult);
+      const anyTruncated = stdoutResult.truncated || stderrResult.truncated;
+      const truncationNote = anyTruncated ? '\nOutput is truncated' : '';
+
       if (timedOut) {
         return {
           isError: true,
-          content: `Command killed by timeout (${String(Math.floor(timeoutMs / 1000))}s)`,
-          output: {
-            exitCode,
-            stdout: appendTruncationMarker(stdoutResult),
-            stderr: appendTruncationMarker(stderrResult),
-          },
+          content: `Command killed by timeout (${String(Math.floor(timeoutMs / 1000))}s)${truncationNote}`,
+          output: { exitCode, stdout, stderr },
         };
       }
       if (aborted) {
         return {
           isError: true,
-          content: 'Command aborted',
-          output: {
-            exitCode,
-            stdout: appendTruncationMarker(stdoutResult),
-            stderr: appendTruncationMarker(stderrResult),
-          },
+          content: `Command aborted${truncationNote}`,
+          output: { exitCode, stdout, stderr },
         };
       }
 
-      const stdout = appendTruncationMarker(stdoutResult);
-      const stderr = appendTruncationMarker(stderrResult);
       const isError = exitCode !== 0;
+      const baseContent = isError
+        ? stderr || `Process exited with code ${String(exitCode)}`
+        : stdout;
 
       return {
         isError: isError || undefined,
-        content: isError ? stderr || `Process exited with code ${String(exitCode)}` : stdout,
+        content: `${baseContent}${truncationNote}`,
         output: { exitCode, stdout, stderr },
       };
     } catch (error) {
@@ -421,9 +419,7 @@ async function readStreamWithCap(stream: Readable, maxBytes: number): Promise<Ca
 }
 
 function appendTruncationMarker(result: CappedStreamResult): string {
-  return result.truncated
-    ? `${result.text}\n[output truncated at ${String(MAX_OUTPUT_BYTES)} bytes]`
-    : result.text;
+  return result.truncated ? `${result.text}[...truncated]\n` : result.text;
 }
 
 function shellQuote(s: string): string {

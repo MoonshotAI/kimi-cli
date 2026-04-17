@@ -138,8 +138,8 @@ export interface BashOutput {
 // Phase 14 §1.5 — foreground timeout capped at 5 min; background up to 24h.
 // Mirrors the runtime clamps (`bash.ts:37-38`) and pushes validation to the
 // schema level so Tool callers can't sneak past with oversized values.
-const MAX_FG_TIMEOUT_SEC = 5 * 60;
-const MAX_BG_TIMEOUT_SEC = 24 * 60 * 60;
+export const MAX_FG_TIMEOUT_SEC: number = 5 * 60;
+export const MAX_BG_TIMEOUT_SEC: number = 24 * 60 * 60;
 
 const _rawBashInputSchema = z
   .object({
@@ -191,6 +191,7 @@ export interface GrepInput {
   head_limit?: number | undefined;
   offset?: number | undefined;
   multiline?: boolean | undefined;
+  include_ignored?: boolean | undefined;
 }
 
 export interface GrepOutput {
@@ -217,6 +218,7 @@ const _rawGrepInputSchema = z.object({
   head_limit: z.number().int().nonnegative().optional(),
   offset: z.number().int().nonnegative().optional(),
   multiline: z.boolean().optional(),
+  include_ignored: z.boolean().optional(),
 });
 
 const _rawGrepOutputSchema = z.object({

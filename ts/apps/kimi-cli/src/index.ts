@@ -186,6 +186,10 @@ async function ensureOAuthIfNeeded(
   const manager = new OAuthManager({
     config: KIMI_CODE_FLOW_CONFIG,
     storage,
+    // Phase 15 B.2 — thread the kimi home through so proper-lockfile
+    // can coordinate concurrent `ensureFresh` across CLI processes
+    // under `{home}/oauth/{provider}.lock`.
+    configDir: pathConfig.home,
     sleep: (ms) => new Promise((r) => { setTimeout(r, Math.min(ms, 1000)); }),
   });
   managers.set(providerName, manager);

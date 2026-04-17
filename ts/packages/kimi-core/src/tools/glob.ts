@@ -29,6 +29,8 @@ export class GlobTool implements BuiltinTool<GlobInput, GlobOutput> {
   readonly name = 'Glob' as const;
   readonly description = 'Find files by glob pattern, sorted by modification time.';
   readonly inputSchema: z.ZodType<GlobInput> = GlobInputSchema;
+  // Phase 15 L14 — read-only; safe to prefetch under streaming.
+  readonly isConcurrencySafe = (): boolean => true;
 
   constructor(
     private readonly kaos: Kaos,
@@ -42,13 +44,15 @@ export class GlobTool implements BuiltinTool<GlobInput, GlobOutput> {
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult<GlobOutput>> {
     if (args.pattern.startsWith('**')) {
+      const dirs = [this.workspace.workspaceDir, ...this.workspace.additionalDirs];
+      const dirList = dirs.map((d) => `  - ${d}`).join('\n');
       return {
         isError: true,
         content:
           `Pattern "${args.pattern}" starts with "**" which is not allowed. ` +
           `A leading "**" would recursively search every directory (including large ` +
           `trees like node_modules) and can trigger symlink loops. Use a more ` +
-          `specific pattern such as "src/**/*.ts" instead.`,
+          `specific pattern such as "src/**/*.ts" instead.\n\nSearchable roots:\n${dirList}`,
       };
     }
 

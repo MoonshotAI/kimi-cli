@@ -173,4 +173,127 @@ describe('GlobTool', () => {
     expect(yielded).toBeLessThan(over);
     expect(toolContentString(result)).toContain('Truncated');
   });
+
+  // ── Phase 15 A.3 — Python edge cases (ports tests/tools/test_glob.py) ──
+  describe('edge cases (Phase 15 A.3 — Python parity)', () => {
+    it('max_matches warning text pins the stable contract', async () => {
+      // Python `test_glob_max_matches_limit` (test_glob.py:214). Current
+      // TS emits "[Truncated at N matches — use a more specific pattern]".
+      // Pin both halves so a drive-by rename breaks here, not in prod.
+      const over = GLOB_MAX_MATCHES + 10;
+      const kaos = createFakeKaos({
+        async *glob() {
+          for (let i = 0; i < over; i++) yield `/workspace/f_${String(i)}.ts`;
+        },
+        stat: vi.fn().mockResolvedValue({
+          isFile: true,
+          isDir: false,
+          isSymlink: false,
+          size: 1,
+          mtimeMs: 1,
+          mode: 0o644,
+        }),
+      });
+      const tool = new GlobTool(kaos, PERMISSIVE_WORKSPACE);
+      const result = await tool.execute(
+        'call_warn',
+        { pattern: 'f_*.ts', path: '/workspace' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const text = toolContentString(result);
+      expect(text).toContain('Truncated');
+      expect(text).toContain(String(GLOB_MAX_MATCHES));
+      expect(text.toLowerCase()).toMatch(/more specific|use a more/);
+    });
+
+    it('rejecting a leading-** pattern mentions the workspace directory so callers can re-scope', async () => {
+      // Python `test_glob_enhanced_double_star_validation` (test_glob.py:230).
+      // The TS rejection message should include the concrete workspace
+      // path(s) so the LLM can redirect without a second round-trip.
+      const kaos = createFakeKaos();
+      const tool = new GlobTool(kaos, {
+        workspaceDir: '/my-workspace',
+        additionalDirs: ['/extra-dir'],
+      });
+      const result = await tool.execute(
+        'call_starstar_listing',
+        { pattern: '**/*.txt' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBe(true);
+      const text = toolContentString(result);
+      // Pin: the rejection lists at least one workspace path so the
+      // caller knows where to rescope. Red bar until src/tools/glob.ts
+      // enumerates the dir list.
+      expect(text).toMatch(/\/my-workspace|\/extra-dir/);
+    });
+
+    it('accepts complex multi-segment patterns like docs/**/main/*.py (Python parity)', async () => {
+      // Python `test_glob_complex_pattern` (test_glob.py:281). The
+      // pattern doesn't start with `**`, so the TS validator accepts it.
+      // We verify the rejection gate doesn't fire on this shape.
+      const kaos = createFakeKaos({
+        async *glob() {
+          yield '/workspace/docs/a/main/x.py';
+          yield '/workspace/docs/b/main/y.py';
+        },
+        stat: vi.fn().mockResolvedValue({
+          isFile: true,
+          isDir: false,
+          isSymlink: false,
+          size: 1,
+          mtimeMs: 1,
+          mode: 0o644,
+        }),
+      });
+      const tool = new GlobTool(kaos, PERMISSIVE_WORKSPACE);
+      const result = await tool.execute(
+        'call_complex',
+        { pattern: 'docs/**/main/*.py' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.paths.length).toBeGreaterThan(0);
+    });
+
+    it('symlink cycle defense: MAX_MATCHES cap terminates on a looping glob stream', async () => {
+      // Python does not have an equivalent; the TS contract is that the
+      // MAX_MATCHES cap terminates iteration even if the underlying
+      // walker happens to yield duplicates from a symlink cycle
+      // (a → b → a). We simulate the cycle by yielding the same two
+      // paths indefinitely and assert the tool still completes.
+      let yielded = 0;
+      const kaos = createFakeKaos({
+        async *glob() {
+          // Emit the same two paths in a loop — mimics a symlink cycle
+          // walker that keeps re-entering the cycle.
+          while (true) {
+            yielded++;
+            yield '/workspace/a/target.ts';
+            yielded++;
+            yield '/workspace/b/target.ts';
+            if (yielded > GLOB_MAX_MATCHES * 2) break; // safety
+          }
+        },
+        stat: vi.fn().mockResolvedValue({
+          isFile: true,
+          isDir: false,
+          isSymlink: true,
+          size: 1,
+          mtimeMs: 1,
+          mode: 0o644,
+        }),
+      });
+      const tool = new GlobTool(kaos, PERMISSIVE_WORKSPACE);
+      const result = await tool.execute(
+        'call_cycle',
+        { pattern: '*.ts' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      // Terminates at MAX_MATCHES even under a pathological cycle.
+      expect(result.output?.paths.length).toBe(GLOB_MAX_MATCHES);
+    });
+  });
 });

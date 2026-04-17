@@ -378,3 +378,75 @@ describe('repairJournal', () => {
     expect(userMessages).toHaveLength(0);
   });
 });
+
+// ── Phase 15 A.7 — crash-recovery + stale-subagent cleanup integration ──
+//
+// Pins the "resume flow" contract: a single resume round must run BOTH
+// journal repair (for dangling tool_calls / turns / approvals) AND
+// subagent cleanup (for running subagent instances left over from the
+// crash). Neither path writes to the other's store; both must complete
+// without racing.
+//
+// Python parity: `app.py::resume_session` invokes
+// `repair_journal(…)` and `_cleanup_stale_foreground_subagents(…)` in a
+// single sequential pass.
+
+describe('Resume integration (Phase 15 A.7)', () => {
+  it('crash with dangling turn_begin AND running subagent → repairJournal + cleanupStaleSubagents both finish in one pass', async () => {
+    const { mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { SubagentStore } = await import('../../src/soul-plus/subagent-store.js');
+    const { cleanupStaleSubagents } = await import('../../src/soul-plus/subagent-runner.js');
+
+    const tmp = await mkdtemp(join(tmpdir(), 'kimi-resume-integ-'));
+    try {
+      const store = new SubagentStore(tmp);
+      await store.createInstance({
+        agentId: 'sa_alive_on_crash',
+        subagentType: 'coder',
+        description: 'was running when crash hit',
+        parentToolCallId: 'tc-1',
+      });
+      await store.updateInstance('sa_alive_on_crash', { status: 'running' });
+
+      // Also a completed sibling — must NOT be touched by cleanup.
+      await store.createInstance({
+        agentId: 'sa_done_before_crash',
+        subagentType: 'coder',
+        description: 'finished before crash',
+        parentToolCallId: 'tc-0',
+      });
+      await store.updateInstance('sa_done_before_crash', { status: 'completed' });
+
+      const contextState = new InMemoryContextState({ initialModel: 'test-model' });
+      const sessionJournal = new InMemorySessionJournalImpl();
+      const wire: WireRecord[] = [
+        turnBegin('t1', 1),
+        userMessage('t1', 2),
+        assistantMessage('t1', 3, [{ id: 'tc-1', name: 'Bash', args: {} }]),
+        // dangling: tool_result + turn_end missing
+      ];
+
+      const repairResult = await repairJournal({
+        records: wire,
+        contextState,
+        sessionJournal,
+        currentTurnId: () => 't1',
+      });
+      const staleIds = await cleanupStaleSubagents(store);
+
+      // Journal repair wrote ≥ 2 synthetic records (tool_result + turn_end).
+      expect(repairResult.syntheticCount).toBeGreaterThanOrEqual(2);
+
+      // Subagent cleanup flipped the running instance only.
+      expect(staleIds).toEqual(['sa_alive_on_crash']);
+      const stale = await store.getInstance('sa_alive_on_crash');
+      expect(stale!.status).toBe('failed');
+      const done = await store.getInstance('sa_done_before_crash');
+      expect(done!.status).toBe('completed');
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});

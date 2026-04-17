@@ -21,7 +21,6 @@ import { SubagentStore } from '../../src/soul-plus/subagent-store.js';
 import { runSubagentTurn } from '../../src/soul-plus/subagent-runner.js';
 import type { SubagentRunnerDeps } from '../../src/soul-plus/subagent-runner.js';
 import type { SpawnRequest } from '../../src/soul-plus/subagent-types.js';
-import type { EventSink, SoulEvent } from '../../src/soul/event-sink.js';
 import type { Runtime, KosongAdapter } from '../../src/soul/runtime.js';
 import type { Tool, ToolResult } from '../../src/soul/types.js';
 
@@ -98,13 +97,12 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
-function makeDeps(kosong: KosongAdapter, sink?: EventSink): SubagentRunnerDeps {
+function makeDeps(kosong: KosongAdapter): SubagentRunnerDeps {
   return {
     store,
     typeRegistry: registry,
     parentTools,
     parentRuntime: createFakeRuntime(kosong),
-    parentSink: sink ?? { emit: vi.fn() },
     sessionDir: tmp,
     parentModel: 'test-model',
   };
@@ -205,21 +203,20 @@ describe('runSubagentTurn', () => {
     expect(instances[0]!.status).toBe('killed');
   });
 
-  it('bubbles content.delta events to parent sink', async () => {
+  it('runs to completion when no parent channels are wired', async () => {
     const kosong = createFakeKosong('test');
-    const emitted: SoulEvent[] = [];
-    const parentSink: EventSink = {
-      emit: (event) => emitted.push(event),
-    };
-    const deps = makeDeps(kosong, parentSink);
+    const deps = makeDeps(kosong);
 
-    await runSubagentTurn(deps, 'sub_test_123', makeRequest(), new AbortController().signal);
+    const result = await runSubagentTurn(
+      deps,
+      'sub_test_123',
+      makeRequest(),
+      new AbortController().signal,
+    );
 
-    // The fake kosong triggers content deltas via onDelta callback
-    // Since we mock the full response, the content comes from the response
-    // The content.delta events come from kosong.chat's onDelta callback
-    // In our fake, we don't trigger onDelta, but the result should still be captured
-    expect(emitted.length).toBeGreaterThanOrEqual(0);
+    // Phase 15 C3 — legacy `parentSink` bubbling is gone; the noop-sink
+    // fallback still returns a normal result, which is what we pin here.
+    expect(result.result.length).toBeGreaterThanOrEqual(0);
   });
 
   it('uses model override from request', async () => {
@@ -339,5 +336,45 @@ describe('runSubagentTurn git-context injection', () => {
     expect(serialized).toContain(originalPrompt);
     // No git-context block when the git context is empty
     expect(serialized).not.toContain('<git-context>');
+  });
+});
+
+// ── Phase 15 B.3 C3 — runSubagent falls back to a noop sink ──────────
+//
+// Contract pin for the `createLegacyBubblingSink` deletion: once the
+// legacy `parentSink` field is removed from `SubagentRunnerDeps`, the
+// only two sink inputs are `parentEventBus` (main path) or nothing at
+// all. Callers that pass neither must get a silent child agent that
+// still runs a turn and returns a normal `AgentResult`. Today
+// `subagent-runner.ts:288-290` (the `else { baseSink = { emit: () =>
+// {} } }` branch) already implements this, so the it is a pin; after
+// C3 deletion it becomes the ONLY fallback branch.
+
+describe('runSubagentTurn without parent channels (Phase 15 B.3 C3)', () => {
+  it('works with neither parentEventBus nor parentSink — noop sink, turn completes', async () => {
+    const kosong = createFakeKosong('noop-ok');
+    // Build deps WITHOUT parentSink and WITHOUT parentEventBus. We
+    // spread makeDeps then explicitly strip parentSink to emulate a
+    // post-C3-deletion caller that never references the field.
+    const base = makeDeps(kosong);
+    const deps: SubagentRunnerDeps = {
+      store: base.store,
+      typeRegistry: base.typeRegistry,
+      parentTools: base.parentTools,
+      parentRuntime: base.parentRuntime,
+      sessionDir: base.sessionDir,
+      parentModel: base.parentModel,
+    };
+
+    const result = await runSubagentTurn(
+      deps,
+      'sub_noop_sink',
+      makeRequest(),
+      new AbortController().signal,
+    );
+
+    expect(result.result.length).toBeGreaterThan(0);
+    const instances = await store.listInstances();
+    expect(instances[0]!.status).toBe('completed');
   });
 });

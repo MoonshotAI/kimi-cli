@@ -288,4 +288,49 @@ describe('HookEngine', () => {
     );
     expect(forRead).toEqual([allHook]);
   });
+
+  // ── Phase 15 A.6 — Python edge cases (ports tests/hooks/test_engine.py) ──
+
+  it('invalid regex does not throw and does not brick the turn (Phase 15 A.6)', async () => {
+    // Python `test_invalid_regex_skips_hook` (tests/hooks/test_engine.py:63)
+    // treats invalid regex as NO-MATCH; TS deviates (matches all, logs).
+    // The Phase 15 contract we pin here is narrower and agnostic of the
+    // match-all vs no-match semantics: executing hooks with an invalid
+    // regex MUST (a) not throw, (b) not brick the turn (resolves to a
+    // well-formed AggregatedHookResult). The semantic decision
+    // (match-all / no-match) is tracked as a separate issue.
+    const executor = makeExecutor('command', { ok: true });
+    const engine = new HookEngine({
+      executors: new Map([['command', executor]]),
+      // onInvalidMatcher is optional; omit to verify we don't rely on it.
+    });
+    engine.register(makeCommandHook({ matcher: '[(bad' }));
+    const promise = engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput(),
+      new AbortController().signal,
+    );
+    // Must not reject.
+    const result = await expect(promise).resolves.toBeDefined();
+    void result;
+    // AggregatedHookResult shape preserved — blockAction boolean,
+    // additionalContext array — so the turn continues normally.
+    const settled = await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput(),
+      new AbortController().signal,
+    );
+    expect(typeof settled.blockAction).toBe('boolean');
+    expect(Array.isArray(settled.additionalContext)).toBe(true);
+  });
+
+  // **Deferred** — HookEngine does not yet dedupe identical commands.
+  // Python `test_dedup_identical_commands` pins that two registered hooks
+  // with the same `(event, matcher, type, command)` produce a single
+  // execution result. Implementer needs to add a dedup pass during
+  // `executeHooks` keyed on that tuple before this can pass. Tracked in a
+  // follow-up issue.
+  it.todo(
+    'dedup: two hooks with the same (event, matcher, type, command) produce a single result',
+  );
 });

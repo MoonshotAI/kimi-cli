@@ -47,6 +47,7 @@ import type { SkillManager } from './skill/index.js';
 import { SkillInlineWriter } from './skill/inline-writer.js';
 import { SoulLifecycleGate } from './soul-lifecycle-gate.js';
 import { SoulRegistry } from './soul-registry.js';
+import { StreamingKosongWrapper } from './streaming-kosong-wrapper.js';
 import { SkillTool } from '../tools/skill-tool.js';
 import type { SubagentStore } from './subagent-store.js';
 import { runSubagentTurn } from './subagent-runner.js';
@@ -120,12 +121,23 @@ export class SoulPlus {
     const journalWriter = contextState.journalWriter;
     const journalCapability = deps.journalCapability ?? createStubJournalCapability();
 
-    // ── Runtime (independent) ──────────────────────────────────────
-    // Phase 2 narrowed Runtime to `{kosong}`.
-    const runtime: Runtime = { kosong: deps.runtime.kosong };
-
     // ── Services facade ─────────────────────────────────────────────
     const orchestrator = deps.orchestrator;
+
+    // ── Runtime (independent) ──────────────────────────────────────
+    // Phase 2 narrowed Runtime to `{kosong}`. Phase 15 B.4 D1 wraps
+    // the adapter in a `StreamingKosongWrapper` when an orchestrator
+    // is available so concurrent-safe tool_use blocks can be
+    // prefetched while the LLM is still streaming. When the caller
+    // omits `orchestrator` (test harnesses, in-memory embedders) we
+    // skip the wrapper so nothing breaks for them.
+    const rawKosong = deps.runtime.kosong;
+    const runtime: Runtime = {
+      kosong:
+        orchestrator !== undefined
+          ? new StreamingKosongWrapper(rawKosong, orchestrator)
+          : rawKosong,
+    };
     const approvalRuntime = undefined; // Wiring lives on the orchestrator path today
     const compactionProvider = deps.compactionProvider ?? createStubCompactionProvider();
     const compaction = new CompactionOrchestrator({

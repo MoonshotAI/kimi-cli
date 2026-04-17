@@ -48,6 +48,8 @@ export class FetchURLTool implements BuiltinTool<FetchURLInput, void> {
   readonly name = 'FetchURL' as const;
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<FetchURLInput> = FetchURLInputSchema;
+  // Phase 15 L14 — idempotent URL fetch; safe to prefetch under streaming.
+  readonly isConcurrencySafe = (): boolean => true;
 
   constructor(private readonly fetcher: UrlFetcher) {}
 

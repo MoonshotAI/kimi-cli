@@ -1,9 +1,8 @@
-import { appendFileSync, closeSync, fsyncSync, openSync } from 'node:fs';
 import { mkdir, open } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import { JournalGatedError } from './errors.js';
-import { syncDir, syncDirSync } from './fs-durability.js';
+import { syncDir } from './fs-durability.js';
 import type { WireFileMetadata, WireRecord, WireRecordType } from './wire-record.js';
 
 /**
@@ -449,26 +448,17 @@ export class WiredJournalWriter implements JournalWriter {
     if (batch.length === 0) return;
 
     try {
-      // `writeBatchAndSync` is declared `Promise<void>` so test mocks
-      // (e.g. `mockRejectedValue`) that return a Promise are awaited
-      // here. In production it wraps synchronous fs APIs and resolves
-      // to `undefined` on the very next microtask — that's still a
-      // single yield per drain, which fake-timer tests tolerate.
-      const result = (this as unknown as {
-        writeBatchAndSync(lines: string[]): unknown;
-      }).writeBatchAndSync(lines);
-      if (result !== undefined && typeof (result as { then?: unknown }).then === 'function') {
-        // eslint-disable-next-line @typescript-eslint/await-thenable
-        await (result as Promise<void>);
-      }
+      await this.writeBatchAndSync(lines);
       if (!this.directorySynced) {
-        this.syncParentDirSync();
+        await this.syncParentDir();
         this.directorySynced = true;
       }
     } catch (error) {
       // Per team-lead 2026-04-17: splice already moved `batch` out of
       // `this.pending`; we DO NOT re-queue it. The failed batch lives
       // in the onPersistError callback; the disk queue freezes.
+      //
+      // Order (see L17 铁律): degraded → stopDrainTimer → onPersistError.
       this.degraded = true;
       this.stopDrainTimer();
       try {
@@ -495,42 +485,30 @@ export class WiredJournalWriter implements JournalWriter {
   }
 
   /**
-   * Phase 3 — batched drain path: write the joined lines in a single
-   * append + fsync. Synchronous on purpose so one timer tick is one
-   * event-loop step: vitest's fake-timer + real-async-I/O combination
-   * consumes yield slots per `await`, and only sync I/O keeps each
-   * drain deterministic under `advanceTimersByTimeAsync`. Bounded batch
-   * size (64 records / 1 MiB) makes the momentary event-loop block
-   * acceptable. Kept as its own method so tests can spy on drain
-   * batches by name.
+   * Phase 3 batched drain path — Phase 15 B.1 rewrite: append the joined
+   * lines in a single `appendFile` + `sync()` call using the promise-
+   * based fs API. The drain stays inside the AsyncSerialQueue, so
+   * concurrent appends still see FIFO ordering and the force-flush
+   * contract (L17): when `append(force)` awaits `flush`, every
+   * previously-queued record is both on disk and fsynced before
+   * resolution.
    *
-   * TODO(Phase 4 follow-up): 评估改为 async fs 原语（open/appendFile/sync 的
-   * async 版），用 `advanceTimersByTimeAsync` + 合适的 yield 策略在测试侧控制
-   * 时序，以消除同步 drain 的 event-loop 阻塞。当前 batch 上限（64 / 1MiB）下
-   * fsync 窗口约 5-15ms，对 agent loop 可接受，对 TUI 响应有轻微影响。
+   * Fake-timer tests now use `advanceTimersByTimeAsync` so the promise
+   * microtask queue drains between ticks.
    */
-  private writeBatchAndSync(lines: string[]): void {
-    const fd = openSync(this.filePath, 'a');
+  private async writeBatchAndSync(lines: string[]): Promise<void> {
+    const fh = await open(this.filePath, 'a');
     try {
-      appendFileSync(fd, lines.join(''), 'utf8');
-      fsyncSync(fd);
+      await fh.appendFile(lines.join(''), 'utf8');
+      await fh.sync();
     } finally {
-      closeSync(fd);
+      await fh.close();
     }
   }
 
-  /**
-   * Async parent-directory fsync, used by the `per-record` path where
-   * we can afford to stay on the async fs primitives. Tests may spy on
-   * this method by name.
-   */
+  /** Async parent-directory fsync. Tests may spy on this method by name. */
   private async syncParentDir(): Promise<void> {
     await syncDir(dirname(this.filePath));
-  }
-
-  /** Synchronous parent-directory fsync for the batched drain path. */
-  private syncParentDirSync(): void {
-    syncDirSync(dirname(this.filePath));
   }
 }
 

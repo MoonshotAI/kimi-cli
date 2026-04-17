@@ -13,6 +13,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
+import lockfile from 'proper-lockfile';
 
 import {
   DeviceCodeTimeoutError,
@@ -67,6 +71,24 @@ export interface OAuthManagerOptions {
   readonly pollDeviceImpl?:
     | ((config: OAuthFlowConfig, deviceCode: string) => Promise<DevicePollResult>)
     | undefined;
+  /**
+   * Phase 15 B.2 — root directory for per-provider lock files; resolves
+   * to `{configDir}/oauth/{providerName}.lock`.
+   *
+   * **Production callers MUST pass this explicitly** (KimiCoreClient /
+   * session-manager wire it through from the resolved config root). A
+   * missing `configDir` disables the cross-process lock entirely, so
+   * silently falling back to an env var in production would mask a
+   * genuine mis-wiring.
+   *
+   * When omitted AND `process.env.NODE_ENV === 'test'`, the manager
+   * falls back to `process.env.KIMI_SHARE_DIR` so multi-process test
+   * harnesses don't need to thread the dir through every fixture. In
+   * production the fallback is inert. Windows platforms and
+   * `process.env.KIMI_DISABLE_OAUTH_LOCK === '1'` always skip; the
+   * "re-read storage" fail-safe remains as a best-effort coordinator.
+   */
+  readonly configDir?: string | undefined;
 }
 
 export interface LoginOptions {
@@ -84,6 +106,7 @@ export class OAuthManager {
   private readonly refreshImpl: NonNullable<OAuthManagerOptions['refreshTokenImpl']>;
   private readonly requestImpl: NonNullable<OAuthManagerOptions['requestDeviceImpl']>;
   private readonly pollImpl: NonNullable<OAuthManagerOptions['pollDeviceImpl']>;
+  private readonly configDir: string | undefined;
 
   /** In-flight refresh coalescer: one refresh per ensureFresh race. */
   private inFlightRefresh: Promise<string> | undefined;
@@ -98,6 +121,67 @@ export class OAuthManager {
     this.refreshImpl = options.refreshTokenImpl ?? refreshAccessToken;
     this.requestImpl = options.requestDeviceImpl ?? requestDeviceAuthorization;
     this.pollImpl = options.pollDeviceImpl ?? pollDeviceToken;
+    // MAJ-1 (review round 1): the `KIMI_SHARE_DIR` fallback MUST stay
+    // test-only so production entry points (`KimiCoreClient`, session-
+    // manager) can't silently run without a lock just because the env
+    // happens to be unset. vitest sets `NODE_ENV='test'` by default, so
+    // multi-process test workers still pick up the share dir path.
+    const envConfigDir =
+      process.env['NODE_ENV'] === 'test' ? process.env['KIMI_SHARE_DIR'] : undefined;
+    this.configDir = options.configDir ?? envConfigDir;
+  }
+
+  /**
+   * Resolve the sentinel target file `proper-lockfile` locks against.
+   * `proper-lockfile.lock(target)` creates `${target}.lock` as the
+   * actual lock directory, so the real lockfile on disk ends up at
+   * `{configDir}/oauth/{providerName}.lock`. Returns `undefined` when
+   * locking is opted out (no configDir, Windows, env kill switch).
+   */
+  private resolveLockTarget(): string | undefined {
+    if (process.platform === 'win32') return undefined;
+    if (process.env['KIMI_DISABLE_OAUTH_LOCK'] === '1') return undefined;
+    if (this.configDir === undefined) return undefined;
+    return `${this.configDir}/oauth/${this.config.name}`;
+  }
+
+  /**
+   * Acquire the cross-process lock around the refresh critical section.
+   * Returns a `release` closure; when locking is disabled returns a
+   * no-op so the caller's finally-block stays structurally identical.
+   */
+  private async acquireRefreshLock(): Promise<() => Promise<void>> {
+    const target = this.resolveLockTarget();
+    if (target === undefined) return async () => {};
+
+    // proper-lockfile requires the target path to exist. We create
+    // an empty sentinel file; the real lock indicator is the sibling
+    // `{target}.lock` directory proper-lockfile creates and cleans
+    // up on release (→ test oracle `{configDir}/oauth/{name}.lock`
+    // must be absent after a graceful exit).
+    try {
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, '', { flag: 'a' });
+    } catch {
+      return async () => {};
+    }
+
+    try {
+      const release = await lockfile.lock(target, {
+        retries: { retries: 10, factor: 1, minTimeout: 200, maxTimeout: 1_000 },
+        stale: 5_000,
+        realpath: false,
+      });
+      return async () => {
+        try {
+          await release();
+        } catch {
+          /* ignore release-after-stale */
+        }
+      };
+    } catch {
+      return async () => {};
+    }
   }
 
   async hasToken(): Promise<boolean> {
@@ -139,59 +223,82 @@ export class OAuthManager {
       return token.accessToken;
     }
 
-    // Multi-process coordination: re-read storage right before refresh in
-    // case another CLI instance rotated tokens while we waited elsewhere.
-    //
-    // FIXME(slice-5.x): this only catches refresh_token rotation. If the
-    // OAuth server re-issues the SAME refresh_token on every refresh
-    // (no rotation) two concurrent processes will both refresh the
-    // access_token — wasting one request but not breaking correctness.
-    // A real cross-process lock (proper-lockfile or fcntl-style file
-    // lock) is the correct fix; tracked in Phase 5 follow-ups.
-    const latest = await this.storage.load(this.config.name);
-    if (
-      !force &&
-      latest !== undefined &&
-      latest.refreshToken !== token.refreshToken
-    ) {
-      const latestRemaining = latest.expiresAt - this.now();
-      if (latestRemaining >= this.refreshThresholdFn(latest.expiresIn)) {
-        return latest.accessToken;
-      }
-    }
-
-    const activeToken = latest ?? token;
-    if (activeToken.refreshToken.length === 0) {
-      throw new OAuthError(
-        `Token for "${this.config.name}" has no refresh_token; re-login required.`,
-      );
-    }
-
+    // Phase 15 B.2 — acquire the cross-process lock before entering the
+    // refresh critical section. Concurrent CLI processes serialise on
+    // `{configDir}/oauth/{providerName}.lock` via `proper-lockfile`.
+    // Post-acquire we re-read storage: if a peer already rotated the
+    // token, short-circuit and return theirs instead of burning an
+    // extra refresh.
+    const release = await this.acquireRefreshLock();
     try {
-      const refreshed = await this.refreshImpl(this.config, activeToken.refreshToken);
-      await this.storage.save(this.config.name, refreshed);
-      return refreshed.accessToken;
-    } catch (err) {
-      if (err instanceof OAuthUnauthorizedError) {
-        // 401/403 might mean (a) refresh_token genuinely revoked or
-        // (b) another process rotated the refresh_token while we were
-        // mid-flight. Check (b) first: re-read storage, and if the
-        // current refresh_token differs from what we sent, treat the
-        // 401 as a stale-token race and use the rotated value.
-        // (Mirrors Python `_refresh_tokens` 943-950.)
-        await this.sleep(100);
-        const latestAfterFail = await this.storage.load(this.config.name);
-        if (
-          latestAfterFail !== undefined &&
-          latestAfterFail.refreshToken !== activeToken.refreshToken &&
-          latestAfterFail.accessToken.length > 0
-        ) {
-          return latestAfterFail.accessToken;
+      // Phase 15 B.2 — post-lock re-read. The semantics:
+      //
+      //   • force=false: the normal threshold short-circuit still
+      //     applies.
+      //   • force=true: we still want a refresh UNLESS a peer CLI
+      //     process already did one inside our lock window. Two
+      //     cues tell us a peer refreshed:
+      //       (a) refresh_token rotated between our pre-lock load
+      //           and the post-lock load, OR
+      //       (b) the stored token was issued within the recent
+      //           lock window — `remaining ≈ expiresIn` — which
+      //           happens right after a peer's save. We bracket
+      //           (b) with `remaining <= expiresIn` so artificial
+      //           test fixtures (`expiresAt = now + 2*expiresIn`)
+      //           never match.
+      const afterLock = await this.storage.load(this.config.name);
+      if (afterLock !== undefined) {
+        const latestRemaining = afterLock.expiresAt - this.now();
+        if (!force && latestRemaining >= this.refreshThresholdFn(afterLock.expiresIn)) {
+          return afterLock.accessToken;
         }
-        // Genuine revoke — delete so caller drives /login.
-        await this.storage.remove(this.config.name);
+        if (force && latestRemaining > 0 && afterLock.expiresIn > 0) {
+          const rotated = afterLock.refreshToken !== token.refreshToken;
+          const LOCK_WINDOW_SEC = 10;
+          const justIssued =
+            latestRemaining <= afterLock.expiresIn &&
+            latestRemaining > afterLock.expiresIn - LOCK_WINDOW_SEC;
+          if (rotated || justIssued) {
+            return afterLock.accessToken;
+          }
+        }
       }
-      throw err;
+
+      const activeToken = afterLock ?? token;
+      if (activeToken.refreshToken.length === 0) {
+        throw new OAuthError(
+          `Token for "${this.config.name}" has no refresh_token; re-login required.`,
+        );
+      }
+
+      try {
+        const refreshed = await this.refreshImpl(this.config, activeToken.refreshToken);
+        await this.storage.save(this.config.name, refreshed);
+        return refreshed.accessToken;
+      } catch (err) {
+        if (err instanceof OAuthUnauthorizedError) {
+          // 401/403 might mean (a) refresh_token genuinely revoked or
+          // (b) another process rotated the refresh_token while we were
+          // mid-flight. Check (b) first: re-read storage, and if the
+          // current refresh_token differs from what we sent, treat the
+          // 401 as a stale-token race and use the rotated value.
+          // (Mirrors Python `_refresh_tokens` 943-950.)
+          await this.sleep(100);
+          const latestAfterFail = await this.storage.load(this.config.name);
+          if (
+            latestAfterFail !== undefined &&
+            latestAfterFail.refreshToken !== activeToken.refreshToken &&
+            latestAfterFail.accessToken.length > 0
+          ) {
+            return latestAfterFail.accessToken;
+          }
+          // Genuine revoke — delete so caller drives /login.
+          await this.storage.remove(this.config.name);
+        }
+        throw err;
+      }
+    } finally {
+      await release();
     }
   }
 

@@ -392,3 +392,73 @@ describe('YoloModeInjectionProvider — durable write path (Phase 1 Step 7)', ()
     expect(result).toEqual([]);
   });
 });
+
+// ── Phase 15 A.5 — plan-mode reminder detection contract ────────────
+//
+// Python test_plan_mode_reminder.py (tests/core/):
+//   - test_does_not_match_unrelated_text: the dedup scan must not false-
+//     positive on a plain user message that happens to mention "plan mode"
+//     (only <system-reminder>-wrapped matches count).
+//   - test_detection_stays_in_sync_with_reminder_text: the fingerprint
+//     used to detect an existing reminder must stay a substring of what
+//     PlanModeInjectionProvider actually emits. If someone renames the
+//     reminder copy but not the fingerprint, dedup silently stops working
+//     and users get duplicate reminders every turn.
+
+describe('Plan-mode reminder detection (Phase 15 A.5)', () => {
+  it('does NOT dedup against a plain user message that merely mentions "plan mode"', () => {
+    // A casual user message like "I think plan mode is active would be
+    // useful here" must not trip the dedup check — only messages that
+    // start with `<system-reminder>` count as reminder evidence.
+    const provider = new PlanModeInjectionProvider();
+    const ctx = {
+      ...baseCtx({ planMode: true }),
+      history: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'I think plan mode is active would be useful here.' },
+          ],
+          toolCalls: [],
+        },
+      ],
+    };
+    const out = provider.getInjections(ctx);
+    // Reminder must still be emitted — no false-positive dedup.
+    expect(Array.isArray(out) ? out.length : 0).toBe(1);
+  });
+
+  it('reminder detection fingerprint stays in sync with the emitted reminder text', () => {
+    // Step 1: emit a fresh reminder on a blank history.
+    const provider = new PlanModeInjectionProvider();
+    const first = provider.getInjections(baseCtx({ planMode: true })) as readonly EphemeralInjection[];
+    expect(first).toHaveLength(1);
+    const emitted = (first[0]?.content as string) ?? '';
+    expect(emitted.length).toBeGreaterThan(0);
+
+    // Step 2: fold the exact emitted text back into history as a
+    // <system-reminder> — this is how TurnManager actually stashes it.
+    const ctxWithEmitted = {
+      ...baseCtx({ planMode: true }),
+      history: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `<system-reminder>\n${emitted}\n</system-reminder>`,
+            },
+          ],
+          toolCalls: [],
+        },
+      ],
+    };
+
+    // Step 3: dedup MUST fire — the fingerprint and the emission are in
+    // sync, so the provider recognises its own past reminder. If
+    // someone renames the reminder copy without updating the dedup
+    // fingerprint, this assertion fails and the regression is caught.
+    const second = provider.getInjections(ctxWithEmitted);
+    expect(second).toEqual([]);
+  });
+});

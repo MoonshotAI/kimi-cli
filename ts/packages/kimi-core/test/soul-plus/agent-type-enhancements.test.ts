@@ -26,7 +26,6 @@ import type {
   SubagentHandle,
   SubagentHost,
 } from '../../src/soul-plus/subagent-types.js';
-import type { EventSink } from '../../src/soul/event-sink.js';
 import type { Runtime, KosongAdapter } from '../../src/soul/runtime.js';
 import type { Tool, ToolResult } from '../../src/soul/types.js';
 import { AgentTool } from '../../src/tools/agent.js';
@@ -164,13 +163,12 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
-function makeDeps(kosong: KosongAdapter, sink?: EventSink): SubagentRunnerDeps {
+function makeDeps(kosong: KosongAdapter): SubagentRunnerDeps {
   return {
     store,
     typeRegistry: registry,
     parentTools,
     parentRuntime: createFakeRuntime(kosong),
-    parentSink: sink ?? { emit: vi.fn() },
     sessionDir: tmp,
     parentModel: 'test-model',
   };

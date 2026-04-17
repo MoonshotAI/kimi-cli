@@ -204,4 +204,177 @@ describe('ReadTool', () => {
     expect(r2.isError).toBeFalsy();
     expect(readTextFn).toHaveBeenCalledTimes(2);
   });
+
+  // ── Phase 15 A.2 — Python edge cases (ports tests/tools/test_read_file.py) ──
+  describe('edge cases (Phase 15 A.2 — Python parity)', () => {
+    it('offset beyond EOF returns gracefully (empty content, no error)', async () => {
+      // Python `test_read_line_offset_beyond_file_length` (test_read_file.py:204)
+      const content = Array.from({ length: 5 }, (_, i) => `line ${String(i + 1)}`).join('\n');
+      const tool = makeReadTool(content);
+      const result = await tool.execute(
+        'call_eof',
+        { path: '/tmp/small.txt', offset: 10 },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.lineCount).toBe(0);
+      expect(result.output?.content).toBe('');
+    });
+
+    it('edge case: offset=1 reads from the second line (0-based)', async () => {
+      // Python test_read_edge_cases (test_read_file.py:233) — pin first
+      // of the three offset edges split into individual it's.
+      const content = 'a\nb\nc\nd\ne';
+      const tool = makeReadTool(content);
+      const result = await tool.execute(
+        'call_edge_1',
+        { path: '/t.txt', offset: 1, limit: 2 },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.content).toContain('2\tb');
+      expect(result.output?.content).toContain('3\tc');
+      expect(result.output?.content).not.toContain('1\ta');
+    });
+
+    it('edge case: offset at last valid line returns exactly that line', async () => {
+      const lines = Array.from({ length: 10 }, (_, i) => `L${String(i + 1)}`).join('\n');
+      const tool = makeReadTool(lines);
+      const result = await tool.execute(
+        'call_edge_last',
+        { path: '/t.txt', offset: 9, limit: 5 },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.lineCount).toBe(1);
+      expect(result.output?.content).toContain('10\tL10');
+    });
+
+    it('edge case: offset + limit partially overlaps EOF — returns only remaining lines', async () => {
+      const lines = Array.from({ length: 5 }, (_, i) => `line${String(i + 1)}`).join('\n');
+      const tool = makeReadTool(lines);
+      const result = await tool.execute(
+        'call_edge_partial',
+        { path: '/t.txt', offset: 3, limit: 10 },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.lineCount).toBe(2); // lines 4 & 5
+    });
+
+    it('schema rejects negative offset (TS 0-based counterpart of Python offset=0 reject)', () => {
+      // Python rejects offset=0 because Python offsets are 1-based. TS
+      // uses 0-based offsets, so the equivalent boundary check is
+      // "negative offset rejected". Schema declares
+      // `z.number().int().nonnegative().optional()`.
+      const tool = makeReadTool();
+      expect(
+        tool.inputSchema.safeParse({ path: '/t.txt', offset: -1 }).success,
+      ).toBe(false);
+    });
+
+    // ── Line-level truncation & double-boundary limits ─────────────────
+    //
+    // **Red bar** — src does not yet enforce MAX_LINE_LENGTH /
+    // MAX_LINES / MAX_BYTES. Implementer hooks these up in Phase 15 per
+    // the migration-report A.2 Implementer Dependencies.
+
+    it('lines longer than MAX_LINE_LENGTH are truncated with "..." + a message listing truncated line numbers', async () => {
+      // Python `test_line_truncation_and_messaging` (test_read_file.py:268).
+      // Contract: (a) `...` appended to the long line body, (b) the tool
+      // result mentions which line numbers were truncated (e.g. "[1, 3]").
+      const long = 'x'.repeat(10_000); // well above any reasonable MAX_LINE_LENGTH
+      const content = [long, 'short', long, 'ok'].join('\n');
+      const tool = makeReadTool(content);
+      const result = await tool.execute(
+        'call_long',
+        { path: '/long.txt' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const text = result.output?.content ?? '';
+      // Body contains the ellipsis marker on truncated lines.
+      expect(text).toContain('...');
+      // Message carries the truncated line numbers. Python says "[1, 3]";
+      // the stable contract we pin is that _both_ line numbers appear.
+      const content_str = toolContentString(result);
+      expect(content_str).toContain('1');
+      expect(content_str).toContain('3');
+      expect(content_str.toLowerCase()).toMatch(/truncated|long|exceeded/);
+    });
+
+    it('reading more than MAX_LINES caps the result and surfaces a boundary message', async () => {
+      // Python `test_max_lines_boundary` (test_read_file.py:345).
+      // 50_000 lines → Read should cap at MAX_LINES (contract defined by
+      // src constant; Implementer exports it in Phase 15).
+      const many = Array.from({ length: 50_000 }, (_, i) => `l${String(i)}`).join('\n');
+      const tool = makeReadTool(many);
+      const result = await tool.execute(
+        'call_max_lines',
+        { path: '/huge.txt' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      // Upper bound: TS MUST cap at some finite number well below the
+      // input size. Pin the spirit of the contract without hard-coding
+      // MAX_LINES — "cap materially smaller than input".
+      expect(result.output?.lineCount ?? 0).toBeLessThan(50_000);
+      expect(result.output?.lineCount ?? 0).toBeGreaterThan(0);
+      // BLK-1 regression: the cap must surface an "Output truncated"
+      // note — previously the `maxLinesReached` flag was dead code
+      // because `effectiveLimit = min(limit, MAX_LINES)` tripped first.
+      expect(toolContentString(result)).toMatch(/truncated|lines reached/i);
+    });
+
+    it('default read on a 1500-line file surfaces the MAX_LINES cap message', async () => {
+      // BLK-1 explicit regression: feed 1500 (> MAX_LINES = 1000) lines
+      // with no explicit limit and confirm the cap fires + the message
+      // surfaces via tool result content.
+      const many = Array.from({ length: 1500 }, (_, i) => `l${String(i)}`).join('\n');
+      const tool = makeReadTool(many);
+      const result = await tool.execute(
+        'call_max_lines_1500',
+        { path: '/one-point-five-k.txt' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.lineCount).toBe(1000);
+      expect(toolContentString(result)).toMatch(/max 1000 lines reached|output truncated/i);
+    });
+
+    it('reading a file larger than MAX_BYTES surfaces a boundary message', async () => {
+      // Python `test_max_bytes_boundary` (test_read_file.py:364). Build
+      // a file of ~5 MB to exceed any reasonable MAX_BYTES.
+      const line = 'x'.repeat(1000);
+      const big = Array.from({ length: 5000 }, () => line).join('\n');
+      const tool = makeReadTool(big);
+      const result = await tool.execute(
+        'call_max_bytes',
+        { path: '/big.txt' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      // Contract: we either error-out with a size message, or we cap the
+      // output. Either path must surface the boundary — pin on the
+      // message presence.
+      const combined = toolContentString(result);
+      expect(combined.toLowerCase()).toMatch(/too large|truncated|exceeded|size/);
+    });
+
+    // ── Tail mode (negative offset) — src does NOT implement ───────────
+    //
+    // TS ReadTool schema uses `nonnegative()` so negative offsets are
+    // rejected outright; there is no tail reader. Python has eight
+    // dedicated tests for the tail path. We keep them as `it.todo`
+    // placeholders so the coverage gap is visible, but do not add the
+    // tail implementation in Phase 15.
+    it.todo('tail mode: last N lines with negative offset (Python test_read_tail_last_n)');
+    it.todo('tail mode: default lines count when limit omitted');
+    it.todo('tail mode: empty file returns empty content');
+    it.todo('tail mode: requesting more lines than file has returns full file');
+    it.todo('tail mode: negative offset below -(MAX_LINES+1) rejected by schema');
+    it.todo('tail mode: negative offset combined with limit');
+    it.todo('tail mode: exact line-count boundary (|offset| == len)');
+    it.todo('tail mode: negative offset beyond file length returns all available');
+  });
 });

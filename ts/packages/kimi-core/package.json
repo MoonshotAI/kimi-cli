@@ -33,11 +33,13 @@
     "@moonshot-ai/kosong": "workspace:^",
     "js-yaml": "^4.1.1",
     "nunjucks": "^3.2.4",
+    "proper-lockfile": "^4.1.2",
     "smol-toml": "^1.6.1",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "@types/nunjucks": "^3.2.6"
+    "@types/nunjucks": "^3.2.6",
+    "@types/proper-lockfile": "^4.1.4"
   }
 }

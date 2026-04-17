@@ -168,4 +168,201 @@ describe('TurnManager.handleCancel', () => {
     }
     expect(journal.getRecordsByType('turn_begin')).toHaveLength(2);
   });
+
+  // ── Phase 15 B.4 D1 — abort-contract three-step order (v2 §7.2 / 铁律 L16) ──
+  //
+  // Contract pin: `abortTurn` must dispatch in this exact order:
+  //
+  //   1. `approvalRuntime.cancelBySource(...)`     — synchronous
+  //   2. `orchestrator.discardStreaming('aborted')` — synchronous
+  //   3. `await lifecycle.cancelTurn(...)`          — includes controller.abort()
+  //
+  // Rationale: step 2 runs **before** `controller.abort()` so prefetched
+  // streaming results already received keep their identity; if abort
+  // fires first, the streaming map would be drained inside the abort
+  // listener instead of before it and already-resolved prefetched
+  // results could be mislabelled as cancelled. Phase 15 D1 wires a real
+  // StreamingKosongWrapper and this order becomes load-bearing.
+  it('abortTurn dispatch order: cancelBySource → discardStreaming → controller.abort (Phase 15 D1)', async () => {
+    const { vi } = await import('vitest');
+    // We use the existing buildManager but attach bespoke spies to the
+    // mock approvalRuntime + orchestrator in fresh deps rather than
+    // reaching into private fields. So we build minimal TurnManagerDeps
+    // tailored for this one test.
+    const {
+      SoulLifecycleGate,
+      SessionEventBus,
+      SessionLifecycleStateMachine,
+      SoulRegistry,
+      TurnManager: TM,
+      createRuntime,
+    } = await import('../../src/soul-plus/index.js');
+    const kosong = new ScriptedKosongAdapter({
+      responses: [makeEndTurnResponse('x')],
+    });
+    const stateMachine = new SessionLifecycleStateMachine();
+    const gate = new SoulLifecycleGate(stateMachine);
+    const context = createHarnessContextState();
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const runtime = createRuntime({
+      kosong,
+      lifecycle: gate,
+      compactionProvider: createNoopCompactionProvider(),
+      journal: createNoopJournalCapability(),
+    });
+    const soulRegistry = new SoulRegistry({
+      createHandle: (key) => ({
+        key,
+        agentId: 'agent_main',
+        abortController: new AbortController(),
+      }),
+    });
+
+    // Spies on the three abort-contract participants.
+    const cancelBySource = vi.fn();
+    const discardStreaming = vi.fn();
+
+    const approvalRuntime = {
+      cancelBySource: cancelBySource as (src: unknown) => void,
+    } as unknown as import('../../src/soul-plus/approval-runtime.js').ApprovalRuntime;
+
+    // The stub must cover the surface TurnManager touches in launchTurn
+    // (wrapTools for the `[...tools]` handoff) in addition to the abort-
+    // contract method we're actually pinning. Returning the input array
+    // untouched is fine since `tools: []` in this harness.
+    const orchestrator = {
+      wrapTools: (tools: readonly unknown[]): unknown[] => [...tools],
+      discardStreaming: discardStreaming as (reason: 'aborted' | 'timeout' | 'fallback') => void,
+    } as unknown as import('../../src/soul-plus/orchestrator.js').ToolCallOrchestrator;
+
+    const subcomponents = makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+    });
+
+    // Wrap lifecycle.cancelTurn with a spy to record its relative
+    // ordering vs the other two steps.
+    const cancelTurnSpy = vi.spyOn(subcomponents.lifecycle, 'cancelTurn');
+
+    const manager = new TM({
+      contextState: context,
+      sessionJournal: journal,
+      runtime,
+      sink: eventBus,
+      lifecycleStateMachine: stateMachine,
+      soulRegistry,
+      tools: [],
+      ...subcomponents,
+      approvalRuntime,
+      orchestrator,
+    });
+
+    // Fire a prompt so there is a live turn to abort. We intentionally
+    // don't await its completion — abortTurn drains it.
+    const started = await manager.handlePrompt({ data: { input: { text: 'hi' } } });
+    if (!('turn_id' in started)) throw new Error('expected turn_id');
+    await manager.abortTurn(started.turn_id, 'test-order');
+
+    // All three participants were invoked exactly once.
+    expect(cancelBySource).toHaveBeenCalledTimes(1);
+    expect(discardStreaming).toHaveBeenCalledTimes(1);
+    expect(cancelTurnSpy).toHaveBeenCalledTimes(1);
+
+    // Strict dispatch order — `invocationCallOrder` is a monotonic
+    // counter that captures cross-spy ordering in call time.
+    const cancelOrder = cancelBySource.mock.invocationCallOrder[0]!;
+    const discardOrder = discardStreaming.mock.invocationCallOrder[0]!;
+    const lifecycleOrder = cancelTurnSpy.mock.invocationCallOrder[0]!;
+    expect(cancelOrder).toBeLessThan(discardOrder);
+    expect(discardOrder).toBeLessThan(lifecycleOrder);
+
+    // Reason propagated.
+    expect(discardStreaming).toHaveBeenCalledWith('aborted');
+  });
+
+  // ── Phase 15 MAJ-R2-1 — abortTurn drains the orchestrator stash so
+  // abort-heavy workloads don't leak prefetched-tool-result memory.
+  it('abortTurn calls orchestrator.drainPrefetched() after lifecycle.cancelTurn (Phase 15 MAJ-R2-1)', async () => {
+    const { vi } = await import('vitest');
+    const {
+      SoulLifecycleGate,
+      SessionEventBus,
+      SessionLifecycleStateMachine,
+      SoulRegistry,
+      TurnManager: TM,
+      createRuntime,
+    } = await import('../../src/soul-plus/index.js');
+    const kosong = new ScriptedKosongAdapter({
+      responses: [makeEndTurnResponse('x'), makeEndTurnResponse('y'), makeEndTurnResponse('z')],
+    });
+    const stateMachine = new SessionLifecycleStateMachine();
+    const gate = new SoulLifecycleGate(stateMachine);
+    const context = createHarnessContextState();
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const runtime = createRuntime({
+      kosong,
+      lifecycle: gate,
+      compactionProvider: createNoopCompactionProvider(),
+      journal: createNoopJournalCapability(),
+    });
+    const soulRegistry = new SoulRegistry({
+      createHandle: (key) => ({
+        key,
+        agentId: 'agent_main',
+        abortController: new AbortController(),
+      }),
+    });
+
+    const drainPrefetched = vi.fn(() => new Map());
+    const approvalRuntime = {
+      cancelBySource: vi.fn(),
+    } as unknown as import('../../src/soul-plus/approval-runtime.js').ApprovalRuntime;
+    const orchestrator = {
+      wrapTools: (tools: readonly unknown[]): unknown[] => [...tools],
+      discardStreaming: vi.fn(),
+      drainPrefetched,
+    } as unknown as import('../../src/soul-plus/orchestrator.js').ToolCallOrchestrator;
+
+    const subcomponents = makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+    });
+    const cancelTurnSpy = vi.spyOn(subcomponents.lifecycle, 'cancelTurn');
+
+    const manager = new TM({
+      contextState: context,
+      sessionJournal: journal,
+      runtime,
+      sink: eventBus,
+      lifecycleStateMachine: stateMachine,
+      soulRegistry,
+      tools: [],
+      ...subcomponents,
+      approvalRuntime,
+      orchestrator,
+    });
+
+    // Three sequential abort cycles. Without the drain the stash would
+    // grow unbounded; with it, each abort cycle calls drainPrefetched
+    // exactly once, AFTER lifecycle.cancelTurn.
+    for (let i = 0; i < 3; i++) {
+      const started = await manager.handlePrompt({ data: { input: { text: `hi-${String(i)}` } } });
+      if (!('turn_id' in started)) throw new Error('expected turn_id');
+      await manager.abortTurn(started.turn_id, 'stash-drain');
+    }
+
+    expect(drainPrefetched).toHaveBeenCalledTimes(3);
+    // Ordering: drainPrefetched always fires AFTER the lifecycle abort
+    // so "results completed before abort" had a chance to commit to
+    // the stash before we discard it (铁律 L16).
+    const drainOrders = drainPrefetched.mock.invocationCallOrder;
+    const cancelOrders = cancelTurnSpy.mock.invocationCallOrder;
+    for (let i = 0; i < 3; i++) {
+      expect(cancelOrders[i]!).toBeLessThan(drainOrders[i]!);
+    }
+  });
 });

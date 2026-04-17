@@ -142,7 +142,13 @@ export class ToolCallOrchestrator {
    * array into `SoulConfig.tools`.
    */
   wrapTools(tools: readonly Tool[]): Tool[] {
-    return tools.map((inner) => this.wrapSingle(inner));
+    const wrapped = tools.map((inner) => this.wrapSingle(inner));
+    // Populate the per-turn tool registry `executeStreaming` consults.
+    // `wrapTools` is called once per launchTurn; this side-effect keeps
+    // the streaming path O(1) per tool_use event without re-threading
+    // tool arrays through the wrapper/orchestrator boundary.
+    this.currentTools = new Map(wrapped.map((t) => [t.name, t]));
+    return wrapped;
   }
 
   /**
@@ -258,36 +264,131 @@ export class ToolCallOrchestrator {
     };
   }
 
+  // ── Phase 15 B.4 D1 — streaming scheduler surface ────────────────────
+  //
+  // `StreamingKosongWrapper` owns a sub-controller + in-flight map per
+  // `chat()` call, and attaches itself via `bindStreaming()` so the
+  // orchestrator can route `discardStreaming(reason)` (issued by
+  // `TurnManager.abortTurn`) back into the wrapper and drain the
+  // final prefetched map on behalf of the next `Soul` loop iteration.
+  //
+  // Critically — `executeStreaming` is OWNED by the orchestrator, not
+  // delegated to the binding. Round-1 review caught an infinite
+  // recursion (wrapper → orchestrator.executeStreaming → binding → back
+  // into wrapper). The fix: orchestrator does the real work here —
+  // look up the tool in `currentTools`, probe `isConcurrencySafe`, and
+  // return `tool.execute(...)` directly. No binding call on this path.
+
+  private currentTools: ReadonlyMap<string, Tool> = new Map();
+
+  private streamingBinding:
+    | {
+        readonly drainPrefetched: () => ReadonlyMap<string, ToolResult>;
+        readonly discardStreaming: (reason: 'aborted' | 'timeout' | 'fallback') => void;
+      }
+    | undefined;
+
+  /**
+   * On unbind, the wrapper's completed map is copied here so post-chat
+   * callers (Soul's main loop, abort-path recovery) can still drain
+   * the results. Cleared on read (MAJ-2 — completed-before-abort
+   * results survive even when `raw.chat` threw and the wrapper's
+   * local scope GC'd).
+   */
+  private stashedPrefetched: Map<string, ToolResult> | undefined;
+
+  /**
+   * Phase 15 B.4 D1 — attach a streaming binding. Returns an `unbind`
+   * function the caller (`StreamingKosongWrapper`) invokes once `chat()`
+   * settles so the next wrapper instance can claim the slot. Multiple
+   * concurrent chat() calls on the same orchestrator are not supported
+   * and would overwrite each other; TurnManager holds one adapter per
+   * turn so this is fine in practice.
+   *
+   * `binding.drainPrefetched()` is invoked during `unbind` so whatever
+   * the wrapper collected up to that moment is stashed on the
+   * orchestrator and remains reachable via `this.drainPrefetched()`
+   * after the chat promise settles (success OR throw).
+   */
+  bindStreaming(binding: {
+    drainPrefetched: () => ReadonlyMap<string, ToolResult>;
+    discardStreaming: (reason: 'aborted' | 'timeout' | 'fallback') => void;
+  }): () => void {
+    this.streamingBinding = binding;
+    return () => {
+      if (this.streamingBinding !== binding) return;
+      // Harvest the wrapper's final completed map into orchestrator-
+      // scoped storage so a post-abort caller still sees results that
+      // completed before the sub-controller aborted (铁律 L16).
+      try {
+        const harvested = binding.drainPrefetched();
+        if (harvested.size > 0) {
+          const stash = this.stashedPrefetched ?? new Map<string, ToolResult>();
+          for (const [id, result] of harvested) stash.set(id, result);
+          this.stashedPrefetched = stash;
+        }
+      } catch {
+        /* never let a broken binding poison unbind */
+      }
+      this.streamingBinding = undefined;
+    };
+  }
+
   /**
    * Phase 4 — abort-contract (v2 §7.2) second step. TurnManager.abortTurn
    * calls this between `approvalRuntime.cancelBySource` and
-   * `tracker.cancelTurn`. Phase 4 implementation is a no-op: real
-   * streaming cancellation wiring lands in Phase 5 when the orchestrator
-   * owns an explicit streaming side-channel. Kept as a concrete method
-   * (not `undefined`) so structural stubs in tests can rely on the
-   * property being callable.
+   * `tracker.cancelTurn`. When a streaming binding is attached, the
+   * method delegates; otherwise it is a no-op so older fixtures keep
+   * compiling (铁律 L16 — two steps before `controller.abort`).
    */
   discardStreaming(reason: 'aborted' | 'timeout' | 'fallback'): void {
-    void reason;
+    this.streamingBinding?.discardStreaming(reason);
   }
 
   /**
-   * Slice 5 / 决策 #97 — interface slot for the future streaming
-   * scheduler. Phase 5 leaves this as a no-op so `?.` callers see a
-   * function. Real prefetch wiring lands in Phase 6+.
+   * Phase 15 B.4 D1 — offer a completed streaming tool_use block to
+   * the prefetch scheduler. The orchestrator resolves
+   * `tool.isConcurrencySafe(args)`: a truthy opt-in returns
+   * `Promise<ToolResult>` (the tool's own `execute`); anything else
+   * returns `undefined` so the streaming wrapper leaves the call to
+   * `Soul`'s main loop.
+   *
+   * `currentTools` is populated by `wrapTools` on every turn. A
+   * `toolCall.name` that does not match a current tool returns
+   * `undefined` (defensive — should not happen in production because
+   * Soul only emits tool_use for tools it was handed).
    */
-  executeStreaming(toolCall: ToolCall, signal: AbortSignal): void {
-    void toolCall;
-    void signal;
+  executeStreaming(
+    toolCall: ToolCall,
+    signal: AbortSignal,
+  ): Promise<ToolResult> | undefined {
+    const tool = this.currentTools.get(toolCall.name);
+    if (tool === undefined) return undefined;
+    const predicate = tool.isConcurrencySafe;
+    if (predicate === undefined) return undefined;
+    let safe: boolean;
+    try {
+      safe = predicate.call(tool, toolCall.args);
+    } catch {
+      return undefined;
+    }
+    if (!safe) return undefined;
+    return tool.execute(toolCall.id, toolCall.args, signal);
   }
 
   /**
-   * Slice 5 / 决策 #97 — interface slot returning the prefetched-result
-   * map a streaming wrapper would attach to the next ChatResponse.
-   * Phase 5 always returns an empty map.
+   * Phase 15 B.4 D1 — drain + clear prefetched results. Prefers the
+   * wrapper's live map when a binding is active; otherwise returns
+   * (and clears) the post-unbind stash so the abort-throw path still
+   * yields completed prefetches.
    */
   drainPrefetched(): ReadonlyMap<string, ToolResult> {
-    return new Map<string, ToolResult>();
+    if (this.streamingBinding !== undefined) {
+      return this.streamingBinding.drainPrefetched();
+    }
+    const stash = this.stashedPrefetched;
+    this.stashedPrefetched = undefined;
+    return stash ?? new Map<string, ToolResult>();
   }
 
   /**

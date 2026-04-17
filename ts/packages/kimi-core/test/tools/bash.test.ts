@@ -368,4 +368,235 @@ describe('BashTool', () => {
       expect(desc).toContain('background');
     });
   });
+
+  // ── Phase 15 A.1 — Python edge cases (ports tests/tools/test_shell_bash.py) ──
+  describe('edge cases (Phase 15 A.1 — Python parity)', () => {
+    it('command chaining with && forwards the command verbatim', async () => {
+      const proc = fakeProcess({ exitCode: 0, stdout: 'first\nsecond\n', stderr: '' });
+      const execFn = vi.fn().mockResolvedValue(proc);
+      const kaos = createFakeKaos({ exec: execFn, execWithEnv: execFn });
+      const tool = new BashTool(kaos, '/workspace');
+      const result = await tool.execute(
+        'call_chain',
+        { command: 'echo first && echo second' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      // Forwarded to bash -c, so the operator is in the joined command string.
+      // execWithEnv(args: string[], env: Record<string, string>) — the shell
+      // command lives inside args[2]; flatten one level to reach it.
+      const call = execFn.mock.calls[0];
+      expect(call).toBeDefined();
+      const flat = (call as unknown[]).flat();
+      expect(flat.some((a: unknown) => typeof a === 'string' && a.includes('&&'))).toBe(true);
+    });
+
+    it('command sequential with ; forwards the command verbatim', async () => {
+      const proc = fakeProcess({ exitCode: 0, stdout: '', stderr: '' });
+      const execFn = vi.fn().mockResolvedValue(proc);
+      const kaos = createFakeKaos({ exec: execFn, execWithEnv: execFn });
+      const tool = new BashTool(kaos, '/workspace');
+      await tool.execute(
+        'call_seq',
+        { command: 'echo first ; echo second' },
+        new AbortController().signal,
+      );
+      const call = execFn.mock.calls[0];
+      expect(call).toBeDefined();
+      const flat = (call as unknown[]).flat();
+      // `cd /workspace && echo first ; echo second` — the `;` lives after the
+      // `&&` prefix injected by shellArgs; match on the suffix.
+      expect(flat.some((a: unknown) => typeof a === 'string' && /echo first ;/.test(a))).toBe(true);
+    });
+
+    it('command conditional with || forwards the command verbatim', async () => {
+      const proc = fakeProcess({ exitCode: 0, stdout: '', stderr: '' });
+      const execFn = vi.fn().mockResolvedValue(proc);
+      const kaos = createFakeKaos({ exec: execFn, execWithEnv: execFn });
+      const tool = new BashTool(kaos, '/workspace');
+      await tool.execute(
+        'call_cond',
+        { command: 'false || echo fallback' },
+        new AbortController().signal,
+      );
+      const call = execFn.mock.calls[0];
+      expect(call).toBeDefined();
+      const flat = (call as unknown[]).flat();
+      expect(flat.some((a: unknown) => typeof a === 'string' && /false \|\| echo/.test(a))).toBe(
+        true,
+      );
+    });
+
+    it('command pipe passes stdout into second command', async () => {
+      const proc = fakeProcess({ exitCode: 0, stdout: 'HELLO\n', stderr: '' });
+      const execFn = vi.fn().mockResolvedValue(proc);
+      const kaos = createFakeKaos({ exec: execFn, execWithEnv: execFn });
+      const tool = new BashTool(kaos, '/workspace');
+      await tool.execute(
+        'call_pipe',
+        { command: 'echo hello | tr a-z A-Z' },
+        new AbortController().signal,
+      );
+      const call = execFn.mock.calls[0];
+      expect(call).toBeDefined();
+      const flat = (call as unknown[]).flat();
+      expect(flat.some((a: unknown) => typeof a === 'string' && /echo hello \| tr/.test(a))).toBe(
+        true,
+      );
+    });
+
+    it('multiple pipes are forwarded verbatim', async () => {
+      const proc = fakeProcess({ exitCode: 0, stdout: '', stderr: '' });
+      const execFn = vi.fn().mockResolvedValue(proc);
+      const kaos = createFakeKaos({ exec: execFn, execWithEnv: execFn });
+      const tool = new BashTool(kaos, '/workspace');
+      await tool.execute(
+        'call_multi_pipe',
+        { command: 'echo x | grep x | wc -l' },
+        new AbortController().signal,
+      );
+      const call = execFn.mock.calls[0];
+      expect(call).toBeDefined();
+      const flat = (call as unknown[]).flat();
+      // Two pipes in the forwarded command.
+      const hasCmd = flat.find(
+        (a: unknown) => typeof a === 'string' && /echo x \| grep x \| wc/.test(a),
+      );
+      expect(hasCmd).toBeDefined();
+    });
+
+    it('command completes inside its timeout when the process exits quickly', async () => {
+      // A 1s timeout with a 100ms command must return normally without
+      // triggering the timeout path (no "killed by timeout" message).
+      const proc = fakeProcess({ exitCode: 0, stdout: 'quick\n', stderr: '' });
+      const tool = makeBashTool(proc);
+      const result = await tool.execute(
+        'call_timeout_bound',
+        { command: 'echo quick', timeout: 1 },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(toolContentString(result)).toContain('quick');
+      expect(toolContentString(result)).not.toContain('timeout');
+    });
+
+    it('timeout expiry message contains seconds ("killed by timeout (1s)")', async () => {
+      vi.useFakeTimers();
+      const { proc } = pendingProcess(124);
+      const tool = makeBashTool(proc);
+      const resultPromise = tool.execute(
+        'call_timeout_msg',
+        { command: 'sleep 999', timeout: 1 },
+        new AbortController().signal,
+      );
+      await vi.advanceTimersByTimeAsync(1500);
+      const result = await resultPromise;
+      expect(result.isError).toBe(true);
+      // Python contract: message contains timeout in seconds. TS emits
+      // "Command killed by timeout (1s)" — pin the seconds literal.
+      const text = toolContentString(result);
+      expect(text).toMatch(/timeout\s*\(\s*1\s*s\s*\)/i);
+    });
+
+    // ── Output truncation — pins new `[...truncated]\n` contract ────────
+    //
+    // Phase 15 A.1 contract: when stdout exceeds the cap, the captured
+    // text ends with a stable marker `[...truncated]\n` and the tool
+    // result content carries an "Output is truncated" note. The
+    // existing TS marker (`[output truncated at N bytes]`) is slated
+    // for unification under Phase 15 (src change required).
+    it('output truncation on success emits the [...truncated]\\n marker', async () => {
+      // Build a Readable that exceeds the 10MB cap so readStreamWithCap
+      // flips the truncation flag.
+      const huge = 'x'.repeat(11 * 1024 * 1024);
+      const proc = fakeProcess({ exitCode: 0, stdout: huge, stderr: '' });
+      const tool = makeBashTool(proc);
+      const result = await tool.execute(
+        'call_trunc_ok',
+        { command: 'yes' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const stdout = result.output?.stdout ?? '';
+      // Contract: the tail marker is exactly `[...truncated]\n`. Current
+      // src uses `[output truncated at N bytes]`; Phase 15 unifies.
+      expect(stdout.endsWith('[...truncated]\n')).toBe(true);
+      expect(toolContentString(result)).toContain('Output is truncated');
+    });
+
+    it('output truncation on failure (non-zero exit) emits the [...truncated]\\n marker', async () => {
+      const huge = 'y'.repeat(11 * 1024 * 1024);
+      const proc = fakeProcess({ exitCode: 1, stdout: '', stderr: huge });
+      const tool = makeBashTool(proc);
+      const result = await tool.execute(
+        'call_trunc_err',
+        { command: 'false-then-spam' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBe(true);
+      const stderr = result.output?.stderr ?? '';
+      expect(stderr.endsWith('[...truncated]\n')).toBe(true);
+      expect(toolContentString(result)).toContain('Output is truncated');
+    });
+
+    // ── Timeout schema validation bounds ───────────────────────────────
+    //
+    // Phase 15 A.1 contract:
+    //   - `timeout=0` → schema rejects (positive integer required).
+    //   - `timeout=-1` → schema rejects.
+    //   - `timeout > MAX_FG_TIMEOUT_SEC` (5 min) with no `run_in_background`
+    //     → schema rejects with foreground message.
+    //   - `timeout > MAX_BG_TIMEOUT_SEC` (24 h) → schema rejects.
+    //   - `timeout = MAX_BG_TIMEOUT_SEC` with `run_in_background=true` →
+    //     schema accepts.
+    it('schema rejects timeout=0 and timeout=-1', () => {
+      const tool = makeBashTool();
+      expect(tool.inputSchema.safeParse({ command: 'echo x', timeout: 0 }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ command: 'echo x', timeout: -1 }).success).toBe(false);
+    });
+
+    it('schema rejects foreground timeout greater than MAX_FG_TIMEOUT_SEC (5 min)', () => {
+      const tool = makeBashTool();
+      // 5 * 60 + 1 = 301 seconds → should fail as foreground
+      const result = tool.inputSchema.safeParse({ command: 'sleep 1', timeout: 5 * 60 + 1 });
+      expect(result.success).toBe(false);
+    });
+
+    it('schema accepts background timeout up to MAX_BG_TIMEOUT_SEC (24 h) and rejects beyond', () => {
+      const tool = makeBashTool();
+      const bgOk = tool.inputSchema.safeParse({
+        command: 'sleep 1',
+        run_in_background: true,
+        description: 'long-running',
+        timeout: 24 * 60 * 60,
+      });
+      expect(bgOk.success).toBe(true);
+      const bgBad = tool.inputSchema.safeParse({
+        command: 'sleep 1',
+        run_in_background: true,
+        description: 'too long',
+        timeout: 24 * 60 * 60 + 1,
+      });
+      expect(bgBad.success).toBe(false);
+    });
+  });
+
+  // ── Phase 15 A.5 — plan_mode non-blocking guard (case #14) ──────────
+  //
+  // Python `test_write_file_plan_mode` / `test_str_replace_file_plan_mode`
+  // assert that Write / Edit throw under plan_mode. TS plan-mode is
+  // enforced at the dynamic-injection layer (soft constraint), NOT at
+  // the tool layer — so Write / Edit / Bash must NOT error just because
+  // plan-mode is on. Pin this so a future drive-by edit doesn't silently
+  // flip to hard-block and break parity with the dynamic-injection model.
+  describe('plan-mode non-blocking contract (Phase 15 A.5)', () => {
+    it('Bash schema parses a plain command regardless of plan mode', () => {
+      const tool = makeBashTool();
+      // Plan mode is an orchestrator-level ambient flag; schema never sees
+      // it. A successful parse here is the canary for "tool layer does
+      // not hard-block under plan mode".
+      const parsed = tool.inputSchema.safeParse({ command: 'echo still runs' });
+      expect(parsed.success).toBe(true);
+    });
+  });
 });

@@ -83,3 +83,35 @@ describe('plan.display wire event', () => {
     expect(method).toBe('plan.display');
   });
 });
+
+// ── Phase 15 A.5 — resume restores plan mode (Python parity) ──────────
+//
+// Python TestKimiSoulPlanSessionPersistence.test_resume_restores_plan_mode_true / false
+// (tests/core/test_plan_mode.py:636). The TS equivalent is the replay
+// projector: projectReplayState reads `plan_mode_changed` records and
+// surfaces `.planMode` on ReplayProjectedState, which the session
+// resume path then hands to TurnManager. These two its pin the
+// projector's fidelity end-to-end.
+
+describe('Resume restores plan mode (Phase 15 A.5)', () => {
+  // Import inside describe to keep the top-of-file imports unchanged and
+  // let the projector test live alongside the ContextState tests.
+  it('resume of a session whose last plan_mode_changed was enabled=true sets planMode=true', async () => {
+    const { projectReplayState } = await import('../../src/session/replay-projector.js');
+    const records: PlanModeChangedRecord[] = [
+      { type: 'plan_mode_changed', seq: 1, time: Date.now(), enabled: true },
+    ];
+    const state = projectReplayState(records);
+    expect(state.planMode).toBe(true);
+  });
+
+  it('resume of a session whose last plan_mode_changed was enabled=false sets planMode=false', async () => {
+    const { projectReplayState } = await import('../../src/session/replay-projector.js');
+    const records: PlanModeChangedRecord[] = [
+      { type: 'plan_mode_changed', seq: 1, time: Date.now(), enabled: true },
+      { type: 'plan_mode_changed', seq: 2, time: Date.now(), enabled: false },
+    ];
+    const state = projectReplayState(records);
+    expect(state.planMode).toBe(false);
+  });
+});

@@ -23,6 +23,7 @@ export function registerLogoutCommand(parent: Command): void {
       const manager = new OAuthManager({
         config: KIMI_CODE_FLOW_CONFIG,
         storage,
+        configDir: pathConfig.home,
       });
 
       const hasToken = await manager.hasToken();

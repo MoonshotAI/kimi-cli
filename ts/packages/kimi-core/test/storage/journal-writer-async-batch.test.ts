@@ -91,7 +91,11 @@ describe('WiredJournalWriter async-batch — batched drain behaviour', () => {
     expect(writer.pendingRecords.length).toBe(10);
 
     // Advance past the drain interval — drain fires, flushes the batch.
+    // Phase 15 B.1: writeBatchAndSync is async now; `flush()` rides the
+    // same serial queue as the drain so returning from it guarantees the
+    // drain has reached disk (even when the timer tick scheduled it).
     await vi.advanceTimersByTimeAsync(50);
+    await writer.flush();
 
     const body = await readBodyRecords(filePath);
     expect(body.length).toBe(10);
@@ -557,7 +561,12 @@ describe('WiredJournalWriter async-batch — batch size / byte limits', () => {
     }
     // Keep advancing timers until the queue is empty — at 3 per batch,
     // 10 records require 4 drain invocations (3 + 3 + 3 + 1).
+    // Phase 15 B.1: writeBatchAndSync is now async, so the fake-timer
+    // drain enqueues serialised work that completes off-virtual-time.
+    // `flush()` rides the same serial queue and returns only once the
+    // queue is empty, giving the test a deterministic barrier.
     await vi.advanceTimersByTimeAsync(500);
+    await writer.flush();
 
     const body = await readBodyRecords(filePath);
     expect(body.length).toBe(10);
@@ -585,7 +594,9 @@ describe('WiredJournalWriter async-batch — batch size / byte limits', () => {
     for (let i = 0; i < 4; i++) {
       await writer.append({ type: 'user_message', turn_id: 't1', content: `${big}-${i}` });
     }
+    // Phase 15 B.1 — same rationale as the record-count test above.
     await vi.advanceTimersByTimeAsync(500);
+    await writer.flush();
 
     // At least 2 drain invocations — a single 1024B batch can't hold two
     // records of this size.
@@ -658,6 +669,80 @@ describe('WiredJournalWriter async-batch — lifecycle gating (unchanged)', () =
 });
 
 // ── 10. seq monotonicity + FIFO ───────────────────────────────────────
+
+// ── 11. Phase 15 B.1 C1 — force-flush preserves pre-batch durability ─
+//
+// Contract: after `writeBatchAndSync` is moved from sync fs to
+// `fs/promises`, a force-flush record (`turn_end` / `approval_response`
+// / `subagent_completed` / `subagent_failed`) must still be durable on
+// disk by the time `append(force)` resolves — AND every non-force
+// append that preceded it in the FIFO must be durable too. This pins
+// the "append(non-force) × N then append(force)" ordering: when the
+// force-flush await returns, the file carries N + 1 lines in seq
+// order.
+//
+// Without this pin the async rewrite risks a subtle regression where
+// force-flush only flushes its own batch slice (reordering relative
+// to unbatched peers) — tests that rely on "turn_end visible means
+// every record of the turn is visible" (recovery / replay) would
+// silently degrade.
+
+describe('WiredJournalWriter async-batch — force-flush preserves FIFO durability (Phase 15 B.1 C1)', () => {
+  it('99 assistant_message + 1 turn_end → turn_end awaits all 100 durable in order', async () => {
+    vi.useFakeTimers();
+    const filePath = join(workDir, 'wire.jsonl');
+    const writer = new WiredJournalWriter({
+      filePath,
+      lifecycle: new StubGate(),
+      config: { drainIntervalMs: 50 },
+    });
+
+    // 99 non-force-flush records. These land in the in-memory queue.
+    const nonForcePromises: Array<ReturnType<typeof writer.append>> = [];
+    for (let i = 0; i < 99; i++) {
+      nonForcePromises.push(
+        writer.append({
+          type: 'assistant_message',
+          turn_id: 't1',
+          text: `step-${String(i)}`,
+          think: null,
+          tool_calls: [],
+          model: 'test',
+        }),
+      );
+    }
+
+    // Before turn_end: not yet on disk (batched drain hasn't fired).
+    expect(await readBodyRecords(filePath)).toEqual([]);
+
+    // The force-flush record. Contract: resolving this append means the
+    // FULL prefix (all 99 non-force records + the turn_end itself) is
+    // durable on disk — force-flush drains the FIFO up to and
+    // including the force record.
+    await Promise.all([
+      ...nonForcePromises,
+      writer.append({
+        type: 'turn_end',
+        turn_id: 't1',
+        agent_type: 'main',
+        success: true,
+        reason: 'done',
+      }),
+    ]);
+
+    const body = await readBodyRecords(filePath);
+    expect(body.length).toBe(100);
+    // Contract #1 — FIFO preserved across the force-flush boundary.
+    const types = body.map((r) => r['type']);
+    expect(types.slice(0, 99).every((t) => t === 'assistant_message')).toBe(true);
+    expect(types[99]).toBe('turn_end');
+    // Contract #2 — seq strictly monotonic 1..100 with no gaps.
+    const seqs = body.map((r) => r['seq']);
+    expect(seqs).toEqual(Array.from({ length: 100 }, (_, i) => i + 1));
+    // Contract #3 — buffer drained to empty.
+    expect(writer.pendingRecords.length).toBe(0);
+  });
+});
 
 describe('WiredJournalWriter async-batch — seq monotonicity + FIFO', () => {
   it('20 concurrent appends produce strictly monotonic seq 1..20 in call order', async () => {

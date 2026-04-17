@@ -28,9 +28,6 @@
  *     owns the lifecycle write (it writes them around the
  *     `runSubagentTurn` call), so the runner's parentSessionJournal
  *     branch is exercised by direct-runner tests only.
- *   - Legacy `parentSink` is kept on the deps for back-compat with
- *     pre-Phase-6 callers (e.g. older e2e tests). `parentEventBus`
- *     supersedes it; when both are present, the bus wins.
  */
 
 import { mkdir } from 'node:fs/promises';
@@ -124,12 +121,6 @@ export interface SubagentRunnerDeps {
    * Required iff `pathConfig` is supplied; ignored otherwise.
    */
   readonly sessionId?: string | undefined;
-  /**
-   * Legacy pre-Phase-6 fallback. New callers should use
-   * `parentEventBus`. Kept so tests that haven't migrated to the bus
-   * keep compiling. When both are present, the bus wins.
-   */
-  readonly parentSink?: EventSink | undefined;
 }
 
 class StubChildLifecycle implements LifecycleGate {
@@ -153,7 +144,6 @@ export async function runSubagentTurn(
     typeRegistry,
     parentTools,
     parentRuntime,
-    parentSink,
     parentEventBus,
     parentSessionJournal,
     parentModel,
@@ -263,10 +253,12 @@ export async function runSubagentTurn(
     kosong: parentRuntime.kosong,
   };
 
-  // Build the child sink. parentEventBus (Phase 6) wins over the legacy
-  // `parentSink`. The contentCollector outer layer captures content
-  // deltas for the summary-continuation logic regardless of which
-  // forwarding strategy is in play.
+  // Build the child sink. When `parentEventBus` is supplied (Phase 6
+  // production path) the wrapper fans events out with a `source`
+  // envelope; otherwise the child runs with a noop sink (e.g. in-memory
+  // embedders that only care about the `AgentResult`). The outer
+  // contentCollector layer captures content deltas for summary
+  // continuation regardless of which base sink is in play.
   const contentCollector: string[] = [];
   let baseSink: EventSink;
   if (parentEventBus !== undefined && childJournalWriter !== undefined) {
@@ -280,11 +272,6 @@ export async function runSubagentTurn(
       parentEventBus,
       source,
     });
-  } else if (parentSink !== undefined) {
-    // Legacy bubbling — content/thinking deltas only, mirrors the
-    // pre-Phase-6 createBubblingSink behaviour without the
-    // `subagent_event` envelope (which is gone).
-    baseSink = createLegacyBubblingSink(parentSink);
   } else {
     baseSink = { emit: () => {} };
   }
@@ -441,40 +428,6 @@ export async function runSubagentTurn(
   }
 
   return { result: resultText, usage };
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────
-
-/**
- * Pre-Phase-6 forwarding fallback: emit content / thinking deltas to the
- * parent sink for live TUI display. No `subagent_event` envelope is
- * created (that envelope was deleted by 决策 #88).
- *
- * **Why this still exists**: a handful of legacy tests (e.g.
- * `agent-type-enhancements.test.ts`, the e2e foreground harness) and
- * embedded SDK callers still wire `parentSink` instead of the Phase 6
- * `parentEventBus`. Removing the field would break their compile.
- *
- * **When this can be deleted**: once every call site of
- * `runSubagentTurn` (production wiring + tests + SDK embedders) passes
- * `parentEventBus` instead of `parentSink`, `parentSink` can be dropped
- * from `SubagentRunnerDeps` and this helper goes with it.
- *
- * **Silent degradation**: this fallback path does NOT attach a
- * `source` envelope (that's `parentEventBus.emitWithSource`'s job). UI
- * listeners that expect to filter by `source.id` will see all subagent
- * deltas under the bare `SoulEvent` shape, indistinguishable from
- * main-agent output. Callers that care about attribution MUST migrate
- * to `parentEventBus`.
- */
-function createLegacyBubblingSink(parentSink: EventSink): EventSink {
-  return {
-    emit(event: SoulEvent): void {
-      if (event.type === 'content.delta' || event.type === 'thinking.delta') {
-        parentSink.emit(event);
-      }
-    },
-  };
 }
 
 // ── Stale cleanup (T4.4) ──────────────────────────────────────────────

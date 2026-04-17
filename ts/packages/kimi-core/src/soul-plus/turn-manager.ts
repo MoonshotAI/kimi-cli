@@ -257,11 +257,24 @@ export class TurnManager {
    *      — synchronous void; every pending approval_waiter for this
    *      turn is rejected + a cancel event emitted BEFORE returning.
    *   2. `orchestrator.discardStreaming?('aborted')`
-   *      — Phase 4 no-op; Phase 5 will discard buffered streaming
-   *      chunks from the active LLM session.
+   *      — Phase 15 B.4: signals the streaming wrapper to abort its
+   *      sub-controller so in-flight prefetches bail; results that
+   *      already resolved stay reachable through the wrapper's
+   *      `completed` map.
    *   3. `await lifecycle.cancelTurn(turnId)`
    *      — AbortController.abort() + await the turn promise so
    *      `abortTurn` only resolves after the turn has fully drained.
+   *
+   * Phase 15 MAJ-R2-1 — after the lifecycle abort returns, we drain
+   * the orchestrator's prefetch stash one last time. The stash holds
+   * results that completed before the sub-controller aborted (铁律
+   * L16 says they must survive the abort); since this turn is being
+   * cancelled and no downstream consumer is going to claim them, we
+   * drop the entries here instead of letting them accumulate
+   * forever (unbounded growth in abort-heavy workloads). 铁律 L16
+   * only requires that completed prefetches are not falsely
+   * cancelled — discarding them AFTER the abort path returns is
+   * fine; the tool results are no longer useful in this turn.
    *
    * @param turnId — the turn to cancel
    * @param reason — diagnostic tag forwarded to Phase 5 telemetry.
@@ -278,6 +291,10 @@ export class TurnManager {
     this.deps.approvalRuntime?.cancelBySource(source);
     this.deps.orchestrator?.discardStreaming?.('aborted');
     await this.deps.lifecycle.cancelTurn(turnId);
+    // Clear the post-abort prefetch stash so repeated cancels (or
+    // abort-heavy workloads) don't leak memory. No-op when the
+    // orchestrator is absent or the stash is already empty.
+    this.deps.orchestrator?.drainPrefetched?.();
   }
 
   // ── Conversation-channel handlers ───────────────────────────────────

@@ -633,6 +633,76 @@ describe('LocalProcess.kill safety', () => {
     },
     15_000,
   );
+
+  // ── Phase 15 MAJ-R2-2 — POSIX process-group kill (TDD) ──────────────
+  //
+  // Round-2 review found that POSIX `spawn` lacked `detached: true`, so
+  // `ChildProcess.kill('SIGTERM')` reached only the direct shell parent
+  // and left grandchildren running. With the Slice 15 fix
+  // (`detached: !isWindows` at spawn + `process.kill(-pid, signal)` in
+  // `LocalProcess.kill`) the SIGTERM flows across the whole tree.
+  //
+  // Structure mirrors the Windows grandchild test above: a Node parent
+  // spawns a child that spawns a long-running grandchild and writes its
+  // pid to a file. After `proc.kill('SIGTERM')`, the grandchild must
+  // be gone within a generous (~2 s) reap window.
+  test.skipIf(process.platform === 'win32')(
+    'kill() terminates the grandchild on POSIX (process tree)',
+    async () => {
+      const kaos = new LocalKaos();
+      const tmp = await realpath(await mkdtemp(join(tmpdir(), 'kaos-killtree-posix-')));
+      try {
+        const pidFile = join(tmp, 'grandchild.pid');
+        // `exec('bash', '-c', …)` spawns bash as the direct child; the
+        // embedded node chain spawns a long-running grandchild under it.
+        // The grandchild writes its pid so we can poll liveness.
+        const script = `
+          node -e 'const { spawn } = require("node:child_process");
+            const { writeFileSync } = require("node:fs");
+            const g = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"]);
+            writeFileSync(${JSON.stringify(pidFile)}, String(g.pid));
+            setInterval(() => {}, 1000);'
+        `;
+        const proc = await kaos.exec('bash', '-c', script);
+
+        const { stat, readFile } = await import('node:fs/promises');
+        const start = Date.now();
+        while (Date.now() - start < 5000) {
+          try {
+            if ((await stat(pidFile)).isFile()) break;
+          } catch {
+            /* not yet */
+          }
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        const grandchildPid = Number.parseInt(
+          (await readFile(pidFile, 'utf-8')).trim(),
+          10,
+        );
+        expect(Number.isNaN(grandchildPid)).toBe(false);
+
+        await proc.kill('SIGTERM');
+        await proc.wait();
+
+        const reaped = await (async (): Promise<boolean> => {
+          for (let i = 0; i < 40; i += 1) {
+            try {
+              process.kill(grandchildPid, 0);
+            } catch {
+              return true;
+            }
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          return false;
+        })();
+
+        expect(reaped).toBe(true);
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    },
+    15_000,
+  );
 });
 
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {

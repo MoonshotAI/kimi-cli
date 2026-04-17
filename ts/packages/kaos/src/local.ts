@@ -80,8 +80,7 @@ class LocalProcess implements KaosProcess {
     // dispatch `taskkill /T /PID <pid>` (tree; without `/F`) for the
     // grace phase, and `/T /F /PID` for the force phase so the caller's
     // SIGTERM → 5s → SIGKILL two-phase contract keeps its meaning on
-    // Windows. On POSIX the host already spawns in a new process group
-    // so ChildProcess.kill reaches the tree.
+    // Windows.
     if (isWindows) {
       const useForce = signal === 'SIGKILL';
       const taskkillArgs = useForce
@@ -100,14 +99,31 @@ class LocalProcess implements KaosProcess {
       });
     }
 
-    // Use ChildProcess.kill() instead of process.kill() — it handles the
-    // process lifecycle correctly and is safer.
+    // Phase 15 MAJ-R2-2 — on POSIX, spawn-with-`detached:true` makes the
+    // child a process group LEADER (pgid === pid). A plain
+    // `ChildProcess.kill()` still only signals the direct child, so a
+    // shell like `bash -c 'sleep 100 & sleep 100'` leaves grand-children
+    // orphaned. `process.kill(-pid, signal)` signals the ENTIRE group
+    // (negative pid = process-group id under POSIX kill(2)).
     try {
-      this._child.kill(signal ?? 'SIGTERM');
+      process.kill(-this.pid, signal ?? 'SIGTERM');
     } catch (error) {
-      // Ignore ESRCH (process already exited) to tolerate cleanup races.
       const err = error as NodeJS.ErrnoException;
-      if (err.code !== 'ESRCH') throw error;
+      // ESRCH = group already gone (child exited + reaped between
+      // `wait()` racing spawn + this call). Treat as successful kill.
+      if (err.code === 'ESRCH') return Promise.resolve();
+      // EPERM is typically a misconfiguration (e.g. non-detached
+      // spawn earlier in the file); fall back to direct `.kill()` so
+      // we at least signal the direct child instead of throwing.
+      if (err.code === 'EPERM') {
+        try {
+          this._child.kill(signal ?? 'SIGTERM');
+        } catch {
+          /* best effort */
+        }
+        return Promise.resolve();
+      }
+      throw error;
     }
     return Promise.resolve();
   }
@@ -440,6 +456,13 @@ export class LocalKaos implements Kaos {
     const child = spawn(command, restArgs, {
       cwd: this._cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
+      // Phase 15 MAJ-R2-2 — POSIX `detached:true` makes the child a
+      // process-group leader so `LocalProcess.kill()` can signal the
+      // entire tree via `process.kill(-pid, …)`. No-op on Windows
+      // (taskkill /T handles the tree there). We do NOT call
+      // `child.unref()` — the parent still waits on the child's exit
+      // through `wait()`.
+      detached: !isWindows,
     });
     await waitForSpawn(child);
     return new LocalProcess(child);
@@ -456,6 +479,7 @@ export class LocalKaos implements Kaos {
     const child = spawn(command, restArgs, {
       cwd: this._cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
+      detached: !isWindows,
       ...(env !== undefined ? { env } : {}),
     });
     await waitForSpawn(child);

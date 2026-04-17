@@ -68,6 +68,8 @@ export class WebSearchTool implements BuiltinTool<WebSearchInput, void> {
   readonly name = 'WebSearch' as const;
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<WebSearchInput> = WebSearchInputSchema;
+  // Phase 15 L14 — idempotent web lookup; safe to prefetch under streaming.
+  readonly isConcurrencySafe = (): boolean => true;
 
   constructor(private readonly provider: WebSearchProvider) {}
 

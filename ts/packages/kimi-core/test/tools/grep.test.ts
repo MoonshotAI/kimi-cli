@@ -302,4 +302,156 @@ describe('GrepTool', () => {
     expect(toolContentString(result)).toContain('outside the workspace');
     expect(execFn).not.toHaveBeenCalled();
   });
+
+  // ── Phase 15 A.4 — Python edge cases (ports tests/tools/test_grep.py) ──
+  describe('edge cases (Phase 15 A.4 — Python parity)', () => {
+    it('invalid regex pattern surfaces an error (Python test_grep_invalid_pattern)', async () => {
+      // rg exits with code 2 when the pattern is malformed.
+      const tool = makeGrepTool('', 2);
+      const result = await tool.execute(
+        'call_invalid_re',
+        { pattern: '[invalid' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBe(true);
+      // Current TS emits "ripgrep error"; pin either that or a
+      // Python-parity "Failed to grep" so one-word renames don't silently
+      // drop the error signal.
+      expect(toolContentString(result).toLowerCase()).toMatch(/ripgrep|failed|error/);
+    });
+
+    it('multiline mode forwards -U --multiline-dotall to rg', async () => {
+      // Python test_grep_multiline_mode (test_grep.py:266). Pin the rg
+      // arg shape so a future rewrite keeps cross-line matching.
+      const proc = {
+        stdin: { write: vi.fn(), end: vi.fn() },
+        stdout: Readable.from(['']),
+        stderr: Readable.from(['']),
+        pid: 1,
+        exitCode: 0,
+        wait: vi.fn().mockResolvedValue(0),
+        kill: vi.fn().mockResolvedValue(undefined),
+      };
+      const execFn = vi.fn().mockResolvedValue(proc);
+      const kaos = createFakeKaos({ exec: execFn });
+      const tool = new GrepTool(kaos, PERMISSIVE_WORKSPACE);
+      await tool.execute(
+        'call_multiline',
+        { pattern: 'foo.*bar', multiline: true },
+        new AbortController().signal,
+      );
+      const args = execFn.mock.calls[0];
+      expect(args).toBeDefined();
+      expect(args).toContain('-U');
+      expect(args).toContain('--multiline-dotall');
+    });
+
+    it('filters sensitive context lines (hyphen delimiter) from content output', async () => {
+      // Python test_grep_filters_sensitive_content (test_grep.py:862+).
+      // rg context lines use `-` as the delimiter: "file:N:match" for
+      // match lines, "file-N-context" for context lines. The sensitive
+      // filter must drop BOTH formats when the file is sensitive.
+      const stdout = [
+        'src/main.ts:10:matched',
+        '.env-3-secret context line',
+        '.env:4:SECRET=abc',
+        'src/util.ts:7:also matched',
+      ].join('\n');
+      const tool = makeGrepTool(stdout);
+      const result = await tool.execute(
+        'call_sens_ctx',
+        { pattern: 'x', output_mode: 'content', '-A': 1 },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const content = toolContentString(result);
+      // Red bar: context line from .env must NOT appear in output.
+      expect(content).not.toContain('secret context line');
+      expect(content).not.toContain('SECRET=abc');
+      expect(content).toContain('src/main.ts:10');
+      expect(content).toContain('src/util.ts:7');
+    });
+
+    it('filters sensitive files whose basename contains hyphens (e.g. id_rsa-backup)', async () => {
+      // Pins that the sensitive filter keys on the pathname, not a
+      // delimiter-based split, so a hyphenated basename like
+      // `id_rsa-backup` is still caught. Red bar if src loses this
+      // behaviour under a refactor.
+      const stdout = [
+        'src/main.ts:1:hit',
+        'secrets/id_rsa-backup:2:BEGIN PRIVATE KEY',
+        'src/util.ts:3:hit',
+      ].join('\n');
+      const tool = makeGrepTool(stdout);
+      const result = await tool.execute(
+        'call_sens_hyphen',
+        { pattern: 'x', output_mode: 'content' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const content = toolContentString(result);
+      expect(content).not.toContain('BEGIN PRIVATE KEY');
+      expect(content).not.toContain('id_rsa-backup:2');
+      expect(content).toContain('src/main.ts:1');
+    });
+
+    it('large output with head_limit=0 still stops at MAX_OUTPUT_BYTES (Python parity)', async () => {
+      // Python test_grep_output_truncation (test_grep.py:240). 2000 lines
+      // + head_limit=0 means "unlimited"; the 10 MB buffer cap is the
+      // backstop.
+      const big = Array.from({ length: 20_000 }, (_, i) => `f_${String(i)}.ts:1:hit`).join('\n');
+      const huge = big + '\n' + 'z'.repeat(11 * 1024 * 1024);
+      const tool = makeGrepTool(huge);
+      const result = await tool.execute(
+        'call_output_trunc',
+        { pattern: 'x', output_mode: 'content', head_limit: 0 },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(toolContentString(result)).toContain('truncated');
+    });
+
+    it('binary-file output (contains NUL byte) does not crash the tool', async () => {
+      // rg's default behavior is to skip binary files, but if one slips
+      // through with a NUL in the content the tool must still produce a
+      // valid ToolResult. Pin non-crashing behaviour.
+      const stdout = 'src/ok.ts:1:hello\nsrc/bin.dat:1:\u0000binary\nsrc/ok.ts:2:world\n';
+      const tool = makeGrepTool(stdout);
+      const result = await tool.execute(
+        'call_binary',
+        { pattern: 'x', output_mode: 'content' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      // Must not throw; at minimum the non-binary lines are surfaced.
+      const content = toolContentString(result);
+      expect(content).toContain('src/ok.ts:1');
+    });
+
+    it('include_ignored=true forwards --no-ignore to rg so gitignored files appear in results', async () => {
+      // Python test_grep_include_ignored_allows_gitignore_hits
+      // (test_grep.py:808 / :844). The schema now exposes
+      // `include_ignored?: boolean` and buildRgArgs forwards `--no-ignore`.
+      const proc = {
+        stdin: { write: vi.fn(), end: vi.fn() },
+        stdout: Readable.from(['']),
+        stderr: Readable.from(['']),
+        pid: 1,
+        exitCode: 1, // "no matches" is fine
+        wait: vi.fn().mockResolvedValue(1),
+        kill: vi.fn().mockResolvedValue(undefined),
+      };
+      const execFn = vi.fn().mockResolvedValue(proc);
+      const kaos = createFakeKaos({ exec: execFn });
+      const tool = new GrepTool(kaos, PERMISSIVE_WORKSPACE);
+      await tool.execute(
+        'call_include_ignored',
+        { pattern: 'x', include_ignored: true },
+        new AbortController().signal,
+      );
+      const args = execFn.mock.calls[0];
+      expect(args).toBeDefined();
+      expect(args).toContain('--no-ignore');
+    });
+  });
 });

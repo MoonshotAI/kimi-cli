@@ -47,6 +47,8 @@ export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
   readonly name = 'Grep' as const;
   readonly description = 'Search file contents using regular expressions (powered by ripgrep).';
   readonly inputSchema: z.ZodType<GrepInput> = GrepInputSchema;
+  // Phase 15 L14 — read-only; safe to prefetch under streaming.
+  readonly isConcurrencySafe = (): boolean => true;
 
   constructor(
     private readonly kaos: Kaos,
@@ -295,6 +297,7 @@ function buildRgArgs(args: GrepInput, searchPath: string): string[] {
   if (args.glob !== undefined) cmd.push('--glob', args.glob);
   if (args.type !== undefined) cmd.push('--type', args.type);
   if (args.multiline) cmd.push('-U', '--multiline-dotall');
+  if (args.include_ignored) cmd.push('--no-ignore');
   // `head_limit` is NOT forwarded to `rg --max-count`: head_limit=0 means
   // "unlimited" (Appendix E.5), while `rg --max-count 0` means "zero
   // matches per file". Pagination happens in post-processing after rg
