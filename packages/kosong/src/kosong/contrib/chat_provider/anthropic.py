@@ -131,6 +131,53 @@ def _supports_adaptive_thinking(model: str) -> bool:
     return False
 
 
+def _is_opus_4_7(model: str) -> bool:
+    """Opus 4.7 specifically supports the ``xhigh`` effort level.
+
+    The docs explicitly enumerate ``xhigh`` support as "Available on Claude
+    Opus 4.7" — not "4.7 and later". We keep the check exact so that a
+    future Opus 4.8 that silently drops xhigh doesn't start returning 400.
+    Future versions fall back to the 4.6-family effort set (which still
+    covers ``max``) until this table is updated.
+    """
+    m = model.lower()
+    if match := re.search(r"opus[.-](\d+)[.-](\d{1,2})(?!\d)", m):
+        major, minor = int(match.group(1)), int(match.group(2))
+        return (major, minor) == (4, 7)
+    return False
+
+
+def _supported_efforts(model: str) -> frozenset["ThinkingEffort"]:
+    """Effort levels accepted by ``output_config.effort`` for the given model.
+
+    Per Anthropic docs:
+      - xhigh: Opus 4.7 only
+      - max:   Mythos, Opus 4.7, Opus 4.6, Sonnet 4.6 (and future adaptive models)
+      - low/medium/high: all models with effort support (including Opus 4.5+)
+    """
+    if _is_opus_4_7(model):
+        return frozenset({"low", "medium", "high", "xhigh", "max"})
+    if _supports_adaptive_thinking(model):
+        # 4.6 family / Mythos / future adaptive models: support max but not xhigh
+        return frozenset({"low", "medium", "high", "max"})
+    # Pre-4.6 models: capped at high
+    return frozenset({"low", "medium", "high"})
+
+
+def _clamp_effort(effort: "ThinkingEffort", model: str) -> "ThinkingEffort":
+    """Clamp an effort level to the highest one supported by the model.
+
+    Anything the model doesn't support falls back to ``high`` — the
+    universally available ceiling. ``off`` is passed through unchanged as
+    it represents "disable thinking" rather than an effort rank.
+    """
+    if effort == "off":
+        return effort
+    if effort in _supported_efforts(model):
+        return effort
+    return "high"
+
+
 class Anthropic:
     """
     Chat provider backed by Anthropic's Messages API.
@@ -192,7 +239,7 @@ class Anthropic:
         if thinking_config["type"] == "adaptive":
             output_config = self._generation_kwargs.get("output_config") or {}
             effort = output_config.get("effort")
-            if effort in ("low", "medium", "high"):
+            if effort in ("low", "medium", "high", "xhigh", "max"):
                 return effort
             return "high"
         budget = thinking_config["budget_tokens"]
@@ -280,6 +327,14 @@ class Anthropic:
             new._generation_kwargs.pop("output_config", None)
             return new
 
+        # Clamp to whatever the model actually accepts. xhigh/max fall back
+        # to high on models that don't support them; low/medium/high pass
+        # through; max passes through on 4.6-family and newer.
+        effective = _clamp_effort(effort, self._model)
+        # SDK 0.78 OutputConfigParam TypedDict lists only low/medium/high/max.
+        # `xhigh` is valid on Opus 4.7 per the API docs but not yet typed.
+        output_config: OutputConfigParam = {"effort": effective}  # type: ignore[typeddict-item]
+
         if _supports_adaptive_thinking(self._model):
             # Opus 4.6+ / Sonnet 4.6+ / Mythos: adaptive thinking.
             # `display: "summarized"` is required on Opus 4.7+ (where the default
@@ -292,7 +347,7 @@ class Anthropic:
             }  # type: ignore[typeddict-item]
             new = self.with_generation_kwargs(
                 thinking=thinking_config,
-                output_config={"effort": effort},
+                output_config=output_config,
             )
             # Adaptive mode auto-enables interleaved thinking, so the beta
             # header is redundant. Drop it if still present from construction.
@@ -302,10 +357,15 @@ class Anthropic:
                 beta_features.remove("interleaved-thinking-2025-05-14")
             return new
 
-        # Pre-4.6 models: legacy budget-based thinking.
-        budgets: dict[ThinkingEffort, int] = {"low": 1024, "medium": 4096, "high": 32_000}
+        # Pre-4.6 models: legacy budget-based thinking. After clamping,
+        # `effective` is guaranteed to be one of low/medium/high here.
+        # Anthropic docs: Opus 4.5 and other pre-4.6 models accept `effort`
+        # alongside `budget_tokens` — effort controls overall token spend
+        # (text + tool calls) while budget_tokens gates thinking depth.
+        budgets: dict[str, int] = {"low": 1024, "medium": 4096, "high": 32_000}
         return self.with_generation_kwargs(
-            thinking={"type": "enabled", "budget_tokens": budgets[effort]}
+            thinking={"type": "enabled", "budget_tokens": budgets[effective]},
+            output_config=output_config,
         )
 
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:

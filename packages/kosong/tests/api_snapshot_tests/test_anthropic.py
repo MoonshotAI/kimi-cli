@@ -613,7 +613,7 @@ async def test_anthropic_future_opus_48_uses_adaptive():
 
 
 async def test_anthropic_sonnet_4_legacy_thinking_preserved():
-    """Sonnet 4 (pre-4.6) must still use budget_tokens — regression guard."""
+    """Sonnet 4 (pre-4.6) uses budget_tokens AND sends effort via output_config."""
     with respx.mock(base_url="https://api.anthropic.com") as mock:
         mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
         provider = Anthropic(
@@ -627,7 +627,94 @@ async def test_anthropic_sonnet_4_legacy_thinking_preserved():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 1024})
-        assert "output_config" not in body
+        # Legacy path must also pass effort to output_config per Anthropic docs.
+        assert body["output_config"] == snapshot({"effort": "low"})
+
+
+async def test_anthropic_opus_45_legacy_xhigh_clamps_to_high():
+    """Opus 4.5 (pre-4.6) doesn't support xhigh — must clamp to high + budget 32k."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-5",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("xhigh")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 32000})
+        assert body["output_config"] == snapshot({"effort": "high"})
+
+
+async def test_anthropic_opus_47_xhigh():
+    """Opus 4.7 + xhigh should pass xhigh through (Opus 4.7-specific level)."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-7",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("xhigh")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "adaptive", "display": "summarized"})
+        assert body["output_config"] == snapshot({"effort": "xhigh"})
+
+
+async def test_anthropic_opus_47_max():
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-7",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("max")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["output_config"] == snapshot({"effort": "max"})
+
+
+async def test_anthropic_opus_46_max():
+    """Opus 4.6 supports max effort."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-6",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("max")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["output_config"] == snapshot({"effort": "max"})
+
+
+async def test_anthropic_opus_46_xhigh_clamps_to_high():
+    """Opus 4.6 doesn't support xhigh (Opus 4.7-only) — must clamp to high."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-6",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("xhigh")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["output_config"] == snapshot({"effort": "high"})
 
 
 async def test_anthropic_switching_from_adaptive_to_off_clears_output_config():
@@ -700,8 +787,8 @@ async def test_anthropic_opus_46_thinking_effort_property():
 
 
 async def test_anthropic_opus_47_thinking_effort_property():
-    """Opus 4.7 also roundtrips effort through output_config."""
-    for effort in ("low", "medium", "high", "off"):
+    """Opus 4.7 roundtrips all effort levels through output_config."""
+    for effort in ("low", "medium", "high", "xhigh", "max", "off"):
         provider = Anthropic(
             model="claude-opus-4-7",
             api_key="test-key",
@@ -709,3 +796,15 @@ async def test_anthropic_opus_47_thinking_effort_property():
             stream=False,
         ).with_thinking(effort)  # type: ignore[arg-type]
         assert provider.thinking_effort == effort
+
+
+async def test_anthropic_opus_46_xhigh_property_reflects_clamped_value():
+    """After clamping, the getter reports the effective (clamped) effort."""
+    provider = Anthropic(
+        model="claude-opus-4-6",
+        api_key="test-key",
+        default_max_tokens=1024,
+        stream=False,
+    ).with_thinking("xhigh")
+    # xhigh clamped to high for 4.6
+    assert provider.thinking_effort == "high"
