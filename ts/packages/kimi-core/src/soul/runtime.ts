@@ -24,7 +24,7 @@
  * accidentally grow a reference to SoulPlus internals.
  */
 
-import type { Message } from '@moonshot-ai/kosong';
+import type { Message, ModelCapability } from '@moonshot-ai/kosong';
 
 import type { AssistantMessage, StopReason, TokenUsage, ToolCall, ToolResult } from './types.js';
 
@@ -98,6 +98,13 @@ export interface ChatResponse {
 
 export interface KosongAdapter {
   chat(params: ChatParams): Promise<ChatResponse>;
+  /**
+   * Phase 19 Slice B — declared capabilities for `model` (defaults to the
+   * adapter's bound provider). Returns `undefined` when the adapter does
+   * not expose a capability matrix (e.g. legacy test mocks); callers
+   * treat `undefined` as "no constraint" and skip the gate.
+   */
+  getCapability?(model?: string): ModelCapability | undefined;
 }
 
 // ── Compaction provider ────────────────────────────────────────────────

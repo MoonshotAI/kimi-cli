@@ -79,6 +79,10 @@ export {
   classifyBusinessError,
 } from './errors.js';
 export type { BusinessErrorMapping } from './errors.js';
+
+// ── Phase 19 Slice B — capability check ──────────────────────────────
+export { checkLLMCapabilities } from './capability-check.js';
+export type { LLMCapabilityCheckOptions } from './capability-check.js';
 export { TransactionalHandlerRegistry } from './transactional-handler-registry.js';
 export type { TransactionalHandler } from './transactional-handler-registry.js';
 export { ToolCallOrchestrator } from './orchestrator.js';

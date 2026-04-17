@@ -70,6 +70,7 @@ import {
 } from './turn-lifecycle-tracker.js';
 import type { DispatchResponse, TurnTrigger } from './types.js';
 import type { WakeQueueScheduler } from './wake-queue-scheduler.js';
+import { checkLLMCapabilities } from './capability-check.js';
 
 // ── Re-exports for backward-compat ────────────────────────────────────
 //
@@ -356,6 +357,32 @@ export class TurnManager {
     }
 
     const input = req.data.input;
+
+    // Phase 19 Slice B — capability gate. Reject before allocating a turn
+    // or writing any WAL record so a mismatched prompt leaves no residue.
+    // `getCapability` is optional on KosongAdapter; `undefined` means the
+    // adapter (or underlying provider) does not expose a capability table
+    // and we skip the check entirely (open-world, permissive).
+    const capability = this.deps.runtime.kosong.getCapability?.(this.deps.contextState.model);
+    if (capability !== undefined) {
+      let inputContainsImage = false;
+      let inputContainsVideo = false;
+      for (const part of input.parts ?? []) {
+        if (part.type === 'image_url') inputContainsImage = true;
+        else if (part.type === 'video_url') inputContainsVideo = true;
+      }
+      const mismatch = checkLLMCapabilities({
+        model: this.deps.contextState.model,
+        inputContainsImage,
+        inputContainsVideo,
+        inputContainsAudio: false,
+        capability,
+      });
+      if (mismatch !== undefined) {
+        throw mismatch;
+      }
+    }
+
     const turnId = this.deps.lifecycle.allocateTurnId();
     this.pendingLaunchTurnId = turnId;
 

@@ -50,6 +50,7 @@
 import { generate } from '@moonshot-ai/kosong';
 import type {
   ChatProvider,
+  ModelCapability,
   StreamedMessagePart as KosongStreamedPart,
   Tool as KosongTool,
   FinishReason as KosongFinishReason,
@@ -99,6 +100,16 @@ export class KosongAdapter implements KosongAdapterInterface {
     this.tokenRefresher = options.tokenRefresher;
     this.maxRetries = options.maxRetries ?? 3;
     this.baseRetryDelayMs = options.baseRetryDelayMs ?? 1000;
+  }
+
+  /**
+   * Phase 19 Slice B — proxy the provider's declared capability matrix.
+   * Returns `undefined` when the provider does not expose a capability
+   * table (legacy providers / mock harnesses); callers treat `undefined`
+   * as "no constraint" and skip the gate.
+   */
+  getCapability(model?: string): ModelCapability | undefined {
+    return this.provider.getCapability?.(model);
   }
 
   async chat(params: ChatParams): Promise<ChatResponse> {

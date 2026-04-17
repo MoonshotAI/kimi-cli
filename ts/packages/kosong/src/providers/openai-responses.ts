@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 
+import { UNKNOWN_CAPABILITY, type ModelCapability } from '../capability.js';
 import type { ContentPart, Message, StreamedMessagePart, ToolCall } from '../message.js';
 import { extractText } from '../message.js';
 import type {
@@ -577,6 +578,36 @@ export class OpenAIResponsesChatProvider implements RetryableChatProvider {
       baseUrl: this._baseUrl,
       ...this._generationKwargs,
     };
+  }
+
+  getCapability(model?: string): ModelCapability {
+    const name = (model ?? this._model).toLowerCase();
+    if (/^o\d/.test(name)) {
+      return {
+        image_in: false,
+        video_in: false,
+        audio_in: false,
+        thinking: true,
+        tool_use: true,
+        max_context_tokens: 0,
+      };
+    }
+    if (
+      name.startsWith('gpt-4o') ||
+      name.startsWith('gpt-4.1') ||
+      name.startsWith('gpt-4.5') ||
+      name.startsWith('gpt-4-turbo')
+    ) {
+      return {
+        image_in: true,
+        video_in: false,
+        audio_in: false,
+        thinking: false,
+        tool_use: true,
+        max_context_tokens: 0,
+      };
+    }
+    return UNKNOWN_CAPABILITY;
   }
 
   async generate(
