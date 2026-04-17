@@ -68,6 +68,7 @@ import { ToolCallComponent } from '../components/ToolCallComponent.js';
 import { ApprovalPanelComponent } from '../components/ApprovalPanelComponent.js';
 import { QuestionDialogComponent } from '../components/QuestionDialogComponent.js';
 import { SessionPickerComponent } from '../components/SessionPickerComponent.js';
+import { HelpPanelComponent } from '../components/HelpPanelComponent.js';
 import { MoonLoader } from '../components/MoonLoader.js';
 
 interface Expandable {
@@ -663,6 +664,31 @@ export class InteractiveMode implements WireHandlerDelegate {
 
     this.editorContainer.addChild(picker);
     this.ui.setFocus(picker);
+    this.ui.requestRender();
+  }
+
+  // ── /help panel ─────────────────────────────────────────────────
+
+  private showingHelpPanel = false;
+
+  private showHelpPanel(): void {
+    this.showingHelpPanel = true;
+    this.editorContainer.clear();
+    const panel = new HelpPanelComponent({
+      commands: this.registry.listAll(),
+      colors: this.colors,
+      onClose: () => this.hideHelpPanel(),
+    });
+    this.editorContainer.addChild(panel);
+    this.ui.setFocus(panel);
+    this.ui.requestRender();
+  }
+
+  private hideHelpPanel(): void {
+    this.showingHelpPanel = false;
+    this.editorContainer.clear();
+    this.editorContainer.addChild(this.editor);
+    this.ui.setFocus(this.editor);
     this.ui.requestRender();
   }
 
@@ -1395,18 +1421,7 @@ export class InteractiveMode implements WireHandlerDelegate {
         if (!result.message) return;
 
         if (result.message === '__show_help__') {
-          const cmds = this.registry.listAll();
-          const lines = cmds.map((c) => {
-            const aliases =
-              c.aliases.length > 0 ? ` (${c.aliases.map((a) => '/' + a).join(', ')})` : '';
-            return `  /${c.name}${aliases} -- ${c.description}`;
-          });
-          this.addTranscriptEntry({
-            id: `slash-${Date.now()}`,
-            kind: 'status',
-            renderMode: 'plain',
-            content: 'Available commands:\n' + lines.join('\n'),
-          });
+          this.showHelpPanel();
           return;
         }
 
