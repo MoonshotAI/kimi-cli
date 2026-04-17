@@ -154,6 +154,7 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.queueContainer = new Container();
     this.editorContainer = new Container();
     this.editor = new CustomEditor(this.ui, editorTheme);
+    this.editor.slashHighlightHex = this.colors.primary;
     this.footer = new FooterComponent(this.state, this.colors);
 
     this.wireHandler = new WireHandler(wireClient, initialState.sessionId, this, this.colors);
@@ -179,6 +180,10 @@ export class InteractiveMode implements WireHandlerDelegate {
   private setupEditor(): void {
     this.editor.onSubmit = (text: string) => {
       this.handleUserInput(text);
+    };
+
+    this.editor.onChange = (text: string) => {
+      this.updateEditorBorderHighlight(text);
     };
 
     this.editor.onCtrlC = () => {
@@ -1258,11 +1263,36 @@ export class InteractiveMode implements WireHandlerDelegate {
   private applyThemeChange(): void {
     this.colors = getColorPalette(this.state.theme);
     this.markdownTheme = createMarkdownTheme(this.colors);
-    const editorTheme = createEditorTheme(this.colors);
-    this.editor.borderColor = editorTheme.borderColor;
     this.footer.setColors(this.colors);
     this.todoPanel.setColors(this.colors);
+    // Re-apply the border colour with the new palette, respecting the
+    // current slash-highlight state.
+    this.updateEditorBorderHighlight(this.editor.getText());
     this.rebuildTranscriptFromEntries();
+  }
+
+  /**
+   * Re-apply slash highlighting state for the current editor text.
+   * Two visual signals are combined:
+   *   - editor border flips to `colors.primary` when input starts with `/`
+   *   - the leading `/token` itself is re-coloured via CustomEditor's
+   *     ANSI-aware post-processor (`slashHighlightHex`)
+   * Called from `onChange` and on theme changes.
+   */
+  private updateEditorBorderHighlight(text: string): void {
+    const editorTheme = createEditorTheme(this.colors);
+    const trimmed = text.trimStart();
+    if (trimmed.startsWith('/')) {
+      const primary = this.colors.primary;
+      this.editor.borderColor = (s: string) => chalk.hex(primary)(s);
+    } else {
+      this.editor.borderColor = editorTheme.borderColor;
+    }
+    // Keep the token colour in sync with the palette — the editor only
+    // paints when the input actually starts with `/` so it's safe to
+    // set unconditionally.
+    this.editor.slashHighlightHex = this.colors.primary;
+    this.ui.requestRender();
   }
 
   private async spawnFreshSession(): Promise<void> {
