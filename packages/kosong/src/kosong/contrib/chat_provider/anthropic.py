@@ -255,7 +255,7 @@ class Anthropic:
                 case "off":
                     thinking_config = {"type": "disabled"}
                 case _:
-                    thinking_config = {"type": "adaptive"}  # type: ignore[typeddict-item]
+                    thinking_config = {"type": "adaptive", "display": "summarized"}  # type: ignore[typeddict-item]
             new = self.with_generation_kwargs(thinking=thinking_config)
             # Remove the now-unnecessary interleaved-thinking beta header.
             if (
