@@ -613,7 +613,12 @@ async def test_anthropic_future_opus_48_uses_adaptive():
 
 
 async def test_anthropic_sonnet_4_legacy_thinking_preserved():
-    """Sonnet 4 (pre-4.6) uses budget_tokens AND sends effort via output_config."""
+    """Sonnet 4 (pre-4.6) uses budget_tokens and does NOT send output_config.
+
+    Per Anthropic docs, only Mythos/Opus 4.7/4.6/Sonnet 4.6/Opus 4.5 are
+    explicitly listed as supporting the effort parameter. Sonnet 4 is not
+    on that list, so emitting `output_config.effort` would risk a 400.
+    """
     with respx.mock(base_url="https://api.anthropic.com") as mock:
         mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
         provider = Anthropic(
@@ -627,12 +632,51 @@ async def test_anthropic_sonnet_4_legacy_thinking_preserved():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 1024})
-        # Legacy path must also pass effort to output_config per Anthropic docs.
-        assert body["output_config"] == snapshot({"effort": "low"})
+        assert "output_config" not in body
+
+
+async def test_anthropic_claude_3_legacy_no_output_config():
+    """Claude 3.x predates the effort parameter — output_config must be absent
+    to avoid 400 validation errors on those models.
+    """
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-3-5-sonnet-20240620",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("high")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 32000})
+        assert "output_config" not in body
+
+
+async def test_anthropic_haiku_45_legacy_no_output_config():
+    """Haiku 4.5 is not in the explicit effort-supporting list — be conservative."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-haiku-4-5-20251001",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("medium")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 4096})
+        assert "output_config" not in body
 
 
 async def test_anthropic_opus_45_legacy_xhigh_clamps_to_high():
-    """Opus 4.5 (pre-4.6) doesn't support xhigh — must clamp to high + budget 32k."""
+    """Opus 4.5 is explicitly listed as supporting effort alongside legacy
+    budget_tokens thinking. xhigh clamps to high for this model.
+    """
     with respx.mock(base_url="https://api.anthropic.com") as mock:
         mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
         provider = Anthropic(

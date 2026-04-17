@@ -178,6 +178,30 @@ def _clamp_effort(effort: "ThinkingEffort", model: str) -> "ThinkingEffort":
     return "high"
 
 
+def _supports_effort_param(model: str) -> bool:
+    """Whether the model accepts ``output_config.effort`` at all.
+
+    Per Anthropic's effort docs, the parameter is explicitly supported on
+    Claude Mythos Preview, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet
+    4.6, and Claude Opus 4.5. Adaptive-capable models all support it via the
+    adaptive pathway. For the legacy (manual thinking) pathway, only Opus
+    4.5 is explicitly listed.
+
+    We gate ``output_config`` emission on this predicate to avoid sending
+    effort to models that would reject it with a 400 (Claude 3.x, and
+    conservatively Sonnet 4 / Sonnet 4.5 / Haiku 4.5 which are not in the
+    explicit list). A false negative here means "effort not sent, no
+    regression from pre-effort behaviour"; a false positive would mean
+    "API 400 error", so we err on the side of silence.
+    """
+    if _supports_adaptive_thinking(model):
+        return True
+    # Opus 4.5 is the only legacy (non-adaptive) model that Anthropic docs
+    # explicitly confirm supports the effort parameter.
+    m = model.lower()
+    return "opus-4-5" in m or "opus-4.5" in m
+
+
 class Anthropic:
     """
     Chat provider backed by Anthropic's Messages API.
@@ -193,7 +217,10 @@ class Anthropic:
         # e.g., {"type": "adaptive", "display": "summarized"}
         # or   {"type": "enabled", "budget_tokens": 1024}
         thinking: ThinkingConfigParam | None
-        # e.g., {"effort": "high"} — soft guidance for adaptive thinking.
+        # e.g., {"effort": "high"} — soft guidance that applies to all output
+        # tokens. Used in adaptive thinking requests, and in legacy requests
+        # only when the model is on Anthropic's explicit effort-supporting
+        # list (see ``_supports_effort_param``).
         output_config: OutputConfigParam | None
         # e.g., {"type": "auto", "disable_parallel_tool_use": True}
         tool_choice: ToolChoiceParam | None
@@ -359,14 +386,17 @@ class Anthropic:
 
         # Pre-4.6 models: legacy budget-based thinking. After clamping,
         # `effective` is guaranteed to be one of low/medium/high here.
-        # Anthropic docs: Opus 4.5 and other pre-4.6 models accept `effort`
-        # alongside `budget_tokens` — effort controls overall token spend
-        # (text + tool calls) while budget_tokens gates thinking depth.
+        # Only models that Anthropic's docs explicitly list as supporting the
+        # effort parameter (e.g. Opus 4.5) get `output_config` emitted; other
+        # pre-4.6 models (Sonnet 4, Sonnet 4.5, Haiku 4.5, Claude 3.x) omit it
+        # to avoid 400 validation errors on models that don't accept it.
         budgets: dict[str, int] = {"low": 1024, "medium": 4096, "high": 32_000}
-        return self.with_generation_kwargs(
-            thinking={"type": "enabled", "budget_tokens": budgets[effective]},
-            output_config=output_config,
-        )
+        kwargs: dict[str, Any] = {
+            "thinking": {"type": "enabled", "budget_tokens": budgets[effective]},
+        }
+        if _supports_effort_param(self._model):
+            kwargs["output_config"] = output_config
+        return self.with_generation_kwargs(**kwargs)
 
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """

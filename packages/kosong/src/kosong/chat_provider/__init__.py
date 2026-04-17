@@ -122,8 +122,16 @@ class TokenUsage(BaseModel):
 type ThinkingEffort = Literal["off", "low", "medium", "high", "xhigh", "max"]
 """The effort level for thinking.
 
-Levels above ``high`` (``xhigh``, ``max``) are currently only meaningful to
-Anthropic's adaptive-thinking models. Other providers treat them as ``high``.
+Support for levels above ``high`` varies by provider:
+
+- **Anthropic**: ``xhigh`` is accepted only on Claude Opus 4.7; ``max`` is
+  accepted on Mythos, Opus 4.7/4.6, and Sonnet 4.6. Unsupported levels are
+  clamped down to ``high``.
+- **OpenAI**: ``xhigh`` is accepted natively for reasoning-capable models
+  after ``gpt-5.1-codex-max`` and passes through unchanged. ``max`` is
+  Anthropic-specific and clamps to ``xhigh`` (OpenAI's ceiling).
+- **Kimi / Gemini**: ``xhigh`` and ``max`` clamp to ``high`` (no native
+  support).
 """
 
 
