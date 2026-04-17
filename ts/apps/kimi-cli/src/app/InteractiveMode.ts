@@ -41,6 +41,8 @@ import { INITIAL_LIVE_PANE } from './state.js';
 import { WireHandler, type WireHandlerDelegate } from './WireHandler.js';
 
 import { CustomEditor } from '../components/CustomEditor.js';
+import { getInputHistoryFile } from '../config/paths.js';
+import { loadInputHistory, appendInputHistory } from '../utils/input-history.js';
 import { WelcomeComponent } from '../components/WelcomeComponent.js';
 import { FooterComponent } from '../components/FooterComponent.js';
 import { UserMessageComponent } from '../components/UserMessageComponent.js';
@@ -93,6 +95,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   private streamingComponent: AssistantMessageComponent | undefined;
   private pendingToolComponents = new Map<string, ToolCallComponent>();
   private toolOutputExpanded = false;
+  private lastHistoryContent: string | undefined;
 
   private toasts: ToastNotification[] = [];
   private sessions: SessionInfo[] = [];
@@ -191,13 +194,15 @@ export class InteractiveMode implements WireHandlerDelegate {
     };
 
     this.editor.onUpArrowEmpty = () => {
-      if (!this.state.isStreaming) return;
+      if (!this.state.isStreaming) return false; // let pi-tui's history nav handle it
       const recalled = this.wireHandler.recallLastQueued();
       if (recalled !== undefined) {
         this.editor.setText(recalled);
         this.updateQueueDisplay();
         this.ui.requestRender();
+        return true;
       }
+      return false;
     };
   }
 
@@ -212,11 +217,27 @@ export class InteractiveMode implements WireHandlerDelegate {
   start(): void {
     this.renderWelcome();
     this.setupAutocomplete();
+    void this.loadInputHistory();
     this.editorContainer.addChild(this.editor);
     this.ui.setFocus(this.editor);
     this.ui.start();
     void this.wireHandler.start();
     void this.fetchSessions();
+  }
+
+  private async loadInputHistory(): Promise<void> {
+    try {
+      const file = getInputHistoryFile(this.state.workDir);
+      const entries = await loadInputHistory(file);
+      for (const entry of entries) {
+        this.editor.addToHistory(entry.content);
+      }
+      this.lastHistoryContent = entries.length > 0
+        ? entries[entries.length - 1]!.content
+        : undefined;
+    } catch {
+      // Ignore — history is best-effort.
+    }
   }
 
   private setupAutocomplete(): void {
@@ -607,12 +628,28 @@ export class InteractiveMode implements WireHandlerDelegate {
   // ── User input handling ─────────────────────────────────────────
 
   private handleUserInput(text: string): void {
+    void this.persistInputHistory(text);
     if (text.startsWith('/')) {
       void this.executeSlashCommand(text);
     } else {
       this.wireHandler.sendMessage(text);
       this.updateQueueDisplay();
       this.ui.requestRender();
+    }
+  }
+
+  private async persistInputHistory(text: string): Promise<void> {
+    const trimmed = text.trim();
+    if (trimmed.length === 0) return;
+    if (trimmed === this.lastHistoryContent) return;
+    this.editor.addToHistory(trimmed);
+    try {
+      const file = getInputHistoryFile(this.state.workDir);
+      const written = await appendInputHistory(file, trimmed, this.lastHistoryContent);
+      if (written) this.lastHistoryContent = trimmed;
+    } catch {
+      // Best-effort — keep the in-memory history even if disk write fails.
+      this.lastHistoryContent = trimmed;
     }
   }
 

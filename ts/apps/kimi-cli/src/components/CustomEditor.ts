@@ -10,7 +10,12 @@ export class CustomEditor extends Editor {
   public onCtrlC?: () => void;
   public onToggleToolExpand?: () => void;
   public onCtrlS?: () => void;
-  public onUpArrowEmpty?: () => void;
+  /**
+   * Called when ↑ is pressed in an empty editor. Return `true` to consume
+   * the key (e.g. recalled a queued message); return `false` to fall
+   * through so pi-tui's built-in history navigation runs.
+   */
+  public onUpArrowEmpty?: () => boolean;
 
   constructor(tui: TUI, theme: EditorTheme) {
     super(tui, theme);
@@ -41,8 +46,8 @@ export class CustomEditor extends Editor {
 
     if (matchesKey(data, Key.up)) {
       if (this.getText().length === 0 && this.onUpArrowEmpty) {
-        this.onUpArrowEmpty();
-        return;
+        if (this.onUpArrowEmpty()) return;
+        // fall through to super so Editor's built-in history navigation runs
       }
     }
 
