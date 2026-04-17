@@ -46,6 +46,7 @@ import { FooterComponent } from '../components/FooterComponent.js';
 import { UserMessageComponent } from '../components/UserMessageComponent.js';
 import { AssistantMessageComponent } from '../components/AssistantMessageComponent.js';
 import { ThinkingComponent } from '../components/ThinkingComponent.js';
+import { LiveThinkingComponent } from '../components/LiveThinkingComponent.js';
 import { ToolCallComponent } from '../components/ToolCallComponent.js';
 import { ApprovalPanelComponent } from '../components/ApprovalPanelComponent.js';
 import { QuestionDialogComponent } from '../components/QuestionDialogComponent.js';
@@ -88,6 +89,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   private editor: CustomEditor;
   private loadingAnimation: MoonLoader | undefined;
   private phaseSpinner: MoonLoader | undefined;
+  private liveThinking: LiveThinkingComponent | undefined;
   private streamingComponent: AssistantMessageComponent | undefined;
   private pendingToolComponents = new Map<string, ToolCallComponent>();
   private toolOutputExpanded = false;
@@ -422,13 +424,15 @@ export class InteractiveMode implements WireHandlerDelegate {
         if (!this.phaseSpinner) {
           this.phaseSpinner = new MoonLoader(this.ui, 'braille', (s) => chalk.hex(this.colors.text)(s), 'thinking...');
         }
+        if (!this.liveThinking) {
+          this.liveThinking = new LiveThinkingComponent(this.colors.thinking);
+        }
         const text = this.livePane.thinkingText;
+        this.liveThinking.setText(text);
         this.activityContainer.addChild(new Spacer(1));
         this.activityContainer.addChild(this.phaseSpinner);
         if (text.length > 0) {
-          this.activityContainer.addChild(
-            new Text(chalk.hex(this.colors.thinking).italic('  ' + text), 0, 0),
-          );
+          this.activityContainer.addChild(this.liveThinking);
         }
         break;
       }
