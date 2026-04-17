@@ -96,7 +96,7 @@ describe('TaskOutputTool', () => {
   });
 
   it('returns error for unknown task', async () => {
-    const result = await tool.execute('c1', { task_id: 'bg_unknown' }, signal);
+    const result = await tool.execute('c1', { task_id: 'bash-unknown0' }, signal);
     expect(result.isError).toBe(true);
     expect(toolContentString(result)).toContain('Task not found');
   });
@@ -131,7 +131,7 @@ describe('TaskStopTool', () => {
   });
 
   it('returns error for unknown task', async () => {
-    const result = await tool.execute('c1', { task_id: 'bg_unknown' }, signal);
+    const result = await tool.execute('c1', { task_id: 'bash-unknown0' }, signal);
     expect(result.isError).toBe(true);
     expect(toolContentString(result)).toContain('Task not found');
   });

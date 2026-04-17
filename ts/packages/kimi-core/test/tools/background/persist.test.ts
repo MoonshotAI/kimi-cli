@@ -20,7 +20,7 @@ let sessionDir: string;
 
 function sample(overrides: Partial<PersistedTask> = {}): PersistedTask {
   return {
-    task_id: 'bg_1',
+    task_id: 'bash-11111111',
     command: 'npm install',
     description: 'install deps',
     pid: 12345,
@@ -44,29 +44,29 @@ afterEach(async () => {
 describe('background/persist', () => {
   it('round-trips a task via write/read', async () => {
     await writeTask(sessionDir, sample());
-    const loaded = await readTask(sessionDir, 'bg_1');
+    const loaded = await readTask(sessionDir, 'bash-11111111');
     expect(loaded).toEqual(sample());
   });
 
   it('returns undefined when task file is missing', async () => {
-    expect(await readTask(sessionDir, 'never')).toBeUndefined();
+    expect(await readTask(sessionDir, 'bash-missing0')).toBeUndefined();
   });
 
   it('overwrites on subsequent write', async () => {
     await writeTask(sessionDir, sample({ status: 'running' }));
     await writeTask(sessionDir, sample({ status: 'completed', exit_code: 0, ended_at: 1_700_000_100 }));
-    const t = await readTask(sessionDir, 'bg_1');
+    const t = await readTask(sessionDir, 'bash-11111111');
     expect(t?.status).toBe('completed');
     expect(t?.exit_code).toBe(0);
     expect(t?.ended_at).toBe(1_700_000_100);
   });
 
   it('listTasks enumerates all persisted entries', async () => {
-    await writeTask(sessionDir, sample({ task_id: 'bg_1' }));
-    await writeTask(sessionDir, sample({ task_id: 'bg_2', command: 'pnpm test' }));
+    await writeTask(sessionDir, sample({ task_id: 'bash-11111111' }));
+    await writeTask(sessionDir, sample({ task_id: 'bash-22222222', command: 'pnpm test' }));
     const all = await listTasks(sessionDir);
     expect(all).toHaveLength(2);
-    expect(all.map((t) => t.task_id).sort()).toEqual(['bg_1', 'bg_2']);
+    expect(all.map((t) => t.task_id).sort()).toEqual(['bash-11111111', 'bash-22222222']);
   });
 
   it('listTasks returns empty when tasks dir does not exist', async () => {
@@ -77,18 +77,20 @@ describe('background/persist', () => {
     await writeTask(sessionDir, sample());
     // Corrupt a sibling file
     const { writeFile } = await import('node:fs/promises');
-    await writeFile(join(sessionDir, 'tasks', 'bg_bad.json'), '{not json', 'utf-8');
+    // Phase 13 D-6 — needs a *valid-format* id for listTasks to even
+    // attempt parsing (invalid-id files are silently skipped).
+    await writeFile(join(sessionDir, 'tasks', 'bash-baaaaaaa.json'), '{not json', 'utf-8');
     const all = await listTasks(sessionDir);
     expect(all).toHaveLength(1);
-    expect(all[0]?.task_id).toBe('bg_1');
+    expect(all[0]?.task_id).toBe('bash-11111111');
   });
 
   it('removeTask deletes file (idempotent)', async () => {
     await writeTask(sessionDir, sample());
-    await removeTask(sessionDir, 'bg_1');
-    expect(await readTask(sessionDir, 'bg_1')).toBeUndefined();
+    await removeTask(sessionDir, 'bash-11111111');
+    expect(await readTask(sessionDir, 'bash-11111111')).toBeUndefined();
     // Second remove no-op
-    await expect(removeTask(sessionDir, 'bg_1')).resolves.toBeUndefined();
+    await expect(removeTask(sessionDir, 'bash-11111111')).resolves.toBeUndefined();
   });
 
   it('writeTask creates tasks dir with mode 0700', async () => {
@@ -104,5 +106,36 @@ describe('background/persist', () => {
     );
     await expect(readTask(sessionDir, '../etc/passwd')).rejects.toThrow(/Invalid task id/);
     await expect(removeTask(sessionDir, '../etc/passwd')).rejects.toThrow(/Invalid task id/);
+  });
+
+  // ── Phase 13 §1.4 — migrated from Python test_store.py ──────────────
+
+  it('listTasks silently skips non-validating task_id files (§1.4 #5)', async () => {
+    // Seed a valid task alongside a sibling file whose basename does
+    // NOT match `^(bash|agent)-[0-9a-z]{8}$`.
+    await writeTask(sessionDir, sample());
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(
+      join(sessionDir, 'tasks', 'BAD-ID!!!.json'),
+      JSON.stringify(sample({ task_id: 'BAD-ID!!!' })),
+      'utf-8',
+    );
+    const all = await listTasks(sessionDir);
+    expect(all).toHaveLength(1);
+    expect(all[0]?.task_id).toBe('bash-11111111');
+  });
+
+  it('listTasks skips specs missing required fields (§1.4 #7)', async () => {
+    await writeTask(sessionDir, sample());
+    const { writeFile } = await import('node:fs/promises');
+    // Valid JSON, valid filename, but shape is wrong (missing status / pid).
+    await writeFile(
+      join(sessionDir, 'tasks', 'bash-cccccccc.json'),
+      JSON.stringify({ task_id: 'bash-cccccccc', command: 'x' }),
+      'utf-8',
+    );
+    const all = await listTasks(sessionDir);
+    expect(all).toHaveLength(1);
+    expect(all[0]?.task_id).toBe('bash-11111111');
   });
 });
