@@ -169,6 +169,11 @@ export interface ChromeContextValue {
   registry: SlashCommandRegistry;
 }
 
+export interface QueuedMessage {
+  readonly id: string;
+  readonly text: string;
+}
+
 export interface ActionsContextValue {
   appendTranscriptEntry: (entry: TranscriptEntry) => void;
   sendMessage: (input: string) => void;
@@ -180,6 +185,13 @@ export interface ActionsContextValue {
   refreshSessions: () => Promise<void>;
   switchSession: (sessionId: string) => void;
   setShowSessionPicker: (show: boolean) => void;
+  enqueueMessage: (text: string) => void;
+  steerMessage: (text: string) => void;
+  removeFromQueue: (id: string) => void;
+  editQueueItem: (id: string, text: string) => void;
+  recallLastQueued: () => string | undefined;
+  dequeueFirst: () => string | undefined;
+  queuedMessages: QueuedMessage[];
 }
 
 const MISSING_PROVIDER = 'Kimi CLI context provider is missing.';

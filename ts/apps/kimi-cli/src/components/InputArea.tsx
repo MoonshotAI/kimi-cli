@@ -30,7 +30,7 @@ export default function InputArea({
   onContentLines,
 }: InputAreaProps): React.JSX.Element {
   const { state, styles, showSessionPicker, registry } = useChrome();
-  const { appendTranscriptEntry, cancelStream, executeSlashCommand, sendMessage } = useActions();
+  const { appendTranscriptEntry, cancelStream, executeSlashCommand, sendMessage, steerMessage, recallLastQueued, dequeueFirst } = useActions();
   // eslint-disable-next-line @typescript-eslint/unbound-method -- Ink's useApp().exit is a stable callback, not a class method.
   const { exit } = useInkApp();
 
@@ -40,7 +40,8 @@ export default function InputArea({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [panelDismissed, setPanelDismissed] = useState(false);
 
-  const isLocked = state.isStreaming || showSessionPicker;
+  const isLocked = showSessionPicker;
+  const isStreaming = state.isStreaming;
 
   // Detect slash mode: input starts with "/" and no space yet (still typing command name)
   const currentText = buf.text();
@@ -51,7 +52,7 @@ export default function InputArea({
     return currentText.slice(1);
   }, [currentText]);
 
-  const showPanel = slashPrefix !== null && !isLocked && !panelDismissed;
+  const showPanel = slashPrefix !== null && !isLocked && !isStreaming && !panelDismissed;
 
   const filteredCommands = useMemo(() => {
     if (slashPrefix === null) return [];
@@ -120,6 +121,25 @@ export default function InputArea({
 
     if (isLocked) return;
 
+    // Ctrl+S: immediate steer (only during streaming)
+    if (key.ctrl && input === 's') {
+      if (!isStreaming) return;
+      const text = buf.text().trim();
+      if (text.length > 0) {
+        const expanded = pasteManager.current.expandPlaceholders(text);
+        buf.clear();
+        pasteManager.current.reset();
+        setViewportStart(0);
+        steerMessage(expanded);
+      } else {
+        const first = dequeueFirst();
+        if (first !== undefined) {
+          steerMessage(first);
+        }
+      }
+      return;
+    }
+
     // When the slash panel is visible, intercept navigation keys
     if (showPanel && filteredCommands.length > 0) {
       if (key.upArrow) {
@@ -171,7 +191,7 @@ export default function InputArea({
       }
     }
 
-    // Submit on plain Enter (normal, non-panel behavior)
+    // Submit on plain Enter
     if (key.return && !key.ctrl && !key.meta) {
       const trimmed = buf.text().trim();
       if (trimmed.length === 0) return;
@@ -213,7 +233,19 @@ export default function InputArea({
 
     if (key.leftArrow) { buf.moveCursor('left'); return; }
     if (key.rightArrow) { buf.moveCursor('right'); return; }
-    if (key.upArrow) { buf.moveCursor('up'); return; }
+
+    // Up arrow: during streaming with empty buffer, recall last queued message
+    if (key.upArrow) {
+      if (isStreaming && buf.text().length === 0) {
+        const recalled = recallLastQueued();
+        if (recalled !== undefined) {
+          buf.setText(recalled);
+        }
+      } else {
+        buf.moveCursor('up');
+      }
+      return;
+    }
     if (key.downArrow) { buf.moveCursor('down'); return; }
 
     if (
@@ -240,8 +272,8 @@ export default function InputArea({
 
   const placeholder = showSessionPicker
     ? 'Session picker is active above. Press Esc to close it.'
-    : state.isStreaming
-      ? 'Streaming in progress. Press Ctrl-C to interrupt the current turn.'
+    : isStreaming
+      ? 'Type to queue a message, Ctrl-S to steer, Ctrl-C to cancel'
       : 'Ask Kimi anything or type / for commands...';
 
   const { lines, cursor } = buf.buffer;
@@ -262,11 +294,16 @@ export default function InputArea({
         paddingRight={1}
         flexDirection="column"
       >
-        {buf.isEmpty || isLocked ? (
+        {(buf.isEmpty && !isStreaming) || isLocked ? (
           <Text>
             {!isLocked ? (
               <Text color={styles.colors.primary}>{cursorVisible ? CURSOR : ' '}</Text>
             ) : null}
+            <Text color={styles.colors.textMuted}>{placeholder}</Text>
+          </Text>
+        ) : buf.isEmpty && isStreaming ? (
+          <Text>
+            <Text color={styles.colors.primary}>{cursorVisible ? CURSOR : ' '}</Text>
             <Text color={styles.colors.textMuted}>{placeholder}</Text>
           </Text>
         ) : (

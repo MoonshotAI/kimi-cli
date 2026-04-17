@@ -8,6 +8,7 @@
  * shell runner boots a `KimiCoreClient` wrapping `@moonshot-ai/core`.
  */
 
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -532,6 +533,8 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     theme: bootstrap.theme,
     version,
   };
+
+  try { execSync('stty -ixon', { stdio: 'ignore' }); } catch { /* ignore */ }
 
   const instance = render(
     React.createElement(App, {

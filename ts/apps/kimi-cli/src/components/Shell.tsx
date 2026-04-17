@@ -21,6 +21,7 @@ import ApprovalPanel from './approval/ApprovalPanel.js';
 import InputArea from './InputArea.js';
 import { MarkdownRenderer } from './markdown/index.js';
 import NotificationToast from './NotificationToast.js';
+import QueuedMessages from './QueuedMessages.js';
 import QuestionDialog from './question/QuestionDialog.js';
 import SessionPicker from './session/SessionPicker.js';
 import Spinner from './Spinner.js';
@@ -318,6 +319,7 @@ function LiveFrame(): React.JSX.Element {
   return (
     <Box flexDirection="column">
       <ActivityPane maxHeight={maxActivityHeight} />
+      <QueuedMessages />
       <InputArea
         columns={columns}
         maxInputLines={DEFAULT_MAX_INPUT_LINES}

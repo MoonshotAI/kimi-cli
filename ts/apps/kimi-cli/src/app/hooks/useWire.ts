@@ -34,6 +34,7 @@ import type {
   ToolResultBlockData,
   LivePaneState,
   ToastNotification,
+  QueuedMessage,
 } from '../context.js';
 
 export interface UseWireResult {
@@ -46,6 +47,13 @@ export interface UseWireResult {
   handleQuestionResponse: (answers: string[]) => void;
   toasts: ToastNotification[];
   dismissToast: (id: string) => void;
+  queuedMessages: QueuedMessage[];
+  enqueueMessage: (text: string) => void;
+  removeFromQueue: (id: string) => void;
+  editQueueItem: (id: string, text: string) => void;
+  steerMessage: (text: string) => void;
+  recallLastQueued: () => string | undefined;
+  dequeueFirst: () => string | undefined;
 }
 
 const TOAST_TTL_MS = 5000;
@@ -74,6 +82,11 @@ export function useWire(
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
   const [livePane, setLivePane] = useState<LivePaneState>(INITIAL_LIVE_PANE);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
+  const queueIdCounter = useRef(0);
+
+  const sendMessageInternalRef = useRef<((input: string) => void) | undefined>(undefined);
 
   const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const isStreamingRef = useRef(false);
@@ -179,6 +192,57 @@ export function useWire(
     [flushAssistantDraft, flushThinkingToTranscript],
   );
 
+  const enqueueMessage = useCallback((text: string) => {
+    queueIdCounter.current += 1;
+    const item: QueuedMessage = { id: `q-${String(queueIdCounter.current)}`, text };
+    setQueuedMessages((prev) => [...prev, item]);
+  }, []);
+
+  const removeFromQueue = useCallback((id: string) => {
+    setQueuedMessages((prev) => prev.filter((m) => m.id !== id));
+  }, []);
+
+  const editQueueItem = useCallback((id: string, text: string) => {
+    setQueuedMessages((prev) => prev.map((m) => (m.id === id ? { ...m, text } : m)));
+  }, []);
+
+  const recallLastQueued = useCallback((): string | undefined => {
+    let recalled: string | undefined;
+    setQueuedMessages((prev) => {
+      if (prev.length === 0) return prev;
+      recalled = prev[prev.length - 1]!.text;
+      return prev.slice(0, -1);
+    });
+    return recalled;
+  }, []);
+
+  const dequeueFirst = useCallback((): string | undefined => {
+    let dequeued: string | undefined;
+    setQueuedMessages((prev) => {
+      if (prev.length === 0) return prev;
+      dequeued = prev[0]!.text;
+      return prev.slice(1);
+    });
+    return dequeued;
+  }, []);
+
+  const steerMessage = useCallback((text: string) => {
+    if (!isStreamingRef.current) {
+      sendMessageInternalRef.current?.(text);
+      return;
+    }
+
+    appendTranscriptEntry({
+      id: nextTranscriptId(),
+      kind: 'user',
+      turnId: currentTurnIdRef.current,
+      renderMode: 'plain',
+      content: text,
+    });
+
+    void wireClient.steer(sessionId, text);
+  }, [appendTranscriptEntry, sessionId, wireClient]);
+
   const cancelStream = useCallback(() => {
     void wireClient.cancel(sessionId);
   }, [wireClient, sessionId]);
@@ -255,6 +319,15 @@ export function useWire(
     activeToolCallsRef.current.clear();
     currentTurnIdRef.current = undefined;
     isStreamingRef.current = false;
+
+    setQueuedMessages((prev) => {
+      if (prev.length > 0) {
+        const [next, ...rest] = prev;
+        setTimeout(() => sendMessageInternalRef.current?.(next!.text), 0);
+        return rest;
+      }
+      return prev;
+    });
 
     patchAppState({
       isStreaming: false,
@@ -493,11 +566,7 @@ export function useWire(
     };
   }, [processMessage, sessionId, wireClient]);
 
-  const sendMessage = useCallback((input: string) => {
-    if (isStreamingRef.current) {
-      return;
-    }
-
+  const sendMessageInternal = useCallback((input: string) => {
     appendTranscriptEntry({
       id: nextTranscriptId(),
       kind: 'user',
@@ -530,6 +599,16 @@ export function useWire(
     void wireClient.prompt(sessionId, input);
   }, [appendTranscriptEntry, patchAppState, patchLivePane, sessionId, wireClient]);
 
+  sendMessageInternalRef.current = sendMessageInternal;
+
+  const sendMessage = useCallback((input: string) => {
+    if (isStreamingRef.current) {
+      enqueueMessage(input);
+      return;
+    }
+    sendMessageInternal(input);
+  }, [enqueueMessage, sendMessageInternal]);
+
   useEffect(() => {
     return () => {
       for (const timer of toastTimersRef.current.values()) {
@@ -549,5 +628,12 @@ export function useWire(
     handleQuestionResponse,
     toasts,
     dismissToast,
+    queuedMessages,
+    enqueueMessage,
+    removeFromQueue,
+    editQueueItem,
+    steerMessage,
+    recallLastQueued,
+    dequeueFirst,
   };
 }
