@@ -1,8 +1,9 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "react"
+    "paths": {
+      "@mariozechner/pi-tui": ["../../../libs/pi-mono/packages/tui/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

@@ -6,7 +6,7 @@
  * submits input starting with `/`.
  */
 
-import type { AppState } from '../app/context.js';
+import type { AppState } from '../app/state.js';
 import type { WireClient } from '../wire/index.js';
 
 // ── Types ───────────────────────────────────────────────────────────

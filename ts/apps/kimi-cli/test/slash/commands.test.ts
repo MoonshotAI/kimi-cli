@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import type { AppState } from '../../src/app/context.js';
+import type { AppState } from '../../src/app/state.js';
 import { createDefaultRegistry } from '../../src/slash/index.js';
 import type { SlashCommandContext } from '../../src/slash/index.js';
 import type { WireClient } from '../../src/wire/index.js';
@@ -20,6 +20,8 @@ function mockState(overrides?: Partial<AppState>): AppState {
     planMode: false,
     thinking: false,
     contextUsage: 0.1,
+    contextTokens: 0,
+    maxContextTokens: 200_000,
     isStreaming: false,
     streamingPhase: 'idle',
     streamingStartTime: 0,
@@ -73,6 +75,7 @@ function makeCtx(overrides?: Partial<AppState>): {
       wireClient: mockWireClient(),
       appState: mockState(overrides),
       setAppState,
+      showStatus: vi.fn(),
     },
     setAppState,
   };
