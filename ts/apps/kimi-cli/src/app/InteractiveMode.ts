@@ -380,6 +380,43 @@ export class InteractiveMode implements WireHandlerDelegate {
     }
   }
 
+  routeSubagentEvent(
+    parentToolCallId: string,
+    payload: import('./WireHandler.js').SubagentRoutedPayload,
+  ): void {
+    // pendingToolComponents only tracks still-streaming tool calls; for
+    // sub events that arrive after the parent tool call resolved we'd
+    // need a separate lookup. For now we drop late events silently —
+    // Python does the same.
+    const tc = this.pendingToolComponents.get(parentToolCallId);
+    if (tc === undefined) return;
+    tc.setSubagentMeta(payload.agent_id, payload.agent_name);
+
+    const { method, data } = payload.sub_event;
+    if (method === 'tool.call') {
+      const d = data as { id?: unknown; name?: unknown; args?: unknown };
+      if (typeof d.id === 'string' && typeof d.name === 'string') {
+        tc.appendSubToolCall({
+          id: d.id,
+          name: d.name,
+          args: typeof d.args === 'object' && d.args !== null
+            ? (d.args as Record<string, unknown>)
+            : {},
+        });
+      }
+    } else if (method === 'tool.result') {
+      const d = data as { tool_call_id?: unknown; output?: unknown; is_error?: unknown };
+      if (typeof d.tool_call_id === 'string') {
+        tc.finishSubToolCall({
+          tool_call_id: d.tool_call_id,
+          output: typeof d.output === 'string' ? d.output : '',
+          ...(typeof d.is_error === 'boolean' ? { is_error: d.is_error } : {}),
+        });
+      }
+    }
+    // content.delta / thinking.delta / step.* 等忽略（与 Python 对齐）
+  }
+
   // ── Transcript rendering ────────────────────────────────────────
 
   private createTranscriptComponent(entry: TranscriptEntry): Component | null {

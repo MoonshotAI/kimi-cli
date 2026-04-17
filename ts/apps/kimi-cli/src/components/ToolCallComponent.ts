@@ -17,6 +17,19 @@ const MAX_ARG_LENGTH = 60;
 const PREVIEW_LINES = 6;
 const CALL_PREVIEW_LINES = 10;
 const BLINK_INTERVAL = 500;
+const MAX_SUB_TOOL_CALLS_SHOWN = 4;
+
+interface FinishedSubCall {
+  readonly name: string;
+  readonly args: Record<string, unknown>;
+  readonly output: string;
+  readonly isError: boolean;
+}
+
+interface OngoingSubCall {
+  readonly name: string;
+  readonly args: Record<string, unknown>;
+}
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
@@ -85,6 +98,19 @@ export class ToolCallComponent extends Container {
   private headerText: Text;
   private callPreviewEndIndex = 0;
 
+  // ── Subagent state ───────────────────────────────────────────────
+  //
+  // Populated by `setSubagentMeta` / `appendSubToolCall` / `finishSubToolCall`
+  // when the WireHandler routes a `subagent.event` with this tool call
+  // id as its `parent_tool_call_id`. Rendered at the tail of
+  // buildContent so it shows up both during streaming and after the
+  // parent tool call resolves.
+  private subagentAgentId: string | undefined;
+  private subagentAgentName: string | undefined;
+  private readonly ongoingSubCalls = new Map<string, OngoingSubCall>();
+  private readonly finishedSubCalls: FinishedSubCall[] = [];
+  private hiddenSubCallCount = 0;
+
   constructor(
     toolCall: ToolCallBlockData,
     result: ToolResultBlockData | undefined,
@@ -105,6 +131,7 @@ export class ToolCallComponent extends Container {
     this.buildCallPreview();
     this.callPreviewEndIndex = this.children.length;
     this.buildContent();
+    this.buildSubagentBlock();
 
     // ExitPlanMode is rendered as a static, bullet-less block — don't
     // blink the header and don't let the spinner repaint cause reflow.
@@ -141,6 +168,44 @@ export class ToolCallComponent extends Container {
     this.rebuildContent();
   }
 
+  // ── Subagent API (called by WireHandler routing) ─────────────────
+
+  setSubagentMeta(agentId: string, agentName?: string): void {
+    if (this.subagentAgentId === agentId && this.subagentAgentName === agentName) return;
+    this.subagentAgentId = agentId;
+    this.subagentAgentName = agentName;
+    this.rebuildContent();
+    this.ui?.requestRender();
+  }
+
+  appendSubToolCall(call: { id: string; name: string; args: Record<string, unknown> }): void {
+    this.ongoingSubCalls.set(call.id, { name: call.name, args: call.args });
+    this.rebuildContent();
+    this.ui?.requestRender();
+  }
+
+  finishSubToolCall(result: {
+    tool_call_id: string;
+    output: string;
+    is_error?: boolean | undefined;
+  }): void {
+    const ongoing = this.ongoingSubCalls.get(result.tool_call_id);
+    if (ongoing === undefined) return;
+    this.ongoingSubCalls.delete(result.tool_call_id);
+    this.finishedSubCalls.push({
+      name: ongoing.name,
+      args: ongoing.args,
+      output: result.output,
+      isError: result.is_error ?? false,
+    });
+    while (this.finishedSubCalls.length > MAX_SUB_TOOL_CALLS_SHOWN) {
+      this.finishedSubCalls.shift();
+      this.hiddenSubCallCount += 1;
+    }
+    this.rebuildContent();
+    this.ui?.requestRender();
+  }
+
   private buildHeader(): string {
     const { toolCall, result, colors } = this;
     const isFinished = result !== undefined;
@@ -171,6 +236,54 @@ export class ToolCallComponent extends Container {
       this.children.pop();
     }
     this.buildContent();
+    this.buildSubagentBlock();
+  }
+
+  private buildSubagentBlock(): void {
+    if (
+      this.subagentAgentId === undefined &&
+      this.ongoingSubCalls.size === 0 &&
+      this.finishedSubCalls.length === 0
+    ) {
+      return;
+    }
+
+    const dim = chalk.dim;
+    const header = this.subagentAgentName !== undefined
+      ? `subagent ${this.subagentAgentName} (${this.formatAgentId()})`
+      : `subagent (${this.formatAgentId()})`;
+    this.addChild(new Text(dim(`  ↳ ${header}`), 0, 0));
+
+    if (this.hiddenSubCallCount > 0) {
+      const suffix = this.hiddenSubCallCount > 1 ? 's' : '';
+      this.addChild(new Text(
+        dim.italic(`    ${String(this.hiddenSubCallCount)} more tool call${suffix} ...`),
+        0, 0,
+      ));
+    }
+
+    for (const sub of this.finishedSubCalls) {
+      const mark = sub.isError
+        ? chalk.hex(this.colors.error)('✗')
+        : chalk.hex(this.colors.success)('•');
+      const keyArg = extractKeyArgument(sub.name, sub.args);
+      const nameCol = chalk.hex(this.colors.primary)(sub.name);
+      const argCol = keyArg ? dim(` (${keyArg})`) : '';
+      this.addChild(new Text(`    ${mark} Used ${nameCol}${argCol}`, 0, 0));
+    }
+
+    for (const [id, call] of this.ongoingSubCalls) {
+      const keyArg = extractKeyArgument(call.name, call.args);
+      const nameCol = chalk.hex(this.colors.primary)(call.name);
+      const argCol = keyArg ? dim(` (${keyArg})`) : '';
+      void id;
+      this.addChild(new Text(`    ${dim('…')} Using ${nameCol}${argCol}`, 0, 0));
+    }
+  }
+
+  private formatAgentId(): string {
+    const id = this.subagentAgentId ?? '';
+    return id.length > 10 ? id.slice(0, 10) + '…' : id;
   }
 
   private buildCallPreview(): void {

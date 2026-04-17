@@ -19,6 +19,7 @@ import {
   BashTool,
   DefaultSkillManager,
   EditTool,
+  EnterPlanModeTool,
   ExitPlanModeTool,
   FetchURLTool,
   FileTokenStorage,
@@ -367,6 +368,12 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     new ExitPlanModeTool({
       isPlanModeActive: ctx.isPlanModeActive,
       setPlanMode: ctx.setPlanMode,
+    }),
+    new EnterPlanModeTool({
+      isPlanModeActive: ctx.isPlanModeActive,
+      setPlanMode: ctx.setPlanMode,
+      isYoloMode: () => ctx.getPermissionMode() === 'bypassPermissions',
+      questionRuntime: ctx.questionRuntime,
     }),
     new AskUserQuestionTool(ctx.questionRuntime, ctx.getPermissionMode),
     // Background-process control surface: BashTool spawns a

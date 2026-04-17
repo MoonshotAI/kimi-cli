@@ -46,6 +46,7 @@ import {
   type ShellDeliverCallback,
   type SkillManager,
   type SoulEvent,
+  type BusEvent,
   type Tool,
   type TurnLifecycleListener,
   type TurnManager,
@@ -420,12 +421,42 @@ export class KimiCoreClient implements WireClient {
     this.sessions.set(managedId, record);
 
     // Fan SoulEvents → WireMessage → queue.
-    eventBus.on((event: SoulEvent) => {
-      const msg = adaptSoulEventToWireMessage(event, {
+    //
+    // Subagent events (source.kind === 'subagent') are wrapped in a
+    // `subagent.event` envelope that carries the parent tool call id,
+    // so the TUI can graft them onto the spawning tool call's block.
+    // Main-agent events (source === undefined) flow through unchanged.
+    eventBus.on((event: BusEvent) => {
+      const ctx = {
         sessionId: record.sessionId,
         turnId: record.currentTurnId,
         nextSeq: () => (record.seqCounter += 1),
-      });
+      };
+
+      if (event.source !== undefined && event.source.kind === 'subagent') {
+        const parentId = event.source.parent_tool_call_id;
+        if (parentId === undefined) return;
+        const inner = adaptSoulEventToWireMessage(event, ctx);
+        if (inner === null || inner.type !== 'event') return;
+        const envelope = createEvent(
+          'subagent.event',
+          {
+            parent_tool_call_id: parentId,
+            agent_id: event.source.id,
+            ...(event.source.name !== undefined ? { agent_name: event.source.name } : {}),
+            sub_event: { method: inner.method, data: inner.data },
+          },
+          {
+            session_id: record.sessionId,
+            ...(record.currentTurnId !== undefined ? { turn_id: record.currentTurnId } : {}),
+            seq: (record.seqCounter += 1),
+          },
+        );
+        queue.push(envelope);
+        return;
+      }
+
+      const msg = adaptSoulEventToWireMessage(event, ctx);
       if (msg !== null) {
         queue.push(msg);
       }

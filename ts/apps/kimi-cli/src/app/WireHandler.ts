@@ -53,6 +53,16 @@ export interface WireHandlerDelegate {
   onStreamingTextEnd(): void;
   onToolCallStart(toolCall: ToolCallBlockData): void;
   onToolCallEnd(toolCallId: string, result: ToolResultBlockData): void;
+  routeSubagentEvent(parentToolCallId: string, payload: SubagentRoutedPayload): void;
+}
+
+export interface SubagentRoutedPayload {
+  readonly agent_id: string;
+  readonly agent_name?: string | undefined;
+  readonly sub_event: {
+    readonly method: string;
+    readonly data: unknown;
+  };
 }
 
 export class WireHandler {
@@ -349,6 +359,30 @@ export class WireHandler {
         this.delegate.addTranscriptEntry(
           this.makeEntry('status', `Error${detail}: ${data.error}`, 'plain'),
         );
+        break;
+      }
+      case 'subagent.event': {
+        const data = msg.data as {
+          parent_tool_call_id?: unknown;
+          agent_id?: unknown;
+          agent_name?: unknown;
+          sub_event?: unknown;
+        };
+        if (
+          typeof data.parent_tool_call_id !== 'string' ||
+          typeof data.agent_id !== 'string' ||
+          typeof data.sub_event !== 'object' ||
+          data.sub_event === null
+        ) {
+          break;
+        }
+        const se = data.sub_event as { method?: unknown; data?: unknown };
+        if (typeof se.method !== 'string') break;
+        this.delegate.routeSubagentEvent(data.parent_tool_call_id, {
+          agent_id: data.agent_id,
+          ...(typeof data.agent_name === 'string' ? { agent_name: data.agent_name } : {}),
+          sub_event: { method: se.method, data: se.data },
+        });
         break;
       }
       default:
