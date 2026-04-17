@@ -34,27 +34,80 @@ RETRY_BACKOFFS_S = (1.0, 4.0, 16.0)
 # server-side namespace in the future is a one-line change.
 SERVER_EVENT_PREFIX = "kfc_"
 
+# Prefix for the payload-level ``user_id``. The full id is
+# ``USER_ID_PREFIX + device_id``, e.g. ``kfc_device_id_a1b2c3...``.
+USER_ID_PREFIX = "kfc_device_id_"
 
-def _apply_server_prefix(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Build an outbound copy of ``events`` with ``SERVER_EVENT_PREFIX`` prepended.
 
-    Never mutates the input: bare-name events get a new dict with the prefixed
-    ``event`` field, while already-prefixed / empty / non-string event values
-    are forwarded as-is (no copy, no mutation). So a send failure that falls
-    back to ``save_to_disk`` still persists the original client-side name.
+def _build_user_id(device_id: str) -> str:
+    """Derive the payload-level ``user_id`` from the local ``device_id``."""
+    return USER_ID_PREFIX + device_id
 
-    Idempotent: events already carrying the prefix are passed through, which
-    keeps disk-cached files from older releases working when a new version
-    reads them back.
+
+def _apply_server_prefix_one(event: dict[str, Any]) -> dict[str, Any]:
+    """Return an outbound copy of ``event`` with ``SERVER_EVENT_PREFIX`` on its name.
+
+    Idempotent: events already carrying the prefix pass through unchanged.
+    Non-string / empty / missing ``event`` fields pass through without copy.
+    Does not mutate the input.
     """
-    out: list[dict[str, Any]] = []
-    for event in events:
-        name = event.get("event", "")
-        if isinstance(name, str) and name and not name.startswith(SERVER_EVENT_PREFIX):
-            out.append({**event, "event": SERVER_EVENT_PREFIX + name})
+    name = event.get("event", "")
+    if isinstance(name, str) and name and not name.startswith(SERVER_EVENT_PREFIX):
+        return {**event, "event": SERVER_EVENT_PREFIX + name}
+    return event
+
+
+def _assert_primitive(scope: str, key: str, value: Any) -> None:
+    """Raise ``TypeError`` if ``value`` is not a telemetry-safe primitive.
+
+    The ``track()`` signature already restricts properties to primitives, but
+    ``sink`` enriches events with hand-built context dicts; this runtime
+    guardrail catches accidental nested structures before they hit the backend.
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return
+    raise TypeError(f"telemetry {scope}.{key} must be primitive, got {type(value).__name__}")
+
+
+def _flatten_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Expand ``properties``/``context`` into ``property_*``/``context_*`` keys.
+
+    Top-level event fields are preserved unchanged. Unknown future top-level
+    keys are passed through without transformation.
+
+    Raises ``TypeError`` on nested dict / list values inside properties or
+    context. Does not mutate the input.
+    """
+    out: dict[str, Any] = {}
+    for key, value in event.items():
+        if key == "properties":
+            props: dict[str, Any] = value or {}
+            for pk, pv in props.items():
+                _assert_primitive("property", pk, pv)
+                out[f"property_{pk}"] = pv
+        elif key == "context":
+            ctx: dict[str, Any] = value or {}
+            for ck, cv in ctx.items():
+                _assert_primitive("context", ck, cv)
+                out[f"context_{ck}"] = cv
         else:
-            out.append(event)
+            out[key] = value
     return out
+
+
+def _build_payload(events: list[dict[str, Any]], device_id: str) -> dict[str, Any]:
+    """Assemble the outbound HTTP payload.
+
+    The payload carries a single ``user_id`` at the top (derived from
+    ``device_id``) and a list of flat, prefixed events underneath.
+    """
+    flat_events: list[dict[str, Any]] = []
+    for event in events:
+        flat_events.append(_flatten_event(_apply_server_prefix_one(event)))
+    return {
+        "user_id": _build_user_id(device_id),
+        "events": flat_events,
+    }
 
 
 def _telemetry_dir() -> Path:
@@ -69,18 +122,23 @@ class AsyncTransport:
     def __init__(
         self,
         *,
+        device_id: str = "",
         get_access_token: Callable[[], str | None] | None = None,
         endpoint: str = TELEMETRY_ENDPOINT,
         retry_backoffs_s: tuple[float, ...] | None = None,
     ) -> None:
         """
         Args:
+            device_id: Local device UUID, used to derive the payload-level
+                ``user_id``. Defaults to empty string for test convenience;
+                production callers always pass the real device id.
             get_access_token: Callable that returns the current OAuth access token
                 (or None if not logged in). Read-only, must not trigger refresh.
             endpoint: HTTP endpoint to POST events to.
             retry_backoffs_s: Sleep durations between attempts on transient errors.
                 Pass an empty tuple in tests to disable in-process retry.
         """
+        self._device_id = device_id
         self._get_access_token = get_access_token
         self._endpoint = endpoint
         self._retry_backoffs = (
@@ -92,10 +150,22 @@ class AsyncTransport:
         if not events:
             return
 
-        # Apply the server-side prefix only at the outbound boundary.
-        # ``events`` itself is kept untouched so ``save_to_disk`` below
-        # persists the bare client-side names.
-        payload = {"events": _apply_server_prefix(events)}
+        # Assemble the outbound payload at the transport boundary.
+        # ``events`` itself is kept untouched (nested, bare names) so
+        # ``save_to_disk`` below persists the original shape.
+        try:
+            payload = _build_payload(events, self._device_id)
+        except TypeError as exc:
+            # Schema violation: a caller slipped a non-primitive value into
+            # properties/context. Retrying would hit the same TypeError on
+            # every reload, so falling back to disk would just create a
+            # permanently stuck file — drop with a warning instead.
+            logger.warning(
+                "Telemetry payload schema violation, dropping {count} events: {err}",
+                count=len(events),
+                err=exc,
+            )
+            return
 
         try:
             for attempt_idx in range(len(self._retry_backoffs) + 1):
@@ -157,7 +227,12 @@ class AsyncTransport:
                 raise _TransientError(str(exc)) from exc
 
     def save_to_disk(self, events: list[dict[str, Any]]) -> None:
-        """Persist events to disk for later retry. Append-only JSONL."""
+        """Persist events to disk for later retry. Append-only JSONL.
+
+        Stores the original nested shape (bare event names, ``properties``
+        and ``context`` sub-dicts). The outbound pipeline is re-applied on
+        retry, so the server-side prefix and user_id are added fresh each time.
+        """
         if not events:
             return
         try:
@@ -200,9 +275,9 @@ class AsyncTransport:
                         if line:
                             events.append(json.loads(line))
                 if events:
-                    # Same outbound-only prefix rule as ``send``; disk JSONL
-                    # preserves the bare client-side names.
-                    await self._send_http({"events": _apply_server_prefix(events)})
+                    # Same outbound-only rules as ``send``; disk JSONL stored
+                    # the bare, nested client-side shape.
+                    await self._send_http(_build_payload(events, self._device_id))
                 # Success — delete the file
                 path.unlink(missing_ok=True)
                 logger.debug(

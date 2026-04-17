@@ -293,14 +293,15 @@ class KimiCLI:
         if telemetry_disabled:
             disable_telemetry()
         else:
-            set_context(device_id=get_device_id(), session_id=session.id)
+            device_id = get_device_id()
+            set_context(device_id=device_id, session_id=session.id)
             from kimi_cli.telemetry.sink import EventSink
             from kimi_cli.telemetry.transport import AsyncTransport
 
             def _get_token() -> str | None:
                 return oauth.get_cached_access_token(KIMI_CODE_OAUTH_KEY)
 
-            transport = AsyncTransport(get_access_token=_get_token)
+            transport = AsyncTransport(device_id=device_id, get_access_token=_get_token)
             sink = EventSink(
                 transport,
                 version=VERSION,

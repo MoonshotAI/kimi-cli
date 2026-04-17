@@ -267,42 +267,47 @@ class TestAsyncTransport:
 
         assert SERVER_EVENT_PREFIX == "kfc_"
 
-    def test_apply_server_prefix_does_not_mutate_input(self):
-        """_apply_server_prefix must build a new outbound list without mutating input."""
-        from kimi_cli.telemetry.transport import _apply_server_prefix
+    def test_apply_server_prefix_one_does_not_mutate_input(self):
+        """_apply_server_prefix_one builds a new dict with prefix, input untouched."""
+        from kimi_cli.telemetry.transport import _apply_server_prefix_one
 
-        events = [
-            {"event": "started", "timestamp": 1.0, "properties": {"a": 1}},
-            {"event": "kfc_already", "timestamp": 2.0, "properties": {}},
-        ]
-        snapshot = [dict(e) for e in events]
-        out = _apply_server_prefix(events)
-        assert [e["event"] for e in events] == [s["event"] for s in snapshot]
-        assert events[0]["properties"] is out[0]["properties"]  # shallow sharing OK
-        assert [e["event"] for e in out] == ["kfc_started", "kfc_already"]
+        event = {"event": "started", "timestamp": 1.0, "properties": {"a": 1}}
+        snapshot = dict(event)
+        out = _apply_server_prefix_one(event)
+        assert event == snapshot
+        assert out["event"] == "kfc_started"
+        # Shallow-shared sub-dicts are fine (not mutated downstream).
+        assert out["properties"] is event["properties"]
 
-    def test_apply_server_prefix_passthrough_edge_cases(self):
+    def test_apply_server_prefix_one_idempotent(self):
+        """Events already carrying the prefix pass through unchanged (no copy)."""
+        from kimi_cli.telemetry.transport import _apply_server_prefix_one
+
+        event = {"event": "kfc_already", "timestamp": 2.0, "properties": {}}
+        out = _apply_server_prefix_one(event)
+        assert out is event
+        assert out["event"] == "kfc_already"
+
+    def test_apply_server_prefix_one_passthrough_edge_cases(self):
         """Missing / empty / non-string event values pass through unchanged."""
-        from kimi_cli.telemetry.transport import _apply_server_prefix
+        from kimi_cli.telemetry.transport import _apply_server_prefix_one
 
-        events = [
-            {"timestamp": 1.0},  # event field missing
-            {"event": "", "timestamp": 2.0},  # empty string
-            {"event": 42, "timestamp": 3.0},  # non-string (shouldn't happen but guard)
-        ]
-        out = _apply_server_prefix(events)
-        assert "event" not in out[0]
-        assert out[1]["event"] == ""
-        assert out[2]["event"] == 42
-        # And input objects are forwarded (no copy wasted on these edge cases)
-        assert out[0] is events[0]
-        assert out[1] is events[1]
-        assert out[2] is events[2]
+        missing = {"timestamp": 1.0}
+        empty = {"event": "", "timestamp": 2.0}
+        non_str = {"event": 42, "timestamp": 3.0}
+
+        assert _apply_server_prefix_one(missing) is missing
+        assert _apply_server_prefix_one(empty) is empty
+        assert _apply_server_prefix_one(non_str) is non_str
 
     @pytest.mark.asyncio
     async def test_send_adds_server_prefix_to_event_names(self):
-        """Outbound payload carries kfc_ prefix; in-memory events stay bare."""
-        transport = AsyncTransport(endpoint="https://mock.test/events", retry_backoffs_s=())
+        """Outbound payload carries kfc_ prefix and is flattened; in-memory events stay bare + nested."""
+        transport = AsyncTransport(
+            device_id="dev-xyz",
+            endpoint="https://mock.test/events",
+            retry_backoffs_s=(),
+        )
 
         captured: dict[str, Any] = {}
 
@@ -316,13 +321,20 @@ class TestAsyncTransport:
         with patch.object(transport, "_send_http", new=capture):
             await transport.send(events_in)
 
+        # Payload-level user_id
+        assert captured["user_id"] == "kfc_device_id_dev-xyz"
+
         outbound = captured["events"]
         assert [e["event"] for e in outbound] == ["kfc_started", "kfc_tool_call"]
-        # Original events list untouched (so save_to_disk would keep bare names)
+        # Original events list untouched (save_to_disk would keep bare + nested shape)
         assert [e["event"] for e in events_in] == ["started", "tool_call"]
-        # Properties / timestamp preserved
-        assert outbound[1]["properties"] == {"success": True}
+        assert events_in[1]["properties"] == {"success": True}
+        # Properties flattened; timestamp preserved
+        assert outbound[1]["property_success"] is True
         assert outbound[1]["timestamp"] == 2.0
+        # Outbound events should not carry the nested sub-dicts anymore
+        assert "properties" not in outbound[1]
+        assert "context" not in outbound[1]
 
     @pytest.mark.asyncio
     async def test_send_is_idempotent_on_already_prefixed_events(self):
@@ -440,14 +452,14 @@ class TestAsyncTransport:
 
     @pytest.mark.asyncio
     async def test_retry_disk_events_success(self, tmp_path: Path):
-        """Disk events are retried, carry the server prefix, and the file is deleted."""
+        """Disk events are retried through the outbound pipeline, file deleted."""
         # Mix of bare names (new format) and already-prefixed (legacy format).
         failed_file = tmp_path / "failed_abc123.jsonl"
         failed_file.write_text(
             '{"event":"old","timestamp":1.0}\n{"event":"kfc_legacy","timestamp":2.0}\n'
         )
 
-        transport = AsyncTransport(endpoint="https://mock.test/events")
+        transport = AsyncTransport(device_id="dev-retry", endpoint="https://mock.test/events")
 
         with (
             patch("kimi_cli.telemetry.transport._telemetry_dir", return_value=tmp_path),
@@ -455,8 +467,9 @@ class TestAsyncTransport:
         ):
             await transport.retry_disk_events()
             mock_send.assert_called_once()
-            # Payload must carry the server prefix; already-prefixed events are NOT doubled.
             payload = mock_send.call_args[0][0]
+            # Same outbound pipeline: user_id at top + prefixed, flat events
+            assert payload["user_id"] == "kfc_device_id_dev-retry"
             assert [e["event"] for e in payload["events"]] == ["kfc_old", "kfc_legacy"]
             # File should be deleted after successful retry
             assert not failed_file.exists()
@@ -661,3 +674,258 @@ class TestAsyncTransport:
 
         saved_files = list(tmp_path.glob("failed_*.jsonl"))
         assert len(saved_files) == 1
+
+
+class TestPayloadAssembly:
+    """Unit tests for the outbound payload pipeline:
+    _build_user_id / _flatten_event / _build_payload."""
+
+    def test_user_id_prefix_constant(self):
+        """Lock down the production user_id prefix so it isn't silently changed."""
+        from kimi_cli.telemetry.transport import USER_ID_PREFIX
+
+        assert USER_ID_PREFIX == "kfc_device_id_"
+
+    def test_build_user_id(self):
+        from kimi_cli.telemetry.transport import _build_user_id
+
+        assert _build_user_id("abc123") == "kfc_device_id_abc123"
+
+    def test_build_user_id_empty_device_id(self):
+        """Empty device_id still returns the prefix (no crash)."""
+        from kimi_cli.telemetry.transport import _build_user_id
+
+        assert _build_user_id("") == "kfc_device_id_"
+
+    def test_flatten_event_properties_prefix(self):
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        out = _flatten_event(
+            {
+                "event": "tool_call",
+                "timestamp": 1.0,
+                "properties": {"tool_name": "bash", "approved": True},
+            }
+        )
+        assert out["property_tool_name"] == "bash"
+        assert out["property_approved"] is True
+        assert "properties" not in out
+
+    def test_flatten_event_context_prefix(self):
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        out = _flatten_event(
+            {
+                "event": "tool_call",
+                "timestamp": 1.0,
+                "context": {"version": "1.0", "platform": "darwin", "ci": False},
+            }
+        )
+        assert out["context_version"] == "1.0"
+        assert out["context_platform"] == "darwin"
+        assert out["context_ci"] is False
+        assert "context" not in out
+
+    def test_flatten_event_preserves_top_level(self):
+        """event_id / event / timestamp / device_id / session_id pass through."""
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        event = {
+            "event_id": "eid",
+            "event": "started",
+            "timestamp": 1.5,
+            "device_id": "d",
+            "session_id": "s",
+            "properties": {},
+            "context": {},
+        }
+        out = _flatten_event(event)
+        assert out["event_id"] == "eid"
+        assert out["event"] == "started"
+        assert out["timestamp"] == 1.5
+        assert out["device_id"] == "d"
+        assert out["session_id"] == "s"
+
+    def test_flatten_event_does_not_mutate_input(self):
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        event = {
+            "event": "tool_call",
+            "timestamp": 1.0,
+            "properties": {"a": 1},
+            "context": {"v": "x"},
+        }
+        snapshot = {
+            "event": "tool_call",
+            "timestamp": 1.0,
+            "properties": {"a": 1},
+            "context": {"v": "x"},
+        }
+        _flatten_event(event)
+        assert event == snapshot
+
+    def test_flatten_event_allows_none_values(self):
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        out = _flatten_event({"event": "x", "timestamp": 1.0, "properties": {"reason": None}})
+        assert out["property_reason"] is None
+
+    def test_flatten_event_empty_properties_and_context(self):
+        """Empty or missing sub-dicts produce no property_/context_ keys."""
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        out = _flatten_event({"event": "x", "timestamp": 1.0, "properties": {}, "context": {}})
+        assert all(not k.startswith("property_") for k in out)
+        assert all(not k.startswith("context_") for k in out)
+
+        # Missing entirely
+        out2 = _flatten_event({"event": "x", "timestamp": 1.0})
+        assert all(not k.startswith("property_") for k in out2)
+        assert all(not k.startswith("context_") for k in out2)
+
+    def test_flatten_event_raises_on_nested_dict_in_properties(self):
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        with pytest.raises(TypeError, match="property.nested"):
+            _flatten_event(
+                {
+                    "event": "x",
+                    "timestamp": 1.0,
+                    "properties": {"nested": {"inner": 1}},
+                }
+            )
+
+    def test_flatten_event_raises_on_list_in_properties(self):
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        with pytest.raises(TypeError, match="property.items"):
+            _flatten_event({"event": "x", "timestamp": 1.0, "properties": {"items": [1, 2, 3]}})
+
+    def test_flatten_event_raises_on_nested_dict_in_context(self):
+        from kimi_cli.telemetry.transport import _flatten_event
+
+        with pytest.raises(TypeError, match="context.meta"):
+            _flatten_event(
+                {
+                    "event": "x",
+                    "timestamp": 1.0,
+                    "context": {"meta": {"nested": True}},
+                }
+            )
+
+    def test_build_payload_user_id_at_top(self):
+        from kimi_cli.telemetry.transport import _build_payload
+
+        payload = _build_payload(
+            [{"event": "started", "timestamp": 1.0, "properties": {}}],
+            device_id="dev-1",
+        )
+        assert payload["user_id"] == "kfc_device_id_dev-1"
+        assert "events" in payload
+
+    def test_build_payload_events_are_flat_and_prefixed(self):
+        from kimi_cli.telemetry.transport import _build_payload
+
+        payload = _build_payload(
+            [
+                {
+                    "event_id": "e1",
+                    "event": "tool_call",
+                    "timestamp": 1.0,
+                    "device_id": "dev-1",
+                    "session_id": "sess-1",
+                    "properties": {"tool_name": "bash", "approved": True},
+                    "context": {"version": "1.0", "platform": "darwin"},
+                }
+            ],
+            device_id="dev-1",
+        )
+        event = payload["events"][0]
+        assert event["event"] == "kfc_tool_call"
+        assert event["event_id"] == "e1"
+        assert event["device_id"] == "dev-1"
+        assert event["session_id"] == "sess-1"
+        assert event["property_tool_name"] == "bash"
+        assert event["property_approved"] is True
+        assert event["context_version"] == "1.0"
+        assert event["context_platform"] == "darwin"
+        assert "properties" not in event
+        assert "context" not in event
+
+    def test_build_payload_does_not_mutate_input(self):
+        from kimi_cli.telemetry.transport import _build_payload
+
+        events = [{"event": "started", "timestamp": 1.0, "properties": {"x": 1}}]
+        _build_payload(events, device_id="dev-1")
+        assert events[0]["event"] == "started"
+        assert events[0]["properties"] == {"x": 1}
+
+    @pytest.mark.asyncio
+    async def test_send_drops_events_on_schema_violation(self, tmp_path: Path):
+        """A non-primitive value in properties must drop the batch (not loop on disk).
+
+        Retrying would hit the same TypeError on every reload, so falling
+        back to disk would create a permanently stuck file.
+        """
+        transport = AsyncTransport(
+            device_id="dev-bad",
+            endpoint="https://mock.test/events",
+            retry_backoffs_s=(),
+        )
+        # properties value is a dict — violates _assert_primitive.
+        events_in = [
+            {"event": "bad", "timestamp": 1.0, "properties": {"nested": {"x": 1}}},
+        ]
+
+        sent = AsyncMock()
+        with (
+            patch("kimi_cli.telemetry.transport._telemetry_dir", return_value=tmp_path),
+            patch.object(transport, "_send_http", new=sent),
+        ):
+            # Must not raise — schema error is caught and events dropped.
+            await transport.send(events_in)
+
+        # No HTTP attempt
+        sent.assert_not_awaited()
+        # No disk fallback (would loop forever)
+        assert list(tmp_path.glob("failed_*.jsonl")) == []
+
+    @pytest.mark.asyncio
+    async def test_send_persists_nested_shape_on_failure(self, tmp_path: Path):
+        """save_to_disk must write the original nested events, not the flat payload."""
+        from kimi_cli.telemetry.transport import _TransientError
+
+        transport = AsyncTransport(
+            device_id="dev-disk",
+            endpoint="https://mock.test/events",
+            retry_backoffs_s=(),
+        )
+        events_in = [
+            {
+                "event": "tool_call",
+                "timestamp": 1.0,
+                "properties": {"tool_name": "bash"},
+                "context": {"version": "1.0"},
+            }
+        ]
+
+        with (
+            patch("kimi_cli.telemetry.transport._telemetry_dir", return_value=tmp_path),
+            patch.object(
+                transport,
+                "_send_http",
+                new_callable=AsyncMock,
+                side_effect=_TransientError("503"),
+            ),
+        ):
+            await transport.send(events_in)
+
+        saved_files = list(tmp_path.glob("failed_*.jsonl"))
+        assert len(saved_files) == 1
+        persisted = json.loads(saved_files[0].read_text().strip())
+        # Bare name + nested shape preserved — no prefix, no flattening.
+        assert persisted["event"] == "tool_call"
+        assert persisted["properties"] == {"tool_name": "bash"}
+        assert persisted["context"] == {"version": "1.0"}
+        assert "property_tool_name" not in persisted
+        assert "user_id" not in persisted
