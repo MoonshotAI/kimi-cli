@@ -44,8 +44,10 @@ import { PermissionClosureBuilder } from './permission-closure-builder.js';
 import type { PermissionRule } from './permission/index.js';
 import type { SessionEventBus } from './session-event-bus.js';
 import type { SkillManager } from './skill/index.js';
+import { SkillInlineWriter } from './skill/inline-writer.js';
 import { SoulLifecycleGate } from './soul-lifecycle-gate.js';
 import { SoulRegistry } from './soul-registry.js';
+import { SkillTool } from '../tools/skill-tool.js';
 import type { SubagentStore } from './subagent-store.js';
 import { runSubagentTurn } from './subagent-runner.js';
 import { TurnLifecycleTracker } from './turn-lifecycle-tracker.js';
@@ -193,6 +195,31 @@ export class SoulPlus {
       toolRegistry.push(new AgentTool(soulRegistry, 'agent_main'));
     }
 
+    // ── Slice 7.1 (决策 #99) — SkillTool wiring ─────────────────────
+    // Register the autonomous-invocation `Skill` tool only when a
+    // SkillManager was supplied AND it has at least one skill the model
+    // is allowed to invoke. The tool depends on `subagentHost` for
+    // fork-mode skills, so AgentTool's `hasSubagentInfra` gate above
+    // already guarantees `soulRegistry` is fully wired.
+    if (deps.skillManager !== undefined) {
+      const invocableCount = deps.skillManager.listInvocableSkills().length;
+      if (invocableCount > 0) {
+        const inlineWriter = new SkillInlineWriter({
+          contextState,
+          sessionJournal,
+        });
+        toolRegistry.push(
+          new SkillTool({
+            skillManager: deps.skillManager,
+            inlineWriter,
+            subagentHost: soulRegistry,
+            // queryDepth defaults to 0 at the top level; nested skill
+            // calls receive their depth via SpawnRequest.skillContext.
+          }),
+        );
+      }
+    }
+
     const dynamicInjectionManager = createDefaultDynamicInjectionManager();
     const wakeScheduler = new WakeQueueScheduler();
     const turnLifecycle = new TurnLifecycleTracker();
@@ -255,6 +282,35 @@ export class SoulPlus {
     };
   }
 
+  /**
+   * Slice 7.1 (决策 #99) — async initialisation hook called by
+   * SessionManager (`createSession` / `resumeSession`) after construction
+   * but before the session goes hot.
+   *
+   * Current responsibilities:
+   *   - Inject the durable `<system-reminder>` skill listing into
+   *     ContextState so the next `buildMessages()` surfaces every
+   *     invocable skill to the model. No-op when no SkillManager was
+   *     supplied or no skill is invocable.
+   *
+   * Safe to call more than once; later calls re-inject a fresh listing
+   * (the `DISREGARD any earlier skill listings` preamble is what makes
+   * the model ignore stale entries).
+   */
+  async init(): Promise<void> {
+    const skillManager = this.components.skillManager;
+    if (skillManager !== undefined) {
+      await skillManager.injectSkillListing(this.journal.contextState);
+    }
+  }
+
+  // ── Slice 7.1 test/inspection helper ─────────────────────────────────
+
+  /** Read-only view of the assembled tool list (post SkillTool wiring). */
+  getTools(): readonly Tool[] {
+    return this.infra.toolRegistry;
+  }
+
   // ── Slice 2.4 public API ─────────────────────────────────────────────
 
   /**
@@ -301,7 +357,12 @@ export class SoulPlus {
     if (skillManager === undefined) {
       throw new Error('SoulPlus.activateSkill: no SkillManager was provided in SoulPlusDeps');
     }
-    await skillManager.activate(name, args, { contextState: this.journal.contextState });
+    // Slice 7.1 (决策 #99) — forward sessionJournal so `user-slash`
+    // invocations land in wire.jsonl as `skill_invoked` records.
+    await skillManager.activate(name, args, {
+      contextState: this.journal.contextState,
+      sessionJournal: this.journal.sessionJournal,
+    });
   }
 
   /**

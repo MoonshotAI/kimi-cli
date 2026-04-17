@@ -384,6 +384,16 @@ export interface AssistantMessage {
   stop_reason?: StopReason | undefined;
 }
 
+// ── Tool metadata (v2 §9-F.2 / Slice 7.2 决策 #100) ─────────────────────
+
+export interface ToolMetadata {
+  readonly source: 'builtin' | 'mcp' | 'sdk' | 'plugin';
+  /** Server identifier for `source === 'mcp'`. */
+  readonly serverId?: string | undefined;
+  /** Original (un-prefixed) tool name as advertised by the source. */
+  readonly originalName?: string | undefined;
+}
+
 // ── Tool interface (v2 §9-F.2 + Slice 5 optional fields) ────────────────
 
 export interface Tool<Input = unknown, Output = unknown> {
@@ -410,6 +420,13 @@ export interface Tool<Input = unknown, Output = unknown> {
    * `src/tools/display-defaults.ts`.
    */
   readonly display?: ToolDisplayHooks<Input, Output> | undefined;
+  /**
+   * Slice 7.2 (决策 #100) — provenance metadata. Lets the orchestrator /
+   * UI tell built-in tools apart from MCP- or plugin-supplied ones, and
+   * preserves the original (un-prefixed) name for MCP tools so a
+   * downstream router can locate the source tool definition.
+   */
+  readonly metadata?: ToolMetadata | undefined;
   execute(
     toolCallId: string,
     args: Input,

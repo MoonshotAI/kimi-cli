@@ -124,6 +124,20 @@ export type ToolsMethod =
 // Core → Client reverse RPC methods
 export type ReverseRpcMethod = 'approval.request' | 'question.ask' | 'tool.call' | 'hook.request';
 
+// Slice 7.2 (决策 #100) — MCP request methods. Phase 7 only registers the
+// names; the router returns NotImplemented until later slices land.
+export type McpMethod =
+  | 'mcp.list'
+  | 'mcp.connect'
+  | 'mcp.disconnect'
+  | 'mcp.refresh'
+  | 'mcp.listResources'
+  | 'mcp.readResource'
+  | 'mcp.listPrompts'
+  | 'mcp.getPrompt'
+  | 'mcp.startAuth'
+  | 'mcp.resetAuth';
+
 // All wire methods
 export type WireMethod =
   | ProcessMethod
@@ -131,7 +145,8 @@ export type WireMethod =
   | ManagementMethod
   | ConfigMethod
   | ToolsMethod
-  | ReverseRpcMethod;
+  | ReverseRpcMethod
+  | McpMethod;
 
 // ── Event method literals (§3.6) ─────────────────────────────────────────
 
@@ -158,7 +173,14 @@ export type WireEventMethod =
   | 'system_prompt.changed'
   | 'model.changed'
   | 'thinking.changed'
-  | 'plan.display';
+  | 'plan.display'
+  // Slice 7.2 (决策 #100) — MCP lifecycle events.
+  | 'mcp.connected'
+  | 'mcp.disconnected'
+  | 'mcp.error'
+  | 'mcp.tools_changed'
+  | 'mcp.resources_changed'
+  | 'mcp.auth_required';
 
 // ── Channel type (§6.1) ─────────────────────────────────────────────────
 

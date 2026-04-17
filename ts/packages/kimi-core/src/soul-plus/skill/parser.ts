@@ -127,6 +127,11 @@ const KNOWN_ALIASES: Record<string, string> = {
   allowed_tools: 'allowedTools',
   'disallowed-tools': 'disallowedTools',
   disallowed_tools: 'disallowedTools',
+  // Slice 7.1 (决策 #99)
+  'when-to-use': 'whenToUse',
+  when_to_use: 'whenToUse',
+  'disable-model-invocation': 'disableModelInvocation',
+  disable_model_invocation: 'disableModelInvocation',
 };
 
 function normaliseMetadata(raw: Record<string, unknown>): SkillMetadata {

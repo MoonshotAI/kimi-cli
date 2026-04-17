@@ -69,15 +69,35 @@ import type {
 } from '../soul/index.js';
 import { ContextOverflowError } from '../soul/errors.js';
 
+export interface TokenRefresher {
+  refresh(): Promise<void>;
+}
+
 export interface KosongAdapterOptions {
   readonly provider: ChatProvider;
+  /**
+   * Slice 7.4 / 决策 #94 — OAuth token refresher. When provided, a 401
+   * response from the provider triggers a single `refresh()` + chat retry.
+   * Refresh failure or a second 401 ends the loop with the original error.
+   */
+  readonly tokenRefresher?: TokenRefresher | undefined;
+  /** Maximum retries for transient (network / 5xx / 429) errors. Default 3. */
+  readonly maxRetries?: number | undefined;
+  /** Base delay for exponential backoff. Default 1000 ms. */
+  readonly baseRetryDelayMs?: number | undefined;
 }
 
 export class KosongAdapter implements KosongAdapterInterface {
   private readonly provider: ChatProvider;
+  private readonly tokenRefresher: TokenRefresher | undefined;
+  private readonly maxRetries: number;
+  private readonly baseRetryDelayMs: number;
 
   constructor(options: KosongAdapterOptions) {
     this.provider = options.provider;
+    this.tokenRefresher = options.tokenRefresher;
+    this.maxRetries = options.maxRetries ?? 3;
+    this.baseRetryDelayMs = options.baseRetryDelayMs ?? 1000;
   }
 
   async chat(params: ChatParams): Promise<ChatResponse> {
@@ -87,6 +107,45 @@ export class KosongAdapter implements KosongAdapterInterface {
     // the rejection here keeps stack traces tidy for Soul-level callers.)
     params.signal.throwIfAborted();
 
+    // OAuth 401 layer wraps the transient-retry layer. A 401 short-circuits
+    // any in-flight retry budget — we refresh once and re-enter `runOnce`
+    // with a fresh retry budget. A second 401 (or refresh failure) escapes.
+    try {
+      return await this.runWithTransientRetry(params);
+    } catch (error) {
+      if (!isUnauthorizedError(error) || this.tokenRefresher === undefined) {
+        throw error;
+      }
+      try {
+        await this.tokenRefresher.refresh();
+      } catch {
+        throw error;
+      }
+      return this.runWithTransientRetry(params);
+    }
+  }
+
+  private async runWithTransientRetry(params: ChatParams): Promise<ChatResponse> {
+    let attempt = 0;
+    for (;;) {
+      params.signal.throwIfAborted();
+      try {
+        return await this.runOnce(params);
+      } catch (error) {
+        // ContextOverflowError is a deterministic terminal — never retry.
+        if (error instanceof ContextOverflowError) throw error;
+        // Auth errors bubble to the outer 401 handler.
+        if (isUnauthorizedError(error)) throw error;
+        if (!isRetryableError(error)) throw error;
+        if (attempt >= this.maxRetries) throw error;
+        const delay = this.baseRetryDelayMs * 2 ** attempt + Math.floor(Math.random() * 500);
+        attempt += 1;
+        await sleep(delay, params.signal);
+      }
+    }
+  }
+
+  private async runOnce(params: ChatParams): Promise<ChatResponse> {
     // Q2: only route effort through withThinking() when the caller
     // provided one. `undefined` means "use the provider's default" — which
     // was configured at provider construction time. Calling
@@ -293,6 +352,47 @@ function mapUsage(raw: KosongTokenUsage | null): TokenUsage {
     usage.cache_write = raw.inputCacheCreation;
   }
   return usage;
+}
+
+// ── Slice 7.4 (决策 #94) — retry classification + abort-aware sleep ─────
+
+const RETRYABLE_NODE_ERROR_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED']);
+const RETRYABLE_HTTP_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+export function isRetryableError(err: unknown): boolean {
+  if (err === null || typeof err !== 'object') return false;
+  const obj = err as Record<string, unknown>;
+  const code = obj['code'];
+  if (typeof code === 'string' && RETRYABLE_NODE_ERROR_CODES.has(code)) return true;
+  const status = obj['status'];
+  if (typeof status === 'number' && RETRYABLE_HTTP_STATUSES.has(status)) return true;
+  return false;
+}
+
+function isUnauthorizedError(err: unknown): boolean {
+  if (err === null || typeof err !== 'object') return false;
+  const obj = err as Record<string, unknown>;
+  if (obj['status'] === 401) return true;
+  const code = obj['code'];
+  if (typeof code === 'string' && code.toLowerCase() === 'unauthorized') return true;
+  return false;
+}
+
+async function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : new Error('aborted');
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function mapFinishReason(reason: KosongFinishReason | null): StopReason | undefined {

@@ -234,13 +234,18 @@ export interface ToolDeniedRecord {
 // having to inspect two slightly-different unions.
 export type ApprovalDisplay = ToolInputDisplay;
 
+export type McpApprovalReason = 'elicitation' | 'auth' | 'tool_call';
+
 export type ApprovalSource =
   | { kind: 'soul'; agent_id: string }
   | { kind: 'subagent'; agent_id: string }
   | { kind: 'turn'; turn_id: string }
-  | { kind: 'session'; session_id: string };
+  | { kind: 'session'; session_id: string }
+  | { kind: 'mcp'; server_id: string; reason: McpApprovalReason };
 
 // ── Management-class records (Slice 4 / 7 / 8 scope) ──────────────────
+
+export type SkillInvocationTrigger = 'user-slash' | 'claude-proactive' | 'nested-skill';
 
 export interface SkillInvokedRecord {
   type: 'skill_invoked';
@@ -253,6 +258,10 @@ export interface SkillInvokedRecord {
     execution_mode: 'inline' | 'fork';
     original_input: string;
     sub_agent_id?: string | undefined;
+    /** Slice 7.1 (决策 #99) — what kicked off this invocation. */
+    invocation_trigger?: SkillInvocationTrigger | undefined;
+    /** Slice 7.1 (决策 #99) — depth of recursive Skill→Skill calls. */
+    query_depth?: number | undefined;
   };
 }
 
@@ -268,6 +277,10 @@ export interface SkillCompletedRecord {
     success: boolean;
     error?: string | undefined;
     sub_agent_id?: string | undefined;
+    /** Slice 7.1 (决策 #99) — mirrors the originating skill_invoked record. */
+    invocation_trigger?: SkillInvocationTrigger | undefined;
+    /** Slice 7.1 (决策 #99) — mirrors the originating skill_invoked record. */
+    query_depth?: number | undefined;
   };
 }
 
@@ -688,10 +701,17 @@ const _rawApprovalSourceSchema = z.discriminatedUnion('kind', [
     kind: z.literal('session'),
     session_id: z.string(),
   }),
+  z.object({
+    kind: z.literal('mcp'),
+    server_id: z.string(),
+    reason: z.enum(['elicitation', 'auth', 'tool_call']),
+  }),
 ]);
 export const ApprovalSourceSchema: z.ZodType<ApprovalSource> = _rawApprovalSourceSchema;
 
 // ── Management-class schemas ──────────────────────────────────────────
+
+const skillInvocationTriggerEnum = z.enum(['user-slash', 'claude-proactive', 'nested-skill']);
 
 const _rawSkillInvokedRecordSchema = z.object({
   type: z.literal('skill_invoked'),
@@ -704,6 +724,8 @@ const _rawSkillInvokedRecordSchema = z.object({
     execution_mode: z.enum(['inline', 'fork']),
     original_input: z.string(),
     sub_agent_id: z.string().optional(),
+    invocation_trigger: skillInvocationTriggerEnum.optional(),
+    query_depth: z.number().optional(),
   }),
 });
 export const SkillInvokedRecordSchema: z.ZodType<SkillInvokedRecord> = _rawSkillInvokedRecordSchema;
@@ -720,6 +742,8 @@ const _rawSkillCompletedRecordSchema = z.object({
     success: z.boolean(),
     error: z.string().optional(),
     sub_agent_id: z.string().optional(),
+    invocation_trigger: skillInvocationTriggerEnum.optional(),
+    query_depth: z.number().optional(),
   }),
 });
 export const SkillCompletedRecordSchema: z.ZodType<SkillCompletedRecord> =
@@ -958,6 +982,13 @@ const _driftGuard_ApprovalSource: AssertEqual<
   ApprovalSource
 > = true;
 void _driftGuard_ApprovalSource;
+// Slice 7.1 (决策 #99) — keep the canonical-trigger enum type in lock-step
+// with its zod schema so a new value lands on both sides simultaneously.
+const _driftGuard_SkillInvocationTrigger: AssertEqual<
+  z.infer<typeof skillInvocationTriggerEnum>,
+  SkillInvocationTrigger
+> = true;
+void _driftGuard_SkillInvocationTrigger;
 const _driftGuard_SkillInvokedRecord: AssertEqual<
   z.infer<typeof _rawSkillInvokedRecordSchema>,
   SkillInvokedRecord

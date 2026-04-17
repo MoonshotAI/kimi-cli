@@ -100,6 +100,41 @@ describe('PathConfig derived paths', () => {
   });
 });
 
+// ── Slice 7.2 (决策 #100) — MCP path helpers ──────────────────────────
+
+describe('PathConfig MCP paths (Phase 7)', () => {
+  const config = new PathConfig({ home: '/test/kimi' });
+
+  it('mcpConfigPath → $KIMI_HOME/mcp.json', () => {
+    expect(config.mcpConfigPath()).toBe('/test/kimi/mcp.json');
+  });
+
+  it('mcpProjectConfigPath(workDir) → <workDir>/.kimi/mcp.json', () => {
+    expect(config.mcpProjectConfigPath('/work/project-a')).toBe(
+      '/work/project-a/.kimi/mcp.json',
+    );
+  });
+
+  it('mcpAuthDir → $KIMI_HOME/mcp-auth', () => {
+    expect(config.mcpAuthDir()).toBe('/test/kimi/mcp-auth');
+  });
+
+  it('mcpAuthPath(serverId) → $KIMI_HOME/mcp-auth/<serverId>.json', () => {
+    expect(config.mcpAuthPath('playwright')).toBe('/test/kimi/mcp-auth/playwright.json');
+  });
+
+  it('enterpriseMcpConfigPath() returns a non-empty absolute path', () => {
+    // Enterprise config is a system-wide location (e.g. /etc/kimi/managed
+    // on Linux, a ProgramData path on Windows). Exact value is
+    // platform-specific; assert absolute and distinct from the personal
+    // mcpConfigPath.
+    const p = config.enterpriseMcpConfigPath();
+    expect(typeof p).toBe('string');
+    expect(p.length).toBeGreaterThan(0);
+    expect(p).not.toBe(config.mcpConfigPath());
+  });
+});
+
 // ── Isolation guarantee (§9.10) ─────────────────────────────────────────
 
 describe('PathConfig isolation', () => {

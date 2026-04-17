@@ -334,6 +334,10 @@ export class SessionManager {
     // ContextState callback returns the real turn_id during Soul turns.
     turnManagerRef = soulPlus.getTurnManager();
 
+    // Slice 7.1 (决策 #99) — durable skill-listing injection. Idempotent
+    // and a no-op when no SkillManager was supplied.
+    await soulPlus.init();
+
     // Apply initial permission mode if provided.
     if (options.permissionMode !== undefined) {
       turnManagerRef.setPermissionMode(options.permissionMode);
@@ -495,6 +499,12 @@ export class SessionManager {
 
     // Wire the deferred TurnManager ref.
     turnManagerRef = soulPlus.getTurnManager();
+
+    // Slice 7.1 (决策 #99) — durable skill-listing injection. Resumed
+    // sessions also get a fresh listing (skill rosters can change between
+    // process boots); the `DISREGARD any earlier skill listings` preamble
+    // ensures the model does not double-count.
+    await soulPlus.init();
 
     // Restore permission mode from replay if it was changed.
     if (effectivePermissionMode !== undefined) {

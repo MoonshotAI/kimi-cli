@@ -114,7 +114,11 @@ describe('KosongAdapter — explicit PTL/413 mapping (决策 #96 L3)', () => {
       code: 'rate_limit_exceeded',
     });
     const provider = attachThrow(new MockChatProvider([{ type: 'text', text: 'x' }]), rateErr);
-    const adapter = new KosongAdapter({ provider });
+    // Slice 7.4: 429 is now retryable per 决策 #94. This test pins the
+    // overflow-mapping decision (429 must NOT become a ContextOverflowError),
+    // not the retry policy — disable retries here so the original error
+    // surfaces immediately instead of after exponential backoff.
+    const adapter = new KosongAdapter({ provider, maxRetries: 0 });
 
     await expect(adapter.chat(makeParams())).rejects.toMatchObject({
       message: 'rate limit exceeded',

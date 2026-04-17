@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ApprovalRequestRecordSchema,
   ApprovalResponseRecordSchema,
+  ApprovalSourceSchema,
   AssistantMessageRecordSchema,
   CompactionRecordSchema,
   ContextEditRecordSchema,
@@ -470,6 +471,87 @@ describe('management-class records (Slice 4/7/8 scope, schema only for Slice 1)'
     expect(parsed.data.success).toBe(false);
   });
 
+  // ── Slice 7.1 (决策 #99) — invocation_trigger / query_depth ────────────
+
+  it('skill_invoked accepts invocation_trigger + query_depth (Phase 7)', () => {
+    const parsed = SkillInvokedRecordSchema.parse({
+      type: 'skill_invoked',
+      seq: 1,
+      time: 1,
+      turn_id: 't1',
+      agent_type: 'main',
+      data: {
+        skill_name: 'do-foo',
+        execution_mode: 'inline',
+        original_input: 'args',
+        invocation_trigger: 'claude-proactive',
+        query_depth: 2,
+      },
+    });
+    const d = parsed.data as unknown as {
+      invocation_trigger?: string;
+      query_depth?: number;
+    };
+    expect(d.invocation_trigger).toBe('claude-proactive');
+    expect(d.query_depth).toBe(2);
+  });
+
+  it('skill_invoked rejects unknown invocation_trigger values', () => {
+    const result = SkillInvokedRecordSchema.safeParse({
+      type: 'skill_invoked',
+      seq: 1,
+      time: 1,
+      turn_id: 't1',
+      data: {
+        skill_name: 'x',
+        execution_mode: 'inline',
+        original_input: '',
+        invocation_trigger: 'bogus-trigger',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('skill_invoked accepts the three canonical invocation_trigger values', () => {
+    for (const trigger of ['user-slash', 'claude-proactive', 'nested-skill'] as const) {
+      const r = SkillInvokedRecordSchema.safeParse({
+        type: 'skill_invoked',
+        seq: 1,
+        time: 1,
+        turn_id: 't1',
+        data: {
+          skill_name: 's',
+          execution_mode: 'inline',
+          original_input: '',
+          invocation_trigger: trigger,
+        },
+      });
+      expect(r.success).toBe(true);
+    }
+  });
+
+  it('skill_completed accepts invocation_trigger + query_depth (Phase 7)', () => {
+    const parsed = SkillCompletedRecordSchema.parse({
+      type: 'skill_completed',
+      seq: 1,
+      time: 1,
+      turn_id: 't1',
+      data: {
+        skill_name: 'do-foo',
+        execution_mode: 'inline',
+        success: true,
+        invocation_trigger: 'nested-skill',
+        query_depth: 3,
+      },
+    });
+    const d = parsed.data as unknown as {
+      invocation_trigger?: string;
+      query_depth?: number;
+    };
+    expect(d.invocation_trigger).toBe('nested-skill');
+    expect(d.query_depth).toBe(3);
+  });
+
   it('approval_request carries ApprovalDisplay + ApprovalSource', () => {
     const parsed = ApprovalRequestRecordSchema.parse({
       type: 'approval_request',
@@ -520,6 +602,52 @@ describe('management-class records (Slice 4/7/8 scope, schema only for Slice 1)'
       },
     });
     expect(parsed.data.from_agent).toBe('alice');
+  });
+
+  // ── Slice 7.2 (决策 #100) — ApprovalSource mcp branch ─────────────────
+
+  it('ApprovalSource accepts the mcp branch with server_id + reason', () => {
+    for (const reason of ['elicitation', 'auth', 'tool_call'] as const) {
+      const parsed = ApprovalSourceSchema.parse({
+        kind: 'mcp',
+        server_id: 'playwright',
+        reason,
+      });
+      expect(parsed.kind).toBe('mcp');
+      const narrow = parsed as unknown as { kind: string; server_id: string; reason: string };
+      expect(narrow.server_id).toBe('playwright');
+      expect(narrow.reason).toBe(reason);
+    }
+  });
+
+  it('ApprovalSource mcp branch rejects unknown reason values', () => {
+    const result = ApprovalSourceSchema.safeParse({
+      kind: 'mcp',
+      server_id: 'x',
+      reason: 'nope',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('approval_request record carries an mcp-source approval', () => {
+    const parsed = ApprovalRequestRecordSchema.parse({
+      type: 'approval_request',
+      seq: 10,
+      time: 1,
+      turn_id: 't1',
+      step: 1,
+      data: {
+        request_id: 'req_mcp',
+        tool_call_id: 'tc_mcp',
+        tool_name: 'mcp__playwright__click',
+        action: 'call_tool',
+        display: { kind: 'command', command: 'click #submit' },
+        source: { kind: 'mcp', server_id: 'playwright', reason: 'tool_call' },
+      },
+    });
+    const src = parsed.data.source as unknown as { kind: string; server_id: string };
+    expect(src.kind).toBe('mcp');
+    expect(src.server_id).toBe('playwright');
   });
 
   it('ownership_changed allows null old_owner', () => {
