@@ -64,11 +64,9 @@ import type {
   WorkspaceConfig,
 } from '@moonshot-ai/core';
 import { localKaos } from '@moonshot-ai/kaos';
-import { render } from 'ink';
-import React from 'react';
 
-import App from './app/App.js';
-import type { AppState } from './app/context.js';
+import { InteractiveMode } from './app/InteractiveMode.js';
+import type { AppState } from './app/state.js';
 import { runPrintMode } from './app/PrintMode.js';
 import { createProgram } from './cli/commands.js';
 import type { CLIOptions, UIMode } from './cli/options.js';
@@ -80,7 +78,7 @@ import { KimiCoreClient } from './wire/kimi-core-client.js';
 import type { PerSessionToolContext } from './wire/kimi-core-client.js';
 import { join } from 'node:path';
 
-import { runLoginFlow } from './auth/login-flow.js';
+import { runLoginFlow } from './auth/login-flow-tui.js';
 
 // ---------------------------------------------------------------------------
 // Version
@@ -534,25 +532,11 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     version,
   };
 
-  try { execSync('stty -ixon', { stdio: 'ignore' }); } catch { /* ignore */ }
-
-  const instance = render(
-    React.createElement(App, {
-      wireClient: bootstrap.wireClient,
-      initialState,
-      ...(bootstrap.oauthManagers !== undefined
-        ? { oauthManagers: bootstrap.oauthManagers }
-        : {}),
-    }),
-    {
-      exitOnCtrlC: false,
-      patchConsole: true,
-      maxFps: 15,
-      incrementalRendering: true,
-    },
-  );
-
-  void instance.waitUntilExit().then(async () => {
+  const mode = new InteractiveMode(bootstrap.wireClient, initialState, {
+    ...(bootstrap.oauthManagers !== undefined ? { oauthManagers: bootstrap.oauthManagers } : {}),
+    ...(bootstrap.mcpManager !== undefined ? { mcpManager: bootstrap.mcpManager } : {}),
+  });
+  mode.onExit = async () => {
     await bootstrap.wireClient.dispose();
     if (bootstrap.mcpManager !== undefined) {
       try {
@@ -564,7 +548,9 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     }
     process.stderr.write(`\nTo resume this session: kimi -r ${bootstrap.sessionId}\n\n`);
     process.exit(0);
-  });
+  };
+  try { execSync('stty -ixon', { stdio: 'ignore' }); } catch { /* ignore */ }
+  mode.start();
 }
 
 async function runPrint(opts: CLIOptions): Promise<void> {

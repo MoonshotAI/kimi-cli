@@ -10,7 +10,8 @@
  *   - abort signal cancels the pending request with a synthetic response
  */
 
-import type { ApprovalRequest, ApprovalSource } from '@moonshot-ai/core';
+import type { ApprovalRequest, ApprovalSource, PermissionRule } from '@moonshot-ai/core';
+import { actionToRulePattern } from '@moonshot-ai/core';
 import { describe, it, expect } from 'vitest';
 
 import { TUIApprovalRuntime } from '../../src/wire/tui-approval-runtime.js';
@@ -123,6 +124,108 @@ describe('TUIApprovalRuntime', () => {
     await expect(pending).resolves.toEqual({
       approved: false,
       feedback: 'cancelled by signal',
+    });
+  });
+
+  it('approve_for_session resolves the caller with approved: true', async () => {
+    const runtime = new TUIApprovalRuntime({
+      sessionId: 'ses_1',
+      emit: () => {
+        // discard
+      },
+      allocateRequestId: () => 'appr_session',
+    });
+
+    const pending = runtime.request(makeRequest());
+    runtime.resolveFromClient('appr_session', { response: 'approved_for_session' });
+    await expect(pending).resolves.toEqual({ approved: true });
+    expect(runtime.pendingCount).toBe(0);
+  });
+
+  it('approve_for_session cascades to same-action pending peers', async () => {
+    const runtime = new TUIApprovalRuntime({
+      sessionId: 'ses_1',
+      emit: () => {
+        // discard
+      },
+      allocateRequestId: (() => {
+        let n = 0;
+        return () => {
+          n += 1;
+          return `appr_${String(n)}`;
+        };
+      })(),
+    });
+
+    const first = runtime.request(makeRequest());
+    const second = runtime.request(makeRequest({ toolCallId: 'tc_2' }));
+    // A peer with a different action should NOT be cascaded.
+    const other = runtime.request(makeRequest({ toolCallId: 'tc_3', action: 'edit file' }));
+
+    runtime.resolveFromClient('appr_1', { response: 'approved_for_session' });
+
+    await expect(first).resolves.toEqual({ approved: true });
+    // The same-action peer is resolved via queueMicrotask.
+    await expect(second).resolves.toEqual({ approved: true });
+
+    expect(runtime.pendingCount).toBe(1);
+    runtime.resolveFromClient('appr_3', { response: 'approved' });
+    await expect(other).resolves.toEqual({ approved: true });
+  });
+
+  it('approve_for_session short-circuits subsequent same-action requests within the same turn', async () => {
+    const emitted: WireMessage[] = [];
+    const runtime = new TUIApprovalRuntime({
+      sessionId: 'ses_1',
+      emit: (msg) => emitted.push(msg),
+      allocateRequestId: (() => {
+        let n = 0;
+        return () => {
+          n += 1;
+          return `appr_${String(n)}`;
+        };
+      })(),
+    });
+
+    const first = runtime.request(makeRequest());
+    expect(emitted).toHaveLength(1);
+    runtime.resolveFromClient('appr_1', { response: 'approved_for_session' });
+    await expect(first).resolves.toEqual({ approved: true });
+
+    // A subsequent request with the same action MUST NOT emit another
+    // approval.request envelope and MUST resolve immediately as approved.
+    const second = await runtime.request(makeRequest({ toolCallId: 'tc_2' }));
+    expect(second).toEqual({ approved: true });
+    expect(emitted).toHaveLength(1);
+
+    // Different action still goes through the normal flow.
+    const other = runtime.request(makeRequest({ toolCallId: 'tc_3', action: 'edit file' }));
+    expect(emitted).toHaveLength(2);
+    runtime.resolveFromClient('appr_2', { response: 'rejected' });
+    await expect(other).resolves.toEqual({ approved: false });
+  });
+
+  it('approve_for_session invokes ruleInjector with a session-runtime rule', async () => {
+    const rules: PermissionRule[] = [];
+    const runtime = new TUIApprovalRuntime({
+      sessionId: 'ses_1',
+      emit: () => {
+        // discard
+      },
+      allocateRequestId: () => 'appr_rule',
+      ruleInjector: (rule) => rules.push(rule),
+    });
+
+    const pending = runtime.request(makeRequest());
+    runtime.resolveFromClient('appr_rule', { response: 'approved_for_session' });
+    await pending;
+
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toEqual({
+      decision: 'allow',
+      scope: 'session-runtime',
+      pattern: actionToRulePattern('run command', 'Bash'),
+      reason: 'approve_for_session: run command',
     });
   });
 
