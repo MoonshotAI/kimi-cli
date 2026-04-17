@@ -72,7 +72,12 @@ export class WireHandler {
   private queuedMessages: QueuedMessage[] = [];
   private queueIdCounter = 0;
 
-  constructor(wireClient: WireClient, sessionId: string, delegate: WireHandlerDelegate) {
+  constructor(
+    wireClient: WireClient,
+    sessionId: string,
+    delegate: WireHandlerDelegate,
+    private readonly colors: import('../theme/colors.js').ColorPalette,
+  ) {
     this.wireClient = wireClient;
     this.sessionId = sessionId;
     this.delegate = delegate;
@@ -309,10 +314,10 @@ export class WireHandler {
         break;
       }
       case 'step.interrupted': {
-        const data = msg.data as StepInterruptedData;
+        void (msg.data as StepInterruptedData);
         this.flushTurnBuffers('idle');
         this.delegate.addTranscriptEntry(
-          this.makeEntry('status', `Step ${String(data.step)} interrupted: ${data.reason}`, 'plain'),
+          this.makeEntry('status', 'Interrupted by user', 'plain', { color: this.colors.error }),
         );
         break;
       }

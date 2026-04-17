@@ -127,7 +127,7 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.editor = new CustomEditor(this.ui, editorTheme);
     this.footer = new FooterComponent(this.state, this.colors);
 
-    this.wireHandler = new WireHandler(wireClient, initialState.sessionId, this);
+    this.wireHandler = new WireHandler(wireClient, initialState.sessionId, this, this.colors);
 
     if (this.oauthManagers !== undefined && this.oauthManagers.size > 0) {
       const managersMap = new Map<string, AppOAuthManager>();
@@ -163,6 +163,10 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.editor.onEscape = () => {
       if (this.showingSessionPicker) {
         this.hideSessionPicker();
+        return;
+      }
+      if (this.state.isStreaming) {
+        this.wireHandler.cancelStream();
       }
     };
 
