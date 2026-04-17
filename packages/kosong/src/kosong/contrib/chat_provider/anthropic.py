@@ -240,7 +240,7 @@ class Anthropic:
         model = self._model.lower()
         if "opus" not in model:
             return False
-        match = re.search(r"opus[.-]?(\d+)[.-](\d+)", model)
+        match = re.search(r"opus[.-]?(\d+)[.-](\d{1,3})(?!\d)", model)
         if match:
             major, minor = int(match.group(1)), int(match.group(2))
             return (major, minor) >= (4, 6)
