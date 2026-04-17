@@ -53,20 +53,20 @@ const versionCommand: SlashCommandDef = {
 const clearCommand: SlashCommandDef = {
   name: 'clear',
   aliases: ['reset'],
-  description: 'Clear context and start fresh',
+  description: 'Clear the transcript (keep the session)',
   mode: 'both',
   async execute() {
-    return { type: 'reload' };
+    return { type: 'reload', action: 'clear' };
   },
 };
 
 const newCommand: SlashCommandDef = {
   name: 'new',
   aliases: [],
-  description: 'Start a new session',
+  description: 'Start a fresh session in the current workspace',
   mode: 'both',
   async execute() {
-    return { type: 'reload' };
+    return { type: 'reload', action: 'new' };
   },
 };
 
@@ -98,12 +98,13 @@ const titleCommand: SlashCommandDef = {
 const themeCommand: SlashCommandDef = {
   name: 'theme',
   aliases: [],
-  description: 'Toggle dark/light theme',
+  description: 'Toggle dark/light theme and redraw the UI',
   mode: 'both',
   async execute(_args, ctx) {
     const newTheme = ctx.appState.theme === 'dark' ? 'light' : 'dark';
     ctx.setAppState({ theme: newTheme });
-    return ok(`Theme: ${newTheme}`);
+    // Rebuild palettes / redraw transcript via the reload pipeline.
+    return { type: 'reload', action: 'theme' };
   },
 };
 

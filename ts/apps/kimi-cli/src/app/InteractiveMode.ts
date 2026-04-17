@@ -99,6 +99,9 @@ export class InteractiveMode implements WireHandlerDelegate {
   private pendingToolComponents = new Map<string, ToolCallComponent>();
   private toolOutputExpanded = false;
   private lastHistoryContent: string | undefined;
+  /** Raw transcript entries — kept so `/theme` and `/clear` can rebuild
+   * the corresponding components from the same source data. */
+  private transcriptEntries: TranscriptEntry[] = [];
 
   private toasts: ToastNotification[] = [];
   private sessions: SessionInfo[] = [];
@@ -328,6 +331,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   }
 
   addTranscriptEntry(entry: TranscriptEntry): void {
+    this.transcriptEntries.push(entry);
     const component = this.createTranscriptComponent(entry);
     if (component) {
       this.transcriptContainer.addChild(component);
@@ -760,6 +764,101 @@ export class InteractiveMode implements WireHandlerDelegate {
     }
   }
 
+  // ── Reload / re-render ───────────────────────────────────────────
+
+  private async performReload(action: import('../slash/index.js').ReloadAction): Promise<void> {
+    if (this.state.isStreaming) {
+      this.addTranscriptEntry({
+        id: `reload-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Cannot /${action} while streaming — press Esc or Ctrl-C first.`,
+        color: this.colors.error,
+      });
+      return;
+    }
+
+    switch (action) {
+      case 'clear':
+        this.clearTranscriptAndRedraw();
+        this.addTranscriptEntry({
+          id: `reload-${String(Date.now())}`,
+          kind: 'status',
+          renderMode: 'plain',
+          content: 'Transcript cleared.',
+          color: this.colors.textDim,
+        });
+        break;
+      case 'new':
+        await this.spawnFreshSession();
+        break;
+      case 'theme':
+        this.applyThemeChange();
+        break;
+    }
+    this.ui.requestRender();
+  }
+
+  private clearTranscriptAndRedraw(): void {
+    this.transcriptEntries = [];
+    this.transcriptContainer.clear();
+    this.pendingToolComponents.clear();
+    this.streamingComponent = undefined;
+    this.renderWelcome();
+  }
+
+  private rebuildTranscriptFromEntries(): void {
+    this.transcriptContainer.clear();
+    this.pendingToolComponents.clear();
+    this.streamingComponent = undefined;
+    this.renderWelcome();
+    for (const entry of this.transcriptEntries) {
+      const component = this.createTranscriptComponent(entry);
+      if (component !== null) {
+        this.transcriptContainer.addChild(component);
+      }
+    }
+  }
+
+  private applyThemeChange(): void {
+    this.colors = getColorPalette(this.state.theme);
+    this.markdownTheme = createMarkdownTheme(this.colors);
+    const editorTheme = createEditorTheme(this.colors);
+    this.editor.borderColor = editorTheme.borderColor;
+    this.footer.setColors(this.colors);
+    this.rebuildTranscriptFromEntries();
+  }
+
+  private async spawnFreshSession(): Promise<void> {
+    try {
+      this.wireHandler.stop();
+      const { session_id: newId } = await this.wireClient.createSession(this.state.workDir);
+      // Build a new WireHandler rooted at the new session so its
+      // subscribe loop listens on the right queue.
+      this.wireHandler = new WireHandler(this.wireClient, newId, this, this.colors);
+      void this.wireHandler.start();
+      this.setState({ sessionId: newId });
+      this.clearTranscriptAndRedraw();
+      this.addTranscriptEntry({
+        id: `reload-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Started a new session (${newId}).`,
+        color: this.colors.textDim,
+      });
+      void this.fetchSessions();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `reload-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Failed to start a new session: ${msg}`,
+        color: this.colors.error,
+      });
+    }
+  }
+
   private externalEditorRunning = false;
 
   private async openExternalEditor(): Promise<void> {
@@ -901,12 +1000,7 @@ export class InteractiveMode implements WireHandlerDelegate {
         void this.stop();
         break;
       case 'reload':
-        this.addTranscriptEntry({
-          id: `slash-${Date.now()}`,
-          kind: 'status',
-          renderMode: 'plain',
-          content: 'Session reset. (Full reload not yet implemented)',
-        });
+        void this.performReload(result.action);
         break;
       case 'ok': {
         if (!result.message) return;
