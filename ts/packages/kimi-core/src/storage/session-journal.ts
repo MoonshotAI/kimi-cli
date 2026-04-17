@@ -19,7 +19,8 @@ export type SessionJournalRecord = Extract<
       | 'subagent_spawned'
       | 'subagent_completed'
       | 'subagent_failed'
-      | 'ownership_changed';
+      | 'ownership_changed'
+      | 'session_meta_changed';
   }
 >;
 
@@ -51,6 +52,13 @@ export interface SessionJournal {
   appendSubagentCompleted(data: JournalInput<'subagent_completed'>): Promise<void>;
   appendSubagentFailed(data: JournalInput<'subagent_failed'>): Promise<void>;
   appendOwnershipChanged(data: JournalInput<'ownership_changed'>): Promise<void>;
+  /**
+   * Phase 16 / 决策 #113 — sessionMeta wire-truth append. Consumed only
+   * by SessionMetaService on user-triggered edits (title / tags / …);
+   * derived fields (turn_count / last_model / last_updated) never land
+   * through this channel — they stay in memory + state.json.
+   */
+  appendSessionMetaChanged(data: JournalInput<'session_meta_changed'>): Promise<void>;
 }
 
 export interface InMemorySessionJournal extends SessionJournal {
@@ -124,6 +132,12 @@ export class WiredSessionJournalImpl implements SessionJournal {
   }
 
   async appendOwnershipChanged(data: JournalInput<'ownership_changed'>): Promise<void> {
+    await this.journalWriter.append(data);
+  }
+
+  async appendSessionMetaChanged(
+    data: JournalInput<'session_meta_changed'>,
+  ): Promise<void> {
     await this.journalWriter.append(data);
   }
 }
@@ -205,6 +219,12 @@ export class InMemorySessionJournalImpl implements InMemorySessionJournal {
 
   async appendOwnershipChanged(data: JournalInput<'ownership_changed'>): Promise<void> {
     this.push<'ownership_changed'>(data);
+  }
+
+  async appendSessionMetaChanged(
+    data: JournalInput<'session_meta_changed'>,
+  ): Promise<void> {
+    this.push<'session_meta_changed'>(data);
   }
 
   getRecords(): readonly SessionJournalRecord[] {

@@ -28,6 +28,7 @@ import type { ToolCallOrchestrator } from './orchestrator.js';
 import type { PermissionClosureBuilder } from './permission-closure-builder.js';
 import type { PermissionRule } from './permission/index.js';
 import type { SessionEventBus } from './session-event-bus.js';
+import type { SessionMetaService } from './session-meta-service.js';
 import type { SkillManager } from './skill/index.js';
 import type { SoulLifecycleGate } from './soul-lifecycle-gate.js';
 import type { SoulRegistry } from './soul-registry.js';
@@ -64,6 +65,12 @@ export interface ServicesFacade {
   readonly approvalRuntime: ApprovalRuntime | undefined;
   readonly compaction: CompactionOrchestrator;
   readonly permissionBuilder: PermissionClosureBuilder;
+  /**
+   * Phase 16 / 决策 #113 — sessionMeta single-truth facade. Undefined
+   * when the host did not supply `stateCache` + `initialMeta` through
+   * SoulPlusDeps (test harnesses that skip the SessionManager path).
+   */
+  readonly sessionMeta: SessionMetaService | undefined;
 }
 
 /**

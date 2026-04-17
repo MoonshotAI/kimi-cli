@@ -54,6 +54,22 @@ export interface ReplayProjectedState {
    * TurnManager so a session paused mid-plan-mode comes back in plan mode.
    */
   readonly planMode: boolean | undefined;
+  /**
+   * Phase 16 / 决策 #113 — merged sessionMeta patch, built by folding
+   * `session_meta_changed` records in seq order and deriving:
+   *   - `turn_count` from the count of `turn_begin` records
+   *   - `last_model` from the last `model_changed` record
+   * dirty-exit resume uses this to overwrite state.json derived fields.
+   */
+  readonly sessionMetaPatch: {
+    title?: string | undefined;
+    tags?: string[] | undefined;
+    description?: string | undefined;
+    archived?: boolean | undefined;
+    color?: string | undefined;
+    turn_count: number;
+    last_model?: string | undefined;
+  };
 }
 
 /**
@@ -72,6 +88,7 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
   let permissionMode: PermissionMode | undefined;
   let tokenCount = 0;
   let planMode: boolean | undefined;
+  const sessionMetaPatch: ReplayProjectedState['sessionMetaPatch'] = { turn_count: 0 };
 
   for (const r of records) {
     if (r.seq > lastSeq) {
@@ -158,6 +175,27 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
 
       case 'model_changed': {
         model = r.new_model;
+        sessionMetaPatch.last_model = r.new_model;
+        break;
+      }
+
+      case 'turn_begin': {
+        // Phase 16 — derived turn_count. Other than this, turn_begin is a
+        // management-class record that does not touch conversation state.
+        sessionMetaPatch.turn_count += 1;
+        break;
+      }
+
+      case 'session_meta_changed': {
+        // Phase 16 — fold wire-truth patch fields. Absent fields keep
+        // prior values; tags uses full-replace semantics.
+        if (r.patch.title !== undefined) sessionMetaPatch.title = r.patch.title;
+        if (r.patch.tags !== undefined) sessionMetaPatch.tags = [...r.patch.tags];
+        if (r.patch.description !== undefined) {
+          sessionMetaPatch.description = r.patch.description;
+        }
+        if (r.patch.archived !== undefined) sessionMetaPatch.archived = r.patch.archived;
+        if (r.patch.color !== undefined) sessionMetaPatch.color = r.patch.color;
         break;
       }
 
@@ -206,5 +244,6 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
     permissionMode,
     tokenCount,
     planMode,
+    sessionMetaPatch,
   };
 }

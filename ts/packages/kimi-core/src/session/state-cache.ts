@@ -51,6 +51,25 @@ export interface SessionState {
    * records) takes precedence when available.
    */
   plan_mode?: boolean | undefined;
+  /**
+   * Phase 16 / 决策 #113 — wire-truth tag list, mirrored from
+   * `session_meta_changed` records by SessionMetaService.
+   */
+  tags?: string[] | undefined;
+  /** Phase 16 — reserved wire-truth field (Phase 2+ wire method). */
+  description?: string | undefined;
+  /** Phase 16 — reserved wire-truth field (Phase 2+ wire method). */
+  archived?: boolean | undefined;
+  /**
+   * Phase 16 / 决策 #113 / D7 — startup-consistency marker.
+   * - `'dirty'` is written at `createSession` time and on every
+   *   subsequent write while the session is live.
+   * - `'clean'` is written by `closeSession` just before shutdown.
+   * - Missing is treated as `'dirty'` (conservative default — legacy
+   *   sessions written before Phase 16 replay through the correctness
+   *   path rather than the fast path).
+   */
+  last_exit_code?: 'clean' | 'dirty' | undefined;
 }
 
 export class StateCache {

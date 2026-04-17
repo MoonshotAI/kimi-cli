@@ -281,3 +281,55 @@ describe('SessionManager.getSessionUsage', () => {
     expect(after.total_input_tokens).toBe(999);
   });
 });
+
+// ── Phase 16 / 决策 #113 — setSessionTags + active/inactive rename (T6) ───
+
+describe('SessionManager.setSessionTags (Phase 16 / T6)', () => {
+  it('writes tags into state.json via the read-merge-write lock on an inactive session', async () => {
+    await seedSession('ses_a', { model: 'kimi-k2.5' });
+    await mgr.setSessionTags('ses_a', ['work', 'urgent']);
+    const state = await readState('ses_a');
+    expect(state.tags).toEqual(['work', 'urgent']);
+    // model + other fields preserved through the merge.
+    expect(state.model).toBe('kimi-k2.5');
+  });
+
+  it('overwrites the prior tag list (replace semantics, todo D2/D3)', async () => {
+    await seedSession('ses_a', { tags: ['old', 'stale'] });
+    await mgr.setSessionTags('ses_a', ['fresh']);
+    const state = await readState('ses_a');
+    expect(state.tags).toEqual(['fresh']);
+  });
+
+  it('throws when the session does not exist', async () => {
+    await expect(mgr.setSessionTags('ses_missing', ['x'])).rejects.toThrow(
+      /not found|does not exist/i,
+    );
+  });
+});
+
+describe('SessionManager.renameSession interaction with SessionMetaService (Phase 16 / T6)', () => {
+  it('an inactive-session rename still lands custom_title in state.json (fallback path)', async () => {
+    // Non-active sessions route through the fallback that writes state.json
+    // directly (todo Step 4.1 trade-off). wire.jsonl is NOT touched in this
+    // branch; the D7 clean-exit strategy tolerates the gap.
+    await seedSession('ses_inactive');
+    await mgr.renameSession('ses_inactive', 'fallback-title');
+    const state = await readState('ses_inactive');
+    expect(state.custom_title).toBe('fallback-title');
+  });
+
+  it('concurrent rename + setSessionTags serialise through withStateLock', async () => {
+    await seedSession('ses_a', { model: 'kimi-k2.5' });
+    // Fire both simultaneously; either order is valid as long as BOTH fields
+    // end up on disk (no clobber).
+    await Promise.all([
+      mgr.renameSession('ses_a', 'race-title'),
+      mgr.setSessionTags('ses_a', ['a', 'b']),
+    ]);
+    const state = await readState('ses_a');
+    expect(state.custom_title).toBe('race-title');
+    expect(state.tags).toEqual(['a', 'b']);
+    expect(state.model).toBe('kimi-k2.5');
+  });
+});

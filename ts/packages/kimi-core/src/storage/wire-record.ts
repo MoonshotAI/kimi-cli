@@ -396,6 +396,33 @@ export interface OwnershipChangedRecord {
   new_owner: string;
 }
 
+// ── Session metadata patch (Phase 16 / 决策 #113 / ADR-X.113) ───────────
+//
+// Unlike the 5 ContextState config records (model_changed / system_prompt_changed
+// / thinking_changed / plan_mode_changed / tools_changed / permission_mode_changed),
+// this record does NOT feed ContextState and does NOT alter LLM messages[].
+// It is consumed exclusively by SessionMetaService to maintain the in-memory
+// SessionMeta view and the state.json derived cache (v2 §6.13.7 / §4.4).
+//
+// `patch` is partial: absent fields preserve prior values; replay merges
+// records in seq order. `tags` uses full-replace semantics — future atomic
+// add/remove would require an explicit operation field.
+
+export interface SessionMetaChangedRecord {
+  type: 'session_meta_changed';
+  seq: number;
+  time: number;
+  patch: {
+    title?: string | undefined;
+    tags?: string[] | undefined;
+    description?: string | undefined;
+    archived?: boolean | undefined;
+    color?: string | undefined;
+  };
+  source: 'user' | 'auto' | 'system';
+  reason?: string | undefined;
+}
+
 // ── Reserved: context edit (logical rewind / edit, §4.7) ───────────────
 
 export interface ContextEditRecord {
@@ -439,7 +466,8 @@ export type WireRecord =
   | SubagentCompletedRecord
   | SubagentFailedRecord
   | OwnershipChangedRecord
-  | ContextEditRecord;
+  | ContextEditRecord
+  | SessionMetaChangedRecord;
 
 export type WireRecordType = WireRecord['type'];
 
@@ -881,6 +909,23 @@ const _rawOwnershipChangedRecordSchema = z.object({
 export const OwnershipChangedRecordSchema: z.ZodType<OwnershipChangedRecord> =
   _rawOwnershipChangedRecordSchema;
 
+const _rawSessionMetaChangedRecordSchema = z.object({
+  type: z.literal('session_meta_changed'),
+  seq: z.number(),
+  time: z.number(),
+  patch: z.object({
+    title: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    description: z.string().optional(),
+    archived: z.boolean().optional(),
+    color: z.string().optional(),
+  }),
+  source: z.enum(['user', 'auto', 'system']),
+  reason: z.string().optional(),
+});
+export const SessionMetaChangedRecordSchema: z.ZodType<SessionMetaChangedRecord> =
+  _rawSessionMetaChangedRecordSchema;
+
 const _rawContextEditRecordSchema = z.object({
   type: z.literal('context_edit'),
   seq: z.number(),
@@ -1057,6 +1102,11 @@ const _driftGuard_ContextEditRecord: AssertEqual<
   ContextEditRecord
 > = true;
 void _driftGuard_ContextEditRecord;
+const _driftGuard_SessionMetaChangedRecord: AssertEqual<
+  z.infer<typeof _rawSessionMetaChangedRecordSchema>,
+  SessionMetaChangedRecord
+> = true;
+void _driftGuard_SessionMetaChangedRecord;
 
 // Note: WireRecordSchema is a z.ZodType<WireRecord> discriminatedUnion over
 // all the `_raw*Schema` branches above; each branch already has its own
@@ -1089,4 +1139,5 @@ export const WireRecordSchema: z.ZodType<WireRecord> = z.discriminatedUnion('typ
   _rawSubagentFailedRecordSchema,
   _rawOwnershipChangedRecordSchema,
   _rawContextEditRecordSchema,
+  _rawSessionMetaChangedRecordSchema,
 ]);

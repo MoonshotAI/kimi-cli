@@ -45,7 +45,38 @@ export type SoulEvent =
       type: 'compaction.end';
       tokensBefore?: number | undefined;
       tokensAfter?: number | undefined;
-    };
+    }
+  /**
+   * Phase 16 / 决策 #113 — SessionMetaService fans out a patch event after
+   * each wire-truth write (title / tags / …). Derived-field mutations
+   * (turn_count / last_model) MUST NOT emit this event — see §6.13.7 D6.
+   */
+  | {
+      type: 'session_meta.changed';
+      data: {
+        patch: {
+          title?: string | undefined;
+          tags?: string[] | undefined;
+          description?: string | undefined;
+          archived?: boolean | undefined;
+          color?: string | undefined;
+        };
+        source: 'user' | 'auto' | 'system';
+      };
+    }
+  /**
+   * Phase 16 — turn lifecycle tick consumed by SessionMetaService to
+   * increment the derived `turn_count`. Carried through the EventBus so
+   * SessionMetaService can subscribe without a back-channel (铁律 6 —
+   * Soul does not learn about sessionMeta).
+   */
+  | { type: 'turn.end' }
+  /**
+   * Phase 16 — model change notification consumed by SessionMetaService
+   * to derive `last_model`. Emitted alongside the existing
+   * `model_changed` wire record.
+   */
+  | { type: 'model.changed'; data: { new_model: string } };
 
 export interface EventSink {
   emit(event: SoulEvent): void;

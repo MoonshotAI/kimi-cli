@@ -16,6 +16,7 @@ import {
   OwnershipChangedRecordSchema,
   PermissionModeChangedRecordSchema,
   PlanModeChangedRecordSchema,
+  SessionMetaChangedRecordSchema,
   SkillCompletedRecordSchema,
   SkillInvokedRecordSchema,
   SubagentCompletedRecordSchema,
@@ -921,5 +922,83 @@ describe('WireRecordSchema discriminated union', () => {
       time: 1,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+// ── Phase 16 / 决策 #113 — session_meta_changed record ────────────────
+
+describe('session_meta_changed record (Phase 16 / T1)', () => {
+  it('parses a canonical title patch from the user', () => {
+    const parsed = SessionMetaChangedRecordSchema.parse({
+      type: 'session_meta_changed',
+      seq: 10,
+      time: 1_712_790_000_000,
+      patch: { title: 'Fix the auth bug' },
+      source: 'user',
+    });
+    expect(parsed.type).toBe('session_meta_changed');
+    expect(parsed.patch.title).toBe('Fix the auth bug');
+    expect(parsed.source).toBe('user');
+  });
+
+  it('parses a tags-only patch (full replace semantics)', () => {
+    const parsed = SessionMetaChangedRecordSchema.parse({
+      type: 'session_meta_changed',
+      seq: 11,
+      time: 1,
+      patch: { tags: ['work', 'urgent'] },
+      source: 'user',
+    });
+    expect(parsed.patch.tags).toEqual(['work', 'urgent']);
+  });
+
+  it('accepts the reserved Phase 2+ fields (description / archived / color)', () => {
+    const parsed = SessionMetaChangedRecordSchema.parse({
+      type: 'session_meta_changed',
+      seq: 12,
+      time: 1,
+      patch: { description: 'demo', archived: true, color: '#f00' },
+      source: 'system',
+      reason: 'migration',
+    });
+    expect(parsed.patch.description).toBe('demo');
+    expect(parsed.patch.archived).toBe(true);
+    expect(parsed.patch.color).toBe('#f00');
+    expect(parsed.reason).toBe('migration');
+  });
+
+  it('accepts the three source enum values', () => {
+    for (const source of ['user', 'auto', 'system'] as const) {
+      const parsed = SessionMetaChangedRecordSchema.parse({
+        type: 'session_meta_changed',
+        seq: 1,
+        time: 1,
+        patch: { title: 'x' },
+        source,
+      });
+      expect(parsed.source).toBe(source);
+    }
+  });
+
+  it('rejects an unknown source value', () => {
+    const result = SessionMetaChangedRecordSchema.safeParse({
+      type: 'session_meta_changed',
+      seq: 1,
+      time: 1,
+      patch: { title: 'x' },
+      source: 'nope',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('routes via the top-level WireRecordSchema union', () => {
+    const parsed = WireRecordSchema.parse({
+      type: 'session_meta_changed',
+      seq: 42,
+      time: 1,
+      patch: { title: 'via union' },
+      source: 'user',
+    });
+    expect(parsed.type).toBe('session_meta_changed');
   });
 });

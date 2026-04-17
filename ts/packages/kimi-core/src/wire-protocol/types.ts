@@ -103,7 +103,10 @@ export type ManagementMethod =
   | 'session.compact'
   | 'session.subscribe'
   | 'session.unsubscribe'
-  | 'session.attach';
+  | 'session.attach'
+  // Phase 16 / 决策 #113 — sessionMeta wire methods.
+  | 'session.getMeta'
+  | 'session.setTags';
 
 // Config channel (instant, session-scoped)
 export type ConfigMethod =
@@ -180,7 +183,9 @@ export type WireEventMethod =
   | 'mcp.error'
   | 'mcp.tools_changed'
   | 'mcp.resources_changed'
-  | 'mcp.auth_required';
+  | 'mcp.auth_required'
+  // Phase 16 / 决策 #113 — sessionMeta patch event.
+  | 'session_meta.changed';
 
 // ── Channel type (§6.1) ─────────────────────────────────────────────────
 
@@ -392,6 +397,41 @@ export interface StatusUpdateEventData {
   token_usage?: unknown;
   plan_mode?: boolean | undefined;
   model?: string | undefined;
+}
+
+// ── Phase 16 / 决策 #113 — sessionMeta wire method payloads ────────────
+
+export interface SessionRenameRequestData {
+  title: string;
+}
+
+export interface SessionSetTagsRequestData {
+  tags: readonly string[];
+}
+
+export interface SessionGetMetaResponseData {
+  meta: {
+    session_id: string;
+    created_at: number;
+    title?: string | undefined;
+    tags?: readonly string[] | undefined;
+    description?: string | undefined;
+    archived?: boolean | undefined;
+    last_model?: string | undefined;
+    turn_count: number;
+    last_updated: number;
+  };
+}
+
+export interface SessionMetaChangedEventData {
+  patch: {
+    title?: string | undefined;
+    tags?: readonly string[] | undefined;
+    description?: string | undefined;
+    archived?: boolean | undefined;
+    color?: string | undefined;
+  };
+  source: 'user' | 'auto' | 'system';
 }
 
 export interface SessionErrorEventData {

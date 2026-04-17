@@ -642,6 +642,13 @@ export class TurnManager {
         agentType: this.agentType,
         usage: result?.usage,
       });
+
+      // Phase 16 / 决策 #113 — SessionMetaService counts each turn through
+      // this sink emit to derive `turn_count`. Consumers that already see
+      // the lifecycle event above ignore this one; it exists because
+      // derived-field listeners (like sessionMeta) are wired to the
+      // SessionEventBus, not to the lifecycle tracker.
+      this.deps.sink.emit({ type: 'turn.end' });
     }
   }
 }

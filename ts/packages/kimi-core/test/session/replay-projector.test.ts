@@ -317,4 +317,111 @@ describe('projectReplayState', () => {
     const result = projectReplayState(records);
     expect(result.systemPrompt).toBe('second agent');
   });
+
+  // ── Phase 16 / 决策 #113 — sessionMetaPatch (T5) ─────────────────────
+
+  describe('sessionMetaPatch projection (Phase 16 / T5)', () => {
+    it('merges session_meta_changed records in seq order', () => {
+      const records: WireRecord[] = [
+        {
+          type: 'session_meta_changed',
+          seq: 1,
+          time: 1,
+          patch: { title: 'first' },
+          source: 'user',
+        },
+        {
+          type: 'session_meta_changed',
+          seq: 2,
+          time: 2,
+          patch: { tags: ['a', 'b'] },
+          source: 'user',
+        },
+        {
+          type: 'session_meta_changed',
+          seq: 3,
+          time: 3,
+          patch: { title: 'final' },
+          source: 'auto',
+        },
+      ];
+      const result = projectReplayState(records);
+      expect(result.sessionMetaPatch.title).toBe('final');
+      expect(result.sessionMetaPatch.tags).toEqual(['a', 'b']);
+    });
+
+    it('derives turn_count from turn_begin records', () => {
+      const mkTurnBegin = (seq: number, id: string): WireRecord => ({
+        type: 'turn_begin',
+        seq,
+        time: seq,
+        turn_id: id,
+        agent_type: 'main',
+        input_kind: 'user',
+        user_input: 'x',
+      });
+      const records: WireRecord[] = [
+        mkTurnBegin(1, 'turn_1'),
+        mkTurnBegin(2, 'turn_2'),
+        mkTurnBegin(3, 'turn_3'),
+        mkTurnBegin(4, 'turn_4'),
+        mkTurnBegin(5, 'turn_5'),
+      ];
+      const result = projectReplayState(records);
+      expect(result.sessionMetaPatch.turn_count).toBe(5);
+    });
+
+    it('derives last_model from the last model_changed record', () => {
+      const records: WireRecord[] = [
+        { type: 'model_changed', seq: 1, time: 1, old_model: 'a', new_model: 'b' },
+        { type: 'model_changed', seq: 2, time: 2, old_model: 'b', new_model: 'c' },
+      ];
+      const result = projectReplayState(records);
+      expect(result.sessionMetaPatch.last_model).toBe('c');
+    });
+
+    it('returns an empty sessionMetaPatch (turn_count=0) for an empty wire', () => {
+      const result = projectReplayState([]);
+      expect(result.sessionMetaPatch.turn_count).toBe(0);
+      expect(result.sessionMetaPatch.title).toBeUndefined();
+      expect(result.sessionMetaPatch.tags).toBeUndefined();
+      expect(result.sessionMetaPatch.last_model).toBeUndefined();
+    });
+
+    it('combines meta patch + turn_count + last_model together', () => {
+      const records: WireRecord[] = [
+        {
+          type: 'session_meta_changed',
+          seq: 1,
+          time: 1,
+          patch: { title: 'mixed', tags: ['p'] },
+          source: 'user',
+        },
+        {
+          type: 'turn_begin',
+          seq: 2,
+          time: 2,
+          turn_id: 'turn_1',
+          agent_type: 'main',
+          input_kind: 'user',
+        },
+        { type: 'model_changed', seq: 3, time: 3, old_model: 'a', new_model: 'latest' },
+        {
+          type: 'turn_begin',
+          seq: 4,
+          time: 4,
+          turn_id: 'turn_2',
+          agent_type: 'main',
+          input_kind: 'user',
+        },
+      ];
+      const result = projectReplayState(records);
+      expect(result.sessionMetaPatch).toMatchObject({
+        title: 'mixed',
+        tags: ['p'],
+        turn_count: 2,
+        last_model: 'latest',
+      });
+    });
+  });
 });

@@ -259,6 +259,15 @@ export async function runSubagentTurn(
   // embedders that only care about the `AgentResult`). The outer
   // contentCollector layer captures content deltas for summary
   // continuation regardless of which base sink is in play.
+  //
+  // Phase 16 tech debt (deferred to Phase 17+): the child SoulPlus is
+  // NOT given its own SessionMetaService. A subagent that would
+  // ordinarily call `setTitle` has nowhere to write; the parent only
+  // sees the change if a future SessionMetaService emits
+  // `session_meta.changed` through this wrapper. To close the loop
+  // properly, subagent-runner needs to (a) mkdir
+  // `subagents/<agent_id>/state.json`, (b) seed a child StateCache +
+  // initialMeta, (c) pass both through to the child SoulPlus deps.
   const contentCollector: string[] = [];
   let baseSink: EventSink;
   if (parentEventBus !== undefined && childJournalWriter !== undefined) {

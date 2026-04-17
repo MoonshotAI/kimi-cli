@@ -31,6 +31,7 @@ import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
 import type { PermissionMode, PermissionRule } from '../soul-plus/permission/index.js';
 import { DefaultSessionControl, type SessionControlHandler } from '../soul-plus/session-control.js';
 import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
+import type { SessionMeta } from '../soul-plus/session-meta-service.js';
 import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
@@ -284,9 +285,14 @@ export class SessionManager {
       initialModel: options.model,
       ...(options.systemPrompt !== undefined ? { initialSystemPrompt: options.systemPrompt } : {}),
       currentTurnId: () => turnManagerRef?.getCurrentTurnId() ?? 'no_turn',
+      // Phase 16 / 决策 #113 — wire sink so ContextState.applyConfigChange
+      // can fan out `model.changed` to SessionMetaService.
+      sink: eventBus,
     });
 
-    // Write initial state.json
+    // Write initial state.json. Phase 16 / 决策 #113 / D7 — mark
+    // `last_exit_code: 'dirty'` so a crash between now and the next
+    // clean shutdown routes resume through the replay-correctness path.
     const stateCache = new StateCache(this.paths.statePath(sessionId));
     const now = Date.now();
     await stateCache.write({
@@ -296,7 +302,20 @@ export class SessionManager {
       created_at: now,
       updated_at: now,
       workspace_dir: options.workspaceDir,
+      last_exit_code: 'dirty',
     });
+
+    // Phase 16 — initial SessionMeta view passed into SoulPlus. Derived
+    // fields start zero (nothing has happened yet). `last_model` tracks
+    // the boot model for the first turn.
+    const initialMeta: SessionMeta = {
+      session_id: sessionId,
+      created_at: now,
+      turn_count: 0,
+      last_updated: now,
+      last_model: options.model,
+      last_exit_code: 'dirty',
+    };
 
     // Assemble SoulPlus — shares the lifecycle state machine created
     // above so JournalWriter, Runtime.lifecycle, and TurnManager all
@@ -327,6 +346,10 @@ export class SessionManager {
       // permission + approval pipeline. Absent the option, TurnManager
       // continues to use its always-allow default.
       ...(options.orchestrator !== undefined ? { orchestrator: options.orchestrator } : {}),
+      // Phase 16 — plumb StateCache + initialMeta into SoulPlus so the
+      // SessionMetaService slot on the services facade is wired.
+      stateCache,
+      initialMeta,
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -428,6 +451,11 @@ export class SessionManager {
 
     const sessionJournal = new WiredSessionJournalImpl(journalWriter);
 
+    // Phase 16 — build the eventBus early so WiredContextState can wire
+    // it as a sink for derived-field fan-out (`model.changed`).
+    const { SessionEventBus: EventBusCtor } = await import('../soul-plus/session-event-bus.js');
+    const eventBus = options.eventBus ?? new EventBusCtor();
+
     // 4. Create WiredContextState hydrated from replay.
     // Deferred TurnManager ref — same pattern as createSession.
     let turnManagerRef: TurnManager | undefined;
@@ -443,6 +471,7 @@ export class SessionManager {
       currentTurnId: () => turnManagerRef?.getCurrentTurnId() ?? 'no_turn',
       initialHistory: projected.messages,
       initialTokenCount: projected.tokenCount,
+      sink: eventBus,
     });
 
     // 5. Passive journal repair (§8.1) — append synthetic records for
@@ -462,13 +491,49 @@ export class SessionManager {
         ...stateData,
         status: 'active',
         updated_at: Date.now(),
+        // Phase 16 / D7 — re-mark `dirty` on resume. A subsequent
+        // closeSession flips it back to `clean`.
+        last_exit_code: 'dirty',
       });
     }
 
-    // 7. Assemble SoulPlus
-    const { SessionEventBus: EventBusCtor } = await import('../soul-plus/session-event-bus.js');
-    const eventBus = options.eventBus ?? new EventBusCtor();
+    // Phase 16 / 决策 #113 / D7 — build initialMeta by folding
+    // state.json + replay. `last_exit_code === 'clean'` chooses the
+    // fast path (trust state.json); anything else falls back to the
+    // correctness path (replay wins on wire-truth + derived fields).
+    const replayedMeta = projected.sessionMetaPatch;
+    const isClean = stateData?.last_exit_code === 'clean';
+    const now = Date.now();
+    const pickTitle = isClean
+      ? (stateData?.custom_title ?? replayedMeta.title)
+      : (replayedMeta.title ?? stateData?.custom_title);
+    const pickTags = isClean
+      ? (stateData?.tags ?? replayedMeta.tags)
+      : (replayedMeta.tags ?? stateData?.tags);
+    const pickDescription = isClean
+      ? (stateData?.description ?? replayedMeta.description)
+      : (replayedMeta.description ?? stateData?.description);
+    const pickArchived = isClean
+      ? (stateData?.archived ?? replayedMeta.archived)
+      : (replayedMeta.archived ?? stateData?.archived);
+    const pickLastModel = isClean
+      ? (stateData?.model ?? replayedMeta.last_model)
+      : (replayedMeta.last_model ?? stateData?.model);
+    const initialMeta: SessionMeta = {
+      session_id: sessionId,
+      created_at: stateData?.created_at ?? now,
+      turn_count: replayedMeta.turn_count,
+      last_updated: stateData?.updated_at ?? now,
+      ...(pickTitle !== undefined ? { title: pickTitle } : {}),
+      ...(pickTags !== undefined ? { tags: [...pickTags] } : {}),
+      ...(pickDescription !== undefined ? { description: pickDescription } : {}),
+      ...(pickArchived !== undefined ? { archived: pickArchived } : {}),
+      ...(pickLastModel !== undefined ? { last_model: pickLastModel } : {}),
+      last_exit_code: 'dirty',
+    };
 
+    // 7. Assemble SoulPlus (eventBus was built earlier so ContextState
+    // could receive it as `sink`).
     const effectivePermissionMode = projected.permissionMode ?? options.permissionMode;
 
     const soulPlusDeps: SoulPlusDeps = {
@@ -494,6 +559,9 @@ export class SessionManager {
       // Slice 4.2 — forward the optional orchestrator on the resume
       // path too so resumed sessions run the same tool pipeline.
       ...(options.orchestrator !== undefined ? { orchestrator: options.orchestrator } : {}),
+      // Phase 16 — wire SessionMetaService with the merged initialMeta.
+      stateCache,
+      initialMeta,
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -639,6 +707,20 @@ export class SessionManager {
       throw new Error('renameSession: title cannot be empty or whitespace-only');
     }
     return this.withStateLock(sessionId, async () => {
+      // Phase 16 / 决策 #113 — active path goes through
+      // SessionMetaService so the rename lands in wire.jsonl and fans
+      // out as a `session_meta.changed` event. If the live session's
+      // SessionMetaService was not wired (should never happen on the
+      // create/resume paths), `getSessionMeta()` throws rather than
+      // silently degrading to a state.json-only write.
+      const live = this.sessions.get(sessionId);
+      if (live !== undefined) {
+        await live.soulPlus.getSessionMeta().setTitle(trimmed, 'user');
+        this.usageAggregator.invalidate(this.paths.wirePath(sessionId));
+        return;
+      }
+      // Fallback: inactive session. Direct state.json write — wire.jsonl
+      // is not touched here; D7 (clean-exit fast path) covers this gap.
       const statePath = this.paths.statePath(sessionId);
       const cache = new StateCache(statePath);
       const existing = await cache.read();
@@ -650,9 +732,35 @@ export class SessionManager {
         custom_title: trimmed,
         updated_at: Date.now(),
       });
-      // Drop any cached usage for this wire — rename touched state, not
-      // wire.jsonl, but the cache window may have produced stale answers
-      // for callers that re-read immediately after a turn boundary.
+      this.usageAggregator.invalidate(this.paths.wirePath(sessionId));
+    });
+  }
+
+  /**
+   * Phase 16 / 决策 #113 — persist a session's tag list (full replace).
+   * Active path goes through SessionMetaService (wire + event); inactive
+   * sessions write directly to state.json.
+   */
+  async setSessionTags(sessionId: string, tags: readonly string[]): Promise<void> {
+    const next = [...tags];
+    return this.withStateLock(sessionId, async () => {
+      const live = this.sessions.get(sessionId);
+      if (live !== undefined) {
+        await live.soulPlus.getSessionMeta().setTags(next, 'user');
+        this.usageAggregator.invalidate(this.paths.wirePath(sessionId));
+        return;
+      }
+      const statePath = this.paths.statePath(sessionId);
+      const cache = new StateCache(statePath);
+      const existing = await cache.read();
+      if (existing === null) {
+        throw new Error(`setSessionTags: session "${sessionId}" not found`);
+      }
+      await cache.write({
+        ...existing,
+        tags: next,
+        updated_at: Date.now(),
+      });
       this.usageAggregator.invalidate(this.paths.wirePath(sessionId));
     });
   }
@@ -732,6 +840,14 @@ export class SessionManager {
       return;
     }
     return this.withStateLock(sessionId, async () => {
+      // Phase 16 / D7 — drain the SessionMetaService debounced flush so
+      // any in-flight meta writes land on state.json before we take
+      // over with the final merge below.
+      const sessionMetaService = managed.soulPlus.tryGetSessionMeta();
+      if (sessionMetaService !== undefined) {
+        await sessionMetaService.flushPending();
+      }
+
       // Flush state.json with latest metadata. Re-read inside the lock
       // so a rename that landed during our wait is preserved.
       const existing = await managed.stateCache.read();
@@ -740,12 +856,22 @@ export class SessionManager {
       // restores the flag (replay is primary, state.json is fallback).
       const turnManager = managed.soulPlus.getTurnManager();
       const currentPlanMode = turnManager.getPlanMode();
+      // Phase 16 — merge the in-memory SessionMeta onto state.json and
+      // flip `last_exit_code` to 'clean' so the next resume can take
+      // the fast path.
+      const meta = sessionMetaService?.get();
       const stateToFlush: SessionState = existing
         ? {
             ...existing,
             status: 'closed',
             updated_at: now,
+            ...(meta?.title !== undefined ? { custom_title: meta.title } : {}),
+            ...(meta?.tags !== undefined ? { tags: [...meta.tags] } : {}),
+            ...(meta?.description !== undefined ? { description: meta.description } : {}),
+            ...(meta?.archived !== undefined ? { archived: meta.archived } : {}),
+            ...(meta?.last_model !== undefined ? { model: meta.last_model } : {}),
             ...(currentPlanMode ? { plan_mode: true } : { plan_mode: false }),
+            last_exit_code: 'clean',
           }
         : {
             session_id: sessionId,
@@ -753,8 +879,13 @@ export class SessionManager {
             created_at: now,
             updated_at: now,
             plan_mode: currentPlanMode,
+            last_exit_code: 'clean',
           };
       await managed.stateCache.write(stateToFlush);
+
+      // Detach SessionMetaService from the EventBus to prevent listener
+      // leaks across successive create / close cycles.
+      sessionMetaService?.dispose();
 
       // Phase 3 (Slice 3) — drain the async-batch pending buffer and
       // stop the drain timer before we drop the managed reference.

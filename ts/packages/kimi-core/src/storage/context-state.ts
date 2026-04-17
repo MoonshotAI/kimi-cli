@@ -1,5 +1,6 @@
 import type { ContentPart, Message, ToolCall } from '@moonshot-ai/kosong';
 
+import type { EventSink } from '../soul/event-sink.js';
 import type { UserInputPart } from '../wire-protocol/types.js';
 import { NoopJournalWriter, type JournalWriter } from './journal-writer.js';
 import type { NotificationRecord } from './wire-record.js';
@@ -215,6 +216,16 @@ interface BaseContextStateOptions {
    * all replayed assistant_message records been appended live.
    */
   readonly initialTokenCount?: number;
+  /**
+   * Phase 16 / 决策 #113 — optional EventSink. When supplied, the
+   * `applyConfigChange` model_changed branch emits a transient
+   * `{type:'model.changed'}` event after the WAL append so
+   * SessionMetaService can derive `last_model`. The emit is
+   * fire-and-forget (铁律 4) and happens ONLY after the journal write
+   * succeeds (WAL-then-mirror invariant applies to both the in-memory
+   * model field and the derived bus event).
+   */
+  readonly sink?: EventSink;
 }
 
 /**
@@ -233,6 +244,7 @@ class BaseContextState implements FullContextState {
   readonly journalWriter: JournalWriter;
   private readonly projector: ConversationProjector;
   private readonly currentTurnId: () => string;
+  private readonly sink: EventSink | undefined;
 
   private history: Message[] = [];
   private _systemPrompt: string;
@@ -247,6 +259,7 @@ class BaseContextState implements FullContextState {
     this.journalWriter = opts.journalWriter;
     this.projector = opts.projector ?? new DefaultConversationProjector();
     this.currentTurnId = opts.currentTurnId;
+    this.sink = opts.sink;
     this._model = opts.initialModel;
     this._systemPrompt = opts.initialSystemPrompt ?? '';
     this._activeTools = new Set(opts.initialActiveTools ?? []);
@@ -472,6 +485,14 @@ class BaseContextState implements FullContextState {
           new_model: event.new_model,
         });
         this._model = event.new_model;
+        // Phase 16 / 决策 #113 — fire-and-forget derived-field bus event
+        // so SessionMetaService can update `last_model`. Must happen AFTER
+        // the WAL append (WAL-then-mirror §4.5.3). Listener failures
+        // cannot propagate back here (铁律 4 — EventSink fire-and-forget).
+        this.sink?.emit({
+          type: 'model.changed',
+          data: { new_model: event.new_model },
+        });
         return;
       }
       // thinking level is not mirrored in ContextState memory — it's a
@@ -590,6 +611,11 @@ export interface WiredContextStateOptions {
   readonly initialHistory?: readonly Message[];
   /** Pre-populated token count for session resume (Slice 3.4). */
   readonly initialTokenCount?: number;
+  /**
+   * Phase 16 / 决策 #113 — optional sink for derived-field events
+   * (currently only `model.changed`). Forwards into BaseContextState.
+   */
+  readonly sink?: EventSink;
 }
 
 export class WiredContextState extends BaseContextState {
@@ -609,6 +635,7 @@ export class WiredContextState extends BaseContextState {
       ...(opts.initialTokenCount !== undefined
         ? { initialTokenCount: opts.initialTokenCount }
         : {}),
+      ...(opts.sink !== undefined ? { sink: opts.sink } : {}),
     });
   }
 }

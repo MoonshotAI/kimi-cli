@@ -100,6 +100,21 @@ export function adaptSoulEventToWireMessage(
         common,
       );
 
+    case 'session_meta.changed':
+      return createEvent(
+        'session_meta.changed',
+        { patch: event.data.patch, source: event.data.source },
+        common,
+      );
+
+    case 'turn.end':
+    case 'model.changed':
+      // Phase 16 — these SoulEvent variants are consumed by SessionMetaService
+      // for derived-field accounting; the TUI receives its own turn.end /
+      // model.changed notifications through the Soul-side turn lifecycle
+      // and config-change pipes, so skip them here to avoid double-delivery.
+      return null;
+
     default: {
       // Exhaustive guard — adding a new SoulEvent variant without
       // extending this switch is a compile error.

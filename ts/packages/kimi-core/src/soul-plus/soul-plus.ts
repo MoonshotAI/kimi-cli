@@ -43,6 +43,8 @@ import type { ToolCallOrchestrator } from './orchestrator.js';
 import { PermissionClosureBuilder } from './permission-closure-builder.js';
 import type { PermissionRule } from './permission/index.js';
 import type { SessionEventBus } from './session-event-bus.js';
+import { SessionMetaService, type SessionMeta } from './session-meta-service.js';
+import type { StateCache } from '../session/state-cache.js';
 import type { SkillManager } from './skill/index.js';
 import { SkillInlineWriter } from './skill/inline-writer.js';
 import { SoulLifecycleGate } from './soul-lifecycle-gate.js';
@@ -82,6 +84,18 @@ export interface SoulPlusDeps {
    * same §9.5 path service as the parent session.
    */
   readonly pathConfig?: PathConfig | undefined;
+  /**
+   * Phase 16 / 决策 #113 — session state.json cache. Required to wire
+   * SessionMetaService; omitting it skips the service entirely (test
+   * harnesses that do not exercise sessionMeta).
+   */
+  readonly stateCache?: StateCache | undefined;
+  /**
+   * Phase 16 — initial SessionMeta view (built by SessionManager from
+   * state.json + replay projection). Required in conjunction with
+   * `stateCache`.
+   */
+  readonly initialMeta?: SessionMeta | undefined;
 }
 
 export class SoulPlus {
@@ -264,6 +278,23 @@ export class SoulPlus {
       ...(deps.onShellDeliver !== undefined ? { onShellDeliver: deps.onShellDeliver } : {}),
     });
 
+    // ── Phase 16 — SessionMetaService (services facade slot) ───────
+    // Wired only when the host supplies both `stateCache` and
+    // `initialMeta` (production path: SessionManager). Test harnesses
+    // that construct SoulPlus directly without state.json plumbing
+    // leave the slot undefined — Soul never sees sessionMeta either
+    // way (铁律 6).
+    const sessionMeta =
+      deps.stateCache !== undefined && deps.initialMeta !== undefined
+        ? new SessionMetaService({
+            sessionId: deps.sessionId,
+            sessionJournal,
+            eventBus,
+            stateCache: deps.stateCache,
+            initialMeta: deps.initialMeta,
+          })
+        : undefined;
+
     // ── Assemble facades ────────────────────────────────────────────
     this.lifecycle = { stateMachine, gate };
     this.journal = {
@@ -277,6 +308,7 @@ export class SoulPlus {
       approvalRuntime,
       compaction,
       permissionBuilder,
+      sessionMeta,
     };
     this.components = {
       turnManager,
@@ -354,6 +386,33 @@ export class SoulPlus {
   /** Test / inspection helper — exposes the TurnManager. */
   getTurnManager(): TurnManager {
     return this.components.turnManager;
+  }
+
+  /**
+   * Phase 16 / 决策 #113 — access the SessionMetaService. Throws when
+   * the service was not wired (see `SoulPlusDeps.stateCache` /
+   * `initialMeta` requirements). SessionManager always wires it on
+   * create / resume paths; tests that need it must plumb through as
+   * well.
+   */
+  getSessionMeta(): SessionMetaService {
+    const svc = this.services.sessionMeta;
+    if (svc === undefined) {
+      throw new Error(
+        'SoulPlus.getSessionMeta: SessionMetaService was not wired (missing stateCache / initialMeta in SoulPlusDeps)',
+      );
+    }
+    return svc;
+  }
+
+  /**
+   * Phase 16 — returns the service if wired, `undefined` otherwise.
+   * Used by SessionManager.closeSession on the shutdown path where the
+   * absence of a service must not throw (legacy tests without state
+   * plumbing).
+   */
+  tryGetSessionMeta(): SessionMetaService | undefined {
+    return this.services.sessionMeta;
   }
 
   // ── Slice 2.5 Skill public API ──────────────────────────────────────

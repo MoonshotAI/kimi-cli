@@ -188,4 +188,6 @@ const KNOWN_RECORD_TYPES: ReadonlySet<string> = new Set([
   'subagent_failed',
   'ownership_changed',
   'context_edit',
+  // Phase 16 / 决策 #113 — sessionMeta wire-truth patch.
+  'session_meta_changed',
 ]);
