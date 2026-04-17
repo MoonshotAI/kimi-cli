@@ -1,3 +1,5 @@
+/* oxlint-disable vitest/warn-todo -- Phase 11 intentionally records src-gap
+   placeholders via `it.todo`. See MIGRATION_REPORT_phase_11.md §附录 B. */
 /**
  * Covers: InMemoryApprovalStateStore + SessionStateApprovalStateStore.
  */
@@ -94,4 +96,31 @@ describe('SessionStateApprovalStateStore', () => {
     const actions = await store.load();
     expect(actions).toEqual(new Set(['run command', 'edit file']));
   });
+});
+
+// ── Phase 11.2 — onChanged callback (src decision pending) ─────────────
+//
+// P2 — see MIGRATION_REPORT_phase_11.md §附录 B gap #4.
+// Python parity (tests/core/test_session_state.py L357/L377/L414/L448):
+//   1. set_yolo flips onChanged
+//   2. approve_for_session appends and fires onChanged with the added label
+//   3. cascading resolve of the same action fires onChanged once, not N times
+//   4. A runtime without onChanged callback must never crash
+//
+// Unblock recipe (when Phase 8 / 12 decides to wire the hook):
+//   1. Extend `src/soul-plus/approval-state-store.ts:23-28`
+//      ApprovalStateStore interface with
+//      `onChanged?: (actions: ReadonlySet<string>) => void`.
+//   2. Call it from InMemoryApprovalStateStore.save (line :45) and
+//      SessionStateApprovalStateStore.save (line :80) AFTER the
+//      persistence write succeeds (mirror-after-WAL).
+//   3. Wire it through WiredApprovalRuntime.recordSessionApproval
+//      (src/soul-plus/wired-approval-runtime.ts:339-353) so the cascade
+//      path passes the same callback through.
+//   4. Expand this todo into four passing cases (one per Python parity
+//      point above) using `vi.fn()` spies on onChanged.
+describe('ApprovalStateStore — Phase 11.2 onChanged hook (src decision pending)', () => {
+  it.todo(
+    '[P2] onChanged callback fires on set_yolo / approve_for_session / cascade / no-crash when absent (src gap: ApprovalStateStore.onChanged? — see MIGRATION_REPORT §B#4)',
+  );
 });
