@@ -117,6 +117,16 @@ export class CompactionOrchestrator {
       );
       await this.deps.contextState.resetToSummary(storageSummary);
 
+      // 决策 #101 — tail user_message guard. If the original conversation ended
+      // on an unpaired user message (no assistant response followed), the summary
+      // above just absorbed that user text and the LLM would see no standalone
+      // "pending user message" to reply to — the next turn would produce no
+      // response. Re-append the tail user_message verbatim so Soul can act on it.
+      const tailUserText = extractUnpairedTailUserText(messages);
+      if (tailUserText !== undefined) {
+        await this.deps.contextState.appendUserMessage({ text: tailUserText });
+      }
+
       this.deps.sink.emit({
         type: 'compaction.end',
         tokensBefore: preCompactTokens,
@@ -212,6 +222,35 @@ export class CompactionOrchestrator {
  * storage layer's `StorageSummaryMessage`. Ported verbatim from the old
  * `turn-manager.ts:bridgeSummaryMessage`.
  */
+/**
+ * If the input message array ends on an unpaired user message (no following
+ * assistant response), return that user's text so the caller can re-append it
+ * to the post-compaction conversation state (决策 #101).
+ *
+ * Returns `undefined` when the tail is not an unpaired user message.
+ */
+function extractUnpairedTailUserText(messages: readonly Message[]): string | undefined {
+  if (messages.length === 0) return undefined;
+  const tail = messages[messages.length - 1];
+  if (tail === undefined) return undefined;
+  if (tail.role !== 'user') return undefined;
+  const content = tail.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const part of content) {
+      if (typeof part === 'object' && part !== null && 'type' in part) {
+        const typed = part as { type: string; text?: unknown };
+        if (typed.type === 'text' && typeof typed.text === 'string') {
+          parts.push(typed.text);
+        }
+      }
+    }
+    return parts.length > 0 ? parts.join('') : undefined;
+  }
+  return undefined;
+}
+
 function bridgeSummaryMessage(
   providerSummary: RuntimeSummaryMessage,
   messagesCount: number,

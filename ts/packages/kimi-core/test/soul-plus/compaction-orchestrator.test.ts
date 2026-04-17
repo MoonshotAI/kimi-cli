@@ -354,3 +354,56 @@ describe('CompactionOrchestrator — PreCompact / PostCompact hook fire-and-forg
     expect(h.resetSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('CompactionOrchestrator — tail user_message guard (Phase 8 / 决策 #101)', () => {
+  it('re-appends an unpaired tail user message after resetToSummary', async () => {
+    const contextState = new InMemoryContextState({ initialModel: 'test-model' });
+    await contextState.appendUserMessage({ text: 'question one' });
+    await contextState.appendAssistantMessage({
+      text: 'answer one',
+      think: null,
+      toolCalls: [],
+      model: 'test-model',
+    });
+    // Unpaired tail: user asks a new question that compaction is about to absorb.
+    await contextState.appendUserMessage({ text: 'what is the tail question?' });
+
+    const h = buildHarness({ contextState });
+    const appendUserSpy = vi.spyOn(contextState, 'appendUserMessage');
+    const orchestrator = new CompactionOrchestrator(h.deps);
+
+    await orchestrator.executeCompaction(new AbortController().signal);
+
+    // resetToSummary ran first, then the tail user message was re-appended.
+    expect(h.resetSpy).toHaveBeenCalledTimes(1);
+    expect(appendUserSpy).toHaveBeenCalledTimes(1);
+    const reappended = appendUserSpy.mock.calls[0]?.[0];
+    expect(reappended).toEqual({ text: 'what is the tail question?' });
+
+    // The live history now ends with the re-appended user message so Soul
+    // has a standalone prompt to respond to on the next turn.
+    const messages = contextState.buildMessages();
+    const last = messages[messages.length - 1];
+    expect(last?.role).toBe('user');
+  });
+
+  it('does not re-append when the tail is an assistant message (paired)', async () => {
+    const contextState = new InMemoryContextState({ initialModel: 'test-model' });
+    await contextState.appendUserMessage({ text: 'hello' });
+    await contextState.appendAssistantMessage({
+      text: 'world',
+      think: null,
+      toolCalls: [],
+      model: 'test-model',
+    });
+
+    const h = buildHarness({ contextState });
+    const appendUserSpy = vi.spyOn(contextState, 'appendUserMessage');
+    const orchestrator = new CompactionOrchestrator(h.deps);
+
+    await orchestrator.executeCompaction(new AbortController().signal);
+
+    expect(h.resetSpy).toHaveBeenCalledTimes(1);
+    expect(appendUserSpy).not.toHaveBeenCalled();
+  });
+});

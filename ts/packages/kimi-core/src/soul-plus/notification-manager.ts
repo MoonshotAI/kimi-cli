@@ -138,6 +138,13 @@ export interface EmitInput {
   payload?: Record<string, unknown> | undefined;
   targets?: NotificationData['targets'] | undefined;
   dedupe_key?: string | undefined;
+  /**
+   * Set only when this notification originates from a team-mail envelope
+   * being routed into the notification channel (Slice 8 / 决策 #103).
+   * The value is forwarded verbatim to `NotificationRecord.data.envelope_id`
+   * so startup recovery can dedupe envelopes across a crash window.
+   */
+  envelope_id?: string | undefined;
 }
 
 export interface EmitResult {
@@ -254,6 +261,7 @@ export class NotificationManager {
       ...(input.payload !== undefined ? { payload: input.payload } : {}),
       targets,
       ...(input.dedupe_key !== undefined ? { dedupe_key: input.dedupe_key } : {}),
+      ...(input.envelope_id !== undefined ? { envelope_id: input.envelope_id } : {}),
       // `delivered_at` is deliberately omitted — delivery state is
       // derived at emit time, not durable. Absence means "unknown" to
       // any reader of the journal.

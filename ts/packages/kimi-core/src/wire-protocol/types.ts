@@ -188,14 +188,40 @@ export type ChannelType = 'conversation' | 'management' | 'config' | 'tools' | '
 
 // ── Initialize handshake data (§3.5) ────────────────────────────────────
 
+/**
+ * v2-update §3.5 InitializeRequest — sent by the client right after the
+ * transport connects. Narrow structural fields (hooks / capabilities) are
+ * hoisted out of the open-ended `client_capabilities` bag so TS callers can
+ * construct them without an `as unknown as` cast.
+ */
 export interface InitializeRequestData {
   protocol_version?: string | undefined;
+  capabilities?:
+    | {
+        hooks?: boolean | undefined;
+        approval?: boolean | undefined;
+        streaming?: boolean | undefined;
+      }
+    | undefined;
+  hooks?: ReadonlyArray<{ event: string; matcher?: unknown }> | undefined;
+  /** Open-ended bag for forward-compatible extensions. */
   client_capabilities?: Record<string, unknown> | undefined;
 }
 
+/**
+ * v2-update §3.5 InitializeResponse — the server advertises which wire
+ * events and methods it supports. `session_id` is optional: the server
+ * includes it when initialize implicitly binds to an existing session
+ * (e.g. `--continue`). Additional capability flags land inside
+ * `capabilities` alongside `events` / `methods`.
+ */
 export interface InitializeResponseData {
   protocol_version: string;
-  capabilities: Record<string, unknown>;
+  capabilities: {
+    events?: readonly string[] | undefined;
+    methods?: readonly string[] | undefined;
+  } & Record<string, unknown>;
+  session_id?: string | undefined;
 }
 
 // ── Session create data (§3.5) ───────────────────────────────────────────

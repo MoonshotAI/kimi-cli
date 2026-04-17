@@ -369,6 +369,27 @@ describe('system_reminder / notification records (management-class)', () => {
     expect(parsed.data.targets).toContain('llm');
   });
 
+  it('notification accepts optional envelope_id (Phase 8 / 决策 #103)', () => {
+    const parsed = NotificationRecordSchema.parse({
+      type: 'notification',
+      seq: 3,
+      time: 1,
+      data: {
+        id: 'n00000002',
+        category: 'team',
+        type: 'team.mail',
+        source_kind: 'team_mail',
+        source_id: 'mail_abc',
+        title: 'New mail',
+        body: 'from alice',
+        severity: 'info',
+        targets: ['llm'],
+        envelope_id: 'env_0xdeadbeef',
+      },
+    });
+    expect(parsed.data.envelope_id).toBe('env_0xdeadbeef');
+  });
+
   it('notification rejects an invalid severity', () => {
     const result = NotificationRecordSchema.safeParse({
       type: 'notification',

@@ -1,5 +1,19 @@
 /**
- * `runSoulTurn` — the Soul agent loop as a pure function (§5.1 / §5.0 rule 1).
+ * `runSoulTurn` — the Soul agent loop as a **stateless function** (§5.1 / §5.0 rule 1).
+ *
+ * "Stateless" means: no `this`, no instance fields, no implicit cross-turn state.
+ * Every `runSoulTurn` call is independent and does not depend on anything left
+ * behind by a previous call.
+ *
+ * "Stateless" does **not** mean "side-effect free". Soul has five classes of side effect:
+ *   1. Conversation state writes (context.appendAssistantMessage / appendToolResult)
+ *   2. UI event emits (sink.emit)
+ *   3. LLM calls (runtime.kosong.chat)
+ *   4. Tool execution (tool.execute)
+ *   5. Compaction need signalling (via TurnResult.reason === 'needs_compaction')
+ *
+ * The value of "stateless" is "no implicit state between turns" — it enables
+ * embedding Soul in hosts that don't want the full SoulPlus stack.
  *
  * Canonical signature per §5.1.2:
  *

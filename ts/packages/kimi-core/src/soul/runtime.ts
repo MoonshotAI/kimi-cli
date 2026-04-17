@@ -119,6 +119,23 @@ export interface CompactionOptions {
 }
 
 export interface CompactionProvider {
+  /**
+   * Run compaction on the given message history and return a single opaque
+   * summary blob (SummaryMessage { content: string }).
+   *
+   * Contract (决策 #101): if the input `messages` array ends with an
+   * **unpaired user message** (one without a following assistant response),
+   * the implementation must preserve that user message verbatim in the
+   * post-compaction conversation state, as a separate standalone message —
+   * not folded / paraphrased / merely mentioned inside the summary text.
+   *
+   * Rationale: if a user types a short prompt at the tail of a
+   * context-overflowing conversation and Soul triggers compaction on step 0,
+   * the summary would absorb their prompt and the LLM would see no standalone
+   * "pending user message" to respond to, causing the turn to end with no
+   * response. TurnManager enforces this contract with a guard after calling
+   * `run()` (see TurnManager.executeCompaction — tail user_message guard).
+   */
   run(
     messages: Message[],
     signal: AbortSignal,

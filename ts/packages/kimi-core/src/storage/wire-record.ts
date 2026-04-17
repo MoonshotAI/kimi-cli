@@ -183,6 +183,13 @@ export interface NotificationRecord {
           shell?: number | undefined;
         }
       | undefined;
+    /**
+     * Set only when this notification was produced by routing a team-mail
+     * envelope into the notification channel (Slice 8 / 决策 #103). Used
+     * by startup recovery to dedupe notifications that an envelope
+     * produced across a crash window.
+     */
+    envelope_id?: string | undefined;
   };
 }
 
@@ -627,6 +634,7 @@ const _rawNotificationRecordSchema = z.object({
         shell: z.number().optional(),
       })
       .optional(),
+    envelope_id: z.string().optional(),
   }),
 });
 export const NotificationRecordSchema: z.ZodType<NotificationRecord> = _rawNotificationRecordSchema;
