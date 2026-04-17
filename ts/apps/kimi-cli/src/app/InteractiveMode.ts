@@ -89,6 +89,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   private loadingAnimation: MoonLoader | undefined;
   private phaseSpinner: MoonLoader | undefined;
   private streamingComponent: AssistantMessageComponent | undefined;
+  private pendingToolComponents = new Map<string, ToolCallComponent>();
   private toolOutputExpanded = false;
 
   private toasts: ToastNotification[] = [];
@@ -324,6 +325,23 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.streamingComponent = undefined;
   }
 
+  onToolCallStart(toolCall: import('./state.js').ToolCallBlockData): void {
+    const tc = new ToolCallComponent(toolCall, undefined, this.colors, this.ui);
+    if (this.toolOutputExpanded) tc.setExpanded(true);
+    this.pendingToolComponents.set(toolCall.id, tc);
+    this.transcriptContainer.addChild(tc);
+    this.ui.requestRender();
+  }
+
+  onToolCallEnd(toolCallId: string, result: import('./state.js').ToolResultBlockData): void {
+    const tc = this.pendingToolComponents.get(toolCallId);
+    if (tc) {
+      tc.setResult(result);
+      this.pendingToolComponents.delete(toolCallId);
+      this.ui.requestRender();
+    }
+  }
+
   // ── Transcript rendering ────────────────────────────────────────
 
   private createTranscriptComponent(entry: TranscriptEntry): Component | null {
@@ -378,7 +396,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       : this.livePane.mode === 'idle' && this.state.streamingPhase === 'composing' ? 'composing'
       : this.livePane.mode;
 
-    if (effectiveMode === 'waiting' && this.lastActivityMode === 'waiting') {
+    if (effectiveMode === this.lastActivityMode && (effectiveMode === 'waiting' || effectiveMode === 'tool')) {
       return;
     }
 
@@ -423,18 +441,12 @@ export class InteractiveMode implements WireHandlerDelegate {
         break;
       }
       case 'tool': {
-        this.stopLoader();
         this.stopPhaseSpinner();
-        if (this.livePane.pendingToolCall) {
-          this.activityContainer.addChild(new Spacer(1));
-          this.activityContainer.addChild(
-            new ToolCallComponent(
-              this.livePane.pendingToolCall,
-              undefined,
-              this.colors,
-            ),
-          );
+        if (!this.loadingAnimation) {
+          this.loadingAnimation = new MoonLoader(this.ui, 'moon');
         }
+        this.activityContainer.addChild(new Spacer(1));
+        this.activityContainer.addChild(this.loadingAnimation);
         break;
       }
       default: {
@@ -499,6 +511,7 @@ export class InteractiveMode implements WireHandlerDelegate {
         this.wireHandler.handleApprovalResponse(response);
       },
     );
+    panel.onToggleToolExpand = () => this.toggleToolOutputExpansion();
     this.editorContainer.addChild(panel);
     this.ui.setFocus(panel);
     this.ui.requestRender();

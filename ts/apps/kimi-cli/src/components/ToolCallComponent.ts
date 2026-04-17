@@ -4,12 +4,44 @@
  */
 
 import { Container, Text, Spacer } from '@mariozechner/pi-tui';
+import type { TUI } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
+import { highlight } from 'cli-highlight';
+import { extname } from 'node:path';
 import type { ToolCallBlockData, ToolResultBlockData } from '../app/state.js';
 import type { ColorPalette } from '../theme/colors.js';
+import { renderDiffLines } from './DiffPreviewComponent.js';
 
 const MAX_ARG_LENGTH = 60;
 const PREVIEW_LINES = 6;
+const CALL_PREVIEW_LINES = 10;
+const BLINK_INTERVAL = 500;
+
+function str(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
+
+function langFromPath(filePath: string): string | undefined {
+  const ext = extname(filePath).slice(1);
+  if (ext.length === 0) return undefined;
+  const map: Record<string, string> = {
+    ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+    py: 'python', rb: 'ruby', rs: 'rust', go: 'go', java: 'java',
+    sh: 'bash', bash: 'bash', zsh: 'bash', json: 'json', yaml: 'yaml',
+    yml: 'yaml', toml: 'toml', md: 'markdown', css: 'css', html: 'html',
+    sql: 'sql', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
+  };
+  return map[ext] ?? ext;
+}
+
+function highlightLines(code: string, lang: string | undefined): string[] {
+  if (!lang) return code.split('\n');
+  try {
+    return highlight(code, { language: lang, ignoreIllegals: true }).split('\n');
+  } catch {
+    return code.split('\n');
+  }
+}
 
 function extractKeyArgument(toolName: string, args: Record<string, unknown>): string | null {
   const keyMap: Record<string, string[]> = {
@@ -45,29 +77,65 @@ export class ToolCallComponent extends Container {
   private toolCall: ToolCallBlockData;
   private result: ToolResultBlockData | undefined;
   private colors: ColorPalette;
+  private ui: TUI | undefined;
+  private blinkOn = true;
+  private blinkTimer: ReturnType<typeof setInterval> | null = null;
+  private headerText: Text;
+  private callPreviewEndIndex = 0;
 
   constructor(
     toolCall: ToolCallBlockData,
     result: ToolResultBlockData | undefined,
     colors: ColorPalette,
+    ui?: TUI,
   ) {
     super();
     this.toolCall = toolCall;
     this.result = result;
     this.colors = colors;
-    this.updateDisplay();
+    this.ui = ui;
+
+    this.addChild(new Spacer(1));
+    this.headerText = new Text(this.buildHeader(), 0, 0);
+    this.addChild(this.headerText);
+    this.buildCallPreview();
+    this.callPreviewEndIndex = this.children.length;
+    this.buildContent();
+
+    if (result === undefined && ui) {
+      this.startBlink();
+    }
+  }
+
+  private startBlink(): void {
+    this.blinkTimer = setInterval(() => {
+      this.blinkOn = !this.blinkOn;
+      this.headerText.setText(this.buildHeader());
+      this.ui?.requestRender();
+    }, BLINK_INTERVAL);
+  }
+
+  private stopBlink(): void {
+    if (this.blinkTimer) {
+      clearInterval(this.blinkTimer);
+      this.blinkTimer = null;
+    }
   }
 
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return;
     this.expanded = expanded;
-    this.updateDisplay();
+    this.rebuildContent();
   }
 
-  private updateDisplay(): void {
-    this.clear();
-    this.addChild(new Spacer(1));
+  setResult(result: ToolResultBlockData): void {
+    this.result = result;
+    this.stopBlink();
+    this.headerText.setText(this.buildHeader());
+    this.rebuildContent();
+  }
 
+  private buildHeader(): string {
     const { toolCall, result, colors } = this;
     const isFinished = result !== undefined;
     const isError = result?.is_error ?? false;
@@ -78,30 +146,79 @@ export class ToolCallComponent extends Container {
         ? chalk.hex(colors.error)('✗ ')
         : chalk.hex(colors.success)('● ');
     } else {
-      bullet = chalk.hex(colors.toolCall)('⠋ ');
+      bullet = this.blinkOn ? chalk.white('● ') : '  ';
     }
 
     const verb = isFinished ? 'Used' : 'Using';
     const keyArg = extractKeyArgument(toolCall.name, toolCall.args);
     const toolRef = chalk.hex(colors.primary).bold(toolCall.name);
     const argStr = keyArg ? chalk.dim(` (${keyArg})`) : '';
+    return `${bullet}${verb} ${toolRef}${argStr}`;
+  }
 
-    this.addChild(new Text(`${bullet}${verb} ${toolRef}${argStr}`, 0, 0));
+  private rebuildContent(): void {
+    while (this.children.length > this.callPreviewEndIndex) {
+      this.children.pop();
+    }
+    this.buildContent();
+  }
 
-    if (isFinished && result?.output) {
-      const lines = result.output.split('\n');
-      if (this.expanded) {
-        this.addChild(new Text(chalk.dim(result.output), 2, 0));
-      } else {
-        const shown = lines.slice(0, PREVIEW_LINES);
-        const remaining = lines.length - shown.length;
-        this.addChild(new Text(chalk.dim(shown.join('\n')), 2, 0));
-        if (remaining > 0) {
-          this.addChild(new Text(
-            chalk.dim(`... (${String(remaining)} more lines, `) + chalk.dim('ctrl+o to expand') + chalk.dim(')'),
-            2, 0,
-          ));
-        }
+  private buildCallPreview(): void {
+    const name = this.toolCall.name;
+    if (name === 'Write' || name === 'WriteFile') {
+      const content = str(this.toolCall.args['content']);
+      if (content.length === 0) return;
+      const filePath = str(this.toolCall.args['file_path'] ?? this.toolCall.args['path']);
+      const lang = langFromPath(filePath);
+      const allLines = highlightLines(content, lang);
+      const shown = allLines.slice(0, CALL_PREVIEW_LINES);
+      const remaining = allLines.length - shown.length;
+      for (let i = 0; i < shown.length; i++) {
+        const lineNum = chalk.dim(String(i + 1).padStart(4) + '  ');
+        this.addChild(new Text(lineNum + shown[i]!, 2, 0));
+      }
+      if (remaining > 0) {
+        this.addChild(new Text(
+          chalk.dim(`... (${String(remaining)} more lines, ${String(allLines.length)} total)`),
+          2, 0,
+        ));
+      }
+    } else if (name === 'Edit' || name === 'EditFile') {
+      const oldStr = str(this.toolCall.args['old_string']);
+      const newStr = str(this.toolCall.args['new_string']);
+      if (oldStr.length === 0 && newStr.length === 0) return;
+      const filePath = str(this.toolCall.args['file_path'] ?? this.toolCall.args['path']);
+      const allLines = renderDiffLines(oldStr, newStr, filePath);
+      const shown = allLines.slice(0, CALL_PREVIEW_LINES);
+      const remaining = allLines.length - shown.length;
+      for (const line of shown) {
+        this.addChild(new Text(line, 2, 0));
+      }
+      if (remaining > 0) {
+        this.addChild(new Text(
+          chalk.dim(`... (${String(remaining)} more lines)`),
+          2, 0,
+        ));
+      }
+    }
+  }
+
+  private buildContent(): void {
+    const { result } = this;
+    if (result === undefined || !result.output) return;
+
+    const lines = result.output.split('\n');
+    if (this.expanded) {
+      this.addChild(new Text(chalk.dim(result.output), 2, 0));
+    } else {
+      const shown = lines.slice(0, PREVIEW_LINES);
+      const remaining = lines.length - shown.length;
+      this.addChild(new Text(chalk.dim(shown.join('\n')), 2, 0));
+      if (remaining > 0) {
+        this.addChild(new Text(
+          chalk.dim(`... (${String(remaining)} more lines, ctrl+o to expand)`),
+          2, 0,
+        ));
       }
     }
   }

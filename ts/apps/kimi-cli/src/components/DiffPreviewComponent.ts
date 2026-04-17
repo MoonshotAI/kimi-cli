@@ -67,14 +67,11 @@ export function renderDiffLines(
   path: string,
   oldStart?: number,
   newStart?: number,
-  maxLines: number = 12,
 ): string[] {
   const diffLines = computeDiffLines(oldText, newText, oldStart ?? 1, newStart ?? 1);
   const changedLines = diffLines.filter((l) => l.kind !== 'context');
   const added = changedLines.filter((l) => l.kind === 'add').length;
   const removed = changedLines.filter((l) => l.kind === 'delete').length;
-  const shownLines = changedLines.slice(0, maxLines);
-  const remaining = changedLines.length - shownLines.length;
 
   const output: string[] = [];
 
@@ -84,14 +81,10 @@ export function renderDiffLines(
   header += path;
   output.push(header);
 
-  for (const line of shownLines) {
+  for (const line of changedLines) {
     const marker = line.kind === 'add' ? '+' : '-';
     const color = line.kind === 'add' ? chalk.green : chalk.red;
     output.push(chalk.gray(String(line.lineNum).padStart(4) + ' ') + color(marker + ' ' + line.code));
-  }
-
-  if (remaining > 0) {
-    output.push(chalk.dim.italic(`  ... ${String(remaining)} more lines`));
   }
 
   return output;

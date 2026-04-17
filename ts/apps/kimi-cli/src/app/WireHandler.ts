@@ -51,6 +51,8 @@ export interface WireHandlerDelegate {
   onStreamingTextStart(): void;
   onStreamingTextUpdate(fullText: string): void;
   onStreamingTextEnd(): void;
+  onToolCallStart(toolCall: ToolCallBlockData): void;
+  onToolCallEnd(toolCallId: string, result: ToolResultBlockData): void;
 }
 
 export class WireHandler {
@@ -237,6 +239,7 @@ export class WireHandler {
         };
         this.activeToolCalls.set(data.id, toolCall);
         this.flushTurnBuffers('tool');
+        this.delegate.onToolCallStart(toolCall);
         this.delegate.patchLivePane({
           mode: 'tool',
           pendingToolCall: toolCall,
@@ -254,11 +257,7 @@ export class WireHandler {
           is_error: data.is_error,
         };
         if (matchedCall !== undefined) {
-          this.delegate.addTranscriptEntry(
-            this.makeEntry('tool_call', `Used ${matchedCall.name}`, 'plain', {
-              toolCallData: { ...matchedCall, result: resultData },
-            }),
-          );
+          this.delegate.onToolCallEnd(data.tool_call_id, resultData);
         }
         this.activeToolCalls.delete(data.tool_call_id);
         this.delegate.patchLivePane({ mode: 'idle', pendingToolCall: null });

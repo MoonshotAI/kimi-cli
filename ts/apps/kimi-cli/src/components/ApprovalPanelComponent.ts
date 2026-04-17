@@ -4,7 +4,7 @@
  * Container-based component with keyboard navigation.
  */
 
-import { Container, Text, Spacer, matchesKey, Key, type Focusable } from '@mariozechner/pi-tui';
+import { Container, Text, Spacer, matchesKey, Key, type Focusable, truncateToWidth } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import type { PendingApproval } from '../app/state.js';
 import type { ApprovalResponseData, DisplayBlock } from '../wire/index.js';
@@ -26,7 +26,7 @@ const APPROVAL_OPTIONS: ApprovalOption[] = [
   { label: 'Reject with feedback', shortcut: 'f', decision: 'rejected', isFeedback: true },
 ];
 
-function renderDisplayBlock(block: DisplayBlock, maxDiffLines: number): string[] {
+function renderDisplayBlock(block: DisplayBlock): string[] {
   switch (block.type) {
     case 'diff':
       return renderDiffLines(
@@ -35,7 +35,6 @@ function renderDisplayBlock(block: DisplayBlock, maxDiffLines: number): string[]
         block.path,
         block.old_start,
         block.new_start,
-        maxDiffLines,
       );
     case 'shell':
       return [chalk.gray(`$ ${block.command}`)];
@@ -102,7 +101,7 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     if (visibleBlocks.length > 0) {
       this.addChild(new Spacer(1));
       for (const block of visibleBlocks) {
-        const lines = renderDisplayBlock(block, maxDiffLines);
+        const lines = renderDisplayBlock(block);
         for (const line of lines) {
           this.addChild(new Text(` ${line}`, 0, 0));
         }
@@ -152,7 +151,14 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     this.buildUI(12);
   }
 
+  public onToggleToolExpand?: () => void;
+
   handleInput(data: string): void {
+    if (matchesKey(data, Key.ctrl('o'))) {
+      this.onToggleToolExpand?.();
+      return;
+    }
+
     if (this.feedbackMode) {
       if (matchesKey(data, Key.enter)) {
         this.submit(this.selectedIndex, this.feedbackText);
@@ -217,26 +223,27 @@ export class ApprovalPanelComponent extends Container implements Focusable {
   override render(width: number): string[] {
     this.clear();
     const { data } = this.request;
-    const maxDiffLines = 8;
     const lines: string[] = [];
 
     lines.push(chalk.yellow('─'.repeat(width)));
     lines.push(chalk.yellow.bold(' approval'));
     lines.push('');
     lines.push(chalk.yellow(` ${data.tool_name} is requesting approval to ${data.action}:`));
-    if (data.description) {
-      lines.push(chalk.gray(` ${data.description}`));
-    }
 
     const dedupedBlocks = data.display.filter((block) => !isDuplicateBriefBlock(block, data.description));
-    const visibleBlocks = dedupedBlocks.slice(0, 3);
+    const visibleBlocks = dedupedBlocks.slice(0, 5);
     if (visibleBlocks.length > 0) {
       lines.push('');
       for (const block of visibleBlocks) {
-        const blockLines = renderDisplayBlock(block, maxDiffLines);
+        const blockLines = renderDisplayBlock(block);
         for (const line of blockLines) {
           lines.push(` ${line}`);
         }
+      }
+    } else if (data.description) {
+      lines.push('');
+      for (const descLine of data.description.split('\n')) {
+        lines.push(chalk.gray(` ${descLine}`));
       }
     }
 
@@ -263,6 +270,6 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     }
     lines.push(chalk.yellow('─'.repeat(width)));
 
-    return lines;
+    return lines.map((line) => truncateToWidth(line, width));
   }
 }
