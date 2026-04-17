@@ -6,7 +6,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 - Shell: Fix missing loading indicator during active turns — the moon spinner now shows as a fallback whenever the model is working but no other indicator is visible, covering gaps after tool calls finish, between turn start and first step, and when an empty thinking block arrives from the provider
 - Core: Increase default `max_steps_per_turn` from 100 to 500 to allow longer uninterrupted agent runs out of the box
-- Web: Fix code block button prop precedence — copy, download, and preview buttons now place `{...props}` before explicit `onClick`, `size`, and `variant` so internal behavior cannot be overridden by spread props
+- Web: Fix unresponsive copy, download, and preview buttons on rendered code blocks
 
 ## 1.35.0 (2026-04-15)
 
