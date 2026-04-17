@@ -5,6 +5,7 @@ import pytest
 pytest.importorskip("anthropic", reason="Optional contrib dependency not installed")
 
 from kosong.contrib.chat_provider.anthropic import (
+    _clamp_effort,  # pyright: ignore[reportPrivateUsage]
     _supports_adaptive_thinking,  # pyright: ignore[reportPrivateUsage]
 )
 
@@ -67,3 +68,47 @@ from kosong.contrib.chat_provider.anthropic import (
 )
 def test_supports_adaptive_thinking(model: str, expected: bool) -> None:
     assert _supports_adaptive_thinking(model) is expected
+
+
+@pytest.mark.parametrize(
+    "model,effort,expected",
+    [
+        # Opus 4.7: supports the full range including xhigh and max
+        ("claude-opus-4-7", "low", "low"),
+        ("claude-opus-4-7", "medium", "medium"),
+        ("claude-opus-4-7", "high", "high"),
+        ("claude-opus-4-7", "xhigh", "xhigh"),
+        ("claude-opus-4-7", "max", "max"),
+        ("claude-opus-4-7-20260301", "xhigh", "xhigh"),
+        # Opus 4.6: max supported, but xhigh clamps down to high
+        ("claude-opus-4-6", "max", "max"),
+        ("claude-opus-4-6", "xhigh", "high"),
+        ("claude-opus-4-6-20260205", "max", "max"),
+        # Sonnet 4.6: same policy as Opus 4.6
+        ("claude-sonnet-4-6", "max", "max"),
+        ("claude-sonnet-4-6", "xhigh", "high"),
+        # Mythos: max supported, xhigh clamps down (only Opus 4.7 has xhigh)
+        ("claude-mythos-preview", "max", "max"),
+        ("claude-mythos-preview", "xhigh", "high"),
+        # Pre-4.6 models: cap at high; xhigh and max both clamp down
+        ("claude-opus-4-5", "max", "high"),
+        ("claude-opus-4-5", "xhigh", "high"),
+        ("claude-opus-4-5", "high", "high"),
+        ("claude-sonnet-4-20250514", "max", "high"),
+        ("claude-sonnet-4-20250514", "xhigh", "high"),
+        ("claude-sonnet-4-5", "xhigh", "high"),
+        ("claude-haiku-4-5", "max", "high"),
+        # low/medium/high always pass through unchanged
+        ("claude-opus-4-7", "low", "low"),
+        ("claude-opus-4-6", "medium", "medium"),
+        ("claude-sonnet-4-20250514", "low", "low"),
+        # Future 4.8+ inherits Opus 4.7-like behavior only if name signals opus-4-7+
+        # 4.8 is not automatically assumed to support xhigh; only guaranteed max.
+        ("claude-opus-4-8", "xhigh", "high"),
+        ("claude-opus-4-8", "max", "max"),
+        ("claude-opus-5-0", "max", "max"),
+        ("claude-opus-5-0", "xhigh", "high"),
+    ],
+)
+def test_clamp_effort(model: str, effort: str, expected: str) -> None:
+    assert _clamp_effort(effort, model) == expected  # type: ignore[arg-type]
