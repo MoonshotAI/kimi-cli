@@ -16,7 +16,9 @@ export type SessionJournalRecord = Extract<
       | 'tool_call_dispatched'
       | 'permission_mode_changed'
       | 'tool_denied'
-      | 'subagent_event'
+      | 'subagent_spawned'
+      | 'subagent_completed'
+      | 'subagent_failed'
       | 'ownership_changed';
   }
 >;
@@ -40,7 +42,14 @@ export interface SessionJournal {
   // These record types are now written exclusively by ContextState
   // (appendNotification / appendSystemReminder), which owns both the
   // WAL write and the in-memory mirror.
-  appendSubagentEvent(data: JournalInput<'subagent_event'>): Promise<void>;
+  // Phase 6 / 决策 #88: the legacy `appendSubagentEvent` (which bubbled
+  // child SoulEvent snapshots up via the `subagent_event` envelope) is
+  // gone. Each subagent now writes its own `wire.jsonl` through an
+  // independent JournalWriter. The parent journal records only the three
+  // lifecycle references defined by §3.6.1.
+  appendSubagentSpawned(data: JournalInput<'subagent_spawned'>): Promise<void>;
+  appendSubagentCompleted(data: JournalInput<'subagent_completed'>): Promise<void>;
+  appendSubagentFailed(data: JournalInput<'subagent_failed'>): Promise<void>;
   appendOwnershipChanged(data: JournalInput<'ownership_changed'>): Promise<void>;
 }
 
@@ -102,7 +111,15 @@ export class WiredSessionJournalImpl implements SessionJournal {
     await this.journalWriter.append(data);
   }
 
-  async appendSubagentEvent(data: JournalInput<'subagent_event'>): Promise<void> {
+  async appendSubagentSpawned(data: JournalInput<'subagent_spawned'>): Promise<void> {
+    await this.journalWriter.append(data);
+  }
+
+  async appendSubagentCompleted(data: JournalInput<'subagent_completed'>): Promise<void> {
+    await this.journalWriter.append(data);
+  }
+
+  async appendSubagentFailed(data: JournalInput<'subagent_failed'>): Promise<void> {
     await this.journalWriter.append(data);
   }
 
@@ -174,8 +191,16 @@ export class InMemorySessionJournalImpl implements InMemorySessionJournal {
     this.push<'tool_denied'>(data);
   }
 
-  async appendSubagentEvent(data: JournalInput<'subagent_event'>): Promise<void> {
-    this.push<'subagent_event'>(data);
+  async appendSubagentSpawned(data: JournalInput<'subagent_spawned'>): Promise<void> {
+    this.push<'subagent_spawned'>(data);
+  }
+
+  async appendSubagentCompleted(data: JournalInput<'subagent_completed'>): Promise<void> {
+    this.push<'subagent_completed'>(data);
+  }
+
+  async appendSubagentFailed(data: JournalInput<'subagent_failed'>): Promise<void> {
+    this.push<'subagent_failed'>(data);
   }
 
   async appendOwnershipChanged(data: JournalInput<'ownership_changed'>): Promise<void> {

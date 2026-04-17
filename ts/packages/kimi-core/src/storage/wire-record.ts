@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 
-import type { ToolInputDisplay } from '../soul/types.js';
+import type { ToolInputDisplay, TokenUsage } from '../soul/types.js';
 import { ToolInputDisplaySchema } from '../soul/types.js';
 
 // ── File metadata header ────────────────────────────────────────────────
@@ -315,15 +315,53 @@ export interface TeamMailRecord {
   };
 }
 
-export interface SubagentEventRecord {
-  type: 'subagent_event';
+// ── Subagent lifecycle records (Phase 6 / 决策 #88 / §3.6.1) ─────────────
+//
+// The old `subagent_event` wrapper (which nested SoulEvent snapshots into
+// the parent wire) is gone. Each agent now persists its OWN wire.jsonl at
+// `sessions/<session>/subagents/<agent_id>/wire.jsonl`. The parent wire
+// only carries lifecycle references — three distinct records that bracket
+// the spawn → completion (or failure) of every subagent.
+
+export interface SubagentSpawnedRecord {
+  type: 'subagent_spawned';
   seq: number;
   time: number;
-  agent_id: string;
-  agent_name?: string | undefined;
-  parent_tool_call_id: string;
-  /** Persisted SoulEvent snapshot — opaque to wire-level schema (§4.3). */
-  sub_event: unknown;
+  data: {
+    agent_id: string;
+    agent_name?: string | undefined;
+    parent_tool_call_id: string;
+    /**
+     * The agent_id of the spawning subagent, when this spawn happened
+     * inside another subagent's turn (recursive spawn). Undefined when
+     * the main agent is the spawner.
+     */
+    parent_agent_id?: string | undefined;
+    run_in_background: boolean;
+  };
+}
+
+export interface SubagentCompletedRecord {
+  type: 'subagent_completed';
+  seq: number;
+  time: number;
+  data: {
+    agent_id: string;
+    parent_tool_call_id: string;
+    result_summary: string;
+    usage?: TokenUsage | undefined;
+  };
+}
+
+export interface SubagentFailedRecord {
+  type: 'subagent_failed';
+  seq: number;
+  time: number;
+  data: {
+    agent_id: string;
+    parent_tool_call_id: string;
+    error: string;
+  };
 }
 
 export interface OwnershipChangedRecord {
@@ -373,7 +411,9 @@ export type WireRecord =
   | ApprovalRequestRecord
   | ApprovalResponseRecord
   | TeamMailRecord
-  | SubagentEventRecord
+  | SubagentSpawnedRecord
+  | SubagentCompletedRecord
+  | SubagentFailedRecord
   | OwnershipChangedRecord
   | ContextEditRecord;
 
@@ -734,17 +774,60 @@ const _rawTeamMailRecordSchema = z.object({
 });
 export const TeamMailRecordSchema: z.ZodType<TeamMailRecord> = _rawTeamMailRecordSchema;
 
-const _rawSubagentEventRecordSchema = z.object({
-  type: z.literal('subagent_event'),
+// ── Subagent lifecycle schemas (Phase 6) ─────────────────────────────
+
+// v2 §3.6.1: usage counts are non-negative integers (token totals).
+// Scoped to the Phase 6 lifecycle records — `AssistantMessageRecord` /
+// `TurnEndRecord` keep their pre-Phase-6 inline `z.number()` schemas to
+// avoid widening the change beyond this slice.
+const _rawTokenUsageSchema = z.object({
+  input: z.number().int().nonnegative(),
+  output: z.number().int().nonnegative(),
+  cache_read: z.number().int().nonnegative().optional(),
+  cache_write: z.number().int().nonnegative().optional(),
+});
+
+const _rawSubagentSpawnedRecordSchema = z.object({
+  type: z.literal('subagent_spawned'),
   seq: z.number(),
   time: z.number(),
-  agent_id: z.string(),
-  agent_name: z.string().optional(),
-  parent_tool_call_id: z.string(),
-  sub_event: z.unknown(),
+  data: z.object({
+    agent_id: z.string(),
+    agent_name: z.string().optional(),
+    parent_tool_call_id: z.string(),
+    parent_agent_id: z.string().optional(),
+    run_in_background: z.boolean(),
+  }),
 });
-export const SubagentEventRecordSchema: z.ZodType<SubagentEventRecord> =
-  _rawSubagentEventRecordSchema;
+export const SubagentSpawnedRecordSchema: z.ZodType<SubagentSpawnedRecord> =
+  _rawSubagentSpawnedRecordSchema;
+
+const _rawSubagentCompletedRecordSchema = z.object({
+  type: z.literal('subagent_completed'),
+  seq: z.number(),
+  time: z.number(),
+  data: z.object({
+    agent_id: z.string(),
+    parent_tool_call_id: z.string(),
+    result_summary: z.string(),
+    usage: _rawTokenUsageSchema.optional(),
+  }),
+});
+export const SubagentCompletedRecordSchema: z.ZodType<SubagentCompletedRecord> =
+  _rawSubagentCompletedRecordSchema;
+
+const _rawSubagentFailedRecordSchema = z.object({
+  type: z.literal('subagent_failed'),
+  seq: z.number(),
+  time: z.number(),
+  data: z.object({
+    agent_id: z.string(),
+    parent_tool_call_id: z.string(),
+    error: z.string(),
+  }),
+});
+export const SubagentFailedRecordSchema: z.ZodType<SubagentFailedRecord> =
+  _rawSubagentFailedRecordSchema;
 
 const _rawOwnershipChangedRecordSchema = z.object({
   type: z.literal('ownership_changed'),
@@ -900,11 +983,21 @@ const _driftGuard_TeamMailRecord: AssertEqual<
   TeamMailRecord
 > = true;
 void _driftGuard_TeamMailRecord;
-const _driftGuard_SubagentEventRecord: AssertEqual<
-  z.infer<typeof _rawSubagentEventRecordSchema>,
-  SubagentEventRecord
+const _driftGuard_SubagentSpawnedRecord: AssertEqual<
+  z.infer<typeof _rawSubagentSpawnedRecordSchema>,
+  SubagentSpawnedRecord
 > = true;
-void _driftGuard_SubagentEventRecord;
+void _driftGuard_SubagentSpawnedRecord;
+const _driftGuard_SubagentCompletedRecord: AssertEqual<
+  z.infer<typeof _rawSubagentCompletedRecordSchema>,
+  SubagentCompletedRecord
+> = true;
+void _driftGuard_SubagentCompletedRecord;
+const _driftGuard_SubagentFailedRecord: AssertEqual<
+  z.infer<typeof _rawSubagentFailedRecordSchema>,
+  SubagentFailedRecord
+> = true;
+void _driftGuard_SubagentFailedRecord;
 const _driftGuard_OwnershipChangedRecord: AssertEqual<
   z.infer<typeof _rawOwnershipChangedRecordSchema>,
   OwnershipChangedRecord
@@ -942,7 +1035,9 @@ export const WireRecordSchema: z.ZodType<WireRecord> = z.discriminatedUnion('typ
   _rawApprovalRequestRecordSchema,
   _rawApprovalResponseRecordSchema,
   _rawTeamMailRecordSchema,
-  _rawSubagentEventRecordSchema,
+  _rawSubagentSpawnedRecordSchema,
+  _rawSubagentCompletedRecordSchema,
+  _rawSubagentFailedRecordSchema,
   _rawOwnershipChangedRecordSchema,
   _rawContextEditRecordSchema,
 ]);

@@ -25,12 +25,37 @@
 import type { EventSink, SoulEvent } from '../soul/index.js';
 import type { NotificationData } from './notification-manager.js';
 
+// ── Source-tagged transport envelope (Phase 6 / 决策 #88 / §4.8.2) ────
+//
+// `source` lives ONLY in the EventBus transport layer. It MUST NEVER be
+// persisted to wire.jsonl (铁律 5). Subagent / teammate Souls emit plain
+// `SoulEvent`s; the SinkWrapper attaches a `source` envelope through
+// `emitWithSource` so listeners can attribute the event back to the
+// originating agent without touching the persistence layer.
+
+export interface EventSource {
+  /** Stable id of the originating agent (e.g. `sub_<uuid>`, `agent_main`). */
+  id: string;
+  kind: 'subagent' | 'teammate' | 'remote';
+  /** Optional human-readable name (e.g. agent type, teammate handle). */
+  name?: string;
+}
+
+/**
+ * Transport-layer envelope: a `SoulEvent` plus the optional `source`
+ * attribution. Main-agent emissions reach listeners with `source ===
+ * undefined`; subagent / teammate emissions reach listeners with the
+ * tag attached. Soul itself never sees this type — it's the EventBus's
+ * outward face only.
+ */
+export type BusEvent = SoulEvent & { source?: EventSource };
+
 /**
  * Listener signature. `void | Promise<void>` (rather than bare `void`) so
  * callers can legitimately write `async` listeners — the bus will isolate
  * any rejected promise via a terminal `.catch` attached inside `emit`.
  */
-export type SessionEventListener = (event: SoulEvent) => void | Promise<void>;
+export type SessionEventListener = (event: BusEvent) => void | Promise<void>;
 
 /**
  * Notification listener signature (Slice 2.4). Same async-safe shape as
@@ -44,10 +69,36 @@ export class SessionEventBus implements EventSink {
 
   emit(event: SoulEvent): void {
     // Iterate over a stable snapshot so a listener that mutates the bus
-    // cannot shift the iteration it is part of.
+    // cannot shift the iteration it is part of. Main-agent emissions
+    // reach listeners with `source === undefined` — the BusEvent shape is
+    // a structural superset of SoulEvent so this is type-safe.
     const snapshot = this.listeners.slice();
     for (const listener of snapshot) {
-      safeDispatch(listener, event);
+      safeDispatch(listener, event as BusEvent);
+    }
+  }
+
+  /**
+   * Source-tagged fan-out (Phase 6 / 决策 #88 / §4.8.2). The wrapper that
+   * sits between a subagent / teammate Soul and this bus calls
+   * `emitWithSource` so listeners (UI / wire bridge / telemetry) can
+   * attribute every event back to its originating agent.
+   *
+   * Contract:
+   *   - Returns `void` (铁律 4 — no back-pressure on Soul).
+   *   - Does NOT mutate the caller's `event` argument; the envelope is
+   *     attached on a shallow copy.
+   *   - `source` is transport-only — never written to wire.jsonl
+   *     (铁律 5; the sink wrapper persists the bare event through the
+   *     child JournalWriter, see `createSubagentSinkWrapper`).
+   *   - Listener errors are isolated by the same `safeDispatch` used by
+   *     `emit`.
+   */
+  emitWithSource(event: SoulEvent, source: EventSource): void {
+    const tagged = { ...event, source } as BusEvent;
+    const snapshot = this.listeners.slice();
+    for (const listener of snapshot) {
+      safeDispatch(listener, tagged);
     }
   }
 

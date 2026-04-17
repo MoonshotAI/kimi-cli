@@ -19,6 +19,7 @@ import type {
   Runtime,
   Tool,
 } from '../soul/index.js';
+import type { PathConfig } from '../session/path-config.js';
 import type { FullContextState } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import { AgentTool } from '../tools/agent.js';
@@ -70,6 +71,14 @@ export interface SoulPlusDeps {
   readonly agentTypeRegistry?: AgentTypeRegistry | undefined;
   readonly sessionDir?: string | undefined;
   readonly workDir?: string | undefined;
+  /**
+   * Phase 6 — when supplied, the subagent runner derives the child wire
+   * path through `pathConfig.subagentDir(sessionId, agentId)` instead of
+   * hand-joining `sessionDir`. SessionManager owns the production
+   * `PathConfig`; pass it through here so subagent storage follows the
+   * same §9.5 path service as the parent session.
+   */
+  readonly pathConfig?: PathConfig | undefined;
 }
 
 export class SoulPlus {
@@ -141,6 +150,11 @@ export class SoulPlus {
         agentId: key === 'main' ? 'agent_main' : key.replace('sub:', ''),
         abortController: new AbortController(),
       }),
+      // Phase 6 — SoulRegistry owns the subagent lifecycle journal
+      // channel. It writes spawned/completed/failed around the runner
+      // call; we therefore intentionally OMIT `parentSessionJournal`
+      // from the runner deps below to avoid double-writes.
+      parentSessionJournal: sessionJournal,
       ...(hasSubagentInfra
         ? {
             runSubagentTurn: (agentId, request, signal) =>
@@ -150,10 +164,22 @@ export class SoulPlus {
                   typeRegistry: deps.agentTypeRegistry!,
                   parentTools: deps.tools,
                   parentRuntime: runtime,
-                  parentSink: eventBus,
+                  // Phase 6 — preferred forwarding channel. The runner
+                  // builds a `createSubagentSinkWrapper` that fans events
+                  // out with a `source` envelope.
+                  parentEventBus: eventBus,
+                  // parentSessionJournal 故意不传：SoulRegistry 已经写
+                  // lifecycle record（见 SoulRegistryDeps 上的
+                  // parentSessionJournal 注入），同时让 runner 也写会双写。
                   sessionDir: deps.sessionDir ?? '',
                   parentModel: contextState.model,
                   workDir: deps.workDir ?? process.cwd(),
+                  // Phase 6 — pass pathConfig + sessionId through so the
+                  // child wire path follows the §9.5 path service.
+                  ...(deps.pathConfig !== undefined
+                    ? { pathConfig: deps.pathConfig }
+                    : {}),
+                  sessionId: deps.sessionId,
                 },
                 agentId,
                 request,

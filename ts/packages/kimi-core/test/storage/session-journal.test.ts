@@ -201,3 +201,177 @@ describe('InMemorySessionJournalImpl', () => {
     expect(journal.getRecords().length).toBe(0);
   });
 });
+
+// ── Subagent lifecycle (Phase 6 / 决策 #88) ─────────────────────────────
+//
+// The old `appendSubagentEvent` method is gone. Its role — "bubble child
+// SoulEvent snapshots up to the parent wire" — is replaced by three
+// lifecycle-only methods that match the new `subagent_spawned` /
+// `subagent_completed` / `subagent_failed` wire records (§3.6.1 / §4.5.6).
+// Child events are written to `sessions/<session>/subagents/<agent_id>/
+// wire.jsonl` through an independent JournalWriter — SessionJournal never
+// touches them.
+
+describe('SessionJournal — subagent lifecycle methods', () => {
+  describe('InMemorySessionJournalImpl', () => {
+    it('exposes appendSubagentSpawned / Completed / Failed (method surface)', () => {
+      const journal = new InMemorySessionJournalImpl();
+      expect(typeof journal.appendSubagentSpawned).toBe('function');
+      expect(typeof journal.appendSubagentCompleted).toBe('function');
+      expect(typeof journal.appendSubagentFailed).toBe('function');
+    });
+
+    it('does NOT expose the legacy appendSubagentEvent method', () => {
+      const journal = new InMemorySessionJournalImpl();
+      // Bracket access proves runtime removal even if a caller defeated the
+      // TypeScript signature with a cast.
+      expect(
+        (journal as unknown as Record<string, unknown>)['appendSubagentEvent'],
+      ).toBeUndefined();
+    });
+
+    it('records a subagent_spawned row and exposes it by type', async () => {
+      const journal = new InMemorySessionJournalImpl();
+      await journal.appendSubagentSpawned({
+        type: 'subagent_spawned',
+        data: {
+          agent_id: 'sub_abc',
+          agent_name: 'code-reviewer',
+          parent_tool_call_id: 'tc_001',
+          run_in_background: false,
+        },
+      });
+
+      const rows = journal.getRecordsByType('subagent_spawned');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.data.agent_id).toBe('sub_abc');
+      expect(rows[0]!.data.parent_tool_call_id).toBe('tc_001');
+      expect(typeof rows[0]!.seq).toBe('number');
+      expect(typeof rows[0]!.time).toBe('number');
+    });
+
+    it('records a subagent_completed row (with usage) and exposes it by type', async () => {
+      const journal = new InMemorySessionJournalImpl();
+      await journal.appendSubagentCompleted({
+        type: 'subagent_completed',
+        data: {
+          agent_id: 'sub_abc',
+          parent_tool_call_id: 'tc_001',
+          result_summary: 'investigation summary',
+          usage: { input: 500, output: 120 },
+        },
+      });
+
+      const rows = journal.getRecordsByType('subagent_completed');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.data.result_summary).toBe('investigation summary');
+      expect(rows[0]!.data.usage?.input).toBe(500);
+    });
+
+    it('records a subagent_failed row and exposes it by type', async () => {
+      const journal = new InMemorySessionJournalImpl();
+      await journal.appendSubagentFailed({
+        type: 'subagent_failed',
+        data: {
+          agent_id: 'sub_abc',
+          parent_tool_call_id: 'tc_001',
+          error: 'Subagent was aborted',
+        },
+      });
+
+      const rows = journal.getRecordsByType('subagent_failed');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.data.error).toMatch(/aborted/);
+    });
+
+    it('spawned + completed pair is queryable as distinct record types', async () => {
+      const journal = new InMemorySessionJournalImpl();
+      await journal.appendSubagentSpawned({
+        type: 'subagent_spawned',
+        data: {
+          agent_id: 'sub_abc',
+          parent_tool_call_id: 'tc_001',
+          run_in_background: false,
+        },
+      });
+      await journal.appendSubagentCompleted({
+        type: 'subagent_completed',
+        data: {
+          agent_id: 'sub_abc',
+          parent_tool_call_id: 'tc_001',
+          result_summary: 'done',
+        },
+      });
+
+      expect(journal.getRecordsByType('subagent_spawned')).toHaveLength(1);
+      expect(journal.getRecordsByType('subagent_completed')).toHaveLength(1);
+      expect(journal.getRecordsByType('subagent_failed')).toHaveLength(0);
+    });
+  });
+
+  describe('WiredSessionJournalImpl', () => {
+    function makeWired(): { journal: WiredSessionJournalImpl; filePath: string } {
+      const filePath = join(workDir, 'wire.jsonl');
+      const writer = new WiredJournalWriter({
+        filePath,
+        lifecycle: new StubGate(),
+        config: { fsyncMode: 'per-record' },
+      });
+      return { journal: new WiredSessionJournalImpl(writer), filePath };
+    }
+
+    it('persists a subagent_spawned row to wire.jsonl', async () => {
+      const { journal, filePath } = makeWired();
+      await journal.appendSubagentSpawned({
+        type: 'subagent_spawned',
+        data: {
+          agent_id: 'sub_abc',
+          parent_tool_call_id: 'tc_001',
+          run_in_background: false,
+        },
+      });
+      const records = await readWireRecords(filePath);
+      const row = records.find((r) => r['type'] === 'subagent_spawned');
+      expect(row).toBeDefined();
+      expect((row!['data'] as Record<string, unknown>)['agent_id']).toBe('sub_abc');
+    });
+
+    it('persists a subagent_completed row to wire.jsonl', async () => {
+      const { journal, filePath } = makeWired();
+      await journal.appendSubagentCompleted({
+        type: 'subagent_completed',
+        data: {
+          agent_id: 'sub_abc',
+          parent_tool_call_id: 'tc_001',
+          result_summary: 'ok',
+        },
+      });
+      const records = await readWireRecords(filePath);
+      expect(records.some((r) => r['type'] === 'subagent_completed')).toBe(true);
+    });
+
+    it('persists a subagent_failed row to wire.jsonl', async () => {
+      const { journal, filePath } = makeWired();
+      await journal.appendSubagentFailed({
+        type: 'subagent_failed',
+        data: {
+          agent_id: 'sub_abc',
+          parent_tool_call_id: 'tc_001',
+          error: 'boom',
+        },
+      });
+      const records = await readWireRecords(filePath);
+      expect(records.some((r) => r['type'] === 'subagent_failed')).toBe(true);
+    });
+
+    it('parent wire NEVER writes subagent_event rows anymore (§3.6.1)', async () => {
+      const { journal } = makeWired();
+      // The method is gone at the type level; runtime access must also be
+      // undefined so a caller that silenced TypeScript cannot revive the
+      // legacy nesting pathway.
+      expect(
+        (journal as unknown as Record<string, unknown>)['appendSubagentEvent'],
+      ).toBeUndefined();
+    });
+  });
+});
