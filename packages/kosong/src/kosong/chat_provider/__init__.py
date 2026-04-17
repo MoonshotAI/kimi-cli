@@ -119,12 +119,8 @@ class TokenUsage(BaseModel):
         return self.input_other + self.input_cache_read + self.input_cache_creation
 
 
-type ThinkingEffort = Literal["off", "low", "medium", "high", "xhigh", "max"]
-"""The effort level for thinking.
-
-Levels above ``high`` (``xhigh``, ``max``) are currently only meaningful to
-Anthropic's adaptive-thinking models. Other providers treat them as ``high``.
-"""
+type ThinkingEffort = Literal["off", "low", "medium", "high"]
+"""The effort level for thinking."""
 
 
 class ChatProviderError(Exception):
