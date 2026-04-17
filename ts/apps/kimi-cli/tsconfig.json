@@ -1,9 +1,4 @@
 {
   "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "paths": {
-      "@mariozechner/pi-tui": ["../../../libs/pi-mono/packages/tui/src/index.ts"]
-    }
-  },
   "include": ["src"]
 }
