@@ -8,7 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StateCache } from '../../src/session/state-cache.js';
 import {
@@ -119,8 +119,36 @@ describe('SessionStateApprovalStateStore', () => {
 //      path passes the same callback through.
 //   4. Expand this todo into four passing cases (one per Python parity
 //      point above) using `vi.fn()` spies on onChanged.
-describe('ApprovalStateStore — Phase 11.2 onChanged hook (src decision pending)', () => {
-  it.todo(
-    '[P2] onChanged callback fires on set_yolo / approve_for_session / cascade / no-crash when absent (src gap: ApprovalStateStore.onChanged? — see MIGRATION_REPORT §B#4)',
-  );
+describe('Phase 17 B.2 — ApprovalStateStore.onChanged callback', () => {
+  it('InMemoryApprovalStateStore.save with onChanged fires {kind, before, after} after persist', async () => {
+    const onChanged = vi.fn();
+    const store = new InMemoryApprovalStateStore();
+    // Phase 17 B.2 — `onChanged` accepted as a second constructor arg
+    // OR a post-construction setter. Implementer picks either shape;
+    // the test asks for a setter for maximum flexibility.
+    (store as unknown as {
+      onChanged?: (e: {
+        kind: string;
+        before: ReadonlySet<string>;
+        after: ReadonlySet<string>;
+      }) => void;
+    }).onChanged = onChanged;
+
+    await store.save(new Set(['action_a']));
+
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    const call = onChanged.mock.calls[0]![0] as {
+      kind: string;
+      before: ReadonlySet<string>;
+      after: ReadonlySet<string>;
+    };
+    expect(call.before.size).toBe(0);
+    expect(call.after.has('action_a')).toBe(true);
+  });
+
+  it('no crash when onChanged is not provided (undefined)', async () => {
+    const store = new InMemoryApprovalStateStore();
+    await expect(store.save(new Set(['a']))).resolves.toBeUndefined();
+    expect((await store.load()).has('a')).toBe(true);
+  });
 });

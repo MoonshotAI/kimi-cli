@@ -129,7 +129,7 @@ describe('KosongAdapter — streamed tool call assembly (Fix 1 / M4)', () => {
     await adapter.chat(
       makeParams({
         onDelta: (d) => {
-          deltas.push(d);
+          if (typeof d === 'string') deltas.push(d);
         },
       }),
     );

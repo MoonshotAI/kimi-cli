@@ -3,6 +3,11 @@
  */
 
 import type { StopReason, TokenUsage } from '../../../src/soul/types.js';
+import type { ToolCallPartDelta } from '../../../src/soul/runtime.js';
+
+// Phase 17 §B.6 — re-export from fake-kosong-adapter so tests can
+// import from either path.
+export { createScriptedKosong } from './fake-kosong-adapter.js';
 
 export interface ScriptedToolCall {
   readonly id: string;
@@ -35,6 +40,14 @@ export interface ScriptedTurn {
    *   - `{chunks: [...]}`: emit the given sequence verbatim
    */
   readonly streaming?: ScriptedStreaming | undefined;
+  /**
+   * Phase 17 §B.6 — incremental tool_use chunks emitted via
+   * `onDelta` BEFORE the final assistant message. Each entry becomes
+   * one `ToolCallPartDelta` onDelta call. The `type` discriminator
+   * is auto-injected by the fake so fixtures can stay terse (just
+   * `{tool_call_id, name?, arguments_chunk?}`).
+   */
+  readonly toolCallParts?: ReadonlyArray<Omit<ToolCallPartDelta, 'type'>> | undefined;
 }
 
 export interface KosongErrorInjection {

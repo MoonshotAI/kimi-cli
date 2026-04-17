@@ -360,6 +360,9 @@ export class KimiCoreClient implements WireClient {
     const commandExecutor = new CommandHookExecutor(this.deps.kaos);
     const hookEngine = new HookEngine({
       executors: new Map<string, HookExecutor>([['command', commandExecutor]]),
+      // Phase 17 §B.7 — forward hook lifecycle to the event-bridge so
+      // clients see `hook.triggered` / `hook.resolved` wire events.
+      sink: eventBus,
     });
     const parsedHooks = parseHookConfigs(this.deps.config.hooks);
     for (const hook of parsedHooks) {

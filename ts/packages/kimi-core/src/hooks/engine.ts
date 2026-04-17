@@ -16,6 +16,7 @@
  *     (v2 §9-C requires hooks never to brick a turn)
  */
 
+import type { EventSink } from '../soul/event-sink.js';
 import type {
   AggregatedHookResult,
   HookConfig,
@@ -28,6 +29,25 @@ export interface HookEngineDeps {
   readonly executors: ReadonlyMap<string, HookExecutor>;
   readonly onExecutorError?: ((hook: HookConfig, error: Error) => void) | undefined;
   readonly onInvalidMatcher?: ((hook: HookConfig, matcher: string) => void) | undefined;
+  /**
+   * Phase 17 §B.7 — Optional SoulEvent sink for `hook.triggered` /
+   * `hook.resolved` lifecycle observability. When provided, the engine
+   * emits one `hook.triggered` per matcher dispatch + one `hook.resolved`
+   * per settled hook. Optional so test fixtures that don't care about
+   * wire-side observability need not wire a sink.
+   */
+  readonly sink?: EventSink | undefined;
+}
+
+/**
+ * Synthesises a stable-enough id for `hook.resolved` emissions. Hooks
+ * are registered without an intrinsic id; we derive one from
+ * `event:type:matcher`, suffixed with the registration index to
+ * disambiguate duplicates. `hook.resolved` consumers use the id only
+ * for correlation within a single process lifetime.
+ */
+function hookId(hook: HookConfig, index: number): string {
+  return `${hook.event}:${hook.type}:${hook.matcher ?? ''}:${index}`;
 }
 
 export class HookEngine {
@@ -87,8 +107,25 @@ export class HookEngine {
   ): Promise<AggregatedHookResult> {
     const matching = this.getMatchingHooks(event, input);
     if (matching.length === 0) {
+      // Still emit `hook.triggered` with matched_count=0 so wire-side
+      // observability can see that the event was considered. Keeps the
+      // protocol symmetric — clients get one trigger record per hook
+      // dispatch regardless of match count.
+      this.deps.sink?.emit({
+        type: 'hook.triggered',
+        event,
+        matchers: [],
+        matched_count: 0,
+      });
       return { blockAction: false, additionalContext: [] };
     }
+
+    this.deps.sink?.emit({
+      type: 'hook.triggered',
+      event,
+      matchers: matching.map((h) => h.matcher ?? ''),
+      matched_count: matching.length,
+    });
 
     const settled = await Promise.allSettled(
       matching.map((hook) => {
@@ -104,17 +141,31 @@ export class HookEngine {
     const additionalContext: string[] = [];
 
     for (const [i, result] of settled.entries()) {
+      const hook = matching[i];
       if (result.status === 'rejected') {
-        const hook = matching[i];
         if (hook !== undefined) {
           this.deps.onExecutorError?.(
             hook,
             result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
           );
+          this.deps.sink?.emit({
+            type: 'hook.resolved',
+            hook_id: hookId(hook, i),
+            outcome: 'error',
+          });
         }
         continue;
       }
       const value = result.value;
+      if (hook !== undefined) {
+        const outcome: 'ok' | 'blocked' =
+          value?.blockAction === true ? 'blocked' : 'ok';
+        this.deps.sink?.emit({
+          type: 'hook.resolved',
+          hook_id: hookId(hook, i),
+          outcome,
+        });
+      }
       if (value === undefined) continue;
       if (value.blockAction) {
         blockAction = true;

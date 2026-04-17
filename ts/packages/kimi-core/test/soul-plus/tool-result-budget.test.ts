@@ -287,6 +287,28 @@ describe('Orchestrator — budget enforcement at afterToolCall seam', () => {
     expect((big.content as string).startsWith('<persisted-output')).toBe(true);
   });
 
+  it('Phase 17 B.3: McpToolAdapter factory sets maxResultSizeChars = DEFAULT_MCP_MAX_RESULT_CHARS on the wrapped Tool', async () => {
+    // Phase 17 B.3 — the MCP adapter must surface the 100K cap through
+    // the field itself, not just via the default-per-branch orchestrator
+    // logic. This pins regression at the construction site.
+    const { mcpToolToKimiTool } = await import(
+      '../../src/soul-plus/mcp/tool-adapter.js'
+    );
+    const fakeClient = {
+      callTool: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+    } as unknown as Parameters<typeof mcpToolToKimiTool>[0]['client'];
+    const wrapped = mcpToolToKimiTool({
+      serverName: 'test-server',
+      mcpTool: {
+        name: 'ping',
+        description: 'pings',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      client: fakeClient,
+    });
+    expect(wrapped.maxResultSizeChars).toBe(DEFAULT_MCP_MAX_RESULT_CHARS);
+  });
+
   it('two tool calls in the same session write to distinct archive files', async () => {
     const tool = makeTool({});
     const orch = makeOrchestrator({ sessionId: 'ses_multi', pathConfig });
