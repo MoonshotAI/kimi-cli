@@ -70,3 +70,21 @@ export type {
   CreateRequestOptions,
   CreateResponseOptions,
 } from './message-factory.js';
+
+// Phase 17 §A.1 — shared bridge used by the production `--wire`
+// runner and the in-memory E2E harness.
+export { installWireEventBridge } from './event-bridge.js';
+export type {
+  InstallWireEventBridgeOptions,
+  WireEventBridgeHandle,
+  WireEventBridgeTransport,
+} from './event-bridge.js';
+
+// Phase 17 §A.4 — central JSON-RPC-style error-code mapping.
+export { mapToWireError } from './error-mapping.js';
+export type { WireErrorMapping } from './error-mapping.js';
+
+// Phase 17 §A.5 — shared handler registration. Production `--wire`
+// runner and the test harness both call this.
+export { registerDefaultWireHandlers } from './default-handlers.js';
+export type { DefaultHandlersDeps } from './default-handlers.js';

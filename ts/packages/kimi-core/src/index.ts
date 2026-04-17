@@ -245,6 +245,22 @@ export type {
   CreateResponseOptions,
 } from './wire-protocol/index.js';
 
+// Phase 17 §A.1 / §A.4 / §A.5 — shared wire machinery used by the
+// production `apps/kimi-cli --wire` runner AND the in-memory test
+// harness so both call into the same handler registrations.
+export {
+  installWireEventBridge,
+  mapToWireError,
+  registerDefaultWireHandlers,
+} from './wire-protocol/index.js';
+export type {
+  DefaultHandlersDeps,
+  InstallWireEventBridgeOptions,
+  WireErrorMapping,
+  WireEventBridgeHandle,
+  WireEventBridgeTransport,
+} from './wire-protocol/index.js';
+
 // ── Transport (Slice 5) ────────────────────────────────────────────────
 export type { Transport, TransportServer, TransportState } from './transport/index.js';
 export { MemoryTransport, createLinkedTransportPair, StdioTransport } from './transport/index.js';

@@ -122,6 +122,13 @@ export interface TurnManagerDeps {
   // ── Optional (config / capability) ───────────────────────────────────
   readonly agentType?: 'main' | 'sub' | 'independent' | undefined;
   readonly agentId?: string | undefined;
+  /**
+   * Phase 17 §B.1 — subagent type label (e.g. `'researcher'`). Only
+   * meaningful when `agentType === 'sub'`; attached to the
+   * `ApprovalSource.subagent` record so downstream tooling can group
+   * approval history by subagent role.
+   */
+  readonly subagentType?: string | undefined;
   readonly orchestrator?: ToolCallOrchestrator | undefined;
   /**
    * Optional approval runtime reference used by `abortTurn` to cancel
@@ -156,6 +163,7 @@ export class TurnManager {
   private readonly deps: TurnManagerDeps;
   private readonly agentType: 'main' | 'sub' | 'independent';
   private readonly agentId: string;
+  private readonly subagentType: string | undefined;
   private readonly sessionRules: PermissionRule[];
   private permissionMode: PermissionMode;
   private pendingTurnOverrides: TurnPermissionOverrides | undefined;
@@ -173,6 +181,7 @@ export class TurnManager {
     this.deps = deps;
     this.agentType = deps.agentType ?? 'main';
     this.agentId = deps.agentId ?? 'agent_main';
+    this.subagentType = deps.subagentType;
     this.sessionRules = [...(deps.sessionRules ?? [])];
     this.permissionMode = deps.permissionMode ?? 'default';
     this.planMode = deps.planMode ?? false;
@@ -191,6 +200,13 @@ export class TurnManager {
 
   setPlanMode(enabled: boolean): void {
     this.planMode = enabled;
+    // Phase 17 §A.2 — surface plan-mode flips to the wire as a
+    // `status.update` frame so clients can refresh their mode indicator
+    // without polling.
+    this.deps.sink.emit({
+      type: 'status.update',
+      data: { plan_mode: enabled },
+    });
   }
 
   getPlanMode(): boolean {
@@ -434,7 +450,11 @@ export class TurnManager {
 
     const approvalSource: ApprovalSource =
       this.agentType === 'sub'
-        ? { kind: 'subagent', agent_id: this.agentId }
+        ? {
+            kind: 'subagent',
+            agent_id: this.agentId,
+            ...(this.subagentType !== undefined ? { subagent_type: this.subagentType } : {}),
+          }
         : { kind: 'soul', agent_id: this.agentId };
 
     // Slice 5 — name → wrapped-tool lookup so the orchestrator's
@@ -507,7 +527,6 @@ export class TurnManager {
       // MAX_COMPACTIONS_PER_TURN so a misbehaving provider cannot lock
       // the session.
       let compactionCount = 0;
-      let overflowTripped = false;
       while (true) {
         signal.throwIfAborted();
         let soulResult: TurnResult;
@@ -532,9 +551,8 @@ export class TurnManager {
                 type: 'session.error',
                 error: `Compaction limit exceeded (${MAX_COMPACTIONS_PER_TURN})`,
                 error_type: 'context_overflow',
-              } as never);
+              });
               result = { stopReason: 'error', steps: 0, usage: zeroUsage() };
-              overflowTripped = true;
               break;
             }
             await this.deps.compaction.executeCompaction(signal);
@@ -552,7 +570,7 @@ export class TurnManager {
             type: 'session.error',
             error: `Compaction limit exceeded (${MAX_COMPACTIONS_PER_TURN})`,
             error_type: 'context_overflow',
-          } as never);
+          });
           result = {
             stopReason: 'error',
             steps: soulResult.steps,
@@ -566,7 +584,6 @@ export class TurnManager {
       if (result !== undefined && result.stopReason === 'error') {
         reason = 'error';
       }
-      void overflowTripped;
     } catch (error) {
       void error;
       result = undefined;
@@ -629,6 +646,31 @@ export class TurnManager {
       this.deps.soulRegistry.destroy('main');
 
       this.deps.lifecycle.completeTurn(turnId);
+
+      // Phase 17 §A.2 — emit `status.update` with usage snapshot for
+      // the turn that just finished. Fires BEFORE the `end` lifecycle
+      // event so UIs that key off turn.end see usage in place.
+      if (result?.usage !== undefined) {
+        this.deps.sink.emit({
+          type: 'status.update',
+          data: {
+            token_usage: {
+              input_tokens: result.usage.input,
+              output_tokens: result.usage.output,
+              ...(result.usage.cache_read !== undefined
+                ? { cache_read_tokens: result.usage.cache_read }
+                : {}),
+              ...(result.usage.cache_write !== undefined
+                ? { cache_write_tokens: result.usage.cache_write }
+                : {}),
+            },
+            context_usage: {
+              input_tokens: result.usage.input,
+              output_tokens: result.usage.output,
+            },
+          },
+        });
+      }
 
       // Fire the `end` lifecycle event LAST so listeners observing this
       // edge are guaranteed the machine is back at `idle` and

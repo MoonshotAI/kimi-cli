@@ -26,7 +26,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createWireRequest } from '../../src/wire-protocol/message-factory.js';
-import { PROCESS_SESSION_ID } from '../../src/wire-protocol/types.js';
+import { PROCESS_SESSION_ID, type WireMessage } from '../../src/wire-protocol/types.js';
 import {
   buildCancelRequest,
   buildInitializeRequest,
@@ -98,24 +98,76 @@ describe('wire errors — routing layer', () => {
   });
 });
 
-describe('wire errors — not yet wired in src', () => {
-  // -32700 Invalid JSON — `WireCodec.decode` throws MalformedWireFrameError
-  // which is swallowed by the in-memory harness's server.onMessage (no
-  // way to construct a valid request_id back). Unit coverage sits in
-  // `test/wire-protocol/codec-edge-cases.test.ts`. A real stdio harness
-  // will surface this as -32700 when Phase 11 wires the outer dispatcher.
-  it.todo('-32700: malformed JSON yields Invalid JSON format (pending Phase 11 stdio handler)');
+describe('wire errors — Phase 17 A.4 (error-mapping central table)', () => {
+  // Phase 17 A.4 — mapToWireError now runs in both the production
+  // `runWire` frame loop and the in-memory harness's server.onMessage.
+  // Each of these lifts the original Phase 10 `it.todo` into an
+  // executable assertion; implementer lands
+  // `src/wire-protocol/error-mapping.ts` + harness wiring so these
+  // flip from red to green.
+  it('-32700: malformed JSON yields Parse error response (request_id: null)', async () => {
+    harness = await createWireE2EHarness();
+    // Send a raw non-JSON frame through the underlying transport to
+    // force a codec-level failure. The harness must emit a -32700
+    // response rather than silently swallow.
+    const malformed = 'not-a-json-frame';
+    const errorFrame = await new Promise<WireMessage>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout')), 2_000);
+      const original = harness!.queue.subscribe((msg) => {
+        if (msg.type === 'response' && msg.error !== undefined) {
+          clearTimeout(timer);
+          original();
+          resolve(msg);
+        }
+      });
+      void harness!.client.send(malformed);
+    });
+    expect(errorFrame.error?.code).toBe(-32700);
+    expect(errorFrame.error?.message.toLowerCase()).toMatch(/parse|json/);
+    expect(errorFrame.request_id).toBeUndefined();
+  });
 
-  // -32600 Invalid Request — TS `WireMessageSchema` rejects the envelope
-  // entirely, so no request_id exists to reply to. Same swallow path as
-  // -32700 — unit coverage already lives in codec-edge-cases.test.ts.
-  it.todo('-32600: invalid envelope yields Invalid request (pending Phase 11 stdio handler)');
+  it('-32600: invalid envelope (missing required fields) yields Invalid request', async () => {
+    harness = await createWireE2EHarness();
+    // Ship a syntactically valid JSON frame that fails
+    // `WireMessageSchema` (missing `type`).
+    const bad = JSON.stringify({
+      id: 'req_bad',
+      time: Date.now(),
+      session_id: PROCESS_SESSION_ID,
+      from: 'client',
+      to: 'server',
+      method: 'initialize',
+    });
+    const errorFrame = await new Promise<WireMessage>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout')), 2_000);
+      const unsub = harness!.queue.subscribe((msg) => {
+        if (msg.type === 'response' && msg.error !== undefined) {
+          clearTimeout(timer);
+          unsub();
+          resolve(msg);
+        }
+      });
+      void harness!.client.send(bad);
+    });
+    expect(errorFrame.error?.code).toBe(-32600);
+  });
 
-  // -32602 Invalid params — src `session.prompt` handler does not zod-
-  // validate `SessionPromptRequestData`. Today an undefined `input` slips
-  // through to `context.appendUserMessage({text:undefined})`. Phase 11
-  // should route param-validation failures to -32602.
-  it.todo('-32602: session.prompt missing input yields Invalid parameters (pending Phase 11 param validation)');
+  it('-32602: session.prompt with non-string input yields Invalid params', async () => {
+    const sessionId = await makeSession();
+    // Craft a session.prompt request whose `input` is a number —
+    // fails the widened `SessionPromptRequestData` schema
+    // (string | UserInputPart[]).
+    const req = createWireRequest({
+      method: 'session.prompt',
+      sessionId,
+      data: { input: 42 },
+    });
+    await harness!.send(req);
+    const { response } = await harness!.collectUntilResponse(req.id);
+    expect(response.error?.code).toBe(-32602);
+    expect(response.error?.message.toLowerCase()).toMatch(/invalid\s*params/);
+  });
 
   // -32000 cancel without in-flight turn — v2 TurnManager returns
   // `{ok:true}` (idempotent). Deliberate divergence: Python treated

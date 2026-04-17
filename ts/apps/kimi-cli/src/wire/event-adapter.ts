@@ -100,6 +100,48 @@ export function adaptSoulEventToWireMessage(
         common,
       );
 
+    // Phase 17 §A.6 / §A.2 / §B.7 — new SoulEvent variants. The TUI
+    // bridge forwards session.error + status.update as wire events;
+    // hook.triggered / hook.resolved drop through until a dedicated
+    // hook-observability widget lands (CLI Phase).
+    case 'session.error':
+      return createEvent(
+        'session.error',
+        {
+          error: event.error,
+          ...(event.error_type !== undefined ? { error_type: event.error_type } : {}),
+          ...(event.retry_after_ms !== undefined
+            ? { retry_after_ms: event.retry_after_ms }
+            : {}),
+          ...(event.details !== undefined ? { details: event.details } : {}),
+        },
+        common,
+      );
+
+    case 'status.update':
+      return createEvent('status.update', event.data, common);
+
+    case 'hook.triggered':
+    case 'hook.resolved':
+      return null;
+
+    // Phase 17 §B.6 — forwarded on the same `content.delta` envelope
+    // so TUI renderers can thread text / think / tool_call_part
+    // through one handler.
+    case 'tool_call_part':
+      return createEvent(
+        'content.delta',
+        {
+          type: 'tool_call_part',
+          tool_call_id: event.tool_call_id,
+          ...(event.name !== undefined ? { name: event.name } : {}),
+          ...(event.arguments_chunk !== undefined
+            ? { arguments_chunk: event.arguments_chunk }
+            : {}),
+        },
+        common,
+      );
+
     default: {
       // Exhaustive guard — adding a new SoulEvent variant without
       // extending this switch is a compile error.

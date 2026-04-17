@@ -58,12 +58,14 @@ import {
   setCliVersion,
 } from '@moonshot-ai/core';
 import type {
+  ApprovalRuntime,
   KimiConfig,
   McpConfig,
   McpLoadNotification,
   OAuthResolver,
   Runtime,
   Tool,
+  WireMessage,
   WorkspaceConfig,
 } from '@moonshot-ai/core';
 import { localKaos } from '@moonshot-ai/kaos';
@@ -641,8 +643,168 @@ async function runPrint(opts: CLIOptions): Promise<void> {
   }
 }
 
-function runWire(_opts: CLIOptions): void {
-  process.stdout.write('Wire mode: not yet implemented (Phase 11)\n');
+/**
+ * Phase 17 §A.1 / §A.4 / §A.5 — production `--wire` runner.
+ *
+ * Assembles the same wire surface the in-memory E2E harness uses:
+ *   - `StdioTransport` for NDJSON framing
+ *   - `RequestRouter` + `registerDefaultWireHandlers` for process /
+ *     conversation / management / config / mcp methods
+ *   - `installWireEventBridge` forwarding SoulEvents + turn lifecycle
+ *     onto the wire
+ *   - `mapToWireError` for codec / envelope / zod failures
+ *
+ * Missing for full prod parity (CLI Phase follow-up): per-session
+ * SessionEventBus isolation (today a shared bus drives a single
+ * bridge — single-session clients work; multi-session concurrent
+ * usage shares frame attribution), OAuth-aware provider swap on
+ * `session.setModel`, and MCP tool wiring.
+ */
+async function runWire(opts: CLIOptions): Promise<void> {
+  // Lazy-load core wire machinery only inside this branch so the
+  // shell/print code paths don't pay the import cost.
+  const core = await import('@moonshot-ai/core');
+  const {
+    AlwaysAllowApprovalRuntime,
+    HookEngine,
+    RequestRouter,
+    SessionEventBus,
+    SessionManager: SessionManagerCtor,
+    StdioTransport,
+    ToolCallOrchestrator,
+    WireCodec,
+    createKosongAdapter,
+    createRuntime,
+    createProviderFromConfig,
+    installWireEventBridge,
+    loadConfig: loadKimiConfig,
+    mapToWireError,
+    registerDefaultWireHandlers,
+    createWireResponse: makeResponse,
+    PathConfig: PathConfigCtor,
+  } = core;
+
+  const workDir = opts.workDir ?? process.cwd();
+  const pathConfig = new PathConfigCtor();
+  const kimiConfig = loadKimiConfig({ pathConfig, workspaceDir: workDir });
+  const modelAlias = opts.model ?? kimiConfig.defaultModel;
+  if (modelAlias === undefined || modelAlias === '') {
+    process.stderr.write(
+      'error: --wire requires a default_model in ~/.kimi/config.toml or --model <name>\n',
+    );
+    process.exit(1);
+  }
+
+  setCliVersion(getVersion());
+  const { oauthResolver } = await ensureOAuthIfNeeded(
+    kimiConfig,
+    modelAlias,
+    pathConfig,
+  );
+  const provider = await createProviderFromConfig(kimiConfig, modelAlias, {
+    defaultHeaders: buildKimiDefaultHeaders(getVersion()),
+    ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+  });
+  const kosong = createKosongAdapter({ provider });
+  const runtime: Runtime = createRuntime({ kosong });
+
+  const sessionManager = new SessionManagerCtor(pathConfig);
+  const approval = new AlwaysAllowApprovalRuntime();
+  const eventBus = new SessionEventBus();
+  const hookEngine = new HookEngine({ executors: new Map(), sink: eventBus });
+  const orchestrator = new ToolCallOrchestrator({
+    hookEngine,
+    sessionId: () => 'wire-session',
+    agentId: 'agent_main',
+    approvalRuntime: approval,
+    pathConfig,
+  });
+
+  const router = new RequestRouter({ sessionManager });
+  registerDefaultWireHandlers({
+    sessionManager,
+    router,
+    runtime,
+    kosong,
+    tools: [],
+    approval,
+    orchestrator,
+    eventBus,
+    workspaceDir: workDir,
+    defaultModel: modelAlias,
+    pathConfig,
+  });
+
+  const transport = new StdioTransport();
+  const codec = new WireCodec();
+
+  // One bridge up-front — single-session usage is the typical
+  // `--wire` CLI flow. Per-session bridges land in the CLI Phase
+  // follow-up when multi-session wire deployments ship.
+  let bridgeDisposer: (() => void) | undefined;
+  const originalCreate = sessionManager.createSession.bind(sessionManager);
+  (sessionManager as { createSession: typeof sessionManager.createSession }).createSession =
+    async (options) => {
+      const managed = await originalCreate(options);
+      bridgeDisposer?.();
+      const handle = installWireEventBridge({
+        server: transport,
+        eventBus,
+        addTurnLifecycleListener: (l) =>
+          managed.soulPlus.getTurnManager().addTurnLifecycleListener(l),
+        sessionId: managed.sessionId,
+      });
+      bridgeDisposer = handle.dispose;
+      return managed;
+    };
+
+  transport.onMessage = (frame) => {
+    void (async () => {
+      let msg: WireMessage;
+      try {
+        msg = codec.decode(frame);
+      } catch (decodeError) {
+        const mapping = mapToWireError(decodeError);
+        try {
+          const err = makeResponse({
+            requestId: undefined,
+            sessionId: '__unknown__',
+            error: mapping.error,
+          });
+          await transport.send(codec.encode(err));
+        } catch {
+          /* transport closed — ignore */
+        }
+        return;
+      }
+      try {
+        const response = await router.dispatch(msg, transport);
+        if (response !== undefined) {
+          await transport.send(codec.encode(response));
+        }
+      } catch (error) {
+        if (msg.type !== 'request') return;
+        const mapping = mapToWireError(error);
+        const errorResponse = makeResponse({
+          requestId: msg.id,
+          sessionId: msg.session_id,
+          error: mapping.error,
+        });
+        try {
+          await transport.send(codec.encode(errorResponse));
+        } catch {
+          /* transport closed — ignore */
+        }
+      }
+    })();
+  };
+
+  transport.onClose = () => {
+    bridgeDisposer?.();
+    process.exit(0);
+  };
+
+  await transport.connect();
 }
 
 // ---------------------------------------------------------------------------
@@ -683,7 +845,12 @@ function main(): void {
         });
         break;
       case 'wire':
-        runWire(opts);
+        void runWire(opts).catch((error: unknown) => {
+          process.stderr.write(
+            `error: wire runner failed: ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+          process.exit(1);
+        });
         break;
     }
   });

@@ -174,6 +174,12 @@ export type WireEventMethod =
   | 'model.changed'
   | 'thinking.changed'
   | 'plan.display'
+  // Phase 17 §A.5 — session.replay chunked streaming. Client keys
+  // these off the originating request via `request_id` on the event
+  // envelope; `seq` is populated by `createWireEvent` so playback
+  // ordering is deterministic.
+  | 'session.replay.chunk'
+  | 'session.replay.end'
   // Slice 7.2 (决策 #100) — MCP lifecycle events.
   | 'mcp.connected'
   | 'mcp.disconnected'
@@ -281,7 +287,10 @@ export interface SessionSteerRequestData {
 }
 
 export interface SessionSteerResponseData {
-  queued: true;
+  // Phase 17 §E.2 — runtime returns `{ok: true}` via DispatchResponse;
+  // the type was drifting with `{queued: true}` from the design note.
+  // Align on `ok` so `session.steer` round-trip type-checks.
+  ok: true;
 }
 
 // ── Session cancel data ─────────────────────────────────────────────────
@@ -368,10 +377,20 @@ export interface StepInterruptedEventData {
   reason: string;
 }
 
+/**
+ * Phase 17 §B.6 — `content.delta` wire event payload. Carries either
+ * a text / thinking chunk (the legacy shape) or a streaming
+ * `tool_call_part` when the provider emits tool_use arguments
+ * incrementally. Keeping all three variants on one envelope lets
+ * clients render everything through a single frame type.
+ */
 export interface ContentDeltaEventData {
-  type: 'text' | 'thinking';
+  type: 'text' | 'thinking' | 'tool_call_part';
   text?: string | undefined;
   thinking?: string | undefined;
+  tool_call_id?: string | undefined;
+  name?: string | undefined;
+  arguments_chunk?: string | undefined;
 }
 
 export interface ToolCallEventData {
@@ -460,7 +479,15 @@ const _refinedWireMessageSchema = _rawWireMessageSchema.superRefine((msg, ctx) =
     });
   }
   // Rule 2: response must have a non-empty `request_id` (for RPC pairing).
-  if (msg.type === 'response' && (msg.request_id === undefined || msg.request_id === '')) {
+  // Phase 17 §A.4 — JSON-RPC parity: when the server could not recover
+  // the client id (codec / envelope schema failure), the error
+  // response is allowed to omit `request_id`. Gated on `error` being
+  // present so normal responses still require the id.
+  if (
+    msg.type === 'response' &&
+    (msg.request_id === undefined || msg.request_id === '') &&
+    msg.error === undefined
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['request_id'],

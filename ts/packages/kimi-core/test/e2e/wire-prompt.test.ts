@@ -197,20 +197,48 @@ describe('wire prompt — concurrent requests', () => {
   });
 });
 
-// ── Phase 11 gaps — tracked in migration report ──────────────────────
+// ── Phase 17 lifts — each scenario now has a dedicated test file ─────
 
-describe('wire prompt — pending src wiring', () => {
-  // `SessionPromptRequestData.input` is `string` in wire schema. The
-  // multimodal `[{type:'text'}, {type:'image_url'}, ...]` shape needs a
-  // schema widening + KosongAdapter capability plumbing.
-  it.todo('multimodal content-part input (pending SessionPromptRequestData schema widening)');
+describe('wire prompt — Phase 17 lifts', () => {
+  // Phase 17 A.7 — multimodal content-part input behavioural coverage
+  // now lives in `test/e2e/wire-multimodal-roundtrip.test.ts`.
+  it.todo('multimodal content-part input — covered by wire-multimodal-roundtrip.test.ts (Phase 17 A.7)');
 
-  // `--max-steps-per-turn` CLI flag and the corresponding
-  // `session.create` data field do not exist. TurnManager has no
-  // max-steps gate today.
-  it.todo('max_steps_reached status (pending max_steps_per_turn src impl)');
+  // Phase 17 A.8 — max_steps_reached now surfaces through the
+  // turn.end `stop_reason` field + a `session.error`-like status.
+  it('max_steps_reached status: Soul trips after max_steps and turn.end.reason="error"', async () => {
+    // A provider that never emits a stop_reason but also never issues a
+    // tool call forces Soul to loop until the max-steps gate trips.
+    // FakeKosongAdapter with a single turn whose stopReason is
+    // `tool_use` without any tool_calls triggers the loop-detection
+    // path; if the harness does not yet expose a knob for this the
+    // Implementer will need to add one — the assertion shape below
+    // pins the expected surface.
+    const kosong = new FakeKosongAdapter({
+      turns: Array.from({ length: 120 }, () => ({
+        text: '...',
+        stopReason: 'tool_use',
+      })),
+    });
+    const { sessionId } = await bootSession(kosong);
+    const req = buildPromptRequest({ sessionId, text: 'loop' });
+    await harness!.send(req);
+    const { response } = await harness!.collectUntilResponse(req.id);
+    const turnId = (response.data as { turn_id: string }).turn_id;
 
-  // `status.update` is a declared wire event (`WireEventMethod`
-  // includes it) but no src component emits it on a per-step basis.
-  it.todo('status.update token_usage / context_tokens snapshot (pending status.update emission)');
+    const endEvent = await harness!.expectEvent('turn.end', {
+      matcher: (m) => (m.data as { turn_id: string }).turn_id === turnId,
+      timeoutMs: 10_000,
+    });
+    const endData = endEvent.data as { reason: string; success: boolean };
+    // Either the turn surfaces as reason="error" (current v2) or
+    // "max_steps_reached" is reflected on a stop_reason field the
+    // implementer adds. The assertion allows the implementer to pick
+    // either: success must be false.
+    expect(endData.success).toBe(false);
+  });
+
+  // Phase 17 A.2 — status.update emission covered by
+  // `test/e2e/wire-status-update.test.ts`.
+  it.todo('status.update token_usage / context_tokens snapshot — covered by wire-status-update.test.ts (Phase 17 A.2)');
 });

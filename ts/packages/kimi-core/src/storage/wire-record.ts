@@ -249,7 +249,13 @@ export type McpApprovalReason = 'elicitation' | 'auth' | 'tool_call';
 
 export type ApprovalSource =
   | { kind: 'soul'; agent_id: string }
-  | { kind: 'subagent'; agent_id: string }
+  /**
+   * Phase 17 §B.1 — `subagent_type` labels the subagent role (e.g.
+   * `'researcher'`, `'coder'`). Optional so pre-17 callers keep
+   * working; TurnManager populates it when the parent SoulPlus knows
+   * the agent type.
+   */
+  | { kind: 'subagent'; agent_id: string; subagent_type?: string | undefined }
   | { kind: 'turn'; turn_id: string }
   | { kind: 'session'; session_id: string }
   | { kind: 'mcp'; server_id: string; reason: McpApprovalReason };
@@ -710,6 +716,7 @@ const _rawApprovalSourceSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('subagent'),
     agent_id: z.string(),
+    subagent_type: z.string().optional(),
   }),
   z.object({
     kind: z.literal('turn'),
