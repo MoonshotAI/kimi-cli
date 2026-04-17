@@ -69,6 +69,7 @@ import { ApprovalPanelComponent } from '../components/ApprovalPanelComponent.js'
 import { QuestionDialogComponent } from '../components/QuestionDialogComponent.js';
 import { SessionPickerComponent } from '../components/SessionPickerComponent.js';
 import { HelpPanelComponent } from '../components/HelpPanelComponent.js';
+import { TodoPanelComponent, type TodoItem } from '../components/TodoPanelComponent.js';
 import { MoonLoader } from '../components/MoonLoader.js';
 
 interface Expandable {
@@ -103,6 +104,8 @@ export class InteractiveMode implements WireHandlerDelegate {
 
   private transcriptContainer: Container;
   private activityContainer: Container;
+  private todoPanelContainer: Container;
+  private todoPanel: TodoPanelComponent;
   private queueContainer: Container;
   private editorContainer: Container;
   private footer: FooterComponent;
@@ -146,6 +149,8 @@ export class InteractiveMode implements WireHandlerDelegate {
 
     this.transcriptContainer = new Container();
     this.activityContainer = new Container();
+    this.todoPanelContainer = new Container();
+    this.todoPanel = new TodoPanelComponent(this.colors);
     this.queueContainer = new Container();
     this.editorContainer = new Container();
     this.editor = new CustomEditor(this.ui, editorTheme);
@@ -238,6 +243,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   private setupLayout(): void {
     this.ui.addChild(this.transcriptContainer);
     this.ui.addChild(this.activityContainer);
+    this.ui.addChild(this.todoPanelContainer);
     this.ui.addChild(this.queueContainer);
     this.ui.addChild(this.editorContainer);
     this.ui.addChild(this.footer);
@@ -397,6 +403,15 @@ export class InteractiveMode implements WireHandlerDelegate {
       this.pendingToolComponents.delete(toolCallId);
       this.ui.requestRender();
     }
+  }
+
+  setTodoList(todos: readonly TodoItem[]): void {
+    this.todoPanel.setTodos(todos);
+    this.todoPanelContainer.clear();
+    if (!this.todoPanel.isEmpty()) {
+      this.todoPanelContainer.addChild(this.todoPanel);
+    }
+    this.ui.requestRender();
   }
 
   routeSubagentEvent(
@@ -1219,6 +1234,8 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.transcriptContainer.clear();
     this.pendingToolComponents.clear();
     this.streamingComponent = undefined;
+    this.todoPanel.clear();
+    this.todoPanelContainer.clear();
     this.renderWelcome();
   }
 
@@ -1241,6 +1258,7 @@ export class InteractiveMode implements WireHandlerDelegate {
     const editorTheme = createEditorTheme(this.colors);
     this.editor.borderColor = editorTheme.borderColor;
     this.footer.setColors(this.colors);
+    this.todoPanel.setColors(this.colors);
     this.rebuildTranscriptFromEntries();
   }
 

@@ -70,6 +70,7 @@ function makeStubDelegate(): {
     routeSubagentEvent: (parentId, payload) => {
       routed.push({ parentId, payload });
     },
+    setTodoList: () => {},
   };
   return { delegate, routed };
 }

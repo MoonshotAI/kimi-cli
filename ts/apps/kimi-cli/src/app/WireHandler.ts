@@ -54,6 +54,12 @@ export interface WireHandlerDelegate {
   onToolCallStart(toolCall: ToolCallBlockData): void;
   onToolCallEnd(toolCallId: string, result: ToolResultBlockData): void;
   routeSubagentEvent(parentToolCallId: string, payload: SubagentRoutedPayload): void;
+  /**
+   * Called when the `SetTodoList` tool finishes. `todos` is the
+   * authoritative new list (empty → cleared). Host implementations
+   * should mirror the Python UX by pinning this above the input.
+   */
+  setTodoList(todos: readonly { title: string; status: 'pending' | 'in_progress' | 'done' }[]): void;
 }
 
 export interface SubagentRoutedPayload {
@@ -273,6 +279,19 @@ export class WireHandler {
         };
         if (matchedCall !== undefined) {
           this.delegate.onToolCallEnd(data.tool_call_id, resultData);
+          // SetTodoList: surface the authoritative todo list to the
+          // host so it can pin the pane above the input. `args.todos`
+          // is the LLM-sent list (undefined = query-only, which we
+          // intentionally don't propagate since no state changed).
+          if (matchedCall.name === 'SetTodoList' && !data.is_error) {
+            const rawTodos = (matchedCall.args as { todos?: unknown }).todos;
+            if (Array.isArray(rawTodos)) {
+              const sanitized = rawTodos
+                .filter(isTodoItemShape)
+                .map((t) => ({ title: t.title, status: t.status }));
+              this.delegate.setTodoList(sanitized);
+            }
+          }
         }
         this.activeToolCalls.delete(data.tool_call_id);
         this.delegate.patchLivePane({ mode: 'idle', pendingToolCall: null });
@@ -532,4 +551,13 @@ export class WireHandler {
     }
     this.delegate.removeToast(id);
   }
+}
+
+function isTodoItemShape(
+  value: unknown,
+): value is { title: string; status: 'pending' | 'in_progress' | 'done' } {
+  if (typeof value !== 'object' || value === null) return false;
+  const rec = value as { title?: unknown; status?: unknown };
+  if (typeof rec.title !== 'string' || rec.title.length === 0) return false;
+  return rec.status === 'pending' || rec.status === 'in_progress' || rec.status === 'done';
 }

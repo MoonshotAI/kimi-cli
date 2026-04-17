@@ -347,6 +347,13 @@ export class ToolCallComponent extends Container {
       return;
     }
 
+    // SetTodoList: the authoritative list is pinned in the dedicated
+    // TodoPanel above the input, so repeating the text dump here is
+    // pure clutter. Keep the headline, drop the body.
+    if (this.toolCall.name === 'SetTodoList' && !result.is_error) {
+      return;
+    }
+
     if (this.toolCall.name === 'AskUserQuestion' && !result.is_error) {
       if (this.renderAskUserQuestionResult(result.output)) return;
     }
