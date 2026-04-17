@@ -10,8 +10,10 @@
  * `fh.sync()` on a file does NOT guarantee that the directory entry
  * pointing at that file has been committed. On POSIX a crash between
  * the file-content fsync and the parent-directory fsync can leave the
- * file's bytes on disk with no visible name. v2 is POSIX-only by
- * design (§14.3), so we don't guard against Windows semantics here.
+ * file's bytes on disk with no visible name. The primary durable path
+ * is POSIX (§14.3); Windows is best-effort equivalent — NTFS's
+ * MoveFileEx commits the dirent inside the file fsync, so a separate
+ * directory fsync is a no-op (and EISDIR-fails on `open(dir, 'r')`).
  */
 
 import { closeSync, fsyncSync, openSync } from 'node:fs';
@@ -21,8 +23,13 @@ import { dirname } from 'node:path';
 /**
  * Open a directory read-only and fsync it, then close. Used to make a
  * freshly-created or renamed file's directory entry durable.
+ *
+ * Windows: noop. `open(dir, 'r')` throws EISDIR, and NTFS commits the
+ * dirent transaction inside the file fsync anyway — the separate dir
+ * fsync would buy nothing even if we could issue it (§14.3, Phase 14).
  */
 export async function syncDir(dirPath: string): Promise<void> {
+  if (process.platform === 'win32') return;
   const dirFh = await open(dirPath, 'r');
   try {
     await dirFh.sync();
@@ -34,9 +41,11 @@ export async function syncDir(dirPath: string): Promise<void> {
 /**
  * Synchronous variant of `syncDir`. Used by the batched drain path so a
  * single timer fire is an atomic event-loop step (see
- * `WiredJournalWriter.writeBatchAndSync` for the rationale).
+ * `WiredJournalWriter.writeBatchAndSync` for the rationale). Windows
+ * mirrors the async variant — noop.
  */
 export function syncDirSync(dirPath: string): void {
+  if (process.platform === 'win32') return;
   const fd = openSync(dirPath, 'r');
   try {
     fsyncSync(fd);
@@ -70,6 +79,15 @@ export async function writeFileAtomicDurable(
       await fh.sync();
     } finally {
       await fh.close();
+    }
+    // Phase 14 §2.2 — Windows pre-unlink for MoveFileEx parity.
+    if (process.platform === 'win32') {
+      try {
+        await unlink(filePath);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') throw err;
+      }
     }
     await rename(tmpPath, filePath);
     renamed = true;

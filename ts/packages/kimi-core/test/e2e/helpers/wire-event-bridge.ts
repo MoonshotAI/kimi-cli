@@ -170,7 +170,10 @@ export function installWireEventBridge(opts: InstallBridgeOptions): WireEventBri
         'turn.begin',
         {
           turn_id: event.turnId,
-          user_input: event.userInput,
+          // Phase 14 §3.5 — surface parts when present so multi-modal
+          // prompts round-trip through the wire event, falling back to
+          // legacy text for single-string prompts.
+          user_input: event.userInputParts ?? event.userInput,
           input_kind: event.inputKind,
         },
         event.turnId,

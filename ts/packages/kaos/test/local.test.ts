@@ -553,6 +553,86 @@ describe('LocalProcess.kill safety', () => {
     // Calling kill after exit should not throw — ESRCH is ignored.
     await expect(proc.kill('SIGTERM')).resolves.toBeUndefined();
   });
+
+  // ── Phase 14 decision #7 — Windows process-group kill (TDD) ─────────
+  //
+  // v2-update §7.7 requires a cross-platform "kill the whole process
+  // tree" contract. On POSIX this already works because LocalKaos
+  // spawns children in a new process group and `process.kill(-pid,
+  // SIGTERM)` signals the group. On Windows the Node default kills
+  // only the shell parent; grandchildren leak and can run beyond the
+  // two-phase kill grace window.
+  //
+  // This test boots a nested process chain (parent → child → grandchild)
+  // and asserts that `proc.kill('SIGTERM')` tears the whole tree down.
+  // The grandchild is probed via its pidfile: if the file still names a
+  // live pid after the kill, the tree leaked.
+  test.skipIf(process.platform !== 'win32')(
+    'kill() terminates the grandchild on Windows (process tree)',
+    async () => {
+      const kaos = new LocalKaos();
+      const tmp = await realpath(await mkdtemp(join(tmpdir(), 'kaos-killtree-')));
+      try {
+        const pidFile = join(tmp, 'grandchild.pid').replaceAll('\\', '\\\\');
+        // Parent: spawns a child that spawns a grandchild (long-running).
+        // The grandchild writes its own pid to a file so the test can
+        // later check if it's still alive.
+        const code = `
+          const { spawn } = require('node:child_process');
+          const child = spawn(process.execPath, ['-e', \`
+            const { spawn } = require('node:child_process');
+            const { writeFileSync } = require('node:fs');
+            const g = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)']);
+            writeFileSync('${pidFile}', String(g.pid));
+            setInterval(() => {}, 1000);
+          \`], { stdio: 'inherit' });
+          setInterval(() => {}, 1000);
+        `;
+        const proc = await kaos.exec('node', '-e', code);
+
+        // Wait for grandchild pid to be written.
+        const { stat, readFile } = await import('node:fs/promises');
+        const pidPath = join(tmp, 'grandchild.pid');
+        const start = Date.now();
+        while (Date.now() - start < 5000) {
+          try {
+            if ((await stat(pidPath)).isFile()) break;
+          } catch {
+            /* not yet */
+          }
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        const grandchildPid = Number.parseInt(
+          (await readFile(pidPath, 'utf-8')).trim(),
+          10,
+        );
+        expect(Number.isNaN(grandchildPid)).toBe(false);
+
+        // Kill parent — on Windows this currently leaks the grandchild
+        // unless `taskkill /T /F` (or equivalent) is used.
+        await proc.kill('SIGTERM');
+        await proc.wait();
+
+        // Give the OS up to 2s to reap the grandchild.
+        const reaped = await (async (): Promise<boolean> => {
+          for (let i = 0; i < 40; i += 1) {
+            try {
+              process.kill(grandchildPid, 0); // "is it still alive?"
+            } catch {
+              return true; // ESRCH — grandchild gone
+            }
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          return false;
+        })();
+
+        expect(reaped).toBe(true);
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    },
+    15_000,
+  );
 });
 
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {

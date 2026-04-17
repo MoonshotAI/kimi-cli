@@ -1,0 +1,54 @@
+name: ci-kimi-cli-ts
+
+on:
+  pull_request:
+    paths:
+      - 'ts/**'
+      - '.github/workflows/ci-kimi-cli-ts.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ts/**'
+      - '.github/workflows/ci-kimi-cli-ts.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: ts/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-2022]
+        node: ['22']
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'pnpm'
+          cache-dependency-path: ts/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test

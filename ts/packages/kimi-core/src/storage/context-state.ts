@@ -1,13 +1,19 @@
 import type { ContentPart, Message, ToolCall } from '@moonshot-ai/kosong';
 
+import type { UserInputPart } from '../wire-protocol/types.js';
 import { NoopJournalWriter, type JournalWriter } from './journal-writer.js';
 import type { NotificationRecord } from './wire-record.js';
 import { DefaultConversationProjector, type ConversationProjector } from './projector.js';
 
 // ── Payload types for ContextState write methods ───────────────────────
 
+// Phase 14 §3.5 — `parts` is populated when the wire prompt arrived as a
+// multi-modal array (`image_url` / `video_url` / `text`). Legacy callers
+// still populate `text` only; consumers that care about multi-modal
+// attachments read `parts`.
 export interface UserInput {
   text: string;
+  parts?: readonly UserInputPart[] | undefined;
 }
 
 export interface AssistantMessagePayload {
@@ -312,14 +318,26 @@ class BaseContextState implements FullContextState {
     // precedence; callers inside Soul (steer drain via `addUserMessages`)
     // still fall back to `currentTurnId()` because they run mid-turn.
     const turnId = turnIdOverride ?? this.currentTurnId();
+    // Phase 14 §3.5 (review BLK-1) — persist the full multi-modal parts
+    // array to the WAL so session replay can reconstruct image_url /
+    // video_url attachments. The in-memory `history` stays text-only so
+    // Soul remains multi-modal-transparent (concatenating text parts is
+    // enough for the current LLM prompt shape).
     await this.journalWriter.append({
       type: 'user_message',
       turn_id: turnId,
-      content: input.text,
+      content: input.parts !== undefined ? input.parts : input.text,
     });
+    const textContent =
+      input.parts !== undefined
+        ? input.parts
+            .filter((p): p is Extract<UserInputPart, { type: 'text' }> => p.type === 'text')
+            .map((p) => p.text)
+            .join('')
+        : input.text;
     this.history.push({
       role: 'user',
-      content: [{ type: 'text', text: input.text }],
+      content: [{ type: 'text', text: textContent }],
       toolCalls: [],
     });
   }

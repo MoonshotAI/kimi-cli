@@ -102,9 +102,23 @@ export interface RotateResult {
  * The caller (compaction path) writes the CompactionRecord into the new
  * file immediately after rotation completes.
  */
+export interface RotateJournalDeps {
+  /** Rename seam — defaults to `fs.promises.rename`. Tests inject for EPERM injection. */
+  readonly renameFn?: (src: string, dst: string) => Promise<void>;
+  /** Delay between the first EPERM attempt and the retry. Default 500 ms. */
+  readonly retryDelayMs?: number;
+  /**
+   * Optional cancel signal for the Windows-only EPERM retry wait. If the
+   * caller tears the session down during the back-off, propagate the
+   * abort instead of sleeping the full delay.
+   */
+  readonly signal?: AbortSignal;
+}
+
 export async function rotateJournal(
   sessionDir: string,
   protocolVersion?: string,
+  deps?: RotateJournalDeps,
 ): Promise<RotateResult> {
   const version = protocolVersion ?? '2.1';
   const currentPath = join(sessionDir, 'wire.jsonl');
@@ -113,10 +127,41 @@ export async function rotateJournal(
   const archiveNames = entries.filter((e) => ARCHIVE_PATTERN.test(e));
   const archivePath = nextArchiveName(sessionDir, archiveNames);
 
+  const renameFn = deps?.renameFn ?? rename;
+  const retryDelayMs = deps?.retryDelayMs ?? 500;
+
   // Step 1: rename the current wire file into its frozen archive slot.
   // The rename is atomic but the *directory entry change* is not
   // guaranteed durable until the parent directory is fsynced below.
-  await rename(currentPath, archivePath);
+  //
+  // Phase 14 §2.2 — Windows EPERM defence. If a stale reader still holds
+  // the source file, MoveFileEx surfaces as EPERM. Retry exactly once
+  // after a short back-off before propagating the error.
+  try {
+    await renameFn(currentPath, archivePath);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (process.platform === 'win32' && code === 'EPERM') {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, retryDelayMs);
+        const abortSignal = deps?.signal;
+        if (abortSignal !== undefined) {
+          const onAbort = (): void => {
+            clearTimeout(timer);
+            reject(abortSignal.reason ?? new Error('aborted'));
+          };
+          if (abortSignal.aborted) {
+            onAbort();
+          } else {
+            abortSignal.addEventListener('abort', onAbort, { once: true });
+          }
+        }
+      });
+      await renameFn(currentPath, archivePath);
+    } else {
+      throw err;
+    }
+  }
 
   // Step 2: materialise the new wire.jsonl durably. `writeFileAtomicDurable`
   // writes a `.tmp` file, fsyncs its contents, renames it into place, and

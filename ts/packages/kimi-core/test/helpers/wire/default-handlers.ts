@@ -151,9 +151,32 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     const managed = session as ReturnType<SessionManager['get']>;
     if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
     const payload = (msg.data ?? {}) as SessionPromptRequestData;
+    // Phase 14 §3.5 — `input` widened to `string | UserInputPart[]`.
+    // Preserve parts alongside the flattened text so the turn.begin
+    // wire event can surface them (see `wire-event-bridge` fallback).
+    let inputText: string;
+    let inputParts: readonly import('../../../src/wire-protocol/types.js').UserInputPart[] | undefined;
+    if (typeof payload.input === 'string') {
+      inputText = payload.input;
+      inputParts = undefined;
+    } else {
+      inputText = payload.input
+        .map((part) => {
+          if (part.type === 'text') return part.text;
+          if (part.type === 'image_url') return `<image url="${part.image_url.url}">`;
+          return `<video url="${part.video_url.url}">`;
+        })
+        .join('');
+      inputParts = payload.input;
+    }
     const dispatch = await managed.soulPlus.dispatch({
       method: 'session.prompt',
-      data: { input: { text: payload.input } },
+      data: {
+        input: {
+          text: inputText,
+          ...(inputParts !== undefined ? { parts: inputParts } : {}),
+        },
+      },
     });
     void transport;
     return createWireResponse({

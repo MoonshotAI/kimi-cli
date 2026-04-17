@@ -9,11 +9,12 @@
  * `src/storage/atomic-write.ts`.
  */
 
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { isWindows } from '../helpers/platform.js';
 // This import will fail until the module is created — Phase 0.1 deliverable.
 import { atomicWrite } from '../../src/storage/atomic-write.js';
 
@@ -77,6 +78,116 @@ describe('atomicWrite (Phase 0.1 — Decision #104)', () => {
     expect(await readFile(target, 'utf-8')).toBe('fresh content');
     const s = await stat(target);
     expect(s.isFile()).toBe(true);
+  });
+});
+
+// ── Phase 14 §2.3 — Windows hardening ────────────────────────────────
+
+describe.skipIf(!isWindows)(
+  'atomicWrite — Windows pre-unlink hardening (Phase 14 §2.3)',
+  () => {
+    let workDir: string;
+
+    beforeEach(async () => {
+      workDir = await mkdtemp(join(tmpdir(), 'kimi-atomic-write-win-'));
+    });
+
+    afterEach(async () => {
+      await rm(workDir, { recursive: true, force: true });
+    });
+
+    it('replaces a file with a stale read handle held', async () => {
+      // Windows `fs.rename` (MoveFileEx) fails with EPERM when the
+      // target is open by another handle. Phase 14 §2.2 requires
+      // atomicWrite to pre-unlink the target on Windows before the
+      // rename. This test holds a read handle open during the write
+      // and expects the payload to land despite the handle.
+      const target = join(workDir, 'locked.json');
+      await writeFile(target, 'before');
+      const handle = await open(target, 'r');
+      try {
+        await atomicWrite(target, 'after');
+        const content = await readFile(target, 'utf-8');
+        expect(content).toBe('after');
+      } finally {
+        await handle.close();
+      }
+    });
+
+    it('treats ENOENT during pre-unlink as success (fresh file path)', async () => {
+      // Pre-unlink must swallow ENOENT — writing to a path where the
+      // target does not yet exist is the common case.
+      const target = join(workDir, 'brand-new-win.json');
+      await atomicWrite(target, 'fresh');
+      expect(await readFile(target, 'utf-8')).toBe('fresh');
+    });
+
+    it('does not break POSIX-style path: tmp + rename still atomic on Windows', async () => {
+      // The post-rename state must be identical to POSIX — same content,
+      // no stale .tmp sibling.
+      const target = join(workDir, 'posix-shape.json');
+      await writeFile(target, 'v1');
+      await atomicWrite(target, 'v2');
+
+      const entries = await readdir(workDir);
+      expect(entries.filter((e) => e.endsWith('.tmp'))).toHaveLength(0);
+      expect(await readFile(target, 'utf-8')).toBe('v2');
+    });
+  },
+);
+
+// ── Phase 14 §2.3 — Python parity gaps (3 tests) ─────────────────────
+
+describe('atomicWrite — Python parity (Phase 14 §2.3)', () => {
+  let workDir: string;
+
+  beforeEach(async () => {
+    workDir = await mkdtemp(join(tmpdir(), 'kimi-atomic-parity-'));
+  });
+
+  afterEach(async () => {
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  it('raises when the parent directory does not exist', async () => {
+    // Python `test_write_to_nonexistent_parent_raises` asserts a
+    // FileNotFoundError. Node equivalent: ENOENT from the initial
+    // tmp-file open.
+    const target = join(workDir, 'nonexistent', 'data.json');
+    await expect(atomicWrite(target, '{"a":1}')).rejects.toThrow(/ENOENT|no such file/i);
+  });
+
+  it('preserves indentation / pretty-printed content as provided', async () => {
+    // Python `test_indent_formatting` probes `json.dumps(..., indent=2)`
+    // — the wrapper. TS-side `atomicWrite` writes bytes verbatim, so
+    // we just assert a newline-containing payload round-trips without
+    // whitespace stripping.
+    const target = join(workDir, 'indented.json');
+    const payload = '{\n  "a": 1,\n  "b": [2, 3]\n}';
+    await atomicWrite(target, payload);
+
+    const raw = await readFile(target, 'utf-8');
+    expect(raw).toContain('\n');
+    expect(raw).toContain('  "a": 1');
+    expect(raw).toBe(payload);
+  });
+
+  it('written file is valid on disk immediately (durable flush, not just buffered)', async () => {
+    // Python `test_written_file_is_valid_on_disk` opens the target
+    // with a fresh fd via `os.open` to bypass any cached content. TS
+    // mirrors that by re-opening through `fs/promises.open` + `read`.
+    const target = join(workDir, 'durable.json');
+    await atomicWrite(target, '{"key":"value"}');
+
+    const handle = await open(target, 'r');
+    try {
+      const buf = Buffer.alloc(4096);
+      const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+      const text = buf.subarray(0, bytesRead).toString('utf-8');
+      expect(JSON.parse(text)).toEqual({ key: 'value' });
+    } finally {
+      await handle.close();
+    }
   });
 });
 

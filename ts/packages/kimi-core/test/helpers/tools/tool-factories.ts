@@ -90,7 +90,14 @@ export function createGrepTool(opts?: ToolFactoryDefaults): GrepTool {
 }
 
 export function createReadMediaFileTool(opts?: ToolFactoryDefaults): ReadMediaFileTool {
-  return new ReadMediaFileTool(resolveKaos(opts), resolveWorkspace(opts));
+  // Phase 14 §3.3 — ReadMediaFileTool now requires a capability set.
+  // Test default: both image + video so the tool doesn't SkipThisTool
+  // itself out of existence.
+  return new ReadMediaFileTool(
+    resolveKaos(opts),
+    resolveWorkspace(opts),
+    new Set(['image_in', 'video_in']),
+  );
 }
 
 // ── Bash ────────────────────────────────────────────────────────────────

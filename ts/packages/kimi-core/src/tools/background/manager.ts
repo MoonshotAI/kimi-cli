@@ -190,9 +190,25 @@ export class BackgroundProcessManager {
     proc: KaosProcess,
     command: string,
     description: string,
-    opts: { kind?: BackgroundTaskKind } = {},
+    opts:
+      | {
+          kind?: BackgroundTaskKind;
+          /**
+           * Phase 14 §1.4 — optional shell metadata. Carried so the
+           * `/task` UI and background persist snapshot can surface which
+           * dialect a task was launched under. Legacy callers omitting
+           * this field keep the implicit 'bash' default.
+           */
+          shellInfo?: {
+            shellName: string;
+            shellPath: string;
+            cwd: string;
+          };
+        }
+      | undefined = undefined,
   ): string {
-    const taskId = generateTaskId(opts.kind ?? 'bash');
+    const kind = opts?.kind;
+    const taskId = generateTaskId(kind ?? 'bash');
     const entry: ManagedProcess = {
       taskId,
       command,

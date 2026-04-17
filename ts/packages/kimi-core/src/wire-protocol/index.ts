@@ -45,7 +45,15 @@ export type {
   WireResponse,
 } from './types.js';
 
+export type {
+  ImageURLPart,
+  TextPart,
+  UserInputPart,
+  VideoURLPart,
+} from './types.js';
+
 export {
+  normalizeUserInput,
   PROCESS_SESSION_ID,
   WIRE_PROTOCOL_VERSION,
   WireErrorSchema,

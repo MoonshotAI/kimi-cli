@@ -14,6 +14,7 @@
  */
 
 import type { TurnResult } from '../soul/index.js';
+import type { UserInputPart } from '../wire-protocol/types.js';
 
 export interface TurnState {
   readonly turnId: string;
@@ -32,6 +33,13 @@ export type TurnLifecycleEvent =
       readonly kind: 'begin';
       readonly turnId: string;
       readonly userInput: string;
+      /**
+       * Phase 14 §3.5 — populated when the prompt arrived as a
+       * multi-modal array; undefined for legacy text-only prompts.
+       * Wire-event publishers prefer this over `userInput` when it
+       * is defined so `turn.begin.user_input` surfaces the parts.
+       */
+      readonly userInputParts?: readonly UserInputPart[] | undefined;
       readonly inputKind: 'user' | 'system_trigger';
       readonly agentType: 'main' | 'sub' | 'independent';
     }

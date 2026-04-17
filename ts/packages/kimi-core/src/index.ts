@@ -139,6 +139,21 @@ export type { WebSearchProvider, WebSearchResult } from './tools/web-search.js';
 export { FetchURLTool } from './tools/fetch-url.js';
 export type { UrlFetcher } from './tools/fetch-url.js';
 export { ReadMediaFileTool } from './tools/read-media.js';
+export type { Capability, ImageSizeExtractor } from './tools/read-media.js';
+
+// ── Phase 14 — skip-tool sentinel + file-type detection + env probe ──
+export { SkipThisTool } from './tools/skip-this-tool.js';
+export {
+  MEDIA_SNIFF_BYTES,
+  IMAGE_MIME_BY_SUFFIX,
+  VIDEO_MIME_BY_SUFFIX,
+  NON_TEXT_SUFFIXES,
+  sniffMediaFromMagic,
+  detectFileType,
+} from './tools/file-type.js';
+export type { FileType } from './tools/file-type.js';
+export { detectEnvironment, detectEnvironmentFromNode } from './utils/environment.js';
+export type { Environment, EnvironmentDeps, OsKind, ShellName } from './utils/environment.js';
 
 // ── Slice 4.3 tools (host-injected collaboration set) ─────────────────
 export { ReadTool } from './tools/read.js';

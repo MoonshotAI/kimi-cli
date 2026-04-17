@@ -56,6 +56,17 @@ export async function atomicWrite(
     } finally {
       await fh.close();
     }
+    // Phase 14 §2.2 — Windows `fs.rename` maps to MoveFileEx and fails
+    // with EPERM if the target is held by another handle. Pre-unlinking
+    // before the rename turns this into the POSIX-style "replace" case.
+    if (process.platform === 'win32') {
+      try {
+        await unlink(filePath);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') throw err;
+      }
+    }
     await rename(tmpPath, filePath);
     renamed = true;
   } finally {
