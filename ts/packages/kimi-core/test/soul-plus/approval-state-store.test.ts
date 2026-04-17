@@ -120,35 +120,59 @@ describe('SessionStateApprovalStateStore', () => {
 //   4. Expand this todo into four passing cases (one per Python parity
 //      point above) using `vi.fn()` spies on onChanged.
 describe('Phase 17 B.2 — ApprovalStateStore.onChanged callback', () => {
-  it('InMemoryApprovalStateStore.save with onChanged fires {kind, before, after} after persist', async () => {
-    const onChanged = vi.fn();
+  it('InMemoryApprovalStateStore.save fires listener with post-save snapshot', async () => {
+    // Phase 18 L2-3 post-merge: onChanged is a method-based subscriber
+    // returning an unsubscribe fn. Callback receives a full snapshot
+    // `{ yolo, autoApproveActions }` (not a {before, after} delta —
+    // multi-listener semantics + snapshot-per-listener isolation).
+    const listener = vi.fn();
     const store = new InMemoryApprovalStateStore();
-    // Phase 17 B.2 — `onChanged` accepted as a second constructor arg
-    // OR a post-construction setter. Implementer picks either shape;
-    // the test asks for a setter for maximum flexibility.
-    (store as unknown as {
-      onChanged?: (e: {
-        kind: string;
-        before: ReadonlySet<string>;
-        after: ReadonlySet<string>;
-      }) => void;
-    }).onChanged = onChanged;
+    const unsubscribe = store.onChanged(listener);
 
     await store.save(new Set(['action_a']));
 
-    expect(onChanged).toHaveBeenCalledTimes(1);
-    const call = onChanged.mock.calls[0]![0] as {
-      kind: string;
-      before: ReadonlySet<string>;
-      after: ReadonlySet<string>;
+    expect(listener).toHaveBeenCalledTimes(1);
+    const snapshot = listener.mock.calls[0]![0] as {
+      yolo: boolean;
+      autoApproveActions: ReadonlySet<string>;
     };
-    expect(call.before.size).toBe(0);
-    expect(call.after.has('action_a')).toBe(true);
+    expect(snapshot.yolo).toBe(false);
+    expect(snapshot.autoApproveActions.has('action_a')).toBe(true);
+
+    // Unsubscribe path: further saves should not notify the listener.
+    unsubscribe();
+    await store.save(new Set(['action_a', 'action_b']));
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('no crash when onChanged is not provided (undefined)', async () => {
+  it('setYolo fires listener with yolo: true', async () => {
+    const listener = vi.fn();
+    const store = new InMemoryApprovalStateStore();
+    store.onChanged(listener);
+
+    await store.setYolo(true);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const snapshot = listener.mock.calls[0]![0] as { yolo: boolean };
+    expect(snapshot.yolo).toBe(true);
+  });
+
+  it('no crash when no listener is registered', async () => {
     const store = new InMemoryApprovalStateStore();
     await expect(store.save(new Set(['a']))).resolves.toBeUndefined();
     expect((await store.load()).has('a')).toBe(true);
+  });
+
+  it('multi-listener fan-out: all listeners receive the same snapshot', async () => {
+    const listenerA = vi.fn();
+    const listenerB = vi.fn();
+    const store = new InMemoryApprovalStateStore();
+    store.onChanged(listenerA);
+    store.onChanged(listenerB);
+
+    await store.save(new Set(['shared']));
+
+    expect(listenerA).toHaveBeenCalledTimes(1);
+    expect(listenerB).toHaveBeenCalledTimes(1);
   });
 });

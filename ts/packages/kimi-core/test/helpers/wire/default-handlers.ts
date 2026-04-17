@@ -130,6 +130,12 @@ export interface DefaultHandlersDeps {
    * permission_mode).
    */
   readonly approvalStateStore?: ApprovalStateStore | undefined;
+  /**
+   * Phase 17 A.5 — optional path config used by `session.resume` /
+   * `session.replay` to locate the session's `wire.jsonl`. When
+   * omitted those handlers are not registered.
+   */
+  readonly pathConfig?: import('../../../src/session/path-config.js').PathConfig | undefined;
 }
 
 /**
@@ -148,6 +154,7 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     server,
     hookEngine,
     approvalStateStore,
+    pathConfig,
   } = deps;
 
   /**
@@ -239,6 +246,8 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
           'session.error',
           'model.changed',
           'thinking.changed',
+          'hook.triggered',
+          'hook.resolved',
         ],
         methods: [
           'initialize',
@@ -248,6 +257,8 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
           'session.prompt',
           'session.steer',
           'session.cancel',
+          'session.resume',
+          'session.replay',
           'session.getStatus',
           'session.getHistory',
           'session.subscribe',
@@ -264,6 +275,36 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
           'session.setActiveTools',
           'shutdown',
         ],
+        // Phase 17 B.7 — initialize capability blob publishes the 13
+        // supported hook event types + any pre-declared subscriptions.
+        // Sits inside `capabilities.hooks` so clients can discover what
+        // the server understands before wiring reverse-RPC hook handlers.
+        hooks: {
+          supported_events: [
+            'PreToolUse',
+            'PostToolUse',
+            'OnToolFailure',
+            'UserPromptSubmit',
+            'Stop',
+            'StopFailure',
+            'Notification',
+            'SubagentStart',
+            'SubagentStop',
+            'SessionStart',
+            'SessionEnd',
+            'PreCompact',
+            'PostCompact',
+          ],
+          configured: initialHooks.map((h) => ({
+            event: h.event,
+            ...(h.matcher !== undefined ? { matcher: h.matcher } : {}),
+          })),
+        },
+      } as InitializeResponseData['capabilities'] & {
+        hooks: {
+          supported_events: string[];
+          configured: Array<{ event: string; matcher?: string }>;
+        };
       },
       // Phase 18 A.1 — top-level external_tools summary. Lives on the
       // response `data`, not inside `capabilities`, so the client can
@@ -469,6 +510,25 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
     const payload = (msg.data ?? {}) as SessionPromptRequestData;
 
+    // Phase 17 A.4 — -32602 Invalid params. session.prompt.input must be
+    // a string or a UserInputPart[] (text / image_url / video_url).
+    // Anything else (number, boolean, null, bare object) is a schema
+    // violation and must surface as JSON-RPC -32602 rather than crashing
+    // the dispatch or silently stringifying.
+    if (
+      typeof payload.input !== 'string' &&
+      !Array.isArray(payload.input)
+    ) {
+      return createWireResponse({
+        requestId: msg.id,
+        sessionId: msg.session_id,
+        error: {
+          code: -32602,
+          message: 'Invalid params: input must be a string or UserInputPart[]',
+        },
+      });
+    }
+
     let inputText: string;
     let inputParts: readonly UserInputPart[] | undefined;
     if (typeof payload.input === 'string') {
@@ -570,17 +630,36 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
       ) {
         const turnId = (dispatch as { turn_id: string }).turn_id;
         const tm = managed.soulPlus.getTurnManager();
-        const turnResult = await tm.awaitTurn(turnId);
-        const finalReason = tm.getTerminalReason(turnId);
-        if (finalReason === 'error' || turnResult?.stopReason === 'error') {
-          return createWireResponse({
-            requestId: msg.id,
-            sessionId: msg.session_id,
-            error: {
-              code: -32003,
-              message: 'Provider error during turn',
-            },
-          });
+        // Race the turn-completion wait against a time budget. If the
+        // turn settles inside the budget (synchronous error path used
+        // by Phase 18 A.11-A.13 tests, or the external-tool reverse
+        // RPC timeout at 3 s used by A.2), we can surface the -32003
+        // code in the prompt response. If it is still running after
+        // the budget — e.g. a test that deliberately hangs kosong to
+        // exercise cancel/steer behaviour — we drop back to the
+        // non-blocking `started` ack so the response never outlives
+        // the turn itself. Budget is chosen so A.2 (3 s external RPC)
+        // + A.11-A.13 (sync errors) complete inside it, while steer /
+        // cancel-style hang tests don't starve the 5 s vitest default.
+        const AWAIT_BUDGET_MS = 4_000;
+        const completed = await Promise.race<'done' | 'timeout'>([
+          tm.awaitTurn(turnId).then(() => 'done' as const),
+          new Promise<'timeout'>((resolve) =>
+            setTimeout(() => resolve('timeout'), AWAIT_BUDGET_MS),
+          ),
+        ]);
+        if (completed === 'done') {
+          const finalReason = tm.getTerminalReason(turnId);
+          if (finalReason === 'error') {
+            return createWireResponse({
+              requestId: msg.id,
+              sessionId: msg.session_id,
+              error: {
+                code: -32003,
+                message: 'Provider error during turn',
+              },
+            });
+          }
         }
       }
 
@@ -606,14 +685,18 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     const managed = session as ReturnType<SessionManager['get']>;
     if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
     const payload = (msg.data ?? {}) as SessionSteerRequestData;
-    const dispatch = await managed.soulPlus.dispatch({
+    await managed.soulPlus.dispatch({
       method: 'session.steer',
       data: { input: { text: payload.input } },
     });
+    // Phase 17 E.2 — SessionSteerResponseData is {ok: true}. The
+    // original DispatchResponse shape carried {queued: true}; E.2
+    // aligned the wire contract with the dispatch shape, then settled
+    // on {ok: true} as the stable public surface.
     return createWireResponse({
       requestId: msg.id,
       sessionId: msg.session_id,
-      data: dispatch,
+      data: { ok: true },
     });
   });
 
@@ -631,6 +714,124 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
       data: dispatch,
     });
   });
+
+  // Phase 17 A.5 — session.resume reports turn_count + last_turn_id
+  // derived from the session's wire.jsonl (read on-disk to survive
+  // process restarts in E2E; tests flush via journalWriter.flush).
+  // Also emits an initial status.update snapshot (model + plan_mode)
+  // so the client refreshes indicators on reconnect.
+  if (pathConfig !== undefined) {
+    router.registerMethod('session.resume', 'conversation', async (msg, _transport, session) => {
+      const managed = session as ReturnType<SessionManager['get']>;
+      if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+
+      const wirePath = pathConfig.wirePath(msg.session_id);
+      let turnCount = 0;
+      let lastTurnId: string | undefined;
+      try {
+        const { readFile } = await import('node:fs/promises');
+        const content = await readFile(wirePath, 'utf8');
+        const bodyLines = content
+          .split('\n')
+          .filter((l) => l.length > 0)
+          .slice(1);
+        for (const line of bodyLines) {
+          try {
+            const rec = JSON.parse(line) as { type?: string; turn_id?: string };
+            if (rec.type === 'turn_begin') {
+              turnCount += 1;
+              if (rec.turn_id !== undefined) lastTurnId = rec.turn_id;
+            }
+          } catch {
+            /* skip malformed line */
+          }
+        }
+      } catch {
+        /* wire.jsonl missing → fresh session; counts stay 0/undefined */
+      }
+
+      eventBus.emit({
+        type: 'status.update',
+        data: {
+          model: managed.contextState.model || defaultModel,
+          plan_mode: managed.soulPlus.getTurnManager().getPlanMode(),
+        },
+      });
+
+      return createWireResponse({
+        requestId: msg.id,
+        sessionId: msg.session_id,
+        data: {
+          session_id: msg.session_id,
+          turn_count: turnCount,
+          ...(lastTurnId !== undefined ? { last_turn_id: lastTurnId } : {}),
+        },
+      });
+    });
+
+    // Phase 17 A.5 — session.replay streams wire.jsonl body as chunked
+    // `session.replay.chunk` wire events, then a terminating
+    // `session.replay.end`. `from_seq` lets clients resume partway.
+    router.registerMethod('session.replay', 'management', async (msg, transport, session) => {
+      const managed = session as ReturnType<SessionManager['get']>;
+      if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+      void managed;
+
+      const payload = (msg.data ?? {}) as { from_seq?: number };
+      const fromSeq = typeof payload.from_seq === 'number' ? payload.from_seq : 0;
+
+      const wirePath = pathConfig.wirePath(msg.session_id);
+      let body: unknown[] = [];
+      try {
+        const { readFile } = await import('node:fs/promises');
+        const content = await readFile(wirePath, 'utf8');
+        const lines = content.split('\n').filter((l) => l.length > 0);
+        body = lines.slice(1).flatMap((line) => {
+          try {
+            return [JSON.parse(line) as unknown];
+          } catch {
+            return [];
+          }
+        });
+      } catch {
+        /* missing wire.jsonl → empty replay */
+      }
+
+      const filtered = body.filter((r: unknown) => {
+        const seq = (r as { seq?: number }).seq;
+        return seq === undefined || seq >= fromSeq;
+      });
+
+      let replaySeq = 0;
+      const CHUNK_SIZE = 20;
+      for (let i = 0; i < filtered.length; i += CHUNK_SIZE) {
+        const records = filtered.slice(i, i + CHUNK_SIZE);
+        const chunkFrame = createWireEvent({
+          method: 'session.replay.chunk',
+          sessionId: msg.session_id,
+          seq: replaySeq++,
+          requestId: msg.id,
+          data: { records },
+        });
+        await transport.send(JSON.stringify(chunkFrame));
+      }
+
+      const endFrame = createWireEvent({
+        method: 'session.replay.end',
+        sessionId: msg.session_id,
+        seq: replaySeq,
+        requestId: msg.id,
+        data: { total: filtered.length },
+      });
+      await transport.send(JSON.stringify(endFrame));
+
+      return createWireResponse({
+        requestId: msg.id,
+        sessionId: msg.session_id,
+        data: { ok: true, total: filtered.length },
+      });
+    });
+  }
 
   // ── Management channel ───────────────────────────────────────────
 
