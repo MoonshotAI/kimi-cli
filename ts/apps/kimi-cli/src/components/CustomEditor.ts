@@ -16,6 +16,7 @@ export class CustomEditor extends Editor {
    * through so pi-tui's built-in history navigation runs.
    */
   public onUpArrowEmpty?: () => boolean;
+  public onShiftTab?: () => void;
 
   constructor(tui: TUI, theme: EditorTheme) {
     super(tui, theme);
@@ -41,6 +42,11 @@ export class CustomEditor extends Editor {
 
     if (matchesKey(data, Key.ctrl('s'))) {
       this.onCtrlS?.();
+      return;
+    }
+
+    if (matchesKey(data, 'shift+tab')) {
+      this.onShiftTab?.();
       return;
     }
 

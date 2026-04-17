@@ -173,6 +173,10 @@ export class InteractiveMode implements WireHandlerDelegate {
       }
     };
 
+    this.editor.onShiftTab = () => {
+      void this.togglePlanMode();
+    };
+
     this.editor.onToggleToolExpand = () => {
       this.toggleToolOutputExpansion();
     };
@@ -353,7 +357,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   }
 
   onToolCallStart(toolCall: import('./state.js').ToolCallBlockData): void {
-    const tc = new ToolCallComponent(toolCall, undefined, this.colors, this.ui);
+    const tc = new ToolCallComponent(toolCall, undefined, this.colors, this.ui, this.markdownTheme);
     if (this.toolOutputExpanded) tc.setExpanded(true);
     this.pendingToolComponents.set(toolCall.id, tc);
     this.transcriptContainer.addChild(tc);
@@ -385,6 +389,8 @@ export class InteractiveMode implements WireHandlerDelegate {
             entry.toolCallData,
             entry.toolCallData.result,
             this.colors,
+            this.ui,
+            this.markdownTheme,
           );
           if (this.toolOutputExpanded) tc.setExpanded(true);
           return tc;
@@ -635,6 +641,32 @@ export class InteractiveMode implements WireHandlerDelegate {
       this.wireHandler.sendMessage(text);
       this.updateQueueDisplay();
       this.ui.requestRender();
+    }
+  }
+
+  private async togglePlanMode(): Promise<void> {
+    const enabled = !this.state.planMode;
+    this.setState({ planMode: enabled });
+    this.addTranscriptEntry({
+      id: `plan-${String(Date.now())}`,
+      kind: 'status',
+      renderMode: 'plain',
+      content: `Plan mode: ${enabled ? 'ON' : 'OFF'}`,
+      color: this.colors.primary,
+    });
+    try {
+      await this.wireClient.setPlanMode(this.state.sessionId, enabled);
+    } catch (err) {
+      // Roll back local state and surface the failure so the footer doesn't lie.
+      this.setState({ planMode: !enabled });
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `plan-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Failed to toggle plan mode: ${msg}`,
+        color: this.colors.error,
+      });
     }
   }
 

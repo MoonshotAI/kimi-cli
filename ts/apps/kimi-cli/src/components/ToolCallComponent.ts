@@ -4,13 +4,14 @@
  */
 
 import { Container, Text, Spacer } from '@mariozechner/pi-tui';
-import type { TUI } from '@mariozechner/pi-tui';
+import type { MarkdownTheme, TUI } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import { highlight } from 'cli-highlight';
 import { extname } from 'node:path';
 import type { ToolCallBlockData, ToolResultBlockData } from '../app/state.js';
 import type { ColorPalette } from '../theme/colors.js';
 import { renderDiffLines } from './DiffPreviewComponent.js';
+import { PlanBoxComponent } from './PlanBoxComponent.js';
 
 const MAX_ARG_LENGTH = 60;
 const PREVIEW_LINES = 6;
@@ -78,6 +79,7 @@ export class ToolCallComponent extends Container {
   private result: ToolResultBlockData | undefined;
   private colors: ColorPalette;
   private ui: TUI | undefined;
+  private markdownTheme: MarkdownTheme | undefined;
   private blinkOn = true;
   private blinkTimer: ReturnType<typeof setInterval> | null = null;
   private headerText: Text;
@@ -88,12 +90,14 @@ export class ToolCallComponent extends Container {
     result: ToolResultBlockData | undefined,
     colors: ColorPalette,
     ui?: TUI,
+    markdownTheme?: MarkdownTheme,
   ) {
     super();
     this.toolCall = toolCall;
     this.result = result;
     this.colors = colors;
     this.ui = ui;
+    this.markdownTheme = markdownTheme;
 
     this.addChild(new Spacer(1));
     this.headerText = new Text(this.buildHeader(), 0, 0);
@@ -102,7 +106,9 @@ export class ToolCallComponent extends Container {
     this.callPreviewEndIndex = this.children.length;
     this.buildContent();
 
-    if (result === undefined && ui) {
+    // ExitPlanMode is rendered as a static, bullet-less block — don't
+    // blink the header and don't let the spinner repaint cause reflow.
+    if (result === undefined && ui && toolCall.name !== 'ExitPlanMode') {
       this.startBlink();
     }
   }
@@ -149,6 +155,10 @@ export class ToolCallComponent extends Container {
       bullet = this.blinkOn ? chalk.white('● ') : '  ';
     }
 
+    if (toolCall.name === 'ExitPlanMode') {
+      return chalk.hex(colors.primary).bold('Current plan');
+    }
+
     const verb = isFinished ? 'Used' : 'Using';
     const keyArg = extractKeyArgument(toolCall.name, toolCall.args);
     const toolRef = chalk.hex(colors.primary).bold(toolCall.name);
@@ -165,6 +175,10 @@ export class ToolCallComponent extends Container {
 
   private buildCallPreview(): void {
     const name = this.toolCall.name;
+    if (name === 'ExitPlanMode') {
+      this.buildPlanPreview();
+      return;
+    }
     if (name === 'Write' || name === 'WriteFile') {
       const content = str(this.toolCall.args['content']);
       if (content.length === 0) return;
@@ -203,9 +217,22 @@ export class ToolCallComponent extends Container {
     }
   }
 
+  private buildPlanPreview(): void {
+    const plan = str(this.toolCall.args['plan']);
+    if (plan.length === 0 || this.markdownTheme === undefined) return;
+    this.addChild(new PlanBoxComponent(plan, this.markdownTheme, this.colors.success));
+  }
+
   private buildContent(): void {
     const { result } = this;
     if (result === undefined || !result.output) return;
+
+    // ExitPlanMode: the plan is already shown statically via
+    // buildPlanPreview (from args.plan at call-start time). Skip the
+    // "Exited plan mode. Plan: …" result.output dump to avoid duplication.
+    if (this.toolCall.name === 'ExitPlanMode' && !result.is_error) {
+      return;
+    }
 
     if (this.toolCall.name === 'AskUserQuestion' && !result.is_error) {
       if (this.renderAskUserQuestionResult(result.output)) return;

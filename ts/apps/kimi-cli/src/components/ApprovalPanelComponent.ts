@@ -89,7 +89,10 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     this.addChild(new Text(chalk.yellow.bold(' approval'), 0, 0));
     this.addChild(new Spacer(1));
 
-    this.addChild(new Text(chalk.yellow(` ${data.tool_name} is requesting approval to ${data.action}:`), 0, 0));
+    const headline = data.tool_name === 'ExitPlanMode'
+      ? 'Please review the proposed plan:'
+      : `${data.tool_name} is requesting approval to ${data.action}:`;
+    this.addChild(new Text(chalk.yellow(` ${headline}`), 0, 0));
     if (data.description) {
       this.addChild(new Text(chalk.gray(` ${data.description}`), 0, 0));
     }
@@ -228,7 +231,10 @@ export class ApprovalPanelComponent extends Container implements Focusable {
     lines.push(chalk.yellow('─'.repeat(width)));
     lines.push(chalk.yellow.bold(' approval'));
     lines.push('');
-    lines.push(chalk.yellow(` ${data.tool_name} is requesting approval to ${data.action}:`));
+    const headline = data.tool_name === 'ExitPlanMode'
+      ? 'Please review the proposed plan:'
+      : `${data.tool_name} is requesting approval to ${data.action}:`;
+    lines.push(chalk.yellow(` ${headline}`));
 
     const dedupedBlocks = data.display.filter((block) => !isDuplicateBriefBlock(block, data.description));
     const visibleBlocks = dedupedBlocks.slice(0, 5);
