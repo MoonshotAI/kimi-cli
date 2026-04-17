@@ -70,6 +70,15 @@ export {
 } from './permission/index.js';
 export { SoulPlus } from './soul-plus.js';
 export type { SoulPlusDeps } from './soul-plus.js';
+
+// ── Phase 18 business errors ─────────────────────────────────────────
+export {
+  LLMNotSetError,
+  LLMCapabilityMismatchError,
+  ProviderError,
+  classifyBusinessError,
+} from './errors.js';
+export type { BusinessErrorMapping } from './errors.js';
 export { TransactionalHandlerRegistry } from './transactional-handler-registry.js';
 export type { TransactionalHandler } from './transactional-handler-registry.js';
 export { ToolCallOrchestrator } from './orchestrator.js';

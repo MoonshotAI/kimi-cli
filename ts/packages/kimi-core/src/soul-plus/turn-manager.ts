@@ -148,6 +148,14 @@ export interface TurnManagerDeps {
  */
 const MAX_COMPACTIONS_PER_TURN = 3;
 
+/**
+ * Default context window used for `status.update.context_usage.total`
+ * when the session has no `compactionConfig.maxContextSize`. Matches
+ * the fallback used by existing config schema (200k-token window of
+ * typical GPT-4/Claude models).
+ */
+const DEFAULT_CONTEXT_WINDOW = 200_000;
+
 function zeroUsage(): TurnResult['usage'] {
   return { input: 0, output: 0 };
 }
@@ -161,6 +169,14 @@ export class TurnManager {
   private pendingTurnOverrides: TurnPermissionOverrides | undefined;
   private planMode: boolean;
   private readonly sessionId: string;
+  /**
+   * Phase 18 A.13 — terminal reason per turn id for callers that
+   * observe the turn lifecycle out-of-band (after the `end` event
+   * has fired). `awaitTurn(turnId)` resolves to `undefined` for the
+   * error path; this map lets wire handlers distinguish `error`
+   * (provider throw) from `cancelled` when surfacing the -32003 code.
+   */
+  private readonly terminalReasons = new Map<string, 'done' | 'cancelled' | 'error'>();
   /**
    * Synchronous reservation window — set BEFORE the first `await` in
    * `handlePrompt` so a re-entrant call fails the busy-check before the
@@ -191,6 +207,14 @@ export class TurnManager {
 
   setPlanMode(enabled: boolean): void {
     this.planMode = enabled;
+    // Phase 17 A.2 / Phase 18 A.14 — setter path emits a fresh
+    // status.update so downstream observers (wire bridge, UI) pick up
+    // the new plan-mode flag immediately. Emitted AFTER the in-memory
+    // flip so listeners observe the new state.
+    this.emitStatusUpdate({
+      input: 0,
+      output: 0,
+    });
   }
 
   getPlanMode(): boolean {
@@ -234,6 +258,26 @@ export class TurnManager {
 
   async awaitTurn(turnId: string): Promise<TurnResult | undefined> {
     return this.deps.lifecycle.awaitTurn(turnId);
+  }
+
+  /**
+   * Phase 18 A.13 — read the terminal reason for a turn. Available
+   * after `awaitTurn` resolves; lets out-of-band observers (wire
+   * handlers) distinguish error vs cancelled when the turn result
+   * itself is `undefined`.
+   *
+   * Read-once semantics (L2-7): the entry is removed on access so
+   * long-running sessions do not accumulate one Map entry per turn
+   * forever. Callers that need the reason more than once should
+   * cache the first read. If no entry exists (late call / unknown
+   * turn), returns `undefined`.
+   */
+  getTerminalReason(turnId: string): 'done' | 'cancelled' | 'error' | undefined {
+    const reason = this.terminalReasons.get(turnId);
+    if (reason !== undefined) {
+      this.terminalReasons.delete(turnId);
+    }
+    return reason;
   }
 
   // ── Manual compaction (wrapper for backward-compat) ─────────────────
@@ -582,6 +626,11 @@ export class TurnManager {
     result: TurnResult | undefined,
     reason: 'done' | 'cancelled' | 'error',
   ): Promise<void> {
+    // Phase 18 A.13 — record the terminal reason BEFORE any awaits so
+    // `getTerminalReason(turnId)` is reliable even when the caller
+    // only observes `awaitTurn` (which returns `undefined` for the
+    // error path).
+    this.terminalReasons.set(turnId, reason);
     const machine = this.deps.lifecycleStateMachine;
 
     try {
@@ -649,6 +698,45 @@ export class TurnManager {
       // derived-field listeners (like sessionMeta) are wired to the
       // SessionEventBus, not to the lifecycle tracker.
       this.deps.sink.emit({ type: 'turn.end' });
+
+      // Phase 17 A.2 / Phase 18 A.14 — status.update snapshot. Emitted
+      // AFTER the `turn.end` sink emit so derived-field listeners have
+      // already applied their updates (SessionMetaService). The event
+      // is transient (§3.7 不落盘), so downstream observers MUST NOT
+      // persist it to wire.jsonl — enforced by the wire journal writer.
+      const turnUsage = result?.usage;
+      this.emitStatusUpdate(
+        turnUsage !== undefined
+          ? { input: turnUsage.input, output: turnUsage.output }
+          : { input: 0, output: 0 },
+      );
     }
+  }
+
+  // ── Phase 17 A.2 / Phase 18 A.14 — status.update emit ───────────────
+
+  /**
+   * Emit a `status.update` SoulEvent with the current context / token /
+   * plan_mode / model snapshot. Called from `onTurnEnd` (periodic) and
+   * from config setters (`setPlanMode` / `SoulPlus.setModel`).
+   *
+   * `context_usage.percent` is always 0-100 (integer). Total defaults
+   * to `compactionConfig.maxContextSize` when set, or a 200k baseline
+   * otherwise so callers do not receive `percent: NaN` when no config
+   * is wired (test harnesses).
+   */
+  emitStatusUpdate(tokenUsage: { input: number; output: number }): void {
+    const used = this.deps.contextState.tokenCountWithPending;
+    const total = this.deps.compactionConfig?.maxContextSize ?? DEFAULT_CONTEXT_WINDOW;
+    const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((used / total) * 100))) : 0;
+    this.deps.sink.emit({
+      type: 'status.update',
+      data: {
+        context_usage: { used, total, percent },
+        token_usage: tokenUsage,
+        plan_mode: this.planMode,
+        model: this.deps.contextState.model,
+      },
+    });
   }
 }

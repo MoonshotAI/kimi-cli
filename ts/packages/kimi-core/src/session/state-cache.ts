@@ -39,6 +39,12 @@ export interface SessionState {
    */
   auto_approve_actions?: string[] | undefined;
   /**
+   * Phase 17 B.2 — session-scoped yolo (bypass-permissions) flag.
+   * Mirrors Python `ApprovalState.yolo`. Read/written via
+   * `SessionStateApprovalStateStore.getYolo` / `setYolo`.
+   */
+  yolo?: boolean | undefined;
+  /**
    * User-set session title via the `/title` (rename) slash command
    * (Slice 5.1). When set, takes precedence over any synthesised title
    * (e.g. first user message) in `listSessions()`.

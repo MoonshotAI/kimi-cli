@@ -19,8 +19,10 @@
  *   - `step.begin` / `step.end` / `step.interrupted` / `content.delta` /
  *     `tool.call` / `tool.result` / `compaction.begin` / `compaction.end`
  *     sourced from SessionEventBus `SoulEvent`s
- *   - No `status.update` (emit path not implemented in src; Phase 11 will
- *     wire it). Tests that need it mark `it.todo`.
+ *   - Phase 18 A.14 — `status.update` / `model.changed` /
+ *     `thinking.changed` forwarded to the wire. These are transient
+ *     events per v2 §3.7 (不落盘); the bridge never writes them to the
+ *     session journal (the SessionJournal writer enforces that).
  *
  * NOTE: this bridge assumes a single active session per instance —
  * `currentTurnId` is a single ref, so firing listeners for two parallel
@@ -60,6 +62,19 @@ const codec = new WireCodec();
  */
 export function installWireEventBridge(opts: InstallBridgeOptions): WireEventBridgeHandle {
   const { server, eventBus, addTurnLifecycleListener, sessionId } = opts;
+  // Phase 18 — when a test installs its own bridge, disable any
+  // harness-installed auto-bridge by invoking the disposer stashed on
+  // the eventBus. Keeps frame counts accurate for tests that pre-date
+  // the auto-bridge plumbing.
+  const autoDispose = (
+    eventBus as unknown as { __autoBridgeDispose?: () => void }
+  ).__autoBridgeDispose;
+  if (typeof autoDispose === 'function') {
+    autoDispose();
+    delete (eventBus as unknown as { __autoBridgeDispose?: () => void })
+      .__autoBridgeDispose;
+  }
+  (eventBus as unknown as { __hasExternalBridge?: boolean }).__hasExternalBridge = true;
   let seq = 0;
   let currentTurnId: string | undefined;
 
@@ -146,6 +161,23 @@ export function installWireEventBridge(opts: InstallBridgeOptions): WireEventBri
           currentTurnId,
         );
         return;
+      case 'status.update':
+        // Phase 18 A.14 / A.2 — forward to wire as-is; data already
+        // carries the canonical `context_usage` / `token_usage` /
+        // `plan_mode` / `model` layout (and optional `yolo`).
+        sendWire(
+          'status.update',
+          (event as { data: unknown }).data,
+          currentTurnId,
+        );
+        return;
+      case 'model.changed':
+        sendWire(
+          'model.changed',
+          { new_model: (event as { data: { new_model: string } }).data.new_model },
+          currentTurnId,
+        );
+        return;
       default: {
         // NOTE: `session.error` may arrive here at runtime via
         // turn-manager's `as never` escape to sink.emit
@@ -217,6 +249,7 @@ export function installWireEventBridge(opts: InstallBridgeOptions): WireEventBri
     dispose(): void {
       eventBus.off(soulListener);
       unsubTurn();
+      (eventBus as unknown as { __hasExternalBridge?: boolean }).__hasExternalBridge = false;
     },
   };
 }

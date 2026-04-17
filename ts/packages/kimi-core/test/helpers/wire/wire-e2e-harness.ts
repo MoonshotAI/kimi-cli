@@ -34,6 +34,7 @@ import {
   SessionManager,
 } from '../../../src/session/index.js';
 import {
+  InMemoryApprovalStateStore,
   SessionEventBus,
   ToolCallOrchestrator,
   type ApprovalRuntime,
@@ -253,11 +254,32 @@ export async function createWireE2EHarness(
 
   const suppliedKosong =
     opts?.kosong ?? (opts?.kosongOptions !== undefined ? new FakeKosongAdapter(opts.kosongOptions) : undefined);
-  const { kosong, fake } = resolveKosongPair(suppliedKosong);
+  const { kosong: rawKosong, fake } = resolveKosongPair(suppliedKosong);
+  // Phase 18 / 裁决 3 — wrap the raw adapter in a mutable delegate so
+  // tests can hot-swap the provider after session boot without having
+  // to go through `SessionManager.createSession`. The delegate
+  // satisfies the `KosongAdapter` shape by forwarding every `chat`
+  // call to the current `inner` reference; the slot is also exposed on
+  // each ManagedSession as `managed.runtime.kosong` (write-through
+  // proxy) so the legacy `managed.runtime.kosong = newAdapter`
+  // hot-swap pattern keeps working.
+  const kosongSlot: { inner: KosongAdapter } = { inner: rawKosong };
+  const kosong: KosongAdapter = {
+    async chat(params) {
+      return kosongSlot.inner.chat(params);
+    },
+  };
+  void fake;
   const approval = opts?.approval ?? createTestApproval({ yolo: true });
 
   const pathConfig = new PathConfig({ home: homeDir });
   const sessionManager = new SessionManager(pathConfig);
+  // Phase 18 L2-6 — shared InMemoryApprovalStateStore so the wire
+  // `session.setYolo` handler and SoulPlus's `onChanged` listener see
+  // the same store. Production hosts that wire their own store should
+  // pass it through; here we just need a single instance that threads
+  // through `session.create` AND the handler closure.
+  const approvalStateStore = new InMemoryApprovalStateStore();
 
   const eventBus = new SessionEventBus();
   const events = new CollectingEventSink();
@@ -288,10 +310,17 @@ export async function createWireE2EHarness(
     ...opts?.routerDeps,
   });
 
+  const [client, server] = createLinkedTransportPair();
+  const codec = new WireCodec();
+  const queue = new WireFrameQueue();
+
+  const runtimeValue = { kosong, __slot: kosongSlot } as unknown as {
+    kosong: KosongAdapter;
+  };
   registerDefaultWireHandlers({
     sessionManager,
     router,
-    runtime: { kosong },
+    runtime: runtimeValue,
     kosong,
     tools,
     approval,
@@ -299,16 +328,15 @@ export async function createWireE2EHarness(
     eventBus,
     workspaceDir: workDir,
     defaultModel: opts?.model ?? 'test-model',
+    server,
+    hookEngine,
+    approvalStateStore,
   });
 
   // Allow tests to install custom handlers that override defaults.
   if (opts?.routerOverrides !== undefined) {
     await opts.routerOverrides(router);
   }
-
-  const [client, server] = createLinkedTransportPair();
-  const codec = new WireCodec();
-  const queue = new WireFrameQueue();
 
   client.onMessage = (frame: string): void => {
     try {

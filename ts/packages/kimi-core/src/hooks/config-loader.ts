@@ -30,6 +30,21 @@ const VALID_EVENTS = new Set<string>([
   'PostCompact',
 ]);
 
+/**
+ * Phase 18 B.3 — event-name aliases. Python's TOML config uses
+ * `PostToolUseFailure`; TS canonical name is `OnToolFailure`. Accept
+ * the Python spelling at parse time so cross-environment configs are
+ * portable, and normalise to the canonical name so downstream
+ * `executeHooks(event, …)` lookups match on a single literal.
+ */
+const EVENT_ALIASES: Readonly<Record<string, HookEventType>> = {
+  PostToolUseFailure: 'OnToolFailure',
+};
+
+function normalizeEvent(event: string): string {
+  return EVENT_ALIASES[event] ?? event;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MIN_TIMEOUT_S = 1;
 const MAX_TIMEOUT_S = 600;
@@ -58,11 +73,18 @@ export function parseHookConfigs(
 
     const obj = entry as Record<string, unknown>;
 
-    // event: required, must be valid HookEventType
-    const event = obj['event'];
-    if (typeof event !== 'string' || !VALID_EVENTS.has(event)) {
+    // event: required, must be valid HookEventType (aliases accepted).
+    const rawEvent = obj['event'];
+    if (typeof rawEvent !== 'string') {
       onWarning?.(
-        `hooks[${i}]: invalid event "${String(event)}". Valid: ${[...VALID_EVENTS].join(', ')}`,
+        `hooks[${i}]: invalid event "${String(rawEvent)}". Valid: ${[...VALID_EVENTS].join(', ')}`,
+      );
+      continue;
+    }
+    const event = normalizeEvent(rawEvent);
+    if (!VALID_EVENTS.has(event)) {
+      onWarning?.(
+        `hooks[${i}]: invalid event "${rawEvent}". Valid: ${[...VALID_EVENTS].join(', ')}`,
       );
       continue;
     }

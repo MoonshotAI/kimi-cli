@@ -253,7 +253,11 @@ describe('HookEngine', () => {
     expect(executor.execute).toHaveBeenCalledOnce();
   });
 
-  it('invalid regex matcher fails open (match-all) and notifies observer', async () => {
+  it('invalid regex matcher fails CLOSED (no match) and notifies observer (Phase 18 B.2)', async () => {
+    // Phase 18 B.2 — TS previously fail-open (match-all); aligned with
+    // Python fail-closed semantics: invalid regex → 0 matches.
+    // Security rationale: a block-action hook with a broken regex must
+    // not inadvertently block every tool call.
     const executor = makeExecutor('command', { ok: true });
     const invalidCalls: string[] = [];
     const engine = new HookEngine({
@@ -267,7 +271,7 @@ describe('HookEngine', () => {
       new AbortController().signal,
     );
     // oxlint-disable-next-line typescript-eslint/unbound-method
-    expect(executor.execute).toHaveBeenCalledOnce();
+    expect(executor.execute).not.toHaveBeenCalled();
     expect(invalidCalls).toEqual(['[invalid(']);
   });
 
@@ -324,13 +328,29 @@ describe('HookEngine', () => {
     expect(Array.isArray(settled.additionalContext)).toBe(true);
   });
 
-  // **Deferred** — HookEngine does not yet dedupe identical commands.
-  // Python `test_dedup_identical_commands` pins that two registered hooks
-  // with the same `(event, matcher, type, command)` produce a single
-  // execution result. Implementer needs to add a dedup pass during
-  // `executeHooks` keyed on that tuple before this can pass. Tracked in a
-  // follow-up issue.
-  it.todo(
-    'dedup: two hooks with the same (event, matcher, type, command) produce a single result',
-  );
+  // Phase 18 B.1 — HookEngine dedupes by command single-field (Python
+  // 2026-03-23 commit); two hooks sharing `command` produce a single
+  // execution result even if matcher/event differ. Full contract coverage
+  // lives in test/hooks/engine-alignment.test.ts (B.1 group). This
+  // entry stays as a minimal regression guard against reverting dedupe
+  // at the engine layer.
+  it('dedup: two hooks with the same command produce a single execution (Phase 18 B.1)', async () => {
+    const executor = makeExecutor('command', { ok: true });
+    const engine = new HookEngine({
+      executors: new Map([['command', executor]]),
+    });
+    engine.register(
+      makeCommandHook({ command: 'echo same', matcher: 'Bash' }),
+    );
+    engine.register(
+      makeCommandHook({ command: 'echo same', matcher: 'Bash|Read' }),
+    );
+    await engine.executeHooks(
+      'PostToolUse',
+      makePostToolUseInput(),
+      new AbortController().signal,
+    );
+    // oxlint-disable-next-line typescript-eslint/unbound-method
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+  });
 });

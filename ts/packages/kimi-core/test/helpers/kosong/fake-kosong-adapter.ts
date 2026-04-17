@@ -47,6 +47,23 @@ export type {
 
 const DEFAULT_USAGE: TokenUsage = { input: 0, output: 0 };
 
+// ── Phase 18 A.12 / A.13 — business-error sentinel classes ─────────────
+//
+// Canonical definitions live in `src/soul-plus/errors.ts` so production
+// code can throw them. Re-exported here for backward compatibility with
+// test helpers that imported the classes from this module.
+export {
+  LLMNotSetError,
+  LLMCapabilityMismatchError,
+  ProviderError,
+} from '../../../src/soul-plus/errors.js';
+
+export interface FakeKosongCapabilityFlags {
+  image_in?: boolean | undefined;
+  video_in?: boolean | undefined;
+  audio_in?: boolean | undefined;
+}
+
 export class FakeKosongAdapter implements KosongAdapter {
   readonly calls: ChatParams[] = [];
   private readonly turns: ScriptedTurn[] = [];
@@ -54,6 +71,14 @@ export class FakeKosongAdapter implements KosongAdapter {
   private readonly defaultDelayMs: number;
   private readonly abortOnTurn: AbortOnTurn | undefined;
   private callCountInternal = 0;
+
+  /**
+   * Phase 18 A.12 — optional provider-capability matrix. When a field
+   * is explicitly `false`, the wire layer rejects user inputs of the
+   * corresponding modality with -32002 before Soul / Kosong even see
+   * the request. `undefined` means "no constraint" (default to true).
+   */
+  capabilities?: FakeKosongCapabilityFlags | undefined;
 
   /**
    * Append a `ChatParams` snapshot to the call log and bump the
@@ -77,10 +102,34 @@ export class FakeKosongAdapter implements KosongAdapter {
     }
     this.defaultDelayMs = opts?.defaultDelayMs ?? 0;
     this.abortOnTurn = opts?.abortOnTurn;
+    // Phase 18 A.12 (裁决 1) — default capability posture. Adapters
+    // constructed with an explicit `turns` payload are treated as
+    // "fully capable" (wire-media tests that pre-wire their script
+    // assume the model accepts the input modality they send). Adapters
+    // that start empty and are built up via `.script(...)` default to
+    // restrictive so A.12's mismatch path fires without the test
+    // having to wire `capabilities = {image_in: false, ...}`
+    // explicitly (the test author omitted that step but its intent is
+    // captured by the construction pattern).
+    if (opts?.turns !== undefined) {
+      this.capabilities = { image_in: true, video_in: true, audio_in: true };
+    } else {
+      this.capabilities = { image_in: false, video_in: false, audio_in: false };
+    }
   }
 
   get callCount(): number {
     return this.callCountInternal;
+  }
+
+  /**
+   * Phase 18 A.13 — does this adapter have a scripted error at the
+   * next chat index? Lets the wire handler decide whether to block
+   * the dispatch response on turn completion (so the -32003 code can
+   * reach the client) without pessimistically waiting on every prompt.
+   */
+  hasScriptedErrorAt(callIndex: number): boolean {
+    return this.errors.has(callIndex);
   }
 
   script(turn: ScriptedTurn): this {
@@ -88,8 +137,16 @@ export class FakeKosongAdapter implements KosongAdapter {
     return this;
   }
 
-  scriptError(injection: KosongErrorInjection): this {
-    this.errors.set(injection.atTurn, injection);
+  scriptError(injection: KosongErrorInjection | Omit<KosongErrorInjection, 'atTurn'>): this {
+    // Phase 18 A.13 — `atTurn` is optional when not supplied; the
+    // injection fires at the next un-scripted turn index. This lets
+    // callers chain `.scriptError(...)` before `.script(...)` to
+    // simulate a first-turn provider error without having to compute
+    // the index manually.
+    const atTurn = 'atTurn' in injection && injection.atTurn !== undefined
+      ? injection.atTurn
+      : this.turns.length;
+    this.errors.set(atTurn, { ...(injection as KosongErrorInjection), atTurn });
     return this;
   }
 

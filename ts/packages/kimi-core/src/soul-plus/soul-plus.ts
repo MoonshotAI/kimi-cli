@@ -24,6 +24,7 @@ import type { FullContextState } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import { AgentTool } from '../tools/agent.js';
 import type { AgentTypeRegistry } from './agent-type-registry.js';
+import type { ApprovalStateStore } from './approval-state-store.js';
 import { CompactionOrchestrator } from './compaction-orchestrator.js';
 import { createDefaultDynamicInjectionManager } from './dynamic-injection.js';
 import type {
@@ -43,6 +44,10 @@ import type { ToolCallOrchestrator } from './orchestrator.js';
 import { PermissionClosureBuilder } from './permission-closure-builder.js';
 import type { PermissionRule } from './permission/index.js';
 import type { SessionEventBus } from './session-event-bus.js';
+import {
+  DefaultSessionControl,
+  type SessionControlHandler,
+} from './session-control.js';
 import { SessionMetaService, type SessionMeta } from './session-meta-service.js';
 import type { StateCache } from '../session/state-cache.js';
 import type { SkillManager } from './skill/index.js';
@@ -96,6 +101,15 @@ export interface SoulPlusDeps {
    * `stateCache`.
    */
   readonly initialMeta?: SessionMeta | undefined;
+  /**
+   * Phase 18 A.5 / L2-6 — when supplied, SoulPlus subscribes the
+   * store's `onChanged` fan-out and forwards `yolo` flips to
+   * `TurnManager.setPermissionMode` so a wire `session.setYolo`
+   * takes effect immediately (not only next turn). Optional because
+   * legacy test harnesses still wire approval without the store
+   * abstraction.
+   */
+  readonly approvalStateStore?: ApprovalStateStore | undefined;
 }
 
 export class SoulPlus {
@@ -105,6 +119,15 @@ export class SoulPlus {
   private readonly services: ServicesFacade;
   private readonly components: ComponentsFacade;
   private readonly infra: InfraFacade;
+  /**
+   * Phase 18 A.3–A.6 — lazy `SessionControlHandler` owned by the
+   * facade. External hosts (SessionManager) still construct their own
+   * `DefaultSessionControl` at session-setup time; `getSessionControl`
+   * materialises the same handler on demand so wire handlers can reach
+   * the config-channel surface without plumbing a second reference
+   * through `ManagedSession`.
+   */
+  private sessionControlInstance: SessionControlHandler | undefined;
   // Phase 4 review (Nit 2): the top-level `runtime` facade slot is a v2
   // design concern (铁律 6 — Runtime is Soul's only SoulPlus-visible
   // contract surface), but SoulPlus itself never reads `runtime` after
@@ -324,6 +347,21 @@ export class SoulPlus {
       permissionRules,
       hookEngine: undefined,
     };
+
+    // Phase 18 L2-6 — bridge `ApprovalStateStore.setYolo` → live
+    // TurnManager permission mode flip. Without this listener, a
+    // wire `session.setYolo` would only persist the flag; tools
+    // launched in the SAME turn would still see the old
+    // permission mode. The listener is first-wins per onChanged
+    // dispatch; listener errors are isolated at the store layer
+    // (see `approval-state-store.ts::ChangeListenerRegistry`).
+    if (deps.approvalStateStore !== undefined) {
+      deps.approvalStateStore.onChanged((snapshot) => {
+        turnManager.setPermissionMode(
+          snapshot.yolo ? 'bypassPermissions' : 'default',
+        );
+      });
+    }
   }
 
   /**
@@ -353,6 +391,57 @@ export class SoulPlus {
   /** Read-only view of the assembled tool list (post SkillTool wiring). */
   getTools(): readonly Tool[] {
     return this.infra.toolRegistry;
+  }
+
+  /**
+   * Phase 18 A.8 — dynamic tool management hooks. The tool registry is
+   * a mutable array owned by SoulPlus; new tools added here show up on
+   * the next `launchTurn` because TurnManager reads through the same
+   * reference at turn-start time.
+   *
+   * Journals a `tools_changed` record so wire.jsonl reflects the
+   * mutation.
+   */
+  async registerDynamicTool(tool: Tool): Promise<void> {
+    const registry = this.infra.toolRegistry as Tool[];
+    const existing = registry.findIndex((t) => t.name === tool.name);
+    if (existing !== -1) {
+      registry.splice(existing, 1, tool);
+    } else {
+      registry.push(tool);
+    }
+    await this.journal.contextState.applyConfigChange({
+      type: 'tools_changed',
+      operation: 'register',
+      tools: [tool.name],
+    });
+  }
+
+  /** Phase 18 A.8 — remove a previously registered tool. */
+  async removeDynamicTool(name: string): Promise<void> {
+    const registry = this.infra.toolRegistry as Tool[];
+    const idx = registry.findIndex((t) => t.name === name);
+    if (idx === -1) return;
+    registry.splice(idx, 1);
+    await this.journal.contextState.applyConfigChange({
+      type: 'tools_changed',
+      operation: 'remove',
+      tools: [name],
+    });
+  }
+
+  /**
+   * Phase 18 A.8 — narrow the active tool set to the supplied names.
+   * Writes the canonical `tools_changed{operation:'set_active'}`
+   * record; ContextState's projection updates `_activeTools` so
+   * downstream code sees only the narrowed set.
+   */
+  async setActiveTools(names: readonly string[]): Promise<void> {
+    await this.journal.contextState.applyConfigChange({
+      type: 'tools_changed',
+      operation: 'set_active',
+      tools: [...names],
+    });
   }
 
   // ── Slice 2.4 public API ─────────────────────────────────────────────
@@ -442,6 +531,57 @@ export class SoulPlus {
    */
   getSkillManager(): SkillManager | undefined {
     return this.components.skillManager;
+  }
+
+  /**
+   * Phase 18 A.3–A.6 — access (or lazily create) the canonical session
+   * config-channel handler. Returns the same handler instance on every
+   * call for the lifetime of this SoulPlus.
+   */
+  getSessionControl(): SessionControlHandler {
+    if (this.sessionControlInstance !== undefined) return this.sessionControlInstance;
+    this.sessionControlInstance = new DefaultSessionControl({
+      turnManager: this.components.turnManager,
+      contextState: this.journal.contextState,
+      sessionJournal: this.journal.sessionJournal,
+    });
+    return this.sessionControlInstance;
+  }
+
+  /**
+   * Phase 18 A.3 — programmatic model change. Applies the config
+   * change event to ContextState (WAL `model_changed`) and emits a
+   * fresh `status.update` so downstream observers pick up the new
+   * model without waiting for the next turn boundary.
+   */
+  async setModel(model: string): Promise<void> {
+    const oldModel = this.journal.contextState.model;
+    if (oldModel === model) return;
+    await this.journal.contextState.applyConfigChange({
+      type: 'model_changed',
+      old_model: oldModel,
+      new_model: model,
+    });
+    // Emit a status.update snapshot so wire consumers / TUI updates
+    // immediately reflect the new model. Zero token_usage here — we
+    // do not yet know the next-turn usage at setter time.
+    this.components.turnManager.emitStatusUpdate({ input: 0, output: 0 });
+  }
+
+  /**
+   * Phase 18 A.6 — programmatic thinking-level change. Journals a
+   * `thinking_changed` WAL record (via ContextState.applyConfigChange)
+   * and emits a `thinking.changed` SoulEvent; wire consumers translate
+   * this into the `thinking.changed` wire event.
+   */
+  async setThinking(level: string): Promise<void> {
+    await this.journal.contextState.applyConfigChange({
+      type: 'thinking_changed',
+      level,
+    });
+    // Emit a status.update snapshot so the thinking change is visible
+    // on the same channel as the other setters.
+    this.components.turnManager.emitStatusUpdate({ input: 0, output: 0 });
   }
 
   async dispatch(request: DispatchRequest): Promise<DispatchResponse> {

@@ -26,6 +26,7 @@ import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
 import { SoulLifecycleGate } from '../soul-plus/soul-lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
+import type { ApprovalStateStore } from '../soul-plus/approval-state-store.js';
 import type { ShellDeliverCallback } from '../soul-plus/notification-manager.js';
 import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
 import type { PermissionMode, PermissionRule } from '../soul-plus/permission/index.js';
@@ -155,6 +156,11 @@ export interface CreateSessionOptions {
    * (typically the OS temp dir).
    */
   workspaceDir: string;
+  /**
+   * Phase 18 A.5 / L2-6 — optional approval state store forwarded
+   * to SoulPlus so `setYolo` flips TurnManager.permissionMode live.
+   */
+  approvalStateStore?: ApprovalStateStore | undefined;
 }
 
 export interface ResumeSessionOptions {
@@ -187,6 +193,8 @@ export interface ResumeSessionOptions {
   compactionProvider?: CompactionProvider | undefined;
   /** Phase 2 — journal capability forwarded into SoulPlus. */
   journalCapability?: JournalCapability | undefined;
+  /** Phase 18 L2-6 — see `CreateSessionOptions.approvalStateStore`. */
+  approvalStateStore?: ApprovalStateStore | undefined;
 }
 
 /** A fully-assembled, running session. */
@@ -350,6 +358,12 @@ export class SessionManager {
       // SessionMetaService slot on the services facade is wired.
       stateCache,
       initialMeta,
+      // Phase 18 L2-6 — forward the approval state store so SoulPlus can
+      // subscribe `onChanged` and flip TurnManager.permissionMode live
+      // when a wire `session.setYolo` flips the stored yolo flag.
+      ...(options.approvalStateStore !== undefined
+        ? { approvalStateStore: options.approvalStateStore }
+        : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -562,6 +576,11 @@ export class SessionManager {
       // Phase 16 — wire SessionMetaService with the merged initialMeta.
       stateCache,
       initialMeta,
+      // Phase 18 L2-6 — forward the approval state store on resume too
+      // so yolo → permission-mode wiring survives session continuation.
+      ...(options.approvalStateStore !== undefined
+        ? { approvalStateStore: options.approvalStateStore }
+        : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 

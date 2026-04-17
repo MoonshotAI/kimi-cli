@@ -323,6 +323,16 @@ export interface SessionSetPlanModeRequestData {
   enabled: boolean;
 }
 
+// Phase 18 A.5 — toggle session-scoped bypass-permissions (yolo) mode.
+export interface SessionSetYoloRequestData {
+  enabled: boolean;
+}
+
+// Phase 18 A.6 — adjust reasoning/thinking effort level.
+export interface SessionSetThinkingRequestData {
+  level: string;
+}
+
 export interface SessionAddSystemReminderRequestData {
   content: string;
   category?: string | undefined;

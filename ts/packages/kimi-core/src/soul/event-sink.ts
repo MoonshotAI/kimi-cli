@@ -76,7 +76,25 @@ export type SoulEvent =
    * to derive `last_model`. Emitted alongside the existing
    * `model_changed` wire record.
    */
-  | { type: 'model.changed'; data: { new_model: string } };
+  | { type: 'model.changed'; data: { new_model: string } }
+  /**
+   * Phase 17 A.2 / Phase 18 A.14 — transient status snapshot emitted at
+   * turn boundaries and on explicit config setters (model / plan_mode /
+   * thinking / yolo). Per v2 §3.7 this event is NEVER persisted to
+   * wire.jsonl (铁律 W4). The wire bridge forwards it as a
+   * `status.update` wire event (see SoulEvent → wire event mapper).
+   */
+  | {
+      type: 'status.update';
+      data: {
+        context_usage: { used: number; total: number; percent: number };
+        token_usage: { input: number; output: number };
+        plan_mode: boolean;
+        model: string;
+        yolo?: boolean | undefined;
+        thinking?: string | undefined;
+      };
+    };
 
 export interface EventSink {
   emit(event: SoulEvent): void;

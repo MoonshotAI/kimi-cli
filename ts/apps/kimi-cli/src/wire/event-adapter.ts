@@ -115,6 +115,13 @@ export function adaptSoulEventToWireMessage(
       // and config-change pipes, so skip them here to avoid double-delivery.
       return null;
 
+    case 'status.update':
+      // Phase 18 A.14 — status.update is a Soul-side EventSink signal
+      // consumed by TurnManager/SessionMetaService for context-usage
+      // accounting; TUI receives status via its own pipeline and does
+      // not need the raw SoulEvent here.
+      return null;
+
     default: {
       // Exhaustive guard — adding a new SoulEvent variant without
       // extending this switch is a compile error.

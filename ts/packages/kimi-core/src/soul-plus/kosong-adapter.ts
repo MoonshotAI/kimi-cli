@@ -68,6 +68,7 @@ import type {
   ToolCall,
 } from '../soul/index.js';
 import { ContextOverflowError } from '../soul/errors.js';
+import { ProviderError } from './errors.js';
 
 export interface TokenRefresher {
   refresh(): Promise<void>;
@@ -111,18 +112,44 @@ export class KosongAdapter implements KosongAdapterInterface {
     // any in-flight retry budget — we refresh once and re-enter `runOnce`
     // with a fresh retry budget. A second 401 (or refresh failure) escapes.
     try {
-      return await this.runWithTransientRetry(params);
-    } catch (error) {
-      if (!isUnauthorizedError(error) || this.tokenRefresher === undefined) {
-        throw error;
-      }
       try {
-        await this.tokenRefresher.refresh();
-      } catch {
+        return await this.runWithTransientRetry(params);
+      } catch (error) {
+        if (!isUnauthorizedError(error) || this.tokenRefresher === undefined) {
+          throw error;
+        }
+        try {
+          await this.tokenRefresher.refresh();
+        } catch {
+          throw error;
+        }
+        return await this.runWithTransientRetry(params);
+      }
+    } catch (error) {
+      // Phase 18 A.13 — wrap any surviving provider failure in
+      // `ProviderError` so the wire bridge can map it onto -32003.
+      // The already-specific business/terminal errors (abort /
+      // context-overflow / auth) pass through unchanged.
+      if (this.isPassthroughError(error)) {
         throw error;
       }
-      return this.runWithTransientRetry(params);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ProviderError(message, error);
     }
+  }
+
+  /**
+   * Errors that already have a dedicated semantic handler downstream
+   * and MUST NOT be rewrapped as `ProviderError`. Keeping this list
+   * narrow matters — anything else bubbling up from the provider
+   * layer is a candidate for the -32003 business mapping.
+   */
+  private isPassthroughError(error: unknown): boolean {
+    if (error instanceof ContextOverflowError) return true;
+    if (error instanceof ProviderError) return true;
+    if (isUnauthorizedError(error)) return true;
+    if (error instanceof Error && error.name === 'AbortError') return true;
+    return false;
   }
 
   private async runWithTransientRetry(params: ChatParams): Promise<ChatResponse> {
