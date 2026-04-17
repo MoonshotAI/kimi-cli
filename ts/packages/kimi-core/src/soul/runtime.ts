@@ -41,6 +41,20 @@ export interface LLMToolDefinition {
   input_schema: unknown;
 }
 
+/**
+ * Phase 17 §B.6 — structured onDelta payload for incremental
+ * tool_use streaming. Providers that chunk tool arguments forward
+ * each chunk through this shape; providers that deliver a complete
+ * tool call in a single frame emit one consolidated event right
+ * before the assistant message.
+ */
+export interface ToolCallPartDelta {
+  readonly type: 'tool_call_part';
+  readonly tool_call_id: string;
+  readonly name?: string | undefined;
+  readonly arguments_chunk?: string | undefined;
+}
+
 export interface ChatParams {
   messages: Message[];
   tools: LLMToolDefinition[];
@@ -59,6 +73,14 @@ export interface ChatParams {
   signal: AbortSignal;
   onDelta?: ((delta: string) => void) | undefined;
   onThinkDelta?: ((delta: string) => void) | undefined;
+  /**
+   * Phase 17 §B.6 — incremental tool_use streaming seam. KosongAdapter
+   * fires one event per tool_call (fallback: a single consolidated
+   * part per finished tool_call — providers that chunk forward each
+   * chunk individually). Routed by run-turn.ts into SoulEvent
+   * `tool_call_part` and onward through the wire event-bridge.
+   */
+  onToolCallPart?: ((part: ToolCallPartDelta) => void) | undefined;
   /**
    * Slice 5 / 决策 #97 — fired by streaming wrappers as each tool_use
    * block finishes streaming so the orchestrator can prefetch ahead of

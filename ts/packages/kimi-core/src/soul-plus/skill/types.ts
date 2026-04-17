@@ -59,6 +59,12 @@ export interface SkillDefinition {
   readonly content: string;
   readonly metadata: SkillMetadata;
   readonly source: SkillSource;
+  /**
+   * Phase 17 §B.5 — raw body of the first ` ```mermaid ``` ` fenced
+   * block, stripped of the fence markers. `undefined` when the skill
+   * has no flowchart.
+   */
+  readonly mermaid?: string | undefined;
 }
 
 /**

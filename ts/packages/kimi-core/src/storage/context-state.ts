@@ -341,18 +341,40 @@ class BaseContextState implements FullContextState {
       turn_id: turnId,
       content: input.parts !== undefined ? input.parts : input.text,
     });
-    const textContent =
-      input.parts !== undefined
-        ? input.parts
-            .filter((p): p is Extract<UserInputPart, { type: 'text' }> => p.type === 'text')
-            .map((p) => p.text)
-            .join('')
-        : input.text;
-    this.history.push({
-      role: 'user',
-      content: [{ type: 'text', text: textContent }],
-      toolCalls: [],
-    });
+    // Phase 17 §A.7 — when the wire prompt was multi-modal (parts
+    // contain anything other than plain text), preserve the full
+    // ContentPart array in history so KosongAdapter forwards the
+    // image/video attachments to the underlying provider. Pure-text
+    // prompts (and parts that are 100% text) keep the legacy flat
+    // single-text shape so nothing downstream regresses.
+    const hasNonText =
+      input.parts !== undefined && input.parts.some((p) => p.type !== 'text');
+    if (hasNonText && input.parts !== undefined) {
+      const content: ContentPart[] = [];
+      for (const part of input.parts) {
+        if (part.type === 'text') {
+          content.push({ type: 'text', text: part.text });
+        } else if (part.type === 'image_url') {
+          content.push({ type: 'image_url', imageUrl: part.image_url });
+        } else {
+          content.push({ type: 'video_url', videoUrl: part.video_url });
+        }
+      }
+      this.history.push({ role: 'user', content, toolCalls: [] });
+    } else {
+      const textContent =
+        input.parts !== undefined
+          ? input.parts
+              .filter((p): p is Extract<UserInputPart, { type: 'text' }> => p.type === 'text')
+              .map((p) => p.text)
+              .join('')
+          : input.text;
+      this.history.push({
+        role: 'user',
+        content: [{ type: 'text', text: textContent }],
+        toolCalls: [],
+      });
+    }
   }
 
   async appendAssistantMessage(msg: AssistantMessagePayload): Promise<void> {

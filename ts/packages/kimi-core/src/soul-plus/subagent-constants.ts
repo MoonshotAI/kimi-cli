@@ -15,3 +15,11 @@
  * own `wire.jsonl`.
  */
 export const RESULT_SUMMARY_MAX_LEN = 500;
+
+/**
+ * Phase 17 §C.3 — hard cap on `Skill → Skill` fork depth. The parent
+ * SkillTool carries its own `initialQueryDepth`; each child invocation
+ * increments by one and fails the tool call with an `is_error` result
+ * once the cap is reached. Mirrors the Python soul's recursion guard.
+ */
+export const MAX_SKILL_QUERY_DEPTH = 3;

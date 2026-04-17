@@ -71,6 +71,9 @@ function extractKeyArgument(toolName: string, args: Record<string, unknown>): st
     Glob: ['pattern'],
     FetchURL: ['url'],
     WebSearch: ['query'],
+    // Slice 5.3 — prefer the short `description` so the header preview
+    // never spills the multi-line `prompt` into the TUI chrome.
+    Agent: ['description', 'prompt'],
   };
 
   const candidates = keyMap[toolName] ?? Object.keys(args);

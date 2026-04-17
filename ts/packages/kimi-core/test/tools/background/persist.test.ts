@@ -138,4 +138,24 @@ describe('background/persist', () => {
     expect(all).toHaveLength(1);
     expect(all[0]?.task_id).toBe('bash-11111111');
   });
+
+  // ── Phase 17 C.2 — shell_info round-trip ──────────────────────────
+
+  it('Phase 17 C.2: shell_info round-trips through write/read', async () => {
+    const task = sample({
+      task_id: 'bash-abc12345',
+      shell_info: {
+        name: 'bash',
+        path: '/bin/bash',
+        cwd: '/tmp/work',
+      },
+    });
+    await writeTask(sessionDir, task);
+    const loaded = await readTask(sessionDir, 'bash-abc12345');
+    expect(loaded?.shell_info).toEqual({
+      name: 'bash',
+      path: '/bin/bash',
+      cwd: '/tmp/work',
+    });
+  });
 });

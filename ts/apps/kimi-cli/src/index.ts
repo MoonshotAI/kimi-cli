@@ -14,6 +14,7 @@ import { resolve } from 'node:path';
 
 import {
   AgentRegistry,
+  AgentTypeRegistry,
   AskUserQuestionTool,
   BackgroundProcessManager,
   BashTool,
@@ -51,19 +52,23 @@ import {
   createStubJournalCapability,
   detectEnvironmentFromNode,
   extendWorkspaceWithSkillRoots,
+  getBundledAgentYamlPath,
   loadConfig as loadKimiCoreConfig,
+  loadSubagentTypes,
   parseMcpConfig,
   resolveSkillRoots,
   getDeviceHeaders,
   setCliVersion,
 } from '@moonshot-ai/core';
 import type {
+  ApprovalRuntime,
   KimiConfig,
   McpConfig,
   McpLoadNotification,
   OAuthResolver,
   Runtime,
   Tool,
+  WireMessage,
   WorkspaceConfig,
 } from '@moonshot-ai/core';
 import { localKaos } from '@moonshot-ai/kaos';
@@ -446,6 +451,35 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   //      otherwise      → create a new session
   const maxContextSize = kimiConfig.models?.[modelAlias]?.maxContextSize ?? 200_000;
 
+  // Slice 5.3 — load subagent types from agent.yaml so SessionManager
+  // can wire the `Agent` collaboration tool into SoulPlus. Failure
+  // modes diverge on whether the user explicitly asked for a file
+  // (Python parity — `load_agent` hard-fails on --agent-file):
+  //   * `--agent-file <path>` supplied → any load failure is fatal so
+  //     the user can't silently end up in "Agent tool disabled" when
+  //     they intended a specific agent spec.
+  //   * bundled default only → soft-skip with a stderr warning; the
+  //     session still boots, just without subagent support (embedder-
+  //     cutoff per v2 §10.3.1).
+  let agentTypeRegistry: AgentTypeRegistry | undefined;
+  try {
+    const yamlPath = opts.agentFile ?? (await getBundledAgentYamlPath());
+    const types = await loadSubagentTypes(yamlPath);
+    const registry = new AgentTypeRegistry();
+    for (const def of types) {
+      registry.register(def.name, def);
+    }
+    agentTypeRegistry = registry;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (opts.agentFile !== undefined) {
+      throw new Error(`failed to load --agent-file ${opts.agentFile}: ${msg}`);
+    }
+    process.stderr.write(
+      `warning: failed to load bundled subagent types; Agent tool will be disabled: ${msg}\n`,
+    );
+  }
+
   const wireClient = new KimiCoreClient({
     sessionManager,
     runtime,
@@ -459,6 +493,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     config: kimiConfig,
     maxContextSize,
     rebuildRuntimeForModel,
+    ...(agentTypeRegistry !== undefined ? { agentTypeRegistry } : {}),
   });
 
   let sessionId: string;
@@ -641,8 +676,212 @@ async function runPrint(opts: CLIOptions): Promise<void> {
   }
 }
 
-function runWire(_opts: CLIOptions): void {
-  process.stdout.write('Wire mode: not yet implemented (Phase 11)\n');
+/**
+ * Phase 17 §A.1 / §A.4 / §A.5 — production `--wire` runner.
+ *
+ * Assembles the same wire surface the in-memory E2E harness uses:
+ *   - `StdioTransport` for NDJSON framing
+ *   - `RequestRouter` + `registerDefaultWireHandlers` for process /
+ *     conversation / management / config / mcp methods
+ *   - `installWireEventBridge` forwarding SoulEvents + turn lifecycle
+ *     onto the wire
+ *   - `mapToWireError` for codec / envelope / zod failures
+ *
+ * Missing for full prod parity (CLI Phase follow-up): per-session
+ * SessionEventBus isolation (today a shared bus drives a single
+ * bridge — single-session clients work; multi-session concurrent
+ * usage shares frame attribution), OAuth-aware provider swap on
+ * `session.setModel`, and MCP tool wiring.
+ */
+async function runWire(opts: CLIOptions): Promise<void> {
+  // Lazy-load core wire machinery only inside this branch so the
+  // shell/print code paths don't pay the import cost.
+  const core = await import('@moonshot-ai/core');
+  const {
+    AlwaysAllowApprovalRuntime,
+    HookEngine,
+    RequestRouter,
+    SessionEventBus,
+    SessionManager: SessionManagerCtor,
+    StdioTransport,
+    ToolCallOrchestrator,
+    WireCodec,
+    createKosongAdapter,
+    createRuntime,
+    createProviderFromConfig,
+    installWireEventBridge,
+    loadConfig: loadKimiConfig,
+    mapToWireError,
+    registerDefaultWireHandlers,
+    createWireResponse: makeResponse,
+    PathConfig: PathConfigCtor,
+  } = core;
+
+  const workDir = opts.workDir ?? process.cwd();
+  const pathConfig = new PathConfigCtor();
+  const kimiConfig = loadKimiConfig({ pathConfig, workspaceDir: workDir });
+  const modelAlias = opts.model ?? kimiConfig.defaultModel;
+  if (modelAlias === undefined || modelAlias === '') {
+    process.stderr.write(
+      'error: --wire requires a default_model in ~/.kimi/config.toml or --model <name>\n',
+    );
+    process.exit(1);
+  }
+
+  setCliVersion(getVersion());
+  const { oauthResolver } = await ensureOAuthIfNeeded(
+    kimiConfig,
+    modelAlias,
+    pathConfig,
+  );
+  const provider = await createProviderFromConfig(kimiConfig, modelAlias, {
+    defaultHeaders: buildKimiDefaultHeaders(getVersion()),
+    ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+  });
+  const kosong = createKosongAdapter({ provider });
+  const runtime: Runtime = createRuntime({ kosong });
+
+  const sessionManager = new SessionManagerCtor(pathConfig);
+  const approval = new AlwaysAllowApprovalRuntime();
+  const eventBus = new SessionEventBus();
+  const hookEngine = new HookEngine({ executors: new Map(), sink: eventBus });
+
+  // Phase 17 §A.1 / §C.1 — the orchestrator's sessionId closure
+  // reads the session id most-recently created through this runner.
+  // enforceResultBudget writes tool result archives to
+  // `{pathConfig}/sessions/<id>/tool_results/` and must not collapse
+  // all sessions into a single `wire-session` directory. Multi-session
+  // concurrent tool execution still needs per-session orchestrators —
+  // tracked as an explicit CLI Phase follow-up; single-session is the
+  // intended production shape right now.
+  let activeSessionId: string | undefined;
+  const orchestrator = new ToolCallOrchestrator({
+    hookEngine,
+    sessionId: () => activeSessionId ?? 'session_pending',
+    agentId: 'agent_main',
+    approvalRuntime: approval,
+    pathConfig,
+  });
+
+  const router = new RequestRouter({ sessionManager });
+  registerDefaultWireHandlers({
+    sessionManager,
+    router,
+    runtime,
+    kosong,
+    tools: [],
+    approval,
+    orchestrator,
+    eventBus,
+    workspaceDir: workDir,
+    defaultModel: modelAlias,
+    pathConfig,
+  });
+
+  const transport = new StdioTransport();
+  const codec = new WireCodec();
+
+  // Phase 17 §A.1 — per-session WireEventBridge, keyed by sessionId.
+  // Each `session.create` spawns a new bridge; `session.destroy`
+  // disposes it. Avoids the single-ref aliasing that would let a
+  // second session's events clobber the first session's frame
+  // attribution.
+  const bridgeDisposers = new Map<string, () => void>();
+
+  const originalCreate = sessionManager.createSession.bind(sessionManager);
+  (sessionManager as { createSession: typeof sessionManager.createSession }).createSession =
+    async (options) => {
+      const managed = await originalCreate(options);
+      activeSessionId = managed.sessionId;
+      // Dispose any stale bridge on the same id (e.g., createSession
+      // called twice with the same sessionId from session.resume).
+      bridgeDisposers.get(managed.sessionId)?.();
+      const handle = installWireEventBridge({
+        server: transport,
+        eventBus,
+        addTurnLifecycleListener: (l) =>
+          managed.soulPlus.getTurnManager().addTurnLifecycleListener(l),
+        sessionId: managed.sessionId,
+      });
+      bridgeDisposers.set(managed.sessionId, handle.dispose);
+      return managed;
+    };
+
+  const originalClose = sessionManager.closeSession.bind(sessionManager);
+  (sessionManager as { closeSession: typeof sessionManager.closeSession }).closeSession = async (
+    sessionId,
+  ) => {
+    const disposer = bridgeDisposers.get(sessionId);
+    if (disposer !== undefined) {
+      disposer();
+      bridgeDisposers.delete(sessionId);
+    }
+    if (activeSessionId === sessionId) {
+      activeSessionId = undefined;
+    }
+    return originalClose(sessionId);
+  };
+
+  transport.onMessage = (frame) => {
+    void (async () => {
+      let msg: WireMessage;
+      try {
+        msg = codec.decode(frame);
+      } catch (decodeError) {
+        const mapping = mapToWireError(decodeError);
+        try {
+          const err = makeResponse({
+            requestId: undefined,
+            sessionId: '__unknown__',
+            error: mapping.error,
+          });
+          await transport.send(codec.encode(err));
+        } catch {
+          /* transport closed — ignore */
+        }
+        return;
+      }
+      try {
+        const response = await router.dispatch(msg, transport);
+        if (response !== undefined) {
+          await transport.send(codec.encode(response));
+        }
+      } catch (error) {
+        if (msg.type !== 'request') return;
+        const mapping = mapToWireError(error);
+        const errorResponse = makeResponse({
+          requestId: msg.id,
+          sessionId: msg.session_id,
+          error: mapping.error,
+        });
+        try {
+          await transport.send(codec.encode(errorResponse));
+        } catch {
+          /* transport closed — ignore */
+        }
+      }
+    })();
+  };
+
+  // Phase 17 §A.1 — graceful shutdown on stdin EOF. Close every active
+  // session (each closeSession drains + closes its JournalWriter) before
+  // exiting so the last batch of wire records lands on disk. Bridges
+  // dispose as a side-effect of the patched closeSession above.
+  transport.onClose = () => {
+    void (async () => {
+      const openIds = [...bridgeDisposers.keys()];
+      for (const sid of openIds) {
+        try {
+          await sessionManager.closeSession(sid);
+        } catch {
+          /* keep going — best-effort drain on EOF */
+        }
+      }
+      process.exit(0);
+    })();
+  };
+
+  await transport.connect();
 }
 
 // ---------------------------------------------------------------------------
@@ -683,7 +922,12 @@ function main(): void {
         });
         break;
       case 'wire':
-        runWire(opts);
+        void runWire(opts).catch((error: unknown) => {
+          process.stderr.write(
+            `error: wire runner failed: ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+          process.exit(1);
+        });
         break;
     }
   });

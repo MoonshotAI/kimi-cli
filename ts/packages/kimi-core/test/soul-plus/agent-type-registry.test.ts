@@ -2,11 +2,15 @@
  * AgentTypeRegistry tests — type definitions + tool subset resolution.
  */
 
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { AgentTypeRegistry } from '../../src/soul-plus/agent-type-registry.js';
 import type { AgentTypeDefinition } from '../../src/soul-plus/agent-type-registry.js';
+import { loadSubagentTypes } from '../../src/soul-plus/agent-yaml-loader.js';
 import type { Tool, ToolResult } from '../../src/soul/types.js';
 
 function fakeTool(name: string): Tool {
@@ -148,5 +152,56 @@ describe('AgentTypeRegistry', () => {
       expect(desc).toContain('- explore: Explore agent');
       expect(desc).toContain('When to use:');
     });
+  });
+
+  // ── Slice 5.3 T2 — nested Agent spawn blocked via YAML exclude_tools ──
+  //
+  // Ensures the three bundled subagent YAMLs (coder / explore / plan) each
+  // declare `exclude_tools: kimi_cli.tools.agent:Agent`, and that after
+  // mapToolNames → 'Agent' the filter actually removes an `Agent` instance
+  // from the parent tool array. Defends against regressions that would
+  // otherwise let a subagent spawn its own sub-subagent (D3 / 铁律 9).
+  describe('Slice 5.3 T2: builtin types filter out parent Agent tool', () => {
+    // agent-type-registry.test.ts lives at
+    //   packages/kimi-core/test/soul-plus/agent-type-registry.test.ts
+    // so ../../agents/default/agent.yaml is the bundled parent YAML.
+    const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+    const BUNDLED_AGENT_YAML = resolve(
+      TEST_DIR,
+      '..',
+      '..',
+      'agents',
+      'default',
+      'agent.yaml',
+    );
+
+    const AGENT_TOOL = fakeTool('Agent');
+    const PARENT_TOOLS: readonly Tool[] = [
+      fakeTool('Bash'),
+      fakeTool('Read'),
+      fakeTool('Write'),
+      fakeTool('Edit'),
+      fakeTool('Grep'),
+      fakeTool('Glob'),
+      AGENT_TOOL,
+    ];
+
+    for (const typeName of ['coder', 'explore', 'plan'] as const) {
+      it(`builtin "${typeName}" resolveToolSet excludes the parent Agent tool`, async () => {
+        const types = await loadSubagentTypes(BUNDLED_AGENT_YAML);
+        const def = types.find((t) => t.name === typeName);
+        if (def === undefined) {
+          throw new Error(`bundled agent.yaml did not declare "${typeName}"`);
+        }
+        expect(def).toBeDefined();
+
+        const registry = new AgentTypeRegistry();
+        registry.register(typeName, def);
+
+        const resolved = registry.resolveToolSet(typeName, PARENT_TOOLS);
+        const names = resolved.map((t) => t.name);
+        expect(names).not.toContain('Agent');
+      });
+    }
   });
 });

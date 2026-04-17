@@ -148,27 +148,69 @@ describe('wire sessions — pending src wiring', () => {
     expect(sessionId).toMatch(/^ses_/);
   });
 
-  // Python `--continue` spawned a second process and asked the
-  // SessionManager to reopen the prior session id. TS surfaces the
-  // same semantics through `session.resume`, but the default wire
-  // handler does not register `session.resume` yet (v2 §3.5 lists it,
-  // but the in-memory harness ships only session.create/list/destroy).
-  it.todo('session.resume appends to an existing session (pending session.resume handler wiring)');
+  // Phase 17 A.5 — session.resume default handler now registered;
+  // behavioural coverage lives in test/e2e/wire-resume-replay.test.ts.
+  // This is a smoke assertion that a second session.prompt after resume
+  // appends to wire.jsonl rather than rotating.
+  it('session.resume appends to an existing session', async () => {
+    const kosong = new FakeKosongAdapter({
+      turns: [
+        { text: 'first', stopReason: 'end_turn' },
+        { text: 'second', stopReason: 'end_turn' },
+      ],
+    });
+    const { sessionId, sessionDir } = await bootSession(kosong);
+
+    const p1 = buildPromptRequest({ sessionId, text: 'one' });
+    await harness!.send(p1);
+    const { response: r1 } = await harness!.collectUntilResponse(p1.id);
+    const t1 = (r1.data as { turn_id: string }).turn_id;
+    await harness!.expectEvent('turn.end', {
+      matcher: (m) => (m.data as { turn_id: string }).turn_id === t1,
+    });
+
+    // Explicit resume round-trip.
+    const resumeReq = createWireRequest({
+      method: 'session.resume',
+      sessionId,
+      data: {},
+    });
+    await harness!.send(resumeReq);
+    const { response: resumeRes } = await harness!.collectUntilResponse(
+      resumeReq.id,
+    );
+    expect(resumeRes.error).toBeUndefined();
+
+    const managed1 = harness!.sessionManager.get(sessionId);
+    await managed1!.journalWriter.flush();
+    const sizeBefore = (await stat(join(sessionDir, 'wire.jsonl'))).size;
+
+    const p2 = buildPromptRequest({ sessionId, text: 'two' });
+    await harness!.send(p2);
+    const { response: r2 } = await harness!.collectUntilResponse(p2.id);
+    const t2 = (r2.data as { turn_id: string }).turn_id;
+    await harness!.expectEvent('turn.end', {
+      matcher: (m) => (m.data as { turn_id: string }).turn_id === t2,
+    });
+
+    const managed2 = harness!.sessionManager.get(sessionId);
+    await managed2!.journalWriter.flush();
+    const sizeAfter = (await stat(join(sessionDir, 'wire.jsonl'))).size;
+    expect(sizeAfter).toBeGreaterThan(sizeBefore);
+  });
 
   // `/clear` is a CLI-layer slash command in v2, not a wire method.
-  // Once the skill manager's user-slash pipeline is wired through the
-  // wire bridge, this becomes `session.clear` or a skill invocation
-  // through `session.prompt` with input_kind='system_trigger'.
-  it.todo('/clear slash rotates context (pending slash → wire bridge)');
+  // The skill manager's user-slash pipeline belongs to a CLI Phase
+  // follow-up (not in Phase 17 scope).
+  it.todo('/clear slash rotates context (CLI Phase follow-up)');
 
   // Real compaction with LLM call needs CompactionProvider supplied to
-  // SoulPlus + max_preserved_messages config. The default harness
-  // stubs CompactionProvider to a no-op (v2 §5.2 createStubCompactionProvider).
-  it.todo('manual /compact triggers real LLM call with token usage (pending real CompactionProvider)');
+  // SoulPlus + max_preserved_messages config. Production wiring owned by
+  // CLI Phase (Phase 17 leaves the harness stub in place).
+  it.todo('manual /compact triggers real LLM call with token usage (CLI Phase follow-up)');
 
-  // `session.replay` is not a declared wire method on the TS side
-  // (`ConversationMethod` / `ManagementMethod` / `ConfigMethod` have
-  // no replay entry). Phase 11 may introduce it; Python's replay was
-  // a direct wire.jsonl stream.
-  it.todo('replay streams wire history (pending session.replay wire method)');
+  // Phase 17 A.5 — session.replay behavioural coverage lives in
+  // `wire-resume-replay.test.ts`. This file keeps the Phase 10 seat
+  // so migration provenance is visible.
+  it.todo('replay streams wire history — covered by wire-resume-replay.test.ts (Phase 17 A.5)');
 });

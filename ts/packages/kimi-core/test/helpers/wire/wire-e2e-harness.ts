@@ -52,6 +52,8 @@ import {
   WireCodec,
   type WireMessage,
 } from '../../../src/wire-protocol/index.js';
+import { mapToWireError } from '../../../src/wire-protocol/error-mapping.js';
+import { ZodError } from 'zod';
 import { CollectingEventSink } from '../../soul/fixtures/collecting-event-sink.js';
 import {
   createTempEnv,
@@ -188,11 +190,17 @@ function buildErrorResponseFromDispatchError(
   err: unknown,
 ): WireMessage {
   const message = err instanceof Error ? err.message : String(err);
+  // Phase 17 §A.4 — delegate to `mapToWireError` first. Codes
+  // specific to the router dispatch layer (method-not-found, session-
+  // not-found) still need the regex fallback since they are thrown as
+  // plain `Error` instances from RequestRouter.
   let code: number;
   if (err instanceof InvalidWireEnvelopeError) {
     code = -32600;
   } else if (err instanceof MalformedWireFrameError) {
-    code = -32600;
+    code = -32700;
+  } else if (err instanceof ZodError) {
+    code = -32602;
   } else if (/method not found/i.test(message)) {
     code = -32601;
   } else if (/invalid params/i.test(message)) {
@@ -202,10 +210,21 @@ function buildErrorResponseFromDispatchError(
   } else {
     code = -32603;
   }
+  // Phase 17 §A.4 — ZodError messages are the raw issues JSON which
+  // clients can't parse. Override with a short human-friendly string
+  // and stash the issues on `details` for diagnostics.
+  const friendlyMessage = err instanceof ZodError ? 'Invalid params' : message;
+  const wireError: { code: number; message: string; details?: unknown } = {
+    code,
+    message: friendlyMessage,
+  };
+  if (err instanceof ZodError) {
+    wireError.details = { issues: err.issues };
+  }
   return createWireResponse({
     requestId: request.id,
     sessionId: request.session_id,
-    error: { code, message },
+    error: wireError,
   });
 }
 
@@ -331,6 +350,7 @@ export async function createWireE2EHarness(
     server,
     hookEngine,
     approvalStateStore,
+    pathConfig,
   });
 
   // Allow tests to install custom handlers that override defaults.
@@ -348,13 +368,24 @@ export async function createWireE2EHarness(
   };
   server.onMessage = (frame: string): void => {
     void (async (): Promise<void> => {
-      // Decode first. Malformed / invalid envelopes never get a
-      // response — we can't construct a valid `request_id` back to the
-      // client. Swallowing matches the Python transport's behaviour.
+      // Phase 17 §A.4 — codec / envelope failures are now mapped to
+      // -32700 / -32600 via `mapToWireError` and surfaced as responses
+      // (request_id is null because we can't recover the client id).
       let msg: WireMessage;
       try {
         msg = codec.decode(frame);
-      } catch {
+      } catch (decodeError) {
+        const mapping = mapToWireError(decodeError);
+        try {
+          const errResp = createWireResponse({
+            requestId: undefined,
+            sessionId: '__unknown__',
+            error: mapping.error,
+          });
+          await server.send(codec.encode(errResp));
+        } catch {
+          /* transport may have closed — ignore */
+        }
         return;
       }
 
@@ -364,12 +395,6 @@ export async function createWireE2EHarness(
           await server.send(codec.encode(response));
         }
       } catch (error) {
-        // Review Round 2 R2-1 — `RequestRouter.dispatch` throws on
-        // `Session not found` / `Method not found`. Turn these into
-        // JSON-RPC style wire-error responses so the client observes
-        // the failure instead of hanging until timeout. Only request
-        // frames round-trip; responses and events never get an error
-        // reply.
         if (msg.type !== 'request') return;
         const errorResponse = buildErrorResponseFromDispatchError(msg, error);
         try {
@@ -382,6 +407,47 @@ export async function createWireE2EHarness(
   };
 
   await Promise.all([client.connect(), server.connect()]);
+
+  // Phase 17 §A.3 — if the approval helper exposes a deferred
+  // `setReverseRpcSender` seam, wire it to the server now that the
+  // transport is live. The runtime fires `approval.request` wire
+  // frames via this closure; the client's response lands on a
+  // pending-request resolver that routes the decision back into
+  // `resolveRemote`.
+  {
+    const { isTestWiredApproval } = await import(
+      '../runtime/create-test-approval.js'
+    );
+    if (isTestWiredApproval(approval)) {
+      const wiredApproval = approval;
+      wiredApproval.setReverseRpcSender((frame) => {
+        const wireRequest = createWireRequest({
+          method: frame.method,
+          sessionId: frame.data.request_id,
+          data: frame.data,
+          from: 'core',
+          to: 'client',
+        });
+        router.registerPendingRequest(wireRequest.id, (responseMsg) => {
+          const decision = (responseMsg.data ?? {}) as {
+            response?: 'approved' | 'rejected' | 'cancelled';
+            feedback?: string;
+            scope?: 'session';
+          };
+          if (decision.response === undefined) return;
+          wiredApproval.resolveRemote({
+            request_id: frame.data.request_id,
+            response: decision.response,
+            ...(decision.feedback !== undefined ? { feedback: decision.feedback } : {}),
+            ...(decision.scope === 'session' ? { scope: 'session' as const } : {}),
+          });
+        });
+        void server.send(codec.encode(wireRequest)).catch(() => {
+          /* transport may have closed — ignore */
+        });
+      });
+    }
+  }
 
   async function send(msg: WireMessage): Promise<void> {
     await client.send(codec.encode(msg));

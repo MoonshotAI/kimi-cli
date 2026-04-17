@@ -35,6 +35,7 @@ import type {
   ToolResult,
   ToolResultDisplay,
   ToolUpdate,
+  ToolMetadata
 } from '../soul/types.js';
 import type { Environment } from '../utils/environment.js';
 import type { BackgroundProcessManager } from './background/manager.js';
@@ -92,6 +93,7 @@ If \`run_in_background=true\`, the command will be started as a background task 
 
 export class ShellTool implements BuiltinTool<BashInput, BashOutput> {
   readonly name = 'Bash' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string;
   readonly inputSchema: z.ZodType<BashInput> = BashInputSchema;
   readonly display: ToolDisplayHooks<BashInput, BashOutput>;

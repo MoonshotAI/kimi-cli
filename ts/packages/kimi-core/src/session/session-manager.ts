@@ -24,6 +24,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
+import type { AgentTypeRegistry } from '../soul-plus/agent-type-registry.js';
 import { SoulLifecycleGate } from '../soul-plus/soul-lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
 import type { ApprovalStateStore } from '../soul-plus/approval-state-store.js';
@@ -35,6 +36,8 @@ import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
 import type { SessionMeta } from '../soul-plus/session-meta-service.js';
 import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
+import { cleanupStaleSubagents } from '../soul-plus/subagent-runner.js';
+import { SubagentStore } from '../soul-plus/subagent-store.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
 import type {
   CompactionConfig,
@@ -161,6 +164,15 @@ export interface CreateSessionOptions {
    * to SoulPlus so `setYolo` flips TurnManager.permissionMode live.
    */
   approvalStateStore?: ApprovalStateStore | undefined;
+  /**
+   * Slice 5.3 — subagent type registry. When provided, SessionManager
+   * constructs a per-session `SubagentStore` internally and forwards both
+   * into SoulPlusDeps so SoulPlus can register the `AgentTool` collaboration
+   * tool. When omitted, AgentTool is not registered and the session runs
+   * without subagent spawning capability (embedding-scenario cutoff per
+   * v2 §10.3.1).
+   */
+  agentTypeRegistry?: AgentTypeRegistry | undefined;
 }
 
 export interface ResumeSessionOptions {
@@ -195,6 +207,8 @@ export interface ResumeSessionOptions {
   journalCapability?: JournalCapability | undefined;
   /** Phase 18 L2-6 — see `CreateSessionOptions.approvalStateStore`. */
   approvalStateStore?: ApprovalStateStore | undefined;
+  /** Slice 5.3 — see CreateSessionOptions.agentTypeRegistry. */
+  agentTypeRegistry?: AgentTypeRegistry | undefined;
 }
 
 /** A fully-assembled, running session. */
@@ -363,6 +377,19 @@ export class SessionManager {
       // when a wire `session.setYolo` flips the stored yolo flag.
       ...(options.approvalStateStore !== undefined
         ? { approvalStateStore: options.approvalStateStore }
+        : {}),
+      // Slice 5.3 — subagent infra. When the host supplies an
+      // agentTypeRegistry we build a per-session SubagentStore internally
+      // so SoulPlus's `hasSubagentInfra` gate (soul-plus.ts) registers
+      // the `Agent` collaboration tool for this session.
+      ...(options.agentTypeRegistry !== undefined
+        ? {
+            subagentStore: new SubagentStore(sessionDir),
+            agentTypeRegistry: options.agentTypeRegistry,
+            sessionDir,
+            workDir: options.workspaceDir,
+            pathConfig: this.paths,
+          }
         : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
@@ -550,6 +577,20 @@ export class SessionManager {
     // could receive it as `sink`).
     const effectivePermissionMode = projected.permissionMode ?? options.permissionMode;
 
+    // Slice 5.3 — stale subagent cleanup (Python parity:
+    // `app.py:_cleanup_stale_foreground_subagents`). Runs BEFORE SoulPlus
+    // construction so the AgentTool sees a clean store. Safe no-op when
+    // `subagents/` doesn't exist yet (`listInstances()` returns []).
+    // v2 §8.2: residual `status='running'` records are rewritten as
+    // `'lost'` (NOT `'failed'`). The returned ids drive `task.lost`
+    // notifications once SoulPlus is available (see below).
+    let subagentStore: SubagentStore | undefined;
+    let lostSubagentIds: string[] = [];
+    if (options.agentTypeRegistry !== undefined) {
+      subagentStore = new SubagentStore(sessionDir);
+      lostSubagentIds = await cleanupStaleSubagents(subagentStore);
+    }
+
     const soulPlusDeps: SoulPlusDeps = {
       sessionId,
       contextState,
@@ -580,6 +621,19 @@ export class SessionManager {
       // so yolo → permission-mode wiring survives session continuation.
       ...(options.approvalStateStore !== undefined
         ? { approvalStateStore: options.approvalStateStore }
+        : {}),
+      // Slice 5.3 — subagent infra forward (same shape as createSession).
+      // `subagentStore` is constructed above together with the stale-
+      // cleanup pass; `workDir` prefers the persisted state.json value
+      // so resumed sessions keep the workspace they were created under.
+      ...(options.agentTypeRegistry !== undefined && subagentStore !== undefined
+        ? {
+            subagentStore,
+            agentTypeRegistry: options.agentTypeRegistry,
+            sessionDir,
+            workDir: stateData?.workspace_dir ?? process.cwd(),
+            pathConfig: this.paths,
+          }
         : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
@@ -621,6 +675,27 @@ export class SessionManager {
       // Phase 1 (Decision #89): replayPendingForResume removed — notifications
       // are durable entries in history, replayed naturally from wire.jsonl via
       // the replay-projector's initialHistory. No ephemeral re-inject needed.
+    }
+
+    // Slice 5.3 (Round 2) — emit `task.lost` notifications for any
+    // subagent records that were marked `'lost'` above (v2 §8.2 "emit
+    // NotificationEvent(category: 'task', type: 'task.lost') out-of-band
+    // for UI visibility"). Must run AFTER `primeDedupeIndex` so replayed
+    // task.lost records from prior resumes dedupe this re-emit; the
+    // per-agent dedupe_key makes the sequence idempotent across resumes.
+    for (const agentId of lostSubagentIds) {
+      await soulPlus.emitNotification({
+        category: 'task',
+        type: 'task.lost',
+        source_kind: 'subagent',
+        source_id: agentId,
+        title: 'Subagent lost on resume',
+        body:
+          `Subagent ${agentId} was running when the session was interrupted; ` +
+          `its status has been marked 'lost' and its final outcome is unknown.`,
+        severity: 'warning',
+        dedupe_key: `task.lost:${sessionId}:${agentId}`,
+      });
     }
 
     const sessionControl = new DefaultSessionControl({

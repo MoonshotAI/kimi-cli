@@ -212,6 +212,23 @@ export class FakeKosongAdapter implements KosongAdapter {
       params.onThinkDelta(turn.think);
     }
 
+    // Phase 17 §B.6 — emit structured tool_call_part chunks via the
+    // dedicated `onToolCallPart` channel BEFORE the text deltas so
+    // streaming consumers see the tool_use shape resolve
+    // incrementally. Injects the `type: 'tool_call_part'`
+    // discriminator so fixtures can supply bare
+    // `{tool_call_id, ...}` objects.
+    if (params.onToolCallPart !== undefined && turn.toolCallParts !== undefined) {
+      for (const part of turn.toolCallParts) {
+        if (params.signal.aborted) {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          throw err;
+        }
+        params.onToolCallPart({ ...part, type: 'tool_call_part' });
+      }
+    }
+
     if (params.onDelta !== undefined) {
       for (const chunk of resolveDeltaChunks(turn)) {
         if (params.signal.aborted) {
@@ -264,6 +281,17 @@ export function createTextResponseAdapter(text: string): FakeKosongAdapter {
   return new FakeKosongAdapter({
     turns: [{ text, stopReason: 'end_turn' }],
   });
+}
+
+/**
+ * Phase 17 §B.6 — factory alias; tests prefer this name to signal
+ * "scripted provider that may stream tool_call_part chunks via
+ * onDelta". Returns a plain `FakeKosongAdapter` under the hood.
+ */
+export function createScriptedKosong(
+  options: FakeKosongAdapterOptions,
+): FakeKosongAdapter {
+  return new FakeKosongAdapter(options);
 }
 
 /**

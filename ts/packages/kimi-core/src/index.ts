@@ -245,6 +245,22 @@ export type {
   CreateResponseOptions,
 } from './wire-protocol/index.js';
 
+// Phase 17 §A.1 / §A.4 / §A.5 — shared wire machinery used by the
+// production `apps/kimi-cli --wire` runner AND the in-memory test
+// harness so both call into the same handler registrations.
+export {
+  installWireEventBridge,
+  mapToWireError,
+  registerDefaultWireHandlers,
+} from './wire-protocol/index.js';
+export type {
+  DefaultHandlersDeps,
+  InstallWireEventBridgeOptions,
+  WireErrorMapping,
+  WireEventBridgeHandle,
+  WireEventBridgeTransport,
+} from './wire-protocol/index.js';
+
 // ── Transport (Slice 5) ────────────────────────────────────────────────
 export type { Transport, TransportServer, TransportState } from './transport/index.js';
 export { MemoryTransport, createLinkedTransportPair, StdioTransport } from './transport/index.js';
@@ -397,7 +413,11 @@ export { SubagentStore } from './soul-plus/subagent-store.js';
 export type { SubagentInstanceRecord, CreateInstanceOpts } from './soul-plus/subagent-store.js';
 export { AgentTypeRegistry } from './soul-plus/agent-type-registry.js';
 export type { AgentTypeDefinition } from './soul-plus/agent-type-registry.js';
-export { loadAgentSpec, loadSubagentTypes } from './soul-plus/agent-yaml-loader.js';
+export {
+  loadAgentSpec,
+  loadSubagentTypes,
+  getBundledAgentYamlPath,
+} from './soul-plus/agent-yaml-loader.js';
 export type { ResolvedAgentSpec } from './soul-plus/agent-yaml-loader.js';
 export { runSubagentTurn, cleanupStaleSubagents } from './soul-plus/subagent-runner.js';
 export type { SubagentRunnerDeps } from './soul-plus/subagent-runner.js';

@@ -25,7 +25,10 @@ afterEach(async () => {
 });
 
 describe('cleanupStaleSubagents', () => {
-  it('marks running instances as failed', async () => {
+  // Slice 5.3 A1 — v2 §8.2 says residual `status='running'` records are
+  // marked `'lost'` (not `'failed'`; `'failed'` is reserved for runtime
+  // errors). The Python implementation writes `'failed'`; TS follows v2.
+  it('marks running instances as lost', async () => {
     await store.createInstance({
       agentId: 'sa_stale1',
       subagentType: 'coder',
@@ -38,7 +41,7 @@ describe('cleanupStaleSubagents', () => {
     expect(staleIds).toEqual(['sa_stale1']);
 
     const record = await store.getInstance('sa_stale1');
-    expect(record!.status).toBe('failed');
+    expect(record!.status).toBe('lost');
   });
 
   it('does not affect completed instances', async () => {
@@ -84,7 +87,7 @@ describe('cleanupStaleSubagents', () => {
     expect(staleIds).toHaveLength(3);
     for (const id of staleIds) {
       const record = await store.getInstance(id);
-      expect(record!.status).toBe('failed');
+      expect(record!.status).toBe('lost');
     }
   });
 

@@ -103,8 +103,8 @@ export function convertMcpToolResult(result: McpToolResultInput): ToolResult {
       continue;
     }
 
-    // image part — budget cost = full data URL length
-    const cost = imageDataUrlLength(converted);
+    // image / video part — budget cost = full data URL length
+    const cost = mediaDataUrlLength(converted);
     if (cost > budget) {
       truncated = true;
       continue;
@@ -209,13 +209,17 @@ function unsupportedPlaceholder(reason: string): ToolResultContent {
 }
 
 /**
- * Compute the rendered data-URL length for an image part. Mirrors
- * Python `_media_part_size` which measures `len(part.image_url.url)`
- * — the cost an MCP image actually imposes on the downstream LLM
- * request payload.
+ * Compute the rendered data-URL length for an image / video part.
+ * Mirrors Python `_media_part_size` which measures
+ * `len(part.image_url.url)` — the cost the media actually imposes on
+ * the downstream LLM request payload.
+ *
+ * Phase 17 §E.3 — renamed from `imageDataUrlLength` and taught to
+ * count `type: 'video'` parts the same way so future MCP video
+ * responses don't silently bypass the budget.
  */
-function imageDataUrlLength(part: ToolResultContent): number {
-  if (part.type !== 'image') return 0;
+export function mediaDataUrlLength(part: ToolResultContent): number {
+  if (part.type !== 'image' && part.type !== 'video') return 0;
   const mime = part.source.media_type;
   const data = part.source.data;
   // Format: `data:${mime};base64,${data}`

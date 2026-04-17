@@ -19,12 +19,13 @@
 
 import { z } from 'zod';
 
-import type { Tool, ToolResult, ToolUpdate } from '../soul/types.js';
+import type { Tool, ToolMetadata, ToolResult, ToolUpdate } from '../soul/types.js';
 import type { SubagentHost } from '../soul-plus/subagent-types.js';
 import type { SkillInlineWriter } from '../soul-plus/skill/inline-writer.js';
 import type { SkillManager } from '../soul-plus/skill/types.js';
+import { MAX_SKILL_QUERY_DEPTH } from '../soul-plus/subagent-constants.js';
 
-export const MAX_SKILL_QUERY_DEPTH = 3;
+export { MAX_SKILL_QUERY_DEPTH };
 
 export interface SkillToolInput {
   skill: string;
@@ -47,6 +48,15 @@ export interface SkillToolDeps {
    */
   readonly queryDepth?: number | undefined;
   /**
+   * Phase 17 §C.3 — alias for `queryDepth` used by
+   * `SubagentRunner.run` when it forwards `skillContext.queryDepth`
+   * into the child SkillTool. Kept as an explicit seam so call sites
+   * reading the `SubagentRunner.run` contract can write
+   * `initialQueryDepth` without needing to know the internal field
+   * name. When both fields are set, `initialQueryDepth` wins.
+   */
+  readonly initialQueryDepth?: number | undefined;
+  /**
    * Identifier passed as `parentAgentId` when spawning a fork-mode subagent.
    * Defaults to `'main'` so callers that don't know their own agent_id
    * (e.g. main-agent construction) can omit it.
@@ -56,13 +66,15 @@ export interface SkillToolDeps {
 
 export class SkillTool implements Tool<SkillToolInput> {
   readonly name = 'Skill';
-  readonly description =
+  readonly description: string =
     'Invoke a registered skill from the current skill listing. ' +
     'BLOCKING REQUIREMENT: when a skill from the listing matches the user\'s ' +
     'request, you MUST call this tool (not free-form text). ' +
     'Do NOT call the same skill repeatedly inside one turn — recursive depth ' +
     `is capped at ${String(MAX_SKILL_QUERY_DEPTH)}.`;
-  readonly inputSchema = SkillToolInputSchema;
+  readonly inputSchema: typeof SkillToolInputSchema = SkillToolInputSchema;
+  // Phase 17 §C.1 — provenance metadata parity with MCP adapter.
+  readonly metadata: ToolMetadata = { source: 'sdk' };
   private readonly deps: SkillToolDeps;
 
   constructor(deps: SkillToolDeps) {
@@ -76,6 +88,17 @@ export class SkillTool implements Tool<SkillToolInput> {
     _onUpdate?: (u: ToolUpdate) => void,
   ): Promise<ToolResult> {
     void _onUpdate;
+    // Phase 17 §C.3 — check recursion depth BEFORE any skill lookup so
+    // the nested-depth guard fires even when the wiring is minimal
+    // (tests construct SkillTool with only `initialQueryDepth` to
+    // exercise the gate).
+    const currentDepth = this.deps.initialQueryDepth ?? this.deps.queryDepth ?? 0;
+    if (currentDepth >= MAX_SKILL_QUERY_DEPTH) {
+      return errorResult(
+        `Max skill query depth (${String(MAX_SKILL_QUERY_DEPTH)}) exceeded — refusing to recurse further.`,
+      );
+    }
+
     const skill = this.deps.skillManager.getSkill(args.skill);
     if (skill === undefined) {
       return errorResult(`Skill "${args.skill}" not found in the current skill listing.`);
@@ -86,7 +109,7 @@ export class SkillTool implements Tool<SkillToolInput> {
       );
     }
 
-    const nextDepth = (this.deps.queryDepth ?? 0) + 1;
+    const nextDepth = currentDepth + 1;
     if (nextDepth > MAX_SKILL_QUERY_DEPTH) {
       return errorResult(
         `Max skill query depth (${String(MAX_SKILL_QUERY_DEPTH)}) exceeded — refusing to recurse further.`,

@@ -144,7 +144,7 @@ export class SessionStateApprovalStateStore implements ApprovalStateStore {
   private readonly listeners = new ChangeListenerRegistry();
   /**
    * In-memory mirror of the fields we own. Populated lazily on first
-   * read, updated on every write. Keeps `getYolo` synchronous so
+   * read, updated on every write. Keeps `getYolo` synchronous-ish so
    * callers (wire handlers that need the current flag in a hot path)
    * avoid a disk-read every call.
    */

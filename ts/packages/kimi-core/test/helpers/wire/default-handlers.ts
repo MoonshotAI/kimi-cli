@@ -8,6 +8,14 @@
  * `initialize → session.create → session.prompt` without building
  * their own router setup.
  *
+ * NOTE: ts-rewrite-work introduced a parallel production-style
+ * registration at `src/wire-protocol/default-handlers.ts`. That file
+ * implements a subset of the handlers here (setPlanMode / setYolo /
+ * resume / replay / mcp.* / approval.response). This test helper
+ * remains the full set (A.1-A.14 + Phase 18 alignment) for tests
+ * that require the complete Phase 18 surface. Phase 11 will
+ * consolidate.
+ *
  * The handlers mirror the contracts in `src/wire-protocol/types.ts`
  * (process / conversation / management / config channels) and
  * delegate to the real `SessionManager` + `SoulPlus` where possible.

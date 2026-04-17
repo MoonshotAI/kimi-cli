@@ -46,7 +46,9 @@ describe('FakeKosongAdapter', () => {
       turns: [{ text: 'hello world', streaming: 'chunked' }],
     });
     const deltas: string[] = [];
-    await fake.chat(makeParams({ onDelta: (d) => deltas.push(d) }));
+    await fake.chat(makeParams({ onDelta: (d) => {
+          if (typeof d === 'string') deltas.push(d);
+        } }));
     expect(deltas.length).toBeGreaterThan(1);
     expect(deltas.join('')).toBe('hello world');
   });
@@ -56,7 +58,9 @@ describe('FakeKosongAdapter', () => {
       turns: [{ text: 'ignored', streaming: { chunks: ['foo', 'bar'] } }],
     });
     const deltas: string[] = [];
-    await fake.chat(makeParams({ onDelta: (d) => deltas.push(d) }));
+    await fake.chat(makeParams({ onDelta: (d) => {
+          if (typeof d === 'string') deltas.push(d);
+        } }));
     expect(deltas).toEqual(['foo', 'bar']);
   });
 
@@ -68,7 +72,9 @@ describe('FakeKosongAdapter', () => {
     await fake.chat(makeParams());
     const deltas: string[] = [];
     await expect(
-      fake.chat(makeParams({ onDelta: (d) => deltas.push(d) })),
+      fake.chat(makeParams({ onDelta: (d) => {
+          if (typeof d === 'string') deltas.push(d);
+        } })),
     ).rejects.toThrow('boom');
     expect(deltas).toEqual(['sec']);
   });

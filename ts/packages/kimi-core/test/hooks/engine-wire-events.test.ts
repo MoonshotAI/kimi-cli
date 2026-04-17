@@ -1,30 +1,28 @@
 /**
  * Phase 17 B.7 补齐 — HookEngine emit hook.triggered / hook.resolved。
  *
- * v2 §3.6 定义了这两个 wire event（第 381-382 行）：
- *   - `hook.triggered` { event, target, hook_count }
- *   - `hook.resolved`  { event, target, action, reason, duration_ms }
+ * Post-merge with ts-rewrite-work (Phase 17 A.1 event-bridge): events
+ * are routed through the SoulEvent `sink` dependency rather than an
+ * engine-private `emitEvent` callback. Shape:
  *
- * 两者都在 §3.7 "不落盘事件" 列表里（debug-only），走 EventSink /
- * transport，不进 wire.jsonl。TS 的 HookEngine 目前只返
- * AggregatedHookResult，没有任何事件推送通道——需要新增一个
- * `emitEvent` 依赖注入口（v2 §9-H / 决策 #109 "Soul/业务层的 wire
- * 事件必须走 EventSink 或等价回调"）。
+ *   - `hook.triggered { event, matchers, matched_count }`
+ *       fires on EVERY `executeHooks` call (matched_count=0 when no
+ *       hooks match — kept symmetric so wire observers see every
+ *       dispatch). Event carries the flat list of matcher strings
+ *       (empty string = match-all).
+ *   - `hook.resolved { hook_id, outcome }` fires once per settled
+ *       hook. `outcome` ∈ { 'ok', 'blocked', 'error' }. `hook_id` is
+ *       `${event}:${type}:${matcher}:${registrationIndex}` so clients
+ *       can correlate triggered matchers to resolved hooks.
  *
- * 本测试锁定的契约：
- *   1. HookEngineDeps 新增 optional `emitEvent?: (ev: HookWireEvent) => void`
- *   2. 调 `executeHooks(event, input, signal)`：
- *      - 有 matching hooks → 先 emit `hook.triggered` + event/target/hook_count
- *      - 所有 hook settled 后 emit `hook.resolved` + action/reason/duration_ms
- *   3. 没 matching hooks → 不 emit（安静路径）
- *   4. `action` = "block" 当聚合 blockAction=true，否则 "allow"
- *   5. duration_ms 是正整数 / 0 (测试里只锁 ≥ 0)
- *   6. 没注入 emitEvent 时，executeHooks 行为不变（向后兼容）
+ * Per v2 §3.7 these events are **not** persisted (the wire event-bridge
+ * forwards them live; the journal writer never writes `hook.*`).
  */
 
 import { describe, expect, it, vi } from 'vitest';
 
 import { HookEngine } from '../../src/hooks/engine.js';
+import type { EventSink, SoulEvent } from '../../src/soul/event-sink.js';
 import type {
   CommandHookConfig,
   HookExecutor,
@@ -67,36 +65,24 @@ function makeExecutor(result?: HookResult): HookExecutor {
   };
 }
 
-// ── Shape of the expected event union (new public surface) ─────────────
-
-interface HookTriggeredEvent {
-  type: 'hook.triggered';
-  event: string;
-  target: string;
-  hook_count: number;
+function makeCollectingSink(): { sink: EventSink; events: SoulEvent[] } {
+  const events: SoulEvent[] = [];
+  return {
+    events,
+    sink: { emit: (ev: SoulEvent) => events.push(ev) },
+  };
 }
 
-interface HookResolvedEvent {
-  type: 'hook.resolved';
-  event: string;
-  target: string;
-  action: 'allow' | 'block';
-  reason?: string | undefined;
-  duration_ms: number;
-}
-
-type HookWireEvent = HookTriggeredEvent | HookResolvedEvent;
+type HookTriggered = Extract<SoulEvent, { type: 'hook.triggered' }>;
+type HookResolved = Extract<SoulEvent, { type: 'hook.resolved' }>;
 
 describe('Phase 17 B.7 — HookEngine emits hook.triggered / hook.resolved', () => {
-  it('allow path: matching hook → triggered, then resolved(action: "allow")', async () => {
-    const emitted: HookWireEvent[] = [];
-    const emitEvent = vi.fn((ev: HookWireEvent) => emitted.push(ev));
-
+  it('allow path: matching hook → triggered(matched_count:1), then resolved(outcome:"ok")', async () => {
+    const { sink, events } = makeCollectingSink();
     const engine = new HookEngine({
       executors: new Map([['command', makeExecutor({ ok: true })]]),
-      // New optional dep — implementer must extend HookEngineDeps.
-      emitEvent,
-    } as unknown as ConstructorParameters<typeof HookEngine>[0]);
+      sink,
+    });
 
     engine.register(makeCommandHook({ matcher: 'Bash' }));
 
@@ -108,23 +94,23 @@ describe('Phase 17 B.7 — HookEngine emits hook.triggered / hook.resolved', () 
       new AbortController().signal,
     );
 
-    const kinds = emitted.map((e) => e.type);
+    const kinds = events.map((e) => e.type);
     expect(kinds).toEqual(['hook.triggered', 'hook.resolved']);
 
-    const triggered = emitted[0] as HookTriggeredEvent;
+    const triggered = events[0] as HookTriggered;
     expect(triggered.event).toBe('PostToolUse');
-    expect(triggered.target).toBe('Bash');
-    expect(triggered.hook_count).toBe(1);
+    expect(triggered.matched_count).toBe(1);
+    expect(triggered.matchers).toEqual(['Bash']);
 
-    const resolved = emitted[1] as HookResolvedEvent;
-    expect(resolved.event).toBe('PostToolUse');
-    expect(resolved.target).toBe('Bash');
-    expect(resolved.action).toBe('allow');
-    expect(resolved.duration_ms).toBeGreaterThanOrEqual(0);
+    const resolved = events[1] as HookResolved;
+    expect(resolved.outcome).toBe('ok');
+    expect(resolved.hook_id).toContain('PostToolUse');
+    expect(resolved.hook_id).toContain('command');
+    expect(resolved.hook_id).toContain('Bash');
   });
 
-  it('block path: any blockAction=true → resolved.action="block" + reason forwarded', async () => {
-    const emitted: HookWireEvent[] = [];
+  it('block path: any blockAction=true → resolved.outcome="blocked"', async () => {
+    const { sink, events } = makeCollectingSink();
     const engine = new HookEngine({
       executors: new Map([
         [
@@ -136,8 +122,8 @@ describe('Phase 17 B.7 — HookEngine emits hook.triggered / hook.resolved', () 
           }),
         ],
       ]),
-      emitEvent: (ev: HookWireEvent) => emitted.push(ev),
-    } as unknown as ConstructorParameters<typeof HookEngine>[0]);
+      sink,
+    });
 
     engine.register(makeCommandHook({ matcher: 'Bash' }));
     await engine.executeHooks(
@@ -146,19 +132,18 @@ describe('Phase 17 B.7 — HookEngine emits hook.triggered / hook.resolved', () 
       new AbortController().signal,
     );
 
-    const resolved = emitted.find(
-      (e) => e.type === 'hook.resolved',
-    ) as HookResolvedEvent | undefined;
-    expect(resolved?.action).toBe('block');
-    expect(resolved?.reason).toBe('no way');
+    const resolved = events.find(
+      (e): e is HookResolved => e.type === 'hook.resolved',
+    );
+    expect(resolved?.outcome).toBe('blocked');
   });
 
-  it('no matching hooks → NO events emitted (quiet path)', async () => {
-    const emitted: HookWireEvent[] = [];
+  it('no matching hooks → still emits hook.triggered with matched_count=0 (symmetric protocol)', async () => {
+    const { sink, events } = makeCollectingSink();
     const engine = new HookEngine({
       executors: new Map([['command', makeExecutor()]]),
-      emitEvent: (ev: HookWireEvent) => emitted.push(ev),
-    } as unknown as ConstructorParameters<typeof HookEngine>[0]);
+      sink,
+    });
 
     // Register a hook for a DIFFERENT event → no match for PostToolUse.
     engine.register(makeCommandHook({ event: 'PreToolUse' }));
@@ -169,17 +154,24 @@ describe('Phase 17 B.7 — HookEngine emits hook.triggered / hook.resolved', () 
       new AbortController().signal,
     );
 
-    expect(emitted).toEqual([]);
+    // Post-merge protocol: still emit triggered with matched_count=0
+    // so wire-side observability sees that the event was considered.
+    expect(events.length).toBe(1);
+    const triggered = events[0] as HookTriggered;
+    expect(triggered.type).toBe('hook.triggered');
+    expect(triggered.matched_count).toBe(0);
+    expect(triggered.matchers).toEqual([]);
   });
 
-  it('hook_count reflects number of deduped matching hooks', async () => {
-    const emitted: HookWireEvent[] = [];
+  it('matched_count reflects number of deduped matching hooks', async () => {
+    const { sink, events } = makeCollectingSink();
     const engine = new HookEngine({
       executors: new Map([['command', makeExecutor()]]),
-      emitEvent: (ev: HookWireEvent) => emitted.push(ev),
-    } as unknown as ConstructorParameters<typeof HookEngine>[0]);
+      sink,
+    });
 
-    // Three hooks match (different commands).
+    // Three hooks match (different commands). Dedupe keys on `command`
+    // so these stay as 3 distinct hooks.
     engine.register(makeCommandHook({ command: 'echo a', matcher: 'Bash' }));
     engine.register(makeCommandHook({ command: 'echo b', matcher: 'Bash' }));
     engine.register(makeCommandHook({ command: 'echo c', matcher: 'Bash' }));
@@ -190,26 +182,29 @@ describe('Phase 17 B.7 — HookEngine emits hook.triggered / hook.resolved', () 
       new AbortController().signal,
     );
 
-    const triggered = emitted.find(
-      (e) => e.type === 'hook.triggered',
-    ) as HookTriggeredEvent | undefined;
-    expect(triggered?.hook_count).toBe(3);
+    const triggered = events.find(
+      (e): e is HookTriggered => e.type === 'hook.triggered',
+    );
+    expect(triggered?.matched_count).toBe(3);
   });
 
-  it('omitting emitEvent keeps executeHooks behaviour backward-compatible', async () => {
-    const executor = makeExecutor({ ok: true });
+  it('omitting sink keeps executeHooks behaviour backward-compatible', async () => {
     const engine = new HookEngine({
-      executors: new Map([['command', executor]]),
-      // No emitEvent.
+      executors: new Map([['command', makeExecutor({ ok: true })]]),
+      // sink omitted
     });
+
     engine.register(makeCommandHook({ matcher: 'Bash' }));
+
+    // Should not throw even without a sink.
     const result = await engine.executeHooks(
       'PostToolUse',
-      makePostToolUseInput(),
+      makePostToolUseInput({
+        toolCall: { id: 'tc_1', name: 'Bash', args: {} },
+      }),
       new AbortController().signal,
     );
-    // Must still resolve normally with the usual aggregated shape.
+
     expect(result.blockAction).toBe(false);
-    expect(Array.isArray(result.additionalContext)).toBe(true);
   });
 });

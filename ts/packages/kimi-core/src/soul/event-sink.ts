@@ -18,6 +18,20 @@ export type SoulEvent =
   | { type: 'step.interrupted'; step: number; reason: string }
   | { type: 'content.delta'; delta: string }
   | { type: 'thinking.delta'; delta: string }
+  /**
+   * Phase 17 §B.6 — incremental tool_use streaming. KosongAdapter
+   * emits one variant per fully-assembled tool_call (fallback path
+   * when the provider doesn't chunk) or one per chunk when it does.
+   * The wire event-bridge translates this into a `content.delta`
+   * frame with `type: 'tool_call_part'` on the `ContentDeltaEventData`
+   * union.
+   */
+  | {
+      type: 'tool_call_part';
+      tool_call_id: string;
+      name?: string | undefined;
+      arguments_chunk?: string | undefined;
+    }
   | {
       type: 'tool.call';
       toolCallId: string;
@@ -78,19 +92,61 @@ export type SoulEvent =
    */
   | { type: 'model.changed'; data: { new_model: string } }
   /**
-   * Phase 17 A.2 / Phase 18 A.14 — transient status snapshot emitted at
+   * Phase 17 §A.6 — SoulEvent parity for the `session.error` wire event.
+   * Previously TurnManager bypassed the union via `as never`; the cast is
+   * gone now that the variant exists explicitly. Emitted by orchestration
+   * layers (TurnManager / SoulPlus facades) when a recoverable or terminal
+   * error needs to reach the UI/transport as a typed frame. Soul layer
+   * itself does not emit this (L7: no cross-component orchestration).
+   */
+  | {
+      type: 'session.error';
+      error: string;
+      error_type?:
+        | 'rate_limit'
+        | 'context_overflow'
+        | 'api_error'
+        | 'auth_error'
+        | 'tool_error'
+        | 'internal'
+        | undefined;
+      retry_after_ms?: number | undefined;
+      details?: unknown;
+    }
+  /**
+   * Phase 17 §B.7 — HookEngine lifecycle observability. Emitted when a
+   * hook matcher fires (triggered) and once each matching hook settles
+   * (resolved). Lets the wire event-bridge forward hook runs to clients.
+   */
+  | {
+      type: 'hook.triggered';
+      event: string;
+      matchers: readonly string[];
+      matched_count: number;
+    }
+  | {
+      type: 'hook.resolved';
+      hook_id: string;
+      outcome: 'ok' | 'error' | 'blocked';
+    }
+  /**
+   * Phase 17 §A.2 / Phase 18 A.14 — transient status snapshot emitted at
    * turn boundaries and on explicit config setters (model / plan_mode /
    * thinking / yolo). Per v2 §3.7 this event is NEVER persisted to
-   * wire.jsonl (铁律 W4). The wire bridge forwards it as a
-   * `status.update` wire event (see SoulEvent → wire event mapper).
+   * wire.jsonl (铁律 W4). The wire bridge forwards it as a `status.update`
+   * wire event verbatim. Payload is kept permissive (`unknown` for
+   * context/token usage, optional top-level fields) so setter-triggered
+   * partial updates (just `plan_mode` / just `model`) and full-snapshot
+   * updates (turn-end with context_usage + token_usage) share one union
+   * variant.
    */
   | {
       type: 'status.update';
       data: {
-        context_usage: { used: number; total: number; percent: number };
-        token_usage: { input: number; output: number };
-        plan_mode: boolean;
-        model: string;
+        context_usage?: unknown;
+        token_usage?: unknown;
+        plan_mode?: boolean | undefined;
+        model?: string | undefined;
         yolo?: boolean | undefined;
         thinking?: string | undefined;
       };

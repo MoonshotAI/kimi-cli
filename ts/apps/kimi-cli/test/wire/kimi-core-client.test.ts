@@ -95,6 +95,12 @@ function createFakeStack(): {
     const managed = {
       sessionId,
       soulPlus: soulPlus as unknown as ManagedSession['soulPlus'],
+      // Phase 17 §D.1 — KimiCoreClient.emitStatusUpdate reads
+      // `managed.contextState.tokenCountWithPending`; provide a stub
+      // so lifecycle observers don't throw.
+      contextState: {
+        tokenCountWithPending: 0,
+      } as unknown as ManagedSession['contextState'],
     } as unknown as ManagedSession;
 
     state.managed = managed;
@@ -176,6 +182,21 @@ function fakeRuntime(): Runtime {
   } as unknown as Runtime;
 }
 
+// Phase 17 §D.1 — KimiCoreClient construction now requires `config` +
+// `kaos` for hook wiring. Tests don't run hooks, so a minimal KimiConfig
+// with no hooks + a stub Kaos is enough to let the constructor finish
+// without throwing.
+function fakeConfig(): import('@moonshot-ai/core').KimiConfig {
+  return {
+    providers: {},
+    hooks: [],
+  };
+}
+
+function fakeKaos(): import('@moonshot-ai/kaos').Kaos {
+  return {} as unknown as import('@moonshot-ai/kaos').Kaos;
+}
+
 async function collect(
   iter: AsyncIterable<WireMessage>,
   count: number,
@@ -213,6 +234,8 @@ describe('KimiCoreClient', () => {
       model: 'test-model',
       systemPrompt: 'test',
       buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
     });
     const { session_id } = await client.createSession('/tmp');
     expect(session_id).toBe('ses_fake1');
@@ -227,6 +250,8 @@ describe('KimiCoreClient', () => {
       model: 'test-model',
       systemPrompt: 'test',
       buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
     });
     const { session_id } = await client.createSession('/tmp');
     const state = states.get(session_id)!;
@@ -274,6 +299,8 @@ describe('KimiCoreClient', () => {
       model: 'test-model',
       systemPrompt: 'test',
       buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
     });
     const { session_id } = await client.createSession('/tmp');
     const state = states.get(session_id)!;
@@ -314,6 +341,8 @@ describe('KimiCoreClient', () => {
       model: 'test-model',
       systemPrompt: 'test',
       buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
     });
 
     const { session_id } = await client.resumeSession('ses_existing');
@@ -345,6 +374,8 @@ describe('KimiCoreClient session-info methods (Slice 5.1)', () => {
       model: 'm',
       systemPrompt: '',
       buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
     });
     await client.rename('ses_x', 'My title');
     expect(stack.renameCalls).toEqual([{ id: 'ses_x', title: 'My title' }]);
@@ -360,6 +391,8 @@ describe('KimiCoreClient session-info methods (Slice 5.1)', () => {
       model: 'm',
       systemPrompt: '',
       buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
     });
     expect(await client.getStatus('ses_x')).toEqual({ state: 'active' });
     await client.dispose();
@@ -380,6 +413,8 @@ describe('KimiCoreClient session-info methods (Slice 5.1)', () => {
       model: 'm',
       systemPrompt: '',
       buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
     });
     const usage = await client.getUsage('ses_x');
     expect(usage.total_input_tokens).toBe(100);
@@ -409,6 +444,8 @@ describe('KimiCoreClient session-info methods (Slice 5.1)', () => {
       model: 'm',
       systemPrompt: '',
       buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
     });
     const { sessions } = await client.listSessions();
     expect(sessions).toHaveLength(2);

@@ -14,6 +14,7 @@ import type {
   ToolResult,
   ToolResultDisplay,
   ToolUpdate,
+  ToolMetadata
 } from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { ReadInputSchema } from './types.js';
@@ -34,12 +35,13 @@ function truncateLine(line: string, maxLength: number): string {
 
 export class ReadTool implements BuiltinTool<ReadInput, ReadOutput> {
   readonly name = 'Read' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description = 'Read the contents of a file from the local filesystem.';
   readonly inputSchema: z.ZodType<ReadInput> = ReadInputSchema;
   // Read self-limits via offset/limit; opt out of orchestrator persistence.
   readonly maxResultSizeChars: number = Number.POSITIVE_INFINITY;
   // Phase 15 L14 — pure-read tool; safe to prefetch under streaming.
-  readonly isConcurrencySafe = (): boolean => true;
+  readonly isConcurrencySafe = (_input: unknown): boolean => true;
   readonly display: ToolDisplayHooks<ReadInput, ReadOutput> = {
     getUserFacingName: () => 'Read',
     getInputDisplay: (input) => ({

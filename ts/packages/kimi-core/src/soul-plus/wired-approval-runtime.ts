@@ -42,6 +42,25 @@ import {
   type ApprovalResult,
   type ApprovalRuntime,
 } from './approval-runtime.js';
+
+/**
+ * Phase 17 §A.3 — reverse-RPC payload shape. Production sender wraps
+ * this into an `approval.request` wire frame; tests inspect the raw
+ * payload without booting the full transport.
+ */
+export interface ApprovalRequestFrame {
+  readonly method: 'approval.request';
+  readonly data: {
+    readonly request_id: string;
+    readonly tool_call_id: string;
+    readonly tool_name: string;
+    readonly action: string;
+    readonly display: ApprovalRequest['display'];
+    readonly source: ApprovalSource;
+    readonly turn_id: string;
+    readonly step: number;
+  };
+}
 import type { ApprovalStateStore } from './approval-state-store.js';
 import { actionToRulePattern } from './permission/action-label.js';
 import type { PermissionRule } from './permission/types.js';
@@ -101,6 +120,13 @@ export interface WiredApprovalRuntimeDeps {
   readonly ruleInjector?: ((rule: PermissionRule) => void) | undefined;
   /** Deterministic id allocator for tests. */
   readonly allocateRequestId?: (() => string) | undefined;
+  /**
+   * Phase 17 §A.3 — reverse-RPC sender. When provided, each `request()`
+   * dispatches an `approval.request` frame so a wire client can render
+   * the prompt. Unprovided (TUI) runtime keeps the legacy local-resolve
+   * path; `resolveRemote` still works, it just has no external fan-out.
+   */
+  readonly reverseRpcSender?: ((req: ApprovalRequestFrame) => void) | undefined;
 }
 
 // ── Implementation ────────────────────────────────────────────────────
@@ -112,6 +138,9 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
   private readonly ruleInjector: ((rule: PermissionRule) => void) | undefined;
   private readonly allocateRequestId: () => string;
   private readonly pending = new Map<string, Pending>();
+  private readonly reverseRpcSender:
+    | ((req: ApprovalRequestFrame) => void)
+    | undefined;
 
   /**
    * Sources that have been passed to `cancelBySource`. Checked
@@ -134,6 +163,7 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
     this.loadJournalRecords = deps.loadJournalRecords;
     this.ruleInjector = deps.ruleInjector;
     this.allocateRequestId = deps.allocateRequestId ?? (() => `appr_${randomUUID()}`);
+    this.reverseRpcSender = deps.reverseRpcSender;
   }
 
   /**
@@ -155,10 +185,11 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
   // ── request() — write WAL, install waiter, await result ────────────
 
   async request(req: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalResult> {
-    // Short-circuit on session auto-approve cache — matches Python
-    // `Approval.request` fast path (`soul/approval.py:138-140`).
-    const cache = await this.ensureLoaded();
-    if (cache.has(req.action)) {
+    // Sync fast-path on already-loaded auto-approve cache (§9-G Python
+    // parity). When `init()` or a prior request primed the cache this
+    // resolves without awaiting — keeps the hot path off the microtask
+    // queue.
+    if (this.autoApproveActions !== undefined && this.autoApproveActions.has(req.action)) {
       return { approved: true };
     }
 
@@ -172,30 +203,14 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
     const turnId = req.turnId ?? 'turn_unknown';
     const step = req.step ?? 0;
 
-    // P0-1: write the approval_request wire record FIRST, await the
-    // append, THEN install the in-memory waiter. Crash between WAL and
-    // waiter is safe — recoverPendingOnStartup will append a synthetic
-    // cancelled response on next boot.
-    const requestRecord: JournalInput<'approval_request'> = {
-      type: 'approval_request',
-      turn_id: turnId,
-      step,
-      data: {
-        request_id: requestId,
-        tool_call_id: req.toolCallId,
-        tool_name: req.toolName,
-        action: req.action,
-        display: req.display,
-        source: req.source,
-      },
-    };
-    await this.sessionJournal.appendApprovalRequest(requestRecord);
-
+    // Phase 17 §A.3 — install the pending entry + fire the reverse-RPC
+    // frame BEFORE any await so wire clients observe the prompt in the
+    // same microtask as request() was called from. The subsequent WAL
+    // append still lands before any `resolve` response because
+    // `doResolve` awaits `appendApprovalResponse` which is serialised
+    // after this append on the journal's internal queue.
     const deferred = makeDeferred<ApprovalResult>();
 
-    // Signal-driven cancel (§9-G.5: abort propagates into the waiter).
-    // Timeout is NOT managed here — the single source of truth is the
-    // outer `withTimeout` wrapper in `buildBeforeToolCall` (Codex R2 M3).
     let abortCleanup: (() => void) | undefined;
     let listener: (() => void) | undefined;
     if (signal !== undefined) {
@@ -217,8 +232,64 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
       abortCleanup,
       settled: false,
     };
-
     this.pending.set(requestId, entry);
+
+    if (this.reverseRpcSender !== undefined) {
+      const frame: ApprovalRequestFrame = {
+        method: 'approval.request',
+        data: {
+          request_id: requestId,
+          tool_call_id: req.toolCallId,
+          tool_name: req.toolName,
+          action: req.action,
+          display: req.display,
+          source: req.source,
+          turn_id: turnId,
+          step,
+        },
+      };
+      try {
+        this.reverseRpcSender(frame);
+      } catch {
+        /* swallow — transport failures must not break local resolve */
+      }
+    }
+
+    // Kick off the auto-approve cache load. If the load races the WAL
+    // append, the one-shot `loadPromise` field means both awaits
+    // observe the same result without double-loading.
+    const loadPromise = this.ensureLoaded();
+
+    // P0-1: write the approval_request wire record. Crash between
+    // pending install and WAL is safe — the waiter is in memory only
+    // and dies with the process; no orphan response needed.
+    const requestRecord: JournalInput<'approval_request'> = {
+      type: 'approval_request',
+      turn_id: turnId,
+      step,
+      data: {
+        request_id: requestId,
+        tool_call_id: req.toolCallId,
+        tool_name: req.toolName,
+        action: req.action,
+        display: req.display,
+        source: req.source,
+      },
+    };
+
+    const cache = await loadPromise;
+    if (cache.has(req.action)) {
+      // Retroactive auto-approve hit (Codex R2 M1 + §9-G Python parity):
+      // short-circuit BEFORE writing the WAL request record so auto-
+      // approved actions leave no trace in wire.jsonl.
+      const claimed = this.claim(requestId);
+      if (claimed !== undefined) {
+        return { approved: true };
+      }
+      return deferred.promise;
+    }
+
+    await this.sessionJournal.appendApprovalRequest(requestRecord);
 
     // Retroactive abort trigger (Round 1 M1). If the caller aborted the
     // signal during the WAL window, the abort event was dispatched before
@@ -226,15 +297,6 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
     // so `cancelOne` can claim it.
     if (isAborted(signal) && listener !== undefined) {
       listener();
-    }
-
-    // Retroactive auto-approve check (Codex R2 M1). If a concurrent
-    // approve_for_session added this action to the cache while we were
-    // in the WAL window, the cascade snapshot missed us.
-    if (this.autoApproveActions !== undefined && this.autoApproveActions.has(req.action)) {
-      queueMicrotask(() => {
-        this.resolve(requestId, { response: 'approved' });
-      });
     }
 
     // Retroactive source-cancel check (Codex R2 M2). If cancelBySource
@@ -428,11 +490,20 @@ export class WiredApprovalRuntime implements ApprovalRuntime {
   // ── Remote (TeamDaemon) hooks — stubbed in Slice 2.3 ───────────────
 
   async ingestRemoteRequest(_data: ApprovalRequestPayload): Promise<void> {
+    // Reserved for Slice 2.6+ TeamDaemon — peer daemons pushing a
+    // request originated on another node. Phase 17 §A.3 scope stops at
+    // the local reverse-RPC round-trip.
     throw new NotImplementedError('WiredApprovalRuntime.ingestRemoteRequest');
   }
 
-  resolveRemote(_data: { request_id: string } & ApprovalResponseData): void {
-    throw new NotImplementedError('WiredApprovalRuntime.resolveRemote');
+  /**
+   * Phase 17 §A.3 — client-side `approval.response` wire frames land
+   * here. Routes back into the normal `resolve` path so WAL ordering
+   * invariants apply identically to local and remote resolves.
+   */
+  resolveRemote(data: { request_id: string } & ApprovalResponseData): void {
+    const { request_id, ...response } = data;
+    this.resolve(request_id, response);
   }
 
   // ── Test helpers ───────────────────────────────────────────────────

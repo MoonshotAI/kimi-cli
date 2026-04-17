@@ -64,16 +64,19 @@ describe('createTestApproval', () => {
     expect(r.approved).toBe(true);
   });
 
-  it('yolo=false rejects by default', async () => {
+  it('yolo=false returns a Wired runtime awaiting reverse-RPC (Phase 17 §A.3)', async () => {
+    // Phase 17 §A.3 flipped `yolo=false` from "immediate reject" to
+    // "fire approval.request wire frame, wait for client reply". The
+    // self-test pins the new shape by asserting the seam is present;
+    // reject-by-default behaviour now lives on
+    // `createScriptedApproval({defaultDecision:{kind:'reject'}})`.
     const a = createTestApproval({ yolo: false });
-    const r = await a.request({
-      toolCallId: 'tc_1',
-      toolName: 'Bash',
-      action: 'exec',
-      display: { kind: 'command', command: 'ls' },
-      source: { kind: 'session', session_id: 'ses_x' },
-    });
-    expect(r.approved).toBe(false);
+    expect(typeof (a as { resolveRemote?: unknown }).resolveRemote).toBe(
+      'function',
+    );
+    expect(
+      typeof (a as { setReverseRpcSender?: unknown }).setReverseRpcSender,
+    ).toBe('function');
   });
 });
 

@@ -105,6 +105,10 @@ export async function parseSkillFromFile(
       ? metadata.description.trim()
       : 'No description provided.';
   const content = parsed.body.trim();
+  // Phase 17 §B.5 — surface the raw mermaid flowchart body when the
+  // skill's markdown contains one. Kept as a raw string so downstream
+  // flow dispatch can parse it on demand.
+  const mermaid = parseMermaidFlowchart(content);
 
   return {
     name,
@@ -113,7 +117,19 @@ export async function parseSkillFromFile(
     content,
     metadata,
     source: opts.source,
+    ...(mermaid !== undefined ? { mermaid } : {}),
   };
+}
+
+/**
+ * Phase 17 §B.5 — extract the raw body of the first ` ```mermaid ```
+ * fenced block in `markdown`. Returns `undefined` when no such block
+ * exists. Fence markers (``` ```mermaid / ``` ```) are stripped.
+ */
+export function parseMermaidFlowchart(markdown: string): string | undefined {
+  const match = /```mermaid\r?\n([\s\S]*?)\r?\n```/.exec(markdown);
+  if (match === null) return undefined;
+  return match[1];
 }
 
 /**

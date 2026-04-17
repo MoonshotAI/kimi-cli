@@ -18,7 +18,12 @@ export interface CreateRequestOptions {
 }
 
 export interface CreateResponseOptions {
-  requestId: string;
+  /**
+   * Phase 17 §A.4 — undefined when the error response is for a frame
+   * we could not decode (JSON-RPC parse error / invalid request). The
+   * envelope schema rule 2 permits this shape when `error` is set.
+   */
+  requestId: string | undefined;
   sessionId: string;
   data?: unknown;
   error?: { code: number; message: string; details?: unknown } | undefined;
@@ -35,6 +40,13 @@ export interface CreateEventOptions {
   agentType?: 'main' | 'sub' | 'independent' | undefined;
   from?: string | undefined;
   to?: string | undefined;
+  /**
+   * Phase 17 §A.5 — optional correlation to a request id, used by
+   * the `session.replay.chunk` / `session.replay.end` streams so
+   * clients can key chunks back to the originating replay request.
+   * Absent for normal fan-out events (turn.begin etc).
+   */
+  requestId?: string | undefined;
 }
 
 function generateId(prefix: string): string {
@@ -62,10 +74,12 @@ export function createWireResponse(options: CreateResponseOptions): WireResponse
     type: 'response',
     from: options.from ?? 'core',
     to: options.to ?? 'client',
-    request_id: options.requestId,
+    ...(options.requestId !== undefined && options.requestId !== ''
+      ? { request_id: options.requestId }
+      : {}),
     ...(options.data !== undefined ? { data: options.data } : {}),
     ...(options.error !== undefined ? { error: options.error } : {}),
-  };
+  } as WireResponse;
 }
 
 export function createWireEvent(options: CreateEventOptions): WireEvent {
@@ -78,6 +92,9 @@ export function createWireEvent(options: CreateEventOptions): WireEvent {
     to: options.to ?? 'client',
     method: options.method,
     seq: options.seq,
+    ...(options.requestId !== undefined && options.requestId !== ''
+      ? { request_id: options.requestId }
+      : {}),
     ...(options.turnId !== undefined ? { turn_id: options.turnId } : {}),
     ...(options.agentType !== undefined ? { agent_type: options.agentType } : {}),
     ...(options.data !== undefined ? { data: options.data } : {}),

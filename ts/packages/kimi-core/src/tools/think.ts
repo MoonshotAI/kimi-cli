@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import type { BuiltinTool } from './types.js';
 
 // ── Input schema ─────────────────────────────────────────────────────
@@ -34,6 +34,7 @@ const DESCRIPTION =
 
 export class ThinkTool implements BuiltinTool<ThinkInput, void> {
   readonly name = 'Think' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<ThinkInput> = ThinkInputSchema;
 

@@ -122,6 +122,13 @@ export interface TurnManagerDeps {
   // ── Optional (config / capability) ───────────────────────────────────
   readonly agentType?: 'main' | 'sub' | 'independent' | undefined;
   readonly agentId?: string | undefined;
+  /**
+   * Phase 17 §B.1 — subagent type label (e.g. `'researcher'`). Only
+   * meaningful when `agentType === 'sub'`; attached to the
+   * `ApprovalSource.subagent` record so downstream tooling can group
+   * approval history by subagent role.
+   */
+  readonly subagentType?: string | undefined;
   readonly orchestrator?: ToolCallOrchestrator | undefined;
   /**
    * Optional approval runtime reference used by `abortTurn` to cancel
@@ -164,6 +171,7 @@ export class TurnManager {
   private readonly deps: TurnManagerDeps;
   private readonly agentType: 'main' | 'sub' | 'independent';
   private readonly agentId: string;
+  private readonly subagentType: string | undefined;
   private readonly sessionRules: PermissionRule[];
   private permissionMode: PermissionMode;
   private pendingTurnOverrides: TurnPermissionOverrides | undefined;
@@ -189,6 +197,7 @@ export class TurnManager {
     this.deps = deps;
     this.agentType = deps.agentType ?? 'main';
     this.agentId = deps.agentId ?? 'agent_main';
+    this.subagentType = deps.subagentType;
     this.sessionRules = [...(deps.sessionRules ?? [])];
     this.permissionMode = deps.permissionMode ?? 'default';
     this.planMode = deps.planMode ?? false;
@@ -207,13 +216,13 @@ export class TurnManager {
 
   setPlanMode(enabled: boolean): void {
     this.planMode = enabled;
-    // Phase 17 A.2 / Phase 18 A.14 — setter path emits a fresh
-    // status.update so downstream observers (wire bridge, UI) pick up
-    // the new plan-mode flag immediately. Emitted AFTER the in-memory
-    // flip so listeners observe the new state.
-    this.emitStatusUpdate({
-      input: 0,
-      output: 0,
+    // Phase 17 §A.2 / Phase 18 A.14 — surface plan-mode flips to the wire
+    // as a minimal `status.update` frame so clients refresh their mode
+    // indicator without polling. Full-snapshot status.update (with
+    // context_usage + token_usage) fires from the turn-end path.
+    this.deps.sink.emit({
+      type: 'status.update',
+      data: { plan_mode: enabled },
     });
   }
 
@@ -478,7 +487,11 @@ export class TurnManager {
 
     const approvalSource: ApprovalSource =
       this.agentType === 'sub'
-        ? { kind: 'subagent', agent_id: this.agentId }
+        ? {
+            kind: 'subagent',
+            agent_id: this.agentId,
+            ...(this.subagentType !== undefined ? { subagent_type: this.subagentType } : {}),
+          }
         : { kind: 'soul', agent_id: this.agentId };
 
     // Slice 5 — name → wrapped-tool lookup so the orchestrator's
@@ -551,7 +564,6 @@ export class TurnManager {
       // MAX_COMPACTIONS_PER_TURN so a misbehaving provider cannot lock
       // the session.
       let compactionCount = 0;
-      let overflowTripped = false;
       while (true) {
         signal.throwIfAborted();
         let soulResult: TurnResult;
@@ -576,9 +588,8 @@ export class TurnManager {
                 type: 'session.error',
                 error: `Compaction limit exceeded (${MAX_COMPACTIONS_PER_TURN})`,
                 error_type: 'context_overflow',
-              } as never);
+              });
               result = { stopReason: 'error', steps: 0, usage: zeroUsage() };
-              overflowTripped = true;
               break;
             }
             await this.deps.compaction.executeCompaction(signal);
@@ -596,7 +607,7 @@ export class TurnManager {
             type: 'session.error',
             error: `Compaction limit exceeded (${MAX_COMPACTIONS_PER_TURN})`,
             error_type: 'context_overflow',
-          } as never);
+          });
           result = {
             stopReason: 'error',
             steps: soulResult.steps,
@@ -610,7 +621,6 @@ export class TurnManager {
       if (result !== undefined && result.stopReason === 'error') {
         reason = 'error';
       }
-      void overflowTripped;
     } catch (error) {
       void error;
       result = undefined;
@@ -678,6 +688,12 @@ export class TurnManager {
       this.deps.soulRegistry.destroy('main');
 
       this.deps.lifecycle.completeTurn(turnId);
+
+      // Phase 17 §A.2 / Phase 18 A.14 — status.update full snapshot is
+      // emitted AFTER the `turn.end` sink emit below (not here). The
+      // emit uses `emitStatusUpdate`, which composes context_usage /
+      // token_usage / plan_mode / model into one frame — strictly
+      // richer than a usage-only snapshot.
 
       // Fire the `end` lifecycle event LAST so listeners observing this
       // edge are guaranteed the machine is back at `idle` and

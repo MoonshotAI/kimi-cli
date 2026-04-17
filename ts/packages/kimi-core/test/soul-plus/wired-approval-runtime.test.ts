@@ -109,10 +109,15 @@ describe('WiredApprovalRuntime — auto-approve cache short-circuit', () => {
   });
 });
 
-describe('WiredApprovalRuntime — journal ordering (P0-1)', () => {
-  it('appendApprovalRequest must settle BEFORE waiter is installed', async () => {
-    // Mock sessionJournal that delays the append completion and lets us
-    // assert the waiter map is empty during the await window.
+describe('WiredApprovalRuntime — journal ordering (P0-1 / Phase 17 §A.3)', () => {
+  it('waiter is installed synchronously so reverse-RPC replies land on a live entry', async () => {
+    // Phase 17 §A.3 flipped the original P0-1 invariant: the reverse-RPC
+    // sender fires synchronously from `request()`, which means a client
+    // may reply with `approval.response` before the WAL append settles.
+    // Installing the waiter sync makes that reply land on a live entry.
+    // Crash between sync install and WAL append is safe — the waiter
+    // lives only in memory and dies with the process; no orphan
+    // response record is needed.
     let releaseAppend: (() => void) | undefined;
     const appendGate = new Promise<void>((resolve) => {
       releaseAppend = resolve;
@@ -128,7 +133,6 @@ describe('WiredApprovalRuntime — journal ordering (P0-1)', () => {
       appendApprovalResponse: vi.fn(async (rec) => {
         records.push(rec as WireRecord);
       }),
-      // Unused methods — stub as throws so accidental use is loud.
       appendTurnBegin: vi.fn(),
       appendTurnEnd: vi.fn(),
       appendSkillInvoked: vi.fn(),
@@ -154,15 +158,15 @@ describe('WiredApprovalRuntime — journal ordering (P0-1)', () => {
     // Wait a tick so `request()` has kicked off the append.
     await new Promise((r) => setImmediate(r));
     expect(journal.appendApprovalRequest).toHaveBeenCalledTimes(1);
-    // Waiter is NOT installed until the append resolves.
-    expect(runtime.pendingCount).toBe(0);
+    // Phase 17 §A.3 — waiter is present synchronously; a client
+    // reverse-RPC reply arriving during the WAL gate must resolve.
+    expect(runtime.pendingCount).toBe(1);
 
-    // Now release the append — waiter must appear on the next tick.
+    // Let the append settle, then resolve as usual.
     releaseAppend!();
     await new Promise((r) => setImmediate(r));
     expect(runtime.pendingCount).toBe(1);
 
-    // Resolve and let the caller await settle.
     runtime.resolve('req_1', { response: 'approved' });
     const result = await requestPromise;
     expect(result.approved).toBe(true);
@@ -653,24 +657,33 @@ describe('WiredApprovalRuntime — Phase 11.5 caller-driven timeout', () => {
   });
 });
 
-describe('WiredApprovalRuntime — Phase 11.5 subagent_type passthrough', () => {
-  // P2 — see MIGRATION_REPORT_phase_11.md §附录 B gap #1.
-  // Python L122 asserts the ApprovalRequest envelope carries source_kind /
-  // agent_id / subagent_type to the wire hub. TS ApprovalSource.subagent
-  // currently carries only {kind, agent_id}.
-  //
-  // Unblock recipe (when Phase 8 / 12 decides to add the field):
-  //   1. Extend `src/storage/wire-record.ts:246-251` ApprovalSource union
-  //      with `subagent_type?: string` on the subagent branch.
-  //   2. Extend `ApprovalSourceSchema` zod schema likewise (~ :695-718).
-  //   3. Propagate from `turn-manager.ts:417-420` where `approvalSource`
-  //      is constructed for subagent turns — read the agent's type from
-  //      `this.agentType` / SubagentStore record.
-  //   4. Replace this todo with a passing assertion on the appended
-  //      `approval_request` wire record's `data.source.subagent_type`.
-  it.todo(
-    '[P2] subagent source carries subagent_type end-to-end (src gap: ApprovalSource.subagent.subagent_type — see MIGRATION_REPORT §B#1)',
-  );
+describe('Phase 17 B.1 — ApprovalSource.subagent carries subagent_type', () => {
+  it('subagent source: appended approval_request record includes subagent_type', async () => {
+    const { runtime, journal } = makeRuntime();
+    const request = buildRequest({
+      source: {
+        kind: 'subagent',
+        agent_id: 'sub_researcher_1',
+        subagent_type: 'researcher',
+      } as ApprovalSource,
+    });
+    const pending = runtime.request(request);
+    // Let the async portion of request() (cache load + WAL append)
+    // fully drain before we snapshot the journal.
+    await new Promise((r) => setImmediate(r));
+    const records = journal.getRecords();
+    const approvalReq = records.find((r) => r.type === 'approval_request');
+    expect(approvalReq).toBeDefined();
+    const source = (approvalReq as { data: { source: ApprovalSource } }).data.source;
+    expect(source.kind).toBe('subagent');
+    if (source.kind === 'subagent') {
+      expect(source.subagent_type).toBe('researcher');
+    }
+    // Resolve so the test doesn't leak a pending promise.
+    const requestId = (approvalReq as { data: { request_id: string } }).data.request_id;
+    runtime.resolve(requestId, { response: 'approved' });
+    await pending;
+  });
 });
 
 describe('WiredApprovalRuntime — remote stubs', () => {
@@ -688,10 +701,22 @@ describe('WiredApprovalRuntime — remote stubs', () => {
     ).rejects.toBeInstanceOf(NotImplementedError);
   });
 
-  it('resolveRemote throws NotImplementedError', () => {
+  it('resolveRemote routes client responses back to resolve (Phase 17 §A.3)', async () => {
+    const { runtime, journal } = makeRuntime();
+    const promise = runtime.request(buildRequest());
+    await new Promise((r) => setImmediate(r));
+    runtime.resolveRemote({ request_id: 'req_1', response: 'approved' });
+    const result = await promise;
+    expect(result.approved).toBe(true);
+    const responses = journal.getRecordsByType('approval_response');
+    expect(responses).toHaveLength(1);
+    expect(responses[0]!.data.request_id).toBe('req_1');
+  });
+
+  it('resolveRemote on unknown request_id is a silent no-op', () => {
     const { runtime } = makeRuntime();
     expect(() => {
-      runtime.resolveRemote({ request_id: 'x', response: 'approved' });
-    }).toThrow(NotImplementedError);
+      runtime.resolveRemote({ request_id: 'missing', response: 'approved' });
+    }).not.toThrow();
   });
 });

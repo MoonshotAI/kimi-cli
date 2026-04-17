@@ -35,6 +35,7 @@ import {
   SkillNotFoundError,
   ToolCallOrchestrator,
   parseHookConfigs,
+  type AgentTypeRegistry,
   type HookExecutor,
   type ManagedSession,
   type NotificationData,
@@ -187,6 +188,15 @@ export interface KimiCoreClientDeps {
    * switches models. When omitted, `switchModel` throws "not supported".
    */
   readonly rebuildRuntimeForModel?: RuntimeForModelFactory | undefined;
+  /**
+   * Slice 5.3 — subagent type registry loaded by the app from the
+   * bundled / `--agent-file` agent.yaml (see `loadSubagentTypes`). When
+   * present, SessionManager wires the `Agent` collaboration tool into
+   * SoulPlus so the LLM can spawn subagents. When absent, the feature
+   * is silently disabled (embedders that intentionally do not want
+   * subagents simply omit the field).
+   */
+  readonly agentTypeRegistry?: AgentTypeRegistry | undefined;
 }
 
 // ── KimiCoreClient ─────────────────────────────────────────────────
@@ -360,6 +370,9 @@ export class KimiCoreClient implements WireClient {
     const commandExecutor = new CommandHookExecutor(this.deps.kaos);
     const hookEngine = new HookEngine({
       executors: new Map<string, HookExecutor>([['command', commandExecutor]]),
+      // Phase 17 §B.7 — forward hook lifecycle to the event-bridge so
+      // clients see `hook.triggered` / `hook.resolved` wire events.
+      sink: eventBus,
     });
     const parsedHooks = parseHookConfigs(this.deps.config.hooks);
     for (const hook of parsedHooks) {
@@ -401,6 +414,11 @@ export class KimiCoreClient implements WireClient {
         : {}),
       ...(this.deps.journalCapability !== undefined
         ? { journalCapability: this.deps.journalCapability }
+        : {}),
+      // Slice 5.3 — forward the subagent type registry so SessionManager
+      // can wire the `Agent` collaboration tool.
+      ...(this.deps.agentTypeRegistry !== undefined
+        ? { agentTypeRegistry: this.deps.agentTypeRegistry }
         : {}),
     };
 

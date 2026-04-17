@@ -53,6 +53,17 @@ import type {
 
 const DEFAULT_MAX_STEPS = 100;
 
+/**
+ * Phase 17 §C.5 — grace timeout for tools that ignore their
+ * AbortSignal. Once the turn-level abort fires, Soul waits up to
+ * `GRACE_TIMEOUT_MS` for the tool's own promise to settle; if the
+ * tool is still running past that window, Soul synthesises an
+ * `is_error` ToolResult and moves on. The tool's background work
+ * becomes orphaned (Node will GC it) — this only affects the in-turn
+ * wait, not OS-level reaping.
+ */
+const GRACE_TIMEOUT_MS = 2_000;
+
 export async function runSoulTurn(
   _input: UserInput,
   config: SoulConfig,
@@ -125,6 +136,20 @@ export async function runSoulTurn(
         },
         onThinkDelta: (delta) => {
           safeEmit(sink, { type: 'thinking.delta', delta });
+        },
+        // Phase 17 §B.6 — forward incremental tool_call_part deltas
+        // as their own SoulEvent variant. KosongAdapter emits one
+        // per fully-assembled tool_call when the provider doesn't
+        // chunk (fallback) or one per chunk when it does.
+        onToolCallPart: (part) => {
+          safeEmit(sink, {
+            type: 'tool_call_part',
+            tool_call_id: part.tool_call_id,
+            ...(part.name !== undefined ? { name: part.name } : {}),
+            ...(part.arguments_chunk !== undefined
+              ? { arguments_chunk: part.arguments_chunk }
+              : {}),
+          });
         },
         ...(config.contextWindow !== undefined ? { contextWindow: config.contextWindow } : {}),
       });
@@ -234,13 +259,23 @@ export async function runSoulTurn(
           if (prefetched !== undefined) {
             toolResult = prefetched;
           } else {
-            toolResult = await tool.execute(toolCall.id, effectiveInput, signal, (update) => {
+            const executePromise = tool.execute(toolCall.id, effectiveInput, signal, (update) => {
               safeEmit(sink, {
                 type: 'tool.progress',
                 toolCallId: toolCall.id,
                 update,
               });
             });
+            // Phase 17 §C.5 — race tool.execute against a grace timer
+            // that arms on abort. A well-behaved tool settles (rejects
+            // with AbortError) before the grace window fires; a
+            // non-cooperative one (no abort listener) hangs forever
+            // and the grace sentinel wins.
+            toolResult = await raceExecuteWithGraceTimeout(
+              executePromise,
+              signal,
+              toolCall.name,
+            );
           }
         } catch (error) {
           const aborted = isAbortError(error) || signal.aborted;
@@ -426,4 +461,51 @@ function emitToolResultEvent(
     output,
     ...(isError ? { isError: true } : {}),
   });
+}
+
+/**
+ * Phase 17 §C.5 — race the tool's execute promise against a grace
+ * timer that arms on abort. Returns the tool's result if it settles
+ * first, or a synthetic `is_error` ToolResult when the grace window
+ * expires. The tool's promise is intentionally orphaned in the
+ * grace-timeout branch: Soul has no way to force-kill tool-internal
+ * timers, and the caller moves on regardless.
+ */
+async function raceExecuteWithGraceTimeout(
+  executePromise: Promise<ToolResult>,
+  signal: AbortSignal,
+  toolName: string,
+): Promise<ToolResult> {
+  let graceTimer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+
+  const graceSentinel: Promise<ToolResult> = new Promise((resolve) => {
+    const armTimer = (): void => {
+      graceTimer = setTimeout(() => {
+        resolve({
+          content: `Tool "${toolName}" aborted by grace timeout (${String(GRACE_TIMEOUT_MS)}ms)`,
+          isError: true,
+        });
+      }, GRACE_TIMEOUT_MS);
+    };
+    if (signal.aborted) {
+      armTimer();
+    } else {
+      onAbort = armTimer;
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+
+  try {
+    return await Promise.race([executePromise, graceSentinel]);
+  } finally {
+    if (graceTimer !== undefined) clearTimeout(graceTimer);
+    if (onAbort !== undefined) {
+      try {
+        signal.removeEventListener('abort', onAbort);
+      } catch {
+        /* some AbortSignal polyfills don't implement removeEventListener */
+      }
+    }
+  }
 }

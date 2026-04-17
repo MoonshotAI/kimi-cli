@@ -19,13 +19,13 @@
  *     misconfig visible without bricking the turn.
  *
  * Wire event emission (Phase 17 B.7, v2 §3.6 + §3.7):
- *   - optional `emitEvent` dependency fires `hook.triggered` at the start
- *     of `executeHooks` (when at least one hook matches) and
- *     `hook.resolved` at the end. Events are debug-only and MUST NOT be
- *     persisted (铁律 W4 — `hook.triggered` / `hook.resolved` are in the
- *     "不落盘" list).
+ *   - optional `sink` dependency receives SoulEvent `hook.triggered` at
+ *     the start of `executeHooks` and `hook.resolved` per settled hook.
+ *     Events are debug-only and MUST NOT be persisted (铁律 W4 —
+ *     `hook.triggered` / `hook.resolved` are in the "不落盘" list).
  */
 
+import type { EventSink } from '../soul/event-sink.js';
 import type {
   AggregatedHookResult,
   HookConfig,
@@ -34,37 +34,31 @@ import type {
   HookInput,
 } from './types.js';
 
-// ── Hook wire event union (Phase 17 B.7) ────────────────────────────────
-
-export interface HookTriggeredEvent {
-  readonly type: 'hook.triggered';
-  readonly event: HookEventType;
-  readonly target: string;
-  readonly hook_count: number;
-}
-
-export interface HookResolvedEvent {
-  readonly type: 'hook.resolved';
-  readonly event: HookEventType;
-  readonly target: string;
-  readonly action: 'allow' | 'block';
-  readonly reason?: string | undefined;
-  readonly duration_ms: number;
-}
-
-export type HookWireEvent = HookTriggeredEvent | HookResolvedEvent;
-
 export interface HookEngineDeps {
   readonly executors: ReadonlyMap<string, HookExecutor>;
   readonly onExecutorError?: ((hook: HookConfig, error: Error) => void) | undefined;
   readonly onInvalidMatcher?: ((hook: HookConfig, matcher: string) => void) | undefined;
   /**
-   * Phase 17 B.7 — optional event emitter called by `executeHooks` with
-   * `hook.triggered` (before dispatch, when at least one hook matches)
-   * and `hook.resolved` (after all hooks settle). Events are transient
-   * per v2 §3.7 and must never be written to wire.jsonl.
+   * Phase 17 §B.7 — Optional SoulEvent sink for `hook.triggered` /
+   * `hook.resolved` lifecycle observability. When provided, the engine
+   * emits one `hook.triggered` per matcher dispatch + one `hook.resolved`
+   * per settled hook. Optional so test fixtures that don't care about
+   * wire-side observability need not wire a sink.
    */
-  readonly emitEvent?: ((event: HookWireEvent) => void) | undefined;
+  readonly sink?: EventSink | undefined;
+}
+
+/**
+ * Synthesises a stable id for `hook.resolved` emissions. Hooks are
+ * registered without an intrinsic id; we derive one from
+ * `event:type:matcher`, suffixed with the hook's position inside
+ * `this.hooks` (its registration order). The `registrationIndex` is
+ * stable across multiple `executeHooks` calls — using the per-call
+ * `settled[]` index instead would hand the same id to different hooks
+ * across different dispatches, breaking client-side correlation.
+ */
+function hookId(hook: HookConfig, registrationIndex: number): string {
+  return `${hook.event}:${hook.type}:${hook.matcher ?? ''}:${registrationIndex}`;
 }
 
 export class HookEngine {
@@ -78,7 +72,7 @@ export class HookEngine {
   private readonly executors: Map<string, HookExecutor>;
   private readonly hooks: HookConfig[] = [];
   /**
-   * Phase 18 — invalid-regex warn dedupe. Each distinct invalid
+   * Phase 18 L3-2 — invalid-regex warn dedupe. Each distinct invalid
    * matcher fires `onInvalidMatcher` once per engine instance so a
    * misconfigured block-action hook doesn't flood logs on every
    * tool call.
@@ -171,17 +165,24 @@ export class HookEngine {
     const matched = this.getMatchingHooks(event, input);
     const deduped = dedupeByCommand(matched);
     if (deduped.length === 0) {
+      // Still emit `hook.triggered` with matched_count=0 so wire-side
+      // observability can see that the event was considered. Keeps the
+      // protocol symmetric — clients get one trigger record per hook
+      // dispatch regardless of match count.
+      this.deps.sink?.emit({
+        type: 'hook.triggered',
+        event,
+        matchers: [],
+        matched_count: 0,
+      });
       return { blockAction: false, additionalContext: [] };
     }
 
-    const target = extractMatcherValue(input);
-    const startedAt = nowMs();
-    // Phase 17 B.7 — hook.triggered event (emits on non-empty match).
-    this.deps.emitEvent?.({
+    this.deps.sink?.emit({
       type: 'hook.triggered',
       event,
-      target,
-      hook_count: deduped.length,
+      matchers: deduped.map((h) => h.matcher ?? ''),
+      matched_count: deduped.length,
     });
 
     const settled = await Promise.allSettled(
@@ -198,17 +199,44 @@ export class HookEngine {
     const additionalContext: string[] = [];
 
     for (const [i, result] of settled.entries()) {
+      const hook = deduped[i];
+      // Registration index — stable across executeHooks calls (unlike
+      // `i`, which is reset per dispatch). Hand this to `hookId` so
+      // `hook.resolved` frames correlate across retries and re-entries.
+      const registrationIndex = hook !== undefined ? this.hooks.indexOf(hook) : -1;
       if (result.status === 'rejected') {
-        const hook = deduped[i];
         if (hook !== undefined) {
           this.deps.onExecutorError?.(
             hook,
             result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
           );
+          this.deps.sink?.emit({
+            type: 'hook.resolved',
+            hook_id: hookId(hook, registrationIndex),
+            outcome: 'error',
+          });
         }
         continue;
       }
       const value = result.value;
+      if (hook !== undefined) {
+        // Order matters: executor-reported failure (`ok === false`)
+        // outranks the `blockAction` flag because a failed executor's
+        // `blockAction` is not trustworthy. rejected / ok=false / blocked
+        // map onto `error` / `error` / `blocked` respectively; successful
+        // non-blocking falls through to `ok`.
+        const outcome: 'ok' | 'blocked' | 'error' =
+          value?.ok === false
+            ? 'error'
+            : value?.blockAction === true
+              ? 'blocked'
+              : 'ok';
+        this.deps.sink?.emit({
+          type: 'hook.resolved',
+          hook_id: hookId(hook, registrationIndex),
+          outcome,
+        });
+      }
       if (value === undefined) continue;
       if (value.blockAction) {
         blockAction = true;
@@ -218,16 +246,6 @@ export class HookEngine {
         additionalContext.push(value.additionalContext);
       }
     }
-
-    // Phase 17 B.7 — hook.resolved event (emits after aggregation).
-    this.deps.emitEvent?.({
-      type: 'hook.resolved',
-      event,
-      target,
-      action: blockAction ? 'block' : 'allow',
-      reason,
-      duration_ms: Math.max(0, nowMs() - startedAt),
-    });
 
     return { blockAction, reason, additionalContext };
   }
@@ -257,17 +275,6 @@ function hookDedupeKey(hook: HookConfig): string {
   // dedupe key so two hooks do not accidentally collapse.
   const exhaustive: never = hook;
   return `unknown:${JSON.stringify(exhaustive)}`;
-}
-
-// ── Timing helper (shared between triggered / resolved) ─────────────────
-
-function nowMs(): number {
-  // performance.now() for sub-ms precision when available; fall back to
-  // Date.now() so the module stays runtime-agnostic.
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-    return performance.now();
-  }
-  return Date.now();
 }
 
 // ── Matcher value extraction ─────────────────────────────────────────────

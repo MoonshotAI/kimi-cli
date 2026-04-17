@@ -20,6 +20,12 @@ import {
   type ApprovalRuntime,
   NotImplementedError,
 } from '../../../src/soul-plus/approval-runtime.js';
+import { InMemoryApprovalStateStore } from '../../../src/soul-plus/approval-state-store.js';
+import {
+  WiredApprovalRuntime,
+  type ApprovalRequestFrame,
+} from '../../../src/soul-plus/wired-approval-runtime.js';
+import { InMemorySessionJournalImpl } from '../../../src/storage/session-journal.js';
 import type { ApprovalSource } from '../../../src/storage/wire-record.js';
 
 export type ScriptedApprovalDecision =
@@ -34,32 +40,46 @@ export interface CreateTestApprovalOptions {
 }
 
 /**
- * Yolo-mode default: always-approve. When `yolo: false`, denies every
- * request (useful for tests that exercise the reject path).
+ * TestApproval is a WiredApprovalRuntime variant whose reverse-RPC
+ * sender is mutable after construction so the harness can wire the
+ * transport seam once it has assembled the server. Phase 17 §A.3.
+ */
+export interface TestWiredApproval extends ApprovalRuntime {
+  setReverseRpcSender(fn: (frame: ApprovalRequestFrame) => void): void;
+}
+
+function isTestWiredApproval(rt: unknown): rt is TestWiredApproval {
+  return (
+    typeof rt === 'object' &&
+    rt !== null &&
+    typeof (rt as { setReverseRpcSender?: unknown }).setReverseRpcSender === 'function'
+  );
+}
+
+/**
+ * Yolo-mode default: always-approve. When `yolo: false`, returns a
+ * WiredApprovalRuntime that waits for the wire client's
+ * `approval.response` reverse-RPC reply (Phase 17 §A.3). The harness
+ * calls `setReverseRpcSender` after it binds the server transport.
  */
 export function createTestApproval(opts?: CreateTestApprovalOptions): ApprovalRuntime {
   if ((opts?.yolo ?? true)) return new AlwaysAllowApprovalRuntime();
-  return {
-    async request(): Promise<ApprovalResult> {
-      return { approved: false, feedback: 'createTestApproval: yolo=false always rejects' };
-    },
-    async recoverPendingOnStartup(): Promise<void> {
-      /* no-op */
-    },
-    resolve(_requestId: string, _response: ApprovalResponseData): void {
-      /* no-op */
-    },
-    cancelBySource(_source: ApprovalSource): void {
-      /* no-op */
-    },
-    async ingestRemoteRequest(_data: ApprovalRequestPayload): Promise<void> {
-      throw new NotImplementedError('ApprovalRuntime.ingestRemoteRequest');
-    },
-    resolveRemote(_data: { request_id: string } & ApprovalResponseData): void {
-      throw new NotImplementedError('ApprovalRuntime.resolveRemote');
-    },
+
+  let sender: ((frame: ApprovalRequestFrame) => void) | undefined;
+  const wired = new WiredApprovalRuntime({
+    sessionJournal: new InMemorySessionJournalImpl(),
+    stateStore: new InMemoryApprovalStateStore(),
+    loadJournalRecords: async () => [],
+    reverseRpcSender: (frame) => sender?.(frame),
+  });
+  (wired as unknown as TestWiredApproval).setReverseRpcSender = (fn): void => {
+    sender = fn;
   };
+  return wired;
 }
+
+/** Exposed for harness code that needs to detect the deferred-sender seam. */
+export { isTestWiredApproval };
 
 export interface CreateScriptedApprovalOptions {
   readonly decisions?: readonly ScriptedApprovalDecision[];

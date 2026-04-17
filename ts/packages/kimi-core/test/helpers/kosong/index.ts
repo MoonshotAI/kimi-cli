@@ -6,6 +6,7 @@
 
 export {
   FakeKosongAdapter,
+  createScriptedKosong,
   createTextResponseAdapter,
   createToolCallAdapter,
   type AbortOnTurn,

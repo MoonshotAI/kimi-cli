@@ -4,7 +4,8 @@
   "description": "The unified agent engine for Kimi",
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "agents"
   ],
   "type": "module",
   "exports": {
