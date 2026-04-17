@@ -1,11 +1,8 @@
 import type { ContentPart, Message, ToolCall } from '@moonshot-ai/kosong';
 
 import { NoopJournalWriter, type JournalWriter } from './journal-writer.js';
-import {
-  DefaultConversationProjector,
-  type ConversationProjector,
-  type EphemeralInjection,
-} from './projector.js';
+import type { NotificationRecord } from './wire-record.js';
+import { DefaultConversationProjector, type ConversationProjector } from './projector.js';
 
 // ── Payload types for ContextState write methods ───────────────────────
 
@@ -111,12 +108,34 @@ export interface SoulContextState {
   appendToolResult(toolCallId: string, result: ToolResultPayload): Promise<void>;
   addUserMessages(steers: UserInput[]): Promise<void>;
   applyConfigChange(event: ConfigChangeEvent): Promise<void>;
-  resetToSummary(summary: SummaryMessage): Promise<void>;
+  // Phase 2: `resetToSummary` moved down to FullContextState. Soul must
+  // not have reset power — compaction is orchestrated by TurnManager
+  // which uses the FullContextState view.
 }
 
 // ── Wide (SoulPlus) interface ──────────────────────────────────────────
 
 export interface FullContextState extends SoulContextState {
+  /**
+   * Phase 3 (Slice 3) — the `JournalWriter` backing this context state.
+   * Exposed on the wide interface only so SoulPlus-layer callers (e.g.
+   * `TurnManager.executeCompaction`) can `flush()` the async-batch
+   * buffer before a rotation. Soul must not observe this.
+   */
+  readonly journalWriter: JournalWriter;
+
+  /**
+   * Replace the in-memory conversation projection with a synthetic
+   * summary message and reset the token counter. Called by
+   * `TurnManager.executeCompaction` after the compaction provider
+   * produces a summary and `journal.rotate` archives the old wire.jsonl.
+   *
+   * Phase 2: this was previously declared on `SoulContextState`; it has
+   * moved to `FullContextState` so Soul's type view cannot observe
+   * compaction state (铁律 7).
+   */
+  resetToSummary(summary: SummaryMessage): Promise<void>;
+
   /**
    * Append a user message. `turnIdOverride` lets TurnManager explicitly
    * bind the first user_message of a brand-new turn to the freshly
@@ -142,19 +161,30 @@ export interface FullContextState extends SoulContextState {
   setBeforeStepHook(fn: (() => void) | undefined): void;
 
   /**
-   * Slice 2.4 — push an EphemeralInjection into the one-shot stash. The
-   * stash is consumed (and cleared) by the next `buildMessages()` call,
-   * so callers MUST prime it *before* Soul's LLM step asks for messages.
-   * TurnManager is the canonical owner: it drains
-   * `pendingNotifications` at the top of every turn step and stashes
-   * them here.
-   *
-   * This is a synchronous push so NotificationManager's `emit()` can
-   * invoke it from within a fan-out block without touching any
-   * Promise / journal write. Multiple pushes accumulate; the order is
-   * preserved.
+   * Read-only view of the raw conversation history. Used by SoulPlus
+   * components (e.g. DynamicInjectionManager) for history scanning
+   * (dedup) without triggering buildMessages() side effects.
    */
-  stashEphemeralInjection(injection: EphemeralInjection): void;
+  getHistory(): readonly Message[];
+
+  /**
+   * Phase 1 (Decision #89) — durably append a notification to the
+   * conversation history. The notification is rendered as a
+   * `<notification ...>` XML user message and added to the in-memory
+   * history. For WiredContextState, the WAL record is written first
+   * (WAL-then-mirror). The notification persists across turns and is
+   * visible in every subsequent `buildMessages()` call.
+   */
+  appendNotification(data: NotificationRecord['data']): Promise<void>;
+
+  /**
+   * Phase 1 (Decision #89) — durably append a system reminder to the
+   * conversation history. The reminder is rendered as a
+   * `<system-reminder>` XML user message and added to the in-memory
+   * history. For WiredContextState, the WAL record is written first
+   * (WAL-then-mirror). The reminder persists across turns.
+   */
+  appendSystemReminder(data: { content: string }): Promise<void>;
 }
 
 // ── Shared implementation ─────────────────────────────────────────────
@@ -194,7 +224,7 @@ interface BaseContextStateOptions {
  * If step 2 throws, the in-memory state is unchanged.
  */
 class BaseContextState implements FullContextState {
-  private readonly journalWriter: JournalWriter;
+  readonly journalWriter: JournalWriter;
   private readonly projector: ConversationProjector;
   private readonly currentTurnId: () => string;
 
@@ -204,21 +234,6 @@ class BaseContextState implements FullContextState {
   private _activeTools: Set<string>;
   private _tokenCountWithPending = 0;
   private steerBuffer: UserInput[] = [];
-  /**
-   * One-shot ephemeral injection stash (Slice 2.4). TurnManager /
-   * NotificationManager pushes into this via `stashEphemeralInjection`;
-   * the next `buildMessages()` call drains it atomically. The stash
-   * lives on ContextState (not on TurnManager) because:
-   *   1. `buildMessages()` must be synchronous AND reachable from Soul
-   *      without a TurnManager reference;
-   *   2. Soul's Slice 2 Runtime contract forbids a TurnManager dep
-   *      (铁律 6), so ContextState is the only synchronous surface
-   *      Soul already holds.
-   * This buffer is NOT persisted — drop on process exit; crash
-   * recovery replays from the journal (NotificationRecord) separately.
-   */
-  private pendingEphemeralInjections: EphemeralInjection[] = [];
-
   /** M3 — pre-step hook wired by TurnManager (see setBeforeStepHook). */
   beforeStep: (() => void) | undefined = undefined;
 
@@ -256,27 +271,16 @@ class BaseContextState implements FullContextState {
   }
 
   buildMessages(): Message[] {
-    // Slice 2.4: atomically drain the ephemeral stash here. Draining
-    // inside `buildMessages` rather than in a separate helper keeps
-    // the "injection appears exactly once" invariant local to the
-    // single read path — any second call to buildMessages within the
-    // same turn sees an empty stash, matching v2 §4.5.7 one-shot
-    // semantics. Soul's LLM loop only calls buildMessages once per
-    // step, so this is safe.
-    const injections = this.pendingEphemeralInjections;
-    if (injections.length > 0) {
-      this.pendingEphemeralInjections = [];
-    }
-    return this.projector.project(
-      {
-        history: this.history,
-        systemPrompt: this._systemPrompt,
-        model: this._model,
-        activeTools: this._activeTools,
-      },
-      injections,
-      {},
-    );
+    // Phase 1 (Decision #89): notifications and system reminders are
+    // now durable entries in history (appendNotification /
+    // appendSystemReminder), so there is no ephemeral stash to drain.
+    // The projector reads them naturally from the history array.
+    return this.projector.project({
+      history: this.history,
+      systemPrompt: this._systemPrompt,
+      model: this._model,
+      activeTools: this._activeTools,
+    });
   }
 
   drainSteerMessages(): UserInput[] {
@@ -293,8 +297,8 @@ class BaseContextState implements FullContextState {
     this.beforeStep = fn;
   }
 
-  stashEphemeralInjection(injection: EphemeralInjection): void {
-    this.pendingEphemeralInjections.push(injection);
+  getHistory(): readonly Message[] {
+    return this.history;
   }
 
   // ── Async writes (WAL-then-mirror) ──────────────────────────────────
@@ -403,6 +407,36 @@ class BaseContextState implements FullContextState {
     }
   }
 
+  async appendNotification(data: NotificationRecord['data']): Promise<void> {
+    // WAL write (no-op for InMemoryContextState via NoopJournalWriter)
+    await this.journalWriter.append({
+      type: 'notification',
+      data,
+    });
+    // Mirror: add as a synthetic user message with <notification> XML
+    const text = renderNotificationXml(data);
+    this.history.push({
+      role: 'user',
+      content: [{ type: 'text', text }],
+      toolCalls: [],
+    });
+  }
+
+  async appendSystemReminder(data: { content: string }): Promise<void> {
+    // WAL write (no-op for InMemoryContextState via NoopJournalWriter)
+    await this.journalWriter.append({
+      type: 'system_reminder',
+      content: data.content,
+    });
+    // Mirror: add as a synthetic user message with <system-reminder> XML
+    const text = `<system-reminder>\n${data.content}\n</system-reminder>`;
+    this.history.push({
+      role: 'user',
+      content: [{ type: 'text', text }],
+      toolCalls: [],
+    });
+  }
+
   async applyConfigChange(event: ConfigChangeEvent): Promise<void> {
     switch (event.type) {
       case 'system_prompt_changed': {
@@ -493,6 +527,38 @@ class BaseContextState implements FullContextState {
   }
 }
 
+// ── Notification XML rendering (shared with projector.ts) ────────────
+
+/**
+ * Render a NotificationData payload as XML. Same format as
+ * `projector.ts:renderNotificationXml` — duplicated here to avoid a
+ * circular dependency (context-state → projector is one-way).
+ */
+function renderNotificationXml(data: Record<string, unknown>): string {
+  const id = notifStringAttr(data['id'], 'unknown');
+  const category = notifStringAttr(data['category'], 'unknown');
+  const type = notifStringAttr(data['type'], 'unknown');
+  const sourceKind = notifStringAttr(data['source_kind'], 'unknown');
+  const sourceId = notifStringAttr(data['source_id'], 'unknown');
+  const title = typeof data['title'] === 'string' ? data['title'] : '';
+  const severity = typeof data['severity'] === 'string' ? data['severity'] : '';
+  const body = typeof data['body'] === 'string' ? data['body'] : '';
+
+  const lines: string[] = [
+    `<notification id="${id}" category="${category}" type="${type}" source_kind="${sourceKind}" source_id="${sourceId}">`,
+  ];
+  if (title.length > 0) lines.push(`Title: ${title}`);
+  if (severity.length > 0) lines.push(`Severity: ${severity}`);
+  if (body.length > 0) lines.push(body);
+  lines.push('</notification>');
+  return lines.join('\n');
+}
+
+function notifStringAttr(value: unknown, fallback: string): string {
+  if (typeof value !== 'string' || value.length === 0) return fallback;
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+}
+
 // ── Public implementations ───────────────────────────────────────────
 
 export interface WiredContextStateOptions {
@@ -542,6 +608,8 @@ export interface InMemoryContextStateOptions {
   readonly initialActiveTools?: ReadonlySet<string>;
   readonly currentTurnId?: () => string;
   readonly projector?: ConversationProjector;
+  /** Pre-populated history for replay / test scenarios. */
+  readonly initialHistory?: readonly Message[];
 }
 
 export class InMemoryContextState extends BaseContextState {
@@ -557,6 +625,7 @@ export class InMemoryContextState extends BaseContextState {
         : {}),
       currentTurnId: opts.currentTurnId ?? (() => EMBEDDED_TURN_ID),
       ...(opts.projector !== undefined ? { projector: opts.projector } : {}),
+      ...(opts.initialHistory !== undefined ? { initialHistory: opts.initialHistory } : {}),
     });
   }
 }

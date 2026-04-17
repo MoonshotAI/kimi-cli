@@ -26,6 +26,7 @@ import type {
   ToolResultBlockData,
   LivePaneState,
   ToastNotification,
+  QueuedMessage,
 } from './state.js';
 
 const TOAST_TTL_MS = 5000;
@@ -65,6 +66,9 @@ export class WireHandler {
   private activeToolCalls = new Map<string, ToolCallBlockData>();
   private toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private aborted = false;
+
+  private queuedMessages: QueuedMessage[] = [];
+  private queueIdCounter = 0;
 
   constructor(wireClient: WireClient, sessionId: string, delegate: WireHandlerDelegate) {
     this.wireClient = wireClient;
@@ -120,6 +124,16 @@ export class WireHandler {
     this.activeToolCalls.clear();
     this.currentTurnId = undefined;
     this.isStreaming = false;
+
+    if (this.queuedMessages.length > 0) {
+      const [next, ...rest] = this.queuedMessages;
+      this.queuedMessages = rest;
+      this.delegate.setState({ isStreaming: false, streamingPhase: 'idle' });
+      this.delegate.resetLivePane();
+      setTimeout(() => this.sendMessageInternal(next!.text), 0);
+      return;
+    }
+
     this.delegate.setState({ isStreaming: false, streamingPhase: 'idle' });
     this.delegate.resetLivePane();
   }
@@ -357,9 +371,7 @@ export class WireHandler {
     this.toastTimers.clear();
   }
 
-  sendMessage(input: string): void {
-    if (this.isStreaming) return;
-
+  private sendMessageInternal(input: string): void {
     this.delegate.addTranscriptEntry({
       id: nextTranscriptId(),
       kind: 'user',
@@ -390,6 +402,64 @@ export class WireHandler {
     });
 
     void this.wireClient.prompt(this.sessionId, input);
+  }
+
+  sendMessage(input: string): void {
+    if (this.isStreaming) {
+      this.enqueueMessage(input);
+      return;
+    }
+    this.sendMessageInternal(input);
+  }
+
+  steerMessage(input: string): void {
+    if (!this.isStreaming) {
+      this.sendMessageInternal(input);
+      return;
+    }
+
+    this.delegate.addTranscriptEntry({
+      id: nextTranscriptId(),
+      kind: 'user',
+      turnId: this.currentTurnId,
+      renderMode: 'plain',
+      content: input,
+    });
+
+    void this.wireClient.steer(this.sessionId, input);
+  }
+
+  // ── Queue management ──────────────────────────────────────────────
+
+  enqueueMessage(text: string): void {
+    this.queueIdCounter += 1;
+    this.queuedMessages.push({ id: `q-${String(this.queueIdCounter)}`, text });
+  }
+
+  removeFromQueue(id: string): void {
+    this.queuedMessages = this.queuedMessages.filter((m) => m.id !== id);
+  }
+
+  editQueueItem(id: string, text: string): void {
+    this.queuedMessages = this.queuedMessages.map((m) => (m.id === id ? { ...m, text } : m));
+  }
+
+  recallLastQueued(): string | undefined {
+    if (this.queuedMessages.length === 0) return undefined;
+    const last = this.queuedMessages[this.queuedMessages.length - 1]!;
+    this.queuedMessages = this.queuedMessages.slice(0, -1);
+    return last.text;
+  }
+
+  dequeueFirst(): string | undefined {
+    if (this.queuedMessages.length === 0) return undefined;
+    const first = this.queuedMessages[0]!;
+    this.queuedMessages = this.queuedMessages.slice(1);
+    return first.text;
+  }
+
+  getQueuedMessages(): readonly QueuedMessage[] {
+    return this.queuedMessages;
   }
 
   cancelStream(): void {

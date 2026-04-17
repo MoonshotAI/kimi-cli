@@ -91,6 +91,37 @@ export class BackgroundProcessManager {
   private sessionDir: string | undefined;
 
   /**
+   * Slice 6.1 — registered terminal-state callbacks. Fired once per task
+   * when the task reaches a terminal state (completed / failed / killed).
+   */
+  private readonly terminalCallbacks: Array<(info: BackgroundTaskInfo) => void | Promise<void>> = [];
+
+  /**
+   * Slice 6.1 — register a callback that fires when any task reaches a
+   * terminal state. The callback receives the task's `BackgroundTaskInfo`
+   * snapshot. Multiple callbacks may be registered; they are invoked in
+   * registration order. Errors thrown by callbacks are silently swallowed.
+   */
+  onTerminal(callback: (info: BackgroundTaskInfo) => void | Promise<void>): void {
+    this.terminalCallbacks.push(callback);
+  }
+
+  /** Slice 6.1 — fire all registered terminal callbacks for a task. */
+  private fireTerminalCallbacks(entry: ManagedProcess): void {
+    const info = this.toInfo(entry);
+    for (const cb of this.terminalCallbacks) {
+      try {
+        const result = cb(info);
+        if (result && typeof (result as Promise<void>).catch === 'function') {
+          (result as Promise<void>).catch(() => {});
+        }
+      } catch {
+        /* swallow callback errors */
+      }
+    }
+  }
+
+  /**
    * Register a KaosProcess as a background task.
    * Starts capturing stdout/stderr and monitors lifecycle via `wait()`.
    * Returns the assigned task ID.
@@ -148,6 +179,8 @@ export class BackgroundProcessManager {
       .finally(() => {
         // Slice 5.2 — persist terminal state.
         this.persistLive(entry);
+        // Slice 6.1 — notify terminal callbacks.
+        this.fireTerminalCallbacks(entry);
         for (const resolve of entry.waiters) resolve();
         entry.waiters.length = 0;
       });
@@ -293,20 +326,28 @@ export class BackgroundProcessManager {
         // Guard: if stop() already set status to 'killed', don't overwrite.
         // The dummy kill() is a no-op so the completion may resolve after
         // stop(), but the user-visible status must stay 'killed'.
-        if (entry.status === 'killed') return;
+        if (entry.status === 'killed') {
+          entry.endedAt ??= Date.now();
+          return;
+        }
         entry.status = 'completed';
         entry.exitCode = 0;
         entry.endedAt = Date.now();
         entry.outputChunks.push(r.result);
       })
       .catch(() => {
-        if (entry.status === 'killed') return;
+        if (entry.status === 'killed') {
+          entry.endedAt ??= Date.now();
+          return;
+        }
         entry.status = 'failed';
         entry.exitCode = 1;
         entry.endedAt = Date.now();
       })
       .finally(() => {
         this.persistLive(entry);
+        // Slice 6.1 — notify terminal callbacks.
+        this.fireTerminalCallbacks(entry);
         for (const resolve of entry.waiters) resolve();
         entry.waiters.length = 0;
       });

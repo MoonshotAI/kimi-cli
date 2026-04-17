@@ -33,6 +33,14 @@ export interface AgentTypeDefinition {
   excludeTools: string[];
   /** Default model alias override for this agent type. */
   defaultModel: string | null;
+  /**
+   * Whether this agent type supports background execution.
+   * When false, AgentTool rejects `runInBackground=true` requests.
+   * Defaults to true when not explicitly set.
+   *
+   * Python parity: `agent_types.yaml` `supports_background` field.
+   */
+  supportsBackground?: boolean | undefined;
 }
 
 // ── AgentTypeRegistry ─────────────────────────────────────────────────
@@ -57,7 +65,11 @@ export class AgentTypeRegistry {
         `Unknown agent type: "${name}". Available: ${[...this.types.keys()].join(', ')}`,
       );
     }
-    return def;
+    // Apply default: supportsBackground defaults to true when not explicitly set
+    return {
+      ...def,
+      supportsBackground: def.supportsBackground ?? true,
+    };
   }
 
   /**
@@ -117,6 +129,8 @@ export class AgentTypeRegistry {
       if (def.whenToUse) {
         lines.push(`  When to use: ${def.whenToUse.trim()}`);
       }
+      const bgSupported = def.supportsBackground ?? true;
+      lines.push(`  Background: ${bgSupported ? 'yes' : 'no'}`);
     }
     return lines.join('\n');
   }

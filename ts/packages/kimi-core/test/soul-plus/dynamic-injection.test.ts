@@ -116,7 +116,7 @@ describe('PlanModeInjectionProvider', () => {
 
   it('emits a system-reminder when plan mode is on', () => {
     const provider = new PlanModeInjectionProvider();
-    const out = provider.getInjections(baseCtx({ planMode: true }));
+    const out = provider.getInjections(baseCtx({ planMode: true })) as readonly EphemeralInjection[];
     expect(out).toHaveLength(1);
     expect(out[0]?.kind).toBe('system_reminder');
     expect(out[0]?.content as string).toContain('Plan mode is active');
@@ -140,7 +140,7 @@ describe('YoloModeInjectionProvider', () => {
 
   it('emits once on entering bypassPermissions, then stays silent', () => {
     const provider = new YoloModeInjectionProvider();
-    const first = provider.getInjections(baseCtx({ permissionMode: 'bypassPermissions' }));
+    const first = provider.getInjections(baseCtx({ permissionMode: 'bypassPermissions' })) as readonly EphemeralInjection[];
     expect(first).toHaveLength(1);
     expect(first[0]?.content as string).toContain('yolo');
 
@@ -176,5 +176,219 @@ describe('createDefaultDynamicInjectionManager', () => {
     expect(out).toHaveLength(2);
     expect(out[0]?.content as string).toContain('Plan mode is active');
     expect(out[1]?.content as string).toContain('yolo');
+  });
+});
+
+// ── Phase 1 Step 7: Dynamic injection durable write + dedup ───────────
+//
+// Decision #89: DynamicInjection providers write to
+// contextState.appendSystemReminder (durable) instead of producing
+// ephemeral EphemeralInjection objects. Dedup: if the last
+// system_reminder in history is the same plan mode reminder and no new
+// user message has appeared since, don't re-inject.
+//
+// These tests FAIL on the current codebase because:
+//   - Providers return ephemeral injections, not durable writes
+//   - No dedup logic based on history scanning exists
+//   - InjectionContext does not include history
+
+describe('PlanModeInjectionProvider — durable write path (Phase 1 Step 7)', () => {
+  it('writes to contextState.appendSystemReminder instead of returning ephemeral injection', () => {
+    // Phase 1 contract: PlanModeInjectionProvider.getInjections receives
+    // a contextState and calls appendSystemReminder on it, rather than
+    // returning EphemeralInjection objects for the caller to stash.
+    //
+    // New signature: getInjections(ctx, contextState) → void (or Promise<void>)
+    // Currently: getInjections(ctx) → readonly EphemeralInjection[]
+    const provider = new PlanModeInjectionProvider();
+
+    const appendCalls: string[] = [];
+    const fakeContextState = {
+      appendSystemReminder: async (data: { content: string }) => {
+        appendCalls.push(data.content);
+      },
+    };
+
+    // Phase 1: provider takes contextState as second argument
+    const result = (provider as unknown as {
+      getInjections(
+        ctx: InjectionContext,
+        contextState: { appendSystemReminder(d: { content: string }): Promise<void> },
+      ): void;
+    }).getInjections(baseCtx({ planMode: true }), fakeContextState);
+
+    // Phase 1: provider writes to contextState, returns void (not an array)
+    // FAILS on current code: returns EphemeralInjection[] (truthy array)
+    expect(result).toBeUndefined();
+    expect(appendCalls).toHaveLength(1);
+    expect(appendCalls[0]).toContain('Plan mode is active');
+  });
+
+  it('dedup: does NOT re-inject if history already has plan mode reminder with no new user message', () => {
+    // Phase 1 contract: if the last system_reminder in history is the
+    // plan mode reminder and no user_message has been appended since,
+    // the provider skips injection. This prevents duplicate reminders
+    // on consecutive turns without user input.
+    //
+    // Ported from Python plan_mode.py:64-81 (_has_plan_reminder scan).
+    //
+    // Current code always returns the reminder when planMode is true,
+    // with no history scanning. This test verifies the Phase 1 dedup
+    // behavior by asserting that getInjections returns empty when a
+    // plan mode reminder already exists in history.
+    const provider = new PlanModeInjectionProvider();
+
+    // Phase 1: InjectionContext includes history for dedup scanning
+    const ctxWithHistory = {
+      ...baseCtx({ planMode: true }),
+      history: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>\nPlan mode is active. You MUST NOT make any edits.\n</system-reminder>',
+            },
+          ],
+          toolCalls: [],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'I will plan...' }],
+          toolCalls: [],
+        },
+        // No new user message since the reminder
+      ],
+    };
+
+    // Current API still works (extra ctx fields ignored) — the assertion
+    // checks the return value. Current code returns the injection; Phase 1
+    // should return empty (deduped).
+    const result = provider.getInjections(ctxWithHistory);
+
+    // Phase 1: should return empty because the plan mode reminder is
+    // already the most recent system_reminder with no new user message.
+    // FAILS on current code: always returns the reminder
+    expect(result).toEqual([]);
+  });
+
+  it('injects when a new user message appeared after the last plan mode reminder (durable path)', () => {
+    // Phase 1: even with dedup, a fresh user message after the last
+    // plan mode reminder means we DO inject via contextState.appendSystemReminder.
+    const provider = new PlanModeInjectionProvider();
+
+    const appendCalls: string[] = [];
+    const fakeContextState = {
+      appendSystemReminder: async (data: { content: string }) => {
+        appendCalls.push(data.content);
+      },
+    };
+
+    const ctxWithNewUser = {
+      ...baseCtx({ planMode: true }),
+      history: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>\nPlan mode is active.\n</system-reminder>',
+            },
+          ],
+          toolCalls: [],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'planning...' }],
+          toolCalls: [],
+        },
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'new user prompt' }],
+          toolCalls: [],
+        },
+      ],
+    };
+
+    // Phase 1 durable path: pass contextState as 2nd arg
+    const result = (provider as unknown as {
+      getInjections(
+        ctx: InjectionContext,
+        contextState: { appendSystemReminder(d: { content: string }): Promise<void> },
+      ): void;
+    }).getInjections(ctxWithNewUser, fakeContextState);
+
+    // Phase 1: returns void, writes to contextState
+    expect(result).toBeUndefined();
+    // Should inject because a new user message appeared after the last reminder
+    expect(appendCalls).toHaveLength(1);
+    expect(appendCalls[0]).toContain('Plan mode');
+  });
+});
+
+describe('YoloModeInjectionProvider — durable write path (Phase 1 Step 7)', () => {
+  it('writes to contextState.appendSystemReminder instead of returning ephemeral', () => {
+    const provider = new YoloModeInjectionProvider();
+
+    const appendCalls: string[] = [];
+    const fakeContextState = {
+      appendSystemReminder: async (data: { content: string }) => {
+        appendCalls.push(data.content);
+      },
+    };
+
+    const result = (provider as unknown as {
+      getInjections(
+        ctx: InjectionContext,
+        contextState: { appendSystemReminder(d: { content: string }): Promise<void> },
+      ): void;
+    }).getInjections(baseCtx({ permissionMode: 'bypassPermissions' }), fakeContextState);
+
+    // Phase 1: returns void, writes to contextState
+    // FAILS on current code: returns EphemeralInjection[]
+    expect(result).toBeUndefined();
+    expect(appendCalls).toHaveLength(1);
+    expect(appendCalls[0]).toContain('yolo');
+  });
+
+  it('dedup: does NOT re-inject if history already has yolo reminder with no new user message', () => {
+    // Phase 1: yolo mode provider dedupes against history just like
+    // plan mode — if the last system_reminder is a yolo reminder and
+    // no new user message since, skip injection.
+    //
+    // Current code uses an internal `injected` boolean for one-shot
+    // semantics but does NOT scan history. This test fires on a FRESH
+    // provider instance (no prior injection) so the one-shot hasn't
+    // fired yet — current code would inject. Phase 1 should NOT inject
+    // because history already has the reminder.
+    const provider = new YoloModeInjectionProvider();
+
+    const ctxWithExistingYolo = {
+      ...baseCtx({ permissionMode: 'bypassPermissions' }),
+      history: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '<system-reminder>\nYou are running in non-interactive (yolo) mode.\n</system-reminder>',
+            },
+          ],
+          toolCalls: [],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'proceeding...' }],
+          toolCalls: [],
+        },
+      ],
+    };
+
+    const result = provider.getInjections(ctxWithExistingYolo);
+
+    // Phase 1: should return empty — yolo reminder already in history.
+    // FAILS on current code: fresh provider instance hasn't fired its
+    // one-shot yet, so it returns the yolo reminder.
+    expect(result).toEqual([]);
   });
 });

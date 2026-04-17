@@ -281,3 +281,45 @@ describe('mcpToolToKimiTool description', () => {
     expect(tool.description).toContain('No description provided.');
   });
 });
+
+// ── Slice 7.2 (决策 #100) — metadata / budget / display alignment ───────
+
+describe('mcpToolToKimiTool — v2 metadata alignment (Phase 7)', () => {
+  it('carries source="mcp" + serverId + originalName in metadata', () => {
+    const client = new FakeClient(async () => ({ content: [] }));
+    const tool = mcpToolToKimiTool({
+      serverName: 'files',
+      mcpTool: baseDef,
+      client,
+    });
+    const meta = (tool as unknown as { metadata?: Record<string, unknown> }).metadata;
+    expect(meta).toBeDefined();
+    expect(meta?.['source']).toBe('mcp');
+    expect(meta?.['serverId']).toBe('files');
+    expect(meta?.['originalName']).toBe('get_files');
+  });
+
+  it('sets maxResultSizeChars to 100_000 by default', () => {
+    const client = new FakeClient(async () => ({ content: [] }));
+    const tool = mcpToolToKimiTool({
+      serverName: 'files',
+      mcpTool: baseDef,
+      client,
+    });
+    const maxChars = (tool as unknown as { maxResultSizeChars?: number }).maxResultSizeChars;
+    expect(maxChars).toBe(100_000);
+  });
+
+  it('exposes a `display` slot for Phase 7 generic fallback (may be undefined)', () => {
+    const client = new FakeClient(async () => ({ content: [] }));
+    const tool = mcpToolToKimiTool({
+      serverName: 'files',
+      mcpTool: baseDef,
+      client,
+    });
+    // Phase 1 of MCP display can be undefined (generic fallback), but
+    // the property must exist as a contract so the UI layer can probe it
+    // without `in`/`hasOwnProperty` checks leaking across versions.
+    expect('display' in (tool as unknown as Record<string, unknown>)).toBe(true);
+  });
+});

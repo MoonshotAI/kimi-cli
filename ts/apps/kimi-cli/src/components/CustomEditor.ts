@@ -9,6 +9,8 @@ export class CustomEditor extends Editor {
   public onCtrlD?: () => void;
   public onCtrlC?: () => void;
   public onToggleToolExpand?: () => void;
+  public onCtrlS?: () => void;
+  public onUpArrowEmpty?: () => void;
 
   constructor(tui: TUI, theme: EditorTheme) {
     super(tui, theme);
@@ -32,21 +34,21 @@ export class CustomEditor extends Editor {
       return;
     }
 
-    if (matchesKey(data, Key.escape)) {
-      if (!this.isShowingAutocomplete()) {
-        this.onEscape?.();
+    if (matchesKey(data, Key.ctrl('s'))) {
+      this.onCtrlS?.();
+      return;
+    }
+
+    if (matchesKey(data, Key.up)) {
+      if (this.getText().length === 0 && this.onUpArrowEmpty) {
+        this.onUpArrowEmpty();
         return;
       }
     }
 
-    if (matchesKey(data, Key.enter)) {
+    if (matchesKey(data, Key.escape)) {
       if (!this.isShowingAutocomplete()) {
-        const text = this.getText().trim();
-        if (text.length > 0) {
-          this.onSubmit?.(text);
-          this.setText('');
-          return;
-        }
+        this.onEscape?.();
         return;
       }
     }

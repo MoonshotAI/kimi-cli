@@ -9,7 +9,12 @@
 import type { Kaos } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type {
+  ToolDisplayHooks,
+  ToolResult,
+  ToolResultDisplay,
+  ToolUpdate,
+} from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { ReadInputSchema } from './types.js';
 import type { BuiltinTool, ReadInput, ReadOutput } from './types.js';
@@ -19,6 +24,21 @@ export class ReadTool implements BuiltinTool<ReadInput, ReadOutput> {
   readonly name = 'Read' as const;
   readonly description = 'Read the contents of a file from the local filesystem.';
   readonly inputSchema: z.ZodType<ReadInput> = ReadInputSchema;
+  // Read self-limits via offset/limit; opt out of orchestrator persistence.
+  readonly maxResultSizeChars: number = Number.POSITIVE_INFINITY;
+  readonly display: ToolDisplayHooks<ReadInput, ReadOutput> = {
+    getUserFacingName: () => 'Read',
+    getInputDisplay: (input) => ({
+      kind: 'file_io',
+      operation: 'read',
+      path: input.path,
+    }),
+    getResultDisplay: (input, result): ToolResultDisplay => ({
+      kind: 'file_content',
+      path: input.path,
+      content: result.output?.content ?? '',
+    }),
+  };
 
   constructor(
     private readonly kaos: Kaos,

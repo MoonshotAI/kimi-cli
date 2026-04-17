@@ -80,6 +80,7 @@ export class InteractiveMode implements WireHandlerDelegate {
 
   private transcriptContainer: Container;
   private activityContainer: Container;
+  private queueContainer: Container;
   private editorContainer: Container;
   private footer: FooterComponent;
   private editor: CustomEditor;
@@ -115,6 +116,7 @@ export class InteractiveMode implements WireHandlerDelegate {
 
     this.transcriptContainer = new Container();
     this.activityContainer = new Container();
+    this.queueContainer = new Container();
     this.editorContainer = new Container();
     this.editor = new CustomEditor(this.ui, editorTheme);
     this.footer = new FooterComponent(this.state, this.colors);
@@ -161,11 +163,38 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.editor.onToggleToolExpand = () => {
       this.toggleToolOutputExpansion();
     };
+
+    this.editor.onCtrlS = () => {
+      if (!this.state.isStreaming) return;
+      const text = this.editor.getText().trim();
+      if (text.length > 0) {
+        this.editor.setText('');
+        this.wireHandler.steerMessage(text);
+      } else {
+        const first = this.wireHandler.dequeueFirst();
+        if (first !== undefined) {
+          this.wireHandler.steerMessage(first);
+        }
+      }
+      this.updateQueueDisplay();
+      this.ui.requestRender();
+    };
+
+    this.editor.onUpArrowEmpty = () => {
+      if (!this.state.isStreaming) return;
+      const recalled = this.wireHandler.recallLastQueued();
+      if (recalled !== undefined) {
+        this.editor.setText(recalled);
+        this.updateQueueDisplay();
+        this.ui.requestRender();
+      }
+    };
   }
 
   private setupLayout(): void {
     this.ui.addChild(this.transcriptContainer);
     this.ui.addChild(this.activityContainer);
+    this.ui.addChild(this.queueContainer);
     this.ui.addChild(this.editorContainer);
     this.ui.addChild(this.footer);
   }
@@ -239,6 +268,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   resetLivePane(): void {
     this.livePane = { ...INITIAL_LIVE_PANE };
     this.updateActivityPane();
+    this.updateQueueDisplay();
     this.ui.requestRender();
   }
 
@@ -398,6 +428,23 @@ export class InteractiveMode implements WireHandlerDelegate {
     }
   }
 
+  // ── Queued messages display ─────────────────────────────────────
+
+  private updateQueueDisplay(): void {
+    this.queueContainer.clear();
+    const queued = this.wireHandler.getQueuedMessages();
+    if (queued.length === 0) return;
+
+    for (const item of queued) {
+      this.queueContainer.addChild(
+        new Text(chalk.cyan.dim(`  ❯ ${item.text}`), 0, 0),
+      );
+    }
+    this.queueContainer.addChild(
+      new Text(chalk.dim('  ↑ to edit · ctrl-s to steer immediately'), 0, 0),
+    );
+  }
+
   // ── Expand / collapse tool output (Ctrl+O) ─────────────────────
 
   private toggleToolOutputExpansion(): void {
@@ -512,6 +559,8 @@ export class InteractiveMode implements WireHandlerDelegate {
       void this.executeSlashCommand(text);
     } else {
       this.wireHandler.sendMessage(text);
+      this.updateQueueDisplay();
+      this.ui.requestRender();
     }
   }
 

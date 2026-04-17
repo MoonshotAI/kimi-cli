@@ -51,6 +51,11 @@ function makeState(): {
   const writer = new WiredJournalWriter({
     filePath,
     lifecycle: new StubGate(),
+    // Phase 3: lock this suite to the legacy per-record fsync so its
+    // "append → read file back" assertions keep observing synchronous
+    // disk state. The batched-drain semantics are covered by the
+    // Phase 3 async-batch suites.
+    config: { fsyncMode: 'per-record' },
   });
   const state = new WiredContextState({
     journalWriter: writer,

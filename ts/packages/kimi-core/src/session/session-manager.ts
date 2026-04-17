@@ -24,9 +24,9 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
-import { LifecycleGateFacade } from '../soul-plus/lifecycle-gate.js';
+import { SoulLifecycleGate } from '../soul-plus/soul-lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
-import { NotificationManager, type ShellDeliverCallback } from '../soul-plus/notification-manager.js';
+import type { ShellDeliverCallback } from '../soul-plus/notification-manager.js';
 import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
 import type { PermissionMode, PermissionRule } from '../soul-plus/permission/index.js';
 import { DefaultSessionControl, type SessionControlHandler } from '../soul-plus/session-control.js';
@@ -34,7 +34,13 @@ import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
 import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
-import type { CompactionConfig, Runtime, Tool } from '../soul/index.js';
+import type {
+  CompactionConfig,
+  CompactionProvider,
+  JournalCapability,
+  Runtime,
+  Tool,
+} from '../soul/index.js';
 import type { NotificationRecord } from '../storage/wire-record.js';
 import { recoverRotation } from '../storage/compaction.js';
 import type { FullContextState } from '../storage/context-state.js';
@@ -101,7 +107,12 @@ export interface SessionInfo {
 export interface CreateSessionOptions {
   /** Override session id — default: auto-generated `ses_<uuid12>`. */
   sessionId?: string | undefined;
-  /** LLM runtime (kosong + compaction provider + journal capability). */
+  /**
+   * Soul-visible runtime. Phase 2 (todo/phase-2-compaction-out-of-soul.md):
+   * this is now a single-field `{kosong}` bag; compaction / journal
+   * capabilities have been promoted to their own top-level options
+   * (`compactionProvider` / `journalCapability`).
+   */
   runtime: Runtime;
   /** Available tools for this session. */
   tools: readonly Tool[];
@@ -124,6 +135,17 @@ export interface CreateSessionOptions {
   /** Compaction configuration (Slice 3.3). */
   compactionConfig?: CompactionConfig | undefined;
   /**
+   * Phase 2 — compaction provider forwarded into SoulPlus. Optional so
+   * tests that do not exercise compaction don't need to plumb anything
+   * through; SoulPlus falls back to a throwing stub when absent.
+   */
+  compactionProvider?: CompactionProvider | undefined;
+  /**
+   * Phase 2 — journal capability forwarded into SoulPlus. Same optional
+   * / stub-default semantics as `compactionProvider`.
+   */
+  journalCapability?: JournalCapability | undefined;
+  /**
    * Workspace directory at session creation (Slice 4.3 Part 5).
    * Persisted to state.json and returned by listSessions so `--continue`
    * can filter candidates by the current working directory. Required so
@@ -135,7 +157,10 @@ export interface CreateSessionOptions {
 }
 
 export interface ResumeSessionOptions {
-  /** LLM runtime. */
+  /**
+   * Soul-visible runtime. Phase 2: see note on
+   * `CreateSessionOptions.runtime`.
+   */
   runtime: Runtime;
   /** Available tools for this session. */
   tools: readonly Tool[];
@@ -157,6 +182,10 @@ export interface ResumeSessionOptions {
   permissionMode?: PermissionMode | undefined;
   /** Compaction configuration. */
   compactionConfig?: CompactionConfig | undefined;
+  /** Phase 2 — compaction provider forwarded into SoulPlus. */
+  compactionProvider?: CompactionProvider | undefined;
+  /** Phase 2 — journal capability forwarded into SoulPlus. */
+  journalCapability?: JournalCapability | undefined;
 }
 
 /** A fully-assembled, running session. */
@@ -233,11 +262,11 @@ export class SessionManager {
     const eventBus = options.eventBus ?? new EventBusCtor();
 
     // Codex Round 2 M3: SessionManager owns the single lifecycle state
-    // machine. The LifecycleGateFacade is shared between JournalWriter
+    // machine. The SoulLifecycleGate is shared between JournalWriter
     // and SoulPlus (via Runtime.lifecycle + TurnManager) so the
     // compacting/completing gate actually takes effect in production.
     const lifecycleStateMachine = new SessionLifecycleStateMachine();
-    const lifecycleGate = new LifecycleGateFacade(lifecycleStateMachine);
+    const lifecycleGate = new SoulLifecycleGate(lifecycleStateMachine);
 
     const journalWriter = new WiredJournalWriter({
       filePath: this.paths.wirePath(sessionId),
@@ -285,6 +314,14 @@ export class SessionManager {
       ...(options.compactionConfig !== undefined
         ? { compactionConfig: options.compactionConfig }
         : {}),
+      // Phase 2 — forward compaction capabilities that used to ride on
+      // Runtime but now live as their own top-level options.
+      ...(options.compactionProvider !== undefined
+        ? { compactionProvider: options.compactionProvider }
+        : {}),
+      ...(options.journalCapability !== undefined
+        ? { journalCapability: options.journalCapability }
+        : {}),
       // Slice 4.2 — forward the optional orchestrator into SoulPlus so
       // TurnManager's beforeToolCall closure runs the full hook +
       // permission + approval pipeline. Absent the option, TurnManager
@@ -296,6 +333,10 @@ export class SessionManager {
     // Wire the deferred TurnManager ref — from this point on, the
     // ContextState callback returns the real turn_id during Soul turns.
     turnManagerRef = soulPlus.getTurnManager();
+
+    // Slice 7.1 (决策 #99) — durable skill-listing injection. Idempotent
+    // and a no-op when no SkillManager was supplied.
+    await soulPlus.init();
 
     // Apply initial permission mode if provided.
     if (options.permissionMode !== undefined) {
@@ -330,10 +371,22 @@ export class SessionManager {
       throw new Error(`Session already active: ${sessionId}`);
     }
 
+    // ── Startup recovery sequence (Phase 0.6 — 6 canonical steps) ────
+    //
+    // Step 1: Compaction rollback
+    // Step 2: Replay wire.jsonl → ContextState + SessionJournal
+    // Step 3: ApprovalRuntime.recoverPendingOnStartup()
+    // Step 4: SkillManager 无状态启动
+    // Step 5: MCP 连接重建
+    // Step 6: TeamDaemon 恢复 (占位)
+    //
+    // The steps below implement 1-2 fully; 3-6 are wired in SoulPlus
+    // construction or remain placeholders for future slices.
+
     const sessionDir = this.paths.sessionDir(sessionId);
     const wirePath = this.paths.wirePath(sessionId);
 
-    // 0. Recover from a half-done compaction rotation (Codex Round 2 M1).
+    // Step 1: Compaction rollback (Codex Round 2 M1).
     // If the previous process crashed between rotateJournal (rename old
     // wire.jsonl → wire.N.jsonl + create new wire.jsonl) and writing the
     // CompactionRecord, the current wire.jsonl is metadata-only or missing.
@@ -364,7 +417,7 @@ export class SessionManager {
     // 3. Create JournalWriter in resume mode — same lifecycle sharing
     //    pattern as createSession (Codex Round 2 M3).
     const lifecycleStateMachine = new SessionLifecycleStateMachine();
-    const lifecycleGate = new LifecycleGateFacade(lifecycleStateMachine);
+    const lifecycleGate = new SoulLifecycleGate(lifecycleStateMachine);
 
     const journalWriter = new WiredJournalWriter({
       filePath: wirePath,
@@ -431,6 +484,13 @@ export class SessionManager {
       ...(options.compactionConfig !== undefined
         ? { compactionConfig: options.compactionConfig }
         : {}),
+      // Phase 2 — forward compaction capabilities on the resume path too.
+      ...(options.compactionProvider !== undefined
+        ? { compactionProvider: options.compactionProvider }
+        : {}),
+      ...(options.journalCapability !== undefined
+        ? { journalCapability: options.journalCapability }
+        : {}),
       // Slice 4.2 — forward the optional orchestrator on the resume
       // path too so resumed sessions run the same tool pipeline.
       ...(options.orchestrator !== undefined ? { orchestrator: options.orchestrator } : {}),
@@ -439,6 +499,12 @@ export class SessionManager {
 
     // Wire the deferred TurnManager ref.
     turnManagerRef = soulPlus.getTurnManager();
+
+    // Slice 7.1 (决策 #99) — durable skill-listing injection. Resumed
+    // sessions also get a fresh listing (skill rosters can change between
+    // process boots); the `DISREGARD any earlier skill listings` preamble
+    // ensures the model does not double-count.
+    await soulPlus.init();
 
     // Restore permission mode from replay if it was changed.
     if (effectivePermissionMode !== undefined) {
@@ -465,12 +531,9 @@ export class SessionManager {
       const notificationManager = soulPlus.getNotificationManager();
       // Prime dedupe so subsequent emit() with same dedupe_key is a no-op.
       notificationManager.primeDedupeIndex(notificationRecords);
-      const deliveredIds = NotificationManager.extractDeliveredIds(projected.messages);
-      notificationManager.replayPendingForResume(
-        notificationRecords,
-        contextState,
-        deliveredIds,
-      );
+      // Phase 1 (Decision #89): replayPendingForResume removed — notifications
+      // are durable entries in history, replayed naturally from wire.jsonl via
+      // the replay-projector's initialHistory. No ephemeral re-inject needed.
     }
 
     const sessionControl = new DefaultSessionControl({
@@ -692,6 +755,12 @@ export class SessionManager {
             plan_mode: currentPlanMode,
           };
       await managed.stateCache.write(stateToFlush);
+
+      // Phase 3 (Slice 3) — drain the async-batch pending buffer and
+      // stop the drain timer before we drop the managed reference.
+      // Otherwise the setInterval keeps the writer alive and pending
+      // records never land on disk at shutdown.
+      await managed.journalWriter.close();
 
       // Remove from active sessions map.
       this.sessions.delete(sessionId);

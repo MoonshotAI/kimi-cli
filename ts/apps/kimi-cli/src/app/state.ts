@@ -111,6 +111,13 @@ export interface LivePaneState {
   pendingQuestion: PendingQuestion | null;
 }
 
+// ── Message Queue ───────────────────────────────────────────────────
+
+export interface QueuedMessage {
+  readonly id: string;
+  readonly text: string;
+}
+
 export const INITIAL_LIVE_PANE: LivePaneState = {
   mode: 'idle',
   thinkingText: '',

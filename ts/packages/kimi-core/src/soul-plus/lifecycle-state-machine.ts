@@ -2,7 +2,7 @@
  * SessionLifecycleStateMachine — canonical 5-state lifecycle owner for a
  * single SoulPlus instance (v2 §5.8.2 / appendix D.7).
  *
- * This class is the authoritative state field; `LifecycleGateFacade` and
+ * This class is the authoritative state field; `SoulLifecycleGate` and
  * `JournalWriter` are downstream observers that gate their behaviour on it.
  *
  * Valid transitions (Slice 3 subset — Slice 6 Compaction adds the
@@ -63,7 +63,7 @@ export class SessionLifecycleStateMachine {
    * Attempt to transition to `next`. Throws `Error` if the transition is
    * not in the allowed matrix. Transition is synchronous — the asynchronous
    * "drain in-flight writes" semantics of `LifecycleGate.transitionTo` live
-   * in `LifecycleGateFacade`, not here.
+   * in `SoulLifecycleGate`, not here.
    */
   transitionTo(next: SessionLifecycleState): void {
     const allowed = TRANSITIONS[this._state];

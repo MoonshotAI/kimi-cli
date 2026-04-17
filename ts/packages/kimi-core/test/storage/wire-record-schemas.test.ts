@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ApprovalRequestRecordSchema,
   ApprovalResponseRecordSchema,
+  ApprovalSourceSchema,
   AssistantMessageRecordSchema,
   CompactionRecordSchema,
   ContextEditRecordSchema,
@@ -17,7 +18,9 @@ import {
   PlanModeChangedRecordSchema,
   SkillCompletedRecordSchema,
   SkillInvokedRecordSchema,
-  SubagentEventRecordSchema,
+  SubagentCompletedRecordSchema,
+  SubagentFailedRecordSchema,
+  SubagentSpawnedRecordSchema,
   SystemPromptChangedRecordSchema,
   SystemReminderRecordSchema,
   TeamMailRecordSchema,
@@ -366,6 +369,27 @@ describe('system_reminder / notification records (management-class)', () => {
     expect(parsed.data.targets).toContain('llm');
   });
 
+  it('notification accepts optional envelope_id (Phase 8 / 决策 #103)', () => {
+    const parsed = NotificationRecordSchema.parse({
+      type: 'notification',
+      seq: 3,
+      time: 1,
+      data: {
+        id: 'n00000002',
+        category: 'team',
+        type: 'team.mail',
+        source_kind: 'team_mail',
+        source_id: 'mail_abc',
+        title: 'New mail',
+        body: 'from alice',
+        severity: 'info',
+        targets: ['llm'],
+        envelope_id: 'env_0xdeadbeef',
+      },
+    });
+    expect(parsed.data.envelope_id).toBe('env_0xdeadbeef');
+  });
+
   it('notification rejects an invalid severity', () => {
     const result = NotificationRecordSchema.safeParse({
       type: 'notification',
@@ -468,6 +492,87 @@ describe('management-class records (Slice 4/7/8 scope, schema only for Slice 1)'
     expect(parsed.data.success).toBe(false);
   });
 
+  // ── Slice 7.1 (决策 #99) — invocation_trigger / query_depth ────────────
+
+  it('skill_invoked accepts invocation_trigger + query_depth (Phase 7)', () => {
+    const parsed = SkillInvokedRecordSchema.parse({
+      type: 'skill_invoked',
+      seq: 1,
+      time: 1,
+      turn_id: 't1',
+      agent_type: 'main',
+      data: {
+        skill_name: 'do-foo',
+        execution_mode: 'inline',
+        original_input: 'args',
+        invocation_trigger: 'claude-proactive',
+        query_depth: 2,
+      },
+    });
+    const d = parsed.data as unknown as {
+      invocation_trigger?: string;
+      query_depth?: number;
+    };
+    expect(d.invocation_trigger).toBe('claude-proactive');
+    expect(d.query_depth).toBe(2);
+  });
+
+  it('skill_invoked rejects unknown invocation_trigger values', () => {
+    const result = SkillInvokedRecordSchema.safeParse({
+      type: 'skill_invoked',
+      seq: 1,
+      time: 1,
+      turn_id: 't1',
+      data: {
+        skill_name: 'x',
+        execution_mode: 'inline',
+        original_input: '',
+        invocation_trigger: 'bogus-trigger',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('skill_invoked accepts the three canonical invocation_trigger values', () => {
+    for (const trigger of ['user-slash', 'claude-proactive', 'nested-skill'] as const) {
+      const r = SkillInvokedRecordSchema.safeParse({
+        type: 'skill_invoked',
+        seq: 1,
+        time: 1,
+        turn_id: 't1',
+        data: {
+          skill_name: 's',
+          execution_mode: 'inline',
+          original_input: '',
+          invocation_trigger: trigger,
+        },
+      });
+      expect(r.success).toBe(true);
+    }
+  });
+
+  it('skill_completed accepts invocation_trigger + query_depth (Phase 7)', () => {
+    const parsed = SkillCompletedRecordSchema.parse({
+      type: 'skill_completed',
+      seq: 1,
+      time: 1,
+      turn_id: 't1',
+      data: {
+        skill_name: 'do-foo',
+        execution_mode: 'inline',
+        success: true,
+        invocation_trigger: 'nested-skill',
+        query_depth: 3,
+      },
+    });
+    const d = parsed.data as unknown as {
+      invocation_trigger?: string;
+      query_depth?: number;
+    };
+    expect(d.invocation_trigger).toBe('nested-skill');
+    expect(d.query_depth).toBe(3);
+  });
+
   it('approval_request carries ApprovalDisplay + ApprovalSource', () => {
     const parsed = ApprovalRequestRecordSchema.parse({
       type: 'approval_request',
@@ -520,16 +625,50 @@ describe('management-class records (Slice 4/7/8 scope, schema only for Slice 1)'
     expect(parsed.data.from_agent).toBe('alice');
   });
 
-  it('subagent_event parses with opaque sub_event payload', () => {
-    const parsed = SubagentEventRecordSchema.parse({
-      type: 'subagent_event',
-      seq: 1,
-      time: 1,
-      agent_id: 'sub_1',
-      parent_tool_call_id: 'tc_1',
-      sub_event: { type: 'step.begin', stepNumber: 0 },
+  // ── Slice 7.2 (决策 #100) — ApprovalSource mcp branch ─────────────────
+
+  it('ApprovalSource accepts the mcp branch with server_id + reason', () => {
+    for (const reason of ['elicitation', 'auth', 'tool_call'] as const) {
+      const parsed = ApprovalSourceSchema.parse({
+        kind: 'mcp',
+        server_id: 'playwright',
+        reason,
+      });
+      expect(parsed.kind).toBe('mcp');
+      const narrow = parsed as unknown as { kind: string; server_id: string; reason: string };
+      expect(narrow.server_id).toBe('playwright');
+      expect(narrow.reason).toBe(reason);
+    }
+  });
+
+  it('ApprovalSource mcp branch rejects unknown reason values', () => {
+    const result = ApprovalSourceSchema.safeParse({
+      kind: 'mcp',
+      server_id: 'x',
+      reason: 'nope',
     });
-    expect(parsed.agent_id).toBe('sub_1');
+    expect(result.success).toBe(false);
+  });
+
+  it('approval_request record carries an mcp-source approval', () => {
+    const parsed = ApprovalRequestRecordSchema.parse({
+      type: 'approval_request',
+      seq: 10,
+      time: 1,
+      turn_id: 't1',
+      step: 1,
+      data: {
+        request_id: 'req_mcp',
+        tool_call_id: 'tc_mcp',
+        tool_name: 'mcp__playwright__click',
+        action: 'call_tool',
+        display: { kind: 'command', command: 'click #submit' },
+        source: { kind: 'mcp', server_id: 'playwright', reason: 'tool_call' },
+      },
+    });
+    const src = parsed.data.source as unknown as { kind: string; server_id: string };
+    expect(src.kind).toBe('mcp');
+    expect(src.server_id).toBe('playwright');
   });
 
   it('ownership_changed allows null old_owner', () => {
@@ -541,6 +680,211 @@ describe('management-class records (Slice 4/7/8 scope, schema only for Slice 1)'
       new_owner: 'alice',
     });
     expect(parsed.old_owner).toBeNull();
+  });
+});
+
+// ── Subagent lifecycle records (Phase 6 / 决策 #88) ─────────────────────
+//
+// The old `subagent_event` wrapper (which nested SoulEvent snapshots into the
+// parent wire) is gone. The parent wire now only records three lifecycle
+// references — `subagent_spawned` / `subagent_completed` / `subagent_failed`.
+// Child events are stored independently at
+// `sessions/<session>/subagents/<agent_id>/wire.jsonl` and never leak into
+// the parent wire. Source-tagged forwarding happens only in the transport
+// layer (EventBus), never in persistence.
+
+describe('subagent_spawned record (§3.6.1 / Phase 6)', () => {
+  it('parses a canonical spawned record (main agent spawns sub)', () => {
+    const parsed = SubagentSpawnedRecordSchema.parse({
+      type: 'subagent_spawned',
+      seq: 1,
+      time: 1712790000000,
+      data: {
+        agent_id: 'sub_abc',
+        agent_name: 'code-reviewer',
+        parent_tool_call_id: 'tc_001',
+        run_in_background: false,
+      },
+    });
+    expect(parsed.data.agent_id).toBe('sub_abc');
+    expect(parsed.data.agent_name).toBe('code-reviewer');
+    expect(parsed.data.parent_tool_call_id).toBe('tc_001');
+    expect(parsed.data.run_in_background).toBe(false);
+    expect(parsed.data.parent_agent_id).toBeUndefined();
+  });
+
+  it('agent_name is optional', () => {
+    const parsed = SubagentSpawnedRecordSchema.parse({
+      type: 'subagent_spawned',
+      seq: 2,
+      time: 1,
+      data: {
+        agent_id: 'sub_xyz',
+        parent_tool_call_id: 'tc_002',
+        run_in_background: true,
+      },
+    });
+    expect(parsed.data.agent_name).toBeUndefined();
+    expect(parsed.data.run_in_background).toBe(true);
+  });
+
+  it('recursive spawn: parent_agent_id points at the spawning subagent', () => {
+    const parsed = SubagentSpawnedRecordSchema.parse({
+      type: 'subagent_spawned',
+      seq: 3,
+      time: 1,
+      data: {
+        agent_id: 'sub_B',
+        parent_tool_call_id: 'tc_inner',
+        parent_agent_id: 'sub_A',
+        run_in_background: false,
+      },
+    });
+    expect(parsed.data.parent_agent_id).toBe('sub_A');
+  });
+
+  it('rejects when run_in_background is missing', () => {
+    const result = SubagentSpawnedRecordSchema.safeParse({
+      type: 'subagent_spawned',
+      seq: 1,
+      time: 1,
+      data: {
+        agent_id: 'sub_1',
+        parent_tool_call_id: 'tc_1',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('subagent_completed record (§3.6.1 / Phase 6)', () => {
+  it('parses canonical completed record with usage', () => {
+    const parsed = SubagentCompletedRecordSchema.parse({
+      type: 'subagent_completed',
+      seq: 5,
+      time: 1712790000500,
+      data: {
+        agent_id: 'sub_abc',
+        parent_tool_call_id: 'tc_001',
+        result_summary: 'Reviewed the diff. Looks good.',
+        usage: {
+          input: 1200,
+          output: 320,
+          cache_read: 400,
+          cache_write: 0,
+        },
+      },
+    });
+    expect(parsed.data.agent_id).toBe('sub_abc');
+    expect(parsed.data.result_summary).toMatch(/Reviewed/);
+    expect(parsed.data.usage?.input).toBe(1200);
+    expect(parsed.data.usage?.output).toBe(320);
+  });
+
+  it('usage is optional (terminal path may not have token counts)', () => {
+    const parsed = SubagentCompletedRecordSchema.parse({
+      type: 'subagent_completed',
+      seq: 6,
+      time: 1,
+      data: {
+        agent_id: 'sub_2',
+        parent_tool_call_id: 'tc_b',
+        result_summary: 'done',
+      },
+    });
+    expect(parsed.data.usage).toBeUndefined();
+  });
+});
+
+describe('subagent_failed record (§3.6.1 / Phase 6)', () => {
+  it('parses canonical failed record', () => {
+    const parsed = SubagentFailedRecordSchema.parse({
+      type: 'subagent_failed',
+      seq: 7,
+      time: 1,
+      data: {
+        agent_id: 'sub_bad',
+        parent_tool_call_id: 'tc_c',
+        error: 'Subagent was aborted',
+      },
+    });
+    expect(parsed.data.error).toMatch(/aborted/);
+    expect(parsed.data.agent_id).toBe('sub_bad');
+  });
+
+  it('rejects when error is missing', () => {
+    const result = SubagentFailedRecordSchema.safeParse({
+      type: 'subagent_failed',
+      seq: 7,
+      time: 1,
+      data: {
+        agent_id: 'sub_bad',
+        parent_tool_call_id: 'tc_c',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('legacy subagent_event record is rejected by WireRecordSchema', () => {
+  // 决策 #88: the nested subagent_event wrapper is gone. The top-level union
+  // must refuse it so a stray legacy record cannot round-trip through the
+  // wire layer. Replay handles such a line by dropping to the "unknown
+  // record type" path (see replay-subagent.test.ts — skip + warn).
+  it('WireRecordSchema rejects type="subagent_event"', () => {
+    const result = WireRecordSchema.safeParse({
+      type: 'subagent_event',
+      seq: 1,
+      time: 1,
+      agent_id: 'sub_1',
+      parent_tool_call_id: 'tc_1',
+      sub_event: { type: 'step.begin', index: 0 },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('WireRecordSchema union routes the three new lifecycle types', () => {
+  it('parses a subagent_spawned line via the top-level union', () => {
+    const parsed = WireRecordSchema.parse({
+      type: 'subagent_spawned',
+      seq: 1,
+      time: 1,
+      data: {
+        agent_id: 'sub_a',
+        parent_tool_call_id: 'tc_1',
+        run_in_background: false,
+      },
+    });
+    expect(parsed.type).toBe('subagent_spawned');
+  });
+
+  it('parses a subagent_completed line via the top-level union', () => {
+    const parsed = WireRecordSchema.parse({
+      type: 'subagent_completed',
+      seq: 2,
+      time: 1,
+      data: {
+        agent_id: 'sub_a',
+        parent_tool_call_id: 'tc_1',
+        result_summary: 'done',
+      },
+    });
+    expect(parsed.type).toBe('subagent_completed');
+  });
+
+  it('parses a subagent_failed line via the top-level union', () => {
+    const parsed = WireRecordSchema.parse({
+      type: 'subagent_failed',
+      seq: 3,
+      time: 1,
+      data: {
+        agent_id: 'sub_a',
+        parent_tool_call_id: 'tc_1',
+        error: 'boom',
+      },
+    });
+    expect(parsed.type).toBe('subagent_failed');
   });
 });
 

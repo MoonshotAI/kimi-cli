@@ -14,28 +14,41 @@ import { SessionLifecycleStateMachine } from '../../src/soul-plus/lifecycle-stat
 import { DefaultSessionControl } from '../../src/soul-plus/session-control.js';
 import { SoulRegistry } from '../../src/soul-plus/soul-registry.js';
 import { TurnManager } from '../../src/soul-plus/turn-manager.js';
+import { CompactionOrchestrator } from '../../src/soul-plus/compaction-orchestrator.js';
+import { PermissionClosureBuilder } from '../../src/soul-plus/permission-closure-builder.js';
+import { TurnLifecycleTracker } from '../../src/soul-plus/turn-lifecycle-tracker.js';
+import { WakeQueueScheduler } from '../../src/soul-plus/wake-queue-scheduler.js';
 import type { EventSink, SoulEvent } from '../../src/soul/event-sink.js';
-import type { Runtime } from '../../src/soul/runtime.js';
+import type {
+  CompactionProvider,
+  JournalCapability,
+  Runtime,
+} from '../../src/soul/runtime.js';
 import { InMemoryContextState } from '../../src/storage/context-state.js';
 import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+// Phase 2 (todo/phase-2-compaction-out-of-soul.md): Runtime = {kosong}.
+// Compaction / journal capabilities flow through TurnManagerDeps instead.
 function makeStubRuntime(): Runtime {
   return {
     kosong: {} as never,
-    compactionProvider: {
-      run: vi.fn().mockResolvedValue({
-        content: 'test compaction summary',
-        original_turn_count: 1,
-      }),
-    },
-    lifecycle: {
-      transitionTo: vi.fn(),
-    },
-    journal: {
-      rotate: vi.fn().mockResolvedValue({ archiveFile: 'wire.1.jsonl' }),
-    },
+  };
+}
+
+function makeStubCompactionProvider(): CompactionProvider {
+  return {
+    run: vi.fn().mockResolvedValue({
+      content: 'test compaction summary',
+      original_turn_count: 1,
+    }),
+  };
+}
+
+function makeStubJournalCapability(): JournalCapability {
+  return {
+    rotate: vi.fn().mockResolvedValue({ archiveFile: 'wire.1.jsonl' }),
   };
 }
 
@@ -59,14 +72,27 @@ function makeSessionControl() {
     }),
   });
 
+  const stubSink = makeStubSink();
+  const compaction = new CompactionOrchestrator({
+    contextState,
+    compactionProvider: makeStubCompactionProvider(),
+    lifecycleStateMachine,
+    journalCapability: makeStubJournalCapability(),
+    sink: stubSink,
+    journalWriter: contextState.journalWriter,
+  });
   const turnManager = new TurnManager({
     contextState,
     sessionJournal,
     runtime: makeStubRuntime(),
-    sink: makeStubSink(),
+    sink: stubSink,
     lifecycleStateMachine,
     soulRegistry,
     tools: [],
+    compaction,
+    permissionBuilder: new PermissionClosureBuilder({}),
+    lifecycle: new TurnLifecycleTracker(),
+    wakeScheduler: new WakeQueueScheduler(),
   });
 
   const sessionControl = new DefaultSessionControl({

@@ -16,7 +16,7 @@
  * observable contract, not an isolated unit's interface.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { HookEngine } from '../../src/hooks/engine.js';
 import type {
@@ -30,7 +30,7 @@ import type {
 } from '../../src/hooks/types.js';
 import {
   DynamicInjectionManager,
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   NotificationManager,
   PlanModeInjectionProvider,
   SessionEventBus,
@@ -40,7 +40,6 @@ import {
   createRuntime,
 } from '../../src/soul-plus/index.js';
 import type { Runtime } from '../../src/soul/index.js';
-import type { EphemeralInjection } from '../../src/storage/projector.js';
 import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js';
 import { makeEndTurnResponse } from '../soul/fixtures/common.js';
 import { ScriptedKosongAdapter } from '../soul/fixtures/scripted-kosong.js';
@@ -49,6 +48,7 @@ import {
   createNoopCompactionProvider,
   createNoopJournalCapability,
 } from './fixtures/slice3-harness.js';
+import { makeRealSubcomponents } from './fixtures/real-subcomponents.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -87,10 +87,9 @@ function buildManager(opts: BuildOpts): {
   stateMachine: SessionLifecycleStateMachine;
   eventBus: SessionEventBus;
   runtime: Runtime;
-  stashSpy: ReturnType<typeof vi.fn<(inj: EphemeralInjection) => void>>;
 } {
   const stateMachine = new SessionLifecycleStateMachine();
-  const gate = new LifecycleGateFacade(stateMachine);
+  const gate = new SoulLifecycleGate(stateMachine);
   const context = createHarnessContextState();
   const journal = new InMemorySessionJournalImpl();
   const eventBus = new SessionEventBus();
@@ -108,16 +107,6 @@ function buildManager(opts: BuildOpts): {
     }),
   });
 
-  // Spy on stashEphemeralInjection so M1 can assert on the exact
-  // payload the manager handed to ContextState without having to
-  // reconstruct the buildMessages drain path.
-  const stashSpy = vi.fn<(inj: EphemeralInjection) => void>();
-  const originalStash = context.stashEphemeralInjection.bind(context);
-  context.stashEphemeralInjection = (inj: EphemeralInjection): void => {
-    stashSpy(inj);
-    originalStash(inj);
-  };
-
   const manager = new TurnManager({
     contextState: context,
     sessionJournal: journal,
@@ -132,21 +121,26 @@ function buildManager(opts: BuildOpts): {
       ? { dynamicInjectionManager: opts.dynamicInjectionManager }
       : {}),
     ...(opts.hookEngine !== undefined ? { hookEngine: opts.hookEngine } : {}),
+    ...makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+    }),
   });
-  return { manager, context, journal, stateMachine, eventBus, runtime, stashSpy };
+  return { manager, context, journal, stateMachine, eventBus, runtime };
 }
 
 // ── M1: Dynamic injection wiring in launchTurn ─────────────────────────
 
 describe('Slice 3.6 M1 — dynamic injection in launchTurn', () => {
-  it('stashes a plan-mode system_reminder when plan mode is on', async () => {
+  it('durably writes a plan-mode system_reminder when plan mode is on', async () => {
     const kosong = new ScriptedKosongAdapter({
       responses: [makeEndTurnResponse('ok')],
     });
     const dynamicInjectionManager = new DynamicInjectionManager({
       initialProviders: [new PlanModeInjectionProvider()],
     });
-    const { manager, context, stashSpy } = buildManager({
+    const { manager, context } = buildManager({
       kosong,
       dynamicInjectionManager,
       planMode: true,
@@ -158,35 +152,34 @@ describe('Slice 3.6 M1 — dynamic injection in launchTurn', () => {
     if (!('turn_id' in response)) throw new Error('expected turn_id');
     await manager.awaitTurn(response.turn_id);
 
-    // The PlanMode provider stashed exactly one system_reminder
-    // injection. We don't care about downstream drain here — stashSpy
-    // pins the point at which the manager handed the injection to
-    // ContextState (launchTurn, before the notification drain).
-    const systemReminders = stashSpy.mock.calls
-      .map((c) => c[0])
-      .filter((inj): inj is EphemeralInjection => inj.kind === 'system_reminder');
-    expect(systemReminders).toHaveLength(1);
-    expect(systemReminders[0]?.content as string).toContain('Plan mode is active');
-
-    // Sanity — the injection was actually drained into the Soul
-    // turn's message pile via the normal buildMessages path.
-    const userMessages = kosong.calls[0]?.messages.filter((m) => m.role === 'user') ?? [];
-    const joined = userMessages
+    // Phase 1: the PlanMode provider writes durably via
+    // appendSystemReminder. Verify the content appears in
+    // buildMessages() output.
+    const messages = context.buildMessages();
+    const joined = messages
       .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
       .join('\n');
     expect(joined).toContain('Plan mode is active');
     expect(joined).toContain('<system-reminder>');
-    void context;
+
+    // Sanity — the injection was also visible to the Soul turn's
+    // LLM call via the normal buildMessages path.
+    const userMessages = kosong.calls[0]?.messages.filter((m) => m.role === 'user') ?? [];
+    const kosongJoined = userMessages
+      .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+      .join('\n');
+    expect(kosongJoined).toContain('Plan mode is active');
+    expect(kosongJoined).toContain('<system-reminder>');
   });
 
-  it('stashes nothing when plan mode is off (no-op path)', async () => {
+  it('writes nothing when plan mode is off (no-op path)', async () => {
     const kosong = new ScriptedKosongAdapter({
       responses: [makeEndTurnResponse('ok')],
     });
     const dynamicInjectionManager = new DynamicInjectionManager({
       initialProviders: [new PlanModeInjectionProvider()],
     });
-    const { manager, stashSpy } = buildManager({
+    const { manager, context } = buildManager({
       kosong,
       dynamicInjectionManager,
       planMode: false,
@@ -198,10 +191,12 @@ describe('Slice 3.6 M1 — dynamic injection in launchTurn', () => {
     if (!('turn_id' in response)) throw new Error('expected turn_id');
     await manager.awaitTurn(response.turn_id);
 
-    const systemReminders = stashSpy.mock.calls
-      .map((c) => c[0])
-      .filter((inj): inj is EphemeralInjection => inj.kind === 'system_reminder');
-    expect(systemReminders).toHaveLength(0);
+    // No plan-mode system_reminder should appear in buildMessages().
+    const messages = context.buildMessages();
+    const joined = messages
+      .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+      .join('\n');
+    expect(joined).not.toContain('Plan mode is active');
   });
 
   it('reads the live plan-mode flag via setPlanMode between turns', async () => {
@@ -214,7 +209,7 @@ describe('Slice 3.6 M1 — dynamic injection in launchTurn', () => {
     const dynamicInjectionManager = new DynamicInjectionManager({
       initialProviders: [new PlanModeInjectionProvider()],
     });
-    const { manager, stashSpy } = buildManager({
+    const { manager, context } = buildManager({
       kosong,
       dynamicInjectionManager,
       planMode: false,
@@ -223,9 +218,13 @@ describe('Slice 3.6 M1 — dynamic injection in launchTurn', () => {
     const r1 = await manager.handlePrompt({ data: { input: { text: 'first' } } });
     if (!('turn_id' in r1)) throw new Error('expected turn_id');
     await manager.awaitTurn(r1.turn_id);
-    expect(
-      stashSpy.mock.calls.map((c) => c[0]).filter((inj) => inj.kind === 'system_reminder'),
-    ).toHaveLength(0);
+
+    // After turn 1 with plan mode off: no plan-mode reminder in history.
+    const messagesAfterT1 = context.buildMessages();
+    const joinedT1 = messagesAfterT1
+      .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+      .join('\n');
+    expect(joinedT1).not.toContain('Plan mode is active');
 
     manager.setPlanMode(true);
 
@@ -233,10 +232,12 @@ describe('Slice 3.6 M1 — dynamic injection in launchTurn', () => {
     if (!('turn_id' in r2)) throw new Error('expected turn_id');
     await manager.awaitTurn(r2.turn_id);
 
-    const reminders = stashSpy.mock.calls
-      .map((c) => c[0])
-      .filter((inj) => inj.kind === 'system_reminder');
-    expect(reminders).toHaveLength(1);
+    // After turn 2 with plan mode on: plan-mode reminder should now appear.
+    const messagesAfterT2 = context.buildMessages();
+    const joinedT2 = messagesAfterT2
+      .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+      .join('\n');
+    expect(joinedT2).toContain('Plan mode is active');
   });
 });
 

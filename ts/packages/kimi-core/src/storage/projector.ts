@@ -24,8 +24,8 @@ export interface ProjectionOptions {
 export interface ConversationProjector {
   project(
     snapshot: ContextSnapshot,
-    ephemeralInjections: readonly EphemeralInjection[],
-    options: ProjectionOptions,
+    ephemeralInjections?: readonly EphemeralInjection[] | ProjectionOptions,
+    options?: ProjectionOptions,
   ): Message[];
 }
 
@@ -51,10 +51,18 @@ export interface ConversationProjector {
 export class DefaultConversationProjector implements ConversationProjector {
   project(
     snapshot: ContextSnapshot,
-    ephemeralInjections: readonly EphemeralInjection[],
-    _options: ProjectionOptions,
+    ephemeralInjectionsOrOptions?: readonly EphemeralInjection[] | ProjectionOptions,
+    options?: ProjectionOptions,
   ): Message[] {
-    void _options;
+    // Phase 1 backward-compat: support both 2-arg and 3-arg signatures.
+    // When called with 2 args as project(snapshot, options), the second
+    // parameter is a plain object (not an array). Detect and route.
+    const ephemeralInjections: readonly EphemeralInjection[] = Array.isArray(
+      ephemeralInjectionsOrOptions,
+    )
+      ? ephemeralInjectionsOrOptions
+      : [];
+    void options;
 
     const merged = mergeAdjacentUserMessages(snapshot.history);
 
@@ -142,8 +150,37 @@ function renderNotificationXml(data: Record<string, unknown>): string {
   if (title.length > 0) lines.push(`Title: ${title}`);
   if (severity.length > 0) lines.push(`Severity: ${severity}`);
   if (body.length > 0) lines.push(body);
+
+  // Slice 6.1 — append <task-notification> block with truncated tail
+  // output when the notification originates from a background task.
+  if (data['source_kind'] === 'background_task') {
+    const tailRaw = typeof data['tail_output'] === 'string' ? data['tail_output'] : '';
+    if (tailRaw.length > 0) {
+      const truncated = truncateTailOutput(tailRaw, 20, 3000);
+      lines.push('<task-notification>');
+      lines.push(truncated);
+      lines.push('</task-notification>');
+    }
+    // When tail is empty, skip the block entirely (no empty tags)
+  }
+
   lines.push('</notification>');
   return lines.join('\n');
+}
+
+/**
+ * Slice 6.1 — truncate tail output to at most `maxLines` lines and
+ * `maxChars` characters. Takes the *last* N lines (tail), then trims
+ * from the front if the character budget is exceeded.
+ */
+function truncateTailOutput(raw: string, maxLines: number, maxChars: number): string {
+  const allLines = raw.split('\n');
+  const tailLines = allLines.length > maxLines ? allLines.slice(-maxLines) : allLines;
+  let result = tailLines.join('\n');
+  if (result.length > maxChars) {
+    result = result.slice(-maxChars);
+  }
+  return result;
 }
 
 function stringAttr(value: unknown, fallback: string): string {

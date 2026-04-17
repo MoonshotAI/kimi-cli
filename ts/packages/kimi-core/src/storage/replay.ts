@@ -177,7 +177,15 @@ const KNOWN_RECORD_TYPES: ReadonlySet<string> = new Set([
   'approval_request',
   'approval_response',
   'team_mail',
-  'subagent_event',
+  // Phase 6 (决策 #88): the legacy `subagent_event` envelope is gone.
+  // Each subagent persists its own wire.jsonl; the parent wire only
+  // carries these three lifecycle references. A pre-Phase-6 session that
+  // still contains a `subagent_event` row falls into the "unknown record
+  // type" branch below — replay skips it with a warning rather than
+  // marking the session broken.
+  'subagent_spawned',
+  'subagent_completed',
+  'subagent_failed',
   'ownership_changed',
   'context_edit',
 ]);

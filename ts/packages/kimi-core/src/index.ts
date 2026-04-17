@@ -38,7 +38,15 @@ export type {
   ToolUpdate,
   TurnResult,
 } from './soul/types.js';
-export type { Runtime } from './soul/runtime.js';
+export type {
+  CompactionBoundaryRecord,
+  CompactionOptions,
+  CompactionProvider,
+  JournalCapability,
+  RotateResult,
+  Runtime,
+  SummaryMessage as RuntimeSummaryMessage,
+} from './soul/runtime.js';
 export { MaxStepsExceededError } from './soul/errors.js';
 
 // ── SoulPlus (Slice 3) ──────────────────────────────────────────────────
@@ -54,7 +62,7 @@ export type {
   TurnTrigger,
 } from './soul-plus/types.js';
 export { SessionLifecycleStateMachine } from './soul-plus/lifecycle-state-machine.js';
-export { LifecycleGateFacade } from './soul-plus/lifecycle-gate.js';
+export { SoulLifecycleGate } from './soul-plus/soul-lifecycle-gate.js';
 export { TurnManager } from './soul-plus/turn-manager.js';
 export { SoulRegistry } from './soul-plus/soul-registry.js';
 export { TransactionalHandlerRegistry } from './soul-plus/transactional-handler-registry.js';

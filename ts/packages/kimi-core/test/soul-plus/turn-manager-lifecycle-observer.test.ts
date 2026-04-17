@@ -20,7 +20,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   SessionEventBus,
   SessionLifecycleStateMachine,
   SoulRegistry,
@@ -37,6 +37,7 @@ import {
   createNoopCompactionProvider,
   createNoopJournalCapability,
 } from './fixtures/slice3-harness.js';
+import { makeRealSubcomponents } from './fixtures/real-subcomponents.js';
 
 function buildManager(opts: {
   readonly kosong: ScriptedKosongAdapter;
@@ -46,7 +47,7 @@ function buildManager(opts: {
   runtime: Runtime;
 } {
   const stateMachine = new SessionLifecycleStateMachine();
-  const gate = new LifecycleGateFacade(stateMachine);
+  const gate = new SoulLifecycleGate(stateMachine);
   const context = createHarnessContextState();
   const journal = new InMemorySessionJournalImpl();
   const eventBus = new SessionEventBus();
@@ -71,6 +72,11 @@ function buildManager(opts: {
     lifecycleStateMachine: stateMachine,
     soulRegistry,
     tools: opts.tools ?? [],
+    ...makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+    }),
   });
   return { manager, runtime };
 }

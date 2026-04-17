@@ -43,7 +43,9 @@ describe('AgentTypeRegistry', () => {
     it('round-trips a definition', () => {
       const registry = new AgentTypeRegistry();
       registry.register('coder', CODER_DEF);
-      expect(registry.resolve('coder')).toEqual(CODER_DEF);
+      // resolve() now applies defaults (e.g. supportsBackground: true),
+      // so use toMatchObject to check all original fields are preserved.
+      expect(registry.resolve('coder')).toMatchObject(CODER_DEF);
     });
 
     it('throws for unknown type', () => {

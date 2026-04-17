@@ -53,4 +53,47 @@ export class PathConfig {
   archivePath(sessionId: string, n: number): string {
     return join(this.sessionDir(sessionId), `wire.${n}.jsonl`);
   }
+
+  /**
+   * Slice 5 / 决策 #96 L1 — destination for over-budget tool results that
+   * the orchestrator persists to disk. Layout follows v2 §10.6.3:
+   * `<sessionDir>/tool-results/<toolCallId>.txt`.
+   */
+  toolResultArchivePath(sessionId: string, toolCallId: string): string {
+    return join(this.sessionDir(sessionId), 'tool-results', `${toolCallId}.txt`);
+  }
+
+  // ── Slice 7.2 (决策 #100) — MCP path helpers ─────────────────────────
+
+  /** Per-user MCP server config: `$KIMI_HOME/mcp.json`. */
+  mcpConfigPath(): string {
+    return join(this.home, 'mcp.json');
+  }
+
+  /** Per-project MCP server config: `<workDir>/.kimi/mcp.json`. */
+  mcpProjectConfigPath(workDir: string): string {
+    return join(workDir, '.kimi', 'mcp.json');
+  }
+
+  /** Directory holding per-server OAuth credentials. */
+  mcpAuthDir(): string {
+    return join(this.home, 'mcp-auth');
+  }
+
+  /** Per-server OAuth credential file. */
+  mcpAuthPath(serverId: string): string {
+    return join(this.mcpAuthDir(), `${serverId}.json`);
+  }
+
+  /**
+   * Enterprise/managed MCP config. Platform-specific: `/etc/kimi/mcp.json`
+   * on POSIX systems, `%ProgramData%/Kimi/mcp.json` on Windows.
+   */
+  enterpriseMcpConfigPath(): string {
+    if (process.platform === 'win32') {
+      const programData = process.env['ProgramData'] ?? 'C:\\ProgramData';
+      return join(programData, 'Kimi', 'mcp.json');
+    }
+    return '/etc/kimi/mcp.json';
+  }
 }

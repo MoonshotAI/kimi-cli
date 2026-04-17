@@ -16,6 +16,7 @@
 
 import { z } from 'zod';
 
+import type { AgentTypeRegistry } from '../soul-plus/agent-type-registry.js';
 import type { SpawnRequest, SubagentHost } from '../soul-plus/subagent-types.js';
 import type { ToolResult, ToolUpdate } from '../soul/types.js';
 import type { BackgroundProcessManager } from './background/manager.js';
@@ -98,6 +99,7 @@ export class AgentTool {
     private readonly subagentHost: SubagentHost,
     private readonly parentAgentId: string,
     private readonly backgroundManager?: BackgroundProcessManager | undefined,
+    private readonly typeRegistry?: AgentTypeRegistry | undefined,
   ) {}
 
   async execute(
@@ -107,10 +109,24 @@ export class AgentTool {
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult> {
     try {
+      const agentName = args.agentName ?? 'coder';
+
+      // Guard: reject background execution if the agent type does not support it
+      if (args.runInBackground && this.typeRegistry?.has(agentName)) {
+        const typeDef = this.typeRegistry.resolve(agentName);
+        if (typeDef.supportsBackground === false) {
+          return {
+            content: `Agent type "${agentName}" does not support background execution. ` +
+              'Run it in foreground instead.',
+            isError: true,
+          };
+        }
+      }
+
       const request: SpawnRequest = {
         parentAgentId: this.parentAgentId,
         parentToolCallId: toolCallId,
-        agentName: args.agentName ?? 'coder',
+        agentName,
         prompt: args.prompt,
         description: args.description,
         runInBackground: args.runInBackground ?? false,

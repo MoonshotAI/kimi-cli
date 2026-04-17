@@ -8,6 +8,7 @@
  * shell runner boots a `KimiCoreClient` wrapping `@moonshot-ai/core`.
  */
 
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -260,22 +261,15 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     kimiSkills,
   });
 
-  // 4. Assemble Runtime — kosong adapter + kosong-backed compaction
-  //    + stub journal capability (Slice 4.1 does not exercise compaction).
+  // 4. Assemble Runtime + standalone compaction capabilities.
+  //    Phase 2: `Runtime` collapsed to `{kosong}`; compactionProvider /
+  //    journalCapability now flow into `SessionManager.createSession`
+  //    (and `KimiCoreClient` deps) as their own top-level options.
   const runtime: Runtime = createRuntime({
     kosong: createKosongAdapter({ provider }),
-    compactionProvider: createKosongCompactionProvider(provider),
-    lifecycle: {
-      // SoulPlus overrides this field with its own LifecycleGateFacade,
-      // so a throwing placeholder is fine — it would only be invoked if
-      // Soul were to call lifecycle through the passed-in Runtime,
-      // which never happens in practice (see soul-plus.ts).
-      transitionTo: async () => {
-        throw new Error('host lifecycle gate should have been overridden by SoulPlus');
-      },
-    },
-    journal: createStubJournalCapability(),
   });
+  const compactionProvider = createKosongCompactionProvider(provider);
+  const journalCapability = createStubJournalCapability();
 
   // 5. SessionManager — real filesystem-backed lifecycle.
   const sessionManager = new SessionManager(pathConfig);
@@ -397,6 +391,8 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   const wireClient = new KimiCoreClient({
     sessionManager,
     runtime,
+    compactionProvider,
+    journalCapability,
     model: modelAlias,
     systemPrompt,
     buildTools,
@@ -553,6 +549,7 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     process.stderr.write(`\nTo resume this session: kimi -r ${bootstrap.sessionId}\n\n`);
     process.exit(0);
   };
+  try { execSync('stty -ixon', { stdio: 'ignore' }); } catch { /* ignore */ }
   mode.start();
 }
 
