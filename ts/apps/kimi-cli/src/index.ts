@@ -74,7 +74,9 @@ import { runPrintMode } from './app/PrintMode.js';
 import { createProgram } from './cli/commands.js';
 import type { CLIOptions, UIMode } from './cli/options.js';
 import { OptionConflictError, validateOptions } from './cli/options.js';
-import { StubUrlFetcher } from './providers/stub-fetch-url.js';
+import { LocalFetchURLProvider } from './providers/local-fetch-url.js';
+import { MoonshotFetchURLProvider } from './providers/moonshot-fetch-url.js';
+import { MoonshotWebSearchProvider } from './providers/moonshot-web-search.js';
 import { StubWebSearchProvider } from './providers/stub-web-search.js';
 import type { WireClient } from './wire/client.js';
 import { KimiCoreClient } from './wire/kimi-core-client.js';
@@ -314,9 +316,12 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   //    `WorkspaceConfig`; background-execution tools share a single
   //    `BackgroundProcessManager` so `/task list` sees the same
   //    registry; the TODO store is process-local (Slice 3.6 contract).
-  //    Web search + URL fetch ship with stub providers that throw a
-  //    clear "OAuth required" error — the Moonshot services need OAuth
-  //    which is Phase 5 work.
+  //    Web search uses `MoonshotWebSearchProvider` when the
+  //    `managed:kimi-code` OAuth manager is configured, otherwise it
+  //    falls back to `StubWebSearchProvider` (no server-side index
+  //    without auth). URL fetching always has a `LocalFetchURLProvider`
+  //    fallback so the LLM can still read public pages even without
+  //    OAuth (Phase 19 Slice A).
   //
   //    Per-session tools (AskUserQuestion, ExitPlanMode) need
   //    session-local wiring. They are constructed inside `buildTools`
@@ -384,8 +389,34 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   // sessionId isn't resolved yet; we defer attach to after session resolve
   // below. The `buildTools` closure captures backgroundManager by ref.
   const todoStore = new InMemoryTodoStore();
-  const stubWebSearch = new StubWebSearchProvider();
-  const stubUrlFetcher = new StubUrlFetcher();
+
+  // Phase 19 Slice A — External Tools:
+  //  - With `managed:kimi-code` OAuth: use the real Moonshot coding
+  //    search + fetch services, falling back to a local extractor when
+  //    the fetch service is unreachable.
+  //  - Without OAuth: web search surfaces a clear "not configured" error
+  //    (matches Python semantics — search requires a server-side index)
+  //    while URL fetching silently degrades to a local-only extractor so
+  //    the LLM can still read public pages.
+  const kimiCodeOAuth = oauthManagers.get('managed:kimi-code');
+  const moonshotFetchBase = resolveMoonshotBaseUrl(kimiConfig);
+  const hostUserAgent = `kimi-cli/${getVersion()}`;
+  const localUrlFetcher = new LocalFetchURLProvider();
+  const webSearch = kimiCodeOAuth !== undefined
+    ? new MoonshotWebSearchProvider({
+        oauthManager: kimiCodeOAuth,
+        baseUrl: `${moonshotFetchBase}/search`,
+        userAgent: hostUserAgent,
+      })
+    : new StubWebSearchProvider();
+  const urlFetcher = kimiCodeOAuth !== undefined
+    ? new MoonshotFetchURLProvider({
+        oauthManager: kimiCodeOAuth,
+        baseUrl: `${moonshotFetchBase}/fetch`,
+        userAgent: hostUserAgent,
+        localFallback: localUrlFetcher,
+      })
+    : localUrlFetcher;
 
   // Phase 14 §1.2 — resolve the shell Environment once at boot. All
   // per-session ShellTool instances share it so PowerShell vs bash is
@@ -432,8 +463,8 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
       new TaskListTool(backgroundManager),
       new TaskOutputTool(backgroundManager),
       new TaskStopTool(backgroundManager),
-      new WebSearchTool(stubWebSearch),
-      new FetchURLTool(stubUrlFetcher),
+      new WebSearchTool(webSearch),
+      new FetchURLTool(urlFetcher),
       ...mcpTools,
     ];
   };
@@ -549,6 +580,30 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     ...(mcpManager !== undefined ? { mcpManager } : {}),
     ...(oauthManagers.size > 0 ? { oauthManagers } : {}),
   };
+}
+
+/**
+ * Phase 19 Slice A — derive the Moonshot coding base URL.
+ *
+ * Priority:
+ *   1. `providers['managed:kimi-code'].baseUrl` from config (with any
+ *      trailing slash stripped) — lets the user override per-install.
+ *   2. `KIMI_CODE_BASE_URL` env var — test / ops hatch.
+ *   3. `https://api.kimi.com/coding/v1` — the production default that
+ *      mirrors Python `auth/platforms.py::_kimi_code_base_url`.
+ *
+ * The returned URL is the base; callers append `/search` or `/fetch`.
+ */
+function resolveMoonshotBaseUrl(kimiConfig: KimiConfig): string {
+  const configured = kimiConfig.providers['managed:kimi-code']?.baseUrl;
+  const fromEnv = process.env['KIMI_CODE_BASE_URL'];
+  const raw =
+    configured !== undefined && configured.length > 0
+      ? configured
+      : fromEnv !== undefined && fromEnv.length > 0
+        ? fromEnv
+        : 'https://api.kimi.com/coding/v1';
+  return raw.replace(/\/+$/, '');
 }
 
 /**
