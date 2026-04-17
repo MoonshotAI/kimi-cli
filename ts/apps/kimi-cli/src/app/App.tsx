@@ -60,6 +60,13 @@ export default function App({
     handleQuestionResponse,
     toasts,
     dismissToast,
+    queuedMessages,
+    enqueueMessage,
+    removeFromQueue,
+    editQueueItem,
+    steerMessage,
+    recallLastQueued,
+    dequeueFirst,
   } = useWire(wireClient, state.sessionId, setState);
 
   const { sessions, loadingSessions, refreshSessions, switchSession } = useSession({
@@ -202,6 +209,13 @@ export default function App({
       refreshSessions,
       switchSession,
       setShowSessionPicker,
+      enqueueMessage,
+      steerMessage,
+      removeFromQueue,
+      editQueueItem,
+      recallLastQueued,
+      dequeueFirst,
+      queuedMessages,
     }),
     [
       appendTranscriptEntry,
@@ -214,6 +228,13 @@ export default function App({
       refreshSessions,
       switchSession,
       setShowSessionPicker,
+      enqueueMessage,
+      steerMessage,
+      removeFromQueue,
+      editQueueItem,
+      recallLastQueued,
+      dequeueFirst,
+      queuedMessages,
     ],
   );
 
