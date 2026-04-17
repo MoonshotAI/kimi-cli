@@ -439,10 +439,12 @@ describe('Resume integration (Phase 15 A.7)', () => {
       // Journal repair wrote ≥ 2 synthetic records (tool_result + turn_end).
       expect(repairResult.syntheticCount).toBeGreaterThanOrEqual(2);
 
-      // Subagent cleanup flipped the running instance only.
+      // Subagent cleanup flipped the running instance only. Slice 5.3 A1:
+      // v2 §8.2 mandates `'lost'` (not `'failed'`) for residual `'running'`
+      // records — `'failed'` is reserved for runtime errors.
       expect(staleIds).toEqual(['sa_alive_on_crash']);
       const stale = await store.getInstance('sa_alive_on_crash');
-      expect(stale!.status).toBe('failed');
+      expect(stale!.status).toBe('lost');
       const done = await store.getInstance('sa_done_before_crash');
       expect(done!.status).toBe('completed');
     } finally {

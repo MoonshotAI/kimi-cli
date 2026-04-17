@@ -11,7 +11,10 @@
  *   - **Background**: returns immediately with agent id, result delivered
  *     via notification
  *
- * Slice 7 stub: `execute()` throws — the implementer fills it in.
+ * Slice 5.3 — foreground + background execution paths implemented.
+ * Python parity: `kimi_cli.tools.agent.__init__.AgentTool` (text-form
+ * `ToolResult.content`; structured output via `AgentToolOutputSchema` is
+ * drift-guard only, not consumed at runtime — see TD1).
  */
 
 import { z } from 'zod';

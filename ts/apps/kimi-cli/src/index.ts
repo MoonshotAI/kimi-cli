@@ -14,6 +14,7 @@ import { resolve } from 'node:path';
 
 import {
   AgentRegistry,
+  AgentTypeRegistry,
   AskUserQuestionTool,
   BackgroundProcessManager,
   BashTool,
@@ -51,7 +52,9 @@ import {
   createStubJournalCapability,
   detectEnvironmentFromNode,
   extendWorkspaceWithSkillRoots,
+  getBundledAgentYamlPath,
   loadConfig as loadKimiCoreConfig,
+  loadSubagentTypes,
   parseMcpConfig,
   resolveSkillRoots,
   getDeviceHeaders,
@@ -448,6 +451,35 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   //      otherwise      → create a new session
   const maxContextSize = kimiConfig.models?.[modelAlias]?.maxContextSize ?? 200_000;
 
+  // Slice 5.3 — load subagent types from agent.yaml so SessionManager
+  // can wire the `Agent` collaboration tool into SoulPlus. Failure
+  // modes diverge on whether the user explicitly asked for a file
+  // (Python parity — `load_agent` hard-fails on --agent-file):
+  //   * `--agent-file <path>` supplied → any load failure is fatal so
+  //     the user can't silently end up in "Agent tool disabled" when
+  //     they intended a specific agent spec.
+  //   * bundled default only → soft-skip with a stderr warning; the
+  //     session still boots, just without subagent support (embedder-
+  //     cutoff per v2 §10.3.1).
+  let agentTypeRegistry: AgentTypeRegistry | undefined;
+  try {
+    const yamlPath = opts.agentFile ?? (await getBundledAgentYamlPath());
+    const types = await loadSubagentTypes(yamlPath);
+    const registry = new AgentTypeRegistry();
+    for (const def of types) {
+      registry.register(def.name, def);
+    }
+    agentTypeRegistry = registry;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (opts.agentFile !== undefined) {
+      throw new Error(`failed to load --agent-file ${opts.agentFile}: ${msg}`);
+    }
+    process.stderr.write(
+      `warning: failed to load bundled subagent types; Agent tool will be disabled: ${msg}\n`,
+    );
+  }
+
   const wireClient = new KimiCoreClient({
     sessionManager,
     runtime,
@@ -461,6 +493,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     config: kimiConfig,
     maxContextSize,
     rebuildRuntimeForModel,
+    ...(agentTypeRegistry !== undefined ? { agentTypeRegistry } : {}),
   });
 
   let sessionId: string;

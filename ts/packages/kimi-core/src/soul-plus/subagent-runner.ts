@@ -434,18 +434,25 @@ export async function runSubagentTurn(
 // ── Stale cleanup (T4.4) ──────────────────────────────────────────────
 
 /**
- * Mark all subagent instances with status='running' as 'failed'.
+ * Mark all subagent instances with status='running' as 'lost'.
  * Called during session resume to clean up subagents that were running
  * when the session was interrupted.
  *
- * Python parity: `app.py:_cleanup_stale_foreground_subagents()`
+ * Per v2 §8.2: residual running records become 'lost', NOT 'failed' —
+ * 'failed' is reserved for subagents that hit a runtime error during
+ * their own turn (caught by `runSubagentTurn`'s inner try/catch). 'lost'
+ * semantically captures "was running when the parent process died, final
+ * outcome unknown".
+ *
+ * Python parity: `app.py:_cleanup_stale_foreground_subagents()` writes
+ * `'failed'` in Python; TS intentionally diverges here to track v2.
  */
 export async function cleanupStaleSubagents(store: SubagentStore): Promise<string[]> {
   const instances = await store.listInstances();
   const stale = instances.filter((r) => r.status === 'running');
   const staleIds: string[] = [];
   for (const record of stale) {
-    await store.updateInstance(record.agent_id, { status: 'failed' });
+    await store.updateInstance(record.agent_id, { status: 'lost' });
     staleIds.push(record.agent_id);
   }
   return staleIds;

@@ -413,7 +413,11 @@ export { SubagentStore } from './soul-plus/subagent-store.js';
 export type { SubagentInstanceRecord, CreateInstanceOpts } from './soul-plus/subagent-store.js';
 export { AgentTypeRegistry } from './soul-plus/agent-type-registry.js';
 export type { AgentTypeDefinition } from './soul-plus/agent-type-registry.js';
-export { loadAgentSpec, loadSubagentTypes } from './soul-plus/agent-yaml-loader.js';
+export {
+  loadAgentSpec,
+  loadSubagentTypes,
+  getBundledAgentYamlPath,
+} from './soul-plus/agent-yaml-loader.js';
 export type { ResolvedAgentSpec } from './soul-plus/agent-yaml-loader.js';
 export { runSubagentTurn, cleanupStaleSubagents } from './soul-plus/subagent-runner.js';
 export type { SubagentRunnerDeps } from './soul-plus/subagent-runner.js';

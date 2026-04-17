@@ -83,4 +83,34 @@ describe('ToolCallComponent subagent rendering', () => {
     expect(out).not.toMatch(/subagent/);
     expect(out).not.toMatch(/↳/);
   });
+
+  // ── Slice 5.3 T6 — Agent header key-argument preview ──────────────────
+  //
+  // Red bar today: `extractKeyArgument`'s `keyMap` in ToolCallComponent.ts
+  // does not list `Agent` (gap G6 / Change C6.1). Without that entry the
+  // function falls back to `Object.keys(args)`, which — with the current
+  // AgentToolInput shape — yields `prompt` first, so the header previews
+  // the full LLM prompt rather than the short `description`. Once C6.1
+  // lands `keyMap.Agent = ['description', 'prompt']`, this test flips to
+  // green.
+  it("Agent tool header prefers `description` over `prompt`", () => {
+    const tc = new ToolCallComponent(
+      makeToolCall({
+        id: 'tc_agent_kmap',
+        name: 'Agent',
+        args: {
+          // `prompt` is deliberately listed first so the keyless fallback
+          // path (Object.keys order) would surface it. The keyMap entry
+          // must override to pick `description` first.
+          prompt: 'Find all auth code under src/ and report findings',
+          description: 'Explore auth module',
+        },
+      }),
+      undefined,
+      darkColors,
+    );
+    const out = strip(renderAll(tc));
+    expect(out).toMatch(/\(Explore auth module\)/);
+    expect(out).not.toMatch(/Find all auth code/);
+  });
 });

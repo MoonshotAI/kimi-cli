@@ -9,7 +9,7 @@
  *   - Discover subagent type definitions from the parent agent.yaml
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 
 import { load as yamlLoad } from 'js-yaml';
@@ -346,4 +346,47 @@ export async function loadSubagentTypes(
   }
 
   return types;
+}
+
+// ── Bundled YAML discovery (Slice 5.3 D4) ─────────────────────────────
+
+/**
+ * Resolve the absolute path to the bundled default `agent.yaml`.
+ *
+ * `@moonshot-ai/core` ships with `agents/default/agent.yaml` (plus its
+ * sibling `coder.yaml` / `explore.yaml` / `plan.yaml`) so embedders
+ * don't need to know where the file physically lives. Because the
+ * module is loaded from `src/soul-plus/` in dev (tsx) and from a
+ * flattened `dist/` after bundling, this helper probes both layouts
+ * via `fs.stat` and returns the first path that exists.
+ *
+ * Requires `packages/kimi-core/agents/` to appear in the package's
+ * `files` array so the yaml fixtures get published alongside `dist/`.
+ *
+ * Throws when neither candidate resolves — a packaging regression.
+ */
+export async function getBundledAgentYamlPath(): Promise<string> {
+  const moduleDir = import.meta.dirname;
+  // Dev layout: this file lives at `src/soul-plus/` so `../../agents`
+  // lands on the package root `agents/` directory. Bundled layout:
+  // the flattened `dist/` sits one level below the package root so
+  // `../agents` is the sibling `agents/` directory.
+  const candidates = [
+    resolve(moduleDir, '..', '..', 'agents', 'default', 'agent.yaml'),
+    resolve(moduleDir, '..', 'agents', 'default', 'agent.yaml'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const info = await stat(candidate);
+      if (info.isFile()) return candidate;
+    } catch {
+      // try the next candidate
+    }
+  }
+  throw new Error(
+    `getBundledAgentYamlPath: unable to locate bundled agent.yaml. ` +
+      `Checked: ${candidates.join(', ')}. ` +
+      `The '@moonshot-ai/core' package must include 'agents/' in its ` +
+      `published 'files' array.`,
+  );
 }

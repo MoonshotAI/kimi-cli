@@ -24,6 +24,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
+import type { AgentTypeRegistry } from '../soul-plus/agent-type-registry.js';
 import { SoulLifecycleGate } from '../soul-plus/soul-lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
 import type { ShellDeliverCallback } from '../soul-plus/notification-manager.js';
@@ -33,6 +34,8 @@ import { DefaultSessionControl, type SessionControlHandler } from '../soul-plus/
 import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
 import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
+import { cleanupStaleSubagents } from '../soul-plus/subagent-runner.js';
+import { SubagentStore } from '../soul-plus/subagent-store.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
 import type {
   CompactionConfig,
@@ -154,6 +157,15 @@ export interface CreateSessionOptions {
    * (typically the OS temp dir).
    */
   workspaceDir: string;
+  /**
+   * Slice 5.3 — subagent type registry. When provided, SessionManager
+   * constructs a per-session `SubagentStore` internally and forwards both
+   * into SoulPlusDeps so SoulPlus can register the `AgentTool` collaboration
+   * tool. When omitted, AgentTool is not registered and the session runs
+   * without subagent spawning capability (embedding-scenario cutoff per
+   * v2 §10.3.1).
+   */
+  agentTypeRegistry?: AgentTypeRegistry | undefined;
 }
 
 export interface ResumeSessionOptions {
@@ -186,6 +198,8 @@ export interface ResumeSessionOptions {
   compactionProvider?: CompactionProvider | undefined;
   /** Phase 2 — journal capability forwarded into SoulPlus. */
   journalCapability?: JournalCapability | undefined;
+  /** Slice 5.3 — see CreateSessionOptions.agentTypeRegistry. */
+  agentTypeRegistry?: AgentTypeRegistry | undefined;
 }
 
 /** A fully-assembled, running session. */
@@ -327,6 +341,19 @@ export class SessionManager {
       // permission + approval pipeline. Absent the option, TurnManager
       // continues to use its always-allow default.
       ...(options.orchestrator !== undefined ? { orchestrator: options.orchestrator } : {}),
+      // Slice 5.3 — subagent infra. When the host supplies an
+      // agentTypeRegistry we build a per-session SubagentStore internally
+      // so SoulPlus's `hasSubagentInfra` gate (soul-plus.ts) registers
+      // the `Agent` collaboration tool for this session.
+      ...(options.agentTypeRegistry !== undefined
+        ? {
+            subagentStore: new SubagentStore(sessionDir),
+            agentTypeRegistry: options.agentTypeRegistry,
+            sessionDir,
+            workDir: options.workspaceDir,
+            pathConfig: this.paths,
+          }
+        : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -471,6 +498,18 @@ export class SessionManager {
 
     const effectivePermissionMode = projected.permissionMode ?? options.permissionMode;
 
+    // Slice 5.3 — stale subagent cleanup (Python parity:
+    // `app.py:_cleanup_stale_foreground_subagents`). Runs BEFORE SoulPlus
+    // construction so the AgentTool sees a clean store. Safe no-op when
+    // `subagents/` doesn't exist yet (`listInstances()` returns []).
+    // v2 §8.2: residual `status='running'` records are rewritten as
+    // `'lost'` (NOT `'failed'`). See `cleanupStaleSubagents`.
+    let subagentStore: SubagentStore | undefined;
+    if (options.agentTypeRegistry !== undefined) {
+      subagentStore = new SubagentStore(sessionDir);
+      await cleanupStaleSubagents(subagentStore);
+    }
+
     const soulPlusDeps: SoulPlusDeps = {
       sessionId,
       contextState,
@@ -494,6 +533,19 @@ export class SessionManager {
       // Slice 4.2 — forward the optional orchestrator on the resume
       // path too so resumed sessions run the same tool pipeline.
       ...(options.orchestrator !== undefined ? { orchestrator: options.orchestrator } : {}),
+      // Slice 5.3 — subagent infra forward (same shape as createSession).
+      // `subagentStore` is constructed above together with the stale-
+      // cleanup pass; `workDir` prefers the persisted state.json value
+      // so resumed sessions keep the workspace they were created under.
+      ...(options.agentTypeRegistry !== undefined && subagentStore !== undefined
+        ? {
+            subagentStore,
+            agentTypeRegistry: options.agentTypeRegistry,
+            sessionDir,
+            workDir: stateData?.workspace_dir ?? process.cwd(),
+            pathConfig: this.paths,
+          }
+        : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
