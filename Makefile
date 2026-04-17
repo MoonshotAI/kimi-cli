@@ -141,7 +141,7 @@ build-bin: build-web build-vis ## Build the standalone executable with PyInstall
 build-bin-onedir: build-web build-vis ## Build the standalone executable with PyInstaller (one-dir mode).
 	@echo "==> Building PyInstaller binary (one-dir)"
 	@rm -rf dist/onedir dist/kimi
-	@uv run pyinstaller kimi.spec
+	@PYINSTALLER_ONEDIR=1 uv run pyinstaller kimi.spec
 	@if [ -f dist/kimi/kimi-exe.exe ]; then mv dist/kimi/kimi-exe.exe dist/kimi/kimi.exe; elif [ -f dist/kimi/kimi-exe ]; then mv dist/kimi/kimi-exe dist/kimi/kimi; fi
 	@mkdir -p dist/onedir && mv dist/kimi dist/onedir/
 .PHONY: ai-test
