@@ -7,7 +7,9 @@
 import {
   TUI,
   ProcessTerminal,
+  CombinedAutocompleteProvider,
   type Component,
+  type SlashCommand,
   Container,
   Spacer,
   Text,
@@ -85,6 +87,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   private footer: FooterComponent;
   private editor: CustomEditor;
   private loadingAnimation: MoonLoader | undefined;
+  private phaseSpinner: MoonLoader | undefined;
   private streamingComponent: AssistantMessageComponent | undefined;
   private toolOutputExpanded = false;
 
@@ -201,11 +204,24 @@ export class InteractiveMode implements WireHandlerDelegate {
 
   start(): void {
     this.renderWelcome();
+    this.setupAutocomplete();
     this.editorContainer.addChild(this.editor);
     this.ui.setFocus(this.editor);
     this.ui.start();
     void this.wireHandler.start();
     void this.fetchSessions();
+  }
+
+  private setupAutocomplete(): void {
+    const slashCommands: SlashCommand[] = this.registry.listAll().map((cmd) => ({
+      name: cmd.name,
+      description: cmd.description,
+    }));
+    const provider = new CombinedAutocompleteProvider(
+      slashCommands,
+      this.state.workDir,
+    );
+    this.editor.setAutocompleteProvider(provider);
   }
 
   async stop(): Promise<void> {
@@ -372,31 +388,43 @@ export class InteractiveMode implements WireHandlerDelegate {
     switch (effectiveMode) {
       case 'hidden':
         this.stopLoader();
+        this.stopPhaseSpinner();
         return;
       case 'waiting': {
-        this.stopLoader();
-        this.loadingAnimation = new MoonLoader(this.ui);
+        this.stopPhaseSpinner();
+        if (!this.loadingAnimation) {
+          this.loadingAnimation = new MoonLoader(this.ui, 'moon');
+        }
         this.activityContainer.addChild(new Spacer(1));
         this.activityContainer.addChild(this.loadingAnimation);
         break;
       }
       case 'thinking': {
         this.stopLoader();
+        if (!this.phaseSpinner) {
+          this.phaseSpinner = new MoonLoader(this.ui, 'braille', (s) => chalk.hex(this.colors.text)(s), 'thinking...');
+        }
         const text = this.livePane.thinkingText;
-        const lastLines = text.split('\n').slice(-4).join('\n');
         this.activityContainer.addChild(new Spacer(1));
-        this.activityContainer.addChild(
-          new Text(chalk.hex(this.colors.text)('⠋ thinking...'), 0, 0),
-        );
-        if (lastLines.length > 0) {
+        this.activityContainer.addChild(this.phaseSpinner);
+        if (text.length > 0) {
           this.activityContainer.addChild(
-            new Text(chalk.hex(this.colors.thinking).italic('  ' + lastLines), 0, 0),
+            new Text(chalk.hex(this.colors.thinking).italic('  ' + text), 0, 0),
           );
         }
         break;
       }
+      case 'composing': {
+        this.stopLoader();
+        if (!this.phaseSpinner) {
+          this.phaseSpinner = new MoonLoader(this.ui, 'braille', (s) => chalk.hex(this.colors.primary)(s), 'working...');
+        }
+        this.activityContainer.addChild(this.phaseSpinner);
+        break;
+      }
       case 'tool': {
         this.stopLoader();
+        this.stopPhaseSpinner();
         if (this.livePane.pendingToolCall) {
           this.activityContainer.addChild(new Spacer(1));
           this.activityContainer.addChild(
@@ -411,11 +439,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       }
       default: {
         this.stopLoader();
-        if (effectiveMode === 'composing') {
-          this.activityContainer.addChild(
-            new Text(chalk.hex(this.colors.primary)('⠋ composing...'), 0, 0),
-          );
-        }
+        this.stopPhaseSpinner();
         break;
       }
     }
@@ -425,6 +449,13 @@ export class InteractiveMode implements WireHandlerDelegate {
     if (this.loadingAnimation) {
       this.loadingAnimation.stop();
       this.loadingAnimation = undefined;
+    }
+  }
+
+  private stopPhaseSpinner(): void {
+    if (this.phaseSpinner) {
+      this.phaseSpinner.stop();
+      this.phaseSpinner = undefined;
     }
   }
 

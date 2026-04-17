@@ -2,20 +2,42 @@
  * Renders thinking content in the transcript.
  */
 
-import { Container, Text, Spacer } from '@mariozechner/pi-tui';
+import type { Component } from '@mariozechner/pi-tui';
+import { Container, Text } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import type { ColorPalette } from '../theme/colors.js';
 
-export class ThinkingComponent extends Container {
+const BULLET = '● ';
+const INDENT = '  ';
+
+export class ThinkingComponent implements Component {
+  private text: string;
+  private color: string;
+  private showMarker: boolean;
+
   constructor(text: string, colors: ColorPalette, showMarker: boolean = true) {
-    super();
-    this.addChild(new Spacer(1));
-    const prefix = showMarker ? '● ' : '  ';
-    const color = colors.thinking;
-    if (text.length === 0) {
-      this.addChild(new Text(chalk.hex(color)(prefix), 0, 0));
-    } else {
-      this.addChild(new Text(chalk.hex(color).italic(prefix + text), 0, 0));
+    this.text = text;
+    this.color = colors.thinking;
+    this.showMarker = showMarker;
+  }
+
+  invalidate(): void {}
+
+  render(width: number): string[] {
+    const contentWidth = Math.max(1, width - INDENT.length);
+    const textComponent = new Text(
+      chalk.hex(this.color).italic(this.text),
+      0, 0,
+    );
+    const contentLines = this.text.length > 0 ? textComponent.render(contentWidth) : [''];
+
+    const lines: string[] = [''];
+    for (let i = 0; i < contentLines.length; i++) {
+      const p = i === 0 && this.showMarker
+        ? chalk.hex(this.color)(BULLET)
+        : INDENT;
+      lines.push(p + contentLines[i]);
     }
+    return lines;
   }
 }
