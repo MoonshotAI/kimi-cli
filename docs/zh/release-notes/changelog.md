@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Shell：修复活跃 turn 期间加载指示器缺失的问题——月亮 spinner 现在作为兜底指示器，在模型仍在工作但没有其他指示器可见时自动显示，覆盖了工具调用完成后、turn 开始到首个 step 之间、以及 provider 发送空 thinking block 时的空白期
+- Core：将 `max_steps_per_turn` 默认值从 100 提高到 500，开箱即可支持更长的无中断 agent 运行
+
 ## 1.35.0 (2026-04-15)
 
 - Shell：将 `show_thinking_stream` 默认值改为 `true`，全新安装开箱即可看到流式思考预览；如需保留 1.32 的紧凑指示器，可在配置中将其设为 `false`
