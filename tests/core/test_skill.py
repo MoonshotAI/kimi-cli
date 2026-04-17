@@ -1,5 +1,6 @@
 """Tests for skill discovery and formatting behavior."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -564,6 +565,26 @@ async def test_find_project_skills_dirs_merge_brands(tmp_path):
     )
     assert KaosPath.unsafe_from_local_path(kimi_dir) in dirs
     assert KaosPath.unsafe_from_local_path(claude_dir) in dirs
+
+
+def test_get_builtin_skills_dir_frozen_env(monkeypatch, tmp_path):
+    """In a PyInstaller frozen env, get_builtin_skills_dir uses sys._MEIPASS."""
+    fake_meipass = tmp_path / "_meipass"
+    fake_meipass.mkdir()
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(fake_meipass), raising=False)
+
+    result = get_builtin_skills_dir()
+    assert result == fake_meipass / "kimi_cli" / "skills"
+
+
+def test_get_builtin_skills_dir_normal_env():
+    """In a normal (non-frozen) env, get_builtin_skills_dir uses __file__."""
+    result = get_builtin_skills_dir()
+    # Should resolve relative to the skill package
+    assert result.name == "skills"
+    assert result.parent.name == "kimi_cli"
 
 
 @pytest.mark.asyncio
