@@ -120,6 +120,8 @@ interface ShellBootstrap {
   defaultYolo: boolean;
   /** External editor command from config.toml (empty when unset). */
   defaultEditor: string;
+  /** All model aliases loaded from config.toml — for /model picker. */
+  availableModels: Record<string, import('@moonshot-ai/core').ModelAlias>;
   /**
    * Slice 4.4 Part 4 — optional MCPManager bound to the session; the
    * runner closes it on exit so subprocess transports do not leak.
@@ -234,6 +236,30 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     defaultHeaders: buildKimiDefaultHeaders(getVersion()),
     ...(oauthResolver !== undefined ? { oauthResolver } : {}),
   });
+
+  /**
+   * Rebuild provider/runtime/compaction for a given model alias. Used by
+   * `/model` to swap the live LLM without restarting the process. The
+   * closure captures the already-resolved `kimiConfig` + OAuth bits so
+   * the picker path does not need to reload config from disk.
+   */
+  const rebuildRuntimeForModel = async (newModelAlias: string) => {
+    const newProvider = await createProviderFromConfig(kimiConfig, newModelAlias, {
+      defaultHeaders: buildKimiDefaultHeaders(getVersion()),
+      ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+    });
+    const newRuntime: Runtime = createRuntime({
+      kosong: createKosongAdapter({ provider: newProvider }),
+    });
+    const newCompactionProvider = createKosongCompactionProvider(newProvider);
+    const newMaxContextSize =
+      kimiConfig.models?.[newModelAlias]?.maxContextSize ?? 200_000;
+    return {
+      runtime: newRuntime,
+      compactionProvider: newCompactionProvider,
+      maxContextSize: newMaxContextSize,
+    };
+  };
 
   // 3. Resolve the agent spec — Slice 4.1 only uses the built-in default.
   const agentRegistry = new AgentRegistry();
@@ -409,6 +435,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     kaos: localKaos,
     config: kimiConfig,
     maxContextSize,
+    rebuildRuntimeForModel,
   });
 
   let sessionId: string;
@@ -494,6 +521,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     defaultYolo: kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false,
     theme: (kimiConfig.theme as 'dark' | 'light') ?? 'dark',
     defaultEditor: kimiConfig.defaultEditor ?? '',
+    availableModels: kimiConfig.models ?? {},
     maxContextSize,
     ...(mcpManager !== undefined ? { mcpManager } : {}),
     ...(oauthManagers.size > 0 ? { oauthManagers } : {}),
@@ -541,6 +569,7 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     theme: bootstrap.theme,
     version,
     editorCommand: bootstrap.defaultEditor.length > 0 ? bootstrap.defaultEditor : null,
+    availableModels: bootstrap.availableModels,
   };
 
   const mode = new InteractiveMode(bootstrap.wireClient, initialState, {

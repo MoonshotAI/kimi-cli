@@ -53,8 +53,13 @@ export interface WireClient {
   /** Trigger manual compaction. Optional custom instruction for the summary. */
   compact(sessionId: string, customInstruction?: string): Promise<void>;
 
-  /** Runtime model switch. */
+  /** Runtime model switch — superseded by `switchModel`. */
   setModel(sessionId: string, model: string): Promise<void>;
+  /**
+   * Rebuild the Runtime for `modelAlias` and re-open the session under
+   * the same id. Returns the (unchanged) session id on success.
+   */
+  switchModel?(sessionId: string, modelAlias: string): Promise<{ session_id: string }>;
   /** Switch thinking level. */
   setThinking(sessionId: string, level: string): Promise<void>;
   /** Toggle plan mode. */

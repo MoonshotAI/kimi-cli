@@ -27,6 +27,8 @@ function mockState(overrides?: Partial<AppState>): AppState {
     streamingStartTime: 0,
     theme: 'dark',
     version: '0.1.0',
+    editorCommand: null,
+    availableModels: {},
     ...overrides,
   };
 }
@@ -172,19 +174,29 @@ describe('Slash commands', () => {
     expect(setAppState).toHaveBeenCalledWith({ planMode: false });
   });
 
-  it('/model shows current model when no args', async () => {
+  it('/model with no args emits the picker signal', async () => {
     const cmd = registry.find('model')!;
     const { ctx } = makeCtx({ model: 'gpt-4' });
     const result = await cmd.execute('', ctx);
-    expect(result).toEqual({ type: 'ok', message: 'Current model: gpt-4' });
+    expect(result).toEqual({ type: 'ok', message: '__show_model_picker__' });
   });
 
-  it('/model <name> switches model', async () => {
+  it('/model <alias> skips the picker and jumps straight to thinking selection', async () => {
     const cmd = registry.find('model')!;
-    const { ctx, setAppState } = makeCtx();
+    const { ctx } = makeCtx({
+      availableModels: {
+        'claude-3': { provider: 'anthropic', model: 'claude-3-5-sonnet' },
+      },
+    });
     const result = await cmd.execute('claude-3', ctx);
-    expect(setAppState).toHaveBeenCalledWith({ model: 'claude-3' });
-    expect(result).toEqual({ type: 'ok', message: 'Model switched to: claude-3' });
+    expect(result).toEqual({ type: 'ok', message: '__show_model_picker__:claude-3' });
+  });
+
+  it('/model <unknown> surfaces a clear error', async () => {
+    const cmd = registry.find('model')!;
+    const { ctx } = makeCtx({ availableModels: {} });
+    const result = await cmd.execute('nope', ctx);
+    expect(result).toEqual({ type: 'ok', message: 'Unknown model alias: nope' });
   });
 
   it('/title shows session ID when no args', async () => {

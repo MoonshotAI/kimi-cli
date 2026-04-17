@@ -145,15 +145,22 @@ const planCommand: SlashCommandDef = {
 const modelCommand: SlashCommandDef = {
   name: 'model',
   aliases: [],
-  description: 'Show or switch model',
+  description: 'Switch LLM model (picker, persists to config.toml)',
   mode: 'both',
   async execute(args, ctx) {
-    if (args.length === 0) {
-      return ok(`Current model: ${ctx.appState.model}`);
+    const trimmed = args.trim();
+    if (trimmed.length === 0) {
+      // Defer to InteractiveMode which renders the ChoicePicker and
+      // drives the two-step model → thinking flow.
+      return ok('__show_model_picker__');
     }
-    ctx.setAppState({ model: args });
-    await ctx.wireClient.setModel(ctx.appState.sessionId, args);
-    return ok(`Model switched to: ${args}`);
+    // Direct-arg form: treat as alias lookup. If unknown, surface an
+    // error; otherwise let the picker-driven flow handle persistence +
+    // runtime rebuild consistently by piggybacking on the signal.
+    if (ctx.appState.availableModels[trimmed] === undefined) {
+      return ok(`Unknown model alias: ${trimmed}`);
+    }
+    return ok(`__show_model_picker__:${trimmed}`);
   },
 };
 

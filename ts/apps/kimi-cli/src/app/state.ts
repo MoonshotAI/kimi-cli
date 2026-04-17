@@ -6,6 +6,7 @@
  */
 
 import type { Theme } from '../config/schema.js';
+import type { ModelAlias } from '@moonshot-ai/core';
 import type { ThemeStyles } from '../theme/styles.js';
 import type {
   WireClient,
@@ -39,6 +40,8 @@ export interface AppState {
    * `$EDITOR` when empty.
    */
   editorCommand: string | null;
+  /** All model aliases loaded from config.toml — for /model picker. */
+  availableModels: Record<string, ModelAlias>;
 }
 
 // ── Transcript / Tool Types ──────────────────────────────────────────

@@ -732,6 +732,168 @@ export class InteractiveMode implements WireHandlerDelegate {
     });
   }
 
+  // ── Model picker ─────────────────────────────────────────────────
+
+  private showModelPicker(): void {
+    const entries = Object.entries(this.state.availableModels);
+    if (entries.length === 0) {
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'No models configured. Edit ~/.kimi/config.toml to add one.',
+        color: this.colors.error,
+      });
+      return;
+    }
+    const options: ChoiceOption[] = entries.map(([alias, cfg]) => ({
+      value: alias,
+      label: `${cfg.model} (${cfg.provider})`,
+    }));
+    this.editorContainer.clear();
+    const picker = new ChoicePickerComponent({
+      title: 'Select a model',
+      hint: '↑↓ navigate · Enter select · Esc cancel',
+      options,
+      currentValue: this.state.model,
+      colors: this.colors,
+      onSelect: (alias) => {
+        this.closeModelPicker();
+        this.showThinkingPicker(alias);
+      },
+      onCancel: () => this.closeModelPicker(),
+    });
+    this.editorContainer.addChild(picker);
+    this.ui.setFocus(picker);
+    this.ui.requestRender();
+  }
+
+  private showThinkingPicker(alias: string): void {
+    const model = this.state.availableModels[alias];
+    const caps = model?.capabilities ?? [];
+    // Parity with Python: always_thinking forces on; thinking asks;
+    // otherwise force off.
+    if (caps.includes('always_thinking')) {
+      void this.performModelSwitch(alias, true);
+      return;
+    }
+    if (!caps.includes('thinking')) {
+      void this.performModelSwitch(alias, false);
+      return;
+    }
+    const options: ChoiceOption[] = [
+      { value: 'on', label: 'Thinking: on' },
+      { value: 'off', label: 'Thinking: off' },
+    ];
+    this.editorContainer.clear();
+    const picker = new ChoicePickerComponent({
+      title: `Enable thinking for ${alias}?`,
+      hint: '↑↓ navigate · Enter select · Esc cancel',
+      options,
+      currentValue: this.state.thinking ? 'on' : 'off',
+      colors: this.colors,
+      onSelect: (value) => {
+        this.closeModelPicker();
+        void this.performModelSwitch(alias, value === 'on');
+      },
+      onCancel: () => this.closeModelPicker(),
+    });
+    this.editorContainer.addChild(picker);
+    this.ui.setFocus(picker);
+    this.ui.requestRender();
+  }
+
+  private closeModelPicker(): void {
+    this.editorContainer.clear();
+    this.editorContainer.addChild(this.editor);
+    this.ui.setFocus(this.editor);
+    this.ui.requestRender();
+  }
+
+  private async performModelSwitch(alias: string, thinking: boolean): Promise<void> {
+    if (this.state.isStreaming) {
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'Cannot switch models while streaming — press Esc or Ctrl-C first.',
+        color: this.colors.error,
+      });
+      return;
+    }
+
+    if (alias === this.state.model && thinking === this.state.thinking) {
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Already using ${alias} with thinking ${thinking ? 'on' : 'off'}.`,
+        color: this.colors.textDim,
+      });
+      return;
+    }
+
+    if (typeof this.wireClient.switchModel !== 'function') {
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'Model switching not configured on this build.',
+        color: this.colors.error,
+      });
+      return;
+    }
+
+    const prevModel = this.state.model;
+    const sessionId = this.state.sessionId;
+    try {
+      this.wireHandler.stop();
+      const { session_id: newId } = await this.wireClient.switchModel(sessionId, alias);
+      // The new ManagedSession (same id) has a fresh queue; rebuild the
+      // WireHandler so its subscribe loop listens on the right one.
+      this.wireHandler = new WireHandler(this.wireClient, newId, this, this.colors);
+      void this.wireHandler.start();
+      this.setState({ sessionId: newId, model: alias, thinking });
+      try {
+        saveConfigPatch({ default_model: alias, default_thinking: thinking });
+      } catch (persistErr) {
+        const msg = persistErr instanceof Error ? persistErr.message : String(persistErr);
+        this.addTranscriptEntry({
+          id: `model-warn-${String(Date.now())}`,
+          kind: 'status',
+          renderMode: 'plain',
+          content: `Switched but failed to persist to config.toml: ${msg}`,
+          color: this.colors.warning,
+        });
+      }
+      this.addTranscriptEntry({
+        id: `model-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Switched to ${alias} with thinking ${thinking ? 'on' : 'off'}.`,
+        color: this.colors.success,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `model-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Failed to switch model: ${msg}`,
+        color: this.colors.error,
+      });
+      // Best-effort recovery: try to resume the previous session so the
+      // user is not stranded.
+      try {
+        this.wireHandler = new WireHandler(this.wireClient, sessionId, this, this.colors);
+        void this.wireHandler.start();
+      } catch {
+        // nothing useful left to do
+      }
+      void prevModel;
+    }
+  }
+
   // ── Session management ──────────────────────────────────────────
 
   private async fetchSessions(): Promise<void> {
@@ -1029,6 +1191,16 @@ export class InteractiveMode implements WireHandlerDelegate {
 
         if (result.message === '__show_editor_picker__') {
           this.showEditorPicker();
+          return;
+        }
+
+        if (result.message === '__show_model_picker__') {
+          this.showModelPicker();
+          return;
+        }
+        if (result.message.startsWith('__show_model_picker__:')) {
+          const alias = result.message.slice('__show_model_picker__:'.length);
+          this.showThinkingPicker(alias);
           return;
         }
 
