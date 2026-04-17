@@ -73,6 +73,71 @@ const HOOK_SUPPORTED_EVENTS = [
   'PostCompact',
 ] as const;
 
+// Phase 17 — keep `initialize.capabilities.events` / `.methods`
+// co-located with the handler registrations below so a newly
+// registered method (or a newly emitted event in event-bridge.ts)
+// gets a single source of truth. These arrays MUST be updated in
+// lock-step with the `router.register*` calls — the test in
+// `test/wire-protocol/initialize-capabilities.test.ts` (if/when it
+// lands) pins the invariant.
+const SUPPORTED_WIRE_EVENTS = [
+  'turn.begin',
+  'turn.end',
+  'step.begin',
+  'step.end',
+  'step.interrupted',
+  'content.delta',
+  'tool.call',
+  'tool.call.delta',
+  'tool.progress',
+  'tool.result',
+  'status.update',
+  'compaction.begin',
+  'compaction.end',
+  'notification',
+  'subagent.event',
+  'hook.triggered',
+  'hook.resolved',
+  'session.error',
+  'session.replay.chunk',
+  'session.replay.end',
+] as const;
+
+const SUPPORTED_WIRE_METHODS = [
+  // process channel
+  'initialize',
+  'session.create',
+  'session.list',
+  'session.destroy',
+  'shutdown',
+  // mcp.* (noop responders in Phase 17 — real wiring in CLI Phase)
+  'mcp.list',
+  'mcp.connect',
+  'mcp.disconnect',
+  'mcp.refresh',
+  'mcp.listResources',
+  'mcp.readResource',
+  'mcp.listPrompts',
+  'mcp.getPrompt',
+  'mcp.startAuth',
+  'mcp.resetAuth',
+  // conversation channel
+  'session.prompt',
+  'session.steer',
+  'session.cancel',
+  'session.resume',
+  'approval.response',
+  // management channel
+  'session.getStatus',
+  'session.getHistory',
+  'session.subscribe',
+  'session.compact',
+  'session.replay',
+  // config channel
+  'session.setPlanMode',
+  'session.setYolo',
+] as const;
+
 // Phase 17 §A.4 — zod schemas used at handler entry points. Rejecting
 // bad input at this seam produces a ZodError → -32602 via
 // `mapToWireError`.
@@ -128,37 +193,8 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     const data: InitializeResponseData = {
       protocol_version: WIRE_PROTOCOL_VERSION,
       capabilities: {
-        events: [
-          'turn.begin',
-          'turn.end',
-          'step.begin',
-          'step.end',
-          'content.delta',
-          'tool.call',
-          'tool.result',
-          'status.update',
-          'session.error',
-          'hook.triggered',
-          'hook.resolved',
-        ],
-        methods: [
-          'initialize',
-          'session.create',
-          'session.list',
-          'session.destroy',
-          'session.prompt',
-          'session.steer',
-          'session.cancel',
-          'session.resume',
-          'session.replay',
-          'session.getStatus',
-          'session.getHistory',
-          'session.subscribe',
-          'session.compact',
-          'session.setPlanMode',
-          'session.setYolo',
-          'shutdown',
-        ],
+        events: [...SUPPORTED_WIRE_EVENTS],
+        methods: [...SUPPORTED_WIRE_METHODS],
         // Phase 17 §B.7 — advertise the hook machinery so clients can
         // subscribe. `configured` is empty in the bare harness; real
         // CLI runners will populate it from loaded config.

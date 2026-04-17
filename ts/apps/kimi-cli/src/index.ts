@@ -712,9 +712,19 @@ async function runWire(opts: CLIOptions): Promise<void> {
   const approval = new AlwaysAllowApprovalRuntime();
   const eventBus = new SessionEventBus();
   const hookEngine = new HookEngine({ executors: new Map(), sink: eventBus });
+
+  // Phase 17 §A.1 / §C.1 — the orchestrator's sessionId closure
+  // reads the session id most-recently created through this runner.
+  // enforceResultBudget writes tool result archives to
+  // `{pathConfig}/sessions/<id>/tool_results/` and must not collapse
+  // all sessions into a single `wire-session` directory. Multi-session
+  // concurrent tool execution still needs per-session orchestrators —
+  // tracked as an explicit CLI Phase follow-up; single-session is the
+  // intended production shape right now.
+  let activeSessionId: string | undefined;
   const orchestrator = new ToolCallOrchestrator({
     hookEngine,
-    sessionId: () => 'wire-session',
+    sessionId: () => activeSessionId ?? 'session_pending',
     agentId: 'agent_main',
     approvalRuntime: approval,
     pathConfig,
@@ -738,15 +748,21 @@ async function runWire(opts: CLIOptions): Promise<void> {
   const transport = new StdioTransport();
   const codec = new WireCodec();
 
-  // One bridge up-front — single-session usage is the typical
-  // `--wire` CLI flow. Per-session bridges land in the CLI Phase
-  // follow-up when multi-session wire deployments ship.
-  let bridgeDisposer: (() => void) | undefined;
+  // Phase 17 §A.1 — per-session WireEventBridge, keyed by sessionId.
+  // Each `session.create` spawns a new bridge; `session.destroy`
+  // disposes it. Avoids the single-ref aliasing that would let a
+  // second session's events clobber the first session's frame
+  // attribution.
+  const bridgeDisposers = new Map<string, () => void>();
+
   const originalCreate = sessionManager.createSession.bind(sessionManager);
   (sessionManager as { createSession: typeof sessionManager.createSession }).createSession =
     async (options) => {
       const managed = await originalCreate(options);
-      bridgeDisposer?.();
+      activeSessionId = managed.sessionId;
+      // Dispose any stale bridge on the same id (e.g., createSession
+      // called twice with the same sessionId from session.resume).
+      bridgeDisposers.get(managed.sessionId)?.();
       const handle = installWireEventBridge({
         server: transport,
         eventBus,
@@ -754,9 +770,24 @@ async function runWire(opts: CLIOptions): Promise<void> {
           managed.soulPlus.getTurnManager().addTurnLifecycleListener(l),
         sessionId: managed.sessionId,
       });
-      bridgeDisposer = handle.dispose;
+      bridgeDisposers.set(managed.sessionId, handle.dispose);
       return managed;
     };
+
+  const originalClose = sessionManager.closeSession.bind(sessionManager);
+  (sessionManager as { closeSession: typeof sessionManager.closeSession }).closeSession = async (
+    sessionId,
+  ) => {
+    const disposer = bridgeDisposers.get(sessionId);
+    if (disposer !== undefined) {
+      disposer();
+      bridgeDisposers.delete(sessionId);
+    }
+    if (activeSessionId === sessionId) {
+      activeSessionId = undefined;
+    }
+    return originalClose(sessionId);
+  };
 
   transport.onMessage = (frame) => {
     void (async () => {
@@ -799,9 +830,22 @@ async function runWire(opts: CLIOptions): Promise<void> {
     })();
   };
 
+  // Phase 17 §A.1 — graceful shutdown on stdin EOF. Close every active
+  // session (each closeSession drains + closes its JournalWriter) before
+  // exiting so the last batch of wire records lands on disk. Bridges
+  // dispose as a side-effect of the patched closeSession above.
   transport.onClose = () => {
-    bridgeDisposer?.();
-    process.exit(0);
+    void (async () => {
+      const openIds = [...bridgeDisposers.keys()];
+      for (const sid of openIds) {
+        try {
+          await sessionManager.closeSession(sid);
+        } catch {
+          /* keep going — best-effort drain on EOF */
+        }
+      }
+      process.exit(0);
+    })();
   };
 
   await transport.connect();

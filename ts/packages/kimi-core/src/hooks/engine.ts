@@ -40,14 +40,16 @@ export interface HookEngineDeps {
 }
 
 /**
- * Synthesises a stable-enough id for `hook.resolved` emissions. Hooks
- * are registered without an intrinsic id; we derive one from
- * `event:type:matcher`, suffixed with the registration index to
- * disambiguate duplicates. `hook.resolved` consumers use the id only
- * for correlation within a single process lifetime.
+ * Synthesises a stable id for `hook.resolved` emissions. Hooks are
+ * registered without an intrinsic id; we derive one from
+ * `event:type:matcher`, suffixed with the hook's position inside
+ * `this.hooks` (its registration order). The `registrationIndex` is
+ * stable across multiple `executeHooks` calls — using the per-call
+ * `settled[]` index instead would hand the same id to different hooks
+ * across different dispatches, breaking client-side correlation.
  */
-function hookId(hook: HookConfig, index: number): string {
-  return `${hook.event}:${hook.type}:${hook.matcher ?? ''}:${index}`;
+function hookId(hook: HookConfig, registrationIndex: number): string {
+  return `${hook.event}:${hook.type}:${hook.matcher ?? ''}:${registrationIndex}`;
 }
 
 export class HookEngine {
@@ -142,6 +144,10 @@ export class HookEngine {
 
     for (const [i, result] of settled.entries()) {
       const hook = matching[i];
+      // Registration index — stable across executeHooks calls (unlike
+      // `i`, which is reset per dispatch). Hand this to `hookId` so
+      // `hook.resolved` frames correlate across retries and re-entries.
+      const registrationIndex = hook !== undefined ? this.hooks.indexOf(hook) : -1;
       if (result.status === 'rejected') {
         if (hook !== undefined) {
           this.deps.onExecutorError?.(
@@ -150,7 +156,7 @@ export class HookEngine {
           );
           this.deps.sink?.emit({
             type: 'hook.resolved',
-            hook_id: hookId(hook, i),
+            hook_id: hookId(hook, registrationIndex),
             outcome: 'error',
           });
         }
@@ -158,11 +164,20 @@ export class HookEngine {
       }
       const value = result.value;
       if (hook !== undefined) {
-        const outcome: 'ok' | 'blocked' =
-          value?.blockAction === true ? 'blocked' : 'ok';
+        // Order matters: executor-reported failure (`ok === false`)
+        // outranks the `blockAction` flag because a failed executor's
+        // `blockAction` is not trustworthy. rejected / ok=false / blocked
+        // map onto `error` / `error` / `blocked` respectively; successful
+        // non-blocking falls through to `ok`.
+        const outcome: 'ok' | 'blocked' | 'error' =
+          value?.ok === false
+            ? 'error'
+            : value?.blockAction === true
+              ? 'blocked'
+              : 'ok';
         this.deps.sink?.emit({
           type: 'hook.resolved',
-          hook_id: hookId(hook, i),
+          hook_id: hookId(hook, registrationIndex),
           outcome,
         });
       }
