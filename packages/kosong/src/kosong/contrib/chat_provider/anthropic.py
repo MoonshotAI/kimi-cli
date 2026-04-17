@@ -8,6 +8,7 @@ except ModuleNotFoundError as exc:
 
 import copy
 import json
+import re
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, Unpack, cast
 
@@ -47,6 +48,7 @@ from anthropic.types import (
     MessageParam,
     MessageStartEvent,
     MetadataParam,
+    OutputConfigParam,
     RawContentBlockDeltaEvent,
     RawContentBlockStartEvent,
     RawMessageStreamEvent,
@@ -99,6 +101,36 @@ type MessagePayload = tuple[str | None, list[MessageParam]]
 type BetaFeatures = Literal["interleaved-thinking-2025-05-14"]
 
 
+# Models that accept adaptive thinking but don't expose a major.minor version
+# in their identifier (e.g. Claude Mythos Preview).
+_ADAPTIVE_MARKERS_NO_VERSION: tuple[str, ...] = ("mythos",)
+
+# Matches the Claude family's major.minor version inside a model identifier.
+# `\d{1,2}(?!\d)` prevents date suffixes like `sonnet-4-20250514` from being
+# misread as minor=20: `20` would be followed by another digit, so the
+# negative lookahead fails and the regex does not match at all.
+_FAMILY_VERSION_RE = re.compile(r"(?:opus|sonnet|haiku)[.-](\d+)[.-](\d{1,2})(?!\d)")
+
+# Adaptive thinking was introduced with Opus 4.6 / Sonnet 4.6.
+_ADAPTIVE_MIN_VERSION: tuple[int, int] = (4, 6)
+
+
+def _supports_adaptive_thinking(model: str) -> bool:
+    """Whether the given model id accepts `thinking: {type: "adaptive"}`.
+
+    Strategy: explicit marker for non-versioned models (e.g. Mythos), plus a
+    strict regex over the Claude family that extrapolates to unknown future
+    versions (>= 4.6) without code changes.
+    """
+    m = model.lower()
+    if any(marker in m for marker in _ADAPTIVE_MARKERS_NO_VERSION):
+        return True
+    if match := _FAMILY_VERSION_RE.search(m):
+        major, minor = int(match.group(1)), int(match.group(2))
+        return (major, minor) >= _ADAPTIVE_MIN_VERSION
+    return False
+
+
 class Anthropic:
     """
     Chat provider backed by Anthropic's Messages API.
@@ -111,8 +143,11 @@ class Anthropic:
         temperature: float | None
         top_k: int | None
         top_p: float | None
-        # e.g., {"type": "adaptive"} or {"type": "enabled", "budget_tokens": 1024}
+        # e.g., {"type": "adaptive", "display": "summarized"}
+        # or   {"type": "enabled", "budget_tokens": 1024}
         thinking: ThinkingConfigParam | None
+        # e.g., {"effort": "high"} — soft guidance for adaptive thinking.
+        output_config: OutputConfigParam | None
         # e.g., {"type": "auto", "disable_parallel_tool_use": True}
         tool_choice: ToolChoiceParam | None
 
@@ -155,6 +190,10 @@ class Anthropic:
         if thinking_config["type"] == "disabled":
             return "off"
         if thinking_config["type"] == "adaptive":
+            output_config = self._generation_kwargs.get("output_config") or {}
+            effort = output_config.get("effort")
+            if effort in ("low", "medium", "high"):
+                return effort
             return "high"
         budget = thinking_config["budget_tokens"]
         if budget <= 1024:
@@ -234,40 +273,40 @@ class Anthropic:
         except (AnthropicError, httpx.HTTPError) as e:
             raise _convert_error(e) from e
 
-    def _use_adaptive_thinking(self) -> bool:
-        """Whether to use adaptive thinking (Opus 4.6+) instead of budget-based thinking."""
-        model = self._model.lower()
-        return "opus-4.6" in model or "opus-4-6" in model
-
     def with_thinking(self, effort: "ThinkingEffort") -> Self:
-        thinking_config: ThinkingConfigParam
-        if self._use_adaptive_thinking():
-            # Opus 4.6+: use adaptive thinking (budget_tokens is deprecated).
-            # The interleaved-thinking beta header is also not needed with adaptive.
-            match effort:
-                case "off":
-                    thinking_config = {"type": "disabled"}
-                case _:
-                    thinking_config = {"type": "adaptive"}  # type: ignore[typeddict-item]
-            new = self.with_generation_kwargs(thinking=thinking_config)
-            # Remove the now-unnecessary interleaved-thinking beta header.
+        if effort == "off":
+            new = self.with_generation_kwargs(thinking={"type": "disabled"})
+            # Clear any stale output_config from a prior adaptive configuration.
+            new._generation_kwargs.pop("output_config", None)
+            return new
+
+        if _supports_adaptive_thinking(self._model):
+            # Opus 4.6+ / Sonnet 4.6+ / Mythos: adaptive thinking.
+            # `display: "summarized"` is required on Opus 4.7+ (where the default
+            # flipped to "omitted") and is a no-op on 4.6. Setting it
+            # unconditionally keeps thinking content visible across versions.
+            # SDK 0.78 TypedDict doesn't model `display` yet — thus the ignore.
+            thinking_config: ThinkingConfigParam = {
+                "type": "adaptive",
+                "display": "summarized",
+            }  # type: ignore[typeddict-item]
+            new = self.with_generation_kwargs(
+                thinking=thinking_config,
+                output_config={"effort": effort},
+            )
+            # Adaptive mode auto-enables interleaved thinking, so the beta
+            # header is redundant. Drop it if still present from construction.
             if (
                 beta_features := new._generation_kwargs.get("beta_features")
             ) and "interleaved-thinking-2025-05-14" in beta_features:
                 beta_features.remove("interleaved-thinking-2025-05-14")
             return new
-        else:
-            # Pre-4.6 models: use legacy budget-based thinking.
-            match effort:
-                case "off":
-                    thinking_config = {"type": "disabled"}
-                case "low":
-                    thinking_config = {"type": "enabled", "budget_tokens": 1024}
-                case "medium":
-                    thinking_config = {"type": "enabled", "budget_tokens": 4096}
-                case "high":
-                    thinking_config = {"type": "enabled", "budget_tokens": 32_000}
-            return self.with_generation_kwargs(thinking=thinking_config)
+
+        # Pre-4.6 models: legacy budget-based thinking.
+        budgets: dict[ThinkingEffort, int] = {"low": 1024, "medium": 4096, "high": 32_000}
+        return self.with_generation_kwargs(
+            thinking={"type": "enabled", "budget_tokens": budgets[effort]}
+        )
 
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """
