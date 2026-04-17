@@ -200,3 +200,37 @@ describe('convertMcpToolResult — unsupported content', () => {
     expect(asText(pts[1]!).toLowerCase()).toContain('unsupported');
   });
 });
+
+// ── Phase 17 E.3 — mediaDataUrlLength covers video variant ─────────
+
+describe('Phase 17 E.3 — video media counts against budget', () => {
+  it('mediaDataUrlLength returns positive cost for video ToolResultContent', async () => {
+    // Phase 17 E.3 renames `imageDataUrlLength` → `mediaDataUrlLength`
+    // and teaches it to size `type: 'video'` parts the same way. The
+    // helper is exported for unit coverage.
+    const { mediaDataUrlLength } = await import(
+      '../../../src/soul-plus/mcp/output-budget.js'
+    );
+    const videoPart: ToolResultContent = {
+      type: 'video',
+      source: {
+        type: 'base64',
+        data: 'AAAA'.repeat(256),
+        media_type: 'video/mp4',
+      },
+    };
+    const len = mediaDataUrlLength(videoPart);
+    // Format: `data:${mime};base64,${data}` — length must include the
+    // full base64 payload.
+    expect(len).toBeGreaterThan('AAAA'.repeat(256).length);
+    expect(len).toBeGreaterThan('video/mp4'.length);
+  });
+
+  it('mediaDataUrlLength returns 0 for non-media content (text)', async () => {
+    const { mediaDataUrlLength } = await import(
+      '../../../src/soul-plus/mcp/output-budget.js'
+    );
+    const textPart: ToolResultContent = { type: 'text', text: 'hi' };
+    expect(mediaDataUrlLength(textPart)).toBe(0);
+  });
+});
