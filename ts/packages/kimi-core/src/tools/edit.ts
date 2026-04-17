@@ -15,6 +15,7 @@ import type {
   ToolResult,
   ToolResultDisplay,
   ToolUpdate,
+  ToolMetadata
 } from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { EditInputSchema } from './types.js';
@@ -23,6 +24,7 @@ import type { WorkspaceConfig } from './workspace.js';
 
 export class EditTool implements BuiltinTool<EditInput, EditOutput> {
   readonly name = 'Edit' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description = 'Perform exact string replacements in a file.';
   readonly inputSchema: z.ZodType<EditInput> = EditInputSchema;
   readonly display: ToolDisplayHooks<EditInput, EditOutput> = {

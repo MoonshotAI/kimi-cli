@@ -24,7 +24,7 @@ import type { Readable } from 'node:stream';
 import type { Kaos, KaosProcess } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { isSensitiveFile } from './sensitive.js';
 import { GrepInputSchema } from './types.js';
@@ -45,10 +45,11 @@ const CONTENT_LINE_RE = /^(.*?)([:-])(\d+)\2/;
 
 export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
   readonly name = 'Grep' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description = 'Search file contents using regular expressions (powered by ripgrep).';
   readonly inputSchema: z.ZodType<GrepInput> = GrepInputSchema;
   // Phase 15 L14 — read-only; safe to prefetch under streaming.
-  readonly isConcurrencySafe = (): boolean => true;
+  readonly isConcurrencySafe = (_input: unknown): boolean => true;
 
   constructor(
     private readonly kaos: Kaos,

@@ -50,6 +50,18 @@ export interface PersistedTask {
    * generic failure and does NOT set this flag.
    */
   readonly timed_out?: boolean | undefined;
+  /**
+   * Phase 17 §C.2 — shell origin metadata (name / path / cwd) captured
+   * when `BackgroundProcessManager.register` attached a `shellInfo`
+   * opt. Persisted so restart can reconstruct the spawn environment.
+   */
+  readonly shell_info?:
+    | {
+        readonly name: string;
+        readonly path?: string | undefined;
+        readonly cwd?: string | undefined;
+      }
+    | undefined;
 }
 
 function tasksDirOf(sessionDir: string): string {

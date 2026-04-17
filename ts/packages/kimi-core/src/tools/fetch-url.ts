@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import type { BuiltinTool } from './types.js';
 
 // ── Provider interface (host-injected) ───────────────────────────────
@@ -46,10 +46,11 @@ const DESCRIPTION =
 
 export class FetchURLTool implements BuiltinTool<FetchURLInput, void> {
   readonly name = 'FetchURL' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<FetchURLInput> = FetchURLInputSchema;
   // Phase 15 L14 — idempotent URL fetch; safe to prefetch under streaming.
-  readonly isConcurrencySafe = (): boolean => true;
+  readonly isConcurrencySafe = (_input: unknown): boolean => true;
 
   constructor(private readonly fetcher: UrlFetcher) {}
 

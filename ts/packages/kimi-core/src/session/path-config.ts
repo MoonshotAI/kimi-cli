@@ -90,6 +90,13 @@ export class PathConfig {
    * on POSIX systems, `%ProgramData%/Kimi/mcp.json` on Windows.
    */
   enterpriseMcpConfigPath(): string {
+    // Phase 17 §C.4 — `KIMI_ENTERPRISE_MCP_CONFIG` env override wins
+    // over the platform default so enterprise deployments can swap the
+    // config path without rebuilding.
+    const override = process.env['KIMI_ENTERPRISE_MCP_CONFIG'];
+    if (override !== undefined && override.length > 0) {
+      return override;
+    }
     if (process.platform === 'win32') {
       const programData = process.env['ProgramData'] ?? 'C:\\ProgramData';
       return join(programData, 'Kimi', 'mcp.json');

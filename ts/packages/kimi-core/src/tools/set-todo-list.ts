@@ -20,7 +20,7 @@
 
 import { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import type { BuiltinTool } from './types.js';
 
 // ── TODO state shape ─────────────────────────────────────────────────
@@ -128,6 +128,7 @@ function statusMarker(status: TodoStatus): string {
 
 export class SetTodoListTool implements BuiltinTool<SetTodoListInput, TodoItem[]> {
   readonly name = 'SetTodoList' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<SetTodoListInput> = SetTodoListInputSchema;
 

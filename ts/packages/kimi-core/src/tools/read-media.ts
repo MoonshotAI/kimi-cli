@@ -14,7 +14,7 @@
 import type { Kaos } from '@moonshot-ai/kaos';
 import { z } from 'zod';
 
-import type { ToolResult, ToolResultContent, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolResultContent, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import { MEDIA_SNIFF_BYTES, detectFileType } from './file-type.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { SkipThisTool } from './skip-this-tool.js';
@@ -92,6 +92,7 @@ function buildDescription(capabilities: ReadonlySet<Capability>): string {
 
 export class ReadMediaFileTool implements BuiltinTool<ReadMediaFileInput, void> {
   readonly name = 'ReadMediaFile' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string;
   readonly inputSchema: z.ZodType<ReadMediaFileInput> = ReadMediaFileInputSchema;
 

@@ -28,7 +28,7 @@
 
 import { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import type { BuiltinTool } from './types.js';
 
 // ── Input schema ─────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ export interface ExitPlanModeDeps {
 
 export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput, { plan: string }> {
   readonly name = 'ExitPlanMode' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<ExitPlanModeInput> = ExitPlanModeInputSchema;
 

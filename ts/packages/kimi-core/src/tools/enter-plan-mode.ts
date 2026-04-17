@@ -13,7 +13,7 @@
 
 import { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import type { BuiltinTool } from './types.js';
 import type { QuestionRuntime } from './question-runtime.js';
 
@@ -61,6 +61,7 @@ export interface EnterPlanModeDeps {
 
 export class EnterPlanModeTool implements BuiltinTool<EnterPlanModeInput, void> {
   readonly name = 'EnterPlanMode' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<EnterPlanModeInput> = EnterPlanModeInputSchema;
 

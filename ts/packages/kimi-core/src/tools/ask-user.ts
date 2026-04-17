@@ -17,7 +17,7 @@
 import { z } from 'zod';
 
 import type { PermissionMode } from '../soul-plus/permission/types.js';
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import type { QuestionRuntime } from './question-runtime.js';
 
 // ── Input schema (matches Python Params) ─────────────────────────────
@@ -87,6 +87,7 @@ Overusing this tool interrupts the user's flow. Only use it when the user's inpu
 
 export class AskUserQuestionTool {
   readonly name = 'AskUserQuestion' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<AskUserQuestionInput> = AskUserQuestionInputSchema;
 

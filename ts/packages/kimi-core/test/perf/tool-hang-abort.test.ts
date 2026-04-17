@@ -208,13 +208,70 @@ describe.skipIf(SKIP_PERF)('Tool hang + abort (Phase 13 §3.1) [perf]', () => {
     }
   });
 
-  // ── Known gap (Phase 13 risks R2) ──────────────────────────────────
-  //
-  // When a tool truly ignores its signal and never resolves, Soul has
-  // no caller-side grace timeout — the turn hangs forever. The plan
-  // (§3.1 "Phase 13 需先确认 ToolCallOrchestrator...") flags this as a
-  // follow-up; today Soul relies on tools being cooperative.
-  it.todo(
-    'grace timeout: non-cooperative hang tool should be force-reaped after grace period',
-  );
+  // ── Phase 17 C.5 — grace timeout for non-cooperative tools ─────────
+
+  it('Phase 17 C.5: non-cooperative hang tool is force-reaped after GRACE_TIMEOUT_MS', async () => {
+    // A tool that deliberately ignores its AbortSignal — the Orchestrator
+    // must arm a grace timer on abort and synthesise an error
+    // ToolResult once it expires so Soul can wrap up the turn.
+    class NonCooperativeHangTool implements Tool<Record<string, never>> {
+      readonly name = 'noop-hang';
+      readonly description = 'Ignores signal, never resolves.';
+      readonly inputSchema: z.ZodType<Record<string, never>> = z.object({});
+      callCount = 0;
+      async execute(): Promise<ToolResult> {
+        this.callCount += 1;
+        // Deliberately do NOT attach any abort listener.
+        return new Promise<ToolResult>(() => {
+          /* never resolves */
+        });
+      }
+    }
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const context = new FakeContextState();
+      const controller = new AbortController();
+      const kosong = new ScriptedKosongAdapter({
+        responses: [makeToolUseResponse([makeToolCall('noop-hang', {}, 'call_noop')])],
+      });
+      const { runtime } = createFakeRuntime({ kosong });
+      const sink = new CollectingEventSink();
+      const noop = new NonCooperativeHangTool();
+      const config: SoulConfig = { tools: [noop] };
+
+      const turnPromise = runSoulTurn(
+        { text: 'hang forever' },
+        config,
+        context,
+        runtime,
+        sink,
+        controller.signal,
+      );
+      setTimeout(() => controller.abort(), 50);
+      // GRACE_TIMEOUT_MS = 2000 per Phase 17 C.5. Advance 10s so the
+      // grace window expires even if the implementer bumps the
+      // constant by 2x.
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await turnPromise;
+
+      expect(result.stopReason).toBe('aborted');
+      const toolResults = context.toolResultCalls();
+      // A synthetic error ToolResult for the hung call must be written
+      // by the grace-timeout path.
+      const noopResult = toolResults.find((r) => r.toolCallId === 'call_noop');
+      expect(noopResult).toBeDefined();
+      expect(noopResult?.result.isError).toBe(true);
+      // Phase 17 §C.5 — the synthetic ToolResult lands on the journal
+      // as `ToolResultPayload.output`, not `.content` (the soul-level
+      // `ToolResult.content` is adapted into `.output` by
+      // `adaptToolResult`). Accept either for compatibility with a
+      // future shape flip.
+      const output = (noopResult?.result.output ?? '') as unknown;
+      const outputText = typeof output === 'string' ? output : JSON.stringify(output);
+      expect(outputText.toLowerCase()).toMatch(/grace|timeout|aborted/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

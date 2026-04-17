@@ -133,6 +133,42 @@ describe('PathConfig MCP paths (Phase 7)', () => {
     expect(p.length).toBeGreaterThan(0);
     expect(p).not.toBe(config.mcpConfigPath());
   });
+
+  // ── Phase 17 C.4 — env override ────────────────────────────────
+
+  it('Phase 17 C.4: KIMI_ENTERPRISE_MCP_CONFIG env var overrides the default enterpriseMcpConfigPath', () => {
+    const original = process.env['KIMI_ENTERPRISE_MCP_CONFIG'];
+    try {
+      process.env['KIMI_ENTERPRISE_MCP_CONFIG'] = '/opt/custom/enterprise.json';
+      const pc = new PathConfig({ home: '/test/kimi' });
+      expect(pc.enterpriseMcpConfigPath()).toBe('/opt/custom/enterprise.json');
+    } finally {
+      if (original === undefined) {
+        delete process.env['KIMI_ENTERPRISE_MCP_CONFIG'];
+      } else {
+        process.env['KIMI_ENTERPRISE_MCP_CONFIG'] = original;
+      }
+    }
+  });
+
+  it('Phase 17 C.4: falls back to platform default when env var is unset', () => {
+    const original = process.env['KIMI_ENTERPRISE_MCP_CONFIG'];
+    delete process.env['KIMI_ENTERPRISE_MCP_CONFIG'];
+    try {
+      const pc = new PathConfig({ home: '/test/kimi' });
+      const p = pc.enterpriseMcpConfigPath();
+      // Platform-specific default — verifies no env pollution.
+      if (process.platform === 'win32') {
+        expect(p.toLowerCase()).toContain('programdata');
+      } else {
+        expect(p).toBe('/etc/kimi/mcp.json');
+      }
+    } finally {
+      if (original !== undefined) {
+        process.env['KIMI_ENTERPRISE_MCP_CONFIG'] = original;
+      }
+    }
+  });
 });
 
 // ── Isolation guarantee (§9.10) ─────────────────────────────────────────

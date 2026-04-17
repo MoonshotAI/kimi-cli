@@ -8,7 +8,7 @@
 import type { Kaos } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { WriteInputSchema } from './types.js';
 import type { BuiltinTool, WriteInput, WriteOutput } from './types.js';
@@ -16,6 +16,7 @@ import type { WorkspaceConfig } from './workspace.js';
 
 export class WriteTool implements BuiltinTool<WriteInput, WriteOutput> {
   readonly name = 'Write' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description = 'Write content to a file, creating it if it does not exist.';
   readonly inputSchema: z.ZodType<WriteInput> = WriteInputSchema;
 

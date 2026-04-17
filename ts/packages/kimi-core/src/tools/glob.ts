@@ -17,7 +17,7 @@
 import type { Kaos } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { GlobInputSchema } from './types.js';
 import type { BuiltinTool, GlobInput, GlobOutput } from './types.js';
@@ -27,10 +27,11 @@ export const MAX_MATCHES = 1000;
 
 export class GlobTool implements BuiltinTool<GlobInput, GlobOutput> {
   readonly name = 'Glob' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description = 'Find files by glob pattern, sorted by modification time.';
   readonly inputSchema: z.ZodType<GlobInput> = GlobInputSchema;
   // Phase 15 L14 — read-only; safe to prefetch under streaming.
-  readonly isConcurrencySafe = (): boolean => true;
+  readonly isConcurrencySafe = (_input: unknown): boolean => true;
 
   constructor(
     private readonly kaos: Kaos,

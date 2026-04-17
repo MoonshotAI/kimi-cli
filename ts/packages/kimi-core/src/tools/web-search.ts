@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import type { BuiltinTool } from './types.js';
 
 // ── Provider interface (host-injected) ───────────────────────────────
@@ -66,10 +66,11 @@ const DESCRIPTION =
 
 export class WebSearchTool implements BuiltinTool<WebSearchInput, void> {
   readonly name = 'WebSearch' as const;
+  readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string = DESCRIPTION;
   readonly inputSchema: z.ZodType<WebSearchInput> = WebSearchInputSchema;
   // Phase 15 L14 — idempotent web lookup; safe to prefetch under streaming.
-  readonly isConcurrencySafe = (): boolean => true;
+  readonly isConcurrencySafe = (_input: unknown): boolean => true;
 
   constructor(private readonly provider: WebSearchProvider) {}
 
