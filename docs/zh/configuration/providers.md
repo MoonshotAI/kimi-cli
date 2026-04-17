@@ -7,33 +7,34 @@ Kimi Code CLI 支持多种 LLM 平台，可以通过配置文件或 `/login` 命
 最简单的配置方式是在 Shell 模式下运行 `/login` 命令（别名 `/setup`），按照向导完成平台和模型的选择：
 
 1. 选择 API 平台
-2. 输入 API 密钥
+2. 若选择 **AWS Bedrock Mantle（OpenAI 兼容）**，先选择 AWS 区域，再输入 API 密钥；其他平台直接输入 API 密钥
 3. 从可用模型列表中选择模型
 
 配置完成后，Kimi Code CLI 会自动保存设置到 `~/.kimi/config.toml` 并重新加载。
 
 `/login` 目前支持以下平台：
 
-| 平台 | 说明 |
-| --- | --- |
-| Kimi Code | Kimi Code 平台，支持搜索和抓取服务 |
-| Moonshot AI 开放平台 (moonshot.cn) | 中国区 API 端点 |
-| Moonshot AI Open Platform (moonshot.ai) | 全球区 API 端点 |
+| 平台                                    | 说明                                                                               |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| AWS Bedrock Mantle（OpenAI 兼容）       | Amazon Bedrock Mantle 的 OpenAI 兼容 API；使用 `openai_legacy` 与 Bedrock API 密钥 |
+| Kimi Code                               | Kimi Code 平台，支持搜索和抓取服务                                                 |
+| Moonshot AI 开放平台 (moonshot.cn)      | 中国区 API 端点                                                                    |
+| Moonshot AI Open Platform (moonshot.ai) | 全球区 API 端点                                                                    |
 
-如需使用其他平台，请手动编辑配置文件。
+如需使用其他平台，请手动编辑配置文件。示例见仓库内 [`examples/bedrock-mantle.md`](../../../examples/bedrock-mantle.md)。
 
 ## 供应商类型
 
 `providers` 配置中的 `type` 字段指定 API 供应商类型。不同类型使用不同的 API 协议和客户端实现。
 
-| 类型 | 说明 |
-| --- | --- |
-| `kimi` | Kimi API |
-| `openai_legacy` | OpenAI Chat Completions API |
-| `openai_responses` | OpenAI Responses API |
-| `anthropic` | Anthropic Claude API |
-| `gemini` | Google Gemini API |
-| `vertexai` | Google Vertex AI |
+| 类型               | 说明                        |
+| ------------------ | --------------------------- |
+| `kimi`             | Kimi API                    |
+| `openai_legacy`    | OpenAI Chat Completions API |
+| `openai_responses` | OpenAI Responses API        |
+| `anthropic`        | Anthropic Claude API        |
+| `gemini`           | Google Gemini API           |
+| `vertexai`         | Google Vertex AI            |
 
 所有供应商类型都支持通过 `custom_headers` 字段添加自定义 HTTP 请求头。详见 [配置文件](./config-files.md)。
 
@@ -58,6 +59,20 @@ type = "openai_legacy"
 base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
+
+#### AWS Bedrock Mantle（OpenAI 兼容 API）
+
+[Bedrock Mantle](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) 在每个 AWS 区域提供 OpenAI 兼容端点，例如：
+
+`https://bedrock-mantle.<region>.api.aws/v1`
+
+请使用 **Bedrock API 密钥**（不是 IAM 访问密钥），`type` 设为 `openai_legacy`。模型 ID 形如 `moonshotai.kimi-k2.5`（实际目录随区域变化）。
+
+**`/login` 流程：** 选择 **AWS Bedrock Mantle (OpenAI-compatible)**，选择区域，输入 API 密钥，再选模型。将写入托管供应商 `managed:bedrock-mantle`，并清除 Moonshot 搜索/抓取配置（这些能力依赖 Kimi Code）。
+
+**环境变量覆盖（可选）：** 若设置了 `OPENAI_BASE_URL` 与 `OPENAI_API_KEY`，会覆盖已保存的 `openai_legacy` 供应商的 `base_url` 与 `api_key`，**不会**影响其他供应商的 URL。
+
+**示例：** 见仓库 [`examples/bedrock-mantle.md`](../../../examples/bedrock-mantle.md)（英文说明）。
 
 ### `openai_responses`
 
@@ -108,12 +123,12 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 
 模型配置中的 `capabilities` 字段声明模型支持的能力。这会影响 Kimi Code CLI 的功能可用性。
 
-| 能力 | 说明 |
-| --- | --- |
-| `thinking` | 支持 Thinking 模式（深度思考），可开关 |
-| `always_thinking` | 始终使用 Thinking 模式（不可关闭） |
-| `image_in` | 支持图片输入 |
-| `video_in` | 支持视频输入 |
+| 能力              | 说明                                   |
+| ----------------- | -------------------------------------- |
+| `thinking`        | 支持 Thinking 模式（深度思考），可开关 |
+| `always_thinking` | 始终使用 Thinking 模式（不可关闭）     |
+| `image_in`        | 支持图片输入                           |
+| `video_in`        | 支持视频输入                           |
 
 ```toml
 [models.gemini-3-pro-preview]
@@ -145,10 +160,9 @@ capabilities = ["thinking", "image_in"]
 
 使用 `/login` 选择 Kimi Code 平台时，搜索和抓取服务会自动配置。
 
-| 服务 | 对应工具 | 未配置时的行为 |
-| --- | --- | --- |
-| `moonshot_search` | `SearchWeb` | 工具不可用 |
-| `moonshot_fetch` | `FetchURL` | 回退到本地抓取 |
+| 服务              | 对应工具    | 未配置时的行为 |
+| ----------------- | ----------- | -------------- |
+| `moonshot_search` | `SearchWeb` | 工具不可用     |
+| `moonshot_fetch`  | `FetchURL`  | 回退到本地抓取 |
 
 使用其他平台时，`FetchURL` 工具仍可使用，但会回退到本地抓取。
-

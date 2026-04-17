@@ -7,33 +7,34 @@ Kimi Code CLI supports multiple LLM platforms, which can be configured via confi
 The easiest way to configure is to run the `/login` command (alias `/setup`) in shell mode and follow the wizard to select platform and model:
 
 1. Select an API platform
-2. Enter your API key
+2. For **AWS Bedrock Mantle**, select an AWS Region, then enter your API key; for other platforms, enter your API key
 3. Select a model from the available list
 
 After configuration, Kimi Code CLI will automatically save settings to `~/.kimi/config.toml` and reload.
 
 `/login` currently supports the following platforms:
 
-| Platform | Description |
-| --- | --- |
-| Kimi Code | Kimi Code platform, supports search and fetch services |
-| Moonshot AI Open Platform (moonshot.cn) | China region API endpoint |
-| Moonshot AI Open Platform (moonshot.ai) | Global region API endpoint |
+| Platform                                | Description                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------- |
+| AWS Bedrock Mantle (OpenAI-compatible)  | Amazon Bedrock Mantle OpenAI API; uses `openai_legacy` and a Bedrock API key |
+| Kimi Code                               | Kimi Code platform, supports search and fetch services                       |
+| Moonshot AI Open Platform (moonshot.cn) | China region API endpoint                                                    |
+| Moonshot AI Open Platform (moonshot.ai) | Global region API endpoint                                                   |
 
-For other platforms, please manually edit the configuration file.
+For other platforms, please manually edit the configuration file. See also [Bedrock Mantle example](../../../examples/bedrock-mantle.md).
 
 ## Provider types
 
 The `type` field in `providers` configuration specifies the API provider type. Different types use different API protocols and client implementations.
 
-| Type | Description |
-| --- | --- |
-| `kimi` | Kimi API |
-| `openai_legacy` | OpenAI Chat Completions API |
-| `openai_responses` | OpenAI Responses API |
-| `anthropic` | Anthropic Claude API |
-| `gemini` | Google Gemini API |
-| `vertexai` | Google Vertex AI |
+| Type               | Description                 |
+| ------------------ | --------------------------- |
+| `kimi`             | Kimi API                    |
+| `openai_legacy`    | OpenAI Chat Completions API |
+| `openai_responses` | OpenAI Responses API        |
+| `anthropic`        | Anthropic Claude API        |
+| `gemini`           | Google Gemini API           |
+| `vertexai`         | Google Vertex AI            |
 
 All provider types support adding custom HTTP headers via the `custom_headers` field. See [Configuration files](./config-files.md) for details.
 
@@ -58,6 +59,20 @@ type = "openai_legacy"
 base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
+
+#### AWS Bedrock Mantle (OpenAI-compatible API)
+
+[Bedrock Mantle](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) exposes an OpenAI-compatible endpoint per AWS Region, for example:
+
+`https://bedrock-mantle.<region>.api.aws/v1`
+
+Use a **Bedrock API key** (not IAM access keys) with `type = "openai_legacy"`. Model IDs look like `moonshotai.kimi-k2.5` (catalog varies by region).
+
+**`/login` flow:** choose **AWS Bedrock Mantle (OpenAI-compatible)**, pick a region, enter the API key, then select a model. This writes a managed provider `managed:bedrock-mantle` and clears Moonshot search/fetch (those tools are Kimi Code–specific).
+
+**Environment overrides** (optional): `OPENAI_BASE_URL` and `OPENAI_API_KEY` override the saved `base_url` and `api_key` for `openai_legacy` providers only when set; they do not change other providers’ URLs.
+
+**Example:** see [`examples/bedrock-mantle.md`](../../../examples/bedrock-mantle.md).
 
 ### `openai_responses`
 
@@ -108,12 +123,12 @@ env = { GOOGLE_CLOUD_PROJECT = "your-project-id" }
 
 The `capabilities` field in model configuration declares the capabilities supported by the model. This affects feature availability in Kimi Code CLI.
 
-| Capability | Description |
-| --- | --- |
-| `thinking` | Supports thinking mode (deep reasoning), can be toggled |
-| `always_thinking` | Always uses thinking mode (cannot be disabled) |
-| `image_in` | Supports image input |
-| `video_in` | Supports video input |
+| Capability        | Description                                             |
+| ----------------- | ------------------------------------------------------- |
+| `thinking`        | Supports thinking mode (deep reasoning), can be toggled |
+| `always_thinking` | Always uses thinking mode (cannot be disabled)          |
+| `image_in`        | Supports image input                                    |
+| `video_in`        | Supports video input                                    |
 
 ```toml
 [models.gemini-3-pro-preview]
@@ -145,9 +160,9 @@ The `SearchWeb` and `FetchURL` tools depend on external services, currently only
 
 When selecting the Kimi Code platform using `/login`, search and fetch services are automatically configured.
 
-| Service | Corresponding tool | Behavior when not configured |
-| --- | --- | --- |
-| `moonshot_search` | `SearchWeb` | Tool unavailable |
-| `moonshot_fetch` | `FetchURL` | Falls back to local fetching |
+| Service           | Corresponding tool | Behavior when not configured |
+| ----------------- | ------------------ | ---------------------------- |
+| `moonshot_search` | `SearchWeb`        | Tool unavailable             |
+| `moonshot_fetch`  | `FetchURL`         | Falls back to local fetching |
 
 When using other platforms, the `FetchURL` tool is still available but will fall back to local fetching.

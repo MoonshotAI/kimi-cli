@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, NamedTuple, cast
+from typing import Any, Literal, NamedTuple, cast
 
 import aiohttp
 from pydantic import BaseModel
@@ -11,6 +11,28 @@ from kimi_cli.config import Config, LLMModel, load_config, save_config
 from kimi_cli.llm import ModelCapability
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
+
+BEDROCK_MANTLE_PLATFORM_ID = "bedrock-mantle"
+
+BEDROCK_MANTLE_REGIONS: list[tuple[str, str]] = [
+    ("us-east-1", "US East (N. Virginia)"),
+    ("us-east-2", "US East (Ohio)"),
+    ("us-west-2", "US West (Oregon)"),
+    ("eu-west-1", "Europe (Ireland)"),
+    ("eu-west-2", "Europe (London)"),
+    ("eu-central-1", "Europe (Frankfurt)"),
+    ("ap-south-1", "Asia Pacific (Mumbai)"),
+    ("ap-northeast-1", "Asia Pacific (Tokyo)"),
+    ("ap-southeast-3", "Asia Pacific (Jakarta)"),
+    ("sa-east-1", "South America (São Paulo)"),
+    ("eu-south-1", "Europe (Milan)"),
+    ("eu-north-1", "Europe (Stockholm)"),
+]
+
+
+def bedrock_mantle_base_url(region: str) -> str:
+    """OpenAI-compatible Bedrock Mantle base URL (includes ``/v1`` prefix)."""
+    return f"https://bedrock-mantle.{region}.api.aws/v1"
 
 
 class ModelInfo(BaseModel):
@@ -47,6 +69,7 @@ class Platform(NamedTuple):
     search_url: str | None = None
     fetch_url: str | None = None
     allowed_prefixes: list[str] | None = None
+    llm_provider_type: Literal["kimi", "openai_legacy"] = "kimi"
 
 
 def _kimi_code_base_url() -> str:
@@ -56,6 +79,12 @@ def _kimi_code_base_url() -> str:
 
 
 PLATFORMS: list[Platform] = [
+    Platform(
+        id=BEDROCK_MANTLE_PLATFORM_ID,
+        name="AWS Bedrock Mantle (OpenAI-compatible)",
+        base_url="",
+        llm_provider_type="openai_legacy",
+    ),
     Platform(
         id=KIMI_CODE_PLATFORM_ID,
         name="Kimi Code",
@@ -152,8 +181,15 @@ async def refresh_managed_models(config: Config) -> bool:
                 provider=provider_key,
             )
             continue
+        list_url = (provider.base_url or "").strip() or (platform.base_url or "").strip()
+        if not list_url:
+            logger.warning(
+                "Missing base URL for managed provider: {provider}",
+                provider=provider_key,
+            )
+            continue
         try:
-            models = await list_models(platform, api_key)
+            models = await list_models(platform, api_key, list_base_url=list_url)
         except Exception as exc:
             logger.error(
                 "Failed to refresh models for {platform}: {error}",
@@ -177,12 +213,22 @@ async def refresh_managed_models(config: Config) -> bool:
     return changed
 
 
-async def list_models(platform: Platform, api_key: str) -> list[ModelInfo]:
+async def list_models(
+    platform: Platform,
+    api_key: str,
+    *,
+    list_base_url: str | None = None,
+) -> list[ModelInfo]:
+    effective_base = (list_base_url if list_base_url is not None else platform.base_url).strip()
+    if not effective_base:
+        raise ValueError("base URL is required to list models")
+    openai_compatible = platform.llm_provider_type == "openai_legacy"
     async with new_client_session() as session:
         models = await _list_models(
             session,
-            base_url=platform.base_url,
+            base_url=effective_base,
             api_key=api_key,
+            openai_compatible=openai_compatible,
         )
     if platform.allowed_prefixes is None:
         return models
@@ -190,11 +236,48 @@ async def list_models(platform: Platform, api_key: str) -> list[ModelInfo]:
     return [model for model in models if model.id.startswith(prefixes)]
 
 
+def _model_info_from_models_payload_item(
+    item: dict[str, Any], *, openai_compatible: bool
+) -> ModelInfo | None:
+    model_id = item.get("id")
+    if not model_id:
+        return None
+    mid = str(model_id)
+    if openai_compatible:
+        raw_ctx = item.get("context_length")
+        context_length = 0
+        if raw_ctx is not None and str(raw_ctx).strip():
+            try:
+                context_length = max(0, int(raw_ctx))
+            except (TypeError, ValueError):
+                context_length = 0
+        if context_length == 0:
+            lower = mid.lower()
+            context_length = (
+                131_072 if "kimi" in lower or "moonshotai" in lower else 128_000
+            )
+        return ModelInfo(
+            id=mid,
+            context_length=context_length,
+            supports_reasoning=bool(item.get("supports_reasoning")),
+            supports_image_in=bool(item.get("supports_image_in")),
+            supports_video_in=bool(item.get("supports_video_in")),
+        )
+    return ModelInfo(
+        id=mid,
+        context_length=int(item.get("context_length") or 0),
+        supports_reasoning=bool(item.get("supports_reasoning")),
+        supports_image_in=bool(item.get("supports_image_in")),
+        supports_video_in=bool(item.get("supports_video_in")),
+    )
+
+
 async def _list_models(
     session: aiohttp.ClientSession,
     *,
     base_url: str,
     api_key: str,
+    openai_compatible: bool = False,
 ) -> list[ModelInfo]:
     models_url = f"{base_url.rstrip('/')}/models"
     try:
@@ -213,18 +296,9 @@ async def _list_models(
 
     result: list[ModelInfo] = []
     for item in cast(list[dict[str, Any]], data):
-        model_id = item.get("id")
-        if not model_id:
-            continue
-        result.append(
-            ModelInfo(
-                id=str(model_id),
-                context_length=int(item.get("context_length") or 0),
-                supports_reasoning=bool(item.get("supports_reasoning")),
-                supports_image_in=bool(item.get("supports_image_in")),
-                supports_video_in=bool(item.get("supports_video_in")),
-            )
-        )
+        info = _model_info_from_models_payload_item(item, openai_compatible=openai_compatible)
+        if info is not None:
+            result.append(info)
     return result
 
 
