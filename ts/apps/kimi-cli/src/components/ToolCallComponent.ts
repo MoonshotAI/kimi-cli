@@ -207,6 +207,10 @@ export class ToolCallComponent extends Container {
     const { result } = this;
     if (result === undefined || !result.output) return;
 
+    if (this.toolCall.name === 'AskUserQuestion' && !result.is_error) {
+      if (this.renderAskUserQuestionResult(result.output)) return;
+    }
+
     const lines = result.output.split('\n');
     if (this.expanded) {
       this.addChild(new Text(chalk.dim(result.output), 2, 0));
@@ -221,5 +225,45 @@ export class ToolCallComponent extends Container {
         ));
       }
     }
+  }
+
+  /**
+   * Render AskUserQuestion's JSON payload as a friendly Q/A list.
+   * Returns true on success (caller skips the default JSON dump);
+   * false on parse failure (caller falls back to raw display).
+   */
+  private renderAskUserQuestionResult(output: string): boolean {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(output);
+    } catch {
+      return false;
+    }
+    if (typeof parsed !== 'object' || parsed === null) return false;
+
+    const colors = this.colors;
+    const dim = chalk.dim;
+    const accent = chalk.hex(colors.primary);
+
+    const answers = (parsed as { answers?: unknown }).answers;
+    const note = (parsed as { note?: unknown }).note;
+
+    const hasAnswers =
+      typeof answers === 'object' && answers !== null && Object.keys(answers).length > 0;
+
+    if (!hasAnswers) {
+      const noteText = typeof note === 'string' && note.length > 0
+        ? note
+        : 'User dismissed the question.';
+      this.addChild(new Text(dim(`  ${noteText}`), 0, 0));
+      return true;
+    }
+
+    for (const [question, answer] of Object.entries(answers as Record<string, unknown>)) {
+      const answerText = typeof answer === 'string' ? answer : JSON.stringify(answer);
+      this.addChild(new Text(`  ${dim('Q')}  ${question}`, 0, 0));
+      this.addChild(new Text(`  ${accent('→')}  ${answerText}`, 0, 0));
+    }
+    return true;
   }
 }
