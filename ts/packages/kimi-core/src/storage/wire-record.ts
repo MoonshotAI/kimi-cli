@@ -5,6 +5,9 @@
 
 import { z } from 'zod';
 
+import type { ToolInputDisplay, TokenUsage } from '../soul/types.js';
+import { ToolInputDisplaySchema } from '../soul/types.js';
+
 // ── File metadata header ────────────────────────────────────────────────
 
 export interface WireFileMetadata {
@@ -180,6 +183,13 @@ export interface NotificationRecord {
           shell?: number | undefined;
         }
       | undefined;
+    /**
+     * Set only when this notification was produced by routing a team-mail
+     * envelope into the notification channel (Slice 8 / 决策 #103). Used
+     * by startup recovery to dedupe notifications that an envelope
+     * produced across a crash window.
+     */
+    envelope_id?: string | undefined;
   };
 }
 
@@ -225,25 +235,24 @@ export interface ToolDeniedRecord {
 
 // ── Approval helper types (appendix B L6206 / L6242) ───────────────────
 
-export type ApprovalDisplay =
-  | {
-      kind: 'command';
-      command: string;
-      cwd?: string | undefined;
-      description?: string | undefined;
-    }
-  | { kind: 'diff'; path: string; diff: string }
-  | { kind: 'file_write'; path: string; content: string }
-  | { kind: 'task_stop'; task_id: string; task_description: string }
-  | { kind: 'generic'; title: string; body: string };
+// Slice 5 / 决策 #98 — `ApprovalDisplay` is now a structural alias of
+// `ToolInputDisplay` so a single rendering hint flows through both
+// approval prompts and tool transcript widgets without the consumer
+// having to inspect two slightly-different unions.
+export type ApprovalDisplay = ToolInputDisplay;
+
+export type McpApprovalReason = 'elicitation' | 'auth' | 'tool_call';
 
 export type ApprovalSource =
   | { kind: 'soul'; agent_id: string }
   | { kind: 'subagent'; agent_id: string }
   | { kind: 'turn'; turn_id: string }
-  | { kind: 'session'; session_id: string };
+  | { kind: 'session'; session_id: string }
+  | { kind: 'mcp'; server_id: string; reason: McpApprovalReason };
 
 // ── Management-class records (Slice 4 / 7 / 8 scope) ──────────────────
+
+export type SkillInvocationTrigger = 'user-slash' | 'claude-proactive' | 'nested-skill';
 
 export interface SkillInvokedRecord {
   type: 'skill_invoked';
@@ -256,6 +265,10 @@ export interface SkillInvokedRecord {
     execution_mode: 'inline' | 'fork';
     original_input: string;
     sub_agent_id?: string | undefined;
+    /** Slice 7.1 (决策 #99) — what kicked off this invocation. */
+    invocation_trigger?: SkillInvocationTrigger | undefined;
+    /** Slice 7.1 (决策 #99) — depth of recursive Skill→Skill calls. */
+    query_depth?: number | undefined;
   };
 }
 
@@ -271,6 +284,10 @@ export interface SkillCompletedRecord {
     success: boolean;
     error?: string | undefined;
     sub_agent_id?: string | undefined;
+    /** Slice 7.1 (决策 #99) — mirrors the originating skill_invoked record. */
+    invocation_trigger?: SkillInvocationTrigger | undefined;
+    /** Slice 7.1 (决策 #99) — mirrors the originating skill_invoked record. */
+    query_depth?: number | undefined;
   };
 }
 
@@ -318,15 +335,53 @@ export interface TeamMailRecord {
   };
 }
 
-export interface SubagentEventRecord {
-  type: 'subagent_event';
+// ── Subagent lifecycle records (Phase 6 / 决策 #88 / §3.6.1) ─────────────
+//
+// The old `subagent_event` wrapper (which nested SoulEvent snapshots into
+// the parent wire) is gone. Each agent now persists its OWN wire.jsonl at
+// `sessions/<session>/subagents/<agent_id>/wire.jsonl`. The parent wire
+// only carries lifecycle references — three distinct records that bracket
+// the spawn → completion (or failure) of every subagent.
+
+export interface SubagentSpawnedRecord {
+  type: 'subagent_spawned';
   seq: number;
   time: number;
-  agent_id: string;
-  agent_name?: string | undefined;
-  parent_tool_call_id: string;
-  /** Persisted SoulEvent snapshot — opaque to wire-level schema (§4.3). */
-  sub_event: unknown;
+  data: {
+    agent_id: string;
+    agent_name?: string | undefined;
+    parent_tool_call_id: string;
+    /**
+     * The agent_id of the spawning subagent, when this spawn happened
+     * inside another subagent's turn (recursive spawn). Undefined when
+     * the main agent is the spawner.
+     */
+    parent_agent_id?: string | undefined;
+    run_in_background: boolean;
+  };
+}
+
+export interface SubagentCompletedRecord {
+  type: 'subagent_completed';
+  seq: number;
+  time: number;
+  data: {
+    agent_id: string;
+    parent_tool_call_id: string;
+    result_summary: string;
+    usage?: TokenUsage | undefined;
+  };
+}
+
+export interface SubagentFailedRecord {
+  type: 'subagent_failed';
+  seq: number;
+  time: number;
+  data: {
+    agent_id: string;
+    parent_tool_call_id: string;
+    error: string;
+  };
 }
 
 export interface OwnershipChangedRecord {
@@ -376,7 +431,9 @@ export type WireRecord =
   | ApprovalRequestRecord
   | ApprovalResponseRecord
   | TeamMailRecord
-  | SubagentEventRecord
+  | SubagentSpawnedRecord
+  | SubagentCompletedRecord
+  | SubagentFailedRecord
   | OwnershipChangedRecord
   | ContextEditRecord;
 
@@ -577,6 +634,7 @@ const _rawNotificationRecordSchema = z.object({
         shell: z.number().optional(),
       })
       .optional(),
+    envelope_id: z.string().optional(),
   }),
 });
 export const NotificationRecordSchema: z.ZodType<NotificationRecord> = _rawNotificationRecordSchema;
@@ -628,35 +686,11 @@ export const ToolDeniedRecordSchema: z.ZodType<ToolDeniedRecord> = _rawToolDenie
 
 // ── Approval helper schemas ────────────────────────────────────────────
 
-const _rawApprovalDisplaySchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('command'),
-    command: z.string(),
-    cwd: z.string().optional(),
-    description: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('diff'),
-    path: z.string(),
-    diff: z.string(),
-  }),
-  z.object({
-    kind: z.literal('file_write'),
-    path: z.string(),
-    content: z.string(),
-  }),
-  z.object({
-    kind: z.literal('task_stop'),
-    task_id: z.string(),
-    task_description: z.string(),
-  }),
-  z.object({
-    kind: z.literal('generic'),
-    title: z.string(),
-    body: z.string(),
-  }),
-]);
-export const ApprovalDisplaySchema: z.ZodType<ApprovalDisplay> = _rawApprovalDisplaySchema;
+// Slice 5 / 决策 #98 — re-export the canonical `ToolInputDisplay` schema
+// under the legacy `ApprovalDisplaySchema` name so existing consumers
+// keep compiling. Drift between the type alias and the schema is
+// guaranteed by `_driftGuard_ToolInputDisplay` in `src/soul/types.ts`.
+export const ApprovalDisplaySchema: z.ZodType<ApprovalDisplay> = ToolInputDisplaySchema;
 
 const _rawApprovalSourceSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -675,10 +709,17 @@ const _rawApprovalSourceSchema = z.discriminatedUnion('kind', [
     kind: z.literal('session'),
     session_id: z.string(),
   }),
+  z.object({
+    kind: z.literal('mcp'),
+    server_id: z.string(),
+    reason: z.enum(['elicitation', 'auth', 'tool_call']),
+  }),
 ]);
 export const ApprovalSourceSchema: z.ZodType<ApprovalSource> = _rawApprovalSourceSchema;
 
 // ── Management-class schemas ──────────────────────────────────────────
+
+const skillInvocationTriggerEnum = z.enum(['user-slash', 'claude-proactive', 'nested-skill']);
 
 const _rawSkillInvokedRecordSchema = z.object({
   type: z.literal('skill_invoked'),
@@ -691,6 +732,8 @@ const _rawSkillInvokedRecordSchema = z.object({
     execution_mode: z.enum(['inline', 'fork']),
     original_input: z.string(),
     sub_agent_id: z.string().optional(),
+    invocation_trigger: skillInvocationTriggerEnum.optional(),
+    query_depth: z.number().optional(),
   }),
 });
 export const SkillInvokedRecordSchema: z.ZodType<SkillInvokedRecord> = _rawSkillInvokedRecordSchema;
@@ -707,6 +750,8 @@ const _rawSkillCompletedRecordSchema = z.object({
     success: z.boolean(),
     error: z.string().optional(),
     sub_agent_id: z.string().optional(),
+    invocation_trigger: skillInvocationTriggerEnum.optional(),
+    query_depth: z.number().optional(),
   }),
 });
 export const SkillCompletedRecordSchema: z.ZodType<SkillCompletedRecord> =
@@ -761,17 +806,60 @@ const _rawTeamMailRecordSchema = z.object({
 });
 export const TeamMailRecordSchema: z.ZodType<TeamMailRecord> = _rawTeamMailRecordSchema;
 
-const _rawSubagentEventRecordSchema = z.object({
-  type: z.literal('subagent_event'),
+// ── Subagent lifecycle schemas (Phase 6) ─────────────────────────────
+
+// v2 §3.6.1: usage counts are non-negative integers (token totals).
+// Scoped to the Phase 6 lifecycle records — `AssistantMessageRecord` /
+// `TurnEndRecord` keep their pre-Phase-6 inline `z.number()` schemas to
+// avoid widening the change beyond this slice.
+const _rawTokenUsageSchema = z.object({
+  input: z.number().int().nonnegative(),
+  output: z.number().int().nonnegative(),
+  cache_read: z.number().int().nonnegative().optional(),
+  cache_write: z.number().int().nonnegative().optional(),
+});
+
+const _rawSubagentSpawnedRecordSchema = z.object({
+  type: z.literal('subagent_spawned'),
   seq: z.number(),
   time: z.number(),
-  agent_id: z.string(),
-  agent_name: z.string().optional(),
-  parent_tool_call_id: z.string(),
-  sub_event: z.unknown(),
+  data: z.object({
+    agent_id: z.string(),
+    agent_name: z.string().optional(),
+    parent_tool_call_id: z.string(),
+    parent_agent_id: z.string().optional(),
+    run_in_background: z.boolean(),
+  }),
 });
-export const SubagentEventRecordSchema: z.ZodType<SubagentEventRecord> =
-  _rawSubagentEventRecordSchema;
+export const SubagentSpawnedRecordSchema: z.ZodType<SubagentSpawnedRecord> =
+  _rawSubagentSpawnedRecordSchema;
+
+const _rawSubagentCompletedRecordSchema = z.object({
+  type: z.literal('subagent_completed'),
+  seq: z.number(),
+  time: z.number(),
+  data: z.object({
+    agent_id: z.string(),
+    parent_tool_call_id: z.string(),
+    result_summary: z.string(),
+    usage: _rawTokenUsageSchema.optional(),
+  }),
+});
+export const SubagentCompletedRecordSchema: z.ZodType<SubagentCompletedRecord> =
+  _rawSubagentCompletedRecordSchema;
+
+const _rawSubagentFailedRecordSchema = z.object({
+  type: z.literal('subagent_failed'),
+  seq: z.number(),
+  time: z.number(),
+  data: z.object({
+    agent_id: z.string(),
+    parent_tool_call_id: z.string(),
+    error: z.string(),
+  }),
+});
+export const SubagentFailedRecordSchema: z.ZodType<SubagentFailedRecord> =
+  _rawSubagentFailedRecordSchema;
 
 const _rawOwnershipChangedRecordSchema = z.object({
   type: z.literal('ownership_changed'),
@@ -897,16 +985,18 @@ const _driftGuard_ToolDeniedRecord: AssertEqual<
   ToolDeniedRecord
 > = true;
 void _driftGuard_ToolDeniedRecord;
-const _driftGuard_ApprovalDisplay: AssertEqual<
-  z.infer<typeof _rawApprovalDisplaySchema>,
-  ApprovalDisplay
-> = true;
-void _driftGuard_ApprovalDisplay;
 const _driftGuard_ApprovalSource: AssertEqual<
   z.infer<typeof _rawApprovalSourceSchema>,
   ApprovalSource
 > = true;
 void _driftGuard_ApprovalSource;
+// Slice 7.1 (决策 #99) — keep the canonical-trigger enum type in lock-step
+// with its zod schema so a new value lands on both sides simultaneously.
+const _driftGuard_SkillInvocationTrigger: AssertEqual<
+  z.infer<typeof skillInvocationTriggerEnum>,
+  SkillInvocationTrigger
+> = true;
+void _driftGuard_SkillInvocationTrigger;
 const _driftGuard_SkillInvokedRecord: AssertEqual<
   z.infer<typeof _rawSkillInvokedRecordSchema>,
   SkillInvokedRecord
@@ -932,11 +1022,21 @@ const _driftGuard_TeamMailRecord: AssertEqual<
   TeamMailRecord
 > = true;
 void _driftGuard_TeamMailRecord;
-const _driftGuard_SubagentEventRecord: AssertEqual<
-  z.infer<typeof _rawSubagentEventRecordSchema>,
-  SubagentEventRecord
+const _driftGuard_SubagentSpawnedRecord: AssertEqual<
+  z.infer<typeof _rawSubagentSpawnedRecordSchema>,
+  SubagentSpawnedRecord
 > = true;
-void _driftGuard_SubagentEventRecord;
+void _driftGuard_SubagentSpawnedRecord;
+const _driftGuard_SubagentCompletedRecord: AssertEqual<
+  z.infer<typeof _rawSubagentCompletedRecordSchema>,
+  SubagentCompletedRecord
+> = true;
+void _driftGuard_SubagentCompletedRecord;
+const _driftGuard_SubagentFailedRecord: AssertEqual<
+  z.infer<typeof _rawSubagentFailedRecordSchema>,
+  SubagentFailedRecord
+> = true;
+void _driftGuard_SubagentFailedRecord;
 const _driftGuard_OwnershipChangedRecord: AssertEqual<
   z.infer<typeof _rawOwnershipChangedRecordSchema>,
   OwnershipChangedRecord
@@ -974,7 +1074,9 @@ export const WireRecordSchema: z.ZodType<WireRecord> = z.discriminatedUnion('typ
   _rawApprovalRequestRecordSchema,
   _rawApprovalResponseRecordSchema,
   _rawTeamMailRecordSchema,
-  _rawSubagentEventRecordSchema,
+  _rawSubagentSpawnedRecordSchema,
+  _rawSubagentCompletedRecordSchema,
+  _rawSubagentFailedRecordSchema,
   _rawOwnershipChangedRecordSchema,
   _rawContextEditRecordSchema,
 ]);

@@ -23,7 +23,7 @@ import { HookEngine } from '../../../src/hooks/engine.js';
 import type { HookExecutor } from '../../../src/hooks/types.js';
 import {
   AlwaysAllowApprovalRuntime,
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   SessionEventBus,
   SessionLifecycleStateMachine,
   SoulRegistry,
@@ -41,6 +41,7 @@ import {
   createNoopCompactionProvider,
   createNoopJournalCapability,
 } from '../fixtures/slice3-harness.js';
+import { makeRealSubcomponents } from '../fixtures/real-subcomponents.js';
 
 /**
  * Spy orchestrator that delegates to a real ToolCallOrchestrator but
@@ -73,7 +74,7 @@ function buildHarness(): { manager: TurnManager; spy: RuleSpyOrchestrator } {
   });
 
   const stateMachine = new SessionLifecycleStateMachine();
-  const gate = new LifecycleGateFacade(stateMachine);
+  const gate = new SoulLifecycleGate(stateMachine);
   const context = createHarnessContextState();
   const journal = new InMemorySessionJournalImpl();
   const eventBus = new SessionEventBus();
@@ -104,6 +105,12 @@ function buildHarness(): { manager: TurnManager; spy: RuleSpyOrchestrator } {
     soulRegistry,
     tools: [],
     orchestrator: spy,
+    ...makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+      orchestrator: spy as unknown as import('../../../src/soul-plus/orchestrator.js').ToolCallOrchestrator,
+    }),
   });
   return { manager, spy };
 }

@@ -15,6 +15,8 @@
 
 import { randomUUID } from 'node:crypto';
 
+import type { SessionJournal } from '../storage/session-journal.js';
+import { RESULT_SUMMARY_MAX_LEN } from './subagent-constants.js';
 import type { AgentResult, SpawnRequest, SubagentHandle, SubagentHost } from './subagent-types.js';
 import type { SoulHandle, SoulKey } from './types.js';
 
@@ -34,6 +36,17 @@ export interface SoulRegistryDeps {
   readonly runSubagentTurn?:
     | ((agentId: string, request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
     | undefined;
+
+  /**
+   * Phase 6 (决策 #88 / §3.6.1) — when supplied, `spawn()` writes the
+   * three subagent lifecycle records (`subagent_spawned` /
+   * `subagent_completed` / `subagent_failed`) to the parent session
+   * journal so the parent wire carries lifecycle references without ever
+   * touching the child's conversation payload (which now lives on the
+   * child's own `wire.jsonl`). Optional so unit tests that only
+   * exercise registry mechanics (without a journal) keep compiling.
+   */
+  readonly parentSessionJournal?: SessionJournal | undefined;
 }
 
 export class SoulRegistry implements SubagentHost {
@@ -42,10 +55,12 @@ export class SoulRegistry implements SubagentHost {
   private readonly runSubagentTurnFn:
     | ((agentId: string, request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
     | undefined;
+  private readonly parentSessionJournal: SessionJournal | undefined;
 
   constructor(deps: SoulRegistryDeps) {
     this.createHandle = deps.createHandle;
     this.runSubagentTurnFn = deps.runSubagentTurn;
+    this.parentSessionJournal = deps.parentSessionJournal;
   }
 
   getOrCreate(key: SoulKey): SoulHandle {
@@ -112,6 +127,31 @@ export class SoulRegistry implements SubagentHost {
       }
     }
 
+    // Phase 6 (决策 #88) — write `subagent_spawned` to the parent journal
+    // BEFORE invoking the runner so the parent wire records the spawn
+    // even if the runner setup throws synchronously. The cleanup chain
+    // below writes `subagent_completed` / `subagent_failed` once the
+    // turn settles. The runner itself does NOT write these records when
+    // SoulRegistry owns the lifecycle channel — soul-plus.ts wires
+    // parentSessionJournal here and OMITS it from SubagentRunnerDeps to
+    // avoid double-writes.
+    if (this.parentSessionJournal !== undefined) {
+      await this.parentSessionJournal.appendSubagentSpawned({
+        type: 'subagent_spawned',
+        data: {
+          agent_id: agentId,
+          ...(request.agentName !== undefined ? { agent_name: request.agentName } : {}),
+          parent_tool_call_id: request.parentToolCallId,
+          ...(request.parentAgentId !== undefined &&
+          request.parentAgentId !== '' &&
+          request.parentAgentId !== 'agent_main'
+            ? { parent_agent_id: request.parentAgentId }
+            : {}),
+          run_in_background: request.runInBackground ?? false,
+        },
+      });
+    }
+
     const completion: Promise<AgentResult> = this.runSubagentTurnFn
       ? this.runSubagentTurnFn(agentId, request, soulHandle.abortController.signal)
       : Promise.resolve({ result: '', usage: { input: 0, output: 0 } });
@@ -130,12 +170,56 @@ export class SoulRegistry implements SubagentHost {
     // in unit tests) would have its cleanup reaction dispatched before
     // the async-function-return microtask, destroying the handle
     // before the caller ever observes it.
-    const cleanup = (): void => {
+    //
+    // Phase 6 — the lifecycle journal write happens BEFORE destroy() so
+    // a downstream replay sees the completed/failed record alongside
+    // the spawned record. We queue the destroy through queueMicrotask
+    // (preserving the Slice 7 ordering guarantee) only after the
+    // journal write resolves.
+    const onSettled = async (
+      outcome: { ok: true; result: AgentResult } | { ok: false; error: unknown },
+    ): Promise<void> => {
+      if (this.parentSessionJournal !== undefined) {
+        try {
+          if (outcome.ok) {
+            const summary = outcome.result.result.length > 0
+              ? outcome.result.result.substring(0, RESULT_SUMMARY_MAX_LEN)
+              : '';
+            await this.parentSessionJournal.appendSubagentCompleted({
+              type: 'subagent_completed',
+              data: {
+                agent_id: agentId,
+                parent_tool_call_id: request.parentToolCallId,
+                result_summary: summary,
+                usage: outcome.result.usage,
+              },
+            });
+          } else {
+            const errorMessage =
+              outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+            await this.parentSessionJournal.appendSubagentFailed({
+              type: 'subagent_failed',
+              data: {
+                agent_id: agentId,
+                parent_tool_call_id: request.parentToolCallId,
+                error: errorMessage,
+              },
+            });
+          }
+        } catch {
+          // Never let a journal write failure mask the underlying
+          // outcome — the registry's job is to surface the original
+          // result/error to the awaiter, not to crash on bookkeeping.
+        }
+      }
       queueMicrotask(() => {
         this.destroy(soulKey);
       });
     };
-    void completion.then(cleanup, cleanup);
+    void completion.then(
+      (result) => onSettled({ ok: true, result }),
+      (error: unknown) => onSettled({ ok: false, error }),
+    );
 
     return {
       agentId,

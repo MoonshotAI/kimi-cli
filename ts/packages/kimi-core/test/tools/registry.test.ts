@@ -160,4 +160,93 @@ describe('ToolRegistry', () => {
     registry.register(builtin, 'builtin');
     expect(registry.get('X')).toBe(builtin);
   });
+
+  // ── Slice 7.2 (决策 #100) — async / prefixed paths for MCP ──────────────
+
+  describe('registerBatch / unregisterByPrefix / onChanged (Phase 7)', () => {
+    it('registerBatch registers every tool under the given prefix', async () => {
+      const registry = new ToolRegistry();
+      await registry.registerBatch('mcp__svr__', [
+        makeTool('mcp__svr__ping'),
+        makeTool('mcp__svr__pong'),
+      ]);
+      expect(registry.has('mcp__svr__ping')).toBe(true);
+      expect(registry.has('mcp__svr__pong')).toBe(true);
+    });
+
+    it('registerBatch atomically replaces prior tools with the same prefix', async () => {
+      const registry = new ToolRegistry();
+      await registry.registerBatch('mcp__svr__', [
+        makeTool('mcp__svr__old-a'),
+        makeTool('mcp__svr__old-b'),
+      ]);
+      await registry.registerBatch('mcp__svr__', [makeTool('mcp__svr__new')]);
+      expect(registry.has('mcp__svr__old-a')).toBe(false);
+      expect(registry.has('mcp__svr__old-b')).toBe(false);
+      expect(registry.has('mcp__svr__new')).toBe(true);
+    });
+
+    it('registerBatch does not touch tools with a different prefix', async () => {
+      const registry = new ToolRegistry();
+      registry.register(makeTool('Read'));
+      await registry.registerBatch('mcp__svr__', [makeTool('mcp__svr__a')]);
+      await registry.registerBatch('mcp__svr__', [makeTool('mcp__svr__b')]);
+      expect(registry.has('Read')).toBe(true);
+      expect(registry.has('mcp__svr__b')).toBe(true);
+    });
+
+    it('unregisterByPrefix removes every tool with the given prefix', () => {
+      const registry = new ToolRegistry();
+      registry.register(makeTool('mcp__svr__a'), 'mcp');
+      registry.register(makeTool('mcp__svr__b'), 'mcp');
+      registry.register(makeTool('Read'));
+      registry.unregisterByPrefix('mcp__svr__');
+      expect(registry.has('mcp__svr__a')).toBe(false);
+      expect(registry.has('mcp__svr__b')).toBe(false);
+      expect(registry.has('Read')).toBe(true);
+    });
+
+    it('onChanged fires with added / removed name sets after registerBatch', async () => {
+      const registry = new ToolRegistry();
+      const changes: Array<{ added: string[]; removed: string[] }> = [];
+      registry.onChanged = (c) => changes.push(c);
+      await registry.registerBatch('mcp__svr__', [makeTool('mcp__svr__ping')]);
+      expect(changes).toHaveLength(1);
+      expect(changes[0]?.added).toContain('mcp__svr__ping');
+      expect(changes[0]?.removed ?? []).not.toContain('mcp__svr__ping');
+    });
+
+    it('onChanged fires with removed names after unregisterByPrefix', () => {
+      const registry = new ToolRegistry();
+      registry.register(makeTool('mcp__svr__a'), 'mcp');
+      registry.register(makeTool('mcp__svr__b'), 'mcp');
+      const changes: Array<{ added: string[]; removed: string[] }> = [];
+      registry.onChanged = (c) => changes.push(c);
+      registry.unregisterByPrefix('mcp__svr__');
+      expect(changes).toHaveLength(1);
+      expect(changes[0]?.removed).toEqual(expect.arrayContaining(['mcp__svr__a', 'mcp__svr__b']));
+    });
+
+    it('registerBatch dedupes by name with last-wins (M-2)', async () => {
+      const registry = new ToolRegistry();
+      const first = makeTool('mcp__svr__dup');
+      const second = makeTool('mcp__svr__dup');
+      // Should NOT throw despite the two identical names in one batch.
+      await registry.registerBatch('mcp__svr__', [first, second]);
+      // Last entry wins.
+      expect(registry.get('mcp__svr__dup')).toBe(second);
+    });
+
+    it('concurrent registerBatch calls do not drop tools', async () => {
+      const registry = new ToolRegistry();
+      await Promise.all([
+        registry.registerBatch('mcp__a__', [makeTool('mcp__a__one'), makeTool('mcp__a__two')]),
+        registry.registerBatch('mcp__b__', [makeTool('mcp__b__one'), makeTool('mcp__b__two')]),
+      ]);
+      expect(registry.has('mcp__a__one')).toBe(true);
+      expect(registry.has('mcp__a__two')).toBe(true);
+      expect(registry.has('mcp__b__one')).toBe(true);
+      expect(registry.has('mcp__b__two')).toBe(true);
+    });
+  });
 });

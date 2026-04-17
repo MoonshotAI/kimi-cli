@@ -18,6 +18,7 @@
  *     the filesystem entry in place.
  */
 
+import type { FullContextState } from '../../storage/context-state.js';
 import { discoverSkills } from './scanner.js';
 import type {
   SkillActivationContext,
@@ -27,6 +28,9 @@ import type {
   SkillSource,
 } from './types.js';
 import { SkillNotFoundError, normalizeSkillName } from './types.js';
+
+/** Slice 7.1 (决策 #99) — max chars of `description` shown per skill. */
+const SKILL_LISTING_DESC_MAX = 250;
 
 export interface SkillManagerOptions {
   /**
@@ -96,6 +100,21 @@ export class DefaultSkillManager implements SkillManager {
     if (skill === undefined) {
       throw new SkillNotFoundError(name);
     }
+    // Slice 7.1 (决策 #99) — user-slash invocation audit trail. Written
+    // before the user_message mirror so the journal observes the same
+    // WAL-then-mirror order as SkillInlineWriter (claude-proactive path).
+    if (context.sessionJournal !== undefined) {
+      await context.sessionJournal.appendSkillInvoked({
+        type: 'skill_invoked',
+        turn_id: context.turnId ?? 'pending',
+        data: {
+          skill_name: skill.name,
+          execution_mode: 'inline',
+          original_input: args,
+          invocation_trigger: 'user-slash',
+        },
+      });
+    }
     const prompt = buildInlinePrompt(skill.content, args);
     await context.contextState.appendUserMessage({ text: prompt });
   }
@@ -130,6 +149,34 @@ export class DefaultSkillManager implements SkillManager {
     }
     return lines.join('\n');
   }
+
+  // ── Slice 7.1 (决策 #99) — model-facing skill listing ─────────────────
+
+  listInvocableSkills(): readonly SkillDefinition[] {
+    return this.listSkills().filter((s) => s.metadata.disableModelInvocation !== true);
+  }
+
+  async injectSkillListing(contextState: FullContextState): Promise<void> {
+    const invocable = this.listInvocableSkills();
+    if (invocable.length === 0) return;
+    const lines: string[] = [
+      'DISREGARD any earlier skill listings. Current available skills:',
+    ];
+    for (const skill of invocable) {
+      const desc = truncateDescription(skill.description);
+      lines.push(`- ${skill.name}: ${desc}`);
+      const whenToUse = skill.metadata.whenToUse;
+      if (typeof whenToUse === 'string' && whenToUse.length > 0) {
+        lines.push(`  When to use: ${whenToUse}`);
+      }
+      lines.push(`  Path: ${skill.path}`);
+    }
+    await contextState.appendSystemReminder({ content: lines.join('\n') });
+  }
+}
+
+function truncateDescription(desc: string): string {
+  return desc.length > SKILL_LISTING_DESC_MAX ? desc.slice(0, SKILL_LISTING_DESC_MAX) : desc;
 }
 
 /**

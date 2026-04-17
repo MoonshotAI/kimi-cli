@@ -31,33 +31,23 @@ function baseInput(overrides: Partial<Parameters<NotificationManager['emit']>[0]
 }
 
 describe('NotificationManager.emit (Slice 2.4)', () => {
-  it('WAL-appends the record BEFORE fanning out to LLM sink (Case 1)', async () => {
+  it('LLM sink callback is invoked with the notification data (Case 1)', async () => {
     const journal = new InMemorySessionJournalImpl();
     const eventBus = new SessionEventBus();
     const llmPushed: NotificationData[] = [];
-    const order: string[] = [];
-
-    const originalAppend = journal.appendNotification.bind(journal);
-    journal.appendNotification = async (data) => {
-      order.push('journal');
-      return originalAppend(data);
-    };
 
     const manager = new NotificationManager({
       sessionJournal: journal,
       sessionEventBus: eventBus,
       onEmittedToLlm: (n) => {
-        order.push('llm');
         llmPushed.push(n);
       },
     });
 
     await manager.emit(baseInput());
 
-    expect(order).toEqual(['journal', 'llm']);
     expect(llmPushed).toHaveLength(1);
     expect(llmPushed[0]!.title).toBe('Build done');
-    expect(journal.getRecordsByType('notification')).toHaveLength(1);
   });
 
   it('fans out to all three sinks in order (Case 11)', async () => {
@@ -177,7 +167,6 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
     expect(second.id).toBe(first.id);
     expect(second.deduped).toBe(true);
     expect(llmCallCount).toBe(1);
-    expect(journal.getRecordsByType('notification')).toHaveLength(1);
   });
 
   it('respects targets: ["wire"] — llm / shell are skipped (Case 12)', async () => {
@@ -205,25 +194,22 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
     expect(result.delivered_at.shell).toBeUndefined();
   });
 
-  it('concurrent emits with same dedupe_key only write one journal record and fan-out once (M1)', async () => {
+  it('concurrent emits with same dedupe_key fan-out only once (M1)', async () => {
     const journal = new InMemorySessionJournalImpl();
     const eventBus = new SessionEventBus();
-    let llmCallCount = 0;
+    const appendNotificationCalls: unknown[] = [];
 
-    // Delay appendNotification to widen the race window
-    const originalAppend = journal.appendNotification.bind(journal);
-    journal.appendNotification = async (data) => {
-      await new Promise((r) => setTimeout(r, 50));
-      return originalAppend(data);
-    };
-
+    // Phase 1: use contextState.appendNotification (durable) instead of
+    // onEmittedToLlm (ephemeral) to track LLM sink delivery.
     const manager = new NotificationManager({
       sessionJournal: journal,
       sessionEventBus: eventBus,
-      onEmittedToLlm: () => {
-        llmCallCount += 1;
+      contextState: {
+        appendNotification: async (data: unknown) => {
+          appendNotificationCalls.push(data);
+        },
       },
-    });
+    } as unknown as ConstructorParameters<typeof NotificationManager>[0]);
 
     const [r1, r2] = await Promise.all([
       manager.emit(baseInput({ dedupe_key: 'race_key' })),
@@ -235,9 +221,8 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
     // Exactly one was deduped (the concurrent follower)
     const deduped = [r1.deduped, r2.deduped].filter(Boolean);
     expect(deduped).toHaveLength(1);
-    // Only one journal record + one fan-out
-    expect(llmCallCount).toBe(1);
-    expect(journal.getRecordsByType('notification')).toHaveLength(1);
+    // Only one durable write (not two)
+    expect(appendNotificationCalls).toHaveLength(1);
   });
 
   it('wire sink: delivered_at.wire is set even when async listener rejects (M2 bus-accepted semantics)', async () => {
@@ -321,7 +306,78 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
     const result = await manager.emit(baseInput({ dedupe_key: 'background_task:bg_42:done' }));
     expect(result.deduped).toBe(true);
     expect(result.id).toBe('n_old');
-    // No new record written after dedupe hit
-    expect(journal.getRecordsByType('notification')).toHaveLength(0);
+  });
+});
+
+// ── Phase 1 Step 5: NotificationManager durable path ──────────────────
+//
+// Decision #89: NotificationManager.emit writes directly to
+// contextState.appendNotification (durable) instead of routing through an
+// onEmittedToLlm callback (ephemeral). The LLM-sink callback,
+// pendingLlmCount, hasPendingForLlm, markLlmDrained, and
+// replayPendingForResume are all removed.
+//
+// These tests FAIL until the Phase 1 refactoring lands.
+
+describe('NotificationManager — durable path (Phase 1 Step 5)', () => {
+  it('emit writes directly to contextState.appendNotification instead of onEmittedToLlm', async () => {
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+
+    // Phase 1 constructor: contextState replaces onEmittedToLlm.
+    // Spy on a fake contextState to verify the call.
+    const appendNotificationCalls: NotificationData[] = [];
+    const fakeContextState = {
+      appendNotification: async (data: NotificationData) => {
+        appendNotificationCalls.push(data);
+      },
+    };
+
+    // Phase 1: constructor accepts contextState, NOT onEmittedToLlm
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      contextState: fakeContextState,
+    } as unknown as ConstructorParameters<typeof NotificationManager>[0]);
+
+    await manager.emit(baseInput());
+
+    // contextState.appendNotification must have been called
+    expect(appendNotificationCalls).toHaveLength(1);
+    expect(appendNotificationCalls[0]!.title).toBe('Build done');
+  });
+
+  it('does NOT have pendingLlmCount / hasPendingForLlm / markLlmDrained', () => {
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      onEmittedToLlm: () => {},
+    });
+
+    // Phase 1: these methods must not exist — notifications are durable,
+    // not pending-ephemeral, so there is no LLM pending count.
+    expect((manager as unknown as Record<string, unknown>)['hasPendingForLlm']).toBeUndefined();
+    expect((manager as unknown as Record<string, unknown>)['markLlmDrained']).toBeUndefined();
+    // The private field pendingLlmCount should not exist either, but
+    // we can't directly test private fields. We verify via the absence
+    // of the public API that depends on it.
+  });
+
+  it('does NOT have replayPendingForResume', () => {
+    const journal = new InMemorySessionJournalImpl();
+    const eventBus = new SessionEventBus();
+    const manager = new NotificationManager({
+      sessionJournal: journal,
+      sessionEventBus: eventBus,
+      onEmittedToLlm: () => {},
+    });
+
+    // Phase 1: replayPendingForResume is removed. Notifications are
+    // durable — replay naturally reconstructs them from wire.jsonl via
+    // the replay-projector, so there is no need for a special replay
+    // re-inject path.
+    expect((manager as unknown as Record<string, unknown>)['replayPendingForResume']).toBeUndefined();
   });
 });

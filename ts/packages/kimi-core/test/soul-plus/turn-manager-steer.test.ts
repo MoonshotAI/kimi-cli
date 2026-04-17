@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   SessionEventBus,
   SessionLifecycleStateMachine,
   SoulRegistry,
@@ -31,6 +31,7 @@ import {
   createNoopCompactionProvider,
   createNoopJournalCapability,
 } from './fixtures/slice3-harness.js';
+import { makeRealSubcomponents } from './fixtures/real-subcomponents.js';
 
 /**
  * A tiny `FullContextState` recorder that tracks whether `pushSteer` or
@@ -43,6 +44,9 @@ class RecordingContextState implements FullContextState {
 
   constructor(private readonly inner: FullContextState) {}
 
+  get journalWriter(): FullContextState['journalWriter'] {
+    return this.inner.journalWriter;
+  }
   get model(): string {
     return this.inner.model;
   }
@@ -65,8 +69,14 @@ class RecordingContextState implements FullContextState {
     this.pushSteerCalls.push({ ...input });
     this.inner.pushSteer(input);
   }
-  stashEphemeralInjection(...args: Parameters<FullContextState['stashEphemeralInjection']>): void {
-    this.inner.stashEphemeralInjection(...args);
+  appendNotification(...args: Parameters<FullContextState['appendNotification']>): Promise<void> {
+    return this.inner.appendNotification(...args);
+  }
+  appendSystemReminder(...args: Parameters<FullContextState['appendSystemReminder']>): Promise<void> {
+    return this.inner.appendSystemReminder(...args);
+  }
+  getHistory(): ReturnType<FullContextState['getHistory']> {
+    return this.inner.getHistory();
   }
   appendUserMessage(...args: Parameters<FullContextState['appendUserMessage']>): Promise<void> {
     return this.inner.appendUserMessage(...args);
@@ -103,7 +113,7 @@ function buildManager(kosong: ScriptedKosongAdapter): {
   stateMachine: SessionLifecycleStateMachine;
 } {
   const stateMachine = new SessionLifecycleStateMachine();
-  const gate = new LifecycleGateFacade(stateMachine);
+  const gate = new SoulLifecycleGate(stateMachine);
   const context = new RecordingContextState(createHarnessContextState());
   const journal = new InMemorySessionJournalImpl();
   const eventBus = new SessionEventBus();
@@ -128,6 +138,11 @@ function buildManager(kosong: ScriptedKosongAdapter): {
     lifecycleStateMachine: stateMachine,
     soulRegistry,
     tools: [],
+    ...makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+    }),
   });
   return { manager, context, stateMachine };
 }

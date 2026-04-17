@@ -33,7 +33,6 @@ import { randomUUID } from 'node:crypto';
 
 import type { HookEngine } from '../hooks/engine.js';
 import type { NotificationInput } from '../hooks/types.js';
-import type { EphemeralInjection } from '../storage/projector.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import type { NotificationRecord } from '../storage/wire-record.js';
 import type { SessionEventBus } from './session-event-bus.js';
@@ -72,8 +71,21 @@ export interface NotificationManagerDeps {
    * queue. Kept as a callback (not a TurnManager reference) so
    * NotificationManager has no cyclic dependency on TurnManager and so
    * tests can observe the LLM sink directly.
+   *
+   * Phase 1: optional — when `contextState` is provided, the durable
+   * write path is used instead.
    */
-  readonly onEmittedToLlm: LlmDeliverCallback;
+  readonly onEmittedToLlm?: LlmDeliverCallback | undefined;
+  /**
+   * Phase 1 (Decision #89) — durable write target for LLM-sink
+   * notifications. When provided, `doEmit()` calls
+   * `contextState.appendNotification(data)` instead of the ephemeral
+   * `onEmittedToLlm` callback. The notification becomes part of the
+   * durable history and is visible in every subsequent `buildMessages()`.
+   */
+  readonly contextState?:
+    | { appendNotification(data: NotificationData): Promise<void> }
+    | undefined;
   readonly onShellDeliver?: ShellDeliverCallback | undefined;
   /**
    * Optional logger for swallowed fan-out errors. Defaults to
@@ -126,6 +138,13 @@ export interface EmitInput {
   payload?: Record<string, unknown> | undefined;
   targets?: NotificationData['targets'] | undefined;
   dedupe_key?: string | undefined;
+  /**
+   * Set only when this notification originates from a team-mail envelope
+   * being routed into the notification channel (Slice 8 / 决策 #103).
+   * The value is forwarded verbatim to `NotificationRecord.data.envelope_id`
+   * so startup recovery can dedupe envelopes across a crash window.
+   */
+  envelope_id?: string | undefined;
 }
 
 export interface EmitResult {
@@ -159,30 +178,7 @@ export class NotificationManager {
    */
   private readonly inFlightDedupe = new Map<string, Promise<string>>();
 
-  /**
-   * Slice 6.1 — count of notifications emitted to the LLM sink that have
-   * not yet been drained by `markLlmDrained()`. This enables the host
-   * loop to poll `hasPendingForLlm()` without scanning the journal.
-   */
-  private pendingLlmCount = 0;
-
   constructor(private readonly deps: NotificationManagerDeps) {}
-
-  /**
-   * Slice 6.1 — returns `true` when at least one notification has been
-   * emitted to the LLM sink but not yet consumed by `markLlmDrained()`.
-   */
-  hasPendingForLlm(): boolean {
-    return this.pendingLlmCount > 0;
-  }
-
-  /**
-   * Slice 6.1 — mark all pending LLM notifications as consumed. Called
-   * by the turn loop after injecting pending notifications into context.
-   */
-  markLlmDrained(): void {
-    this.pendingLlmCount = 0;
-  }
 
   /**
    * Emit a notification. WAL-then-mirror order (§4.5.6):
@@ -265,16 +261,17 @@ export class NotificationManager {
       ...(input.payload !== undefined ? { payload: input.payload } : {}),
       targets,
       ...(input.dedupe_key !== undefined ? { dedupe_key: input.dedupe_key } : {}),
+      ...(input.envelope_id !== undefined ? { envelope_id: input.envelope_id } : {}),
       // `delivered_at` is deliberately omitted — delivery state is
       // derived at emit time, not durable. Absence means "unknown" to
       // any reader of the journal.
     };
 
-    // ── 2. WAL append (blocking) ──────────────────────────────────
-    await this.deps.sessionJournal.appendNotification({
-      type: 'notification',
-      data,
-    });
+    // ── 2. WAL append ──────────────────────────────────────────────
+    // Phase 1 (方案 A): the notification WAL record is now written by
+    // contextState.appendNotification (in the LLM sink fan-out below),
+    // which owns both the WAL write and the in-memory mirror.
+    // SessionJournal no longer writes notification records.
 
     // ── 3. Three-way fan-out with per-sink isolation ──────────────
     const deliveredAt: {
@@ -288,10 +285,14 @@ export class NotificationManager {
 
     if (wantsLlm) {
       try {
-        this.deps.onEmittedToLlm(data);
+        if (this.deps.contextState !== undefined) {
+          // Phase 1: durable write path
+          await this.deps.contextState.appendNotification(data);
+        } else if (this.deps.onEmittedToLlm !== undefined) {
+          // Legacy ephemeral path (backward compat)
+          this.deps.onEmittedToLlm(data);
+        }
         deliveredAt.llm = Date.now();
-        // Slice 6.1 — track pending LLM notifications
-        this.pendingLlmCount += 1;
       } catch (error) {
         this.logWarn('notification llm sink failed', error);
       }
@@ -368,44 +369,9 @@ export class NotificationManager {
     }
   }
 
-  /**
-   * Slice 5.2 (T3.1+T3.6) — push-only resume re-inject for llm
-   * notifications.
-   *
-   * For each persisted notification record whose targets include `llm`
-   * AND whose id never appeared in any persisted message body as
-   * `<notification id="${id}"`, push it as an EphemeralInjection so the
-   * next buildMessages() includes it. This recovers notifications that
-   * were emitted before the previous CLI process exited but never
-   * reached an actual LLM turn.
-   *
-   * Idempotent: caller must scan delivered ids from the *projected*
-   * messages (i.e. `projectReplayState(records).messages`) to know
-   * which notifications already landed in transcript.
-   *
-   * Returns the injections it stashed (mostly for telemetry / tests).
-   */
-  replayPendingForResume(
-    notificationRecords: readonly NotificationRecord[],
-    contextState: { stashEphemeralInjection(injection: EphemeralInjection): void },
-    deliveredIds: ReadonlySet<string>,
-  ): EphemeralInjection[] {
-    const injected: EphemeralInjection[] = [];
-    for (const r of notificationRecords) {
-      const targets = r.data.targets ?? ['llm', 'wire', 'shell'];
-      if (!targets.includes('llm')) continue;
-      if (deliveredIds.has(r.data.id)) continue;
-      const injection: EphemeralInjection = {
-        kind: 'pending_notification',
-        content: r.data,
-      };
-      contextState.stashEphemeralInjection(injection);
-      injected.push(injection);
-    }
-    // Slice 6.1: replayed notifications count as pending for LLM
-    this.pendingLlmCount += injected.length;
-    return injected;
-  }
+  // Phase 1 (Decision #89): replayPendingForResume removed — notifications
+  // are durable, so replay naturally reconstructs them from wire.jsonl via
+  // the replay-projector without a special re-inject path.
 
   /**
    * Slice 5.2 helper — scan replayed conversation messages for any

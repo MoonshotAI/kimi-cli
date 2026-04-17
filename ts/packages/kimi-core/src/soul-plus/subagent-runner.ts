@@ -9,20 +9,51 @@
  * invokes when AgentTool calls `SubagentHost.spawn()`. It creates a child
  * Soul infrastructure (ContextState, JournalWriter, Runtime, EventSink)
  * and runs a single Soul turn with a filtered tool set.
+ *
+ * Phase 6 (决策 #88 / §3.6.1 / §6.5):
+ *   - Each subagent now has its OWN `wire.jsonl` at
+ *     `sessions/<session>/subagents/<agent_id>/wire.jsonl`. The runner
+ *     creates a `WiredContextState` + `WiredJournalWriter` per child;
+ *     conversation records live entirely on the child's wire.
+ *   - The child's `EventSink` is a `createSubagentSinkWrapper` that
+ *     forwards every event to the parent `SessionEventBus` with a
+ *     `source` envelope. The wrapper itself does not persist anything;
+ *     the child wire is written by `ContextState.appendXxx()` directly.
+ *   - When `parentSessionJournal` is supplied in deps, the runner writes
+ *     the three lifecycle records (`subagent_spawned` /
+ *     `subagent_completed` / `subagent_failed`) on the parent journal so
+ *     the parent wire carries lifecycle references but never the child's
+ *     conversation payload (decision #88 — replaces the old
+ *     `subagent_event` nesting). In the production path SoulRegistry
+ *     owns the lifecycle write (it writes them around the
+ *     `runSubagentTurn` call), so the runner's parentSessionJournal
+ *     branch is exercised by direct-runner tests only.
+ *   - Legacy `parentSink` is kept on the deps for back-compat with
+ *     pre-Phase-6 callers (e.g. older e2e tests). `parentEventBus`
+ *     supersedes it; when both are present, the bus wins.
  */
 
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import type { PathConfig } from '../session/path-config.js';
 import { runSoulTurn } from '../soul/index.js';
 import type { EventSink, Runtime, SoulConfig, Tool } from '../soul/index.js';
 import type { SoulEvent } from '../soul/event-sink.js';
-import { InMemoryContextState } from '../storage/context-state.js';
+import { InMemoryContextState, WiredContextState } from '../storage/context-state.js';
+import {
+  WiredJournalWriter,
+  type LifecycleGate,
+  type LifecycleState,
+} from '../storage/journal-writer.js';
+import type { SessionJournal } from '../storage/session-journal.js';
 import type { AgentResult, SpawnRequest } from './subagent-types.js';
 import type { AgentTypeRegistry } from './agent-type-registry.js';
 import { collectGitContext } from './git-context.js';
+import type { SessionEventBus, EventSource } from './session-event-bus.js';
+import { RESULT_SUMMARY_MAX_LEN } from './subagent-constants.js';
+import { createSubagentSinkWrapper } from './subagent-sink-wrapper.js';
 import type { SubagentStore } from './subagent-store.js';
-import {
-  SubagentRuntimeLifecycleGate,
-  SUBAGENT_JOURNAL_CAPABILITY,
-} from './subagent-lifecycle-gate.js';
 
 // ── Summary continuation constants (Python parity: runner.py) ────────
 
@@ -38,7 +69,14 @@ export interface SubagentRunnerDeps {
   readonly typeRegistry: AgentTypeRegistry;
   readonly parentTools: readonly Tool[];
   readonly parentRuntime: Runtime;
-  readonly parentSink: EventSink;
+  /**
+   * Filesystem root for the parent session. When `pathConfig` +
+   * `sessionId` are also supplied, the runner derives the child wire
+   * path through `pathConfig.subagentDir(sessionId, agentId)` instead;
+   * `sessionDir` is the explicit fallback for tests / SDK embedders that
+   * don't construct a `PathConfig`. Pass `''` to skip on-disk wire
+   * persistence entirely (in-memory child context only).
+   */
   readonly sessionDir: string;
   /** Model name to use for child context (parent's current model). */
   readonly parentModel: string;
@@ -47,6 +85,55 @@ export interface SubagentRunnerDeps {
    * When absent, defaults to `process.cwd()`.
    */
   readonly workDir?: string | undefined;
+  /**
+   * Phase 6 — preferred channel. The runner constructs a
+   * `createSubagentSinkWrapper` against this bus so child events fan out
+   * with a `source` envelope.
+   */
+  readonly parentEventBus?: SessionEventBus | undefined;
+  /**
+   * Phase 6 — when supplied, the runner writes the three lifecycle
+   * records (spawned / completed / failed) on the parent SessionJournal.
+   *
+   * **Production path: leave this undefined.** `SoulRegistry.spawn()`
+   * owns the lifecycle write so runner / registry responsibilities stay
+   * decoupled (铁律 7). `SoulPlus` deliberately omits this field when
+   * building the runner deps, and Registry's `parentSessionJournal`
+   * channel writes the spawned/completed/failed records around the
+   * runner call. Passing `parentSessionJournal` here while ALSO routing
+   * through `SoulRegistry.spawn()` causes double-writes.
+   *
+   * **Test-only path: provide this** when calling `runSubagentTurn`
+   * directly (i.e. NOT via `SoulRegistry.spawn()`) so the runner can
+   * verify the lifecycle contract end-to-end. Direct-runner tests
+   * (`subagent-independent-wire.test.ts`) take this path; they MUST
+   * NOT also instantiate a `SoulRegistry` for the same agent.
+   */
+  readonly parentSessionJournal?: SessionJournal | undefined;
+  /**
+   * Phase 6 — optional `PathConfig` source for the child wire path.
+   * When provided together with `sessionId`, the runner derives
+   * `pathConfig.subagentDir(sessionId, agentId)` instead of joining
+   * `sessionDir` by hand. Production wiring (`soul-plus.ts`) passes
+   * this so the wire layout follows the §9.5 path service; tests that
+   * mint a temp dir and pass `sessionDir` directly continue to work.
+   */
+  readonly pathConfig?: PathConfig | undefined;
+  /**
+   * Phase 6 — session id for `PathConfig.subagentDir(sessionId, …)`.
+   * Required iff `pathConfig` is supplied; ignored otherwise.
+   */
+  readonly sessionId?: string | undefined;
+  /**
+   * Legacy pre-Phase-6 fallback. New callers should use
+   * `parentEventBus`. Kept so tests that haven't migrated to the bus
+   * keep compiling. When both are present, the bus wins.
+   */
+  readonly parentSink?: EventSink | undefined;
+}
+
+class StubChildLifecycle implements LifecycleGate {
+  state: LifecycleState = 'active';
 }
 
 // ── runSubagentTurn ───────────────────────────────────────────────────
@@ -54,13 +141,6 @@ export interface SubagentRunnerDeps {
 /**
  * Execute a single subagent turn. This is the callback wired into
  * `SoulRegistry.runSubagentTurn`.
- *
- * Flow:
- *   1. Resolve agent type + filter tools
- *   2. Create child infrastructure (context, journal, runtime, sink)
- *   3. Persist initial meta.json
- *   4. Run Soul turn
- *   5. Extract result + update status
  */
 export async function runSubagentTurn(
   deps: SubagentRunnerDeps,
@@ -68,7 +148,19 @@ export async function runSubagentTurn(
   request: SpawnRequest,
   signal: AbortSignal,
 ): Promise<AgentResult> {
-  const { store, typeRegistry, parentTools, parentRuntime, parentSink, parentModel } = deps;
+  const {
+    store,
+    typeRegistry,
+    parentTools,
+    parentRuntime,
+    parentSink,
+    parentEventBus,
+    parentSessionJournal,
+    parentModel,
+    sessionDir,
+    pathConfig,
+    sessionId,
+  } = deps;
 
   // 1. Resolve type definition + build filtered tool set
   const typeDef = typeRegistry.resolve(request.agentName);
@@ -82,6 +174,34 @@ export async function runSubagentTurn(
     parentToolCallId: request.parentToolCallId,
   });
 
+  // Phase 6 — write the spawned lifecycle record on the parent journal
+  // BEFORE any further setup so the parent wire records the spawn even
+  // when child setup fails downstream.
+  //
+  // ⚠ Double-write guard: this branch fires ONLY when the runner is
+  // invoked directly (test-only path; see `parentSessionJournal` JSDoc
+  // on `SubagentRunnerDeps`). The production path goes through
+  // `SoulRegistry.spawn()`, which handles the lifecycle write itself
+  // and intentionally omits `parentSessionJournal` from the runner
+  // deps. Both writers active at once would double the spawned /
+  // completed / failed records on the parent wire.
+  if (parentSessionJournal !== undefined) {
+    await parentSessionJournal.appendSubagentSpawned({
+      type: 'subagent_spawned',
+      data: {
+        agent_id: agentId,
+        ...(request.agentName !== undefined ? { agent_name: request.agentName } : {}),
+        parent_tool_call_id: request.parentToolCallId,
+        ...(request.parentAgentId !== undefined &&
+        request.parentAgentId !== '' &&
+        request.parentAgentId !== 'agent_main'
+          ? { parent_agent_id: request.parentAgentId }
+          : {}),
+        run_in_background: request.runInBackground ?? false,
+      },
+    });
+  }
+
   // 3. Create child infrastructure
 
   // Build system prompt for child. Since Slice 6.0, loadSubagentTypes()
@@ -93,33 +213,89 @@ export async function runSubagentTurn(
   // Determine child model: request override > type default > parent model
   const childModel = request.model ?? typeDef.defaultModel ?? parentModel;
 
-  // Child gets a fresh in-memory context with NoopJournalWriter (no resume in 5.3).
-  // The child's conversation isn't persisted — wire events are captured via the
-  // bubbling sink and written to the parent's journal as SubagentEventRecords.
-  const childContext = new InMemoryContextState({
-    initialModel: childModel,
-    ...(childSystemPrompt !== undefined ? { initialSystemPrompt: childSystemPrompt } : {}),
-  });
+  // Phase 6 — child context backed by an independent on-disk wire.jsonl.
+  // Path derivation follows a two-tier fallback:
+  //   1. If `pathConfig` + `sessionId` are provided (production wiring
+  //      via SoulPlus), use `pathConfig.subagentDir(sessionId, agentId)`
+  //      so the layout honours the §9.5 path service.
+  //   2. Otherwise fall back to `join(sessionDir, 'subagents', agentId)`
+  //      for tests / SDK embedders that pass a temp dir directly.
+  // When `sessionDir` is `''` and no `pathConfig` is supplied we skip
+  // on-disk persistence and build an in-memory child context instead.
+  let childContext: InMemoryContextState | WiredContextState;
+  let childJournalWriter: WiredJournalWriter | undefined;
+  const canPersistChildWire =
+    (pathConfig !== undefined && sessionId !== undefined) || sessionDir !== '';
+  if (canPersistChildWire) {
+    const subagentDir =
+      pathConfig !== undefined && sessionId !== undefined
+        ? pathConfig.subagentDir(sessionId, agentId)
+        : join(sessionDir, 'subagents', agentId);
+    await mkdir(subagentDir, { recursive: true });
+    const childLifecycle = new StubChildLifecycle();
+    childJournalWriter = new WiredJournalWriter({
+      filePath: join(subagentDir, 'wire.jsonl'),
+      lifecycle: childLifecycle,
+      // Per-record fsync so direct-runner tests can read wire.jsonl
+      // immediately after `await runSubagentTurn(...)` without waiting
+      // for the batched drain timer.
+      config: { fsyncMode: 'per-record' },
+    });
+    childContext = new WiredContextState({
+      journalWriter: childJournalWriter,
+      initialModel: childModel,
+      ...(childSystemPrompt !== undefined ? { initialSystemPrompt: childSystemPrompt } : {}),
+      currentTurnId: () => `${agentId}_turn`,
+    });
+  } else {
+    childContext = new InMemoryContextState({
+      initialModel: childModel,
+      ...(childSystemPrompt !== undefined ? { initialSystemPrompt: childSystemPrompt } : {}),
+    });
+  }
 
-  // Child runtime reuses parent's kosong + compactionProvider.
-  // Lifecycle and journal are stubs — subagents don't compact.
+  // Phase 2: Runtime narrowed to `{kosong}`. Subagents never compact
+  // (their history is ephemeral and discarded on agent_end), so the
+  // parent's compactionProvider / lifecycle / journal don't need to
+  // flow through — compaction infra is wired via TurnManagerDeps on the
+  // parent's TurnManager, not on Soul-level Runtime.
   const childRuntime: Runtime = {
     kosong: parentRuntime.kosong,
-    compactionProvider: parentRuntime.compactionProvider,
-    lifecycle: new SubagentRuntimeLifecycleGate(),
-    journal: SUBAGENT_JOURNAL_CAPABILITY,
   };
 
-  // Child event sink: collects content deltas for the final response
-  // and bubbles events to the parent sink for live display.
+  // Build the child sink. parentEventBus (Phase 6) wins over the legacy
+  // `parentSink`. The contentCollector outer layer captures content
+  // deltas for the summary-continuation logic regardless of which
+  // forwarding strategy is in play.
   const contentCollector: string[] = [];
-  const childSink = createBubblingSink(
-    parentSink,
-    agentId,
-    request.agentName,
-    request.parentToolCallId,
-    contentCollector,
-  );
+  let baseSink: EventSink;
+  if (parentEventBus !== undefined && childJournalWriter !== undefined) {
+    const source: EventSource = {
+      id: agentId,
+      kind: 'subagent',
+      ...(request.agentName !== undefined ? { name: request.agentName } : {}),
+    };
+    baseSink = createSubagentSinkWrapper({
+      childJournalWriter,
+      parentEventBus,
+      source,
+    });
+  } else if (parentSink !== undefined) {
+    // Legacy bubbling — content/thinking deltas only, mirrors the
+    // pre-Phase-6 createBubblingSink behaviour without the
+    // `subagent_event` envelope (which is gone).
+    baseSink = createLegacyBubblingSink(parentSink);
+  } else {
+    baseSink = { emit: () => {} };
+  }
+  const childSink: EventSink = {
+    emit(event: SoulEvent): void {
+      if (event.type === 'content.delta') {
+        contentCollector.push(event.delta);
+      }
+      baseSink.emit(event);
+    },
+  };
 
   const childConfig: SoulConfig = {
     tools: childTools,
@@ -146,70 +322,123 @@ export async function runSubagentTurn(
   // subagent runner must do the same.
   await childContext.appendUserMessage({ text: prompt });
 
-  // 5. Run the Soul turn
-  let turnResult;
+  let resultText = '';
+  let usage = { input: 0, output: 0 };
   try {
-    turnResult = await runSoulTurn(
-      { text: prompt },
-      childConfig,
-      childContext,
-      childRuntime,
-      childSink,
-      signal,
-    );
-  } catch (error) {
-    // Determine if abort or error
-    if (signal.aborted) {
+    // 5. Run the Soul turn
+    let turnResult;
+    try {
+      turnResult = await runSoulTurn(
+        { text: prompt },
+        childConfig,
+        childContext,
+        childRuntime,
+        childSink,
+        signal,
+      );
+    } catch (error) {
+      // Determine if abort or error
+      if (signal.aborted) {
+        await store.updateInstance(agentId, { status: 'killed' });
+      } else {
+        await store.updateInstance(agentId, { status: 'failed' });
+      }
+      throw error;
+    }
+
+    // 6. Check for abort (runSoulTurn returns normally with stopReason='aborted')
+    if (turnResult.stopReason === 'aborted') {
       await store.updateInstance(agentId, { status: 'killed' });
-    } else {
-      await store.updateInstance(agentId, { status: 'failed' });
+      throw new Error('Subagent was aborted');
+    }
+
+    // 7. Extract result and update status
+    resultText = contentCollector.join('');
+    usage = turnResult.usage;
+
+    // 7.5 Summary continuation: if response is too short, ask for more detail.
+    // Python parity: runner.py SUMMARY_MIN_LENGTH / SUMMARY_CONTINUATION_ATTEMPTS
+    if (resultText.length < SUMMARY_MIN_LENGTH) {
+      const originalResult = resultText;
+      for (let i = 0; i < SUMMARY_CONTINUATION_ATTEMPTS; i++) {
+        try {
+          contentCollector.length = 0; // reset collector
+          // Append continuation prompt as a user message so the child context
+          // includes it in buildMessages() for the next runSoulTurn call.
+          await childContext.appendUserMessage({ text: SUMMARY_CONTINUATION_PROMPT });
+          await runSoulTurn(
+            { text: SUMMARY_CONTINUATION_PROMPT },
+            childConfig,
+            childContext, // reuse same context (has history)
+            childRuntime,
+            childSink,
+            signal,
+          );
+          resultText = contentCollector.join('');
+          if (resultText.length >= SUMMARY_MIN_LENGTH) break;
+        } catch {
+          // Continuation failed — fall back to first response
+          resultText = originalResult;
+          break;
+        }
+      }
+    }
+
+    // Python writes 'idle' here (runner.py:338) to signal "reusable for resume".
+    // TS uses 'completed' as the terminal success state — SubagentStatus doesn't
+    // include 'idle'. Future resume logic must treat 'completed' as resumable
+    // (same as Python's 'idle' + 'failed' + 'completed').
+    await store.updateInstance(agentId, { status: 'completed' });
+  } catch (error) {
+    // Phase 6 — write the failure record to the parent journal before
+    // re-throwing. The catch sits OUTSIDE the inner try so it covers
+    // setup throws as well as soul-turn throws.
+    if (parentSessionJournal !== undefined) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await parentSessionJournal
+        .appendSubagentFailed({
+          type: 'subagent_failed',
+          data: {
+            agent_id: agentId,
+            parent_tool_call_id: request.parentToolCallId,
+            error: errorMessage,
+          },
+        })
+        // Never let the parent-journal write itself mask the original
+        // failure — log paths upstream are responsible for surfacing
+        // journal errors.
+        .catch(() => {});
+    }
+    if (childJournalWriter !== undefined) {
+      // Make the child wire's tail durable even on the error path so a
+      // subsequent inspector / replay sees what the child got through.
+      await childJournalWriter.close().catch(() => {});
     }
     throw error;
   }
 
-  // 6. Check for abort (runSoulTurn returns normally with stopReason='aborted')
-  if (turnResult.stopReason === 'aborted') {
-    await store.updateInstance(agentId, { status: 'killed' });
-    throw new Error('Subagent was aborted');
+  // Flush + close the child wire so the test (and any downstream
+  // consumer) can read the file immediately after `await`. Per-record
+  // fsync mode means individual writes are already on disk; close()
+  // additionally stops the drain timer.
+  if (childJournalWriter !== undefined) {
+    await childJournalWriter.close();
   }
 
-  // 7. Extract result and update status
-  let resultText = contentCollector.join('');
-  const usage = turnResult.usage;
-
-  // 7.5 Summary continuation: if response is too short, ask for more detail.
-  // Python parity: runner.py SUMMARY_MIN_LENGTH / SUMMARY_CONTINUATION_ATTEMPTS
-  if (resultText.length < SUMMARY_MIN_LENGTH) {
-    const originalResult = resultText;
-    for (let i = 0; i < SUMMARY_CONTINUATION_ATTEMPTS; i++) {
-      try {
-        contentCollector.length = 0; // reset collector
-        // Append continuation prompt as a user message so the child context
-        // includes it in buildMessages() for the next runSoulTurn call.
-        await childContext.appendUserMessage({ text: SUMMARY_CONTINUATION_PROMPT });
-        await runSoulTurn(
-          { text: SUMMARY_CONTINUATION_PROMPT },
-          childConfig,
-          childContext, // reuse same context (has history)
-          childRuntime,
-          childSink,
-          signal,
-        );
-        resultText = contentCollector.join('');
-        if (resultText.length >= SUMMARY_MIN_LENGTH) break;
-      } catch {
-        // Continuation failed — fall back to first response
-        resultText = originalResult;
-        break;
-      }
-    }
+  if (parentSessionJournal !== undefined) {
+    const summary = resultText.length > 0
+      ? resultText.substring(0, RESULT_SUMMARY_MAX_LEN)
+      : '';
+    await parentSessionJournal.appendSubagentCompleted({
+      type: 'subagent_completed',
+      data: {
+        agent_id: agentId,
+        parent_tool_call_id: request.parentToolCallId,
+        result_summary: summary,
+        usage,
+      },
+    });
   }
-
-  // Python writes 'idle' here (runner.py:338) to signal "reusable for resume".
-  // TS uses 'completed' as the terminal success state — SubagentStatus doesn't
-  // include 'idle'. Future resume logic must treat 'completed' as resumable
-  // (same as Python's 'idle' + 'failed' + 'completed').
-  await store.updateInstance(agentId, { status: 'completed' });
 
   return { result: resultText, usage };
 }
@@ -217,33 +446,30 @@ export async function runSubagentTurn(
 // ── Helpers ───────────────────────────────────────────────────────────
 
 /**
- * Create an EventSink that:
- *   1. Collects content.delta texts into `contentCollector` for the final response
- *   2. Bubbles content/thinking deltas to parent sink for live display
+ * Pre-Phase-6 forwarding fallback: emit content / thinking deltas to the
+ * parent sink for live TUI display. No `subagent_event` envelope is
+ * created (that envelope was deleted by 决策 #88).
  *
- * Python parity: `runner.py:390-425` (_make_ui_loop_fn)
+ * **Why this still exists**: a handful of legacy tests (e.g.
+ * `agent-type-enhancements.test.ts`, the e2e foreground harness) and
+ * embedded SDK callers still wire `parentSink` instead of the Phase 6
+ * `parentEventBus`. Removing the field would break their compile.
  *
- * Note: SubagentEventRecords are NOT written from here in 5.3. The child's
- * events flow through the parent's event bus naturally via the bubbled
- * content/thinking deltas. Full SubagentEventRecord journaling (to the
- * parent wire.jsonl) is deferred to 5.x when the parent SessionJournal
- * is available in the runner deps.
+ * **When this can be deleted**: once every call site of
+ * `runSubagentTurn` (production wiring + tests + SDK embedders) passes
+ * `parentEventBus` instead of `parentSink`, `parentSink` can be dropped
+ * from `SubagentRunnerDeps` and this helper goes with it.
+ *
+ * **Silent degradation**: this fallback path does NOT attach a
+ * `source` envelope (that's `parentEventBus.emitWithSource`'s job). UI
+ * listeners that expect to filter by `source.id` will see all subagent
+ * deltas under the bare `SoulEvent` shape, indistinguishable from
+ * main-agent output. Callers that care about attribution MUST migrate
+ * to `parentEventBus`.
  */
-function createBubblingSink(
-  parentSink: EventSink,
-  _agentId: string,
-  _agentName: string,
-  _parentToolCallId: string,
-  contentCollector: string[],
-): EventSink {
+function createLegacyBubblingSink(parentSink: EventSink): EventSink {
   return {
     emit(event: SoulEvent): void {
-      // Collect content deltas for the final response text
-      if (event.type === 'content.delta') {
-        contentCollector.push(event.delta);
-      }
-
-      // Bubble content/thinking deltas to parent for live TUI display
       if (event.type === 'content.delta' || event.type === 'thinking.delta') {
         parentSink.emit(event);
       }

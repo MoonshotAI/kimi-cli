@@ -299,17 +299,35 @@ function isApprovalResponseData(value: unknown): value is ApprovalResponseData {
  * `{tool_name} is requesting approval to {action}` header.
  */
 function describeApproval(req: ApprovalRequest): string {
-  switch (req.display.kind) {
+  const display = req.display;
+  switch (display.kind) {
     case 'generic':
-      return req.display.body;
+      // Prefer the long-form `detail` (analog of the legacy `body` field)
+      // when present; fall back to the short `summary` headline.
+      if (typeof display.detail === 'string' && display.detail.length > 0) {
+        return display.detail;
+      }
+      return display.summary;
     case 'command':
-      return req.display.description ?? req.display.command;
+      return display.description ?? display.command;
     case 'diff':
-      return `edit ${req.display.path}`;
-    case 'file_write':
-      return `write ${req.display.path}`;
+      return `edit ${display.path}`;
+    case 'file_io':
+      return `${display.operation} ${display.path}`;
     case 'task_stop':
-      return `stop task: ${req.display.task_description}`;
+      return `stop task: ${display.task_description}`;
+    case 'agent_call':
+      return `spawn ${display.agent_name}`;
+    case 'skill_call':
+      return `invoke skill ${display.skill_name}`;
+    case 'url_fetch':
+      return `fetch ${display.url}`;
+    case 'search':
+      return `search: ${display.query}`;
+    case 'todo_list':
+      return `update todo list (${String(display.items.length)} items)`;
+    case 'background_task':
+      return `${display.status} task ${display.task_id}: ${display.description}`;
   }
 }
 
@@ -331,23 +349,19 @@ function adaptDisplay(display: ApprovalDisplay): DisplayBlock[] {
         },
       ];
     case 'diff':
-      // The legacy diff display passes a unified-diff string rather
-      // than structured old/new text; there is no lossless mapping to
-      // the TUI's `DiffDisplayBlock`. Fall back to a `brief` block so
-      // the panel shows the diff as preformatted text.
-      return [
-        {
-          type: 'brief',
-          text: display.diff,
-        },
-      ];
-    case 'file_write':
       return [
         {
           type: 'diff',
           path: display.path,
-          old_text: '',
-          new_text: display.content,
+          old_text: display.before,
+          new_text: display.after,
+        },
+      ];
+    case 'file_io':
+      return [
+        {
+          type: 'brief',
+          text: `${display.operation} ${display.path}${display.detail !== undefined ? `\n${display.detail}` : ''}`,
         },
       ];
     case 'task_stop':
@@ -358,6 +372,16 @@ function adaptDisplay(display: ApprovalDisplay): DisplayBlock[] {
         },
       ];
     case 'generic':
+      return [];
+    case 'agent_call':
+    case 'skill_call':
+    case 'url_fetch':
+    case 'search':
+    case 'todo_list':
+    case 'background_task':
+      // Slice 5 — newer kinds surface as a simple brief block; the panel
+      // header (via `describeApproval`) already covers the headline, so
+      // emit nothing extra to keep the dialog tight.
       return [];
   }
 }

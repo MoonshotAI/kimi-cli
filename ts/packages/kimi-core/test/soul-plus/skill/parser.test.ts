@@ -174,4 +174,87 @@ describe('parseSkillFromFile', () => {
       parseSkillFromFile({ skillMdPath: file, skillDirName: 'bad', source: 'user' }),
     ).rejects.toBeInstanceOf(SkillParseError);
   });
+
+  // ── Slice 7.1 — SkillMetadata extension (whenToUse / disableModelInvocation / safe) ──
+
+  it('parses `when-to-use` frontmatter into metadata.whenToUse (kebab→camel)', async () => {
+    const file = await writeSkill(
+      'with-when',
+      [
+        '---',
+        'name: with-when',
+        'description: a scoped skill',
+        'when-to-use: "when the user asks to ship a release"',
+        '---',
+        'body',
+      ].join('\n'),
+    );
+    const def = await parseSkillFromFile({
+      skillMdPath: file,
+      skillDirName: 'with-when',
+      source: 'user',
+    });
+    expect(def.metadata['whenToUse']).toBe('when the user asks to ship a release');
+  });
+
+  it('accepts `whenToUse` in camelCase directly', async () => {
+    const file = await writeSkill(
+      'camel-when',
+      ['---', 'name: camel-when', 'whenToUse: on demand', '---', 'body'].join('\n'),
+    );
+    const def = await parseSkillFromFile({
+      skillMdPath: file,
+      skillDirName: 'camel-when',
+      source: 'user',
+    });
+    expect(def.metadata['whenToUse']).toBe('on demand');
+  });
+
+  it('parses `disable-model-invocation: true` into metadata.disableModelInvocation', async () => {
+    const file = await writeSkill(
+      'user-only',
+      [
+        '---',
+        'name: user-only',
+        'description: only the user may invoke this',
+        'disable-model-invocation: true',
+        '---',
+        'body',
+      ].join('\n'),
+    );
+    const def = await parseSkillFromFile({
+      skillMdPath: file,
+      skillDirName: 'user-only',
+      source: 'user',
+    });
+    expect(def.metadata['disableModelInvocation']).toBe(true);
+  });
+
+  it('parses `safe: true` into metadata.safe (auto-approve opt-in)', async () => {
+    const file = await writeSkill(
+      'trusted',
+      ['---', 'name: trusted', 'safe: true', '---', 'body'].join('\n'),
+    );
+    const def = await parseSkillFromFile({
+      skillMdPath: file,
+      skillDirName: 'trusted',
+      source: 'user',
+    });
+    expect(def.metadata['safe']).toBe(true);
+  });
+
+  it('leaves whenToUse / disableModelInvocation / safe undefined when omitted', async () => {
+    const file = await writeSkill(
+      'plain',
+      ['---', 'name: plain', '---', 'body'].join('\n'),
+    );
+    const def = await parseSkillFromFile({
+      skillMdPath: file,
+      skillDirName: 'plain',
+      source: 'user',
+    });
+    expect(def.metadata['whenToUse']).toBeUndefined();
+    expect(def.metadata['disableModelInvocation']).toBeUndefined();
+    expect(def.metadata['safe']).toBeUndefined();
+  });
 });

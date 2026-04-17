@@ -131,6 +131,26 @@ export interface ApprovalRuntime {
    *   - TurnManager.abortTurn → cancelBySource({kind:'turn', turn_id})
    *   - Subagent killed       → cancelBySource({kind:'subagent', agent_id})
    *   - Session shutdown      → cancelBySource({kind:'session', session_id})
+   *
+   * ── Synchronous void contract (v2 §7.2 / 决策 #102) ───────────────────
+   *
+   * This method is declared `void`, NOT `Promise<void>`, to lock the
+   * synchronous semantics at the type level:
+   *
+   *   - Any in-memory pending `ApprovalWaiter` whose source matches the
+   *     argument MUST be rejected AND a cancel event emitted BEFORE
+   *     this method returns. Callers (TurnManager.abortTurn) rely on
+   *     this so the subsequent `orchestrator.discardStreaming` and
+   *     `tracker.cancelTurn` steps see a clean slate.
+   *   - wire.jsonl persistence for the synthetic cancelled
+   *     `approval_response` record is NOT guaranteed before return — it
+   *     rides the normal async journal path.
+   *   - Cross-process cancellation (kill remote subagent, send cancel
+   *     envelope, etc.) is NOT promised here either; it is handled
+   *     out-of-band by the TeamDaemon.
+   *
+   * Callers MUST NOT `await` this method — the `void` return forbids it
+   * at compile time.
    */
   cancelBySource(source: ApprovalSource): void;
 

@@ -173,6 +173,9 @@ describe('WiredJournalWriter.resetForRotation — seq reset (M04)', () => {
           return lifecycle.state === 'active' ? ('active' as const) : ('active' as const);
         },
       },
+      // Phase 3: pin per-record mode so the "append → read file back"
+      // assertions don't need explicit flush() calls.
+      config: { fsyncMode: 'per-record' },
     });
 
     // Write some records to advance seq
@@ -258,6 +261,9 @@ describe('End-to-end: compaction rotation + replay', () => {
       // After rotation, start fresh
       initialSeq: 0,
       metadataAlreadyWritten: true,
+      // Phase 3: pin per-record mode so replay reads see records the
+      // moment `append` resolves.
+      config: { fsyncMode: 'per-record' },
     });
 
     const compactionRecord = await writer.append({
@@ -318,6 +324,9 @@ describe('End-to-end: compaction rotation + replay', () => {
       },
       initialSeq: 0,
       metadataAlreadyWritten: true,
+      // Phase 3: pin per-record mode — replay reads wire.jsonl straight
+      // after append, so we need synchronous disk durability.
+      config: { fsyncMode: 'per-record' },
     });
 
     // Write compaction record (allowed in compacting state)

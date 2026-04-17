@@ -8,14 +8,14 @@
  *     meta.json     — SubagentInstanceRecord (status, type, timestamps)
  *     wire.jsonl    — child wire events (written by child SessionJournal)
  *
- * Atomic writes use tmp+rename (same pattern as StateCache from Slice 5.1).
+ * Atomic writes use `atomicWrite` (write-tmp-fsync-rename, Decision #104).
  * No per-instance write mutex needed — each subagent has its own directory.
  */
 
-import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { atomicWrite } from '../storage/atomic-write.js';
 import type { SubagentStatus } from './subagent-types.js';
 
 // ── SubagentInstanceRecord ────────────────────────────────────────────
@@ -158,11 +158,9 @@ export class SubagentStore {
 
   // ── Private ───────────────────────────────────────────────────────
 
-  /** Atomic write: write to tmp file then rename. */
+  /** Atomic write: write to tmp file, fsync, then rename. */
   private async writeRecord(record: SubagentInstanceRecord): Promise<void> {
     const metaPath = this.metaPath(record.agent_id);
-    const tmpPath = `${metaPath}.tmp.${process.pid}.${randomBytes(4).toString('hex')}`;
-    await writeFile(tmpPath, JSON.stringify(record, null, 2) + '\n', 'utf-8');
-    await rename(tmpPath, metaPath);
+    await atomicWrite(metaPath, JSON.stringify(record, null, 2) + '\n');
   }
 }

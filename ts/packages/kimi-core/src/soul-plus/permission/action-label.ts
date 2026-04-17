@@ -73,10 +73,34 @@ export function describeApprovalAction(
       return 'run command';
     case 'diff':
       return 'edit file';
-    case 'file_write':
-      return 'write file';
+    case 'file_io':
+      switch (display.operation) {
+        case 'write':
+          return 'write file';
+        case 'edit':
+          return 'edit file';
+        case 'read':
+          return 'read file';
+        case 'glob':
+          return 'list files';
+        case 'grep':
+          return 'search files';
+      }
+      break;
     case 'task_stop':
       return 'stop background task';
+    case 'agent_call':
+      return 'spawn agent';
+    case 'skill_call':
+      return 'invoke skill';
+    case 'url_fetch':
+      return 'fetch URL';
+    case 'search':
+      return 'search';
+    case 'todo_list':
+      return 'update todo list';
+    case 'background_task':
+      return 'run background task';
     case 'generic':
       // fall through to tool-name map
       break;

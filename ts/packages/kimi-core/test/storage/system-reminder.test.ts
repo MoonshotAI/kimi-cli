@@ -15,50 +15,44 @@ import { describe, expect, it } from 'vitest';
 import { InMemoryContextState } from '../../src/storage/context-state.js';
 import { DefaultConversationProjector } from '../../src/storage/projector.js';
 import type { EphemeralInjection } from '../../src/storage/projector.js';
-import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js';
-import type { SystemReminderRecord } from '../../src/storage/wire-record.js';
 
-// ── SessionJournal.appendSystemReminder tests ─────────────────────────
+// ── ContextState.appendSystemReminder tests (Phase 1 — 方案 A) ───────
+//
+// Phase 1: system_reminder records are now written by
+// ContextState.appendSystemReminder, not SessionJournal. The WAL write
+// and in-memory mirror are handled atomically by ContextState.
 
-describe('SessionJournal.appendSystemReminder', () => {
-  it('appends a system_reminder record via InMemorySessionJournal', async () => {
-    const journal = new InMemorySessionJournalImpl();
-    await journal.appendSystemReminder({
-      type: 'system_reminder',
-      content: 'Remember: use structured output',
-    });
-    const records = journal.getRecords();
-    expect(records).toHaveLength(1);
-    expect(records[0]!.type).toBe('system_reminder');
-    const reminder = records[0] as SystemReminderRecord;
-    expect(reminder.content).toBe('Remember: use structured output');
+describe('ContextState.appendSystemReminder (Phase 1)', () => {
+  it('writes a durable system-reminder that appears in buildMessages', async () => {
+    const context = new InMemoryContextState({ initialModel: 'test-model' });
+    await context.appendSystemReminder({ content: 'Remember: use structured output' });
+    const messages = context.buildMessages();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.role).toBe('user');
+    const text = messages[0]!.content
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
+      .join('');
+    expect(text).toContain('<system-reminder>');
+    expect(text).toContain('Remember: use structured output');
   });
 
-  it('assigns seq and time to system_reminder records', async () => {
-    const journal = new InMemorySessionJournalImpl();
-    await journal.appendSystemReminder({
-      type: 'system_reminder',
-      content: 'test content',
-    });
-    const records = journal.getRecords();
-    expect(records[0]!.seq).toBeGreaterThan(0);
-    expect(records[0]!.time).toBeGreaterThan(0);
-  });
-
-  it('can store multiple system reminders', async () => {
-    const journal = new InMemorySessionJournalImpl();
-    await journal.appendSystemReminder({
-      type: 'system_reminder',
-      content: 'first reminder',
-    });
-    await journal.appendSystemReminder({
-      type: 'system_reminder',
-      content: 'second reminder',
-    });
-    const records = journal.getRecordsByType('system_reminder');
-    expect(records).toHaveLength(2);
-    expect(records[0]!.content).toBe('first reminder');
-    expect(records[1]!.content).toBe('second reminder');
+  it('can store multiple system reminders in order', async () => {
+    const context = new InMemoryContextState({ initialModel: 'test-model' });
+    await context.appendSystemReminder({ content: 'first reminder' });
+    await context.appendSystemReminder({ content: 'second reminder' });
+    const messages = context.buildMessages();
+    expect(messages).toHaveLength(2);
+    const firstText = messages[0]!.content
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
+      .join('');
+    const secondText = messages[1]!.content
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
+      .join('');
+    expect(firstText).toContain('first reminder');
+    expect(secondText).toContain('second reminder');
   });
 });
 

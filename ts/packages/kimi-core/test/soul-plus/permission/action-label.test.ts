@@ -19,7 +19,7 @@ import type { ApprovalDisplay } from '../../../src/storage/wire-record.js';
 
 describe('describeApprovalAction', () => {
   it('uses the explicit override when provided', () => {
-    const display: ApprovalDisplay = { kind: 'generic', title: 'x', body: 'y' };
+    const display: ApprovalDisplay = { kind: 'generic', summary: 'x', detail: 'y' };
     expect(describeApprovalAction('Bash', {}, display, 'custom label')).toBe('custom label');
   });
 
@@ -30,14 +30,14 @@ describe('describeApprovalAction', () => {
   });
 
   it('maps diff display to "edit file"', () => {
-    expect(describeApprovalAction('Edit', {}, { kind: 'diff', path: '/x', diff: '' })).toBe(
-      'edit file',
-    );
+    expect(
+      describeApprovalAction('Edit', {}, { kind: 'diff', path: '/x', before: '', after: '' }),
+    ).toBe('edit file');
   });
 
-  it('maps file_write display to "write file"', () => {
+  it('maps file_io(write) display to "write file"', () => {
     expect(
-      describeApprovalAction('Write', {}, { kind: 'file_write', path: '/x', content: '' }),
+      describeApprovalAction('Write', {}, { kind: 'file_io', operation: 'write', path: '/x' }),
     ).toBe('write file');
   });
 
@@ -52,19 +52,19 @@ describe('describeApprovalAction', () => {
   });
 
   it('falls back to tool-name table for generic display', () => {
-    const display: ApprovalDisplay = { kind: 'generic', title: 'x', body: 'y' };
+    const display: ApprovalDisplay = { kind: 'generic', summary: 'x', detail: 'y' };
     expect(describeApprovalAction('BackgroundRun', {}, display)).toBe('run background command');
     expect(describeApprovalAction('Edit', {}, display)).toBe('edit file');
   });
 
   it('last-resort label is `call <toolName>`', () => {
     expect(
-      describeApprovalAction('UnknownTool', {}, { kind: 'generic', title: 'x', body: 'y' }),
+      describeApprovalAction('UnknownTool', {}, { kind: 'generic', summary: 'x', detail: 'y' }),
     ).toBe('call UnknownTool');
   });
 
   it('MCP tools include server name so approve_for_session does not cross servers', () => {
-    const display: ApprovalDisplay = { kind: 'generic', title: 'x', body: 'y' };
+    const display: ApprovalDisplay = { kind: 'generic', summary: 'x', detail: 'y' };
     expect(describeApprovalAction('mcp__files__get_files', {}, display)).toBe(
       'call MCP tool: files:get_files',
     );
@@ -74,7 +74,7 @@ describe('describeApprovalAction', () => {
   });
 
   it('MCP name without a separator falls back to generic `call <toolName>`', () => {
-    const display: ApprovalDisplay = { kind: 'generic', title: 'x', body: 'y' };
+    const display: ApprovalDisplay = { kind: 'generic', summary: 'x', detail: 'y' };
     expect(describeApprovalAction('mcp__onlyserver', {}, display)).toBe('call mcp__onlyserver');
   });
 });

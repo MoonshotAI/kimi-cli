@@ -103,8 +103,8 @@ export function buildBeforeToolCall(options: BuildBeforeToolCallOptions): Before
     // decision === 'ask' → bounce through ApprovalRuntime.
     const display: ApprovalDisplay = {
       kind: 'generic',
-      title: `Approve ${toolName}`,
-      body: safeJson(args),
+      summary: `Approve ${toolName}`,
+      detail: args,
     };
 
     const override = actionLabelOverride?.(toolName, args);
@@ -151,10 +151,3 @@ export function buildBeforeToolCall(options: BuildBeforeToolCallOptions): Before
   };
 }
 
-function safeJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return String(value);
-  }
-}

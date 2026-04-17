@@ -2,7 +2,7 @@
  * Covers: `SessionLifecycleStateMachine` (v2 §5.8.2 / appendix D.7).
  *
  * The 5-state lifecycle owner is the canonical state field — everything
- * else (LifecycleGateFacade, JournalWriter, TurnManager) gates its own
+ * else (SoulLifecycleGate, JournalWriter, TurnManager) gates its own
  * behaviour on this machine. These tests lock the transition matrix and
  * the `is*` predicates so implementer cannot silently widen or narrow the
  * allowed graph.

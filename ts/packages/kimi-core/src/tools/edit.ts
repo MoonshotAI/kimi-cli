@@ -10,7 +10,12 @@
 import type { Kaos } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type {
+  ToolDisplayHooks,
+  ToolResult,
+  ToolResultDisplay,
+  ToolUpdate,
+} from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
 import { EditInputSchema } from './types.js';
 import type { BuiltinTool, EditInput, EditOutput } from './types.js';
@@ -20,6 +25,20 @@ export class EditTool implements BuiltinTool<EditInput, EditOutput> {
   readonly name = 'Edit' as const;
   readonly description = 'Perform exact string replacements in a file.';
   readonly inputSchema: z.ZodType<EditInput> = EditInputSchema;
+  readonly display: ToolDisplayHooks<EditInput, EditOutput> = {
+    getUserFacingName: () => 'Edit',
+    getInputDisplay: (input) => ({
+      kind: 'file_io',
+      operation: 'edit',
+      path: input.path,
+    }),
+    getResultDisplay: (input, _result): ToolResultDisplay => ({
+      kind: 'diff',
+      path: input.path,
+      before: input.old_string,
+      after: input.new_string,
+    }),
+  };
 
   constructor(
     private readonly kaos: Kaos,

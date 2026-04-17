@@ -18,7 +18,7 @@ import { AgentTypeRegistry } from '../../src/soul-plus/agent-type-registry.js';
 import { SubagentStore } from '../../src/soul-plus/subagent-store.js';
 import { runSubagentTurn } from '../../src/soul-plus/subagent-runner.js';
 import { AgentTool } from '../../src/tools/agent.js';
-import type { KosongAdapter, CompactionProvider, Runtime } from '../../src/soul/runtime.js';
+import type { KosongAdapter, Runtime } from '../../src/soul/runtime.js';
 import type { Tool, ToolResult } from '../../src/soul/types.js';
 import type { SubagentHost } from '../../src/soul-plus/subagent-types.js';
 
@@ -62,14 +62,8 @@ afterEach(async () => {
 describe('Foreground subagent E2E', () => {
   it('AgentTool → SoulRegistry → SubagentRunner → result, with consistent agentId', async () => {
     const kosong = createFakeKosong('I found 3 bugs');
-    const compactionProvider: CompactionProvider = {
-      run: vi.fn().mockRejectedValue(new Error('not implemented')),
-    };
     const parentRuntime: Runtime = {
       kosong,
-      compactionProvider,
-      lifecycle: { transitionTo: vi.fn().mockResolvedValue(undefined) },
-      journal: { rotate: vi.fn().mockRejectedValue(new Error('not implemented')) },
     };
 
     const store = new SubagentStore(tmp);
@@ -172,9 +166,6 @@ describe('Foreground subagent E2E', () => {
     const parentTools = [fakeTool('Bash'), fakeTool('Read'), fakeTool('Agent')];
     const parentRuntime: Runtime = {
       kosong,
-      compactionProvider: { run: vi.fn() as never },
-      lifecycle: { transitionTo: vi.fn().mockResolvedValue(undefined) },
-      journal: { rotate: vi.fn() as never },
     };
 
     const soulRegistry = new SoulRegistry({

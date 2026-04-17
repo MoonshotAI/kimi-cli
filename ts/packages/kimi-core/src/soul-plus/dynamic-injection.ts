@@ -47,6 +47,13 @@ export interface InjectionContext {
    * compatibility even though the default provider does not consult it).
    */
   readonly turnNumber: number;
+  /**
+   * Phase 1 (Decision #89) — current conversation history for dedup
+   * scanning. Providers can scan this to avoid re-injecting a reminder
+   * that is already present in the history with no new user message
+   * since. Optional for backward compat.
+   */
+  readonly history?: readonly { role: string; content: readonly { type: string; text?: string }[]; toolCalls: readonly unknown[] }[];
 }
 
 // ── Provider interface ────────────────────────────────────────────────
@@ -63,7 +70,10 @@ export interface InjectionContext {
  */
 export interface DynamicInjectionProvider {
   readonly id: string;
-  getInjections(ctx: InjectionContext): readonly EphemeralInjection[];
+  getInjections(
+    ctx: InjectionContext,
+    contextState?: { appendSystemReminder(d: { content: string }): Promise<void> },
+  ): readonly EphemeralInjection[] | void;
 }
 
 // ── Manager ───────────────────────────────────────────────────────────
@@ -126,12 +136,15 @@ export class DynamicInjectionManager {
    * isolated (error forwarded to `onProviderError`, remaining providers
    * still run). Same error-isolation pattern as HookEngine / SessionEventBus.
    */
-  computeInjections(ctx: InjectionContext): EphemeralInjection[] {
+  computeInjections(
+    ctx: InjectionContext,
+    contextState?: { appendSystemReminder(d: { content: string }): Promise<void> },
+  ): EphemeralInjection[] {
     const out: EphemeralInjection[] = [];
     for (const provider of this.providers) {
       try {
-        const injections = provider.getInjections(ctx);
-        if (injections.length > 0) {
+        const injections = provider.getInjections(ctx, contextState);
+        if (injections !== undefined && injections !== null && Array.isArray(injections) && injections.length > 0) {
           out.push(...injections);
         }
       } catch (error) {
@@ -156,8 +169,25 @@ export class DynamicInjectionManager {
 export class PlanModeInjectionProvider implements DynamicInjectionProvider {
   readonly id = 'plan_mode' as const;
 
-  getInjections(ctx: InjectionContext): readonly EphemeralInjection[] {
+  getInjections(
+    ctx: InjectionContext,
+    contextState?: { appendSystemReminder(d: { content: string }): Promise<void> },
+  ): readonly EphemeralInjection[] | void {
     if (!ctx.planMode) return [];
+
+    // Phase 1 dedup: scan history to avoid re-injecting if the plan mode
+    // reminder is already the most recent system_reminder with no new
+    // user message since. Ported from Python plan_mode.py:64-81.
+    if (ctx.history !== undefined && hasPlanReminderWithoutNewUser(ctx.history)) {
+      return [];
+    }
+
+    // Phase 1: when contextState is provided, write durably and return void
+    if (contextState !== undefined) {
+      void contextState.appendSystemReminder({ content: PLAN_MODE_REMINDER });
+      return undefined;
+    }
+
     return [
       {
         kind: 'system_reminder',
@@ -191,14 +221,32 @@ export class YoloModeInjectionProvider implements DynamicInjectionProvider {
   readonly id = 'yolo_mode' as const;
   private injected = false;
 
-  getInjections(ctx: InjectionContext): readonly EphemeralInjection[] {
+  getInjections(
+    ctx: InjectionContext,
+    contextState?: { appendSystemReminder(d: { content: string }): Promise<void> },
+  ): readonly EphemeralInjection[] | void {
     if (ctx.permissionMode !== 'bypassPermissions') {
       // Reset one-shot so re-entering yolo produces a fresh reminder.
       this.injected = false;
       return [];
     }
+
+    // Phase 1 dedup: scan history to avoid re-injecting if the yolo
+    // reminder is already the most recent system_reminder with no new
+    // user message since.
+    if (ctx.history !== undefined && hasYoloReminderWithoutNewUser(ctx.history)) {
+      return [];
+    }
+
     if (this.injected) return [];
     this.injected = true;
+
+    // Phase 1: when contextState is provided, write durably and return void
+    if (contextState !== undefined) {
+      void contextState.appendSystemReminder({ content: YOLO_MODE_REMINDER });
+      return undefined;
+    }
+
     return [
       {
         kind: 'system_reminder',
@@ -213,6 +261,58 @@ const YOLO_MODE_REMINDER = [
   '  - Do NOT call AskUserQuestion. If you need to make a decision, make your best judgment and proceed.',
   '  - For ExitPlanMode, it will be auto-approved. You can use it normally but expect no user feedback.',
 ].join('\n');
+
+// ── History-scanning dedup helpers (Phase 1 — Decision #89) ──────────
+
+type HistoryMessage = { role: string; content: readonly { type: string; text?: string }[]; toolCalls: readonly unknown[] };
+
+/**
+ * Extract the text content from a history message.
+ */
+function historyMessageText(msg: HistoryMessage): string {
+  return msg.content
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text' && typeof p.text === 'string')
+    .map((p) => p.text)
+    .join('');
+}
+
+/**
+ * Scan history backwards for the most recent `<system-reminder>` that
+ * contains the plan mode fingerprint. If found and no new user message
+ * has appeared since, return true (dedup hit).
+ */
+function hasPlanReminderWithoutNewUser(history: readonly HistoryMessage[]): boolean {
+  return hasReminderWithoutNewUser(history, 'Plan mode is active');
+}
+
+/**
+ * Same as above but for yolo mode reminder.
+ */
+function hasYoloReminderWithoutNewUser(history: readonly HistoryMessage[]): boolean {
+  return hasReminderWithoutNewUser(history, 'yolo');
+}
+
+function hasReminderWithoutNewUser(history: readonly HistoryMessage[], fingerprint: string): boolean {
+  // Scan from the end, looking for the most recent system-reminder
+  // containing the fingerprint. Track whether a user message appeared
+  // after it.
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i]!;
+    const text = historyMessageText(msg);
+    if (msg.role === 'user' && text.trimStart().startsWith('<system-reminder>') && text.toLowerCase().includes(fingerprint.toLowerCase())) {
+      // Found the reminder — no new user message since (we scanned
+      // backwards and haven't encountered a non-reminder user message)
+      return true;
+    }
+    if (msg.role === 'user' && !text.trimStart().startsWith('<system-reminder>') && !text.trimStart().startsWith('<notification')) {
+      // A real user message appeared more recently than any reminder —
+      // the dedup check fails, we should re-inject.
+      return false;
+    }
+    // assistant / tool messages don't affect the dedup decision
+  }
+  return false;
+}
 
 // ── Default factory ───────────────────────────────────────────────────
 

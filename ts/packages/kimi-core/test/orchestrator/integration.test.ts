@@ -16,7 +16,7 @@ import { HookEngine } from '../../src/hooks/engine.js';
 import type { HookEventType, HookExecutor, HookInput } from '../../src/hooks/types.js';
 import {
   AlwaysAllowApprovalRuntime,
-  LifecycleGateFacade,
+  SoulLifecycleGate,
   SessionEventBus,
   SessionLifecycleStateMachine,
   SoulRegistry,
@@ -31,6 +31,7 @@ import {
   createNoopCompactionProvider,
   createNoopJournalCapability,
 } from '../soul-plus/fixtures/slice3-harness.js';
+import { makeRealSubcomponents } from '../soul-plus/fixtures/real-subcomponents.js';
 import { makeEndTurnResponse, makeToolCall, makeToolUseResponse } from '../soul/fixtures/common.js';
 import { EchoTool, FailingTool } from '../soul/fixtures/fake-tools.js';
 import { ScriptedKosongAdapter } from '../soul/fixtures/scripted-kosong.js';
@@ -67,7 +68,7 @@ function buildIntegrationHarness(opts: {
   });
 
   const stateMachine = new SessionLifecycleStateMachine();
-  const gate = new LifecycleGateFacade(stateMachine);
+  const gate = new SoulLifecycleGate(stateMachine);
   const context = createHarnessContextState();
   const journal = new InMemorySessionJournalImpl();
   const eventBus = new SessionEventBus();
@@ -93,6 +94,12 @@ function buildIntegrationHarness(opts: {
     soulRegistry,
     tools: opts.tools ?? [],
     orchestrator,
+    ...makeRealSubcomponents({
+      contextState: context,
+      lifecycleStateMachine: stateMachine,
+      sink: eventBus,
+      orchestrator,
+    }),
   });
 
   return { manager, hookCalls, stateMachine };

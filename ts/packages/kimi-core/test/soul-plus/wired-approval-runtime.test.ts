@@ -135,7 +135,6 @@ describe('WiredApprovalRuntime — journal ordering (P0-1)', () => {
       appendToolDenied: vi.fn(),
       appendNotification: vi.fn(),
       appendSystemReminder: vi.fn(),
-      appendSubagentEvent: vi.fn(),
       appendOwnershipChanged: vi.fn(),
     };
 
@@ -211,7 +210,6 @@ describe('WiredApprovalRuntime — timeout / abort / cancelBySource (P0-2)', () 
       appendToolDenied: vi.fn(),
       appendNotification: vi.fn(),
       appendSystemReminder: vi.fn(),
-      appendSubagentEvent: vi.fn(),
       appendOwnershipChanged: vi.fn(),
     };
 
@@ -422,7 +420,6 @@ describe('WiredApprovalRuntime — C1: WAL failure rejects waiter instead of orp
       appendToolDenied: vi.fn(),
       appendNotification: vi.fn(),
       appendSystemReminder: vi.fn(),
-      appendSubagentEvent: vi.fn(),
       appendOwnershipChanged: vi.fn(),
     };
 
@@ -462,7 +459,6 @@ describe('WiredApprovalRuntime — C1: WAL failure rejects waiter instead of orp
       appendToolDenied: vi.fn(),
       appendNotification: vi.fn(),
       appendSystemReminder: vi.fn(),
-      appendSubagentEvent: vi.fn(),
       appendOwnershipChanged: vi.fn(),
     };
 
@@ -509,7 +505,6 @@ describe('WiredApprovalRuntime — M1: approve_for_session catches WAL-window re
       appendToolDenied: vi.fn(),
       appendNotification: vi.fn(),
       appendSystemReminder: vi.fn(),
-      appendSubagentEvent: vi.fn(),
       appendOwnershipChanged: vi.fn(),
     };
 
@@ -563,7 +558,6 @@ describe('WiredApprovalRuntime — M2: cancelBySource catches WAL-window request
       appendToolDenied: vi.fn(),
       appendNotification: vi.fn(),
       appendSystemReminder: vi.fn(),
-      appendSubagentEvent: vi.fn(),
       appendOwnershipChanged: vi.fn(),
     };
 

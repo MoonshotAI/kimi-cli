@@ -2,8 +2,19 @@
  * Runtime — the sole capability surface SoulPlus exposes to Soul (§5.0 rule
  * 6 / §5.1.5 / §5.8).
  *
- * Four fields, no more: `kosong` / `compactionProvider` / `lifecycle` /
- * `journal`. Adding a fifth field is an explicit ADR-level decision — in
+ * Phase 2 (todo/phase-2-compaction-out-of-soul.md): Runtime collapsed to
+ * a single field, `kosong`. The previous 4-field shape (kosong /
+ * compactionProvider / lifecycle / journal) was Soul driving compaction
+ * through three SoulPlus-owned capabilities — that violated 铁律 7.
+ *
+ * Compaction is now orchestrated by `TurnManager.executeCompaction`; Soul
+ * only reports `TurnResult.stopReason='needs_compaction'` when the
+ * threshold gate fires. The `CompactionProvider` / `LifecycleGate` /
+ * `JournalCapability` interfaces below are retained as exported types so
+ * `TurnManagerDeps` and tests can reference them, but they are no longer
+ * members of `Runtime`.
+ *
+ * Adding any field beyond `kosong` is an explicit ADR-level decision — in
  * particular `tools`, `subagentHost`, `clock`, `logger`, `idGenerator` are
  * all intentionally absent and must be injected via `SoulConfig.tools` or
  * tool-constructor dependency injection.
@@ -15,7 +26,7 @@
 
 import type { Message } from '@moonshot-ai/kosong';
 
-import type { AssistantMessage, StopReason, TokenUsage, ToolCall } from './types.js';
+import type { AssistantMessage, StopReason, TokenUsage, ToolCall, ToolResult } from './types.js';
 
 // ── LLM adapter ────────────────────────────────────────────────────────
 
@@ -48,6 +59,19 @@ export interface ChatParams {
   signal: AbortSignal;
   onDelta?: ((delta: string) => void) | undefined;
   onThinkDelta?: ((delta: string) => void) | undefined;
+  /**
+   * Slice 5 / 决策 #97 — fired by streaming wrappers as each tool_use
+   * block finishes streaming so the orchestrator can prefetch ahead of
+   * the assistant message completing. Phase 5 callers do not set this.
+   */
+  onToolCallReady?: ((toolCall: ToolCall) => void) | undefined;
+  /**
+   * Slice 5 / 决策 #96 L3 — caller-known context window in tokens used
+   * by `KosongAdapter.chat` to detect silent overflow (usage breaches
+   * the window even though the provider returned successfully). Omitted
+   * → silent-overflow detection is skipped.
+   */
+  contextWindow?: number | undefined;
 }
 
 export interface ChatResponse {
@@ -62,6 +86,14 @@ export interface ChatResponse {
    * be absent for test-only adapters that do not bind a concrete provider.
    */
   actualModel?: string | undefined;
+  /**
+   * Slice 5 / 决策 #97 — when the streaming orchestrator finishes a tool
+   * call ahead of Soul reaching it, the result lands here keyed by
+   * `ToolCall.id`. Soul checks this map before invoking `tool.execute`
+   * and reuses the prefetched result on a hit. Phase 5 default adapters
+   * never populate the map (Soul always falls through to execute).
+   */
+  _prefetchedToolResults?: ReadonlyMap<string, ToolResult> | undefined;
 }
 
 export interface KosongAdapter {
@@ -87,6 +119,23 @@ export interface CompactionOptions {
 }
 
 export interface CompactionProvider {
+  /**
+   * Run compaction on the given message history and return a single opaque
+   * summary blob (SummaryMessage { content: string }).
+   *
+   * Contract (决策 #101): if the input `messages` array ends with an
+   * **unpaired user message** (one without a following assistant response),
+   * the implementation must preserve that user message verbatim in the
+   * post-compaction conversation state, as a separate standalone message —
+   * not folded / paraphrased / merely mentioned inside the summary text.
+   *
+   * Rationale: if a user types a short prompt at the tail of a
+   * context-overflowing conversation and Soul triggers compaction on step 0,
+   * the summary would absorb their prompt and the LLM would see no standalone
+   * "pending user message" to respond to, causing the turn to end with no
+   * response. TurnManager enforces this contract with a guard after calling
+   * `run()` (see TurnManager.executeCompaction — tail user_message guard).
+   */
   run(
     messages: Message[],
     signal: AbortSignal,
@@ -98,8 +147,13 @@ export interface CompactionProvider {
 
 /**
  * `transitionTo` exposes exactly three of the five internal lifecycle
- * states to Soul. `idle` / `destroying` are managed by SoulPlus and
+ * states. `idle` / `destroying` are managed by SoulPlus and
  * intentionally invisible at this layer.
+ *
+ * Phase 2: no longer part of the Runtime aggregate — SoulPlus and
+ * TurnManager use `SessionLifecycleStateMachine.transitionTo` directly.
+ * This interface is retained as an exported type so existing test
+ * fixtures and Phase 4 refactors can still reference it.
  */
 export interface LifecycleGate {
   transitionTo(state: 'active' | 'compacting' | 'completing'): Promise<void>;
@@ -133,7 +187,4 @@ export interface JournalCapability {
 
 export interface Runtime {
   kosong: KosongAdapter;
-  compactionProvider: CompactionProvider;
-  lifecycle: LifecycleGate;
-  journal: JournalCapability;
 }

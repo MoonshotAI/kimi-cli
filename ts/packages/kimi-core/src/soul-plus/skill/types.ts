@@ -9,6 +9,7 @@
  */
 
 import type { FullContextState } from '../../storage/context-state.js';
+import type { SessionJournal } from '../../storage/session-journal.js';
 
 export type SkillSource = 'builtin' | 'user' | 'project';
 
@@ -25,6 +26,22 @@ export interface SkillMetadata {
   readonly type?: string;
   /** Forward-compat: parsed but not enforced in Slice 2.5 (D4). */
   readonly allowedTools?: readonly string[];
+  /**
+   * Slice 7.1 (决策 #99) — when-to-use hint surfaced to the model in the
+   * skill listing so it knows which scenarios this skill targets.
+   */
+  readonly whenToUse?: string;
+  /**
+   * Slice 7.1 (决策 #99) — when `true`, the LLM may NOT invoke this skill
+   * via the `Skill` tool; it remains accessible only to user slash-commands.
+   */
+  readonly disableModelInvocation?: boolean;
+  /**
+   * Slice 7.1 (决策 #99) — opt-in flag for skills the user trusts to run
+   * without per-call approval. Phase 7 only carries the flag; enforcement
+   * is wired by the host in a later slice.
+   */
+  readonly safe?: boolean;
   readonly [key: string]: unknown;
 }
 
@@ -56,6 +73,19 @@ export interface SkillRoot {
 
 export interface SkillActivationContext {
   readonly contextState: FullContextState;
+  /**
+   * Slice 7.1 (决策 #99) — when supplied, `DefaultSkillManager.activate`
+   * writes a `skill_invoked` record with `invocation_trigger='user-slash'`
+   * so audit / replay can tell user-driven activations apart from
+   * Claude-proactive `Skill` tool calls. Optional so legacy callers that
+   * never wired a SessionJournal still compile.
+   */
+  readonly sessionJournal?: SessionJournal | undefined;
+  /**
+   * Slice 7.1 (决策 #99) — turn id stamped onto the `skill_invoked` record.
+   * Falls back to `'pending'` when omitted.
+   */
+  readonly turnId?: string | undefined;
 }
 
 export interface SkillManager {
@@ -107,6 +137,20 @@ export interface SkillManager {
    *       - Description: short description
    */
   getKimiSkillsDescription(): string;
+  /**
+   * Slice 7.1 (决策 #99) — registered skills that the LLM may invoke
+   * autonomously via the `Skill` tool. Filters out anything flagged
+   * `disableModelInvocation: true`.
+   */
+  listInvocableSkills(): readonly SkillDefinition[];
+  /**
+   * Slice 7.1 (决策 #99) — append a durable `<system-reminder>` listing
+   * of every invocable skill to `contextState`. The reminder uses the
+   * "DISREGARD any earlier skill listings" preamble so any prior listing
+   * is shadowed in the LLM's view. No-op when there are no invocable
+   * skills.
+   */
+  injectSkillListing(contextState: FullContextState): Promise<void>;
 }
 
 export class SkillNotFoundError extends Error {

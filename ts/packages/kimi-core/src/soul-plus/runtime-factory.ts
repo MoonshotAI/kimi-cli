@@ -1,33 +1,40 @@
 /**
- * createRuntime — assembles the 4-field `Runtime` (v2 §5.1.5 / §5.8.2)
- * from SoulPlus-internal parts.
+ * createRuntime — assembles the single-field Soul-visible `Runtime`.
  *
- * The Slice 2 `Runtime` interface is intentionally rigid: exactly four
- * fields, no more. This factory centralises the assembly so SoulPlus
- * constructor code is not tempted to sneak a fifth field in.
+ * Phase 2 (todo/phase-2-compaction-out-of-soul.md Step 9): Runtime
+ * collapsed to `{kosong}`. The previous 4-field shape included
+ * `compactionProvider` / `lifecycle` / `journal`, which Soul drove
+ * through `runCompaction`; that work moved into
+ * `TurnManager.executeCompaction`. Those capabilities are now wired
+ * directly onto `SoulPlusDeps` (and forwarded to `TurnManagerDeps`),
+ * not onto Runtime.
  */
 
 import type {
   CompactionProvider,
   JournalCapability,
   KosongAdapter,
-  LifecycleGate,
   Runtime,
 } from '../soul/index.js';
 
 export interface RuntimeFactoryDeps {
   readonly kosong: KosongAdapter;
-  readonly compactionProvider: CompactionProvider;
-  readonly lifecycle: LifecycleGate;
-  readonly journal: JournalCapability;
+  /**
+   * Phase 2: retained on the input type for backward-compat with
+   * existing call sites that still pass a compaction provider, but
+   * silently dropped by `createRuntime`. New capabilities travel via
+   * `SoulPlusDeps` (and `TurnManagerDeps`) instead.
+   */
+  readonly compactionProvider?: CompactionProvider | undefined;
+  /** Phase 2: accepted for compat, ignored. See `compactionProvider`. */
+  readonly lifecycle?: unknown;
+  /** Phase 2: accepted for compat, ignored. See `compactionProvider`. */
+  readonly journal?: JournalCapability | undefined;
 }
 
 export function createRuntime(deps: RuntimeFactoryDeps): Runtime {
   return {
     kosong: deps.kosong,
-    compactionProvider: deps.compactionProvider,
-    lifecycle: deps.lifecycle,
-    journal: deps.journal,
   };
 }
 

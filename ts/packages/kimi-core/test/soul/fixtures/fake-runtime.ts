@@ -1,11 +1,14 @@
 /**
- * Test helper — assemble a v2 `Runtime` with the four required fields
- * (`kosong` / `compactionProvider` / `lifecycle` / `journal`). Callers pass
- * a `KosongAdapter` (usually the scripted one) and get back a Runtime with
- * no-op implementations for the three SoulPlus-owned fields.
+ * Test helper — assemble a Soul `Runtime`.
  *
- * Compaction tests can override `compactionProvider` / `lifecycle` /
- * `journal` per-call to install a spy.
+ * Phase 2: Runtime collapsed to `{kosong}`. The spy capability factories
+ * (`createSpyCompactionProvider` / `createSpyLifecycleGate` /
+ * `createSpyJournalCapability`) are retained because existing tests still
+ * assert that Soul does NOT drive those capabilities — we need spies
+ * whose call counters stay at zero. They are surfaced in the returned
+ * `FakeRuntimeBundle` alongside the narrow `runtime`, so tests that inject
+ * them into `TurnManagerDeps` or pass them to an old-style `runCompaction`
+ * fixture can still reach them by name.
  */
 
 import type {
@@ -86,11 +89,11 @@ export function createFakeRuntime(overrides: FakeRuntimeOverrides): FakeRuntimeB
   const compactionProvider = overrides.compactionProvider ?? createSpyCompactionProvider();
   const lifecycle = overrides.lifecycle ?? createSpyLifecycleGate();
   const journal = overrides.journal ?? createSpyJournalCapability();
+  // Phase 2: Runtime now only has `kosong`. We still surface the spy
+  // capabilities on the returned bundle so tests can pin "Soul did NOT
+  // touch them" assertions (T1 A / compaction-gate).
   const runtime: Runtime = {
     kosong: overrides.kosong,
-    compactionProvider,
-    lifecycle,
-    journal,
   };
   return { runtime, compactionProvider, lifecycle, journal };
 }

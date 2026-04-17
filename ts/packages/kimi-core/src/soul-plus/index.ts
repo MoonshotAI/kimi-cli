@@ -18,7 +18,7 @@ export type {
 } from './types.js';
 
 export { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
-export { LifecycleGateFacade } from './lifecycle-gate.js';
+export { SoulLifecycleGate } from './soul-lifecycle-gate.js';
 export { KosongAdapter, createKosongAdapter } from './kosong-adapter.js';
 export type { KosongAdapterOptions } from './kosong-adapter.js';
 export { SessionEventBus } from './session-event-bus.js';
@@ -95,6 +95,10 @@ export type {
   ApprovalResult,
   ApprovalRuntime,
 } from './approval-runtime.js';
+// Slice 5 — `ApprovalDisplay` is the SoulPlus-side alias of
+// `ToolInputDisplay`; re-export here so callers can import it from a
+// single approval-shaped entry point.
+export type { ApprovalDisplay } from '../storage/wire-record.js';
 export { AlwaysAllowApprovalRuntime, NotImplementedError } from './approval-runtime.js';
 export { WiredApprovalRuntime, WIRED_APPROVAL_TIMEOUT_MS } from './wired-approval-runtime.js';
 export type { WiredApprovalRuntimeDeps } from './wired-approval-runtime.js';

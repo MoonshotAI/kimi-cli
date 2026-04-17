@@ -256,7 +256,7 @@ function coerceNotificationSeverity(raw: unknown): NotificationRecord['data']['s
 
 function mapApprovalDisplay(blocks: unknown): ApprovalDisplay {
   if (!Array.isArray(blocks)) {
-    return { kind: 'generic', title: 'migrated approval', body: '' };
+    return { kind: 'generic', summary: 'migrated approval', detail: '' };
   }
   for (const block of blocks as readonly unknown[]) {
     if (block === null || typeof block !== 'object') continue;
@@ -271,23 +271,30 @@ function mapApprovalDisplay(blocks: unknown): ApprovalDisplay {
     if (type === 'diff') {
       const path = (block as { path?: unknown }).path;
       const diff = (block as { diff?: unknown }).diff;
+      // Old `diff: string` payload collapses into the new `before/after`
+      // pair by routing everything through `after` so the renderer can
+      // still highlight the migrated patch.
       return {
         kind: 'diff',
         path: typeof path === 'string' ? path : '',
-        diff: typeof diff === 'string' ? diff : '',
+        before: '',
+        after: typeof diff === 'string' ? diff : '',
       };
     }
     if (type === 'file_write') {
       const path = (block as { path?: unknown }).path;
-      const content = (block as { content?: unknown }).content;
       return {
-        kind: 'file_write',
+        kind: 'file_io',
+        operation: 'write',
         path: typeof path === 'string' ? path : '',
-        content: typeof content === 'string' ? content : '',
       };
     }
   }
-  return { kind: 'generic', title: 'migrated approval', body: JSON.stringify(blocks) };
+  return {
+    kind: 'generic',
+    summary: 'migrated approval',
+    detail: blocks,
+  };
 }
 
 // ── Assistant tool call → TS tool_calls shape ─────────────────────────

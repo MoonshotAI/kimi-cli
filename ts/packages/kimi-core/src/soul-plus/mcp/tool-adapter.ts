@@ -86,6 +86,19 @@ export function mcpToolToKimiTool(options: McpToolAdapterOptions): Tool {
     name: kimiName,
     description,
     inputSchema: z.unknown(),
+    // Slice 7.2 (决策 #100) — provenance metadata so the orchestrator can
+    // tell MCP-supplied tools from built-ins and locate the source server.
+    metadata: {
+      source: 'mcp',
+      serverId: serverName,
+      originalName: mcpTool.name,
+    },
+    // Slice 7.2 (决策 #100) — MCP results can be large; cap at 100k chars
+    // unless the upstream layer explicitly overrides.
+    maxResultSizeChars: 100_000,
+    // Slice 7.2 (决策 #100) — explicit `display: undefined` so callers can
+    // probe the slot via property access without `in` guards.
+    display: undefined,
     async execute(
       toolCallId: string,
       args: unknown,

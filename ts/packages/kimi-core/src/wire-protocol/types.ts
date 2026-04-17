@@ -124,6 +124,20 @@ export type ToolsMethod =
 // Core → Client reverse RPC methods
 export type ReverseRpcMethod = 'approval.request' | 'question.ask' | 'tool.call' | 'hook.request';
 
+// Slice 7.2 (决策 #100) — MCP request methods. Phase 7 only registers the
+// names; the router returns NotImplemented until later slices land.
+export type McpMethod =
+  | 'mcp.list'
+  | 'mcp.connect'
+  | 'mcp.disconnect'
+  | 'mcp.refresh'
+  | 'mcp.listResources'
+  | 'mcp.readResource'
+  | 'mcp.listPrompts'
+  | 'mcp.getPrompt'
+  | 'mcp.startAuth'
+  | 'mcp.resetAuth';
+
 // All wire methods
 export type WireMethod =
   | ProcessMethod
@@ -131,7 +145,8 @@ export type WireMethod =
   | ManagementMethod
   | ConfigMethod
   | ToolsMethod
-  | ReverseRpcMethod;
+  | ReverseRpcMethod
+  | McpMethod;
 
 // ── Event method literals (§3.6) ─────────────────────────────────────────
 
@@ -158,7 +173,14 @@ export type WireEventMethod =
   | 'system_prompt.changed'
   | 'model.changed'
   | 'thinking.changed'
-  | 'plan.display';
+  | 'plan.display'
+  // Slice 7.2 (决策 #100) — MCP lifecycle events.
+  | 'mcp.connected'
+  | 'mcp.disconnected'
+  | 'mcp.error'
+  | 'mcp.tools_changed'
+  | 'mcp.resources_changed'
+  | 'mcp.auth_required';
 
 // ── Channel type (§6.1) ─────────────────────────────────────────────────
 
@@ -166,14 +188,40 @@ export type ChannelType = 'conversation' | 'management' | 'config' | 'tools' | '
 
 // ── Initialize handshake data (§3.5) ────────────────────────────────────
 
+/**
+ * v2-update §3.5 InitializeRequest — sent by the client right after the
+ * transport connects. Narrow structural fields (hooks / capabilities) are
+ * hoisted out of the open-ended `client_capabilities` bag so TS callers can
+ * construct them without an `as unknown as` cast.
+ */
 export interface InitializeRequestData {
   protocol_version?: string | undefined;
+  capabilities?:
+    | {
+        hooks?: boolean | undefined;
+        approval?: boolean | undefined;
+        streaming?: boolean | undefined;
+      }
+    | undefined;
+  hooks?: ReadonlyArray<{ event: string; matcher?: unknown }> | undefined;
+  /** Open-ended bag for forward-compatible extensions. */
   client_capabilities?: Record<string, unknown> | undefined;
 }
 
+/**
+ * v2-update §3.5 InitializeResponse — the server advertises which wire
+ * events and methods it supports. `session_id` is optional: the server
+ * includes it when initialize implicitly binds to an existing session
+ * (e.g. `--continue`). Additional capability flags land inside
+ * `capabilities` alongside `events` / `methods`.
+ */
 export interface InitializeResponseData {
   protocol_version: string;
-  capabilities: Record<string, unknown>;
+  capabilities: {
+    events?: readonly string[] | undefined;
+    methods?: readonly string[] | undefined;
+  } & Record<string, unknown>;
+  session_id?: string | undefined;
 }
 
 // ── Session create data (§3.5) ───────────────────────────────────────────

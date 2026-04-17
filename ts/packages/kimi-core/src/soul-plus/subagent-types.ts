@@ -59,6 +59,12 @@ export interface SpawnRequest {
    * not an AgentTool concern.
    */
   signal?: AbortSignal | undefined;
+  /**
+   * Slice 7.1 (决策 #99) — depth context propagated when this spawn was
+   * triggered by the `Skill` tool in fork mode. Lets the child SkillTool
+   * (if it fires another Skill call) cap recursion at MAX_SKILL_QUERY_DEPTH.
+   */
+  skillContext?: { queryDepth: number } | undefined;
 }
 
 // ── AgentResult (v2 附录 E / §7.2) ───────────────────────────────────

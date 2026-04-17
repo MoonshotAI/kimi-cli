@@ -24,8 +24,8 @@ export interface ProjectionOptions {
 export interface ConversationProjector {
   project(
     snapshot: ContextSnapshot,
-    ephemeralInjections: readonly EphemeralInjection[],
-    options: ProjectionOptions,
+    ephemeralInjections?: readonly EphemeralInjection[] | ProjectionOptions,
+    options?: ProjectionOptions,
   ): Message[];
 }
 
@@ -51,10 +51,18 @@ export interface ConversationProjector {
 export class DefaultConversationProjector implements ConversationProjector {
   project(
     snapshot: ContextSnapshot,
-    ephemeralInjections: readonly EphemeralInjection[],
-    _options: ProjectionOptions,
+    ephemeralInjectionsOrOptions?: readonly EphemeralInjection[] | ProjectionOptions,
+    options?: ProjectionOptions,
   ): Message[] {
-    void _options;
+    // Phase 1 backward-compat: support both 2-arg and 3-arg signatures.
+    // When called with 2 args as project(snapshot, options), the second
+    // parameter is a plain object (not an array). Detect and route.
+    const ephemeralInjections: readonly EphemeralInjection[] = Array.isArray(
+      ephemeralInjectionsOrOptions,
+    )
+      ? ephemeralInjectionsOrOptions
+      : [];
+    void options;
 
     const merged = mergeAdjacentUserMessages(snapshot.history);
 

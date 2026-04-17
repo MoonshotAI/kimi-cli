@@ -12,7 +12,7 @@
  *   2. Slice 1 real implementations — `InMemoryContextState`,
  *      `InMemorySessionJournalImpl`
  *   3. Slice 3 stubs — `SessionLifecycleStateMachine`,
- *      `LifecycleGateFacade`, `SessionEventBus`, `SoulRegistry`,
+ *      `SoulLifecycleGate`, `SessionEventBus`, `SoulRegistry`,
  *      `createRuntime`, `TurnManager`, `SoulPlus`
  */
 
@@ -92,12 +92,14 @@ export interface HarnessRuntimeOptions {
 }
 
 export function createHarnessRuntime(opts: HarnessRuntimeOptions): Runtime {
-  return {
-    kosong: opts.kosong,
-    compactionProvider: opts.compactionProvider ?? createNoopCompactionProvider(),
-    lifecycle: opts.lifecycle ?? createSpyLifecycleGate('active'),
-    journal: opts.journal ?? createNoopJournalCapability(),
-  };
+  // Phase 2: Runtime narrowed to `{kosong}`. The other fields on
+  // HarnessRuntimeOptions stay on the type for backward-compat with
+  // callers that pass them in, but they are silently ignored — Soul no
+  // longer reads compactionProvider / lifecycle / journal from Runtime.
+  void opts.compactionProvider;
+  void opts.lifecycle;
+  void opts.journal;
+  return { kosong: opts.kosong };
 }
 
 // ── Context / journal factories ─────────────────────────────────────

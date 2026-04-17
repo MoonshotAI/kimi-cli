@@ -23,7 +23,12 @@ import type { Readable } from 'node:stream';
 import type { Kaos, KaosProcess } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
-import type { ToolResult, ToolUpdate } from '../soul/types.js';
+import type {
+  ToolDisplayHooks,
+  ToolResult,
+  ToolResultDisplay,
+  ToolUpdate,
+} from '../soul/types.js';
 import type { BackgroundProcessManager } from './background/manager.js';
 import { BashInputSchema } from './types.js';
 import type { BashInput, BashOutput, BuiltinTool } from './types.js';
@@ -38,6 +43,21 @@ export class BashTool implements BuiltinTool<BashInput, BashOutput> {
   readonly name = 'Bash' as const;
   readonly description = 'Execute shell commands in the workspace.';
   readonly inputSchema: z.ZodType<BashInput> = BashInputSchema;
+  readonly display: ToolDisplayHooks<BashInput, BashOutput> = {
+    getUserFacingName: () => 'Bash',
+    getInputDisplay: (input) => ({
+      kind: 'command',
+      command: input.command,
+      ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+    }),
+    getResultDisplay: (_input, result): ToolResultDisplay => ({
+      kind: 'command_output',
+      exit_code: result.output?.exitCode ?? 0,
+      stdout: result.output?.stdout ?? '',
+      stderr: result.output?.stderr ?? '',
+    }),
+  };
 
   constructor(
     private readonly kaos: Kaos,

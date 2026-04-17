@@ -1,5 +1,19 @@
 /**
- * `runSoulTurn` — the Soul agent loop as a pure function (§5.1 / §5.0 rule 1).
+ * `runSoulTurn` — the Soul agent loop as a **stateless function** (§5.1 / §5.0 rule 1).
+ *
+ * "Stateless" means: no `this`, no instance fields, no implicit cross-turn state.
+ * Every `runSoulTurn` call is independent and does not depend on anything left
+ * behind by a previous call.
+ *
+ * "Stateless" does **not** mean "side-effect free". Soul has five classes of side effect:
+ *   1. Conversation state writes (context.appendAssistantMessage / appendToolResult)
+ *   2. UI event emits (sink.emit)
+ *   3. LLM calls (runtime.kosong.chat)
+ *   4. Tool execution (tool.execute)
+ *   5. Compaction need signalling (via TurnResult.reason === 'needs_compaction')
+ *
+ * The value of "stateless" is "no implicit state between turns" — it enables
+ * embedding Soul in hosts that don't want the full SoulPlus stack.
  *
  * Canonical signature per §5.1.2:
  *
@@ -21,7 +35,7 @@ import {
   buildLLMVisibleTools,
   toToolCallArgs,
 } from './adapters.js';
-import { runCompaction, shouldCompact } from './compaction.js';
+import { shouldCompact } from './compaction.js';
 import { MaxStepsExceededError } from './errors.js';
 import type { EventSink, SoulEvent } from './event-sink.js';
 import type { ChatResponse, Runtime } from './runtime.js';
@@ -61,12 +75,15 @@ export async function runSoulTurn(
       // §5.1.7 L1359: while-top safe point.
       signal.throwIfAborted();
 
-      // §5.1.7 L1361-L1366: compaction gate. Triggers when token count
-      // crosses the configured threshold. Disabled when compactionConfig
-      // is not provided (shouldCompact returns false for undefined config).
+      // Phase 2 (铁律 7): Soul detects compaction need and reports via
+      // `TurnResult.stopReason='needs_compaction'`. TurnManager catches
+      // this signal and runs `executeCompaction` (lifecycle +
+      // compactionProvider + journal.rotate + context.resetToSummary)
+      // before re-entering Soul on the same turn_id. Soul itself never
+      // drives compaction — see src/soul-plus/turn-manager.ts.
       if (shouldCompact(context, config.compactionConfig)) {
-        await runCompaction(context, runtime, sink, signal);
-        continue;
+        stopReason = 'needs_compaction';
+        break;
       }
 
       // §5.1.3 maxSteps guard.
@@ -109,6 +126,7 @@ export async function runSoulTurn(
         onThinkDelta: (delta) => {
           safeEmit(sink, { type: 'thinking.delta', delta });
         },
+        ...(config.contextWindow !== undefined ? { contextWindow: config.contextWindow } : {}),
       });
       // §5.1.7 L1407: checkpoint after kosong.chat catches any abort that
       // landed while the chat promise was pending but that the adapter
@@ -206,13 +224,24 @@ export async function runSoulTurn(
 
         let toolResult: ToolResult;
         try {
-          toolResult = await tool.execute(toolCall.id, effectiveInput, signal, (update) => {
-            safeEmit(sink, {
-              type: 'tool.progress',
-              toolCallId: toolCall.id,
-              update,
+          // Slice 5 / 决策 #97 — streaming prefetch shortcut. When the
+          // KosongAdapter wraps a streaming provider it may stash an
+          // already-computed result for this `toolCall.id`; on a hit Soul
+          // reuses the result verbatim and skips `tool.execute`. Phase 5
+          // adapters never populate the map, so the else branch always
+          // runs.
+          const prefetched = response._prefetchedToolResults?.get(toolCall.id);
+          if (prefetched !== undefined) {
+            toolResult = prefetched;
+          } else {
+            toolResult = await tool.execute(toolCall.id, effectiveInput, signal, (update) => {
+              safeEmit(sink, {
+                type: 'tool.progress',
+                toolCallId: toolCall.id,
+                update,
+              });
             });
-          });
+          }
         } catch (error) {
           const aborted = isAbortError(error) || signal.aborted;
           const syntheticResult: ToolResult = {

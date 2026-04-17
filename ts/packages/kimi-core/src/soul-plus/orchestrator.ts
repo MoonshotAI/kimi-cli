@@ -32,7 +32,11 @@
  * `hookEngine.executeHooks(...)` — that stays hidden here.
  */
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
 import type { HookEngine } from '../hooks/engine.js';
+import type { PathConfig } from '../session/path-config.js';
 import type {
   AfterToolCallContext,
   AfterToolCallHook,
@@ -41,9 +45,11 @@ import type {
   BeforeToolCallHook,
   BeforeToolCallResult,
   Tool,
+  ToolCall,
   ToolResult,
   ToolUpdate,
 } from '../soul/types.js';
+import { DEFAULT_BUILTIN_MAX_RESULT_CHARS } from '../tools/display-defaults.js';
 import type { ApprovalSource } from '../storage/wire-record.js';
 import type { ApprovalRuntime } from './approval-runtime.js';
 import {
@@ -51,6 +57,9 @@ import {
   DEFAULT_APPROVAL_TIMEOUT_MS,
 } from './permission/index.js';
 import type { PermissionMode, PermissionRule } from './permission/index.js';
+
+/** Preview length copied into the in-context replacement marker. */
+const PREVIEW_SIZE_CHARS = 2_000;
 
 export interface ToolCallOrchestratorDeps {
   readonly hookEngine: HookEngine;
@@ -65,6 +74,13 @@ export interface ToolCallOrchestratorDeps {
   readonly sessionId: string | (() => string);
   readonly agentId: string;
   readonly approvalRuntime: ApprovalRuntime;
+  /**
+   * Slice 5 / 决策 #96 L1 — required for `enforceResultBudget` to spill
+   * over-sized tool results to disk. Optional so existing test fixtures
+   * that never trigger persistence keep working; persistence is silently
+   * skipped when absent.
+   */
+  readonly pathConfig?: PathConfig | undefined;
 }
 
 export interface ToolCallOrchestratorContext {
@@ -91,6 +107,13 @@ function isAbortLike(error: unknown, signal: AbortSignal): boolean {
   if (signal.aborted) return true;
   if (error instanceof Error && error.name === 'AbortError') return true;
   return false;
+}
+
+function contentToString(content: ToolResult['content']): string {
+  if (typeof content === 'string') return content;
+  return content
+    .map((block) => (block.type === 'text' ? block.text : '[non-text block]'))
+    .join('');
 }
 
 export class ToolCallOrchestrator {
@@ -122,9 +145,18 @@ export class ToolCallOrchestrator {
     return tools.map((inner) => this.wrapSingle(inner));
   }
 
+  /**
+   * **Phase 5+ contributors**: any new field added to `Tool` (e.g.
+   * `maxResultSizeChars`, `display`, `isConcurrencySafe`) MUST be
+   * forwarded here. The wrapper is what Soul actually sees; if a field
+   * is dropped on the floor here, every downstream consumer
+   * (`enforceResultBudget`, the streaming scheduler, display hooks)
+   * silently observes `undefined` and the feature collapses without
+   * a test failure. See Slice 5 review (Blocker 1).
+   */
   private wrapSingle(inner: Tool): Tool {
     const outcomes = this.toolOutcomes;
-    return {
+    const wrapped: Tool = {
       name: inner.name,
       description: inner.description,
       inputSchema: inner.inputSchema,
@@ -149,6 +181,23 @@ export class ToolCallOrchestrator {
         }
       },
     };
+    // Forward Slice 5 optional fields verbatim. We attach via mutable
+    // object expansion (rather than spread inside the literal above) so
+    // each field stays `undefined`-safe under
+    // `exactOptionalPropertyTypes`.
+    if (inner.maxResultSizeChars !== undefined) {
+      (wrapped as { maxResultSizeChars?: number }).maxResultSizeChars =
+        inner.maxResultSizeChars;
+    }
+    if (inner.display !== undefined) {
+      (wrapped as { display?: typeof inner.display }).display = inner.display;
+    }
+    if (inner.isConcurrencySafe !== undefined) {
+      const predicate = inner.isConcurrencySafe.bind(inner);
+      (wrapped as { isConcurrencySafe?: (input: unknown) => boolean }).isConcurrencySafe =
+        predicate;
+    }
+    return wrapped;
   }
 
   /**
@@ -209,7 +258,74 @@ export class ToolCallOrchestrator {
     };
   }
 
-  buildAfterToolCall(ctx: ToolCallOrchestratorContext): AfterToolCallHook {
+  /**
+   * Phase 4 — abort-contract (v2 §7.2) second step. TurnManager.abortTurn
+   * calls this between `approvalRuntime.cancelBySource` and
+   * `tracker.cancelTurn`. Phase 4 implementation is a no-op: real
+   * streaming cancellation wiring lands in Phase 5 when the orchestrator
+   * owns an explicit streaming side-channel. Kept as a concrete method
+   * (not `undefined`) so structural stubs in tests can rely on the
+   * property being callable.
+   */
+  discardStreaming(reason: 'aborted' | 'timeout' | 'fallback'): void {
+    void reason;
+  }
+
+  /**
+   * Slice 5 / 决策 #97 — interface slot for the future streaming
+   * scheduler. Phase 5 leaves this as a no-op so `?.` callers see a
+   * function. Real prefetch wiring lands in Phase 6+.
+   */
+  executeStreaming(toolCall: ToolCall, signal: AbortSignal): void {
+    void toolCall;
+    void signal;
+  }
+
+  /**
+   * Slice 5 / 决策 #97 — interface slot returning the prefetched-result
+   * map a streaming wrapper would attach to the next ChatResponse.
+   * Phase 5 always returns an empty map.
+   */
+  drainPrefetched(): ReadonlyMap<string, ToolResult> {
+    return new Map<string, ToolResult>();
+  }
+
+  /**
+   * Slice 5 / 决策 #96 L1 — afterToolCall budget seam. Computes the
+   * effective character ceiling, persists oversized content to
+   * `pathConfig.toolResultArchivePath`, and returns a result whose
+   * `content` is the in-context preview marker. `Infinity` short-circuits
+   * persistence (already-self-limited tools like Read).
+   */
+  async enforceResultBudget(
+    tool: Tool,
+    toolCallId: string,
+    result: ToolResult,
+  ): Promise<ToolResult> {
+    const maxChars = tool.maxResultSizeChars ?? DEFAULT_BUILTIN_MAX_RESULT_CHARS;
+    if (!Number.isFinite(maxChars)) return result;
+
+    const fullContent = contentToString(result.content);
+    if (fullContent.length <= maxChars) return result;
+
+    const pathConfig = this.deps.pathConfig;
+    if (pathConfig === undefined) return result;
+
+    const archivePath = pathConfig.toolResultArchivePath(this.resolveSessionId(), toolCallId);
+    await mkdir(dirname(archivePath), { recursive: true });
+    await writeFile(archivePath, fullContent, 'utf8');
+
+    const preview = fullContent.slice(0, PREVIEW_SIZE_CHARS);
+    return {
+      ...result,
+      content: `<persisted-output path="${archivePath}">\n${preview}\n</persisted-output>`,
+    };
+  }
+
+  buildAfterToolCall(
+    ctx: ToolCallOrchestratorContext,
+    toolsByName?: ReadonlyMap<string, Tool>,
+  ): AfterToolCallHook {
     return async (
       atcCtx: AfterToolCallContext,
       signal: AbortSignal,
@@ -251,6 +367,19 @@ export class ToolCallOrchestrator {
         result: atcCtx.result,
       };
       await this.deps.hookEngine.executeHooks('PostToolUse', hookInput, signal);
+
+      // Slice 5 / 决策 #96 L1 — budget enforcement seam. Persist content
+      // exceeding `tool.maxResultSizeChars` (or builtin default) to disk
+      // and return a preview marker via `resultOverride`. Skipped when
+      // `pathConfig` is absent (test fixtures) or the tool can't be
+      // resolved (toolsByName not threaded yet).
+      const tool = toolsByName?.get(atcCtx.toolCall.name);
+      if (tool !== undefined && this.deps.pathConfig !== undefined) {
+        const persisted = await this.enforceResultBudget(tool, toolCallId, atcCtx.result);
+        if (persisted !== atcCtx.result) {
+          return { resultOverride: persisted };
+        }
+      }
       return undefined;
     };
   }

@@ -1,8 +1,9 @@
+import { appendFileSync, closeSync, fsyncSync, openSync } from 'node:fs';
 import { mkdir, open } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import { JournalGatedError } from './errors.js';
-import { syncDir } from './fs-durability.js';
+import { syncDir, syncDirSync } from './fs-durability.js';
 import type { WireFileMetadata, WireRecord, WireRecordType } from './wire-record.js';
 
 /**
@@ -40,7 +41,8 @@ export type AppendInput = {
  * "compaction's own writes" and allowed through the gate.
  *
  * Keep this list narrow: only record types that are *only* emitted from
- * inside `runCompaction` belong here. Any future compaction-path record
+ * inside `TurnManager.executeCompaction` (Phase 2; previously
+ * `runCompaction`) belong here. Any future compaction-path record
  * must be added explicitly.
  */
 const COMPACTION_OWN_WRITE_TYPES: ReadonlySet<WireRecordType> = new Set<WireRecordType>([
@@ -48,20 +50,86 @@ const COMPACTION_OWN_WRITE_TYPES: ReadonlySet<WireRecordType> = new Set<WireReco
 ]);
 
 /**
+ * Record types that must be durable on disk before `append()` resolves
+ * (§4.5.4 — force-flush kinds). Recovery-critical boundary markers live
+ * here: their absence at replay time breaks the contracts §9.x relies on.
+ *
+ * Declared as `ReadonlySet<string>` so we can include future union-member
+ * strings (e.g. `subagent_completed` / `subagent_failed` from the
+ * subagent slice) without forcing an out-of-slice edit to `WireRecord`.
+ */
+export const FORCE_FLUSH_KINDS: ReadonlySet<string> = new Set<string>([
+  'approval_response',
+  'turn_end',
+  'subagent_completed',
+  'subagent_failed',
+]);
+
+/** Default drain timer cadence for `fsyncMode: 'batched'`. */
+export const DEFAULT_DRAIN_INTERVAL_MS = 50;
+/** Default maximum records per drain batch. */
+export const DEFAULT_MAX_BATCH_RECORDS = 64;
+/** Default byte budget per drain batch. */
+export const DEFAULT_MAX_BATCH_BYTES = 1_000_000;
+
+/**
+ * Tunables for `WiredJournalWriter` (§4.5.4).
+ *
+ * All fields are optional; unspecified values fall back to
+ * `DEFAULT_*` constants exported alongside.
+ */
+export interface JournalWriterConfig {
+  /** Drain interval in milliseconds. Default: 50. */
+  readonly drainIntervalMs?: number;
+  /** Maximum number of records flushed in one drain. Default: 64. */
+  readonly maxBatchRecords?: number;
+  /** Byte budget for a single drain batch. Default: 1_000_000. */
+  readonly maxBatchBytes?: number;
+  /**
+   * Write path selection.
+   * - `'batched'` (default): in-memory pending buffer drained on a
+   *   timer; `FORCE_FLUSH_KINDS` trigger an immediate drain and only
+   *   resolve after fsync.
+   * - `'per-record'`: every append writes + fsyncs synchronously,
+   *   preserving the pre-Phase-3 behaviour. Intended for SDK embedders.
+   */
+  readonly fsyncMode?: 'batched' | 'per-record';
+  /**
+   * Invoked once, with `(error, failedBatch)`, when a drain throws.
+   * After this fires, the disk queue is frozen — subsequent appends
+   * still land in `pendingRecords` but no further drain is scheduled.
+   * Callers (SoulPlus) are expected to mark the session `broken` in
+   * response.
+   */
+  readonly onPersistError?: (error: Error, records: WireRecord[]) => void;
+}
+
+/**
  * The sole physical write gateway to wire.jsonl.
  *
  * Guarantees (per §4.5.4):
  *   - serialises concurrent calls via an internal AsyncSerialQueue
  *   - allocates monotonic `seq`
- *   - each resolved Promise implies fsync has completed
+ *   - for `fsyncMode: 'per-record'` or records in `FORCE_FLUSH_KINDS`,
+ *     each resolved Promise implies fsync has completed
+ *   - for non-force-flush records in `fsyncMode: 'batched'`, the
+ *     Promise resolves once the record is in the in-memory pending
+ *     buffer; the drain timer catches up asynchronously
  *   - rejects with JournalGatedError when LifecycleGate.state === 'compacting'
  *     for any record type that is not part of the compaction path's own
  *     writes (see `COMPACTION_OWN_WRITE_TYPES`)
  *   - rejects with JournalGatedError for all record types when
  *     LifecycleGate.state === 'completing'
+ *   - rejects when called after `close()`
  */
 export interface JournalWriter {
   append(input: AppendInput): Promise<WireRecord>;
+  /** Drain every record currently buffered in memory to disk + fsync. */
+  flush(): Promise<void>;
+  /** Stop background drain + flush pending + refuse further appends. */
+  close(): Promise<void>;
+  /** Read-only view of records queued but not yet drained to disk. */
+  readonly pendingRecords: ReadonlyArray<WireRecord>;
 }
 
 export interface WiredJournalWriterOptions {
@@ -89,6 +157,8 @@ export interface WiredJournalWriterOptions {
    * re-write one. Set this together with `initialSeq` on resume.
    */
   readonly metadataAlreadyWritten?: boolean | undefined;
+  /** Phase 3 (Slice 3) — double-buffered async drain tunables. */
+  readonly config?: JournalWriterConfig | undefined;
 }
 
 const DEFAULT_PROTOCOL_VERSION = '2.1';
@@ -126,9 +196,28 @@ export class WiredJournalWriter implements JournalWriter {
    * been durably committed — a crash between the first append and the next
    * parent-directory fsync can leave the file's contents on disk with no
    * visible dirent. We fsync the parent directory once, after the first
-   * successful append, and never again for the lifetime of this writer.
+   * successful write, and never again for the lifetime of this writer.
    */
   private directorySynced = false;
+
+  // ── Phase 3 double-buffered state ──────────────────────────────────
+  private readonly fsyncMode: 'batched' | 'per-record';
+  private readonly drainIntervalMs: number;
+  private readonly maxBatchRecords: number;
+  private readonly maxBatchBytes: number;
+  private readonly onPersistError:
+    | ((error: Error, records: WireRecord[]) => void)
+    | undefined;
+  private readonly pending: WireRecord[] = [];
+  private drainTimer: ReturnType<typeof setInterval> | null = null;
+  private closed = false;
+  /**
+   * Disk queue frozen after a drain failure. `pendingRecords` can still
+   * accept new pushes (per contract), but no further drains are scheduled
+   * — SoulPlus is expected to mark the session `broken` through
+   * `onPersistError` and stop new writes.
+   */
+  private degraded = false;
 
   constructor(opts: WiredJournalWriterOptions) {
     this.filePath = opts.filePath;
@@ -150,6 +239,17 @@ export class WiredJournalWriter implements JournalWriter {
       // is already durable from whichever process originally created it.
       this.directorySynced = true;
     }
+    const config = opts.config ?? {};
+    this.fsyncMode = config.fsyncMode ?? 'batched';
+    this.drainIntervalMs = config.drainIntervalMs ?? DEFAULT_DRAIN_INTERVAL_MS;
+    this.maxBatchRecords = config.maxBatchRecords ?? DEFAULT_MAX_BATCH_RECORDS;
+    this.maxBatchBytes = config.maxBatchBytes ?? DEFAULT_MAX_BATCH_BYTES;
+    this.onPersistError = config.onPersistError;
+  }
+
+  /** Phase 3 — read-only view of records buffered in memory. */
+  get pendingRecords(): ReadonlyArray<WireRecord> {
+    return this.pending;
   }
 
   /**
@@ -172,30 +272,24 @@ export class WiredJournalWriter implements JournalWriter {
     this.directorySynced = true;
   }
 
-  append(input: AppendInput): Promise<WireRecord> {
-    return this.queue.run(async () => {
-      if (this.lifecycle.state === 'completing') {
-        throw new JournalGatedError(this.lifecycle.state, input.type);
-      }
-      if (this.lifecycle.state === 'compacting' && !COMPACTION_OWN_WRITE_TYPES.has(input.type)) {
-        throw new JournalGatedError(this.lifecycle.state, input.type);
-      }
+  async append(input: AppendInput): Promise<WireRecord> {
+    if (this.closed) {
+      throw new Error('JournalWriter: append on closed writer');
+    }
+    if (this.fsyncMode === 'per-record') {
+      return this.appendPerRecord(input);
+    }
+    return this.appendBatched(input);
+  }
 
-      if (!this.metadataWritten) {
-        await this.ensureDir();
-        const header: WireFileMetadata = {
-          type: 'metadata',
-          protocol_version: this.protocolVersion,
-          created_at: this.now(),
-          ...(this.kimiVersion !== undefined ? { kimi_version: this.kimiVersion } : {}),
-        };
-        await this.writeAndSync(JSON.stringify(header) + '\n');
-        this.metadataWritten = true;
-      }
+  private appendPerRecord(input: AppendInput): Promise<WireRecord> {
+    return this.queue.run(async () => {
+      if (this.closed) throw new Error('JournalWriter: append on closed writer');
+      this.checkGating(input);
+      await this.ensureMetadataInit();
 
       // Allocate the candidate seq locally; only commit it back to
-      // `this.seq` once the durable write succeeds. If writeAndSync throws,
-      // the next append starts from the last successfully-written seq.
+      // `this.seq` once the durable write succeeds.
       const candidateSeq = this.seq + 1;
       const record = {
         ...input,
@@ -206,18 +300,184 @@ export class WiredJournalWriter implements JournalWriter {
       await this.writeAndSync(JSON.stringify(record) + '\n');
       this.seq = candidateSeq;
 
-      // Durability fix (Phase 2 Slice 2.0 / Slice 1 audit M4): fsync the
-      // parent directory exactly once, right after the first successful
-      // write, so a freshly-created wire.jsonl's dirent is guaranteed to be
-      // durable before this `append()` promise resolves. `fh.sync()` only
-      // covers file *contents*, not the directory entry pointing at them.
       if (!this.directorySynced) {
         await this.syncParentDir();
         this.directorySynced = true;
       }
-
       return record;
     });
+  }
+
+  private async appendBatched(input: AppendInput): Promise<WireRecord> {
+    const record = await this.queue.run(async () => {
+      if (this.closed) throw new Error('JournalWriter: append on closed writer');
+      this.checkGating(input);
+      await this.ensureMetadataInit();
+
+      const candidateSeq = this.seq + 1;
+      const rec = {
+        ...input,
+        seq: candidateSeq,
+        time: this.now(),
+      } as WireRecord;
+      // Allocate seq + push to pending in a single synchronous step so
+      // concurrent appends see strictly monotonic FIFO seq assignment.
+      this.seq = candidateSeq;
+      this.pending.push(rec);
+      this.ensureDrainTimer();
+      return rec;
+    });
+
+    if (FORCE_FLUSH_KINDS.has(record.type)) {
+      // Drain until this record (and everything ahead of it in FIFO) is
+      // on disk. `flush()` hops through the queue so it can't race with
+      // concurrent appends that slid in after the push above.
+      await this.flush();
+    }
+    return record;
+  }
+
+  async flush(): Promise<void> {
+    await this.queue.run(async () => {
+      while (this.pending.length > 0 && !this.degraded) {
+        await this.drainBatch();
+      }
+    });
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.stopDrainTimer();
+    try {
+      await this.flush();
+    } finally {
+      this.closed = true;
+    }
+  }
+
+  private checkGating(input: AppendInput): void {
+    if (this.lifecycle.state === 'completing') {
+      throw new JournalGatedError(this.lifecycle.state, input.type);
+    }
+    if (
+      this.lifecycle.state === 'compacting' &&
+      !COMPACTION_OWN_WRITE_TYPES.has(input.type)
+    ) {
+      throw new JournalGatedError(this.lifecycle.state, input.type);
+    }
+  }
+
+  private async ensureMetadataInit(): Promise<void> {
+    if (this.metadataWritten) return;
+    await this.ensureDir();
+    const header: WireFileMetadata = {
+      type: 'metadata',
+      protocol_version: this.protocolVersion,
+      created_at: this.now(),
+      ...(this.kimiVersion !== undefined ? { kimi_version: this.kimiVersion } : {}),
+    };
+    await this.writeAndSync(JSON.stringify(header) + '\n');
+    this.metadataWritten = true;
+  }
+
+  private ensureDrainTimer(): void {
+    if (this.fsyncMode !== 'batched') return;
+    if (this.drainTimer !== null) return;
+    if (this.closed || this.degraded) return;
+    // Async callback is load-bearing: sinon's `tickAsync` awaits the
+    // callback's returned promise before firing the next timer, so we
+    // need to expose the drain's completion as the callback's return
+    // value (otherwise fake-timer tests race real fs I/O and see only
+    // the first drain land on disk).
+    const timer = setInterval(() => {
+      if (this.closed || this.degraded) return;
+      if (this.pending.length === 0) return;
+      // Serialise the drain against concurrent appends via the queue.
+      // drainBatch is pseudo-async (one microtask yield for a real sync
+      // fs path, or an awaited test mock); one yield per tick stays
+      // inside fake-timer budget.
+      void this.queue
+        .run(async () => {
+          await this.drainBatch();
+        })
+        .catch(() => {
+          // Surfaced via onPersistError + degraded flag inside drainBatch.
+        });
+    }, this.drainIntervalMs);
+    // Don't pin the Node event loop just because a writer is idle.
+    const refable = timer as unknown as { unref?: () => void };
+    refable.unref?.();
+    this.drainTimer = timer;
+  }
+
+  private stopDrainTimer(): void {
+    if (this.drainTimer !== null) {
+      clearInterval(this.drainTimer);
+      this.drainTimer = null;
+    }
+  }
+
+  /**
+   * Drain one batch of buffered records to disk (respecting the
+   * record-count and byte budgets). Each invocation translates into
+   * exactly one `writeBatchAndSync` / fsync call — callers (the drain
+   * timer, `flush`) are expected to loop when more records remain.
+   * On failure the batch is handed to `onPersistError` and the queue
+   * freezes; no further drains will be scheduled.
+   */
+  private async drainBatch(): Promise<void> {
+    if (this.degraded || this.pending.length === 0) return;
+
+    const batch: WireRecord[] = [];
+    const lines: string[] = [];
+    let totalBytes = 0;
+    while (batch.length < this.maxBatchRecords && this.pending.length > 0) {
+      const next = this.pending[0]!;
+      const line = JSON.stringify(next) + '\n';
+      const lineBytes = Buffer.byteLength(line, 'utf8');
+      // `batch.length > 0` 这个前置保证了首条 record 一定被纳入 batch：
+      // 如果单条序列化大小就超过 maxBatchBytes，也不能永久卡在 pending 里。
+      // 该 record 会独占一次 drain（batch = 1 条，可能超 bytes budget）。
+      if (batch.length > 0 && totalBytes + lineBytes > this.maxBatchBytes) {
+        break;
+      }
+      this.pending.shift();
+      batch.push(next);
+      lines.push(line);
+      totalBytes += lineBytes;
+    }
+    if (batch.length === 0) return;
+
+    try {
+      // `writeBatchAndSync` is declared `Promise<void>` so test mocks
+      // (e.g. `mockRejectedValue`) that return a Promise are awaited
+      // here. In production it wraps synchronous fs APIs and resolves
+      // to `undefined` on the very next microtask — that's still a
+      // single yield per drain, which fake-timer tests tolerate.
+      const result = (this as unknown as {
+        writeBatchAndSync(lines: string[]): unknown;
+      }).writeBatchAndSync(lines);
+      if (result !== undefined && typeof (result as { then?: unknown }).then === 'function') {
+        // eslint-disable-next-line @typescript-eslint/await-thenable
+        await (result as Promise<void>);
+      }
+      if (!this.directorySynced) {
+        this.syncParentDirSync();
+        this.directorySynced = true;
+      }
+    } catch (error) {
+      // Per team-lead 2026-04-17: splice already moved `batch` out of
+      // `this.pending`; we DO NOT re-queue it. The failed batch lives
+      // in the onPersistError callback; the disk queue freezes.
+      this.degraded = true;
+      this.stopDrainTimer();
+      try {
+        this.onPersistError?.(error as Error, batch);
+      } catch {
+        // Never let a user handler poison the drain path.
+      }
+      throw error;
+    }
   }
 
   private async ensureDir(): Promise<void> {
@@ -235,30 +495,78 @@ export class WiredJournalWriter implements JournalWriter {
   }
 
   /**
-   * Open the parent directory read-only and fsync it, then close.
-   * Thin wrapper around the shared `syncDir` primitive so tests can
-   * continue to spy on this method by name.
+   * Phase 3 — batched drain path: write the joined lines in a single
+   * append + fsync. Synchronous on purpose so one timer tick is one
+   * event-loop step: vitest's fake-timer + real-async-I/O combination
+   * consumes yield slots per `await`, and only sync I/O keeps each
+   * drain deterministic under `advanceTimersByTimeAsync`. Bounded batch
+   * size (64 records / 1 MiB) makes the momentary event-loop block
+   * acceptable. Kept as its own method so tests can spy on drain
+   * batches by name.
+   *
+   * TODO(Phase 4 follow-up): 评估改为 async fs 原语（open/appendFile/sync 的
+   * async 版），用 `advanceTimersByTimeAsync` + 合适的 yield 策略在测试侧控制
+   * 时序，以消除同步 drain 的 event-loop 阻塞。当前 batch 上限（64 / 1MiB）下
+   * fsync 窗口约 5-15ms，对 agent loop 可接受，对 TUI 响应有轻微影响。
+   */
+  private writeBatchAndSync(lines: string[]): void {
+    const fd = openSync(this.filePath, 'a');
+    try {
+      appendFileSync(fd, lines.join(''), 'utf8');
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  }
+
+  /**
+   * Async parent-directory fsync, used by the `per-record` path where
+   * we can afford to stay on the async fs primitives. Tests may spy on
+   * this method by name.
    */
   private async syncParentDir(): Promise<void> {
     await syncDir(dirname(this.filePath));
+  }
+
+  /** Synchronous parent-directory fsync for the batched drain path. */
+  private syncParentDirSync(): void {
+    syncDirSync(dirname(this.filePath));
   }
 }
 
 /** No-op writer used by InMemory state implementations. */
 export class NoopJournalWriter implements JournalWriter {
   private seq = 0;
+  private closed = false;
   private readonly now: () => number;
 
   constructor(now?: () => number) {
     this.now = now ?? (() => Date.now());
   }
 
+  /** Always empty — NoopJournalWriter never buffers. */
+  readonly pendingRecords: ReadonlyArray<WireRecord> = Object.freeze([]);
+
   async append(input: AppendInput): Promise<WireRecord> {
+    // Match WiredJournalWriter: `append` after `close` rejects rather
+    // than silently succeeding. Embedders / test scenarios are the only
+    // users of Noop; a silent post-close append could hide real bugs.
+    if (this.closed) {
+      throw new Error('NoopJournalWriter: append on closed writer');
+    }
     this.seq += 1;
     return {
       ...input,
       seq: this.seq,
       time: this.now(),
     } as WireRecord;
+  }
+
+  async flush(): Promise<void> {
+    /* no pending state to drain */
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
   }
 }

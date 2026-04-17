@@ -73,7 +73,7 @@ describe('AlwaysAllowApprovalRuntime', () => {
     const dangerous = buildApprovalRequest({
       toolName: 'Write',
       action: 'overwrite /etc/passwd',
-      display: { kind: 'file_write', path: '/etc/passwd', content: 'hacked' },
+      display: { kind: 'file_io', operation: 'write', path: '/etc/passwd' },
     });
     const result = await runtime.request(dangerous);
     expect(result.approved).toBe(true);

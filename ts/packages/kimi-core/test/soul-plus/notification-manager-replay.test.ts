@@ -1,38 +1,22 @@
 /**
- * NotificationManager.replayPendingForResume + extractDeliveredIds
- * (Slice 5.2 T3.1+T3.6).
+ * NotificationManager replay + extractDeliveredIds
+ * (Slice 5.2 T3.1+T3.6, adapted for Phase 1 — Decision #89).
+ *
+ * Phase 1 removed `replayPendingForResume` — notifications are now
+ * durable entries in ContextState history. Replay naturally rebuilds
+ * them from wire.jsonl via the replay-projector's initialHistory, so
+ * there is no need for a separate ephemeral re-inject path.
+ *
+ * The `extractDeliveredIds` tests are preserved (the utility is still
+ * used by downstream replay code).
  */
 
 import { describe, expect, it, vi } from 'vitest';
 
 import { NotificationManager } from '../../src/soul-plus/notification-manager.js';
-import type { EphemeralInjection } from '../../src/storage/projector.js';
 import type { NotificationRecord } from '../../src/storage/wire-record.js';
 
 type NotifData = NotificationRecord['data'];
-
-function notif(
-  id: string,
-  overrides: Partial<NotifData> = {},
-): NotificationRecord {
-  return {
-    type: 'notification',
-    seq: 1,
-    time: 1,
-    data: {
-      id,
-      category: 'system',
-      type: 'info',
-      source_kind: 'system',
-      source_id: 'test',
-      title: `t-${id}`,
-      body: `b-${id}`,
-      severity: 'info',
-      targets: ['llm', 'wire', 'shell'],
-      ...overrides,
-    },
-  };
-}
 
 function makeManagerStub(): NotificationManager {
   return new NotificationManager({
@@ -42,53 +26,14 @@ function makeManagerStub(): NotificationManager {
   });
 }
 
-class StashCapture {
-  injected: EphemeralInjection[] = [];
-  stashEphemeralInjection(injection: EphemeralInjection): void {
-    this.injected.push(injection);
-  }
-}
-
-describe('NotificationManager.replayPendingForResume', () => {
-  it('injects llm-target notifications not yet delivered', () => {
+// Phase 1 (Decision #89): replayPendingForResume tests removed.
+// Notifications are durable — replay naturally reconstructs them from
+// wire.jsonl via the replay-projector's initialHistory. The old tests
+// verified ephemeral re-inject behavior that no longer exists.
+describe('NotificationManager replay — Phase 1 removal notes', () => {
+  it('replayPendingForResume no longer exists (Phase 1)', () => {
     const mgr = makeManagerStub();
-    const records = [
-      notif('n_1', { targets: ['llm', 'shell'] }),
-      notif('n_2', { targets: ['wire'] }),  // not llm — skip
-      notif('n_3'),  // default targets include llm
-    ];
-    const capture = new StashCapture();
-    const out = mgr.replayPendingForResume(records, capture, new Set());
-    expect(out).toHaveLength(2);
-    expect(out.map((i) => (i.content as NotifData).id).sort()).toEqual(['n_1', 'n_3']);
-    expect(capture.injected).toHaveLength(2);
-  });
-
-  it('skips notifications already delivered (id present in deliveredIds)', () => {
-    const mgr = makeManagerStub();
-    const records = [
-      notif('n_already', { targets: ['llm'] }),
-      notif('n_pending', { targets: ['llm'] }),
-    ];
-    const capture = new StashCapture();
-    const out = mgr.replayPendingForResume(records, capture, new Set(['n_already']));
-    expect(out.map((i) => (i.content as NotifData).id)).toEqual(['n_pending']);
-  });
-
-  it('produces pending_notification injections (kind + content)', () => {
-    const mgr = makeManagerStub();
-    const records = [notif('n_x')];
-    const capture = new StashCapture();
-    mgr.replayPendingForResume(records, capture, new Set());
-    expect(capture.injected[0]).toMatchObject({
-      kind: 'pending_notification',
-      content: expect.objectContaining({ id: 'n_x' }),
-    });
-  });
-
-  it('returns empty when records list is empty', () => {
-    const mgr = makeManagerStub();
-    expect(mgr.replayPendingForResume([], new StashCapture(), new Set())).toEqual([]);
+    expect((mgr as unknown as Record<string, unknown>)['replayPendingForResume']).toBeUndefined();
   });
 });
 

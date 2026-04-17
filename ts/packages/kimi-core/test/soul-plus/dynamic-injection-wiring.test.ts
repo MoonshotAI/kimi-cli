@@ -21,10 +21,6 @@ function createTestSoulPlus() {
   const eventBus = new SessionEventBus();
   const runtime: Runtime = {
     kosong: { chat: vi.fn() },
-    compactionProvider: { run: vi.fn() },
-    // oxlint-disable-next-line unicorn/no-useless-undefined
-    lifecycle: { transitionTo: vi.fn().mockResolvedValue(undefined) },
-    journal: { rotate: vi.fn() },
   };
 
   return { soulPlus: new SoulPlus({
@@ -45,9 +41,6 @@ describe('DynamicInjectionManager wiring (Slice 5.4)', () => {
     // Enable plan mode
     turnManager.setPlanMode(true);
 
-    // Spy on stashEphemeralInjection to verify DIM fires
-    const stashSpy = vi.spyOn(context, 'stashEphemeralInjection');
-
     // Launch a turn — this triggers drainDynamicInjectionsIntoContext
     const response = await soulPlus.dispatch({
       method: 'session.prompt',
@@ -58,18 +51,18 @@ describe('DynamicInjectionManager wiring (Slice 5.4)', () => {
     // DIM injection happens synchronously at launchTurn before the LLM call)
     expect(response).toHaveProperty('turn_id');
 
-    // KEY ASSERTION: stashEphemeralInjection was called with a plan-mode reminder
-    expect(stashSpy).toHaveBeenCalled();
-    const injections = stashSpy.mock.calls.map((c) => c[0]);
-    const planInjection = injections.find(
-      (inj) => inj.kind === 'system_reminder' && typeof inj.content === 'string' && inj.content.includes('Plan mode is active'),
-    );
-    expect(planInjection).toBeDefined();
+    // KEY ASSERTION: the plan-mode reminder was durably written via
+    // appendSystemReminder and appears in buildMessages().
+    const messages = context.buildMessages();
+    const joined = messages
+      .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+      .join('\n');
+    expect(joined).toContain('Plan mode is active');
+    expect(joined).toContain('<system-reminder>');
   });
 
   it('no plan-mode injection when plan mode is off', async () => {
     const { soulPlus, context } = createTestSoulPlus();
-    const stashSpy = vi.spyOn(context, 'stashEphemeralInjection');
 
     // Plan mode defaults to false — launch turn
     await soulPlus.dispatch({
@@ -77,11 +70,11 @@ describe('DynamicInjectionManager wiring (Slice 5.4)', () => {
       data: { input: { text: 'test' } },
     });
 
-    // No plan-mode injection should appear
-    const injections = stashSpy.mock.calls.map((c) => c[0]);
-    const planInjection = injections.find(
-      (inj) => inj.kind === 'system_reminder' && typeof inj.content === 'string' && inj.content.includes('Plan mode is active'),
-    );
-    expect(planInjection).toBeUndefined();
+    // No plan-mode injection should appear in buildMessages()
+    const messages = context.buildMessages();
+    const joined = messages
+      .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+      .join('\n');
+    expect(joined).not.toContain('Plan mode is active');
   });
 });
