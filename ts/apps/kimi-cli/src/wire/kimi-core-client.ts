@@ -224,6 +224,10 @@ export class KimiCoreClient implements WireClient {
   private model: string;
   private compactionProvider: import('@moonshot-ai/core').CompactionProvider | undefined;
   private maxContextSize: number | undefined;
+  // Phase 21 §D.4 — cached initialize response so `/hooks` can read
+  // `capabilities.hooks.configured[]` without a round-trip; populated on
+  // the first `initialize()` call (or lazily via `getInitializeResponse`).
+  private cachedInitializeResponse: InitializeResult | undefined;
 
   constructor(deps: KimiCoreClientDeps) {
     this.deps = deps;
@@ -236,9 +240,35 @@ export class KimiCoreClient implements WireClient {
   // ── Handshake ───────────────────────────────────────────────────
 
   async initialize(_params: InitializeParams): Promise<InitializeResult> {
+    const response = this.buildInitializeResponse();
+    this.cachedInitializeResponse = response;
+    return response;
+  }
+
+  getInitializeResponse(): InitializeResult | undefined {
+    if (this.cachedInitializeResponse === undefined) {
+      // Lazy: `/hooks` asks for hooks capability before the CLI calls
+      // `initialize()`. Build + cache on demand so the slash handler
+      // does not have to wait for an explicit handshake.
+      this.cachedInitializeResponse = this.buildInitializeResponse();
+    }
+    return this.cachedInitializeResponse;
+  }
+
+  private buildInitializeResponse(): InitializeResult {
+    const parsed = parseHookConfigs(this.deps.config.hooks);
+    const configured = parsed.map((h) => ({
+      event: h.event,
+      command: h.command,
+      ...(h.matcher !== undefined ? { matcher: h.matcher } : {}),
+    }));
     return {
       protocol_version: '2.1',
-      capabilities: {},
+      capabilities: {
+        hooks: {
+          configured,
+        },
+      },
     };
   }
 
@@ -640,6 +670,44 @@ export class KimiCoreClient implements WireClient {
     const record = this.sessions.get(sessionId);
     if (record === undefined) return;
     await record.managed.sessionControl.clear();
+  }
+
+  // ── Phase 21 §D.1 — /undo ───────────────────────────────────────
+
+  /**
+   * Wire bridge for `session.rollback`. The core handler rewrites
+   * wire.jsonl and returns the new turn count; callers re-open the
+   * session (via `resumeSession`) afterwards so the in-memory state
+   * reflects the truncated history.
+   */
+  async rollback(
+    sessionId: string,
+    nTurnsBack: number,
+  ): Promise<{ new_turn_count: number }> {
+    return this.deps.sessionManager.rollbackSession(sessionId, nTurnsBack);
+  }
+
+  // ── Phase 21 §D.2 — skill dispatch ──────────────────────────────
+
+  async listSkills(
+    sessionId: string,
+  ): Promise<{ skills: ReadonlyArray<{ name: string; description: string }> }> {
+    const record = this.sessions.get(sessionId);
+    if (record === undefined) return { skills: [] };
+    const skillManager = record.managed.soulPlus.getSkillManager();
+    if (skillManager === undefined) return { skills: [] };
+    const skills = skillManager
+      .listInvocableSkills()
+      .map((s) => ({ name: s.name, description: s.description }));
+    return { skills };
+  }
+
+  async activateSkill(sessionId: string, name: string, args: string): Promise<void> {
+    const record = this.sessions.get(sessionId);
+    if (record === undefined) {
+      throw new Error(`Unknown session: ${sessionId}`);
+    }
+    await record.managed.soulPlus.activateSkill(name, args);
   }
 
   // ── Slice 5.2 — resume-time plan mode conflict (D4) ─────────────

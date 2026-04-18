@@ -6,6 +6,7 @@
  */
 
 import type { SlashCommandDef, SlashCommandResult } from './registry.js';
+import { loadLatestChangelog } from './changelog.js';
 import { saveConfigPatch } from '../config/save.js';
 import { resolveEditorCommand } from '../utils/external-editor.js';
 
@@ -214,14 +215,22 @@ const forkCommand: SlashCommandDef = {
 const undoCommand: SlashCommandDef = {
   name: 'undo',
   aliases: [],
-  description: 'Undo the last turn',
+  description: 'Roll back the previous turn',
   mode: 'both',
-  async execute(_args, _ctx) {
-    // Undo relies on `fork(sessionId, -1)` which is currently a stub in
-    // KimiCoreClient (returns the same sessionId). Short-circuit until
-    // fork is fully implemented so the user does not see a misleading
-    // "Undone. New session: <same-id>" message.
-    return ok('Undo is not yet implemented.');
+  async execute(_args, ctx) {
+    if (ctx.wireClient.rollback === undefined) {
+      return ok('Undo is not supported by this client.');
+    }
+    try {
+      await ctx.wireClient.rollback(ctx.appState.sessionId, 1);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return ok(`/undo failed: ${msg}`);
+    }
+    // InteractiveMode owns the destroy + resume + transcript redraw so
+    // a single `isStreaming` check governs the handoff, mirroring the
+    // Phase 20 §A pattern chosen for `/clear`.
+    return { type: 'reload', action: 'undo' };
   },
 };
 
@@ -278,6 +287,55 @@ const editorCommand: SlashCommandDef = {
   },
 };
 
+const changelogCommand: SlashCommandDef = {
+  name: 'changelog',
+  aliases: [],
+  description: 'Show the latest changelog entry',
+  mode: 'both',
+  async execute(_args, _ctx) {
+    const result = await loadLatestChangelog({ startDir: import.meta.dirname });
+    if (!result.ok) return ok(result.message);
+    return ok(result.section);
+  },
+};
+
+const hooksCommand: SlashCommandDef = {
+  name: 'hooks',
+  aliases: [],
+  description: 'List configured hooks',
+  mode: 'both',
+  async execute(_args, ctx) {
+    const getter = ctx.wireClient.getInitializeResponse?.bind(ctx.wireClient);
+    const init = getter?.();
+    const capsRaw = init?.capabilities;
+    const caps = isRecord(capsRaw) ? capsRaw : undefined;
+    const hooksCap = caps !== undefined && isRecord(caps['hooks']) ? caps['hooks'] : undefined;
+    const configuredRaw = hooksCap !== undefined ? hooksCap['configured'] : undefined;
+    const configured: ReadonlyArray<{
+      event: string;
+      matcher?: string;
+      command?: string;
+    }> = Array.isArray(configuredRaw)
+      ? (configuredRaw as ReadonlyArray<{
+          event: string;
+          matcher?: string;
+          command?: string;
+        }>)
+      : [];
+    if (configured.length === 0) return ok('No hooks configured.');
+    const lines = configured.map((h) => {
+      const matcher = h.matcher !== undefined && h.matcher.length > 0 ? h.matcher : '*';
+      const command = h.command ?? '<wire subscription>';
+      return `${h.event} → ${matcher} → ${command}`;
+    });
+    return ok(lines.join('\n'));
+  },
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 // ── Export all shell commands ────────────────────────────────────────
 
 export const shellCommands: SlashCommandDef[] = [
@@ -298,4 +356,6 @@ export const shellCommands: SlashCommandDef[] = [
   undoCommand,
   debugCommand,
   editorCommand,
+  changelogCommand,
+  hooksCommand,
 ];

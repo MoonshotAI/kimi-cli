@@ -21,7 +21,7 @@ export interface SlashCommandContext {
   showStatus: (message: string) => void;
 }
 
-export type ReloadAction = 'clear' | 'new' | 'theme';
+export type ReloadAction = 'clear' | 'new' | 'theme' | 'undo';
 
 export type SlashCommandResult =
   | { type: 'ok'; message?: string; color?: string }

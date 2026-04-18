@@ -26,6 +26,7 @@ import type {
 import type { SessionInfo } from '../wire/methods.js';
 import { createDefaultRegistry, parseSlashInput } from '../slash/index.js';
 import type { SlashCommandContext } from '../slash/index.js';
+import { tryDispatchSkill } from '../slash/skill-dispatch.js';
 import { getColorPalette } from '../theme/colors.js';
 import type { ColorPalette } from '../theme/colors.js';
 import { createThemeStyles } from '../theme/styles.js';
@@ -1258,8 +1259,50 @@ export class InteractiveMode implements WireHandlerDelegate {
       case 'theme':
         this.applyThemeChange();
         break;
+      case 'undo':
+        await this.reloadAfterUndo();
+        break;
     }
     this.ui.requestRender();
+  }
+
+  /**
+   * Phase 21 §D.1 — post-rollback handoff. The wire client already
+   * truncated `wire.jsonl` in place; we tear the in-memory session down
+   * and resume it so SoulPlus / ContextState rebuild from the shorter
+   * history. The transcript is cleared so the UI state matches the
+   * underlying session state — replay remains a future-phase concern.
+   */
+  private async reloadAfterUndo(): Promise<void> {
+    const sessionId = this.state.sessionId;
+    try {
+      this.wireHandler.stop();
+      await this.wireClient.destroySession(sessionId);
+      if (this.wireClient.resumeSession === undefined) {
+        throw new Error('resumeSession not supported by this client');
+      }
+      const { session_id: resumedId } = await this.wireClient.resumeSession(sessionId);
+      this.wireHandler = new WireHandler(this.wireClient, resumedId, this, this.colors);
+      void this.wireHandler.start();
+      this.setState({ sessionId: resumedId });
+      this.clearTranscriptAndRedraw();
+      this.addTranscriptEntry({
+        id: `reload-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: 'Previous turn rolled back.',
+        color: this.colors.textDim,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `reload-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `/undo reload failed: ${msg}`,
+        color: this.colors.error,
+      });
+    }
   }
 
   private clearTranscriptAndRedraw(): void {
@@ -1450,11 +1493,20 @@ export class InteractiveMode implements WireHandlerDelegate {
 
     const def = this.registry.find(parsed.name);
     if (!def) {
+      // Phase 21 §D.2 — fall through to skill dispatch. Built-ins win
+      // (lookup above already resolved `parsed.name` against the
+      // registry), so a skill only fires when no built-in matches.
+      const result = await tryDispatchSkill(
+        this.wireClient,
+        this.state.sessionId,
+        parsed.name,
+        parsed.args,
+      );
       this.addTranscriptEntry({
         id: `slash-${Date.now()}`,
         kind: 'status',
         renderMode: 'plain',
-        content: `Unknown command: /${parsed.name}`,
+        content: result.message,
       });
       return;
     }

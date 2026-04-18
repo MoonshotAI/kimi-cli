@@ -100,6 +100,39 @@ export interface WireClient {
 
   /** Release resources. */
   dispose(): Promise<void>;
+
+  /**
+   * Phase 21 §D.1 — wire bridge for `session.rollback`. Rolls back the
+   * latest `nTurnsBack` turns (default 1) in the persisted wire.jsonl +
+   * resumes in-memory state. Returns the new total turn count. Optional
+   * so mock / offline clients that never exercise /undo keep compiling.
+   */
+  rollback?(sessionId: string, nTurnsBack: number): Promise<{ new_turn_count: number }>;
+
+  /**
+   * Phase 21 §D.2 — wire bridge for `session.listSkills`. Returns the
+   * invocable skills (same filter as `SkillManager.listInvocableSkills`).
+   * Used by the slash dispatcher to fall through `/cmd` to a skill of
+   * the same name when no built-in command matches.
+   */
+  listSkills?(sessionId: string): Promise<{
+    skills: ReadonlyArray<{ name: string; description: string }>;
+  }>;
+
+  /**
+   * Phase 21 §D.2 — wire bridge for `session.activateSkill`. Activates a
+   * registered skill by name; the SKILL.md body is appended to the
+   * session ContextState (inline-mode), no LLM turn is kicked off.
+   */
+  activateSkill?(sessionId: string, name: string, args: string): Promise<void>;
+
+  /**
+   * Phase 21 §D.4 — return the cached initialize response so `/hooks`
+   * can surface `capabilities.hooks.configured[]`. Implementations cache
+   * the result of the first `initialize()` call; callers that never
+   * handshake may observe `undefined`.
+   */
+  getInitializeResponse?(): InitializeResult | undefined;
 }
 
 /** Result of {@link WireClient.handleSlashCommand}. */
