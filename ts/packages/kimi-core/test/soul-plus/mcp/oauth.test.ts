@@ -215,3 +215,44 @@ describe('McpOAuthProvider', () => {
     expect(st.mode & 0o777).toBe(0o600);
   });
 });
+
+// ── Path traversal guard (Phase 19 deep-review CRIT-3) ─────────────
+
+describe('McpOAuthProvider — serverId sanitization', () => {
+  let kimiHome: string;
+
+  beforeEach(() => {
+    kimiHome = mkdtempSync(join(tmpdir(), 'kimi-mcp-oauth-traversal-'));
+  });
+
+  afterEach(() => {
+    rmSync(kimiHome, { recursive: true, force: true });
+  });
+
+  const makeProvider = (serverId: string): McpOAuthProvider =>
+    new McpOAuthProvider({ serverId, kimiHome, redirectPort: 0 });
+
+  it('rejects serverId containing "../" path segments', () => {
+    expect(() => makeProvider('../../../etc/passwd')).toThrow(/Invalid MCP serverId/);
+    expect(() => makeProvider('..')).toThrow(/Invalid MCP serverId/);
+  });
+
+  it('rejects serverId containing a forward slash', () => {
+    expect(() => makeProvider('foo/bar')).toThrow(/Invalid MCP serverId/);
+    expect(() => makeProvider('/absolute')).toThrow(/Invalid MCP serverId/);
+  });
+
+  it('rejects serverId starting with "." (dotfile)', () => {
+    expect(() => makeProvider('.hidden')).toThrow(/Invalid MCP serverId/);
+  });
+
+  it('rejects empty serverId', () => {
+    expect(() => makeProvider('')).toThrow(/Invalid MCP serverId/);
+  });
+
+  it('accepts well-formed serverIds', () => {
+    expect(() => makeProvider('linear')).not.toThrow();
+    expect(() => makeProvider('acme-mcp')).not.toThrow();
+    expect(() => makeProvider('server_123')).not.toThrow();
+  });
+});

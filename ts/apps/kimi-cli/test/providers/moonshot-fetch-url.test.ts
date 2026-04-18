@@ -193,3 +193,65 @@ describe('MoonshotFetchURLProvider — fallback on Moonshot failure', () => {
     expect(localFallback.fetch).toHaveBeenCalled();
   });
 });
+
+// ── 401 force-refresh retry (Phase 19 deep-review HIGH-4) ──────────
+
+describe('MoonshotFetchURLProvider — 401 auto-refresh retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('retries Moonshot with force-refresh when the first call returns 401', async () => {
+    const ensureFresh = vi
+      .fn()
+      .mockResolvedValueOnce('stale-token')
+      .mockResolvedValueOnce('fresh-token');
+    const oauth = { ensureFresh } as unknown as OAuthManager;
+    const fetchImpl = vi.fn();
+    fetchImpl
+      .mockResolvedValueOnce(
+        new Response('stale', { status: 401, headers: { 'content-type': 'text/plain' } }),
+      )
+      .mockResolvedValueOnce(textResponse('# fresh'));
+    const localFallback = mockLocalFallback();
+    const provider = new MoonshotFetchURLProvider({
+      oauthManager: oauth,
+      baseUrl: 'https://api.kimi.com/coding/v1/fetch',
+      userAgent: 'kimi-cli/0.0.1-test',
+      localFallback,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const out = await provider.fetch('https://example.com/article');
+
+    expect(out).toBe('# fresh');
+    expect(ensureFresh).toHaveBeenCalledTimes(2);
+    expect(ensureFresh).toHaveBeenNthCalledWith(2, { force: true });
+    expect(localFallback.fetch).not.toHaveBeenCalled();
+  });
+
+  it('falls back to local fetcher when force-refresh retry still gives 401', async () => {
+    const ensureFresh = vi.fn().mockResolvedValue('always-stale');
+    const oauth = { ensureFresh } as unknown as OAuthManager;
+    const fetchImpl = vi.fn();
+    fetchImpl.mockResolvedValue(
+      new Response('unauthorized', { status: 401, headers: { 'content-type': 'text/plain' } }),
+    );
+    const localFallback = mockLocalFallback();
+    localFallback.fetch.mockResolvedValue('from-local');
+    const provider = new MoonshotFetchURLProvider({
+      oauthManager: oauth,
+      baseUrl: 'https://api.kimi.com/coding/v1/fetch',
+      userAgent: 'kimi-cli/0.0.1-test',
+      localFallback,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const out = await provider.fetch('https://example.com/x');
+
+    // Moonshot: 2 attempts (normal + force). Both failed → fallback.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(out).toBe('from-local');
+    expect(localFallback.fetch).toHaveBeenCalledTimes(1);
+  });
+});

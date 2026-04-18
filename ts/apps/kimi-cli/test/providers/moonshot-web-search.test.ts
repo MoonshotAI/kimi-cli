@@ -268,3 +268,66 @@ describe('MoonshotWebSearchProvider — error handling', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
+
+// ── 401 force-refresh retry (Phase 19 deep-review HIGH-4) ──────────
+
+describe('MoonshotWebSearchProvider — 401 auto-refresh retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('retries with force-refresh when the first call gets 401', async () => {
+    const ensureFresh = vi
+      .fn()
+      .mockResolvedValueOnce('stale-token')
+      .mockResolvedValueOnce('fresh-token');
+    const oauth = { ensureFresh } as unknown as OAuthManager;
+    const fetchImpl = vi.fn();
+    // First: 401 with cached token. Second: 200 after force-refresh.
+    fetchImpl
+      .mockResolvedValueOnce(
+        new Response('stale', { status: 401, headers: { 'content-type': 'text/plain' } }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ search_results: [] }));
+    const provider = new MoonshotWebSearchProvider({
+      oauthManager: oauth,
+      baseUrl: 'https://api.kimi.com/coding/v1/search',
+      userAgent: 'kimi-cli/0.0.1-test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const results = await provider.search('q');
+
+    expect(results).toEqual([]);
+    expect(ensureFresh).toHaveBeenCalledTimes(2);
+    expect(ensureFresh).toHaveBeenNthCalledWith(1, {});
+    expect(ensureFresh).toHaveBeenNthCalledWith(2, { force: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    // Second call used the refreshed token.
+    const secondInit = fetchImpl.mock.calls[1]?.[1] as RequestInit | undefined;
+    const secondHeaders = new Headers(
+      (secondInit?.headers ?? {}) as Record<string, string>,
+    );
+    expect(secondHeaders.get('authorization')).toBe('Bearer fresh-token');
+  });
+
+  it('still throws a 401 error if the force-refresh retry also fails', async () => {
+    const ensureFresh = vi.fn().mockResolvedValue('always-stale');
+    const oauth = { ensureFresh } as unknown as OAuthManager;
+    const fetchImpl = vi.fn();
+    fetchImpl.mockResolvedValue(
+      new Response('still unauthorized', { status: 401, headers: { 'content-type': 'text/plain' } }),
+    );
+    const provider = new MoonshotWebSearchProvider({
+      oauthManager: oauth,
+      baseUrl: 'https://api.kimi.com/coding/v1/search',
+      userAgent: 'kimi-cli/0.0.1-test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    await expect(provider.search('q')).rejects.toThrow(/401|auth|unauthori[sz]ed/i);
+    expect(ensureFresh).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});

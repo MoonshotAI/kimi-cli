@@ -56,19 +56,17 @@ export class MoonshotFetchURLProvider implements UrlFetcher {
   }
 
   private async fetchViaMoonshot(url: string): Promise<string> {
-    const accessToken = await this.oauthManager.ensureFresh();
+    const bodyJson = JSON.stringify({ url });
 
-    const response = await this.fetchImpl(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'text/markdown',
-        'User-Agent': this.userAgent,
-        'Content-Type': 'application/json',
-        ...getDeviceHeaders(),
-      },
-      body: JSON.stringify({ url }),
-    });
+    // Mirror MoonshotWebSearchProvider: retry once with `force: true` if
+    // the cached OAuth token is rejected, since this provider doesn't
+    // sit behind KosongAdapter's 401 refresh layer.
+    let response = await this.post(bodyJson, false);
+    if (response.status === 401) {
+      // Drain the failed body so undici can reuse the socket.
+      try { await response.text(); } catch { /* ignore */ }
+      response = await this.post(bodyJson, true);
+    }
 
     if (response.status !== 200) {
       let detail = '';
@@ -84,5 +82,22 @@ export class MoonshotFetchURLProvider implements UrlFetcher {
     }
 
     return response.text();
+  }
+
+  private async post(bodyJson: string, forceRefresh: boolean): Promise<Response> {
+    const accessToken = await this.oauthManager.ensureFresh(
+      forceRefresh ? { force: true } : {},
+    );
+    return this.fetchImpl(this.baseUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'text/markdown',
+        'User-Agent': this.userAgent,
+        'Content-Type': 'application/json',
+        ...getDeviceHeaders(),
+      },
+      body: bodyJson,
+    });
   }
 }

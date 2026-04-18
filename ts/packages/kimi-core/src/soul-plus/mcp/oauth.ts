@@ -34,7 +34,7 @@
  */
 
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import type {
   OAuthClientInformationFull,
@@ -92,11 +92,25 @@ export class McpOAuthProvider implements OAuthClientProvider {
   private readonly openBrowserFn: (url: string) => unknown;
 
   constructor(options: McpOAuthProviderOptions) {
-    this.serverId = options.serverId;
+    // Guard against path traversal: `serverId` comes from user-controlled
+    // mcp.json keys. Matches the pattern in FileTokenStorage.pathFor —
+    // basename() strips any `..` / path separator segments; a difference
+    // between input and basename means the caller tried to escape the
+    // auth directory and we refuse up front rather than silently writing
+    // to a different file.
+    const safeServerId = basename(options.serverId);
+    if (
+      safeServerId.length === 0 ||
+      safeServerId !== options.serverId ||
+      safeServerId.startsWith('.')
+    ) {
+      throw new Error(`Invalid MCP serverId: "${options.serverId}"`);
+    }
+    this.serverId = safeServerId;
     this.kimiHome = options.kimiHome;
     this.redirectPort = options.redirectPort;
     this.authDir = join(options.kimiHome, 'auth');
-    this.filePath = join(this.authDir, `mcp-${options.serverId}.json`);
+    this.filePath = join(this.authDir, `mcp-${safeServerId}.json`);
     this.overrideMetadata = options.clientMetadata;
     this.openBrowserFn =
       options.openBrowser !== undefined

@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ModelCapability } from '@moonshot-ai/kosong';
+import { UNKNOWN_CAPABILITY, type ModelCapability } from '@moonshot-ai/kosong';
 
 import {
   LLMCapabilityMismatchError,
@@ -232,6 +232,32 @@ describe('TurnManager.handlePrompt capability bridge (Phase 19 Slice B)', () => 
     const { manager } = buildManager({ kosong, model: 'kimi-blind' });
     const res = await manager.handlePrompt({
       data: { input: { text: 'plain text', parts: [{ type: 'text', text: 'plain text' }] } },
+    });
+    expect(res).toMatchObject({ status: 'started' });
+  });
+
+  // Phase 19 deep-review CRIT-1 regression: a provider that hands back
+  // `UNKNOWN_CAPABILITY` (catalogue miss — e.g. `moonshot-v1-auto` on
+  // KimiChatProvider, whose table only covers kimi-for-coding / kimi-k2 /
+  // *thinking*) must NOT trigger the gate. Before the fix, the bridge ran
+  // the check against `UNKNOWN_CAPABILITY.image_in = false` and refused
+  // every image input from every mainstream Moonshot model.
+  it('passes an image prompt through when the adapter returns UNKNOWN_CAPABILITY (catalogue miss)', async () => {
+    const kosong = new CapabilityAwareScriptedAdapter(
+      { responses: [makeEndTurnResponse('ok')] },
+      UNKNOWN_CAPABILITY,
+    );
+    const { manager } = buildManager({ kosong, model: 'moonshot-v1-auto' });
+    const res = await manager.handlePrompt({
+      data: {
+        input: {
+          text: 'describe this image',
+          parts: [
+            { type: 'text', text: 'describe this image' },
+            { type: 'image_url', image_url: { url: 'https://example.com/x.png' } },
+          ],
+        },
+      },
     });
     expect(res).toMatchObject({ status: 'started' });
   });

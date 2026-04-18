@@ -235,3 +235,105 @@ describe('LocalFetchURLProvider — error handling', () => {
     await expect(provider.fetch('not-a-valid-url')).rejects.toThrow(/invalid|url|fetch/i);
   });
 });
+
+// ── SSRF guard (Phase 19 deep-review HIGH-3) ────────────────────────
+
+describe('LocalFetchURLProvider — SSRF guard (default deny)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('refuses AWS/GCP/Azure metadata service (169.254.169.254)', async () => {
+    const { provider, fetchImpl } = makeProvider();
+    await expect(
+      provider.fetch('http://169.254.169.254/latest/meta-data/'),
+    ).rejects.toThrow(/private/i);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('refuses loopback 127.0.0.1 and localhost', async () => {
+    const { provider, fetchImpl } = makeProvider();
+    await expect(provider.fetch('http://127.0.0.1:6379/')).rejects.toThrow(/private/i);
+    await expect(provider.fetch('http://localhost/admin')).rejects.toThrow(/private/i);
+    await expect(provider.fetch('http://my.localhost/x')).rejects.toThrow(/private/i);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('refuses RFC 1918 ranges 10.x / 192.168.x / 172.16-31.x', async () => {
+    const { provider } = makeProvider();
+    await expect(provider.fetch('http://10.0.0.1/')).rejects.toThrow(/private/i);
+    await expect(provider.fetch('http://192.168.1.1/admin')).rejects.toThrow(/private/i);
+    await expect(provider.fetch('http://172.16.0.1/')).rejects.toThrow(/private/i);
+    await expect(provider.fetch('http://172.31.255.255/')).rejects.toThrow(/private/i);
+  });
+
+  it('accepts 172.15.x and 172.32.x (outside private range)', async () => {
+    const { provider, fetchImpl } = makeProvider();
+    fetchImpl
+      .mockResolvedValueOnce(new Response('ok', { status: 200, headers: { 'content-type': 'text/plain' } }))
+      .mockResolvedValueOnce(new Response('ok', { status: 200, headers: { 'content-type': 'text/plain' } }));
+    await expect(provider.fetch('http://172.15.1.1/')).resolves.toBe('ok');
+    await expect(provider.fetch('http://172.32.1.1/')).resolves.toBe('ok');
+  });
+
+  it('refuses IPv6 loopback / ULA / link-local', async () => {
+    const { provider } = makeProvider();
+    await expect(provider.fetch('http://[::1]/')).rejects.toThrow(/private/i);
+    await expect(provider.fetch('http://[fe80::1]/')).rejects.toThrow(/private/i);
+    await expect(provider.fetch('http://[fc00::1]/')).rejects.toThrow(/private/i);
+    await expect(provider.fetch('http://[fd00::1]/')).rejects.toThrow(/private/i);
+  });
+
+  it('refuses non-http schemes (file, ftp, etc.)', async () => {
+    const { provider, fetchImpl } = makeProvider();
+    await expect(provider.fetch('file:///etc/passwd')).rejects.toThrow(/scheme/i);
+    await expect(provider.fetch('ftp://example.com/')).rejects.toThrow(/scheme/i);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('accepts public https domains', async () => {
+    const { provider, fetchImpl } = makeProvider();
+    fetchImpl
+      .mockResolvedValueOnce(markdownResponse('# ok'))
+      .mockResolvedValueOnce(markdownResponse('# ok'));
+    await provider.fetch('https://example.com/');
+    await provider.fetch('https://docs.python.org/3/');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('honours allowPrivateAddresses opt-in (for tests / explicit use)', async () => {
+    const fetchImpl = vi.fn();
+    fetchImpl.mockResolvedValue(markdownResponse('# ok'));
+    const provider = new LocalFetchURLProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      allowPrivateAddresses: true,
+    });
+    await expect(provider.fetch('http://127.0.0.1:3000/health')).resolves.toBe('# ok');
+  });
+});
+
+// ── Body-drain on error (Phase 19 deep-review HIGH-1) ──────────────
+
+describe('LocalFetchURLProvider — body drain on error paths', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('cancels response.body when HTTP >= 400 (avoids socket leak)', async () => {
+    const { provider, fetchImpl } = makeProvider();
+    const cancel = vi.fn(() => Promise.resolve());
+    const response = new Response('not found', {
+      status: 404,
+      headers: { 'content-type': 'text/plain' },
+    });
+    // Stub the body.cancel so we can observe it being called.
+    Object.defineProperty(response, 'body', {
+      value: { cancel },
+      configurable: true,
+    });
+    fetchImpl.mockResolvedValue(response);
+
+    await expect(provider.fetch('https://example.com/404')).rejects.toThrow(/404/);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+});

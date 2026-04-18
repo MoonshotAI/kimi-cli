@@ -48,29 +48,108 @@ export interface LocalFetchURLProviderOptions {
   userAgent?: string;
   fetchImpl?: typeof fetch;
   maxBytes?: number;
+  /**
+   * Allow fetching loopback / RFC 1918 / link-local / ULA addresses.
+   * Defaults to `false` — enabled only for tests and (future) explicit
+   * opt-in. Keeps an LLM that's been prompt-injected from exfiltrating
+   * AWS/GCP metadata (169.254.169.254), probing internal services
+   * (10.x, 192.168.x), or reading local daemons (127.0.0.1:*).
+   */
+  allowPrivateAddresses?: boolean;
+}
+
+/**
+ * SSRF guard — reject non-http(s) schemes and (by default) any hostname
+ * that is, or parses as, a private / loopback / link-local / ULA IP
+ * literal. This is a *static* check against the URL string; it does NOT
+ * do DNS resolution, so a domain that resolves to a private IP via
+ * DNS-rebinding is **not** caught here. That attack is a known
+ * limitation; mitigations (e.g. pinning the resolved IP through to
+ * fetch) are left for a follow-up.
+ */
+function assertSafeFetchTarget(url: string, allowPrivate: boolean): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: "${url}"`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(
+      `Unsupported URL scheme "${parsed.protocol}" — only http(s) allowed.`,
+    );
+  }
+  if (allowPrivate) return;
+  // URL hostname preserves surrounding `[ ]` for IPv6 literals on some
+  // Node versions (and not others). Strip them for uniform comparison.
+  const hostRaw = parsed.hostname.toLowerCase();
+  const host = hostRaw.startsWith('[') && hostRaw.endsWith(']')
+    ? hostRaw.slice(1, -1)
+    : hostRaw;
+  // Literal "localhost" / loopback aliases.
+  if (host === 'localhost' || host.endsWith('.localhost')) {
+    throw new Error(`Refusing to fetch private host: "${host}"`);
+  }
+  // IPv6 loopback / ULA / link-local. Check after bracket strip.
+  if (host === '::1' || host === '::' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
+    throw new Error(`Refusing to fetch private host: "${host}"`);
+  }
+  // IPv4 literal — only check when the hostname is a dotted-quad; normal
+  // domains will never match.
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (v4 !== null) {
+    const octets = [v4[1], v4[2], v4[3], v4[4]].map(Number);
+    if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+      throw new Error(`Invalid IPv4 literal: "${host}"`);
+    }
+    const [a, b] = octets as [number, number, number, number];
+    // 127.0.0.0/8 loopback, 10.0.0.0/8, 192.168.0.0/16,
+    // 172.16.0.0/12, 169.254.0.0/16 link-local / AWS metadata,
+    // 0.0.0.0/8 "this network", 100.64.0.0/10 CGNAT.
+    const isLoopback = a === 127;
+    const isPrivate10 = a === 10;
+    const isPrivate192 = a === 192 && b === 168;
+    const isPrivate172 = a === 172 && b >= 16 && b <= 31;
+    const isLinkLocal = a === 169 && b === 254;
+    const isZero = a === 0;
+    const isCgnat = a === 100 && b >= 64 && b <= 127;
+    if (
+      isLoopback || isPrivate10 || isPrivate192 || isPrivate172 ||
+      isLinkLocal || isZero || isCgnat
+    ) {
+      throw new Error(`Refusing to fetch private address: "${host}"`);
+    }
+  }
 }
 
 export class LocalFetchURLProvider implements UrlFetcher {
   private readonly userAgent: string;
   private readonly fetchImpl: typeof fetch;
   private readonly maxBytes: number;
+  private readonly allowPrivateAddresses: boolean;
 
   constructor(options: LocalFetchURLProviderOptions = {}) {
     this.userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+    this.allowPrivateAddresses = options.allowPrivateAddresses ?? false;
   }
 
   async fetch(
     url: string,
     _options?: { format?: 'text' | 'markdown' },
   ): Promise<string> {
+    assertSafeFetchTarget(url, this.allowPrivateAddresses);
+
     const response = await this.fetchImpl(url, {
       method: 'GET',
       headers: { 'User-Agent': this.userAgent },
     });
 
     if (response.status >= 400) {
+      // Drain the unused body so undici can release the socket back to
+      // the keep-alive pool instead of leaking it on error paths.
+      await response.body?.cancel().catch(() => { /* already closed */ });
       throw new Error(
         `Failed to fetch URL. HTTP ${response.status} ${response.statusText}.`,
       );

@@ -54,25 +54,26 @@ export class MoonshotWebSearchProvider implements WebSearchProvider {
     query: string,
     options?: { limit?: number; includeContent?: boolean },
   ): Promise<WebSearchResult[]> {
-    const accessToken = await this.oauthManager.ensureFresh();
-
     const body = {
       text_query: query,
       limit: options?.limit ?? 5,
       enable_page_crawling: options?.includeContent ?? false,
       timeout_seconds: 30,
     };
+    const bodyJson = JSON.stringify(body);
 
-    const response = await this.fetchImpl(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'User-Agent': this.userAgent,
-        'Content-Type': 'application/json',
-        ...getDeviceHeaders(),
-      },
-      body: JSON.stringify(body),
-    });
+    // Kosong's ChatProvider has a token-refresher layer that transparently
+    // retries 401s (see KosongAdapter). This provider runs outside that
+    // layer, so if the cached token is stale (server-side revocation, a
+    // `expiresAt` skew, etc.) the user would otherwise see a bare
+    // `HTTP 401` with no hint that `kimi login` fixes it. Try once with a
+    // forced refresh before surfacing the auth error.
+    let response = await this.post(bodyJson, false);
+    if (response.status === 401) {
+      // Drain the failed body so undici can reuse the socket.
+      await safeReadText(response);
+      response = await this.post(bodyJson, true);
+    }
 
     if (response.status === 401) {
       const detail = await safeReadText(response);
@@ -100,6 +101,22 @@ export class MoonshotWebSearchProvider implements WebSearchProvider {
       if (typeof r.date === 'string' && r.date.length > 0) out.date = r.date;
       if (typeof r.content === 'string' && r.content.length > 0) out.content = r.content;
       return out;
+    });
+  }
+
+  private async post(bodyJson: string, forceRefresh: boolean): Promise<Response> {
+    const accessToken = await this.oauthManager.ensureFresh(
+      forceRefresh ? { force: true } : {},
+    );
+    return this.fetchImpl(this.baseUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'User-Agent': this.userAgent,
+        'Content-Type': 'application/json',
+        ...getDeviceHeaders(),
+      },
+      body: bodyJson,
     });
   }
 }
