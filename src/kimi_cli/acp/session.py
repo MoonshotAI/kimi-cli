@@ -329,9 +329,11 @@ class ACPSession:
         current_title = state.get_title()
 
         # ToolCallProgress.content replaces the current content collection, so
-        # only emit an update when the user-visible title changes and send the
-        # current accumulated args snapshot for that state.
-        if current_title == previous_title:
+        # once a tool has a stable user-visible subtitle we only emit updates
+        # when that title changes. Tools that never expose a streaming subtitle
+        # still need snapshot updates so ACP clients do not get stuck on the
+        # initial `{` fragment from ToolCallStart.
+        if current_title == previous_title and current_title != state.tool_call.function.name:
             return
 
         update = acp.schema.ToolCallProgress(

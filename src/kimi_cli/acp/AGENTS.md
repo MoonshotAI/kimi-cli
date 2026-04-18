@@ -48,7 +48,8 @@
 - Tool calls:
   - Start -> `ToolCallStart` with JSON args as text content.
   - Streaming args -> `ToolCallProgress` with the current accumulated args
-    snapshot when the tool title changes.
+    snapshot when the tool title changes, or per chunk until a streaming
+    subtitle becomes available.
   - Results -> `ToolCallProgress` with `completed` or `failed`.
   - Tool call IDs are prefixed with turn ID to avoid collisions across turns.
 - Plan updates:

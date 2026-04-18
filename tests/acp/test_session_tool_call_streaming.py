@@ -30,6 +30,18 @@ class _StreamingToolCallCLI:
         yield TurnEnd()
 
 
+class _NoSubtitleStreamingToolCallCLI:
+    async def run(self, _user_input, _cancel_event):
+        yield TurnBegin(user_input="send a dmail")
+        yield ToolCall(
+            id="tc-1",
+            function=ToolCall.FunctionBody(name="SendDMail", arguments="{"),
+        )
+        yield ToolCallPart(arguments_part='"to":"a@example.com",')
+        yield ToolCallPart(arguments_part='"subject":"hello"}')
+        yield TurnEnd()
+
+
 @pytest.mark.asyncio
 async def test_acp_tool_call_progress_only_updates_when_streaming_title_changes() -> None:
     conn = _FakeConn()
@@ -55,3 +67,32 @@ async def test_acp_tool_call_progress_only_updates_when_streaming_title_changes(
 
     # Title extraction should still work even when the streamed JSON is incomplete.
     assert progress_update.title == "WriteFile: big.py"
+
+
+@pytest.mark.asyncio
+async def test_acp_tool_call_progress_keeps_streaming_when_title_never_changes() -> None:
+    conn = _FakeConn()
+    session = ACPSession("session-1", _NoSubtitleStreamingToolCallCLI(), conn)  # type: ignore[arg-type]
+
+    response = await session.prompt([acp.text_block("hello")])
+
+    assert response.stop_reason == "end_turn"
+    assert len(conn.updates) == 3
+
+    start_update = conn.updates[0][1]
+    first_progress_update = conn.updates[1][1]
+    second_progress_update = conn.updates[2][1]
+
+    assert start_update.session_update == "tool_call"
+    assert start_update.title == "SendDMail"
+    assert start_update.content[0].content.text == "{"
+
+    assert first_progress_update.session_update == "tool_call_update"
+    assert first_progress_update.title == "SendDMail"
+    assert first_progress_update.content[0].content.text == '{"to":"a@example.com",'
+
+    assert second_progress_update.session_update == "tool_call_update"
+    assert second_progress_update.title == "SendDMail"
+    assert second_progress_update.content[0].content.text == (
+        '{"to":"a@example.com","subject":"hello"}'
+    )
