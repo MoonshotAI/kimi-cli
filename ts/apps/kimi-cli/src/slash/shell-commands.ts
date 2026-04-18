@@ -55,21 +55,13 @@ const clearCommand: SlashCommandDef = {
   aliases: ['reset'],
   description: 'Clear the conversation context (keep the session)',
   mode: 'both',
-  async execute(_args, ctx) {
-    // Phase 20 §A — drop the Core-side conversation context via the
-    // session.clear wire path BEFORE the UI reload so the next user
-    // prompt starts from an empty history. If no active session (e.g.
-    // shell mode with no kimi-core binding), skip the wire call and
-    // just reload the transcript.
-    const sessionId = ctx.appState.sessionId;
-    if (sessionId !== '' && sessionId !== 'default') {
-      try {
-        await ctx.wireClient.clear(sessionId);
-      } catch {
-        // Swallow — reload is still useful even if the wire call fails;
-        // the error path is logged by the wire client itself.
-      }
-    }
+  async execute() {
+    // Phase 20 §A — return the reload action; the host (InteractiveMode)
+    // is the one that owns the streaming guard + UI reload + wire
+    // session.clear dispatch. Keeping the core side-effect in the host
+    // (rather than here) means a single `isStreaming` check governs
+    // both paths — no chance of clearing core while UI refuses to
+    // reload, or vice versa.
     return { type: 'reload', action: 'clear' };
   },
 };

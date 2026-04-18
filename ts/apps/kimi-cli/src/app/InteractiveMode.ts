@@ -1217,16 +1217,41 @@ export class InteractiveMode implements WireHandlerDelegate {
     }
 
     switch (action) {
-      case 'clear':
+      case 'clear': {
+        // Phase 20 §A — drop the Core-side conversation context first
+        // so the next prompt starts from an empty history. Runs AFTER
+        // the `isStreaming` guard above so a mid-turn /clear never
+        // corrupts the active turn. If the wire call fails the UI
+        // reload is still useful (user still sees a clean transcript),
+        // so swallow the error and surface it as a status line instead.
+        let clearErrorMessage: string | undefined;
+        try {
+          await this.wireClient.clear(this.state.sessionId);
+        } catch (error) {
+          if (error instanceof Error) {
+            clearErrorMessage = error.message;
+          } else if (typeof error === 'string') {
+            clearErrorMessage = error;
+          } else {
+            // Non-Error throwables (BigInt, circular objects, etc.) —
+            // fall back to a stable sentinel rather than risking a
+            // second throw from JSON.stringify inside the catch.
+            clearErrorMessage = 'unknown error';
+          }
+        }
         this.clearTranscriptAndRedraw();
         this.addTranscriptEntry({
           id: `reload-${String(Date.now())}`,
           kind: 'status',
           renderMode: 'plain',
-          content: 'Transcript cleared.',
-          color: this.colors.textDim,
+          content:
+            clearErrorMessage === undefined
+              ? 'Context cleared.'
+              : `Transcript cleared (core clear failed: ${clearErrorMessage}).`,
+          color: clearErrorMessage === undefined ? this.colors.textDim : this.colors.error,
         });
         break;
+      }
       case 'new':
         await this.spawnFreshSession();
         break;

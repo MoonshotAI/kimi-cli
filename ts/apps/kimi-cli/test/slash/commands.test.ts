@@ -123,31 +123,17 @@ describe('Slash commands', () => {
     expect(result).toEqual({ type: 'ok', message: 'kimi-cli v1.2.3' });
   });
 
-  it('/clear returns reload', async () => {
-    const cmd = registry.find('clear')!;
-    const { ctx } = makeCtx();
-    const result = await cmd.execute('', ctx);
-    expect(result.type).toBe('reload');
-  });
-
-  it('/clear invokes wireClient.clear on the active session before reloading', async () => {
+  it('/clear returns reload action without calling wire directly', async () => {
+    // Phase 20 §A — the slash command is a pure mapper; the wire
+    // dispatch + streaming guard are owned by InteractiveMode's
+    // `performReload`. That split keeps a single `isStreaming` check
+    // governing both paths (mid-turn /clear cannot leak into core
+    // while the UI refuses to reload).
     const cmd = registry.find('clear')!;
     const { ctx } = makeCtx({ sessionId: 'session-xyz' });
-    await cmd.execute('', ctx);
-    expect(ctx.wireClient.clear).toHaveBeenCalledTimes(1);
-    expect(ctx.wireClient.clear).toHaveBeenCalledWith('session-xyz');
-  });
-
-  it('/clear still reloads the transcript when the wire call fails', async () => {
-    const cmd = registry.find('clear')!;
-    const { ctx } = makeCtx();
-    (ctx.wireClient.clear as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      new Error('wire boom'),
-    );
     const result = await cmd.execute('', ctx);
-    // UI reload path must survive a failed core-side clear — the
-    // transcript clear is still useful for the user.
-    expect(result.type).toBe('reload');
+    expect(result).toEqual({ type: 'reload', action: 'clear' });
+    expect(ctx.wireClient.clear).not.toHaveBeenCalled();
   });
 
   it('/reset is an alias for /clear', () => {
