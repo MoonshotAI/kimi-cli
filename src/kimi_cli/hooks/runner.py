@@ -18,6 +18,7 @@ class HookResult:
     stderr: str = ""
     exit_code: int = 0
     timed_out: bool = False
+    updated_input: dict[str, Any] | None = None
 
 
 async def run_hook(
@@ -69,6 +70,7 @@ async def run_hook(
         )
 
     # Exit 0 + JSON stdout = structured decision
+    updated_input: dict[str, Any] | None = None
     if exit_code == 0 and stdout.strip():
         try:
             raw = json.loads(stdout)
@@ -83,7 +85,16 @@ async def run_hook(
                         stderr=stderr,
                         exit_code=0,
                     )
+                # Parse updatedInput for transparent command rewriting (e.g. RTK)
+                if "updatedInput" in hook_output:
+                    updated_input = cast(dict[str, Any], hook_output["updatedInput"])
         except (json.JSONDecodeError, TypeError):
             pass
 
-    return HookResult(action="allow", stdout=stdout, stderr=stderr, exit_code=exit_code)
+    return HookResult(
+        action="allow",
+        stdout=stdout,
+        stderr=stderr,
+        exit_code=exit_code,
+        updated_input=updated_input,
+    )

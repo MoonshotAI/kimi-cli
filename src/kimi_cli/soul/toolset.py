@@ -184,6 +184,12 @@ class KimiToolset:
                             ),
                         )
 
+                # Apply updatedInput from hooks (transparent rewrite, e.g. RTK)
+                if isinstance(arguments, dict):
+                    for result in results:
+                        if result.updated_input:
+                            arguments.update(result.updated_input)
+
                 # --- Execute tool ---
                 t0 = time.monotonic()
                 try:

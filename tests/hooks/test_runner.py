@@ -43,3 +43,19 @@ async def test_stdin_receives_json():
     cmd = """python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tool_name'])" """
     result = await run_hook(cmd, {"tool_name": "WriteFile"}, timeout=5)
     assert result.stdout.strip() == "WriteFile"
+
+
+@pytest.mark.asyncio
+async def test_json_updated_input_parsing():
+    cmd = """echo '{"hookSpecificOutput": {"updatedInput": {"command": "rtk git status"}}}' """
+    result = await run_hook(cmd, {"tool_name": "Shell"}, timeout=5)
+    assert result.action == "allow"
+    assert result.updated_input == {"command": "rtk git status"}
+
+
+@pytest.mark.asyncio
+async def test_json_deny_takes_precedence_over_updated_input():
+    cmd = """echo '{"hookSpecificOutput": {"permissionDecision": "deny", "updatedInput": {"command": "rtk git status"}}}' """
+    result = await run_hook(cmd, {"tool_name": "Shell"}, timeout=5)
+    assert result.action == "block"
+    assert result.updated_input is None
