@@ -58,6 +58,13 @@ export interface WireClient {
   getUsage(sessionId: string): Promise<SessionUsageResult>;
   /** Trigger manual compaction. Optional custom instruction for the summary. */
   compact(sessionId: string, customInstruction?: string): Promise<void>;
+  /**
+   * Clear the session's conversation context (history) while keeping the
+   * session itself alive. Writes a `context_cleared` wire record so
+   * replay reconstructs the empty-from-here-on state; preserves
+   * systemPrompt / model / activeTools / permissionMode / planMode.
+   */
+  clear(sessionId: string): Promise<void>;
 
   /** Runtime model switch — superseded by `switchModel`. */
   setModel(sessionId: string, model: string): Promise<void>;

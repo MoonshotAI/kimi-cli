@@ -419,6 +419,7 @@ describe('runPrintMode', () => {
       getStatus: vi.fn(),
       getUsage: vi.fn(),
       compact: vi.fn(),
+      clear: vi.fn(),
       setModel: vi.fn(),
       setThinking: vi.fn(),
       setPlanMode: vi.fn(),

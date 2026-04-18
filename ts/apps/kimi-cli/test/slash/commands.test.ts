@@ -54,6 +54,7 @@ function mockWireClient(): WireClient {
       total_cost_usd: 0.0042,
     })),
     compact: vi.fn(async () => {}),
+    clear: vi.fn(async () => {}),
     setModel: vi.fn(async () => {}),
     setThinking: vi.fn(async () => {}),
     setPlanMode: vi.fn(async () => {}),
@@ -126,6 +127,26 @@ describe('Slash commands', () => {
     const cmd = registry.find('clear')!;
     const { ctx } = makeCtx();
     const result = await cmd.execute('', ctx);
+    expect(result.type).toBe('reload');
+  });
+
+  it('/clear invokes wireClient.clear on the active session before reloading', async () => {
+    const cmd = registry.find('clear')!;
+    const { ctx } = makeCtx({ sessionId: 'session-xyz' });
+    await cmd.execute('', ctx);
+    expect(ctx.wireClient.clear).toHaveBeenCalledTimes(1);
+    expect(ctx.wireClient.clear).toHaveBeenCalledWith('session-xyz');
+  });
+
+  it('/clear still reloads the transcript when the wire call fails', async () => {
+    const cmd = registry.find('clear')!;
+    const { ctx } = makeCtx();
+    (ctx.wireClient.clear as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('wire boom'),
+    );
+    const result = await cmd.execute('', ctx);
+    // UI reload path must survive a failed core-side clear — the
+    // transcript clear is still useful for the user.
     expect(result.type).toBe('reload');
   });
 

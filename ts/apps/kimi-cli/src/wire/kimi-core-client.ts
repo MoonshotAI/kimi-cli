@@ -632,6 +632,16 @@ export class KimiCoreClient implements WireClient {
     await record.managed.sessionControl.compact(customInstruction);
   }
 
+  async clear(sessionId: string): Promise<void> {
+    // Phase 20 §A — delegate to SessionControl.clear(), which awaits the
+    // WAL `context_cleared` append before zeroing the in-memory history.
+    // Silently no-op for unknown sessions so a stale `/clear` after a
+    // session change does not surface a generic error to the TUI.
+    const record = this.sessions.get(sessionId);
+    if (record === undefined) return;
+    await record.managed.sessionControl.clear();
+  }
+
   // ── Slice 5.2 — resume-time plan mode conflict (D4) ─────────────
 
   /**
