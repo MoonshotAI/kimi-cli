@@ -36,6 +36,7 @@ export type {
   ToolProgressData,
   ToolResultData,
   StatusUpdateData,
+  SessionMetaChangedData,
   TokenUsage,
   MCPStatus,
   NotificationData,

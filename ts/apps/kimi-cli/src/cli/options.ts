@@ -153,5 +153,15 @@ export function validateOptions(opts: CLIOptions): ValidatedOptions {
     uiMode = 'wire';
   }
 
+  // -- `--session` without an id is only meaningful in shell mode -----------
+  //
+  // Commander returns `''` (via argParser) when the user passes `--session`,
+  // `-S`, or `-r` with no value. That invokes the session picker, which
+  // is a TUI-only feature: `--print` / `--wire` have no way to render it,
+  // so fail fast with a clear message instead of booting into a dead end.
+  if (opts.session === '' && uiMode !== 'shell') {
+    throw new OptionConflictError('--session without an id requires shell mode.');
+  }
+
   return { options: opts, uiMode };
 }

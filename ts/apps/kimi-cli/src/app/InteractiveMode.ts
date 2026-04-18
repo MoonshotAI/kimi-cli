@@ -92,6 +92,12 @@ export interface AppOAuthManager {
 export interface InteractiveModeOptions {
   oauthManagers?: ReadonlyMap<string, AppOAuthManager> | undefined;
   mcpManager?: { close(): Promise<void> } | undefined;
+  /**
+   * Phase 21 Slice F — when set, the TUI boots without a pre-created
+   * session and immediately shows the session picker. Selecting a
+   * session resumes it; cancelling exits the process.
+   */
+  pickerMode?: boolean | undefined;
 }
 
 export class InteractiveMode implements WireHandlerDelegate {
@@ -129,6 +135,8 @@ export class InteractiveMode implements WireHandlerDelegate {
 
   private registry;
   private oauthManagers: ReadonlyMap<string, AppOAuthManager> | undefined;
+  private footerSubscription: (() => void) | undefined;
+  private readonly pickerMode: boolean;
 
   public onExit?: () => Promise<void>;
 
@@ -142,6 +150,7 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.livePane = { ...INITIAL_LIVE_PANE };
     this.colors = getColorPalette(initialState.theme);
     this.oauthManagers = options?.oauthManagers;
+    this.pickerMode = options?.pickerMode ?? false;
 
     this.markdownTheme = createMarkdownTheme(this.colors);
     const editorTheme = createEditorTheme(this.colors);
@@ -262,8 +271,89 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.editorContainer.addChild(this.editor);
     this.ui.setFocus(this.editor);
     this.ui.start();
-    void this.wireHandler.start();
+    if (!this.pickerMode) {
+      this.attachFooterFeed();
+      void this.wireHandler.start();
+    }
     void this.fetchSessions();
+    if (this.pickerMode) {
+      // Defer picker launch one tick so the TUI has mounted its
+      // layout before we swap focus to the picker component.
+      setImmediate(() => {
+        void this.bootstrapFromPicker();
+      });
+    }
+  }
+
+  /**
+   * Phase 21 Slice F — subscribe the footer to the live wire feed. The
+   * caller MUST dispose the previous subscription (via
+   * `footerSubscription`) before rebinding, which happens naturally on
+   * session switches because `switchSession` / `performModelSwitch` /
+   * `spawnFreshSession` all replace `this.wireHandler` before calling
+   * this method again.
+   */
+  private attachFooterFeed(): void {
+    this.footerSubscription?.();
+    this.footerSubscription = this.footer.attach(this.wireHandler, () => {
+      // Keep delegate state in sync with the footer's local copy so
+      // `/usage`, `/model`, etc. observe the latest wire-driven fields.
+      this.state = { ...this.state };
+      this.ui.requestRender();
+    });
+  }
+
+  /**
+   * Phase 21 Slice F — picker-first boot. Pulls the session list, shows
+   * the picker, and blocks session creation until the user selects or
+   * cancels. Selecting resumes the session and wires the handler
+   * against it; cancelling exits the process with code 0.
+   */
+  private async bootstrapFromPicker(): Promise<void> {
+    await this.fetchSessions();
+    this.showingSessionPicker = true;
+    this.editorContainer.clear();
+    const picker = new SessionPickerComponent({
+      sessions: this.sessions,
+      loading: this.loadingSessions,
+      currentSessionId: this.state.sessionId,
+      colors: this.colors,
+      onSelect: (sessionId: string) => {
+        this.hideSessionPicker();
+        void this.bootstrapPickedSession(sessionId);
+      },
+      onCancel: () => {
+        // Cancelling the picker at boot means the user opted out of
+        // resuming any session — exit cleanly instead of proceeding
+        // with a half-initialised shell.
+        process.exit(0);
+      },
+    });
+    this.editorContainer.addChild(picker);
+    this.ui.setFocus(picker);
+    this.ui.requestRender();
+  }
+
+  private async bootstrapPickedSession(sessionId: string): Promise<void> {
+    try {
+      if (this.wireClient.resumeSession === undefined) {
+        throw new Error('resumeSession not supported by this client');
+      }
+      const { session_id: resumedId } = await this.wireClient.resumeSession(sessionId);
+      this.wireHandler = new WireHandler(this.wireClient, resumedId, this, this.colors);
+      this.attachFooterFeed();
+      void this.wireHandler.start();
+      this.setState({ sessionId: resumedId });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addTranscriptEntry({
+        id: `session-err-${String(Date.now())}`,
+        kind: 'status',
+        renderMode: 'plain',
+        content: `Failed to resume session: ${msg}`,
+        color: this.colors.error,
+      });
+    }
   }
 
   private async loadInputHistory(): Promise<void> {
@@ -293,7 +383,18 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.editor.setAutocompleteProvider(provider);
   }
 
+  /**
+   * Phase 21 Slice F — expose the active session id so the launcher can
+   * print a resume hint on exit. Returns an empty string when the user
+   * never finished picking a session.
+   */
+  getCurrentSessionId(): string {
+    return this.state.sessionId;
+  }
+
   async stop(): Promise<void> {
+    this.footerSubscription?.();
+    this.footerSubscription = undefined;
     this.wireHandler.stop();
     this.ui.stop();
     if (this.onExit) {
@@ -1046,6 +1147,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       // The new ManagedSession (same id) has a fresh queue; rebuild the
       // WireHandler so its subscribe loop listens on the right one.
       this.wireHandler = new WireHandler(this.wireClient, newId, this, this.colors);
+      this.attachFooterFeed();
       void this.wireHandler.start();
       this.setState({ sessionId: newId, model: alias, thinking });
       try {
@@ -1080,6 +1182,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       // user is not stranded.
       try {
         this.wireHandler = new WireHandler(this.wireClient, sessionId, this, this.colors);
+        this.attachFooterFeed();
         void this.wireHandler.start();
       } catch {
         // nothing useful left to do
@@ -1150,6 +1253,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       // Type narrowing: decideSessionSwitch already verified this.
       const { session_id: resumedId } = await this.wireClient.resumeSession!(newSessionId);
       this.wireHandler = new WireHandler(this.wireClient, resumedId, this, this.colors);
+      this.attachFooterFeed();
       void this.wireHandler.start();
       this.setState({ sessionId: resumedId });
       this.clearTranscriptAndRedraw();
@@ -1180,6 +1284,7 @@ export class InteractiveMode implements WireHandlerDelegate {
           await this.wireClient.resumeSession(oldId);
         }
         this.wireHandler = new WireHandler(this.wireClient, oldId, this, this.colors);
+        this.attachFooterFeed();
         void this.wireHandler.start();
       } catch {
         // No safe recovery left — user should restart.
@@ -1283,6 +1388,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       }
       const { session_id: resumedId } = await this.wireClient.resumeSession(sessionId);
       this.wireHandler = new WireHandler(this.wireClient, resumedId, this, this.colors);
+      this.attachFooterFeed();
       void this.wireHandler.start();
       this.setState({ sessionId: resumedId });
       this.clearTranscriptAndRedraw();
@@ -1370,6 +1476,7 @@ export class InteractiveMode implements WireHandlerDelegate {
       // Build a new WireHandler rooted at the new session so its
       // subscribe loop listens on the right queue.
       this.wireHandler = new WireHandler(this.wireClient, newId, this, this.colors);
+      this.attachFooterFeed();
       void this.wireHandler.start();
       this.setState({ sessionId: newId });
       this.clearTranscriptAndRedraw();

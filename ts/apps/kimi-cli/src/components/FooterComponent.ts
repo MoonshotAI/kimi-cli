@@ -7,6 +7,18 @@ import { truncateToWidth, visibleWidth } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import type { AppState } from '../app/state.js';
 import type { ColorPalette } from '../theme/colors.js';
+import type { StatusUpdateData, SessionMetaChangedData } from '../wire/events.js';
+
+/**
+ * Phase 21 Slice F — typed live-feed the Footer subscribes to.
+ *
+ * Keeps the Footer decoupled from the concrete WireHandler / TUI so
+ * unit tests can drive it with a plain object.
+ */
+export interface FooterFeedHandlers {
+  onStatusUpdate(handler: (data: StatusUpdateData) => void): () => void;
+  onSessionMetaChanged(handler: (data: SessionMetaChangedData) => void): () => void;
+}
 
 const MAX_CWD_COLS = 30;
 
@@ -52,6 +64,7 @@ function contextColor(usage: number, colors: ColorPalette): string {
 export class FooterComponent implements Component {
   private state: AppState;
   private colors: ColorPalette;
+  private subscriptions: Array<() => void> = [];
 
   constructor(state: AppState, colors: ColorPalette) {
     this.state = state;
@@ -67,6 +80,45 @@ export class FooterComponent implements Component {
   }
 
   invalidate(): void {}
+
+  /**
+   * Subscribe to a live feed of wire events that affect footer-visible
+   * fields (context usage / model). Each event patches the local state
+   * and fires `requestRender` so the TUI repaints. Returns a disposer
+   * that removes all registered listeners.
+   *
+   * Called once by the host (InteractiveMode) at boot. Tests can pass a
+   * minimal stub for `handlers` and a spy for `requestRender` to assert
+   * reactivity without standing up the full TUI.
+   */
+  attach(handlers: FooterFeedHandlers, requestRender: () => void): () => void {
+    const unsubStatus = handlers.onStatusUpdate((data) => {
+      const patch: Partial<AppState> = {};
+      if (data.context_usage !== undefined) {
+        const percent = data.context_usage.percent;
+        patch.contextUsage = Number.isFinite(percent) ? percent / 100 : 0;
+      }
+      if (data.context_tokens !== undefined) patch.contextTokens = data.context_tokens;
+      if (data.max_context_tokens !== undefined) patch.maxContextTokens = data.max_context_tokens;
+      if (data.plan_mode !== undefined) patch.planMode = data.plan_mode;
+      if (data.model !== undefined) patch.model = data.model;
+      if (Object.keys(patch).length > 0) {
+        this.state = { ...this.state, ...patch };
+      }
+      requestRender();
+    });
+    const unsubMeta = handlers.onSessionMetaChanged((_data) => {
+      // SessionMeta wire-truth fields (title/tags/description/archived/color)
+      // do not feed the current footer layout. Re-render anyway so callers
+      // see the footer stay in sync with the broader UI state.
+      requestRender();
+    });
+    this.subscriptions.push(unsubStatus, unsubMeta);
+    return () => {
+      for (const dispose of this.subscriptions) dispose();
+      this.subscriptions = [];
+    };
+  }
 
   render(width: number): string[] {
     const colors = this.colors;

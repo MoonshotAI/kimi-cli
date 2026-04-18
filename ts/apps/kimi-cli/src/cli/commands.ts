@@ -60,11 +60,17 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
       new Option(
         '-S, --session [id]',
         'Resume a session. With ID: resume that session. Without ID: interactively pick.',
-      ).argParser((val: string) => val),
+        // Phase 21 Slice F — Commander passes `true` when the optional
+        // arg is absent (e.g. `kimi --session`). Coerce to '' so
+        // validateOptions can distinguish "picker requested" (empty
+        // string) from "resume this id" (non-empty) downstream.
+      ).argParser((val: string | boolean) => (val === true ? '' : (val as string))),
     )
     .addOption(
       // -r / --resume is a hidden alias for --session
-      new Option('-r, --resume [id]').hideHelp().argParser((val: string) => val),
+      new Option('-r, --resume [id]')
+        .hideHelp()
+        .argParser((val: string | boolean) => (val === true ? '' : (val as string))),
     )
     .option('-C, --continue', 'Continue the previous session for the working directory.', false)
     .option('--config <toml>', 'Config TOML/JSON string to load.')
@@ -134,7 +140,15 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
 
     // Merge aliases: --resume -> session, --yes/--auto-approve -> yolo,
     // --command/-c -> prompt
-    const sessionValue = (raw['session'] ?? raw['resume']) as string | undefined;
+    //
+    // Phase 21 Slice F — Commander sets an optional-arg flag (`[id]`) to
+    // the literal boolean `true` when the user passes `--session` /
+    // `-S` / `-r` with no value, and does NOT invoke argParser in that
+    // case. Normalise that sentinel to `''` here so validateOptions and
+    // bootstrap can distinguish "picker requested" from "resume this id".
+    const rawSession = raw['session'] ?? raw['resume'];
+    const sessionValue =
+      rawSession === true ? '' : (rawSession as string | undefined);
     const yoloValue = Boolean(raw['yolo'] || raw['yes'] || raw['autoApprove']);
     const promptValue = (raw['prompt'] ?? raw['command']) as string | undefined;
 

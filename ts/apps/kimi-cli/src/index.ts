@@ -122,6 +122,13 @@ function buildKimiDefaultHeaders(version: string): Record<string, string> {
 interface ShellBootstrap {
   wireClient: WireClient;
   sessionId: string;
+  /**
+   * Phase 21 Slice F — true when the CLI booted with `--session` (no id)
+   * and the shell must defer session creation until the user makes a
+   * selection in the interactive picker. When true, `sessionId` is '' and
+   * plan/yolo/BPM syncs are skipped at boot.
+   */
+  pickerMode: boolean;
   model: string;
   defaultThinking: boolean;
   theme: AppState['theme'];
@@ -602,8 +609,15 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     ...(agentTypeRegistry !== undefined ? { agentTypeRegistry } : {}),
   });
 
+  // Phase 21 Slice F — `--session` with no id (argParser normalised to '')
+  // routes to the interactive picker. We must NOT create or resume any
+  // session yet; the picker runs inside InteractiveMode and picks one.
+  const pickerMode = opts.session === '';
+
   let sessionId: string;
-  if (opts.session !== undefined) {
+  if (pickerMode) {
+    sessionId = '';
+  } else if (opts.session !== undefined) {
     const known = await sessionManager.listSessions();
     const target = known.find((s) => s.session_id === opts.session);
     if (target === undefined) {
@@ -646,38 +660,44 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
 
   // Slice 5.2 (Codex C2) — now that sessionId is resolved, attach
   // persistence and reconcile stale background tasks from disk.
-  const sessionDir = pathConfig.sessionDir(sessionId);
-  backgroundManager.attachSessionDir(sessionDir);
-  await backgroundManager.loadFromDisk();
-  const reconcileResult = await backgroundManager.reconcile();
-  if (reconcileResult.lost.length > 0) {
-    process.stderr.write(
-      `[kimi] ${reconcileResult.lost.length} background task(s) from a ` +
-        'prior session were lost (process exited). Use /task list to see details.\n',
-    );
-  }
+  // Phase 21 Slice F — picker mode has no session yet; defer BPM attach /
+  // plan-mode / yolo syncs until the user actually picks a session
+  // (handled inside InteractiveMode.bootstrapPickedSession).
+  if (!pickerMode) {
+    const sessionDir = pathConfig.sessionDir(sessionId);
+    backgroundManager.attachSessionDir(sessionDir);
+    await backgroundManager.loadFromDisk();
+    const reconcileResult = await backgroundManager.reconcile();
+    if (reconcileResult.lost.length > 0) {
+      process.stderr.write(
+        `[kimi] ${reconcileResult.lost.length} background task(s) from a ` +
+          'prior session were lost (process exited). Use /task list to see details.\n',
+      );
+    }
 
-  // Slice 5.2 (D4) — plan mode management on bootstrap.
-  if (opts.session !== undefined || opts.continue) {
-    // Resume path: detect conflict between CLI flag and persisted state.
-    await wireClient.schedulePlanModeReminder(sessionId, opts.plan === true);
-  } else if (opts.plan === true) {
-    // Codex C4: fresh session with --plan must activate plan mode in core,
-    // not just the TUI state. Without this, TurnManager stays in default
-    // mode and the LLM never sees plan-mode dynamic injections.
-    await wireClient.setPlanMode(sessionId, true);
-  }
+    // Slice 5.2 (D4) — plan mode management on bootstrap.
+    if (opts.session !== undefined || opts.continue) {
+      // Resume path: detect conflict between CLI flag and persisted state.
+      await wireClient.schedulePlanModeReminder(sessionId, opts.plan === true);
+    } else if (opts.plan === true) {
+      // Codex C4: fresh session with --plan must activate plan mode in core,
+      // not just the TUI state. Without this, TurnManager stays in default
+      // mode and the LLM never sees plan-mode dynamic injections.
+      await wireClient.setPlanMode(sessionId, true);
+    }
 
-  // Yolo mode: sync CLI --yolo / config default into core so
-  // TurnManager uses bypassPermissions, not just the TUI label.
-  const effectiveYolo = opts.yolo || (kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false);
-  if (effectiveYolo) {
-    await wireClient.setYolo(sessionId, true);
+    // Yolo mode: sync CLI --yolo / config default into core so
+    // TurnManager uses bypassPermissions, not just the TUI label.
+    const effectiveYolo = opts.yolo || (kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false);
+    if (effectiveYolo) {
+      await wireClient.setYolo(sessionId, true);
+    }
   }
 
   return {
     wireClient,
     sessionId,
+    pickerMode,
     model: modelAlias,
     defaultThinking: kimiConfig.defaultThinking ?? false,
     // Slice 5.0.1 (M3): honor KIMI_YOLO (loader writes config.yolo) +
@@ -818,6 +838,7 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
   const mode = new InteractiveMode(bootstrap.wireClient, initialState, {
     ...(bootstrap.oauthManagers !== undefined ? { oauthManagers: bootstrap.oauthManagers } : {}),
     ...(bootstrap.mcpManager !== undefined ? { mcpManager: bootstrap.mcpManager } : {}),
+    pickerMode: bootstrap.pickerMode,
   });
   mode.onExit = async () => {
     await bootstrap.wireClient.dispose();
@@ -829,7 +850,12 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
         // shutdown never hangs on a misbehaving transport.
       }
     }
-    process.stderr.write(`\nTo resume this session: kimi -r ${bootstrap.sessionId}\n\n`);
+    // Session ID is unknown when the user never finished picking one; in
+    // that case skip the resume hint.
+    const resumeId = mode.getCurrentSessionId();
+    if (resumeId.length > 0) {
+      process.stderr.write(`\nTo resume this session: kimi -r ${resumeId}\n\n`);
+    }
     process.exit(0);
   };
   try { execSync('stty -ixon', { stdio: 'ignore' }); } catch { /* ignore */ }

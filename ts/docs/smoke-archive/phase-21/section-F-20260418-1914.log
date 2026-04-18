@@ -1,0 +1,56 @@
+Phase 21 Section F — smoke archive
+==================================
+timestamp: 2026-04-18 19:14 +0800
+branch: make-it-ts
+build: pnpm -r build (all green)
+typecheck: 0 error
+
+
+F.4.1 — Footer reactive pinned by 6 unit cases
+----------------------------------------------------------------
+test/components/footer-reactive.test.ts
+  - baseline render without subscription
+  - status.update{context_usage.percent=50} → context: 50.0% + 1 requestRender call
+  - status.update{model='kimi-k2-5'} → Footer model field updates
+  - session_meta.changed{patch:{title:'my plan'}} → requestRender triggered
+  - disposer clears both subscriptions (subsequent events no-op)
+  - status.update with NaN percent → renders 0.0%, no NaN propagation
+
+Interactive pty smoke (seeing live % change during a real turn) by
+design is out-of-band on macOS (no coreutils timeout) — unit coverage
+above pins every branch the live path exercises.
+
+
+F.4.2 — --session / -r / -S picker routing
+----------------------------------------------------------------
+$ node apps/kimi-cli/dist/index.mjs --session --print -p hi
+error: --session without an id requires shell mode.
+(exit 1; grep -c "requires shell mode" == 1)
+
+$ node apps/kimi-cli/dist/index.mjs -S --wire
+error: --session without an id requires shell mode.
+
+$ node apps/kimi-cli/dist/index.mjs -r --print -p hi
+error: --session without an id requires shell mode.
+
+$ node apps/kimi-cli/dist/index.mjs --session sesX --print -p hi
+error: failed to start print mode: Session "sesX" not found under
+       /Users/moonshot/.kimi/sessions.
+(id with value flows through print mode — no picker-mode false positive)
+
+
+Test suite snapshot
+----------------------------------------------------------------
+$ cd apps/kimi-cli && npx vitest run
+  Test Files  42 passed | 1 skipped (43)
+       Tests  402 passed | 5 todo (407)
+
+$ cd packages/kimi-core && npx vitest run
+  Test Files  278 passed | 4 skipped (282)
+       Tests  2718 passed | 21 skipped | 43 todo (2782)
+
+$ pnpm run typecheck
+  0 errors
+
+$ pnpm -r build
+  all packages green

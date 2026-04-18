@@ -18,7 +18,9 @@ import type {
   CompactionEndData,
   StepInterruptedData,
   SessionErrorData,
+  SessionMetaChangedData,
 } from '../wire/index.js';
+import type { FooterFeedHandlers } from '../components/FooterComponent.js';
 import type {
   AppState,
   TranscriptEntry,
@@ -71,7 +73,7 @@ export interface SubagentRoutedPayload {
   };
 }
 
-export class WireHandler {
+export class WireHandler implements FooterFeedHandlers {
   private wireClient: WireClient;
   private sessionId: string;
   private delegate: WireHandlerDelegate;
@@ -88,6 +90,9 @@ export class WireHandler {
   private queuedMessages: QueuedMessage[] = [];
   private queueIdCounter = 0;
 
+  private statusUpdateListeners = new Set<(data: StatusUpdateData) => void>();
+  private sessionMetaChangedListeners = new Set<(data: SessionMetaChangedData) => void>();
+
   constructor(
     wireClient: WireClient,
     sessionId: string,
@@ -97,6 +102,20 @@ export class WireHandler {
     this.wireClient = wireClient;
     this.sessionId = sessionId;
     this.delegate = delegate;
+  }
+
+  onStatusUpdate(handler: (data: StatusUpdateData) => void): () => void {
+    this.statusUpdateListeners.add(handler);
+    return () => {
+      this.statusUpdateListeners.delete(handler);
+    };
+  }
+
+  onSessionMetaChanged(handler: (data: SessionMetaChangedData) => void): () => void {
+    this.sessionMetaChangedListeners.add(handler);
+    return () => {
+      this.sessionMetaChangedListeners.delete(handler);
+    };
   }
 
   private makeEntry(
@@ -312,6 +331,12 @@ export class WireHandler {
         if (data.plan_mode !== undefined) patch.planMode = data.plan_mode;
         if (data.model !== undefined) patch.model = data.model;
         if (Object.keys(patch).length > 0) this.delegate.setState(patch);
+        for (const fn of this.statusUpdateListeners) fn(data);
+        break;
+      }
+      case 'session_meta.changed': {
+        const data = msg.data as SessionMetaChangedData;
+        for (const fn of this.sessionMetaChangedListeners) fn(data);
         break;
       }
       case 'step.begin': {

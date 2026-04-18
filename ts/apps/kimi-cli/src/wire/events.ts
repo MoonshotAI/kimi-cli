@@ -126,6 +126,25 @@ export interface MCPStatus {
   tools: number;
 }
 
+/**
+ * method: "session_meta.changed" — Phase 16 / 决策 #113 wire-truth patch.
+ *
+ * Only wire-truth fields (title / tags / description / archived / color)
+ * travel on this channel; derived fields update via other channels (e.g.
+ * model.changed / status.update). The `patch` shape is kept open so
+ * forward-compatible fields arrive transparently.
+ */
+export interface SessionMetaChangedData {
+  patch: {
+    title?: string | undefined;
+    tags?: readonly string[] | undefined;
+    description?: string | undefined;
+    archived?: boolean | undefined;
+    color?: string | undefined;
+  };
+  source: 'user' | 'auto' | 'system';
+}
+
 // ── Notification Events ─────────────────────────────────────────────
 
 /** method: "notification" */
@@ -309,4 +328,5 @@ export type WireEventMethod =
   | 'skill.completed'
   | 'model.changed'
   | 'thinking.changed'
-  | 'system_prompt.changed';
+  | 'system_prompt.changed'
+  | 'session_meta.changed';
