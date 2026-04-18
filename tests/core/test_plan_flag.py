@@ -54,11 +54,15 @@ def _patch_create_deps(monkeypatch, *, session_plan_mode: bool = False):
     runtime_create_calls: list[dict] = []
 
     async def fake_runtime_create(config, _oauth, _llm, session, yolo, **kwargs):
-        runtime_create_calls.append({"yolo": yolo})
+        approval_calls: list[bool] = []
+        runtime_create_calls.append({"yolo": yolo, "approval_calls": approval_calls})
         return SimpleNamespace(
             session=session,
             config=config,
             llm=None,
+            approval=SimpleNamespace(
+                set_interactive_questions_supported=lambda supported: approval_calls.append(supported)
+            ),
             notifications=SimpleNamespace(recover=lambda: None),
             background_tasks=SimpleNamespace(reconcile=lambda: None),
         )
@@ -234,6 +238,21 @@ class TestPlanFlagPriority:
         soul = FakeSoul.instances[0]
         assert soul._set_plan_mode_calls == [(True, "manual")]
         assert runtime_create_calls[0]["yolo"] is True
+        assert runtime_create_calls[0]["approval_calls"] == [True]
+
+    @pytest.mark.asyncio
+    async def test_create_can_mark_client_as_non_interactive(self, session, config, monkeypatch):
+        FakeSoul, runtime_create_calls = _patch_create_deps(monkeypatch)
+
+        await KimiCLI.create(
+            session,
+            config=config,
+            resumed=False,
+            supports_interactive_questions=False,
+        )
+
+        assert FakeSoul.instances
+        assert runtime_create_calls[0]["approval_calls"] == [False]
 
 
 class TestSchedulePlanActivationReminder:

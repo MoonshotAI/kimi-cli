@@ -109,6 +109,7 @@ class KimiCLI:
         max_ralph_iterations: int | None = None,
         startup_progress: Callable[[str], None] | None = None,
         defer_mcp_loading: bool = False,
+        supports_interactive_questions: bool = True,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -135,6 +136,8 @@ class KimiCLI:
                 interactive startup UI. Defaults to None.
             defer_mcp_loading (bool, optional): Defer MCP startup until the interactive shell is
                 ready. Defaults to False.
+            supports_interactive_questions (bool, optional): Whether the connected client can
+                answer QuestionRequest interactively. Defaults to True.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -216,6 +219,7 @@ class KimiCLI:
             yolo,
             skills_dirs=skills_dirs,
         )
+        runtime.approval.set_interactive_questions_supported(supports_interactive_questions)
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
@@ -548,6 +552,7 @@ class KimiCLI:
         """Run the Kimi Code CLI instance with print UI."""
         from kimi_cli.ui.print import Print
 
+        self._runtime.approval.set_interactive_questions_supported(False)
         async with self._env():
             print_ = Print(
                 self._soul,
@@ -562,6 +567,7 @@ class KimiCLI:
         """Run the Kimi Code CLI instance as ACP server."""
         from kimi_cli.ui.acp import ACP
 
+        self._runtime.approval.set_interactive_questions_supported(False)
         async with self._env():
             acp = ACP(self._soul)
             await acp.run()

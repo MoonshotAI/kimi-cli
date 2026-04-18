@@ -620,13 +620,9 @@ def kimi(
                 max_ralph_iterations=max_ralph_iterations,
                 startup_progress=startup_progress.update if ui == "shell" else None,
                 defer_mcp_loading=ui == "shell" and prompt is None,
+                supports_interactive_questions=ui not in ("print", "acp"),
             )
             startup_progress.stop()
-
-            # Print/ACP clients cannot resolve QuestionRequest interactively;
-            # keep yolo short-circuit behavior for questions and plan approval.
-            if ui in ("print", "acp"):
-                instance.soul.runtime.approval.set_interactive_questions_supported(False)
 
             # --- SessionStart hook ---
             _session_source = "resume" if resumed else "startup"
