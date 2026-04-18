@@ -47,8 +47,8 @@
 - Think chunks -> `AgentThoughtChunk`.
 - Tool calls:
   - Start -> `ToolCallStart` with JSON args as text content.
-  - Streaming args -> `ToolCallProgress` with updated title and the latest
-    incremental argument chunk.
+  - Streaming args -> `ToolCallProgress` with the current accumulated args
+    snapshot when the tool title changes.
   - Results -> `ToolCallProgress` with `completed` or `failed`.
   - Tool call IDs are prefixed with turn ID to avoid collisions across turns.
 - Plan updates:

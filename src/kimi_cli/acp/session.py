@@ -323,26 +323,32 @@ class ACPSession:
         ):
             return
 
-        # Append new arguments part to the last tool call
-        self._turn_state.last_tool_call.append_args_part(part.arguments_part)
+        state = self._turn_state.last_tool_call
+        previous_title = state.get_title()
+        state.append_args_part(part.arguments_part)
+        current_title = state.get_title()
 
-        # Keep the full args in state for title extraction, but only send the
-        # newly streamed chunk to avoid repeatedly resending large payloads.
+        # ToolCallProgress.content replaces the current content collection, so
+        # only emit an update when the user-visible title changes and send the
+        # current accumulated args snapshot for that state.
+        if current_title == previous_title:
+            return
+
         update = acp.schema.ToolCallProgress(
             session_update="tool_call_update",
-            tool_call_id=self._turn_state.last_tool_call.acp_tool_call_id,
-            title=self._turn_state.last_tool_call.get_title(),
+            tool_call_id=state.acp_tool_call_id,
+            title=current_title,
             status="in_progress",
             content=[
                 acp.schema.ContentToolCallContent(
                     type="content",
-                    content=acp.schema.TextContentBlock(type="text", text=part.arguments_part),
+                    content=acp.schema.TextContentBlock(type="text", text=state.args),
                 )
             ],
         )
 
         await self._conn.session_update(session_id=self._id, update=update)
-        logger.debug("Sent tool call update: {delta}", delta=part.arguments_part[:50])
+        logger.debug("Sent tool call update: {title}", title=current_title)
 
     async def _send_tool_result(self, result: ToolResult):
         """Send tool result to client."""

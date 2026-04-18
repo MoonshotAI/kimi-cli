@@ -31,30 +31,27 @@ class _StreamingToolCallCLI:
 
 
 @pytest.mark.asyncio
-async def test_acp_tool_call_progress_does_not_resend_accumulated_arguments() -> None:
+async def test_acp_tool_call_progress_only_updates_when_streaming_title_changes() -> None:
     conn = _FakeConn()
     session = ACPSession("session-1", _StreamingToolCallCLI(), conn)  # type: ignore[arg-type]
 
     response = await session.prompt([acp.text_block("hello")])
 
     assert response.stop_reason == "end_turn"
-    assert len(conn.updates) == 4
+    assert len(conn.updates) == 2
 
     start_update = conn.updates[0][1]
-    progress_updates = [update for _, update in conn.updates[1:]]
+    progress_update = conn.updates[1][1]
 
     assert start_update.session_update == "tool_call"
     assert start_update.content[0].content.text == "{"
 
-    # Intermediate progress updates may carry the new chunk for preview, but must
-    # not resend the full accumulated arguments each time.
-    assert all(update.session_update == "tool_call_update" for update in progress_updates)
-    assert all(update.status == "in_progress" for update in progress_updates)
-    assert [update.content[0].content.text for update in progress_updates] == [
-        '"path":"big.py",',
-        '"content":"line 1\\n',
-        'line 2\\nline 3"}',
-    ]
+    # ToolCallProgress.content replaces the current content collection, so ACP
+    # only sends a progress update when the title changes and includes the
+    # accumulated args snapshot for that new title.
+    assert progress_update.session_update == "tool_call_update"
+    assert progress_update.status == "in_progress"
+    assert progress_update.content[0].content.text == '{"path":"big.py",'
 
     # Title extraction should still work even when the streamed JSON is incomplete.
-    assert progress_updates[-1].title == "WriteFile: big.py"
+    assert progress_update.title == "WriteFile: big.py"
