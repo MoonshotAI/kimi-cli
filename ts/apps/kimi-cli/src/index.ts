@@ -804,6 +804,23 @@ async function runWire(opts: CLIOptions): Promise<void> {
   const eventBus = new SessionEventBus();
   const hookEngine = new HookEngine({ executors: new Map(), sink: eventBus });
 
+  // Phase 18 §E.3-E.5 — per-process BPM handed to wire handlers so
+  // session.getBackgroundTasks / stopBackgroundTask / getBackgroundTaskOutput
+  // dispatch to live tasks instead of throwing 'no BPM wired' on stop calls
+  // or returning shape-inconsistent error envelopes (see default-handlers.ts
+  // L537 / L559-L562 / L583-L589). --wire registers `tools: []` below, so
+  // no tool currently registers a background task against this BPM;
+  // persistence (attachSessionDir / loadFromDisk / reconcile) is deferred
+  // until multi-session BPM wiring is designed.
+  //
+  // Multi-session note: this BPM is process-scoped. list() returns tasks
+  // across ALL sessions without session_id filtering. Currently safe
+  // because tools: [] keeps the list empty. When --wire starts registering
+  // real tasks (e.g. BashTool), either (a) create a per-session BPM via
+  // factory and attach at createSession time, or (b) tag tasks with
+  // session_id and filter in the session.getBackgroundTasks handler.
+  const backgroundManager = new BackgroundProcessManager();
+
   // Phase 17 §A.1 / §C.1 — the orchestrator's sessionId closure
   // reads the session id most-recently created through this runner.
   // enforceResultBudget writes tool result archives to

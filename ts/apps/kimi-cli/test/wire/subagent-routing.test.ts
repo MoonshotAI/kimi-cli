@@ -12,6 +12,10 @@ function makeRouted(
   agentName?: string,
 ): WireMessage {
   return {
+    id: 'evt_test',
+    time: 1,
+    from: 'core',
+    to: 'client',
     type: 'event',
     method: 'subagent.event',
     session_id: 'ses_1',
@@ -47,6 +51,7 @@ function makeStubDelegate(): {
       theme: 'dark',
       version: '0.0.0',
       editorCommand: null,
+      availableModels: {},
     }),
     setState: () => {},
     getLivePane: () => ({
@@ -55,6 +60,7 @@ function makeStubDelegate(): {
       pendingQuestion: null,
       pendingToolCall: null,
       thinkingText: '',
+      assistantText: '',
     }),
     setLivePane: () => {},
     patchLivePane: () => {},
@@ -99,6 +105,10 @@ describe('WireHandler subagent.event routing', () => {
     const { delegate, routed } = makeStubDelegate();
     const handler = new WireHandler(fakeClient, 'ses_1', delegate, darkColors);
     const msg: WireMessage = {
+      id: 'evt_test',
+      time: 1,
+      from: 'core',
+      to: 'client',
       type: 'event',
       method: 'subagent.event',
       session_id: 'ses_1',
@@ -116,6 +126,10 @@ describe('WireHandler subagent.event routing', () => {
     const { delegate, routed } = makeStubDelegate();
     const handler = new WireHandler(fakeClient, 'ses_1', delegate, darkColors);
     const msg: WireMessage = {
+      id: 'evt_test',
+      time: 1,
+      from: 'core',
+      to: 'client',
       type: 'event',
       method: 'subagent.event',
       session_id: 'ses_1',

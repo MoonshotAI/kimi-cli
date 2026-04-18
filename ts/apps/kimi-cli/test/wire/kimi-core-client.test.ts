@@ -32,11 +32,31 @@ interface FakeManagedState {
   fireLifecycle: (event: TurnLifecycleEvent) => void;
 }
 
-function createFakeStack(): {
+interface FakeStack {
   sessionManager: any;
   states: Map<string, FakeManagedState>;
   resumeCalls: string[];
-} {
+  renameCalls: Array<{ id: string; title: string }>;
+  setStubStatus: (status: string) => void;
+  setStubUsage: (usage: {
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_cache_read_tokens: number;
+    total_cache_write_tokens: number;
+    total_cost_usd: number;
+  }) => void;
+  setStubList: (
+    list: Array<{
+      session_id: string;
+      created_at: number;
+      workspace_dir?: string;
+      title?: string;
+      last_activity?: number;
+    }>,
+  ) => void;
+}
+
+function createFakeStack(): FakeStack {
   const states = new Map<string, FakeManagedState>();
   const resumeCalls: string[] = [];
   let nextId = 0;

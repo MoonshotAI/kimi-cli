@@ -9,6 +9,10 @@ type TodoStatus = 'pending' | 'in_progress' | 'done';
 
 function makeToolCallMsg(id: string, name: string, args: Record<string, unknown>): WireMessage {
   return {
+    id: 'evt_test',
+    time: 1,
+    from: 'core',
+    to: 'client',
     type: 'event',
     method: 'tool.call',
     session_id: 'ses_1',
@@ -23,6 +27,10 @@ function makeToolResultMsg(
   is_error = false,
 ): WireMessage {
   return {
+    id: 'evt_test',
+    time: 1,
+    from: 'core',
+    to: 'client',
     type: 'event',
     method: 'tool.result',
     session_id: 'ses_1',
@@ -64,6 +72,7 @@ function makeStubDelegate(): {
       pendingQuestion: null,
       pendingToolCall: null,
       thinkingText: '',
+      assistantText: '',
     }),
     setLivePane: () => {},
     patchLivePane: () => {},
