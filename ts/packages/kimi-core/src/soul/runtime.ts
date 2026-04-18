@@ -9,10 +9,17 @@
  *
  * Compaction is now orchestrated by `TurnManager.executeCompaction`; Soul
  * only reports `TurnResult.stopReason='needs_compaction'` when the
- * threshold gate fires. The `CompactionProvider` / `LifecycleGate` /
- * `JournalCapability` interfaces below are retained as exported types so
- * `TurnManagerDeps` and tests can reference them, but they are no longer
- * members of `Runtime`.
+ * threshold gate fires.
+ *
+ * Phase 20 §C.1 (R-3): `CompactionProvider` / `LifecycleGate` /
+ * `JournalCapability` — and their supporting types — **no longer live
+ * in this file**. They now reside with their SoulPlus owners
+ * (`soul-plus/compaction-provider.ts` / `soul-plus/soul-lifecycle-gate.ts`
+ * / `soul-plus/journal-capability.ts`). We re-export them below as
+ * type-only aliases so the ~59 existing `from '../soul/runtime.js'`
+ * imports keep resolving without a repo-wide rename. Re-exports are
+ * type-only — TypeScript erases them at emit, so Soul code still
+ * cannot reach SoulPlus at runtime (铁律 3 holds).
  *
  * Adding any field beyond `kosong` is an explicit ADR-level decision — in
  * particular `tools`, `subagentHost`, `clock`, `logger`, `idGenerator` are
@@ -129,88 +136,26 @@ export interface KosongAdapter {
   getCapability?(model?: string): ModelCapability | undefined;
 }
 
-// ── Compaction provider ────────────────────────────────────────────────
+// ── SoulPlus-owned capabilities — re-exported for backward compat ──────
 
-/**
- * v2 §附录 D.4 — the opaque summary carrier returned from compaction.
- * Slice 2 treats this as a data container; its final shape is reconciled
- * against Slice 1's `SummaryMessage` during Slice 6 (Compaction).
- */
-export interface SummaryMessage {
-  content: string;
-  original_turn_count?: number | undefined;
-  original_token_count?: number | undefined;
-}
+// Phase 20 §C.1 (R-3) — these types describe SoulPlus-owned capabilities
+// (compaction / lifecycle / journal). Their declarations live in the
+// soul-plus modules that implement them. We re-export here as type-only
+// so the legacy `from '../soul/runtime.js'` imports continue to resolve;
+// TypeScript erases the re-export, so Soul's runtime module graph still
+// contains no path to SoulPlus (铁律 3 preserved).
 
-export interface CompactionOptions {
-  targetTokens?: number | undefined;
-  userInstructions?: string | undefined;
-}
-
-export interface CompactionProvider {
-  /**
-   * Run compaction on the given message history and return a single opaque
-   * summary blob (SummaryMessage { content: string }).
-   *
-   * Contract (决策 #101): if the input `messages` array ends with an
-   * **unpaired user message** (one without a following assistant response),
-   * the implementation must preserve that user message verbatim in the
-   * post-compaction conversation state, as a separate standalone message —
-   * not folded / paraphrased / merely mentioned inside the summary text.
-   *
-   * Rationale: if a user types a short prompt at the tail of a
-   * context-overflowing conversation and Soul triggers compaction on step 0,
-   * the summary would absorb their prompt and the LLM would see no standalone
-   * "pending user message" to respond to, causing the turn to end with no
-   * response. TurnManager enforces this contract with a guard after calling
-   * `run()` (see TurnManager.executeCompaction — tail user_message guard).
-   */
-  run(
-    messages: Message[],
-    signal: AbortSignal,
-    options?: CompactionOptions,
-  ): Promise<SummaryMessage>;
-}
-
-// ── Lifecycle gate (narrow Soul view of §5.8.2) ────────────────────────
-
-/**
- * `transitionTo` exposes exactly three of the five internal lifecycle
- * states. `idle` / `destroying` are managed by SoulPlus and
- * intentionally invisible at this layer.
- *
- * Phase 2: no longer part of the Runtime aggregate — SoulPlus and
- * TurnManager use `SessionLifecycleStateMachine.transitionTo` directly.
- * This interface is retained as an exported type so existing test
- * fixtures and Phase 4 refactors can still reference it.
- */
-export interface LifecycleGate {
-  transitionTo(state: 'active' | 'compacting' | 'completing'): Promise<void>;
-}
-
-// ── Journal capability (physical file rotation for compaction) ─────────
-
-/**
- * Slice 2 placeholder for the CompactionBoundaryRecord shape. The real
- * WireRecord union lives in `src/storage/wire-record.ts`; we re-declare a
- * tiny structural shape here so Soul does not import the wire-record
- * implementation module (import whitelist, §5.0 rule 3). Slice 6
- * Compaction may swap this for a precise structural alias.
- */
-export interface CompactionBoundaryRecord {
-  type: 'compaction_boundary';
-  summary: SummaryMessage;
-  parent_file: string;
-}
-
-export interface RotateResult {
-  /** Basename of the archive file created by rotation (e.g. `wire.1.jsonl`). */
-  archiveFile: string;
-}
-
-export interface JournalCapability {
-  rotate(boundaryRecord: CompactionBoundaryRecord): Promise<RotateResult>;
-}
+export type {
+  CompactionOptions,
+  CompactionProvider,
+  SummaryMessage,
+} from '../soul-plus/compaction-provider.js';
+export type { LifecycleGate } from '../soul-plus/soul-lifecycle-gate.js';
+export type {
+  CompactionBoundaryRecord,
+  JournalCapability,
+  RotateResult,
+} from '../soul-plus/journal-capability.js';
 
 // ── Runtime container ──────────────────────────────────────────────────
 

@@ -37,9 +37,6 @@ function createNotificationManager(overrides?: {
     sessionJournal: journal,
     sessionEventBus: eventBus,
     onEmittedToLlm: overrides?.onEmittedToLlm ?? ((n) => llmSink.push(n)),
-    logger: () => {
-      /* swallow */
-    },
   });
   return { manager, journal, eventBus, llmSink };
 }

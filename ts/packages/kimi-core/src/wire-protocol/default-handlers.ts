@@ -214,6 +214,11 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
         // CLI runners will populate it from loaded config.
         hooks: {
           supported_events: HOOK_SUPPORTED_EVENTS,
+          // Production currently ships no pre-configured hooks. When
+          // hook-config loading lands, map entries through the same
+          // string-only matcher normalisation used in
+          // `test/helpers/wire/default-handlers.ts` so that `{}` / `null`
+          // matchers cannot leak into the wire capability blob (R-2).
           configured: [],
         },
       },
@@ -419,7 +424,7 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     return createWireResponse({
       requestId: msg.id,
       sessionId: msg.session_id,
-      data: { messages: history as unknown as readonly unknown[] },
+      data: { messages: history },
     });
   });
 

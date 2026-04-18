@@ -116,11 +116,19 @@ export class SessionEventBus implements EventSink {
    * (notification is an §5.2.4 SoulPlus concern, not a §5.2.1 Soul one).
    * Listener errors are swallowed with the same safeEmit discipline as
    * `emit` — a misbehaving wire subscriber cannot block other sinks.
+   *
+   * Phase 20 §C.3 (R-5) — optional `onError` callback lets callers
+   * observe swallowed listener exceptions without breaking the bus-
+   * accepted delivery semantic (`delivered_at.wire` still fires). The
+   * callback runs in the bus frame; its own errors are ignored.
    */
-  emitNotification(notif: NotificationData): void {
+  emitNotification(
+    notif: NotificationData,
+    onError?: (err: unknown) => void,
+  ): void {
     const snapshot = this.notificationListeners.slice();
     for (const listener of snapshot) {
-      safeDispatch(listener, notif);
+      safeDispatch(listener, notif, onError);
     }
   }
 
@@ -162,11 +170,25 @@ export class SessionEventBus implements EventSink {
  * and swallowed; an async rejection is caught via a terminal `.catch`
  * so nothing reaches Node's unhandled-rejection handler.
  */
-function safeDispatch<A>(fn: (arg: A) => void | Promise<void>, arg: A): void {
+function safeDispatch<A>(
+  fn: (arg: A) => void | Promise<void>,
+  arg: A,
+  onError?: (err: unknown) => void,
+): void {
+  const reportError = (error: unknown): void => {
+    if (onError === undefined) return;
+    try {
+      onError(error);
+    } catch {
+      // A faulty onError callback must not crash the dispatcher.
+    }
+  };
+
   let maybePromise: void | Promise<void>;
   try {
     maybePromise = fn(arg);
-  } catch {
+  } catch (error) {
+    reportError(error);
     return;
   }
   if (
@@ -175,8 +197,8 @@ function safeDispatch<A>(fn: (arg: A) => void | Promise<void>, arg: A): void {
     typeof (maybePromise as { then?: unknown }).then === 'function' &&
     typeof (maybePromise as { catch?: unknown }).catch === 'function'
   ) {
-    maybePromise.catch(() => {
-      // swallow async listener rejection
+    maybePromise.catch((error: unknown) => {
+      reportError(error);
     });
   }
 }

@@ -299,14 +299,11 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
           ],
           configured: initialHooks.map((h) => ({
             event: h.event,
-            ...(h.matcher !== undefined ? { matcher: h.matcher } : {}),
+            ...(typeof h.matcher === 'string' && h.matcher.length > 0
+              ? { matcher: h.matcher }
+              : {}),
           })),
         },
-      } as InitializeResponseData['capabilities'] & {
-        hooks: {
-          supported_events: string[];
-          configured: Array<{ event: string; matcher?: string }>;
-        };
       },
       // Phase 18 A.1 — top-level external_tools summary. Lives on the
       // response `data`, not inside `capabilities`, so the client can
@@ -882,7 +879,7 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     return createWireResponse({
       requestId: msg.id,
       sessionId: msg.session_id,
-      data: { messages: history as unknown as readonly unknown[] },
+      data: { messages: history },
     });
   });
 

@@ -83,6 +83,8 @@ import { LocalFetchURLProvider } from './providers/local-fetch-url.js';
 import { MoonshotFetchURLProvider } from './providers/moonshot-fetch-url.js';
 import { MoonshotWebSearchProvider } from './providers/moonshot-web-search.js';
 import { StubWebSearchProvider } from './providers/stub-web-search.js';
+import { getLogger } from './utils/logger.js';
+import { pinoToLogger } from './utils/pino-adapter.js';
 import type { WireClient } from './wire/client.js';
 import { KimiCoreClient } from './wire/kimi-core-client.js';
 import type { PerSessionToolContext } from './wire/kimi-core-client.js';
@@ -347,6 +349,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
       const parsed = parseMcpConfig(mcpConfig);
       mcpManager = new MCPManager({
         config: parsed,
+        logger: pinoToLogger(getLogger()).child({ component: 'mcp-manager' }),
         onNotify: (notif: McpLoadNotification) => {
           if (notif.kind === 'loading') {
             process.stderr.write(`[mcp] ${notif.serverName}: connecting...\n`);

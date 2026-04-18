@@ -23,6 +23,7 @@ import type { PathConfig } from '../session/path-config.js';
 import type { FullContextState } from '../storage/context-state.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import { AgentTool } from '../tools/agent.js';
+import type { Logger } from '../utils/logger.js';
 import type { AgentTypeRegistry } from './agent-type-registry.js';
 import type { ApprovalStateStore } from './approval-state-store.js';
 import { CompactionOrchestrator } from './compaction-orchestrator.js';
@@ -110,6 +111,12 @@ export interface SoulPlusDeps {
    * abstraction.
    */
   readonly approvalStateStore?: ApprovalStateStore | undefined;
+  /**
+   * Phase 20 §C.3 / R-5 — structured logger forwarded to inner
+   * components (e.g. NotificationManager). Defaults to a silent logger;
+   * production hosts inject their pino adapter.
+   */
+  readonly logger?: Logger | undefined;
 }
 
 export class SoulPlus {
@@ -303,6 +310,7 @@ export class SoulPlus {
       sessionEventBus: eventBus,
       contextState,
       ...(deps.onShellDeliver !== undefined ? { onShellDeliver: deps.onShellDeliver } : {}),
+      ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
     });
 
     // ── Phase 16 — SessionMetaService (services facade slot) ───────

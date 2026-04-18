@@ -110,9 +110,6 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
       onShellDeliver: () => {
         shellCalled = true;
       },
-      logger: () => {
-        // noop
-      },
     });
 
     await expect(manager.emit(baseInput())).resolves.toMatchObject({ deduped: false });
@@ -136,9 +133,6 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
       },
       onShellDeliver: () => {
         throw new Error('shell boom');
-      },
-      logger: () => {
-        // noop
       },
     });
 
@@ -239,9 +233,6 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
       onEmittedToLlm: () => {
         // noop
       },
-      logger: () => {
-        // noop
-      },
     });
 
     const result = await manager.emit(baseInput());
@@ -261,9 +252,6 @@ describe('NotificationManager.emit (Slice 2.4)', () => {
       sessionJournal: journal,
       sessionEventBus: eventBus,
       onEmittedToLlm: () => {
-        // noop
-      },
-      logger: () => {
         // noop
       },
     });

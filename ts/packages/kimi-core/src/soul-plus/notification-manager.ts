@@ -35,6 +35,7 @@ import type { HookEngine } from '../hooks/engine.js';
 import type { NotificationInput } from '../hooks/types.js';
 import type { SessionJournal } from '../storage/session-journal.js';
 import type { NotificationRecord } from '../storage/wire-record.js';
+import { noopLogger, type Logger } from '../utils/logger.js';
 import type { SessionEventBus } from './session-event-bus.js';
 
 /**
@@ -88,10 +89,14 @@ export interface NotificationManagerDeps {
     | undefined;
   readonly onShellDeliver?: ShellDeliverCallback | undefined;
   /**
-   * Optional logger for swallowed fan-out errors. Defaults to
-   * `console.warn`. Tests inject a spy.
+   * Optional structured logger for swallowed fan-out errors. Defaults to
+   * `noopLogger` (silent) — kimi-core must not touch `console.*`.
+   * Callers that need a live sink inject a `Logger` (e.g. the pino
+   * adapter in apps/kimi-cli). Phase 20 §C.3 / R-5: the previous
+   * `(msg, err) => void` callback shape was retired; the three internal
+   * call sites migrated in the same commit.
    */
-  readonly logger?: ((msg: string, err: unknown) => void) | undefined;
+  readonly logger?: Logger | undefined;
   /**
    * Slice 3.6 — optional hook engine reference. When set, each `emit`
    * call fires the `Notification` hook event after the fan-out
@@ -301,9 +306,12 @@ export class NotificationManager {
     if (wantsWire) {
       try {
         // delivered_at.wire = "bus accepted the dispatch". Per-listener
-        // errors are swallowed by SessionEventBus.safeDispatch; see the
-        // emit() JSDoc N.B. for the full semantics.
-        this.deps.sessionEventBus.emitNotification(data);
+        // errors are swallowed by SessionEventBus.safeDispatch; the
+        // `onError` callback observes them without breaking the
+        // bus-accepted delivery semantic.
+        this.deps.sessionEventBus.emitNotification(data, (err) => {
+          this.logWarn('notification wire sink failed', err);
+        });
         deliveredAt.wire = Date.now();
       } catch (error) {
         this.logWarn('notification wire sink failed', error);
@@ -414,11 +422,6 @@ export class NotificationManager {
   }
 
   private logWarn(msg: string, err: unknown): void {
-    if (this.deps.logger !== undefined) {
-      this.deps.logger(msg, err);
-      return;
-    }
-    // eslint-disable-next-line no-console
-    console.warn(msg, err);
+    (this.deps.logger ?? noopLogger).warn(msg, { err });
   }
 }

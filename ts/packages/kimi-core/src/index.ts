@@ -159,6 +159,8 @@ export {
 export type { FileType } from './tools/file-type.js';
 export { detectEnvironment, detectEnvironmentFromNode } from './utils/environment.js';
 export type { Environment, EnvironmentDeps, OsKind, ShellName } from './utils/environment.js';
+export { consoleLogger, noopLogger } from './utils/logger.js';
+export type { Logger } from './utils/logger.js';
 
 // ── Slice 4.3 tools (host-injected collaboration set) ─────────────────
 export { ReadTool } from './tools/read.js';

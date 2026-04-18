@@ -10,9 +10,33 @@
 
 import { basename } from 'node:path';
 
-import type { CompactionBoundaryRecord, JournalCapability, RotateResult } from '../soul/index.js';
 import { rotateJournal } from '../storage/compaction.js';
 import type { WiredJournalWriter } from '../storage/journal-writer.js';
+import type { SummaryMessage } from './compaction-provider.js';
+
+// ── Journal types (moved here from src/soul/runtime.ts — Phase 20 §C.1 / R-3) ──
+
+/**
+ * Slice 2 placeholder for the CompactionBoundaryRecord shape. The real
+ * WireRecord union lives in `src/storage/wire-record.ts`; we re-declare a
+ * tiny structural shape here so Soul does not import the wire-record
+ * implementation module (import whitelist, §5.0 rule 3). Slice 6
+ * Compaction may swap this for a precise structural alias.
+ */
+export interface CompactionBoundaryRecord {
+  type: 'compaction_boundary';
+  summary: SummaryMessage;
+  parent_file: string;
+}
+
+export interface RotateResult {
+  /** Basename of the archive file created by rotation (e.g. `wire.1.jsonl`). */
+  archiveFile: string;
+}
+
+export interface JournalCapability {
+  rotate(boundaryRecord: CompactionBoundaryRecord): Promise<RotateResult>;
+}
 
 export interface WiredJournalCapabilityDeps {
   /** Absolute path to the session directory containing wire.jsonl. */

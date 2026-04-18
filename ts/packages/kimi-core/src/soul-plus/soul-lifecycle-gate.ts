@@ -26,13 +26,28 @@
  * facing gate deserves its own unambiguous name.
  */
 
-import type { LifecycleGate as SoulRuntimeLifecycleGate } from '../soul/index.js';
 import type {
   LifecycleGate as JournalLifecycleGate,
   LifecycleState,
 } from '../storage/journal-writer.js';
 import type { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
 import type { SessionLifecycleState } from './types.js';
+
+// ── Lifecycle types (moved here from src/soul/runtime.ts — Phase 20 §C.1 / R-3) ──
+
+/**
+ * `transitionTo` exposes exactly three of the five internal lifecycle
+ * states. `idle` / `destroying` are managed by SoulPlus and
+ * intentionally invisible at this layer.
+ *
+ * Phase 2: no longer part of the Runtime aggregate — SoulPlus and
+ * TurnManager use `SessionLifecycleStateMachine.transitionTo` directly.
+ * This interface is retained as an exported type so existing test
+ * fixtures and Phase 4 refactors can still reference it.
+ */
+export interface LifecycleGate {
+  transitionTo(state: 'active' | 'compacting' | 'completing'): Promise<void>;
+}
 
 function mapTo3(internal: SessionLifecycleState): LifecycleState {
   switch (internal) {
@@ -51,7 +66,7 @@ function mapTo3(internal: SessionLifecycleState): LifecycleState {
   }
 }
 
-export class SoulLifecycleGate implements JournalLifecycleGate, SoulRuntimeLifecycleGate {
+export class SoulLifecycleGate implements JournalLifecycleGate, LifecycleGate {
   constructor(private readonly stateMachine: SessionLifecycleStateMachine) {}
 
   /** Satisfies Slice 1 `LifecycleGate` — the JournalWriter read-side gate. */

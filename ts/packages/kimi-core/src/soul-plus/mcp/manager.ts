@@ -32,6 +32,7 @@
  */
 
 import type { Tool } from '../../soul/index.js';
+import { noopLogger, type Logger } from '../../utils/logger.js';
 import { HttpMcpClient, StdioMcpClient, type MCPClient, type McpStderrCallback } from './client.js';
 import { isHttpServer, isStdioServer, type McpConfig, type McpServerConfig } from './config.js';
 import { mcpToolToKimiTool } from './tool-adapter.js';
@@ -74,6 +75,13 @@ export interface MCPManagerOptions {
    * SDK transports.
    */
   readonly clientFactory?: McpClientFactory | undefined;
+  /**
+   * Phase 20 §C.3 / R-5 — structured logger used when a per-server
+   * `client.close()` throws during shutdown. Defaults to `noopLogger`
+   * so tests that don't care about the error path stay silent.
+   * Production callers inject the pino adapter (via apps/kimi-cli).
+   */
+  readonly logger?: Logger | undefined;
 }
 
 export type McpClientFactory = (
@@ -97,6 +105,7 @@ export class MCPManager {
   private readonly onStderr: McpStderrCallback | undefined;
   private readonly toolCallTimeoutMs: number | undefined;
   private readonly clientFactory: McpClientFactory;
+  private readonly logger: Logger;
   private loaded = false;
 
   constructor(options: MCPManagerOptions) {
@@ -104,6 +113,7 @@ export class MCPManager {
     this.onStderr = options.onStderr;
     this.toolCallTimeoutMs = options.toolCallTimeoutMs;
     this.clientFactory = options.clientFactory ?? defaultClientFactory;
+    this.logger = options.logger ?? noopLogger;
 
     for (const [name, serverConfig] of Object.entries(options.config.mcpServers)) {
       const client = this.clientFactory(name, serverConfig, this.onStderr);
@@ -175,11 +185,13 @@ export class MCPManager {
         } catch (error) {
           // Cleanup must not throw — session is already on its way
           // out and we just want to release fds. We do NOT bubble
-          // this up, but we do leave a breadcrumb on stderr so a
+          // this up, but we leave a structured breadcrumb so a
           // developer tracking a zombie subprocess can see the
           // original failure instead of chasing a silent drop.
-          // eslint-disable-next-line no-console
-          console.warn(`[mcp-manager] error while closing server "${state.name}":`, error);
+          this.logger.warn('[mcp-manager] error while closing server', {
+            server_name: state.name,
+            err: error,
+          });
         }
       }),
     );

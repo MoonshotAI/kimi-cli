@@ -16,7 +16,55 @@
 import { generate } from '@moonshot-ai/kosong';
 import type { ChatProvider, Message } from '@moonshot-ai/kosong';
 
-import type { CompactionOptions, CompactionProvider, SummaryMessage } from '../soul/index.js';
+// ── Compaction types (moved here from src/soul/runtime.ts — Phase 20 §C.1 / R-3) ──
+//
+// Ownership: these interfaces describe a SoulPlus-owned capability that
+// the Soul layer never directly executes. They live in this module (the
+// real implementation site) and are re-exported from `src/soul/runtime.ts`
+// for backward-compatible imports. The re-export is type-only, so
+// TypeScript erases it and Soul gains no runtime reference to SoulPlus
+// (铁律 3 preserved).
+
+/**
+ * v2 §附录 D.4 — the opaque summary carrier returned from compaction.
+ * Slice 2 treats this as a data container; its final shape is reconciled
+ * against Slice 1's `SummaryMessage` during Slice 6 (Compaction).
+ */
+export interface SummaryMessage {
+  content: string;
+  original_turn_count?: number | undefined;
+  original_token_count?: number | undefined;
+}
+
+export interface CompactionOptions {
+  targetTokens?: number | undefined;
+  userInstructions?: string | undefined;
+}
+
+export interface CompactionProvider {
+  /**
+   * Run compaction on the given message history and return a single opaque
+   * summary blob (SummaryMessage { content: string }).
+   *
+   * Contract (决策 #101): if the input `messages` array ends with an
+   * **unpaired user message** (one without a following assistant response),
+   * the implementation must preserve that user message verbatim in the
+   * post-compaction conversation state, as a separate standalone message —
+   * not folded / paraphrased / merely mentioned inside the summary text.
+   *
+   * Rationale: if a user types a short prompt at the tail of a
+   * context-overflowing conversation and Soul triggers compaction on step 0,
+   * the summary would absorb their prompt and the LLM would see no standalone
+   * "pending user message" to respond to, causing the turn to end with no
+   * response. TurnManager enforces this contract with a guard after calling
+   * `run()` (see TurnManager.executeCompaction — tail user_message guard).
+   */
+  run(
+    messages: Message[],
+    signal: AbortSignal,
+    options?: CompactionOptions,
+  ): Promise<SummaryMessage>;
+}
 
 const COMPACTION_SYSTEM_PROMPT =
   'You are a helpful assistant that compacts conversation context. ' +

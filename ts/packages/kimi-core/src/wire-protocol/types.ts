@@ -10,6 +10,7 @@
  *   3. `AssertEqual` drift guard
  */
 
+import type { Message } from '@moonshot-ai/kosong';
 import { z } from 'zod';
 
 // ── Drift-guard utility ──────────────────────────────────────────────────
@@ -239,6 +240,22 @@ export interface InitializeResponseData {
   capabilities: {
     events?: readonly string[] | undefined;
     methods?: readonly string[] | undefined;
+    /**
+     * Phase 20 §B.2 (R-2) — `hooks` is a first-class capability field,
+     * not a stowaway under the `Record<string, unknown>` tail. The
+     * handler always advertises it (bare `configured: []` when no hook
+     * is wired), which is why the shape is required here. Each
+     * `configured` entry's `matcher` is optional and narrowed to
+     * `string` (handler normalises non-string inputs by dropping the
+     * key entirely).
+     */
+    hooks: {
+      supported_events: readonly string[];
+      configured: ReadonlyArray<{
+        event: string;
+        matcher?: string | undefined;
+      }>;
+    };
   } & Record<string, unknown>;
   session_id?: string | undefined;
 }
@@ -323,7 +340,7 @@ export interface SessionGetStatusResponseData {
 // ── Session getHistory data ─────────────────────────────────────────────
 
 export interface SessionGetHistoryResponseData {
-  messages: unknown[];
+  messages: readonly Message[];
 }
 
 // ── Config change data types ────────────────────────────────────────────

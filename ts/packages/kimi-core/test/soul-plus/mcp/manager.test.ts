@@ -19,6 +19,7 @@ import type {
 } from '../../../src/soul-plus/mcp/client.js';
 import type { McpConfig, McpServerConfig } from '../../../src/soul-plus/mcp/config.js';
 import { MCPManager, type McpLoadNotification } from '../../../src/soul-plus/mcp/manager.js';
+import type { Logger } from '../../../src/utils/logger.js';
 
 interface FakeTraits {
   readonly failOnConnect?: boolean;
@@ -212,6 +213,20 @@ describe('MCPManager.close', () => {
   it('logs a warning on per-server close errors but still finishes cleanly (N3)', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
+      // Phase 20 R-5: console.warn fallback replaced with an injected
+      // Logger. We record the warn calls on the Logger instead of on
+      // `console.warn`; the final assertion continues to verify that
+      // close() surfaces the failing server through the log sink.
+      const warnCalls: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+      const logger: Logger = {
+        debug: () => {},
+        info: () => {},
+        warn: (msg, meta) => {
+          warnCalls.push({ msg, ...(meta !== undefined ? { meta } : {}) });
+        },
+        error: () => {},
+        child: () => logger,
+      };
       const bad = new FakeClient('grumpy', {
         tools: [{ name: 't', description: '', inputSchema: {} }],
       });
@@ -223,17 +238,21 @@ describe('MCPManager.close', () => {
       const manager = new MCPManager({
         config: makeConfig(['grumpy', 'calm']),
         clientFactory: (name) => clients[name]!,
+        logger,
       });
       await manager.loadAll();
       await expect(manager.close()).resolves.toBeUndefined();
       expect(good.closed).toBe(1);
       expect(bad.closed).toBe(1);
-      const warned = warnSpy.mock.calls.some((call) =>
-        call.some(
-          (arg) => typeof arg === 'string' && arg.includes('mcp-manager') && arg.includes('grumpy'),
-        ),
+      const warned = warnCalls.some(
+        (c) =>
+          c.msg.includes('mcp-manager') &&
+          c.meta !== undefined &&
+          c.meta['server_name'] === 'grumpy',
       );
       expect(warned).toBe(true);
+      // Grep sentinel: console.warn must remain untouched.
+      expect(warnSpy).not.toHaveBeenCalled();
     } finally {
       warnSpy.mockRestore();
     }
