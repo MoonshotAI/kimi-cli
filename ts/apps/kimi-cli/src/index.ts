@@ -776,6 +776,11 @@ async function runWire(opts: CLIOptions): Promise<void> {
     workspaceDir: workDir,
     defaultModel: modelAlias,
     pathConfig,
+    // Phase 18 §E.3-E.5 — hand the per-process BPM to wire handlers
+    // so `session.getBackgroundTasks` / `stopBackgroundTask` /
+    // `getBackgroundTaskOutput` dispatch to live tasks instead of
+    // degrading to empty stubs.
+    backgroundProcessManager: backgroundManager,
   });
 
   const transport = new StdioTransport();

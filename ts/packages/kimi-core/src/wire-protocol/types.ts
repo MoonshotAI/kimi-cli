@@ -106,7 +106,14 @@ export type ManagementMethod =
   | 'session.attach'
   // Phase 16 / 决策 #113 — sessionMeta wire methods.
   | 'session.getMeta'
-  | 'session.setTags';
+  | 'session.setTags'
+  // Phase 18 §E.3-E.5 + §F — subagent persistence + slash core.
+  | 'session.getBackgroundTasks'
+  | 'session.stopBackgroundTask'
+  | 'session.getBackgroundTaskOutput'
+  | 'session.rollback'
+  | 'session.listSkills'
+  | 'session.activateSkill';
 
 // Config channel (instant, session-scoped)
 export type ConfigMethod =

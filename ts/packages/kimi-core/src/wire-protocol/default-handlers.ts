@@ -28,6 +28,8 @@ import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
 import type { PathConfig } from '../session/path-config.js';
 import type { SessionManager } from '../session/session-manager.js';
 import type { RequestRouter } from '../router/request-router.js';
+import { SubagentStore } from '../soul-plus/subagent-store.js';
+import type { BackgroundProcessManager } from '../tools/background/manager.js';
 import { WireCodec } from './codec.js';
 import { createWireEvent, createWireResponse } from './message-factory.js';
 import {
@@ -53,6 +55,9 @@ export interface DefaultHandlersDeps {
   readonly workspaceDir: string;
   readonly defaultModel: string;
   readonly pathConfig: PathConfig;
+  // Phase 18 §E.3-E.5 — optional; when missing the background-task
+  // wire methods report an empty surface instead of 500-ing.
+  readonly backgroundProcessManager?: BackgroundProcessManager | undefined;
 }
 
 // Phase 17 §B.7 — the 13 HookEvent types registered under
@@ -133,6 +138,13 @@ const SUPPORTED_WIRE_METHODS = [
   'session.subscribe',
   'session.compact',
   'session.replay',
+  // Phase 18 §E.3-E.5 + §F — background tasks / rollback / skills.
+  'session.getBackgroundTasks',
+  'session.stopBackgroundTask',
+  'session.getBackgroundTaskOutput',
+  'session.rollback',
+  'session.listSkills',
+  'session.activateSkill',
   // config channel
   'session.setPlanMode',
   'session.setYolo',
@@ -185,6 +197,7 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     orchestrator,
     approval,
     pathConfig,
+    backgroundProcessManager,
   } = deps;
 
   // ── Process channel ──────────────────────────────────────────────
@@ -492,6 +505,126 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
       requestId: msg.id,
       sessionId: msg.session_id,
       data: { ok: true, total: filtered.length },
+    });
+  });
+
+  // ── Phase 18 §E.3 — session.getBackgroundTasks ───────────────────
+  //
+  // Returns the union of live BPM entries and persisted subagent
+  // instance records. `agent_instances` keeps the slice 18-3 field
+  // name (`subagent_type`) aligned with Python; the phase-18 todo's
+  // `agent_type` was itself divergent and we retain the Python
+  // convention (see completion-report deviation log).
+
+  router.registerMethod('session.getBackgroundTasks', 'management', async (msg) => {
+    const backgroundTasks = backgroundProcessManager?.list() ?? [];
+    const store = new SubagentStore(pathConfig.sessionDir(msg.session_id));
+    // `SubagentStore.listInstances()` swallows ENOENT internally, so a
+    // fresh session with no `subagents/` dir surfaces as `[]`.
+    const agentInstances = await store.listInstances();
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: {
+        background_tasks: backgroundTasks,
+        agent_instances: agentInstances,
+      },
+    });
+  });
+
+  // ── Phase 18 §E.4 — session.stopBackgroundTask ───────────────────
+
+  router.registerMethod('session.stopBackgroundTask', 'management', async (msg) => {
+    const payload = z
+      .object({ task_id: z.string().min(1) })
+      .parse(msg.data ?? {});
+    if (backgroundProcessManager === undefined) {
+      throw new Error(
+        `session.stopBackgroundTask: no BackgroundProcessManager wired (task ${payload.task_id})`,
+      );
+    }
+    const stopped = await backgroundProcessManager.stop(payload.task_id);
+    if (stopped === undefined) {
+      throw new Error(`Background task not found: ${payload.task_id}`);
+    }
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  // ── Phase 18 §E.5 — session.getBackgroundTaskOutput ──────────────
+
+  router.registerMethod('session.getBackgroundTaskOutput', 'management', async (msg) => {
+    const payload = z
+      .object({
+        task_id: z.string().min(1),
+        tail: z.number().int().nonnegative().optional(),
+      })
+      .parse(msg.data ?? {});
+    if (backgroundProcessManager === undefined) {
+      return createWireResponse({
+        requestId: msg.id,
+        sessionId: msg.session_id,
+        data: { output: '' },
+      });
+    }
+    const output = backgroundProcessManager.getOutput(payload.task_id, payload.tail);
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { output },
+    });
+  });
+
+  // ── Phase 18 §F.1 — session.rollback ─────────────────────────────
+
+  router.registerMethod('session.rollback', 'management', async (msg) => {
+    const payload = z
+      .object({ n_turns_back: z.number().int().nonnegative() })
+      .parse(msg.data ?? {});
+    const result = await sessionManager.rollbackSession(
+      msg.session_id,
+      payload.n_turns_back,
+    );
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { new_turn_count: result.new_turn_count },
+    });
+  });
+
+  // ── Phase 18 §F.2 — session.listSkills ───────────────────────────
+
+  router.registerMethod('session.listSkills', 'management', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const skillManager = managed.soulPlus.getSkillManager();
+    const skills = skillManager?.listInvocableSkills() ?? [];
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { skills },
+    });
+  });
+
+  // ── Phase 18 §F.3 — session.activateSkill ────────────────────────
+
+  router.registerMethod('session.activateSkill', 'management', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const payload = z
+      .object({
+        name: z.string().min(1),
+        args: z.string().optional(),
+      })
+      .parse(msg.data ?? {});
+    await managed.soulPlus.activateSkill(payload.name, payload.args ?? '');
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
     });
   });
 
