@@ -278,12 +278,53 @@ function summarizeStreamingToolInput(
       return rest;
     }
     case "StrReplaceFile": {
-      const { old: _old, new: _new, ...rest } = record;
-      return rest;
+      const summarizeEdit = (edit: unknown): unknown => {
+        if (!edit || typeof edit !== "object" || Array.isArray(edit)) {
+          return edit;
+        }
+
+        const { old: _old, new: _new, ...rest } = edit as Record<string, unknown>;
+        return rest;
+      };
+
+      const { edit, ...rest } = record;
+      return {
+        ...rest,
+        ...(edit === undefined
+          ? {}
+          : {
+              edit: Array.isArray(edit)
+                ? edit.map((item) => summarizeEdit(item))
+                : summarizeEdit(edit),
+            }),
+      };
     }
     default:
       return input;
   }
+}
+
+function areStreamingToolInputsEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+
+  if (
+    a &&
+    b &&
+    typeof a === "object" &&
+    typeof b === "object" &&
+    !Array.isArray(a) &&
+    !Array.isArray(b)
+  ) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  return false;
 }
 
 /**
@@ -1289,7 +1330,8 @@ export function useSessionStream(
                           const nextState = "input-available" as ToolUIPart["state"];
                           const stateChanged = msg.toolCall.state !== nextState;
                           const inputChanged =
-                            hasParsedInput && parsedInput !== msg.toolCall.input;
+                            hasParsedInput &&
+                            !areStreamingToolInputsEqual(parsedInput, msg.toolCall.input);
 
                           if (!stateChanged && !inputChanged) {
                             return msg;
