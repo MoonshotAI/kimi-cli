@@ -65,10 +65,11 @@ function makeSessionControl() {
   const sessionJournal = new InMemorySessionJournalImpl();
   const lifecycleStateMachine = new SessionLifecycleStateMachine();
   const soulRegistry = new SoulRegistry({
-    createHandle: (key) => ({
+    createHandle: (key, agentDepth) => ({
       key,
       agentId: 'agent_main',
       abortController: new AbortController(),
+      agentDepth,
     }),
   });
 

@@ -78,10 +78,11 @@ function buildManager(opts: { agentType?: 'main' | 'sub' | 'independent'; agentI
     journal: createNoopJournalCapability(),
   });
   const soulRegistry = new SoulRegistry({
-    createHandle: (key) => ({
+    createHandle: (key, agentDepth) => ({
       key,
       agentId: opts.agentId ?? 'agent_main',
       abortController: new AbortController(),
+      agentDepth,
     }),
   });
   const manager = new TurnManager({

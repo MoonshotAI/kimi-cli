@@ -79,10 +79,11 @@ function buildIntegrationHarness(opts: {
     journal: createNoopJournalCapability(),
   });
   const soulRegistry = new SoulRegistry({
-    createHandle: (key) => ({
+    createHandle: (key, agentDepth) => ({
       key,
       agentId: 'agent_main',
       abortController: new AbortController(),
+      agentDepth,
     }),
   });
   const manager = new TurnManager({

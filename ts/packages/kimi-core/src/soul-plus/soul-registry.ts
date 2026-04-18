@@ -16,17 +16,23 @@
 import { randomUUID } from 'node:crypto';
 
 import type { SessionJournal } from '../storage/session-journal.js';
-import { RESULT_SUMMARY_MAX_LEN } from './subagent-constants.js';
+import { SubagentTooDeepError } from './errors.js';
+import { MAX_SUBAGENT_DEPTH, RESULT_SUMMARY_MAX_LEN } from './subagent-constants.js';
 import type { AgentResult, SpawnRequest, SubagentHandle, SubagentHost } from './subagent-types.js';
 import type { SoulHandle, SoulKey } from './types.js';
 
 export interface SoulRegistryDeps {
   /**
-   * Factory invoked on first `getOrCreate(key)`. The registry does not own
-   * the handle construction — TurnManager / SoulPlus decide what goes
-   * inside a handle.
+   * Factory invoked on first `getOrCreate(key, agentDepth)`. The
+   * registry does not own the handle construction — TurnManager /
+   * SoulPlus decide what goes inside a handle. Phase 18 §E.2: the
+   * second argument is the recursion depth the caller (either
+   * `spawn()` for `sub:*` children or defaulted to `0` for `main`)
+   * wants stamped on the returned handle. The factory MUST propagate
+   * this value into `SoulHandle.agentDepth` so the field is set at
+   * construction and never mutated later.
    */
-  readonly createHandle: (key: SoulKey) => SoulHandle;
+  readonly createHandle: (key: SoulKey, agentDepth: number) => SoulHandle;
 
   /**
    * Optional callback invoked by `spawn()` to run the subagent Soul turn.
@@ -51,7 +57,7 @@ export interface SoulRegistryDeps {
 
 export class SoulRegistry implements SubagentHost {
   private readonly handles = new Map<SoulKey, SoulHandle>();
-  private readonly createHandle: (key: SoulKey) => SoulHandle;
+  private readonly createHandle: (key: SoulKey, agentDepth: number) => SoulHandle;
   private readonly runSubagentTurnFn:
     | ((agentId: string, request: SpawnRequest, signal: AbortSignal) => Promise<AgentResult>)
     | undefined;
@@ -63,12 +69,12 @@ export class SoulRegistry implements SubagentHost {
     this.parentSessionJournal = deps.parentSessionJournal;
   }
 
-  getOrCreate(key: SoulKey): SoulHandle {
+  getOrCreate(key: SoulKey, agentDepth = 0): SoulHandle {
     const existing = this.handles.get(key);
     if (existing !== undefined) {
       return existing;
     }
-    const fresh = this.createHandle(key);
+    const fresh = this.createHandle(key, agentDepth);
     this.handles.set(key, fresh);
     return fresh;
   }
@@ -93,6 +99,25 @@ export class SoulRegistry implements SubagentHost {
   // ── SubagentHost implementation (Slice 7) ────────────────────────────
 
   async spawn(request: SpawnRequest): Promise<SubagentHandle> {
+    // Phase 18 §E.2 — recursion-depth guard. Look up the parent
+    // SoulHandle by `parentAgentId` (registry stores handles keyed by
+    // `SoulKey`, but `SpawnRequest` carries the public `agentId`); read
+    // its `agentDepth`. If parent is already at the cap, throw BEFORE
+    // any persistence side-effects: no agentId mint, no new registry
+    // entry, no journal `subagent_spawned` write, no SubagentStore
+    // record. The runner is never invoked, so no `subagents/<id>` dir
+    // is created either.
+    let parentDepth = 0;
+    for (const handle of this.handles.values()) {
+      if (handle.agentId === request.parentAgentId) {
+        parentDepth = handle.agentDepth;
+        break;
+      }
+    }
+    if (parentDepth >= MAX_SUBAGENT_DEPTH) {
+      throw new SubagentTooDeepError(parentDepth, MAX_SUBAGENT_DEPTH);
+    }
+
     // Slice 7 audit Finding #4: subagent ids must be stable across
     // session resume. A process-local counter collides on restart and
     // stomps the persisted `subagents/<id>` directory of the previous
@@ -103,7 +128,10 @@ export class SoulRegistry implements SubagentHost {
     const agentId = `sub_${randomUUID()}`;
     const soulKey: SoulKey = `sub:${agentId}`;
 
-    const soulHandle = this.getOrCreate(soulKey);
+    // Phase 18 §E.2 — depth is plumbed into `createHandle` at
+    // construction; `SoulHandle.agentDepth` is `readonly`, so we cannot
+    // (and intentionally do not) mutate it after the fact.
+    const soulHandle = this.getOrCreate(soulKey, parentDepth + 1);
 
     // Slice 2.1 — foreground abort cascade. When the parent turn forwards
     // its AbortSignal via `SpawnRequest.signal`, link it to the child

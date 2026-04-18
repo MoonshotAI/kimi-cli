@@ -114,10 +114,11 @@ export function createTestRuntime(opts?: CreateTestRuntimeOptions): TestRuntimeB
   const tools = opts?.tools ?? [];
 
   const soulRegistry = new SoulRegistry({
-    createHandle: (key) => ({
+    createHandle: (key, agentDepth) => ({
       key,
       agentId: key === 'main' ? agentId : key.replace('sub:', ''),
       abortController: new AbortController(),
+      agentDepth,
     }),
   });
 

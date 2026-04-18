@@ -196,10 +196,14 @@ export class SoulPlus {
       deps.subagentStore !== undefined && deps.agentTypeRegistry !== undefined;
 
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: key === 'main' ? 'agent_main' : key.replace('sub:', ''),
         abortController: new AbortController(),
+        // Phase 18 §E.2 — depth is plumbed in by the registry:
+        // `getOrCreate('main')` defaults to 0; `spawn()` passes
+        // `parentDepth + 1` for each `sub:*` child.
+        agentDepth,
       }),
       // Phase 6 — SoulRegistry owns the subagent lifecycle journal
       // channel. It writes spawned/completed/failed around the runner

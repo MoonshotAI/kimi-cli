@@ -102,6 +102,27 @@ export interface BusinessErrorMapping {
   readonly message: string;
 }
 
+/**
+ * Phase 18 §E.2 — subagent recursion guard. Thrown by
+ * `SoulRegistry.spawn()` when the parent SoulHandle's `agentDepth`
+ * has already reached `MAX_SUBAGENT_DEPTH`. Carries `parentDepth` so
+ * the CLI / wire layer can render a human message without parsing
+ * `error.message`.
+ */
+export class SubagentTooDeepError extends Error {
+  readonly parentDepth: number;
+  readonly limit: number;
+  constructor(parentDepth: number, limit: number, message?: string) {
+    super(
+      message ??
+        `Subagent recursion depth exceeded (parentDepth=${parentDepth}, limit=${limit})`,
+    );
+    this.name = 'SubagentTooDeepError';
+    this.parentDepth = parentDepth;
+    this.limit = limit;
+  }
+}
+
 export function classifyBusinessError(error: unknown): BusinessErrorMapping | null {
   if (error instanceof LLMNotSetError) {
     return { code: -32001, message: error.message };

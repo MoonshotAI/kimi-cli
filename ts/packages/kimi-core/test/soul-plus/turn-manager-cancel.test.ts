@@ -52,10 +52,11 @@ function buildManager(kosong: ScriptedKosongAdapter): {
     journal: createNoopJournalCapability(),
   });
   const soulRegistry = new SoulRegistry({
-    createHandle: (key) => ({
+    createHandle: (key, agentDepth) => ({
       key,
       agentId: 'agent_main',
       abortController: new AbortController(),
+      agentDepth,
     }),
   });
   const manager = new TurnManager({
@@ -212,10 +213,11 @@ describe('TurnManager.handleCancel', () => {
       journal: createNoopJournalCapability(),
     });
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: 'agent_main',
         abortController: new AbortController(),
+        agentDepth,
       }),
     });
 
@@ -309,10 +311,11 @@ describe('TurnManager.handleCancel', () => {
       journal: createNoopJournalCapability(),
     });
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: 'agent_main',
         abortController: new AbortController(),
+        agentDepth,
       }),
     });
 

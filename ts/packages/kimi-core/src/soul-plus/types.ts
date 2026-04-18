@@ -47,6 +47,14 @@ export interface SoulHandle {
   readonly key: SoulKey;
   readonly agentId: string;
   readonly abortController: AbortController;
+  /**
+   * Phase 18 §E.2 — recursion-depth tag used by `SoulRegistry.spawn()`
+   * to enforce `MAX_SUBAGENT_DEPTH`. `main` is depth 0; each child
+   * subagent is created with `parentDepth + 1` (plumbed through
+   * `SoulRegistryDeps.createHandle`'s second argument at construction
+   * time — never mutated after the handle is stored).
+   */
+  readonly agentDepth: number;
 }
 
 // ── Turn trigger (§5.2.2) ──────────────────────────────────────────────

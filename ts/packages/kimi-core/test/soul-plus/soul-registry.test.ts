@@ -11,11 +11,12 @@ import { describe, expect, it } from 'vitest';
 import type { SoulHandle, SoulKey } from '../../src/soul-plus/index.js';
 import { SoulRegistry } from '../../src/soul-plus/index.js';
 
-function makeHandle(key: SoulKey, agentId: string): SoulHandle {
+function makeHandle(key: SoulKey, agentId: string, agentDepth = 0): SoulHandle {
   return {
     key,
     agentId,
     abortController: new AbortController(),
+    agentDepth,
   };
 }
 
@@ -71,10 +72,10 @@ describe('SoulRegistry', () => {
   it('destroy() aborts the handle AbortController and removes the entry', () => {
     const controllers: AbortController[] = [];
     const registry = new SoulRegistry({
-      createHandle: (key) => {
+      createHandle: (key, agentDepth) => {
         const c = new AbortController();
         controllers.push(c);
-        return { key, agentId: 'agent_main', abortController: c };
+        return { key, agentId: 'agent_main', abortController: c, agentDepth };
       },
     });
 
@@ -139,10 +140,11 @@ describe('SoulRegistry — subagent lifecycle journal integration (Phase 6)', ()
     const parentJournal = new InMemorySessionJournalImpl();
 
     const registry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: key.replace('sub:', ''),
         abortController: new AbortController(),
+        agentDepth,
       }),
       runSubagentTurn: async () =>
         Promise.resolve({ result: 'ok', usage: { input: 0, output: 0 } }),
@@ -172,10 +174,11 @@ describe('SoulRegistry — subagent lifecycle journal integration (Phase 6)', ()
     const parentJournal = new InMemorySessionJournalImpl();
 
     const registry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: key.replace('sub:', ''),
         abortController: new AbortController(),
+        agentDepth,
       }),
       runSubagentTurn: async () => ({
         result: 'child wrote a full body of text we summarize into result_summary',
@@ -207,10 +210,11 @@ describe('SoulRegistry — subagent lifecycle journal integration (Phase 6)', ()
     const parentController = new AbortController();
 
     const registry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: key.replace('sub:', ''),
         abortController: new AbortController(),
+        agentDepth,
       }),
       // Simulate a subagent whose run throws when the signal aborts.
       runSubagentTurn: async (_id, _req, signal) =>

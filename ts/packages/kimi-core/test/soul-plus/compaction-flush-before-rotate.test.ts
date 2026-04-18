@@ -149,10 +149,11 @@ describe('TurnManager.executeCompaction — flush before rotate (Phase 3)', () =
     const sessionJournal = new InMemorySessionJournalImpl();
     const sink = new SessionEventBus();
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: 'agent_main',
         abortController: new AbortController(),
+        agentDepth,
       }),
     });
     const compactionProvider = compactionProviderReturning({

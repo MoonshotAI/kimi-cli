@@ -82,10 +82,11 @@ describe('Foreground subagent E2E', () => {
 
     // Wire SoulRegistry with real runSubagentTurn callback
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: key === 'main' ? 'agent_main' : key.replace('sub:', ''),
         abortController: new AbortController(),
+        agentDepth,
       }),
       runSubagentTurn: (agentId, request, signal) =>
         runSubagentTurn(
@@ -168,10 +169,11 @@ describe('Foreground subagent E2E', () => {
     };
 
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: key === 'main' ? 'agent_main' : key.replace('sub:', ''),
         abortController: new AbortController(),
+        agentDepth,
       }),
       runSubagentTurn: (agentId, request, signal) =>
         runSubagentTurn(

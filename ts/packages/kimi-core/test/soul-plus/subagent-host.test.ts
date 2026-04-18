@@ -29,11 +29,12 @@ import { SoulRegistry } from '../../src/soul-plus/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeHandle(key: SoulKey, agentId: string): SoulHandle {
+function makeHandle(key: SoulKey, agentId: string, agentDepth = 0): SoulHandle {
   return {
     key,
     agentId,
     abortController: new AbortController(),
+    agentDepth,
   };
 }
 
@@ -162,7 +163,7 @@ describe('SoulRegistry — subagent abort', () => {
       createHandle: (key) => {
         const c = new AbortController();
         controllers.set(key, c);
-        return { key, agentId: `id_for_${key}`, abortController: c };
+        return { key, agentId: `id_for_${key}`, abortController: c, agentDepth: 0 };
       },
     });
 
@@ -206,7 +207,7 @@ describe('SoulRegistry — subagent abort', () => {
       createHandle: (key) => {
         const c = new AbortController();
         controllers.set(key, c);
-        return { key, agentId: `id_for_${key}`, abortController: c };
+        return { key, agentId: `id_for_${key}`, abortController: c, agentDepth: 0 };
       },
     });
 
@@ -233,7 +234,7 @@ describe('SoulRegistry — subagent abort', () => {
       createHandle: (key) => {
         const c = new AbortController();
         controllers.set(key, c);
-        return { key, agentId: `id_for_${key}`, abortController: c };
+        return { key, agentId: `id_for_${key}`, abortController: c, agentDepth: 0 };
       },
       runSubagentTurn: (_id) => pendingCompletion(),
     });
@@ -257,7 +258,7 @@ describe('SoulRegistry — subagent abort', () => {
       createHandle: (key) => {
         const c = new AbortController();
         controllers.set(key, c);
-        return { key, agentId: `id_for_${key}`, abortController: c };
+        return { key, agentId: `id_for_${key}`, abortController: c, agentDepth: 0 };
       },
       runSubagentTurn: (_id) => pendingCompletion(),
     });
@@ -279,7 +280,7 @@ describe('SoulRegistry — subagent abort', () => {
       createHandle: (key) => {
         const c = new AbortController();
         controllers.set(key, c);
-        return { key, agentId: `id_for_${key}`, abortController: c };
+        return { key, agentId: `id_for_${key}`, abortController: c, agentDepth: 0 };
       },
       runSubagentTurn: (_id) => pendingCompletion(),
     });
@@ -622,7 +623,7 @@ describe('SoulRegistry.spawn — auto-destroy on completion (Finding #5)', () =>
       createHandle: (key) => {
         const c = new AbortController();
         controllers.set(key, c);
-        return { key, agentId: `id_for_${key}`, abortController: c };
+        return { key, agentId: `id_for_${key}`, abortController: c, agentDepth: 0 };
       },
       runSubagentTurn: (_id) =>
         new Promise<AgentResult>((resolve) => {

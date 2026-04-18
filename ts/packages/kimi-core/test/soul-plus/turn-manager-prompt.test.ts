@@ -66,10 +66,11 @@ function buildManager(opts: {
     journal: createNoopJournalCapability(),
   });
   const soulRegistry = new SoulRegistry({
-    createHandle: (key) => ({
+    createHandle: (key, agentDepth) => ({
       key,
       agentId: 'agent_main',
       abortController: new AbortController(),
+      agentDepth,
     }),
   });
   const subcomponents = makeRealSubcomponents({
@@ -311,10 +312,11 @@ describe('TurnManager.handlePrompt', () => {
       journal: createNoopJournalCapability(),
     });
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: 'agent_main',
         abortController: new AbortController(),
+        agentDepth,
       }),
     });
     const manager = new TurnManager({
@@ -389,10 +391,11 @@ describe('TurnManager.handlePrompt', () => {
       journal: createNoopJournalCapability(),
     });
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: 'agent_main',
         abortController: new AbortController(),
+        agentDepth,
       }),
     });
     const manager = new TurnManager({
@@ -467,10 +470,11 @@ describe('TurnManager.handlePrompt', () => {
       journal: createNoopJournalCapability(),
     });
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: 'agent_main',
         abortController: new AbortController(),
+        agentDepth,
       }),
     });
     const manager = new TurnManager({
@@ -547,10 +551,11 @@ describe('TurnManager.handlePrompt', () => {
       journal: createNoopJournalCapability(),
     });
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: 'agent_main',
         abortController: new AbortController(),
+        agentDepth,
       }),
     });
     const manager = new TurnManager({
@@ -625,10 +630,11 @@ describe('TurnManager — no pendingNotifications (Phase 1 Step 4)', () => {
       journal: createNoopJournalCapability(),
     });
     const soulRegistry = new SoulRegistry({
-      createHandle: (key) => ({
+      createHandle: (key, agentDepth) => ({
         key,
         agentId: 'agent_main',
         abortController: new AbortController(),
+        agentDepth,
       }),
     });
     return new TurnManager({

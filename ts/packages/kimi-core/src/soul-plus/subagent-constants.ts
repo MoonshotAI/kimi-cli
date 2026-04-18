@@ -23,3 +23,12 @@ export const RESULT_SUMMARY_MAX_LEN = 500;
  * once the cap is reached. Mirrors the Python soul's recursion guard.
  */
 export const MAX_SKILL_QUERY_DEPTH = 3;
+
+/**
+ * Phase 18 §E.2 — hard cap on `subagent → subagent` recursion depth.
+ * `main` counts as depth 0; the first level of subagents is depth 1; a
+ * subagent attempting to spawn while its own depth is already 5 must be
+ * rejected with `SubagentTooDeepError` BEFORE any persistence side
+ * effects happen.
+ */
+export const MAX_SUBAGENT_DEPTH = 5;

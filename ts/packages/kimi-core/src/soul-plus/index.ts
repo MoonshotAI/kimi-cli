@@ -76,9 +76,11 @@ export {
   LLMNotSetError,
   LLMCapabilityMismatchError,
   ProviderError,
+  SubagentTooDeepError,
   classifyBusinessError,
 } from './errors.js';
 export type { BusinessErrorMapping } from './errors.js';
+export { MAX_SUBAGENT_DEPTH, MAX_SKILL_QUERY_DEPTH } from './subagent-constants.js';
 export { TransactionalHandlerRegistry } from './transactional-handler-registry.js';
 export type { TransactionalHandler } from './transactional-handler-registry.js';
 export { ToolCallOrchestrator } from './orchestrator.js';

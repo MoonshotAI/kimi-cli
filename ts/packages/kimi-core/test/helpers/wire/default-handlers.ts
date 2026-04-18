@@ -45,6 +45,7 @@ import type { ApprovalStateStore } from '../../../src/soul-plus/approval-state-s
 import type { ApprovalRuntime } from '../../../src/soul-plus/approval-runtime.js';
 import type { ToolCallOrchestrator } from '../../../src/soul-plus/orchestrator.js';
 import type { SessionEventBus } from '../../../src/soul-plus/session-event-bus.js';
+import { SubagentStore } from '../../../src/soul-plus/subagent-store.js';
 import type { DispatchResponse } from '../../../src/soul-plus/types.js';
 import type { KosongAdapter, Runtime } from '../../../src/soul/runtime.js';
 import type { Tool } from '../../../src/soul/types.js';
@@ -1095,6 +1096,117 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
       requestId: msg.id,
       sessionId: msg.session_id,
       data: { ok: true },
+    });
+  });
+
+  // ── Phase 18 §E.3 — session.getBackgroundTasks ──────────────────
+
+  router.registerMethod('session.getBackgroundTasks', 'management', async (msg) => {
+    // Background tasks (bash / agent) live in the per-session
+    // BackgroundProcessManager which the in-memory harness does not
+    // wire. Persisted subagent records are pulled directly from
+    // `SubagentStore` so a host can observe child progress across
+    // process restarts. Field name `agent_instances` keeps the slice
+    // 18-3 deviation note in migration-report.md (Coordinator-approved
+    // reuse of `SubagentStore` instead of `AgentInstanceStore`).
+    let agentInstances: unknown[] = [];
+    if (pathConfig !== undefined) {
+      // `SubagentStore.listInstances()` already tolerates a missing
+      // `subagents/` directory (returns `[]`) — no outer try/catch
+      // needed. Anything it re-throws is a genuine disk-level fault
+      // that deserves to surface as a wire error rather than be
+      // silently swallowed.
+      const store = new SubagentStore(pathConfig.sessionDir(msg.session_id));
+      agentInstances = await store.listInstances();
+    }
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: {
+        background_tasks: [],
+        agent_instances: agentInstances,
+      },
+    });
+  });
+
+  // ── Phase 18 §E.4 — session.stopBackgroundTask ──────────────────
+
+  router.registerMethod('session.stopBackgroundTask', 'management', async (msg) => {
+    const payload = (msg.data ?? {}) as { task_id?: string };
+    const taskId = payload.task_id;
+    // Harness has no BPM wired — every task id is unknown. Still must
+    // return a handler-level error rather than method-not-found so the
+    // wire layer surfaces a structured response.
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      error: {
+        code: -32000,
+        message: `Background task not found: ${taskId ?? '(missing task_id)'}`,
+      },
+    });
+  });
+
+  // ── Phase 18 §E.5 — session.getBackgroundTaskOutput ─────────────
+
+  router.registerMethod('session.getBackgroundTaskOutput', 'management', async (msg) => {
+    // Harness has no BPM — return empty output so the method is
+    // observably wired without the test needing to seed a real task.
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { output: '' },
+    });
+  });
+
+  // ── Phase 18 §F.1 — session.rollback ─────────────────────────────
+
+  router.registerMethod('session.rollback', 'management', async (msg) => {
+    const payload = (msg.data ?? {}) as { n_turns_back?: number };
+    const n = typeof payload.n_turns_back === 'number' ? payload.n_turns_back : 0;
+    if (n < 0) {
+      return createWireResponse({
+        requestId: msg.id,
+        sessionId: msg.session_id,
+        error: {
+          code: -32602,
+          message: `session.rollback: n_turns_back must be >= 0 (got ${n})`,
+        },
+      });
+    }
+    const result = await sessionManager.rollbackSession(msg.session_id, n);
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { new_turn_count: result.new_turn_count },
+    });
+  });
+
+  // ── Phase 18 §F.2 — session.listSkills ───────────────────────────
+
+  router.registerMethod('session.listSkills', 'management', async (msg) => {
+    // SkillManager isn't injected into the harness; return an empty
+    // invocable subset so the wire surface is exercised. Real-skill
+    // filtering lives in the SoulPlus unit tests.
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { skills: [] },
+    });
+  });
+
+  // ── Phase 18 §F.3 — session.activateSkill ────────────────────────
+
+  router.registerMethod('session.activateSkill', 'management', async (msg) => {
+    const payload = (msg.data ?? {}) as { name?: string };
+    const name = payload.name ?? '(missing)';
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      error: {
+        code: -32000,
+        message: `Skill not found: ${name}`,
+      },
     });
   });
 
