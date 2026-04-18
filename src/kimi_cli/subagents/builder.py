@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from kaos.path import KaosPath
+
 from kimi_cli.llm import clone_llm_with_model_alias
 from kimi_cli.soul.agent import Agent, Runtime, load_agent
 from kimi_cli.subagents.models import AgentLaunchSpec, AgentTypeDefinition
@@ -24,10 +26,14 @@ class SubagentBuilder:
             session_id=self._root_runtime.session.id,
             oauth=self._root_runtime.oauth,
         )
+        work_dir_override: KaosPath | None = None
+        if launch_spec.work_dir is not None:
+            work_dir_override = KaosPath(launch_spec.work_dir)
         runtime = self._root_runtime.copy_for_subagent(
             agent_id=agent_id,
             subagent_type=type_def.name,
             llm_override=llm_override,
+            work_dir_override=work_dir_override,
         )
         return await load_agent(
             type_def.agent_file,

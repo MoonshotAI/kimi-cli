@@ -185,6 +185,7 @@ class ForegroundRunRequest:
     requested_type: str
     model: str | None
     resume: str | None
+    work_dir: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -379,6 +380,7 @@ class ForegroundSubagentRunner:
                 subagent_type=actual_type,
                 model_override=req.model,
                 effective_model=req.model or type_def.default_model,
+                work_dir=req.work_dir,
             ),
         )
         return PreparedInstance(

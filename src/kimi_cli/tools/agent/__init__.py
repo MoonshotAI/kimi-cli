@@ -55,6 +55,14 @@ class Params(BaseModel):
         ge=30,
         le=MAX_BACKGROUND_TIMEOUT,
     )
+    work_dir: str | None = Field(
+        default=None,
+        description=(
+            "Optional working directory for the subagent. When set, the subagent's file tools "
+            "and system prompt will use this directory instead of the parent agent's working "
+            "directory. Must be an absolute path."
+        ),
+    )
 
     @property
     def effective_timeout(self) -> int | None:
@@ -139,6 +147,7 @@ class AgentTool(CallableTool2[Params]):
                 requested_type=params.subagent_type or "coder",
                 model=params.model,
                 resume=params.resume,
+                work_dir=params.work_dir,
             )
             if timeout is not None:
                 return await asyncio.wait_for(runner.run(req), timeout=timeout)
