@@ -153,6 +153,14 @@ interface ShellBootstrap {
    * provider name; empty map when no OAuth-backed provider is in use.
    */
   oauthManagers?: Map<string, OAuthManager> | undefined;
+  /**
+   * Phase 21 review hotfix — host-supplied hook the interactive mode
+   * calls after the session picker resolves. Responsible for the BPM
+   * attach + plan-mode + yolo sync that `bootstrapCoreShell` skips in
+   * picker mode (since there is no session id yet at boot time).
+   * Undefined when the shell booted with a concrete session id.
+   */
+  postPickSetup?: ((sessionId: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -661,10 +669,12 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   // Slice 5.2 (Codex C2) — now that sessionId is resolved, attach
   // persistence and reconcile stale background tasks from disk.
   // Phase 21 Slice F — picker mode has no session yet; defer BPM attach /
-  // plan-mode / yolo syncs until the user actually picks a session
-  // (handled inside InteractiveMode.bootstrapPickedSession).
-  if (!pickerMode) {
-    const sessionDir = pathConfig.sessionDir(sessionId);
+  // plan-mode / yolo syncs until the user actually picks a session. The
+  // closure below is handed to InteractiveMode via `postPickSetup`, so
+  // the same logic runs once the picker resolves.
+  const effectiveYolo = opts.yolo || (kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false);
+  const syncSessionRuntime = async (resolvedSessionId: string): Promise<void> => {
+    const sessionDir = pathConfig.sessionDir(resolvedSessionId);
     backgroundManager.attachSessionDir(sessionDir);
     await backgroundManager.loadFromDisk();
     const reconcileResult = await backgroundManager.reconcile();
@@ -678,20 +688,23 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     // Slice 5.2 (D4) — plan mode management on bootstrap.
     if (opts.session !== undefined || opts.continue) {
       // Resume path: detect conflict between CLI flag and persisted state.
-      await wireClient.schedulePlanModeReminder(sessionId, opts.plan === true);
+      await wireClient.schedulePlanModeReminder(resolvedSessionId, opts.plan === true);
     } else if (opts.plan === true) {
       // Codex C4: fresh session with --plan must activate plan mode in core,
       // not just the TUI state. Without this, TurnManager stays in default
       // mode and the LLM never sees plan-mode dynamic injections.
-      await wireClient.setPlanMode(sessionId, true);
+      await wireClient.setPlanMode(resolvedSessionId, true);
     }
 
     // Yolo mode: sync CLI --yolo / config default into core so
     // TurnManager uses bypassPermissions, not just the TUI label.
-    const effectiveYolo = opts.yolo || (kimiConfig.yolo ?? kimiConfig.defaultYolo ?? false);
     if (effectiveYolo) {
-      await wireClient.setYolo(sessionId, true);
+      await wireClient.setYolo(resolvedSessionId, true);
     }
+  };
+
+  if (!pickerMode) {
+    await syncSessionRuntime(sessionId);
   }
 
   return {
@@ -709,6 +722,10 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     maxContextSize,
     ...(mcpManager !== undefined ? { mcpManager } : {}),
     ...(oauthManagers.size > 0 ? { oauthManagers } : {}),
+    // Phase 21 review hotfix — only expose postPickSetup when booting in
+    // picker mode; for a concrete session we already ran syncSessionRuntime
+    // above and there is nothing for InteractiveMode to do after "picking".
+    ...(pickerMode ? { postPickSetup: syncSessionRuntime } : {}),
   };
 }
 
@@ -839,6 +856,9 @@ async function runShell(opts: CLIOptions, version: string): Promise<void> {
     ...(bootstrap.oauthManagers !== undefined ? { oauthManagers: bootstrap.oauthManagers } : {}),
     ...(bootstrap.mcpManager !== undefined ? { mcpManager: bootstrap.mcpManager } : {}),
     pickerMode: bootstrap.pickerMode,
+    ...(bootstrap.postPickSetup !== undefined
+      ? { onSessionPicked: bootstrap.postPickSetup }
+      : {}),
   });
   mode.onExit = async () => {
     await bootstrap.wireClient.dispose();
@@ -1049,6 +1069,11 @@ async function runWire(opts: CLIOptions): Promise<void> {
     sessionManager,
     router,
     runtime: currentRuntime,
+    // Phase 21 review hotfix — hand out live accessors too, so post-
+    // setModel `session.create` / `session.resume` see the fresh
+    // runtime/alias instead of the boot snapshot.
+    runtimeProvider: () => currentRuntime,
+    defaultModelProvider: () => currentModelAlias,
     kosong,
     tools: [],
     approval,

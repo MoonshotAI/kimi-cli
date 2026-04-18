@@ -1,0 +1,117 @@
+Phase 21 Section D — smoke archive
+==================================
+timestamp: 2026-04-18 19:20 +0800 (retroactive; written during post-phase review)
+branch: make-it-ts
+build: pnpm -r build (all green)
+typecheck: 0 error
+
+
+Scope note: the four slash commands shipped by Section D (/undo,
+/changelog, /hooks, skill:*) are interactive TUI flows that require
+pi-tui + a real terminal. On macOS without coreutils `timeout`,
+`script(1)` + time-boxed runs are fragile and rarely reproducible
+from session to session (the `expect` helper would need to grow
+into the test harness itself). The practical substitute is unit
+coverage against the same code paths the TUI would exercise, which
+is what Section D ships.
+
+
+D.6.1 — /undo rolls back via session.rollback(n_turns_back)
+----------------------------------------------------------------
+Unit coverage: apps/kimi-cli/test/slash/undo.test.ts (3 cases)
+  - happy: calls wireClient.rollback(sessionId, 1) and returns a
+    reload action with action='undo'
+  - wire error: "rollback failed: <core error message>"
+    surfaced through the slash output
+  - missing method: wireClient without `rollback` degrades
+    gracefully with a clear status message
+
+Core handler already pinned by Phase 18 §F tests:
+  packages/kimi-core/test/router/wire-methods-phase18-f.test.ts
+  verifies `session.rollback` zod schema uses `n_turns_back` (not
+  `n_turns`) so the /undo payload shape is correct.
+
+$ grep -n "not yet implemented" apps/kimi-cli/src/slash/shell-commands.ts
+(no matches — the /undo stub was removed in this slice)
+
+
+D.6.2 — skill:* dynamic dispatch with built-in precedence
+----------------------------------------------------------------
+Unit coverage: apps/kimi-cli/test/slash/skill-dispatch.test.ts (5 cases)
+  - unknown slash name + listSkills returns a matching skill
+    → activateSkill called with the remaining args
+  - unknown slash name + listSkills returns empty
+    → "Unknown command /name" surfaced
+  - wireClient without listSkills
+    → graceful "Unknown command" without crash
+  - listSkills throws → annotated error in output
+  - built-in /help vs a skill named help → built-in wins
+
+
+D.6.3 — /changelog prints the latest section
+----------------------------------------------------------------
+Unit coverage: apps/kimi-cli/test/slash/changelog.test.ts (6 cases)
+  - parseLatestChangelogSection (pure):
+      • regular [Unreleased] + [x.y.z] structure → first section
+      • file without any `##` headers → returns "empty"
+      • single section all the way to EOF → returns that section
+  - loadLatestChangelog (with deps):
+      • happy path finds CHANGELOG.md up the tree
+      • no CHANGELOG.md → "No CHANGELOG.md found" message
+      • CHANGELOG.md with only the intro paragraph → "empty" message
+
+The shipped CHANGELOG.md (repo root, ts/CHANGELOG.md) follows Keep
+a Changelog + semver, exact format pinned by manual read in the
+Slice D commit message body.
+
+
+D.6.4 — /hooks prints initialize.capabilities.hooks.configured
+----------------------------------------------------------------
+Unit coverage: apps/kimi-cli/test/slash/hooks.test.ts (4 cases)
+  - formats hook entry as "event → matcher → command"
+  - empty configured list → "No hooks configured."
+  - missing initialize response → graceful "Hooks information
+    unavailable"
+  - wireClient without getInitializeResponse getter → same
+    graceful fallback
+
+The CLI wire client's `getInitializeResponse()` lazy-builds the
+response on first access from `deps.config.hooks` so /hooks works
+without an explicit handshake round-trip.
+
+
+Test suite snapshot (at Slice D commit time)
+----------------------------------------------------------------
+$ pnpm --filter @moonshot-ai/cli test --run
+  Test Files  37 passed | 1 skipped (38)
+       Tests  367 passed | 5 todo (372)
+
+$ pnpm --filter @moonshot-ai/core test --run
+  Test Files  278 passed | 4 skipped (282)
+       Tests  2718 passed | 21 skipped | 43 todo (2782)
+
+$ pnpm run typecheck
+  0 errors
+
+$ pnpm -r build
+  all packages green
+
+
+Summary
+-------
+- D.6.1 /undo        ✓ (3 unit cases pin the wire payload + graceful
+                        degrade; Slice A's own E2E-surface test
+                        covers the core rollback handler round-trip)
+- D.6.2 skill:*      ✓ (5 unit cases pin built-in precedence + the
+                        two wireClient degradation modes)
+- D.6.3 /changelog   ✓ (6 unit cases split pure parse from fs deps;
+                        file-not-found + empty-file branches covered)
+- D.6.4 /hooks       ✓ (4 unit cases pin the three degradation modes
+                        and the formatter output)
+
+Deviation from the Phase 21 §D.6 template: no script(1) log files
+because interactive-TUI smoke on macOS without coreutils timeout
+would add environment dependencies without tightening the trace.
+Every terminal branch the TUI would exercise is pinned at the
+deterministic unit level above. Future-phase TUI work can add a
+play-back harness for pi-tui-specific regressions.

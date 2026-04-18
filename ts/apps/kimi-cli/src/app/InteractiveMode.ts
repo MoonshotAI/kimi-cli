@@ -98,6 +98,15 @@ export interface InteractiveModeOptions {
    * session resumes it; cancelling exits the process.
    */
   pickerMode?: boolean | undefined;
+  /**
+   * Phase 21 review hotfix — callback invoked after the picker resolves
+   * a session, so the host can run the post-resume steps that
+   * `bootstrapCoreShell` would have done inline for a non-picker boot
+   * (attach BackgroundProcessManager to the session dir, sync
+   * `--plan` / `--yolo` into the core, etc.). Runs *after*
+   * `resumeSession` settles and the handler is wired.
+   */
+  onSessionPicked?: (sessionId: string) => Promise<void>;
 }
 
 export class InteractiveMode implements WireHandlerDelegate {
@@ -137,6 +146,7 @@ export class InteractiveMode implements WireHandlerDelegate {
   private oauthManagers: ReadonlyMap<string, AppOAuthManager> | undefined;
   private footerSubscription: (() => void) | undefined;
   private readonly pickerMode: boolean;
+  private readonly onSessionPicked: ((sessionId: string) => Promise<void>) | undefined;
 
   public onExit?: () => Promise<void>;
 
@@ -151,6 +161,7 @@ export class InteractiveMode implements WireHandlerDelegate {
     this.colors = getColorPalette(initialState.theme);
     this.oauthManagers = options?.oauthManagers;
     this.pickerMode = options?.pickerMode ?? false;
+    this.onSessionPicked = options?.onSessionPicked;
 
     this.markdownTheme = createMarkdownTheme(this.colors);
     const editorTheme = createEditorTheme(this.colors);
@@ -344,6 +355,25 @@ export class InteractiveMode implements WireHandlerDelegate {
       this.attachFooterFeed();
       void this.wireHandler.start();
       this.setState({ sessionId: resumedId });
+      // Phase 21 review hotfix — now that we actually have a session,
+      // let the host run the BPM attach / plan-mode / yolo sync steps
+      // it skipped during bootstrapCoreShell. Swallow failures into
+      // the transcript so a broken post-pick step doesn't wedge the
+      // already-resumed session.
+      if (this.onSessionPicked !== undefined) {
+        try {
+          await this.onSessionPicked(resumedId);
+        } catch (postErr) {
+          const msg = postErr instanceof Error ? postErr.message : String(postErr);
+          this.addTranscriptEntry({
+            id: `session-post-err-${String(Date.now())}`,
+            kind: 'status',
+            renderMode: 'plain',
+            content: `Post-resume sync failed: ${msg}`,
+            color: this.colors.error,
+          });
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.addTranscriptEntry({

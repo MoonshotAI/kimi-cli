@@ -14,6 +14,7 @@ export type { ConversationProjector } from './storage/projector.js';
 export { DefaultConversationProjector } from './storage/projector.js';
 export { replayWire } from './storage/replay.js';
 export type { ReplayResult, ReplayOptions, SessionHealth } from './storage/replay.js';
+export { atomicWrite } from './storage/atomic-write.js';
 
 // ── Soul (Slice 2) ──────────────────────────────────────────────────────
 export { runSoulTurn } from './soul/run-turn.js';

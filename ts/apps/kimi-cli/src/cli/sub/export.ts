@@ -61,10 +61,23 @@ const MAX_LOG_BYTES = 100 * 1024 * 1024;
 
 // ─── Handler ────────────────────────────────────────────────────────
 
+export interface HandleExportOptions {
+  /**
+   * Phase 21 review hotfix — when false (default), the archive contains
+   * only the session directory + manifest. Recent log files bundle any
+   * LLM prompt/response body content ever written to
+   * `~/.kimi/logs/kimi.*.log`, including across sessions — shipping
+   * that by default is a privacy hazard. Users who actually need the
+   * diagnostic stream can opt in with `--include-logs`.
+   */
+  readonly includeLogs?: boolean | undefined;
+}
+
 export async function handleExport(
   deps: ExportDeps,
   sessionIdArg: string | undefined,
   outputArg: string | undefined,
+  options: HandleExportOptions = {},
 ): Promise<void> {
   const workDir = deps.cwd();
 
@@ -100,7 +113,9 @@ export async function handleExport(
     deps.exit(1);
   }
 
-  const logFiles = await collectRecentLogFiles(deps.logsDir, deps.now());
+  const logFiles = options.includeLogs === true
+    ? await collectRecentLogFiles(deps.logsDir, deps.now())
+    : [];
 
   const manifest: ExportManifest = buildManifest({
     sessionId,
@@ -344,7 +359,21 @@ export function registerExportCommand(parent: Command, deps?: ExportDeps): void 
     .argument('[session-id]', 'Session ID to export.')
     .option('-o, --output <path>', 'Output file path.')
     .option('-y, --yes', 'Overwrite without confirmation.', false)
-    .action(async (sessionId: string | undefined, opts: { output?: string }) => {
-      await handleExport(resolved, sessionId, opts.output);
-    });
+    .option(
+      '--include-logs',
+      "Include the last 2 days of ~/.kimi/logs/*.log alongside the session. " +
+        'Those logs may contain prompts/responses from OTHER sessions — opt ' +
+        'in only when the archive stays on a trusted machine.',
+      false,
+    )
+    .action(
+      async (
+        sessionId: string | undefined,
+        opts: { output?: string; includeLogs?: boolean },
+      ) => {
+        await handleExport(resolved, sessionId, opts.output, {
+          includeLogs: opts.includeLogs === true,
+        });
+      },
+    );
 }

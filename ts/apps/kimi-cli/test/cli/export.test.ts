@@ -81,10 +81,16 @@ class ExitCalled extends Error {
 
 async function runExport(
   deps: ExportDeps,
-  args: { sessionId?: string; output?: string } = {},
+  args: {
+    sessionId?: string;
+    output?: string;
+    includeLogs?: boolean;
+  } = {},
 ): Promise<void> {
   try {
-    await handleExport(deps, args.sessionId, args.output);
+    await handleExport(deps, args.sessionId, args.output, {
+      includeLogs: args.includeLogs ?? false,
+    });
   } catch (err) {
     if (err instanceof ExitCalled) return;
     throw err;
@@ -180,31 +186,46 @@ describe('kimi export', () => {
     expect(manifest.wire_protocol_version).toMatch(/^\d+\.\d+$/);
   });
 
-  it('bundles recent diagnostic logs and warns on stderr', async () => {
+  it('includes recent diagnostic logs only when --include-logs is set', async () => {
     const sid = 'ses_withlog';
     const sessionDir = join(sessionsDir, sid);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, 'wire.jsonl'), 'x', 'utf-8');
-    // Recent log (within 2-day window) → included.
+    // Recent log (within 2-day window) → would be included IF logs are opted in.
     const recentLog = join(logsDir, 'kimi.2026-04-18_11-00-00_aaa.log');
     writeFileSync(recentLog, 'LOG LINE', 'utf-8');
-    // Stale log (modified 10 days before `now`) → excluded.
+    // Stale log (modified 10 days before `now`) → always excluded even
+    // when the user does opt in, because the freshness filter limits
+    // the archive size.
     const staleLog = join(logsDir, 'kimi.2026-04-08_11-00-00_aaa.log');
     writeFileSync(staleLog, 'STALE', 'utf-8');
     const tenDaysAgo = new Date('2026-04-08T11:00:00Z');
     const staleMs = tenDaysAgo.getTime() / 1000;
-    // Update mtime so the freshness filter picks the recent file only.
     const { utimesSync } = await import('node:fs');
     utimesSync(staleLog, staleMs, staleMs);
 
-    const output = join(tmp, 'out2.zip');
-    const { deps, stderr } = makeDeps();
-    await runExport(deps, { sessionId: sid, output });
+    // Phase 21 review hotfix — default behaviour no longer includes
+    // logs (privacy fix): recent and stale alike should be absent.
+    {
+      const output = join(tmp, 'out-default.zip');
+      const { deps, stderr } = makeDeps();
+      await runExport(deps, { sessionId: sid, output });
+      const entries = readZipEntries(readFileSync(output));
+      expect(entries.has('logs/kimi.2026-04-18_11-00-00_aaa.log')).toBe(false);
+      expect(entries.has('logs/kimi.2026-04-08_11-00-00_aaa.log')).toBe(false);
+      expect(stderr.join('').toLowerCase()).not.toContain('diagnostic logs');
+    }
 
-    const entries = readZipEntries(readFileSync(output));
-    expect(entries.has('logs/kimi.2026-04-18_11-00-00_aaa.log')).toBe(true);
-    expect(entries.has('logs/kimi.2026-04-08_11-00-00_aaa.log')).toBe(false);
-    expect(stderr.join('').toLowerCase()).toContain('diagnostic logs');
+    // With opt-in: the recent log ships and the warning fires.
+    {
+      const output = join(tmp, 'out-with-logs.zip');
+      const { deps, stderr } = makeDeps();
+      await runExport(deps, { sessionId: sid, output, includeLogs: true });
+      const entries = readZipEntries(readFileSync(output));
+      expect(entries.has('logs/kimi.2026-04-18_11-00-00_aaa.log')).toBe(true);
+      expect(entries.has('logs/kimi.2026-04-08_11-00-00_aaa.log')).toBe(false);
+      expect(stderr.join('').toLowerCase()).toContain('diagnostic logs');
+    }
   });
 
   it('exits 1 when no session-id is provided and no previous session exists', async () => {

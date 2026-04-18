@@ -21,7 +21,7 @@
  * those are scheduled for a later slice.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import type {
@@ -36,6 +36,7 @@ import {
   HttpMcpClient,
   McpOAuthProvider,
   StdioMcpClient,
+  atomicWrite,
   parseMcpConfig,
   startOAuthCallbackServer,
 } from '@moonshot-ai/core';
@@ -331,7 +332,10 @@ async function defaultSaveConfig(config: McpConfig): Promise<void> {
   // Reject writing a malformed config — matches the validation Python
   // does before `_save_mcp_config` so a bad merge never lands on disk.
   parseMcpConfig(config);
-  await writeFile(path, JSON.stringify(config, null, 2) + '\n', 'utf8');
+  // Phase 21 review hotfix — atomicWrite so a partial write (disk full,
+  // crash, killed process) cannot truncate the existing mcp.json and
+  // strand the user's MCP fleet.
+  await atomicWrite(path, JSON.stringify(config, null, 2) + '\n');
 }
 
 function isFileNotFound(error: unknown): boolean {

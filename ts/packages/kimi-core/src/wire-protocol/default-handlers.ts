@@ -116,6 +116,14 @@ export interface DefaultHandlersDeps {
   readonly rebuildRuntimeForModel?:
     | ((sessionId: string, model: string) => Promise<void> | void)
     | undefined;
+  // Phase 21 review hotfix — `rebuildRuntimeForModel` mutates the host's
+  // runtime/model selection, but `deps.runtime` / `deps.defaultModel`
+  // are destructured once at registration time. `session.create` /
+  // `session.resume` fired after a live model-switch would therefore
+  // reach for the stale snapshot. These optional providers let the
+  // host expose live accessors; handlers prefer them when present.
+  readonly runtimeProvider?: (() => Runtime) | undefined;
+  readonly defaultModelProvider?: (() => string) | undefined;
   // Phase 21 §A — hook reverse-RPC timeout. Defaults to 30s.
   readonly hookTimeoutMs?: number | undefined;
 }
@@ -378,11 +386,16 @@ export function registerDefaultWireHandlers(
 
   router.registerProcessMethod('session.create', async (msg): Promise<WireMessage> => {
     const payload = (msg.data ?? {}) as SessionCreateRequestData;
+    // Phase 21 review hotfix — prefer live provider over the snapshot
+    // captured when the handler was registered so new sessions pick up
+    // the latest runtime/model after `session.setModel` fired.
+    const liveRuntime = deps.runtimeProvider?.() ?? runtime;
+    const liveDefaultModel = deps.defaultModelProvider?.() ?? defaultModel;
     const managed = await sessionManager.createSession({
       ...(payload.session_id !== undefined ? { sessionId: payload.session_id } : {}),
-      runtime,
+      runtime: liveRuntime,
       tools,
-      model: payload.model ?? defaultModel,
+      model: payload.model ?? liveDefaultModel,
       ...(payload.system_prompt !== undefined ? { systemPrompt: payload.system_prompt } : {}),
       eventBus,
       workspaceDir,
@@ -533,11 +546,13 @@ export function registerDefaultWireHandlers(
     }
 
     // Emit status.update snapshot with current model + plan-mode so
-    // the client refreshes its indicators on reconnect.
+    // the client refreshes its indicators on reconnect. Use the live
+    // provider (Phase 21 review hotfix) so a post-setModel resume
+    // surfaces the new alias, not the boot-time default.
     eventBus.emit({
       type: 'status.update',
       data: {
-        model: defaultModel,
+        model: deps.defaultModelProvider?.() ?? defaultModel,
         plan_mode: managed.soulPlus.getTurnManager().getPlanMode(),
       },
     });
