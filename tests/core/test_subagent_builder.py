@@ -148,3 +148,26 @@ async def test_builder_model_priority_prefers_override_then_type_default_then_in
     )
 
     assert captured_aliases == ["tool-override", "type-default", None]
+
+
+def test_launch_spec_accepts_work_dir():
+    from kaos.path import KaosPath
+
+    spec = AgentLaunchSpec(
+        agent_id="awd",
+        subagent_type="coder",
+        model_override=None,
+        effective_model=None,
+        work_dir="/tmp/some-worktree",
+    )
+    assert spec.work_dir == "/tmp/some-worktree"
+
+
+def test_launch_spec_work_dir_defaults_to_none():
+    spec = AgentLaunchSpec(
+        agent_id="anwd",
+        subagent_type="coder",
+        model_override=None,
+        effective_model=None,
+    )
+    assert spec.work_dir is None
