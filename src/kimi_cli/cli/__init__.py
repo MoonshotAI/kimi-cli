@@ -623,9 +623,9 @@ def kimi(
             )
             startup_progress.stop()
 
-            # Print/headless mode cannot resolve QuestionRequest; short-circuit
-            # plan entry/exit and AskUserQuestion when yolo is active.
-            if ui == "print":
+            # Print/ACP clients cannot resolve QuestionRequest interactively;
+            # keep yolo short-circuit behavior for questions and plan approval.
+            if ui in ("print", "acp"):
                 instance.soul.runtime.approval.set_interactive_questions_supported(False)
 
             # --- SessionStart hook ---
