@@ -1323,8 +1323,10 @@ export function useSessionStream(
                   // Not complete JSON yet
                 }
 
-                setMessages((prev) =>
-                  prev.map((msg) =>
+                setMessages((prev) => {
+                  let changed = false;
+
+                  const next = prev.map((msg) =>
                     msg.id === messageId && msg.toolCall
                       ? (() => {
                           const nextState = "input-available" as ToolUIPart["state"];
@@ -1337,6 +1339,7 @@ export function useSessionStream(
                             return msg;
                           }
 
+                          changed = true;
                           return {
                             ...msg,
                             toolCall: {
@@ -1347,8 +1350,10 @@ export function useSessionStream(
                           };
                         })()
                       : msg,
-                  ),
-                );
+                  );
+
+                  return changed ? next : prev;
+                });
               }
             }
           }
