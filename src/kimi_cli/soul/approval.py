@@ -81,7 +81,7 @@ class Approval:
         self._runtime = runtime or ApprovalRuntime()
 
     def share(self) -> Approval:
-        """Create a new approval queue that shares state (yolo + auto-approve)."""
+        """Create a new approval queue that shares state (policy + auto-approve)."""
         return Approval(state=self._state, runtime=self._runtime)
 
     def set_runtime(self, runtime: ApprovalRuntime) -> None:
@@ -97,6 +97,22 @@ class Approval:
 
     def is_yolo(self) -> bool:
         return self._state.yolo
+
+    def should_auto_approve_operations(self) -> bool:
+        """Whether operation-type approvals should be auto-approved."""
+        return self._state.yolo
+
+    def should_auto_approve_plan_entry(self) -> bool:
+        """Whether entering plan mode should be auto-approved."""
+        return False
+
+    def should_auto_approve_plan_exit(self) -> bool:
+        """Whether plan approval (ExitPlanMode) should be auto-approved."""
+        return False
+
+    def should_auto_dismiss_questions(self) -> bool:
+        """Whether AskUserQuestion should auto-dismiss without asking the user."""
+        return False
 
     async def request(
         self,
@@ -132,7 +148,7 @@ class Approval:
             action=action,
             description=description,
         )
-        if self._state.yolo:
+        if self.should_auto_approve_operations():
             return ApprovalResult(approved=True)
 
         if action in self._state.auto_approve_actions:

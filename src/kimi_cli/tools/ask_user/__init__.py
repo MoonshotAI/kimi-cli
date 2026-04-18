@@ -66,23 +66,24 @@ class AskUserQuestion(CallableTool2[Params]):
 
     def __init__(self) -> None:
         super().__init__()
-        self._is_yolo: Callable[[], bool] | None = None
+        self._should_auto_dismiss: Callable[[], bool] | None = None
+
+    def bind_interaction_policy(self, should_auto_dismiss: Callable[[], bool]) -> None:
+        """Late-bind interaction policy for optional auto-dismiss behavior."""
+        self._should_auto_dismiss = should_auto_dismiss
 
     def bind_approval(self, is_yolo: Callable[[], bool]) -> None:
-        """Late-bind yolo checker so we can auto-dismiss in non-interactive mode."""
-        self._is_yolo = is_yolo
+        """Backward-compatible alias; binds auto-dismiss policy."""
+        self.bind_interaction_policy(is_yolo)
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
-        if self._is_yolo and self._is_yolo():
+        if self._should_auto_dismiss and self._should_auto_dismiss():
             return ToolReturnValue(
                 is_error=False,
-                output=(
-                    '{"answers": {}, "note": "Running in non-interactive'
-                    ' (yolo) mode. Make your own decision."}'
-                ),
-                message="Non-interactive mode, auto-dismissed.",
-                display=[BriefDisplayBlock(text="Auto-dismissed (yolo)")],
+                output='{"answers": {}, "note": "Question auto-dismissed by interaction policy."}',
+                message="Auto-dismissed by policy.",
+                display=[BriefDisplayBlock(text="Auto-dismissed")],
             )
 
         wire = get_wire_or_none()
