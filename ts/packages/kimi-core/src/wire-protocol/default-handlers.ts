@@ -137,6 +137,7 @@ const SUPPORTED_WIRE_METHODS = [
   'session.getHistory',
   'session.subscribe',
   'session.compact',
+  'session.clear',
   'session.replay',
   // Phase 18 §E.3-E.5 + §F — background tasks / rollback / skills.
   'session.getBackgroundTasks',
@@ -431,6 +432,17 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
   });
 
   router.registerMethod('session.compact', 'management', async (msg) => {
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  router.registerMethod('session.clear', 'management', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    await managed.sessionControl.clear();
     return createWireResponse({
       requestId: msg.id,
       sessionId: msg.session_id,

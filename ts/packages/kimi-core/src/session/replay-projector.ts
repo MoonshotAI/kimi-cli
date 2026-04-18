@@ -16,6 +16,7 @@
  *   - `tools_changed`         → update activeTools
  *   - `permission_mode_changed` → update permissionMode
  *   - `plan_mode_changed`     → update planMode (Slice 5.2)
+ *   - `context_cleared`       → reset messages + tokenCount (Slice 20-A)
  *
  * All other record types (turn_begin, turn_end, approval_*, notification,
  * etc.) are management-class and do not affect conversation projection.
@@ -228,6 +229,16 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
       case 'plan_mode_changed': {
         // Slice 5.2 — last write wins; resume passes this into TurnManager.
         planMode = r.enabled;
+        break;
+      }
+
+      case 'context_cleared': {
+        // Slice 20-A — mirrors live `ContextState.clear()`: reset only
+        // the accumulated conversation + token count. Config-class state
+        // (model / systemPrompt / activeTools / permissionMode / planMode)
+        // survives unchanged.
+        messages = [];
+        tokenCount = 0;
         break;
       }
 

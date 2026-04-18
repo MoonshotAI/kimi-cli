@@ -1,16 +1,16 @@
 /**
- * SessionControl — session-level command handler (Slice 3.2).
+ * SessionControl — session-level command handler.
  *
  * Provides the in-process contract for the four core slash commands:
- *   - `/compact` — trigger context compaction (stub → Slice 3.3)
- *   - `/clear`   — clear session context (stub → needs ContextState.clear())
+ *   - `/compact` — trigger context compaction via TurnManager
+ *   - `/clear`   — clear conversation history via ContextState.clear()
  *   - `/plan`    — toggle plan mode
  *   - `/yolo`    — toggle bypass-permissions mode
  *
  * SessionControl lives in SoulPlus because it touches TurnManager
  * (permission mode) and ContextState (config change projection).
- * The wire protocol routes `session.compact` / `session.setPlanMode` /
- * `session.setYolo` through this handler.
+ * The wire protocol routes `session.compact` / `session.clear` /
+ * `session.setPlanMode` / `session.setYolo` through this handler.
  */
 
 import type { FullContextState } from '../storage/context-state.js';
@@ -28,8 +28,9 @@ export interface SessionControlHandler {
 
   /**
    * Clear the session context (history) while preserving the system
-   * prompt and permission rules. Stub in Slice 3.2 — requires a
-   * `ContextState.clear()` method that does not yet exist.
+   * prompt, model, active tools, plan mode, and permission rules.
+   * Delegates to `ContextState.clear()` which writes a durable
+   * `context_cleared` wire record (WAL-then-mirror).
    */
   clear(): Promise<void>;
 
@@ -75,13 +76,12 @@ export class DefaultSessionControl implements SessionControlHandler {
   }
 
   async clear(): Promise<void> {
-    // Stub — requires ContextState.clear() method which does not exist
-    // in Phase 1/2 ContextState. The method needs to:
-    //   1. Write a context_edit{operation:'rewind'} record to the journal
-    //   2. Clear the in-memory history
-    //   3. Preserve system prompt / model / active tools
-    // Callers should catch this and surface a user-friendly message.
-    throw new Error('Context clear not yet implemented (requires ContextState.clear())');
+    // Slice 20-A — delegates to ContextState.clear(). The WAL append
+    // (context_cleared) happens inside ContextState; SessionControl does
+    // NOT emit an EventSink event (铁律 4 双通道 — clear is not a
+    // derived-field bus event), and must not touch plan_mode /
+    // permission_mode (those are owned by separate handlers).
+    await this.contextState.clear();
   }
 
   async setPlanMode(enabled: boolean): Promise<void> {

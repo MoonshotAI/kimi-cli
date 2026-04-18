@@ -192,6 +192,17 @@ export interface FullContextState extends SoulContextState {
    * (WAL-then-mirror). The reminder persists across turns.
    */
   appendSystemReminder(data: { content: string }): Promise<void>;
+
+  /**
+   * Slice 20-A — clear the in-memory conversation projection. Writes a
+   * durable `context_cleared` wire record FIRST (WAL-then-mirror §4.5.3);
+   * on success, resets `history` + `tokenCountWithPending` only.
+   *
+   * Does NOT touch: model / systemPrompt / activeTools / steerBuffer /
+   * beforeStep — those are driven by their own records / runtime hooks.
+   * Two successive calls produce two records and both succeed (idempotent).
+   */
+  clear(): Promise<void>;
 }
 
 // ── Shared implementation ─────────────────────────────────────────────
@@ -488,6 +499,14 @@ class BaseContextState implements FullContextState {
       content: [{ type: 'text', text }],
       toolCalls: [],
     });
+  }
+
+  async clear(): Promise<void> {
+    // WAL-then-mirror §4.5.3: append the durable record FIRST. If the
+    // append throws, the in-memory projection stays intact.
+    await this.journalWriter.append({ type: 'context_cleared' });
+    this.history = [];
+    this._tokenCountWithPending = 0;
   }
 
   async applyConfigChange(event: ConfigChangeEvent): Promise<void> {

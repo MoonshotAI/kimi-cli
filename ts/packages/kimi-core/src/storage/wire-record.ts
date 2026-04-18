@@ -435,6 +435,20 @@ export interface SessionMetaChangedRecord {
   reason?: string | undefined;
 }
 
+// ── Slice 20-A: context cleared (`/clear`) ─────────────────────────────
+
+/**
+ * Emitted by `ContextState.clear()` (SoulPlus-level `/clear` command).
+ * Replay sees this as "reset accumulated messages + tokenCount", leaving
+ * config-class state (model / systemPrompt / activeTools / permissionMode /
+ * planMode) untouched — those are driven by their own `_changed` records.
+ */
+export interface ContextClearedRecord {
+  type: 'context_cleared';
+  seq: number;
+  time: number;
+}
+
 // ── Reserved: context edit (logical rewind / edit, §4.7) ───────────────
 
 export interface ContextEditRecord {
@@ -479,6 +493,7 @@ export type WireRecord =
   | SubagentFailedRecord
   | OwnershipChangedRecord
   | ContextEditRecord
+  | ContextClearedRecord
   | SessionMetaChangedRecord;
 
 export type WireRecordType = WireRecord['type'];
@@ -960,6 +975,14 @@ const _rawContextEditRecordSchema = z.object({
 });
 export const ContextEditRecordSchema: z.ZodType<ContextEditRecord> = _rawContextEditRecordSchema;
 
+const _rawContextClearedRecordSchema = z.object({
+  type: z.literal('context_cleared'),
+  seq: z.number(),
+  time: z.number(),
+});
+export const ContextClearedRecordSchema: z.ZodType<ContextClearedRecord> =
+  _rawContextClearedRecordSchema;
+
 // ── Discriminated union over all record types ──────────────────────────
 
 // ── Compile-time drift guard ────────────────────────────────────────────
@@ -1116,6 +1139,11 @@ const _driftGuard_ContextEditRecord: AssertEqual<
   ContextEditRecord
 > = true;
 void _driftGuard_ContextEditRecord;
+const _driftGuard_ContextClearedRecord: AssertEqual<
+  z.infer<typeof _rawContextClearedRecordSchema>,
+  ContextClearedRecord
+> = true;
+void _driftGuard_ContextClearedRecord;
 const _driftGuard_SessionMetaChangedRecord: AssertEqual<
   z.infer<typeof _rawSessionMetaChangedRecordSchema>,
   SessionMetaChangedRecord
@@ -1153,5 +1181,6 @@ export const WireRecordSchema: z.ZodType<WireRecord> = z.discriminatedUnion('typ
   _rawSubagentFailedRecordSchema,
   _rawOwnershipChangedRecordSchema,
   _rawContextEditRecordSchema,
+  _rawContextClearedRecordSchema,
   _rawSessionMetaChangedRecordSchema,
 ]);

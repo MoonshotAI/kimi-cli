@@ -75,6 +75,9 @@ class RecordingContextState implements FullContextState {
   appendSystemReminder(...args: Parameters<FullContextState['appendSystemReminder']>): Promise<void> {
     return this.inner.appendSystemReminder(...args);
   }
+  clear(...args: Parameters<FullContextState['clear']>): Promise<void> {
+    return this.inner.clear(...args);
+  }
   getHistory(): ReturnType<FullContextState['getHistory']> {
     return this.inner.getHistory();
   }

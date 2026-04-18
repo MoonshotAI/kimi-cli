@@ -265,6 +265,7 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
           'session.subscribe',
           'session.unsubscribe',
           'session.compact',
+          'session.clear',
           'session.setModel',
           'session.setPlanMode',
           'session.setYolo',
@@ -915,6 +916,18 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
   router.registerMethod('session.compact', 'management', async (msg) => {
     // Phase 9 stub — real compaction takes a provider + journal
     // capability which the harness doesn't wire.
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  // ── Slice 20-A — session.clear ───────────────────────────────────
+  router.registerMethod('session.clear', 'management', async (msg, _transport, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    await managed.sessionControl.clear();
     return createWireResponse({
       requestId: msg.id,
       sessionId: msg.session_id,

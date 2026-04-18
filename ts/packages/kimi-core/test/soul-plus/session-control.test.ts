@@ -1,11 +1,12 @@
 /**
- * SessionControl tests (Slice 3.2).
+ * SessionControl tests.
  *
  * Verifies:
  *   - /plan: plan_mode_changed config change applied to ContextState
  *   - /yolo: permission mode toggled on TurnManager + journal record written
- *   - /compact: delegates to TurnManager.triggerCompaction (Slice 3.3)
- *   - /clear: stub throws
+ *   - /compact: delegates to TurnManager.triggerCompaction
+ *
+ * `/clear` is covered in `session-control-clear.test.ts` (Slice 20-A).
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -236,15 +237,5 @@ describe('SessionControl — /compact', () => {
     // First call should succeed; we test the "busy" path differently.
     // For now, just verify compact() doesn't throw "not implemented"
     await expect(sessionControl.compact()).resolves.toBeUndefined();
-  });
-});
-
-// ── /clear tests ─────────────────────────────────────────────────────
-
-describe('SessionControl — /clear', () => {
-  it('throws not-implemented error', async () => {
-    const { sessionControl } = makeSessionControl();
-
-    await expect(sessionControl.clear()).rejects.toThrow('Context clear not yet implemented');
   });
 });

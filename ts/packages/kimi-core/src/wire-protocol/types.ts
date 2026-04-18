@@ -101,6 +101,7 @@ export type ManagementMethod =
   | 'session.getTurnEvents'
   | 'session.getUsage'
   | 'session.compact'
+  | 'session.clear'
   | 'session.subscribe'
   | 'session.unsubscribe'
   | 'session.attach'
