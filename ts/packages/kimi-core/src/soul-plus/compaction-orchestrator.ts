@@ -125,15 +125,13 @@ export interface CompactionOrchestratorDeps {
 /**
  * Convenience for test harnesses that don't exercise pending-turn races:
  * declares "no prompt launch is in flight" explicitly so the contract
- * on `CompactionOrchestratorDeps.getPendingTurnId` stays required. Using
- * a named function (rather than an arrow with explicit `undefined`)
- * avoids the `no-useless-undefined` lint rule without masking intent —
- * the return type in the signature already encodes the `undefined` leg.
+ * on `CompactionOrchestratorDeps.getPendingTurnId` stays required. The
+ * `undefined` return is semantically meaningful — it is the "no
+ * reservation" half of the `string | undefined` contract — not a
+ * useless literal.
  */
-// eslint-disable-next-line func-style -- single-line named expression keeps the export shape intact
-export const STATIC_NO_PENDING_TURN: () => string | undefined = function noPending() {
-  return undefined as string | undefined;
-};
+// eslint-disable-next-line unicorn/no-useless-undefined -- undefined is the contract's "no pending turn" sentinel, not noise.
+export const STATIC_NO_PENDING_TURN: () => string | undefined = () => undefined;
 
 export class CompactionOrchestrator {
   constructor(private readonly deps: CompactionOrchestratorDeps) {}

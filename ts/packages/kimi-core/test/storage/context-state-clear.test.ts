@@ -272,7 +272,7 @@ describe('ContextState.clear — InMemoryContextState parity', () => {
 // the in-memory pending buffer until the next drain tick (≤50 ms). A
 // `context_cleared` without force-flush can disappear on crash and
 // replay restores the "cleared" history — the exact surprise round-5
-// round-5 flagged. These tests pin the fix (context_cleared joins
+// review flagged. These tests pin the fix (context_cleared joins
 // FORCE_FLUSH_KINDS) by verifying the WAL file on disk observably
 // contains the record BEFORE `clear()` resolves.
 

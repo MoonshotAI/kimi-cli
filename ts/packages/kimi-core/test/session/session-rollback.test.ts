@@ -192,6 +192,89 @@ describe('Phase 18 F.1 — SessionManager.rollbackSession', () => {
     await expect(mgr.rollbackSession('ses_does_not_exist', 1)).rejects.toThrow(/not found|unknown/i);
   });
 
+  it('rollback reserves lifecycle for the whole async body — a concurrent prompt launch is rejected as busy (round-7 race closure)', async () => {
+    // Round-7 review B1 regression guard: the previous rollback fix
+    // did a SYNC guard and then entered several awaits
+    // (`stateCache.read` / `readFile` / `atomicWrite`). In that
+    // window `TurnManager.handlePrompt` could sneak in, set
+    // `pendingLaunchTurnId`, and physically write `turn_begin` to
+    // wire.jsonl — which rollback's trailing `atomicWrite` would
+    // then overwrite. The fix is `tryReserveForMaintenance()` held
+    // through the whole body.
+    //
+    // We verify the structural reservation: while rollback's await
+    // body is in flight, `turnManager.tryReserveForMaintenance()`
+    // must return false (another maintenance op holds the slot).
+    const sessionId = 'ses_rollback_race';
+    const created = await mgr.createSession({
+      workspaceDir: tmp,
+      sessionId,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'test-model',
+    });
+    await created.sessionJournal.appendTurnBegin({
+      type: 'turn_begin',
+      turn_id: 'turn_1',
+      agent_type: 'main',
+      user_input: 'hi',
+      input_kind: 'user',
+    });
+
+    const turnManager = created.soulPlus.getTurnManager();
+    // Sanity: before rollback fires, a fresh reservation is grantable.
+    expect(turnManager.tryReserveForMaintenance()).toBe(true);
+    turnManager.releaseMaintenance();
+
+    // Fire rollback but DON'T await — while its promise is pending,
+    // any concurrent reservation request must fail.
+    const rollbackPromise = mgr.rollbackSession(sessionId, 1);
+
+    // Event-loop tick so rollback has entered its async body and
+    // holds the maintenance reservation.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(turnManager.tryReserveForMaintenance()).toBe(false);
+
+    await rollbackPromise;
+
+    // After rollback resolves, the reservation is released and new
+    // ones succeed.
+    expect(turnManager.tryReserveForMaintenance()).toBe(true);
+    turnManager.releaseMaintenance();
+
+    await mgr.closeSession(sessionId);
+  });
+
+  it('rollback releases maintenance reservation even when the body throws (so the session is not permanently stuck)', async () => {
+    // Failure-path companion to the race closure: if the body throws
+    // (e.g. state.json is missing), the try/finally must still flip
+    // lifecycle back to idle. Without this guarantee a single bad
+    // rollback could wedge a session for the rest of the process's
+    // lifetime.
+    const sessionId = 'ses_rollback_release_on_throw';
+    const created = await mgr.createSession({
+      workspaceDir: tmp,
+      sessionId,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'test-model',
+    });
+
+    // Delete state.json to force rollback's body to throw
+    // "session not found" AFTER the reservation was taken.
+    await rm(paths.statePath(sessionId), { force: true });
+
+    await expect(mgr.rollbackSession(sessionId, 1)).rejects.toThrow();
+
+    const turnManager = created.soulPlus.getTurnManager();
+    expect(turnManager.tryReserveForMaintenance()).toBe(true);
+    turnManager.releaseMaintenance();
+
+    await mgr.closeSession(sessionId);
+  });
+
   it.todo(
     'wire.jsonl truncation is atomic (write .tmp → rename), never leaving a partially-written file',
     // phase-18 §F.1 风险 2 / 铁律 W2: 读 wire.jsonl → 定位截断点 → 写 .tmp →

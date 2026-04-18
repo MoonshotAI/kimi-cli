@@ -819,13 +819,27 @@ export class KimiCoreClient implements WireClient {
   }
   async setThinking(_sessionId: string, _level: string): Promise<void> {}
   async setPlanMode(sessionId: string, enabled: boolean): Promise<void> {
+    // Round-7 review: an unknown session id used to silently no-op,
+    // which let a stale TUI sessionId confirm `/plan on` to the user
+    // while the real session (or no session at all) kept the old
+    // mode. Throw instead so slash dispatch routes the failure into
+    // the transcript. Mirrors `clear` / `compact`.
     const record = this.sessions.get(sessionId);
-    if (record === undefined) return;
+    if (record === undefined) {
+      throw new Error(`/plan: unknown session ${sessionId}`);
+    }
     await record.managed.sessionControl.setPlanMode(enabled);
   }
   async setYolo(sessionId: string, enabled: boolean): Promise<void> {
+    // Round-7 review: silent no-op was especially risky here — `/yolo`
+    // is a bypass-permissions toggle the user expects to take effect.
+    // A stale sessionId that swallowed the call could let the user
+    // believe auto-approval is live while the real session still
+    // gates every tool. Throw to surface the drift.
     const record = this.sessions.get(sessionId);
-    if (record === undefined) return;
+    if (record === undefined) {
+      throw new Error(`/yolo: unknown session ${sessionId}`);
+    }
     await record.managed.sessionControl.setYolo(enabled);
   }
 

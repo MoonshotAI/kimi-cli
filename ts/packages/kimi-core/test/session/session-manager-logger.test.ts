@@ -57,7 +57,7 @@ interface SpyLogger {
   info: ReturnType<typeof vi.fn>;
   warn: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
-  /** Spy on `child(bindings)` so tests can verify binding propagation. */
+  /** Spy on `child(bindings)` so tests can verify the call happened. */
   child: ReturnType<typeof vi.fn>;
 }
 
@@ -68,22 +68,27 @@ function makeSpyLogger(): SpyLogger {
   // returned SpyLogger bag so tests can assert `.toHaveBeenCalled()`
   // without unsafe casts through the interface.
   //
-  // `child(bindings)` returns a FRESH spy-logger each call (not the
-  // same instance). A self-reference would pass type-checks but mask
-  // bugs where product code expects child(bindings).warn to carry
-  // additional context keys that a shared-instance mock never sees.
+  // `child(bindings)` returns THIS same logger (self-reference).
+  // Current product consumers (`NotificationManager`) call
+  // `logger.warn` directly — none route through `child`. Returning
+  // self keeps assertions simple: all emits land on `spy.warn`
+  // regardless of how many child scopes the caller stacks. If a
+  // future consumer starts to require distinct child identity (e.g.
+  // "every mcp session gets its own child"), this helper will need
+  // to fan out.
   const debug = vi.fn((_msg: string, _meta?: Record<string, unknown>): void => {});
   const info = vi.fn((_msg: string, _meta?: Record<string, unknown>): void => {});
   const warn = vi.fn((_msg: string, _meta?: Record<string, unknown>): void => {});
   const error = vi.fn((_msg: string, _meta?: Record<string, unknown>): void => {});
-  const child = vi.fn((_bindings: Record<string, unknown>): Logger => makeSpyLogger().logger);
   const logger: Logger = {
     debug,
     info,
     warn,
     error,
-    child,
+    child: undefined as unknown as Logger['child'],
   };
+  const child = vi.fn((_bindings: Record<string, unknown>): Logger => logger);
+  logger.child = child;
   return { logger, debug, info, warn, error, child };
 }
 
@@ -202,7 +207,7 @@ describe('SessionManager — logger wiring (Phase 20 round-5)', () => {
     await mgr.closeSession(session.sessionId);
   });
 
-  it('resumeSession also accepts and forwards logger to SoulPlus', async () => {
+  it('resumeSession accepts a logger option (type-level + construction guard)', async () => {
     // Parity pin for `ResumeSessionOptions.logger`. Without this, the
     // resume path could silently regress to "logger swallowed" while
     // createSession kept working (the two options interfaces are

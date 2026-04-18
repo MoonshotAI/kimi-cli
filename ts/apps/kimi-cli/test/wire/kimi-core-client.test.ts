@@ -509,4 +509,36 @@ describe('KimiCoreClient session-info methods (Slice 5.1)', () => {
 
     await client.dispose();
   });
+
+  it('compact / setPlanMode / setYolo all throw for unknown session — symmetric with clear (round-7 review)', async () => {
+    // Round-7 follow-up: the earlier "Finding F" commit made `compact`
+    // throw to match `clear`, but silently regressed to no-op on
+    // `setPlanMode` / `setYolo`. Those are arguably MORE important
+    // not to drop — the user types `/yolo on`, sees nothing
+    // wrong, types a destructive command expecting auto-approval,
+    // and gets blocked (or worse, proceeds on a mis-routed session).
+    // This test pins all three symmetrically.
+    const stack = createFakeStack();
+    const client = new KimiCoreClient({
+      sessionManager: stack.sessionManager as never,
+      runtime: fakeRuntime(),
+      model: 'm',
+      systemPrompt: '',
+      buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
+    });
+
+    await expect(client.compact('ses_does_not_exist')).rejects.toThrow(
+      /unknown session/i,
+    );
+    await expect(client.setPlanMode('ses_does_not_exist', true)).rejects.toThrow(
+      /unknown session/i,
+    );
+    await expect(client.setYolo('ses_does_not_exist', true)).rejects.toThrow(
+      /unknown session/i,
+    );
+
+    await client.dispose();
+  });
 });

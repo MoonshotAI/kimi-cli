@@ -128,10 +128,12 @@ export interface DefaultHandlersDeps {
   // Phase 21 §A — hook reverse-RPC timeout. Defaults to 30s.
   readonly hookTimeoutMs?: number | undefined;
   // Phase 20 round-5 follow-up — logger forwarded into
-  // `SessionManager.createSession/resumeSession` so wire daemons
-  // (apps/kimi-cli --wire + SDK embedders with their own process)
-  // get the same NotificationManager observability that the in-process
-  // TUI now gets. Optional for unit tests that don't care.
+  // `SessionManager.createSession` so wire daemons (apps/kimi-cli
+  // --wire + SDK embedders with their own process) get the same
+  // NotificationManager observability as the in-process TUI. Note:
+  // the wire `session.resume` handler is a read-only replay snapshot
+  // and never calls `SessionManager.resumeSession`, so there is no
+  // resume-path plumbing here. Optional for unit tests that don't care.
   readonly logger?: Logger | undefined;
 }
 
