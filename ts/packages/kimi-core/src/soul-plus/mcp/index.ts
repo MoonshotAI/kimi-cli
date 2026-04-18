@@ -46,5 +46,20 @@ export type {
 } from './manager.js';
 export { MCPManager } from './manager.js';
 
+export type { McpOAuthProviderOptions } from './oauth.js';
+export { McpOAuthProvider } from './oauth.js';
+
+// Re-export the SDK's OAuth provider interface so downstream packages
+// (e.g. `apps/kimi-cli`) can type-hint callers without taking a direct
+// dependency on `@modelcontextprotocol/sdk`.
+export type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
+
+export type {
+  OAuthCallbackPayload,
+  OAuthCallbackServerHandle,
+  StartOAuthCallbackServerOptions,
+} from './oauth-callback-server.js';
+export { startOAuthCallbackServer } from './oauth-callback-server.js';
+
 export type { McpContentBlock, McpToolResultInput } from './output-budget.js';
 export { MCP_MAX_OUTPUT_CHARS, convertBlock, convertMcpToolResult } from './output-budget.js';

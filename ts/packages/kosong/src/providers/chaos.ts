@@ -1,3 +1,4 @@
+import { UNKNOWN_CAPABILITY, type ModelCapability } from '../capability.js';
 import { APIStatusError } from '../errors.js';
 import type { Message, StreamedMessagePart, ToolCall, ToolCallPart } from '../message.js';
 import type {
@@ -123,6 +124,13 @@ export class ChaosChatProvider implements ChatProvider, RetryableChatProvider {
 
   withThinking(effort: ThinkingEffort): ChaosChatProvider {
     return new ChaosChatProvider(this._inner.withThinking(effort), this._config);
+  }
+
+  getCapability(_model?: string): ModelCapability {
+    // Chaos is intentionally capability-blind: tests that exercise chaos
+    // should not also be entangled with capability-gating branches. The
+    // inner provider's catalogue is deliberately not consulted here.
+    return UNKNOWN_CAPABILITY;
   }
 
   onRetryableError(error: Error): boolean {

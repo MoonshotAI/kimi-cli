@@ -81,6 +81,10 @@ export {
 } from './errors.js';
 export type { BusinessErrorMapping } from './errors.js';
 export { MAX_SUBAGENT_DEPTH, MAX_SKILL_QUERY_DEPTH } from './subagent-constants.js';
+
+// ── Phase 19 Slice B — capability check ──────────────────────────────
+export { checkLLMCapabilities } from './capability-check.js';
+export type { LLMCapabilityCheckOptions } from './capability-check.js';
 export { TransactionalHandlerRegistry } from './transactional-handler-registry.js';
 export type { TransactionalHandler } from './transactional-handler-registry.js';
 export { ToolCallOrchestrator } from './orchestrator.js';
@@ -137,10 +141,15 @@ export type {
   McpContentBlock,
   McpLoadNotification,
   McpNotifyCallback,
+  McpOAuthProviderOptions,
   McpServerConfig,
   McpStderrCallback,
   McpToolAdapterOptions,
   McpToolResultInput,
+  OAuthCallbackPayload,
+  OAuthCallbackServerHandle,
+  OAuthClientProvider,
+  StartOAuthCallbackServerOptions,
   StdioServerConfig,
 } from './mcp/index.js';
 export {
@@ -154,6 +163,7 @@ export {
   MCP_MAX_OUTPUT_CHARS,
   MCP_TOOL_NAME_PREFIX,
   McpConfigSchema,
+  McpOAuthProvider,
   McpServerConfigSchema,
   StdioMcpClient,
   StdioServerConfigSchema,
@@ -165,6 +175,7 @@ export {
   mcpToolToKimiTool,
   parseMcpConfig,
   parseMcpToolName,
+  startOAuthCallbackServer,
 } from './mcp/index.js';
 
 // ── Session control (Slice 3.2) ───────────────────────────────────

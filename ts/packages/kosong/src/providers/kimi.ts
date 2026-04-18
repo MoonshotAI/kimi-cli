@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 
+import { UNKNOWN_CAPABILITY, type ModelCapability } from '../capability.js';
 import { ChatProviderError } from '../errors.js';
 import type { ContentPart, Message, StreamedMessagePart, ToolCall } from '../message.js';
 import type {
@@ -539,6 +540,51 @@ export class KimiChatProvider implements RetryableChatProvider {
     // Invalidate the cached KimiFiles so it picks up the new client on next access.
     this._files = undefined;
     return true;
+  }
+
+  getCapability(model?: string): ModelCapability {
+    const name = (model ?? this._model).toLowerCase();
+    // Kimi-for-coding / kimi-code: full multimodal + thinking + tools.
+    if (name === 'kimi-for-coding' || name === 'kimi-code') {
+      return {
+        image_in: true,
+        video_in: true,
+        audio_in: false,
+        thinking: true,
+        tool_use: true,
+        max_context_tokens: 256_000,
+      };
+    }
+    // kimi-k2 family (k2, k2.5, k2-turbo-preview, …): image+video+thinking+tools.
+    if (name.startsWith('kimi-k2')) {
+      return {
+        image_in: true,
+        video_in: true,
+        audio_in: false,
+        thinking: true,
+        tool_use: true,
+        max_context_tokens: 256_000,
+      };
+    }
+    // Name-substring heuristic: "thinking" or "reason" → thinking-capable.
+    // Matches Python `derive_model_capabilities` fallback. We leave
+    // other fields false (and return a partial capability rather than
+    // UNKNOWN_CAPABILITY) because the only signal we have is that the
+    // model does chain-of-thought. `tool_use: false` here is a
+    // conservative assumption — most Kimi thinking models actually
+    // support tools; if/when Slice B's gate extends to tool_use we
+    // should replace this heuristic with a proper catalogue.
+    if (name.includes('thinking') || name.includes('reason')) {
+      return {
+        image_in: false,
+        video_in: false,
+        audio_in: false,
+        thinking: true,
+        tool_use: false,
+        max_context_tokens: 0,
+      };
+    }
+    return UNKNOWN_CAPABILITY;
   }
 
   withThinking(effort: ThinkingEffort): KimiChatProvider {

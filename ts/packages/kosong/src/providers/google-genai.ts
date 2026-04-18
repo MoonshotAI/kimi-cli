@@ -1,5 +1,6 @@
 import { ApiError as GoogleApiError, GoogleGenAI as GenAIClient } from '@google/genai';
 
+import { UNKNOWN_CAPABILITY, type ModelCapability } from '../capability.js';
 import {
   APIConnectionError,
   APIStatusError,
@@ -765,6 +766,35 @@ export class GoogleGenAIChatProvider implements RetryableChatProvider {
     return {
       model: this._model,
       ...this._generationKwargs,
+    };
+  }
+
+  getCapability(model?: string): ModelCapability {
+    const name = (model ?? this._model).toLowerCase();
+    if (!name.startsWith('gemini-')) return UNKNOWN_CAPABILITY;
+    // Known Gemini catalogue. 1.5 / 2.0 / 2.5 families are multimodal
+    // (image/video/audio) and support tool use. Unknown gemini-* models
+    // stay UNKNOWN_CAPABILITY so the matrix never overpromises.
+    const catalogued =
+      name.startsWith('gemini-1.5-pro') ||
+      name.startsWith('gemini-1.5-flash') ||
+      name.startsWith('gemini-2.0-flash') ||
+      name.startsWith('gemini-2.0-pro') ||
+      name.startsWith('gemini-2.5-pro') ||
+      name.startsWith('gemini-2.5-flash');
+    if (!catalogued) return UNKNOWN_CAPABILITY;
+    // Gemini 2.5 family (pro / flash) ships with native thinking;
+    // `gemini-*-thinking` variants also explicitly opt-in. Pre-2.5
+    // models do not expose thinking.
+    const thinking =
+      name.startsWith('gemini-2.5-') || name.includes('thinking');
+    return {
+      image_in: true,
+      video_in: true,
+      audio_in: true,
+      thinking,
+      tool_use: true,
+      max_context_tokens: 0,
     };
   }
 

@@ -34,6 +34,7 @@
     "@moonshot-ai/kosong": "workspace:^",
     "js-yaml": "^4.1.1",
     "nunjucks": "^3.2.4",
+    "open": "^10.2.0",
     "proper-lockfile": "^4.1.2",
     "smol-toml": "^1.6.1",
     "zod": "catalog:"

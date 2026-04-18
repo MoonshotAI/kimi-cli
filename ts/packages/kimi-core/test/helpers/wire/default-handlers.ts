@@ -569,13 +569,43 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     const kosongUnwrapped =
       (runtime as unknown as { __slot?: { inner: unknown } }).__slot?.inner ??
       runtime.kosong;
-    const capabilityMismatch = checkLLMCapabilities({
-      model: managed.contextState.model,
-      inputContainsImage: hasImage,
-      inputContainsVideo: hasVideo,
-      inputContainsAudio: false,
-      kosong: kosongUnwrapped,
-    });
+    // FakeKosongAdapter exposes a legacy `capabilities` flag blob
+    // (image_in/video_in/audio_in, each optional). Phase 19 Slice B's
+    // production helper takes an explicit ModelCapability; build one
+    // from the blob so pre-existing wire tests (Phase 18) stay green.
+    //
+    // Two-level permissive mapping (legacy 裁决 1, test-only):
+    //   1. `capabilities` entirely absent → skip `checkLLMCapabilities`
+    //      (= "no declared matrix" → no constraint).
+    //   2. Individual flag absent (e.g. `image_in === undefined`) → treat
+    //      as `true` via `flag !== false`. This matches the old
+    //      phase18-extensions helper where only an explicit `false`
+    //      rejected a modality.
+    //
+    // Production path in `turn-manager.ts` uses stricter semantics —
+    // `capability === undefined` → skip gate, but when a capability is
+    // returned every field is authoritative. This asymmetry is
+    // deliberate: the harness layer exists to keep legacy tests
+    // running without requiring them to all declare complete matrices.
+    const capsBlob = (kosongUnwrapped as { capabilities?: {
+      image_in?: boolean; video_in?: boolean; audio_in?: boolean;
+    } }).capabilities;
+    const capabilityMismatch = capsBlob === undefined
+      ? undefined
+      : checkLLMCapabilities({
+          model: managed.contextState.model,
+          inputContainsImage: hasImage,
+          inputContainsVideo: hasVideo,
+          inputContainsAudio: false,
+          capability: {
+            image_in: capsBlob.image_in !== false,
+            video_in: capsBlob.video_in !== false,
+            audio_in: capsBlob.audio_in !== false,
+            thinking: false,
+            tool_use: false,
+            max_context_tokens: 0,
+          },
+        });
     if (capabilityMismatch !== undefined) {
       return createWireResponse({
         requestId: msg.id,

@@ -34,6 +34,10 @@ export type {
   ThinkingEffort,
 } from './provider.js';
 
+// Model capability matrix
+export { UNKNOWN_CAPABILITY } from './capability.js';
+export type { ModelCapability } from './capability.js';
+
 // Core functions
 export { generate } from './generate.js';
 export type { GenerateCallbacks, GenerateResult } from './generate.js';

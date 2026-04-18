@@ -19,6 +19,7 @@ import type {
   ToolUseBlockParam,
 } from '@anthropic-ai/sdk/resources/messages/messages.js';
 
+import { UNKNOWN_CAPABILITY, type ModelCapability } from '../capability.js';
 import {
   APIConnectionError,
   APIStatusError,
@@ -627,6 +628,35 @@ export class AnthropicChatProvider implements RetryableChatProvider {
       model: this._model,
       ...this._generationKwargs,
     };
+  }
+
+  getCapability(model?: string): ModelCapability {
+    const name = (model ?? this._model).toLowerCase();
+    // Claude 3 family (haiku / sonnet / opus, incl. 3.5 / 3.7 variants):
+    // vision + tools, no audio, no extended thinking.
+    if (name.startsWith('claude-3-') || name.startsWith('claude-3.5-') || name.startsWith('claude-3.7-')) {
+      return {
+        image_in: true,
+        video_in: false,
+        audio_in: false,
+        thinking: false,
+        tool_use: true,
+        max_context_tokens: 0,
+      };
+    }
+    // Claude 4 family (opus-4 / sonnet-4 / haiku-4, incl. point releases):
+    // vision + tools + extended thinking.
+    if (name.startsWith('claude-opus-4') || name.startsWith('claude-sonnet-4') || name.startsWith('claude-haiku-4')) {
+      return {
+        image_in: true,
+        video_in: false,
+        audio_in: false,
+        thinking: true,
+        tool_use: true,
+        max_context_tokens: 0,
+      };
+    }
+    return UNKNOWN_CAPABILITY;
   }
 
   async generate(

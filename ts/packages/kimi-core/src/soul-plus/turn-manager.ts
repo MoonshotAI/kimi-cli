@@ -70,6 +70,8 @@ import {
 } from './turn-lifecycle-tracker.js';
 import type { DispatchResponse, TurnTrigger } from './types.js';
 import type { WakeQueueScheduler } from './wake-queue-scheduler.js';
+import { checkLLMCapabilities } from './capability-check.js';
+import { UNKNOWN_CAPABILITY } from '@moonshot-ai/kosong';
 
 // ── Re-exports for backward-compat ────────────────────────────────────
 //
@@ -365,6 +367,38 @@ export class TurnManager {
     }
 
     const input = req.data.input;
+
+    // Phase 19 Slice B — capability gate. Reject before allocating a turn
+    // or writing any WAL record so a mismatched prompt leaves no residue.
+    // `getCapability` is optional on KosongAdapter; `undefined` means the
+    // adapter does not expose a capability table (e.g. inline test mocks)
+    // and we skip the check entirely (open-world, permissive).
+    // `UNKNOWN_CAPABILITY` means the provider has a table but the active
+    // model isn't catalogued (e.g. moonshot-v1-auto on the Kimi provider,
+    // whose catalogue only covers kimi-for-coding / kimi-k2 / *thinking*).
+    // Catalogue-miss ≠ "model rejects images"; treating UNKNOWN_CAPABILITY
+    // as strict-deny would make the gate fire on every mainstream Moonshot
+    // model with an image input. Collapse both cases to permissive-skip.
+    const capability = this.deps.runtime.kosong.getCapability?.(this.deps.contextState.model);
+    if (capability !== undefined && capability !== UNKNOWN_CAPABILITY) {
+      let inputContainsImage = false;
+      let inputContainsVideo = false;
+      for (const part of input.parts ?? []) {
+        if (part.type === 'image_url') inputContainsImage = true;
+        else if (part.type === 'video_url') inputContainsVideo = true;
+      }
+      const mismatch = checkLLMCapabilities({
+        model: this.deps.contextState.model,
+        inputContainsImage,
+        inputContainsVideo,
+        inputContainsAudio: false,
+        capability,
+      });
+      if (mismatch !== undefined) {
+        throw mismatch;
+      }
+    }
+
     const turnId = this.deps.lifecycle.allocateTurnId();
     this.pendingLaunchTurnId = turnId;
 

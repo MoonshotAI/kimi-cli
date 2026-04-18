@@ -43,9 +43,16 @@ import type {
 } from '../../../src/wire-protocol/types.js';
 import type { MemoryTransport } from '../../../src/transport/memory-transport.js';
 import {
-  LLMCapabilityMismatchError,
   classifyBusinessError as classifyBusinessErrorFromSrc,
 } from '../../../src/soul-plus/errors.js';
+// Phase 19 Slice B — capability check moved to src/. Re-export so harness
+// callers keep importing it from `phase18-extensions.js` without churn.
+// TODO(phase-19-cleanup): inline callers should import directly from
+// `@moonshot-ai/core` / the soul-plus barrel and this shim removed.
+export {
+  checkLLMCapabilities,
+  type LLMCapabilityCheckOptions,
+} from '../../../src/soul-plus/capability-check.js';
 
 // ── Per-session mutable state owned by the harness ──────────────────────
 
@@ -560,49 +567,6 @@ export function classifyBusinessError(error: unknown): {
 } | undefined {
   const mapped = classifyBusinessErrorFromSrc(error);
   return mapped === null ? undefined : mapped;
-}
-
-// ── Helper: validate model / capability before LLM call ────────────────
-
-export interface LLMCapabilityCheckOptions {
-  readonly model: string;
-  readonly inputContainsImage: boolean;
-  readonly inputContainsVideo: boolean;
-  readonly inputContainsAudio: boolean;
-  readonly kosong: unknown;
-}
-
-export function checkLLMCapabilities(opts: LLMCapabilityCheckOptions): LLMCapabilityMismatchError | undefined {
-  if (opts.model === '' || opts.model === undefined) {
-    return undefined; // -32001 surfaced separately
-  }
-  const kosong = opts.kosong as {
-    capabilities?: { image_in?: boolean; video_in?: boolean; audio_in?: boolean };
-  };
-  // 裁决 1: capability check only fires when the caller has
-  // explicitly declared a capability matrix on the adapter. Absence
-  // of `capabilities` means "no constraint" — the existing
-  // wire-media tests (Phase 14) that exercise image/video inputs
-  // without a capability blob continue to work. Specific modalities
-  // reject only when their flag is declared `false`.
-  const caps = kosong.capabilities;
-  if (caps === undefined) return undefined;
-  if (opts.inputContainsImage && caps.image_in === false) {
-    return new LLMCapabilityMismatchError(
-      `Model "${opts.model}" does not accept image input (image_in: false)`,
-    );
-  }
-  if (opts.inputContainsVideo && caps.video_in === false) {
-    return new LLMCapabilityMismatchError(
-      `Model "${opts.model}" does not accept video input`,
-    );
-  }
-  if (opts.inputContainsAudio && caps.audio_in === false) {
-    return new LLMCapabilityMismatchError(
-      `Model "${opts.model}" does not accept audio input`,
-    );
-  }
-  return undefined;
 }
 
 // ── Helper: wire a WireHookExecutor into a HookEngine per initialize.hooks ──

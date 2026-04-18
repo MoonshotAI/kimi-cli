@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 
+import { UNKNOWN_CAPABILITY, type ModelCapability } from '../capability.js';
 import type { ContentPart, Message, StreamedMessagePart, ToolCall } from '../message.js';
 import type {
   FinishReason,
@@ -452,6 +453,49 @@ export class OpenAILegacyChatProvider implements RetryableChatProvider {
       baseUrl: this._baseUrl,
       ...this._generationKwargs,
     };
+  }
+
+  getCapability(model?: string): ModelCapability {
+    const name = (model ?? this._model).toLowerCase();
+    // o-series (o1, o1-mini, o1-preview, o3, o3-mini, o4-mini, …): reasoning family.
+    if (/^o\d/.test(name)) {
+      return {
+        image_in: false,
+        video_in: false,
+        audio_in: false,
+        thinking: true,
+        tool_use: true,
+        max_context_tokens: 0,
+      };
+    }
+    // GPT-4o / GPT-4-turbo / GPT-4.1 / GPT-4.5: vision + tools.
+    if (
+      name.startsWith('gpt-4o') ||
+      name.startsWith('gpt-4-turbo') ||
+      name.startsWith('gpt-4.1') ||
+      name.startsWith('gpt-4.5')
+    ) {
+      return {
+        image_in: true,
+        video_in: false,
+        audio_in: false,
+        thinking: false,
+        tool_use: true,
+        max_context_tokens: 0,
+      };
+    }
+    // GPT-3.5 turbo: text-only but supports tool calls.
+    if (name.startsWith('gpt-3.5-turbo')) {
+      return {
+        image_in: false,
+        video_in: false,
+        audio_in: false,
+        thinking: false,
+        tool_use: true,
+        max_context_tokens: 0,
+      };
+    }
+    return UNKNOWN_CAPABILITY;
   }
 
   async generate(

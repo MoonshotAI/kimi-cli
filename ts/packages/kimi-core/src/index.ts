@@ -352,7 +352,7 @@ export {
   resolveSkillRoots,
 } from './soul-plus/skill/index.js';
 
-// ── MCP subsystem (Slice 2.6) ────────────────────────────────────────
+// ── MCP subsystem (Slice 2.6 + Phase 19 Slice D OAuth) ──────────────
 export type {
   HttpServerConfig,
   McpConfig,
@@ -360,12 +360,17 @@ export type {
   McpClientFactory,
   McpLoadNotification,
   McpNotifyCallback,
+  McpOAuthProviderOptions,
   McpStderrCallback,
   MCPClient,
   MCPManagerOptions,
   MCPServerStatus,
   MCPToolDefinition,
   MCPToolResult,
+  OAuthCallbackPayload,
+  OAuthCallbackServerHandle,
+  OAuthClientProvider,
+  StartOAuthCallbackServerOptions,
   StdioServerConfig,
 } from './soul-plus/mcp/index.js';
 export {
@@ -374,12 +379,14 @@ export {
   MCPManager,
   MCPRuntimeError,
   MCPTimeoutError,
+  McpOAuthProvider,
   StdioMcpClient,
   isHttpServer,
   isStdioServer,
   mcpToolName,
   parseMcpConfig,
   parseMcpToolName,
+  startOAuthCallbackServer,
 } from './soul-plus/mcp/index.js';
 
 // ── Config (Slice 3) ─────────────────────────────────────────────────────
