@@ -189,12 +189,12 @@ export interface CreateSessionOptions {
    */
   agentTypeRegistry?: AgentTypeRegistry | undefined;
   /**
-   * Phase 20 Codex round-5 — structured logger forwarded into
+   * Phase 20 round-5 — structured logger forwarded into
    * `SoulPlusDeps.logger` so NotificationManager / MCPManager wire
    * fan-out errors through the app's log sink instead of falling back
    * to `noopLogger` (silent drop). When omitted, SoulPlus defaults to
    * `noopLogger` and those errors are invisible, which was the
-   * observability regression Codex flagged in Phase 20-B.
+   * observability regression round-5 review flagged in Phase 20-B.
    */
   logger?: Logger | undefined;
 }
@@ -227,7 +227,7 @@ export interface ResumeSessionOptions {
   approvalStateStore?: ApprovalStateStore | undefined;
   /** Slice 5.3 — see CreateSessionOptions.agentTypeRegistry. */
   agentTypeRegistry?: AgentTypeRegistry | undefined;
-  /** Phase 20 Codex round-5 — see CreateSessionOptions.logger. */
+  /** Phase 20 round-5 — see CreateSessionOptions.logger. */
   logger?: Logger | undefined;
 }
 
@@ -439,7 +439,7 @@ export class SessionManager {
             pathConfig: this.paths,
           }
         : {}),
-      // Phase 20 Codex round-5 — close the observability regression:
+      // Phase 20 round-5 — close the observability regression:
       // without this forward NotificationManager / MCPManager fall back
       // to `noopLogger` and swallow every fan-out error (previously
       // surfaced via `console.warn`). Host-supplied logger flows all
@@ -728,7 +728,7 @@ export class SessionManager {
             pathConfig: this.paths,
           }
         : {}),
-      // Phase 20 Codex round-5 — forward logger on resume too so
+      // Phase 20 round-5 — forward logger on resume too so
       // restored sessions keep the same observability posture as fresh
       // ones.
       ...(options.logger !== undefined ? { logger: options.logger } : {}),
@@ -986,11 +986,30 @@ export class SessionManager {
     }
     return this.withStateLock(sessionId, async () => {
       // Lifecycle guard — refuse rollback while a turn is mid-flight.
+      //
+      // Phase 20 round-5 follow-up: `state === 'active'` alone is
+      // insufficient. `TurnManager.handlePrompt` reserves the session
+      // synchronously via `pendingLaunchTurnId` BEFORE it transitions
+      // the lifecycle; in that await window, state is still `'idle'`
+      // but a turn is already on its way. `/undo` firing there would
+      // physically rewrite wire.jsonl beneath the in-flight
+      // `turn_begin` append — worse than the `/compact` race the same
+      // round closed in CompactionOrchestrator. Mirror that guard by
+      // consulting `getCurrentTurnId()` (which blends
+      // `pendingLaunchTurnId` with the tracker's authoritative view).
       const live = this.sessions.get(sessionId);
-      if (live !== undefined && live.lifecycleStateMachine.state === 'active') {
-        throw new Error(
-          `rollbackSession: session "${sessionId}" is in 'active' state — cannot rollback during an active turn (lifecycle guard)`,
-        );
+      if (live !== undefined) {
+        if (live.lifecycleStateMachine.state === 'active') {
+          throw new Error(
+            `rollbackSession: session "${sessionId}" is in 'active' state — cannot rollback during an active turn (lifecycle guard)`,
+          );
+        }
+        const turnManager = live.soulPlus.getTurnManager();
+        if (turnManager.getCurrentTurnId() !== undefined) {
+          throw new Error(
+            `rollbackSession: session "${sessionId}" has an in-flight prompt launch — cannot rollback while a turn is being reserved`,
+          );
+        }
       }
 
       // Existence — anchor on state.json so we throw a clear "not found"

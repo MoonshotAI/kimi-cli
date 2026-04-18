@@ -102,17 +102,38 @@ export interface CompactionOrchestratorDeps {
   readonly sessionId?: string | undefined;
   readonly agentId?: string | undefined;
   /**
-   * Phase 20 Codex round-5 — predicate returning the in-flight turn id
-   * when `TurnManager.handlePrompt` has synchronously reserved a turn
-   * slot (`pendingLaunchTurnId`) but has not yet transitioned the
-   * lifecycle machine to `'active'`. Without this hook `triggerCompaction`'s
-   * `isIdle()` gate returns true in that await window, letting `/compact`
-   * race against a concurrent `/prompt` launch. TurnManager wires this;
-   * tests that do not exercise the concurrent slash+prompt path may
-   * omit it (defaults to "no pending turn").
+   * Phase 20 round-5 — predicate returning the in-flight turn id when
+   * `TurnManager.handlePrompt` has synchronously reserved a turn slot
+   * (`pendingLaunchTurnId`) but has not yet transitioned the lifecycle
+   * machine to `'active'`. Without this hook `triggerCompaction`'s
+   * `isIdle()` gate returns true in that await window, letting
+   * `/compact` race against a concurrent `/prompt` launch.
+   *
+   * Required (not optional) by design: the race it closes is the exact
+   * class of bug that round-5 flagged, and making the gate optional
+   * turns "remember to wire this" into a per-construction-site
+   * discipline. Type-level enforcement matches `runtimeStateProvider`
+   * one interface up, which chose required for the same reason.
+   *
+   * Test fixtures that do not drive the concurrent slash+prompt path
+   * should pass `STATIC_NO_PENDING_TURN` to declare "no reservation"
+   * explicitly.
    */
-  readonly getPendingTurnId?: (() => string | undefined) | undefined;
+  readonly getPendingTurnId: () => string | undefined;
 }
+
+/**
+ * Convenience for test harnesses that don't exercise pending-turn races:
+ * declares "no prompt launch is in flight" explicitly so the contract
+ * on `CompactionOrchestratorDeps.getPendingTurnId` stays required. Using
+ * a named function (rather than an arrow with explicit `undefined`)
+ * avoids the `no-useless-undefined` lint rule without masking intent —
+ * the return type in the signature already encodes the `undefined` leg.
+ */
+// eslint-disable-next-line func-style -- single-line named expression keeps the export shape intact
+export const STATIC_NO_PENDING_TURN: () => string | undefined = function noPending() {
+  return undefined as string | undefined;
+};
 
 export class CompactionOrchestrator {
   constructor(private readonly deps: CompactionOrchestratorDeps) {}
@@ -255,13 +276,13 @@ export class CompactionOrchestrator {
     if (!this.deps.lifecycleStateMachine.isIdle()) {
       throw new Error('Cannot compact while a turn is active');
     }
-    // Phase 20 Codex round-5 — mirror the `getCurrentTurnId()` half of
+    // Phase 20 round-5 — mirror the `getCurrentTurnId()` half of
     // `TurnManager.tryReserveForMaintenance`. `handlePrompt` sets
     // `pendingLaunchTurnId` synchronously BEFORE its await chain
     // transitions the lifecycle to 'active'; during that window a
     // plain `isIdle()` gate is false-positive. Closing this gap here
     // keeps `/compact` on parity with `/clear`'s atomic reservation.
-    if (this.deps.getPendingTurnId?.() !== undefined) {
+    if (this.deps.getPendingTurnId() !== undefined) {
       throw new Error('Cannot compact while a prompt launch is in flight');
     }
 

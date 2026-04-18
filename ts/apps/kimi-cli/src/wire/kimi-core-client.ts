@@ -37,6 +37,7 @@ import {
   parseHookConfigs,
   type AgentTypeRegistry,
   type HookExecutor,
+  type Logger,
   type ManagedSession,
   type NotificationData,
   type PermissionMode,
@@ -197,6 +198,18 @@ export interface KimiCoreClientDeps {
    * subagents simply omit the field).
    */
   readonly agentTypeRegistry?: AgentTypeRegistry | undefined;
+  /**
+   * Phase 20 round-5 follow-up — structured logger forwarded into
+   * `SessionManager.createSession/resumeSession`, which threads it
+   * onward to `SoulPlusDeps.logger` → `NotificationManager`. Without
+   * this, NotificationManager's fan-out errors (wire subscriber
+   * throws, etc.) fall through to `noopLogger` and get silently
+   * dropped — the real observability regression Phase 20-B left on
+   * the table. Optional so SDK embedders that do their own logging
+   * can elide it; the `bootstrapCoreShell` CLI path always supplies
+   * a pino-backed adapter.
+   */
+  readonly logger?: Logger | undefined;
 }
 
 // ── KimiCoreClient ─────────────────────────────────────────────────
@@ -453,6 +466,10 @@ export class KimiCoreClient implements WireClient {
       ...(this.deps.agentTypeRegistry !== undefined
         ? { agentTypeRegistry: this.deps.agentTypeRegistry }
         : {}),
+      // Phase 20 round-5 follow-up — logger all the way to SoulPlus
+      // so NotificationManager's fan-out errors surface through the
+      // app's structured log sink instead of the default noopLogger.
+      ...(this.deps.logger !== undefined ? { logger: this.deps.logger } : {}),
     };
 
     const managed =
@@ -662,8 +679,15 @@ export class KimiCoreClient implements WireClient {
   }
 
   async compact(sessionId: string, customInstruction?: string): Promise<void> {
+    // Phase 20 round-5 follow-up — align with the `clear` contract
+    // (unknown session → throw). A stale sessionId previously made
+    // `/compact` "silently succeed" from the TUI's perspective while
+    // the actual session never ran compaction; throwing surfaces the
+    // drift at the slash layer where the user sees the error.
     const record = this.sessions.get(sessionId);
-    if (record === undefined) return;
+    if (record === undefined) {
+      throw new Error(`/compact: unknown session ${sessionId}`);
+    }
     await record.managed.sessionControl.compact(customInstruction);
   }
 
@@ -671,7 +695,7 @@ export class KimiCoreClient implements WireClient {
     // Phase 20 §A — delegate to SessionControl.clear(), which awaits the
     // WAL `context_cleared` append before zeroing the in-memory history.
     //
-    // Codex round-5: an unknown session id MUST throw rather than
+    // Round-5 review: an unknown session id MUST throw rather than
     // silently succeed. The caller (slash `/clear` + performReload) uses
     // the absence of an error as "core context is now gone"; if we
     // swallow the unknown-session case, the TUI clears its transcript

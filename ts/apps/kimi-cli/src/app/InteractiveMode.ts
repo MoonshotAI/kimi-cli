@@ -1359,7 +1359,7 @@ export class InteractiveMode implements WireHandlerDelegate {
         // the `isStreaming` guard above so a mid-turn /clear never
         // corrupts the active turn.
         //
-        // Codex round-5: we only clear the UI transcript when the core
+        // Round-5 review: we only clear the UI transcript when the core
         // clear succeeded. Doing the UI reload on failure hides the
         // truth — user sees an empty screen, assumes the context is
         // gone, then the next prompt lets the LLM see the full history.

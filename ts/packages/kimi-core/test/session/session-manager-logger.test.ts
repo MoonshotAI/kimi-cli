@@ -1,5 +1,5 @@
 /**
- * Phase 20 Codex round-5 — SessionManager threads the `logger` option
+ * Phase 20 round-5 — SessionManager threads the `logger` option
  * through to SoulPlus's NotificationManager so fan-out errors land on
  * the injected logger instead of being silently swallowed by
  * `noopLogger`. Without this, Phase 20-B's "structured logger
@@ -57,26 +57,34 @@ interface SpyLogger {
   info: ReturnType<typeof vi.fn>;
   warn: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
+  /** Spy on `child(bindings)` so tests can verify binding propagation. */
+  child: ReturnType<typeof vi.fn>;
 }
 
 function makeSpyLogger(): SpyLogger {
-  // Use explicit parameter typing on each spy so the `(msg, meta?)` call
-  // signature lines up with the `Logger` interface without the widened
-  // `Mock<Procedure | Constructable>` complaint from vitest 4's default
-  // typing. Return the spies alongside the Logger so tests can assert
-  // `.toHaveBeenCalled()` without unsafe casts through the interface.
+  // Explicit parameter typing on each spy lines up with the `Logger`
+  // interface without the widened `Mock<Procedure | Constructable>`
+  // complaint from vitest 4's default typing. Spies live on the
+  // returned SpyLogger bag so tests can assert `.toHaveBeenCalled()`
+  // without unsafe casts through the interface.
+  //
+  // `child(bindings)` returns a FRESH spy-logger each call (not the
+  // same instance). A self-reference would pass type-checks but mask
+  // bugs where product code expects child(bindings).warn to carry
+  // additional context keys that a shared-instance mock never sees.
   const debug = vi.fn((_msg: string, _meta?: Record<string, unknown>): void => {});
   const info = vi.fn((_msg: string, _meta?: Record<string, unknown>): void => {});
   const warn = vi.fn((_msg: string, _meta?: Record<string, unknown>): void => {});
   const error = vi.fn((_msg: string, _meta?: Record<string, unknown>): void => {});
+  const child = vi.fn((_bindings: Record<string, unknown>): Logger => makeSpyLogger().logger);
   const logger: Logger = {
     debug,
     info,
     warn,
     error,
-    child: () => logger,
+    child,
   };
-  return { logger, debug, info, warn, error };
+  return { logger, debug, info, warn, error, child };
 }
 
 let tmpDir: string;
@@ -91,7 +99,7 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe('SessionManager — logger wiring (Phase 20 Codex round-5)', () => {
+describe('SessionManager — logger wiring (Phase 20 round-5)', () => {
   it('accepts a logger option on createSession (type-level guard)', async () => {
     const mgr = new SessionManager(paths);
     const spy = makeSpyLogger();
@@ -115,7 +123,7 @@ describe('SessionManager — logger wiring (Phase 20 Codex round-5)', () => {
     // throwing notification listener. NotificationManager fans out
     // through the event bus; when a subscriber throws, the fan-out
     // catches it and routes to `logger.warn` on the injected logger
-    // (Phase 20-B contract). Pre-Codex-round-5 this logger option never
+    // (Phase 20-B contract). Before the round-5 follow-up, this logger option never
     // reached the NotificationManager because SessionManager didn't
     // have a `logger` field, so the error went into noopLogger and
     // vanished.
@@ -192,5 +200,36 @@ describe('SessionManager — logger wiring (Phase 20 Codex round-5)', () => {
     consoleSpies.error.mockRestore();
 
     await mgr.closeSession(session.sessionId);
+  });
+
+  it('resumeSession also accepts and forwards logger to SoulPlus', async () => {
+    // Parity pin for `ResumeSessionOptions.logger`. Without this, the
+    // resume path could silently regress to "logger swallowed" while
+    // createSession kept working (the two options interfaces are
+    // maintained separately). We don't re-run the throwing-subscriber
+    // end-to-end; pinning "accepts logger + yields a working session"
+    // is enough because the upstream SoulPlus → NotificationManager
+    // wiring is identical to createSession.
+    const mgrCreate = new SessionManager(paths);
+    const created = await mgrCreate.createSession({
+      sessionId: 'ses_logger_resume',
+      workspaceDir: tmpDir,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'm',
+    });
+    await mgrCreate.closeSession(created.sessionId);
+
+    // Fresh SessionManager to exercise resumeSession's wiring, not
+    // createSession's.
+    const mgrResume = new SessionManager(paths);
+    const spy = makeSpyLogger();
+    const resumed = await mgrResume.resumeSession('ses_logger_resume', {
+      runtime: createNoopRuntime(),
+      tools: [],
+      logger: spy.logger,
+    });
+    expect(resumed.sessionId).toBe('ses_logger_resume');
+    await mgrResume.closeSession(resumed.sessionId);
   });
 });

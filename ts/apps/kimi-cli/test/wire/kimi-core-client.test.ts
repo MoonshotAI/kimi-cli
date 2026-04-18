@@ -486,7 +486,7 @@ describe('KimiCoreClient session-info methods (Slice 5.1)', () => {
     await client.dispose();
   });
 
-  it('clear throws for an unknown session id (Codex round-5)', async () => {
+  it('clear throws for an unknown session id (round-5 review)', async () => {
     // Before the fix, `clear` silently returned when the session id
     // was unknown, which let InteractiveMode clear the TUI transcript
     // on a stale id while the real session kept its history. Throwing

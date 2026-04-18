@@ -265,13 +265,13 @@ describe('ContextState.clear — InMemoryContextState parity', () => {
   });
 });
 
-// ── 4. Durability under production batched writer (Phase 20 Codex review) ─
+// ── 4. Durability under production batched writer (Phase 20 round-5) ────
 //
 // The happy-path tests above use `fsyncMode: 'per-record'`, which masks
 // production's batched default where non-force-flush records only land in
 // the in-memory pending buffer until the next drain tick (≤50 ms). A
 // `context_cleared` without force-flush can disappear on crash and
-// replay restores the "cleared" history — the exact surprise Codex
+// replay restores the "cleared" history — the exact surprise round-5
 // round-5 flagged. These tests pin the fix (context_cleared joins
 // FORCE_FLUSH_KINDS) by verifying the WAL file on disk observably
 // contains the record BEFORE `clear()` resolves.
@@ -299,10 +299,11 @@ describe('ContextState.clear — durable under batched fsyncMode (production def
     const { state, filePath } = makeBatchedState();
     await state.appendUserMessage({ text: 'pre-clear' });
     // Non-force user_message is still batched — expect the file NOT to
-    // contain the user line yet. (This asserts the setup is real
-    // batched mode; if the implementation accidentally force-flushed
-    // `user_message` the pre-condition would pass trivially but we'd
-    // also lose the discriminating signal for the clear assertion.)
+    // contain the user line yet. This doubles as a tripwire: if
+    // `user_message` is ever added to FORCE_FLUSH_KINDS the assertion
+    // below flips to a failure, flagging that this test's setup is no
+    // longer discriminating the batched vs force-flush behaviour it
+    // claims to test.
     const beforeClear = await readFile(filePath, 'utf8').catch(() => '');
     expect(beforeClear).not.toContain('"user_message"');
 
@@ -310,7 +311,7 @@ describe('ContextState.clear — durable under batched fsyncMode (production def
 
     // After clear() resolves, context_cleared MUST be observable on
     // disk — not merely in the writer's pending buffer. This is the
-    // Codex round-5 "crash window" regression test: without
+    // round-5 "crash window" regression test: without
     // FORCE_FLUSH_KINDS.context_cleared, this line would be empty
     // until the next drain tick.
     const afterClear = await readFile(filePath, 'utf8');

@@ -145,7 +145,7 @@ describe('WiredJournalWriter async-batch — FORCE_FLUSH_KINDS', () => {
     // types being durable at `append` resolve time. Pinning the set here
     // prevents a future drive-by edit from silently reclassifying one of
     // them into the async-batch path. Phase 23 adds `session_initialized`
-    // as the line-2 baseline (spec §5.2). Phase 20 Codex round-5 adds
+    // as the line-2 baseline (spec §5.2). Phase 20 round-5 adds
     // `context_cleared` — `/clear` is an explicit user-intent operation
     // whose WAL record must survive a crash in the 50ms batched-drain
     // window after `ContextState.clear()` returns success.
