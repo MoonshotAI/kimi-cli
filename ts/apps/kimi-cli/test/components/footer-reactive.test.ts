@@ -6,8 +6,9 @@ import { darkColors } from '../../src/theme/colors.js';
 import type { AppState } from '../../src/app/state.js';
 import type { StatusUpdateData, SessionMetaChangedData } from '../../src/wire/events.js';
 
+const ANSI_SGR = /\u001B\[[0-9;]*m/g;
 function strip(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, '');
+  return text.replaceAll(ANSI_SGR, '');
 }
 
 function baseState(overrides: Partial<AppState> = {}): AppState {

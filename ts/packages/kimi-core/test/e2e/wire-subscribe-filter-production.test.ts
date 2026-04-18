@@ -126,7 +126,7 @@ async function createSubscribeHarness(): Promise<{
       if (msg.type === 'event' && typeof msg.method === 'string') {
         collectedEvents.push(msg.method);
       }
-      for (const w of [...waiters]) w(msg);
+      for (const w of Array.from(waiters)) w(msg);
     } catch {
       /* swallow malformed frames */
     }

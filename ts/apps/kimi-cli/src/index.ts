@@ -1037,32 +1037,57 @@ async function runWire(opts: CLIOptions): Promise<void> {
   // the `model_changed` journal record on the new SoulPlus instance.
   // Declared before `registerDefaultWireHandlers` so the closure is
   // available at registration time.
+  // Phase 21 review — per-session serialisation for the close+resume
+  // dance. Two concurrent `session.setModel` calls against the same
+  // sessionId would otherwise race: both would observe the session in
+  // SessionManager, race into `closeSession`, then the second
+  // `resumeSession` would fight the first for the journal writer and
+  // the state cache. Chaining promises through the map keeps them
+  // strictly ordered per session; unrelated sessions stay parallel.
+  const swapLocks = new Map<string, Promise<unknown>>();
   const wireRebuildRuntimeForModel = async (
     sessionId: string,
     newModelAlias: string,
   ): Promise<void> => {
-    const newProvider = await createProviderFromConfig(kimiConfig, newModelAlias, {
-      defaultHeaders: buildKimiDefaultHeaders(getVersion()),
-      ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+    const prior = swapLocks.get(sessionId) ?? Promise.resolve();
+    const next = prior.then(async () => {
+      const newProvider = await createProviderFromConfig(kimiConfig, newModelAlias, {
+        defaultHeaders: buildKimiDefaultHeaders(getVersion()),
+        ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+      });
+      currentRuntime = createRuntime({
+        kosong: createKosongAdapter({ provider: newProvider }),
+      });
+      currentModelAlias = newModelAlias;
+      // Tear the live session down before resuming so SessionManager
+      // hits a clean slate. closeSession also disposes the existing
+      // WireEventBridge (see `closeSession` wrapper below).
+      await sessionManager.closeSession(sessionId);
+      const resumed = await sessionManager.resumeSession(sessionId, {
+        runtime: currentRuntime,
+        tools: [],
+        model: newModelAlias,
+        eventBus,
+        orchestrator,
+      });
+      // Append the `model_changed` record so the change is durable on
+      // the resumed session's journal.
+      await resumed.soulPlus.setModel(newModelAlias);
     });
-    currentRuntime = createRuntime({
-      kosong: createKosongAdapter({ provider: newProvider }),
-    });
-    currentModelAlias = newModelAlias;
-    // Tear the live session down before resuming so SessionManager
-    // hits a clean slate. closeSession also disposes the existing
-    // WireEventBridge (see `closeSession` wrapper below).
-    await sessionManager.closeSession(sessionId);
-    const resumed = await sessionManager.resumeSession(sessionId, {
-      runtime: currentRuntime,
-      tools: [],
-      model: newModelAlias,
-      eventBus,
-      orchestrator,
-    });
-    // Append the `model_changed` record so the change is durable on
-    // the resumed session's journal.
-    await resumed.soulPlus.setModel(newModelAlias);
+    // Store an error-swallowing tail so a failed swap does not wedge
+    // the lock for the next caller; the actual rejection still
+    // propagates through the `next` we return.
+    const tail = next.catch(() => undefined);
+    swapLocks.set(sessionId, tail);
+    try {
+      await next;
+    } finally {
+      // Only delete when we're still the head; a later swap may have
+      // chained behind us and be the current head.
+      if (swapLocks.get(sessionId) === tail) {
+        swapLocks.delete(sessionId);
+      }
+    }
   };
 
   const wireHandlersHandle = registerDefaultWireHandlers({

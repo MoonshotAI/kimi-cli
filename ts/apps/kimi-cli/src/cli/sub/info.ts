@@ -31,15 +31,36 @@ export interface InfoDeps {
 }
 
 function readPackageVersion(): string {
-  try {
-    const pkgPath = resolve(import.meta.dirname, '..', '..', '..', 'package.json');
-    const pkg: { version?: string } = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
-      version?: string;
-    };
-    return pkg.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
+  // Phase 21 review hotfix — `import.meta.dirname` points at `dist/`
+  // after bundling, not at `src/cli/sub/`. The three-levels-up path
+  // assumed the source layout and walked off the monorepo root,
+  // landing on the top-level package.json (version 0.0.0) instead
+  // of the apps/kimi-cli package.json (version 0.0.1). This made
+  // `kimi info` and `kimi --version` disagree — the latter uses
+  // the same one-level-up resolution via apps/kimi-cli/src/index.ts.
+  //
+  // Walk candidates so dev (`tsx src/index.ts`) and packaged dist
+  // entrypoints both resolve. Dev: dirname = src/cli/sub → ../../..;
+  // dist: dirname = dist → ../. We try each in order and take the
+  // first match whose manifest actually names this package.
+  const candidates = [
+    resolve(import.meta.dirname, '..', 'package.json'),
+    resolve(import.meta.dirname, '..', '..', 'package.json'),
+    resolve(import.meta.dirname, '..', '..', '..', 'package.json'),
+  ];
+  for (const pkgPath of candidates) {
+    try {
+      const pkg: { name?: string; version?: string } = JSON.parse(
+        readFileSync(pkgPath, 'utf-8'),
+      ) as { name?: string; version?: string };
+      if (pkg.name === '@moonshot-ai/cli' && typeof pkg.version === 'string') {
+        return pkg.version;
+      }
+    } catch {
+      /* try the next candidate */
+    }
   }
+  return '0.0.0';
 }
 
 export function collectInfo(deps: Pick<InfoDeps, 'getVersion'>): InfoData {

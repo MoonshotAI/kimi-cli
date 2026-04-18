@@ -1,0 +1,134 @@
+Phase 21 second-pass review — archive
+=====================================
+timestamp: 2026-04-18 20:15 +0800
+branch: make-it-ts
+
+Scope: first-principles review of the full Phase 21 stack (slices
+A-F + the first hotfix commit). Driven end-to-end with an inline
+wire harness that exercises every restored method, plus ad-hoc CLI
+probes and edge-case CLI error paths.
+
+
+Findings that required a code change
+----------------------------------------------------------------
+
+1. BLOCKER — wire error code -32601 Method not found was not
+   reachable. Router threw `new Error('Method not found: X')`
+   which `mapToWireError` collapsed into -32603 Internal error.
+   The entire production-surface regression test assertion
+   (`.not.toBe(-32601)`) was therefore a no-op: it would have
+   stayed green even if Slice A's merge had silently dropped a
+   handler again. Same story for "Session not found". Fixed by
+   introducing typed WireMethodNotFoundError / WireSessionNotFoundError
+   in wire-protocol/errors.ts, teaching mapToWireError about them
+   (-32601 / -32000 respectively), and rewriting the production
+   surface test to fail hard on -32601 via an explicit throw.
+
+2. MAJOR — `kimi info` reported kimi-cli version 0.0.0 while
+   `kimi --version` reported 0.0.1. The info command's
+   readPackageVersion assumed the TypeScript source layout (three
+   levels above import.meta.dirname), but after tsdown bundled
+   everything into dist/index.mjs `import.meta.dirname` points at
+   `dist/`, making the three-levels-up path land on the monorepo
+   root package.json. Fixed by walking candidate paths
+   (`../package.json`, `../../package.json`, `../../../package.json`)
+   and picking the first one whose `name === "@moonshot-ai/cli"`.
+
+3. MAJOR — concurrent `session.setModel` calls against the same
+   session could race through the `closeSession → resumeSession`
+   dance. Added a per-session promise-chain mutex
+   (`swapLocks: Map<string, Promise<unknown>>`) around
+   `wireRebuildRuntimeForModel`. Unrelated sessions still swap in
+   parallel.
+
+
+Smoke runs (all PASS)
+----------------------------------------------------------------
+
+End-to-end wire smoke — exercises every restored method through
+the production default-handlers (not the test helper):
+
+$ node docs/smoke-archive/phase-21/review-end2end-wire.mjs
+  PASS initialize methods=42
+  PASS session.create → ses_a86bae8804d1
+  PASS session.registerTool
+  PASS listTools#1
+  PASS session.setActiveTools
+  PASS session.removeTool
+  PASS listTools#2
+  PASS session.addSystemReminder
+  PASS session.setThinking
+  PASS session.setPlanMode
+  PASS session.setYolo
+  PASS session.subscribe
+  PASS session.unsubscribe
+  PASS session.setModel
+  PASS session.create#2 after setModel → ses_85bc085726ef
+  PASS session.destroy
+  ALL PASS
+
+Hard-indicator audit:
+  - initialize.capabilities.methods = 42 (≥22) ✓
+  - CLI flag production consumers ≥ 1 each (config/configFile/
+    addDir/mcpConfigFile/mcpConfig/skillsDir/rawModel) ✓
+  - --max-* fully removed from kimi --help: 0 ✓
+  - "not yet implemented" in apps/kimi-cli/src/cli: 0 ✓
+  - kimi --version === kimi info (both 0.0.1) ✓
+
+CLI error paths:
+  - `kimi --model fake-xxx --print -p hi` → "Unknown model alias
+    …" with full alias list + --raw-model hint ✓
+  - `kimi --session --print -p hi` → "--session without an id
+    requires shell mode." ✓
+  - `kimi --session nonexistent-ses --print -p hi` → "Session
+    … not found under …/sessions" ✓
+  - `kimi mcp add foo --transport http` (no URL) → "URL is
+    required for http transport." ✓
+  - `kimi mcp add foo --transport stdio` (no command) → "For stdio
+    transport, provide the command after `--`." ✓
+
+Export privacy opt-in:
+  SID=ses_6f75ee4dfdc9
+  $ kimi export -o /tmp/default.zip $SID
+  $ unzip -l /tmp/default.zip
+  3 files (manifest.json / state.json / wire.jsonl), 1062 bytes
+  No diagnostic logs warning on stderr.
+  $ kimi export --include-logs -o /tmp/with-logs.zip $SID
+  $ unzip -l /tmp/with-logs.zip
+  6 files, includes logs/kimi.*.log. Warning printed to stderr.
+
+MCP CRUD (atomic writes):
+  $ kimi mcp add smoke_test --transport stdio -- echo hi
+  Added MCP server 'smoke_test' to …
+  $ kimi mcp list  → smoke_test (stdio): echo hi
+  $ kimi mcp remove smoke_test
+  Removed MCP server 'smoke_test' from …
+
+
+Quality gates
+----------------------------------------------------------------
+- pnpm run typecheck → 0 errors
+- pnpm --filter @moonshot-ai/core test --run → 2718 passed / 21
+  skipped / 43 todo
+- pnpm --filter @moonshot-ai/cli test --run → 402 passed / 5 todo
+- Full monorepo vitest → 4358 passed / 42 skipped / 48 todo
+- pnpm -r build → all packages green
+- pnpm run lint → 73 errors (baseline was 77; net -4 after my
+  new-test cleanup on the review pass)
+
+
+Issues intentionally left unpatched
+----------------------------------------------------------------
+- WireHookExecutor does not call `sender.cancel` when its own
+  abort/timeout race wins. The underlying ReverseRpcClient's
+  cancelPendingRequest drains the router map from the sender
+  side via its own timeout, so the leak is bounded at
+  `hookTimeoutMs` — not a correctness bug, just not ideal.
+- `kimi --session <id> --wire` does not surface an error; the
+  wire server ignores `opts.session` because id routing happens
+  over the wire protocol itself. CLI flag documentation gap,
+  not a regression.
+- Two pre-existing "not yet implemented" strings in
+  apps/kimi-cli/src/wire/kimi-core-client.ts (runtime model /
+  agent live-switch) are Phase 19 §C scope, flagged in the
+  per-slice commits.

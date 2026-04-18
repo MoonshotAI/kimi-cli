@@ -18,7 +18,12 @@
 import { ZodError } from 'zod';
 
 import type { WireError } from './types.js';
-import { InvalidWireEnvelopeError, MalformedWireFrameError } from './errors.js';
+import {
+  InvalidWireEnvelopeError,
+  MalformedWireFrameError,
+  WireMethodNotFoundError,
+  WireSessionNotFoundError,
+} from './errors.js';
 
 export interface WireErrorMapping {
   readonly error: WireError;
@@ -60,6 +65,36 @@ export function mapToWireError(err: unknown): WireErrorMapping {
         code: -32602,
         message: 'Invalid params',
         details: { issues: err.issues },
+      },
+    };
+  }
+
+  // Phase 21 review hotfix — standard JSON-RPC mapping for method-not-
+  // found (-32601) so clients (and our own production-surface
+  // regression test) can reliably detect handler gaps. Without this,
+  // a missing handler presented as -32603 Internal error, which is
+  // what hid the Phase 18 §A merge drop for an entire release cycle.
+  if (err instanceof WireMethodNotFoundError) {
+    return {
+      request_id: null,
+      error: {
+        code: -32601,
+        message: err.message,
+        details: { method: err.method },
+      },
+    };
+  }
+
+  if (err instanceof WireSessionNotFoundError) {
+    return {
+      request_id: null,
+      error: {
+        // -32000 is the pre-existing "session-scoped error" slot
+        // already asserted by wire-errors.test.ts / wire-protocol.test.ts.
+        // -32001 is reserved by Phase 18 §A.11 for "LLM not set".
+        code: -32000,
+        message: err.message,
+        details: { session_id: err.sessionId },
       },
     };
   }

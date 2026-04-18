@@ -107,7 +107,7 @@ async function createProductionHarness(opts?: {
       const msg = codec.decode(frame);
       inbox.push(msg);
       // Fan out to waiters; clone so a self-removing waiter doesn't skip neighbours.
-      for (const w of [...waiters]) w(msg);
+      for (const w of Array.from(waiters)) w(msg);
     } catch {
       /* swallow malformed frames */
     }
@@ -308,10 +308,17 @@ describe('Phase 21 §A — production wire surface', () => {
       // happen". Other business errors are acceptable for probes that
       // touch real subsystems (e.g. setModel rebuild path).
       const code = res.error?.code;
-      expect(
-        code,
-        `wire method ${probe.method} returned -32601 Method not found — production handler missing`,
-      ).not.toBe(-32601);
+      // Phase 21 review hotfix — when the method is genuinely missing
+      // the router now throws WireMethodNotFoundError → -32601, so this
+      // assertion has real teeth. Prior to the fix the router raised a
+      // generic Error which error-mapping collapsed into -32603,
+      // silently neutering this regression gate.
+      if (code === -32601) {
+        throw new Error(
+          `wire method ${probe.method} returned -32601 Method not found — ` +
+            `production handler missing; Phase 18 §A merge regression again?`,
+        );
+      }
     }
   });
 
@@ -364,7 +371,7 @@ describe('Phase 21 §A — production wire surface', () => {
       try {
         const msg = codec.decode(frame);
         inbox.push(msg);
-        for (const w of [...waiters]) w(msg);
+        for (const w of Array.from(waiters)) w(msg);
       } catch {
         /* ignore */
       }

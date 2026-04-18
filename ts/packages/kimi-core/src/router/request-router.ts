@@ -17,6 +17,10 @@
 import type { Transport } from '../transport/types.js';
 import { PROCESS_SESSION_ID } from '../wire-protocol/types.js';
 import type { ChannelType, WireMessage } from '../wire-protocol/types.js';
+import {
+  WireMethodNotFoundError,
+  WireSessionNotFoundError,
+} from '../wire-protocol/errors.js';
 
 export type RouteHandler = (
   msg: WireMessage,
@@ -86,7 +90,7 @@ export class RequestRouter {
     if (msg.session_id === PROCESS_SESSION_ID) {
       const handler = method ? this.processHandlers.get(method) : undefined;
       if (!handler) {
-        throw new Error(`Method not found: ${method ?? '(none)'}`);
+        throw new WireMethodNotFoundError(method ?? '(none)');
       }
       return handler(msg, transport);
     }
@@ -94,12 +98,12 @@ export class RequestRouter {
     // 3. Session-level messages — verify session exists
     const session = this.deps.sessionManager.get(msg.session_id);
     if (!session) {
-      throw new Error(`Session not found: ${msg.session_id}`);
+      throw new WireSessionNotFoundError(msg.session_id);
     }
 
     const registration = method ? this.handlers.get(method) : undefined;
     if (!registration) {
-      throw new Error(`Method not found: ${method ?? '(none)'}`);
+      throw new WireMethodNotFoundError(method ?? '(none)');
     }
 
     return registration.handler(msg, transport, session);
