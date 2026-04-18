@@ -106,7 +106,14 @@ function makeHarness() {
     contextState,
     sessionJournal,
   });
-  return { sessionControl, turnManager, contextState, sessionJournal, sink };
+  return {
+    sessionControl,
+    turnManager,
+    contextState,
+    sessionJournal,
+    sink,
+    lifecycleStateMachine,
+  };
 }
 
 // ── 1. Happy path: clear succeeds + delegates to contextState.clear ──────
@@ -186,7 +193,49 @@ describe('SessionControl.clear — isolation from plan / permission state', () =
   });
 });
 
-// ── 3. Idempotency ───────────────────────────────────────────────────────
+// ── 3. Lifecycle guard — refuse when not idle ──────────────────────────
+
+describe('SessionControl.clear — lifecycle guard', () => {
+  it('refuses to clear while a turn is active', async () => {
+    const { sessionControl, lifecycleStateMachine, contextState } = makeHarness();
+    await contextState.appendUserMessage({ text: 'mid-turn' });
+    lifecycleStateMachine.transitionTo('active');
+
+    await expect(sessionControl.clear()).rejects.toThrow(/active/i);
+
+    // Memory must be untouched by the aborted attempt (no WAL write,
+    // no history mutation).
+    expect(contextState.getHistory().length).toBe(1);
+    expect(contextState.buildMessages().length).toBeGreaterThan(0);
+  });
+
+  it('refuses to clear while compaction is running', async () => {
+    const { sessionControl, lifecycleStateMachine, contextState } = makeHarness();
+    await contextState.appendUserMessage({ text: 'mid-compact' });
+    lifecycleStateMachine.transitionTo('active');
+    lifecycleStateMachine.transitionTo('compacting');
+
+    await expect(sessionControl.clear()).rejects.toThrow(/compacting/i);
+
+    expect(contextState.getHistory().length).toBe(1);
+  });
+
+  it('succeeds again after the lifecycle returns to idle', async () => {
+    const { sessionControl, lifecycleStateMachine, contextState } = makeHarness();
+    await contextState.appendUserMessage({ text: 'hello' });
+
+    // Simulate a turn running + ending.
+    lifecycleStateMachine.transitionTo('active');
+    await expect(sessionControl.clear()).rejects.toThrow();
+    lifecycleStateMachine.transitionTo('completing');
+    lifecycleStateMachine.transitionTo('idle');
+
+    await expect(sessionControl.clear()).resolves.toBeUndefined();
+    expect(contextState.buildMessages()).toEqual([]);
+  });
+});
+
+// ── 4. Idempotency ───────────────────────────────────────────────────────
 
 describe('SessionControl.clear — idempotency', () => {
   it('two successive clears both resolve without throwing', async () => {

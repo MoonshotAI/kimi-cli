@@ -237,6 +237,22 @@ export class TurnManager {
   }
 
   /**
+   * Phase 20 §A — lifecycle idle check for SessionControl-level guards
+   * (`/clear` in particular). Mirrors the `isIdle()` check that
+   * `CompactionOrchestrator.triggerCompaction` performs before taking
+   * over the lifecycle, so both slash commands refuse when a turn or
+   * compaction is already in flight.
+   */
+  isIdle(): boolean {
+    return this.deps.lifecycleStateMachine.isIdle();
+  }
+
+  /** Phase 20 §A — lifecycle state accessor used for richer error messages. */
+  getLifecycleState(): string {
+    return this.deps.lifecycleStateMachine.state;
+  }
+
+  /**
    * Combines the synchronous pre-registration reservation (in-flight
    * launch window) with the tracker's authoritative currentTurnId.
    * Either side being set means "session is busy".
