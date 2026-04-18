@@ -68,6 +68,10 @@ function makeDeps(overrides: Partial<McpCommandDeps> = {}): {
         local: { command: 'node', args: ['srv.js'] },
       },
     }),
+    saveConfig: vi.fn<(c: import('@moonshot-ai/core').McpConfig) => Promise<void>>(
+      async () => {},
+    ),
+    configPath: '/tmp/test-mcp.json',
     createProvider: vi.fn(() => fakeProvider) as unknown as McpCommandDeps['createProvider'],
     startCallbackServer: vi.fn(async () => fakeCallbackServer) as McpCommandDeps['startCallbackServer'],
     createClient: vi.fn(() => fakeClient) as McpCommandDeps['createClient'],

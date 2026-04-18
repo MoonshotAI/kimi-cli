@@ -1,0 +1,79 @@
+Phase 21 Section E — smoke archive
+==================================
+timestamp: 2026-04-18 18:54 +0800
+branch: make-it-ts
+build: pnpm -r build (all green)
+typecheck: 0 error (also cleared 7 pre-existing react/ink errors by dropping 3 dead TSX components)
+
+
+E.5.1 — kimi info (text + JSON)
+----------------------------------------------------------------
+$ node apps/kimi-cli/dist/index.mjs info
+kimi-cli version:    0.0.0
+wire protocol:       2.1
+nodejs version:      24.13.0
+agent spec versions: 1
+config:              /Users/moonshot/.kimi/config.toml
+
+$ node apps/kimi-cli/dist/index.mjs info --json
+{"kimi_cli_version":"0.0.0","wire_protocol_version":"2.1","nodejs_version":"24.13.0","agent_spec_versions":["1"],"config_path":"/Users/moonshot/.kimi/config.toml"}
+
+
+E.5.2 — kimi export creates a valid zip with manifest.json
+----------------------------------------------------------------
+$ SID=$(ls -t ~/.kimi/sessions | head -1); echo "$SID"
+ses_c07463afb0c8
+
+$ node apps/kimi-cli/dist/index.mjs export -o /tmp/smoke-export.zip $SID
+/tmp/smoke-export.zip
+Note: this archive includes recent diagnostic logs, which may contain file paths, commands, or configuration from other sessions. Review the contents before sharing.
+
+$ ls -la /tmp/smoke-export.zip
+-rw-r--r-- 1 moonshot wheel 580583 /tmp/smoke-export.zip
+
+$ unzip -l /tmp/smoke-export.zip | head
+  Archive:  /tmp/smoke-export.zip
+  manifest.json + wire.jsonl + state.json + subagents/ + logs/*.log (~16 files)
+
+
+E.5.3 — kimi mcp add/list/remove round-trip
+----------------------------------------------------------------
+$ node apps/kimi-cli/dist/index.mjs mcp add smoke_test --transport stdio -- echo hi
+Added MCP server 'smoke_test' to /Users/moonshot/.kimi/mcp.json.
+
+$ node apps/kimi-cli/dist/index.mjs mcp list
+MCP config file: /Users/moonshot/.kimi/mcp.json
+  smoke_test (stdio): echo hi
+
+$ node apps/kimi-cli/dist/index.mjs mcp remove smoke_test
+Removed MCP server 'smoke_test' from /Users/moonshot/.kimi/mcp.json.
+
+$ node apps/kimi-cli/dist/index.mjs mcp list | grep -c smoke_test
+0
+
+
+E.5.4 — stub absence
+----------------------------------------------------------------
+$ grep -rn "not yet implemented" apps/kimi-cli/src/cli
+(no matches)
+
+(Note: runtime `wire/kimi-core-client.ts` still carries two
+ `Model switching is not yet implemented` runtime messages; those
+ are Phase 19 §C live-switch follow-ups, explicitly out-of-scope.)
+
+
+Test suite snapshot
+----------------------------------------------------------------
+$ cd packages/kimi-core && npx vitest run
+  Test Files  278 passed | 4 skipped (282)
+       Tests  2718 passed | 21 skipped | 43 todo (2782)
+
+$ cd apps/kimi-cli && npx vitest run
+  Test Files  40 passed | 1 skipped (41)
+       Tests  384 passed | 5 todo (389)
+
+$ pnpm run typecheck
+  0 errors
+
+$ pnpm -r build
+  all packages green

@@ -18,6 +18,13 @@ import nunjucks from 'nunjucks';
 
 import type { AgentTypeDefinition } from './agent-type-registry.js';
 
+// ── Agent spec versions (Python parity: kimi_cli.agentspec) ───────────
+
+export const DEFAULT_AGENT_SPEC_VERSION = '1' as const;
+export const SUPPORTED_AGENT_SPEC_VERSIONS: readonly string[] = [
+  DEFAULT_AGENT_SPEC_VERSION,
+] as const;
+
 // ── Python → TS tool name mapping ─────────────────────────────────────
 
 /**

@@ -21,7 +21,8 @@
  * those are scheduled for a later slice.
  */
 
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 import type {
   HttpServerConfig,
@@ -29,6 +30,7 @@ import type {
   McpServerConfig,
   OAuthCallbackServerHandle,
   OAuthClientProvider,
+  StdioServerConfig,
 } from '@moonshot-ai/core';
 import {
   HttpMcpClient,
@@ -40,7 +42,7 @@ import {
 import type { Command } from 'commander';
 import { parse as parseToml } from 'smol-toml';
 
-import { getConfigPath, getDataDir } from '../../config/paths.js';
+import { getConfigPath, getDataDir, getMCPConfigPath } from '../../config/paths.js';
 
 // ─── DI surface ───────────────────────────────────────────────────────
 
@@ -74,6 +76,17 @@ export interface McpCliClient {
 
 export interface McpCommandDeps {
   readonly loadConfig: () => Promise<McpConfig>;
+  /**
+   * Persist the merged MCP config to disk. Called by `mcp add` and
+   * `mcp remove` after they mutate the in-memory config. Tests supply a
+   * spy; production writes `~/.kimi/mcp.json` atomically.
+   */
+  readonly saveConfig: (config: McpConfig) => Promise<void>;
+  /**
+   * Path shown to users in `mcp list` output so they know where the
+   * config they are viewing actually lives.
+   */
+  readonly configPath: string;
   readonly createProvider: (
     serverId: string,
     redirectPort: number,
@@ -270,8 +283,33 @@ function describeError(err: unknown): string {
 
 // ─── Default dep factory (production path) ───────────────────────────
 
+/**
+ * Load the CLI's view of the MCP config. Mirrors Python's `mcp.py`
+ * global-config lookup: `~/.kimi/mcp.json` is the source of truth for
+ * `mcp add`/`mcp remove`/`mcp list`. When the file is missing we fall
+ * back to the `[mcp.servers]` / `[mcp.mcpServers]` table in
+ * `config.toml` so setups that still carry only the legacy inline
+ * config keep working — but `saveConfig` always writes to `mcp.json`.
+ */
 async function defaultLoadConfig(): Promise<McpConfig> {
-  const raw = await readFile(getConfigPath(), 'utf8');
+  try {
+    const raw = await readFile(getMCPConfigPath(), 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    return parseMcpConfig(parsed);
+  } catch (error) {
+    if (!isFileNotFound(error)) throw error;
+  }
+  return loadLegacyTomlMcpConfig();
+}
+
+async function loadLegacyTomlMcpConfig(): Promise<McpConfig> {
+  let raw: string;
+  try {
+    raw = await readFile(getConfigPath(), 'utf8');
+  } catch (error) {
+    if (isFileNotFound(error)) return { mcpServers: {} };
+    throw error;
+  }
   const parsed = parseToml(raw) as Record<string, unknown>;
   const mcpSection = parsed['mcp'];
   if (mcpSection === undefined || mcpSection === null || typeof mcpSection !== 'object') {
@@ -285,6 +323,23 @@ async function defaultLoadConfig(): Promise<McpConfig> {
     return { mcpServers: {} };
   }
   return parseMcpConfig({ mcpServers: servers });
+}
+
+async function defaultSaveConfig(config: McpConfig): Promise<void> {
+  const path = getMCPConfigPath();
+  await mkdir(dirname(path), { recursive: true });
+  // Reject writing a malformed config — matches the validation Python
+  // does before `_save_mcp_config` so a bad merge never lands on disk.
+  parseMcpConfig(config);
+  await writeFile(path, JSON.stringify(config, null, 2) + '\n', 'utf8');
+}
+
+function isFileNotFound(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: string }).code === 'ENOENT'
+  );
 }
 
 /**
@@ -335,6 +390,8 @@ function wrapStdioClient(serverConfig: McpServerConfig): McpCliClient {
 function buildDefaultDeps(): McpCommandDeps {
   return {
     loadConfig: defaultLoadConfig,
+    saveConfig: defaultSaveConfig,
+    configPath: getMCPConfigPath(),
     // Synchronously construct the real `McpOAuthProvider` — it fully
     // implements `OAuthClientProvider` so the SDK can drive
     // `tokens()`, `saveTokens()`, `saveCodeVerifier()` etc. during
@@ -355,6 +412,185 @@ function buildDefaultDeps(): McpCommandDeps {
   };
 }
 
+// ─── add / remove / list handlers ────────────────────────────────────
+
+export interface McpAddOptions {
+  readonly transport: 'stdio' | 'http';
+  readonly env?: string[] | undefined;
+  readonly header?: string[] | undefined;
+  readonly auth?: string | undefined;
+  readonly force?: boolean | undefined;
+}
+
+async function handleAdd(
+  deps: McpCommandDeps,
+  name: string,
+  target: readonly string[],
+  opts: McpAddOptions,
+): Promise<void> {
+  if (name.length === 0) {
+    deps.stderr.write('Error: server name is required.\n');
+    deps.exit(1);
+  }
+
+  const transport = opts.transport;
+  if (transport !== 'stdio' && transport !== 'http') {
+    deps.stderr.write(`Unsupported transport: ${String(transport)}.\n`);
+    deps.exit(1);
+  }
+
+  if (target.length === 0) {
+    deps.stderr.write(
+      transport === 'stdio'
+        ? 'For stdio transport, provide the command after `--`.\n'
+        : 'URL is required for http transport.\n',
+    );
+    deps.exit(1);
+  }
+
+  let serverConfig: McpServerConfig;
+  if (transport === 'stdio') {
+    if (opts.header !== undefined && opts.header.length > 0) {
+      deps.stderr.write('--header is only valid for http transport.\n');
+      deps.exit(1);
+    }
+    if (opts.auth !== undefined && opts.auth.length > 0) {
+      deps.stderr.write('--auth is only valid for http transport.\n');
+      deps.exit(1);
+    }
+    const [command, ...args] = target;
+    if (command === undefined) {
+      deps.stderr.write('For stdio transport, provide the command after `--`.\n');
+      deps.exit(1);
+    }
+    const stdio: StdioServerConfig = {
+      command,
+      ...(args.length > 0 ? { args } : {}),
+      ...(opts.env !== undefined && opts.env.length > 0
+        ? { env: parseKeyValuePairs(deps, opts.env, 'env', '=') }
+        : {}),
+    };
+    serverConfig = stdio;
+  } else {
+    if (opts.env !== undefined && opts.env.length > 0) {
+      deps.stderr.write('--env is only supported for stdio transport.\n');
+      deps.exit(1);
+    }
+    if (target.length > 1) {
+      deps.stderr.write(
+        'Multiple targets provided. Supply a single URL for http transport.\n',
+      );
+      deps.exit(1);
+    }
+    const [url] = target;
+    if (url === undefined) {
+      deps.stderr.write('URL is required for http transport.\n');
+      deps.exit(1);
+    }
+    const http: HttpServerConfig = {
+      url,
+      transport: 'http',
+      ...(opts.header !== undefined && opts.header.length > 0
+        ? { headers: parseKeyValuePairs(deps, opts.header, 'header', ':', true) }
+        : {}),
+      ...(opts.auth === 'oauth' ? { auth: 'oauth' as const } : {}),
+    };
+    if (opts.auth !== undefined && opts.auth.length > 0 && opts.auth !== 'oauth') {
+      deps.stderr.write(`Unsupported --auth value: ${opts.auth} (expected 'oauth').\n`);
+      deps.exit(1);
+    }
+    serverConfig = http;
+  }
+
+  const existing = await deps.loadConfig();
+  if (existing.mcpServers[name] !== undefined && opts.force !== true) {
+    deps.stderr.write(
+      `MCP server '${name}' already exists. Use --force to overwrite or run \`kimi mcp remove ${name}\` first.\n`,
+    );
+    deps.exit(1);
+  }
+
+  const merged: McpConfig = {
+    mcpServers: { ...existing.mcpServers, [name]: serverConfig },
+  };
+  await deps.saveConfig(merged);
+  deps.stdout.write(`Added MCP server '${name}' to ${deps.configPath}.\n`);
+}
+
+async function handleRemove(deps: McpCommandDeps, name: string): Promise<void> {
+  const existing = await deps.loadConfig();
+  if (existing.mcpServers[name] === undefined) {
+    deps.stderr.write(`MCP server '${name}' not found.\n`);
+    deps.exit(1);
+  }
+  const rest: Record<string, McpServerConfig> = { ...existing.mcpServers };
+  delete rest[name];
+  await deps.saveConfig({ mcpServers: rest });
+  deps.stdout.write(`Removed MCP server '${name}' from ${deps.configPath}.\n`);
+}
+
+async function handleList(deps: McpCommandDeps): Promise<void> {
+  const config = await deps.loadConfig();
+  const entries = Object.entries(config.mcpServers);
+  deps.stdout.write(`MCP config file: ${deps.configPath}\n`);
+  if (entries.length === 0) {
+    deps.stdout.write('No MCP servers configured.\n');
+    return;
+  }
+  for (const [name, server] of entries) {
+    deps.stdout.write(`  ${formatServerLine(name, server)}\n`);
+  }
+}
+
+function formatServerLine(name: string, server: McpServerConfig): string {
+  if (isHttpServerConfig(server)) {
+    const transport = server.transport === 'sse' ? 'sse' : 'http';
+    let line = `${name} (${transport}): ${server.url}`;
+    if (server.auth === 'oauth') {
+      line += ` [oauth — run 'kimi mcp auth ${name}' to authorize]`;
+    }
+    return line;
+  }
+  const args = server.args ?? [];
+  const cmd = `${server.command}${args.length > 0 ? ' ' + args.join(' ') : ''}`;
+  return `${name} (stdio): ${cmd}`.trimEnd();
+}
+
+function collectRepeatable(value: string, previous: readonly string[]): string[] {
+  return [...previous, value];
+}
+
+function parseKeyValuePairs(
+  deps: McpCommandDeps,
+  items: readonly string[],
+  optionName: string,
+  separator: string,
+  stripWhitespace: boolean = false,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const item of items) {
+    const idx = item.indexOf(separator);
+    if (idx === -1) {
+      deps.stderr.write(
+        `Invalid ${optionName} format: ${item} (expected KEY${separator}VALUE).\n`,
+      );
+      deps.exit(1);
+    }
+    let key = item.slice(0, idx);
+    let value = item.slice(idx + separator.length);
+    if (stripWhitespace) {
+      key = key.trim();
+      value = value.trim();
+    }
+    if (key.length === 0) {
+      deps.stderr.write(`Invalid ${optionName} format: ${item} (empty key).\n`);
+      deps.exit(1);
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 // ─── Registration entry point ────────────────────────────────────────
 
 export function registerMcpCommand(parent: Command, deps?: McpCommandDeps): void {
@@ -367,23 +603,61 @@ export function registerMcpCommand(parent: Command, deps?: McpCommandDeps): void
   mcp
     .command('add')
     .description('Add an MCP server.')
-    .action(() => {
-      resolvedDeps.stdout.write('kimi mcp add: not yet implemented\n');
-    });
+    .argument('<name>', 'Name of the MCP server to add.')
+    .argument(
+      '[target...]',
+      'For http: server URL. For stdio: command and arguments (after `--`).',
+    )
+    .option('-t, --transport <transport>', 'Transport type: stdio | http.', 'stdio')
+    .option(
+      '-e, --env <key=value>',
+      'Environment variable (stdio only). Repeatable.',
+      collectRepeatable,
+      [] as string[],
+    )
+    .option(
+      '-H, --header <key:value>',
+      'HTTP header (http only). Repeatable.',
+      collectRepeatable,
+      [] as string[],
+    )
+    .option('-a, --auth <type>', 'Authorization type (e.g., oauth).')
+    .option('--force', 'Overwrite an existing server with the same name.', false)
+    .action(
+      async (
+        name: string,
+        target: string[],
+        opts: {
+          transport?: 'stdio' | 'http';
+          env?: string[];
+          header?: string[];
+          auth?: string;
+          force?: boolean;
+        },
+      ) => {
+        await handleAdd(resolvedDeps, name, target, {
+          transport: (opts.transport ?? 'stdio') as 'stdio' | 'http',
+          env: opts.env,
+          header: opts.header,
+          ...(opts.auth !== undefined ? { auth: opts.auth } : {}),
+          force: opts.force === true,
+        });
+      },
+    );
 
   mcp
     .command('remove')
     .description('Remove an MCP server.')
     .argument('<name>', 'Server name to remove.')
-    .action((_name: string) => {
-      resolvedDeps.stdout.write('kimi mcp remove: not yet implemented\n');
+    .action(async (name: string) => {
+      await handleRemove(resolvedDeps, name);
     });
 
   mcp
     .command('list')
     .description('List all MCP servers.')
-    .action(() => {
-      resolvedDeps.stdout.write('kimi mcp list: not yet implemented\n');
+    .action(async () => {
+      await handleList(resolvedDeps);
     });
 
   mcp

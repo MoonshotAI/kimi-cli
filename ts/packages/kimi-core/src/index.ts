@@ -426,6 +426,8 @@ export type { SubagentInstanceRecord, CreateInstanceOpts } from './soul-plus/sub
 export { AgentTypeRegistry } from './soul-plus/agent-type-registry.js';
 export type { AgentTypeDefinition } from './soul-plus/agent-type-registry.js';
 export {
+  DEFAULT_AGENT_SPEC_VERSION,
+  SUPPORTED_AGENT_SPEC_VERSIONS,
   loadAgentSpec,
   loadSubagentTypes,
   getBundledAgentYamlPath,
