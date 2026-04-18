@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -352,14 +352,18 @@ class Runtime:
         agent_id: str,
         subagent_type: str,
         llm_override: LLM | None = None,
+        work_dir_override: KaosPath | None = None,
     ) -> Runtime:
         """Clone runtime for a subagent."""
+        builtin_args = self.builtin_args
+        if work_dir_override is not None:
+            builtin_args = replace(builtin_args, KIMI_WORK_DIR=work_dir_override)
         return Runtime(
             config=self.config,
             oauth=self.oauth,
             llm=llm_override if llm_override is not None else self.llm,
             session=self.session,
-            builtin_args=self.builtin_args,
+            builtin_args=builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval.share(),
             labor_market=self.labor_market,
