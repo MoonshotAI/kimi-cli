@@ -15,6 +15,7 @@
 import { readFile } from 'node:fs/promises';
 
 import { atomicWrite } from '../storage/atomic-write.js';
+import type { WireProducer } from '../storage/wire-record.js';
 
 export interface SessionState {
   session_id: string;
@@ -82,6 +83,13 @@ export interface SessionState {
    *   path rather than the fast path).
    */
   last_exit_code?: 'clean' | 'dirty' | undefined;
+  /**
+   * Phase 22 — wire producer identity derived from wire.jsonl metadata,
+   * cached here so `listSessions()` can expose producer info without
+   * re-opening wire.jsonl. Undefined for legacy state.json predating
+   * Phase 22.
+   */
+  producer?: WireProducer | undefined;
 }
 
 export class StateCache {

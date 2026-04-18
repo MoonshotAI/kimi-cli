@@ -32,6 +32,7 @@
  */
 
 import type { SessionJournal } from '../storage/session-journal.js';
+import type { WireProducer } from '../storage/wire-record.js';
 import type { BusEvent, SessionEventBus, SessionEventListener } from './session-event-bus.js';
 import type { SessionState, StateCache } from '../session/state-cache.js';
 
@@ -71,6 +72,13 @@ export interface SessionMeta {
   turn_count: number;
   last_updated: number;
   last_exit_code?: 'clean' | 'dirty' | undefined;
+  /**
+   * Phase 22 — wire producer identity derived from wire.jsonl metadata.
+   * Immutable for the session's lifetime (no setter API). Undefined for
+   * legacy harnesses that construct a SessionMetaService without plumbing
+   * producer (transitional read path).
+   */
+  producer?: WireProducer | undefined;
 }
 
 export type SessionMetaListener = (
@@ -332,6 +340,8 @@ export class SessionMetaService {
       ...(this.meta.archived !== undefined ? { archived: this.meta.archived } : {}),
       ...(this.meta.last_model !== undefined ? { model: this.meta.last_model } : {}),
       ...(this.meta.plan_slug !== undefined ? { plan_slug: this.meta.plan_slug } : {}),
+      // Phase 22 — derived producer snapshot, mirrored from wire metadata.
+      ...(this.meta.producer !== undefined ? { producer: { ...this.meta.producer } } : {}),
     };
     await this.deps.stateCache.write(next);
   }
@@ -341,6 +351,7 @@ function cloneMeta(meta: SessionMeta): SessionMeta {
   return {
     ...meta,
     ...(meta.tags !== undefined ? { tags: [...meta.tags] } : {}),
+    ...(meta.producer !== undefined ? { producer: { ...meta.producer } } : {}),
   };
 }
 

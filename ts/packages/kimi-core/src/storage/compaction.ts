@@ -19,6 +19,7 @@ import { readdir, readFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { syncDir, writeFileAtomicDurable } from './fs-durability.js';
+import { getProducerInfo } from './producer-info.js';
 import { replayWire, type ReplayOptions, type ReplayResult } from './replay.js';
 
 // ── Archive naming helpers ───────────────────────────────────────────
@@ -168,10 +169,13 @@ export async function rotateJournal(
   // fsyncs the parent directory. That final directory fsync also commits
   // the earlier rename in step 1, because POSIX directory fsync flushes
   // all outstanding dirent changes for the directory.
+  const producer = getProducerInfo();
   const metadata = JSON.stringify({
     type: 'metadata',
     protocol_version: version,
     created_at: Date.now(),
+    producer,
+    kimi_version: producer.version,
   });
   await writeFileAtomicDurable(currentPath, metadata + '\n');
 
@@ -208,6 +212,7 @@ export async function replayWireSession(
       protocolVersion: '2.1',
       health: 'ok',
       warnings: ['No wire files found in session directory'],
+      producer: getProducerInfo(),
     };
   }
 
@@ -221,6 +226,7 @@ export async function replayWireSession(
   const health = results.some((r) => r.health === 'broken') ? 'broken' : 'ok';
   const lastResult = results.at(-1);
   const protocolVersion = lastResult?.protocolVersion ?? '2.1';
+  const producer = lastResult?.producer ?? getProducerInfo();
 
   const brokenReasons: string[] = [];
   for (const r of results) {
@@ -235,6 +241,7 @@ export async function replayWireSession(
     health,
     ...(brokenReasons.length > 0 ? { brokenReason: brokenReasons.join('; ') } : {}),
     warnings,
+    producer,
   };
 }
 

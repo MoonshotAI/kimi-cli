@@ -76,6 +76,7 @@ async function seedWireWithMeta(
     type: 'metadata',
     protocol_version: '2.0.0',
     created_at: 1_700_000_000_000,
+    producer: { kind: 'typescript', name: '@moonshot-ai/core', version: '1.0.0' },
   });
   const lines = [header, ...records.map((r) => JSON.stringify(r))].join('\n') + '\n';
   await writeFile(wirePath, lines, 'utf-8');

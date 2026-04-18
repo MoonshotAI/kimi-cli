@@ -15,6 +15,10 @@ export { DefaultConversationProjector } from './storage/projector.js';
 export { replayWire } from './storage/replay.js';
 export type { ReplayResult, ReplayOptions, SessionHealth } from './storage/replay.js';
 export { atomicWrite } from './storage/atomic-write.js';
+// Phase 22 — producer identity (host bootstrap injects via setProducerInfo).
+export { setProducerInfo, getProducerInfo } from './storage/producer-info.js';
+export type { WireProducer } from './storage/wire-record.js';
+export { UnsupportedProducerError } from './storage/errors.js';
 
 // ── Soul (Slice 2) ──────────────────────────────────────────────────────
 export { runSoulTurn } from './soul/run-turn.js';

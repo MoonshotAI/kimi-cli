@@ -47,6 +47,7 @@ function metadata(version = '2.1'): string {
     protocol_version: version,
     created_at: 1712790000000,
     kimi_version: '1.0.0',
+    producer: { kind: 'typescript', name: '@moonshot-ai/core', version: '1.0.0' },
   });
 }
 

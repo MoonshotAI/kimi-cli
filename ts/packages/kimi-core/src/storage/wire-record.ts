@@ -11,11 +11,28 @@ import type { UserInputPart } from '../wire-protocol/types.js';
 
 // ── File metadata header ────────────────────────────────────────────────
 
+/**
+ * Phase 22 — producer identity stamped on every TS-written wire.jsonl.
+ * Distinguishes TypeScript vs Python kimi-cli so resume can hard-reject
+ * cross-producer sessions (see `UnsupportedProducerError`).
+ */
+export interface WireProducer {
+  /** Implementation language tag — Phase 22 admits only 'python' / 'typescript'. */
+  kind: 'python' | 'typescript';
+  /** Package name for debug context (e.g. '@moonshot-ai/core' / 'kimi-cli'). */
+  name: string;
+  /** Package version (e.g. '0.1.0'). */
+  version: string;
+}
+
 export interface WireFileMetadata {
   type: 'metadata';
   protocol_version: string;
   created_at: number;
+  /** @deprecated Phase 22 — use `producer.version`. Kept for backward compat with pre-Phase-22 wire files. */
   kimi_version?: string | undefined;
+  /** Phase 22 — required for newly created TS wire files; absent on legacy / Python wire files. */
+  producer?: WireProducer | undefined;
 }
 
 // ── Record branches (§4.3 + appendix B) ────────────────────────────────
@@ -508,11 +525,19 @@ export type JournalInput<T extends WireRecordType> = Omit<
 
 const agentTypeEnum = z.enum(['main', 'sub', 'independent']);
 
+const _rawWireProducerSchema = z.object({
+  kind: z.enum(['python', 'typescript']),
+  name: z.string(),
+  version: z.string(),
+});
+export const WireProducerSchema: z.ZodType<WireProducer> = _rawWireProducerSchema;
+
 const _rawWireFileMetadataSchema = z.object({
   type: z.literal('metadata'),
   protocol_version: z.string(),
   created_at: z.number(),
   kimi_version: z.string().optional(),
+  producer: _rawWireProducerSchema.optional(),
 });
 export const WireFileMetadataSchema: z.ZodType<WireFileMetadata> = _rawWireFileMetadataSchema;
 
@@ -992,6 +1017,11 @@ export const ContextClearedRecordSchema: z.ZodType<ContextClearedRecord> =
 
 type AssertEqual<T, U> = [T] extends [U] ? ([U] extends [T] ? true : false) : false;
 
+const _driftGuard_WireProducer: AssertEqual<
+  z.infer<typeof _rawWireProducerSchema>,
+  WireProducer
+> = true;
+void _driftGuard_WireProducer;
 const _driftGuard_WireFileMetadata: AssertEqual<
   z.infer<typeof _rawWireFileMetadataSchema>,
   WireFileMetadata

@@ -212,7 +212,7 @@ describe('rotateJournal — file rotation', () => {
     // Create a wire.jsonl with some content
     const wireContent =
       [
-        '{"type":"metadata","protocol_version":"2.1","created_at":1000}',
+        '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
         '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}',
       ].join('\n') + '\n';
     await writeFile(join(workDir, 'wire.jsonl'), wireContent, 'utf8');
@@ -236,11 +236,11 @@ describe('rotateJournal — file rotation', () => {
     // Simulate existing archive + current file
     await writeFile(
       join(workDir, 'wire.1.jsonl'),
-      '{"type":"metadata","protocol_version":"2.1","created_at":900}\n',
+      '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n',
       'utf8',
     );
     const wireContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}\n';
     await writeFile(join(workDir, 'wire.jsonl'), wireContent, 'utf8');
 
@@ -255,7 +255,7 @@ describe('rotateJournal — file rotation', () => {
   it('leaves no .tmp leftover and is replay-healthy after rotate (Slice 6 audit M03)', async () => {
     const wireContent =
       [
-        '{"type":"metadata","protocol_version":"2.1","created_at":1000}',
+        '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
         '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}',
       ].join('\n') + '\n';
     await writeFile(join(workDir, 'wire.jsonl'), wireContent, 'utf8');
@@ -281,7 +281,7 @@ describe('rotateJournal — file rotation', () => {
   it('fsyncs the session directory via the durable helpers (Slice 6 audit M03)', async () => {
     await writeFile(
       join(workDir, 'wire.jsonl'),
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n',
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n',
       'utf8',
     );
 
@@ -303,7 +303,7 @@ describe('rotateJournal — file rotation', () => {
 
   it('cleans up the .tmp file and leaves the archive intact when the durable write throws', async () => {
     const wireContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"pre-rotate"}\n';
     await writeFile(join(workDir, 'wire.jsonl'), wireContent, 'utf8');
 
@@ -327,7 +327,7 @@ describe('rotateJournal — file rotation', () => {
 
   it('preserves original content in frozen archive (append-only invariant)', async () => {
     const originalContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"important"}\n' +
       '{"type":"assistant_message","seq":2,"time":1002,"turn_id":"t1","text":"response","think":null,"tool_calls":[],"model":"m","usage":{"input_tokens":10,"output_tokens":5}}\n';
     await writeFile(join(workDir, 'wire.jsonl'), originalContent, 'utf8');
@@ -417,7 +417,7 @@ describe('replayWireSession — cross-file replay', () => {
   it('replays single wire.jsonl (no archives)', async () => {
     const content =
       [
-        '{"type":"metadata","protocol_version":"2.1","created_at":1000}',
+        '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
         '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}',
       ].join('\n') + '\n';
     await writeFile(join(workDir, 'wire.jsonl'), content, 'utf8');
@@ -433,7 +433,7 @@ describe('replayWireSession — cross-file replay', () => {
     // Oldest archive (wire.1.jsonl) — higher N = newer
     const archive1 =
       [
-        '{"type":"metadata","protocol_version":"2.1","created_at":800}',
+        '{"type":"metadata","protocol_version":"2.1","created_at":800,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
         '{"type":"user_message","seq":1,"time":801,"turn_id":"t1","content":"oldest"}',
       ].join('\n') + '\n';
     await writeFile(join(workDir, 'wire.1.jsonl'), archive1, 'utf8');
@@ -441,7 +441,7 @@ describe('replayWireSession — cross-file replay', () => {
     // Newer archive (wire.2.jsonl) — starts with compaction record
     const archive2 =
       [
-        '{"type":"metadata","protocol_version":"2.1","created_at":900}',
+        '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
         '{"type":"compaction","seq":1,"time":901,"summary":"summary of first batch","compacted_range":{"from_turn":1,"to_turn":1,"message_count":1},"pre_compact_tokens":100,"post_compact_tokens":20,"trigger":"auto"}',
         '{"type":"user_message","seq":2,"time":902,"turn_id":"t2","content":"middle"}',
       ].join('\n') + '\n';
@@ -450,7 +450,7 @@ describe('replayWireSession — cross-file replay', () => {
     // Current file (wire.jsonl) — starts with compaction record
     const current =
       [
-        '{"type":"metadata","protocol_version":"2.1","created_at":1000}',
+        '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
         '{"type":"compaction","seq":1,"time":1001,"summary":"summary of middle batch","compacted_range":{"from_turn":2,"to_turn":2,"message_count":1},"pre_compact_tokens":100,"post_compact_tokens":20,"trigger":"auto"}',
         '{"type":"user_message","seq":2,"time":1002,"turn_id":"t3","content":"newest"}',
       ].join('\n') + '\n';
@@ -471,7 +471,7 @@ describe('replayWireSession — cross-file replay', () => {
     // Current file has mid-file corruption
     const content =
       [
-        '{"type":"metadata","protocol_version":"2.1","created_at":1000}',
+        '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
         '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"ok"}',
         'CORRUPTED LINE',
         '{"type":"user_message","seq":2,"time":1003,"turn_id":"t1","content":"after corruption"}',
@@ -507,7 +507,7 @@ describe('recoverRotation — crash recovery', () => {
   it('rolls back highest archive when wire.jsonl is missing', async () => {
     // Simulate crash: wire.jsonl was renamed to wire.1.jsonl but new file not created
     const archiveContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}\n';
     await writeFile(join(workDir, 'wire.1.jsonl'), archiveContent, 'utf8');
     // wire.jsonl does NOT exist
@@ -532,7 +532,7 @@ describe('recoverRotation — crash recovery', () => {
 
     await writeFile(join(workDir, 'wire.1.jsonl'), 'oldest archive\n', 'utf8');
     const newestArchive =
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"recent"}\n';
     await writeFile(join(workDir, 'wire.2.jsonl'), newestArchive, 'utf8');
 

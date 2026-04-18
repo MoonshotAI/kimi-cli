@@ -47,7 +47,9 @@ import type {
   Tool,
 } from '../soul/index.js';
 import { atomicWrite } from '../storage/atomic-write.js';
-import type { NotificationRecord } from '../storage/wire-record.js';
+import { UnsupportedProducerError } from '../storage/errors.js';
+import { getProducerInfo } from '../storage/producer-info.js';
+import type { NotificationRecord, WireProducer } from '../storage/wire-record.js';
 import { recoverRotation } from '../storage/compaction.js';
 import type { FullContextState } from '../storage/context-state.js';
 import { WiredContextState } from '../storage/context-state.js';
@@ -108,6 +110,12 @@ export interface SessionInfo {
    * state.json is missing.
    */
   last_activity?: number | undefined;
+  /**
+   * Phase 22 — wire producer derived from state.json (originally sourced
+   * from wire.jsonl metadata). Undefined for pre-Phase-22 state.json that
+   * predates producer tracking.
+   */
+  producer?: WireProducer | undefined;
 }
 
 export interface CreateSessionOptions {
@@ -332,6 +340,7 @@ export class SessionManager {
       updated_at: now,
       workspace_dir: options.workspaceDir,
       last_exit_code: 'dirty',
+      producer: getProducerInfo(),
     });
 
     // Phase 16 — initial SessionMeta view passed into SoulPlus. Derived
@@ -344,6 +353,10 @@ export class SessionManager {
       last_updated: now,
       last_model: options.model,
       last_exit_code: 'dirty',
+      // Phase 22 — producer is wire-truth; the writer will stamp the same
+      // snapshot onto the wire metadata header on first append, so this
+      // in-memory view matches disk for the session's lifetime.
+      producer: getProducerInfo(),
     };
 
     // Assemble SoulPlus — shares the lifecycle state machine created
@@ -507,7 +520,16 @@ export class SessionManager {
           protocolVersion: SUPPORTED_RESUME_PROTOCOL_VERSION,
           health: 'ok',
           warnings: [],
+          // Phase 22 — fresh-resume path: no wire file on disk yet, so the
+          // producer will be stamped on the next append from the current
+          // getProducerInfo() snapshot. Mirror that here so `initialMeta`
+          // reports the same value the writer will persist.
+          producer: getProducerInfo(),
         };
+      } else if (error instanceof UnsupportedProducerError) {
+        // Phase 22 — bubble up unwrapped so host UX can match via
+        // `instanceof` and render a precise migration prompt.
+        throw error;
       } else {
         throw new Error(
           `Failed to replay session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -615,6 +637,11 @@ export class SessionManager {
       ...(pickDescription !== undefined ? { description: pickDescription } : {}),
       ...(pickArchived !== undefined ? { archived: pickArchived } : {}),
       ...(pickLastModel !== undefined ? { last_model: pickLastModel } : {}),
+      // Phase 22 — producer is the wire's header value (stamped on create
+      // and never mutated). The fresh-resume branch above synthesises one
+      // from the current getProducerInfo() snapshot so this slot is
+      // always populated.
+      producer: replayResult.producer,
       last_exit_code: 'dirty',
     };
 
@@ -802,6 +829,7 @@ export class SessionManager {
               ? { title: state.custom_title }
               : {}),
             ...(lastActivity !== undefined ? { last_activity: lastActivity } : {}),
+            ...(state.producer !== undefined ? { producer: state.producer } : {}),
           };
         }
         // state.json missing or corrupt — include with minimal info.

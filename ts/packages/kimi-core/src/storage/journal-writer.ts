@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 
 import { JournalGatedError } from './errors.js';
 import { syncDir } from './fs-durability.js';
+import { getProducerInfo } from './producer-info.js';
 import type { WireFileMetadata, WireRecord, WireRecordType } from './wire-record.js';
 
 /**
@@ -369,11 +370,17 @@ export class WiredJournalWriter implements JournalWriter {
   private async ensureMetadataInit(): Promise<void> {
     if (this.metadataWritten) return;
     await this.ensureDir();
+    const producer = getProducerInfo();
     const header: WireFileMetadata = {
       type: 'metadata',
       protocol_version: this.protocolVersion,
       created_at: this.now(),
-      ...(this.kimiVersion !== undefined ? { kimi_version: this.kimiVersion } : {}),
+      producer,
+      // kimi_version is a deprecated compat field. If the host passes one
+      // explicitly it wins (an embedder may want to stamp its own SDK
+      // version); otherwise mirror producer.version so older readers still
+      // see something meaningful.
+      kimi_version: this.kimiVersion ?? producer.version,
     };
     await this.writeAndSync(JSON.stringify(header) + '\n');
     this.metadataWritten = true;

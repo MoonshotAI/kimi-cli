@@ -1,11 +1,16 @@
 import { readFile } from 'node:fs/promises';
 
-import { IncompatibleVersionError, WireJournalCorruptError } from './errors.js';
+import {
+  IncompatibleVersionError,
+  UnsupportedProducerError,
+  WireJournalCorruptError,
+} from './errors.js';
 import type { LifecycleGate } from './journal-writer.js';
 import {
   WireFileMetadataSchema,
   WireRecordSchema,
   type WireFileMetadata,
+  type WireProducer,
   type WireRecord,
 } from './wire-record.js';
 
@@ -18,6 +23,11 @@ export interface ReplayResult {
   /** Human readable reason the session was marked broken, if applicable. */
   readonly brokenReason?: string;
   readonly warnings: readonly string[];
+  /**
+   * Phase 22 — wire producer parsed from the metadata header. Present
+   * after the producer hard check succeeds (i.e. kind === 'typescript').
+   */
+  readonly producer: WireProducer;
 }
 
 export interface ReplayOptions {
@@ -86,6 +96,18 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
     );
   }
 
+  // 2b. Phase 22 — producer hard check. Runs *after* protocol_version so
+  //     future-protocol errors surface with their direct "upgrade" hint
+  //     rather than a migration one.
+  if (meta.producer === undefined) {
+    throw new UnsupportedProducerError('legacy', 'metadata-missing-producer');
+  }
+  if (meta.producer.kind !== 'typescript') {
+    const kind = meta.producer.kind === 'python' ? 'python' : 'unknown';
+    throw new UnsupportedProducerError(kind, 'cross-producer-not-supported');
+  }
+  const producer = meta.producer;
+
   // 3. Replay body lines.
   const records: WireRecord[] = [];
   const warnings: string[] = [];
@@ -111,6 +133,7 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
         health: 'broken',
         brokenReason: reason,
         warnings,
+        producer,
       };
     }
 
@@ -142,6 +165,7 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
         health: 'broken',
         brokenReason: reason,
         warnings,
+        producer,
       };
     }
     records.push(parsed.data);
@@ -152,6 +176,7 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
     protocolVersion: meta.protocol_version,
     health: 'ok',
     warnings,
+    producer,
   };
 }
 

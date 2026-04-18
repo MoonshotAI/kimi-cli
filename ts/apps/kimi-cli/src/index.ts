@@ -10,6 +10,7 @@
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve, sep } from 'node:path';
 
 import {
@@ -59,6 +60,7 @@ import {
   resolveSkillRoots,
   getDeviceHeaders,
   setCliVersion,
+  setProducerInfo,
 } from '@moonshot-ai/core';
 import type {
   ApprovalRuntime,
@@ -107,8 +109,34 @@ function getVersion(): string {
   return pkg.version;
 }
 
+/**
+ * Phase 22 — resolve `@moonshot-ai/core`'s package version so
+ * `setProducerInfo` stamps the *engine* version on wire.jsonl headers
+ * (distinct from the host CLI version returned by `getVersion()`).
+ */
+function getCoreVersion(): string {
+  try {
+    const hostRequire = createRequire(import.meta.url);
+    const corePkg = hostRequire('@moonshot-ai/core/package.json') as { version: string };
+    return corePkg.version;
+  } catch {
+    // Fallback to host version — keeps wire headers parseable even when
+    // the core package.json cannot be resolved (bundler / edge cases).
+    return getVersion();
+  }
+}
+
+function injectProducerInfo(): void {
+  setProducerInfo({
+    kind: 'typescript',
+    name: '@moonshot-ai/core',
+    version: getCoreVersion(),
+  });
+}
+
 function buildKimiDefaultHeaders(version: string): Record<string, string> {
   setCliVersion(version);
+  injectProducerInfo();
   return {
     'User-Agent': `KimiCLI/${version}`,
     ...getDeviceHeaders(),
@@ -271,6 +299,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
 
   // 2a. Slice 5.0 — OAuth pre-flight + default headers.
   setCliVersion(getVersion());
+  injectProducerInfo();
   //     the oauthResolver can supply a fresh access token when needed.
   const { oauthResolver, managers: oauthManagers } = await ensureOAuthIfNeeded(
     kimiConfig,
@@ -960,6 +989,7 @@ async function runWire(opts: CLIOptions): Promise<void> {
   }
 
   setCliVersion(getVersion());
+  injectProducerInfo();
   const { oauthResolver } = await ensureOAuthIfNeeded(
     kimiConfig,
     modelAlias,

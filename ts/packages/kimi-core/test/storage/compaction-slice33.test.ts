@@ -40,14 +40,14 @@ describe('recoverRotation — metadata-only half-complete detection (M04)', () =
     // 3. Process crashed before compaction record was written
 
     const archiveContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":900}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":901,"turn_id":"t1","content":"important data"}\n';
     await writeFile(join(workDir, 'wire.1.jsonl'), archiveContent, 'utf8');
 
     // Metadata-only new file (half-complete)
     await writeFile(
       join(workDir, 'wire.jsonl'),
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n',
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n',
       'utf8',
     );
 
@@ -62,12 +62,12 @@ describe('recoverRotation — metadata-only half-complete detection (M04)', () =
   it('does NOT recover when wire.jsonl has records beyond metadata', async () => {
     // wire.jsonl has metadata + compaction record = completed rotation
     const archiveContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":900}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":901,"turn_id":"t1","content":"old data"}\n';
     await writeFile(join(workDir, 'wire.1.jsonl'), archiveContent, 'utf8');
 
     const currentContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"compaction","seq":1,"time":1001,"summary":"compacted","compacted_range":{"from_turn":1,"to_turn":1,"message_count":1},"pre_compact_tokens":100,"post_compact_tokens":20,"trigger":"auto"}\n';
     await writeFile(join(workDir, 'wire.jsonl'), currentContent, 'utf8');
 
@@ -79,7 +79,7 @@ describe('recoverRotation — metadata-only half-complete detection (M04)', () =
     // A fresh session that just has metadata but no archives — not a rotation
     await writeFile(
       join(workDir, 'wire.jsonl'),
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n',
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n',
       'utf8',
     );
 
@@ -92,13 +92,13 @@ describe('recoverRotation — metadata-only half-complete detection (M04)', () =
     await writeFile(join(workDir, 'wire.1.jsonl'), 'oldest archive\n', 'utf8');
 
     const latestArchive =
-      '{"type":"metadata","protocol_version":"2.1","created_at":900}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":901,"turn_id":"t2","content":"recent data"}\n';
     await writeFile(join(workDir, 'wire.2.jsonl'), latestArchive, 'utf8');
 
     await writeFile(
       join(workDir, 'wire.jsonl'),
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n',
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n',
       'utf8',
     );
 
@@ -111,7 +111,7 @@ describe('recoverRotation — metadata-only half-complete detection (M04)', () =
 
   it('still handles wire.jsonl-missing case (original scenario)', async () => {
     const archiveContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":900}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":901,"turn_id":"t1","content":"hello"}\n';
     await writeFile(join(workDir, 'wire.1.jsonl'), archiveContent, 'utf8');
     // wire.jsonl does NOT exist
@@ -186,7 +186,7 @@ describe('WiredJournalWriter.resetForRotation — seq reset (M04)', () => {
     // In real code, rotateJournal renames the old file and creates a new one
     await writeFile(
       filePath,
-      '{"type":"metadata","protocol_version":"2.1","created_at":2000}\n',
+      '{"type":"metadata","protocol_version":"2.1","created_at":2000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n',
       'utf8',
     );
 
@@ -232,7 +232,7 @@ describe('End-to-end: compaction rotation + replay', () => {
   it('full rotation cycle: wire.jsonl rotated, compaction record written, both files replay healthy', async () => {
     // Step 1: Create a wire.jsonl with some conversation
     const originalContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}\n' +
       '{"type":"assistant_message","seq":2,"time":1002,"turn_id":"t1","text":"hi","think":null,"tool_calls":[],"model":"m","usage":{"input_tokens":10,"output_tokens":5}}\n' +
       '{"type":"user_message","seq":3,"time":1003,"turn_id":"t2","content":"how are you?"}\n';
@@ -301,7 +301,7 @@ describe('End-to-end: compaction rotation + replay', () => {
   it('after compaction, new messages are appended to the new wire.jsonl', async () => {
     // Create initial wire.jsonl
     const originalContent =
-      '{"type":"metadata","protocol_version":"2.1","created_at":1000}\n' +
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"old message"}\n';
     const filePath = join(workDir, 'wire.jsonl');
     await writeFile(filePath, originalContent, 'utf8');
