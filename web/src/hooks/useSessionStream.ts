@@ -262,6 +262,30 @@ type PendingQuestionEntry = {
   submitted?: boolean;
 };
 
+function summarizeStreamingToolInput(
+  toolName: string,
+  input: unknown,
+): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return input;
+  }
+
+  const record = input as Record<string, unknown>;
+
+  switch (toolName) {
+    case "WriteFile": {
+      const { content: _content, ...rest } = record;
+      return rest;
+    }
+    case "StrReplaceFile": {
+      const { old: _old, new: _new, ...rest } = record;
+      return rest;
+    }
+    default:
+      return input;
+  }
+}
+
 /**
  * Hook for connecting to a session's WebSocket stream
  */
@@ -1203,7 +1227,10 @@ export function useSessionStream(
           let parsedInput: unknown;
           if (initialArgs) {
             try {
-              parsedInput = JSON.parse(initialArgs);
+              parsedInput = summarizeStreamingToolInput(
+                toolCall.function.name,
+                JSON.parse(initialArgs),
+              );
             } catch {
               // Not valid JSON yet, leave as undefined
             }
@@ -1243,9 +1270,14 @@ export function useSessionStream(
 
               const messageId = tc.messageId;
               if (messageId) {
-                let parsedInput: unknown = tc.arguments;
+                let parsedInput: unknown;
+                let hasParsedInput = false;
                 try {
-                  parsedInput = JSON.parse(tc.arguments);
+                  parsedInput = summarizeStreamingToolInput(
+                    tc.name,
+                    JSON.parse(tc.arguments),
+                  );
+                  hasParsedInput = true;
                 } catch {
                   // Not complete JSON yet
                 }
@@ -1253,14 +1285,25 @@ export function useSessionStream(
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === messageId && msg.toolCall
-                      ? {
-                          ...msg,
-                          toolCall: {
-                            ...msg.toolCall,
-                            state: "input-available" as ToolUIPart["state"],
-                            input: parsedInput,
-                          },
-                        }
+                      ? (() => {
+                          const nextState = "input-available" as ToolUIPart["state"];
+                          const stateChanged = msg.toolCall.state !== nextState;
+                          const inputChanged =
+                            hasParsedInput && parsedInput !== msg.toolCall.input;
+
+                          if (!stateChanged && !inputChanged) {
+                            return msg;
+                          }
+
+                          return {
+                            ...msg,
+                            toolCall: {
+                              ...msg.toolCall,
+                              state: nextState,
+                              ...(hasParsedInput ? { input: parsedInput } : {}),
+                            },
+                          };
+                        })()
                       : msg,
                   ),
                 );

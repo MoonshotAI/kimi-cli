@@ -326,7 +326,8 @@ class ACPSession:
         # Append new arguments part to the last tool call
         self._turn_state.last_tool_call.append_args_part(part.arguments_part)
 
-        # Update the tool call with new content and title
+        # Keep the full args in state for title extraction, but only send the
+        # newly streamed chunk to avoid repeatedly resending large payloads.
         update = acp.schema.ToolCallProgress(
             session_update="tool_call_update",
             tool_call_id=self._turn_state.last_tool_call.acp_tool_call_id,
@@ -335,9 +336,7 @@ class ACPSession:
             content=[
                 acp.schema.ContentToolCallContent(
                     type="content",
-                    content=acp.schema.TextContentBlock(
-                        type="text", text=self._turn_state.last_tool_call.args
-                    ),
+                    content=acp.schema.TextContentBlock(type="text", text=part.arguments_part),
                 )
             ],
         )
