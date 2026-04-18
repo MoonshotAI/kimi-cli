@@ -10,8 +10,9 @@
  *   - SkillTool constructor accepts `initialQueryDepth?: number`.
  *   - SubagentRunner.run forwards skillContext.queryDepth to the child
  *     SkillTool via initialQueryDepth.
- *   - Depth >= MAX_SKILL_QUERY_DEPTH blocks the skill call (returns an
- *     error-typed ToolResult instead of spawning).
+ *   - Depth >= MAX_SKILL_QUERY_DEPTH blocks the skill call by throwing
+ *     `NestedSkillTooDeepError` (Phase 18 §C.3 — upgraded from soft
+ *     isError to a hard structured throw).
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -38,19 +39,23 @@ describe('Phase 17 C.3 — SkillTool.initialQueryDepth gate', () => {
     }
   });
 
-  it('skill call at depth == MAX_SKILL_QUERY_DEPTH returns ToolResult.is_error with "depth" in the message', async () => {
+  it('skill call at depth == MAX_SKILL_QUERY_DEPTH throws NestedSkillTooDeepError', async () => {
+    // Phase 18 §C.3 — hard-stop via structured throw (was soft
+    // ToolResult.is_error in Phase 17). See
+    // `todo/phase-18-wire-and-core-alignment.md` §C.3 for the upgrade.
     expect(MAX_SKILL_QUERY_DEPTH).toBe(3);
+    const { NestedSkillTooDeepError } = await import(
+      '../../src/soul-plus/skill/errors.js'
+    );
     const tool = new SkillTool({
       initialQueryDepth: MAX_SKILL_QUERY_DEPTH,
     } as unknown as ConstructorParameters<typeof SkillTool>[0]);
-    const result = await tool.execute(
-      'tc_1',
-      { skill: 'anything' } as Parameters<typeof tool.execute>[1],
-      new AbortController().signal,
-    );
-    expect((result as { is_error?: boolean; isError?: boolean }).is_error ?? (result as { isError?: boolean }).isError).toBe(true);
-    const content = (result as { content?: unknown }).content as string;
-    expect(typeof content).toBe('string');
-    expect(content.toLowerCase()).toMatch(/depth|too deep|nested/);
+    await expect(
+      tool.execute(
+        'tc_1',
+        { skill: 'anything' } as Parameters<typeof tool.execute>[1],
+        new AbortController().signal,
+      ),
+    ).rejects.toBeInstanceOf(NestedSkillTooDeepError);
   });
 });

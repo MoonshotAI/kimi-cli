@@ -5,14 +5,22 @@
  * Path safety is enforced before any Kaos I/O (§14.3 D11).
  */
 
+import { resolve as resolvePath } from 'node:path';
+
 import type { Kaos } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
 import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
+import { planModeWriteBlockMessage } from './plan-mode-checker.js';
+import type { PlanModeChecker } from './plan-mode-checker.js';
 import { WriteInputSchema } from './types.js';
 import type { BuiltinTool, WriteInput, WriteOutput } from './types.js';
 import type { WorkspaceConfig } from './workspace.js';
+
+export interface WriteToolOptions {
+  readonly planModeChecker?: PlanModeChecker | undefined;
+}
 
 export class WriteTool implements BuiltinTool<WriteInput, WriteOutput> {
   readonly name = 'Write' as const;
@@ -20,10 +28,15 @@ export class WriteTool implements BuiltinTool<WriteInput, WriteOutput> {
   readonly description = 'Write content to a file, creating it if it does not exist.';
   readonly inputSchema: z.ZodType<WriteInput> = WriteInputSchema;
 
+  private readonly planModeChecker: PlanModeChecker | undefined;
+
   constructor(
     private readonly kaos: Kaos,
     private readonly workspace: WorkspaceConfig,
-  ) {}
+    options?: WriteToolOptions,
+  ) {
+    this.planModeChecker = options?.planModeChecker;
+  }
 
   async execute(
     _toolCallId: string,
@@ -31,6 +44,17 @@ export class WriteTool implements BuiltinTool<WriteInput, WriteOutput> {
     _signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult<WriteOutput>> {
+    // Phase 18 §D.5 — plan-mode hard block. Runs before path safety so
+    // the LLM always sees the plan-mode message for a forbidden write,
+    // even if the path also happens to escape the workspace (the plan
+    // reminder is strictly more useful than a PathSecurityError here).
+    if (this.planModeChecker?.isPlanModeActive() === true) {
+      const planPath = this.planModeChecker.getPlanFilePath();
+      if (planPath === null || resolvePath(args.path) !== resolvePath(planPath)) {
+        return { isError: true, content: planModeWriteBlockMessage(planPath) };
+      }
+    }
+
     let safePath: string;
     try {
       safePath = assertPathAllowed(args.path, this.workspace.workspaceDir, this.workspace, {

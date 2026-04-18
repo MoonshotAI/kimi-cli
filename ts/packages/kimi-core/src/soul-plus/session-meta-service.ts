@@ -61,6 +61,12 @@ export interface SessionMeta {
    * don't silently drop it.
    */
   color?: string | undefined;
+  /**
+   * Phase 18 §D.7 — per-session plan-file slug assigned by
+   * `generatePlanSlug` (heroes.ts). Persisted via `session_meta_changed`
+   * wire records so a restart reuses the same plan-file name.
+   */
+  plan_slug?: string | undefined;
   last_model?: string | undefined;
   turn_count: number;
   last_updated: number;
@@ -136,6 +142,28 @@ export class SessionMetaService {
     await this.applyPatch({ tags: next }, source, reason);
   }
 
+  /**
+   * Phase 18 §D.7 — persist the per-session plan-file slug. Write path
+   * mirrors `setTitle`: wire → in-memory → bus → listeners →
+   * state.json flush.
+   *
+   * Declared as an arrow property so callers that destructure the
+   * method (e.g. tests that cache the reference before `await`) retain
+   * the original `this` binding.
+   */
+  readonly setPlanSlug = async (
+    slug: string,
+    source: MetaSource,
+    reason?: string,
+  ): Promise<void> => {
+    const trimmed = slug.trim();
+    if (trimmed.length === 0) {
+      throw new Error('SessionMetaService.setPlanSlug: slug cannot be empty');
+    }
+    if (this.meta.plan_slug === trimmed) return;
+    await this.applyPatch({ plan_slug: trimmed }, source, reason);
+  };
+
   // ── Startup recovery ──────────────────────────────────────────────────
 
   /**
@@ -152,6 +180,7 @@ export class SessionMetaService {
     }
     if (replayedMeta.archived !== undefined) this.meta.archived = replayedMeta.archived;
     if (replayedMeta.color !== undefined) this.meta.color = replayedMeta.color;
+    if (replayedMeta.plan_slug !== undefined) this.meta.plan_slug = replayedMeta.plan_slug;
     if (replayedMeta.last_model !== undefined) {
       this.meta.last_model = replayedMeta.last_model;
     }
@@ -217,6 +246,7 @@ export class SessionMetaService {
     if (patch.description !== undefined) this.meta.description = patch.description;
     if (patch.archived !== undefined) this.meta.archived = patch.archived;
     if (patch.color !== undefined) this.meta.color = patch.color;
+    if (patch.plan_slug !== undefined) this.meta.plan_slug = patch.plan_slug;
     this.meta.last_updated = Date.now();
     // 3. fan out wire event — fire-and-forget (铁律 4).
     this.deps.eventBus.emit({
@@ -301,6 +331,7 @@ export class SessionMetaService {
       ...(this.meta.description !== undefined ? { description: this.meta.description } : {}),
       ...(this.meta.archived !== undefined ? { archived: this.meta.archived } : {}),
       ...(this.meta.last_model !== undefined ? { model: this.meta.last_model } : {}),
+      ...(this.meta.plan_slug !== undefined ? { plan_slug: this.meta.plan_slug } : {}),
     };
     await this.deps.stateCache.write(next);
   }
@@ -328,6 +359,7 @@ function toWirePatch(p: Partial<SessionMeta>): {
   description?: string;
   archived?: boolean;
   color?: string;
+  plan_slug?: string;
 } {
   const out: {
     title?: string;
@@ -335,11 +367,13 @@ function toWirePatch(p: Partial<SessionMeta>): {
     description?: string;
     archived?: boolean;
     color?: string;
+    plan_slug?: string;
   } = {};
   if (p.title !== undefined) out.title = p.title;
   if (p.tags !== undefined) out.tags = [...p.tags];
   if (p.description !== undefined) out.description = p.description;
   if (p.archived !== undefined) out.archived = p.archived;
   if (p.color !== undefined) out.color = p.color;
+  if (p.plan_slug !== undefined) out.plan_slug = p.plan_slug;
   return out;
 }

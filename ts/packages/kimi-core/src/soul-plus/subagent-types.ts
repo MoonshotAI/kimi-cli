@@ -63,8 +63,18 @@ export interface SpawnRequest {
    * Slice 7.1 (决策 #99) — depth context propagated when this spawn was
    * triggered by the `Skill` tool in fork mode. Lets the child SkillTool
    * (if it fires another Skill call) cap recursion at MAX_SKILL_QUERY_DEPTH.
+   *
+   * Phase 18 §15.9.3 adds `allowedTools` / `disallowedTools` so the
+   * child Soul can instantiate its ToolRegistry with the parent skill's
+   * declared tool policy.
    */
-  skillContext?: { queryDepth: number } | undefined;
+  skillContext?:
+    | {
+        queryDepth: number;
+        allowedTools?: readonly string[];
+        disallowedTools?: readonly string[];
+      }
+    | undefined;
 }
 
 // ── AgentResult (v2 附录 E / §7.2) ───────────────────────────────────

@@ -10,17 +10,23 @@
  * LLM as `<system-reminder>` XML blocks (the same rendering path already
  * used by NotificationManager in Slice 2.4).
  *
- * Key differences from Python:
- *   - TS simplifies Python's turn-counting throttle on plan-mode. The TS
- *     port injects a single concise reminder every turn while plan mode
- *     is active, eschewing the `full` / `sparse` / `reentry` variants
- *     (simpler; cost delta is marginal because the reminder is short).
- *   - Yolo-mode mirrors Python: one reminder per activation; re-entering
- *     non-bypass mode resets the one-shot flag.
+ * Plan-mode cadence (Phase 18 §D.6 — Python parity):
+ *   - `reentry` one-shot the turn after `notePlanActivation()` fires
+ *     (plan mode just toggled on, remind the LLM of the re-entry flow).
+ *   - `full` the first time (no prior reminder in history) or when at
+ *     least `PLAN_MODE_FULL_REFRESH_TURNS` assistant turns have passed
+ *     since the last reminder (long refresh cadence).
+ *   - `sparse` in between — a short "still active" reminder so the LLM
+ *     stays anchored on the read-only invariant without re-reading the
+ *     whole workflow every turn.
+ *   - None below `PLAN_MODE_DEDUP_MIN_TURNS` assistant turns (dedup).
+ *
+ * Yolo-mode mirrors Python: one reminder per activation; re-entering
+ * non-bypass mode resets the one-shot flag.
  *
  * Integration (TurnManager.launchTurn):
  *   1. Build InjectionContext snapshot { planMode, permissionMode, ... }
- *   2. `manager.computeInjections(ctx)` → readonly EphemeralInjection[]
+ *   2. `manager.computeInjections(ctx)` → EphemeralInjection[]
  *   3. Stash each entry via `contextState.stashEphemeralInjection`
  *   4. Continue with drainPendingNotificationsIntoContext
  *
@@ -54,6 +60,14 @@ export interface InjectionContext {
    * since. Optional for backward compat.
    */
   readonly history?: readonly { role: string; content: readonly { type: string; text?: string }[]; toolCalls: readonly unknown[] }[];
+  /**
+   * Phase 18 §D.6 / §D.7 — resolved plan file path for the active
+   * session. When present, the plan-mode full reminder surfaces it so
+   * the LLM can target Write/Edit at the correct path without first
+   * calling a tool that discloses it. Absent when plan mode is off or
+   * the plan slug has not been bound yet.
+   */
+  readonly planFilePath?: string;
 }
 
 // ── Provider interface ────────────────────────────────────────────────
@@ -73,7 +87,7 @@ export interface DynamicInjectionProvider {
   getInjections(
     ctx: InjectionContext,
     contextState?: { appendSystemReminder(d: { content: string }): Promise<void> },
-  ): readonly EphemeralInjection[] | void;
+  ): EphemeralInjection[] | void;
 }
 
 // ── Manager ───────────────────────────────────────────────────────────
@@ -158,55 +172,189 @@ export class DynamicInjectionManager {
 // ── Built-in: plan mode provider ──────────────────────────────────────
 
 /**
- * Plan-mode reminder ported from Python `plan_mode.py`.
+ * Phase 18 §D.6 — reminder cadence constants.
  *
- * Simplification vs Python:
- *   - No "full/sparse/reentry" variants — we emit the concise reminder
- *     every turn while plan mode is active.
- *   - No plan-file existence check — plan-file lifecycle is host-side
- *     (Slice 3.6 ships the tool, not the plan-file manager).
+ *   - MIN: below this many assistant turns since the last reminder,
+ *     dedup (no re-emit). Protects against double-reminding in the
+ *     very next LLM step after one was already stashed.
+ *   - FULL: at or above this many assistant turns, upgrade to the
+ *     full reminder (the long refresh cadence). Between MIN and FULL
+ *     the provider emits the sparse variant so the model stays
+ *     anchored on the read-only invariant without re-reading the
+ *     whole workflow every turn.
+ */
+const PLAN_MODE_DEDUP_MIN_TURNS = 2;
+const PLAN_MODE_FULL_REFRESH_TURNS = 5;
+
+export type PlanModeVariant = 'full' | 'sparse' | 'reentry';
+
+/**
+ * Plan-mode reminder ported from Python `plan_mode.py`. Phase 18 §D.6
+ * brings the TS port to variant parity: three variants (`full` /
+ * `sparse` / `reentry`) based on a history scan.
+ *
+ * Variant semantics:
+ *   - `reentry`: one-shot after plan mode toggles on. Surfaced by the
+ *     host calling `notePlanActivation()` before the next turn; the
+ *     provider consumes the flag on the very next `getInjections`.
+ *   - `full`: first-ever injection (no plan-mode fingerprint in
+ *     history) OR at least `PLAN_MODE_TURN_INTERVAL` assistant turns
+ *     have passed since the last reminder (the refresh cadence).
+ *   - `sparse`: emitted every turn in between full reminders so the
+ *     model stays anchored on the read-only invariant.
  */
 export class PlanModeInjectionProvider implements DynamicInjectionProvider {
   readonly id = 'plan_mode' as const;
 
+  private pendingReentry = false;
+
+  /**
+   * Phase 18 §D.6 — host-called signal that plan mode has just toggled
+   * on (either via `/plan` or an explicit `setPlanMode(true)` call).
+   * The next `getInjections` consumes this flag and emits the reentry
+   * variant. Subsequent calls fall back to the full/sparse cadence.
+   *
+   * Arrow property so hosts can destructure it (the test suite does)
+   * without losing `this` binding.
+   */
+  readonly notePlanActivation = (): void => {
+    this.pendingReentry = true;
+  };
+
+  /**
+   * Phase 18 §D.6 — compute the variant for this turn. Protected because
+   * the variant decision is implementation detail; tests access it via
+   * optional-chained cast (`(provider as { getVariant?: ... }).getVariant?.(ctx)`)
+   * or `vi.spyOn(provider, 'getVariant' as any)`. Returns `null` when no
+   * injection fires this turn (plan mode off or a too-recent reminder
+   * triggers dedup).
+   */
+  protected getVariant(ctx: InjectionContext): PlanModeVariant | null {
+    if (!ctx.planMode) return null;
+    if (this.pendingReentry) return 'reentry';
+
+    const history = ctx.history;
+    if (history === undefined) {
+      return 'full';
+    }
+
+    const scan = scanPlanReminderHistory(history);
+    if (scan.newUserSinceReminder) return 'full';
+    if (!scan.found) return 'full';
+    if (scan.assistantTurnsSince >= PLAN_MODE_FULL_REFRESH_TURNS) return 'full';
+    if (scan.assistantTurnsSince >= PLAN_MODE_DEDUP_MIN_TURNS) return 'sparse';
+    return null;
+  }
+
   getInjections(
     ctx: InjectionContext,
     contextState?: { appendSystemReminder(d: { content: string }): Promise<void> },
-  ): readonly EphemeralInjection[] | void {
-    if (!ctx.planMode) return [];
-
-    // Phase 1 dedup: scan history to avoid re-injecting if the plan mode
-    // reminder is already the most recent system_reminder with no new
-    // user message since. Ported from Python plan_mode.py:64-81.
-    if (ctx.history !== undefined && hasPlanReminderWithoutNewUser(ctx.history)) {
+  ): EphemeralInjection[] | void {
+    if (!ctx.planMode) {
+      this.pendingReentry = false;
       return [];
     }
 
-    // Phase 1: when contextState is provided, write durably and return void
-    if (contextState !== undefined) {
-      void contextState.appendSystemReminder({ content: PLAN_MODE_REMINDER });
-      return undefined;
+    const planFilePath = ctx.planFilePath;
+
+    // Reentry one-shot takes priority over the history-scan cadence.
+    if (this.pendingReentry) {
+      this.pendingReentry = false;
+      return emit(contextState, reentryReminder(planFilePath));
     }
 
-    return [
-      {
-        kind: 'system_reminder',
-        content: PLAN_MODE_REMINDER,
-      },
-    ];
+    const variant = this.getVariant(ctx);
+    if (variant === null) return [];
+    const content =
+      variant === 'full'
+        ? fullReminder(planFilePath)
+        : variant === 'sparse'
+          ? sparseReminder(planFilePath)
+          : reentryReminder(planFilePath);
+    return emit(contextState, content);
   }
 }
 
-const PLAN_MODE_REMINDER = [
-  'Plan mode is active. You MUST NOT make any edits, run non-readonly tools, or otherwise change the system. This supersedes any other instructions.',
-  '',
-  'In plan mode you should:',
-  "  1. Understand the user's request by reading files and exploring the codebase.",
-  '  2. Design a plan — list the concrete steps, files to change, and any open questions.',
-  '  3. When the plan is ready, call ExitPlanMode to present it to the user and exit plan mode.',
-  '',
-  'You may use read-only tools freely (Read / Grep / Glob / etc.). Do NOT use Edit / Write / Bash (non-readonly) while plan mode is active. End your turn with AskUserQuestion or ExitPlanMode — never end with a bare assistant message.',
-].join('\n');
+function emit(
+  contextState: { appendSystemReminder(d: { content: string }): Promise<void> } | undefined,
+  content: string,
+): EphemeralInjection[] | undefined {
+  if (contextState !== undefined) {
+    void contextState.appendSystemReminder({ content });
+    return undefined;
+  }
+  return [{ kind: 'system_reminder', content }];
+}
+
+// ── Plan-mode reminder variants (Phase 18 §D.6 — Python parity) ──────
+
+/**
+ * Phase 18 §D.7 — when the host has resolved the session's plan-file
+ * path, append a `Plan file: {path}` footer so the LLM can target
+ * Write/Edit at the correct path without first calling a tool that
+ * discloses it. Matches Python `_full_reminder` (plan_mode.py).
+ */
+function withPlanFileFooter(body: string, planFilePath: string | undefined): string {
+  if (planFilePath === undefined || planFilePath.length === 0) return body;
+  return `${body}\n\nPlan file: ${planFilePath}`;
+}
+
+function fullReminder(planFilePath?: string): string {
+  const body = [
+    'Plan mode is active. You MUST NOT make any edits (with the exception of the current plan file), run non-readonly tools, or otherwise make changes to the system. This supersedes any other instructions you have received.',
+    '',
+    'Workflow:',
+    '  1. Understand — explore the codebase with Glob, Grep, Read.',
+    '  2. Design — converge on the best approach; consider trade-offs but aim for a single recommendation.',
+    '  3. Review — re-read key files to verify understanding.',
+    '  4. Write Plan — modify the plan file with Write or Edit. Use Write if the plan file does not exist yet.',
+    '  5. Exit — call ExitPlanMode for user approval.',
+    '',
+    '## Handling multiple approaches',
+    'Keep it focused: at most 2-3 meaningfully different approaches. Do NOT pad with minor variations — if one approach is clearly superior, just propose that one.',
+    "When the best approach depends on user preferences, constraints, or context you don't have, use AskUserQuestion to clarify first. This helps you write a better, more targeted plan rather than dumping multiple options for the user to sort through.",
+    'When you do include multiple approaches in the plan, you MUST pass them as the `options` parameter when calling ExitPlanMode, so the user can select which approach to execute at approval time.',
+    'NEVER write multiple approaches in the plan and call ExitPlanMode without the `options` parameter — the user will only see Approve/Reject with no way to choose.',
+    '',
+    'AskUserQuestion is for clarifying missing requirements or user preferences that affect the plan.',
+    'Never ask about plan approval via text or AskUserQuestion.',
+    'Your turn must end with either AskUserQuestion (to clarify requirements or preferences) or ExitPlanMode (to request plan approval). Do NOT end your turn any other way.',
+    'Do NOT use AskUserQuestion to ask about plan approval or reference "the plan" — the user cannot see the plan until you call ExitPlanMode.',
+  ].join('\n');
+  return withPlanFileFooter(body, planFilePath);
+}
+
+function sparseReminder(planFilePath?: string): string {
+  const body = [
+    'Plan mode still active (see full instructions earlier).',
+    'Read-only except the current plan file.',
+    'Use Write or Edit to modify the plan file. If it does not exist yet, create it with Write first.',
+    'Use AskUserQuestion to clarify user preferences when it helps you write a better plan.',
+    'If the plan has multiple approaches, pass options to ExitPlanMode so the user can choose.',
+    'End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for approval).',
+    'Never ask about plan approval via text or AskUserQuestion.',
+  ].join(' ');
+  return withPlanFileFooter(body, planFilePath);
+}
+
+function reentryReminder(planFilePath?: string): string {
+  const body = [
+    'Plan mode is active. You MUST NOT make any edits (with the exception of the current plan file), run non-readonly tools, or otherwise make changes to the system. This supersedes any other instructions you have received.',
+    '',
+    '## Re-entering Plan Mode',
+    'A plan file from a previous planning session already exists.',
+    'Before proceeding:',
+    '  1. Read the existing plan file to understand what was previously planned.',
+    "  2. Evaluate the user's current request against that plan.",
+    '  3. If different task: replace the old plan with a fresh one. If same task: update the existing plan.',
+    '  4. You may use Write or Edit to modify the plan file. If the file does not exist yet, create it with Write first.',
+    '  5. Use AskUserQuestion to clarify missing requirements or user preferences that affect the plan.',
+    '  6. Always edit the plan file before calling ExitPlanMode.',
+    '',
+    'Your turn must end with either AskUserQuestion (to clarify requirements) or ExitPlanMode (to request plan approval).',
+  ].join('\n');
+  return withPlanFileFooter(body, planFilePath);
+}
 
 // ── Built-in: yolo mode provider ──────────────────────────────────────
 
@@ -224,7 +372,7 @@ export class YoloModeInjectionProvider implements DynamicInjectionProvider {
   getInjections(
     ctx: InjectionContext,
     contextState?: { appendSystemReminder(d: { content: string }): Promise<void> },
-  ): readonly EphemeralInjection[] | void {
+  ): EphemeralInjection[] | void {
     if (ctx.permissionMode !== 'bypassPermissions') {
       // Reset one-shot so re-entering yolo produces a fresh reminder.
       this.injected = false;
@@ -281,8 +429,56 @@ function historyMessageText(msg: HistoryMessage): string {
  * contains the plan mode fingerprint. If found and no new user message
  * has appeared since, return true (dedup hit).
  */
-function hasPlanReminderWithoutNewUser(history: readonly HistoryMessage[]): boolean {
-  return hasReminderWithoutNewUser(history, 'Plan mode is active');
+/**
+ * Scan history backwards and classify the plan-mode dedup state.
+ *
+ * The scan stops at the first `user` message it encounters going
+ * backwards:
+ *   - If that user message is a plan-mode reminder → returns
+ *     `{found:true, newUserSinceReminder:false, assistantTurnsSince}`.
+ *     The caller decides dedup vs sparse vs full by consulting the
+ *     assistant-turn counter.
+ *   - If that user message is a real user prompt (not a reminder) →
+ *     returns `{found:false, newUserSinceReminder:true, …}`. The caller
+ *     treats this as a fresh turn and emits the full reminder.
+ *   - If no user message exists at all → returns
+ *     `{found:false, newUserSinceReminder:false, …}`. First-time
+ *     injection.
+ *
+ * Only counts ASSISTANT messages between the tail and the reminder.
+ * Non-reminder user messages never appear inside that window because
+ * the scan stops at them.
+ */
+function scanPlanReminderHistory(
+  history: readonly HistoryMessage[],
+): { found: boolean; newUserSinceReminder: boolean; assistantTurnsSince: number } {
+  let assistantTurnsSince = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg === undefined) continue;
+    if (msg.role === 'assistant') {
+      assistantTurnsSince += 1;
+      continue;
+    }
+    if (msg.role === 'user') {
+      if (isPlanReminderMessage(msg)) {
+        return { found: true, newUserSinceReminder: false, assistantTurnsSince };
+      }
+      // Real user message reached before any reminder → fresh turn.
+      return { found: false, newUserSinceReminder: true, assistantTurnsSince };
+    }
+  }
+  return { found: false, newUserSinceReminder: false, assistantTurnsSince };
+}
+
+function isPlanReminderMessage(msg: HistoryMessage): boolean {
+  const text = historyMessageText(msg);
+  if (!text.trimStart().startsWith('<system-reminder>')) return false;
+  return (
+    text.includes('Plan mode is active')
+    || text.includes('Plan mode still active')
+    || text.includes('Re-entering Plan Mode')
+  );
 }
 
 /**
@@ -297,7 +493,8 @@ function hasReminderWithoutNewUser(history: readonly HistoryMessage[], fingerpri
   // containing the fingerprint. Track whether a user message appeared
   // after it.
   for (let i = history.length - 1; i >= 0; i--) {
-    const msg = history[i]!;
+    const msg = history[i];
+    if (msg === undefined) continue;
     const text = historyMessageText(msg);
     if (msg.role === 'user' && text.trimStart().startsWith('<system-reminder>') && text.toLowerCase().includes(fingerprint.toLowerCase())) {
       // Found the reminder — no new user message since (we scanned

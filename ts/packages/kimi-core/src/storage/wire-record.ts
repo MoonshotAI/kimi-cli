@@ -424,6 +424,12 @@ export interface SessionMetaChangedRecord {
     description?: string | undefined;
     archived?: boolean | undefined;
     color?: string | undefined;
+    /**
+     * Phase 18 §D.7 — per-session plan-file slug. Mirrors
+     * `SessionMeta.plan_slug` so `recoverFromReplay` round-trips the
+     * value back into the in-memory view.
+     */
+    plan_slug?: string | undefined;
   };
   source: 'user' | 'auto' | 'system';
   reason?: string | undefined;
@@ -926,6 +932,7 @@ const _rawSessionMetaChangedRecordSchema = z.object({
     description: z.string().optional(),
     archived: z.boolean().optional(),
     color: z.string().optional(),
+    plan_slug: z.string().optional(),
   }),
   source: z.enum(['user', 'auto', 'system']),
   reason: z.string().optional(),

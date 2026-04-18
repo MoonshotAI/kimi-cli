@@ -163,6 +163,149 @@ function normaliseMetadata(raw: Record<string, unknown>): SkillMetadata {
   return out as SkillMetadata;
 }
 
+// ── Phase 18 §C.2 — skill parameter expansion ─────────────────────────
+
+/** Context passed to {@link expandSkillParameters}. */
+export interface SkillExpandContext {
+  /** Canonical directory containing SKILL.md (for `${KIMI_SKILL_DIR}`). */
+  readonly skillDir: string;
+  /** Session id (for `${KIMI_SESSION_ID}`). */
+  readonly sessionId: string;
+  /**
+   * Declared argument names from the skill's frontmatter (e.g.
+   * `arguments: [message]`). When present, positional tokens are bound
+   * in declaration order so `$message` resolves to the first token.
+   */
+  readonly argumentNames?: readonly string[];
+}
+
+/**
+ * Expand skill template variables according to v2 §15.3:
+ *
+ *   | Variable              | Replacement                     |
+ *   | --------------------- | ------------------------------- |
+ *   | `$ARGUMENTS`          | full raw-args string            |
+ *   | `$1`, `$2`, …         | space-split tokens (quote-aware)|
+ *   | `$<name>`             | positional token by frontmatter |
+ *   | `${KIMI_SKILL_DIR}`   | `ctx.skillDir`                  |
+ *   | `${KIMI_SESSION_ID}`  | `ctx.sessionId`                 |
+ *   | `\$1`                 | literal `$1` (escape)           |
+ *
+ * Word-boundary guard: `$N` / `$<name>` only match when the preceding
+ * char is not `[A-Za-z0-9_]`, so embedded usages like `prefix$1suffix`
+ * don't accidentally replace. Undefined placeholders are preserved
+ * verbatim (Phase 1 intentionally does not throw).
+ *
+ * Single- vs multi-parameter binding (matches Python
+ * `expand_template_variables` in `kimi_cli/skill/parser.py`):
+ *   - When `argumentNames.length === 1`, the single name binds to the
+ *     ENTIRE raw-args string (quotes preserved, whitespace preserved).
+ *     This lets skills declare `arguments: [message]` and receive the
+ *     whole user-typed tail as `$message`.
+ *   - When `argumentNames.length > 1`, each name binds to a single
+ *     tokenized arg (quote-aware split, quotes stripped). Tokens beyond
+ *     `argumentNames.length` are only reachable via `$1`, `$2`, …
+ *     positional references.
+ */
+export function expandSkillParameters(
+  body: string,
+  rawArgs: string,
+  ctx: SkillExpandContext,
+): string {
+  const tokens = tokenizeArgs(rawArgs);
+  const namedBindings = new Map<string, string>();
+  if (ctx.argumentNames !== undefined) {
+    if (ctx.argumentNames.length === 1 && ctx.argumentNames[0] !== undefined) {
+      namedBindings.set(ctx.argumentNames[0], rawArgs);
+    } else {
+      for (let i = 0; i < ctx.argumentNames.length; i++) {
+        const name = ctx.argumentNames[i];
+        if (name === undefined) continue;
+        namedBindings.set(name, tokens[i] ?? '');
+      }
+    }
+  }
+
+  const ESCAPE_SENTINEL = '\u0000\u0001KIMI_LITERAL_DOLLAR\u0001\u0000';
+  let out = body.replaceAll('\\$', ESCAPE_SENTINEL);
+
+  out = out.replaceAll('${KIMI_SKILL_DIR}', ctx.skillDir);
+  out = out.replaceAll('${KIMI_SESSION_ID}', ctx.sessionId);
+
+  out = out.replaceAll(
+    /(^|[^A-Za-z0-9_])\$(ARGUMENTS|[A-Za-z_][A-Za-z0-9_]*|[0-9]+)/g,
+    (match, prefix: string, name: string) => {
+      if (name === 'ARGUMENTS') return `${prefix}${rawArgs}`;
+      if (/^[0-9]+$/.test(name)) {
+        const idx = Number.parseInt(name, 10);
+        if (idx >= 1) {
+          const token = tokens[idx - 1];
+          if (token !== undefined) return `${prefix}${token}`;
+          // Out-of-range positional: if the caller explicitly supplied
+          // no args at all, collapse to the prefix (test 92 expects
+          // `[$1]` -> `[]`). Otherwise preserve the placeholder so a
+          // later `$5` referenced when only 2 tokens exist stays
+          // literal (test 171).
+          if (rawArgs.length === 0) return prefix;
+          return match;
+        }
+        return match;
+      }
+      const bound = namedBindings.get(name);
+      if (bound !== undefined) return `${prefix}${bound}`;
+      return match;
+    },
+  );
+
+  out = out.replaceAll(ESCAPE_SENTINEL, '$');
+  return out;
+}
+
+/**
+ * Shell-ish tokenizer: splits on ASCII whitespace while honouring
+ * single- and double-quoted groups. Quotes are stripped from the
+ * emitted token. Escape sequences inside quotes are intentionally
+ * left verbatim (Phase 1: the skill author rarely needs them and the
+ * surprise of `\n` inside `$1` disappearing is worse than the lack of
+ * support).
+ */
+function tokenizeArgs(raw: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  let inQuote: '"' | "'" | null = null;
+  let hasContent = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === undefined) continue;
+    if (inQuote !== null) {
+      if (ch === inQuote) {
+        inQuote = null;
+        continue;
+      }
+      current += ch;
+      hasContent = true;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = ch;
+      hasContent = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (hasContent) {
+        out.push(current);
+        current = '';
+        hasContent = false;
+      }
+      continue;
+    }
+    current += ch;
+    hasContent = true;
+  }
+  if (hasContent) out.push(current);
+  return out;
+}
+
 function coerceStringList(value: unknown): readonly string[] | undefined {
   if (value === undefined || value === null) return undefined;
   if (Array.isArray(value)) {

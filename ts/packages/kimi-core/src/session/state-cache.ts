@@ -58,6 +58,12 @@ export interface SessionState {
    */
   plan_mode?: boolean | undefined;
   /**
+   * Phase 18 §D.7 — stable plan-file slug bound to this session. Clean
+   * restart without WAL replay reads this value so PlanFileManager can
+   * resolve the plan file path before any Write/Edit in plan mode.
+   */
+  plan_slug?: string | undefined;
+  /**
    * Phase 16 / 决策 #113 — wire-truth tag list, mirrored from
    * `session_meta_changed` records by SessionMetaService.
    */

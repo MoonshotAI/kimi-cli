@@ -22,6 +22,7 @@ import { z } from 'zod';
 import type { Tool, ToolMetadata, ToolResult, ToolUpdate } from '../soul/types.js';
 import type { SubagentHost } from '../soul-plus/subagent-types.js';
 import type { SkillInlineWriter } from '../soul-plus/skill/inline-writer.js';
+import { NestedSkillTooDeepError } from '../soul-plus/skill/errors.js';
 import type { SkillManager } from '../soul-plus/skill/types.js';
 import { MAX_SKILL_QUERY_DEPTH } from '../soul-plus/subagent-constants.js';
 
@@ -88,15 +89,14 @@ export class SkillTool implements Tool<SkillToolInput> {
     _onUpdate?: (u: ToolUpdate) => void,
   ): Promise<ToolResult> {
     void _onUpdate;
-    // Phase 17 §C.3 — check recursion depth BEFORE any skill lookup so
-    // the nested-depth guard fires even when the wiring is minimal
-    // (tests construct SkillTool with only `initialQueryDepth` to
-    // exercise the gate).
+    // Phase 18 §C.3 — recursion hard cap. Once `currentDepth` has
+    // reached MAX_SKILL_QUERY_DEPTH, firing another Skill call would
+    // push the child to depth+1 which violates the invariant. Throw a
+    // structured error (rather than a soft tool-error) so Runtime can
+    // distinguish "LLM mis-dispatched" from "safety net fired".
     const currentDepth = this.deps.initialQueryDepth ?? this.deps.queryDepth ?? 0;
     if (currentDepth >= MAX_SKILL_QUERY_DEPTH) {
-      return errorResult(
-        `Max skill query depth (${String(MAX_SKILL_QUERY_DEPTH)}) exceeded — refusing to recurse further.`,
-      );
+      throw new NestedSkillTooDeepError(MAX_SKILL_QUERY_DEPTH, args.skill);
     }
 
     const skill = this.deps.skillManager.getSkill(args.skill);
@@ -104,23 +104,35 @@ export class SkillTool implements Tool<SkillToolInput> {
       return errorResult(`Skill "${args.skill}" not found in the current skill listing.`);
     }
     if (skill.metadata.disableModelInvocation === true) {
+      // Phase 18 §15.2 D-B — exact wording "can only be triggered by
+      // the user" so wire-truth audits and integration tests stay
+      // deterministic.
       return errorResult(
-        `Skill "${args.skill}" is user-only (disabled for model invocation).`,
+        `Skill "${args.skill}" can only be triggered by the user (model invocation is disabled).`,
       );
     }
 
     const nextDepth = currentDepth + 1;
-    if (nextDepth > MAX_SKILL_QUERY_DEPTH) {
-      return errorResult(
-        `Max skill query depth (${String(MAX_SKILL_QUERY_DEPTH)}) exceeded — refusing to recurse further.`,
-      );
-    }
-
     const skillArgs = args.args ?? '';
     const skillType = skill.metadata.type;
     const isForkMode = skillType === 'fork' || skillType === 'standard';
 
     if (isForkMode) {
+      // Phase 18 §15.9.3 — propagate the declared tool whitelist/blacklist
+      // so the child Soul's ToolRegistry can enforce it. Only fields that
+      // were actually declared on the SKILL.md are forwarded; undefined
+      // means "inherit parent policy".
+      const skillContext: {
+        queryDepth: number;
+        allowedTools?: readonly string[];
+        disallowedTools?: readonly string[];
+      } = { queryDepth: nextDepth };
+      if (skill.metadata.allowedTools !== undefined) {
+        skillContext.allowedTools = skill.metadata.allowedTools;
+      }
+      if (skill.metadata.disallowedTools !== undefined) {
+        skillContext.disallowedTools = skill.metadata.disallowedTools;
+      }
       // Forward the parent turn's AbortSignal so a parent abort cascades
       // into the spawned subagent (Slice 2.1 foreground abort cascade).
       const handle = await this.deps.subagentHost.spawn({
@@ -128,14 +140,18 @@ export class SkillTool implements Tool<SkillToolInput> {
         parentToolCallId: toolCallId,
         agentName: `skill-${skill.name}`,
         prompt: skillArgs.length > 0 ? `${skill.content}\n\n${skillArgs}` : skill.content,
-        skillContext: { queryDepth: nextDepth },
+        skillContext,
         signal,
       });
       const result = await handle.completion;
       return { content: result.result };
     }
 
-    await this.deps.inlineWriter.inject(skill, skillArgs, nextDepth);
+    // Phase 18 §15.2 — autonomous `Skill` tool invocations stamp either
+    // `claude-proactive` (top-level) or `nested-skill` (inside another
+    // skill) on the wire record.
+    const trigger = currentDepth === 0 ? 'claude-proactive' : 'nested-skill';
+    await this.deps.inlineWriter.inject(skill, skillArgs, nextDepth, trigger);
     return {
       content: `Skill "${skill.name}" loaded inline. Follow its instructions.`,
     };

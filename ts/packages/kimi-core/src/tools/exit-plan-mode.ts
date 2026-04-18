@@ -33,8 +33,21 @@ import type { BuiltinTool } from './types.js';
 
 // ── Input schema ─────────────────────────────────────────────────────
 
+/**
+ * Phase 18 §D.3 — user-selectable option surfaced at plan approval time.
+ * The LLM supplies up to 3 of these when the plan contains multiple
+ * approaches; the host's ApprovalRuntime presents them to the user and
+ * returns the chosen `label` (or `{kind:'revise', feedback}` when the
+ * user asks for revisions).
+ */
+export interface ExitPlanModeOption {
+  label: string;
+  description: string;
+}
+
 export interface ExitPlanModeInput {
   plan: string;
+  options?: readonly ExitPlanModeOption[] | undefined;
 }
 
 export const ExitPlanModeInputSchema: z.ZodType<ExitPlanModeInput> = z.object({
@@ -42,6 +55,18 @@ export const ExitPlanModeInputSchema: z.ZodType<ExitPlanModeInput> = z.object({
     .string()
     .min(1)
     .describe('The finalised plan to present to the user. Markdown is rendered in the UI.'),
+  options: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(80),
+        description: z.string(),
+      }),
+    )
+    .max(3)
+    .optional()
+    .describe(
+      'Up to 3 alternative approaches surfaced to the user at approval time. Include a "Revise" option to keep plan mode active and collect feedback.',
+    ),
 });
 
 // ── Tool description ─────────────────────────────────────────────────
@@ -66,6 +91,20 @@ const DESCRIPTION = `Use this tool when you are in plan mode and are ready to pr
  *   - Updating TurnManager's in-memory flag
  *   - Any UI-facing plan display rendering
  */
+/**
+ * Phase 18 §D.3 — result returned by the host when the user answers a
+ * plan-approval dialog (multi-option or plain approve/reject).
+ *   - `approved=true` + `chosenLabel` → LLM proceeds with that option.
+ *   - `approved=false` + `chosenLabel='Revise'` + `feedback` → LLM
+ *     stays in plan mode and revises.
+ *   - `approved=false` without `Revise` → plan mode exits with feedback.
+ */
+export interface ExitPlanModeApprovalResult {
+  approved: boolean;
+  chosenLabel?: string;
+  feedback?: string;
+}
+
 export interface ExitPlanModeDeps {
   /** Returns `true` if plan mode is currently active. */
   readonly isPlanModeActive: () => boolean;
@@ -74,11 +113,37 @@ export interface ExitPlanModeDeps {
    * true. Errors propagate as a tool error so the LLM sees the reason.
    */
   readonly setPlanMode: (enabled: boolean) => Promise<void>;
+  /**
+   * Phase 18 §D.3 — invoked whenever `args.options` is present. Hosts
+   * wire this to an ApprovalRuntime multi-option dialog. The presence
+   * of this callback is how the tool distinguishes the options path
+   * from the legacy approve-on-call path.
+   */
+  readonly requestApproval?: (args: ExitPlanModeInput) => Promise<ExitPlanModeApprovalResult>;
+}
+
+// ── Output shape (Phase 18 §D.3 / §D.4) ──────────────────────────────
+
+/**
+ * Discriminated union of ExitPlanMode outputs. Callers can narrow on
+ * `kind` to surface the Revise feedback loop, or check `chosen` for the
+ * multi-option selection path. `plan` is echoed on every non-revise
+ * outcome so downstream renderers have a single place to pull the
+ * approved text from.
+ */
+export interface ExitPlanModeOutput {
+  /** Discriminator set to `'revise'` when the user asked for revisions. */
+  kind?: 'revise';
+  plan?: string;
+  /** Label the user selected when `options` was supplied. */
+  chosen?: string;
+  /** User-supplied feedback string on revise or plain reject. */
+  feedback?: string;
 }
 
 // ── Implementation ───────────────────────────────────────────────────
 
-export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput, { plan: string }> {
+export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput, ExitPlanModeOutput> {
   readonly name = 'ExitPlanMode' as const;
   readonly metadata: ToolMetadata = { source: 'builtin' };
   readonly description: string = DESCRIPTION;
@@ -95,7 +160,7 @@ export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput, { plan: 
     args: ExitPlanModeInput,
     _signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
-  ): Promise<ToolResult<{ plan: string }>> {
+  ): Promise<ToolResult<ExitPlanModeOutput>> {
     if (!this.deps.isPlanModeActive()) {
       return {
         isError: true,
@@ -104,6 +169,91 @@ export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput, { plan: 
       };
     }
 
+    // Phase 18 §D.3 — when `options` are present, route through the
+    // ApprovalRuntime callback so the host can show a multi-option
+    // dialog (or a plain approve/reject prompt for a single option).
+    // When `options` is absent we keep the pre-Phase-18 path: callers
+    // that only know the 2-field ExitPlanModeDeps shape must continue
+    // to work without wiring `requestApproval`.
+    if (args.options !== undefined) {
+      if (this.deps.requestApproval === undefined) {
+        return {
+          isError: true,
+          content:
+            'ExitPlanMode.options requires a host with requestApproval support. '
+            + 'Call ExitPlanMode without options, or wire ExitPlanModeDeps.requestApproval.',
+        };
+      }
+      return this.executeWithApproval(args, this.deps.requestApproval);
+    }
+
+    return this.exitWithPlan(args.plan);
+  }
+
+  private async executeWithApproval(
+    args: ExitPlanModeInput,
+    requestApproval: NonNullable<ExitPlanModeDeps['requestApproval']>,
+  ): Promise<ToolResult<ExitPlanModeOutput>> {
+    let result: ExitPlanModeApprovalResult;
+    try {
+      result = await requestApproval(args);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Plan approval failed.';
+      return {
+        isError: true,
+        content: `Plan approval failed: ${message}`,
+      };
+    }
+
+    // Revise branch: user stayed in plan mode to collect more feedback.
+    // Plan mode MUST NOT be toggled off — the LLM keeps its read-only
+    // posture and iterates on the plan. Label match is case-insensitive
+    // so hosts that normalise button text (e.g. ALL-CAPS UI) still hit
+    // the revise path.
+    if (!result.approved && result.chosenLabel?.toLowerCase() === 'revise') {
+      const feedback = result.feedback ?? '';
+      return {
+        isError: false,
+        content: `User asked to revise the plan. Feedback:\n\n${feedback}`,
+        output: { kind: 'revise', feedback },
+      };
+    }
+
+    // Any other outcome exits plan mode — both approve-with-selection
+    // and outright reject-without-Revise are "the plan is settled,
+    // stop being read-only" from the LLM's point of view.
+    try {
+      await this.deps.setPlanMode(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to exit plan mode.';
+      return {
+        isError: true,
+        content: `Failed to exit plan mode: ${message}`,
+      };
+    }
+
+    if (result.approved) {
+      const chosen = result.chosenLabel ?? '';
+      return {
+        isError: false,
+        content: chosen.length > 0
+          ? `User approved option "${chosen}". Plan:\n\n${args.plan}`
+          : `Exited plan mode. Plan:\n\n${args.plan}`,
+        output: { plan: args.plan, ...(chosen.length > 0 ? { chosen } : {}) },
+      };
+    }
+
+    const feedback = result.feedback ?? '';
+    return {
+      isError: false,
+      content: feedback.length > 0
+        ? `User rejected the plan. Feedback:\n\n${feedback}`
+        : 'User rejected the plan.',
+      output: { plan: args.plan, feedback },
+    };
+  }
+
+  private async exitWithPlan(plan: string): Promise<ToolResult<ExitPlanModeOutput>> {
     try {
       await this.deps.setPlanMode(false);
     } catch (error) {
@@ -116,8 +266,8 @@ export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput, { plan: 
 
     return {
       isError: false,
-      content: `Exited plan mode. Plan:\n\n${args.plan}`,
-      output: { plan: args.plan },
+      content: `Exited plan mode. Plan:\n\n${plan}`,
+      output: { plan },
     };
   }
 }

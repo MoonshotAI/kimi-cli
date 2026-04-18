@@ -256,7 +256,14 @@ describe('SkillTool.execute — fork mode', () => {
 });
 
 describe('SkillTool.execute — recursion depth guard', () => {
-  it('returns isError when queryDepth already exceeds MAX_SKILL_QUERY_DEPTH', async () => {
+  it('throws NestedSkillTooDeepError when queryDepth already reached MAX_SKILL_QUERY_DEPTH', async () => {
+    // Phase 18 §C.3 — upgraded from soft `isError` tool-result to a hard
+    // structured throw so the orchestrator/runner can cascade reliably
+    // instead of every caller parsing tool-result strings. Inline writer
+    // and subagent host MUST still be untouched on the throw path.
+    const { NestedSkillTooDeepError } = await import(
+      '../../src/soul-plus/skill/errors.js'
+    );
     const writer = stubInlineWriter();
     const subagent = stubSubagentHost();
     const tool = new SkillTool({
@@ -265,13 +272,10 @@ describe('SkillTool.execute — recursion depth guard', () => {
       subagentHost: subagent,
       queryDepth: MAX_SKILL_QUERY_DEPTH, // next depth is MAX+1
     });
-    const result = await tool.execute('tc_1', { skill: 'loopy' }, new AbortController().signal);
-    expect(result.isError).toBe(true);
+    await expect(
+      tool.execute('tc_1', { skill: 'loopy' }, new AbortController().signal),
+    ).rejects.toBeInstanceOf(NestedSkillTooDeepError);
     expect(writer.inject).not.toHaveBeenCalled();
     expect(subagent.spawn).not.toHaveBeenCalled();
-    const text = typeof result.content === 'string'
-      ? result.content
-      : result.content.map((c) => (c.type === 'text' ? c.text : '')).join('');
-    expect(text).toMatch(/depth|recurs/i);
   });
 });

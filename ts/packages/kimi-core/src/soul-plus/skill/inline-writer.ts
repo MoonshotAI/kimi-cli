@@ -17,7 +17,10 @@
 
 import type { FullContextState } from '../../storage/context-state.js';
 import type { SessionJournal } from '../../storage/session-journal.js';
+import type { SkillInvocationTrigger } from '../../storage/wire-record.js';
 import type { SkillDefinition } from './types.js';
+
+export type { SkillInvocationTrigger };
 
 export interface SkillInlineWriterDeps {
   readonly contextState: FullContextState;
@@ -37,7 +40,12 @@ export class SkillInlineWriter {
     this.deps = deps;
   }
 
-  async inject(skill: SkillDefinition, args: string, depth: number): Promise<void> {
+  async inject(
+    skill: SkillDefinition,
+    args: string,
+    depth: number,
+    trigger: SkillInvocationTrigger = 'claude-proactive',
+  ): Promise<void> {
     const turnId = this.deps.currentTurnId?.() ?? 'pending';
     await this.deps.sessionJournal.appendSkillInvoked({
       type: 'skill_invoked',
@@ -46,7 +54,7 @@ export class SkillInlineWriter {
         skill_name: skill.name,
         execution_mode: 'inline',
         original_input: args,
-        invocation_trigger: 'claude-proactive',
+        invocation_trigger: trigger,
         query_depth: depth,
       },
     });

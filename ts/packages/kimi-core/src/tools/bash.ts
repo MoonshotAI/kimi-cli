@@ -39,6 +39,11 @@ import type {
 } from '../soul/types.js';
 import type { Environment } from '../utils/environment.js';
 import type { BackgroundProcessManager } from './background/manager.js';
+import {
+  isMutatingBashCommand,
+  planModeBashBlockMessage,
+} from './plan-mode-checker.js';
+import type { PlanModeChecker } from './plan-mode-checker.js';
 import { BashInputSchema } from './types.js';
 import type { BashInput, BashOutput, BuiltinTool } from './types.js';
 
@@ -102,12 +107,16 @@ export class ShellTool implements BuiltinTool<BashInput, BashOutput> {
 
   private readonly environment: Environment;
 
+  private readonly planModeChecker: PlanModeChecker | undefined;
+
   constructor(
     private readonly kaos: Kaos,
     private readonly cwd: string,
     environmentOrBgManager?: Environment | BackgroundProcessManager,
     private readonly backgroundManager?: BackgroundProcessManager | undefined,
+    options?: { planModeChecker?: PlanModeChecker | undefined },
   ) {
+    this.planModeChecker = options?.planModeChecker;
     // Legacy 3-arg form (kaos, cwd, bgManager) — infer a POSIX bash env
     // so pre-Phase-14 tests and callers keep working without a mandatory
     // `detectEnvironmentFromNode()` wire-up. New callers pass the full
@@ -195,6 +204,16 @@ export class ShellTool implements BuiltinTool<BashInput, BashOutput> {
   ): Promise<ToolResult<BashOutput>> {
     if (signal.aborted) {
       return { isError: true, content: 'Aborted before command started' };
+    }
+
+    // Phase 18 §D.5 — plan-mode hard block for mutation commands. The
+    // detector leans toward under-blocking (unknown-first-word = allow)
+    // so read-only explorations (`ls`, `cat`, `grep`) keep working.
+    if (
+      this.planModeChecker?.isPlanModeActive() === true
+      && isMutatingBashCommand(args.command)
+    ) {
+      return { isError: true, content: planModeBashBlockMessage() };
     }
 
     if (args.run_in_background) {

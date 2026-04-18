@@ -67,6 +67,7 @@ export interface ReplayProjectedState {
     description?: string | undefined;
     archived?: boolean | undefined;
     color?: string | undefined;
+    plan_slug?: string | undefined;
     turn_count: number;
     last_model?: string | undefined;
   };
@@ -196,6 +197,7 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
         }
         if (r.patch.archived !== undefined) sessionMetaPatch.archived = r.patch.archived;
         if (r.patch.color !== undefined) sessionMetaPatch.color = r.patch.color;
+        if (r.patch.plan_slug !== undefined) sessionMetaPatch.plan_slug = r.patch.plan_slug;
         break;
       }
 

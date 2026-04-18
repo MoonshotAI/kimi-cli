@@ -27,6 +27,12 @@ export interface SkillMetadata {
   /** Forward-compat: parsed but not enforced in Slice 2.5 (D4). */
   readonly allowedTools?: readonly string[];
   /**
+   * Phase 18 §15.9.3 — dual of `allowedTools`. Kept alongside
+   * `allowedTools` so fork-mode dispatch can forward both into the
+   * child Soul's `skillContext`.
+   */
+  readonly disallowedTools?: readonly string[];
+  /**
    * Slice 7.1 (决策 #99) — when-to-use hint surfaced to the model in the
    * skill listing so it knows which scenarios this skill targets.
    */

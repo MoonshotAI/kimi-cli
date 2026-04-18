@@ -7,6 +7,8 @@
  * Path safety is enforced before any Kaos I/O (§14.3 D11).
  */
 
+import { resolve as resolvePath } from 'node:path';
+
 import type { Kaos } from '@moonshot-ai/kaos';
 import type { z } from 'zod';
 
@@ -18,9 +20,15 @@ import type {
   ToolMetadata
 } from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
+import { planModeWriteBlockMessage } from './plan-mode-checker.js';
+import type { PlanModeChecker } from './plan-mode-checker.js';
 import { EditInputSchema } from './types.js';
 import type { BuiltinTool, EditInput, EditOutput } from './types.js';
 import type { WorkspaceConfig } from './workspace.js';
+
+export interface EditToolOptions {
+  readonly planModeChecker?: PlanModeChecker | undefined;
+}
 
 export class EditTool implements BuiltinTool<EditInput, EditOutput> {
   readonly name = 'Edit' as const;
@@ -42,10 +50,15 @@ export class EditTool implements BuiltinTool<EditInput, EditOutput> {
     }),
   };
 
+  private readonly planModeChecker: PlanModeChecker | undefined;
+
   constructor(
     private readonly kaos: Kaos,
     private readonly workspace: WorkspaceConfig,
-  ) {}
+    options?: EditToolOptions,
+  ) {
+    this.planModeChecker = options?.planModeChecker;
+  }
 
   async execute(
     _toolCallId: string,
@@ -53,6 +66,14 @@ export class EditTool implements BuiltinTool<EditInput, EditOutput> {
     _signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult<EditOutput>> {
+    // Phase 18 §D.5 — see WriteTool; same policy.
+    if (this.planModeChecker?.isPlanModeActive() === true) {
+      const planPath = this.planModeChecker.getPlanFilePath();
+      if (planPath === null || resolvePath(args.path) !== resolvePath(planPath)) {
+        return { isError: true, content: planModeWriteBlockMessage(planPath) };
+      }
+    }
+
     let safePath: string;
     try {
       safePath = assertPathAllowed(args.path, this.workspace.workspaceDir, this.workspace, {
