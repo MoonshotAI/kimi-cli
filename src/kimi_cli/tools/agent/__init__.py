@@ -222,6 +222,7 @@ class AgentTool(CallableTool2[Params]):
                         subagent_type=actual_type,
                         model_override=params.model,
                         effective_model=params.model or type_def.default_model,
+                        work_dir=params.work_dir,
                     ),
                 )
                 created_instance = True
