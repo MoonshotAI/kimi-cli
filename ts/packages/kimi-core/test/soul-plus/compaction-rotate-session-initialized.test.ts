@@ -324,3 +324,181 @@ describe('Phase 23 T7.6 — half-done rotate: recoverRotation rolls back without
     expect(resumed.contextState.model).toBe('half-model');
   });
 });
+
+// ── T7.8 — runtime state changes survive compaction ─────────────────
+
+describe('Phase 23 T7.8 — runtime *_changed records survive compaction via runtime overlay', () => {
+  it('setModel + applyConfigChange before compact survive resume (no silent revert)', async () => {
+    const mgr = new SessionManager(paths);
+    const session = await mgr.createSession({
+      sessionId: 'ses_runtime_overlay_model',
+      workspaceDir: '/tmp/ws-overlay',
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'original-model',
+      systemPrompt: 'original-prompt',
+      compactionProvider: summaryProvider('S'),
+    });
+
+    // Runtime mutations: writes model_changed + system_prompt_changed records.
+    await session.contextState.applyConfigChange({
+      type: 'model_changed',
+      old_model: 'original-model',
+      new_model: 'changed-model',
+    });
+    await session.contextState.applyConfigChange({
+      type: 'system_prompt_changed',
+      new_prompt: 'changed-prompt',
+    });
+    expect(session.contextState.model).toBe('changed-model');
+    expect(session.contextState.systemPrompt).toBe('changed-prompt');
+
+    await session.contextState.appendUserMessage({ text: 'q' }, 't1');
+    await session.soulPlus.getTurnManager().triggerCompaction('manual');
+    await session.journalWriter.flush();
+    await mgr.closeSession('ses_runtime_overlay_model');
+
+    // Resume from the post-rotate wire — baseline should be the
+    // compaction-time snapshot, NOT the original startup config.
+    const freshMgr = new SessionManager(paths);
+    const resumed = await freshMgr.resumeSession('ses_runtime_overlay_model', {
+      runtime: createNoopRuntime(),
+      tools: [],
+    });
+    expect(resumed.contextState.model).toBe('changed-model');
+    expect(resumed.contextState.systemPrompt).toBe('changed-prompt');
+  });
+
+  it('setPermissionMode + setPlanMode before compact survive resume', async () => {
+    const mgr = new SessionManager(paths);
+    const session = await mgr.createSession({
+      sessionId: 'ses_runtime_overlay_pm',
+      workspaceDir: '/tmp/ws-overlay-pm',
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'm',
+      systemPrompt: 'sp',
+      compactionProvider: summaryProvider('S'),
+    });
+
+    const turnMgr = session.soulPlus.getTurnManager();
+    turnMgr.setPermissionMode('bypassPermissions');
+    turnMgr.setPlanMode(true);
+
+    await session.contextState.appendUserMessage({ text: 'q' }, 't1');
+    await turnMgr.triggerCompaction('manual');
+    await session.journalWriter.flush();
+    await mgr.closeSession('ses_runtime_overlay_pm');
+
+    const freshMgr = new SessionManager(paths);
+    const resumed = await freshMgr.resumeSession('ses_runtime_overlay_pm', {
+      runtime: createNoopRuntime(),
+      tools: [],
+    });
+    const resumedTurn = resumed.soulPlus.getTurnManager();
+    expect(resumedTurn.getPermissionMode()).toBe('bypassPermissions');
+    expect(resumedTurn.getPlanMode()).toBe(true);
+  });
+
+  it('post-rotate wire line 2 reflects current state, not original baseline', async () => {
+    const mgr = new SessionManager(paths);
+    const session = await mgr.createSession({
+      sessionId: 'ses_runtime_overlay_wire',
+      workspaceDir: '/tmp/ws-overlay-wire',
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'baseline-m',
+      systemPrompt: 'baseline-sp',
+      compactionProvider: summaryProvider('S'),
+    });
+
+    await session.contextState.applyConfigChange({
+      type: 'model_changed',
+      old_model: 'baseline-m',
+      new_model: 'rotated-m',
+    });
+    await session.contextState.appendUserMessage({ text: 'q' }, 't1');
+    await session.soulPlus.getTurnManager().triggerCompaction('manual');
+    await session.journalWriter.flush();
+
+    const lines = await readWireLines(paths.wirePath('ses_runtime_overlay_wire'));
+    expect(lines[1]!['type']).toBe('session_initialized');
+    expect(lines[1]!['model']).toBe('rotated-m');
+    // Identity-class fields preserved
+    expect(lines[1]!['agent_type']).toBe('main');
+    expect(lines[1]!['session_id']).toBe('ses_runtime_overlay_wire');
+    expect(lines[1]!['workspace_dir']).toBe('/tmp/ws-overlay-wire');
+  });
+});
+
+// ── T7.9 — tools_changed survives compaction ────────────────────────
+
+describe('Phase 23 T7.9 — tools_changed records survive compaction via active_tools overlay', () => {
+  it('register / remove tools before compact survive resume', async () => {
+    const mgr = new SessionManager(paths);
+    const session = await mgr.createSession({
+      sessionId: 'ses_runtime_overlay_tools',
+      workspaceDir: '/tmp/ws-overlay-tools',
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'm',
+      systemPrompt: 'sp',
+      compactionProvider: summaryProvider('S'),
+    });
+
+    // Baseline active_tools is [] (createSession passed no tools).
+    // Register two tools at runtime, then remove one.
+    await session.contextState.applyConfigChange({
+      type: 'tools_changed',
+      operation: 'register',
+      tools: ['bash', 'read', 'write'],
+    });
+    await session.contextState.applyConfigChange({
+      type: 'tools_changed',
+      operation: 'remove',
+      tools: ['write'],
+    });
+    expect([...session.contextState.activeTools].sort()).toEqual(['bash', 'read']);
+
+    await session.contextState.appendUserMessage({ text: 'q' }, 't1');
+    await session.soulPlus.getTurnManager().triggerCompaction('manual');
+    await session.journalWriter.flush();
+    await mgr.closeSession('ses_runtime_overlay_tools');
+
+    // Resume — activeTools must reflect post-rotate snapshot, not the
+    // empty baseline from the original session_initialized.
+    const freshMgr = new SessionManager(paths);
+    const resumed = await freshMgr.resumeSession('ses_runtime_overlay_tools', {
+      runtime: createNoopRuntime(),
+      tools: [],
+    });
+    expect([...resumed.contextState.activeTools].sort()).toEqual(['bash', 'read']);
+  });
+
+  it('post-rotate wire line 2 active_tools mirrors current ContextState set', async () => {
+    const mgr = new SessionManager(paths);
+    const session = await mgr.createSession({
+      sessionId: 'ses_runtime_overlay_tools_wire',
+      workspaceDir: '/tmp/ws-overlay-tools-wire',
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'm',
+      systemPrompt: 'sp',
+      compactionProvider: summaryProvider('S'),
+    });
+    await session.contextState.applyConfigChange({
+      type: 'tools_changed',
+      operation: 'set_active',
+      tools: ['edit', 'glob'],
+    });
+    await session.contextState.appendUserMessage({ text: 'q' }, 't1');
+    await session.soulPlus.getTurnManager().triggerCompaction('manual');
+    await session.journalWriter.flush();
+
+    const lines = await readWireLines(paths.wirePath('ses_runtime_overlay_tools_wire'));
+    expect(lines[1]!['type']).toBe('session_initialized');
+    const activeTools = lines[1]!['active_tools'];
+    expect(Array.isArray(activeTools)).toBe(true);
+    expect([...(activeTools as string[])].sort()).toEqual(['edit', 'glob']);
+  });
+});

@@ -184,6 +184,12 @@ export class SoulPlus {
     };
     const approvalRuntime = undefined; // Wiring lives on the orchestrator path today
     const compactionProvider = deps.compactionProvider ?? createStubCompactionProvider();
+    // Phase 23 fix — late-bound TurnManager ref. CompactionOrchestrator is
+    // constructed before TurnManager (TurnManager itself takes the
+    // orchestrator as a dep), so we use a closure ref that the
+    // orchestrator reads only inside `executeCompaction`. By the time any
+    // compaction can run, TurnManager is fully wired below.
+    let turnManagerRef: TurnManager | undefined;
     const compaction = new CompactionOrchestrator({
       contextState,
       compactionProvider,
@@ -193,6 +199,19 @@ export class SoulPlus {
       journalWriter,
       sessionId: deps.sessionId,
       agentId: 'agent_main',
+      runtimeStateProvider: () => {
+        if (turnManagerRef === undefined) {
+          // Should never happen — `executeCompaction` runs only via
+          // TurnManager which sets this ref during construction below.
+          throw new Error(
+            'CompactionOrchestrator.runtimeStateProvider invoked before TurnManager wiring',
+          );
+        }
+        return {
+          permissionMode: turnManagerRef.getPermissionMode(),
+          planMode: turnManagerRef.getPlanMode(),
+        };
+      },
     });
     const permissionBuilder = new PermissionClosureBuilder({
       ...(orchestrator !== undefined ? { orchestrator } : {}),
@@ -305,6 +324,9 @@ export class SoulPlus {
       ...(deps.compactionConfig !== undefined ? { compactionConfig: deps.compactionConfig } : {}),
       ...(orchestrator !== undefined ? { orchestrator } : {}),
     });
+    // Phase 23 fix — bind the late ref so the compaction orchestrator can
+    // read live `permissionMode` / `planMode` at compaction time.
+    turnManagerRef = turnManager;
 
     // NotificationManager — Slice 2.4 three-sink fan-out. Phase 1
     // (Decision #89): notifications land in durable contextState history

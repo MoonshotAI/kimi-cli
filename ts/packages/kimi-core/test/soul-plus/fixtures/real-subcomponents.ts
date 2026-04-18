@@ -21,7 +21,10 @@
  */
 
 import type { CompactionProvider, JournalCapability } from '../../../src/soul/index.js';
-import { CompactionOrchestrator } from '../../../src/soul-plus/compaction-orchestrator.js';
+import {
+  CompactionOrchestrator,
+  STATIC_DEFAULT_RUNTIME_STATE,
+} from '../../../src/soul-plus/compaction-orchestrator.js';
 import type { SessionLifecycleStateMachine } from '../../../src/soul-plus/lifecycle-state-machine.js';
 import type { ToolCallOrchestrator } from '../../../src/soul-plus/orchestrator.js';
 import { PermissionClosureBuilder } from '../../../src/soul-plus/permission-closure-builder.js';
@@ -60,6 +63,7 @@ export function makeRealSubcomponents(input: RealSubcomponentsInput): RealSubcom
     journalCapability: input.journalCapability ?? createNoopJournalCapability(),
     sink: input.sink,
     journalWriter: input.contextState.journalWriter,
+    runtimeStateProvider: STATIC_DEFAULT_RUNTIME_STATE,
     ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
     ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
   });

@@ -38,7 +38,39 @@ import type {
 } from '../storage/context-state.js';
 import type { JournalWriter } from '../storage/journal-writer.js';
 import type { HookEngine } from '../hooks/engine.js';
+import type { PermissionMode } from './permission/index.js';
 import type { SessionLifecycleStateMachine } from './lifecycle-state-machine.js';
+import type { SessionInitializedRecord } from '../storage/wire-record.js';
+
+/**
+ * Phase 23 fix — runtime-mutable state captured at compaction time so the
+ * post-rotate `session_initialized` reflects the current state, not the
+ * original startup baseline. ContextState already exposes `model` /
+ * `systemPrompt` / `activeTools`; this provider supplies the bits that
+ * live on TurnManager (`permissionMode` / `planMode`) which the
+ * orchestrator does not have a direct reference to (cyclic-construction
+ * order: orchestrator is built before TurnManager in `SoulPlus`).
+ *
+ * Without this, runtime changes via `setModel` / `applyConfigChange` /
+ * `setPermissionMode` / `setPlanMode` get archived together with the
+ * pre-compact records, and resume off the post-rotate wire silently
+ * reverts to the original startup config — a violation of the L3.1
+ * truth-source-uniqueness rule that Phase 23 was introduced to enforce.
+ */
+export interface RuntimeStateProvider {
+  readonly permissionMode: PermissionMode;
+  readonly planMode: boolean;
+}
+
+/**
+ * Phase 23 fix — opt-out helper for test fixtures that do not exercise
+ * permission_mode / plan_mode runtime mutations. Production code MUST NOT
+ * use this — pass a closure that reads the live TurnManager state instead.
+ */
+export const STATIC_DEFAULT_RUNTIME_STATE: () => RuntimeStateProvider = () => ({
+  permissionMode: 'default',
+  planMode: false,
+});
 
 export interface CompactionOrchestratorDeps {
   readonly contextState: FullContextState;
@@ -47,6 +79,25 @@ export interface CompactionOrchestratorDeps {
   readonly journalCapability: JournalCapability;
   readonly sink: EventSink;
   readonly journalWriter: JournalWriter;
+  /**
+   * Phase 23 fix — late-bound snapshot of runtime-mutable state that lives
+   * on TurnManager. Called inside `executeCompaction` right before
+   * `appendBoundary` so the copied `session_initialized` mirrors the
+   * current `permissionMode` / `planMode` instead of reverting to the
+   * original startup baseline.
+   *
+   * Required (not optional) so the contract is enforced at the type level.
+   * Allowing this to be omitted would create a silent half-fix: ContextState
+   * fields (model / systemPrompt / activeTools) would still reflect the
+   * current state from `cs.*`, but `permissionMode` / `planMode` would
+   * silently revert to the baseline from the on-disk record — an
+   * inconsistent post-rotate baseline.
+   *
+   * Test fixtures that do not exercise permission_mode / plan_mode
+   * mutations may pass `STATIC_DEFAULT_RUNTIME_STATE` to declare
+   * "I don't care about these fields" explicitly.
+   */
+  readonly runtimeStateProvider: () => RuntimeStateProvider;
   readonly hookEngine?: HookEngine | undefined;
   readonly sessionId?: string | undefined;
   readonly agentId?: string | undefined;
@@ -101,7 +152,28 @@ export class CompactionOrchestrator {
       // Phase 23 — capture the current `session_initialized` baseline
       // BEFORE rotate so we can copy it into line 2 of the post-rotate
       // wire (v2 §4.1.2 + C6).
-      const sessionInitialized = await this.deps.journalCapability.readSessionInitialized();
+      const baselineInit = await this.deps.journalCapability.readSessionInitialized();
+
+      // Phase 23 fix — overlay the runtime-mutable subset of the baseline
+      // with the current ContextState + TurnManager state. Any state
+      // change that happened via *_changed records since session start is
+      // about to be archived together with the pre-compact wire; without
+      // this overlay the post-rotate wire's line-2 baseline would revert
+      // to the original startup config and resume would silently undo
+      // every `setModel` / `applyConfigChange` / `setPermissionMode` /
+      // `setPlanMode` that ran before this compaction. Identity-class
+      // fields (`agent_type` / `session_id` / parent lineage / workspace)
+      // are preserved verbatim because they cannot legally mutate at
+      // runtime — see the discriminated-union shape in `wire-record.ts`.
+      const runtime = this.deps.runtimeStateProvider();
+      const cs = this.deps.contextState;
+      const sessionInitialized = applyRuntimeOverlay(baselineInit, {
+        system_prompt: cs.systemPrompt,
+        model: cs.model,
+        active_tools: [...cs.activeTools],
+        permission_mode: runtime.permissionMode,
+        plan_mode: runtime.planMode,
+      });
 
       // Phase 3 铁律: drain the async-batch buffer BEFORE rotate so no
       // in-memory record lands in the post-rotation wire.jsonl after the
@@ -114,8 +186,8 @@ export class CompactionOrchestrator {
         parent_file: '',
       });
 
-      // Phase 23 — copy the baseline as line 2 of the new wire BEFORE
-      // resetToSummary writes the compaction record at line 3.
+      // Phase 23 — copy the (overlaid) baseline as line 2 of the new wire
+      // BEFORE resetToSummary writes the compaction record at line 3.
       await this.deps.journalCapability.appendBoundary(sessionInitialized);
 
       const storageSummary = bridgeSummaryMessage(
@@ -232,6 +304,41 @@ export class CompactionOrchestrator {
       }
     }
   }
+}
+
+/**
+ * Phase 23 fix — overlay the runtime-mutable subset of a baseline
+ * `session_initialized` with the live ContextState + TurnManager state.
+ *
+ * Identity-class fields (`type`, `seq`, `time`, `agent_type`, `session_id`,
+ * `agent_id`, parent lineage, `workspace_dir`, `thinking_level`) are
+ * preserved verbatim because they cannot legally mutate at runtime — see
+ * the discriminated-union shape in `wire-record.ts`. The mutable fields
+ * (`system_prompt`, `model`, `active_tools`, `permission_mode`,
+ * `plan_mode`) are overwritten so the post-rotate baseline reflects the
+ * compaction-time snapshot rather than the original startup config.
+ *
+ * The generic preserves the discriminated-union narrowing so each branch
+ * (main / sub / independent) returns its own concrete type.
+ */
+function applyRuntimeOverlay<T extends SessionInitializedRecord>(
+  baseline: T,
+  overlay: {
+    readonly system_prompt: string;
+    readonly model: string;
+    readonly active_tools: readonly string[];
+    readonly permission_mode: PermissionMode;
+    readonly plan_mode: boolean;
+  },
+): T {
+  return {
+    ...baseline,
+    system_prompt: overlay.system_prompt,
+    model: overlay.model,
+    active_tools: [...overlay.active_tools],
+    permission_mode: overlay.permission_mode,
+    plan_mode: overlay.plan_mode,
+  };
 }
 
 /**
