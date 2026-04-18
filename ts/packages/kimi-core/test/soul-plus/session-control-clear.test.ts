@@ -233,6 +233,48 @@ describe('SessionControl.clear — lifecycle guard', () => {
     await expect(sessionControl.clear()).resolves.toBeUndefined();
     expect(contextState.buildMessages()).toEqual([]);
   });
+
+  it('atomically reserves lifecycle mid-clear so a concurrent second clear rejects', async () => {
+    // TOCTOU closure: `isIdle()` check + `await contextState.clear()`
+    // used to race. After the fix, `tryReserveForMaintenance` flips
+    // state to 'active' synchronously; a second clear firing at any
+    // microtask gap during the first clear's await must see 'active'
+    // and refuse immediately.
+    const { sessionControl, contextState } = makeHarness();
+    await contextState.appendUserMessage({ text: 'a' });
+
+    const first = sessionControl.clear();
+    // No `await` between the two calls — the race window is real.
+    await expect(sessionControl.clear()).rejects.toThrow(/active/i);
+    await expect(first).resolves.toBeUndefined();
+  });
+
+  it('releases the maintenance reservation even if contextState.clear throws', async () => {
+    const { sessionControl, contextState, lifecycleStateMachine } = makeHarness();
+    await contextState.appendUserMessage({ text: 'a' });
+    const spy = vi
+      .spyOn(contextState as FullContextState & { clear: () => Promise<void> }, 'clear')
+      .mockRejectedValueOnce(new Error('WAL append blew up'));
+
+    await expect(sessionControl.clear()).rejects.toThrow(/WAL append/);
+
+    // Lifecycle must be back in 'idle' — if it stuck on 'active' the
+    // session would be permanently unable to take new turns.
+    expect(lifecycleStateMachine.state).toBe('idle');
+    spy.mockRestore();
+
+    // And a follow-up clear on a restored contextState must succeed.
+    await expect(sessionControl.clear()).resolves.toBeUndefined();
+  });
+
+  it('leaves lifecycle in idle on successful clear (no stuck active state)', async () => {
+    const { sessionControl, contextState, lifecycleStateMachine } = makeHarness();
+    await contextState.appendUserMessage({ text: 'a' });
+
+    await sessionControl.clear();
+
+    expect(lifecycleStateMachine.state).toBe('idle');
+  });
 });
 
 // ── 4. Idempotency ───────────────────────────────────────────────────────

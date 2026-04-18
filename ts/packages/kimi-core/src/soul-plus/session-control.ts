@@ -76,25 +76,36 @@ export class DefaultSessionControl implements SessionControlHandler {
   }
 
   async clear(): Promise<void> {
-    // Phase 20 §A — refuse when a turn or compaction is already in
-    // flight. ContextState.clear zeroes history + appends a
-    // `context_cleared` WAL record; doing that concurrently with a
-    // running turn or with CompactionOrchestrator's rotate +
-    // resetToSummary would interleave writes into wire.jsonl and leave
-    // replay unable to reconstruct a coherent history. Mirrors the
-    // same guard CompactionOrchestrator uses (see
-    // compaction-orchestrator.ts:155).
-    if (!this.turnManager.isIdle()) {
+    // Phase 20 §A — atomic reservation closes the TOCTOU race between
+    // the idle check and the async WAL write. `tryReserveForMaintenance`
+    // flips lifecycle idle → active synchronously; any concurrent
+    // `startTurn` / `triggerCompaction` after this point will see
+    // state = 'active' and refuse. Without this, a plain `isIdle()`
+    // gate followed by `await contextState.clear()` would yield the
+    // event loop and let a racing prompt launch a turn mid-clear,
+    // corrupting the active turn's history view.
+    //
+    // ContextState.clear zeroes history + appends a `context_cleared`
+    // WAL record; doing that concurrently with a running turn or with
+    // CompactionOrchestrator's rotate + resetToSummary would interleave
+    // writes into wire.jsonl and leave replay unable to reconstruct a
+    // coherent history. Mirrors `CompactionOrchestrator.triggerCompaction`
+    // (see compaction-orchestrator.ts:155).
+    if (!this.turnManager.tryReserveForMaintenance()) {
       throw new Error(
         `Cannot clear while session is ${this.turnManager.getLifecycleState()} — cancel the current turn or wait for compaction to finish first.`,
       );
     }
-    // Slice 20-A — delegates to ContextState.clear(). The WAL append
-    // (context_cleared) happens inside ContextState; SessionControl does
-    // NOT emit an EventSink event (铁律 4 双通道 — clear is not a
-    // derived-field bus event), and must not touch plan_mode /
-    // permission_mode (those are owned by separate handlers).
-    await this.contextState.clear();
+    try {
+      // Slice 20-A — delegates to ContextState.clear(). The WAL append
+      // (context_cleared) happens inside ContextState; SessionControl does
+      // NOT emit an EventSink event (铁律 4 双通道 — clear is not a
+      // derived-field bus event), and must not touch plan_mode /
+      // permission_mode (those are owned by separate handlers).
+      await this.contextState.clear();
+    } finally {
+      this.turnManager.releaseMaintenance();
+    }
   }
 
   async setPlanMode(enabled: boolean): Promise<void> {

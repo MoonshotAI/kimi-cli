@@ -253,6 +253,38 @@ export class TurnManager {
   }
 
   /**
+   * Phase 20 §A — atomic check-and-reserve for a maintenance op
+   * (`/clear`). Transitions idle → active synchronously so the
+   * reservation is visible to any concurrent `startTurn` /
+   * `triggerCompaction` BEFORE the caller's next `await` yields to the
+   * event loop. Closes the TOCTOU race where a plain `isIdle()` check
+   * followed by an async op would let a turn or compaction slip in.
+   *
+   * Returns `true` on successful reservation; `false` means another
+   * operation already holds the lifecycle (turn / compaction / another
+   * maintenance call). Callers must pair success with a later
+   * `releaseMaintenance()`.
+   */
+  tryReserveForMaintenance(): boolean {
+    if (!this.deps.lifecycleStateMachine.isIdle()) return false;
+    if (this.getCurrentTurnId() !== undefined) return false;
+    this.deps.lifecycleStateMachine.transitionTo('active');
+    return true;
+  }
+
+  /**
+   * Phase 20 §A — release a prior `tryReserveForMaintenance` success.
+   * Follows the same `active → completing → idle` transition chain as
+   * a completed turn so the state machine stays on its sanctioned path
+   * (see lifecycle-state-machine.ts TRANSITIONS table).
+   */
+  releaseMaintenance(): void {
+    const machine = this.deps.lifecycleStateMachine;
+    if (machine.isActive()) machine.transitionTo('completing');
+    if (machine.isCompleting()) machine.transitionTo('idle');
+  }
+
+  /**
    * Combines the synchronous pre-registration reservation (in-flight
    * launch window) with the tracker's authoritative currentTurnId.
    * Either side being set means "session is busy".
