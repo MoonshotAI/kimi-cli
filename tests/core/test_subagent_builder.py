@@ -171,3 +171,49 @@ def test_launch_spec_work_dir_defaults_to_none():
         effective_model=None,
     )
     assert spec.work_dir is None
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
+async def test_builder_passes_work_dir_override_to_subagent(runtime, temp_work_dir):
+    from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+    from kimi_cli.soul.agent import load_agent
+
+    await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
+
+    override_dir = temp_work_dir  # Reuse fixture dir — it exists on disk
+    builder = SubagentBuilder(runtime)
+    agent = await builder.build_builtin_instance(
+        agent_id="awdbuild",
+        type_def=runtime.labor_market.require_builtin_type("coder"),
+        launch_spec=AgentLaunchSpec(
+            agent_id="awdbuild",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+            work_dir=str(override_dir),
+        ),
+    )
+    # The subagent's runtime should use the overridden work_dir
+    assert agent.runtime.builtin_args.KIMI_WORK_DIR == override_dir
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
+async def test_builder_without_work_dir_uses_root_dir(runtime):
+    from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+    from kimi_cli.soul.agent import load_agent
+
+    await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
+
+    builder = SubagentBuilder(runtime)
+    agent = await builder.build_builtin_instance(
+        agent_id="anowdbuild",
+        type_def=runtime.labor_market.require_builtin_type("coder"),
+        launch_spec=AgentLaunchSpec(
+            agent_id="anowdbuild",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+    # No override — should inherit root's work_dir
+    assert agent.runtime.builtin_args.KIMI_WORK_DIR == runtime.builtin_args.KIMI_WORK_DIR
