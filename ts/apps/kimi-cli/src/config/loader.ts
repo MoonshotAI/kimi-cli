@@ -15,6 +15,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import {
+  KimiConfigSchema,
+  transformTomlData,
+  type KimiConfig,
+} from '@moonshot-ai/core';
 import { parse as parseTOML, stringify as stringifyTOML } from 'smol-toml';
 import type { ZodError } from 'zod';
 
@@ -220,6 +225,124 @@ function configToSerializable(config: Config): Record<string, unknown> {
       show_thinking_stream: config.show_thinking_stream,
     }),
   ) as Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// CLI-flag → KimiConfig loader (Phase 21 Slice C.2.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Result returned by {@link loadCliConfig}.
+ */
+export interface LoadCliConfigOptions {
+  config?: string | undefined;
+  configFile?: string | undefined;
+}
+
+export interface LoadCliConfigResult {
+  config: KimiConfig;
+  source: 'inline' | 'file';
+  filePath?: string | undefined;
+}
+
+/**
+ * Load a {@link KimiConfig} from CLI flags (`--config <toml|json>` /
+ * `--config-file <path>`). The result is intended to be deep-merged on
+ * top of the disk-loaded `KimiConfig` so CLI overrides win.
+ *
+ * Inline `--config` values are tried as JSON first, then TOML; this
+ * mirrors the Python `load_config_from_string` shape so users can paste
+ * either form. Both are normalised through `transformTomlData`
+ * (snake_case → camelCase) before the result is validated against
+ * `KimiConfigSchema`, so input keys match the on-disk `config.toml`
+ * shape — not an internal camelCase variant.
+ */
+export function loadCliConfig(opts: LoadCliConfigOptions = {}): LoadCliConfigResult {
+  if (opts.config !== undefined) {
+    const trimmed = opts.config.trim();
+    if (trimmed.length === 0) {
+      throw new ConfigLoadError('--config value cannot be empty.');
+    }
+    const data = parseInlineCliConfig(trimmed);
+    const config = validateCliKimiConfig(data, '--config value');
+    return { config, source: 'inline' };
+  }
+
+  if (opts.configFile !== undefined) {
+    if (!existsSync(opts.configFile)) {
+      throw new ConfigLoadError(`Config file not found: ${opts.configFile}`);
+    }
+    const text = readFileSync(opts.configFile, 'utf-8');
+    const data = opts.configFile.endsWith('.json')
+      ? parseCliConfigJson(text, opts.configFile)
+      : parseCliConfigToml(text, opts.configFile);
+    const config = validateCliKimiConfig(data, opts.configFile);
+    return { config, source: 'file', filePath: opts.configFile };
+  }
+
+  throw new ConfigLoadError(
+    'loadCliConfig requires either `config` or `configFile`.',
+  );
+}
+
+function parseInlineCliConfig(text: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new ConfigLoadError('--config JSON must be a top-level object.');
+    }
+    return parsed as Record<string, unknown>;
+  } catch (jsonError) {
+    if (jsonError instanceof ConfigLoadError) throw jsonError;
+    // Fall through to TOML — JSON parse failure is expected for TOML inputs.
+  }
+  try {
+    const parsed = parseTOML(text) as Record<string, unknown>;
+    return parsed;
+  } catch (tomlError) {
+    throw new ConfigLoadError(
+      `Invalid --config value (not valid JSON or TOML): ${String(tomlError)}`,
+    );
+  }
+}
+
+function parseCliConfigJson(text: string, filePath: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new ConfigLoadError(`Invalid JSON in ${filePath}: top-level must be an object.`);
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof ConfigLoadError) throw error;
+    throw new ConfigLoadError(`Invalid JSON in ${filePath}: ${String(error)}`);
+  }
+}
+
+function parseCliConfigToml(text: string, filePath: string): Record<string, unknown> {
+  try {
+    return parseTOML(text) as Record<string, unknown>;
+  } catch (error) {
+    throw new ConfigLoadError(`Invalid TOML in ${filePath}: ${String(error)}`);
+  }
+}
+
+function validateCliKimiConfig(raw: Record<string, unknown>, label: string): KimiConfig {
+  const transformed = transformTomlData(raw);
+  // Preserve the raw subtree so downstream consumers (e.g. MCP `[mcp]`
+  // section extraction) keep working when they look at `config.raw`.
+  transformed['raw'] = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
+  const result = KimiConfigSchema.safeParse(transformed);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
+        return `  - ${path}: ${issue.message}`;
+      })
+      .join('\n');
+    throw new ConfigLoadError(`Invalid configuration (${label}):\n${issues}`);
+  }
+  return result.data;
 }
 
 /**

@@ -18,6 +18,7 @@ export {
   isStdioServer,
   parseMcpConfig,
 } from './config.js';
+export { mergeMcpConfigs } from './merge.js';
 
 export type {
   CallToolOptions,

@@ -120,14 +120,11 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
   // ---------------------------------------------------------------------------
   // Loop control
   // ---------------------------------------------------------------------------
-  program
-    .option('--max-steps-per-turn <n>', 'Maximum steps per turn.', parseIntOption)
-    .option('--max-retries-per-step <n>', 'Maximum retries per step.', parseIntOption)
-    .option(
-      '--max-ralph-iterations <n>',
-      'Extra iterations in Ralph mode (-1 for unlimited).',
-      parseIntOption,
-    );
+  // Phase 21 Slice C.2.5 — `--max-steps-per-turn`, `--max-retries-per-step`,
+  // and `--max-ralph-iterations` are removed in this v1: the TS port has no
+  // Ralph loop or per-step retry limit wired in `kimi-core`, so the flags
+  // were declared-but-dead. Reintroduce them when (and only when) Ralph mode
+  // ships in v1.1+.
 
   // ---------------------------------------------------------------------------
   // Root command action -- runs when no sub-command is given
@@ -167,9 +164,6 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
       mcpConfigFile: raw['mcpConfigFile'] as string[] | undefined,
       mcpConfig: raw['mcpConfig'] as string[] | undefined,
       skillsDir: raw['skillsDir'] as string[] | undefined,
-      maxStepsPerTurn: raw['maxStepsPerTurn'] as number | undefined,
-      maxRetriesPerStep: raw['maxRetriesPerStep'] as number | undefined,
-      maxRalphIterations: raw['maxRalphIterations'] as number | undefined,
     };
 
     onMain(opts);
@@ -185,15 +179,4 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
   registerMcpCommand(program);
 
   return program;
-}
-
-/**
- * Parse an integer CLI option value, throwing on invalid input.
- */
-function parseIntOption(value: string): number {
-  const n = Number.parseInt(value, 10);
-  if (Number.isNaN(n)) {
-    throw new TypeError(`Expected an integer but got: ${value}`);
-  }
-  return n;
 }

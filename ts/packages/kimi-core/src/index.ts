@@ -387,6 +387,7 @@ export {
   isHttpServer,
   isStdioServer,
   mcpToolName,
+  mergeMcpConfigs,
   parseMcpConfig,
   parseMcpToolName,
   startOAuthCallbackServer,
@@ -415,6 +416,7 @@ export {
   resolveModelAlias,
   ProviderFactoryError,
   applyEnvOverrides,
+  transformTomlData,
 } from './config/index.js';
 export type { OAuthResolver, ProviderFactoryDeps } from './config/index.js';
 

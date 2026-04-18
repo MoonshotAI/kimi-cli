@@ -9,8 +9,8 @@
  */
 
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 
 import {
   AgentRegistry,
@@ -79,6 +79,9 @@ import { runPrintMode } from './app/PrintMode.js';
 import { createProgram } from './cli/commands.js';
 import type { CLIOptions, UIMode } from './cli/options.js';
 import { OptionConflictError, validateOptions } from './cli/options.js';
+import { ConfigLoadError, loadCliConfig } from './config/loader.js';
+import { mergeConfig } from './config/merge.js';
+import { mergeMcpConfigs } from '@moonshot-ai/core';
 import { LocalFetchURLProvider } from './providers/local-fetch-url.js';
 import { MoonshotFetchURLProvider } from './providers/moonshot-fetch-url.js';
 import { MoonshotWebSearchProvider } from './providers/moonshot-web-search.js';
@@ -228,7 +231,20 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   // 1. Load kimi-core config (~/.kimi/config.toml + project override).
   const workDir = opts.workDir ?? process.cwd();
   const pathConfig = new PathConfig();
-  const kimiConfig = loadKimiCoreConfig({ pathConfig, workspaceDir: workDir });
+  let kimiConfig = loadKimiCoreConfig({ pathConfig, workspaceDir: workDir });
+
+  // Phase 21 Slice C.2.1 — layer CLI-flag overrides (`--config` /
+  // `--config-file`) on top of the disk-loaded base. The flags are
+  // mutually exclusive (validateOptions enforces) so at most one branch
+  // fires; deep merge means partial overrides patch nested records
+  // (e.g. `providers['kimi'].apiKey`) without clobbering siblings.
+  if (opts.config !== undefined || opts.configFile !== undefined) {
+    const cliResult = loadCliConfig({
+      ...(opts.config !== undefined ? { config: opts.config } : {}),
+      ...(opts.configFile !== undefined ? { configFile: opts.configFile } : {}),
+    });
+    kimiConfig = mergeConfig(kimiConfig, cliResult.config);
+  }
 
   // 2. Resolve default model → ChatProvider via kosong.
   const modelAlias = opts.model ?? kimiConfig.defaultModel;
@@ -300,7 +316,16 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
       );
     },
   });
-  const skillRoots = await resolveSkillRoots({ workDir });
+  // Phase 21 Slice C.2.4 — `--skills-dir` overrides discovery. The
+  // scanner's `explicitDirs` path skips user/project candidates and
+  // canonicalises every supplied directory through realpath, so the
+  // host doesn't need a parallel implementation. Empty arrays fall
+  // through to the default discovery layers.
+  const explicitSkillsDirs = (opts.skillsDir ?? []).map((d) => resolve(d));
+  const skillRoots = await resolveSkillRoots({
+    workDir,
+    ...(explicitSkillsDirs.length > 0 ? { explicitDirs: explicitSkillsDirs } : {}),
+  });
   await skillManager.init(skillRoots);
   const kimiSkills = skillManager.getKimiSkillsDescription();
 
@@ -365,7 +390,14 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   // we log and carry on with no MCP tools.
   let mcpManager: MCPManager | undefined;
   const mcpTools: Tool[] = [];
-  const mcpConfig = extractMcpConfig(kimiConfig.raw);
+  // Phase 21 Slice C.2.3 — assemble MCP configs in priority order:
+  //   1. on-disk `[mcp.servers.*]` from kimi-core config.toml
+  //   2. each `--mcp-config-file <path>` (file order on the command line)
+  //   3. each `--mcp-config <json>` inline (after files, so inline wins)
+  // `mergeMcpConfigs` is later-wins per `mcpServers` key, so an inline
+  // override of `myServer` replaces the file/disk entry entirely.
+  const mcpConfigsToMerge = collectMcpConfigs(kimiConfig.raw, opts);
+  const mcpConfig = mergeMcpConfigs(mcpConfigsToMerge);
   if (mcpConfig !== undefined) {
     try {
       const parsed = parseMcpConfig(mcpConfig);
@@ -404,9 +436,27 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     }
   }
 
+  // Phase 21 Slice C.2.2 — `--add-dir` extends WorkspaceConfig.
+  // Skip paths that don't exist (warn but keep booting) and drop any
+  // entry that lives inside `workDir` because the path-guard already
+  // accepts the workspace root recursively — listing it again would
+  // create duplicate scopes the user can't easily reason about.
+  const extraDirs = (opts.addDir ?? [])
+    .map((d) => resolve(d))
+    .filter((d) => {
+      if (!existsSync(d)) {
+        process.stderr.write(`warning: --add-dir path does not exist, skipped: ${d}\n`);
+        return false;
+      }
+      if (d === workDir || d.startsWith(workDir + sep)) {
+        process.stderr.write(`warning: --add-dir ${d} is inside work-dir, ignored\n`);
+        return false;
+      }
+      return true;
+    });
   const baseWorkspace: WorkspaceConfig = {
     workspaceDir: workDir,
-    additionalDirs: [],
+    additionalDirs: extraDirs,
   };
   // Slice 4.4 Part 3 — add discovered skill roots to WorkspaceConfig
   // so Phase 1 path-guard lets Read/Glob follow `${KIMI_SKILLS}`
@@ -683,6 +733,61 @@ function extractMcpConfig(raw: Record<string, unknown> | undefined): McpConfig |
     (mcpObj['mcpServers'] as Record<string, unknown> | undefined);
   if (servers === undefined || Object.keys(servers).length === 0) return undefined;
   return { mcpServers: servers } as unknown as McpConfig;
+}
+
+/**
+ * Phase 21 Slice C.2.3 — collect MCP config sources in priority order.
+ *
+ * Disk first, then `--mcp-config-file` (in CLI argument order), then
+ * `--mcp-config` JSON literals last so inline overrides win against
+ * everything else. Each source is validated via `parseMcpConfig` so a
+ * malformed `--mcp-config` payload throws an `MCPConfigError` rather
+ * than silently dropping servers.
+ *
+ * Inline JSON parse failures throw `ConfigLoadError` so the user sees a
+ * clear "Invalid --mcp-config JSON" instead of the raw `JSON.parse`
+ * `Unexpected token` trace.
+ */
+function collectMcpConfigs(
+  raw: Record<string, unknown> | undefined,
+  opts: CLIOptions,
+): McpConfig[] {
+  const out: McpConfig[] = [];
+  const fromDisk = extractMcpConfig(raw);
+  if (fromDisk !== undefined) {
+    out.push(parseMcpConfig(fromDisk));
+  }
+  for (const path of opts.mcpConfigFile ?? []) {
+    let text: string;
+    try {
+      text = readFileSync(path, 'utf-8');
+    } catch (error) {
+      throw new ConfigLoadError(
+        `Failed to read --mcp-config-file ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(text) as unknown;
+    } catch (error) {
+      throw new ConfigLoadError(
+        `Invalid JSON in --mcp-config-file ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    out.push(parseMcpConfig(json));
+  }
+  for (const literal of opts.mcpConfig ?? []) {
+    let json: unknown;
+    try {
+      json = JSON.parse(literal) as unknown;
+    } catch (error) {
+      throw new ConfigLoadError(
+        `Invalid --mcp-config JSON: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    out.push(parseMcpConfig(json));
+  }
+  return out;
 }
 
 async function runShell(opts: CLIOptions, version: string): Promise<void> {

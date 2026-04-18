@@ -1,0 +1,31 @@
+=== C.5.1 grep counts ===
+config: 25
+configFile: 19
+addDir: 1
+mcpConfigFile: 1
+mcpConfig: 2
+skillsDir: 1
+
+=== C.5.2 --max-* removed (expect 0) ===
+0
+
+=== unknown option for --max-ralph-iterations (expect 1) ===
+1
+
+=== producers per flag ===
+--- opts.config ---
+241:  if (opts.config !== undefined || opts.configFile !== undefined) {
+243:      ...(opts.config !== undefined ? { config: opts.config } : {}),
+244:      ...(opts.configFile !== undefined ? { configFile: opts.configFile } : {}),
+--- opts.configFile ---
+241:  if (opts.config !== undefined || opts.configFile !== undefined) {
+244:      ...(opts.configFile !== undefined ? { configFile: opts.configFile } : {}),
+--- opts.addDir ---
+444:  const extraDirs = (opts.addDir ?? [])
+--- opts.mcpConfigFile ---
+760:  for (const path of opts.mcpConfigFile ?? []) {
+--- opts.mcpConfig ---
+760:  for (const path of opts.mcpConfigFile ?? []) {
+779:  for (const literal of opts.mcpConfig ?? []) {
+--- opts.skillsDir ---
+324:  const explicitSkillsDirs = (opts.skillsDir ?? []).map((d) => resolve(d));

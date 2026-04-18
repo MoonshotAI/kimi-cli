@@ -173,6 +173,7 @@ export {
   isStdioServer,
   mcpToolName,
   mcpToolToKimiTool,
+  mergeMcpConfigs,
   parseMcpConfig,
   parseMcpToolName,
   startOAuthCallbackServer,

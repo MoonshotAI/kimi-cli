@@ -81,9 +81,6 @@ describe('CLI options parsing', () => {
       expect(opts.mcpConfigFile).toBeUndefined();
       expect(opts.mcpConfig).toBeUndefined();
       expect(opts.skillsDir).toBeUndefined();
-      expect(opts.maxStepsPerTurn).toBeUndefined();
-      expect(opts.maxRetriesPerStep).toBeUndefined();
-      expect(opts.maxRalphIterations).toBeUndefined();
     });
 
     it('should resolve to shell UI mode when no mode flags are given', () => {
@@ -309,26 +306,6 @@ describe('CLI options parsing', () => {
     it('should leave thinking undefined by default', () => {
       const opts = parse([]);
       expect(opts.thinking).toBeUndefined();
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Loop control options
-  // -------------------------------------------------------------------------
-  describe('loop control', () => {
-    it('should parse --max-steps-per-turn as integer', () => {
-      const opts = parse(['--max-steps-per-turn', '50']);
-      expect(opts.maxStepsPerTurn).toBe(50);
-    });
-
-    it('should parse --max-retries-per-step as integer', () => {
-      const opts = parse(['--max-retries-per-step', '5']);
-      expect(opts.maxRetriesPerStep).toBe(5);
-    });
-
-    it('should parse --max-ralph-iterations as integer (including -1)', () => {
-      const opts = parse(['--max-ralph-iterations', '-1']);
-      expect(opts.maxRalphIterations).toBe(-1);
     });
   });
 

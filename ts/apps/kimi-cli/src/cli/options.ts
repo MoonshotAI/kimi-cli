@@ -58,12 +58,6 @@ export interface CLIOptions {
   mcpConfigFile: string[] | undefined;
   mcpConfig: string[] | undefined;
   skillsDir: string[] | undefined;
-
-  // -- Loop control ----------------------------------------------------------
-  maxStepsPerTurn: number | undefined;
-  maxRetriesPerStep: number | undefined;
-  maxRalphIterations: number | undefined;
-
 }
 
 // ---------------------------------------------------------------------------
