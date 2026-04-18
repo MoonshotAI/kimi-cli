@@ -105,8 +105,10 @@ class Approval:
         return self._state.yolo
 
     def set_interactive_questions_supported(self, supported: bool) -> None:
+        """Set runtime-only client capability; does not persist approval preferences."""
         self._state.supports_interactive_questions = supported
-        self._state.notify_change()
+        # This is a per-run capability flag, not a user approval preference.
+        # Do not call notify_change() to avoid persisting unrelated state (e.g. yolo).
 
     def should_auto_approve_plan_entry(self) -> bool:
         """Whether entering plan mode should be auto-approved."""

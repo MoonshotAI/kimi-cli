@@ -490,7 +490,7 @@ class TestApprovalPolicyMatrix:
         assert approval.should_auto_approve_plan_entry() is True
         assert approval.should_auto_approve_plan_exit() is True
 
-    def test_set_interactive_questions_supported_notifies(self):
+    def test_set_interactive_questions_supported_does_not_notify(self):
         from kimi_cli.soul.approval import Approval, ApprovalState
 
         changes: list[bool] = []
@@ -502,9 +502,9 @@ class TestApprovalPolicyMatrix:
         approval = Approval(state=state)
 
         approval.set_interactive_questions_supported(False)
-        assert len(changes) == 1
         assert state.supports_interactive_questions is False
+        assert len(changes) == 0
 
         approval.set_interactive_questions_supported(True)
-        assert len(changes) == 2
         assert state.supports_interactive_questions is True
+        assert len(changes) == 0
