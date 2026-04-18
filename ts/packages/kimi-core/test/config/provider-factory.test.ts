@@ -117,12 +117,9 @@ describe('resolveModelAlias', () => {
     });
   });
 
-  it('falls back to defaultProvider for unknown alias', () => {
+  it('returns undefined for unknown alias (strict — the raw-model path is now opt-in at createProviderFromConfig)', () => {
     const result = resolveModelAlias(config, 'some-raw-model');
-    expect(result).toEqual({
-      providerName: 'anthropic',
-      modelName: 'some-raw-model',
-    });
+    expect(result).toBeUndefined();
   });
 
   it('returns undefined when no alias and no defaultProvider', () => {
@@ -176,8 +173,30 @@ describe('createProviderFromConfig', () => {
     expect(provider.modelName).toBe('k25');
   });
 
-  it('falls back to defaultProvider for raw model name', async () => {
-    const provider = await createProviderFromConfig(config, 'k25');
+  it('falls back to defaultProvider for raw model name ONLY when allowRawModel: true', async () => {
+    const provider = await createProviderFromConfig(config, 'k25', { allowRawModel: true });
+    expect(provider.name).toBe('anthropic');
+    expect(provider.modelName).toBe('k25');
+  });
+
+  it('throws with alias list when unknown alias and allowRawModel not set', async () => {
+    await expect(createProviderFromConfig(config, 'fake-zzz-xxx')).rejects.toBeInstanceOf(
+      ProviderFactoryError,
+    );
+    await expect(createProviderFromConfig(config, 'fake-zzz-xxx')).rejects.toThrow(
+      /Unknown model alias "fake-zzz-xxx"/,
+    );
+    await expect(createProviderFromConfig(config, 'fake-zzz-xxx')).rejects.toThrow(
+      /Available: sonnet, gpt4/,
+    );
+  });
+
+  it('strict throw mentions --raw-model escape hatch', async () => {
+    await expect(createProviderFromConfig(config, 'fake-xyz')).rejects.toThrow(/--raw-model/);
+  });
+
+  it('allowRawModel=true + known alias still uses the alias (flag does not bypass aliases)', async () => {
+    const provider = await createProviderFromConfig(config, 'sonnet', { allowRawModel: true });
     expect(provider.name).toBe('anthropic');
     expect(provider.modelName).toBe('k25');
   });

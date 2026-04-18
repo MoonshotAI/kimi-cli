@@ -130,6 +130,17 @@ describe('CLI options parsing', () => {
       const opts = parse(['-m', 'gpt-4o']);
       expect(opts.model).toBe('gpt-4o');
     });
+
+    it('rawModel defaults to false when --raw-model is absent', () => {
+      const opts = parse([]);
+      expect(opts.rawModel).toBe(false);
+    });
+
+    it('--raw-model sets rawModel: true', () => {
+      const opts = parse(['--model', 'zzz', '--raw-model']);
+      expect(opts.model).toBe('zzz');
+      expect(opts.rawModel).toBe(true);
+    });
   });
 
   // -------------------------------------------------------------------------

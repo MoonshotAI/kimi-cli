@@ -34,6 +34,11 @@ export interface CLIOptions {
   config: string | undefined;
   configFile: string | undefined;
   model: string | undefined;
+  /**
+   * Treat `--model` as a raw model name if it does not match any
+   * configured alias. Off by default — unknown aliases fail fast.
+   */
+  rawModel: boolean;
   thinking: boolean | undefined;
 
   // -- Run mode --------------------------------------------------------------

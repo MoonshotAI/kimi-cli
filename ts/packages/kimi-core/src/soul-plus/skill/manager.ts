@@ -19,7 +19,7 @@
  */
 
 import type { FullContextState } from '../../storage/context-state.js';
-import { discoverSkills } from './scanner.js';
+import { discoverSkills, type SkippedByPolicy } from './scanner.js';
 import type {
   SkillActivationContext,
   SkillDefinition,
@@ -47,10 +47,21 @@ export class DefaultSkillManager implements SkillManager {
   private readonly rootPaths: string[] = [];
   private readonly discoverImpl: typeof discoverSkills;
   private readonly onWarning: (message: string, cause?: unknown) => void;
+  private readonly skippedByPolicy: SkippedByPolicy[] = [];
 
   constructor(opts: SkillManagerOptions = {}) {
     this.discoverImpl = opts.discover ?? discoverSkills;
     this.onWarning = opts.onWarning ?? (() => {});
+  }
+
+  /**
+   * Skills silently skipped during `init()` because their declared
+   * `type` is outside the supported set (currently only flow skills
+   * hit this path). Hosts may use this list for a `--verbose` summary
+   * instead of stderr-spamming once per skill at startup.
+   */
+  getSkippedByPolicy(): readonly SkippedByPolicy[] {
+    return this.skippedByPolicy;
   }
 
   /**
@@ -75,6 +86,7 @@ export class DefaultSkillManager implements SkillManager {
     const discovered = await this.discoverImpl({
       roots,
       onWarning: this.onWarning,
+      onSkippedByPolicy: (info) => this.skippedByPolicy.push(info),
     });
 
     // Filesystem-scanned skills take precedence: for each discovered

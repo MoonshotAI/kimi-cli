@@ -148,6 +148,16 @@ export interface ResolvedModel {
   modelName: string;
 }
 
+/**
+ * Resolve a model alias strictly: returns `ResolvedModel` only when the
+ * input matches an entry in `config.models`. Unknown names → `undefined`.
+ *
+ * The former behavior silently fell through to `defaultProvider` with the
+ * input treated as a raw model name, which swallowed typos (`--model
+ * k25-pro` → success on a non-existent model). The raw-model escape is
+ * now opt-in at the `createProviderFromConfig` layer via
+ * `ProviderFactoryDeps.allowRawModel`.
+ */
 export function resolveModelAlias(
   config: KimiConfig,
   nameOrAlias: string,
@@ -155,9 +165,6 @@ export function resolveModelAlias(
   const alias = config.models?.[nameOrAlias];
   if (alias !== undefined) {
     return { providerName: alias.provider, modelName: alias.model };
-  }
-  if (config.defaultProvider !== undefined) {
-    return { providerName: config.defaultProvider, modelName: nameOrAlias };
   }
   return undefined;
 }
@@ -177,6 +184,14 @@ export interface ProviderFactoryDeps {
   readonly env?: Record<string, string | undefined> | undefined;
   /** Default HTTP headers injected into provider constructors (e.g. User-Agent). */
   readonly defaultHeaders?: Record<string, string> | undefined;
+  /**
+   * When `true`, an unknown `modelNameOrAlias` is treated as a raw model
+   * name and passed to `defaultProvider`. When `false` / unset, unknown
+   * aliases throw `ProviderFactoryError` with the list of configured
+   * aliases so typos surface immediately instead of silently hitting a
+   * non-existent endpoint. Wired through `--raw-model` on the CLI.
+   */
+  readonly allowRawModel?: boolean | undefined;
 }
 
 /**
@@ -201,10 +216,25 @@ export async function createProviderFromConfig(
 
   if (requestedModel !== undefined) {
     const resolved = resolveModelAlias(effectiveConfig, requestedModel);
+    const aliases = Object.keys(effectiveConfig.models ?? {});
+    const hasAliases = aliases.length > 0;
     if (resolved !== undefined) {
       providerName = resolved.providerName;
       modelName = resolved.modelName;
+    } else if (hasAliases && deps?.allowRawModel !== true) {
+      // Strict: aliases are configured but the requested one isn't
+      // among them. Surface typos instead of silently hitting a
+      // non-existent endpoint. Fires whether or not `defaultProvider`
+      // is set — a malformed alias is a user-input bug, not a routing
+      // gap.
+      throw new ProviderFactoryError(
+        `Unknown model alias "${requestedModel}". Available: ${aliases.join(', ')}. ` +
+          `Pass --raw-model to forward "${requestedModel}" as a raw model name to the default provider.`,
+      );
     } else if (effectiveConfig.defaultProvider !== undefined) {
+      // Raw-model fallback: either the caller opted in (--raw-model),
+      // OR the config has no aliases at all (so "unknown alias"
+      // doesn't make sense as a diagnostic).
       providerName = effectiveConfig.defaultProvider;
       modelName = requestedModel;
     } else {

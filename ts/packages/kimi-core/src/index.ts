@@ -341,6 +341,7 @@ export type {
   SkillMetadata,
   SkillRoot,
   SkillSource,
+  SkippedByPolicy,
 } from './soul-plus/skill/index.js';
 export {
   DefaultSkillManager,

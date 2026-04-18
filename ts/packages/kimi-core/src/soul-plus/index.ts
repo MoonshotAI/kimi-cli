@@ -217,6 +217,7 @@ export type {
   SkillMetadata,
   SkillRoot,
   SkillSource,
+  SkippedByPolicy,
 } from './skill/index.js';
 export {
   DefaultSkillManager,

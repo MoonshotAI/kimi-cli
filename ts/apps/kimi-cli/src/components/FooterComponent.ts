@@ -30,8 +30,12 @@ function formatTokenCount(n: number): string {
   return String(n);
 }
 
+function safeUsage(usage: number): number {
+  return Number.isFinite(usage) ? Math.max(0, Math.min(usage, 1)) : 0;
+}
+
 function formatContextStatus(usage: number, tokens?: number, maxTokens?: number): string {
-  const pct = `${(Math.max(0, Math.min(usage, 1)) * 100).toFixed(1)}%`;
+  const pct = `${(safeUsage(usage) * 100).toFixed(1)}%`;
   if (maxTokens && maxTokens > 0 && tokens !== undefined) {
     return `context: ${pct} (${formatTokenCount(tokens)}/${formatTokenCount(maxTokens)})`;
   }
@@ -39,8 +43,9 @@ function formatContextStatus(usage: number, tokens?: number, maxTokens?: number)
 }
 
 function contextColor(usage: number, colors: ColorPalette): string {
-  if (usage > 0.85) return colors.error;
-  if (usage > 0.5) return colors.warning;
+  const safe = safeUsage(usage);
+  if (safe > 0.85) return colors.error;
+  if (safe > 0.5) return colors.warning;
   return colors.success;
 }
 

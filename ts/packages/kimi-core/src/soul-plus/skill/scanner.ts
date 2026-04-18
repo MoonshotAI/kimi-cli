@@ -137,10 +137,30 @@ async function defaultIsDir(p: string): Promise<boolean> {
   }
 }
 
+/**
+ * A skill that was intentionally excluded from the registry because
+ * its declared `type` is not in the supported set (currently only
+ * `prompt` / `standard`). This is an expected, user-facing "feature
+ * gap" rather than an error, so it is surfaced via a dedicated hook
+ * instead of `onWarning` (which would spam stderr on every startup in
+ * repos that carry `type: flow` skills).
+ */
+export interface SkippedByPolicy {
+  readonly path: string;
+  readonly type: string;
+  readonly reason: string;
+}
+
 export interface DiscoverSkillsOptions {
   readonly roots: readonly SkillRoot[];
   /** Optional logger for parse-failure warnings. Defaults to no-op. */
   readonly onWarning?: (message: string, cause?: unknown) => void;
+  /**
+   * Called once per skill silently skipped because of an unsupported
+   * `type` (e.g. `flow`). Separate from `onWarning` so hosts can batch
+   * a single summary line instead of stderr-spamming.
+   */
+  readonly onSkippedByPolicy?: (info: SkippedByPolicy) => void;
   /** Injectable readdir (for tests). */
   readonly readdir?: (p: string) => Promise<string[]>;
   /** Injectable isFile check (for SKILL.md existence). */
@@ -171,6 +191,7 @@ export async function discoverSkills(
   const isFileImpl = opts.isFile ?? defaultIsFile;
   const parse = opts.parse ?? parseSkillFromFile;
   const warn = opts.onWarning ?? (() => {});
+  const skipByPolicy = opts.onSkippedByPolicy ?? (() => {});
 
   const byName = new Map<string, SkillDefinition>();
   for (const root of opts.roots) {
@@ -197,10 +218,14 @@ export async function discoverSkills(
         }
       } catch (error) {
         if (error instanceof UnsupportedSkillTypeError) {
-          warn(
-            `Skipping skill at ${skillMd}: unsupported type "${error.skillType}" (flow skills are not supported in Slice 2.5)`,
-            error,
-          );
+          // Policy skip — not an error. Host decides whether to surface
+          // a summary (e.g. `--verbose`); default path is silent so
+          // startup stays clean in repos that carry flow skills.
+          skipByPolicy({
+            path: skillMd,
+            type: error.skillType,
+            reason: `unsupported skill type "${error.skillType}"`,
+          });
           continue;
         }
         if (error instanceof SkillParseError) {

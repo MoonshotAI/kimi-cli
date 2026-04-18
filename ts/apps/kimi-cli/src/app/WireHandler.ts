@@ -300,7 +300,13 @@ export class WireHandler {
       case 'status.update': {
         const data = msg.data as StatusUpdateData;
         const patch: Partial<AppState> = {};
-        if (data.context_usage !== undefined) patch.contextUsage = data.context_usage;
+        if (data.context_usage !== undefined) {
+          // Phase 18 §A.14: wire carries `{used, total, percent}` (percent 0-100).
+          // TUI internal state stores a 0-1 ratio; guard against non-finite
+          // percent so the footer never renders `NaN%`.
+          const percent = data.context_usage.percent;
+          patch.contextUsage = Number.isFinite(percent) ? percent / 100 : 0;
+        }
         if (data.context_tokens !== undefined) patch.contextTokens = data.context_tokens;
         if (data.max_context_tokens !== undefined) patch.maxContextTokens = data.max_context_tokens;
         if (data.plan_mode !== undefined) patch.planMode = data.plan_mode;

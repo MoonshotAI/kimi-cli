@@ -70,6 +70,11 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
     .option('--config <toml>', 'Config TOML/JSON string to load.')
     .option('--config-file <path>', 'Config TOML/JSON file to load.')
     .option('-m, --model <name>', 'LLM model to use.')
+    .option(
+      '--raw-model',
+      'Treat --model as a raw model name if it is not a configured alias.',
+      false,
+    )
     .addOption(new Option('--thinking', 'Enable thinking mode.').conflicts('noThinking'))
     .addOption(new Option('--no-thinking', 'Disable thinking mode.'));
 
@@ -146,6 +151,7 @@ export function createProgram(version: string, onMain: MainCommandHandler): Comm
       config: raw['config'] as string | undefined,
       configFile: raw['configFile'] as string | undefined,
       model: raw['model'] as string | undefined,
+      rawModel: Boolean(raw['rawModel']),
       thinking: raw['thinking'] as boolean | undefined,
       yolo: yoloValue,
       plan: raw['plan'] as boolean,

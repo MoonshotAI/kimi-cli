@@ -76,6 +76,29 @@ describe('DefaultSkillManager.init', () => {
     ]);
     expect(manager.getSkillRoots()).toEqual(['/a', '/b']);
   });
+
+  it('captures onSkippedByPolicy callbacks into getSkippedByPolicy()', async () => {
+    const fakeDiscover: typeof import('../../../src/soul-plus/skill/index.js').discoverSkills =
+      async (opts) => {
+        opts.onSkippedByPolicy?.({
+          path: '/fake/flow-thing/SKILL.md',
+          type: 'flow',
+          reason: 'unsupported skill type "flow"',
+        });
+        opts.onSkippedByPolicy?.({
+          path: '/fake/mystery/SKILL.md',
+          type: 'mystery',
+          reason: 'unsupported skill type "mystery"',
+        });
+        return [];
+      };
+    const manager = new DefaultSkillManager({ discover: fakeDiscover });
+    await manager.init([{ path: '/fake', source: 'user' }]);
+    const skipped = manager.getSkippedByPolicy();
+    expect(skipped).toHaveLength(2);
+    expect(skipped[0]?.type).toBe('flow');
+    expect(skipped[1]?.type).toBe('mystery');
+  });
 });
 
 describe('DefaultSkillManager.activate', () => {

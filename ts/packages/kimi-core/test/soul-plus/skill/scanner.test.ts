@@ -196,16 +196,52 @@ describe('discoverSkills', () => {
     expect(warnings.some((w) => w.includes('broken'))).toBe(true);
   });
 
-  it('skips type: flow skills with an "unsupported" warning', async () => {
+  it('type: flow skills are silently skipped by policy (no warning), captured via onSkippedByPolicy', async () => {
     const root = path.join(tmp, 'skills');
     await writeSkill(root, 'flow-thing', '---\nname: flow-thing\ntype: flow\n---\nbody');
     const warnings: string[] = [];
+    const skipped: { path: string; type: string; reason: string }[] = [];
     const skills = await discoverSkills({
       roots: [{ path: root, source: 'user' }],
       onWarning: (msg) => warnings.push(msg),
+      onSkippedByPolicy: (info) => skipped.push(info),
     });
     expect(skills).toHaveLength(0);
-    expect(warnings.some((w) => w.includes('unsupported'))).toBe(true);
+    // No startup stderr noise from the flow-skill policy — it's expected, not an error.
+    expect(warnings).toHaveLength(0);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toMatchObject({ type: 'flow', reason: expect.any(String) });
+    expect(skipped[0]?.path).toContain('flow-thing');
+  });
+
+  it('malformed SKILL.md (non-policy error) still fires onWarning, not onSkippedByPolicy', async () => {
+    const root = path.join(tmp, 'skills');
+    await writeSkill(root, 'broken2', '---\nname: "oops unterminated\n---\nbody');
+    const warnings: string[] = [];
+    const skipped: unknown[] = [];
+    await discoverSkills({
+      roots: [{ path: root, source: 'user' }],
+      onWarning: (msg) => warnings.push(msg),
+      onSkippedByPolicy: (info) => skipped.push(info),
+    });
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+    expect(skipped).toHaveLength(0);
+  });
+
+  it('unsupported non-flow type still routes through onSkippedByPolicy (flow-first is the immediate policy, but the hook covers any supported-set mismatch uniformly)', async () => {
+    const root = path.join(tmp, 'skills');
+    await writeSkill(root, 'mystery', '---\nname: mystery\ntype: mystery-unknown\n---\nbody');
+    const warnings: string[] = [];
+    const skipped: { path: string; type: string }[] = [];
+    const skills = await discoverSkills({
+      roots: [{ path: root, source: 'user' }],
+      onWarning: (msg) => warnings.push(msg),
+      onSkippedByPolicy: (info) => skipped.push(info),
+    });
+    expect(skills).toHaveLength(0);
+    expect(warnings).toHaveLength(0);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.type).toBe('mystery-unknown');
   });
 });
 

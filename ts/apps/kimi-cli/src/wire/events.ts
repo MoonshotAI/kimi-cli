@@ -90,9 +90,20 @@ export interface ToolResultData {
 
 // ── Status Events ───────────────────────────────────────────────────
 
+/**
+ * Phase 18 §A.14 froze `context_usage` as an object with `{used, total,
+ * percent}`. `percent` is 0-100 (integer-ish). The TUI converts to a
+ * 0-1 ratio at the consumer. See `WireHandler.status.update`.
+ */
+export interface ContextUsage {
+  used: number;
+  total: number;
+  percent: number;
+}
+
 /** method: "status.update" */
 export interface StatusUpdateData {
-  context_usage?: number | undefined;
+  context_usage?: ContextUsage | undefined;
   context_tokens?: number | undefined;
   max_context_tokens?: number | undefined;
   token_usage?: TokenUsage | undefined;

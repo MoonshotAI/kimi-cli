@@ -23,7 +23,11 @@ export { SkillParseError, UnsupportedSkillTypeError, parseSkillFromFile } from '
 export type { ParseSkillFromFileOptions } from './parser.js';
 
 export { discoverSkills, resolveSkillRoots } from './scanner.js';
-export type { DiscoverSkillsOptions, ResolveSkillRootsOptions } from './scanner.js';
+export type {
+  DiscoverSkillsOptions,
+  ResolveSkillRootsOptions,
+  SkippedByPolicy,
+} from './scanner.js';
 
 export { DefaultSkillManager, buildInlinePrompt } from './manager.js';
 export type { SkillManagerOptions } from './manager.js';

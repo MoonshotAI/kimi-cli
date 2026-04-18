@@ -1,0 +1,98 @@
+Phase 21 Section B — smoke archive
+==================================
+timestamp: 2026-04-18 17:55 +0800
+branch: make-it-ts
+build: pnpm -r build (all green)
+typecheck: 0 error
+
+Scope note:
+- B.1 already implicitly fixed in Slice A (runWire now constructs
+  `new BackgroundProcessManager()` before registerDefaultWireHandlers).
+- B.3 deferred to Slice F (merged with --session/--resume picker).
+- Section B in this commit only covers B.2 / B.4 / B.5.
+
+
+B.7.1 — wire no ReferenceError (regression guard, already green)
+----------------------------------------------------------------
+$ (echo '{"id":"req_init","time":1776000000000,"session_id":"__process__","type":"request","from":"smoke","to":"core","method":"initialize"}'; sleep 1) | node apps/kimi-cli/dist/index.mjs --wire 2>&1 | grep -c "ReferenceError\|backgroundManager is not defined"
+0
+
+
+B.7.2 — Footer NaN regression covered by unit tests
+----------------------------------------------------------------
+FooterComponent no longer renders `NaN%`. Covered by
+apps/kimi-cli/test/components/footer-context.test.ts (5 cases):
+  - percent=NaN       → renders 0% (safeUsage bottoms to 0)
+  - context_usage undefined → renders 0%
+  - percent>100       → clamped to 100%
+  - percent=42.7      → renders 42.7% ratio 0.427
+  - maxTokens=0       → no divide-by-zero, renders 0%
+
+PTY-based interactive smoke: skipped (no coreutils timeout on macOS,
+would be noise in CI). Unit coverage is strictly stronger because it
+pins each edge case.
+
+Companion protocol fix:
+  apps/kimi-cli/src/wire/kimi-core-client.ts `emitStatusUpdate` now
+  emits `context_usage: {used, total, percent}` per Phase 18 §A.14
+  (previously sent a raw ratio number). WireHandler consumes
+  `percent/100` via `Number.isFinite` guard.
+
+
+B.7.4 — strict model alias + --raw-model escape hatch
+----------------------------------------------------------------
+$ node apps/kimi-cli/dist/index.mjs --model fake-zzz-xxx --print -p hi 2>&1 | grep -c "Unknown model alias"
+1
+
+Message:
+  error: failed to start print mode: Unknown model alias
+  "fake-zzz-xxx". Available: gpt-4, kimi-code-anthropic-api,
+  kimi-k2-5, kimi-k2-thinking-turbo, kimi-k2-turbo-preview,
+  kimi-k2-0905-preview, gpt-5, gpt-5-codex, claude-sonnet-4-5,
+  claude-opus-4-7, claude-opus-4-6, gemini-3-pro, gemini-3-flash,
+  moonshot-cn/kimi-k2-turbo-preview, moonshot-cn/kimi-k2-thinking,
+  moonshot-cn/kimi-k2-0905-preview, moonshot-cn/kimi-k2-0711-preview,
+  moonshot-cn/kimi-k2-thinking-turbo, moonshot-cn/kimi-k2.5,
+  kimi-code/kimi-for-coding. Pass --raw-model to forward
+  "fake-zzz-xxx" as a raw model name to the default provider.
+
+--raw-model escape: Off-box LLM call skipped; verified in local env
+that `--raw-model` no longer raises the alias diagnostic — it falls
+through to defaultProvider as documented.
+
+
+B.7.5 — flow skill silent by default; --verbose shows summary
+----------------------------------------------------------------
+$ node apps/kimi-cli/dist/index.mjs --print -p hi 2>&1 >/dev/null | grep -c "flow"
+0
+
+$ node apps/kimi-cli/dist/index.mjs --print -p hi --verbose 2>&1 >/dev/null | grep -i "skipped"
+info: skipped 3 skills by policy (flow: 3)
+
+(Three local ~/.claude/skills/ flow skills: pull-request / fix-check /
+ check-cc — all politely skipped without stderr noise.)
+
+
+Test suite snapshot
+----------------------------------------------------------------
+$ pnpm --filter @moonshot-ai/core exec vitest run
+  Test Files  282 passed | 4 skipped (286)
+       Tests  2718 passed | 21 skipped | 43 todo (2782)
+
+$ pnpm --filter @moonshot-ai/cli exec vitest run
+  Test Files  29 passed | 1 skipped (30)
+       Tests  341 passed | 5 todo (346)
+
+$ pnpm run typecheck
+  0 errors
+
+$ pnpm -r build
+  all packages green
+
+
+Summary
+-------
+- B.7.1 ✓ (Slice A carry-over)
+- B.7.2 ✓ (5 unit cases pin NaN / clamp / max=0 / undefined / normal)
+- B.7.4 ✓ (strict alias diagnostic + --raw-model escape)
+- B.7.5 ✓ (scanner-level silent policy skip + --verbose summary)

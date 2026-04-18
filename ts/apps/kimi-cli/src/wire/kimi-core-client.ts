@@ -878,12 +878,14 @@ export class KimiCoreClient implements WireClient {
   private emitStatusUpdate(record: ClientSession): void {
     const tokens = record.managed.contextState.tokenCountWithPending;
     const maxTokens = this.maxContextSize ?? 0;
-    const usage = maxTokens > 0 ? Math.min(tokens / maxTokens, 1) : 0;
+    const ratio = maxTokens > 0 ? Math.min(tokens / maxTokens, 1) : 0;
+    // Phase 18 §A.14 froze `context_usage` as `{used, total, percent}`.
+    const percent = Math.round(ratio * 100);
     record.queue.push(
       createEvent(
         'status.update',
         {
-          context_usage: usage,
+          context_usage: { used: tokens, total: maxTokens, percent },
           context_tokens: tokens,
           max_context_tokens: maxTokens,
         },

@@ -250,6 +250,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   const provider = await createProviderFromConfig(kimiConfig, modelAlias, {
     defaultHeaders: buildKimiDefaultHeaders(getVersion()),
     ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+    allowRawModel: opts.rawModel,
   });
 
   /**
@@ -257,6 +258,10 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
    * `/model` to swap the live LLM without restarting the process. The
    * closure captures the already-resolved `kimiConfig` + OAuth bits so
    * the picker path does not need to reload config from disk.
+   *
+   * `/model <alias>` picks from configured aliases, so strict mode
+   * applies here (no raw-model fallback) — typos surface as a clear
+   * error rather than hitting a non-existent endpoint.
    */
   const rebuildRuntimeForModel = async (newModelAlias: string) => {
     const newProvider = await createProviderFromConfig(kimiConfig, newModelAlias, {
@@ -298,6 +303,23 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   const skillRoots = await resolveSkillRoots({ workDir });
   await skillManager.init(skillRoots);
   const kimiSkills = skillManager.getKimiSkillsDescription();
+
+  // Phase 21 B.5 — flow skills (and other unsupported types) are a known
+  // feature gap, not an error. The scanner quietly skips them; hosts that
+  // opt into verbose output can still see a one-line summary.
+  if (opts.verbose || opts.debug) {
+    const skipped = skillManager.getSkippedByPolicy();
+    if (skipped.length > 0) {
+      const byType: Record<string, number> = {};
+      for (const s of skipped) byType[s.type] = (byType[s.type] ?? 0) + 1;
+      const breakdown = Object.entries(byType)
+        .map(([t, n]) => `${t}: ${n}`)
+        .join(', ');
+      process.stderr.write(
+        `info: skipped ${skipped.length} skills by policy (${breakdown})\n`,
+      );
+    }
+  }
 
   const systemPrompt = assembleSystemPrompt(agentSpec, {
     workspaceDir: workDir,
@@ -795,6 +817,7 @@ async function runWire(opts: CLIOptions): Promise<void> {
   const provider = await createProviderFromConfig(kimiConfig, modelAlias, {
     defaultHeaders: buildKimiDefaultHeaders(getVersion()),
     ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+    allowRawModel: opts.rawModel,
   });
   const kosong = createKosongAdapter({ provider });
   // Phase 21 §A — wire-mode model swap mutates the active runtime, so
