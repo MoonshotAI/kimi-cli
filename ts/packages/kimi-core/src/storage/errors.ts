@@ -79,3 +79,37 @@ export class UnsupportedProducerError extends Error {
     this.migrationHint = migrationHint;
   }
 }
+
+/**
+ * Phase 23 — wire.jsonl structural contract violation.
+ *
+ * Raised when the file-level shape disagrees with the v2 §4.1.2 physical
+ * row contract after metadata/producer have been validated:
+ *   - `session-initialized-missing` — line 2 is absent, is not a
+ *     `session_initialized` record, or fails zod parse.
+ *   - `session-initialized-position-wrong` — a `session_initialized` appears
+ *     outside line 2 (e.g. duplicated mid-body).
+ *   - `agent-type-mismatch` — caller expected a main wire but line 2 has
+ *     `agent_type='sub'` (or vice-versa). Raised by `resumeSession` /
+ *     subagent recovery, not by `replayWire` itself.
+ */
+export class MalformedWireError extends Error {
+  readonly reason:
+    | 'session-initialized-missing'
+    | 'session-initialized-position-wrong'
+    | 'agent-type-mismatch';
+  readonly detail: string;
+
+  constructor(
+    reason:
+      | 'session-initialized-missing'
+      | 'session-initialized-position-wrong'
+      | 'agent-type-mismatch',
+    detail: string,
+  ) {
+    super(`Wire file structure invalid (${reason}): ${detail}`);
+    this.name = 'MalformedWireError';
+    this.reason = reason;
+    this.detail = detail;
+  }
+}

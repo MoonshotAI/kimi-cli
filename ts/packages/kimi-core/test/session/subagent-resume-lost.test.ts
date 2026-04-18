@@ -129,7 +129,6 @@ describe('Phase 18 E.1 — Subagent resume `running` → `lost` (multi-record)',
     const resumed = await mgr.resumeSession(sessionId, {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'test-model',
       agentTypeRegistry: createAgentTypeRegistry(),
     });
 
@@ -179,7 +178,6 @@ describe('Phase 18 E.1 — Subagent resume `running` → `lost` (multi-record)',
     const resumed = await mgr.resumeSession(sessionId, {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'test-model',
       agentTypeRegistry: createAgentTypeRegistry(),
     });
     await mgr.closeSession(resumed.sessionId);
@@ -237,7 +235,6 @@ describe('Phase 18 E.1 — Subagent resume `running` → `lost` (multi-record)',
     const resumed = await mgr.resumeSession(sessionId, {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'test-model',
       agentTypeRegistry: createAgentTypeRegistry(),
     });
     await mgr.closeSession(resumed.sessionId);

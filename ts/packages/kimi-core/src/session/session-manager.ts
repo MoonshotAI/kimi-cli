@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 
 import type { AgentTypeRegistry } from '../soul-plus/agent-type-registry.js';
+import { createWiredJournalCapability } from '../soul-plus/journal-capability.js';
 import { SoulLifecycleGate } from '../soul-plus/soul-lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
 import type { ApprovalStateStore } from '../soul-plus/approval-state-store.js';
@@ -47,9 +48,13 @@ import type {
   Tool,
 } from '../soul/index.js';
 import { atomicWrite } from '../storage/atomic-write.js';
-import { UnsupportedProducerError } from '../storage/errors.js';
+import { MalformedWireError, UnsupportedProducerError } from '../storage/errors.js';
 import { getProducerInfo } from '../storage/producer-info.js';
-import type { NotificationRecord, WireProducer } from '../storage/wire-record.js';
+import type {
+  NotificationRecord,
+  SessionInitializedMainRecord,
+  WireProducer,
+} from '../storage/wire-record.js';
 import { recoverRotation } from '../storage/compaction.js';
 import type { FullContextState } from '../storage/context-state.js';
 import { WiredContextState } from '../storage/context-state.js';
@@ -192,10 +197,6 @@ export interface ResumeSessionOptions {
   runtime: Runtime;
   /** Available tools for this session. */
   tools: readonly Tool[];
-  /** Fallback model name (used if no model_changed record exists). */
-  model: string;
-  /** Fallback system prompt (used if no system_prompt_changed record). */
-  systemPrompt?: string | undefined;
   /** Session event bus. */
   eventBus?: SessionEventBus | undefined;
   /** Optional shell delivery callback. */
@@ -206,8 +207,6 @@ export interface ResumeSessionOptions {
   orchestrator?: ToolCallOrchestrator | undefined;
   /** Static permission rules. */
   sessionRules?: readonly PermissionRule[] | undefined;
-  /** Fallback permission mode (used if no permission_mode_changed record). */
-  permissionMode?: PermissionMode | undefined;
   /** Compaction configuration. */
   compactionConfig?: CompactionConfig | undefined;
   /** Phase 2 — compaction provider forwarded into SoulPlus. */
@@ -239,12 +238,6 @@ export interface ManagedSession {
 // ── Supported protocol major version ────────────────────────────────
 
 const SUPPORTED_MAJOR = 2;
-// Phase 21 §A.6.2 — protocol version stamped on the synthetic empty
-// ReplayResult that resumeSession returns when wire.jsonl is missing.
-// Matches the writer's DEFAULT_PROTOCOL_VERSION so the eventual real
-// header (written on the next append) is bit-identical to a fresh
-// createSession.
-const SUPPORTED_RESUME_PROTOCOL_VERSION = '2.1';
 
 // ── SessionManager ──────────────────────────────────────────────────
 
@@ -310,6 +303,23 @@ export class SessionManager {
       filePath: this.paths.wirePath(sessionId),
       lifecycle: lifecycleGate,
     });
+
+    // Phase 23 §Step 5 — append session_initialized as wire.jsonl line 2
+    // before anything else. The record is force-flushed (FORCE_FLUSH_KINDS),
+    // so it's durably on disk before createSession returns; subsequent
+    // resumes read this as the startup-config truth source (C5 / C7).
+    const mainInitInput: Omit<SessionInitializedMainRecord, 'seq' | 'time'> = {
+      type: 'session_initialized',
+      agent_type: 'main',
+      session_id: sessionId,
+      system_prompt: options.systemPrompt ?? '',
+      model: options.model,
+      active_tools: options.tools.map((t) => t.name),
+      permission_mode: options.permissionMode ?? 'default',
+      plan_mode: false,
+      workspace_dir: options.workspaceDir,
+    };
+    await journalWriter.append(mainInitInput);
 
     const sessionJournal = new WiredSessionJournalImpl(journalWriter);
 
@@ -380,9 +390,15 @@ export class SessionManager {
       ...(options.compactionProvider !== undefined
         ? { compactionProvider: options.compactionProvider }
         : {}),
-      ...(options.journalCapability !== undefined
-        ? { journalCapability: options.journalCapability }
-        : {}),
+      // Phase 23 — default to WiredJournalCapability so compaction can
+      // copy session_initialized into the post-rotate wire (§Step 8 / C6).
+      // Callers passing a custom capability (tests, SDK embedders) opt out.
+      journalCapability:
+        options.journalCapability ??
+        createWiredJournalCapability({
+          sessionDir,
+          journalWriter,
+        }),
       // Slice 4.2 — forward the optional orchestrator into SoulPlus so
       // TurnManager's beforeToolCall closure runs the full hook +
       // permission + approval pipeline. Absent the option, TurnManager
@@ -484,62 +500,46 @@ export class SessionManager {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
 
-    // 1. Replay wire.jsonl → records + health
+    // 1. Replay wire.jsonl → records + health + session_initialized baseline.
     //
-    // Phase 21 §A.6.2 — `WiredJournalWriter` writes the metadata header
-    // lazily on the first `append`, so a session that was created and
-    // immediately closed without any downstream activity has a session
-    // directory but **no** wire.jsonl on disk. The wire path
-    // `wireRebuildRuntimeForModel` (`closeSession → resumeSession`) hits
-    // this case for any `session.setModel` issued before the first
-    // prompt. Treat this specific case (sessionDir present, wire.jsonl
-    // missing) as "fresh, empty session" and synthesise an empty
-    // ReplayResult so the writer below can emit a real metadata header
-    // on the next append. A wholly missing sessionDir (ghost session)
-    // still surfaces as the original replay error so callers can tell a
-    // real "session not found" from a fresh resume.
+    // Phase 23 — createSession force-flushes `session_initialized` as line
+    // 2 before returning, so every valid session directory has a real
+    // wire.jsonl on disk. A missing wire.jsonl here means either (a) the
+    // session directory is a ghost (`ses_ghost`), or (b) somebody deleted
+    // the file out from under us — both surface as a "Failed to replay
+    // session" error so callers can distinguish real recovery paths from
+    // corrupted ones.
     let replayResult: ReplayResult;
-    let wireFileMissing = false;
     try {
       replayResult = await replayWire(wirePath, { supportedMajor: SUPPORTED_MAJOR });
     } catch (error) {
-      const fsError = error as NodeJS.ErrnoException;
-      let sessionDirExists = false;
-      if (fsError?.code === 'ENOENT') {
-        try {
-          await stat(sessionDir);
-          sessionDirExists = true;
-        } catch {
-          sessionDirExists = false;
-        }
-      }
-      if (fsError?.code === 'ENOENT' && sessionDirExists) {
-        wireFileMissing = true;
-        replayResult = {
-          records: [],
-          protocolVersion: SUPPORTED_RESUME_PROTOCOL_VERSION,
-          health: 'ok',
-          warnings: [],
-          // Phase 22 — fresh-resume path: no wire file on disk yet, so the
-          // producer will be stamped on the next append from the current
-          // getProducerInfo() snapshot. Mirror that here so `initialMeta`
-          // reports the same value the writer will persist.
-          producer: getProducerInfo(),
-        };
-      } else if (error instanceof UnsupportedProducerError) {
-        // Phase 22 — bubble up unwrapped so host UX can match via
-        // `instanceof` and render a precise migration prompt.
+      if (error instanceof UnsupportedProducerError || error instanceof MalformedWireError) {
+        // Phase 22 / Phase 23 — bubble up unwrapped so host UX can match
+        // via `instanceof` and render a precise migration / corruption
+        // prompt.
         throw error;
-      } else {
-        throw new Error(
-          `Failed to replay session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        );
       }
+      throw new Error(
+        `Failed to replay session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
 
-    // 2. Project records → initial state
-    const projected = projectReplayState(replayResult.records);
+    // Phase 23 — main-wire resume must see agent_type='main' on line 2.
+    // Any other value means the caller pointed at a sub / independent
+    // wire.jsonl, and we refuse to hydrate it as a top-level session.
+    if (replayResult.sessionInitialized.agent_type !== 'main') {
+      throw new MalformedWireError(
+        'agent-type-mismatch',
+        `resumeSession expected agent_type='main' on wire line 2 for "${sessionId}", got agent_type='${replayResult.sessionInitialized.agent_type}'`,
+      );
+    }
+
+    // 2. Project records → initial state (Phase 23: baseline threaded in).
+    const projected = projectReplayState(
+      replayResult.records,
+      replayResult.sessionInitialized,
+    );
 
     // 3. Create JournalWriter in resume mode — same lifecycle sharing
     //    pattern as createSession (Codex Round 2 M3).
@@ -550,11 +550,10 @@ export class SessionManager {
       filePath: wirePath,
       lifecycle: lifecycleGate,
       initialSeq: projected.lastSeq,
-      // Phase 21 §A.6.2 — fresh-resume path has no header on disk yet,
-      // so we MUST let the writer emit one on the next append. Otherwise
-      // the next resume cycle would replay a file whose first line is a
-      // record (not metadata) and fail again.
-      metadataAlreadyWritten: !wireFileMissing,
+      // Phase 23 — wire.jsonl header is already on disk (createSession
+      // force-flushed it), so resume must not rewrite a second metadata
+      // line.
+      metadataAlreadyWritten: true,
     });
 
     const sessionJournal = new WiredSessionJournalImpl(journalWriter);
@@ -566,15 +565,13 @@ export class SessionManager {
 
     // 4. Create WiredContextState hydrated from replay.
     // Deferred TurnManager ref — same pattern as createSession.
+    // Phase 23: model / systemPrompt are now always defined (baseline
+    // comes from session_initialized), so no fallback is needed.
     let turnManagerRef: TurnManager | undefined;
-    const effectiveModel = projected.model ?? options.model;
-    const effectiveSystemPrompt = projected.systemPrompt ?? options.systemPrompt;
     const contextState = new WiredContextState({
       journalWriter,
-      initialModel: effectiveModel,
-      ...(effectiveSystemPrompt !== undefined
-        ? { initialSystemPrompt: effectiveSystemPrompt }
-        : {}),
+      initialModel: projected.model,
+      initialSystemPrompt: projected.systemPrompt,
       ...(projected.activeTools.size > 0 ? { initialActiveTools: projected.activeTools } : {}),
       currentTurnId: () => turnManagerRef?.getCurrentTurnId() ?? 'no_turn',
       initialHistory: projected.messages,
@@ -638,16 +635,17 @@ export class SessionManager {
       ...(pickArchived !== undefined ? { archived: pickArchived } : {}),
       ...(pickLastModel !== undefined ? { last_model: pickLastModel } : {}),
       // Phase 22 — producer is the wire's header value (stamped on create
-      // and never mutated). The fresh-resume branch above synthesises one
-      // from the current getProducerInfo() snapshot so this slot is
-      // always populated.
+      // and never mutated). Phase 23 guarantees a real wire header is on
+      // disk before createSession returns, so this slot is always the
+      // persisted producer snapshot.
       producer: replayResult.producer,
       last_exit_code: 'dirty',
     };
 
     // 7. Assemble SoulPlus (eventBus was built earlier so ContextState
-    // could receive it as `sink`).
-    const effectivePermissionMode = projected.permissionMode ?? options.permissionMode;
+    // could receive it as `sink`). Phase 23: permission mode is always
+    // defined from the baseline — no fallback needed.
+    const effectivePermissionMode = projected.permissionMode;
 
     // Slice 5.3 — stale subagent cleanup (Python parity:
     // `app.py:_cleanup_stale_foreground_subagents`). Runs BEFORE SoulPlus
@@ -680,9 +678,14 @@ export class SessionManager {
       ...(options.compactionProvider !== undefined
         ? { compactionProvider: options.compactionProvider }
         : {}),
-      ...(options.journalCapability !== undefined
-        ? { journalCapability: options.journalCapability }
-        : {}),
+      // Phase 23 — default to WiredJournalCapability on the resume path
+      // too so compaction after resume still copies session_initialized.
+      journalCapability:
+        options.journalCapability ??
+        createWiredJournalCapability({
+          sessionDir,
+          journalWriter,
+        }),
       // Slice 4.2 — forward the optional orchestrator on the resume
       // path too so resumed sessions run the same tool pipeline.
       ...(options.orchestrator !== undefined ? { orchestrator: options.orchestrator } : {}),
@@ -719,17 +722,14 @@ export class SessionManager {
     // ensures the model does not double-count.
     await soulPlus.init();
 
-    // Restore permission mode from replay if it was changed.
-    if (effectivePermissionMode !== undefined) {
-      turnManagerRef.setPermissionMode(effectivePermissionMode);
-    }
+    // Phase 23 — permission mode is always defined from the wire baseline.
+    turnManagerRef.setPermissionMode(effectivePermissionMode);
 
-    // Slice 5.2 (T3.5) — restore plan_mode. Replay value wins over
-    // state.json (it carries finer-grained sequencing); state.json
-    // serves as a fallback for sessions whose wire was truncated.
-    const persistedPlanMode = stateData?.plan_mode;
-    const effectivePlanMode = projected.planMode ?? persistedPlanMode;
-    if (effectivePlanMode === true) {
+    // Slice 5.2 (T3.5) — restore plan_mode. Phase 23 projects from the
+    // `session_initialized` baseline so `projected.planMode` is always
+    // a concrete boolean; the old `?? stateData?.plan_mode` fallback
+    // branch was unreachable and got removed under Review M3.
+    if (projected.planMode) {
       turnManagerRef.setPlanMode(true);
     }
 

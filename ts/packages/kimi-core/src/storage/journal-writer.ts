@@ -47,6 +47,10 @@ export type AppendInput = {
  */
 const COMPACTION_OWN_WRITE_TYPES: ReadonlySet<WireRecordType> = new Set<WireRecordType>([
   'compaction',
+  // Phase 23 — the compaction orchestrator copies `session_initialized`
+  // into the post-rotate wire (L2) via `appendBoundary`, which routes
+  // through the writer while the lifecycle gate is in 'compacting'.
+  'session_initialized',
 ]);
 
 /**
@@ -63,6 +67,10 @@ export const FORCE_FLUSH_KINDS: ReadonlySet<string> = new Set<string>([
   'turn_end',
   'subagent_completed',
   'subagent_failed',
+  // Phase 23 — `session_initialized` is the SIGKILL-resistant baseline.
+  // Without it the wire can't be resumed, so we block the first createSession
+  // return on a real fsync (v2 §4.5.4 + phase-23 §Step 5.2).
+  'session_initialized',
 ]);
 
 /** Default drain timer cadence for `fsyncMode: 'batched'`. */

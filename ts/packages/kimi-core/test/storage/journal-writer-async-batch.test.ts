@@ -140,16 +140,23 @@ describe('WiredJournalWriter async-batch — batched drain behaviour', () => {
 // ── 2. FORCE_FLUSH_KINDS ──────────────────────────────────────────────
 
 describe('WiredJournalWriter async-batch — FORCE_FLUSH_KINDS', () => {
-  it('pins exactly the four boundary record types (regression guard)', () => {
-    // §9.x recovery matrix relies on these four "boundary evidence" record
+  it('pins exactly the five boundary record types (regression guard)', () => {
+    // §9.x recovery matrix relies on these "boundary evidence" record
     // types being durable at `append` resolve time. Pinning the set here
     // prevents a future drive-by edit from silently reclassifying one of
-    // them into the async-batch path.
+    // them into the async-batch path. Phase 23 adds `session_initialized`
+    // as the line-2 baseline (spec §5.2).
     const actual = [...FORCE_FLUSH_KINDS].sort();
     expect(actual).toEqual(
-      ['approval_response', 'subagent_completed', 'subagent_failed', 'turn_end'].sort(),
+      [
+        'approval_response',
+        'session_initialized',
+        'subagent_completed',
+        'subagent_failed',
+        'turn_end',
+      ].sort(),
     );
-    expect(FORCE_FLUSH_KINDS.size).toBe(4);
+    expect(FORCE_FLUSH_KINDS.size).toBe(5);
   });
 
   it('turn_end is durable on disk before the drain timer fires', async () => {

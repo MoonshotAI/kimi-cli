@@ -1096,12 +1096,12 @@ async function runWire(opts: CLIOptions): Promise<void> {
       const resumed = await sessionManager.resumeSession(sessionId, {
         runtime: currentRuntime,
         tools: [],
-        model: newModelAlias,
         eventBus,
         orchestrator,
       });
-      // Append the `model_changed` record so the change is durable on
-      // the resumed session's journal.
+      // Phase 23 — baseline model comes from wire.jsonl line 2. The
+      // new alias is applied next via setModel(), which also writes a
+      // durable `model_changed` record so subsequent resumes see it.
       await resumed.soulPlus.setModel(newModelAlias);
     });
     // Store an error-swallowing tail so a failed swap does not wedge

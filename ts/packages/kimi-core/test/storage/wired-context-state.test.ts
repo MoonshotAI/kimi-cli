@@ -20,6 +20,7 @@ import {
   WiredJournalWriter,
 } from '../../src/storage/journal-writer.js';
 import { replayWire } from '../../src/storage/replay.js';
+import type { SessionInitializedMainRecord } from '../../src/storage/wire-record.js';
 
 class StubGate implements LifecycleGate {
   state: LifecycleState = 'active';
@@ -46,6 +47,7 @@ afterEach(async () => {
 function makeState(): {
   state: WiredContextState;
   filePath: string;
+  writer: WiredJournalWriter;
 } {
   const filePath = join(workDir, 'wire.jsonl');
   const writer = new WiredJournalWriter({
@@ -66,7 +68,27 @@ function makeState(): {
     initialSystemPrompt: '',
     currentTurnId: () => 't1',
   });
-  return { state, filePath };
+  return { state, filePath, writer };
+}
+
+async function writeSessionInitialized(writer: WiredJournalWriter): Promise<void> {
+  // Phase 23 — tests that call `replayWire` on the wire file after writing
+  // body records need line 2 to be a valid session_initialized. In real code
+  // SessionManager writes this right after opening the writer; the tests
+  // skip SessionManager and drive WiredContextState directly, so we inline
+  // the baseline here.
+  const init: Omit<SessionInitializedMainRecord, 'seq' | 'time'> = {
+    type: 'session_initialized',
+    agent_type: 'main',
+    session_id: 'ses_test',
+    system_prompt: '',
+    model: 'moonshot-v1',
+    active_tools: [],
+    permission_mode: 'default',
+    plan_mode: false,
+    workspace_dir: '/tmp/ws',
+  };
+  await writer.append(init);
 }
 
 describe('WiredContextState — initial state', () => {
@@ -112,7 +134,8 @@ describe('WiredContextState — appendUserMessage', () => {
     // Phase 14 review BLK-1 — appendUserMessage must write `content`
     // as the parts array when `input.parts` is supplied so session
     // resume can reconstruct image_url / video_url attachments.
-    const { state, filePath } = makeState();
+    const { state, filePath, writer } = makeState();
+    await writeSessionInitialized(writer);
 
     const parts = [
       { type: 'text', text: 'describe this' },
@@ -328,7 +351,8 @@ describe('WiredContextState — appendToolResult undefined output (Slice 1 audit
   });
 
   it('persists `output: undefined` as `output: null`, replayable with schema ok', async () => {
-    const { state, filePath } = makeState();
+    const { state, filePath, writer } = makeState();
+    await writeSessionInitialized(writer);
     await state.appendAssistantMessage({
       text: null,
       think: null,

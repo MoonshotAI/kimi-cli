@@ -110,7 +110,6 @@ describe('SessionManager.resumeSession — producer propagation (T3)', () => {
       await mgr.resumeSession('ses_python', {
         runtime: createNoopRuntime(),
         tools: [],
-        model: 'test-model',
       });
     } catch (err) {
       caught = err;
@@ -135,7 +134,6 @@ describe('SessionManager.resumeSession — producer propagation (T3)', () => {
       await mgr.resumeSession('ses_legacy', {
         runtime: createNoopRuntime(),
         tools: [],
-        model: 'test-model',
       });
     } catch (err) {
       caught = err;
@@ -174,7 +172,6 @@ describe('SessionManager.resumeSession — producer propagation (T3)', () => {
     const resumed = await freshMgr.resumeSession('ses_ts', {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'test-model',
     });
     expect(resumed.sessionId).toBe('ses_ts');
   });
@@ -192,7 +189,6 @@ describe('SessionManager.resumeSession — producer propagation (T3)', () => {
       mgr.resumeSession('ses_python_hint', {
         runtime: createNoopRuntime(),
         tools: [],
-        model: 'test-model',
       }),
     ).rejects.toThrow(/incompatible/i);
   });
@@ -218,6 +214,19 @@ describe('SessionManager.resumeSession — producer propagation (T3)', () => {
           created_at: 1_700_000_000_000,
           producer: { kind: 'typescript', name: '@moonshot-ai/core', version: '0.1.0' },
         }),
+        JSON.stringify({
+          type: 'session_initialized',
+          seq: 0,
+          time: 0,
+          agent_type: 'main',
+          session_id: 'ses_corrupt',
+          system_prompt: '',
+          model: 'm',
+          active_tools: [],
+          permission_mode: 'default',
+          plan_mode: false,
+          workspace_dir: '/tmp/ws',
+        }),
         JSON.stringify({ type: 'user_message', seq: 1, time: 1, turn_id: 't1', content: 'ok' }),
         '{"type":"user_message","se',
         JSON.stringify({
@@ -239,7 +248,6 @@ describe('SessionManager.resumeSession — producer propagation (T3)', () => {
       await mgr.resumeSession('ses_corrupt', {
         runtime: createNoopRuntime(),
         tools: [],
-        model: 'test-model',
       });
     } catch (err) {
       caught = err;

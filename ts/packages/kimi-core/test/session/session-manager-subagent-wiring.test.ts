@@ -155,7 +155,6 @@ describe('SessionManager AgentTool wiring (Slice 5.3 T1)', () => {
     const resumed = await mgr.resumeSession('ses_resume_wire', {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'test-model',
       agentTypeRegistry: registry,
     });
     const names = resumed.soulPlus.getTools().map((t) => t.name);
@@ -207,7 +206,6 @@ describe('SessionManager AgentTool wiring (Slice 5.3 T1)', () => {
       const resumed = await mgr.resumeSession('ses_stale_subagent', {
         runtime: createNoopRuntime(),
         tools: [],
-        model: 'test-model',
         agentTypeRegistry: registry,
       });
 

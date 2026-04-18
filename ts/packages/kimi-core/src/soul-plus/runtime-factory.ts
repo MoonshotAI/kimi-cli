@@ -67,5 +67,12 @@ export function createStubJournalCapability(): JournalCapability {
       rotationCount += 1;
       return { archiveFile: `wire.${rotationCount}.jsonl` };
     },
+    async readSessionInitialized() {
+      throw new Error('createStubJournalCapability.readSessionInitialized is not supported');
+    },
+    async appendBoundary() {
+      // No-op: stub capability doesn't actually rotate the wire, so
+      // there's nothing to copy.
+    },
   };
 }

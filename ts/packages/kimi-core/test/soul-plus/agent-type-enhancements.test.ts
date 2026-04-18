@@ -171,6 +171,7 @@ function makeDeps(kosong: KosongAdapter): SubagentRunnerDeps {
     parentRuntime: createFakeRuntime(kosong),
     sessionDir: tmp,
     parentModel: 'test-model',
+    parentSessionId: 'ses_test_parent',
   };
 }
 

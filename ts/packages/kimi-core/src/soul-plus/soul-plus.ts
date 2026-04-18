@@ -242,6 +242,10 @@ export class SoulPlus {
                     ? { pathConfig: deps.pathConfig }
                     : {}),
                   sessionId: deps.sessionId,
+                  // Phase 23 — stamped onto the child `session_initialized`
+                  // (parent_session_id lineage field) so the child wire
+                  // chains back to its owning main session.
+                  parentSessionId: deps.sessionId,
                 },
                 agentId,
                 request,

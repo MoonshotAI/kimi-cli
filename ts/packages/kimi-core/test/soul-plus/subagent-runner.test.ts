@@ -105,6 +105,7 @@ function makeDeps(kosong: KosongAdapter): SubagentRunnerDeps {
     parentRuntime: createFakeRuntime(kosong),
     sessionDir: tmp,
     parentModel: 'test-model',
+    parentSessionId: 'ses_test_parent',
   };
 }
 
@@ -364,6 +365,7 @@ describe('runSubagentTurn without parent channels (Phase 15 B.3 C3)', () => {
       parentRuntime: base.parentRuntime,
       sessionDir: base.sessionDir,
       parentModel: base.parentModel,
+      parentSessionId: base.parentSessionId,
     };
 
     const result = await runSubagentTurn(

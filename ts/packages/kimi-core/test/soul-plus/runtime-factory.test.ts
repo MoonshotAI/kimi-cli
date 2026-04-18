@@ -73,6 +73,12 @@ describe('createRuntime — Phase 2 single-field Runtime', () => {
         async rotate() {
           return { archiveFile: 'ignored.jsonl' };
         },
+        async readSessionInitialized() {
+          throw new Error('legacy journal should not leak onto Runtime — readSessionInitialized');
+        },
+        async appendBoundary() {
+          throw new Error('legacy journal should not leak onto Runtime — appendBoundary');
+        },
       },
     });
 

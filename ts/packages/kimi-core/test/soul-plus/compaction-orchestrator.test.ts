@@ -64,15 +64,36 @@ function makeSpyProvider(summary?: RuntimeSummaryMessage): SpyProvider {
 
 interface SpyJournal extends JournalCapability {
   readonly rotations: unknown[];
+  readonly boundaries: unknown[];
 }
 
 function makeSpyJournal(): SpyJournal {
   const rotations: unknown[] = [];
+  const boundaries: unknown[] = [];
   return {
     rotations,
+    boundaries,
     async rotate(record) {
       rotations.push(record);
       return { archiveFile: `wire.${rotations.length}.jsonl` };
+    },
+    async readSessionInitialized() {
+      return {
+        type: 'session_initialized',
+        seq: 1,
+        time: 0,
+        agent_type: 'main',
+        session_id: 'ses_test',
+        system_prompt: '',
+        model: 'test-model',
+        active_tools: [],
+        permission_mode: 'default',
+        plan_mode: false,
+        workspace_dir: '/tmp/ws',
+      };
+    },
+    async appendBoundary(record) {
+      boundaries.push(record);
     },
   };
 }
@@ -228,6 +249,12 @@ describe('CompactionOrchestrator — executeCompaction', () => {
         flushCountAtRotate = h.flushSpy.mock.calls.length;
         return h.journal.rotate(record);
       },
+      async readSessionInitialized() {
+        return h.journal.readSessionInitialized();
+      },
+      async appendBoundary(record) {
+        return h.journal.appendBoundary(record);
+      },
     };
     const deps: CompactionOrchestratorDeps = { ...h.deps, journalCapability: wrappedJournal };
     const orchestrator = new CompactionOrchestrator(deps);
@@ -251,6 +278,12 @@ describe('CompactionOrchestrator — executeCompaction', () => {
   it('throws a "requires journalCapability" error when journalCapability is a throwing stub', async () => {
     const stubJournal: JournalCapability = {
       async rotate() {
+        throw new Error('CompactionOrchestrator requires a real journalCapability');
+      },
+      async readSessionInitialized() {
+        throw new Error('CompactionOrchestrator requires a real journalCapability');
+      },
+      async appendBoundary() {
         throw new Error('CompactionOrchestrator requires a real journalCapability');
       },
     };

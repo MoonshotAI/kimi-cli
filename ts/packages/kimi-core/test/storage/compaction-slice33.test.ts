@@ -19,6 +19,19 @@ import { recoverRotation, replayWireSession, rotateJournal } from '../../src/sto
 import { InMemoryContextState, type SummaryMessage } from '../../src/storage/context-state.js';
 import { WiredJournalWriter } from '../../src/storage/journal-writer.js';
 import { replayWire } from '../../src/storage/replay.js';
+import type { SessionInitializedMainRecord } from '../../src/storage/wire-record.js';
+
+const TEST_SESSION_INIT: Omit<SessionInitializedMainRecord, 'seq' | 'time'> = {
+  type: 'session_initialized',
+  agent_type: 'main',
+  session_id: 'ses_test',
+  system_prompt: '',
+  model: 'm',
+  active_tools: [],
+  permission_mode: 'default',
+  plan_mode: false,
+  workspace_dir: '/tmp/ws',
+};
 
 // ── M04: recoverRotation — metadata-only detection ──────────────────
 
@@ -120,6 +133,54 @@ describe('recoverRotation — metadata-only half-complete detection (M04)', () =
     expect(recovered).toBe(true);
     const content = await readFile(join(workDir, 'wire.jsonl'), 'utf8');
     expect(content).toBe(archiveContent);
+  });
+
+  // Phase 23 / T7.7 — appendBoundary copies session_initialized into the
+  // new wire as line 2. If the process crashes AFTER session_initialized
+  // but BEFORE the CompactionRecord lands, the new wire has exactly two
+  // lines (metadata + session_initialized) and no archive back-pointer.
+  // Replay would succeed but the post-boundary window would be empty and
+  // the archived conversation would be orphaned. recoverRotation must
+  // detect this two-line window and roll back to the archive.
+  it('detects metadata + session_initialized (no compaction) → rolls back (T7.7)', async () => {
+    const archiveContent =
+      '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
+      '{"type":"session_initialized","seq":0,"time":900,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}\n' +
+      '{"type":"user_message","seq":1,"time":901,"turn_id":"t1","content":"important data"}\n';
+    await writeFile(join(workDir, 'wire.1.jsonl'), archiveContent, 'utf8');
+
+    // Half-complete rotation: metadata + session_initialized (line 2 is
+    // the appendBoundary copy), but the CompactionRecord never landed.
+    await writeFile(
+      join(workDir, 'wire.jsonl'),
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
+        '{"type":"session_initialized","seq":1,"time":1000,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}\n',
+      'utf8',
+    );
+
+    const recovered = await recoverRotation(workDir);
+
+    expect(recovered).toBe(true);
+    const content = await readFile(join(workDir, 'wire.jsonl'), 'utf8');
+    expect(content).toBe(archiveContent);
+  });
+
+  it('does NOT recover when line 3 is the compaction record (T7.7 complement)', async () => {
+    // Full appendBoundary + resetToSummary completed: lines = metadata +
+    // session_initialized + compaction. No recovery needed.
+    const archiveContent =
+      '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
+      '{"type":"user_message","seq":1,"time":901,"turn_id":"t1","content":"old"}\n';
+    await writeFile(join(workDir, 'wire.1.jsonl'), archiveContent, 'utf8');
+
+    const completedContent =
+      '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
+      '{"type":"session_initialized","seq":1,"time":1000,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}\n' +
+      '{"type":"compaction","seq":2,"time":1001,"summary":"c","compacted_range":{"from_turn":1,"to_turn":1,"message_count":1},"pre_compact_tokens":100,"post_compact_tokens":20,"trigger":"auto"}\n';
+    await writeFile(join(workDir, 'wire.jsonl'), completedContent, 'utf8');
+
+    const recovered = await recoverRotation(workDir);
+    expect(recovered).toBe(false);
   });
 });
 
@@ -233,6 +294,7 @@ describe('End-to-end: compaction rotation + replay', () => {
     // Step 1: Create a wire.jsonl with some conversation
     const originalContent =
       '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
+      '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}\n' +
       '{"type":"assistant_message","seq":2,"time":1002,"turn_id":"t1","text":"hi","think":null,"tool_calls":[],"model":"m","usage":{"input_tokens":10,"output_tokens":5}}\n' +
       '{"type":"user_message","seq":3,"time":1003,"turn_id":"t2","content":"how are you?"}\n';
@@ -266,6 +328,10 @@ describe('End-to-end: compaction rotation + replay', () => {
       config: { fsyncMode: 'per-record' },
     });
 
+    // Phase 23 — emulate journalCapability.appendBoundary(sessionInitialized)
+    // by writing the copied session_initialized as line 2 before the boundary.
+    await writer.append(TEST_SESSION_INIT);
+
     const compactionRecord = await writer.append({
       type: 'compaction',
       summary: 'User greeted assistant, assistant responded.',
@@ -275,7 +341,7 @@ describe('End-to-end: compaction rotation + replay', () => {
       trigger: 'auto',
       archive_file: 'wire.1.jsonl',
     });
-    expect(compactionRecord.seq).toBe(1);
+    expect(compactionRecord.seq).toBe(2);
 
     // Step 4: Replay both files
     const archiveReplay = await replayWire(join(workDir, 'wire.1.jsonl'), { supportedMajor: 2 });
@@ -284,7 +350,7 @@ describe('End-to-end: compaction rotation + replay', () => {
 
     const currentReplay = await replayWire(join(workDir, 'wire.jsonl'), { supportedMajor: 2 });
     expect(currentReplay.health).toBe('ok');
-    expect(currentReplay.records.length).toBe(1); // compaction record
+    expect(currentReplay.records.length).toBe(1); // compaction record (session_initialized extracted out)
     expect(currentReplay.records[0]!.type).toBe('compaction');
 
     // Step 5: Full session replay
@@ -302,6 +368,7 @@ describe('End-to-end: compaction rotation + replay', () => {
     // Create initial wire.jsonl
     const originalContent =
       '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}\n' +
+      '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}\n' +
       '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"old message"}\n';
     const filePath = join(workDir, 'wire.jsonl');
     await writeFile(filePath, originalContent, 'utf8');
@@ -329,7 +396,9 @@ describe('End-to-end: compaction rotation + replay', () => {
       config: { fsyncMode: 'per-record' },
     });
 
-    // Write compaction record (allowed in compacting state)
+    // Phase 23 — appendBoundary contract: write session_initialized (line 2)
+    // + compaction record. Both are permitted under the 'compacting' gate.
+    await writer.append(TEST_SESSION_INIT);
     await writer.append({
       type: 'compaction',
       summary: 'Old message was about something.',
@@ -352,10 +421,12 @@ describe('End-to-end: compaction rotation + replay', () => {
     // Replay the new file
     const currentReplay = await replayWire(filePath, { supportedMajor: 2 });
     expect(currentReplay.health).toBe('ok');
+    // session_initialized (line 2) is extracted out → 2 body records
     expect(currentReplay.records.length).toBe(2);
     expect(currentReplay.records[0]!.type).toBe('compaction');
     expect(currentReplay.records[1]!.type).toBe('user_message');
-    expect(currentReplay.records[0]!.seq).toBe(1);
-    expect(currentReplay.records[1]!.seq).toBe(2);
+    // seq 1 = session_initialized, 2 = compaction, 3 = user_message
+    expect(currentReplay.records[0]!.seq).toBe(2);
+    expect(currentReplay.records[1]!.seq).toBe(3);
   });
 });

@@ -13,8 +13,29 @@ import { describe, expect, it } from 'vitest';
 
 import { InMemoryContextState } from '../../src/storage/context-state.js';
 import { PlanModeChangedRecordSchema } from '../../src/storage/wire-record.js';
-import type { PlanModeChangedRecord } from '../../src/storage/wire-record.js';
+import type {
+  PlanModeChangedRecord,
+  SessionInitializedMainRecord,
+} from '../../src/storage/wire-record.js';
 import type { WireEventMethod } from '../../src/wire-protocol/types.js';
+
+// Phase 23 — projector requires the session_initialized baseline as its
+// second argument. These tests only care about the planMode overlay, so
+// the baseline is fixed to a bland default that plan_mode_changed
+// records will override.
+const PLAN_MODE_BASELINE: SessionInitializedMainRecord = {
+  type: 'session_initialized',
+  seq: 1,
+  time: 0,
+  agent_type: 'main',
+  session_id: 'ses_plan_mode',
+  system_prompt: '',
+  model: 'test-model',
+  active_tools: [],
+  permission_mode: 'default',
+  plan_mode: false,
+  workspace_dir: '/tmp/ws',
+};
 
 // ── PlanModeChangedRecord schema tests ────────────────────────────────
 
@@ -101,7 +122,7 @@ describe('Resume restores plan mode (Phase 15 A.5)', () => {
     const records: PlanModeChangedRecord[] = [
       { type: 'plan_mode_changed', seq: 1, time: Date.now(), enabled: true },
     ];
-    const state = projectReplayState(records);
+    const state = projectReplayState(records, PLAN_MODE_BASELINE);
     expect(state.planMode).toBe(true);
   });
 
@@ -111,7 +132,7 @@ describe('Resume restores plan mode (Phase 15 A.5)', () => {
       { type: 'plan_mode_changed', seq: 1, time: Date.now(), enabled: true },
       { type: 'plan_mode_changed', seq: 2, time: Date.now(), enabled: false },
     ];
-    const state = projectReplayState(records);
+    const state = projectReplayState(records, PLAN_MODE_BASELINE);
     expect(state.planMode).toBe(false);
   });
 });

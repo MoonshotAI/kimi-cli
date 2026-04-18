@@ -16,6 +16,19 @@ import {
   WiredJournalWriter,
 } from '../../src/storage/journal-writer.js';
 import { replayWire } from '../../src/storage/replay.js';
+import type { SessionInitializedMainRecord } from '../../src/storage/wire-record.js';
+
+const TEST_SESSION_INIT: Omit<SessionInitializedMainRecord, 'seq' | 'time'> = {
+  type: 'session_initialized',
+  agent_type: 'main',
+  session_id: 'ses_test',
+  system_prompt: '',
+  model: 'm',
+  active_tools: [],
+  permission_mode: 'default',
+  plan_mode: false,
+  workspace_dir: '/tmp/ws',
+};
 
 class StubGate implements LifecycleGate {
   state: LifecycleState = 'active';
@@ -369,24 +382,26 @@ describe('WiredJournalWriter — resume bootstrap (Slice 1 audit M1)', () => {
     const filePath = join(workDir, 'wire.jsonl');
 
     // Pass 1: simulate an original writer that creates the file and lays
-    // down metadata + three records.
+    // down metadata + session_initialized + three body records.
     const first = new WiredJournalWriter({
       filePath,
       lifecycle: new StubGate(),
       protocolVersion: '2.1',
       now: () => 1_000,
     });
+    // Phase 23 — line 2 must be session_initialized.
+    await first.append(TEST_SESSION_INIT);
     await first.append({ type: 'user_message', turn_id: 't1', content: 'a' });
     await first.append({ type: 'user_message', turn_id: 't1', content: 'b' });
     const last = await first.append({ type: 'user_message', turn_id: 't1', content: 'c' });
-    expect(last.seq).toBe(3);
+    expect(last.seq).toBe(4);
     // Phase 3: drain the first writer's async-batch buffer so its records
     // are on disk before a second writer tries to resume from the file.
     await first.flush();
 
     // Pass 2: simulate process restart. A fresh writer that knows the
-    // on-disk state (lastSeq = 3, metadata already written) must NOT emit
-    // a second metadata row and must allocate seq=4 for the next record.
+    // on-disk state (lastSeq = 4, metadata already written) must NOT emit
+    // a second metadata row and must allocate seq=5 for the next record.
     const resumed = new WiredJournalWriter({
       filePath,
       lifecycle: new StubGate(),
@@ -397,16 +412,17 @@ describe('WiredJournalWriter — resume bootstrap (Slice 1 audit M1)', () => {
     });
     const d = await resumed.append({ type: 'user_message', turn_id: 't2', content: 'd' });
     const e = await resumed.append({ type: 'user_message', turn_id: 't2', content: 'e' });
-    expect(d.seq).toBe(4);
-    expect(e.seq).toBe(5);
+    expect(d.seq).toBe(5);
+    expect(e.seq).toBe(6);
     // Phase 3: drain the resumed writer's batch queue before replay.
     await resumed.flush();
 
     // Whole-file replay must see exactly one metadata header and
-    // contiguous seq 1..5 in call order.
+    // contiguous seq 2..6 in call order (session_initialized seq=1 is
+    // extracted out of records[] per Phase 23).
     const result = await replayWire(filePath, { supportedMajor: 2 });
     expect(result.health).toBe('ok');
-    expect(result.records.map((r) => r.seq)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.records.map((r) => r.seq)).toEqual([2, 3, 4, 5, 6]);
     // Only one metadata header in the raw file (replayWire strips it,
     // so check the raw text too for extra safety).
     const rawLines = (await readFile(filePath, 'utf8'))

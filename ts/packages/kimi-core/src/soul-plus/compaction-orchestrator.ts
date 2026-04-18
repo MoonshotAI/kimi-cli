@@ -83,6 +83,7 @@ export class CompactionOrchestrator {
   ): Promise<void> {
     const machine = this.deps.lifecycleStateMachine;
     machine.transitionTo('compacting');
+    let tailUserText: string | undefined;
     try {
       this.deps.sink.emit({ type: 'compaction.begin' });
       signal.throwIfAborted();
@@ -97,6 +98,11 @@ export class CompactionOrchestrator {
       );
       signal.throwIfAborted();
 
+      // Phase 23 — capture the current `session_initialized` baseline
+      // BEFORE rotate so we can copy it into line 2 of the post-rotate
+      // wire (v2 §4.1.2 + C6).
+      const sessionInitialized = await this.deps.journalCapability.readSessionInitialized();
+
       // Phase 3 铁律: drain the async-batch buffer BEFORE rotate so no
       // in-memory record lands in the post-rotation wire.jsonl after the
       // rename.
@@ -107,6 +113,10 @@ export class CompactionOrchestrator {
         summary,
         parent_file: '',
       });
+
+      // Phase 23 — copy the baseline as line 2 of the new wire BEFORE
+      // resetToSummary writes the compaction record at line 3.
+      await this.deps.journalCapability.appendBoundary(sessionInitialized);
 
       const storageSummary = bridgeSummaryMessage(
         summary,
@@ -121,11 +131,11 @@ export class CompactionOrchestrator {
       // on an unpaired user message (no assistant response followed), the summary
       // above just absorbed that user text and the LLM would see no standalone
       // "pending user message" to reply to — the next turn would produce no
-      // response. Re-append the tail user_message verbatim so Soul can act on it.
-      const tailUserText = extractUnpairedTailUserText(messages);
-      if (tailUserText !== undefined) {
-        await this.deps.contextState.appendUserMessage({ text: tailUserText });
-      }
+      // response. Capture the tail text here, but defer the re-append until
+      // AFTER the lifecycle machine leaves 'compacting' (the user_message
+      // record type is not in COMPACTION_OWN_WRITE_TYPES, so writing it
+      // while gated throws JournalGatedError).
+      tailUserText = extractUnpairedTailUserText(messages);
 
       this.deps.sink.emit({
         type: 'compaction.end',
@@ -136,6 +146,13 @@ export class CompactionOrchestrator {
       // Drain back to `active` even on abort so the TurnManager while-loop
       // can observe a consistent state on the next iteration.
       machine.transitionTo('active');
+    }
+
+    // Tail re-append runs after `transitionTo('active')` so the
+    // user_message write passes the lifecycle gate (决策 #101 +
+    // Phase 23 §Step 8).
+    if (tailUserText !== undefined) {
+      await this.deps.contextState.appendUserMessage({ text: tailUserText });
     }
   }
 

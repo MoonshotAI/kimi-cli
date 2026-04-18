@@ -52,7 +52,23 @@ function makeStubCompactionProvider(): CompactionProvider {
 }
 
 function makeStubJournalCapability(): JournalCapability {
-  return { rotate: vi.fn().mockResolvedValue({ archiveFile: 'wire.1.jsonl' }) };
+  return {
+    rotate: vi.fn().mockResolvedValue({ archiveFile: 'wire.1.jsonl' }),
+    readSessionInitialized: vi.fn().mockResolvedValue({
+      type: 'session_initialized',
+      seq: 1,
+      time: 0,
+      agent_type: 'main',
+      session_id: 'ses_test',
+      system_prompt: '',
+      model: 'test-model',
+      active_tools: [],
+      permission_mode: 'default',
+      plan_mode: false,
+      workspace_dir: '/tmp/ws',
+    }),
+    appendBoundary: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 function makeStubSink(): EventSink {

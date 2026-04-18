@@ -25,7 +25,7 @@
 import type { ContentPart, Message, ToolCall } from '@moonshot-ai/kosong';
 
 import type { PermissionMode } from '../soul-plus/permission/index.js';
-import type { WireRecord } from '../storage/wire-record.js';
+import type { SessionInitializedRecord, WireRecord } from '../storage/wire-record.js';
 
 /** Whitelist of valid PermissionMode values for safe runtime validation. */
 const VALID_PERMISSION_MODES: ReadonlySet<string> = new Set<string>([
@@ -37,24 +37,22 @@ const VALID_PERMISSION_MODES: ReadonlySet<string> = new Set<string>([
 export interface ReplayProjectedState {
   /** Conversation messages for `WiredContextState.initialHistory`. */
   readonly messages: readonly Message[];
-  /** Last model set via `model_changed`, or `undefined` if never changed. */
-  readonly model: string | undefined;
-  /** Last system prompt set via `system_prompt_changed`, or `undefined`. */
-  readonly systemPrompt: string | undefined;
-  /** Active tool set built from `tools_changed` records. */
+  /** Final model after baseline + overlay (Phase 23: always set from init record). */
+  readonly model: string;
+  /** Final system prompt after baseline + overlay (Phase 23: always set). */
+  readonly systemPrompt: string;
+  /** Active tool set: baseline from init record + tools_changed overlays. */
   readonly activeTools: ReadonlySet<string>;
   /** `seq` of the last record — used as `JournalWriter.initialSeq`. */
   readonly lastSeq: number;
-  /** Last permission mode from `permission_mode_changed`, or `undefined`. */
-  readonly permissionMode: PermissionMode | undefined;
+  /** Final permission mode after baseline + overlay (Phase 23: always set). */
+  readonly permissionMode: PermissionMode;
   /** Accumulated token count (mirrors ContextState._tokenCountWithPending). */
   readonly tokenCount: number;
-  /**
-   * Slice 5.2: last plan mode set via `plan_mode_changed`, or `undefined`
-   * when the session never toggled plan mode. Resume passes this into
-   * TurnManager so a session paused mid-plan-mode comes back in plan mode.
-   */
-  readonly planMode: boolean | undefined;
+  /** Final plan mode after baseline + overlay (Phase 23: always set). */
+  readonly planMode: boolean;
+  /** Workspace dir captured in the session_initialized baseline. */
+  readonly workspaceDir: string;
   /**
    * Phase 16 / 决策 #113 — merged sessionMeta patch, built by folding
    * `session_meta_changed` records in seq order and deriving:
@@ -78,18 +76,28 @@ export interface ReplayProjectedState {
  * Project replayed WireRecords into the initial state needed to hydrate a
  * resumed `WiredContextState`.
  *
+ * Phase 23 — the `sessionInitialized` baseline is the truth source for
+ * startup config (system_prompt / model / active_tools / permission_mode /
+ * plan_mode / workspace_dir). Subsequent `*_changed` records in `records`
+ * overlay the baseline.
+ *
  * @param records — ordered records from `replayWire().records`
+ * @param sessionInitialized — the line-2 baseline from `replayWire().sessionInitialized`
  * @returns Projected state suitable for `WiredContextState` constructor.
  */
-export function projectReplayState(records: readonly WireRecord[]): ReplayProjectedState {
+export function projectReplayState(
+  records: readonly WireRecord[],
+  sessionInitialized: SessionInitializedRecord,
+): ReplayProjectedState {
   let messages: Message[] = [];
-  let model: string | undefined;
-  let systemPrompt: string | undefined;
-  const activeTools = new Set<string>();
+  let model: string = sessionInitialized.model;
+  let systemPrompt: string = sessionInitialized.system_prompt;
+  const activeTools = new Set<string>(sessionInitialized.active_tools);
   let lastSeq = 0;
-  let permissionMode: PermissionMode | undefined;
+  let permissionMode: PermissionMode = sessionInitialized.permission_mode;
   let tokenCount = 0;
-  let planMode: boolean | undefined;
+  let planMode: boolean = sessionInitialized.plan_mode;
+  const workspaceDir: string = sessionInitialized.workspace_dir;
   const sessionMetaPatch: ReplayProjectedState['sessionMetaPatch'] = { turn_count: 0 };
 
   for (const r of records) {
@@ -257,6 +265,7 @@ export function projectReplayState(records: readonly WireRecord[]): ReplayProjec
     permissionMode,
     tokenCount,
     planMode,
+    workspaceDir,
     sessionMetaPatch,
   };
 }

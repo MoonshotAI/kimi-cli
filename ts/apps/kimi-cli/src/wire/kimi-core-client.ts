@@ -426,11 +426,14 @@ export class KimiCoreClient implements WireClient {
       approvalRuntime,
     });
 
+    // Phase 23 §C3 / L3.1 — startup-config fields (model, systemPrompt,
+    // permissionMode, workspaceDir) only belong to createSession: on resume
+    // the truth source is `session_initialized` read back from wire.jsonl,
+    // so passing them into resumeSession would bypass the hard contract.
+    // Keep them out of the shared bag and only spread into the create branch.
     const commonOptions = {
       runtime: this.runtime,
       tools: [...sessionTools],
-      model: this.model,
-      systemPrompt: this.deps.systemPrompt,
       eventBus,
       orchestrator,
       onShellDeliver,
@@ -456,6 +459,8 @@ export class KimiCoreClient implements WireClient {
       mode.kind === 'create'
         ? await this.deps.sessionManager.createSession({
             ...commonOptions,
+            model: this.model,
+            systemPrompt: this.deps.systemPrompt,
             workspaceDir: mode.workDir,
           })
         : await this.deps.sessionManager.resumeSession(mode.sessionId, commonOptions);

@@ -43,4 +43,10 @@ export const SUBAGENT_JOURNAL_CAPABILITY: JournalCapability = {
   async rotate() {
     throw new Error('Subagent journal rotation is not supported');
   },
+  async readSessionInitialized() {
+    throw new Error('Subagent journal rotation is not supported');
+  },
+  async appendBoundary() {
+    throw new Error('Subagent journal rotation is not supported');
+  },
 };

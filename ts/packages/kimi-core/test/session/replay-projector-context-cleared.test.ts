@@ -14,7 +14,27 @@
 import { describe, expect, it } from 'vitest';
 
 import { projectReplayState } from '../../src/session/replay-projector.js';
-import type { WireRecord } from '../../src/storage/wire-record.js';
+import type {
+  SessionInitializedMainRecord,
+  WireRecord,
+} from '../../src/storage/wire-record.js';
+
+// Phase 23 — every projection needs a baseline from wire.jsonl line 2.
+// These tests exercise the cleared-conversation projection semantics, so
+// the config-class side is pinned to a bland default.
+const BASELINE: SessionInitializedMainRecord = {
+  type: 'session_initialized',
+  seq: 1,
+  time: 0,
+  agent_type: 'main',
+  session_id: 'ses_test',
+  system_prompt: '',
+  model: 'test-model',
+  active_tools: [],
+  permission_mode: 'default',
+  plan_mode: false,
+  workspace_dir: '/tmp/ws',
+};
 
 // ── Record factories (mirror the existing replay-projector.test.ts style) ─
 
@@ -65,7 +85,7 @@ describe('projectReplayState — context_cleared resets conversation', () => {
       cleared(3),
     ];
 
-    const result = projectReplayState(records);
+    const result = projectReplayState(records, BASELINE);
 
     expect(result.messages).toHaveLength(0);
     expect(result.tokenCount).toBe(0);
@@ -81,7 +101,7 @@ describe('projectReplayState — context_cleared resets conversation', () => {
       assistant(5, 't2', 'reply2', { input_tokens: 20, output_tokens: 10 }),
     ];
 
-    const result = projectReplayState(records);
+    const result = projectReplayState(records, BASELINE);
 
     expect(result.messages).toHaveLength(2);
     expect(result.messages[0]!.role).toBe('user');
@@ -99,7 +119,7 @@ describe('projectReplayState — context_cleared resets conversation', () => {
       cleared(4),
     ];
 
-    const result = projectReplayState(records);
+    const result = projectReplayState(records, BASELINE);
 
     expect(result.messages).toHaveLength(0);
     expect(result.tokenCount).toBe(0);
@@ -109,7 +129,7 @@ describe('projectReplayState — context_cleared resets conversation', () => {
   it('a lone context_cleared with no prior conversation stays empty', () => {
     const records: WireRecord[] = [cleared(1)];
 
-    const result = projectReplayState(records);
+    const result = projectReplayState(records, BASELINE);
 
     expect(result.messages).toHaveLength(0);
     expect(result.tokenCount).toBe(0);
@@ -147,7 +167,7 @@ describe('projectReplayState — context_cleared preserves config-class state', 
       cleared(6),
     ];
 
-    const result = projectReplayState(records);
+    const result = projectReplayState(records, BASELINE);
 
     expect(result.messages).toHaveLength(0);
     expect(result.tokenCount).toBe(0);
@@ -174,7 +194,7 @@ describe('projectReplayState — context_cleared preserves config-class state', 
       cleared(4),
     ];
 
-    const result = projectReplayState(records);
+    const result = projectReplayState(records, BASELINE);
 
     expect(result.permissionMode).toBe('bypassPermissions');
     expect(result.planMode).toBe(true);
@@ -202,7 +222,7 @@ describe('projectReplayState — context_cleared after compaction', () => {
       cleared(4),
     ];
 
-    const result = projectReplayState(records);
+    const result = projectReplayState(records, BASELINE);
 
     expect(result.messages).toHaveLength(0);
     expect(result.tokenCount).toBe(0);

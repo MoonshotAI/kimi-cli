@@ -2,13 +2,16 @@ import { readFile } from 'node:fs/promises';
 
 import {
   IncompatibleVersionError,
+  MalformedWireError,
   UnsupportedProducerError,
   WireJournalCorruptError,
 } from './errors.js';
 import type { LifecycleGate } from './journal-writer.js';
 import {
+  SessionInitializedRecordSchema,
   WireFileMetadataSchema,
   WireRecordSchema,
+  type SessionInitializedRecord,
   type WireFileMetadata,
   type WireProducer,
   type WireRecord,
@@ -28,6 +31,13 @@ export interface ReplayResult {
    * after the producer hard check succeeds (i.e. kind === 'typescript').
    */
   readonly producer: WireProducer;
+  /**
+   * Phase 23 — the `session_initialized` record parsed from wire line 2.
+   * This is the startup-config truth source that resume reads directly
+   * (§4.1.2). Not included in `records` (extracted out so body replay
+   * stays purely about events, not baselines).
+   */
+  readonly sessionInitialized: SessionInitializedRecord;
 }
 
 export interface ReplayOptions {
@@ -108,13 +118,49 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
   }
   const producer = meta.producer;
 
-  // 3. Replay body lines.
+  // 2c. Phase 23 — parse session_initialized on line 2.
+  //     Missing / non-matching type / schema-invalid → MalformedWireError.
+  //     The record is extracted out of `records[]` and exposed on
+  //     `ReplayResult.sessionInitialized` (v2 §4.1.2 truth-source contract).
+  const initLine = lines[1];
+  if (initLine === undefined) {
+    throw new MalformedWireError(
+      'session-initialized-missing',
+      `wire.jsonl has no line 2 (session_initialized) at ${path}`,
+    );
+  }
+  let initRaw: unknown;
+  try {
+    initRaw = JSON.parse(initLine);
+  } catch (error) {
+    throw new MalformedWireError(
+      'session-initialized-missing',
+      `wire.jsonl line 2 failed JSON.parse: ${String(error)}`,
+    );
+  }
+  const initTypeField = (initRaw as { type?: unknown } | null)?.type;
+  if (initTypeField !== 'session_initialized') {
+    throw new MalformedWireError(
+      'session-initialized-missing',
+      `wire.jsonl line 2 has type="${String(initTypeField)}"; expected "session_initialized"`,
+    );
+  }
+  const initParsed = SessionInitializedRecordSchema.safeParse(initRaw);
+  if (!initParsed.success) {
+    throw new MalformedWireError(
+      'session-initialized-missing',
+      `wire.jsonl line 2 failed zod parse: ${initParsed.error.message}`,
+    );
+  }
+  const sessionInitialized = initParsed.data;
+
+  // 3. Replay body lines (from line 3 onward).
   const records: WireRecord[] = [];
   const warnings: string[] = [];
-  const bodyLines = lines.slice(1);
+  const bodyLines = lines.slice(2);
 
   for (const [i, line] of bodyLines.entries()) {
-    const physicalLineNo = i + 2;
+    const physicalLineNo = i + 3;
     const isLastLine = i === bodyLines.length - 1;
     const snippet = line.slice(0, 100);
 
@@ -134,11 +180,21 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
         brokenReason: reason,
         warnings,
         producer,
+        sessionInitialized,
       };
     }
 
-    // Unknown record type → skip + warn (forward compatibility).
+    // Phase 23 — session_initialized must only appear on line 2. A body
+    // occurrence means the writer violated the physical layout contract.
     const typeField = (raw as { type?: unknown } | null)?.type;
+    if (typeField === 'session_initialized') {
+      throw new MalformedWireError(
+        'session-initialized-position-wrong',
+        `wire.jsonl has a session_initialized record at line ${physicalLineNo}; only line 2 is permitted`,
+      );
+    }
+
+    // Unknown record type → skip + warn (forward compatibility).
     if (typeof typeField !== 'string' || !KNOWN_RECORD_TYPES.has(typeField)) {
       warnings.push(
         `Skipping unrecognized record type "${String(typeField)}" at line ${physicalLineNo}: ${snippet}`,
@@ -166,6 +222,7 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
         brokenReason: reason,
         warnings,
         producer,
+        sessionInitialized,
       };
     }
     records.push(parsed.data);
@@ -177,6 +234,7 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
     health: 'ok',
     warnings,
     producer,
+    sessionInitialized,
   };
 }
 

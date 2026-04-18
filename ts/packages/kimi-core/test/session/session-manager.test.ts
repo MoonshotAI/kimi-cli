@@ -100,7 +100,7 @@ describe('SessionManager.createSession', () => {
     ).rejects.toThrow('Session already exists');
   });
 
-  it('writes wire.jsonl metadata header on first journal append', async () => {
+  it('writes wire.jsonl metadata header + session_initialized on create, then body records after', async () => {
     const mgr = new SessionManager(paths);
     const session = await mgr.createSession({
       workspaceDir: tmpDir,
@@ -127,15 +127,21 @@ describe('SessionManager.createSession', () => {
 
     const wireContent = await readFile(paths.wirePath('ses_wire'), 'utf-8');
     const lines = wireContent.trim().split('\n');
-    expect(lines.length).toBeGreaterThanOrEqual(2);
+    expect(lines.length).toBeGreaterThanOrEqual(3);
 
     // First line is the metadata header.
     const meta = JSON.parse(lines[0]!);
     expect(meta.type).toBe('metadata');
     expect(meta.protocol_version).toBeDefined();
 
-    // Second line is the turn_begin record.
-    const record = JSON.parse(lines[1]!);
+    // Phase 23 — second line is session_initialized baseline.
+    const init = JSON.parse(lines[1]!);
+    expect(init.type).toBe('session_initialized');
+    expect(init.agent_type).toBe('main');
+    expect(init.session_id).toBe('ses_wire');
+
+    // Third line is the turn_begin record.
+    const record = JSON.parse(lines[2]!);
     expect(record.type).toBe('turn_begin');
     expect(record.turn_id).toBe('turn_test');
   });
@@ -199,12 +205,10 @@ describe('SessionManager.resumeSession', () => {
     await mgr.closeSession('ses_resume');
     expect(mgr.get('ses_resume')).toBeUndefined();
 
-    // 3. Resume.
+    // 3. Resume — Phase 23: model / systemPrompt read from wire baseline.
     const resumed = await mgr.resumeSession('ses_resume', {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'model-v1',
-      systemPrompt: 'Initial prompt.',
     });
 
     expect(resumed.sessionId).toBe('ses_resume');
@@ -247,7 +251,6 @@ describe('SessionManager.resumeSession', () => {
     const resumed = await mgr.resumeSession('ses_model', {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'old-model', // fallback
     });
 
     expect(resumed.contextState.model).toBe('new-model');
@@ -260,7 +263,6 @@ describe('SessionManager.resumeSession', () => {
       mgr.resumeSession('ses_ghost', {
         runtime: createNoopRuntime(),
         tools: [],
-        model: 'test',
       }),
     ).rejects.toThrow('Failed to replay session ses_ghost');
   });
@@ -280,7 +282,6 @@ describe('SessionManager.resumeSession', () => {
       mgr.resumeSession('ses_active', {
         runtime: createNoopRuntime(),
         tools: [],
-        model: 'test',
       }),
     ).rejects.toThrow('Session already active');
   });
@@ -339,7 +340,6 @@ describe('Slice 4.3 Part 5 — SessionInfo.workspace_dir', () => {
     await freshMgr.resumeSession('ses_ws_resume', {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'm',
     });
     const list = await freshMgr.listSessions();
     const info = list.find((s) => s.session_id === 'ses_ws_resume');
@@ -552,7 +552,6 @@ describe('Codex Round 2 M1 — resumeSession calls recoverRotation', () => {
     const resumed = await freshMgr.resumeSession('ses_recover', {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'test-model',
     });
 
     // 4. Verify context was restored with the original conversation.
@@ -614,12 +613,170 @@ describe('Codex Round 2 M3 — JournalWriter shares lifecycle with SoulPlus', ()
     // The wire.jsonl should have been created with records.
     const wireContent = await readFile(paths.wirePath('ses_lifecycle'), 'utf-8');
     const lines = wireContent.trim().split('\n');
-    // metadata + turn_begin
-    expect(lines.length).toBe(2);
+    // Phase 23 — metadata + session_initialized + turn_begin
+    expect(lines.length).toBe(3);
   });
 });
 
 // ── End-to-end: create → write → close → resume → verify ──────────
+
+// ════════════════════════════════════════════════════════════════════
+// Phase 23 T5 — create → close → resume persists systemPrompt/model
+//               via wire session_initialized (no resumeSession fallback)
+//
+// Post-Phase-23 contract:
+//   - ResumeSessionOptions no longer accepts `model` / `systemPrompt`
+//     / `permissionMode` (deleted by spec §Step 6.1, C3).
+//   - Start-config truth source is wire.jsonl line 2 (session_initialized).
+//   - Subsequent *_changed records overlay the baseline.
+//
+// The tests in this block call resumeSession WITHOUT those fields. They
+// will fail at the current signature (the fields are still allowed) until
+// Step 6.1 + Step 6.2 land.
+// ════════════════════════════════════════════════════════════════════
+
+describe('Phase 23 T5 — systemPrompt / model persist via wire, not fallback', () => {
+  it('T5.1 — create({ systemPrompt: "X" }) → close → resume → ContextState.systemPrompt === "X" with no fallback passed', async () => {
+    const mgr = new SessionManager(paths);
+    await mgr.createSession({
+      sessionId: 'ses_t5_prompt',
+      workspaceDir: tmpDir,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'm',
+      systemPrompt: 'baseline-prompt',
+    });
+    await mgr.closeSession('ses_t5_prompt');
+
+    const freshMgr = new SessionManager(paths);
+    const resumed = await freshMgr.resumeSession('ses_t5_prompt', {
+      runtime: createNoopRuntime(),
+      tools: [],
+      // no systemPrompt — the wire is the truth source
+    });
+
+    expect(resumed.contextState.systemPrompt).toBe('baseline-prompt');
+  });
+
+  it('T5.2 — create({ model: "A" }) → setModel("B") → close → resume → ContextState.model === "B"', async () => {
+    const mgr = new SessionManager(paths);
+    const session = await mgr.createSession({
+      sessionId: 'ses_t5_model',
+      workspaceDir: tmpDir,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'model-A',
+    });
+    await session.contextState.applyConfigChange({
+      type: 'model_changed',
+      old_model: 'model-A',
+      new_model: 'model-B',
+    });
+    await mgr.closeSession('ses_t5_model');
+
+    const freshMgr = new SessionManager(paths);
+    const resumed = await freshMgr.resumeSession('ses_t5_model', {
+      runtime: createNoopRuntime(),
+      tools: [],
+      // no model fallback
+    });
+
+    expect(resumed.contextState.model).toBe('model-B');
+  });
+
+  it('T5.3 — empty systemPrompt at create → resume yields "", not undefined', async () => {
+    const mgr = new SessionManager(paths);
+    await mgr.createSession({
+      sessionId: 'ses_t5_empty',
+      workspaceDir: tmpDir,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'm',
+      // no systemPrompt
+    });
+    await mgr.closeSession('ses_t5_empty');
+
+    const freshMgr = new SessionManager(paths);
+    const resumed = await freshMgr.resumeSession('ses_t5_empty', {
+      runtime: createNoopRuntime(),
+      tools: [],
+    });
+    expect(resumed.contextState.systemPrompt).toBe('');
+  });
+
+  it('T5.4 — permission_mode baseline persists through resume without fallback', async () => {
+    const mgr = new SessionManager(paths);
+    await mgr.createSession({
+      sessionId: 'ses_t5_perm',
+      workspaceDir: tmpDir,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'm',
+      permissionMode: 'acceptEdits',
+    });
+    await mgr.closeSession('ses_t5_perm');
+
+    const freshMgr = new SessionManager(paths);
+    const resumed = await freshMgr.resumeSession('ses_t5_perm', {
+      runtime: createNoopRuntime(),
+      tools: [],
+    });
+
+    // TurnManager is initialized with permissionMode from the projected
+    // baseline — check via SoulPlus runtime facade.
+    const turnMgr = resumed.soulPlus.getTurnManager();
+    expect(turnMgr.getPermissionMode()).toBe('acceptEdits');
+  });
+
+  it('T5.5 — agent_type mismatch: main wire whose session_initialized has agent_type="sub" raises MalformedWireError', async () => {
+    // Craft a wire.jsonl where line 2 is a sub session_initialized.
+    // resumeSession treats the path as main wire and must reject.
+    const { writeFile: fsWrite, mkdir: fsMkdir } = await import('node:fs/promises');
+    const sessionId = 'ses_t5_mismatch';
+    const sessionDir = paths.sessionDir(sessionId);
+    await fsMkdir(sessionDir, { recursive: true });
+    const wirePath = paths.wirePath(sessionId);
+
+    const metadataLine = JSON.stringify({
+      type: 'metadata',
+      protocol_version: '2.1',
+      created_at: Date.now(),
+      producer: { kind: 'typescript', name: '@moonshot-ai/core', version: '1.0.0' },
+    });
+    const subInitLine = JSON.stringify({
+      type: 'session_initialized',
+      seq: 1,
+      time: 1,
+      agent_type: 'sub',
+      agent_id: 'sa_misplaced',
+      parent_session_id: 'ses_parent',
+      parent_tool_call_id: 'tc_x',
+      run_in_background: false,
+      system_prompt: '',
+      model: 'm',
+      active_tools: [],
+      permission_mode: 'default',
+      plan_mode: false,
+      workspace_dir: '/tmp/ws',
+    });
+    await fsWrite(wirePath, metadataLine + '\n' + subInitLine + '\n', 'utf8');
+
+    const { MalformedWireError } = await import('../../src/storage/errors.js');
+
+    const mgr = new SessionManager(paths);
+    let caught: unknown;
+    try {
+      await mgr.resumeSession(sessionId, {
+        runtime: createNoopRuntime(),
+        tools: [],
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(MalformedWireError);
+    expect((caught as { reason: string }).reason).toBe('agent-type-mismatch');
+  });
+});
 
 describe('SessionManager end-to-end lifecycle', () => {
   it('full create → close → resume cycle preserves conversation', async () => {
@@ -667,8 +824,6 @@ describe('SessionManager end-to-end lifecycle', () => {
     const resumed = await freshMgr.resumeSession('ses_e2e', {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'gpt-4',
-      systemPrompt: 'You are a helpful assistant.',
     });
 
     // Verify conversation restored.

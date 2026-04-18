@@ -105,7 +105,11 @@ export async function migratePythonSession(
   });
   for (const w of mapped.warnings) report(w);
 
-  // Resolve work_dir: explicit option → kimi.json lookup → null.
+  // Resolve work_dir: explicit option → kimi.json lookup → throw. Phase 23
+  // (Review N3) requires the baseline to carry a real workspace_dir — the
+  // previous `'/'` fallback masked misconfigured callers and the migrated
+  // session would then resume against a bogus workspace. If neither source
+  // surfaces a path we fail loudly so the caller must decide.
   let workDirPath: string | null = null;
   if (options.migratedFrom?.workDirPath !== undefined) {
     workDirPath = options.migratedFrom.workDirPath;
@@ -117,16 +121,43 @@ export async function migratePythonSession(
       join(options.sourceDir.replace(/\/+$/, ''), '..', '..', '..', 'kimi.json');
     workDirPath = await resolveWorkDirFromKimiJson(defaultKimiJson, sessionId);
   }
+  if (workDirPath === null || workDirPath.length === 0) {
+    throw new MigrationError(
+      `Cannot migrate session "${sessionId}": workspace_dir is unresolved. ` +
+        `Pass \`migratedFrom.workDirPath\` explicitly, or ensure kimi.json ` +
+        `has a work_dirs entry with last_session_id="${sessionId}".`,
+    );
+  }
 
   const now = (options.now ?? Date.now)();
   const targetWirePath = join(options.targetDir, 'wire.jsonl');
   const targetStatePath = join(options.targetDir, 'state.json');
+
+  // Extract the initial system prompt (if any) from mapped records so
+  // the session_initialized baseline carries it. The first
+  // `system_prompt_changed` record (if any) is the project's bootstrap
+  // prompt emitted from context.jsonl's `_system_prompt` row.
+  const firstSystemPromptRecord = mapped.records.find(
+    (r): r is { type: 'system_prompt_changed'; new_prompt: string } =>
+      r.type === 'system_prompt_changed',
+  );
+  const initialSystemPrompt = firstSystemPromptRecord?.new_prompt ?? '';
+  // Phase 23 (Review N3) — mirror mapper.ts's fallback chain so the
+  // baseline `session_initialized.model` and the mapper's inline model
+  // stamps agree: options.fallbackModel > state.plan_slug > 'unknown'.
+  const baselineModel = options.fallbackModel ?? state?.plan_slug ?? 'unknown';
 
   try {
     await writeMigratedWire(
       targetWirePath,
       mapped.records,
       wireResult.metadata?.protocol_version ?? null,
+      {
+        sessionId,
+        systemPrompt: initialSystemPrompt,
+        model: baselineModel,
+        workspaceDir: workDirPath,
+      },
     );
     await writeMigratedState(targetStatePath, {
       sessionId,
@@ -143,18 +174,20 @@ export async function migratePythonSession(
     throw new MigrationError(`Failed to write migrated session to ${options.targetDir}`, error);
   }
 
-  // Verify the output is readable — if the writer produced anything at all.
-  if (mapped.records.length > 0) {
-    const replay = await replayWire(targetWirePath, {
-      supportedMajor: options.supportedWireMajor ?? 2,
-    });
-    if (replay.health !== 'ok') {
-      throw new MigrationError(
-        `Migrated wire.jsonl failed post-write replay: ${replay.brokenReason ?? 'unknown'}`,
-      );
-    }
-    for (const w of replay.warnings) report(w);
+  // Phase 23 (Review N4) — verify the migrated wire is replay-ready
+  // unconditionally. Previously this was gated on `mapped.records.length
+  // > 0`, but the baseline (metadata + session_initialized) itself can
+  // regress (e.g. bad workspace_dir, malformed producer stamp) and we
+  // want those caught here instead of the first resume.
+  const replay = await replayWire(targetWirePath, {
+    supportedMajor: options.supportedWireMajor ?? 2,
+  });
+  if (replay.health !== 'ok') {
+    throw new MigrationError(
+      `Migrated wire.jsonl failed post-write replay: ${replay.brokenReason ?? 'unknown'}`,
+    );
   }
+  for (const w of replay.warnings) report(w);
 
   return {
     sessionId,

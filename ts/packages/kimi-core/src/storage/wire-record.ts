@@ -466,6 +466,59 @@ export interface ContextClearedRecord {
   time: number;
 }
 
+// ── Phase 23: session_initialized (startup config truth source) ───────
+//
+// Physical wire layout (v2 §4.1.2): line 1 = metadata, line 2 =
+// session_initialized, lines 3+ = body records. This record captures the
+// session's startup configuration (system_prompt, model, active_tools, ...)
+// so resume reads the truth directly from wire rather than relying on
+// caller-provided fallbacks.
+//
+// Discriminator: `agent_type` with 3 branches (main / sub / independent).
+// Phase 1 only implements main + sub at runtime; the independent slot is
+// reserved (C8) for future standalone agents.
+
+interface SessionInitializedCommonFields {
+  type: 'session_initialized';
+  seq: number;
+  time: number;
+  system_prompt: string;
+  model: string;
+  /** Names of tools registered at session start (not full tool defs). */
+  active_tools: string[];
+  permission_mode: 'default' | 'acceptEdits' | 'bypassPermissions';
+  plan_mode: boolean;
+  workspace_dir: string;
+  thinking_level?: string | undefined;
+}
+
+export interface SessionInitializedMainRecord extends SessionInitializedCommonFields {
+  agent_type: 'main';
+  session_id: string;
+}
+
+export interface SessionInitializedSubRecord extends SessionInitializedCommonFields {
+  agent_type: 'sub';
+  agent_id: string;
+  agent_name?: string | undefined;
+  parent_session_id: string;
+  /** Omitted when parent is the top-level session (sentinel `agent_main`). */
+  parent_agent_id?: string | undefined;
+  parent_tool_call_id: string;
+  run_in_background: boolean;
+}
+
+export interface SessionInitializedIndependentRecord extends SessionInitializedCommonFields {
+  agent_type: 'independent';
+  agent_id: string;
+  agent_name?: string | undefined;
+}
+
+export type SessionInitializedRecord =
+  | SessionInitializedMainRecord
+  | SessionInitializedSubRecord
+  | SessionInitializedIndependentRecord;
+
 // ── Reserved: context edit (logical rewind / edit, §4.7) ───────────────
 
 export interface ContextEditRecord {
@@ -511,7 +564,8 @@ export type WireRecord =
   | OwnershipChangedRecord
   | ContextEditRecord
   | ContextClearedRecord
-  | SessionMetaChangedRecord;
+  | SessionMetaChangedRecord
+  | SessionInitializedRecord;
 
 export type WireRecordType = WireRecord['type'];
 
@@ -1008,6 +1062,79 @@ const _rawContextClearedRecordSchema = z.object({
 export const ContextClearedRecordSchema: z.ZodType<ContextClearedRecord> =
   _rawContextClearedRecordSchema;
 
+// ── Phase 23 — session_initialized schemas (nested discriminatedUnion) ──
+//
+// IMPORTANT — zod version contract (Review N2):
+// `session_initialized` sits inside an outer `discriminatedUnion('type',
+// [...])` that spans every wire record (see `WireRecord` schema below),
+// but its own branches also form a `discriminatedUnion('agent_type',
+// [...])`. Zod v4 (currently ≥ 4.3.x in package.json) supports this
+// nested shape natively — the outer DU sees the inner DU as a single
+// branch keyed by `type: 'session_initialized'` and delegates to the
+// inner DU for the agent-kind discriminator. Prior to v3.22 this nested
+// form required `z.union([...])` fallbacks at the inner layer.
+//
+// If this project ever upgrades the major zod version (v5+), re-verify:
+//   1. `WireRecordSchema.parse(initRecord)` still routes through the
+//      inner `discriminatedUnion` (no fallback to `z.union` inference).
+//   2. The `_driftGuard_SessionInitializedRecord` test at the bottom of
+//      this file still compiles without `any` leakage.
+//   3. The Phase 23 record-shape tests under `test/storage/` still pass
+//      — a regression in nested-DU inference typically surfaces as
+//      "extra property allowed on wrong agent_type" or as cross-branch
+//      parse errors.
+
+const _sessionInitializedCommonShape = {
+  type: z.literal('session_initialized'),
+  seq: z.number(),
+  time: z.number(),
+  system_prompt: z.string(),
+  model: z.string(),
+  active_tools: z.array(z.string()),
+  permission_mode: z.enum(['default', 'acceptEdits', 'bypassPermissions']),
+  plan_mode: z.boolean(),
+  workspace_dir: z.string(),
+  thinking_level: z.string().optional(),
+} as const;
+
+const _rawSessionInitializedMainSchema = z.object({
+  ..._sessionInitializedCommonShape,
+  agent_type: z.literal('main'),
+  session_id: z.string(),
+});
+export const SessionInitializedMainRecordSchema: z.ZodType<SessionInitializedMainRecord> =
+  _rawSessionInitializedMainSchema;
+
+const _rawSessionInitializedSubSchema = z.object({
+  ..._sessionInitializedCommonShape,
+  agent_type: z.literal('sub'),
+  agent_id: z.string(),
+  agent_name: z.string().optional(),
+  parent_session_id: z.string(),
+  parent_agent_id: z.string().optional(),
+  parent_tool_call_id: z.string(),
+  run_in_background: z.boolean(),
+});
+export const SessionInitializedSubRecordSchema: z.ZodType<SessionInitializedSubRecord> =
+  _rawSessionInitializedSubSchema;
+
+const _rawSessionInitializedIndependentSchema = z.object({
+  ..._sessionInitializedCommonShape,
+  agent_type: z.literal('independent'),
+  agent_id: z.string(),
+  agent_name: z.string().optional(),
+});
+export const SessionInitializedIndependentRecordSchema: z.ZodType<SessionInitializedIndependentRecord> =
+  _rawSessionInitializedIndependentSchema;
+
+const _rawSessionInitializedRecordSchema = z.discriminatedUnion('agent_type', [
+  _rawSessionInitializedMainSchema,
+  _rawSessionInitializedSubSchema,
+  _rawSessionInitializedIndependentSchema,
+]);
+export const SessionInitializedRecordSchema: z.ZodType<SessionInitializedRecord> =
+  _rawSessionInitializedRecordSchema;
+
 // ── Discriminated union over all record types ──────────────────────────
 
 // ── Compile-time drift guard ────────────────────────────────────────────
@@ -1179,6 +1306,26 @@ const _driftGuard_SessionMetaChangedRecord: AssertEqual<
   SessionMetaChangedRecord
 > = true;
 void _driftGuard_SessionMetaChangedRecord;
+const _driftGuard_SessionInitializedMain: AssertEqual<
+  z.infer<typeof _rawSessionInitializedMainSchema>,
+  SessionInitializedMainRecord
+> = true;
+void _driftGuard_SessionInitializedMain;
+const _driftGuard_SessionInitializedSub: AssertEqual<
+  z.infer<typeof _rawSessionInitializedSubSchema>,
+  SessionInitializedSubRecord
+> = true;
+void _driftGuard_SessionInitializedSub;
+const _driftGuard_SessionInitializedIndependent: AssertEqual<
+  z.infer<typeof _rawSessionInitializedIndependentSchema>,
+  SessionInitializedIndependentRecord
+> = true;
+void _driftGuard_SessionInitializedIndependent;
+const _driftGuard_SessionInitializedRecord: AssertEqual<
+  z.infer<typeof _rawSessionInitializedRecordSchema>,
+  SessionInitializedRecord
+> = true;
+void _driftGuard_SessionInitializedRecord;
 
 // Note: WireRecordSchema is a z.ZodType<WireRecord> discriminatedUnion over
 // all the `_raw*Schema` branches above; each branch already has its own
@@ -1213,4 +1360,5 @@ export const WireRecordSchema: z.ZodType<WireRecord> = z.discriminatedUnion('typ
   _rawContextEditRecordSchema,
   _rawContextClearedRecordSchema,
   _rawSessionMetaChangedRecordSchema,
+  _rawSessionInitializedRecordSchema,
 ]);

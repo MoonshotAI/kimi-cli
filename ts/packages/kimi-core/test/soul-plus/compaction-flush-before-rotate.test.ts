@@ -143,6 +143,24 @@ describe('TurnManager.executeCompaction — flush before rotate (Phase 3)', () =
         flushCallsAtRotate = flushSpy.mock.calls.length;
         return { archiveFile: 'wire.1.jsonl' };
       },
+      async readSessionInitialized() {
+        return {
+          type: 'session_initialized',
+          seq: 1,
+          time: 0,
+          agent_type: 'main',
+          session_id: 'ses_test',
+          system_prompt: '',
+          model: 'test-model',
+          active_tools: [],
+          permission_mode: 'default',
+          plan_mode: false,
+          workspace_dir: '/tmp/ws',
+        };
+      },
+      async appendBoundary() {
+        // no-op
+      },
     };
 
     const stateMachine = new SessionLifecycleStateMachine(); // starts in 'idle'

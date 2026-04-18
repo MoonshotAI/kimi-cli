@@ -44,6 +44,7 @@ import {
   type LifecycleState,
 } from '../storage/journal-writer.js';
 import type { SessionJournal } from '../storage/session-journal.js';
+import type { SessionInitializedSubRecord } from '../storage/wire-record.js';
 import type { AgentResult, SpawnRequest } from './subagent-types.js';
 import type { AgentTypeRegistry } from './agent-type-registry.js';
 import { collectGitContext } from './git-context.js';
@@ -121,6 +122,18 @@ export interface SubagentRunnerDeps {
    * Required iff `pathConfig` is supplied; ignored otherwise.
    */
   readonly sessionId?: string | undefined;
+  /**
+   * Phase 23 — parent *main* session id stamped into the child
+   * `session_initialized` record (`parent_session_id` lineage field).
+   * Required (non-optional) so replay can chain a child wire back to its
+   * owning main wire without an external lookup. Production wiring
+   * (`soul-plus.ts` via `SoulRegistry`) threads this through from
+   * `SoulPlusDeps.sessionId`; direct-runner tests pass it verbatim.
+   * Previously had an empty-string fallback — removed under Review M2 so
+   * the field stays explicit and C3 ("sub wire truth source is
+   * displayed, not inferred") isn't silently bypassed.
+   */
+  readonly parentSessionId: string;
 }
 
 class StubChildLifecycle implements LifecycleGate {
@@ -150,6 +163,7 @@ export async function runSubagentTurn(
     sessionDir,
     pathConfig,
     sessionId,
+    parentSessionId,
   } = deps;
 
   // 1. Resolve type definition + build filtered tool set
@@ -231,6 +245,38 @@ export async function runSubagentTurn(
       // for the batched drain timer.
       config: { fsyncMode: 'per-record' },
     });
+
+    // Phase 23 §Step 7 — stamp `session_initialized` as the child wire's
+    // line 2 before any body record. The sub-branch carries blood
+    // lineage (parent_session_id / parent_tool_call_id / optional
+    // parent_agent_id / run_in_background) so replay can chain this
+    // child wire back to its owning main wire without an external
+    // lookup. `parent_agent_id` is omitted when the parent marker is
+    // the synthetic `'agent_main'` sentinel (meaning "spawned directly
+    // by the top-level session", not by another subagent).
+    const childActiveTools = childTools.map((t) => t.name);
+    const subInitInput: Omit<SessionInitializedSubRecord, 'seq' | 'time'> = {
+      type: 'session_initialized',
+      agent_type: 'sub',
+      agent_id: agentId,
+      ...(request.agentName !== undefined ? { agent_name: request.agentName } : {}),
+      parent_session_id: parentSessionId,
+      ...(request.parentAgentId !== undefined &&
+      request.parentAgentId !== '' &&
+      request.parentAgentId !== 'agent_main'
+        ? { parent_agent_id: request.parentAgentId }
+        : {}),
+      parent_tool_call_id: request.parentToolCallId,
+      run_in_background: request.runInBackground ?? false,
+      system_prompt: childSystemPrompt ?? '',
+      model: childModel,
+      active_tools: childActiveTools,
+      permission_mode: 'default',
+      plan_mode: false,
+      workspace_dir: deps.workDir ?? process.cwd(),
+    };
+    await childJournalWriter.append(subInitInput);
+
     childContext = new WiredContextState({
       journalWriter: childJournalWriter,
       initialModel: childModel,

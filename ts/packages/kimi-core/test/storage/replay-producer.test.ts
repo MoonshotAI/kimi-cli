@@ -161,6 +161,19 @@ describe('replayWire — producer hard check: producer.kind === typescript (T2.3
     const path = await writeWire([
       metadataWithProducer({ kind: 'typescript', name: '@moonshot-ai/core', version: '0.2.0' }),
       JSON.stringify({
+        type: 'session_initialized',
+        seq: 0,
+        time: 0,
+        agent_type: 'main',
+        session_id: 'ses_test',
+        system_prompt: '',
+        model: 'moonshot-v1',
+        active_tools: [],
+        permission_mode: 'default',
+        plan_mode: false,
+        workspace_dir: '/tmp/ws',
+      }),
+      JSON.stringify({
         type: 'user_message',
         seq: 1,
         time: 1,

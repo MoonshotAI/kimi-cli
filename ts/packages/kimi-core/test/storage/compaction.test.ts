@@ -256,11 +256,20 @@ describe('rotateJournal — file rotation', () => {
     const wireContent =
       [
         '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
+        '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}',
         '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}',
       ].join('\n') + '\n';
     await writeFile(join(workDir, 'wire.jsonl'), wireContent, 'utf8');
 
     await rotateJournal(workDir);
+    // Phase 23 — after rotateJournal alone, new wire.jsonl is metadata-only
+    // and not yet replay-healthy. The orchestrator's appendBoundary() step
+    // writes session_initialized (line 2) and the boundary record (line 3+)
+    // right after. Here we simulate that by appending session_initialized so
+    // the new file satisfies the line-2 contract.
+    const initLine =
+      '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}\n';
+    await writeFile(join(workDir, 'wire.jsonl'), (await readFile(join(workDir, 'wire.jsonl'), 'utf8')) + initLine, 'utf8');
 
     // No `.tmp` file must be left behind by the durable write pattern
     const entries = await readdir(workDir);
@@ -271,8 +280,8 @@ describe('rotateJournal — file rotation', () => {
     expect(archiveReplay.health).toBe('ok');
     expect(archiveReplay.records.length).toBe(1);
 
-    // New wire.jsonl replay healthy (metadata-only is acceptable — zero
-    // records is a valid parse per replayWire semantics)
+    // New wire.jsonl replay healthy — session_initialized extracted out, so
+    // body records count is 0.
     const currentReplay = await replayWire(join(workDir, 'wire.jsonl'), { supportedMajor: 2 });
     expect(currentReplay.health).toBe('ok');
     expect(currentReplay.records.length).toBe(0);
@@ -418,6 +427,7 @@ describe('replayWireSession — cross-file replay', () => {
     const content =
       [
         '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
+        '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}',
         '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"hello"}',
       ].join('\n') + '\n';
     await writeFile(join(workDir, 'wire.jsonl'), content, 'utf8');
@@ -434,23 +444,26 @@ describe('replayWireSession — cross-file replay', () => {
     const archive1 =
       [
         '{"type":"metadata","protocol_version":"2.1","created_at":800,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
+        '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}',
         '{"type":"user_message","seq":1,"time":801,"turn_id":"t1","content":"oldest"}',
       ].join('\n') + '\n';
     await writeFile(join(workDir, 'wire.1.jsonl'), archive1, 'utf8');
 
-    // Newer archive (wire.2.jsonl) — starts with compaction record
+    // Newer archive (wire.2.jsonl) — line 2 session_initialized + boundary record
     const archive2 =
       [
         '{"type":"metadata","protocol_version":"2.1","created_at":900,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
+        '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}',
         '{"type":"compaction","seq":1,"time":901,"summary":"summary of first batch","compacted_range":{"from_turn":1,"to_turn":1,"message_count":1},"pre_compact_tokens":100,"post_compact_tokens":20,"trigger":"auto"}',
         '{"type":"user_message","seq":2,"time":902,"turn_id":"t2","content":"middle"}',
       ].join('\n') + '\n';
     await writeFile(join(workDir, 'wire.2.jsonl'), archive2, 'utf8');
 
-    // Current file (wire.jsonl) — starts with compaction record
+    // Current file (wire.jsonl) — line 2 session_initialized + boundary record
     const current =
       [
         '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
+        '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}',
         '{"type":"compaction","seq":1,"time":1001,"summary":"summary of middle batch","compacted_range":{"from_turn":2,"to_turn":2,"message_count":1},"pre_compact_tokens":100,"post_compact_tokens":20,"trigger":"auto"}',
         '{"type":"user_message","seq":2,"time":1002,"turn_id":"t3","content":"newest"}',
       ].join('\n') + '\n';
@@ -472,6 +485,7 @@ describe('replayWireSession — cross-file replay', () => {
     const content =
       [
         '{"type":"metadata","protocol_version":"2.1","created_at":1000,"producer":{"kind":"typescript","name":"@moonshot-ai/core","version":"1.0.0"}}',
+        '{"type":"session_initialized","seq":0,"time":0,"agent_type":"main","session_id":"ses_test","system_prompt":"","model":"m","active_tools":[],"permission_mode":"default","plan_mode":false,"workspace_dir":"/tmp/ws"}',
         '{"type":"user_message","seq":1,"time":1001,"turn_id":"t1","content":"ok"}',
         'CORRUPTED LINE',
         '{"type":"user_message","seq":2,"time":1003,"turn_id":"t1","content":"after corruption"}',

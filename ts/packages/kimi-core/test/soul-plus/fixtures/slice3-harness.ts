@@ -79,6 +79,24 @@ export function createNoopJournalCapability(): JournalCapability {
       rotations.push(rotations.length);
       return { archiveFile: `wire.${rotations.length}.jsonl` };
     },
+    async readSessionInitialized() {
+      return {
+        type: 'session_initialized',
+        seq: 1,
+        time: 0,
+        agent_type: 'main',
+        session_id: 'ses_test',
+        system_prompt: '',
+        model: 'test-model',
+        active_tools: [],
+        permission_mode: 'default',
+        plan_mode: false,
+        workspace_dir: '/tmp/ws',
+      };
+    },
+    async appendBoundary() {
+      // no-op
+    },
   };
 }
 

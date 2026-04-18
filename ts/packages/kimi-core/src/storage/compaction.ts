@@ -207,13 +207,7 @@ export async function replayWireSession(
   const files = await listWireFiles(sessionDir);
 
   if (files.length === 0) {
-    return {
-      records: [],
-      protocolVersion: '2.1',
-      health: 'ok',
-      warnings: ['No wire files found in session directory'],
-      producer: getProducerInfo(),
-    };
+    throw new Error(`replayWireSession: no wire files found in ${sessionDir}`);
   }
 
   const results: ReplayResult[] = [];
@@ -227,6 +221,14 @@ export async function replayWireSession(
   const lastResult = results.at(-1);
   const protocolVersion = lastResult?.protocolVersion ?? '2.1';
   const producer = lastResult?.producer ?? getProducerInfo();
+  // Phase 23 — the current wire.jsonl (last in age order) owns the
+  // authoritative baseline. After a rotation, its line 2 is the copied
+  // session_initialized from the pre-rotate wire (C6), so this is
+  // always the value resume should hydrate ContextState from.
+  if (lastResult === undefined) {
+    throw new Error(`replayWireSession: empty results for ${sessionDir}`);
+  }
+  const sessionInitialized = lastResult.sessionInitialized;
 
   const brokenReasons: string[] = [];
   for (const r of results) {
@@ -242,6 +244,7 @@ export async function replayWireSession(
     ...(brokenReasons.length > 0 ? { brokenReason: brokenReasons.join('; ') } : {}),
     warnings,
     producer,
+    sessionInitialized,
   };
 }
 
@@ -267,7 +270,7 @@ function findHighestArchive(archives: string[]): { name: string; n: number } | u
 /**
  * Detect and recover from a crash between file rotation steps.
  *
- * Two scenarios are handled:
+ * Three scenarios are handled:
  *
  * 1. **wire.jsonl missing**: `wire.jsonl` was renamed to `wire.N.jsonl`
  *    but the process crashed before the new `wire.jsonl` was created.
@@ -275,10 +278,18 @@ function findHighestArchive(archives: string[]): { name: string; n: number } | u
  *
  * 2. **wire.jsonl is metadata-only** (Slice 3.3 / M04): the rename
  *    succeeded AND the new `wire.jsonl` was created with a metadata
- *    header, but the process crashed before the compaction record was
- *    written. The new file has only the metadata line — no boundary /
- *    compaction record, no conversation data. Recovery: remove the
- *    metadata-only file and roll back the highest archive.
+ *    header, but the process crashed before `appendBoundary` ran. The
+ *    new file has only the metadata line — no session_initialized, no
+ *    compaction record. Recovery: remove the half-complete file and
+ *    roll back the highest archive.
+ *
+ * 3. **wire.jsonl has metadata + session_initialized only** (Phase 23 /
+ *    T7.7): `appendBoundary` copied `session_initialized` through as the
+ *    second line, but the process crashed before the compaction record
+ *    landed. Without the compaction record, the archived conversation is
+ *    orphaned — replay of the new wire would show an empty post-boundary
+ *    window and the archive would never be re-read. Recovery: same as
+ *    case 2 — remove the half-complete file and restore the archive.
  *
  * Returns `true` if recovery was performed, `false` if no recovery was needed.
  */
@@ -294,10 +305,11 @@ export async function recoverRotation(sessionDir: string): Promise<boolean> {
     return true;
   }
 
-  // Case 2: wire.jsonl exists but is metadata-only AND archives exist.
-  // A metadata-only current file with archives present indicates a
-  // half-complete rotation: the physical rename + new file creation
-  // succeeded but the compaction record was never written.
+  // Case 2 / 3: wire.jsonl exists but has no compaction record yet AND
+  // archives exist. A metadata-only or metadata+session_initialized file
+  // with archives present indicates a half-complete rotation: the
+  // physical rename + new-file + (optional) appendBoundary succeeded but
+  // `resetToSummary` never wrote the CompactionRecord.
   if (archives.length > 0) {
     const currentPath = join(sessionDir, 'wire.jsonl');
     const content = await readFile(currentPath, 'utf8');
@@ -306,22 +318,24 @@ export async function recoverRotation(sessionDir: string): Promise<boolean> {
       .split('\n')
       .filter((l) => l.length > 0);
 
-    // A fresh post-rotation file has exactly one line: the metadata header.
-    // If there are more lines, the compaction record (or other records)
-    // were successfully written — no recovery needed.
-    if (lines.length === 1) {
-      let isMetadata = false;
-      try {
-        const parsed = JSON.parse(lines[0] ?? '') as Record<string, unknown>;
-        isMetadata = parsed['type'] === 'metadata';
-      } catch {
-        // Malformed first line — not metadata, don't recover
-      }
+    if (lines.length === 1 || lines.length === 2) {
+      const parsedLines: Array<Record<string, unknown> | null> = lines.map((l) => {
+        try {
+          return JSON.parse(l) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      });
 
-      if (isMetadata) {
+      const isMetadata = parsedLines[0]?.['type'] === 'metadata';
+      const isHalfCompleteRotation =
+        lines.length === 1
+          ? isMetadata
+          : isMetadata && parsedLines[1]?.['type'] === 'session_initialized';
+
+      if (isHalfCompleteRotation) {
         const highest = findHighestArchive(archives);
         if (highest !== undefined) {
-          // Remove the half-complete new file and restore the archive
           await unlink(currentPath);
           await rename(join(sessionDir, highest.name), join(sessionDir, 'wire.jsonl'));
           return true;

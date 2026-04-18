@@ -178,7 +178,6 @@ describe('SessionManager.resumeSession — SessionMeta.producer wire round-trip 
     const resumed = await freshMgr.resumeSession('ses_rt', {
       runtime: createNoopRuntime(),
       tools: [],
-      model: 'test-model',
     });
     const meta = resumed.soulPlus.getSessionMeta().get();
     expect(meta.producer).toBeDefined();

@@ -38,10 +38,27 @@ function metadata(version = '2.1'): string {
   });
 }
 
+function sessionInitialized(): string {
+  return JSON.stringify({
+    type: 'session_initialized',
+    seq: 0,
+    time: 1712790000001,
+    agent_type: 'main',
+    session_id: 'ses_test',
+    system_prompt: '',
+    model: 'moonshot-v1',
+    active_tools: [],
+    permission_mode: 'default',
+    plan_mode: false,
+    workspace_dir: '/tmp/ws',
+  });
+}
+
 describe('replayWire — canonical happy path', () => {
   it('parses a metadata header + a handful of records', async () => {
     const path = await writeWire([
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'user_message',
         seq: 1,
@@ -80,6 +97,7 @@ describe('replayWire — version compatibility', () => {
   it('accepts a minor bump forward under the same major', async () => {
     const path = await writeWire([
       metadata('2.2'),
+      sessionInitialized(),
       JSON.stringify({
         type: 'user_message',
         seq: 1,
@@ -98,6 +116,7 @@ describe('replayWire — unknown record type (forward compatibility)', () => {
   it('skips unknown record types at any line and warns', async () => {
     const path = await writeWire([
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'user_message',
         seq: 1,
@@ -137,6 +156,7 @@ describe('replayWire — tail truncation tolerance', () => {
     const path = join(workDir, 'wire.jsonl');
     const good = [
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'user_message',
         seq: 1,
@@ -162,6 +182,7 @@ describe('replayWire — mid-file corruption', () => {
       path,
       [
         metadata(),
+        sessionInitialized(),
         JSON.stringify({
           type: 'user_message',
           seq: 1,

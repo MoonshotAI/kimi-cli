@@ -9,6 +9,7 @@ import { dirname } from 'node:path';
 import type { SessionState } from '../../session/state-cache.js';
 import type { AppendInput, LifecycleGate } from '../../storage/journal-writer.js';
 import { WiredJournalWriter } from '../../storage/journal-writer.js';
+import type { SessionInitializedMainRecord } from '../../storage/wire-record.js';
 
 const ACTIVE_GATE: LifecycleGate = { state: 'active' };
 
@@ -17,10 +18,18 @@ export interface WriteResult {
   readonly statePath: string;
 }
 
+export interface MigratedWireInit {
+  readonly sessionId: string;
+  readonly systemPrompt: string;
+  readonly model: string;
+  readonly workspaceDir: string;
+}
+
 export async function writeMigratedWire(
   wirePath: string,
   records: readonly AppendInput[],
   sourceProtocolVersion: string | null,
+  init: MigratedWireInit,
 ): Promise<void> {
   await mkdir(dirname(wirePath), { recursive: true });
   const writer = new WiredJournalWriter({
@@ -28,6 +37,21 @@ export async function writeMigratedWire(
     lifecycle: ACTIVE_GATE,
     kimiVersion: `migrated-from-python-${sourceProtocolVersion ?? 'unknown'}`,
   });
+  // Phase 23 — session_initialized must be wire.jsonl line 2 (right after
+  // the metadata header). Migration writes an ACTIVE baseline so replay
+  // can derive startup config without falling back to caller hints.
+  const mainInit: Omit<SessionInitializedMainRecord, 'seq' | 'time'> = {
+    type: 'session_initialized',
+    agent_type: 'main',
+    session_id: init.sessionId,
+    system_prompt: init.systemPrompt,
+    model: init.model,
+    active_tools: [],
+    permission_mode: 'default',
+    plan_mode: false,
+    workspace_dir: init.workspaceDir,
+  };
+  await writer.append(mainInit);
   for (const record of records) {
     await writer.append(record);
   }

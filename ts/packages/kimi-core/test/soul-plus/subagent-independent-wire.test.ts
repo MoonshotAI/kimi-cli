@@ -132,6 +132,7 @@ function makeDeps(kosong: KosongAdapter): SubagentRunnerDeps {
     parentSessionJournal: parentJournal,
     sessionDir,
     parentModel: 'test-model',
+    parentSessionId: 'ses_test_parent',
   };
 }
 

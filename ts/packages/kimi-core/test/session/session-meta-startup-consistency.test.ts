@@ -71,14 +71,27 @@ async function seedWireWithMeta(
   records: unknown[],
 ): Promise<void> {
   const wirePath = join(tmp, 'sessions', sessionId, 'wire.jsonl');
-  // Wire file always starts with a metadata header.
+  // Wire file always starts with a metadata header + session_initialized on line 2.
   const header = JSON.stringify({
     type: 'metadata',
     protocol_version: '2.0.0',
     created_at: 1_700_000_000_000,
     producer: { kind: 'typescript', name: '@moonshot-ai/core', version: '1.0.0' },
   });
-  const lines = [header, ...records.map((r) => JSON.stringify(r))].join('\n') + '\n';
+  const init = JSON.stringify({
+    type: 'session_initialized',
+    seq: 0,
+    time: 0,
+    agent_type: 'main',
+    session_id: sessionId,
+    system_prompt: '',
+    model: 'kimi-k2.5',
+    active_tools: [],
+    permission_mode: 'default',
+    plan_mode: false,
+    workspace_dir: tmp,
+  });
+  const lines = [header, init, ...records.map((r) => JSON.stringify(r))].join('\n') + '\n';
   await writeFile(wirePath, lines, 'utf-8');
 }
 
@@ -134,7 +147,6 @@ describe('Phase 16 T7 — startup consistency (last_exit_code)', () => {
     const managed = await mgr.resumeSession(sessionId, {
       runtime: createInMemoryRuntime(),
       tools: [],
-      model: 'kimi-k2.5',
     });
 
     // SessionMetaService.get() must reflect the trusted state.json values.
@@ -163,7 +175,6 @@ describe('Phase 16 T7 — startup consistency (last_exit_code)', () => {
     const managed = await mgr.resumeSession(sessionId, {
       runtime: createInMemoryRuntime(),
       tools: [],
-      model: 'kimi-k2.5',
     });
 
     const meta = managed.soulPlus.getSessionMeta().get();
@@ -202,7 +213,6 @@ describe('Phase 16 T7 — startup consistency (last_exit_code)', () => {
     const managed = await mgr.resumeSession(sessionId, {
       runtime: createInMemoryRuntime(),
       tools: [],
-      model: 'outdated',
     });
 
     const meta = managed.soulPlus.getSessionMeta().get();
@@ -227,7 +237,6 @@ describe('Phase 16 T7 — startup consistency (last_exit_code)', () => {
     const managed = await mgr.resumeSession(sessionId, {
       runtime: createInMemoryRuntime(),
       tools: [],
-      model: 'kimi-k2.5',
     });
 
     const meta = managed.soulPlus.getSessionMeta().get();

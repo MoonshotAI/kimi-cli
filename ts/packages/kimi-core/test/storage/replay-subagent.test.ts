@@ -51,10 +51,27 @@ function metadata(version = '2.1'): string {
   });
 }
 
+function sessionInitialized(): string {
+  return JSON.stringify({
+    type: 'session_initialized',
+    seq: 0,
+    time: 0,
+    agent_type: 'main',
+    session_id: 'ses_test',
+    system_prompt: '',
+    model: 'moonshot-v1',
+    active_tools: [],
+    permission_mode: 'default',
+    plan_mode: false,
+    workspace_dir: '/tmp/ws',
+  });
+}
+
 describe('replayWire — subagent_spawned / subagent_completed (Phase 6 happy path)', () => {
   it('replays a spawned → completed pair without warnings or broken health', async () => {
     const path = await writeWire([
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'turn_begin',
         seq: 1,
@@ -109,6 +126,7 @@ describe('replayWire — subagent_spawned / subagent_completed (Phase 6 happy pa
     // open or infer any child subagents/<agent_id>/wire.jsonl path.
     const path = await writeWire([
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'subagent_spawned',
         seq: 1,
@@ -130,6 +148,7 @@ describe('replayWire — subagent_spawned / subagent_completed (Phase 6 happy pa
   it('recursive subagent spawn (parent_agent_id set) replays cleanly', async () => {
     const path = await writeWire([
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'subagent_spawned',
         seq: 1,
@@ -157,6 +176,7 @@ describe('replayWire — subagent_failed (Phase 6 error path)', () => {
   it('replays a spawned → failed pair with the human-readable error', async () => {
     const path = await writeWire([
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'subagent_spawned',
         seq: 1,
@@ -198,6 +218,7 @@ describe('replayWire — legacy subagent_event skipped + warned (never crashes)'
   it('a mid-file legacy subagent_event line is skipped with a warning', async () => {
     const path = await writeWire([
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'user_message',
         seq: 1,
@@ -232,6 +253,7 @@ describe('replayWire — legacy subagent_event skipped + warned (never crashes)'
   it('a legacy subagent_event at the tail does not corrupt the replay', async () => {
     const path = await writeWire([
       metadata(),
+      sessionInitialized(),
       JSON.stringify({
         type: 'turn_begin',
         seq: 1,

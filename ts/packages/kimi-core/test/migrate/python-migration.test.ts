@@ -513,7 +513,11 @@ describe('migratePythonSession — end-to-end', () => {
       context: [],
       wire: [{ type: 'metadata', protocol_version: '1.9' }],
     });
-    const result = await migratePythonSession({ sourceDir, targetDir });
+    const result = await migratePythonSession({
+      sourceDir,
+      targetDir,
+      migratedFrom: { workDirPath: '/tmp/empty-project' },
+    });
     expect(result.messageCount).toBe(0);
     expect(result.sessionId).toBe('empty-uuid');
   });
@@ -529,6 +533,7 @@ describe('migratePythonSession — end-to-end', () => {
     const result = await migratePythonSession({
       sourceDir,
       targetDir,
+      migratedFrom: { workDirPath: '/tmp/sub-project' },
       onWarning: (m) => warnings.push(m),
     });
     expect(result.warnings.some((w) => w.includes('Subagent'))).toBe(true);
@@ -541,7 +546,11 @@ describe('migratePythonSession — end-to-end', () => {
       uuid: '3457ad97-771c-4a3f-acb9-075952a5f764',
       context: [{ role: 'user', content: 'flat' }],
     });
-    const result = await migratePythonSession({ sourceDir, targetDir });
+    const result = await migratePythonSession({
+      sourceDir,
+      targetDir,
+      migratedFrom: { workDirPath: '/tmp/flat-project' },
+    });
     expect(result.sessionId).toBe('3457ad97-771c-4a3f-acb9-075952a5f764');
     expect(result.targetDir).toBe(targetDir);
   });
@@ -585,6 +594,7 @@ describe('migratePythonSession — end-to-end', () => {
       sourceDir,
       targetDir,
       toolNameMap: { CustomPy: 'CustomTs' },
+      migratedFrom: { workDirPath: '/tmp/map-project' },
     });
     const replay = await replayWire(join(targetDir, 'wire.jsonl'), { supportedMajor: 2 });
     const assistant = replay.records.find((r) => r.type === 'assistant_message') as {
@@ -604,7 +614,11 @@ describe('migratePythonSession — end-to-end', () => {
         { timestamp: 2, message: { type: 'TurnEnd', payload: {} } },
       ],
     });
-    const result = await migratePythonSession({ sourceDir, targetDir });
+    const result = await migratePythonSession({
+      sourceDir,
+      targetDir,
+      migratedFrom: { workDirPath: '/tmp/legacy-project' },
+    });
     expect(result.sessionId).toBe('legacy-uuid');
     const replay = await replayWire(join(targetDir, 'wire.jsonl'), { supportedMajor: 2 });
     expect(replay.health).toBe('ok');
