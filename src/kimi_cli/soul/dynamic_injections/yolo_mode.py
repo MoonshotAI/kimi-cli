@@ -16,9 +16,9 @@ _YOLO_PROMPT = (
     "Yolo mode is enabled for operation approvals.\n"
     "- Operation-type approvals are auto-approved.\n"
     "- AskUserQuestion remains available when the connected client supports interactive "
-    "questions.\n"
-    "- EnterPlanMode/ExitPlanMode remain interactive unless an explicit plan policy "
-    "enables auto-approval."
+    "questions; otherwise it may be auto-dismissed in yolo/headless runs.\n"
+    "- EnterPlanMode/ExitPlanMode remain interactive when the connected client supports "
+    "interactive questions; otherwise yolo may auto-approve them."
 )
 
 

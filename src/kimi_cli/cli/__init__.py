@@ -623,6 +623,11 @@ def kimi(
             )
             startup_progress.stop()
 
+            # Print/headless mode cannot resolve QuestionRequest; short-circuit
+            # plan entry/exit and AskUserQuestion when yolo is active.
+            if ui == "print":
+                instance.soul.runtime.approval.set_interactive_questions_supported(False)
+
             # --- SessionStart hook ---
             _session_source = "resume" if resumed else "startup"
             await instance.soul.hook_engine.trigger(

@@ -57,11 +57,13 @@ class ApprovalState:
         self,
         yolo: bool = False,
         auto_approve_actions: set[str] | None = None,
+        supports_interactive_questions: bool = True,
         on_change: Callable[[], None] | None = None,
     ):
         self.yolo = yolo
         self.auto_approve_actions: set[str] = auto_approve_actions or set()
         """Set of action names that should automatically be approved."""
+        self.supports_interactive_questions = supports_interactive_questions
         self._on_change = on_change
 
     def notify_change(self) -> None:
@@ -102,17 +104,21 @@ class Approval:
         """Whether operation-type approvals should be auto-approved."""
         return self._state.yolo
 
+    def set_interactive_questions_supported(self, supported: bool) -> None:
+        self._state.supports_interactive_questions = supported
+        self._state.notify_change()
+
     def should_auto_approve_plan_entry(self) -> bool:
         """Whether entering plan mode should be auto-approved."""
-        return False
+        return self._state.yolo and not self._state.supports_interactive_questions
 
     def should_auto_approve_plan_exit(self) -> bool:
         """Whether plan approval (ExitPlanMode) should be auto-approved."""
-        return False
+        return self._state.yolo and not self._state.supports_interactive_questions
 
     def should_auto_dismiss_questions(self) -> bool:
         """Whether AskUserQuestion should auto-dismiss without asking the user."""
-        return False
+        return self._state.yolo and not self._state.supports_interactive_questions
 
     async def request(
         self,

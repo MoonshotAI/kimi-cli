@@ -452,3 +452,59 @@ class TestApprovalStateCallback:
         approval = Approval(state=state)
         approval.set_yolo(True)  # should not raise
         assert state.yolo is True
+
+
+class TestApprovalPolicyMatrix:
+    """Policy methods must be capability-aware to avoid headless hangs."""
+
+    def test_yolo_off_interactive(self):
+        from kimi_cli.soul.approval import Approval, ApprovalState
+
+        state = ApprovalState(yolo=False, supports_interactive_questions=True)
+        approval = Approval(state=state)
+
+        assert approval.should_auto_approve_operations() is False
+        assert approval.should_auto_dismiss_questions() is False
+        assert approval.should_auto_approve_plan_entry() is False
+        assert approval.should_auto_approve_plan_exit() is False
+
+    def test_yolo_on_interactive(self):
+        from kimi_cli.soul.approval import Approval, ApprovalState
+
+        state = ApprovalState(yolo=True, supports_interactive_questions=True)
+        approval = Approval(state=state)
+
+        assert approval.should_auto_approve_operations() is True
+        assert approval.should_auto_dismiss_questions() is False
+        assert approval.should_auto_approve_plan_entry() is False
+        assert approval.should_auto_approve_plan_exit() is False
+
+    def test_yolo_on_non_interactive(self):
+        from kimi_cli.soul.approval import Approval, ApprovalState
+
+        state = ApprovalState(yolo=True, supports_interactive_questions=False)
+        approval = Approval(state=state)
+
+        assert approval.should_auto_approve_operations() is True
+        assert approval.should_auto_dismiss_questions() is True
+        assert approval.should_auto_approve_plan_entry() is True
+        assert approval.should_auto_approve_plan_exit() is True
+
+    def test_set_interactive_questions_supported_notifies(self):
+        from kimi_cli.soul.approval import Approval, ApprovalState
+
+        changes: list[bool] = []
+
+        def on_change():
+            changes.append(True)
+
+        state = ApprovalState(on_change=on_change)
+        approval = Approval(state=state)
+
+        approval.set_interactive_questions_supported(False)
+        assert len(changes) == 1
+        assert state.supports_interactive_questions is False
+
+        approval.set_interactive_questions_supported(True)
+        assert len(changes) == 2
+        assert state.supports_interactive_questions is True
