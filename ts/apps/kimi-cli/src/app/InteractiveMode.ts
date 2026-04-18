@@ -1357,9 +1357,14 @@ export class InteractiveMode implements WireHandlerDelegate {
         // Phase 20 §A — drop the Core-side conversation context first
         // so the next prompt starts from an empty history. Runs AFTER
         // the `isStreaming` guard above so a mid-turn /clear never
-        // corrupts the active turn. If the wire call fails the UI
-        // reload is still useful (user still sees a clean transcript),
-        // so swallow the error and surface it as a status line instead.
+        // corrupts the active turn.
+        //
+        // Codex round-5: we only clear the UI transcript when the core
+        // clear succeeded. Doing the UI reload on failure hides the
+        // truth — user sees an empty screen, assumes the context is
+        // gone, then the next prompt lets the LLM see the full history.
+        // Keep the transcript intact and surface a prominent error so
+        // the user understands the clear did NOT happen.
         let clearErrorMessage: string | undefined;
         try {
           await this.wireClient.clear(this.state.sessionId);
@@ -1375,17 +1380,28 @@ export class InteractiveMode implements WireHandlerDelegate {
             clearErrorMessage = 'unknown error';
           }
         }
-        this.clearTranscriptAndRedraw();
-        this.addTranscriptEntry({
-          id: `reload-${String(Date.now())}`,
-          kind: 'status',
-          renderMode: 'plain',
-          content:
-            clearErrorMessage === undefined
-              ? 'Context cleared.'
-              : `Transcript cleared (core clear failed: ${clearErrorMessage}).`,
-          color: clearErrorMessage === undefined ? this.colors.textDim : this.colors.error,
-        });
+        if (clearErrorMessage === undefined) {
+          this.clearTranscriptAndRedraw();
+          this.addTranscriptEntry({
+            id: `reload-${String(Date.now())}`,
+            kind: 'status',
+            renderMode: 'plain',
+            content: 'Context cleared.',
+            color: this.colors.textDim,
+          });
+        } else {
+          // Do NOT touch the transcript — the session is still carrying
+          // its full history. Show the error inline where previous
+          // turns are still visible so the user can see what is still
+          // in context.
+          this.addTranscriptEntry({
+            id: `reload-${String(Date.now())}`,
+            kind: 'status',
+            renderMode: 'plain',
+            content: `/clear failed — conversation context was NOT cleared: ${clearErrorMessage}`,
+            color: this.colors.error,
+          });
+        }
         break;
       }
       case 'new':

@@ -212,6 +212,14 @@ export class SoulPlus {
           planMode: turnManagerRef.getPlanMode(),
         };
       },
+      // Phase 20 Codex round-5 — expose TurnManager's
+      // `getCurrentTurnId()` (which combines the synchronous
+      // `pendingLaunchTurnId` reservation with the tracker's
+      // authoritative current turn id) so `triggerCompaction` can
+      // refuse when a `/prompt` launch is in flight but has not yet
+      // transitioned lifecycle to `'active'`. Same late-bind closure
+      // pattern as `runtimeStateProvider`.
+      getPendingTurnId: () => turnManagerRef?.getCurrentTurnId(),
     });
     const permissionBuilder = new PermissionClosureBuilder({
       ...(orchestrator !== undefined ? { orchestrator } : {}),

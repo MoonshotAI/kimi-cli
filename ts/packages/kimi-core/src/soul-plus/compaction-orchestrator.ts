@@ -101,6 +101,17 @@ export interface CompactionOrchestratorDeps {
   readonly hookEngine?: HookEngine | undefined;
   readonly sessionId?: string | undefined;
   readonly agentId?: string | undefined;
+  /**
+   * Phase 20 Codex round-5 — predicate returning the in-flight turn id
+   * when `TurnManager.handlePrompt` has synchronously reserved a turn
+   * slot (`pendingLaunchTurnId`) but has not yet transitioned the
+   * lifecycle machine to `'active'`. Without this hook `triggerCompaction`'s
+   * `isIdle()` gate returns true in that await window, letting `/compact`
+   * race against a concurrent `/prompt` launch. TurnManager wires this;
+   * tests that do not exercise the concurrent slash+prompt path may
+   * omit it (defaults to "no pending turn").
+   */
+  readonly getPendingTurnId?: (() => string | undefined) | undefined;
 }
 
 export class CompactionOrchestrator {
@@ -243,6 +254,15 @@ export class CompactionOrchestrator {
   async triggerCompaction(customInstruction?: string): Promise<void> {
     if (!this.deps.lifecycleStateMachine.isIdle()) {
       throw new Error('Cannot compact while a turn is active');
+    }
+    // Phase 20 Codex round-5 — mirror the `getCurrentTurnId()` half of
+    // `TurnManager.tryReserveForMaintenance`. `handlePrompt` sets
+    // `pendingLaunchTurnId` synchronously BEFORE its await chain
+    // transitions the lifecycle to 'active'; during that window a
+    // plain `isIdle()` gate is false-positive. Closing this gap here
+    // keeps `/compact` on parity with `/clear`'s atomic reservation.
+    if (this.deps.getPendingTurnId?.() !== undefined) {
+      throw new Error('Cannot compact while a prompt launch is in flight');
     }
 
     const controller = new AbortController();

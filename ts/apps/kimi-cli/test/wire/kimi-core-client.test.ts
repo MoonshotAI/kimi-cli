@@ -485,4 +485,28 @@ describe('KimiCoreClient session-info methods (Slice 5.1)', () => {
     });
     await client.dispose();
   });
+
+  it('clear throws for an unknown session id (Codex round-5)', async () => {
+    // Before the fix, `clear` silently returned when the session id
+    // was unknown, which let InteractiveMode clear the TUI transcript
+    // on a stale id while the real session kept its history. Throwing
+    // forces performReload down the failure branch and keeps the
+    // transcript intact.
+    const stack = createFakeStack();
+    const client = new KimiCoreClient({
+      sessionManager: stack.sessionManager as never,
+      runtime: fakeRuntime(),
+      model: 'm',
+      systemPrompt: '',
+      buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
+    });
+
+    await expect(client.clear('ses_does_not_exist')).rejects.toThrow(
+      /unknown session/i,
+    );
+
+    await client.dispose();
+  });
 });

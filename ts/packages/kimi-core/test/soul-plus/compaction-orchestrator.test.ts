@@ -339,6 +339,33 @@ describe('CompactionOrchestrator — triggerCompaction (manual /compact)', () =>
       /Cannot compact while a turn is active/i,
     );
   });
+
+  it('refuses when getPendingTurnId reports an in-flight prompt launch (Codex round-5)', async () => {
+    // `handlePrompt` sets `pendingLaunchTurnId` synchronously but only
+    // transitions lifecycle to 'active' after awaiting its journal
+    // appends. Without this guard `/compact` sees isIdle() === true
+    // during that window and races the prompt. The dep predicate
+    // returns the current pending id; triggerCompaction must refuse.
+    const h = buildHarness({
+      lifecycleStateMachine: new SessionLifecycleStateMachine('idle'),
+      getPendingTurnId: () => 'turn_pending_123',
+    });
+    const orchestrator = new CompactionOrchestrator(h.deps);
+    await expect(orchestrator.triggerCompaction()).rejects.toThrow(
+      /prompt launch is in flight/i,
+    );
+    // No transitions — guard must reject BEFORE any state mutation.
+    expect(readTransitions(h.transitionSpy)).toEqual([]);
+  });
+
+  it('proceeds when getPendingTurnId returns undefined (no in-flight turn)', async () => {
+    const h = buildHarness({
+      lifecycleStateMachine: new SessionLifecycleStateMachine('idle'),
+      getPendingTurnId: () => undefined,
+    });
+    const orchestrator = new CompactionOrchestrator(h.deps);
+    await expect(orchestrator.triggerCompaction()).resolves.toBeUndefined();
+  });
 });
 
 // ── PreCompact / PostCompact hook fire-and-forget (optional hookEngine)

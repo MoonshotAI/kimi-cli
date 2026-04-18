@@ -670,10 +670,19 @@ export class KimiCoreClient implements WireClient {
   async clear(sessionId: string): Promise<void> {
     // Phase 20 §A — delegate to SessionControl.clear(), which awaits the
     // WAL `context_cleared` append before zeroing the in-memory history.
-    // Silently no-op for unknown sessions so a stale `/clear` after a
-    // session change does not surface a generic error to the TUI.
+    //
+    // Codex round-5: an unknown session id MUST throw rather than
+    // silently succeed. The caller (slash `/clear` + performReload) uses
+    // the absence of an error as "core context is now gone"; if we
+    // swallow the unknown-session case, the TUI clears its transcript
+    // while the wrong session (or no session) is actually bound, and
+    // any subsequent prompt routes to that session with its old
+    // history still intact. Throwing lets performReload surface
+    // "core clear failed" + keep the transcript untouched.
     const record = this.sessions.get(sessionId);
-    if (record === undefined) return;
+    if (record === undefined) {
+      throw new Error(`/clear: unknown session ${sessionId}`);
+    }
     await record.managed.sessionControl.clear();
   }
 

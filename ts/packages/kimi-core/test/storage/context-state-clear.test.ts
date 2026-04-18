@@ -264,3 +264,77 @@ describe('ContextState.clear — InMemoryContextState parity', () => {
     expect(new Set(state.activeTools)).toEqual(new Set(['Bash']));
   });
 });
+
+// ── 4. Durability under production batched writer (Phase 20 Codex review) ─
+//
+// The happy-path tests above use `fsyncMode: 'per-record'`, which masks
+// production's batched default where non-force-flush records only land in
+// the in-memory pending buffer until the next drain tick (≤50 ms). A
+// `context_cleared` without force-flush can disappear on crash and
+// replay restores the "cleared" history — the exact surprise Codex
+// round-5 flagged. These tests pin the fix (context_cleared joins
+// FORCE_FLUSH_KINDS) by verifying the WAL file on disk observably
+// contains the record BEFORE `clear()` resolves.
+
+describe('ContextState.clear — durable under batched fsyncMode (production default)', () => {
+  function makeBatchedState(): { state: WiredContextState; filePath: string } {
+    const filePath = join(workDir, 'wire.jsonl');
+    const writer = new WiredJournalWriter({
+      filePath,
+      lifecycle: new StubGate(),
+      // No `config` → defaults to fsyncMode: 'batched', matching
+      // SessionManager.createSession / resumeSession in production.
+    });
+    const state = new WiredContextState({
+      journalWriter: writer,
+      initialModel: 'moonshot-v1',
+      initialSystemPrompt: 'you are helpful',
+      initialActiveTools: new Set(['Read']),
+      currentTurnId: () => 't1',
+    });
+    return { state, filePath };
+  }
+
+  it('context_cleared is on disk before clear() resolves (force-flush)', async () => {
+    const { state, filePath } = makeBatchedState();
+    await state.appendUserMessage({ text: 'pre-clear' });
+    // Non-force user_message is still batched — expect the file NOT to
+    // contain the user line yet. (This asserts the setup is real
+    // batched mode; if the implementation accidentally force-flushed
+    // `user_message` the pre-condition would pass trivially but we'd
+    // also lose the discriminating signal for the clear assertion.)
+    const beforeClear = await readFile(filePath, 'utf8').catch(() => '');
+    expect(beforeClear).not.toContain('"user_message"');
+
+    await (state as FullContextState & { clear(): Promise<void> }).clear();
+
+    // After clear() resolves, context_cleared MUST be observable on
+    // disk — not merely in the writer's pending buffer. This is the
+    // Codex round-5 "crash window" regression test: without
+    // FORCE_FLUSH_KINDS.context_cleared, this line would be empty
+    // until the next drain tick.
+    const afterClear = await readFile(filePath, 'utf8');
+    expect(afterClear).toContain('"type":"context_cleared"');
+  });
+
+  it('a force-flushed context_cleared also drains earlier batched records in the same flush', async () => {
+    // FORCE_FLUSH triggers immediate drain of the entire pending
+    // buffer, so the user_message appended just before the clear
+    // should also land on disk once clear() resolves.
+    const { state, filePath } = makeBatchedState();
+    await state.appendUserMessage({ text: 'pre-clear' });
+
+    await (state as FullContextState & { clear(): Promise<void> }).clear();
+
+    const contents = await readFile(filePath, 'utf8');
+    expect(contents).toContain('"type":"user_message"');
+    expect(contents).toContain('"type":"context_cleared"');
+    // Order check: user_message must precede context_cleared in the
+    // file so replay can reconstruct `cleared-right-after-that-turn`
+    // rather than the other way around.
+    const userIdx = contents.indexOf('"type":"user_message"');
+    const clearIdx = contents.indexOf('"type":"context_cleared"');
+    expect(userIdx).toBeGreaterThan(-1);
+    expect(clearIdx).toBeGreaterThan(userIdx);
+  });
+});

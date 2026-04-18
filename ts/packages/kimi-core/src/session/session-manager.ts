@@ -37,6 +37,7 @@ import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
 import type { SessionMeta } from '../soul-plus/session-meta-service.js';
 import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
+import type { Logger } from '../utils/logger.js';
 import { cleanupStaleSubagents } from '../soul-plus/subagent-runner.js';
 import { SubagentStore } from '../soul-plus/subagent-store.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
@@ -187,6 +188,15 @@ export interface CreateSessionOptions {
    * v2 §10.3.1).
    */
   agentTypeRegistry?: AgentTypeRegistry | undefined;
+  /**
+   * Phase 20 Codex round-5 — structured logger forwarded into
+   * `SoulPlusDeps.logger` so NotificationManager / MCPManager wire
+   * fan-out errors through the app's log sink instead of falling back
+   * to `noopLogger` (silent drop). When omitted, SoulPlus defaults to
+   * `noopLogger` and those errors are invisible, which was the
+   * observability regression Codex flagged in Phase 20-B.
+   */
+  logger?: Logger | undefined;
 }
 
 export interface ResumeSessionOptions {
@@ -217,6 +227,8 @@ export interface ResumeSessionOptions {
   approvalStateStore?: ApprovalStateStore | undefined;
   /** Slice 5.3 — see CreateSessionOptions.agentTypeRegistry. */
   agentTypeRegistry?: AgentTypeRegistry | undefined;
+  /** Phase 20 Codex round-5 — see CreateSessionOptions.logger. */
+  logger?: Logger | undefined;
 }
 
 /** A fully-assembled, running session. */
@@ -427,6 +439,12 @@ export class SessionManager {
             pathConfig: this.paths,
           }
         : {}),
+      // Phase 20 Codex round-5 — close the observability regression:
+      // without this forward NotificationManager / MCPManager fall back
+      // to `noopLogger` and swallow every fan-out error (previously
+      // surfaced via `console.warn`). Host-supplied logger flows all
+      // the way through the SoulPlus deps chain.
+      ...(options.logger !== undefined ? { logger: options.logger } : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -710,6 +728,10 @@ export class SessionManager {
             pathConfig: this.paths,
           }
         : {}),
+      // Phase 20 Codex round-5 — forward logger on resume too so
+      // restored sessions keep the same observability posture as fresh
+      // ones.
+      ...(options.logger !== undefined ? { logger: options.logger } : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
