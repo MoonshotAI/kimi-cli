@@ -797,7 +797,13 @@ async function runWire(opts: CLIOptions): Promise<void> {
     ...(oauthResolver !== undefined ? { oauthResolver } : {}),
   });
   const kosong = createKosongAdapter({ provider });
-  const runtime: Runtime = createRuntime({ kosong });
+  // Phase 21 §A — wire-mode model swap mutates the active runtime, so
+  // it lives in `let` rather than `const`. The first registration with
+  // `registerDefaultWireHandlers` snapshots this value for new
+  // `session.create` calls; the live-switch path below operates on
+  // `currentRuntime` directly through `wireRebuildRuntimeForModel`.
+  let currentRuntime: Runtime = createRuntime({ kosong });
+  let currentModelAlias = modelAlias;
 
   const sessionManager = new SessionManagerCtor(pathConfig);
   const approval = new AlwaysAllowApprovalRuntime();
@@ -839,27 +845,76 @@ async function runWire(opts: CLIOptions): Promise<void> {
   });
 
   const router = new RequestRouter({ sessionManager });
-  registerDefaultWireHandlers({
+
+  // Phase 21 §A — the production wire transport must exist before
+  // `registerDefaultWireHandlers` so the newly-registered reverse-RPC
+  // and `thinking.changed` broadcast paths can capture it. The
+  // stdio transport is connected below once the `onMessage` listener
+  // is installed.
+  const transport = new StdioTransport();
+  const codec = new WireCodec();
+
+  // Phase 21 §A — wire-mode live model swap. Mirrors the TUI's
+  // `KimiCoreClient.switchModel` destroy+resume pattern: rebuild the
+  // Provider/Kosong adapter, mutate the captured runtime so subsequent
+  // `session.create` calls see the new adapter, then tear the live
+  // session down and resume it under the same id so wire.jsonl /
+  // ContextState carry over. The resumed `SoulPlus.setModel` writes
+  // the `model_changed` journal record on the new SoulPlus instance.
+  // Declared before `registerDefaultWireHandlers` so the closure is
+  // available at registration time.
+  const wireRebuildRuntimeForModel = async (
+    sessionId: string,
+    newModelAlias: string,
+  ): Promise<void> => {
+    const newProvider = await createProviderFromConfig(kimiConfig, newModelAlias, {
+      defaultHeaders: buildKimiDefaultHeaders(getVersion()),
+      ...(oauthResolver !== undefined ? { oauthResolver } : {}),
+    });
+    currentRuntime = createRuntime({
+      kosong: createKosongAdapter({ provider: newProvider }),
+    });
+    currentModelAlias = newModelAlias;
+    // Tear the live session down before resuming so SessionManager
+    // hits a clean slate. closeSession also disposes the existing
+    // WireEventBridge (see `closeSession` wrapper below).
+    await sessionManager.closeSession(sessionId);
+    const resumed = await sessionManager.resumeSession(sessionId, {
+      runtime: currentRuntime,
+      tools: [],
+      model: newModelAlias,
+      eventBus,
+      orchestrator,
+    });
+    // Append the `model_changed` record so the change is durable on
+    // the resumed session's journal.
+    await resumed.soulPlus.setModel(newModelAlias);
+  };
+
+  const wireHandlersHandle = registerDefaultWireHandlers({
     sessionManager,
     router,
-    runtime,
+    runtime: currentRuntime,
     kosong,
     tools: [],
     approval,
     orchestrator,
     eventBus,
     workspaceDir: workDir,
-    defaultModel: modelAlias,
+    defaultModel: currentModelAlias,
     pathConfig,
     // Phase 18 §E.3-E.5 — hand the per-process BPM to wire handlers
     // so `session.getBackgroundTasks` / `stopBackgroundTask` /
     // `getBackgroundTaskOutput` dispatch to live tasks instead of
     // degrading to empty stubs.
     backgroundProcessManager: backgroundManager,
+    // Phase 21 §A — expose the production transport + hook engine so
+    // the new `session.registerTool` / `session.setThinking` / hook
+    // registration code paths can issue reverse-RPC frames.
+    server: transport,
+    hookEngine,
+    rebuildRuntimeForModel: wireRebuildRuntimeForModel,
   });
-
-  const transport = new StdioTransport();
-  const codec = new WireCodec();
 
   // Phase 17 §A.1 — per-session WireEventBridge, keyed by sessionId.
   // Each `session.create` spawns a new bridge; `session.destroy`
@@ -868,6 +923,23 @@ async function runWire(opts: CLIOptions): Promise<void> {
   // attribution.
   const bridgeDisposers = new Map<string, () => void>();
 
+  type ManagedRef = Awaited<ReturnType<typeof sessionManager.createSession>>;
+  const installBridge = (managed: ManagedRef): void => {
+    bridgeDisposers.get(managed.sessionId)?.();
+    const handle = installWireEventBridge({
+      server: transport,
+      eventBus,
+      addTurnLifecycleListener: (l) =>
+        managed.soulPlus.getTurnManager().addTurnLifecycleListener(l),
+      sessionId: managed.sessionId,
+      // Phase 21 §A — pull the per-session subscribe filter on every emit
+      // so `session.subscribe({ events: [...] })` actually narrows the
+      // wire fan-out without requiring a bridge restart.
+      getEventFilter: () => wireHandlersHandle.getEventFilter(managed.sessionId),
+    });
+    bridgeDisposers.set(managed.sessionId, handle.dispose);
+  };
+
   const originalCreate = sessionManager.createSession.bind(sessionManager);
   (sessionManager as { createSession: typeof sessionManager.createSession }).createSession =
     async (options) => {
@@ -875,15 +947,20 @@ async function runWire(opts: CLIOptions): Promise<void> {
       activeSessionId = managed.sessionId;
       // Dispose any stale bridge on the same id (e.g., createSession
       // called twice with the same sessionId from session.resume).
-      bridgeDisposers.get(managed.sessionId)?.();
-      const handle = installWireEventBridge({
-        server: transport,
-        eventBus,
-        addTurnLifecycleListener: (l) =>
-          managed.soulPlus.getTurnManager().addTurnLifecycleListener(l),
-        sessionId: managed.sessionId,
-      });
-      bridgeDisposers.set(managed.sessionId, handle.dispose);
+      installBridge(managed);
+      return managed;
+    };
+
+  // Phase 21 §A — wrap `resumeSession` so the live-switch path
+  // (`wireRebuildRuntimeForModel` above + future direct resumes) gets
+  // a fresh WireEventBridge installed against the resumed SoulPlus.
+  // Without this, resumed sessions would silently lose event fan-out.
+  const originalResume = sessionManager.resumeSession.bind(sessionManager);
+  (sessionManager as { resumeSession: typeof sessionManager.resumeSession }).resumeSession =
+    async (sessionId, options) => {
+      const managed = await originalResume(sessionId, options);
+      activeSessionId = managed.sessionId;
+      installBridge(managed);
       return managed;
     };
 
@@ -949,6 +1026,12 @@ async function runWire(opts: CLIOptions): Promise<void> {
   // dispose as a side-effect of the patched closeSession above.
   transport.onClose = () => {
     void (async () => {
+      // Phase 21 §A — reject every in-flight reverse-RPC (hook.request /
+      // approval.request / tool.call) so WireHookExecutor / ApprovalRuntime
+      // / buildExternalToolProxy unwind immediately instead of waiting for
+      // their own per-call timeout. Must run before closeSession so the
+      // last-batch journal drain isn't blocked by a hanging promise.
+      router.rejectAllPending('client transport closed');
       const openIds = [...bridgeDisposers.keys()];
       for (const sid of openIds) {
         try {

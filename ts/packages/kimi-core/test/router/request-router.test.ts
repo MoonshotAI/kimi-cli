@@ -206,6 +206,70 @@ describe('RequestRouter response routing', () => {
   });
 });
 
+// ── Phase 21 §A — pending-request cancellation (MAJOR-2) ────────────────
+
+describe('RequestRouter pending-request cancellation', () => {
+  it('cancelPendingRequest rejects the caller and removes the map entry', async () => {
+    const sm = createFakeSessionManager();
+    const router = new RequestRouter({ sessionManager: sm });
+    const transport = createFakeTransport();
+    const resolve = vi.fn();
+    const reject = vi.fn();
+
+    router.registerPendingRequest('req_timeout', resolve, reject);
+    const cancelled = router.cancelPendingRequest('req_timeout', new Error('boom'));
+    expect(cancelled).toBe(true);
+    expect(reject).toHaveBeenCalledTimes(1);
+    expect((reject.mock.calls[0]?.[0] as Error).message).toBe('boom');
+
+    // Map entry gone → a late-arriving response is a no-op, resolve never
+    // fires. Before the fix the entry would still be in the map (only the
+    // local cleanup ran), so the late response would wake the already-
+    // rejected promise with a second settle attempt.
+    const late = buildRequest({
+      id: 'res_late',
+      type: 'response',
+      request_id: 'req_timeout',
+      session_id: 'ses_abc',
+    } as Partial<WireMessage>);
+    await router.dispatch(late, transport);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('cancelPendingRequest returns false when the id is unknown or already settled', () => {
+    const sm = createFakeSessionManager();
+    const router = new RequestRouter({ sessionManager: sm });
+    expect(router.cancelPendingRequest('req_nope')).toBe(false);
+
+    const resolve = vi.fn();
+    const reject = vi.fn();
+    router.registerPendingRequest('req_once', resolve, reject);
+    expect(router.cancelPendingRequest('req_once')).toBe(true);
+    // Second call against the same id is a no-op — prevents double-reject.
+    expect(router.cancelPendingRequest('req_once')).toBe(false);
+    expect(reject).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejectAllPending rejects every in-flight request (Phase 21 §A regression)', () => {
+    const sm = createFakeSessionManager();
+    const router = new RequestRouter({ sessionManager: sm });
+    const rejectA = vi.fn();
+    const rejectB = vi.fn();
+
+    router.registerPendingRequest('req_a', vi.fn(), rejectA);
+    router.registerPendingRequest('req_b', vi.fn(), rejectB);
+
+    router.rejectAllPending('transport closed');
+
+    expect(rejectA).toHaveBeenCalledTimes(1);
+    expect(rejectB).toHaveBeenCalledTimes(1);
+    expect((rejectA.mock.calls[0]?.[0] as Error).message).toBe('transport closed');
+    // Calling cancelPendingRequest on a cleared id must return false.
+    expect(router.cancelPendingRequest('req_a')).toBe(false);
+    expect(router.cancelPendingRequest('req_b')).toBe(false);
+  });
+});
+
 // ── Five-channel routing (rewrite of conceptual routing from Python) ────
 
 describe('RequestRouter five-channel routing', () => {

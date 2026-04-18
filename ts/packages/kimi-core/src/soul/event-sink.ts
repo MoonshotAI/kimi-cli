@@ -150,7 +150,15 @@ export type SoulEvent =
         yolo?: boolean | undefined;
         thinking?: string | undefined;
       };
-    };
+    }
+  /**
+   * Phase 21 §A — distinct thinking-level change notification. Emitted
+   * by `session.setThinking` after the WAL `thinking_changed` record
+   * settles. The wire bridge forwards it as a `thinking.changed` wire
+   * event with the bridge's per-session `seq` counter, preventing
+   * multiple transient changes from colliding on `seq: 0`.
+   */
+  | { type: 'thinking.changed'; level: string };
 
 export interface EventSink {
   emit(event: SoulEvent): void;

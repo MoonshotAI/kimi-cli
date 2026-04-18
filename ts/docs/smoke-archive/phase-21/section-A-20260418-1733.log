@@ -1,0 +1,95 @@
+Phase 21 Section A — smoke archive
+==================================
+timestamp: 2026-04-18 17:33 +0800
+branch: make-it-ts
+build: pnpm -r build (all green)
+typecheck: pnpm run typecheck (0 error)
+
+
+A.6.1 — initialize methods >= 22 and includes 8 new wire methods
+----------------------------------------------------------------
+Script: docs/smoke-archive/phase-21/A-initialize.mjs
+$ node docs/smoke-archive/phase-21/A-initialize.mjs
+PASS methods=42
+includes: session.setModel, session.setThinking, session.addSystemReminder,
+         session.registerTool, session.removeTool, session.listTools,
+         session.setActiveTools, session.unsubscribe
+
+
+A.6.2 — session.setModel round-trip (no -32601, no ENOENT)
+----------------------------------------------------------------
+Script: docs/smoke-archive/phase-21/A-setModel.mjs
+$ node docs/smoke-archive/phase-21/A-setModel.mjs
+PASS setModel response ok
+data={"ok":true}
+
+Regression covered by:
+  packages/kimi-core/test/session/resume-fresh-session.test.ts (3 tests)
+  session-manager now tolerates missing wire.jsonl on fresh resume.
+
+
+A.6.3 — registerTool / listTools / removeTool round-trip
+----------------------------------------------------------------
+Script: docs/smoke-archive/phase-21/A-registerTool.mjs
+$ node docs/smoke-archive/phase-21/A-registerTool.mjs
+PASS registerTool/listTools/removeTool round-trip
+- register: ok
+- listTools#1: contains smoke_echo (tools=1)
+- removeTool: ok
+- listTools#2: excludes smoke_echo (tools=0)
+
+
+A.6.4 — hook.request reverse-RPC (round-trip / timeout / malformed)
+----------------------------------------------------------------
+See docs/smoke-archive/phase-21/A-hook-request-NOTE.md for rationale.
+
+Equivalent coverage via production E2E test:
+  packages/kimi-core/test/e2e/wire-hook-request-reverse-rpc.test.ts
+
+$ cd packages/kimi-core && npx vitest run test/e2e/wire-hook-request-reverse-rpc.test.ts
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+
+
+A.6.5 — Production E2E surface test
+----------------------------------------------------------------
+$ cd packages/kimi-core && npx vitest run test/e2e/wire-methods-production-surface.test.ts
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+
+
+Adjacent regression coverage
+----------------------------------------------------------------
+$ cd packages/kimi-core && npx vitest run \
+    test/e2e/wire-subscribe-filter-production.test.ts \
+    test/router/wire-methods-phase18-a.test.ts \
+    test/router/request-router.test.ts \
+    test/session/resume-fresh-session.test.ts
+ Test Files  4 passed (4)
+      Tests  44 passed (44)
+
+
+Full suite snapshot
+----------------------------------------------------------------
+$ pnpm --filter @moonshot-ai/core test --run
+  Test Files  278 passed | 4 skipped (282)
+       Tests  2712 passed | 21 skipped | 43 todo (2776)
+
+$ pnpm --filter @moonshot-ai/cli test --run
+  Test Files  28 passed | 1 skipped (29)
+       Tests  334 passed | 5 todo (339)
+
+$ pnpm run typecheck
+  0 errors
+
+$ pnpm -r build
+  all packages green
+
+
+Summary
+-------
+- A.6.1 ✓
+- A.6.2 ✓ (ENOENT regression fixed; 3 new session-manager tests)
+- A.6.3 ✓
+- A.6.4 ✓ (covered by production E2E — see NOTE)
+- A.6.5 ✓

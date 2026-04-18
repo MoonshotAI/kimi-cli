@@ -231,6 +231,12 @@ export interface ManagedSession {
 // ── Supported protocol major version ────────────────────────────────
 
 const SUPPORTED_MAJOR = 2;
+// Phase 21 §A.6.2 — protocol version stamped on the synthetic empty
+// ReplayResult that resumeSession returns when wire.jsonl is missing.
+// Matches the writer's DEFAULT_PROTOCOL_VERSION so the eventual real
+// header (written on the next append) is bit-identical to a fresh
+// createSession.
+const SUPPORTED_RESUME_PROTOCOL_VERSION = '2.1';
 
 // ── SessionManager ──────────────────────────────────────────────────
 
@@ -466,14 +472,48 @@ export class SessionManager {
     }
 
     // 1. Replay wire.jsonl → records + health
+    //
+    // Phase 21 §A.6.2 — `WiredJournalWriter` writes the metadata header
+    // lazily on the first `append`, so a session that was created and
+    // immediately closed without any downstream activity has a session
+    // directory but **no** wire.jsonl on disk. The wire path
+    // `wireRebuildRuntimeForModel` (`closeSession → resumeSession`) hits
+    // this case for any `session.setModel` issued before the first
+    // prompt. Treat this specific case (sessionDir present, wire.jsonl
+    // missing) as "fresh, empty session" and synthesise an empty
+    // ReplayResult so the writer below can emit a real metadata header
+    // on the next append. A wholly missing sessionDir (ghost session)
+    // still surfaces as the original replay error so callers can tell a
+    // real "session not found" from a fresh resume.
     let replayResult: ReplayResult;
+    let wireFileMissing = false;
     try {
       replayResult = await replayWire(wirePath, { supportedMajor: SUPPORTED_MAJOR });
     } catch (error) {
-      throw new Error(
-        `Failed to replay session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
-      );
+      const fsError = error as NodeJS.ErrnoException;
+      let sessionDirExists = false;
+      if (fsError?.code === 'ENOENT') {
+        try {
+          await stat(sessionDir);
+          sessionDirExists = true;
+        } catch {
+          sessionDirExists = false;
+        }
+      }
+      if (fsError?.code === 'ENOENT' && sessionDirExists) {
+        wireFileMissing = true;
+        replayResult = {
+          records: [],
+          protocolVersion: SUPPORTED_RESUME_PROTOCOL_VERSION,
+          health: 'ok',
+          warnings: [],
+        };
+      } else {
+        throw new Error(
+          `Failed to replay session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
     }
 
     // 2. Project records → initial state
@@ -488,7 +528,11 @@ export class SessionManager {
       filePath: wirePath,
       lifecycle: lifecycleGate,
       initialSeq: projected.lastSeq,
-      metadataAlreadyWritten: true,
+      // Phase 21 §A.6.2 — fresh-resume path has no header on disk yet,
+      // so we MUST let the writer emit one on the next append. Otherwise
+      // the next resume cycle would replay a file whose first line is a
+      // record (not metadata) and fail again.
+      metadataAlreadyWritten: !wireFileMissing,
     });
 
     const sessionJournal = new WiredSessionJournalImpl(journalWriter);

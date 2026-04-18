@@ -403,7 +403,16 @@ export interface AssistantMessage {
 // ── Tool metadata (v2 §9-F.2 / Slice 7.2 决策 #100) ─────────────────────
 
 export interface ToolMetadata {
-  readonly source: 'builtin' | 'mcp' | 'sdk' | 'plugin';
+  /**
+   * Provenance bucket. `'external'` (Phase 21 §A) covers tools registered
+   * by a wire client through `session.registerTool` — the proxy lives in
+   * core but every invocation round-trips to the host through a
+   * `tool.call` reverse-RPC. Distinct from `'plugin'` (compiled plugin
+   * packages), `'sdk'` (programmatic SDK consumers), and `'mcp'` (MCP
+   * server-supplied tools) so the UI / orchestrator can attribute the
+   * source on display and telemetry.
+   */
+  readonly source: 'builtin' | 'mcp' | 'sdk' | 'plugin' | 'external';
   /** Server identifier for `source === 'mcp'`. */
   readonly serverId?: string | undefined;
   /** Original (un-prefixed) tool name as advertised by the source. */

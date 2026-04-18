@@ -995,21 +995,12 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     if (typeof payload.level !== 'string') {
       throw new Error('invalid params: level must be a string');
     }
+    // Phase 21 §A — `setThinking` now emits a `thinking.changed` SoulEvent
+    // via the bus; the per-session WireEventBridge owns the `seq` counter
+    // and translates it into the wire event. The previous `seq: 0` direct
+    // send collided whenever a client flipped `thinking` more than once
+    // before the next turn. Mirrors src/wire-protocol/default-handlers.ts.
     await managed.soulPlus.setThinking(payload.level);
-    // Phase 18 A.6 — emit a dedicated thinking.changed event so clients
-    // can observe the change on the wire.
-    if (server !== undefined) {
-      const { WireCodec } = await import('../../../src/wire-protocol/codec.js');
-      const codec = new WireCodec();
-      const frame = createWireEvent({
-        method: 'thinking.changed',
-        sessionId: msg.session_id,
-        seq: 0,
-        agentType: 'main',
-        data: { level: payload.level },
-      });
-      void server.send(codec.encode(frame)).catch(() => {});
-    }
     return createWireResponse({
       requestId: msg.id,
       sessionId: msg.session_id,

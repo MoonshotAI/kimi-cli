@@ -581,18 +581,22 @@ export class SoulPlus {
   }
 
   /**
-   * Phase 18 A.6 — programmatic thinking-level change. Journals a
-   * `thinking_changed` WAL record (via ContextState.applyConfigChange)
-   * and emits a `thinking.changed` SoulEvent; wire consumers translate
-   * this into the `thinking.changed` wire event.
+   * Phase 18 A.6 / Phase 21 §A — programmatic thinking-level change.
+   * Journals a `thinking_changed` WAL record (via
+   * ContextState.applyConfigChange) and emits two SoulEvents:
+   *   1. `thinking.changed` — distinct event the wire bridge maps to a
+   *      `thinking.changed` wire event with the bridge's per-session
+   *      `seq` counter (replaces the old `seq: 0` direct send from
+   *      `default-handlers.ts`, which collided on rapid flips).
+   *   2. `status.update` — full snapshot so dashboards / TUI status bars
+   *      can repaint without subscribing to the dedicated event.
    */
   async setThinking(level: string): Promise<void> {
     await this.journal.contextState.applyConfigChange({
       type: 'thinking_changed',
       level,
     });
-    // Emit a status.update snapshot so the thinking change is visible
-    // on the same channel as the other setters.
+    this.infra.eventBus.emit({ type: 'thinking.changed', level });
     this.components.turnManager.emitStatusUpdate({ input: 0, output: 0 });
   }
 

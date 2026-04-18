@@ -1,28 +1,53 @@
 /**
- * Default wire handler registrations (Phase 17 §A.1 / §A.5 / §A.3).
+ * Default wire handler registrations (Phase 17 §A / Phase 21 §A).
  *
  * Shared by the production `apps/kimi-cli --wire` runner and the
- * in-memory E2E harness. Registers process / conversation /
- * management / config / mcp handlers against the RequestRouter so
- * both runtimes speak the same wire surface. Phase 17 additions:
- *   - `session.resume` + `session.replay` (A.5)
- *   - `session.setPlanMode` / `session.setYolo` / `session.setModel`
- *     / `session.setSystemPrompt` / `session.addSystemReminder` (A.2)
- *   - `approval.response` reverse-RPC routing (A.3)
- *   - `mcp.*` noop responses (B.4)
- *   - initialize capability blob exposes `hooks.supported_events` +
- *     `hooks.configured` (B.7)
- *   - session.prompt / session.replay schemas validated via zod so
- *     bad params surface as -32602 (A.4)
+ * in-memory E2E harness. Registers process / conversation / management /
+ * config / tools / mcp handlers against the RequestRouter so both
+ * runtimes speak the same wire surface.
+ *
+ * Phase 17 additions:
+ *   - `session.resume` + `session.replay` (§A.5)
+ *   - `session.setPlanMode` / `session.setYolo` / `session.setModel` /
+ *     `session.setSystemPrompt` / `session.addSystemReminder` (§A.2)
+ *   - `approval.response` reverse-RPC routing (§A.3)
+ *   - `mcp.*` noop responses (§B.4)
+ *   - `initialize.capabilities` advertises `hooks.supported_events` +
+ *     `hooks.configured` (§B.7)
+ *   - session.prompt / session.replay schemas validated via zod so bad
+ *     params surface as -32602 (§A.4)
+ *
+ * Phase 21 §A additions:
+ *   - `session.setModel` accepts a host `rebuildRuntimeForModel` callback
+ *     that owns the destroy+resume dance for live provider swaps.
+ *   - `session.setThinking` emits a typed `thinking.changed` SoulEvent;
+ *     the per-session WireEventBridge owns the wire `seq` (the previous
+ *     direct send hardcoded `seq: 0`).
+ *   - `session.subscribe` / `session.unsubscribe` actually mutate the
+ *     per-session event filter (was a no-op stub). The filter is exposed
+ *     via the returned `DefaultWireHandlersHandle.getEventFilter` so the
+ *     WireEventBridge consults it on every emit.
+ *   - `session.registerTool` rejects with a business error when no
+ *     reverse-RPC channel is wired (was previously a silent `{ok:true}`
+ *     even though invocations would dead-end).
+ *   - WireHookExecutor wired against the shared HookEngine when
+ *     `initialize.hooks[]` declares any matchers, so client hooks fan
+ *     through `hook.request` reverse-RPC.
+ *   - `registerDefaultWireHandlers` returns a handle so the host can
+ *     plug per-session state (event filter for now) into the bridge.
  */
 
 import { readFile } from 'node:fs/promises';
 import { z, ZodError } from 'zod';
 
+import type { HookEngine } from '../hooks/engine.js';
+import { WireHookExecutor, type WireHookSender } from '../hooks/wire-executor.js';
+import type { HookEventType, WireHookConfig } from '../hooks/types.js';
 import type { KosongAdapter, Runtime } from '../soul/runtime.js';
 import type { Tool } from '../soul/types.js';
 import type { ApprovalRuntime } from '../soul-plus/approval-runtime.js';
 import type { WiredApprovalRuntime } from '../soul-plus/wired-approval-runtime.js';
+import type { ApprovalStateStore } from '../soul-plus/approval-state-store.js';
 import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
 import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
 import type { PathConfig } from '../session/path-config.js';
@@ -30,15 +55,28 @@ import type { SessionManager } from '../session/session-manager.js';
 import type { RequestRouter } from '../router/request-router.js';
 import { SubagentStore } from '../soul-plus/subagent-store.js';
 import type { BackgroundProcessManager } from '../tools/background/manager.js';
+import type { Transport } from '../transport/types.js';
 import { WireCodec } from './codec.js';
 import { createWireEvent, createWireResponse } from './message-factory.js';
 import {
+  buildExternalToolProxy,
+  createReverseRpcClient,
+  createWireHookSender,
+  getOrInitSessionState,
+  type PerSessionStateMap,
+  type ReverseRpcClient,
+} from './reverse-rpc.js';
+import {
   WIRE_PROTOCOL_VERSION,
   type InitializeResponseData,
+  type SessionAddSystemReminderRequestData,
   type SessionCancelRequestData,
   type SessionCreateRequestData,
   type SessionCreateResponseData,
   type SessionPromptRequestData,
+  type SessionRegisterToolRequestData,
+  type SessionSetModelRequestData,
+  type SessionSetThinkingRequestData,
   type SessionSteerRequestData,
   type WireMessage,
 } from './types.js';
@@ -58,6 +96,28 @@ export interface DefaultHandlersDeps {
   // Phase 18 §E.3-E.5 — optional; when missing the background-task
   // wire methods report an empty surface instead of 500-ing.
   readonly backgroundProcessManager?: BackgroundProcessManager | undefined;
+  // Phase 21 §A — server transport used for reverse-RPC (`tool.call` /
+  // `hook.request`) + `thinking.changed` broadcasts. Optional so unit
+  // tests that don't exercise reverse paths can omit it.
+  readonly server?: Transport | undefined;
+  // Phase 21 §A — hook engine; required to register WireHookConfig
+  // entries from `initialize.hooks[]` once reverse-RPC is available.
+  readonly hookEngine?: HookEngine | undefined;
+  // Phase 21 §A (B.2 parity) — persistent yolo store. When present,
+  // `session.setYolo` delegates to it instead of flipping
+  // `SessionControl.setYolo` directly.
+  readonly approvalStateStore?: ApprovalStateStore | undefined;
+  // Phase 21 §A — `session.setModel` invokes this so the host can
+  // rebuild the underlying Provider/Kosong adapter (live-switch). The
+  // handler awaits the callback before invoking `SoulPlus.setModel` so
+  // the journal records the new model only after the swap succeeds.
+  // When absent, `setModel` is a metadata-only flip (parity with the
+  // test harness behaviour).
+  readonly rebuildRuntimeForModel?:
+    | ((sessionId: string, model: string) => Promise<void> | void)
+    | undefined;
+  // Phase 21 §A — hook reverse-RPC timeout. Defaults to 30s.
+  readonly hookTimeoutMs?: number | undefined;
 }
 
 // Phase 17 §B.7 — the 13 HookEvent types registered under
@@ -106,6 +166,8 @@ const SUPPORTED_WIRE_EVENTS = [
   'session.error',
   'session.replay.chunk',
   'session.replay.end',
+  // Phase 21 §A — typed thinking-level change forwarded by the bridge.
+  'thinking.changed',
 ] as const;
 
 const SUPPORTED_WIRE_METHODS = [
@@ -136,6 +198,7 @@ const SUPPORTED_WIRE_METHODS = [
   'session.getStatus',
   'session.getHistory',
   'session.subscribe',
+  'session.unsubscribe',
   'session.compact',
   'session.clear',
   'session.replay',
@@ -149,6 +212,14 @@ const SUPPORTED_WIRE_METHODS = [
   // config channel
   'session.setPlanMode',
   'session.setYolo',
+  'session.setModel',
+  'session.setThinking',
+  'session.addSystemReminder',
+  // tools channel (Phase 18 §A.8 / §A.9 — dynamic tool management)
+  'session.registerTool',
+  'session.removeTool',
+  'session.listTools',
+  'session.setActiveTools',
 ] as const;
 
 // Phase 17 §A.4 — zod schemas used at handler entry points. Rejecting
@@ -184,9 +255,26 @@ const ApprovalResponseSchema = z.object({
 });
 
 /**
+ * Handle returned from `registerDefaultWireHandlers` so callers can plug
+ * the per-session event filter (populated by `session.subscribe`) into a
+ * per-session WireEventBridge. Returning a thin object instead of raw
+ * `perSession` keeps the internal map encapsulated.
+ */
+export interface DefaultWireHandlersHandle {
+  /**
+   * Returns the active event filter for `sessionId`, or `undefined` when
+   * no filter has been installed (i.e. the client is subscribed to the
+   * default "all events" set).
+   */
+  readonly getEventFilter: (sessionId: string) => ReadonlySet<string> | undefined;
+}
+
+/**
  * Register default process/session handlers on the router.
  */
-export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
+export function registerDefaultWireHandlers(
+  deps: DefaultHandlersDeps,
+): DefaultWireHandlersHandle {
   const {
     router,
     sessionManager,
@@ -199,27 +287,85 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     approval,
     pathConfig,
     backgroundProcessManager,
+    server,
+    hookEngine,
+    approvalStateStore,
+    rebuildRuntimeForModel,
+    hookTimeoutMs,
   } = deps;
+
+  // Phase 21 §A — per-session mutable state for the new wire methods.
+  // Tracks external tool registrations, the active-tool narrowing list,
+  // and the event-fan-out subscription filter. Created lazily on first
+  // touch by `getOrInitSessionState`.
+  const perSession: PerSessionStateMap = new Map();
+
+  // Phase 21 §A — reverse-RPC client (core→client). Available only when
+  // a server transport is wired. Used by `session.registerTool` to
+  // build external tool proxies and by the WireHookExecutor below.
+  const reverse: ReverseRpcClient | undefined = server !== undefined
+    ? createReverseRpcClient({ server, router })
+    : undefined;
+
+  // Phase 21 §A — captured `initialize.hooks[]` so WireHookConfig
+  // entries can be registered against the shared HookEngine once
+  // reverse-RPC is available. The caller passes the latest session id
+  // through `sessionIdResolver` so hook executors target the right
+  // session (production runs typically have one live session at a time).
+  let initialHooks: ReadonlyArray<{
+    event: string;
+    matcher?: unknown;
+    id?: string;
+  }> = [];
 
   // ── Process channel ──────────────────────────────────────────────
 
   router.registerProcessMethod('initialize', async (msg): Promise<WireMessage> => {
+    const payload = (msg.data ?? {}) as {
+      hooks?: ReadonlyArray<{ event: string; matcher?: unknown; id?: string }>;
+    };
+    initialHooks = payload.hooks ?? [];
+
+    // Register a WireHookExecutor on the shared HookEngine so the
+    // configured hooks can dispatch via `hook.request` reverse-RPC.
+    if (hookEngine !== undefined && reverse !== undefined && initialHooks.length > 0) {
+      const sender: WireHookSender = {
+        async send(message) {
+          const sid = [...perSession.keys()][0] ?? msg.session_id;
+          const inner = createWireHookSender({
+            reverse,
+            sessionId: sid,
+            hookTimeoutMs: hookTimeoutMs ?? 30_000,
+          });
+          return inner.send(message);
+        },
+      };
+      hookEngine.registerExecutor('wire', new WireHookExecutor(sender));
+      for (const entry of initialHooks) {
+        const cfg: WireHookConfig = {
+          type: 'wire',
+          event: entry.event as HookEventType,
+          ...(typeof entry.matcher === 'string' ? { matcher: entry.matcher } : {}),
+          subscriptionId:
+            entry.id ?? `hk_${entry.event}_${Math.random().toString(36).slice(2, 8)}`,
+        };
+        hookEngine.register(cfg);
+      }
+    }
+
     const data: InitializeResponseData = {
       protocol_version: WIRE_PROTOCOL_VERSION,
       capabilities: {
         events: [...SUPPORTED_WIRE_EVENTS],
         methods: [...SUPPORTED_WIRE_METHODS],
-        // Phase 17 §B.7 — advertise the hook machinery so clients can
-        // subscribe. `configured` is empty in the bare harness; real
-        // CLI runners will populate it from loaded config.
         hooks: {
           supported_events: HOOK_SUPPORTED_EVENTS,
-          // Production currently ships no pre-configured hooks. When
-          // hook-config loading lands, map entries through the same
-          // string-only matcher normalisation used in
-          // `test/helpers/wire/default-handlers.ts` so that `{}` / `null`
-          // matchers cannot leak into the wire capability blob (R-2).
-          configured: [],
+          configured: initialHooks.map((h) => ({
+            event: h.event,
+            ...(typeof h.matcher === 'string' && h.matcher.length > 0
+              ? { matcher: h.matcher }
+              : {}),
+          })),
         },
       },
     };
@@ -428,7 +574,22 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     });
   });
 
+  // Phase 21 §A — `session.subscribe` actually narrows the per-session
+  // event-fan-out filter (was a no-op stub). The companion
+  // `session.unsubscribe` handler clears the filter. The WireEventBridge
+  // looks the filter up via the handle returned from
+  // `registerDefaultWireHandlers` (`getEventFilter(sessionId)`), so any
+  // mutation here is observed on the next emit without re-installing the
+  // bridge.
   router.registerMethod('session.subscribe', 'management', async (msg) => {
+    const payload = (msg.data ?? {}) as { events?: unknown };
+    const state = getOrInitSessionState(perSession, msg.session_id);
+    if (Array.isArray(payload.events)) {
+      const events = payload.events.filter((e): e is string => typeof e === 'string');
+      state.eventFilter = events.length > 0 ? new Set(events) : undefined;
+    } else {
+      state.eventFilter = undefined;
+    }
     return createWireResponse({
       requestId: msg.id,
       sessionId: msg.session_id,
@@ -663,7 +824,205 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
     const managed = session as ReturnType<SessionManager['get']>;
     if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
     const payload = z.object({ enabled: z.boolean() }).parse(msg.data ?? {});
-    await managed.sessionControl.setYolo(payload.enabled);
+    if (approvalStateStore !== undefined) {
+      await approvalStateStore.setYolo(payload.enabled);
+    } else {
+      await managed.sessionControl.setYolo(payload.enabled);
+    }
+    // Phase 21 §A — emit a status.update so observers pick up the yolo
+    // change (parity with test-helper handler).
+    managed.soulPlus.getTurnManager().emitStatusUpdate({ input: 0, output: 0 });
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  // ── Phase 21 §A — session.setModel / setThinking / addSystemReminder ──
+
+  router.registerMethod('session.setModel', 'config', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const payload = (msg.data ?? {}) as Partial<SessionSetModelRequestData>;
+    if (typeof payload.model !== 'string' || payload.model.length === 0) {
+      throw new Error('invalid params: model must be a non-empty string');
+    }
+    // Phase 21 §A — when the host wires `rebuildRuntimeForModel`, the
+    // callback owns the full live-switch dance (rebuild Provider/Kosong
+    // adapter → destroy + resume the session → journal the model change
+    // on the resumed SoulPlus). The current `managed` reference becomes
+    // stale after that, so we MUST NOT call `managed.soulPlus.setModel`
+    // here — that would write to a torn-down journal. The fallback path
+    // (no `rebuildRuntimeForModel`, e.g. unit tests / harness) keeps the
+    // metadata-only flip semantics on the live SoulPlus.
+    if (rebuildRuntimeForModel !== undefined) {
+      await rebuildRuntimeForModel(msg.session_id, payload.model);
+    } else {
+      await managed.soulPlus.setModel(payload.model);
+    }
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  router.registerMethod('session.setThinking', 'config', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const payload = (msg.data ?? {}) as Partial<SessionSetThinkingRequestData>;
+    if (typeof payload.level !== 'string') {
+      throw new Error('invalid params: level must be a string');
+    }
+    // Phase 21 §A — `setThinking` now emits a `thinking.changed` SoulEvent
+    // via the bus; the per-session WireEventBridge owns the `seq` counter
+    // and translates it into the wire event. The previous `seq: 0` direct
+    // send collided whenever a client flipped `thinking` more than once
+    // before the next turn.
+    await managed.soulPlus.setThinking(payload.level);
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  router.registerMethod('session.addSystemReminder', 'config', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const payload = (msg.data ?? {}) as Partial<SessionAddSystemReminderRequestData>;
+    if (typeof payload.content !== 'string' || payload.content.length === 0) {
+      throw new Error('invalid params: content must be a non-empty string');
+    }
+    await managed.soulPlus.addSystemReminder(payload.content);
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  // ── Phase 21 §A — session.unsubscribe (event filter clear) ───────
+
+  router.registerMethod('session.unsubscribe', 'management', async (msg) => {
+    const state = getOrInitSessionState(perSession, msg.session_id);
+    state.eventFilter = undefined;
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  // ── Phase 21 §A — dynamic tool management (tools channel) ────────
+
+  router.registerMethod('session.registerTool', 'tools', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const payload = (msg.data ?? {}) as Partial<SessionRegisterToolRequestData>;
+    if (typeof payload.name !== 'string' || payload.name.length === 0) {
+      throw new Error('invalid params: name must be a non-empty string');
+    }
+    // Phase 21 §A — `session.registerTool` is meaningless without a
+    // reverse-RPC channel: the registered tool would be advertised on the
+    // schema, picked up by Soul, but every invocation would dead-end at a
+    // missing `tool.call` sender. Reject early instead of silently
+    // succeeding (was the pre-fix behaviour) so the caller can react to
+    // the misconfiguration on the request that introduced it. The check
+    // also runs before the perSession mutation so `listTools` and the
+    // SoulPlus dynamic registry stay in lockstep with what's invocable.
+    if (reverse === undefined) {
+      throw new Error(
+        'session.registerTool requires a reverse-RPC channel (no `server` transport wired)',
+      );
+    }
+    const state = getOrInitSessionState(perSession, msg.session_id);
+    state.externalTools.set(payload.name, {
+      description: payload.description ?? '',
+      input_schema: payload.input_schema,
+    });
+    await managed.soulPlus.registerDynamicTool(
+      buildExternalToolProxy({
+        name: payload.name,
+        description: payload.description ?? '',
+        inputSchema: payload.input_schema,
+        sendToolCall: async (call, signal) => {
+          const response = await reverse.sendRequest(
+            'tool.call',
+            managed.sessionId,
+            { id: call.id, name: call.name, args: call.args },
+            { timeoutMs: 30_000, signal },
+          );
+          const data = (response.data ?? {}) as {
+            output?: string;
+            is_error?: boolean;
+          };
+          return {
+            output: data.output ?? '',
+            ...(data.is_error !== undefined ? { is_error: data.is_error } : {}),
+          };
+        },
+      }),
+    );
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  router.registerMethod('session.removeTool', 'tools', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const payload = (msg.data ?? {}) as { name?: string };
+    if (typeof payload.name !== 'string') {
+      throw new Error('invalid params: name must be a string');
+    }
+    const state = getOrInitSessionState(perSession, msg.session_id);
+    state.externalTools.delete(payload.name);
+    await managed.soulPlus.removeDynamicTool(payload.name);
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
+  router.registerMethod('session.listTools', 'tools', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const state = getOrInitSessionState(perSession, msg.session_id);
+    const allTools = managed.soulPlus.getTools();
+    const activeSet =
+      state.activeToolNames === undefined ? undefined : new Set(state.activeToolNames);
+    const serialised = allTools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      active: activeSet === undefined ? true : activeSet.has(t.name),
+    }));
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: {
+        tools: serialised,
+        ...(state.activeToolNames !== undefined
+          ? { active: [...state.activeToolNames] }
+          : {}),
+      },
+    });
+  });
+
+  router.registerMethod('session.setActiveTools', 'tools', async (msg, _t, session) => {
+    const managed = session as ReturnType<SessionManager['get']>;
+    if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
+    const payload = (msg.data ?? {}) as { names?: string[] };
+    if (!Array.isArray(payload.names)) {
+      throw new Error('invalid params: names must be an array');
+    }
+    const state = getOrInitSessionState(perSession, msg.session_id);
+    state.activeToolNames = [...payload.names];
+    await managed.soulPlus.setActiveTools(payload.names);
     return createWireResponse({
       requestId: msg.id,
       sessionId: msg.session_id,
@@ -723,4 +1082,9 @@ export function registerDefaultWireHandlers(deps: DefaultHandlersDeps): void {
 
   void createWireEvent;
   void ZodError;
+
+  return {
+    getEventFilter: (sessionId: string): ReadonlySet<string> | undefined =>
+      perSession.get(sessionId)?.eventFilter,
+  };
 }

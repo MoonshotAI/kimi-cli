@@ -20,23 +20,16 @@ import type { HookEngine } from '../../../src/hooks/engine.js';
 import { WireHookExecutor, type WireHookSender } from '../../../src/hooks/wire-executor.js';
 import type {
   HookEventType,
-  HookInput,
   WireHookConfig,
 } from '../../../src/hooks/types.js';
-import type { RequestRouter } from '../../../src/router/request-router.js';
-import type { ManagedSession, SessionManager } from '../../../src/session/index.js';
+import type { ManagedSession } from '../../../src/session/index.js';
 import type { SessionEventBus } from '../../../src/soul-plus/session-event-bus.js';
-import type { SoulPlus } from '../../../src/soul-plus/soul-plus.js';
-import type { Tool, ToolCall, ToolResult } from '../../../src/soul/types.js';
-import { z } from 'zod';
+import type { Tool } from '../../../src/soul/types.js';
 import {
   WireCodec,
-  type WireMessage,
 } from '../../../src/wire-protocol/index.js';
 import {
   createWireEvent,
-  createWireRequest,
-  createWireResponse,
 } from '../../../src/wire-protocol/message-factory.js';
 import type {
   WireEventMethod,
@@ -45,6 +38,27 @@ import type { MemoryTransport } from '../../../src/transport/memory-transport.js
 import {
   classifyBusinessError as classifyBusinessErrorFromSrc,
 } from '../../../src/soul-plus/errors.js';
+// Phase 21 §A — reverse-RPC primitives moved to src/wire-protocol/reverse-rpc.ts.
+// In-file usage (PerSessionWireState in the event bridge,
+// ReverseRpcClient + createWireHookSender in registerWireHooks).
+import {
+  createWireHookSender,
+  type PerSessionWireState,
+  type ReverseRpcClient,
+} from '../../../src/wire-protocol/reverse-rpc.js';
+// Re-export the rest of the surface so harness callers keep importing
+// from phase18-extensions without churn.
+export {
+  buildExternalToolProxy,
+  createReverseRpcClient,
+  createWireHookSender,
+  getOrInitSessionState,
+  type ExternalToolState,
+  type PerSessionStateMap,
+  type PerSessionWireState,
+  type ReverseRpcClient,
+  type ReverseRpcMethod,
+} from '../../../src/wire-protocol/reverse-rpc.js';
 // Phase 19 Slice B — capability check moved to src/. Re-export so harness
 // callers keep importing it from `phase18-extensions.js` without churn.
 // TODO(phase-19-cleanup): inline callers should import directly from
@@ -53,50 +67,6 @@ export {
   checkLLMCapabilities,
   type LLMCapabilityCheckOptions,
 } from '../../../src/soul-plus/capability-check.js';
-
-// ── Per-session mutable state owned by the harness ──────────────────────
-
-export interface PerSessionWireState {
-  /**
-   * Name-keyed map of external tool definitions announced by the client
-   * (via `initialize.external_tools` or `session.registerTool`). When
-   * the LLM calls one of these, the tool is routed via `tool.call`
-   * reverse-RPC back to the client instead of through an in-process
-   * executor.
-   */
-  readonly externalTools: Map<string, { description: string; input_schema?: unknown }>;
-  /**
-   * Narrowed active tool-name list. When `undefined`, every registered
-   * tool is active. Populated via `session.setActiveTools`.
-   */
-  activeToolNames: string[] | undefined;
-  /**
-   * Event subscription filter. `undefined` == subscribe-to-all (default).
-   * Otherwise only wire event frames whose `method` appears in the set
-   * are forwarded.
-   */
-  eventFilter: Set<string> | undefined;
-  /** Disposer for the wire event bridge installed on session create. */
-  bridgeDispose?: (() => void) | undefined;
-}
-
-export type PerSessionStateMap = Map<string, PerSessionWireState>;
-
-export function getOrInitSessionState(
-  map: PerSessionStateMap,
-  sessionId: string,
-): PerSessionWireState {
-  let state = map.get(sessionId);
-  if (state === undefined) {
-    state = {
-      externalTools: new Map(),
-      activeToolNames: undefined,
-      eventFilter: undefined,
-    };
-    map.set(sessionId, state);
-  }
-  return state;
-}
 
 // ── A.1 external_tools conflict detection ───────────────────────────────
 
@@ -163,190 +133,6 @@ export function resolveExternalTools(
     });
   }
   return { resolution, accepted };
-}
-
-// ── A.2 / A.8 — external tool proxy ─────────────────────────────────────
-
-/**
- * Build a Soul-visible Tool that, when executed, issues a `tool.call`
- * reverse-RPC frame to the client and awaits the response. Timeout
- * / disconnect translate into an `isError: true` ToolResult so Soul
- * can surface a sensible error without bricking the turn.
- */
-export function buildExternalToolProxy(options: {
-  readonly name: string;
-  readonly description: string;
-  readonly inputSchema?: unknown;
-  readonly sendToolCall: (
-    call: ToolCall,
-    signal: AbortSignal,
-  ) => Promise<{ output: string; is_error?: boolean }>;
-}): Tool {
-  // External tools come with JSON-schema-ish input but Soul's `Tool` wants
-  // a ZodType. Fall back to `z.unknown()` — input validation is the
-  // client's responsibility for external tools.
-  const inputSchema = z.unknown();
-  const tool: Tool<unknown, unknown> = {
-    name: options.name,
-    description: options.description,
-    inputSchema,
-    metadata: {
-      source: 'external',
-      originalName: options.name,
-    } as never,
-    async execute(toolCallId, args, signal): Promise<ToolResult> {
-      try {
-        const response = await options.sendToolCall(
-          { id: toolCallId, name: options.name, args: (args as Record<string, unknown>) ?? {} },
-          signal,
-        );
-        return {
-          content: response.output,
-          output: response.output,
-          ...(response.is_error === true ? { isError: true } : {}),
-        };
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : `external tool "${options.name}" failed: unknown error`;
-        return {
-          content: message,
-          output: message,
-          isError: true,
-        };
-      }
-    },
-  };
-  return tool;
-}
-
-// ── Reverse-RPC sender backed by the server transport + router ─────────
-
-export interface ReverseRpcClient {
-  sendRequest(
-    method: 'tool.call' | 'hook.request' | 'approval.request' | 'question.ask',
-    sessionId: string,
-    data: unknown,
-    options?: { timeoutMs?: number; signal?: AbortSignal | undefined },
-  ): Promise<WireMessage>;
-}
-
-export function createReverseRpcClient(opts: {
-  readonly server: MemoryTransport;
-  readonly router: RequestRouter;
-  readonly codec?: WireCodec;
-}): ReverseRpcClient {
-  const codec = opts.codec ?? new WireCodec();
-  return {
-    async sendRequest(method, sessionId, data, options): Promise<WireMessage> {
-      const req = createWireRequest({
-        method,
-        sessionId,
-        data,
-        from: 'core',
-        to: 'client',
-      });
-      const timeoutMs = options?.timeoutMs;
-      return new Promise<WireMessage>((resolve, reject) => {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        let abortListener: (() => void) | undefined;
-        const cleanup = (): void => {
-          if (timer !== undefined) clearTimeout(timer);
-          if (abortListener !== undefined && options?.signal !== undefined) {
-            options.signal.removeEventListener('abort', abortListener);
-          }
-        };
-        opts.router.registerPendingRequest(req.id, (reply) => {
-          cleanup();
-          resolve(reply);
-        });
-        if (timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0) {
-          timer = setTimeout(() => {
-            cleanup();
-            reject(new Error(`reverse RPC ${method} timed out after ${timeoutMs}ms`));
-          }, timeoutMs);
-        }
-        if (options?.signal !== undefined) {
-          if (options.signal.aborted) {
-            cleanup();
-            reject(new Error(`reverse RPC ${method} aborted`));
-            return;
-          }
-          abortListener = (): void => {
-            cleanup();
-            reject(new Error(`reverse RPC ${method} aborted`));
-          };
-          options.signal.addEventListener('abort', abortListener, { once: true });
-        }
-        void opts.server.send(codec.encode(req)).catch((err: unknown) => {
-          cleanup();
-          reject(err instanceof Error ? err : new Error(String(err)));
-        });
-      });
-    },
-  };
-}
-
-// ── A.10 — WireHookSender backed by the reverse-RPC client ─────────────
-
-export function createWireHookSender(opts: {
-  readonly reverse: ReverseRpcClient;
-  readonly sessionId: string;
-  readonly hookTimeoutMs: number;
-}): WireHookSender {
-  return {
-    async send(message): Promise<{ requestId: string; result: { ok: boolean; blockAction?: boolean; reason?: string; additionalContext?: string } }> {
-      const input = message.input;
-      const response = await opts.reverse.sendRequest(
-        'hook.request',
-        opts.sessionId,
-        buildHookRequestData(message.subscriptionId, input),
-        { timeoutMs: opts.hookTimeoutMs },
-      );
-      const data = (response.data ?? {}) as {
-        ok?: boolean;
-        blockAction?: boolean;
-        block_action?: boolean;
-        reason?: string;
-        additional_context?: string;
-        additionalContext?: string;
-      };
-      return {
-        requestId: message.requestId,
-        result: {
-          ok: data.ok ?? true,
-          ...(data.blockAction !== undefined || data.block_action !== undefined
-            ? { blockAction: data.blockAction ?? data.block_action }
-            : {}),
-          ...(data.reason !== undefined ? { reason: data.reason } : {}),
-          ...(data.additionalContext !== undefined || data.additional_context !== undefined
-            ? { additionalContext: data.additionalContext ?? data.additional_context }
-            : {}),
-        },
-      };
-    },
-  };
-}
-
-function buildHookRequestData(subscriptionId: string, input: HookInput): Record<string, unknown> {
-  const base = {
-    subscription_id: subscriptionId,
-    event: input.event,
-    session_id: input.sessionId,
-    turn_id: input.turnId,
-    agent_id: input.agentId,
-  } as Record<string, unknown>;
-  if (
-    input.event === 'PreToolUse' ||
-    input.event === 'PostToolUse' ||
-    input.event === 'OnToolFailure'
-  ) {
-    base['tool_name'] = input.toolCall.name;
-    base['tool_call_id'] = input.toolCall.id;
-    base['args'] = input.toolCall.args;
-  }
-  return base;
 }
 
 // ── Wire event bridge (adapted from test/e2e/helpers/wire-event-bridge) ─
@@ -482,6 +268,10 @@ export function installHarnessWireEventBridge(opts: {
       case 'model.changed': {
         const data = event['data'] as { new_model: string };
         sendWire('model.changed', { new_model: data.new_model }, currentTurnId);
+        return;
+      }
+      case 'thinking.changed': {
+        sendWire('thinking.changed', { level: event['level'] as string }, currentTurnId);
         return;
       }
       default: {

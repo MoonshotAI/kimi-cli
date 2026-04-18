@@ -136,6 +136,13 @@ export function adaptSoulEventToWireMessage(
     case 'status.update':
       return createEvent('status.update', event.data, common);
 
+    // Phase 21 §A — typed thinking-level change. The wire bridge owns the
+    // per-session `seq`; this adapter just forwards the level on the
+    // dedicated `thinking.changed` channel so CLI renderers can update
+    // their indicator without subscribing to the full status snapshot.
+    case 'thinking.changed':
+      return createEvent('thinking.changed', { level: event.level }, common);
+
     case 'hook.triggered':
     case 'hook.resolved':
       return null;

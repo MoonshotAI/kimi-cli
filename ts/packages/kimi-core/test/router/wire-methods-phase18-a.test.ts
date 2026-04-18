@@ -313,6 +313,33 @@ describe('Phase 18 A.6 — session.setThinking', () => {
     expect(ev).toBeDefined();
     expect((ev!.data as { level?: string }).level).toBe('high');
   });
+
+  // Phase 21 §A — regression pin for MAJOR-1. Two consecutive setThinking
+  // calls in the same turn must produce two `thinking.changed` events with
+  // monotonically increasing `seq`. Before the fix, `default-handlers.ts`
+  // hardcoded `seq: 0` on a direct transport.send(), so multiple flips
+  // collided on the same seq and clients couldn't dedupe / reorder them.
+  it('two consecutive flips emit monotonically increasing seq via the per-session counter', async () => {
+    const { sessionId } = await boot();
+
+    const r1 = await requestOn('session.setThinking', sessionId, { level: 'low' });
+    expect(r1.error).toBeUndefined();
+    const ev1 = await harness!.expectEvent('thinking.changed', { timeoutMs: 2000 });
+    const r2 = await requestOn('session.setThinking', sessionId, { level: 'high' });
+    expect(r2.error).toBeUndefined();
+    const ev2 = await harness!.expectEvent('thinking.changed', {
+      timeoutMs: 2000,
+      matcher: (m) => (m.data as { level?: string }).level === 'high',
+    });
+
+    expect((ev1.data as { level?: string }).level).toBe('low');
+    expect((ev2.data as { level?: string }).level).toBe('high');
+    // The bridge owns the per-session counter, so seq2 > seq1 — the old
+    // `seq: 0` direct send would have failed this assertion.
+    expect(typeof ev1.seq).toBe('number');
+    expect(typeof ev2.seq).toBe('number');
+    expect((ev2.seq as number) > (ev1.seq as number)).toBe(true);
+  });
 });
 
 describe('Phase 18 A.7 — session.addSystemReminder', () => {

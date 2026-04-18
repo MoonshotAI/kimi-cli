@@ -41,6 +41,17 @@ export interface InstallWireEventBridgeOptions {
   readonly eventBus: SessionEventBus;
   readonly addTurnLifecycleListener: (l: TurnLifecycleListener) => () => void;
   readonly sessionId: string;
+  /**
+   * Phase 21 §A — optional per-session event filter lookup. When present,
+   * the bridge consults it on every `sendWire` and suppresses frames whose
+   * `method` is absent from the returned set. Mirrors the test helper's
+   * `state.eventFilter` behaviour so `session.subscribe({ events: [...] })`
+   * actually narrows the wire fan-out in production.
+   *
+   * Returning `undefined` is interpreted as "no filter — forward all
+   * events" (the default before the caller ever issues a `subscribe`).
+   */
+  readonly getEventFilter?: (() => ReadonlySet<string> | undefined) | undefined;
 }
 
 export interface WireEventBridgeHandle {
@@ -52,11 +63,19 @@ const codec = new WireCodec();
 export function installWireEventBridge(
   opts: InstallWireEventBridgeOptions,
 ): WireEventBridgeHandle {
-  const { server, eventBus, addTurnLifecycleListener, sessionId } = opts;
+  const { server, eventBus, addTurnLifecycleListener, sessionId, getEventFilter } = opts;
   let seq = 0;
   let currentTurnId: string | undefined;
 
   const sendWire = (method: WireEventMethod, data: unknown, turnId?: string): void => {
+    // Phase 21 §A — honor `session.subscribe({ events: [...] })`. The
+    // caller owns the filter map; we look it up per emit so the mutation
+    // from the subscribe handler is immediately visible (no restart
+    // required).
+    if (getEventFilter !== undefined) {
+      const filter = getEventFilter();
+      if (filter !== undefined && !filter.has(method)) return;
+    }
     const frame = codec.encode(
       createWireEvent({
         method,
@@ -188,6 +207,14 @@ export function installWireEventBridge(
         return;
       case 'status.update':
         sendWire('status.update', event.data, currentTurnId);
+        return;
+      case 'thinking.changed':
+        // Phase 21 §A — distinct wire event so multiple transient flips
+        // get monotonically increasing `seq` from the per-session counter
+        // owned above (was previously a hardcoded `seq: 0` direct send
+        // from `default-handlers.ts`, which collided whenever a client
+        // changed `thinking` more than once before the next turn).
+        sendWire('thinking.changed', { level: event.level }, currentTurnId);
         return;
       default: {
         // Unknown SoulEvent variant — tolerated at runtime so future types

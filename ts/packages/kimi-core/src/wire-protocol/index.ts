@@ -87,4 +87,7 @@ export type { WireErrorMapping } from './error-mapping.js';
 // Phase 17 §A.5 — shared handler registration. Production `--wire`
 // runner and the test harness both call this.
 export { registerDefaultWireHandlers } from './default-handlers.js';
-export type { DefaultHandlersDeps } from './default-handlers.js';
+export type {
+  DefaultHandlersDeps,
+  DefaultWireHandlersHandle,
+} from './default-handlers.js';
