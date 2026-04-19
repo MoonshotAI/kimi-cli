@@ -8,10 +8,11 @@
  *   - `rgUnavailableMessage` surfaces the underlying cause + install hints
  */
 
-import { mkdirSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ZipFile } from 'yazl';
 
 import {
   detectTarget,
@@ -213,6 +214,159 @@ describe('ensureRgPath download branch (R1)', () => {
     // without producing any files, so `existsSync(extracted)` → false.
     await expect(ensureRgPath({ shareDir: fakeShare })).rejects.toThrow(
       /CDN content may have changed/,
+    );
+  });
+});
+
+// ── R2 — Windows zip download branch ────────────────────────────────────
+//
+// Parity with the Linux `ensureRgPath download branch (R1)` tests but
+// drives the `target.includes('windows')` path: the CDN delivers a `.zip`,
+// yauzl walks the entries, and `rg.exe` lands at `<shareDir>/bin/rg.exe`.
+// `detectTarget()` reads `process.platform` + `process.arch`, so we
+// override both per-test via Object.defineProperty (the same trick used
+// by the `detectTarget` suite above).
+//
+// Fixture zips are built in-memory with `yazl` so tests stay hermetic
+// (no committed binary fixtures on the repo). The archive uses the
+// layout the CDN actually ships (`ripgrep-{ver}-{target}/rg.exe`), which
+// matches Python parity (`grep_local.py:226-234`).
+
+function buildFixtureZip(
+  entries: Array<{ name: string; content: Buffer }>,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const zip = new ZipFile();
+    for (const { name, content } of entries) {
+      zip.addBuffer(content, name);
+    }
+    zip.end();
+    const chunks: Buffer[] = [];
+    zip.outputStream.on('data', (c: Buffer) => chunks.push(c));
+    zip.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    zip.outputStream.on('error', reject);
+  });
+}
+
+function bodyFromBuffer(buf: Buffer): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(buf));
+      controller.close();
+    },
+  });
+}
+
+describe('ensureRgPath Windows download branch (R2)', () => {
+  let fakeShare: string;
+  let savedPath: string | undefined;
+  let savedFetch: typeof globalThis.fetch | undefined;
+  let savedArch: string;
+  let savedPlatform: string;
+  beforeEach(() => {
+    fakeShare = join(
+      tmpdir(),
+      `kimi-rg-win-${String(Date.now())}-${String(Math.random()).slice(2)}`,
+    );
+    mkdirSync(join(fakeShare, 'bin'), { recursive: true });
+    savedPath = process.env['PATH'];
+    process.env['PATH'] = ''; // force past whichRg
+    savedFetch = globalThis.fetch;
+    savedArch = process.arch;
+    savedPlatform = process.platform;
+    // Simulate a Windows host end-to-end — `rgBinaryName()`, `whichRg()`
+    // (PATH sep), and `detectTarget()` all key off these two values.
+    Object.defineProperty(process, 'arch', { value: 'x64' });
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+  });
+  afterEach(() => {
+    rmSync(fakeShare, { recursive: true, force: true });
+    if (savedPath === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = savedPath;
+    if (savedFetch === undefined) {
+      delete (globalThis as unknown as { fetch?: typeof fetch }).fetch;
+    } else {
+      globalThis.fetch = savedFetch;
+    }
+    Object.defineProperty(process, 'arch', { value: savedArch });
+    Object.defineProperty(process, 'platform', { value: savedPlatform });
+    vi.restoreAllMocks();
+  });
+
+  it('fetches the .zip URL (not .tar.gz) on Windows target', async () => {
+    // Minimal fixture — the zip only needs to contain rg.exe for the
+    // success path to complete. We capture the URL fetch was called
+    // with and assert the extension.
+    const zipBuf = await buildFixtureZip([
+      {
+        name: 'ripgrep-15.0.0-x86_64-pc-windows-msvc/rg.exe',
+        content: Buffer.from('MZfake-pe-bytes', 'utf8'),
+      },
+    ]);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      body: bodyFromBuffer(zipBuf),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await ensureRgPath({ shareDir: fakeShare });
+    expect(result.source).toBe('share-bin-downloaded');
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toMatch(/ripgrep-15\.0\.0-x86_64-pc-windows-msvc\.zip$/);
+  });
+
+  it('extracts rg.exe into <shareDir>/bin/rg.exe', async () => {
+    const payload = Buffer.from('MZfake-pe-bytes-extracted', 'utf8');
+    const zipBuf = await buildFixtureZip([
+      {
+        name: 'ripgrep-15.0.0-x86_64-pc-windows-msvc/rg.exe',
+        content: payload,
+      },
+    ]);
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      body: bodyFromBuffer(zipBuf),
+    }) as unknown as typeof fetch;
+
+    const result = await ensureRgPath({ shareDir: fakeShare });
+    const installed = join(fakeShare, 'bin', 'rg.exe');
+    expect(result.path).toBe(installed);
+    expect(existsSync(installed)).toBe(true);
+    expect(readFileSync(installed)).toEqual(payload);
+  });
+
+  it('throws with "CDN content may have changed" when the zip omits rg.exe', async () => {
+    // Archive is well-formed but holds the wrong entry — mirrors the
+    // Linux analogue's sentinel (R1 third test).
+    const zipBuf = await buildFixtureZip([
+      { name: 'README.md', content: Buffer.from('readme') },
+    ]);
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      body: bodyFromBuffer(zipBuf),
+    }) as unknown as typeof fetch;
+
+    await expect(ensureRgPath({ shareDir: fakeShare })).rejects.toThrow(
+      /CDN content may have changed/,
+    );
+  });
+
+  it('surfaces HTTP failure on Windows with status + statusText', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+      body: null,
+    }) as unknown as typeof fetch;
+    await expect(ensureRgPath({ shareDir: fakeShare })).rejects.toThrow(
+      /HTTP 502 Bad Gateway/,
     );
   });
 });

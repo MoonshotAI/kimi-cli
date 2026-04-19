@@ -14,13 +14,14 @@
  */
 
 import { createWriteStream, existsSync } from 'node:fs';
-import { chmod, mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import { extract as extractTar } from 'tar';
+import { type Entry, fromBuffer as yauzlFromBuffer } from 'yauzl';
 
 const RG_VERSION = '15.0.0';
 const RG_BASE_URL = 'http://cdn.kimi.com/binaries/kimi-cli/rg';
@@ -156,15 +157,12 @@ async function downloadAndInstallRg(shareDir: string): Promise<string> {
     );
   }
 
-  if (target.includes('windows')) {
-    throw new Error(
-      'Automatic ripgrep download is not implemented for Windows yet. ' +
-        'Install ripgrep from https://github.com/BurntSushi/ripgrep/releases ' +
-        'and make sure `rg.exe` is on PATH.',
-    );
-  }
-
-  const archiveName = `ripgrep-${RG_VERSION}-${target}.tar.gz`;
+  // Windows ripgrep releases ship as `.zip`; macOS / Linux as `.tar.gz`.
+  // The extraction branch inside the try block handles the format-specific
+  // unpack; the fetch + download-to-tmp pipeline is identical.
+  const isWindows = target.includes('windows');
+  const archiveExt = isWindows ? 'zip' : 'tar.gz';
+  const archiveName = `ripgrep-${RG_VERSION}-${target}.${archiveExt}`;
   const url = `${RG_BASE_URL}/${archiveName}`;
 
   const binDir = join(shareDir, 'bin');
@@ -195,32 +193,118 @@ async function downloadAndInstallRg(shareDir: string): Promise<string> {
     // undici/fetch body matches that shape at runtime.
     await pipeline(Readable.fromWeb(resp.body as never), write);
 
-    const extractDir = join(tmp, 'extract');
-    await mkdir(extractDir, { recursive: true });
-    await extractTar({
-      file: archivePath,
-      cwd: extractDir,
-      gzip: true,
-      filter: (entryPath: string) => entryPath.endsWith(`/${rgBinaryName()}`),
-    });
-    const extracted = join(
-      extractDir,
-      `ripgrep-${RG_VERSION}-${target}`,
-      rgBinaryName(),
-    );
-    if (!existsSync(extracted)) {
-      throw new Error(
-        `Ripgrep archive did not contain expected binary at ${extracted}. ` +
-          'CDN content may have changed.',
+    if (isWindows) {
+      await extractRgFromZip(archivePath, destination);
+      // Windows does not need `chmod +x`: execution is gated by the
+      // `.exe` extension + NTFS ACLs, which are already correct.
+    } else {
+      const extractDir = join(tmp, 'extract');
+      await mkdir(extractDir, { recursive: true });
+      // tar.gz uses hard-coded prefix because the CDN's tar.gz layout is stable
+      // and known from upstream releases; zip branch uses basename matching as
+      // a looser contract so a CDN prefix change doesn't silently fall through.
+      await extractTar({
+        file: archivePath,
+        cwd: extractDir,
+        gzip: true,
+        filter: (entryPath: string) => entryPath.endsWith(`/${rgBinaryName()}`),
+      });
+      const extracted = join(
+        extractDir,
+        `ripgrep-${RG_VERSION}-${target}`,
+        rgBinaryName(),
       );
+      if (!existsSync(extracted)) {
+        throw new Error(
+          `Ripgrep archive did not contain expected binary at ${extracted}. ` +
+            'CDN content may have changed.',
+        );
+      }
+      await rename(extracted, destination);
+      await chmod(destination, 0o755);
     }
-    await rename(extracted, destination);
-    await chmod(destination, 0o755);
     return destination;
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
 }
+
+/**
+ * Read the downloaded `.zip` at `archivePath`, find the `rg.exe` entry
+ * (basename match, matching Python `grep_local.py:227-234`), stream it
+ * out to `destination`. Throws with the shared "CDN content may have
+ * changed" sentinel when the archive holds no matching entry — same
+ * failure semantics as the tar.gz path's `existsSync(extracted)` gate
+ * so callers see a single actionable message.
+ */
+async function extractRgFromZip(archivePath: string, destination: string): Promise<void> {
+  const buf = await readFile(archivePath);
+  const binName = rgBinaryName(); // 'rg.exe' on win32
+  await new Promise<void>((resolve, reject) => {
+    yauzlFromBuffer(buf, { lazyEntries: true }, (openErr, zipfile) => {
+      if (openErr !== null || zipfile === undefined) {
+        reject(
+          new Error(
+            `Failed to open ripgrep archive: ${openErr?.message ?? 'unknown error'}`,
+          ),
+        );
+        return;
+      }
+      let found = false;
+      const onEntry = (entry: Entry): void => {
+        // Match on basename (not full path) — mirrors the Python impl
+        // and keeps the matcher robust against CDN repackaging tweaks
+        // (e.g. an unexpected `ripgrep-X.Y.Z-TARGET/` prefix change).
+        if (basename(entry.fileName) !== binName) {
+          zipfile.readEntry();
+          return;
+        }
+        found = true;
+        zipfile.openReadStream(entry, (streamErr, stream) => {
+          if (streamErr !== null) {
+            reject(
+              new Error(
+                `Failed to read ${entry.fileName} from archive: ${streamErr.message}`,
+              ),
+            );
+            zipfile.close();
+            return;
+          }
+          const out = createWriteStream(destination);
+          pipeline(stream, out)
+            .then(() => {
+              zipfile.close();
+              resolve();
+            })
+            .catch((err: Error) => {
+              zipfile.close();
+              reject(err);
+            });
+        });
+      };
+      zipfile.on('entry', onEntry);
+      zipfile.on('end', () => {
+        // With lazyEntries:true, `end` fires only after readEntry() is called
+        // for every central-directory entry. We stop calling readEntry() once
+        // `found` becomes true, so `end` only reaches this branch on the
+        // not-found path.
+        if (!found) {
+          reject(
+            new Error(
+              `Ripgrep archive did not contain expected binary '${binName}'. ` +
+                'CDN content may have changed.',
+            ),
+          );
+        }
+      });
+      zipfile.on('error', (err: Error) => {
+        reject(err);
+      });
+      zipfile.readEntry();
+    });
+  });
+}
+
 
 /**
  * User-facing error message to show when `ensureRgPath` throws. Kept
