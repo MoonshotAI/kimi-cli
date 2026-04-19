@@ -174,6 +174,112 @@ describe('GlobTool', () => {
     expect(toolContentString(result)).toContain('Truncated');
   });
 
+  // ── Multi-root search (Bug #3) ──────────────────────────────────────
+  describe('multi-root search (no args.path)', () => {
+    it('searches workspaceDir + additionalDirs when path is omitted', async () => {
+      const calls: string[] = [];
+      const kaos = createFakeKaos({
+        glob: (async function* (basePath: string, _pattern: string) {
+          calls.push(basePath);
+          if (basePath === '/ws') yield '/ws/a.ts';
+          if (basePath === '/extra1') yield '/extra1/b.ts';
+          if (basePath === '/extra2') yield '/extra2/c.ts';
+        }) as unknown as ReturnType<typeof createFakeKaos>['glob'],
+        stat: vi.fn().mockResolvedValue({
+          stMode: 0o100_644,
+          stIno: 1,
+          stDev: 1,
+          stNlink: 1,
+          stUid: 0,
+          stGid: 0,
+          stSize: 1,
+          stAtime: 0,
+          stMtime: 0,
+          stCtime: 0,
+        }),
+      });
+      const tool = new GlobTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/extra1', '/extra2'],
+      });
+      const result = await tool.execute(
+        'call_multi',
+        { pattern: '*.ts' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(calls).toEqual(['/ws', '/extra1', '/extra2']);
+      expect(result.output?.paths).toEqual(
+        expect.arrayContaining(['/ws/a.ts', '/extra1/b.ts', '/extra2/c.ts']),
+      );
+    });
+
+    it('does NOT fan out when args.path is given (explicit single root)', async () => {
+      const calls: string[] = [];
+      const kaos = createFakeKaos({
+        glob: (async function* (basePath: string, _pattern: string) {
+          calls.push(basePath);
+          yield `${basePath}/a.ts`;
+        }) as unknown as ReturnType<typeof createFakeKaos>['glob'],
+        stat: vi.fn().mockResolvedValue({
+          stMode: 0o100_644,
+          stIno: 1,
+          stDev: 1,
+          stNlink: 1,
+          stUid: 0,
+          stGid: 0,
+          stSize: 1,
+          stAtime: 0,
+          stMtime: 0,
+          stCtime: 0,
+        }),
+      });
+      const tool = new GlobTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/extra1'],
+      });
+      const result = await tool.execute(
+        'call_single',
+        { pattern: '*.ts', path: '/ws' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(calls).toEqual(['/ws']);
+    });
+
+    it('dedupes when the same path is yielded by multiple roots', async () => {
+      const kaos = createFakeKaos({
+        glob: (async function* (basePath: string, _pattern: string) {
+          if (basePath === '/ws') yield '/shared/x.ts';
+          if (basePath === '/ws2') yield '/shared/x.ts';
+        }) as unknown as ReturnType<typeof createFakeKaos>['glob'],
+        stat: vi.fn().mockResolvedValue({
+          stMode: 0o100_644,
+          stIno: 1,
+          stDev: 1,
+          stNlink: 1,
+          stUid: 0,
+          stGid: 0,
+          stSize: 1,
+          stAtime: 0,
+          stMtime: 0,
+          stCtime: 0,
+        }),
+      });
+      const tool = new GlobTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/ws2'],
+      });
+      const result = await tool.execute(
+        'call_dup',
+        { pattern: '*.ts' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.paths).toEqual(['/shared/x.ts']);
+    });
+  });
+
   // ── Phase 15 A.3 — Python edge cases (ports tests/tools/test_glob.py) ──
   describe('edge cases (Phase 15 A.3 — Python parity)', () => {
     it('max_matches warning text pins the stable contract', async () => {
@@ -229,6 +335,52 @@ describe('GlobTool', () => {
       expect(text).toMatch(/\/my-workspace|\/extra-dir/);
     });
 
+    it('** rejection message includes a tree listing of the workspace root', async () => {
+      // Python `glob.py:50-62` appends a 2-level tree so the caller can
+      // re-scope without a second round-trip. TS parity: the rejection
+      // content must show both dir entries and file entries from the
+      // primary workspaceDir.
+      type KaosArg = Parameters<typeof createFakeKaos>[0];
+      const kaos = createFakeKaos({
+        iterdir: (async function* (p: string) {
+          if (p === '/my-workspace') {
+            yield '/my-workspace/src';
+            yield '/my-workspace/package.json';
+          } else if (p === '/my-workspace/src') {
+            yield '/my-workspace/src/a.ts';
+          }
+        }) as unknown as NonNullable<KaosArg>['iterdir'],
+        // list-directory derives isDir from stMode & 0o170000 === 0o040000
+        // (S_IFDIR). Dirs → 0o040755, files → 0o100644.
+        stat: (async (p: string) => ({
+          stMode: p.endsWith('src') || p.endsWith('my-workspace') ? 0o040_755 : 0o100_644,
+          stIno: 1,
+          stDev: 1,
+          stNlink: 1,
+          stUid: 0,
+          stGid: 0,
+          stSize: 1,
+          stAtime: 0,
+          stMtime: 0,
+          stCtime: 0,
+        })) as unknown as NonNullable<KaosArg>['stat'],
+      } as Parameters<typeof createFakeKaos>[0]);
+      const tool = new GlobTool(kaos, {
+        workspaceDir: '/my-workspace',
+        additionalDirs: [],
+      });
+      const result = await tool.execute(
+        'call_tree',
+        { pattern: '**/*.ts' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBe(true);
+      const text = toolContentString(result);
+      expect(text).toContain('src/');
+      expect(text).toContain('package.json');
+      expect(text).toContain('Top of /my-workspace');
+    });
+
     it('accepts complex multi-segment patterns like docs/**/main/*.py (Python parity)', async () => {
       // Python `test_glob_complex_pattern` (test_glob.py:281). The
       // pattern doesn't start with `**`, so the TS validator accepts it.
@@ -255,6 +407,79 @@ describe('GlobTool', () => {
       );
       expect(result.isError).toBeFalsy();
       expect(result.output?.paths.length).toBeGreaterThan(0);
+    });
+
+    it('rejects brace expansion patterns with a clear message', async () => {
+      // `_globWalk` treats `{` / `}` as literals, so `*.{ts,tsx}` would
+      // silently match zero files. Reject up-front with guidance.
+      const tool = new GlobTool(createFakeKaos(), PERMISSIVE_WORKSPACE);
+      const result = await tool.execute(
+        'call_brace',
+        { pattern: '*.{ts,tsx}' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBe(true);
+      const text = toolContentString(result);
+      expect(text.toLowerCase()).toMatch(/brace expansion|not supported/);
+      expect(text).toMatch(/separate|multiple|\*\.ts/);
+    });
+
+    it('content lists paths relative to the search base (absolute paths kept in output.paths)', async () => {
+      // Python `glob.py:149` returns relative paths in content to save
+      // tokens. output.paths keeps absolute so Read/Edit still works.
+      const kaos = createFakeKaos({
+        async *glob() {
+          yield '/workspace/src/a.ts';
+          yield '/workspace/src/nested/b.ts';
+        },
+        stat: vi.fn().mockResolvedValue({
+          isFile: true,
+          isDir: false,
+          isSymlink: false,
+          size: 1,
+          mtimeMs: 1,
+          mode: 0o644,
+        }),
+      });
+      const tool = new GlobTool(kaos, PERMISSIVE_WORKSPACE);
+      const result = await tool.execute(
+        'call_rel',
+        { pattern: 'src/**/*.ts', path: '/workspace' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const text = toolContentString(result);
+      expect(text).not.toContain('/workspace/');
+      expect(text).toContain('src/a.ts');
+      expect(text).toContain('src/nested/b.ts');
+      expect(result.output?.paths).toEqual(
+        expect.arrayContaining(['/workspace/src/a.ts', '/workspace/src/nested/b.ts']),
+      );
+    });
+
+    it('accepts literal curly braces that do NOT look like brace expansion', async () => {
+      // A `{name}` pattern without a comma is treated as a literal, not
+      // rejected. Filenames with `{`/`}` are rare but valid.
+      const kaos = createFakeKaos({
+        async *glob() {
+          yield '/workspace/weird{name}.ts';
+        },
+        stat: vi.fn().mockResolvedValue({
+          isFile: true,
+          isDir: false,
+          isSymlink: false,
+          size: 1,
+          mtimeMs: 1,
+          mode: 0o644,
+        }),
+      });
+      const tool = new GlobTool(kaos, PERMISSIVE_WORKSPACE);
+      const result = await tool.execute(
+        'call_literal_brace',
+        { pattern: 'weird{name}.ts' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
     });
 
     it('symlink cycle defense: MAX_MATCHES cap terminates on a looping glob stream', async () => {
@@ -292,8 +517,17 @@ describe('GlobTool', () => {
         new AbortController().signal,
       );
       expect(result.isError).toBeFalsy();
-      // Terminates at MAX_MATCHES even under a pathological cycle.
-      expect(result.output?.paths.length).toBe(GLOB_MAX_MATCHES);
+      // The contract is *termination*, not a specific output size. Since
+      // Bug #3's fan-out now deduplicates the results, the two unique
+      // paths collapse to 2 in `output.paths`. What proves the cycle
+      // defense still fires is that the walker stopped before the safety
+      // ceiling (`yielded > GLOB_MAX_MATCHES * 2`): the MAX_MATCHES cap
+      // on the pre-dedup accumulator terminated iteration early.
+      expect(result.output?.paths).toEqual(
+        expect.arrayContaining(['/workspace/a/target.ts', '/workspace/b/target.ts']),
+      );
+      expect(result.output?.paths.length).toBe(2);
+      expect(yielded).toBeLessThanOrEqual(GLOB_MAX_MATCHES * 2);
     });
   });
 });

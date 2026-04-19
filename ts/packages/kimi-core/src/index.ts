@@ -179,6 +179,11 @@ export type { TodoStore, TodoItem, TodoStatus } from './tools/set-todo-list.js';
 export { ExitPlanModeTool } from './tools/exit-plan-mode.js';
 export type { ExitPlanModeDeps } from './tools/exit-plan-mode.js';
 export type { WorkspaceConfig } from './tools/workspace.js';
+export {
+  discoverMonorepoSiblings,
+  extendWorkspaceWithMonorepoSiblings,
+} from './tools/workspace-monorepo.js';
+export type { MonorepoDiscoveryResult } from './tools/workspace-monorepo.js';
 
 // ── Hooks (Slice 4) ─────────────────────────────────────────────────────
 export { HookEngine } from './hooks/engine.js';

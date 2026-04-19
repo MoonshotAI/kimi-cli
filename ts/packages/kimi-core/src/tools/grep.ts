@@ -17,6 +17,12 @@
  *   - Sensitive-file filter applied per output line (not a blanket deny):
  *     lines that belong to `.env` / `id_rsa` / etc. are dropped, with a
  *     warning appended to the tool result.
+ *
+ * Bug #1 fix — ripgrep binary is resolved through `rg-locator.ensureRgPath()`
+ * before each spawn (system PATH → share-bin cache → one-off CDN download)
+ * so Grep no longer fails with `spawn rg ENOENT` on machines without rg on
+ * PATH. A locator failure short-circuits the tool with a user-facing
+ * install hint instead of the naked spawn error.
  */
 
 import type { Readable } from 'node:stream';
@@ -26,6 +32,7 @@ import type { z } from 'zod';
 
 import type { ToolResult, ToolUpdate, ToolMetadata } from '../soul/types.js';
 import { PathSecurityError, assertPathAllowed } from './path-guard.js';
+import { ensureRgPath, rgUnavailableMessage } from './rg-locator.js';
 import { isSensitiveFile } from './sensitive.js';
 import { GrepInputSchema } from './types.js';
 import type { BuiltinTool, GrepInput, GrepOutput } from './types.js';
@@ -83,15 +90,36 @@ export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
       throw error;
     }
 
-    const rgArgs = buildRgArgs(args, safePath);
+    // Bug #1 fix — resolve an absolute path to the `rg` binary (system PATH
+    // → bundled vendor → share-bin cache → CDN bootstrap). Surface a
+    // user-friendly "install ripgrep" message if every lookup fails.
+    let rgPath: string;
+    try {
+      const resolution = await ensureRgPath();
+      rgPath = resolution.path;
+    } catch (error) {
+      return { isError: true, content: rgUnavailableMessage(error) };
+    }
+
+    const rgArgs = buildRgArgs(rgPath, args, safePath);
 
     let proc: KaosProcess;
     try {
       proc = await this.kaos.exec(...rgArgs);
     } catch (error) {
+      // Spawn error even with an absolute path (permissions, corrupt
+      // binary, …) — re-use the locator's hint if it looks like ENOENT.
+      const isEnoent =
+        error instanceof Error &&
+        'code' in error &&
+        (error as NodeJS.ErrnoException).code === 'ENOENT';
       return {
         isError: true,
-        content: error instanceof Error ? error.message : String(error),
+        content: isEnoent
+          ? rgUnavailableMessage(error)
+          : error instanceof Error
+            ? error.message
+            : String(error),
       };
     }
 
@@ -139,6 +167,10 @@ export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
       void killProc();
     };
     signal.addEventListener('abort', onAbort);
+    // The locator adds an extra async tick before this point; if the
+    // caller aborted during that window, `addEventListener` won't fire
+    // retroactively — invoke onAbort once so the kill path still runs.
+    if (signal.aborted) onAbort();
 
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
@@ -283,8 +315,8 @@ export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
   }
 }
 
-function buildRgArgs(args: GrepInput, searchPath: string): string[] {
-  const cmd: string[] = ['rg'];
+function buildRgArgs(rgPath: string, args: GrepInput, searchPath: string): string[] {
+  const cmd: string[] = [rgPath];
 
   const mode = args.output_mode ?? 'files_with_matches';
   if (mode === 'files_with_matches') cmd.push('-l');

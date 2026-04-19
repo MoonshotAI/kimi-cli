@@ -38,11 +38,13 @@
     "open": "^10.2.0",
     "proper-lockfile": "^4.1.2",
     "smol-toml": "^1.6.1",
+    "tar": "^7.5.13",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/nunjucks": "^3.2.6",
-    "@types/proper-lockfile": "^4.1.4"
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/tar": "^7.0.87"
   }
 }

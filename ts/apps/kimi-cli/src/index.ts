@@ -53,6 +53,7 @@ import {
   createRuntime,
   createStubJournalCapability,
   detectEnvironmentFromNode,
+  extendWorkspaceWithMonorepoSiblings,
   extendWorkspaceWithSkillRoots,
   getBundledAgentYamlPath,
   loadConfig as loadKimiCoreConfig,
@@ -486,10 +487,18 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     workspaceDir: workDir,
     additionalDirs: extraDirs,
   };
+  // Monorepo auto-extension: if workDir sits inside a pnpm / npm / yarn
+  // workspace root, pull sibling packages into additionalDirs so that
+  // Read/Glob/Grep work across the whole repo out-of-the-box. Controlled
+  // by `KIMI_NO_MONOREPO=1` for users who want the narrow scope.
+  const monorepoEnabled = process.env['KIMI_NO_MONOREPO'] !== '1';
+  const withMonorepo = monorepoEnabled
+    ? extendWorkspaceWithMonorepoSiblings(baseWorkspace, workDir)
+    : baseWorkspace;
   // Slice 4.4 Part 3 — add discovered skill roots to WorkspaceConfig
   // so Phase 1 path-guard lets Read/Glob follow `${KIMI_SKILLS}`
   // pointers into `~/.kimi/skills/<name>/`.
-  const workspace = extendWorkspaceWithSkillRoots(baseWorkspace, skillManager.getSkillRoots());
+  const workspace = extendWorkspaceWithSkillRoots(withMonorepo, skillManager.getSkillRoots());
   const backgroundManager = new BackgroundProcessManager();
 
   // Slice 5.2 (Codex C2) — bind persistence + reconcile so resume shows

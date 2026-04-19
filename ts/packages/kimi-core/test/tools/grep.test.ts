@@ -21,6 +21,15 @@ import type { WorkspaceConfig } from '../../src/tools/index.js';
 import { GrepTool } from '../../src/tools/index.js';
 import { PERMISSIVE_WORKSPACE, createFakeKaos, toolContentString } from './fixtures/fake-kaos.js';
 
+// Bug #1 — GrepTool now resolves an absolute `rg` path via rg-locator. In
+// unit tests we short-circuit the locator to a stable fake path so the
+// suite never hits the network or the real ripgrep bootstrap.
+vi.mock('../../src/tools/rg-locator.js', () => ({
+  ensureRgPath: async () => ({ path: '/fake/rg', source: 'system-path' }),
+  rgUnavailableMessage: (cause: unknown): string =>
+    `ripgrep unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,
+}));
+
 function makeGrepTool(stdout?: string, exitCode?: number): GrepTool {
   const proc = {
     stdin: { write: vi.fn(), end: vi.fn() },
@@ -192,6 +201,29 @@ describe('GrepTool', () => {
     const invocation = execFn.mock.calls[0];
     expect(invocation).toBeDefined();
     expect(invocation).not.toContain('--max-count');
+  });
+
+  it('spawns rg via the absolute path resolved by rg-locator (Bug #1)', async () => {
+    // Red bar: if someone drops the ensureRgPath() call, the first arg to
+    // kaos.exec would revert to the bare string 'rg' and this assertion
+    // flips. The mock at the top of the file pins the fake path.
+    const proc = {
+      stdin: { write: vi.fn(), end: vi.fn() },
+      stdout: Readable.from(['']),
+      stderr: Readable.from(['']),
+      pid: 11,
+      exitCode: 0,
+      wait: vi.fn().mockResolvedValue(0),
+      // oxlint-disable-next-line unicorn/no-useless-undefined
+      kill: vi.fn().mockResolvedValue(undefined),
+    };
+    const execFn = vi.fn().mockResolvedValue(proc);
+    const kaos = createFakeKaos({ exec: execFn });
+    const tool = new GrepTool(kaos, PERMISSIVE_WORKSPACE);
+    await tool.execute('call_rgpath', { pattern: 'x' }, new AbortController().signal);
+    const invocation = execFn.mock.calls[0];
+    expect(invocation).toBeDefined();
+    expect(invocation?.[0]).toBe('/fake/rg');
   });
 
   it('filters sensitive files from content output (.env line dropped)', async () => {
