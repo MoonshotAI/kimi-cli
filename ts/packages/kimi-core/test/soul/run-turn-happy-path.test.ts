@@ -39,7 +39,18 @@ describe('runSoulTurn — happy path', () => {
     expect(result.usage.input).toBe(10);
     expect(result.usage.output).toBe(5);
     expect(kosong.callCount).toBe(1);
-    expect(context.assistantCalls()).toHaveLength(1);
+    // Phase 25 Stage C — slice 25c-2: Soul's main loop writes one
+    // step_begin + one content_part ('hello world') + one step_end
+    // instead of the legacy aggregated appendAssistantMessage. The
+    // legacy assistant-message path must no longer fire.
+    expect(context.assistantCalls()).toHaveLength(0);
+    expect(context.stepBeginCalls()).toHaveLength(1);
+    expect(context.stepEndCalls()).toHaveLength(1);
+    expect(context.contentPartCalls()).toHaveLength(1);
+    expect(context.contentPartCalls()[0]?.input.part).toEqual({
+      kind: 'text',
+      text: 'hello world',
+    });
     expect(context.toolResultCalls()).toHaveLength(0);
   });
 
@@ -125,18 +136,42 @@ describe('runSoulTurn — happy path', () => {
 
     await runSoulTurn({ text: 'go' }, config, context, runtime, sink, new AbortController().signal);
 
+    // Phase 25 Stage C — slice 25c-2: Soul writes atomic
+    // step_begin / step_end around each step, streams one
+    // content_part per streamed content block (none in this fixture
+    // because both scripted responses carry tool_calls or plain text),
+    // and only writes appendToolResult inside the tool loop.
+    //
+    // In 25c-2 the happy-path tool_call write is deferred to the
+    // orchestrator (25c-3). Soul does NOT write appendToolCall here,
+    // so the expected atomic sequence for a 2-step turn with 2 tool
+    // calls in step 1 is:
+    //   appendStepBegin      (step 1)
+    //   appendStepEnd        (step 1)
+    //   appendToolResult     (call_a)
+    //   appendToolResult     (call_b)
+    //   appendStepBegin      (step 2)
+    //   appendContentPart    ('done')
+    //   appendStepEnd        (step 2)
     const kinds = context.calls.map((c) => c.kind);
-    // Expected strict order for a 2-step turn with 2 tool calls in step 1:
-    //   appendAssistantMessage (step 1 assistant with tool_calls)
-    //   appendToolResult (call_a)
-    //   appendToolResult (call_b)
-    //   appendAssistantMessage (step 2 assistant with end_turn)
     expect(kinds).toEqual([
-      'appendAssistantMessage',
+      'appendStepBegin',
+      'appendStepEnd',
       'appendToolResult',
       'appendToolResult',
-      'appendAssistantMessage',
+      'appendStepBegin',
+      'appendContentPart',
+      'appendStepEnd',
     ]);
+    // Soul must NOT emit appendAssistantMessage or appendToolCall on
+    // the happy path in this slice.
+    expect(context.assistantCalls()).toHaveLength(0);
+    expect(context.toolCallCalls()).toHaveLength(0);
+    // Happy-path tool_result.parentUuid is undefined until 25c-3
+    // orchestrator wires the appendToolCall counterpart.
+    for (const tr of context.toolResultCalls()) {
+      expect(tr.parentUuid).toBeUndefined();
+    }
   });
 
   it('emits step.begin / step.end symmetrically once per step', async () => {

@@ -155,19 +155,29 @@ describe('wire e2e — scripted-echo media (Phase 14 §4.1)', () => {
     ]);
     await harness!.send(req);
 
-    const { response, events } = await harness!.collectUntilResponse(req.id, {
+    const { response } = await harness!.collectUntilResponse(req.id, {
       timeoutMs: 10_000,
     });
 
     // Status line returns `turn_id` + `status: "started"` (non-blocking).
     expect(response.type).toBe('response');
-    const status = response.data as { status?: string };
+    const status = response.data as { status?: string; turn_id?: string };
     expect(status.status).toBe('started');
 
-    // Wait for terminal turn.end before asserting (collected already).
-    expect(hasUserInputPartType(events, 'image_url')).toBe(true);
-    expect(hasContentDeltaType(events, 'thinking')).toBe(true);
-    expect(hasContentDeltaText(events, 'The image shows a simple scene.')).toBe(true);
+    // Phase 25 Stage C — slice 25c-2 adds an `await appendStepBegin` hop
+    // before `kosong.chat`, so content.delta / thinking.delta can land
+    // after the `status: 'started'` response. Wait for terminal
+    // `turn.end` (mirrors the pattern in `wire-prompt.test.ts`) and
+    // inspect the full received frame buffer.
+    await harness!.expectEvent('turn.end', {
+      matcher: (m) => (m.data as { turn_id?: string }).turn_id === status.turn_id,
+      timeoutMs: 10_000,
+    });
+    const frames = harness!.received;
+
+    expect(hasUserInputPartType(frames, 'image_url')).toBe(true);
+    expect(hasContentDeltaType(frames, 'thinking')).toBe(true);
+    expect(hasContentDeltaText(frames, 'The image shows a simple scene.')).toBe(true);
   });
 
   it('video: turn.begin carries video_url part + content delta emits think + text', async () => {
@@ -190,15 +200,23 @@ describe('wire e2e — scripted-echo media (Phase 14 §4.1)', () => {
     ]);
     await harness!.send(req);
 
-    const { response, events } = await harness!.collectUntilResponse(req.id, {
+    const { response } = await harness!.collectUntilResponse(req.id, {
       timeoutMs: 10_000,
     });
     expect(response.type).toBe('response');
-    const status = response.data as { status?: string };
+    const status = response.data as { status?: string; turn_id?: string };
     expect(status.status).toBe('started');
 
-    expect(hasUserInputPartType(events, 'video_url')).toBe(true);
-    expect(hasContentDeltaType(events, 'thinking')).toBe(true);
-    expect(hasContentDeltaText(events, 'The video appears to be a short clip.')).toBe(true);
+    // See image-test note above — wait for terminal `turn.end` before
+    // scanning the received buffer.
+    await harness!.expectEvent('turn.end', {
+      matcher: (m) => (m.data as { turn_id?: string }).turn_id === status.turn_id,
+      timeoutMs: 10_000,
+    });
+    const frames = harness!.received;
+
+    expect(hasUserInputPartType(frames, 'video_url')).toBe(true);
+    expect(hasContentDeltaType(frames, 'thinking')).toBe(true);
+    expect(hasContentDeltaText(frames, 'The video appears to be a short clip.')).toBe(true);
   });
 });

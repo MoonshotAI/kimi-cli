@@ -172,18 +172,26 @@ describe('Scenario C — subagent independent wire.jsonl', () => {
     expect(typeof first['created_at']).toBe('number');
   });
 
-  it("child wire carries the child's assistant_message; parent wire does NOT", async () => {
+  it("child wire carries the child's atomic assistant records; parent wire does NOT", async () => {
     const agentId = 'sub_indep_C3';
     const kosong = createFakeKosong('detailed reply body for the child subagent');
     await runSubagentTurn(makeDeps(kosong), agentId, makeRequest(), new AbortController().signal);
 
     const childLines = await readLines(join(sessionDir, 'subagents', agentId, 'wire.jsonl'));
     const childTypes = childLines.map((r) => r['type']);
-    expect(childTypes).toContain('assistant_message');
+    // Phase 25 Stage C — slice 25c-2: Soul (main and sub) no longer
+    // writes the aggregated `assistant_message` row; each step is split
+    // into atomic rows (`step_begin` + `content_part` + `step_end`).
+    // Pin the child wire's body by asserting the step envelope instead.
+    expect(childTypes).toContain('step_begin');
+    expect(childTypes).toContain('step_end');
+    expect(childTypes).not.toContain('assistant_message');
 
     const parentRecords = parentJournal.getRecords();
     const parentTypes = parentRecords.map((r) => r.type);
     expect(parentTypes).not.toContain('assistant_message');
+    expect(parentTypes).not.toContain('step_begin');
+    expect(parentTypes).not.toContain('step_end');
     expect(parentTypes).not.toContain('user_message');
   });
 

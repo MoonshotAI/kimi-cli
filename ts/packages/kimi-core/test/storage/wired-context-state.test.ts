@@ -215,7 +215,7 @@ describe('WiredContextState — appendToolResult', () => {
       toolCalls: [{ id: 'tc_1', name: 'Read', args: { file: 'f' } }],
       model: 'moonshot-v1',
     });
-    await state.appendToolResult('tc_1', { output: 'file contents' });
+    await state.appendToolResult(undefined, 'tc_1', { output: 'file contents' });
 
     const records = await readWireRecords(filePath);
     const resultRow = records.find((r) => r['type'] === 'tool_result');
@@ -335,7 +335,7 @@ describe('WiredContextState — appendToolResult undefined output (Slice 1 audit
       toolCalls: [{ id: 'tc_x', name: 'Noop', args: {} }],
       model: 'moonshot-v1',
     });
-    await state.appendToolResult('tc_x', { output: undefined });
+    await state.appendToolResult(undefined, 'tc_x', { output: undefined });
 
     const messages = state.buildMessages();
     const toolMsg = messages.find((m) => m.role === 'tool');
@@ -359,7 +359,7 @@ describe('WiredContextState — appendToolResult undefined output (Slice 1 audit
       toolCalls: [{ id: 'tc_1', name: 'Noop', args: {} }],
       model: 'moonshot-v1',
     });
-    await state.appendToolResult('tc_1', { output: undefined });
+    await state.appendToolResult(undefined, 'tc_1', { output: undefined });
 
     // Raw disk check: the persisted row must contain the literal key
     // `"output":null`, never a missing key.
@@ -388,7 +388,7 @@ describe('WiredContextState — appendToolResult undefined output (Slice 1 audit
       toolCalls: [{ id: 'tc_2', name: 'Echo', args: {} }],
       model: 'moonshot-v1',
     });
-    await state.appendToolResult('tc_2', { output: 'normal string' });
+    await state.appendToolResult(undefined, 'tc_2', { output: 'normal string' });
 
     const records = await readWireRecords(filePath);
     const toolResultRow = records.find((r) => r['type'] === 'tool_result');

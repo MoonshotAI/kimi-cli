@@ -260,7 +260,7 @@ describe('Existing functionality regression (Phase 1)', () => {
       toolCalls: [{ id: 'tc_1', name: 'bash', args: { command: 'ls' } }],
       model: 'test-model',
     });
-    await ctx.appendToolResult('tc_1', { output: 'file1.txt\nfile2.txt' });
+    await ctx.appendToolResult(undefined, 'tc_1', { output: 'file1.txt\nfile2.txt' });
     await ctx.appendAssistantMessage({
       text: 'Here are your files',
       think: null,

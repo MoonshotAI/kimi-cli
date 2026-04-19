@@ -81,7 +81,7 @@ describe('ContextState message contract — Phase 11.2', () => {
       toolCalls: [{ id: 'tc_1', name: 'Echo', args: { msg: 'hi' } }],
       model: 'moonshot-v1',
     });
-    await state.appendToolResult('tc_1', { output: 'hi' });
+    await state.appendToolResult(undefined, 'tc_1', { output: 'hi' });
 
     const msgs = state.buildMessages();
     expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);

@@ -12,7 +12,11 @@
  *     on the Nth call instead of returning a response
  */
 
-import type { ChatParams, ChatResponse, KosongAdapter } from '../../../src/soul/index.js';
+import type {
+  ChatParams,
+  ChatResponse,
+  KosongAdapter,
+} from '../../../src/soul/index.js';
 
 export interface ScriptedKosongOptions {
   readonly responses: ReadonlyArray<ChatResponse>;
@@ -67,6 +71,54 @@ export class ScriptedKosongAdapter implements KosongAdapter {
     if (response === undefined) {
       throw new Error(`ScriptedKosongAdapter: missing response at index ${current}`);
     }
+
+    // Phase 25 Stage C — slice 25c-2. Simulate kosong's `onMessagePart`
+    // fan-out so Soul's atomic-write wiring (appendContentPart per
+    // streamed ContentPart + bookkeeping per fully-formed ToolCall) has
+    // a matching signal in fixture-backed tests. The order mirrors the
+    // real `KosongAdapter` (think parts precede text parts; tool_call
+    // events fire after any content). Fires only when the caller wired
+    // an `onAtomicPart` callback — legacy tests that do not pass one
+    // keep the pre-Phase-25 behaviour.
+    if (params.onAtomicPart !== undefined) {
+      const rawContent = response.message.content;
+      const blocks = Array.isArray(rawContent)
+        ? rawContent
+        : typeof rawContent === 'string' && rawContent.length > 0
+          ? [{ type: 'text' as const, text: rawContent }]
+          : [];
+      for (const block of blocks) {
+        if (block.type === 'text') {
+          await params.onAtomicPart({
+            kind: 'content',
+            part: { type: 'text', text: block.text },
+          });
+        } else if (block.type === 'thinking') {
+          await params.onAtomicPart({
+            kind: 'content',
+            part: { type: 'think', think: block.thinking },
+          });
+        }
+      }
+      for (const tc of response.toolCalls) {
+        const args = tc.args;
+        const serialised =
+          args === undefined || args === null
+            ? null
+            : typeof args === 'string'
+              ? args
+              : JSON.stringify(args);
+        await params.onAtomicPart({
+          kind: 'tool_call',
+          toolCall: {
+            type: 'function',
+            id: tc.id,
+            function: { name: tc.name, arguments: serialised },
+          },
+        });
+      }
+    }
+
     return response;
   }
 

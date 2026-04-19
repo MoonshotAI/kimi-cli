@@ -163,7 +163,21 @@ export interface SoulContextState {
   drainSteerMessages(): UserInput[];
 
   appendAssistantMessage(msg: AssistantMessagePayload): Promise<void>;
-  appendToolResult(toolCallId: string, result: ToolResultPayload): Promise<void>;
+  /**
+   * Phase 25 Stage C — slice 25c-2 prepends `parentUuid: string | undefined`
+   * so the wire `tool_result` row can stamp `parent_uuid` (§A.2) and the
+   * replay-projector can reconstruct the tool_call → tool_result link
+   * without scanning history for a matching `tool_call_id`. Fallback paths
+   * (tool-not-found / zod-parse-fail / beforeToolCall throws) pass the
+   * uuid of the `tool_call` row Soul itself just wrote; happy-path writes
+   * driven by the orchestrator (25c-3) may pass `undefined` until the
+   * parent uuid is threaded through.
+   */
+  appendToolResult(
+    parentUuid: string | undefined,
+    toolCallId: string,
+    result: ToolResultPayload,
+  ): Promise<void>;
   addUserMessages(steers: UserInput[]): Promise<void>;
   applyConfigChange(event: ConfigChangeEvent): Promise<void>;
 
@@ -174,6 +188,17 @@ export interface SoulContextState {
   appendStepEnd(input: StepEndInput): Promise<void>;
   appendContentPart(input: ContentPartInput): Promise<void>;
   appendToolCall(input: ToolCallInput): Promise<void>;
+
+  /**
+   * Phase 25 Stage C — slice 25c-2. Returns the current turn id so Soul's
+   * atomic-write seam can stamp `turn_id` onto `step_begin` / `step_end` /
+   * `content_part` / `tool_call` rows without reaching into
+   * `BaseContextState`'s private callback. Declared optional to keep
+   * legacy Soul fixtures (FakeContextState / RecordingContextState) that
+   * don't drive a real turn manager compilation-compatible — production
+   * callers (BaseContextState) always implement it.
+   */
+  currentTurnId?(): string;
   // Phase 2: `resetToSummary` moved down to FullContextState. Soul must
   // not have reset power — compaction is orchestrated by TurnManager
   // which uses the FullContextState view.
@@ -211,6 +236,7 @@ export interface FullContextState extends SoulContextState {
    */
   appendUserMessage(input: UserInput, turnIdOverride?: string): Promise<void>;
   appendToolResult(
+    parentUuid: string | undefined,
     toolCallId: string,
     result: ToolResultPayload,
     turnIdOverride?: string,
@@ -313,7 +339,7 @@ interface BaseContextStateOptions {
 class BaseContextState implements FullContextState {
   readonly journalWriter: JournalWriter;
   private readonly projector: ConversationProjector;
-  private readonly currentTurnId: () => string;
+  private readonly _currentTurnId: () => string;
   private readonly sink: EventSink | undefined;
 
   private history: Message[] = [];
@@ -338,7 +364,7 @@ class BaseContextState implements FullContextState {
   constructor(opts: BaseContextStateOptions) {
     this.journalWriter = opts.journalWriter;
     this.projector = opts.projector ?? new DefaultConversationProjector();
-    this.currentTurnId = opts.currentTurnId;
+    this._currentTurnId = opts.currentTurnId;
     this.sink = opts.sink;
     this._model = opts.initialModel;
     this._systemPrompt = opts.initialSystemPrompt ?? '';
@@ -367,6 +393,10 @@ class BaseContextState implements FullContextState {
 
   get tokenCountWithPending(): number {
     return this._tokenCountWithPending;
+  }
+
+  currentTurnId(): string {
+    return this._currentTurnId();
   }
 
   buildMessages(): Message[] {
@@ -501,6 +531,7 @@ class BaseContextState implements FullContextState {
   }
 
   async appendToolResult(
+    parentUuid: string | undefined,
     toolCallId: string,
     result: ToolResultPayload,
     turnIdOverride?: string,
@@ -514,11 +545,18 @@ class BaseContextState implements FullContextState {
     const normalisedOutput: unknown = result.output === undefined ? null : result.output;
 
     const turnId = turnIdOverride ?? this.currentTurnId();
+    // `parent_uuid` is spread conditionally so a fallback path that writes
+    // `parentUuid: undefined` does NOT stamp `parent_uuid: undefined` onto
+    // the WAL row. JSON.stringify would drop the key anyway, but we keep
+    // the shape explicit so the "field omitted" contract (§A.2) survives
+    // round-trips through any middleware that observes the object before
+    // serialisation.
     const append: Parameters<JournalWriter['append']>[0] = {
       type: 'tool_result',
       turn_id: turnId,
       tool_call_id: toolCallId,
       output: normalisedOutput,
+      ...(parentUuid !== undefined ? { parent_uuid: parentUuid } : {}),
       ...(result.isError !== undefined ? { is_error: result.isError } : {}),
       ...(result.synthetic !== undefined ? { synthetic: result.synthetic } : {}),
     };

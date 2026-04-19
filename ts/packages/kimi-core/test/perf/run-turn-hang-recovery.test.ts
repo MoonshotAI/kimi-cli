@@ -79,9 +79,14 @@ describe.skipIf(SKIP_PERF)('runSoulTurn — LLM hang recovery (Phase 13 §3.2) [
 
       expect(result.stopReason).toBe('aborted');
       expect(kosong.callCount).toBe(1);
-      // When chat() rejects before emitting any delta, Soul MUST NOT
-      // have written any partial assistant message into context.
+      // Phase 25 Stage C — slice 25c-2: Soul's atomic API writes
+      // appendStepBegin BEFORE the LLM call, so on a perpetually
+      // hanging chat() the step_begin row lands but the matching
+      // step_end does not (C6 "partial step"). The legacy aggregated
+      // appendAssistantMessage path must remain untouched; the replay
+      // projector treats a lone step_begin as an interrupted step.
       expect(context.assistantCalls()).toHaveLength(0);
+      expect(context.stepEndCalls()).toHaveLength(0);
       expect(sink.byType('step.interrupted')).toHaveLength(1);
     } finally {
       vi.useRealTimers();

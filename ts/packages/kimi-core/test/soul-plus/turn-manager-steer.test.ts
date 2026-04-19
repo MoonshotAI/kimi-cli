@@ -22,7 +22,15 @@ import {
   TurnManager,
   createRuntime,
 } from '../../src/soul-plus/index.js';
-import type { FullContextState, UserInput } from '../../src/storage/context-state.js';
+import type {
+  ContentPartInput,
+  FullContextState,
+  StepBeginInput,
+  StepEndInput,
+  ToolCallInput,
+  ToolResultPayload,
+  UserInput,
+} from '../../src/storage/context-state.js';
 import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js';
 import { makeEndTurnResponse } from '../soul/fixtures/common.js';
 import { ScriptedKosongAdapter } from '../soul/fixtures/scripted-kosong.js';
@@ -41,6 +49,22 @@ import { makeRealSubcomponents } from './fixtures/real-subcomponents.js';
 class RecordingContextState implements FullContextState {
   readonly pushSteerCalls: UserInput[] = [];
   readonly addUserMessagesCalls: UserInput[][] = [];
+
+  // Phase 25 Stage C — slice 25c-2 recording hooks for the atomic API
+  // and the prepended-parentUuid `appendToolResult` signature. Kept as
+  // delegate-then-record so existing turn-manager-steer expectations
+  // (pushSteer / addUserMessages race-safety) stay untouched and the
+  // in-memory mirror provided by `inner` remains observable.
+  readonly stepBeginCalls: StepBeginInput[] = [];
+  readonly stepEndCalls: StepEndInput[] = [];
+  readonly contentPartCalls: ContentPartInput[] = [];
+  readonly toolCallCalls: ToolCallInput[] = [];
+  readonly toolResultCalls: Array<{
+    parentUuid: string | undefined;
+    toolCallId: string;
+    result: ToolResultPayload;
+    turnIdOverride: string | undefined;
+  }> = [];
 
   constructor(private readonly inner: FullContextState) {}
 
@@ -89,8 +113,14 @@ class RecordingContextState implements FullContextState {
   ): Promise<void> {
     return this.inner.appendAssistantMessage(...args);
   }
-  appendToolResult(...args: Parameters<FullContextState['appendToolResult']>): Promise<void> {
-    return this.inner.appendToolResult(...args);
+  async appendToolResult(
+    parentUuid: string | undefined,
+    toolCallId: string,
+    result: ToolResultPayload,
+    turnIdOverride?: string,
+  ): Promise<void> {
+    this.toolResultCalls.push({ parentUuid, toolCallId, result, turnIdOverride });
+    await this.inner.appendToolResult(parentUuid, toolCallId, result, turnIdOverride);
   }
   async addUserMessages(steers: UserInput[]): Promise<void> {
     this.addUserMessagesCalls.push([...steers]);
@@ -102,20 +132,27 @@ class RecordingContextState implements FullContextState {
   resetToSummary(...args: Parameters<FullContextState['resetToSummary']>): Promise<void> {
     return this.inner.resetToSummary(...args);
   }
-  appendStepBegin(...args: Parameters<FullContextState['appendStepBegin']>): Promise<void> {
-    return this.inner.appendStepBegin(...args);
+  async appendStepBegin(input: StepBeginInput): Promise<void> {
+    this.stepBeginCalls.push(input);
+    await this.inner.appendStepBegin(input);
   }
-  appendStepEnd(...args: Parameters<FullContextState['appendStepEnd']>): Promise<void> {
-    return this.inner.appendStepEnd(...args);
+  async appendStepEnd(input: StepEndInput): Promise<void> {
+    this.stepEndCalls.push(input);
+    await this.inner.appendStepEnd(input);
   }
-  appendContentPart(...args: Parameters<FullContextState['appendContentPart']>): Promise<void> {
-    return this.inner.appendContentPart(...args);
+  async appendContentPart(input: ContentPartInput): Promise<void> {
+    this.contentPartCalls.push(input);
+    await this.inner.appendContentPart(input);
   }
-  appendToolCall(...args: Parameters<FullContextState['appendToolCall']>): Promise<void> {
-    return this.inner.appendToolCall(...args);
+  async appendToolCall(input: ToolCallInput): Promise<void> {
+    this.toolCallCalls.push(input);
+    await this.inner.appendToolCall(input);
   }
   setBeforeStepHook(fn: (() => void) | undefined): void {
     this.inner.setBeforeStepHook(fn);
+  }
+  currentTurnId(): string {
+    return this.inner.currentTurnId?.() ?? 'no_turn';
   }
   get beforeStep(): (() => void) | undefined {
     return this.inner.beforeStep;

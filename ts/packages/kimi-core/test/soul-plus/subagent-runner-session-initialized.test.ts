@@ -261,7 +261,7 @@ describe('Phase 23 T6.1 — child wire line 2 is session_initialized', () => {
 // ── T6.2 — subsequent records append at line 3+ ─────────────────────
 
 describe('Phase 23 T6.2 — child body records land after session_initialized', () => {
-  it('assistant_message appears at line 3+, never line 2', async () => {
+  it('first body record (step_begin) appears at line 3+, never line 2', async () => {
     const agentId = 'sub_t6_order';
     const kosong = createFakeKosong('reply body');
     await runSubagentTurn(
@@ -273,8 +273,12 @@ describe('Phase 23 T6.2 — child body records land after session_initialized', 
     const lines = await readLines(join(sessionDir, 'subagents', agentId, 'wire.jsonl'));
     expect(lines[0]!['type']).toBe('metadata');
     expect(lines[1]!['type']).toBe('session_initialized');
-    const assistant = lines.findIndex((r) => r['type'] === 'assistant_message');
-    expect(assistant).toBeGreaterThanOrEqual(2);
+    // Phase 25 Stage C — slice 25c-2: the leading body record produced by
+    // Soul is `step_begin` (atomic-step envelope), not `assistant_message`.
+    // The layout invariant is unchanged — body records MUST land at
+    // line 3+ after `metadata` + `session_initialized`.
+    const firstBody = lines.findIndex((r) => r['type'] === 'step_begin');
+    expect(firstBody).toBeGreaterThanOrEqual(2);
   });
 });
 

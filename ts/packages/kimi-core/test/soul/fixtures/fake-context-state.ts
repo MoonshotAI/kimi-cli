@@ -5,6 +5,15 @@
  *
  * Reads (`buildMessages` / `drainSteerMessages` / `model` / `activeTools` /
  * ...) are backed by in-memory fields the test can seed directly.
+ *
+ * Phase 25 Stage C — Slice 25c-2: upgraded so the 4 atomic writers are
+ * full recording stubs (not no-ops). Soul's main-loop switch from
+ * `appendAssistantMessage` to `appendStepBegin` + `appendContentPart*` +
+ * `appendStepEnd` is visible here as a distinct sequence of
+ * `FakeContextCall` variants. `appendToolResult` gains a leading
+ * `parentUuid: string | undefined` parameter; the recorded call shape
+ * reflects that (fallback paths carry a real parent uuid, happy path
+ * carries `undefined` until slice 25c-3 wires the orchestrator).
  */
 
 import type { Message } from '@moonshot-ai/kosong';
@@ -39,8 +48,16 @@ export type AppendAssistantCall = {
 };
 export type AppendToolResultCall = {
   kind: 'appendToolResult';
+  /**
+   * Phase 25 Stage C — slice 25c-2 prepended `parentUuid` to the
+   * `appendToolResult` signature. Recorded verbatim so tests can assert
+   * the happy-path case (`undefined`) vs the fallback case (string uuid
+   * that matches the matching `appendToolCall` record).
+   */
+  parentUuid: string | undefined;
   toolCallId: string;
   result: ToolResultPayload;
+  turnIdOverride: string | undefined;
 };
 export type AddUserMessagesCall = {
   kind: 'addUserMessages';
@@ -54,13 +71,35 @@ export type ResetToSummaryCall = {
   kind: 'resetToSummary';
   summary: SummaryMessage;
 };
+// Phase 25 Stage C — slice 25c-2: recording variants for the 4 atomic
+// writers Soul's main loop now drives.
+export type AppendStepBeginCall = {
+  kind: 'appendStepBegin';
+  input: StepBeginInput;
+};
+export type AppendStepEndCall = {
+  kind: 'appendStepEnd';
+  input: StepEndInput;
+};
+export type AppendContentPartCall = {
+  kind: 'appendContentPart';
+  input: ContentPartInput;
+};
+export type AppendToolCallCall = {
+  kind: 'appendToolCall';
+  input: ToolCallInput;
+};
 
 export type FakeContextCall =
   | AppendAssistantCall
   | AppendToolResultCall
   | AddUserMessagesCall
   | ApplyConfigChangeCall
-  | ResetToSummaryCall;
+  | ResetToSummaryCall
+  | AppendStepBeginCall
+  | AppendStepEndCall
+  | AppendContentPartCall
+  | AppendToolCallCall;
 
 /**
  * Phase 2 visibility note:
@@ -164,8 +203,19 @@ export class FakeContextState implements SoulContextState {
     this.calls.push({ kind: 'appendAssistantMessage', msg });
   }
 
-  async appendToolResult(toolCallId: string, result: ToolResultPayload): Promise<void> {
-    this.calls.push({ kind: 'appendToolResult', toolCallId, result });
+  async appendToolResult(
+    parentUuid: string | undefined,
+    toolCallId: string,
+    result: ToolResultPayload,
+    turnIdOverride?: string,
+  ): Promise<void> {
+    this.calls.push({
+      kind: 'appendToolResult',
+      parentUuid,
+      toolCallId,
+      result,
+      turnIdOverride,
+    });
   }
 
   async addUserMessages(steers: UserInput[]): Promise<void> {
@@ -180,18 +230,21 @@ export class FakeContextState implements SoulContextState {
     this.calls.push({ kind: 'resetToSummary', summary });
   }
 
-  // Phase 25 Stage D — atomic writers (test stub; no caller in slice 25c-1).
-  async appendStepBegin(_input: StepBeginInput): Promise<void> {
-    /* no-op — fakes don't mirror steps */
+  // Phase 25 Stage C — slice 25c-2 recording stubs. Soul's main loop
+  // now drives these; tests assert on the recorded `calls` array in
+  // order to pin step begin / content_part / step end sequencing and
+  // the fallback-path appendToolCall writes.
+  async appendStepBegin(input: StepBeginInput): Promise<void> {
+    this.calls.push({ kind: 'appendStepBegin', input });
   }
-  async appendStepEnd(_input: StepEndInput): Promise<void> {
-    /* no-op */
+  async appendStepEnd(input: StepEndInput): Promise<void> {
+    this.calls.push({ kind: 'appendStepEnd', input });
   }
-  async appendContentPart(_input: ContentPartInput): Promise<void> {
-    /* no-op */
+  async appendContentPart(input: ContentPartInput): Promise<void> {
+    this.calls.push({ kind: 'appendContentPart', input });
   }
-  async appendToolCall(_input: ToolCallInput): Promise<void> {
-    /* no-op */
+  async appendToolCall(input: ToolCallInput): Promise<void> {
+    this.calls.push({ kind: 'appendToolCall', input });
   }
 
   // ── Convenience filters ───────────────────────────────────────────
@@ -206,5 +259,20 @@ export class FakeContextState implements SoulContextState {
 
   addUserMessagesCalls(): AddUserMessagesCall[] {
     return this.calls.filter((c): c is AddUserMessagesCall => c.kind === 'addUserMessages');
+  }
+
+  // Phase 25 Stage C — slice 25c-2 atomic-call filters (parallel to
+  // `assistantCalls()` / `toolResultCalls()` above).
+  stepBeginCalls(): AppendStepBeginCall[] {
+    return this.calls.filter((c): c is AppendStepBeginCall => c.kind === 'appendStepBegin');
+  }
+  stepEndCalls(): AppendStepEndCall[] {
+    return this.calls.filter((c): c is AppendStepEndCall => c.kind === 'appendStepEnd');
+  }
+  contentPartCalls(): AppendContentPartCall[] {
+    return this.calls.filter((c): c is AppendContentPartCall => c.kind === 'appendContentPart');
+  }
+  toolCallCalls(): AppendToolCallCall[] {
+    return this.calls.filter((c): c is AppendToolCallCall => c.kind === 'appendToolCall');
   }
 }

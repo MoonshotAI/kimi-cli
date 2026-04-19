@@ -65,8 +65,16 @@ describe('runSoulTurn — abort paths', () => {
 
     expect(result.stopReason).toBe('aborted');
     expect(kosong.callCount).toBe(1);
-    // No assistant message should be written (LLM call itself threw before return)
+    // Phase 25 Stage C — slice 25c-2: Soul writes appendStepBegin
+    // BEFORE the LLM call so the WAL carries a "step opened" row even
+    // when the LLM itself aborts. Per decision C6 (partial step) Soul
+    // does NOT synthesise a matching appendStepEnd on abort — the
+    // missing step_end is the signal the replay-projector uses to
+    // detect an interrupted step. The legacy aggregated
+    // appendAssistantMessage path remains dormant on this branch.
     expect(context.assistantCalls()).toHaveLength(0);
+    expect(context.stepBeginCalls()).toHaveLength(1);
+    expect(context.stepEndCalls()).toHaveLength(0);
     expect(sink.byType('step.interrupted')).toHaveLength(1);
   });
 

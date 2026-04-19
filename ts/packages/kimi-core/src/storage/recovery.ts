@@ -71,6 +71,14 @@ export interface RepairOptions {
 /**
  * Scan records for assistant_messages whose tool_calls lack matching
  * tool_result records. Returns one entry per dangling tool_call.
+ *
+ * Phase 25 Stage C — slice 25c-2 transitional scope: recovery only
+ * inspects the legacy `assistant_message.tool_calls` path. Atomic
+ * `tool_call` records (standalone rows) + `tool_result.parent_uuid`
+ * anchoring will be covered by slices 25c-4/5 once the orchestrator
+ * emits them; until then, slice 25c-2 keeps Soul's fallback
+ * `appendToolCall` row in place but recovery scans the aggregated
+ * path only to avoid double-counting during the transition.
  */
 export function findDanglingToolCalls(records: readonly WireRecord[]): DanglingToolCall[] {
   const dispatched = new Map<string, { turnId: string; toolName: string }>();
@@ -178,10 +186,17 @@ export async function repairJournal(options: RepairOptions): Promise<RepairResul
     syntheticCount += 1;
   }
 
-  // Phase 2: repair dangling tool_calls → synthetic error tool_result
+  // Phase 2: repair dangling tool_calls → synthetic error tool_result.
+  // Phase 25 Stage C — slice 25c-2: `appendToolResult` gained a leading
+  // `parentUuid: string | undefined` argument. Legacy dangling tool_calls
+  // come from aggregated `assistant_message.tool_calls` rows that predate
+  // the atomic `tool_call` row (25b), so no parent uuid exists — pass
+  // `undefined` so the synthetic tool_result row omits `parent_uuid`
+  // entirely rather than stamping a bogus value.
   const danglingToolCalls = findDanglingToolCalls(records);
   for (const dtc of danglingToolCalls) {
     await contextState.appendToolResult(
+      undefined,
       dtc.toolCallId,
       {
         output: 'crashed_before_execution',

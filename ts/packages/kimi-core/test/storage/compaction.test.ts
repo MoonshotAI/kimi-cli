@@ -174,7 +174,7 @@ describe('tokenCountWithPending — formula', () => {
     });
 
     await ctx.appendUserMessage({ text: 'user message' });
-    await ctx.appendToolResult('tc_1', { output: 'tool result' });
+    await ctx.appendToolResult(undefined, 'tc_1', { output: 'tool result' });
 
     // Still just from the assistant message usage
     expect(ctx.tokenCountWithPending).toBe(150);

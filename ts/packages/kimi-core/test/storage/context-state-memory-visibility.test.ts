@@ -98,7 +98,7 @@ describe('ContextState memory visibility — append resolves before disk drain',
     vi.useFakeTimers();
     const { writer, state } = makeWriterAndState();
 
-    await state.appendToolResult('tc-1', { output: 'tool-output' });
+    await state.appendToolResult(undefined, 'tc-1', { output: 'tool-output' });
 
     const msgs = state.buildMessages();
     const toolMsgs = msgs.filter((m) => m.role === 'tool');
@@ -131,7 +131,7 @@ describe('ContextState memory visibility — append resolves before disk drain',
       toolCalls: [],
       model: 'test-model',
     });
-    await state.appendToolResult('tc-1', { output: 'three' });
+    await state.appendToolResult(undefined, 'tc-1', { output: 'three' });
 
     // All three records in memory, in call order — no drain yet.
     expect(writer.pendingRecords.length).toBe(3);
