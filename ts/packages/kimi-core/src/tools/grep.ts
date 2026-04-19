@@ -23,6 +23,14 @@
  * so Grep no longer fails with `spawn rg ENOENT` on machines without rg on
  * PATH. A locator failure short-circuits the tool with a user-facing
  * install hint instead of the naked spawn error.
+ *
+ * R5 — Bug #3 parity: when `args.path` is omitted, Grep fans out to every
+ * workspace root (`workspaceDir` + `additionalDirs`) by passing them all
+ * as positional args to a single `rg` invocation. Previously only
+ * `workspaceDir` was searched, so a kimi-cli started inside one package
+ * of a monorepo would silently miss sibling packages. Overlapping roots
+ * can produce duplicate file-path lines; these are deduped in the
+ * post-processing pipeline so `output.filenames` stays unique.
  */
 
 import type { Readable } from 'node:stream';
@@ -73,21 +81,34 @@ export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
       return { isError: true, content: 'Aborted before search started' };
     }
 
-    let safePath: string;
-    try {
-      const rawPath = args.path ?? this.workspace.workspaceDir;
-      // Per-path sensitive-file filtering happens after rg produces output
-      // (we need to see *which* files were hit). The directory root itself
-      // is not sensitivity-checked — it is almost always a dir, not a file.
-      safePath = assertPathAllowed(rawPath, this.workspace.workspaceDir, this.workspace, {
-        mode: 'search',
-        checkSensitive: false,
-      });
-    } catch (error) {
-      if (error instanceof PathSecurityError) {
-        return { isError: true, content: error.message };
+    // Decide which roots rg should walk.
+    //   - If `args.path` is given: exactly that path (after workspace
+    //     guard validation).
+    //   - If not: every allowed root (primary workspaceDir + additionalDirs)
+    //     so monorepo users don't have to list every sibling package
+    //     manually. Mirrors the Glob fan-out fix (Bug #3).
+    //
+    // The guard rejects searches outside the workspace; roots that make
+    // up the workspace itself are trivially allowed so no per-root
+    // assertPathAllowed call is required in the fan-out branch.
+    let searchPaths: string[];
+    if (args.path !== undefined) {
+      try {
+        const safePath = assertPathAllowed(
+          args.path,
+          this.workspace.workspaceDir,
+          this.workspace,
+          { mode: 'search', checkSensitive: false },
+        );
+        searchPaths = [safePath];
+      } catch (error) {
+        if (error instanceof PathSecurityError) {
+          return { isError: true, content: error.message };
+        }
+        throw error;
       }
-      throw error;
+    } else {
+      searchPaths = [this.workspace.workspaceDir, ...this.workspace.additionalDirs];
     }
 
     // Bug #1 fix — resolve an absolute path to the `rg` binary (system PATH
@@ -101,7 +122,7 @@ export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
       return { isError: true, content: rgUnavailableMessage(error) };
     }
 
-    const rgArgs = buildRgArgs(rgPath, args, safePath);
+    const rgArgs = buildRgArgs(rgPath, args, searchPaths);
 
     let proc: KaosProcess;
     try {
@@ -217,11 +238,21 @@ export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
     // Normalize stdout into lines (no trailing empty line).
     const rawLines = splitRgLines(stdoutText);
 
+    // R5 fan-out dedup: when multiple roots are passed to rg, overlapping
+    // trees (e.g. `/ws` + `/ws/sub`) can make rg emit the same file path
+    // twice. The duplicate lines would inflate `numFiles` and muddy the
+    // user-visible filenames list, so collapse identical whole-lines
+    // here — for `files_with_matches` the line *is* the path, for
+    // `count` the summed totals de-dup when the same `file:N` appears,
+    // and for `content` duplicate `file:line:text` triples compress
+    // losslessly. The context-line `--` separator is preserved as-is.
+    const dedupedLines = searchPaths.length > 1 ? dedupSameLines(rawLines) : rawLines;
+
     // Per-line sensitive-file filtering. For content/count modes we
     // extract the file path from each line; for files_with_matches the
     // whole line *is* the file path.
     const filteredSensitive = new Set<string>();
-    const keptLines = filterSensitiveLines(rawLines, mode, filteredSensitive);
+    const keptLines = filterSensitiveLines(dedupedLines, mode, filteredSensitive);
 
     // Apply offset + head_limit pagination. head_limit=0 (or undefined)
     // means unlimited (v2 Appendix E.5).
@@ -310,12 +341,18 @@ export class GrepTool implements BuiltinTool<GrepInput, GrepOutput> {
   }
 
   getActivityDescription(args: GrepInput): string {
-    const searchPath = args.path ?? '.';
+    // When args.path is omitted we fan out to every workspace root
+    // (R5). Surface those roots in the status line so the user sees
+    // where we're actually searching, not a misleading `.`.
+    const searchPath =
+      args.path !== undefined
+        ? args.path
+        : [this.workspace.workspaceDir, ...this.workspace.additionalDirs].join(', ');
     return `Searching for '${args.pattern}' in ${searchPath}`;
   }
 }
 
-function buildRgArgs(rgPath: string, args: GrepInput, searchPath: string): string[] {
+function buildRgArgs(rgPath: string, args: GrepInput, searchPaths: readonly string[]): string[] {
   const cmd: string[] = [rgPath];
 
   const mode = args.output_mode ?? 'files_with_matches';
@@ -336,8 +373,29 @@ function buildRgArgs(rgPath: string, args: GrepInput, searchPath: string): strin
   // matches per file". Pagination happens in post-processing after rg
   // returns the full match stream.
 
-  cmd.push('--', args.pattern, searchPath);
+  cmd.push('--', args.pattern, ...searchPaths);
   return cmd;
+}
+
+/**
+ * Collapse runs of exactly-equal lines in the rg output so fan-out over
+ * overlapping roots (R5) doesn't inflate results. The `--` context
+ * separator is intentionally preserved (not deduped) because its
+ * position relative to match blocks matters for readability.
+ */
+function dedupSameLines(lines: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of lines) {
+    if (line === '--') {
+      out.push(line);
+      continue;
+    }
+    if (seen.has(line)) continue;
+    seen.add(line);
+    out.push(line);
+  }
+  return out;
 }
 
 function splitRgLines(text: string): string[] {

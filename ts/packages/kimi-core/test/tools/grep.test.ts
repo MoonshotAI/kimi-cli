@@ -145,10 +145,28 @@ describe('GrepTool', () => {
   });
 
   it('getActivityDescription includes pattern and path', () => {
+    // When args.path is given, that path is surfaced verbatim. When it
+    // is omitted the status line lists every fan-out root (R5) so the
+    // user sees where Grep is actually walking. `makeGrepTool` uses
+    // PERMISSIVE_WORKSPACE (workspaceDir='/', no additional), so the
+    // omitted-path case renders as '/'.
     const tool = makeGrepTool();
-    expect(tool.getActivityDescription({ pattern: 'TODO' })).toBe("Searching for 'TODO' in .");
+    expect(tool.getActivityDescription({ pattern: 'TODO' })).toBe("Searching for 'TODO' in /");
     expect(tool.getActivityDescription({ pattern: 'bug', path: '/src' })).toBe(
       "Searching for 'bug' in /src",
+    );
+  });
+
+  it('getActivityDescription lists every fan-out root when args.path is omitted', async () => {
+    // Direct pin on the MAJOR-4 behaviour: multi-root workspace must
+    // surface all roots joined by `, ` in the UI status line.
+    const kaos = createFakeKaos({ exec: vi.fn() });
+    const tool = new GrepTool(kaos, {
+      workspaceDir: '/ws',
+      additionalDirs: ['/extra1', '/extra2'],
+    });
+    expect(tool.getActivityDescription({ pattern: 'TODO' })).toBe(
+      "Searching for 'TODO' in /ws, /extra1, /extra2",
     );
   });
 
@@ -484,6 +502,169 @@ describe('GrepTool', () => {
       const args = execFn.mock.calls[0];
       expect(args).toBeDefined();
       expect(args).toContain('--no-ignore');
+    });
+  });
+
+  // ── Multi-root fan-out (R5 — Bug #3 parity for Grep) ──────────────────
+  //
+  // When `args.path` is omitted, Grep must search both the primary
+  // workspaceDir AND every additionalDir (mirrors Glob's Bug #3 fix). The
+  // previous behaviour searched only `workspaceDir`, so a kimi-cli started
+  // inside a monorepo package (e.g. `apps/kimi-cli`) would silently miss
+  // sibling packages and return "0 matches" without any diagnostic.
+  describe('multi-root fan-out (R5 — Bug #3 parity for Grep)', () => {
+    function makeProc(stdout: string, exitCode = 0) {
+      return {
+        stdin: { write: vi.fn(), end: vi.fn() },
+        stdout: Readable.from([stdout]),
+        stderr: Readable.from(['']),
+        pid: 1,
+        exitCode,
+        wait: vi.fn().mockResolvedValue(exitCode),
+        // oxlint-disable-next-line unicorn/no-useless-undefined
+        kill: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it('passes every workspace root to rg when args.path is omitted', async () => {
+      const execFn = vi
+        .fn()
+        .mockResolvedValue(makeProc('/ws/a.ts\n/extra1/b.ts\n/extra2/c.ts\n', 0));
+      const kaos = createFakeKaos({ exec: execFn });
+      const tool = new GrepTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/extra1', '/extra2'],
+      });
+      const result = await tool.execute(
+        'call_multi_roots',
+        { pattern: 'TODO', output_mode: 'files_with_matches' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      // All three roots must be positional args of the single rg call.
+      // oxlint-disable-next-line typescript-eslint/unbound-method
+      const invocation = execFn.mock.calls[0];
+      expect(invocation).toBeDefined();
+      expect(invocation).toContain('/ws');
+      expect(invocation).toContain('/extra1');
+      expect(invocation).toContain('/extra2');
+      expect(result.output?.filenames).toEqual(
+        expect.arrayContaining(['/ws/a.ts', '/extra1/b.ts', '/extra2/c.ts']),
+      );
+    });
+
+    it('does NOT fan out when args.path is given (explicit single root)', async () => {
+      const execFn = vi.fn().mockResolvedValue(makeProc('', 1));
+      const kaos = createFakeKaos({ exec: execFn });
+      const tool = new GrepTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/extra1', '/extra2'],
+      });
+      await tool.execute(
+        'call_explicit_path',
+        { pattern: 'x', path: '/ws' },
+        new AbortController().signal,
+      );
+      // oxlint-disable-next-line typescript-eslint/unbound-method
+      const invocation = execFn.mock.calls[0];
+      expect(invocation).toBeDefined();
+      expect(invocation).toContain('/ws');
+      expect(invocation).not.toContain('/extra1');
+      expect(invocation).not.toContain('/extra2');
+    });
+
+    it('dedupes file paths when multiple roots report the same hit (files_with_matches)', async () => {
+      // rg itself may also surface duplicates when one root is under
+      // another (e.g. /ws + /ws/sub). The tool must collapse such cases
+      // in `output.filenames` and the rendered content.
+      const execFn = vi
+        .fn()
+        .mockResolvedValue(makeProc('/shared/x.ts\n/shared/x.ts\n/other/y.ts\n', 0));
+      const kaos = createFakeKaos({ exec: execFn });
+      const tool = new GrepTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/ws2'],
+      });
+      const result = await tool.execute(
+        'call_dup_fwm',
+        { pattern: 'x', output_mode: 'files_with_matches' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.filenames).toEqual(['/shared/x.ts', '/other/y.ts']);
+      expect(result.output?.numFiles).toBe(2);
+    });
+
+    it('content mode aggregates lines produced under multiple roots', async () => {
+      const stdout = '/ws/a.ts:1:hit-ws\n/extra/b.ts:5:hit-extra\n';
+      const execFn = vi.fn().mockResolvedValue(makeProc(stdout, 0));
+      const kaos = createFakeKaos({ exec: execFn });
+      const tool = new GrepTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/extra'],
+      });
+      const result = await tool.execute(
+        'call_multi_content',
+        { pattern: 'hit', output_mode: 'content' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const content = toolContentString(result);
+      expect(content).toContain('hit-ws');
+      expect(content).toContain('hit-extra');
+      expect(result.output?.numFiles).toBe(2);
+      expect(result.output?.filenames).toEqual(
+        expect.arrayContaining(['/ws/a.ts', '/extra/b.ts']),
+      );
+    });
+
+    it('count mode aggregates counts from multiple roots correctly', async () => {
+      // `rg -c` emits one `path:count` line per matching file. When rg
+      // is given multiple roots, each root's files appear in the same
+      // stream; the tool must sum each line's count into numMatches and
+      // union their paths into filenames.
+      const execFn = vi.fn().mockResolvedValue(makeProc('/ws/a.ts:3\n/extra/b.ts:2\n', 0));
+      const kaos = createFakeKaos({ exec: execFn });
+      const tool = new GrepTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/extra'],
+      });
+      const result = await tool.execute(
+        'call_multi_count',
+        { pattern: 'x', output_mode: 'count' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      expect(result.output?.mode).toBe('count');
+      expect(result.output?.numMatches).toBe(5);
+      expect(result.output?.numFiles).toBe(2);
+      expect(result.output?.filenames).toEqual(
+        expect.arrayContaining(['/ws/a.ts', '/extra/b.ts']),
+      );
+    });
+
+    it('sensitive-file filter applies to aggregated multi-root output', async () => {
+      // Hit in one root is a sensitive file; must be filtered even when
+      // the primary workspaceDir match is clean.
+      const stdout = '/ws/main.ts:10:hit\n/extra/.env:3:SECRET=s\n/extra/util.ts:7:hit\n';
+      const execFn = vi.fn().mockResolvedValue(makeProc(stdout, 0));
+      const kaos = createFakeKaos({ exec: execFn });
+      const tool = new GrepTool(kaos, {
+        workspaceDir: '/ws',
+        additionalDirs: ['/extra'],
+      });
+      const result = await tool.execute(
+        'call_multi_sens',
+        { pattern: 'hit', output_mode: 'content' },
+        new AbortController().signal,
+      );
+      expect(result.isError).toBeFalsy();
+      const content = toolContentString(result);
+      expect(content).not.toContain('SECRET=s');
+      expect(content).toContain('/ws/main.ts:10');
+      expect(content).toContain('/extra/util.ts:7');
+      expect(content).toContain('Filtered');
+      expect(content).toContain('.env');
     });
   });
 });

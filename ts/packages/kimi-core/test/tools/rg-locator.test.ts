@@ -11,13 +11,19 @@
 import { mkdirSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   detectTarget,
+  ensureRgPath,
   findExistingRg,
   rgUnavailableMessage,
 } from '../../src/tools/rg-locator.js';
+
+// R1 — download-branch tests mock `tar.extract` so the archive layout is
+// controlled by the test, not the real CDN. `fetch` is replaced per-test
+// on `globalThis` to drive the failure and success paths.
+vi.mock('tar', () => ({ extract: vi.fn() }));
 
 describe('findExistingRg', () => {
   let fakeShare: string;
@@ -136,5 +142,77 @@ describe('rgUnavailableMessage', () => {
     expect(a).toContain('boom');
     const b = rgUnavailableMessage(42);
     expect(b).toContain('unknown error');
+  });
+});
+
+describe('ensureRgPath download branch (R1)', () => {
+  let fakeShare: string;
+  let savedPath: string | undefined;
+  let savedFetch: typeof globalThis.fetch | undefined;
+  beforeEach(() => {
+    fakeShare = join(
+      tmpdir(),
+      `kimi-rg-dl-${String(Date.now())}-${String(Math.random()).slice(2)}`,
+    );
+    mkdirSync(join(fakeShare, 'bin'), { recursive: true });
+    savedPath = process.env['PATH'];
+    process.env['PATH'] = ''; // force the locator past `whichRg`
+    savedFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    rmSync(fakeShare, { recursive: true, force: true });
+    if (savedPath === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = savedPath;
+    if (savedFetch === undefined) {
+      // oxlint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (globalThis as unknown as { fetch?: typeof fetch }).fetch;
+    } else {
+      globalThis.fetch = savedFetch;
+    }
+    vi.restoreAllMocks();
+  });
+
+  it('surfaces a network error when fetch rejects', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new Error('network unreachable')) as typeof fetch;
+    await expect(ensureRgPath({ shareDir: fakeShare })).rejects.toThrow(
+      /network unreachable/,
+    );
+  });
+
+  it('surfaces HTTP failure (non-2xx response) with status + statusText', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      body: null,
+    }) as unknown as typeof fetch;
+    await expect(ensureRgPath({ shareDir: fakeShare })).rejects.toThrow(
+      /HTTP 404 Not Found/,
+    );
+  });
+
+  it('fails with "CDN content may have changed" when archive omits the rg binary', async () => {
+    // Succeed through the fetch+stream+extract pipeline but leave the
+    // extracted tree empty — `existsSync(extracted)` is false, which is
+    // the sentinel the locator turns into an actionable error.
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0x1f, 0x8b, 0x08, 0x00]));
+        controller.close();
+      },
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      body,
+    }) as unknown as typeof fetch;
+    // The `tar` package is vi.mock'd at module scope — extract() resolves
+    // without producing any files, so `existsSync(extracted)` → false.
+    await expect(ensureRgPath({ shareDir: fakeShare })).rejects.toThrow(
+      /CDN content may have changed/,
+    );
   });
 });

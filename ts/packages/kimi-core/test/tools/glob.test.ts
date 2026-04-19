@@ -15,25 +15,46 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+import type { Kaos } from '@moonshot-ai/kaos';
+
 import type { WorkspaceConfig } from '../../src/tools/index.js';
 import { GLOB_MAX_MATCHES, GlobTool } from '../../src/tools/index.js';
 import { PERMISSIVE_WORKSPACE, createFakeKaos, toolContentString } from './fixtures/fake-kaos.js';
 
+// Stat helper: produce a valid `StatResult` (the interface kimi-core
+// consumes — see `packages/kaos/src/types.ts`). The prior mock used
+// Python-ish `{isFile, mtimeMs}` fields; those don't exist on
+// StatResult, so `st.stMtime ?? 0` always resolved to 0 and the
+// "sorted by mtime" test couldn't detect ordering regressions.
+function statFor(mtime: number, modeBits = 0o100_644): import('@moonshot-ai/kaos').StatResult {
+  return {
+    stMode: modeBits,
+    stIno: 1,
+    stDev: 1,
+    stNlink: 1,
+    stUid: 0,
+    stGid: 0,
+    stSize: 100,
+    stAtime: mtime,
+    stMtime: mtime,
+    stCtime: mtime,
+  };
+}
+
 function makeGlobTool(): GlobTool {
+  // Distinct stMtime per path so the sort test can observe ordering:
+  // b.ts is newer → must come first in the mtime-sorted result.
+  const mtimeByPath: Record<string, number> = {
+    '/workspace/src/a.ts': 100,
+    '/workspace/src/b.ts': 200,
+  };
   const kaos = createFakeKaos({
     // eslint-disable-next-line require-yield
     async *glob() {
       yield '/workspace/src/a.ts';
       yield '/workspace/src/b.ts';
     },
-    stat: vi.fn().mockResolvedValue({
-      isFile: true,
-      isDir: false,
-      isSymlink: false,
-      size: 100,
-      mtimeMs: Date.now(),
-      mode: 0o644,
-    }),
+    stat: (async (p: string) => statFor(mtimeByPath[p] ?? 0)) as Kaos['stat'],
   });
   return new GlobTool(kaos, PERMISSIVE_WORKSPACE);
 }
@@ -75,6 +96,10 @@ describe('GlobTool', () => {
   });
 
   it('results are sorted by modification time (most recent first)', async () => {
+    // makeGlobTool stubs a.ts@stMtime=100 and b.ts@stMtime=200 so the
+    // mtime-sort code path has distinguishable values. Any ordering
+    // regression in glob.ts (e.g. swapping the comparator direction, or
+    // losing the stMtime read) must now fail this test.
     const tool = makeGlobTool();
     const result = await tool.execute(
       'call_2',
@@ -82,7 +107,10 @@ describe('GlobTool', () => {
       new AbortController().signal,
     );
     expect(result.isError).toBeFalsy();
-    expect(result.output?.paths).toBeDefined();
+    expect(result.output?.paths).toEqual([
+      '/workspace/src/b.ts',
+      '/workspace/src/a.ts',
+    ]);
   });
 
   it('returns empty paths array when no files match', async () => {
