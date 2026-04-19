@@ -109,15 +109,34 @@ export class GlobTool implements BuiltinTool<GlobInput, GlobOutput> {
     }
 
     try {
+      // Two counters, two jobs:
+      //   - `entries.length` caps the *unique* paths we return, so a
+      //     truncation warning only fires after MAX_MATCHES real hits
+      //     (overlapping roots that surface the same file don't inflate
+      //     the count and prematurely trip the cap).
+      //   - `yielded` counts every path the kaos stream emits, including
+      //     duplicates. It's a safety belt against symlink-driven loops
+      //     in `_globWalk`: a cycle keeps re-yielding the same file, so
+      //     the unique cap would never fire, but `yielded` would.
+      const seen = new Set<string>();
       const entries: Array<{ path: string; mtime: number }> = [];
+      const YIELD_SAFETY_CAP = MAX_MATCHES * 2;
+      let yielded = 0;
       let truncated = false;
 
       outer: for (const root of searchRoots) {
         for await (const filePath of this.kaos.glob(root, args.pattern)) {
+          yielded++;
+          if (yielded >= YIELD_SAFETY_CAP) {
+            truncated = true;
+            break outer;
+          }
+          if (seen.has(filePath)) continue;
           if (entries.length >= MAX_MATCHES) {
             truncated = true;
             break outer;
           }
+          seen.add(filePath);
           let mtime = 0;
           try {
             const st = await this.kaos.stat(filePath);
@@ -129,17 +148,9 @@ export class GlobTool implements BuiltinTool<GlobInput, GlobOutput> {
         }
       }
 
-      // Dedup: if roots overlap, the same path may appear multiple times.
-      const seen = new Set<string>();
-      const unique: Array<{ path: string; mtime: number }> = [];
-      for (const e of entries) {
-        if (seen.has(e.path)) continue;
-        seen.add(e.path);
-        unique.push(e);
-      }
-      unique.sort((a, b) => b.mtime - a.mtime);
+      entries.sort((a, b) => b.mtime - a.mtime);
 
-      const paths = unique.map((e) => e.path);
+      const paths = entries.map((e) => e.path);
       // Content shown to the LLM uses paths relative to the search base
       // to save tokens; `output.paths` keeps the absolute form so callers
       // can feed them into Read/Edit without further resolution. When
