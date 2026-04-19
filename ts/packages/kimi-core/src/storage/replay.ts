@@ -238,7 +238,7 @@ export async function replayWire(path: string, options: ReplayOptions): Promise<
   };
 }
 
-const KNOWN_RECORD_TYPES: ReadonlySet<string> = new Set([
+export const KNOWN_RECORD_TYPES: ReadonlySet<string> = new Set([
   'turn_begin',
   'turn_end',
   'user_message',
@@ -255,6 +255,13 @@ const KNOWN_RECORD_TYPES: ReadonlySet<string> = new Set([
   'permission_mode_changed',
   'tool_call_dispatched',
   'tool_denied',
+  // Phase 25 §A.2 — atomic record types (slice 25b additive registration;
+  // producers still emit the legacy `assistant_message` / `tool_call_dispatched`
+  // pair until slice 25c switches over).
+  'step_begin',
+  'step_end',
+  'content_part',
+  'tool_call',
   'skill_invoked',
   'skill_completed',
   'approval_request',
