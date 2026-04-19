@@ -288,6 +288,80 @@ describe('Phase 18 F.1 — SessionManager.rollbackSession', () => {
     await mgr.closeSession(sessionId);
   });
 
+  it('rollback actively rejects concurrent journal appends through the gate (round-9 functional guard)', async () => {
+    // State-pinning alone (above test) proves we *transition* to
+    // `'completing'`. Round-9 review: also prove the gate mapping
+    // still fires — i.e. a concurrent `journalWriter.append` during
+    // rollback's window throws a `JournalGatedError`, not silently
+    // lands and gets overwritten by `atomicWrite`. If someone
+    // hypothetically broke the `completing → writes blocked` entry
+    // in `SoulLifecycleGate.mapTo3` without touching the state
+    // transitions, the previous test would still pass; this one
+    // wouldn't.
+    const sessionId = 'ses_rollback_gate_rejects_append';
+    const created = await mgr.createSession({
+      workspaceDir: tmp,
+      sessionId,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'test-model',
+    });
+    await created.sessionJournal.appendTurnBegin({
+      type: 'turn_begin',
+      turn_id: 'turn_1',
+      agent_type: 'main',
+      user_input: 'hi',
+      input_kind: 'user',
+    });
+
+    const rollbackPromise = mgr.rollbackSession(sessionId, 1);
+    // Yield so rollback's body enters and the state advances to
+    // 'completing'.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Attempt a non-compaction, non-force-flush append. The gate
+    // refuses while state is `'completing'`.
+    await expect(
+      created.journalWriter.append({
+        type: 'notification',
+        data: {
+          id: 'notif_race',
+          category: 'task',
+          type: 'task.started',
+          source_kind: 'background_task',
+          source_id: 'bg_race',
+          title: 't',
+          body: 'b',
+          severity: 'info',
+          targets: [],
+        },
+      }),
+    ).rejects.toThrow(/journal.*gated|completing/i);
+
+    await rollbackPromise;
+
+    // Post-rollback the gate returns to 'active' (writes allowed).
+    await expect(
+      created.journalWriter.append({
+        type: 'notification',
+        data: {
+          id: 'notif_post',
+          category: 'task',
+          type: 'task.started',
+          source_kind: 'background_task',
+          source_id: 'bg_post',
+          title: 't',
+          body: 'b',
+          severity: 'info',
+          targets: [],
+        },
+      }),
+    ).resolves.toBeDefined();
+
+    await mgr.closeSession(sessionId);
+  });
+
   it('rollback releases maintenance reservation even when the body throws (so the session is not permanently stuck)', async () => {
     // Failure-path companion to the race closure: if the body throws
     // (e.g. state.json is missing), the try/finally must still flip
@@ -329,18 +403,11 @@ describe('Phase 18 F.1 — SessionManager.rollbackSession', () => {
     // 构造时注入的回调）后再写断言。
   );
 
-  it.todo(
-    'rollback is serialized against concurrent appendTurn writes (no interleave drops a turn)',
-    // phase-18 §F.1 风险 4 / Round 1 Major #1：
-    //   场景：rollback(n) 与下一个 turn 的 JournalWriter.append 在同一时刻
-    //   到达。rollback 读文件 → 计算 keepUpToLine → atomicWrite 的窗口内，
-    //   若一个 `turn_begin` / `turn_end` 已经写完磁盘但 rollback 是按旧快照
-    //   计算的 keepUpToLine，rename 会覆盖掉那一行，制造"丢 turn"的幻觉。
-    //   withStateLock 目前保证 rollback 之间互斥，但 JournalWriter.append
-    //   没有走 state lock。
-    //   修法路线：要么给 JournalWriter 也接上 state lock，要么让 rollback
-    //   先停掉 wire 写入（`journalWriter.quiesce()` + resume），或者在
-    //   rollback 入口先把 lifecycle 推成 `compacting`。
-    //   用 it.todo 占位记录该技术债；Slice 18-4 或后续 phase 再解决。
-  );
+  // Phase 20 round-8 closed this race by transitioning the lifecycle to
+  // `'completing'` right after `tryReserveForMaintenance()`, which causes
+  // `SoulLifecycleGate` to reject concurrent `JournalWriter.append` calls
+  // with a `JournalGatedError`. See the two tests above (state pinned to
+  // `completing` during rollback body + round-9 gate-rejection
+  // e2e). The old `it.todo` that used to sit here described this exact
+  // scenario as tech debt; removed because it's now covered.
 });

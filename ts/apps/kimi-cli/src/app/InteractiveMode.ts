@@ -1601,19 +1601,17 @@ export class InteractiveMode implements WireHandlerDelegate {
 
   private async togglePlanMode(): Promise<void> {
     const enabled = !this.state.planMode;
-    this.setState({ planMode: enabled });
-    this.addTranscriptEntry({
-      id: `plan-${String(Date.now())}`,
-      kind: 'status',
-      renderMode: 'plain',
-      content: `Plan mode: ${enabled ? 'ON' : 'OFF'}`,
-      color: this.colors.primary,
-    });
+    // Round-9 review: core first, TUI after — same ordering fix as
+    // the `/plan` slash command in round-8. The old "setState +
+    // transcript BEFORE await + rollback on catch" pattern left the
+    // transcript with a permanent "Plan mode: ON" announcement
+    // followed by an error — the header briefly lied even after the
+    // rollback restored the footer. Awaiting first means a wire
+    // rejection short-circuits before any TUI mutation; nothing to
+    // roll back, nothing to retract.
     try {
       await this.wireClient.setPlanMode(this.state.sessionId, enabled);
     } catch (err) {
-      // Roll back local state and surface the failure so the footer doesn't lie.
-      this.setState({ planMode: !enabled });
       const msg = err instanceof Error ? err.message : String(err);
       this.addTranscriptEntry({
         id: `plan-err-${String(Date.now())}`,
@@ -1622,7 +1620,16 @@ export class InteractiveMode implements WireHandlerDelegate {
         content: `Failed to toggle plan mode: ${msg}`,
         color: this.colors.error,
       });
+      return;
     }
+    this.setState({ planMode: enabled });
+    this.addTranscriptEntry({
+      id: `plan-${String(Date.now())}`,
+      kind: 'status',
+      renderMode: 'plain',
+      content: `Plan mode: ${enabled ? 'ON' : 'OFF'}`,
+      color: this.colors.primary,
+    });
   }
 
   private async persistInputHistory(text: string): Promise<void> {

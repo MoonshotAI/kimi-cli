@@ -1040,12 +1040,18 @@ export class SessionManager {
             `rollbackSession: session "${sessionId}" is busy (${detail}) — cannot rollback while a turn, compaction, or another maintenance op is in flight`,
           );
         }
-        // Advance further to 'completing' so the JournalWriter gate
-        // actively refuses concurrent non-turn appends (round-8 fix).
-        live.lifecycleStateMachine.transitionTo('completing');
       }
 
+      // Round-9 review: advance to `'completing'` INSIDE the try so
+      // a hypothetical future `transitionTo` that rejects on some new
+      // invariant still ends up in `finally → releaseMaintenance()`,
+      // which walks `active → completing → idle` and never leaves the
+      // session wedged. `active → completing` is sanctioned today so
+      // this is defensive; cost is zero.
       try {
+        if (live !== undefined) {
+          live.lifecycleStateMachine.transitionTo('completing');
+        }
         return await this.runRollbackBody(sessionId, nTurnsBack);
       } finally {
         turnManager?.releaseMaintenance();
