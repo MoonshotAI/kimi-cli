@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from kaos.path import KaosPath
 
 from kimi_cli.llm import clone_llm_with_model_alias
@@ -35,6 +37,16 @@ class SubagentBuilder:
             llm_override=llm_override,
             work_dir_override=work_dir_override,
         )
+        # Refresh directory listing for the overridden work_dir so the system
+        # prompt reflects the correct project structure.
+        if work_dir_override is not None:
+            from kimi_cli.utils.path import list_directory
+
+            ls_output = await list_directory(work_dir_override)
+            runtime = replace(
+                runtime,
+                builtin_args=replace(runtime.builtin_args, KIMI_WORK_DIR_LS=ls_output),
+            )
         return await load_agent(
             type_def.agent_file,
             runtime,
