@@ -7,7 +7,6 @@ import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from textwrap import shorten
 
 from kaos.path import KaosPath
 from kosong.message import Message
@@ -15,6 +14,7 @@ from kosong.message import Message
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.session_state import SessionState, load_session_state, save_session_state
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.string import shorten
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import TurnBegin
 
@@ -60,7 +60,9 @@ class Session:
         return path
 
     def is_empty(self) -> bool:
-        """Whether the session has any context history."""
+        """Whether the session has any context history or a custom title."""
+        if self.state.custom_title:
+            return False
         if not self.wire_file.is_empty():
             return False
         try:
@@ -69,7 +71,7 @@ class Session:
                     line = line.strip()
                     if not line:
                         continue
-                    role = json.loads(line).get("role")
+                    role = json.loads(line, strict=False).get("role")
                     if isinstance(role, str) and not role.startswith("_"):
                         return False
         except FileNotFoundError:
@@ -80,7 +82,18 @@ class Session:
         return True
 
     def save_state(self) -> None:
-        """Persist the session state to disk."""
+        """Persist the session state to disk.
+
+        Reloads externally-mutable fields (title, archive) from disk first
+        to avoid overwriting concurrent changes made by the web API.
+        """
+        fresh = load_session_state(self.dir)
+        self.state.custom_title = fresh.custom_title
+        self.state.title_generated = fresh.title_generated
+        self.state.title_generate_attempts = fresh.title_generate_attempts
+        self.state.archived = fresh.archived
+        self.state.archived_at = fresh.archived_at
+        self.state.auto_archive_exempt = fresh.auto_archive_exempt
         save_session_state(self.state, self.dir)
 
     async def delete(self) -> None:
@@ -91,18 +104,21 @@ class Session:
         await asyncio.to_thread(shutil.rmtree, session_dir, True)
 
     async def refresh(self) -> None:
-        self.title = f"Untitled ({self.id})"
+        self.title = "Untitled"
         self.updated_at = self.context_file.stat().st_mtime if self.context_file.exists() else 0.0
+
+        if self.state.custom_title:
+            self.title = self.state.custom_title
+            return
 
         try:
             async for record in self.wire_file.iter_records():
                 wire_msg = record.to_wire_message()
                 if isinstance(wire_msg, TurnBegin):
-                    title = shorten(
+                    self.title = shorten(
                         Message(role="user", content=wire_msg.user_input).extract_text(" "),
                         width=50,
                     )
-                    self.title = f"{title} ({self.id})"
                     return
         except Exception:
             logger.exception(
@@ -257,6 +273,16 @@ class Session:
             sessions.append(session)
         sessions.sort(key=lambda session: session.updated_at, reverse=True)
         return sessions
+
+    @classmethod
+    async def list_all(cls) -> builtins.list[Session]:
+        """List sessions across all known work directories."""
+        all_sessions: list[Session] = []
+        for wd in load_metadata().work_dirs:
+            sessions = await cls.list(KaosPath.unsafe_from_local_path(Path(wd.path)))
+            all_sessions.extend(sessions)
+        all_sessions.sort(key=lambda s: s.updated_at, reverse=True)
+        return all_sessions
 
     @staticmethod
     async def continue_(work_dir: KaosPath) -> Session | None:

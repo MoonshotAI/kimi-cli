@@ -70,7 +70,7 @@ def _format_tool_call(tool_call: ToolCall) -> Panel:
     """Format a tool call."""
     args = tool_call.function.arguments or "{}"
     try:
-        args_formatted = json.dumps(json.loads(args), indent=2)
+        args_formatted = json.dumps(json.loads(args, strict=False), indent=2)
         args_syntax = Syntax(args_formatted, "json", theme="monokai", padding=(0, 1))
     except json.JSONDecodeError:
         args_syntax = Text(args, style="red")

@@ -31,7 +31,7 @@ def build_notification_message(view: NotificationView, runtime: Runtime) -> Mess
     if event.category == "task" and event.source_kind == "background_task":
         task_view = runtime.background_tasks.get_task(event.source_id)
         if task_view is not None:
-            tail = runtime.background_tasks.store.tail_output(
+            tail = runtime.background_tasks.tail_output(
                 task_view.spec.id,
                 max_bytes=runtime.config.background.notification_tail_chars,
                 max_lines=runtime.config.background.notification_tail_lines,

@@ -12,6 +12,7 @@ import kimi_cli.soul.kimisoul as kimisoul_module
 from kimi_cli.llm import LLM, ModelCapability
 from kimi_cli.soul import LLMNotSupported, run_soul
 from kimi_cli.soul.agent import Agent, Runtime
+from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.dynamic_injection import DynamicInjection
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -19,6 +20,12 @@ from kimi_cli.soul.message import is_system_reminder_message
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
 from kimi_cli.wire.types import ImageURLPart, SteerInput, StepBegin, TextPart, TurnBegin, TurnEnd
+
+
+@pytest.fixture
+def approval() -> Approval:
+    """Override global yolo=True fixture; steer tests don't need yolo."""
+    return Approval(yolo=False)
 
 
 def _make_soul(runtime: Runtime, tmp_path: Path) -> KimiSoul:
@@ -46,6 +53,7 @@ def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
         skills=runtime.skills,
         oauth=runtime.oauth,
         additional_dirs=runtime.additional_dirs,
+        skills_dirs=runtime.skills_dirs,
     )
 
 

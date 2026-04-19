@@ -6,11 +6,17 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from kosong.chat_provider import ChatProviderError
+from kosong.chat_provider import (
+    APIConnectionError,
+    APIEmptyResponseError,
+    APIStatusError,
+    APITimeoutError,
+    ChatProviderError,
+)
 from kosong.message import Message
 from rich import print
 
-from kimi_cli.cli import InputFormat, OutputFormat
+from kimi_cli.cli import ExitCode, InputFormat, OutputFormat
 from kimi_cli.soul import (
     LLMNotSet,
     LLMNotSupported,
@@ -52,7 +58,7 @@ class Print:
         self.context_file = context_file
         self.final_only = final_only
 
-    async def run(self, command: str | None = None) -> bool:
+    async def run(self, command: str | None = None) -> int:
         cancel_event = asyncio.Event()
 
         def _handler():
@@ -70,12 +76,12 @@ class Print:
             while True:
                 if command is None:
                     if self.input_format == "text":
-                        return True
+                        return ExitCode.SUCCESS
                     else:
                         assert self.input_format == "stream-json"
                         command = self._read_next_command()
                         if command is None:
-                            return True
+                            return ExitCode.SUCCESS
 
                 if command:
                     logger.info("Running agent with command: {command}", command=command)
@@ -97,25 +103,43 @@ class Print:
         except LLMNotSet as e:
             logger.exception("LLM not set:")
             print(str(e))
+            return ExitCode.FAILURE
         except LLMNotSupported as e:
             logger.exception("LLM not supported:")
             print(str(e))
+            return ExitCode.FAILURE
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             print(str(e))
+            return self._classify_provider_error(e)
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
             print(str(e))
+            return ExitCode.FAILURE
         except RunCancelled:
             logger.error("Interrupted by user")
             print("Interrupted by user")
+            return ExitCode.FAILURE
         except BaseException as e:
             logger.exception("Unknown error:")
             print(f"Unknown error: {e}")
             raise
         finally:
             remove_sigint()
-        return False
+        return ExitCode.FAILURE
+
+    _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+    @staticmethod
+    def _classify_provider_error(e: ChatProviderError) -> int:
+        """Classify a ChatProviderError into an exit code."""
+        if isinstance(e, (APIConnectionError, APITimeoutError, APIEmptyResponseError)):
+            return ExitCode.RETRYABLE
+        if isinstance(e, APIStatusError):
+            if e.status_code in Print._RETRYABLE_STATUS_CODES:
+                return ExitCode.RETRYABLE
+            return ExitCode.FAILURE
+        return ExitCode.FAILURE
 
     def _read_next_command(self) -> str | None:
         while True:

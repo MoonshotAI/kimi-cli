@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PIL import Image
 
+from kimi_cli.ui.shell import placeholders
 from kimi_cli.ui.shell.placeholders import (
     AttachmentCache,
     PromptPlaceholderManager,
@@ -173,6 +174,36 @@ def test_placeholder_manager_normalizes_crlf_before_threshold_and_resolution() -
 
     resolved = manager.resolve_command(token)
     assert resolved.resolved_text == "\n".join([f"line{i}" for i in range(1, 16)])
+
+
+def test_placeholderize_thresholds_are_configurable(monkeypatch) -> None:
+    monkeypatch.setattr(placeholders, "_TEXT_PASTE_CHAR_THRESHOLD", 50)
+    monkeypatch.setattr(placeholders, "_TEXT_PASTE_LINE_THRESHOLD", 3)
+
+    assert should_placeholderize_pasted_text("A" * 49) is False
+    assert should_placeholderize_pasted_text("A" * 50) is True
+    assert should_placeholderize_pasted_text("a\nb") is False
+    assert should_placeholderize_pasted_text("a\nb\nc") is True
+
+
+def test_get_env_int_parses_valid_values(monkeypatch) -> None:
+    from kimi_cli.utils.envvar import get_env_int
+
+    monkeypatch.setenv("_TEST_INT_VAR", "42")
+    assert get_env_int("_TEST_INT_VAR", 0) == 42
+
+
+def test_get_env_int_falls_back_on_invalid_values(monkeypatch) -> None:
+    from kimi_cli.utils.envvar import get_env_int
+
+    monkeypatch.setenv("_TEST_INT_VAR", "not_a_number")
+    assert get_env_int("_TEST_INT_VAR", 99) == 99
+
+
+def test_get_env_int_returns_default_when_unset() -> None:
+    from kimi_cli.utils.envvar import get_env_int
+
+    assert get_env_int("_TEST_NONEXISTENT_VAR_12345", 77) == 77
 
 
 def test_attachment_cache_loads_legacy_root(tmp_path) -> None:

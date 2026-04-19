@@ -243,6 +243,14 @@ export type SteerInputEvent = {
   };
 };
 
+export type PlanDisplayEvent = {
+  type: "PlanDisplay";
+  payload: {
+    content: string;
+    file_path: string;
+  };
+};
+
 // Union of all event types
 export type WireEvent =
   | TurnBeginEvent
@@ -262,7 +270,8 @@ export type WireEvent =
   | ApprovalRequestResolvedEvent
   | QuestionRequestEvent
   | SubagentEventWire
-  | SteerInputEvent;
+  | SteerInputEvent
+  | PlanDisplayEvent;
 
 // Parsed wire message
 export type WireMessage = {

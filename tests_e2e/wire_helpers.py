@@ -254,7 +254,7 @@ def start_wire(
     extra_args: list[str] | None = None,
     yolo: bool = False,
     mcp_config_path: Path | None = None,
-    skills_dir: Path | None = None,
+    skills_dirs: list[Path] | None = None,
     agent_file: Path | None = None,
 ) -> WireProcess:
     cmd = _wire_base_command()
@@ -266,8 +266,8 @@ def start_wire(
         cmd.extend(["--config", config_text])
     if mcp_config_path is not None:
         cmd.extend(["--mcp-config-file", str(mcp_config_path)])
-    if skills_dir is not None:
-        cmd.extend(["--skills-dir", str(skills_dir)])
+    for sd in skills_dirs or []:
+        cmd.extend(["--skills-dir", str(sd)])
     if agent_file is not None:
         cmd.extend(["--agent-file", str(agent_file)])
     if extra_args:

@@ -35,7 +35,7 @@ from tests.e2e.shell_pty_helpers import (  # noqa: E402
 
 LONG_PAD = "This is a padded summary to exceed the minimum length threshold. " * 5
 
-PROMPT_SYMBOL = "✨"
+PROMPT_SYMBOL = "── input"
 
 
 def _build_tool_call_line(tool_call_id: str, name: str, arguments: dict) -> str:

@@ -131,6 +131,7 @@ import {
   type QuestionRequestEvent,
   type SessionStatusPayload,
   type SubagentEventWire,
+  type PlanDisplayEvent,
   extractEvent,
 } from "./wireTypes";
 import { createMessageId, getApiBaseUrl } from "./utils";
@@ -1932,6 +1933,23 @@ export function useSessionStream(
           break;
         }
 
+        case "PlanDisplay": {
+          const planPayload = (event as PlanDisplayEvent).payload;
+          const planMessageId = getNextMessageId("assistant");
+          upsertMessage({
+            id: planMessageId,
+            role: "assistant",
+            variant: "text",
+            turnIndex:
+              turnCounterRef.current > 0
+                ? turnCounterRef.current - 1
+                : undefined,
+            content: planPayload.content,
+            isStreaming: false,
+          });
+          break;
+        }
+
         default:
           break;
       }
@@ -1959,7 +1977,7 @@ export function useSessionStream(
       method: "initialize",
       id,
       params: {
-        protocol_version: "1.6",
+        protocol_version: "1.9",
         client: {
           name: "kiwi",
           version: kimiCliVersion,
@@ -2423,7 +2441,19 @@ export function useSessionStream(
           }
           if (wsRef.current.readyState !== WebSocket.OPEN) return;
           const elapsed = Date.now() - lastWsMessageTimeRef.current;
-          if (elapsed > 45_000 && statusRef.current === "streaming") {
+          const hasUnsubmittedApproval = Array.from(
+            pendingApprovalRequestsRef.current.values(),
+          ).some((e) => !e.submitted);
+          const hasUnsubmittedQuestion = Array.from(
+            pendingQuestionRequestsRef.current.values(),
+          ).some((e) => !e.submitted);
+          const hasPendingInteraction =
+            hasUnsubmittedApproval || hasUnsubmittedQuestion;
+          if (
+            elapsed > 45_000 &&
+            statusRef.current === "streaming" &&
+            !hasPendingInteraction
+          ) {
             console.warn(
               `[SessionStream] Watchdog: no messages for ${Math.round(elapsed / 1000)}s while streaming, reconnecting...`,
             );

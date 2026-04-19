@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+## 0.50.0 (2026-04-17)
+
+- Anthropic: Add adaptive thinking support for Claude Opus 4.7 — model capability detection now uses regex version extrapolation (covers `opus-4-7`, Bedrock/Vertex name variants such as `aws/claude-opus-4-7` and `anthropic.claude-opus-4-7-v1:0`, `claude-mythos-preview`, and future Claude versions ≥ 4.6) instead of hard-coded substring matching; adaptive requests now set `display: "summarized"` explicitly so thinking content still streams on Opus 4.7 (where the default flipped to `"omitted"`); the legacy `thinking: {type: "enabled", budget_tokens: N}` path is no longer used for Opus 4.7, which rejects it with 400
+- Anthropic: Plumb `output_config.effort` through both adaptive and legacy paths — the user-requested effort was previously dropped in adaptive mode, silently collapsing `low`/`medium` to the model default; effort is now faithfully forwarded, and on legacy paths it is emitted only for models that Anthropic's docs explicitly list as supporting the parameter (Opus 4.5 on top of all adaptive-capable models) to avoid 400 validation errors on Claude 3.x and other models that reject `output_config`
+- Core: Extend `ThinkingEffort` with `xhigh` and `max` — new tiers available on Opus 4.7 (`xhigh`), Opus 4.6 / Sonnet 4.6 / Claude Mythos Preview (`max`), and OpenAI models after `gpt-5.1-codex-max` (`xhigh`); providers clamp unsupported levels down transparently (e.g., `xhigh` → `high` on Opus 4.6, `max` → `xhigh` on OpenAI, `xhigh`/`max` → `high` on Gemini and Kimi)
+
+## 0.49.0 (2026-04-10)
+
+- Core: Treat think-only model responses (reasoning content with no text or tool calls) as incomplete response errors, enabling automatic retry instead of silently stopping the agent loop
+- OpenAI: Fix crash on streaming mid-flight disconnection — classify base `openai.APIError` (body=None) as retryable via heuristic message matching, so that `_run_with_connection_recovery` and tenacity retry logic correctly trigger instead of crashing
+
+## 0.48.0 (2026-04-02)
+
+- Google GenAI: Add `default_headers` parameter to `GoogleGenAI` constructor — custom headers are merged into `HttpOptions` so they are included in all API requests
+
+## 0.47.0 (2026-03-30)
+
+- OpenAI: Fix implicit `reasoning_effort` causing 400 errors — auto-set `reasoning_effort` to `"medium"` when history contains `ThinkPart` and the parameter wasn't explicitly set
+
+## 0.46.0 (2026-03-25)
+
+- Google GenAI: Fix `FunctionCall` and `FunctionResponse` wire format — remove `id` field from outbound messages as Gemini API returns HTTP 400 when it is included; internal `tool_call_id` tracking remains unchanged
+- Core: Use `json.loads(strict=False)` when parsing tool call arguments to tolerate unescaped control characters from LLM output
+- Core: Treat `httpx.ProtocolError` as `APIConnectionError` in shared `convert_httpx_error()` mapping so streaming protocol disconnects now participate in existing retry logic
+- Anthropic: Fix `httpx.ReadTimeout` leaking through `_convert_stream_response` during streaming — the exception is now caught and converted to `APITimeoutError`, enabling retry logic that was previously bypassed
+- Anthropic: Fix `_convert_error` ordering — `AnthropicAPITimeoutError` is now checked before `AnthropicAPIConnectionError` to avoid misclassification due to inheritance
+- Core: Add shared `convert_httpx_error()` utility for converting httpx transport errors to `ChatProviderError` subtypes, used by all providers
+- Google GenAI: Add `httpx.HTTPError` catch in `_convert_stream_response` for the httpx fallback transport path
+
 ## 0.45.0 (2026-03-11)
 
 - OpenAI Responses: Fix implicit `reasoning.effort=null` being sent which breaks Responses-compatible endpoints that require reasoning — reasoning parameters are now omitted unless explicitly set

@@ -268,7 +268,7 @@ def test_question_single_select_via_number_key(tmp_path: Path) -> None:
         config_path=config_path,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
 
     try:
@@ -318,7 +318,7 @@ def test_question_escape_dismisses_with_empty_answer(tmp_path: Path) -> None:
         config_path=config_path,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
 
     try:
@@ -378,7 +378,7 @@ def test_question_multi_step_with_tab_navigation(tmp_path: Path) -> None:
         config_path=config_path,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
 
     try:
@@ -670,7 +670,7 @@ def test_question_single_question_returns_to_prompt(tmp_path: Path) -> None:
         config_path=config_path,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
 
     try:
@@ -727,7 +727,7 @@ def test_question_multi_select_with_space_and_enter(tmp_path: Path) -> None:
         config_path=config_path,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
 
     try:
@@ -917,7 +917,7 @@ def test_two_question_tools_in_same_turn(tmp_path: Path) -> None:
         config_path=config_path,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
 
     try:

@@ -405,7 +405,7 @@ def test_shell_question_roundtrip_with_other_answer(tmp_path: Path) -> None:
         config_path=config_path,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
 
     try:

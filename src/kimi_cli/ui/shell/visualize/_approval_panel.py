@@ -16,7 +16,13 @@ from rich.text import Text
 
 from kimi_cli.ui.shell.console import console, render_to_ansi
 from kimi_cli.ui.shell.keyboard import KeyEvent
-from kimi_cli.utils.diff import format_unified_diff
+from kimi_cli.utils.rich.diff_render import (
+    collect_diff_hunks,
+    render_diff_panel,
+    render_diff_preview,
+    render_diff_summary_panel,
+    render_diff_summary_preview,
+)
 from kimi_cli.utils.rich.syntax import KimiSyntax
 from kimi_cli.wire.types import (
     ApprovalRequest,
@@ -52,57 +58,96 @@ class ApprovalRequestPanel:
         ]
         self.selected_index = 0
 
-        # Pre-render all content blocks with line counts
+        # Pre-render content for the preview.
+        # All blocks (diff and non-diff) are rendered in original display order
+        # into a single list of renderables to preserve interleaving.
+        self._preview_renderables: list[RenderableType] = []
+        self._has_diff = False
+        self._non_diff_truncated = False
+        # Legacy content blocks for non-diff blocks (used by render_full fallback)
         self._content_blocks: list[ApprovalContentBlock] = []
-        last_diff_path: str | None = None
+
+        # Line budget for non-diff blocks
+        non_diff_budget = MAX_PREVIEW_LINES
 
         # Handle description (only if no display blocks)
         if request.description and not request.display:
             text = request.description.rstrip("\n")
-            self._content_blocks.append(ApprovalContentBlock(text=text, lines=text.count("\n") + 1))
+            line_count = text.count("\n") + 1
+            self._content_blocks.append(ApprovalContentBlock(text=text, lines=line_count))
+            preview_text = text
+            if line_count > non_diff_budget:
+                preview_text = "\n".join(text.split("\n")[:non_diff_budget])
+                self._non_diff_truncated = True
+            self._preview_renderables.append(Text(preview_text))
+            non_diff_budget -= min(line_count, non_diff_budget)
 
-        # Handle display blocks
-        for block in request.display:
+        # Handle display blocks — group consecutive same-file DiffDisplayBlocks
+        display = request.display
+        idx = 0
+        while idx < len(display):
+            block = display[idx]
             if isinstance(block, DiffDisplayBlock):
-                # File path or ellipsis
-                if block.path != last_diff_path:
-                    self._content_blocks.append(
-                        ApprovalContentBlock(text=block.path, lines=1, style="bold")
-                    )
-                    last_diff_path = block.path
+                path = block.path
+                diff_blocks: list[DiffDisplayBlock] = []
+                while idx < len(display):
+                    b = display[idx]
+                    if not isinstance(b, DiffDisplayBlock) or b.path != path:
+                        break
+                    diff_blocks.append(b)
+                    idx += 1
+                if any(b.is_summary for b in diff_blocks):
+                    self._has_diff = True
+                    self._preview_renderables.extend(render_diff_summary_preview(path, diff_blocks))
                 else:
-                    self._content_blocks.append(
-                        ApprovalContentBlock(text="⋮", lines=1, style="dim")
-                    )
-                # Diff content
-                diff_text = format_unified_diff(
-                    block.old_text,
-                    block.new_text,
-                    block.path,
-                    include_file_header=False,
-                ).rstrip("\n")
-                self._content_blocks.append(
-                    ApprovalContentBlock(
-                        text=diff_text, lines=diff_text.count("\n") + 1, lexer="diff"
-                    )
-                )
+                    hunks, added, removed = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        self._has_diff = True
+                        renderables, _remaining = render_diff_preview(
+                            path,
+                            hunks,
+                            added,
+                            removed,
+                        )
+                        self._preview_renderables.extend(renderables)
             elif isinstance(block, ShellDisplayBlock):
                 text = block.command.rstrip("\n")
+                line_count = text.count("\n") + 1
                 self._content_blocks.append(
-                    ApprovalContentBlock(
-                        text=text, lines=text.count("\n") + 1, lexer=block.language
-                    )
+                    ApprovalContentBlock(text=text, lines=line_count, lexer=block.language)
                 )
-                last_diff_path = None
+                if non_diff_budget > 0:
+                    truncated = text
+                    if line_count > non_diff_budget:
+                        truncated = "\n".join(text.split("\n")[:non_diff_budget])
+                        self._non_diff_truncated = True
+                    self._preview_renderables.append(KimiSyntax(truncated, block.language))
+                    non_diff_budget -= min(line_count, non_diff_budget)
+                else:
+                    self._non_diff_truncated = True
+                idx += 1
             elif isinstance(block, BriefDisplayBlock) and block.text:
                 text = block.text.rstrip("\n")
+                line_count = text.count("\n") + 1
                 self._content_blocks.append(
-                    ApprovalContentBlock(text=text, lines=text.count("\n") + 1, style="grey50")
+                    ApprovalContentBlock(text=text, lines=line_count, style="grey50")
                 )
-                last_diff_path = None
+                if non_diff_budget > 0:
+                    truncated = text
+                    if line_count > non_diff_budget:
+                        truncated = "\n".join(text.split("\n")[:non_diff_budget])
+                        self._non_diff_truncated = True
+                    self._preview_renderables.append(Text(truncated, style="grey50"))
+                    non_diff_budget -= min(line_count, non_diff_budget)
+                else:
+                    self._non_diff_truncated = True
+                idx += 1
+            else:
+                idx += 1
 
-        self._total_lines = sum(b.lines for b in self._content_blocks)
-        self.has_expandable_content = self._total_lines > MAX_PREVIEW_LINES
+        # P1: diff pager always has context lines not shown in preview
+        # P2: non-diff blocks may have been truncated
+        self.has_expandable_content = self._has_diff or self._non_diff_truncated
 
     def render(self, *, feedback_text: str | None = None) -> RenderableType:
         """Render the approval menu as a bordered panel."""
@@ -116,15 +161,10 @@ class ApprovalRequestPanel:
         content_lines.extend(self._render_source_metadata_lines())
         content_lines.append(Text(""))
 
-        # Render content with line budget
-        remaining = MAX_PREVIEW_LINES
-        for block in self._content_blocks:
-            if remaining <= 0:
-                break
-            content_lines.append(self._render_block(block, remaining))
-            remaining -= min(block.lines, remaining)
+        # Render preview (diff + non-diff in original display order)
+        content_lines.extend(self._preview_renderables)
 
-        if self.has_expandable_content:
+        if self.has_expandable_content and self._non_diff_truncated:
             content_lines.append(Text("... (truncated, ctrl-e to expand)", style="dim italic"))
 
         lines: list[RenderableType] = []
@@ -165,36 +205,8 @@ class ApprovalRequestPanel:
 
         return Panel(
             Group(*lines),
-            border_style="bold yellow",
-            title="[bold yellow]\u26a0 ACTION REQUIRED[/bold yellow]",
-            title_align="left",
-            padding=(0, 1),
-        )
-
-    def render_for_terminal(self) -> RenderableType:
-        """Render the approval request for a blocking terminal prompt."""
-        content_lines: list[RenderableType] = [
-            Text.from_markup(
-                "[yellow]"
-                f"{escape(self.request.sender)} is requesting approval to "
-                f"{escape(self.request.action)}:[/yellow]"
-            ),
-        ]
-        content_lines.extend(self._render_source_metadata_lines())
-        content_lines.append(Text(""))
-
-        for block in self._content_blocks:
-            content_lines.append(self._render_block(block))
-
-        if self._content_blocks:
-            content_lines.append(Text(""))
-        for i, (option_text, _) in enumerate(self.options, start=1):
-            content_lines.append(Text(f"[{i}] {option_text}", style="grey50"))
-
-        return Panel(
-            Group(*content_lines),
-            border_style="bold yellow",
-            title="[bold yellow]Background Approval Required[/bold yellow]",
+            border_style="yellow",
+            title="[bold]approval[/bold]",
             title_align="left",
             padding=(0, 1),
         )
@@ -259,12 +271,45 @@ def show_approval_in_pager(panel: ApprovalRequestPanel) -> None:
         )
         console.print()
 
-        for renderable in panel.render_full():
-            console.print(renderable)
+        # Render display blocks with the unified diff renderer.
+        display = panel.request.display
+        rendered_any = False
+        idx = 0
+        while idx < len(display):
+            block = display[idx]
+            if isinstance(block, DiffDisplayBlock):
+                path = block.path
+                diff_blocks: list[DiffDisplayBlock] = []
+                while idx < len(display):
+                    b = display[idx]
+                    if not isinstance(b, DiffDisplayBlock) or b.path != path:
+                        break
+                    diff_blocks.append(b)
+                    idx += 1
+                if any(b.is_summary for b in diff_blocks):
+                    console.print(render_diff_summary_panel(path, diff_blocks))
+                    rendered_any = True
+                else:
+                    hunks, added, removed = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        console.print(render_diff_panel(path, hunks, added, removed))
+                        rendered_any = True
+            elif isinstance(block, ShellDisplayBlock):
+                console.print(KimiSyntax(block.command.rstrip("\n"), block.language))
+                rendered_any = True
+                idx += 1
+            elif isinstance(block, BriefDisplayBlock) and block.text:
+                console.print(Text(block.text.rstrip("\n"), style="grey50"))
+                rendered_any = True
+                idx += 1
+            else:
+                idx += 1
 
-
-def render_approval_request_for_terminal(request: ApprovalRequest) -> RenderableType:
-    return ApprovalRequestPanel(request).render_for_terminal()
+        # Fallback: if nothing was rendered (e.g. type mismatch after deserialization),
+        # use legacy pre-rendered content blocks.
+        if not rendered_any:
+            for renderable in panel.render_full():
+                console.print(renderable)
 
 
 class ApprovalPromptDelegate:
@@ -288,10 +333,12 @@ class ApprovalPromptDelegate:
         *,
         on_response: Callable[[ApprovalRequest, ApprovalResponse.Kind, str], None],
         buffer_text_provider: Callable[[], str] | None = None,
+        text_expander: Callable[[str], str] | None = None,
     ) -> None:
         self._panel = ApprovalRequestPanel(request)
         self._on_response = on_response
         self._buffer_text_provider = buffer_text_provider
+        self._text_expander = text_expander
         self._feedback_draft: str = ""
 
     @property
@@ -357,6 +404,8 @@ class ApprovalPromptDelegate:
             if key == "enter" or mapped == KeyEvent.ENTER:
                 text = event.current_buffer.text.strip()
                 if text:
+                    if self._text_expander is not None:
+                        text = self._text_expander(text)
                     self._clear_buffer(event.current_buffer)
                     self._feedback_draft = ""
                     self._panel.request.resolve("reject")

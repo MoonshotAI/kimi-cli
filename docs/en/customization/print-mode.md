@@ -17,7 +17,7 @@ echo "Explain what this code does" | kimi --print
 Print mode characteristics:
 
 - **Non-interactive**: Exits automatically after executing instructions
-- **Auto-approval**: Implicitly enables `--yolo` mode, all operations are auto-approved
+- **Auto-approval**: Implicitly enables `--yolo` mode, all operations are auto-approved, and interactive questions (`AskUserQuestion`) and plan mode switches are also handled automatically
 - **Text output**: AI responses are output to stdout
 
 <!-- TODO: Enable this example after supporting reading content from stdin and instructions from -p simultaneously
@@ -127,6 +127,31 @@ Assistant message with tool calls:
 
 ```json
 {"role": "tool", "tool_call_id": "tc_1", "content": "Tool execution result"}
+```
+
+## Exit codes
+
+Print mode uses exit codes to indicate execution results, allowing scripts and CI systems to determine whether to retry:
+
+| Exit code | Meaning | Description |
+| --- | --- | --- |
+| `0` | Success | Task completed normally |
+| `1` | Failure (not retryable) | Configuration errors, authentication failures, quota exhaustion, and other permanent errors |
+| `75` | Failure (retryable) | 429 rate limits, 5xx server errors, connection timeouts, and other transient errors |
+
+Example: decide whether to retry based on exit code:
+
+```sh
+kimi --print -p "Run task"
+code=$?
+if [ $code -eq 75 ]; then
+  echo "Transient error encountered, retrying..."
+  sleep 10
+  kimi --print -p "Run task"
+elif [ $code -ne 0 ]; then
+  echo "Unrecoverable error, exit code: $code"
+  exit $code
+fi
 ```
 
 ## Use cases

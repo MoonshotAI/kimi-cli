@@ -48,7 +48,7 @@ async def _login_kimi_code(soul: KimiSoul) -> bool:
     return ok
 
 
-def _current_model_key(soul: KimiSoul) -> str | None:
+def current_model_key(soul: KimiSoul) -> str | None:
     config = soul.runtime.config
     curr_model_cfg = soul.runtime.llm.model_config if soul.runtime.llm else None
     if curr_model_cfg is not None:
@@ -91,7 +91,7 @@ async def logout(app: Shell, args: str) -> None:
             "restart without --config/--config-file.[/red]"
         )
         return
-    model_key = _current_model_key(soul)
+    model_key = current_model_key(soul)
     if not model_key:
         console.print("[yellow]No model selected; nothing to logout.[/yellow]")
         return

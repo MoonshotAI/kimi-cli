@@ -18,6 +18,7 @@ from pydantic import (
 from tomlkit.exceptions import TOMLKitError
 
 from kimi_cli.exception import ConfigError
+from kimi_cli.hooks.config import HookDef
 from kimi_cli.llm import ModelCapability, ProviderType
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
@@ -70,7 +71,7 @@ class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
     max_steps_per_turn: int = Field(
-        default=100,
+        default=500,
         ge=1,
         validation_alias=AliasChoices("max_steps_per_turn", "max_steps_per_run"),
     )
@@ -116,6 +117,8 @@ class BackgroundConfig(BaseModel):
         default=False,
         description="Keep background tasks alive when CLI exits. Default: kill on exit.",
     )
+    agent_task_timeout_s: int = Field(default=900, ge=60)
+    """Maximum runtime in seconds for a background agent task. Default: 900 (15 min)."""
 
 
 class NotificationConfig(BaseModel):
@@ -198,9 +201,24 @@ class Config(BaseModel):
     default_model: str = Field(default="", description="Default model to use")
     default_thinking: bool = Field(default=False, description="Default thinking mode")
     default_yolo: bool = Field(default=False, description="Default yolo (auto-approve) mode")
+    default_plan_mode: bool = Field(default=False, description="Default plan mode for new sessions")
     default_editor: str = Field(
         default="",
         description="Default external editor command (e.g. 'vim', 'code --wait')",
+    )
+    theme: Literal["dark", "light"] = Field(
+        default="dark",
+        description="Terminal color theme. Use 'light' for light terminal backgrounds.",
+    )
+    show_thinking_stream: bool = Field(
+        default=True,
+        description=(
+            "If true, stream the raw reasoning text in the live area as a "
+            "6-line scrolling preview and commit the full reasoning markdown "
+            "to history when the block ends. Default true. Set to false to "
+            "show only the compact 'Thinking ...' indicator and a one-line "
+            "trace summary."
+        ),
     )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
@@ -215,6 +233,14 @@ class Config(BaseModel):
     )
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")  # pyright: ignore[reportUnknownVariableType]
+    merge_all_available_skills: bool = Field(
+        default=False,
+        description=(
+            "Merge skills from all existing brand directories (kimi/claude/codex) "
+            "instead of using only the first one found"
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

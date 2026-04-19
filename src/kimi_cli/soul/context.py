@@ -4,11 +4,14 @@ import asyncio
 import json
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, cast
 
 import aiofiles
 import aiofiles.os
 from kosong.message import Message
+from pydantic import ValidationError
 
+from kimi_cli.soul.compaction import estimate_text_tokens
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import next_available_rotation
@@ -19,6 +22,7 @@ class Context:
         self._file_backend = file_backend
         self._history: list[Message] = []
         self._token_count: int = 0
+        self._pending_token_estimate: int = 0
         self._next_checkpoint_id: int = 0
         """The ID of the next checkpoint, starting from 0, incremented after each checkpoint."""
         self._system_prompt: str | None = None
@@ -35,23 +39,29 @@ class Context:
             logger.debug("Empty context file, skipping restoration")
             return False
 
-        async with aiofiles.open(self._file_backend, encoding="utf-8") as f:
+        messages_after_last_usage: list[Message] = []
+        async with aiofiles.open(self._file_backend, encoding="utf-8", errors="replace") as f:
+            line_no = 0
             async for line in f:
+                line_no += 1
                 if not line.strip():
                     continue
-                line_json = json.loads(line)
-                if line_json["role"] == "_system_prompt":
-                    self._system_prompt = line_json["content"]
+                line_json = self._parse_context_line(
+                    line,
+                    file_backend=self._file_backend,
+                    line_no=line_no,
+                )
+                if line_json is None:
                     continue
-                if line_json["role"] == "_usage":
-                    self._token_count = line_json["token_count"]
-                    continue
-                if line_json["role"] == "_checkpoint":
-                    self._next_checkpoint_id = line_json["id"] + 1
-                    continue
-                message = Message.model_validate(line_json)
-                self._history.append(message)
+                self._apply_context_record(
+                    line_json,
+                    history=self._history,
+                    messages_after_last_usage=messages_after_last_usage,
+                    file_backend=self._file_backend,
+                    line_no=line_no,
+                )
 
+        self._pending_token_estimate = estimate_text_tokens(messages_after_last_usage)
         return True
 
     @property
@@ -61,6 +71,10 @@ class Context:
     @property
     def token_count(self) -> int:
         return self._token_count
+
+    @property
+    def token_count_with_pending(self) -> int:
+        return self._token_count + self._pending_token_estimate
 
     @property
     def n_checkpoints(self) -> int:
@@ -152,28 +166,38 @@ class Context:
         self._token_count = 0
         self._next_checkpoint_id = 0
         self._system_prompt = None
+        messages_after_last_usage: list[Message] = []
         async with (
-            aiofiles.open(rotated_file_path, encoding="utf-8") as old_file,
+            aiofiles.open(rotated_file_path, encoding="utf-8", errors="replace") as old_file,
             aiofiles.open(self._file_backend, "w", encoding="utf-8") as new_file,
         ):
+            line_no = 0
             async for line in old_file:
+                line_no += 1
                 if not line.strip():
                     continue
 
-                line_json = json.loads(line)
-                if line_json["role"] == "_checkpoint" and line_json["id"] == checkpoint_id:
+                line_json = self._parse_context_line(
+                    line,
+                    file_backend=rotated_file_path,
+                    line_no=line_no,
+                )
+                if line_json is None:
+                    continue
+                if line_json.get("role") == "_checkpoint" and line_json.get("id") == checkpoint_id:
                     break
 
-                await new_file.write(line)
-                if line_json["role"] == "_system_prompt":
-                    self._system_prompt = line_json["content"]
-                elif line_json["role"] == "_usage":
-                    self._token_count = line_json["token_count"]
-                elif line_json["role"] == "_checkpoint":
-                    self._next_checkpoint_id = line_json["id"] + 1
-                else:
-                    message = Message.model_validate(line_json)
-                    self._history.append(message)
+                keep_line = self._apply_context_record(
+                    line_json,
+                    history=self._history,
+                    messages_after_last_usage=messages_after_last_usage,
+                    file_backend=rotated_file_path,
+                    line_no=line_no,
+                )
+                if keep_line:
+                    await new_file.write(line)
+
+        self._pending_token_estimate = estimate_text_tokens(messages_after_last_usage)
 
     async def clear(self):
         """
@@ -201,6 +225,7 @@ class Context:
 
         self._history.clear()
         self._token_count = 0
+        self._pending_token_estimate = 0
         self._next_checkpoint_id = 0
         self._system_prompt = None
 
@@ -208,6 +233,7 @@ class Context:
         logger.debug("Appending message(s) to context: {message}", message=message)
         messages = [message] if isinstance(message, Message) else message
         self._history.extend(messages)
+        self._pending_token_estimate += estimate_text_tokens(messages)
 
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
             for message in messages:
@@ -216,6 +242,98 @@ class Context:
     async def update_token_count(self, token_count: int):
         logger.debug("Updating token count in context: {token_count}", token_count=token_count)
         self._token_count = token_count
+        self._pending_token_estimate = 0
 
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
             await f.write(json.dumps({"role": "_usage", "token_count": token_count}) + "\n")
+
+    def _parse_context_line(
+        self,
+        line: str,
+        *,
+        file_backend: Path,
+        line_no: int,
+    ) -> dict[str, Any] | None:
+        try:
+            line_json = json.loads(line, strict=False)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Skipping malformed context line {line_no} in {file}: {error}",
+                line_no=line_no,
+                file=file_backend,
+                error=exc,
+            )
+            return None
+        if not isinstance(line_json, dict):
+            logger.warning(
+                "Skipping non-object context line {line_no} in {file}",
+                line_no=line_no,
+                file=file_backend,
+            )
+            return None
+        return cast(dict[str, Any], line_json)
+
+    def _apply_context_record(
+        self,
+        line_json: dict[str, Any],
+        *,
+        history: list[Message],
+        messages_after_last_usage: list[Message],
+        file_backend: Path,
+        line_no: int,
+    ) -> bool:
+        role = line_json.get("role")
+        if not isinstance(role, str):
+            logger.warning(
+                "Skipping context line {line_no} in {file}: missing or invalid role",
+                line_no=line_no,
+                file=file_backend,
+            )
+            return False
+        if role == "_system_prompt":
+            content = line_json.get("content")
+            if not isinstance(content, str):
+                logger.warning(
+                    "Skipping invalid system prompt line {line_no} in {file}",
+                    line_no=line_no,
+                    file=file_backend,
+                )
+                return False
+            self._system_prompt = content
+            return True
+        if role == "_usage":
+            token_count = line_json.get("token_count")
+            if not isinstance(token_count, int):
+                logger.warning(
+                    "Skipping invalid usage line {line_no} in {file}",
+                    line_no=line_no,
+                    file=file_backend,
+                )
+                return False
+            self._token_count = token_count
+            messages_after_last_usage.clear()
+            return True
+        if role == "_checkpoint":
+            checkpoint_id = line_json.get("id")
+            if not isinstance(checkpoint_id, int):
+                logger.warning(
+                    "Skipping invalid checkpoint line {line_no} in {file}",
+                    line_no=line_no,
+                    file=file_backend,
+                )
+                return False
+            self._next_checkpoint_id = checkpoint_id + 1
+            return True
+        try:
+            message = Message.model_validate(line_json)
+        except ValidationError as exc:
+            logger.warning(
+                "Skipping invalid context message line {line_no} in {file}: {error}",
+                line_no=line_no,
+                file=file_backend,
+                error=exc,
+            )
+            return False
+        history.append(message)
+        messages_after_last_usage.append(message)
+        return True

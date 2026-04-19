@@ -8,9 +8,15 @@ from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol
 
-from kosong.chat_provider import APIStatusError, ChatProviderError
+from kosong.chat_provider import (
+    APIConnectionError,
+    APIEmptyResponseError,
+    APIStatusError,
+    APITimeoutError,
+    ChatProviderError,
+)
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -18,7 +24,7 @@ from rich.text import Text
 
 from kimi_cli import logger
 from kimi_cli.background import list_task_views
-from kimi_cli.notifications import NotificationWatcher
+from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
@@ -27,6 +33,7 @@ from kimi_cli.ui.shell.echo import render_user_echo_text
 from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
 from kimi_cli.ui.shell.prompt import (
     CustomPromptSession,
+    CwdLostError,
     PromptMode,
     UserInput,
     toast,
@@ -39,6 +46,7 @@ from kimi_cli.ui.shell.visualize import (
     ApprovalPromptDelegate,
     visualize,
 )
+from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
@@ -60,15 +68,129 @@ class _PromptEvent:
     user_input: UserInput | None = None
 
 
+_MAX_BG_AUTO_TRIGGER_FAILURES = 3
+"""Stop auto-triggering after this many consecutive failures."""
+
+_BG_AUTO_TRIGGER_INPUT_GRACE_S = 0.75
+"""Delay background auto-trigger briefly after local prompt activity."""
+
+
+class _BackgroundCompletionWatcher:
+    """Watches for background task completions and auto-triggers the agent.
+
+    Sits between the idle event loop and the soul: when a background task
+    finishes while the agent is idle *and* the LLM hasn't consumed the
+    notification yet, it triggers a soul run.
+
+    Important: pre-existing pending notifications alone should not trigger a
+    foreground run immediately on session resume. They are consumed either by
+    the next actual background completion signal or by the next user-triggered
+    turn.
+    """
+
+    def __init__(
+        self,
+        soul: Soul,
+        *,
+        can_auto_trigger_pending: Callable[[], bool] | None = None,
+    ) -> None:
+        self._event: asyncio.Event | None = None
+        self._notifications: NotificationManager | None = None
+        self._can_auto_trigger_pending = can_auto_trigger_pending or (lambda: True)
+        if isinstance(soul, KimiSoul):
+            self._event = soul.runtime.background_tasks.completion_event
+            self._notifications = soul.runtime.notifications
+
+    @property
+    def enabled(self) -> bool:
+        return self._event is not None
+
+    def clear(self) -> None:
+        """Clear stale signals from the previous soul run."""
+        if self._event is not None:
+            self._event.clear()
+
+    async def wait_for_next(self, idle_events: asyncio.Queue[_PromptEvent]) -> _PromptEvent | None:
+        """Wait for either a user prompt event or a background completion.
+
+        Returns the prompt event if user input arrived first, or ``None``
+        if a background task completed with unclaimed LLM notifications.
+        User input always takes priority over background completions.
+        """
+        if self.enabled and self._has_pending_llm_notifications():
+            # Pending notifications already exist (for example after resume).
+            # Before the user sends the first foreground turn after resume,
+            # pending background notifications should not auto-trigger a run.
+            # Once the shell is armed by a user-triggered turn, pending
+            # notifications can resume the normal auto-follow-up behavior.
+            try:
+                return idle_events.get_nowait()
+            except asyncio.QueueEmpty:
+                if self._can_auto_trigger_pending():
+                    return None
+
+        idle_task = asyncio.create_task(idle_events.get())
+        if not self.enabled:
+            return await idle_task
+
+        assert self._event is not None
+        bg_wait_task = asyncio.create_task(self._event.wait())
+
+        done, _ = await asyncio.wait(
+            [idle_task, bg_wait_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for t in (idle_task, bg_wait_task):
+            if t not in done:
+                t.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await t
+
+        if idle_task in done:
+            if bg_wait_task in done:
+                self._event.clear()
+            return idle_task.result()
+
+        # Only bg fired
+        self._event.clear()
+        if self._has_pending_llm_notifications():
+            if self._can_auto_trigger_pending():
+                return None
+            return _PromptEvent(kind="bg_noop")
+        return _PromptEvent(kind="bg_noop")
+
+    def _has_pending_llm_notifications(self) -> bool:
+        if self._notifications is None:
+            return False
+        return self._notifications.has_pending_for_sink("llm")
+
+
+class _BackgroundAutoTriggerPromptState(Protocol):
+    def has_pending_input(self) -> bool: ...
+
+    def had_recent_input_activity(self, *, within_s: float) -> bool: ...
+
+    def recent_input_activity_remaining(self, *, within_s: float) -> float: ...
+
+    async def wait_for_input_activity(self) -> None: ...
+
+
 class Shell:
-    def __init__(self, soul: Soul, welcome_info: list[WelcomeInfoItem] | None = None):
+    def __init__(
+        self,
+        soul: Soul,
+        welcome_info: list[WelcomeInfoItem] | None = None,
+        prefill_text: str | None = None,
+    ):
         self.soul = soul
         self._welcome_info = list(welcome_info or [])
+        self._prefill_text = prefill_text
         self._background_tasks: set[asyncio.Task[Any]] = set()
         self._prompt_session: CustomPromptSession | None = None
         self._running_input_handler: Callable[[UserInput], None] | None = None
         self._running_interrupt_handler: Callable[[], None] | None = None
         self._active_approval_sink: Any | None = None
+        self._active_view: Any | None = None
         self._pending_approval_requests = deque[ApprovalRequest]()
         self._current_prompt_approval_request: ApprovalRequest | None = None
         self._approval_modal: ApprovalPromptDelegate | None = None
@@ -83,6 +205,37 @@ class Shell:
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
         """Get all available slash commands, including shell-level and soul-level commands."""
         return self._available_slash_commands
+
+    def _print_cwd_lost_crash(self) -> None:
+        """Print a crash report when the working directory is no longer accessible."""
+        runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
+        session_id = runtime.session.id if runtime else "unknown"
+        work_dir = str(runtime.session.work_dir) if runtime else "unknown"
+
+        info = Table.grid(padding=(0, 1))
+        info.add_row("Session:", session_id)
+        info.add_row("Working directory:", work_dir)
+
+        panel = Panel(
+            Group(
+                Text(
+                    "The working directory is no longer accessible "
+                    "(external drive unplugged, directory deleted, or filesystem unmounted).",
+                ),
+                Text(""),
+                info,
+                Text(""),
+                Text(
+                    "Your conversation history has been saved. "
+                    "Restart kimi in a valid directory to continue.",
+                    style="dim",
+                ),
+            ),
+            title="[bold red]Session crashed[/bold red]",
+            border_style="red",
+        )
+        console.print()
+        console.print(panel)
 
     @staticmethod
     def _should_exit_input(user_input: UserInput) -> bool:
@@ -164,6 +317,11 @@ class Shell:
                 resume_prompt.clear()
                 await idle_events.put(_PromptEvent(kind="eof"))
                 return
+            except CwdLostError:
+                logger.error("Working directory no longer exists")
+                resume_prompt.clear()
+                await idle_events.put(_PromptEvent(kind="cwd_lost"))
+                return
             except Exception:
                 logger.exception("Prompt router crashed")
                 resume_prompt.clear()
@@ -181,6 +339,12 @@ class Shell:
             await idle_events.put(_PromptEvent(kind="input", user_input=user_input))
 
     async def run(self, command: str | None = None) -> bool:
+        # Initialize theme from config
+        if isinstance(self.soul, KimiSoul):
+            from kimi_cli.ui.theme import set_active_theme
+
+            set_active_theme(self.soul.runtime.config.theme)
+
         if command is not None:
             # run single command and exit
             logger.info("Running agent with command: {command}", command=command)
@@ -215,6 +379,7 @@ class Shell:
             await replay_recent_history(
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
+                show_thinking_stream=self.soul.runtime.config.show_thinking_stream,
             )
             await self.soul.start_background_mcp_loading()
 
@@ -271,6 +436,9 @@ class Shell:
             plan_mode_toggle_callback=_plan_mode_toggle,
         ) as prompt_session:
             self._prompt_session = prompt_session
+            if self._prefill_text:
+                prompt_session.set_prefill_text(self._prefill_text)
+                self._prefill_text = None
             if isinstance(self.soul, KimiSoul):
                 kimi_soul = self.soul
                 snapshot = kimi_soul.status.mcp_status
@@ -296,10 +464,74 @@ class Shell:
             prompt_task = asyncio.create_task(
                 self._route_prompt_events(prompt_session, idle_events, resume_prompt)
             )
+            background_autotrigger_armed = False
+
+            def _can_auto_trigger_pending() -> bool:
+                return background_autotrigger_armed
+
+            bg_watcher = _BackgroundCompletionWatcher(
+                self.soul,
+                can_auto_trigger_pending=_can_auto_trigger_pending,
+            )
+
             shell_ok = True
+            bg_auto_failures = 0
+            deferred_bg_trigger = False
             try:
                 while True:
-                    event = await idle_events.get()
+                    if deferred_bg_trigger and not self._should_defer_background_auto_trigger(
+                        prompt_session
+                    ):
+                        result = None
+                    elif deferred_bg_trigger:
+                        result = await self._wait_for_input_or_activity(
+                            prompt_session,
+                            idle_events,
+                            timeout_s=self._background_auto_trigger_timeout_s(prompt_session),
+                        )
+                    else:
+                        bg_watcher.clear()
+                        if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
+                            result = await idle_events.get()
+                        else:
+                            result = await bg_watcher.wait_for_next(idle_events)
+
+                    if result is None:
+                        if self._should_defer_background_auto_trigger(prompt_session):
+                            deferred_bg_trigger = True
+                            resume_prompt.set()
+                            continue
+                        deferred_bg_trigger = False
+                        logger.info("Background task completed while idle, triggering agent")
+                        resume_prompt.set()
+                        ok = await self.run_soul_command(
+                            "<system-reminder>"
+                            "Background tasks completed while you"
+                            " were idle."
+                            "</system-reminder>"
+                        )
+                        console.print()
+                        if not ok:
+                            bg_auto_failures += 1
+                            logger.warning(
+                                "Background auto-trigger failed ({n}/{max})",
+                                n=bg_auto_failures,
+                                max=_MAX_BG_AUTO_TRIGGER_FAILURES,
+                            )
+                        else:
+                            bg_auto_failures = 0
+                        if self._exit_after_run:
+                            console.print("Bye!")
+                            break
+                        continue
+
+                    event = result
+
+                    if event.kind == "input_activity":
+                        continue
+
+                    if event.kind == "bg_noop":
+                        continue
 
                     if event.kind == "interrupt":
                         console.print("[grey50]Tip: press Ctrl-D or send 'exit' to quit[/grey50]")
@@ -310,12 +542,19 @@ class Shell:
                         console.print("Bye!")
                         break
 
+                    if event.kind == "cwd_lost":
+                        self._print_cwd_lost_crash()
+                        shell_ok = False
+                        break
+
                     if event.kind == "error":
                         shell_ok = False
                         break
 
                     user_input = event.user_input
                     assert user_input is not None
+                    bg_auto_failures = 0
+                    deferred_bg_trigger = False
                     if not user_input:
                         logger.debug("Got empty input, skipping")
                         resume_prompt.set()
@@ -335,12 +574,34 @@ class Shell:
                         resume_prompt.set()
                         continue
 
+                    # Unified input routing — intercept local commands
+                    # before they reach the soul/wire.
+                    from kimi_cli.ui.shell.visualize import InputAction, classify_input
+
+                    # Use resolved_command (placeholder-expanded) so /btw
+                    # receives the actual pasted content, not "[Pasted text #1]".
+                    input_text = (
+                        user_input.resolved_command
+                        if hasattr(user_input, "resolved_command")
+                        else str(user_input)
+                    )
+                    action = classify_input(input_text, is_streaming=False)
+                    if action.kind == InputAction.BTW and isinstance(self.soul, KimiSoul):
+                        await self._run_btw_modal(action.args, prompt_session)
+                        resume_prompt.set()
+                        continue
+                    if action.kind == InputAction.IGNORED:
+                        console.print(f"[dim]{action.args}[/dim]")
+                        resume_prompt.set()
+                        continue
+
                     if slash_cmd_call := self._agent_slash_command_call(user_input):
                         is_soul_slash = (
                             slash_cmd_call.name in self._available_slash_commands
                             and shell_slash_registry.find_command(slash_cmd_call.name) is None
                         )
                         if is_soul_slash:
+                            background_autotrigger_armed = True
                             resume_prompt.set()
                             await self.run_soul_command(slash_cmd_call.raw_input)
                             console.print()
@@ -352,6 +613,7 @@ class Shell:
                             resume_prompt.set()
                         continue
 
+                    background_autotrigger_armed = True
                     resume_prompt.set()
                     await self.run_soul_command(user_input.content)
                     console.print()
@@ -431,7 +693,7 @@ class Shell:
             remove_sigint()
 
     async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
-        from kimi_cli.cli import Reload, SwitchToWeb
+        from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
 
         if command_call.name not in self._available_slash_commands:
             logger.info("Unknown slash command /{command}", command=command_call.name)
@@ -457,7 +719,7 @@ class Shell:
             ret = command.func(self, command_call.args)
             if isinstance(ret, Awaitable):
                 await ret
-        except (Reload, SwitchToWeb):
+        except (Reload, SwitchToWeb, SwitchToVis):
             # just propagate
             raise
         except (asyncio.CancelledError, KeyboardInterrupt):
@@ -487,9 +749,28 @@ class Shell:
         loop = asyncio.get_running_loop()
         remove_sigint = install_sigint_handler(loop, _handler)
 
+        # Declare before try so finally can always access it.
+        from kimi_cli.ui.shell.visualize import (
+            _PromptLiveView,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        captured_view: _PromptLiveView | None = None
+        pending: list[UserInput] = []  # queued messages being drained
+
         try:
             snap = self.soul.status
             runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
+            show_thinking_stream = runtime.config.show_thinking_stream if runtime else False
+            # Capture view reference via closure — _clear_active_view sets
+            # _active_view=None inside visualize()'s finally (before run_soul
+            # returns), so we must capture the view object independently.
+
+            def _on_view_ready(view: Any) -> None:
+                nonlocal captured_view
+                self._set_active_view(view)
+                if isinstance(view, _PromptLiveView):
+                    captured_view = view
+
             await run_soul(
                 self.soul,
                 user_input,
@@ -504,15 +785,85 @@ class Shell:
                     cancel_event=cancel_event,
                     prompt_session=self._prompt_session,
                     steer=self.soul.steer if isinstance(self.soul, KimiSoul) else None,
+                    btw_runner=self._make_btw_runner(),
                     bind_running_input=self._bind_running_input,
                     unbind_running_input=self._unbind_running_input,
-                    on_view_ready=self._set_active_approval_sink,
-                    on_view_closed=self._clear_active_approval_sink,
+                    on_view_ready=_on_view_ready,
+                    on_view_closed=self._clear_active_view,
+                    show_thinking_stream=show_thinking_stream,
                 ),
                 cancel_event,
                 runtime.session.wire_file if runtime else None,
                 runtime,
             )
+            # If btw is still showing, wait for user dismiss BEFORE draining
+            # queue.  This runs AFTER visualize_loop returns (within run_soul's
+            # 0.5s ui_task timeout), so the btw modal is still attached to
+            # prompt_session and key events continue to work.
+            if captured_view is not None:
+                await captured_view.wait_for_btw_dismiss()
+
+            # Clear cancel_event so queued turns aren't tainted by a
+            # Ctrl+C that fired during btw dismiss wait.
+            cancel_event.clear()
+
+            # Drain queued messages and send each as a new turn.
+            # Safety valve: cap at 20 "generations" (new batches of messages
+            # from the view). A one-time backlog of 25 messages = 1 generation,
+            # but a user adding new messages every turn = 1 generation per turn.
+            _MAX_DRAIN_GENERATIONS = 20
+            pending.clear()
+            drain_generation = 0
+            while captured_view is not None and drain_generation < _MAX_DRAIN_GENERATIONS:
+                new_messages = captured_view.drain_queued_messages()
+                if new_messages:
+                    drain_generation += 1
+                pending.extend(new_messages)
+                if not pending:
+                    break
+                queued = pending.pop(0)
+                console.print(render_user_echo_text(queued.command))
+                await run_soul(
+                    self.soul,
+                    queued.content,
+                    lambda wire: visualize(
+                        wire.ui_side(merge=False),
+                        initial_status=StatusUpdate(
+                            context_usage=self.soul.status.context_usage,
+                            context_tokens=self.soul.status.context_tokens,
+                            max_context_tokens=self.soul.status.max_context_tokens,
+                            mcp_status=self.soul.status.mcp_status,
+                        ),
+                        cancel_event=cancel_event,
+                        prompt_session=self._prompt_session,
+                        steer=self.soul.steer if isinstance(self.soul, KimiSoul) else None,
+                        btw_runner=self._make_btw_runner(),
+                        bind_running_input=self._bind_running_input,
+                        unbind_running_input=self._unbind_running_input,
+                        on_view_ready=_on_view_ready,
+                        on_view_closed=self._clear_active_view,
+                        show_thinking_stream=show_thinking_stream,
+                    ),
+                    cancel_event,
+                    runtime.session.wire_file if runtime else None,
+                    runtime,
+                )
+                # Wait for btw dismiss if one was triggered during this queued turn
+                if captured_view is not None:
+                    await captured_view.wait_for_btw_dismiss()
+                cancel_event.clear()  # same rationale as above
+                # captured_view is now the view from this turn;
+                # next iteration drains it for any new messages.
+            if drain_generation >= _MAX_DRAIN_GENERATIONS:
+                logger.warning(
+                    "Queue drain hit safety limit ({n} generations)",
+                    n=_MAX_DRAIN_GENERATIONS,
+                )
+                # Warn about remaining items in the local pending buffer.
+                # Clear after printing so finally doesn't duplicate.
+                for msg in pending:
+                    console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
+                pending.clear()
             return True
         except LLMNotSet:
             logger.exception("LLM not set:")
@@ -524,27 +875,128 @@ class Shell:
         except ChatProviderError as e:
             logger.exception("LLM provider error:")
             if isinstance(e, APIStatusError) and e.status_code == 401:
-                console.print("[red]Authorization failed, please check your login status[/red]")
+                console.print(
+                    "[red]Authorization failed. Your session may have expired.[/red]\n"
+                    "[dim]Type [bold]/login[/bold] to re-authenticate.[/dim]\n"
+                    f"[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIStatusError) and e.status_code == 402:
-                console.print("[red]Membership expired, please renew your plan[/red]")
+                console.print(
+                    f"[red]Membership expired, please renew your plan[/red]\n[dim]Server: {e}[/dim]"
+                )
             elif isinstance(e, APIStatusError) and e.status_code == 403:
-                console.print("[red]Quota exceeded, please upgrade your plan or retry later[/red]")
+                console.print(
+                    "[red]Quota exceeded, please upgrade your plan or retry later[/red]\n"
+                    f"[dim]Server: {e}[/dim]"
+                )
+            elif isinstance(e, APIConnectionError):
+                console.print(
+                    f"[red]Network connection failed: {e}[/red]\n"
+                    "[dim]Please check your network and try again.[/dim]"
+                )
+            elif isinstance(e, APITimeoutError):
+                console.print(
+                    f"[red]Request timed out: {e}[/red]\n"
+                    "[dim]The server may be slow or unreachable. Please try again later.[/dim]"
+                )
+            elif isinstance(e, APIEmptyResponseError):
+                console.print(
+                    "[red]The server returned an empty response.[/red]\n"
+                    "[dim]This is usually a temporary issue. Please try again.[/dim]"
+                )
             else:
                 console.print(f"[red]LLM provider error: {e}[/red]")
+            if not isinstance(e, APIStatusError) or e.status_code not in (401, 402, 403):
+                console.print(
+                    "[dim]If this persists, run [bold]kimi export[/bold] and send the "
+                    "exported data to support for assistance. "
+                    "Please do not share the exported file publicly.[/dim]"
+                )
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
-            console.print(f"[yellow]{e}[/yellow]")
+            console.print(
+                f"[yellow]{e}[/yellow]\n"
+                "[dim]Send another message to continue where it left off.[/dim]"
+            )
         except RunCancelled:
             logger.info("Cancelled by user")
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")
-            console.print(f"[red]Unexpected error: {e}[/red]")
+            console.print(
+                f"[red]Unexpected error: {e}[/red]\n"
+                "[dim]Run [bold]kimi export[/bold] and send the exported data to support "
+                "for assistance. Please do not share the exported file publicly.[/dim]"
+            )
             raise  # re-raise unknown error
         finally:
+            # Clean up btw modal if it's still attached (exception skipped wait_for_btw_dismiss)
+            if captured_view is not None:
+                captured_view._dismiss_btw()  # pyright: ignore[reportPrivateUsage]
+            # Warn about queued messages lost due to error/cancel.
+            # Check both: pending (already drained from view) and view (not yet drained).
+            all_lost: list[UserInput] = list(pending)
+            pending.clear()
+            if captured_view is not None:
+                all_lost.extend(captured_view.drain_queued_messages())
+            for msg in all_lost:
+                console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
             self._maybe_present_pending_approvals()
             remove_sigint()
         return False
+
+    @staticmethod
+    def _should_defer_background_auto_trigger(
+        prompt_session: _BackgroundAutoTriggerPromptState | None,
+    ) -> bool:
+        if prompt_session is None:
+            return False
+        return prompt_session.has_pending_input() or prompt_session.had_recent_input_activity(
+            within_s=_BG_AUTO_TRIGGER_INPUT_GRACE_S
+        )
+
+    @staticmethod
+    def _background_auto_trigger_timeout_s(
+        prompt_session: _BackgroundAutoTriggerPromptState | None,
+    ) -> float | None:
+        if prompt_session is None or prompt_session.has_pending_input():
+            return None
+        remaining = prompt_session.recent_input_activity_remaining(
+            within_s=_BG_AUTO_TRIGGER_INPUT_GRACE_S
+        )
+        return remaining if remaining > 0 else None
+
+    async def _wait_for_input_or_activity(
+        self,
+        prompt_session: _BackgroundAutoTriggerPromptState,
+        idle_events: asyncio.Queue[_PromptEvent],
+        *,
+        timeout_s: float | None = None,
+    ) -> _PromptEvent:
+        idle_task = asyncio.create_task(idle_events.get())
+        activity_task = asyncio.create_task(prompt_session.wait_for_input_activity())
+        timeout_task = (
+            asyncio.create_task(asyncio.sleep(timeout_s)) if timeout_s is not None else None
+        )
+        done: set[asyncio.Task[Any]] = set()
+        try:
+            done, _ = await asyncio.wait(
+                [task for task in (idle_task, activity_task, timeout_task) if task is not None],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for task in (idle_task, activity_task, timeout_task):
+                if task is None:
+                    continue
+                if task.done():
+                    continue
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+        if idle_task in done:
+            return idle_task.result()
+        return _PromptEvent(kind="input_activity")
 
     async def _watch_root_wire_hub(self) -> None:
         if not isinstance(self.soul, KimiSoul):
@@ -554,8 +1006,14 @@ class Shell:
         queue = self.soul.runtime.root_wire_hub.subscribe()
         try:
             while True:
-                msg = await queue.get()
-                await self._handle_root_hub_message(msg)
+                try:
+                    msg = await queue.get()
+                except QueueShutDown:
+                    return
+                try:
+                    await self._handle_root_hub_message(msg)
+                except Exception:
+                    logger.exception("Failed to handle root hub message:")
         finally:
             self.soul.runtime.root_wire_hub.unsubscribe(queue)
 
@@ -610,8 +1068,126 @@ class Shell:
             return request
         return request.model_copy(update={"source_description": record.description})
 
-    def _set_active_approval_sink(self, sink: Any) -> None:
-        self._active_approval_sink = sink
+    async def _run_btw_modal(
+        self,
+        question: str,
+        prompt_session: CustomPromptSession,
+    ) -> None:
+        """Run /btw using the prompt session's modal system.
+
+        Attaches a ``_BtwModalDelegate`` that replaces the input line with
+        the btw panel.  A refresh loop animates the spinner.  After the LLM
+        responds, we start a new prompt read so prompt_toolkit can render the
+        result and accept dismiss keys.
+        """
+        from kimi_cli.soul.btw import execute_side_question
+        from kimi_cli.ui.shell.visualize import (
+            _BtwModalDelegate,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        assert isinstance(self.soul, KimiSoul)
+
+        dismiss_event = asyncio.Event()
+        modal = _BtwModalDelegate(on_dismiss=lambda: dismiss_event.set())
+        import time
+
+        modal._question = question  # pyright: ignore[reportPrivateUsage]
+        modal.set_start_time(time.monotonic())
+        prompt_session.attach_modal(modal)
+
+        # Refresh loop for spinner animation
+        async def _refresh() -> None:
+            try:
+                while True:
+                    await asyncio.sleep(0.08)
+                    prompt_session.invalidate()
+            except asyncio.CancelledError:
+                pass
+
+        refresh_task = asyncio.create_task(_refresh())
+        prompt_task: asyncio.Task[None] | None = None
+        llm_task: asyncio.Task[tuple[str | None, str | None]] | None = None
+
+        try:
+
+            def _on_chunk(chunk: str) -> None:
+                modal.append_text(chunk)
+
+            # Start a prompt read concurrently — renders the modal and
+            # handles key events while the LLM call runs in parallel.
+            async def _wait_for_dismiss() -> None:
+                while not dismiss_event.is_set():
+                    try:
+                        await prompt_session.prompt_next()
+                    except (KeyboardInterrupt, EOFError):
+                        dismiss_event.set()
+                        break
+
+            prompt_task = asyncio.create_task(_wait_for_dismiss())
+
+            # Run LLM call as a separate task so Escape can cancel it
+            llm_task = asyncio.create_task(
+                execute_side_question(self.soul, question, on_text_chunk=_on_chunk)
+            )
+
+            # Wait for either LLM completion or user dismiss
+            dismiss_task = asyncio.create_task(dismiss_event.wait())
+            _done, _ = await asyncio.wait(
+                [llm_task, dismiss_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if llm_task.done() and not llm_task.cancelled():
+                # LLM finished — show result, wait for user to dismiss
+                dismiss_task.cancel()
+                response, error = llm_task.result()
+                modal.set_result(response, error)
+                prompt_session.invalidate()
+                await dismiss_event.wait()
+            else:
+                # User dismissed during loading — cancel the LLM call
+                llm_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await llm_task
+        finally:
+            # Cancel ALL child tasks
+            if llm_task is not None and not llm_task.done():
+                llm_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await llm_task
+            if prompt_task is not None:
+                prompt_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await prompt_task
+            refresh_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await refresh_task
+            prompt_session.detach_modal(modal)
+
+    def _make_btw_runner(self):
+        """Create a btw_runner callback bound to the current soul."""
+        if not isinstance(self.soul, KimiSoul):
+            return None
+
+        soul = self.soul
+
+        async def _runner(
+            question: str,
+            on_text_chunk: Callable[[str], None] | None = None,
+        ) -> tuple[str | None, str | None]:
+            from kimi_cli.soul.btw import execute_side_question
+
+            return await execute_side_question(soul, question, on_text_chunk)
+
+        return _runner
+
+    def _set_active_view(self, view: Any) -> None:
+        self._active_approval_sink = view
+        self._active_view = view
+        # In interactive mode, approvals are handled by the prompt modal,
+        # not by the live view sink. Don't flush to avoid losing requests.
+        if self._prompt_session is not None:
+            return
         # Flush pending approvals to the newly active sink
         while self._pending_approval_requests:
             request = self._pending_approval_requests.popleft()
@@ -623,8 +1199,9 @@ class Shell:
                 continue
             self._forward_approval_to_sink(request)
 
-    def _clear_active_approval_sink(self) -> None:
+    def _clear_active_view(self) -> None:
         self._active_approval_sink = None
+        self._active_view = None
         # Re-queue any approval requests that were forwarded to the sink
         # but not yet resolved.  Without this, those requests would be
         # silently lost when the live view closes between turns.
@@ -734,6 +1311,7 @@ class Shell:
                     if self._prompt_session is not None
                     else ""
                 ),
+                text_expander=self._prompt_session._get_placeholder_manager().serialize_for_history,  # pyright: ignore[reportPrivateUsage]
             )
             self._prompt_session.attach_modal(self._approval_modal)
         else:
@@ -769,15 +1347,7 @@ class Shell:
 
     async def _auto_update(self) -> None:
         result = await do_update(print=False, check_only=True)
-        if result == UpdateResult.UPDATE_AVAILABLE:
-            while True:
-                toast(
-                    f"new version found, run `{_update_mod.UPGRADE_COMMAND}` to upgrade",
-                    topic="update",
-                    duration=30.0,
-                )
-                await asyncio.sleep(60.0)
-        elif result == UpdateResult.UPDATED:
+        if result == UpdateResult.UPDATED:
             toast("auto updated, restart to use the new version", topic="update", duration=5.0)
 
     def _start_background_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
@@ -844,15 +1414,30 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
 
     if LATEST_VERSION_FILE.exists():
         from kimi_cli.constant import VERSION as current_version
+        from kimi_cli.ui.shell.update import SKIPPED_VERSION_FILE
+        from kimi_cli.utils.envvar import get_env_bool
 
-        latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
-        if semver_tuple(latest_version) > semver_tuple(current_version):
-            rows.append(
-                Text.from_markup(
-                    f"\n[yellow]New version available: {latest_version}. "
-                    f"Please run `{_update_mod.UPGRADE_COMMAND}` to upgrade.[/yellow]"
-                )
-            )
+        if not get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
+            try:
+                latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
+            except OSError:
+                latest_version = ""
+            if latest_version and semver_tuple(latest_version) > semver_tuple(current_version):
+                try:
+                    skipped = (
+                        SKIPPED_VERSION_FILE.read_text(encoding="utf-8").strip()
+                        if SKIPPED_VERSION_FILE.exists()
+                        else ""
+                    )
+                except OSError:
+                    skipped = ""
+                if skipped != latest_version:
+                    rows.append(
+                        Text.from_markup(
+                            f"\n[yellow]New version available: {latest_version}. "
+                            f"Please run `{_update_mod.UPGRADE_COMMAND}` to upgrade.[/yellow]"
+                        )
+                    )
 
     console.print(
         Panel(

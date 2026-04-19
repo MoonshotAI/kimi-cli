@@ -26,21 +26,22 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isMacOS } from "@/hooks/utils";
-import { getAuthHeader } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import {
+  type OpenTargetDef,
+  ALL_OPEN_TARGETS,
+  openViaBackend,
+  setLastOpenTargetId,
+  useLastOpenTargetId,
+} from "@/features/chat/open-in-shared";
 
 type OpenInMenuProps = {
   workDir?: string | null;
   className?: string;
 };
 
-type OpenTarget = {
-  id: string;
-  label: string;
+type OpenTarget = OpenTargetDef & {
   icon: ReactNode;
-  backendApp: "finder" | "cursor" | "vscode" | "iterm" | "terminal" | "antigravity";
-  macOnly?: boolean;
-  shortcut?: string;
 };
 
 const TRAILING_SLASH_REGEX = /\/+$/;
@@ -70,82 +71,34 @@ function compactPath(path: string, maxLength = 22): string {
   return `…/${tail.slice(-maxLength + 2)}`;
 }
 
-async function openViaBackend(app: OpenTarget["backendApp"], path: string) {
-  const response = await fetch("/api/open-in", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeader() },
-    body: JSON.stringify({ app, path }),
-  });
-
-  if (response.ok) {
-    return;
-  }
-
-  let detail = "Failed to open application.";
-  try {
-    const data = await response.json();
-    if (data?.detail) {
-      detail = String(data.detail);
-    }
-  } catch (error) {
-    console.error("Failed to parse open-in error:", error);
-  }
-  throw new Error(detail);
-}
+const ICON_MAP: Record<string, ReactNode> = {
+  finder: <FolderOpenIcon className="size-4" />,
+  cursor: <AppWindowIcon className="size-4" />,
+  vscode: <CodeIcon className="size-4" />,
+  antigravity: <ChevronUpIcon className="size-4" />,
+  iterm: <TerminalIcon className="size-4" />,
+  terminal: <SquareTerminalIcon className="size-4" />,
+};
 
 export function OpenInMenu({ workDir, className }: OpenInMenuProps) {
   const isMac = isMacOS();
   const hasWorkDir = Boolean(workDir && workDir.trim().length > 0);
   const displayPath = workDir ? compactPath(workDir) : "No directory";
 
-  const openTargets = useMemo<OpenTarget[]>(
-    () => [
-      {
-        id: "finder",
-        label: "Finder",
-        icon: <FolderOpenIcon className="size-4" />,
-        backendApp: "finder",
-        macOnly: true,
-      },
-      {
-        id: "cursor",
-        label: "Cursor",
-        icon: <AppWindowIcon className="size-4" />,
-        backendApp: "cursor",
-      },
-      {
-        id: "vscode",
-        label: "VS Code",
-        icon: <CodeIcon className="size-4" />,
-        backendApp: "vscode",
-      },
-      {
-        id: "antigravity",
-        label: "Antigravity",
-        icon: <ChevronUpIcon className="size-4" />,
-        backendApp: "antigravity",
-      },
-      {
-        id: "iterm",
-        label: "iTerm",
-        icon: <TerminalIcon className="size-4" />,
-        backendApp: "iterm",
-        macOnly: true,
-      },
-      {
-        id: "terminal",
-        label: "Terminal",
-        icon: <SquareTerminalIcon className="size-4" />,
-        backendApp: "terminal",
-        macOnly: true,
-      },
-    ],
-    [],
+  const menuTargets = useMemo<OpenTarget[]>(
+    () =>
+      ALL_OPEN_TARGETS.filter((t) => !t.macOnly || isMac).map((t) => ({
+        ...t,
+        icon: ICON_MAP[t.id],
+      })),
+    [isMac],
   );
 
-  const menuTargets = useMemo(
-    () => openTargets.filter((target) => !target.macOnly || isMac),
-    [openTargets, isMac],
+  const lastTargetId = useLastOpenTargetId();
+
+  const lastTarget = useMemo(
+    () => menuTargets.find((t) => t.id === lastTargetId) ?? null,
+    [menuTargets, lastTargetId],
   );
 
   const handleCopyPath = useCallback(async () => {
@@ -171,6 +124,7 @@ export function OpenInMenu({ workDir, className }: OpenInMenuProps) {
       }
       try {
         await openViaBackend(target.backendApp, workDir);
+        setLastOpenTargetId(target.id);
       } catch (error) {
         console.error("Failed to open external URL:", error);
         toast.error("Failed to open application", {
@@ -210,6 +164,26 @@ export function OpenInMenu({ workDir, className }: OpenInMenuProps) {
           </TooltipContent>
         ) : null}
       </Tooltip>
+      {lastTarget ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!hasWorkDir}
+              className="h-8 px-2 text-xs"
+              aria-label={`Open in ${lastTarget.label}`}
+              onClick={() => handleOpenTarget(lastTarget)}
+            >
+              Open
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Open in {lastTarget.label}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -217,10 +191,10 @@ export function OpenInMenu({ workDir, className }: OpenInMenuProps) {
             variant="outline"
             size="sm"
             disabled={!hasWorkDir}
-            className="h-8 rounded-l-none px-2 text-xs"
-            aria-label="Open working directory in app"
+            className="h-8 px-2 text-xs"
+            aria-label="Choose app to open working directory"
           >
-            Open
+            {!lastTarget && "Open"}
             <ChevronDownIcon className="size-3" />
           </Button>
         </DropdownMenuTrigger>
@@ -229,9 +203,19 @@ export function OpenInMenu({ workDir, className }: OpenInMenuProps) {
             <DropdownMenuItem
               key={target.id}
               onSelect={() => handleOpenTarget(target)}
+              aria-label={
+                target.id === lastTargetId
+                  ? `${target.label} (last used)`
+                  : target.label
+              }
             >
               {target.icon}
               <span>{target.label}</span>
+              {target.id === lastTargetId && (
+                <span className="ml-auto text-[10px] text-muted-foreground">
+                  Last used
+                </span>
+              )}
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />

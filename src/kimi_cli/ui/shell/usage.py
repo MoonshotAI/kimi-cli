@@ -61,8 +61,11 @@ async def usage(app: Shell, args: str):
             if e.status == 401:
                 message = "Authorization failed. Please check your API key."
             elif e.status == 404:
-                message = "Usage endpoint not available. Try Kimi For Coding."
+                message = "Usage endpoint not available. Try Kimi for Coding."
             console.print(f"[red]{message}[/red]")
+            return
+        except TimeoutError:
+            console.print("[red]Failed to fetch usage: request timed out.[/red]")
             return
         except aiohttp.ClientError as e:
             console.print(f"[red]Failed to fetch usage: {e}[/red]")

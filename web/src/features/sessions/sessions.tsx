@@ -1104,7 +1104,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                     <Archive className="size-3.5" />
                     <span className="flex-1 text-left font-medium">Archived</span>
                     <span className="text-[10px] text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded">
-                      {archivedSessions.length}
+                      {archivedSessions.length}{hasMoreArchivedSessions ? '+' : ''}
                     </span>
                   </CollapsibleTrigger>
                   <CollapsibleContent>

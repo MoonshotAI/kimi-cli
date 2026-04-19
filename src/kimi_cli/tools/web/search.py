@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import override
 
+import aiohttp
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field, ValidationError
 
@@ -11,6 +12,7 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
+from kimi_cli.utils.logging import logger
 
 
 class Params(BaseModel):
@@ -65,44 +67,73 @@ class SearchWeb(CallableTool2[Params]):
         tool_call = get_current_tool_call_or_none()
         assert tool_call is not None, "Tool call is expected to be set"
 
-        async with (
-            new_client_session() as session,
-            session.post(
-                self._base_url,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Authorization": f"Bearer {api_key}",
-                    "X-Msh-Tool-Call-Id": tool_call.id,
-                    **self._runtime.oauth.common_headers(),
-                    **self._custom_headers,
-                },
-                json={
-                    "text_query": params.query,
-                    "limit": params.limit,
-                    "enable_page_crawling": params.include_content,
-                    "timeout_seconds": 30,
-                },
-            ) as response,
-        ):
-            if response.status != 200:
-                return builder.error(
-                    (
-                        f"Failed to search. Status: {response.status}. "
-                        "This may indicates that the search service is currently unavailable."
-                    ),
-                    brief="Failed to search",
-                )
+        try:
+            # Server-side timeout is 30s, but page crawling can take longer.
+            search_timeout = aiohttp.ClientTimeout(total=180, sock_read=90, sock_connect=15)
+            async with (
+                new_client_session(timeout=search_timeout) as session,
+                session.post(
+                    self._base_url,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Authorization": f"Bearer {api_key}",
+                        "X-Msh-Tool-Call-Id": tool_call.id,
+                        **self._runtime.oauth.common_headers(),
+                        **self._custom_headers,
+                    },
+                    json={
+                        "text_query": params.query,
+                        "limit": params.limit,
+                        "enable_page_crawling": params.include_content,
+                        "timeout_seconds": 30,
+                    },
+                ) as response,
+            ):
+                if response.status != 200:
+                    logger.warning(
+                        "SearchWeb HTTP error: status={status}, query={query}",
+                        status=response.status,
+                        query=params.query,
+                    )
+                    return builder.error(
+                        (
+                            f"Failed to search. Status: {response.status}. "
+                            "This may indicate that the search service is currently unavailable."
+                        ),
+                        brief="Failed to search",
+                    )
 
-            try:
-                results = Response(**await response.json()).search_results
-            except ValidationError as e:
-                return builder.error(
-                    (
-                        f"Failed to parse search results. Error: {e}. "
-                        "This may indicates that the search service is currently unavailable."
-                    ),
-                    brief="Failed to parse search results",
-                )
+                try:
+                    results = Response(**await response.json()).search_results
+                except ValidationError as e:
+                    logger.warning(
+                        "SearchWeb response parse error: {error}, query={query}",
+                        error=e,
+                        query=params.query,
+                    )
+                    return builder.error(
+                        (
+                            f"Failed to parse search results. Error: {e}. "
+                            "This may indicate that the search service is currently unavailable."
+                        ),
+                        brief="Failed to parse search results",
+                    )
+        except TimeoutError:
+            logger.warning("SearchWeb request timed out: query={query}", query=params.query)
+            return builder.error(
+                "Search request timed out. The search service may be slow or unavailable.",
+                brief="Search request timed out",
+            )
+        except aiohttp.ClientError as e:
+            logger.warning(
+                "SearchWeb network error: {error}, query={query}",
+                error=e,
+                query=params.query,
+            )
+            return builder.error(
+                f"Search request failed: {e}. The search service may be unavailable.",
+                brief="Search request failed",
+            )
 
         for i, result in enumerate(results):
             if i > 0:

@@ -47,6 +47,17 @@ class BackgroundTaskManager:
         self._store = BackgroundTaskStore(session.context_file.parent / "tasks")
         self._runtime: Runtime | None = None
         self._live_agent_tasks: dict[str, asyncio.Task[None]] = {}
+        self._completion_event: asyncio.Event = asyncio.Event()
+
+    @property
+    def completion_event(self) -> asyncio.Event:
+        """Event set when a new terminal notification is published.
+
+        Not set immediately when a task becomes terminal — only after
+        ``reconcile()`` / ``publish_terminal_notifications()`` runs.
+        Deduplicated notifications do not trigger a repeat signal.
+        """
+        return self._completion_event
 
     @property
     def store(self) -> BackgroundTaskStore:
@@ -191,6 +202,8 @@ class BackgroundTaskManager:
         description: str,
         tool_call_id: str,
         model_override: str | None,
+        timeout_s: int | None = None,
+        resumed: bool = False,
     ) -> TaskView:
         from .agent_runner import BackgroundAgentRunner
 
@@ -222,6 +235,7 @@ class BackgroundTaskManager:
         runtime.status = "starting"
         runtime.updated_at = time.time()
         self._store.write_runtime(task_id, runtime)
+        effective_timeout = timeout_s or self._config.agent_task_timeout_s
         task = asyncio.create_task(
             BackgroundAgentRunner(
                 runtime=self._runtime,
@@ -231,9 +245,18 @@ class BackgroundTaskManager:
                 subagent_type=subagent_type,
                 prompt=prompt,
                 model_override=model_override,
+                timeout_s=effective_timeout,
+                resumed=resumed,
             ).run()
         )
         self._live_agent_tasks[task_id] = task
+        # Cleanup safety net for the case where the runner is cancelled before
+        # its first event-loop step. Python throws CancelledError into a
+        # FRAME_CREATED coroutine without executing any of the function body,
+        # so the runner's finally block never runs and cannot pop the entry
+        # itself. The done callback fires regardless of how the task ends, and
+        # is idempotent with the runner's own pop (both use pop(..., None)).
+        task.add_done_callback(lambda _t, tid=task_id: self._live_agent_tasks.pop(tid, None))
         return self._store.merged_view(task_id)
 
     def list_tasks(
@@ -254,6 +277,10 @@ class BackgroundTaskManager:
             return self._store.merged_view(task_id)
         except (FileNotFoundError, ValueError):
             return None
+
+    def resolve_output_path(self, task_id: str) -> Path:
+        """Return the canonical output path for *task_id*."""
+        return self._store.output_path(task_id)
 
     def read_output(
         self,
@@ -328,7 +355,14 @@ class BackgroundTaskManager:
             self._mark_task_killed(task_id, reason)
             if self._runtime is not None and self._runtime.approval_runtime is not None:
                 self._runtime.approval_runtime.cancel_by_source("background_agent", task_id)
-            task = self._live_agent_tasks.pop(task_id, None)
+            # Keep the task in _live_agent_tasks until BackgroundAgentRunner's
+            # finally block removes it. asyncio holds tasks in a WeakSet, so if
+            # we drop the only strong reference here the still-pending task can
+            # be garbage-collected before cancellation propagates, which fires
+            # loop.call_exception_handler with no 'exception' field — surfacing
+            # as "Unhandled exception in event loop / Exception None" in the
+            # prompt_toolkit terminal.
+            task = self._live_agent_tasks.get(task_id)
             if task is not None:
                 task.cancel()
             return self._store.merged_view(task_id)
@@ -492,6 +526,7 @@ class BackgroundTaskManager:
             notification = self._notifications.publish(event)
             if notification.event.id == event.id:
                 published.append(notification.event.id)
+                self._completion_event.set()
             if limit is not None and len(published) >= limit:
                 break
         return published
@@ -532,6 +567,18 @@ class BackgroundTaskManager:
         runtime.status = "failed"
         runtime.updated_at = time.time()
         runtime.finished_at = runtime.updated_at
+        runtime.failure_reason = reason
+        self._store.write_runtime(task_id, runtime)
+
+    def _mark_task_timed_out(self, task_id: str, reason: str) -> None:
+        runtime = self._store.read_runtime(task_id)
+        if is_terminal_status(runtime.status):
+            return
+        runtime.status = "failed"
+        runtime.updated_at = time.time()
+        runtime.finished_at = runtime.updated_at
+        runtime.interrupted = True
+        runtime.timed_out = True
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
 

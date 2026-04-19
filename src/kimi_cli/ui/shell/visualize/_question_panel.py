@@ -183,8 +183,8 @@ class QuestionRequestPanel:
 
         return Panel(
             Group(*lines),
-            border_style="bold cyan",
-            title="[bold cyan]? QUESTION[/bold cyan]",
+            border_style="grey50",
+            title="[bold]question[/bold]",
             title_align="left",
             padding=(0, 1),
         )
@@ -327,6 +327,7 @@ class QuestionPromptDelegate:
         "3": KeyEvent.NUM_3,
         "4": KeyEvent.NUM_4,
         "5": KeyEvent.NUM_5,
+        "6": KeyEvent.NUM_6,
     }
 
     def __init__(
@@ -336,12 +337,14 @@ class QuestionPromptDelegate:
         on_advance: Callable[[], QuestionRequestPanel | None],
         on_invalidate: Callable[[], None],
         buffer_text_provider: Callable[[], str] | None = None,
+        text_expander: Callable[[str], str] | None = None,
     ) -> None:
         self._panel: QuestionRequestPanel | None = panel
         self._awaiting_other_input = False
         self._on_advance = on_advance
         self._on_invalidate = on_invalidate
         self._buffer_text_provider = buffer_text_provider
+        self._text_expander = text_expander
 
     @property
     def panel(self) -> QuestionRequestPanel | None:
@@ -410,6 +413,7 @@ class QuestionPromptDelegate:
             "3",
             "4",
             "5",
+            "6",
         }
 
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
@@ -502,13 +506,21 @@ class QuestionPromptDelegate:
                     self._try_submit()
             case KeyEvent.ENTER:
                 self._try_submit()
-            case KeyEvent.NUM_1 | KeyEvent.NUM_2 | KeyEvent.NUM_3 | KeyEvent.NUM_4 | KeyEvent.NUM_5:
+            case (
+                KeyEvent.NUM_1
+                | KeyEvent.NUM_2
+                | KeyEvent.NUM_3
+                | KeyEvent.NUM_4
+                | KeyEvent.NUM_5
+                | KeyEvent.NUM_6
+            ):
                 num_map = {
                     KeyEvent.NUM_1: 0,
                     KeyEvent.NUM_2: 1,
                     KeyEvent.NUM_3: 2,
                     KeyEvent.NUM_4: 3,
                     KeyEvent.NUM_5: 4,
+                    KeyEvent.NUM_6: 5,
                 }
                 idx = num_map[event]
                 if panel.select_index(idx):
@@ -533,6 +545,8 @@ class QuestionPromptDelegate:
             self._awaiting_other_input = False
             return
         text = buffer.text.strip()
+        if self._text_expander is not None:
+            text = self._text_expander(text)
         self._clear_buffer(buffer)
         self._awaiting_other_input = False
         all_done = self._panel.submit_other(text)

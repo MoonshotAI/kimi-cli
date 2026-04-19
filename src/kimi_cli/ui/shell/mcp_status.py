@@ -7,6 +7,7 @@ from rich.console import Group, RenderableType
 from rich.spinner import Spinner
 from rich.text import Text
 
+from kimi_cli.ui.theme import get_mcp_prompt_colors
 from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.wire.types import MCPServerSnapshot, MCPStatusSnapshot
 
@@ -47,10 +48,11 @@ def render_mcp_prompt(snapshot: MCPStatusSnapshot, *, now: float | None = None) 
         return FormattedText([])
 
     fragments: list[tuple[str, str]] = []
+    colors = get_mcp_prompt_colors()
     prefix = f"{_spinner_frame(now)} " if snapshot.loading else ""
     fragments.append(
         (
-            "fg:#d4d4d4",
+            colors.text,
             (
                 f"{prefix}MCP Servers: "
                 f"{snapshot.connected}/{snapshot.total} connected, {snapshot.tools} tools"
@@ -63,7 +65,7 @@ def render_mcp_prompt(snapshot: MCPStatusSnapshot, *, now: float | None = None) 
         fragments.append((_prompt_status_style(server.status), f"• {server.name}"))
         detail = _prompt_server_detail(server)
         if detail:
-            fragments.append(("fg:#7c8594", detail))
+            fragments.append((colors.detail, detail))
         fragments.append(("", "\n"))
 
     return FormattedText(fragments)
@@ -85,13 +87,14 @@ def _status_color(status: str) -> str:
 
 
 def _prompt_status_style(status: str) -> str:
+    colors = get_mcp_prompt_colors()
     return {
-        "connected": "fg:#56d364",
-        "connecting": "fg:#56a4ff",
-        "pending": "fg:#f2cc60",
-        "failed": "fg:#ff7b72",
-        "unauthorized": "fg:#ff7b72",
-    }.get(status, "fg:#ff7b72")
+        "connected": colors.connected,
+        "connecting": colors.connecting,
+        "pending": colors.pending,
+        "failed": colors.failed,
+        "unauthorized": colors.failed,
+    }.get(status, colors.failed)
 
 
 def _prompt_server_detail(server: MCPServerSnapshot) -> str:

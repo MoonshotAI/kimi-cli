@@ -12,6 +12,8 @@ import {
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   SearchIcon,
 } from "lucide-react";
 import { SessionInfoPopover } from "./session-info-popover";
@@ -23,8 +25,10 @@ type ChatWorkspaceHeaderProps = {
   sessionDescription?: string;
   currentSession?: Session;
   selectedSessionId?: string;
+  isFilesPanelOpen?: boolean;
   blocksExpanded: boolean;
   onToggleBlocks: () => void;
+  onToggleFilesPanel?: () => void;
   onOpenSearch: () => void;
   onOpenSidebar?: () => void;
   onRenameSession?: (sessionId: string, newTitle: string) => Promise<boolean>;
@@ -35,8 +39,10 @@ export function ChatWorkspaceHeader({
   sessionDescription,
   currentSession,
   selectedSessionId,
+  isFilesPanelOpen = false,
   blocksExpanded,
   onToggleBlocks,
+  onToggleFilesPanel,
   onOpenSearch,
   onOpenSidebar,
   onRenameSession,
@@ -48,7 +54,7 @@ export function ChatWorkspaceHeader({
   const [editingTitle, setEditingTitle] = useState("");
 
   const handleDoubleClick = useCallback(() => {
-    if (!((onRenameSession && selectedSessionId ) && sessionDescription)) return;
+    if (!(onRenameSession && selectedSessionId && sessionDescription)) return;
     setIsEditing(true);
     setEditingTitle(sessionDescription);
   }, [onRenameSession, selectedSessionId, sessionDescription]);
@@ -144,6 +150,34 @@ export function ChatWorkspaceHeader({
               sessionId={selectedSessionId}
               session={currentSession}
             />
+
+            {onToggleFilesPanel ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={
+                      isFilesPanelOpen
+                        ? "Hide workspace files"
+                        : "Show workspace files"
+                    }
+                    className="relative inline-flex items-center cursor-pointer justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                    onClick={onToggleFilesPanel}
+                  >
+                    {isFilesPanelOpen ? (
+                      <PanelRightClose className="size-4" />
+                    ) : (
+                      <PanelRightOpen className="size-4" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {isFilesPanelOpen
+                    ? "Hide workspace files"
+                    : "Show workspace files"}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
 
             <Tooltip>
               <TooltipTrigger asChild>

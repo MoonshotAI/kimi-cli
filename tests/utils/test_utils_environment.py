@@ -1,3 +1,4 @@
+import os
 import platform
 
 import pytest
@@ -25,11 +26,43 @@ async def test_environment_detection(monkeypatch):
     assert str(env.shell_path) == "/usr/bin/bash"
 
 
-@pytest.mark.skipif(platform.system() != "Windows", reason="Skipping test on non-Windows")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_environment_detection_windows(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     monkeypatch.setattr(platform, "machine", lambda: "AMD64")
     monkeypatch.setattr(platform, "version", lambda: "10.0.19044")
+    monkeypatch.setenv("SYSTEMROOT", r"C:\Windows")
+
+    expected = os.path.join(
+        r"C:\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
+    )
+
+    async def _mock_is_file(self: KaosPath) -> bool:
+        return str(self) == expected
+
+    monkeypatch.setattr(KaosPath, "is_file", _mock_is_file)
+
+    from kimi_cli.utils.environment import Environment
+
+    env = await Environment.detect()
+    assert env.os_kind == "Windows"
+    assert env.os_arch == "AMD64"
+    assert env.os_version == "10.0.19044"
+    assert env.shell_name == "Windows PowerShell"
+    assert str(env.shell_path) == expected
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
+async def test_environment_detection_windows_fallback(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(platform, "version", lambda: "10.0.19044")
+    monkeypatch.setenv("SYSTEMROOT", r"C:\Windows")
+
+    async def _mock_is_file(self: KaosPath) -> bool:
+        return False
+
+    monkeypatch.setattr(KaosPath, "is_file", _mock_is_file)
 
     from kimi_cli.utils.environment import Environment
 

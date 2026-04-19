@@ -126,6 +126,18 @@ class OpenAILegacy:
         generation_kwargs: dict[str, Any] = {}
         generation_kwargs.update(self._generation_kwargs)
 
+        reasoning_effort = self._reasoning_effort
+        # Auto-enable reasoning_effort when the history contains ThinkPart but reasoning
+        # was not explicitly configured. This prevents server validation errors from APIs
+        # (e.g. One API) that require reasoning_effort when messages contain reasoning_content.
+        # See: https://github.com/MoonshotAI/kimi-cli/issues/1616
+        if isinstance(reasoning_effort, Omit) and self._reasoning_key:
+            has_think_part = any(
+                isinstance(part, ThinkPart) for message in history for part in message.content
+            )
+            if has_think_part:
+                reasoning_effort = "medium"
+
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
@@ -133,7 +145,7 @@ class OpenAILegacy:
                 tools=(tool_to_openai(tool) for tool in tools),
                 stream=self.stream,
                 stream_options={"include_usage": True} if self.stream else omit,
-                reasoning_effort=self._reasoning_effort,
+                reasoning_effort=reasoning_effort,
                 **generation_kwargs,
             )
             return OpenAILegacyStreamedMessage(response, self._reasoning_key)
@@ -201,10 +213,7 @@ class OpenAILegacy:
         else:
             message.content = content
         dumped_message = message.model_dump(exclude_none=True)
-        if reasoning_content:
-            assert self._reasoning_key, (
-                "reasoning_key must not be empty if reasoning_content exists"
-            )
+        if reasoning_content and self._reasoning_key:
             dumped_message[self._reasoning_key] = reasoning_content
         return cast(ChatCompletionMessageParam, dumped_message)
 

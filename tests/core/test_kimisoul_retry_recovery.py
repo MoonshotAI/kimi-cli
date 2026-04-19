@@ -120,9 +120,10 @@ class AlwaysConnectionErrorProvider:
 class StatusErrorThenSuccessProvider:
     name = "status-error-then-success"
 
-    def __init__(self) -> None:
+    def __init__(self, status_code: int = 503) -> None:
         self.generate_attempts = 0
         self.recovery_calls = 0
+        self._status_code = status_code
 
     @property
     def model_name(self) -> str:
@@ -140,7 +141,7 @@ class StatusErrorThenSuccessProvider:
     ) -> StaticStreamedMessage:
         self.generate_attempts += 1
         if self.generate_attempts < 3:
-            raise APIStatusError(503, "Service unavailable.")
+            raise APIStatusError(self._status_code, f"Status {self._status_code}")
         return StaticStreamedMessage([TextPart(text="status recovered")])
 
     def on_retryable_error(self, error: BaseException) -> bool:
@@ -195,6 +196,7 @@ def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
         skills=runtime.skills,
         oauth=runtime.oauth,
         additional_dirs=runtime.additional_dirs,
+        skills_dirs=runtime.skills_dirs,
         role=runtime.role,
     )
 
@@ -258,11 +260,12 @@ async def test_step_connection_error_recovery_only_retries_once(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [503, 504], ids=["503", "504"])
 async def test_step_status_error_still_uses_tenacity_retries(
-    runtime: Runtime, tmp_path: Path
+    runtime: Runtime, tmp_path: Path, status_code: int
 ) -> None:
     runtime.config.loop_control.max_retries_per_step = 3
-    provider = StatusErrorThenSuccessProvider()
+    provider = StatusErrorThenSuccessProvider(status_code=status_code)
     llm = LLM(
         chat_provider=provider,
         max_context_size=100_000,

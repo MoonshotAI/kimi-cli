@@ -30,6 +30,63 @@ def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSyste
     assert "test_value" in prompt
 
 
+def test_system_prompt_contains_platform_info(builtin_args: BuiltinSystemPromptArgs):
+    """System prompt should contain OS and shell information (issue #1649).
+
+    On Windows, the model needs to know it's on Windows so it doesn't
+    generate Linux commands. The platform info must be in the system prompt,
+    not just in tool descriptions.
+    """
+    from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+
+    prompt = _load_system_prompt(
+        DEFAULT_AGENT_FILE.parent / "system.md",
+        {"ROLE_ADDITIONAL": ""},
+        builtin_args,
+    )
+
+    # System prompt must include OS kind and shell info
+    assert builtin_args.KIMI_OS in prompt
+    assert builtin_args.KIMI_SHELL in prompt
+
+
+@pytest.mark.parametrize(
+    "os_kind, shell, expect_windows_warning",
+    [
+        ("Windows", "Windows PowerShell (`powershell.exe`)", True),
+        ("macOS", "bash (`/bin/bash`)", False),
+        ("Linux", "bash (`/usr/bin/bash`)", False),
+    ],
+    ids=["windows", "macos", "linux"],
+)
+def test_system_prompt_platform_warning(temp_work_dir, os_kind, shell, expect_windows_warning):
+    """System prompt should include Windows command warning only on Windows."""
+    from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+
+    args = BuiltinSystemPromptArgs(
+        KIMI_NOW="1970-01-01T00:00:00+00:00",
+        KIMI_WORK_DIR=temp_work_dir,
+        KIMI_WORK_DIR_LS="Test ls content",
+        KIMI_AGENTS_MD="Test agents content",
+        KIMI_SKILLS="No skills found.",
+        KIMI_ADDITIONAL_DIRS_INFO="",
+        KIMI_OS=os_kind,
+        KIMI_SHELL=shell,
+    )
+    prompt = _load_system_prompt(
+        DEFAULT_AGENT_FILE.parent / "system.md",
+        {"ROLE_ADDITIONAL": ""},
+        args,
+    )
+
+    assert os_kind in prompt
+    assert shell in prompt
+    if expect_windows_warning:
+        assert "Many common Unix commands are not available" in prompt
+    else:
+        assert "Many common Unix commands are not available" not in prompt
+
+
 def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPromptArgs):
     """System prompt should allow literal $ without template errors."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -41,6 +98,21 @@ def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPro
     assert "$100" in prompt
     assert "$PATH" in prompt
     assert builtin_args.KIMI_NOW in prompt
+
+
+def test_load_system_prompt_include(builtin_args: BuiltinSystemPromptArgs):
+    """System prompt should support {% include "file.md" %} directives."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        included = tmpdir / "extra.md"
+        included.write_text("Included content here")
+        system_md = tmpdir / "system.md"
+        system_md.write_text('Main prompt. {% include "extra.md" %} End.')
+        prompt = _load_system_prompt(system_md, {}, builtin_args)
+
+    assert "Main prompt." in prompt
+    assert "Included content here" in prompt
+    assert "End." in prompt
 
 
 def test_load_system_prompt_missing_arg_raises(builtin_args: BuiltinSystemPromptArgs):

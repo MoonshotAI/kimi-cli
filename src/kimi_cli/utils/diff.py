@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import difflib
 from difflib import SequenceMatcher
+
+from kosong.tooling import DisplayBlock
 
 from kimi_cli.tools.display import DiffDisplayBlock
 
 N_CONTEXT_LINES = 3
+
+_HUGE_FILE_THRESHOLD = 10000
+"""Line count above which diff computation is skipped entirely."""
 
 
 def format_unified_diff(
@@ -60,16 +66,41 @@ def format_unified_diff(
     return "".join(diff)
 
 
-def build_diff_blocks(
+def _build_diff_blocks_sync(
     path: str,
     old_text: str,
     new_text: str,
-) -> list[DiffDisplayBlock]:
-    """Build diff display blocks grouped with small context windows."""
+) -> list[DisplayBlock]:
+    """Synchronous diff block builder — CPU-bound, meant to run in a thread."""
+    if old_text == new_text:
+        return []
+
     old_lines = old_text.splitlines()
     new_lines = new_text.splitlines()
+
+    max_lines = max(len(old_lines), len(new_lines))
+
+    # Huge files: skip diff entirely, return a summary block
+    if max_lines > _HUGE_FILE_THRESHOLD:
+        old_desc = f"({len(old_lines)} lines)"
+        if len(old_lines) == len(new_lines):
+            new_desc = f"({len(new_lines)} lines, modified)"
+        else:
+            new_desc = f"({len(new_lines)} lines)"
+        return [
+            DiffDisplayBlock(
+                path=path,
+                old_text=old_desc,
+                new_text=new_desc,
+                old_start=1,
+                new_start=1,
+                is_summary=True,
+            )
+        ]
+
     matcher = SequenceMatcher(None, old_lines, new_lines, autojunk=False)
-    blocks: list[DiffDisplayBlock] = []
+
+    blocks: list[DisplayBlock] = []
     for group in matcher.get_grouped_opcodes(n=N_CONTEXT_LINES):
         if not group:
             continue
@@ -82,6 +113,23 @@ def build_diff_blocks(
                 path=path,
                 old_text="\n".join(old_lines[i1:i2]),
                 new_text="\n".join(new_lines[j1:j2]),
+                old_start=i1 + 1,
+                new_start=j1 + 1,
             )
         )
     return blocks
+
+
+async def build_diff_blocks(
+    path: str,
+    old_text: str,
+    new_text: str,
+) -> list[DisplayBlock]:
+    """Build diff display blocks grouped with small context windows.
+
+    Runs the CPU-bound diff computation in a thread to avoid blocking
+    the event loop.
+    """
+    if old_text == new_text:
+        return []
+    return await asyncio.to_thread(_build_diff_blocks_sync, path, old_text, new_text)

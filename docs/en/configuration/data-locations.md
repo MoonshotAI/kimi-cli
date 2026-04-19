@@ -99,6 +99,7 @@ Wire message log file, stores Wire events during the session in JSON Lines (JSON
 
 Session state file, stores the session's runtime state, including:
 
+- `title`: User-set session title
 - `approval`: Approval decision state (YOLO mode on/off, auto-approved operation types)
 - `plan_mode`: Plan mode on/off status
 - `plan_session_id`: Unique identifier for the current plan session, used to associate the plan file

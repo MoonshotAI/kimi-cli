@@ -6,7 +6,6 @@ import asyncio
 import json
 import mimetypes
 import os
-import re
 import shutil
 import time
 from datetime import UTC, datetime
@@ -39,13 +38,10 @@ from kimi_cli.web.runner.messages import new_session_status_message, send_histor
 from kimi_cli.web.runner.process import KimiCLIRunner
 from kimi_cli.web.store.sessions import (
     JointSession,
-    SessionMetadata,
     invalidate_sessions_cache,
     load_session_by_id,
-    load_session_metadata,
     load_sessions_page,
     run_auto_archive,
-    save_session_metadata,
 )
 from kimi_cli.wire.jsonrpc import (
     ErrorCodes,
@@ -91,7 +87,6 @@ SENSITIVE_HOME_PATHS = {
     ".aws",
     ".kube",
 }
-CHECKPOINT_USER_PATTERN = re.compile(r"^<system>CHECKPOINT \d+</system>$")
 
 
 def sanitize_filename(filename: str) -> str:
@@ -533,13 +528,11 @@ async def get_session_file(
             if subpath.is_dir():
                 result.append({"name": subpath.name, "type": "directory"})
             else:
-                result.append(
-                    {
-                        "name": subpath.name,
-                        "type": "file",
-                        "size": subpath.stat().st_size,
-                    }
-                )
+                try:
+                    size = subpath.stat().st_size
+                except OSError:
+                    size = 0
+                result.append({"name": subpath.name, "type": "file", "size": size})
         result.sort(key=lambda x: (cast(str, x["type"]), cast(str, x["name"])))
         return Response(content=json.dumps(result), media_type="application/json")
 
@@ -596,32 +589,28 @@ async def update_session(
     runner: KimiCLIRunner = Depends(get_runner),
 ) -> Session:
     """Update a session (e.g., rename title or archive/unarchive)."""
+    from kimi_cli.session_state import load_session_state, save_session_state
+
     session = get_editable_session(session_id, runner)
     session_dir = session.kimi_cli_session.dir
-
-    # Load existing metadata
-    metadata = load_session_metadata(session_dir, str(session_id))
+    state = load_session_state(session_dir)
 
     # Update title if provided
     if request.title is not None:
-        metadata = metadata.model_copy(update={"title": request.title})
+        state.custom_title = request.title
+        state.title_generated = True
 
     # Update archived status if provided
     if request.archived is not None:
-        updates: dict[str, bool | float | None] = {"archived": request.archived}
+        state.archived = request.archived
         if request.archived:
-            # User manually archived: set archived_at, reset auto_archive_exempt
-            updates["archived_at"] = time.time()
-            updates["auto_archive_exempt"] = False
+            state.archived_at = time.time()
+            state.auto_archive_exempt = False
         else:
-            # User manually unarchived: clear archived_at, set auto_archive_exempt
-            # This prevents the session from being auto-archived again
-            updates["archived_at"] = None
-            updates["auto_archive_exempt"] = True
-        metadata = metadata.model_copy(update=updates)
+            state.archived_at = None
+            state.auto_archive_exempt = True
 
-    # Save metadata
-    save_session_metadata(session_dir, metadata)
+    save_session_state(state, session_dir)
 
     # Invalidate cache to force reload
     invalidate_sessions_cache()
@@ -691,121 +680,8 @@ def extract_first_turn_from_wire(session_dir: Path) -> tuple[str, str] | None:
     return None
 
 
-def truncate_wire_at_turn(wire_path: Path, turn_index: int) -> list[str]:
-    """Read wire.jsonl and return all lines up to and including the given turn.
-
-    Args:
-        wire_path: Path to the wire.jsonl file
-        turn_index: 0-based turn index. Returns turns 0..turn_index inclusive.
-
-    Returns:
-        List of raw JSON lines (including the metadata header)
-
-    Raises:
-        ValueError: If turn_index is out of range
-    """
-    if not wire_path.exists():
-        raise ValueError("wire.jsonl not found")
-
-    lines: list[str] = []
-    current_turn = -1  # Will become 0 on first TurnBegin
-
-    with open(wire_path, encoding="utf-8") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-
-            try:
-                record: dict[str, Any] = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-
-            # Always keep metadata header
-            if record.get("type") == "metadata":
-                lines.append(stripped)
-                continue
-
-            message: dict[str, Any] = record.get("message", {})
-            msg_type: str | None = message.get("type")
-
-            if msg_type == "TurnBegin":
-                current_turn += 1
-                if current_turn > turn_index:
-                    break
-
-            if current_turn <= turn_index:
-                lines.append(stripped)
-
-            # Stop after the TurnEnd of the target turn
-            if msg_type == "TurnEnd" and current_turn == turn_index:
-                break
-
-    if current_turn < turn_index:
-        raise ValueError(f"turn_index {turn_index} out of range (max turn: {current_turn})")
-
-    return lines
-
-
-def _is_checkpoint_user_message(record: dict[str, Any]) -> bool:
-    """Whether a context line is the synthetic user checkpoint marker."""
-    if record.get("role") != "user":
-        return False
-
-    content = record.get("content")
-    if isinstance(content, str):
-        return CHECKPOINT_USER_PATTERN.fullmatch(content.strip()) is not None
-
-    parts = cast(list[Any], content) if isinstance(content, list) else []
-    if len(parts) == 1 and isinstance(parts[0], dict):
-        first_part = cast(dict[str, Any], parts[0])
-        text = first_part.get("text")
-        if isinstance(text, str):
-            return CHECKPOINT_USER_PATTERN.fullmatch(text.strip()) is not None
-
-    return False
-
-
-def truncate_context_at_turn(context_path: Path, turn_index: int) -> list[str]:
-    """Read context.jsonl and return all lines up to and including the given turn.
-
-    Turn detection is based on real user messages, excluding synthetic checkpoint
-    user entries like ``<system>CHECKPOINT N</system>``.
-
-    Unlike wire truncation, this is best-effort: if context has fewer user turns
-    than ``turn_index`` (e.g. slash-command turns that did not mutate context),
-    return all available context lines instead of failing.
-    """
-    if not context_path.exists():
-        return []
-
-    lines: list[str] = []
-    current_turn = -1  # Will become 0 on first real user message
-
-    with open(context_path, encoding="utf-8") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-
-            try:
-                record: dict[str, Any] = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-
-            if record.get("role") == "user" and not _is_checkpoint_user_message(record):
-                current_turn += 1
-                if current_turn > turn_index:
-                    break
-
-            if current_turn <= turn_index:
-                lines.append(stripped)
-
-    return lines
-
-
 @router.post("/{session_id}/fork", summary="Fork a session at a specific turn")
-async def fork_session(
+async def fork_session_endpoint(
     session_id: UUID,
     request: ForkSessionRequest,
     runner: KimiCLIRunner = Depends(get_runner),
@@ -814,97 +690,49 @@ async def fork_session(
 
     The new session shares the same work_dir as the original session.
     """
+    from kimi_cli.session_fork import fork_session as do_fork
+
     source_session = get_editable_session(session_id, runner)
     source_dir = source_session.kimi_cli_session.dir
-    wire_path = source_dir / "wire.jsonl"
-    context_path = source_dir / "context.jsonl"
+    work_dir = source_session.kimi_cli_session.work_dir
+
+    source_title = source_session.title
 
     try:
-        truncated_wire_lines = truncate_wire_at_turn(wire_path, request.turn_index)
-        truncated_context_lines = truncate_context_at_turn(context_path, request.turn_index)
+        new_session_id = await do_fork(
+            source_session_dir=source_dir,
+            work_dir=work_dir,
+            turn_index=request.turn_index,
+            title_prefix="Fork",
+            source_title=source_title,
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
 
-    # Create new session with the same work_dir.
-    # Only write the essential files explicitly — do NOT copytree the whole
-    # source directory, which would bring in rotated context backups
-    # (context_N.jsonl) and subagent contexts (context_sub_N.jsonl).
-    work_dir = source_session.kimi_cli_session.work_dir
-    new_session = await KimiCLISession.create(work_dir=work_dir)
-    new_session_dir = new_session.dir
-
-    # Copy only the video files that are actually referenced in the truncated
-    # wire history.  Videos are referenced by path (<video path="...">) and
-    # served via the uploads endpoint, so the physical file must exist.
-    # Images and text docs are already embedded (base64 / inline) in
-    # context.jsonl and don't need the physical file.
-    source_uploads = source_dir / "uploads"
-    if source_uploads.is_dir():
-        # Collect video filenames referenced in the truncated wire.
-        # In the raw JSON lines the pattern looks like: uploads/filename.mp4
-        referenced_videos: set[str] = set()
-        for line in truncated_wire_lines:
-            for match in re.finditer(r"uploads/([^\"\\<>\s]+)", line):
-                fname = match.group(1)
-                mime, _ = mimetypes.guess_type(fname)
-                if mime and mime.startswith("video/"):
-                    referenced_videos.add(fname)
-
-        # Copy only those referenced video files that exist on disk.
-        files_to_copy = [
-            source_uploads / name for name in referenced_videos if (source_uploads / name).is_file()
-        ]
-        if files_to_copy:
-            new_uploads = new_session_dir / "uploads"
-            new_uploads.mkdir(parents=True, exist_ok=True)
-            copied_names: list[str] = []
-            for vf in files_to_copy:
-                shutil.copy2(vf, new_uploads / vf.name)
-                copied_names.append(vf.name)
-            # Write a .sent marker so _encode_uploaded_files() won't re-send
-            # these inherited videos.  The marker is kept across process
-            # restarts (not deleted after reading).
-            (new_uploads / ".sent").write_text(json.dumps(copied_names), encoding="utf-8")
-
-    # Write truncated wire.jsonl
-    new_wire_path = new_session_dir / "wire.jsonl"
-    with open(new_wire_path, "w", encoding="utf-8") as f:
-        for line in truncated_wire_lines:
-            f.write(line + "\n")
-
-    # Write truncated context.jsonl (overwrites the empty file from create())
-    new_context_path = new_session_dir / "context.jsonl"
-    with open(new_context_path, "w", encoding="utf-8") as f:
-        for line in truncated_context_lines:
-            f.write(line + "\n")
-
-    # Build fresh metadata — not inherited from source — so future
-    # SessionMetadata fields get their defaults instead of stale values.
-    source_metadata = load_session_metadata(source_dir, str(session_id))
-    source_title = (
-        source_metadata.title if source_metadata.title != "Untitled" else source_session.title
-    )
-    new_metadata = SessionMetadata(
-        session_id=new_session.id,
-        title=f"Fork: {source_title}",
-        wire_mtime=new_wire_path.stat().st_mtime,
-    )
-    save_session_metadata(new_session_dir, new_metadata)
-
     invalidate_sessions_cache()
     invalidate_work_dirs_cache()
 
+    from kimi_cli.metadata import load_metadata
+    from kimi_cli.session_state import load_session_state
+
+    metadata = load_metadata()
+    work_dir_meta = metadata.get_work_dir_meta(work_dir)
+    assert work_dir_meta is not None
+    new_session_dir = work_dir_meta.sessions_dir / new_session_id
+    new_state = load_session_state(new_session_dir)
+    fork_title = new_state.custom_title or f"Fork: {source_title}"
+
     context_file = new_session_dir / "context.jsonl"
     return Session(
-        session_id=UUID(new_session.id),
-        title=new_metadata.title,
+        session_id=UUID(new_session_id),
+        title=fork_title,
         last_updated=datetime.fromtimestamp(context_file.stat().st_mtime, tz=UTC),
         is_running=False,
         status=SessionStatus(
-            session_id=UUID(new_session.id),
+            session_id=UUID(new_session_id),
             state="stopped",
             seq=0,
             worker_id=None,
@@ -931,12 +759,13 @@ async def generate_session_title(
     session = get_editable_session(session_id, runner)
     session_dir = session.kimi_cli_session.dir
 
-    # Load existing metadata
-    metadata = load_session_metadata(session_dir, str(session_id))
+    from kimi_cli.session_state import load_session_state, save_session_state
+
+    state = load_session_state(session_dir)
 
     # Check if title was already generated (avoid duplicate calls)
-    if metadata.title_generated:
-        return GenerateTitleResponse(title=metadata.title)
+    if state.title_generated:
+        return GenerateTitleResponse(title=state.custom_title or "Untitled")
 
     # Get message content: prefer request parameters, otherwise read from wire.jsonl
     user_message = request.user_message if request else None
@@ -951,22 +780,18 @@ async def generate_session_title(
     if not user_message:
         return GenerateTitleResponse(title="Untitled")
 
-    # Fallback title from user message (used if AI generation fails)
-    from textwrap import shorten
+    from kimi_cli.utils.string import shorten
 
     user_text = user_message.strip()
     user_text = " ".join(user_text.split())
-    fallback_title = shorten(user_text, width=50, placeholder="...") or "Untitled"
+    fallback_title = shorten(user_text, width=50) or "Untitled"
 
     # If AI generation failed too many times, use fallback and mark as generated
-    if metadata.title_generate_attempts >= 3:
-        metadata = metadata.model_copy(
-            update={
-                "title": fallback_title,
-                "title_generated": True,
-            }
-        )
-        save_session_metadata(session_dir, metadata)
+    if state.title_generate_attempts >= 3:
+        fresh = load_session_state(session_dir)
+        fresh.custom_title = fallback_title
+        fresh.title_generated = True
+        save_session_state(fresh, session_dir)
         invalidate_sessions_cache()
         return GenerateTitleResponse(title=fallback_title)
 
@@ -977,6 +802,7 @@ async def generate_session_title(
         from kosong import generate
         from kosong.message import Message
 
+        from kimi_cli.auth.oauth import OAuthManager
         from kimi_cli.config import load_config
         from kimi_cli.llm import create_llm
 
@@ -988,7 +814,9 @@ async def generate_session_title(
             provider_config = config.providers.get(model_config.provider)
 
             if provider_config:
-                llm = create_llm(provider_config, model_config)
+                oauth = OAuthManager(config)
+                await oauth.ensure_fresh()
+                llm = create_llm(provider_config, model_config, oauth=oauth)
 
                 if llm:
                     system_prompt = (
@@ -1018,31 +846,22 @@ Title:"""
                         title = generated_title
                         ai_generated = True
                     elif generated_title:
-                        title = shorten(generated_title, width=50, placeholder="...")
+                        title = shorten(generated_title, width=50)
                         ai_generated = True
 
     except Exception as e:
         logger.warning(f"Failed to generate title using AI: {e}")
         # Keep fallback_title, ai_generated stays False
 
-    # Save the title to metadata
+    # Read-modify-write: reload fresh state to avoid overwriting
+    # worker changes made during the LLM call
+    fresh = load_session_state(session_dir)
+    fresh.custom_title = title
     if ai_generated:
-        # AI succeeded: set title_generated = True
-        metadata = metadata.model_copy(
-            update={
-                "title": title,
-                "title_generated": True,
-            }
-        )
+        fresh.title_generated = True
     else:
-        # AI failed: increment attempts counter
-        metadata = metadata.model_copy(
-            update={
-                "title": title,
-                "title_generate_attempts": metadata.title_generate_attempts + 1,
-            }
-        )
-    save_session_metadata(session_dir, metadata)
+        fresh.title_generate_attempts = fresh.title_generate_attempts + 1
+    save_session_state(fresh, session_dir)
 
     # Invalidate cache
     invalidate_sessions_cache()
@@ -1176,19 +995,29 @@ async def session_stream(
                     except ValueError:
                         in_message = None
                     if isinstance(in_message, JSONRPCPromptMessage):
-                        await websocket.send_text(
-                            JSONRPCErrorResponse(
-                                id=in_message.id,
-                                error=JSONRPCErrorObject(
-                                    code=ErrorCodes.INVALID_STATE,
-                                    message=(
-                                        "Session is busy; wait for completion before sending "
-                                        "a new prompt."
+                        # If the session is in error state, the in-flight IDs
+                        # are stale from a failed prompt.  Clear them so the
+                        # user can recover by sending a new message.
+                        if session_process.status.state == "error":
+                            logger.info(
+                                "Clearing stale in-flight prompts for "
+                                f"session {session_id} (was in error state)"
+                            )
+                            session_process.clear_in_flight()
+                        else:
+                            await websocket.send_text(
+                                JSONRPCErrorResponse(
+                                    id=in_message.id,
+                                    error=JSONRPCErrorObject(
+                                        code=ErrorCodes.INVALID_STATE,
+                                        message=(
+                                            "Session is busy; wait for completion before sending "
+                                            "a new prompt."
+                                        ),
                                     ),
-                                ),
-                            ).model_dump_json()
-                        )
-                        continue
+                                ).model_dump_json()
+                            )
+                            continue
 
                 # Update last_session_id on first successful prompt
                 if not last_session_id_updated:

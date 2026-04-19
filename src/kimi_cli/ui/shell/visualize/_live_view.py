@@ -1,69 +1,61 @@
+# pyright: reportPrivateUsage=false, reportUnusedClass=false
+"""Base event-consuming view for the streaming agent (Rich Live mode).
+
+``_LiveView`` consumes wire events, updates internal state (content blocks,
+tool calls, spinners, approval/question queues), and composes them into a
+Rich renderable via ``compose()``.  The Rich ``Live`` context drives refresh.
+"""
+
 from __future__ import annotations
 
 import asyncio
-import json
 from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
-from typing import Any, NamedTuple, cast
 
-import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
-from prompt_toolkit.application.run_in_terminal import run_in_terminal
-from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.document import Document
-from prompt_toolkit.formatted_text import ANSI
-from prompt_toolkit.key_binding import KeyPressEvent
 from rich.console import Group, RenderableType
 from rich.live import Live
+from rich.markup import escape as rich_escape
+from rich.panel import Panel
 from rich.spinner import Spinner
-from rich.style import Style
 from rich.text import Text
 
-from kimi_cli.soul import format_context_status
-from kimi_cli.tools import extract_key_argument
-from kimi_cli.ui.shell.approval_panel import (
-    ApprovalPromptDelegate as ApprovalPromptDelegate,  # noqa: F401 — re-exported
-)
-from kimi_cli.ui.shell.approval_panel import (
+from kimi_cli.ui.shell.console import console
+from kimi_cli.ui.shell.echo import render_user_echo
+from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
+from kimi_cli.ui.shell.visualize._approval_panel import (
     ApprovalRequestPanel,
     show_approval_in_pager,
 )
-from kimi_cli.ui.shell.approval_panel import (
-    render_approval_request_for_terminal as render_approval_request_for_terminal,  # noqa: F401 — re-exported
+from kimi_cli.ui.shell.visualize._blocks import (
+    Markdown,
+    _ContentBlock,
+    _NotificationBlock,
+    _StatusBlock,
+    _ToolCallBlock,
 )
-from kimi_cli.ui.shell.console import console, render_to_ansi
-from kimi_cli.ui.shell.echo import render_user_echo, render_user_echo_text
-from kimi_cli.ui.shell.keyboard import KeyboardListener, KeyEvent
-from kimi_cli.ui.shell.prompt import (
-    CustomPromptSession,
-    UserInput,
-)
-from kimi_cli.ui.shell.question_panel import (
-    QuestionPromptDelegate as QuestionPromptDelegate,  # noqa: F401 — re-exported
-)
-from kimi_cli.ui.shell.question_panel import (
+from kimi_cli.ui.shell.visualize._question_panel import (
     QuestionRequestPanel,
     prompt_other_input,
     show_question_body_in_pager,
 )
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.rich.columns import BulletColumns
-from kimi_cli.utils.rich.markdown import Markdown
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
-    BackgroundTaskDisplayBlock,
-    BriefDisplayBlock,
+    BtwBegin,
+    BtwEnd,
     CompactionBegin,
     CompactionEnd,
     ContentPart,
     MCPLoadingBegin,
     MCPLoadingEnd,
     Notification,
+    PlanDisplay,
     QuestionRequest,
     StatusUpdate,
     SteerInput,
@@ -72,350 +64,17 @@ from kimi_cli.wire.types import (
     SubagentEvent,
     TextPart,
     ThinkPart,
-    TodoDisplayBlock,
     ToolCall,
     ToolCallPart,
     ToolCallRequest,
     ToolResult,
-    ToolReturnValue,
     TurnBegin,
     TurnEnd,
     WireMessage,
 )
 
-MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
 MAX_LIVE_NOTIFICATIONS = 4
 EXTERNAL_MESSAGE_GRACE_S = 0.1
-
-
-async def visualize(
-    wire: WireUISide,
-    *,
-    initial_status: StatusUpdate,
-    cancel_event: asyncio.Event | None = None,
-    prompt_session: CustomPromptSession | None = None,
-    steer: Callable[[str | list[ContentPart]], None] | None = None,
-    bind_running_input: Callable[[Callable[[UserInput], None], Callable[[], None]], None]
-    | None = None,
-    unbind_running_input: Callable[[], None] | None = None,
-    on_view_ready: Callable[[Any], None] | None = None,
-    on_view_closed: Callable[[], None] | None = None,
-):
-    """
-    A loop to consume agent events and visualize the agent behavior.
-
-    Args:
-        wire: Communication channel with the agent
-        initial_status: Initial status snapshot
-        cancel_event: Event that can be set (e.g., by ESC key) to cancel the run
-    """
-    if prompt_session is not None and steer is not None:
-        view = _PromptLiveView(
-            initial_status,
-            prompt_session=prompt_session,
-            steer=steer,
-            cancel_event=cancel_event,
-        )
-        prompt_session.attach_running_prompt(view)
-
-        def _cancel_running_input() -> None:
-            if cancel_event is not None:
-                cancel_event.set()
-
-        if bind_running_input is not None:
-            bind_running_input(view.handle_local_input, _cancel_running_input)
-    else:
-        view = _LiveView(initial_status, cancel_event)
-    if on_view_ready is not None:
-        on_view_ready(view)
-    try:
-        await view.visualize_loop(wire)
-    finally:
-        if prompt_session is not None and steer is not None:
-            if unbind_running_input is not None:
-                unbind_running_input()
-            assert isinstance(view, _PromptLiveView)
-            prompt_session.detach_running_prompt(view)
-        if on_view_closed is not None:
-            on_view_closed()
-
-
-class _ContentBlock:
-    def __init__(self, is_think: bool):
-        self.is_think = is_think
-        self._spinner = Spinner("dots", "Thinking..." if is_think else "Composing...")
-        self.raw_text = ""
-
-    def compose(self) -> RenderableType:
-        return self._spinner
-
-    def compose_final(self) -> RenderableType:
-        return BulletColumns(
-            Markdown(
-                self.raw_text,
-                style="grey50 italic" if self.is_think else "",
-            ),
-            bullet_style="grey50" if self.is_think else None,
-        )
-
-    def append(self, content: str) -> None:
-        self.raw_text += content
-
-
-class _ToolCallBlock:
-    class FinishedSubCall(NamedTuple):
-        call: ToolCall
-        result: ToolReturnValue
-
-    def __init__(self, tool_call: ToolCall):
-        self._tool_name = tool_call.function.name
-        self._lexer = streamingjson.Lexer()
-        if tool_call.function.arguments is not None:
-            self._lexer.append_string(tool_call.function.arguments)
-
-        self._argument = extract_key_argument(self._lexer, self._tool_name)
-        self._full_url = self._extract_full_url(tool_call.function.arguments, self._tool_name)
-        self._result: ToolReturnValue | None = None
-        self._subagent_id: str | None = None
-        self._subagent_type: str | None = None
-
-        self._ongoing_subagent_tool_calls: dict[str, ToolCall] = {}
-        self._last_subagent_tool_call: ToolCall | None = None
-        self._n_finished_subagent_tool_calls = 0
-        self._finished_subagent_tool_calls = deque[_ToolCallBlock.FinishedSubCall](
-            maxlen=MAX_SUBAGENT_TOOL_CALLS_TO_SHOW
-        )
-
-        self._spinning_dots = Spinner("dots", text="")
-        self._renderable: RenderableType = self._compose()
-
-    def compose(self) -> RenderableType:
-        return self._renderable
-
-    @property
-    def finished(self) -> bool:
-        return self._result is not None
-
-    def append_args_part(self, args_part: str):
-        if self.finished:
-            return
-        self._lexer.append_string(args_part)
-        # TODO: maybe don't extract detail if it's already stable
-        argument = extract_key_argument(self._lexer, self._tool_name)
-        if argument and argument != self._argument:
-            self._argument = argument
-            self._full_url = self._extract_full_url(self._lexer.complete_json(), self._tool_name)
-            self._renderable = BulletColumns(
-                self._build_headline_text(),
-                bullet=self._spinning_dots,
-            )
-
-    def finish(self, result: ToolReturnValue):
-        self._result = result
-        self._renderable = self._compose()
-
-    def append_sub_tool_call(self, tool_call: ToolCall):
-        self._ongoing_subagent_tool_calls[tool_call.id] = tool_call
-        self._last_subagent_tool_call = tool_call
-
-    def append_sub_tool_call_part(self, tool_call_part: ToolCallPart):
-        if self._last_subagent_tool_call is None:
-            return
-        if not tool_call_part.arguments_part:
-            return
-        if self._last_subagent_tool_call.function.arguments is None:
-            self._last_subagent_tool_call.function.arguments = tool_call_part.arguments_part
-        else:
-            self._last_subagent_tool_call.function.arguments += tool_call_part.arguments_part
-
-    def finish_sub_tool_call(self, tool_result: ToolResult):
-        self._last_subagent_tool_call = None
-        sub_tool_call = self._ongoing_subagent_tool_calls.pop(tool_result.tool_call_id, None)
-        if sub_tool_call is None:
-            return
-
-        self._finished_subagent_tool_calls.append(
-            _ToolCallBlock.FinishedSubCall(
-                call=sub_tool_call,
-                result=tool_result.return_value,
-            )
-        )
-        self._n_finished_subagent_tool_calls += 1
-        self._renderable = self._compose()
-
-    def set_subagent_metadata(self, agent_id: str, subagent_type: str) -> None:
-        changed = (self._subagent_id, self._subagent_type) != (agent_id, subagent_type)
-        self._subagent_id = agent_id
-        self._subagent_type = subagent_type
-        if changed:
-            self._renderable = self._compose()
-
-    def _compose(self) -> RenderableType:
-        lines: list[RenderableType] = [
-            self._build_headline_text(),
-        ]
-        if self._subagent_id is not None and self._subagent_type is not None:
-            lines.append(
-                BulletColumns(
-                    Text(
-                        f"subagent {self._subagent_type} ({self._subagent_id})",
-                        style="grey50",
-                    ),
-                    bullet_style="grey50",
-                )
-            )
-
-        if self._n_finished_subagent_tool_calls > MAX_SUBAGENT_TOOL_CALLS_TO_SHOW:
-            n_hidden = self._n_finished_subagent_tool_calls - MAX_SUBAGENT_TOOL_CALLS_TO_SHOW
-            lines.append(
-                BulletColumns(
-                    Text(
-                        f"{n_hidden} more tool call{'s' if n_hidden > 1 else ''} ...",
-                        style="grey50 italic",
-                    ),
-                    bullet_style="grey50",
-                )
-            )
-        for sub_call, sub_result in self._finished_subagent_tool_calls:
-            argument = extract_key_argument(
-                sub_call.function.arguments or "", sub_call.function.name
-            )
-            sub_url = self._extract_full_url(sub_call.function.arguments, sub_call.function.name)
-            sub_text = Text()
-            sub_text.append("Used ")
-            sub_text.append(sub_call.function.name, style="blue")
-            if argument:
-                sub_text.append(" (", style="grey50")
-                arg_style = Style(color="grey50", link=sub_url) if sub_url else "grey50"
-                sub_text.append(argument, style=arg_style)
-                sub_text.append(")", style="grey50")
-            lines.append(
-                BulletColumns(
-                    sub_text,
-                    bullet_style="green" if not sub_result.is_error else "red",
-                )
-            )
-
-        if self._result is not None:
-            for block in self._result.display:
-                if isinstance(block, BriefDisplayBlock):
-                    style = "grey50" if not self._result.is_error else "red"
-                    if block.text:
-                        lines.append(Markdown(block.text, style=style))
-                elif isinstance(block, TodoDisplayBlock):
-                    markdown = self._render_todo_markdown(block)
-                    if markdown:
-                        lines.append(Markdown(markdown, style="grey50"))
-                elif isinstance(block, BackgroundTaskDisplayBlock):
-                    lines.append(
-                        Markdown(
-                            (f"`{block.task_id}` [{block.status}] {block.description}"),
-                            style="grey50",
-                        )
-                    )
-
-        if self.finished:
-            assert self._result is not None
-            return BulletColumns(
-                Group(*lines),
-                bullet_style="green" if not self._result.is_error else "red",
-            )
-        else:
-            return BulletColumns(
-                Group(*lines),
-                bullet=self._spinning_dots,
-            )
-
-    @staticmethod
-    def _extract_full_url(arguments: str | None, tool_name: str) -> str | None:
-        """Extract the full URL from FetchURL tool arguments."""
-        if tool_name != "FetchURL" or not arguments:
-            return None
-        try:
-            args = json.loads(arguments)
-        except (json.JSONDecodeError, TypeError):
-            return None
-        if isinstance(args, dict):
-            url = cast(dict[str, Any], args).get("url")
-            if url:
-                return str(url)
-        return None
-
-    def _build_headline_text(self) -> Text:
-        text = Text()
-        text.append("Used " if self.finished else "Using ")
-        text.append(self._tool_name, style="blue")
-        if self._argument:
-            text.append(" (", style="grey50")
-            arg_style = Style(color="grey50", link=self._full_url) if self._full_url else "grey50"
-            text.append(self._argument, style=arg_style)
-            text.append(")", style="grey50")
-        return text
-
-    def _render_todo_markdown(self, block: TodoDisplayBlock) -> str:
-        lines: list[str] = []
-        for todo in block.items:
-            normalized = todo.status.replace("_", " ").lower()
-            match normalized:
-                case "pending":
-                    lines.append(f"- {todo.title}")
-                case "in progress":
-                    lines.append(f"- {todo.title} ←")
-                case "done":
-                    lines.append(f"- ~~{todo.title}~~")
-                case _:
-                    lines.append(f"- {todo.title}")
-        return "\n".join(lines)
-
-
-class _NotificationBlock:
-    _SEVERITY_STYLE = {
-        "info": "cyan",
-        "success": "green",
-        "warning": "yellow",
-        "error": "red",
-    }
-
-    def __init__(self, notification: Notification):
-        self.notification = notification
-
-    def compose(self) -> RenderableType:
-        style = self._SEVERITY_STYLE.get(self.notification.severity, "cyan")
-        lines: list[RenderableType] = [Text(self.notification.title, style=f"bold {style}")]
-        body = self.notification.body.strip()
-        if body:
-            body_lines = body.splitlines()
-            preview = "\n".join(body_lines[:2])
-            if len(body_lines) > 2:
-                preview += "\n..."
-            lines.append(Text(preview, style="grey50"))
-        return BulletColumns(Group(*lines), bullet_style=style)
-
-
-class _StatusBlock:
-    def __init__(self, initial: StatusUpdate) -> None:
-        self.text = Text("", justify="right")
-        self._context_usage: float = 0.0
-        self._context_tokens: int = 0
-        self._max_context_tokens: int = 0
-        self.update(initial)
-
-    def render(self) -> RenderableType:
-        return self.text
-
-    def update(self, status: StatusUpdate) -> None:
-        if status.context_usage is not None:
-            self._context_usage = status.context_usage
-        if status.context_tokens is not None:
-            self._context_tokens = status.context_tokens
-        if status.max_context_tokens is not None:
-            self._max_context_tokens = status.max_context_tokens
-        if status.context_usage is not None:
-            self.text.plain = format_context_status(
-                self._context_usage,
-                self._context_tokens,
-                self._max_context_tokens,
-            )
 
 
 @asynccontextmanager
@@ -441,12 +100,22 @@ async def _keyboard_listener(
 
 
 class _LiveView:
-    def __init__(self, initial_status: StatusUpdate, cancel_event: asyncio.Event | None = None):
+    def __init__(
+        self,
+        initial_status: StatusUpdate,
+        cancel_event: asyncio.Event | None = None,
+        *,
+        show_thinking_stream: bool = False,
+    ):
         self._cancel_event = cancel_event
+        self._show_thinking_stream = show_thinking_stream
 
-        self._mooning_spinner: Spinner | None = None
+        self._mooning_spinner = Spinner("moon", "")
+        self._active_turn_depth = 0
         self._compacting_spinner: Spinner | None = None
         self._mcp_loading_spinner: Spinner | None = None
+        self._btw_spinner: Spinner | None = None
+        self._btw_question: str | None = None
 
         self._current_content_block: _ContentBlock | None = None
         self._tool_call_blocks: dict[str, _ToolCallBlock] = {}
@@ -636,27 +305,72 @@ class _LiveView:
             self.show_next_question_request()
         self.refresh_soon()
 
-    def compose(self, *, include_status: bool = True) -> RenderableType:
-        """Compose the live view display content."""
+    # -- Composable rendering --------------------------------------------------
+
+    def compose_interactive_panels(self) -> list[RenderableType]:
+        """Approval and question panels — interactive overlays.
+
+        In Non-interactive mode (Rich Live), these are rendered by ``compose()``.
+        In Interactive mode (prompt_toolkit), these are rendered by modal
+        delegates in Layer 2, so ``render_agent_status()`` skips them to
+        avoid double-rendering.
+        """
         blocks: list[RenderableType] = []
-        if self._mcp_loading_spinner is not None:
-            blocks.append(self._mcp_loading_spinner)
-        elif self._mooning_spinner is not None:
-            blocks.append(self._mooning_spinner)
-        elif self._compacting_spinner is not None:
-            blocks.append(self._compacting_spinner)
-        else:
-            if self._current_content_block is not None:
-                blocks.append(self._current_content_block.compose())
-            for tool_call in self._tool_call_blocks.values():
-                blocks.append(tool_call.compose())
         if self._current_approval_request_panel:
             blocks.append(self._current_approval_request_panel.render())
         if self._current_question_panel:
             blocks.append(self._current_question_panel.render())
-        for notification in self._live_notification_blocks:
-            blocks.append(notification.compose())
+        return blocks
 
+    def compose_agent_output(self) -> list[RenderableType]:
+        """Spinners, content blocks, tool calls, notifications.
+
+        Pure agent streaming status — no interactive overlays.
+        Always safe to render regardless of modal state.
+
+        Display priority (highest → lowest):
+          1. MCP loading spinner (connecting to servers)
+          2. Compaction spinner (context compaction in progress)
+          3. Content blocks + tool call blocks (streaming output)
+          4. Moon spinner fallback (turn active but nothing else visible)
+        The btw spinner is always shown (side-channel, not mutually exclusive).
+        """
+        blocks: list[RenderableType] = []
+        if self._btw_spinner is not None:
+            blocks.append(self._btw_spinner)
+        if self._mcp_loading_spinner is not None:
+            blocks.append(self._mcp_loading_spinner)
+        elif self._compacting_spinner is not None:
+            blocks.append(self._compacting_spinner)
+        else:
+            has_main_content = False
+            if self._current_content_block is not None:
+                blocks.append(self._current_content_block.compose())
+                has_main_content = True
+            for tool_call in list(self._tool_call_blocks.values()):
+                blocks.append(tool_call.compose())
+                has_main_content = True
+            if not has_main_content and self._active_turn_depth > 0:
+                blocks.append(self._mooning_spinner)
+        for notification in list(self._live_notification_blocks):
+            blocks.append(notification.compose())
+        return blocks
+
+    def compose(self, *, include_status: bool = True) -> RenderableType:
+        """Compose the full live view display content.
+
+        Combines interactive panels (approval/question) and agent output.
+        Panels are rendered first so they remain visible at the top of the
+        terminal even when tool-call output is long enough to push content
+        beyond the visible area.
+
+        In Interactive mode, prefer ``compose_agent_output()`` for Layer 1
+        rendering to avoid double-rendering panels that modal delegates
+        already handle in Layer 2.
+        """
+        blocks: list[RenderableType] = []
+        blocks.extend(self.compose_interactive_panels())
+        blocks.extend(self.compose_agent_output())
         if include_status:
             blocks.append(self._status_block.render())
         return Group(*blocks)
@@ -668,18 +382,18 @@ class _LiveView:
         if isinstance(msg, StepBegin):
             self.cleanup(is_interrupt=False)
             self._mcp_loading_spinner = None
-            self._mooning_spinner = Spinner("moon", "")
+            # Defensive: if StepBegin arrives without a preceding TurnBegin
+            # (e.g. during replay), ensure the turn is considered active.
+            if self._active_turn_depth == 0:
+                self._active_turn_depth = 1
             self.refresh_soon()
             return
 
-        if self._mooning_spinner is not None:
-            # any message other than StepBegin should end the mooning state
-            self._mooning_spinner = None
-            self.refresh_soon()
-
         match msg:
             case TurnBegin():
+                self._active_turn_depth += 1
                 self.flush_content()
+                self.refresh_soon()
             case SteerInput(user_input=user_input):
                 self.cleanup(is_interrupt=False)
                 content: list[ContentPart]
@@ -689,7 +403,7 @@ class _LiveView:
                     content = [TextPart(text=user_input)]
                 console.print(render_user_echo(Message(role="user", content=content)))
             case TurnEnd():
-                pass
+                self._active_turn_depth = max(0, self._active_turn_depth - 1)
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()
@@ -701,6 +415,35 @@ class _LiveView:
                 self.refresh_soon()
             case MCPLoadingEnd():
                 self._mcp_loading_spinner = None
+                self.refresh_soon()
+            case BtwBegin(question=question):
+                truncated = (question[:40] + "...") if len(question) > 40 else question
+                self._btw_question = question
+                self._btw_spinner = Spinner("dots", f"Side question: {rich_escape(truncated)}")
+                self.refresh_soon()
+            case BtwEnd(response=response, error=error):
+                self._btw_spinner = None
+                q = self._btw_question or ""
+                truncated_q = (q[:50] + "...") if len(q) > 50 else q
+                self._btw_question = None
+                if response:
+                    console.print(
+                        Panel(
+                            Markdown(response),
+                            title=f"[dim]btw: {rich_escape(truncated_q)}[/dim]",
+                            border_style="grey50",
+                            padding=(0, 1),
+                        )
+                    )
+                elif error:
+                    console.print(
+                        Panel(
+                            Text(error, style="red"),
+                            title="[dim]btw (error)[/dim]",
+                            border_style="red",
+                            padding=(0, 1),
+                        )
+                    )
                 self.refresh_soon()
             case StatusUpdate():
                 self._status_block.update(msg)
@@ -718,12 +461,16 @@ class _LiveView:
                 self._reconcile_approval_requests()
             case SubagentEvent():
                 self.handle_subagent_event(msg)
+            case PlanDisplay():
+                self.display_plan(msg)
             case ApprovalRequest():
                 self.request_approval(msg)
             case QuestionRequest():
                 self.request_question(msg)
             case ToolCallRequest():
                 logger.warning("Unexpected ToolCallRequest in shell UI: {msg}", msg=msg)
+            case _:
+                pass
 
     def _try_submit_question(self) -> None:
         """Submit the current question answer; if all done, resolve and advance."""
@@ -764,6 +511,7 @@ class _LiveView:
                     | KeyEvent.NUM_3
                     | KeyEvent.NUM_4
                     | KeyEvent.NUM_5
+                    | KeyEvent.NUM_6
                 ):
                     # Number keys select option in question panel
                     num_map = {
@@ -772,6 +520,7 @@ class _LiveView:
                         KeyEvent.NUM_3: 2,
                         KeyEvent.NUM_4: 3,
                         KeyEvent.NUM_5: 4,
+                        KeyEvent.NUM_6: 5,
                     }
                     idx = num_map[event]
                     panel = self._current_question_panel
@@ -851,6 +600,14 @@ class _LiveView:
         self.flush_finished_tool_calls()
         self.flush_notifications()
 
+        # Clear transient spinners to prevent visual residuals after interrupts
+        self._compacting_spinner = None
+        self._mcp_loading_spinner = None
+        self._btw_spinner = None
+
+        if is_interrupt:
+            self._active_turn_depth = 0
+
         while self._approval_request_queue:
             # should not happen, but just in case
             self._approval_request_queue.popleft().resolve("reject")
@@ -863,7 +620,8 @@ class _LiveView:
     def flush_content(self) -> None:
         """Flush the current content block."""
         if self._current_content_block is not None:
-            console.print(self._current_content_block.compose_final())
+            if self._current_content_block.has_pending():
+                console.print(self._current_content_block.compose_final())
             self._current_content_block = None
             self.refresh_soon()
 
@@ -891,17 +649,26 @@ class _LiveView:
     def append_content(self, part: ContentPart) -> None:
         match part:
             case ThinkPart(think=text) | TextPart(text=text):
-                if not text:
-                    return
                 is_think = isinstance(part, ThinkPart)
+                # Skip empty TextPart, but still create the block for empty
+                # ThinkPart so the "Thinking" indicator shows immediately
+                # (e.g. Anthropic/OpenAI block-start events yield think="").
+                if not text and not is_think:
+                    return
                 if self._current_content_block is None:
-                    self._current_content_block = _ContentBlock(is_think)
+                    self._current_content_block = _ContentBlock(
+                        is_think, show_thinking_stream=self._show_thinking_stream
+                    )
                     self.refresh_soon()
                 elif self._current_content_block.is_think != is_think:
                     self.flush_content()
-                    self._current_content_block = _ContentBlock(is_think)
+                    self._current_content_block = _ContentBlock(
+                        is_think, show_thinking_stream=self._show_thinking_stream
+                    )
                     self.refresh_soon()
-                self._current_content_block.append(text)
+                if text:
+                    self._current_content_block.append(text)
+                    self.refresh_soon()
             case _:
                 # TODO: support more content part types
                 pass
@@ -977,6 +744,23 @@ class _LiveView:
                 self._current_approval_request_panel = None
                 self.refresh_soon()
 
+    def display_plan(self, msg: PlanDisplay) -> None:
+        """Render plan content inline in the chat with a bordered panel."""
+        self.flush_content()
+        self.flush_finished_tool_calls()
+        plan_body = Markdown(msg.content)
+        subtitle = Text(msg.file_path, style="dim")
+        panel = Panel(
+            plan_body,
+            title="[bold cyan]Plan[/bold cyan]",
+            title_align="left",
+            subtitle=subtitle,
+            subtitle_align="left",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+        console.print(panel)
+
     def request_question(self, request: QuestionRequest) -> None:
         self._question_request_queue.append(request)
         if self._current_question_panel is None:
@@ -1028,201 +812,3 @@ class _LiveView:
                 # ignore other events for now
                 # TODO: may need to handle multi-level nested subagents
                 pass
-
-
-class _PromptLiveView(_LiveView):
-    modal_priority = 0
-
-    def __init__(
-        self,
-        initial_status: StatusUpdate,
-        *,
-        prompt_session: CustomPromptSession,
-        steer: Callable[[str | list[ContentPart]], None],
-        cancel_event: asyncio.Event | None = None,
-    ) -> None:
-        super().__init__(initial_status, cancel_event)
-        self._prompt_session = prompt_session
-        self._steer = steer
-        self._pending_local_steers: deque[str | list[ContentPart]] = deque()
-        self._turn_ended = False
-        self._question_modal: QuestionPromptDelegate | None = None
-
-    async def visualize_loop(self, wire: WireUISide):
-        try:
-            wire_task = asyncio.create_task(wire.receive())
-            external_task = asyncio.create_task(self._external_messages.get())
-            while True:
-                try:
-                    done, _ = await asyncio.wait(
-                        [wire_task, external_task],
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-                    if wire_task in done:
-                        msg = wire_task.result()
-                        wire_task = asyncio.create_task(wire.receive())
-                    else:
-                        msg = external_task.result()
-                        external_task = asyncio.create_task(self._external_messages.get())
-                except QueueShutDown:
-                    msg, external_task = await self._drain_external_message_after_wire_shutdown(
-                        external_task
-                    )
-                    if msg is not None:
-                        self.dispatch_wire_message(msg)
-                        self._flush_prompt_refresh()
-                        continue
-                    self.cleanup(is_interrupt=False)
-                    self._flush_prompt_refresh()
-                    break
-
-                if isinstance(msg, StepInterrupted):
-                    self.cleanup(is_interrupt=True)
-                    self._flush_prompt_refresh()
-                    break
-
-                if isinstance(msg, TurnEnd):
-                    self._turn_ended = True
-                    self._flush_prompt_refresh()
-                    continue
-
-                self.dispatch_wire_message(msg)
-                self._flush_prompt_refresh()
-        finally:
-            self._external_messages.shutdown(immediate=True)
-            for task in (locals().get("wire_task"), locals().get("external_task")):
-                if task is None:
-                    continue
-                task.cancel()
-                with suppress(asyncio.CancelledError, QueueShutDown):
-                    await task
-            self._pending_local_steers.clear()
-            self._turn_ended = False
-            if self._question_modal is not None:
-                self._prompt_session.detach_modal(self._question_modal)
-                self._question_modal = None
-            self._prompt_session.invalidate()
-
-    def handle_local_input(self, user_input: UserInput) -> None:
-        if not user_input or self._turn_ended:
-            return
-
-        console.print(render_user_echo_text(user_input.command))
-        self._pending_local_steers.append(list(user_input.content))
-        self._steer(user_input.content)
-        self._flush_prompt_refresh()
-
-    def dispatch_wire_message(self, msg: WireMessage) -> None:
-        if isinstance(msg, SteerInput) and self._pending_local_steers:
-            pending = self._pending_local_steers[0]
-            if pending == msg.user_input:
-                self._pending_local_steers.popleft()
-                return
-        super().dispatch_wire_message(msg)
-
-    def render_running_prompt_body(self, columns: int) -> ANSI:
-        if (
-            self._turn_ended
-            and self._current_approval_request_panel is None
-            and self._current_question_panel is None
-        ):
-            return ANSI("")
-        renderable = self.compose(include_status=False)
-        body = render_to_ansi(renderable, columns=columns).rstrip("\n")
-        return ANSI(body if body else "")
-
-    def running_prompt_placeholder(self) -> str | None:
-        if self._current_approval_request_panel is not None:
-            return "Use ↑/↓ or 1/2/3, then press Enter to respond to the approval request."
-        return None
-
-    def running_prompt_hides_input_buffer(self) -> bool:
-        return False
-
-    def running_prompt_allows_text_input(self) -> bool:
-        if self._current_approval_request_panel is not None:
-            return False
-        if self._current_question_panel is not None:
-            return False
-        return not self._turn_ended
-
-    def running_prompt_accepts_submission(self) -> bool:
-        if self._current_approval_request_panel is not None:
-            return True
-        if self._current_question_panel is not None:
-            return True
-        return not self._turn_ended
-
-    def should_handle_running_prompt_key(self, key: str) -> bool:
-        if key == "c-e":
-            return self.has_expandable_panel()
-        if self._current_approval_request_panel is not None:
-            return key in {"up", "down", "enter", "1", "2", "3", "4"}
-        if self._turn_ended:
-            return False
-        if key == "escape":
-            return self._cancel_event is not None
-        return False
-
-    def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None:
-        if key == "c-e":
-            event.app.create_background_task(self._show_panel_in_pager())
-            return
-
-        mapped = {
-            "up": KeyEvent.UP,
-            "down": KeyEvent.DOWN,
-            "enter": KeyEvent.ENTER,
-            "escape": KeyEvent.ESCAPE,
-            "1": KeyEvent.NUM_1,
-            "2": KeyEvent.NUM_2,
-            "3": KeyEvent.NUM_3,
-            "4": KeyEvent.NUM_4,
-        }.get(key)
-        if mapped is None:
-            return
-        if self._current_approval_request_panel is not None:
-            self._clear_buffer(event.current_buffer)
-        self.dispatch_keyboard_event(mapped)
-        self._flush_prompt_refresh()
-
-    async def _show_panel_in_pager(self) -> None:
-        await run_in_terminal(self._show_expandable_panel_content)
-        self._prompt_session.invalidate()
-
-    @staticmethod
-    def _clear_buffer(buffer: Buffer) -> None:
-        if buffer.text:
-            buffer.document = Document(text="", cursor_position=0)
-
-    def _flush_prompt_refresh(self) -> None:
-        if self._need_recompose:
-            self._prompt_session.invalidate()
-            self._need_recompose = False
-
-    def cleanup(self, is_interrupt: bool) -> None:
-        super().cleanup(is_interrupt)
-
-    def _on_question_panel_state_changed(self) -> None:
-        panel = self._current_question_panel
-        if panel is None:
-            if self._question_modal is not None:
-                self._prompt_session.detach_modal(self._question_modal)
-                self._question_modal = None
-            return
-        if self._question_modal is None:
-            self._question_modal = QuestionPromptDelegate(
-                panel,
-                on_advance=self._advance_question,
-                on_invalidate=self._flush_prompt_refresh,
-                buffer_text_provider=lambda: self._prompt_session._session.default_buffer.text,  # pyright: ignore[reportPrivateUsage]
-            )
-            self._prompt_session.attach_modal(self._question_modal)
-        else:
-            self._question_modal.set_panel(panel)
-        self._prompt_session.invalidate()
-
-    def _advance_question(self) -> QuestionRequestPanel | None:
-        """Advance to the next question in the queue, returning the new panel or None."""
-        self.show_next_question_request()
-        return self._current_question_panel

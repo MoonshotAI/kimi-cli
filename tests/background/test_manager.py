@@ -33,7 +33,7 @@ def test_create_bash_task_persists_starting_state(runtime, monkeypatch):
         cwd=str(runtime.session.work_dir),
     )
 
-    assert view.spec.id.startswith("b")
+    assert view.spec.id.startswith("bash-")
     assert view.runtime.status == "starting"
     assert view.runtime.worker_pid == 4242
 
@@ -157,7 +157,7 @@ async def test_create_agent_task_persists_starting_state(runtime, monkeypatch):
         model_override=None,
     )
 
-    assert view.spec.id.startswith("a")
+    assert view.spec.id.startswith("agent-")
     assert view.spec.kind == "agent"
     assert view.runtime.status == "starting"
     assert view.spec.kind_payload["agent_id"] == "a1234567"
@@ -813,6 +813,35 @@ def test_reconcile_recovers_and_publishes_lost_notification(runtime):
     assert notification.event.source_id == spec.id
 
 
+def test_reconcile_marks_task_lost_when_runtime_json_is_corrupted(runtime):
+    manager = runtime.background_tasks
+    store = manager.store
+    spec = TaskSpec(
+        id="b2222226",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="corrupted runtime task",
+        tool_call_id="tool-3e",
+        created_at=time.time() - 60,
+        command="sleep 10",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(spec)
+    store.runtime_path(spec.id).write_text('{"status":"running"', encoding="utf-8")
+
+    published = manager.reconcile(limit=4)
+
+    assert len(published) == 1
+    recovered = store.merged_view(spec.id)
+    assert recovered.runtime.status == "lost"
+    notification = runtime.notifications.store.merged_view(published[0])
+    assert notification.event.type == "task.lost"
+    assert notification.event.source_id == spec.id
+
+
 def test_reconcile_does_not_republish_same_terminal_notification(runtime):
     manager = runtime.background_tasks
     store = manager.store
@@ -906,6 +935,70 @@ def test_publish_terminal_notifications_limit_skips_deduped_results(runtime, mon
     published = manager.publish_terminal_notifications(limit=1)
 
     assert published == [created_ids[task_ids[1]]]
+
+
+def test_completion_event_set_on_publish(runtime):
+    """completion_event is set when a new terminal notification is published."""
+    manager = runtime.background_tasks
+    store = manager.store
+
+    spec = TaskSpec(
+        id="b3333330",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="event test task",
+        tool_call_id="tool-ev1",
+        command="echo done",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(spec)
+    store.write_runtime(
+        spec.id,
+        TaskRuntime(
+            status="completed",
+            exit_code=0,
+            finished_at=time.time(),
+            updated_at=time.time(),
+        ),
+    )
+
+    assert not manager.completion_event.is_set()
+    manager.publish_terminal_notifications()
+    assert manager.completion_event.is_set()
+
+    # Clear and re-publish — dedupe prevents a second signal
+    manager.completion_event.clear()
+    manager.publish_terminal_notifications()
+    assert not manager.completion_event.is_set()
+
+    # A distinct terminal task triggers the event again
+    spec2 = TaskSpec(
+        id="b3333331",
+        kind="bash",
+        session_id=runtime.session.id,
+        description="event test task 2",
+        tool_call_id="tool-ev2",
+        command="echo ok",
+        shell_name="bash",
+        shell_path="/bin/bash",
+        cwd=str(runtime.session.work_dir),
+        timeout_s=60,
+    )
+    store.create_task(spec2)
+    store.write_runtime(
+        spec2.id,
+        TaskRuntime(
+            status="failed",
+            failure_reason="boom",
+            finished_at=time.time(),
+            updated_at=time.time(),
+        ),
+    )
+    manager.publish_terminal_notifications()
+    assert manager.completion_event.is_set()
 
 
 @pytest.mark.asyncio

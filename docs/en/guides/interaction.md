@@ -33,11 +33,14 @@ In plan mode, the AI can only use read-only tools (`Glob`, `Grep`, `ReadFile`) t
 
 ### Entering plan mode
 
-There are three ways to enter plan mode:
+There are four ways to enter plan mode:
 
+- **CLI flag**: Use `kimi --plan` to start a new session directly in plan mode
 - **Keyboard shortcut**: Press `Shift-Tab` to toggle plan mode
 - **Slash command**: Enter `/plan` or `/plan on`
 - **AI-initiated**: When facing complex tasks, the AI may request to enter plan mode via the `EnterPlanMode` tool — you can accept or decline
+
+You can also set `default_plan_mode = true` in the config file to start every new session in plan mode by default. See [Configuration files](../configuration/config-files.md).
 
 When plan mode is active, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
 
@@ -47,6 +50,7 @@ When the AI finishes its plan, it submits it for approval via `ExitPlanMode`. Th
 
 - **Approve / select an approach**: If the plan contains multiple alternative implementation paths, the AI lists 2–3 labeled options (e.g. "Option A", "Option B (Recommended)") for you to choose from — selecting one exits plan mode and tells the AI which path to follow. If the plan has a single path, an **Approve** button is shown instead.
 - **Reject**: Decline the plan, stay in plan mode, and provide feedback via conversation
+- **Reject and Exit**: Decline the plan and exit plan mode in one step
 - **Revise**: Enter revision notes — the AI will update the plan and resubmit
 
 Press `Ctrl-E` to view the full plan content in a fullscreen pager.
@@ -75,17 +79,30 @@ kimi --thinking
 Thinking mode requires support from the current model. Some models (like `kimi-k2-thinking-turbo`) always use thinking mode and cannot be disabled.
 :::
 
-## Sending messages while running (steer)
+## Sending messages while running
 
-While the AI is executing a task, you can type and send follow-up messages in the input box without waiting for the current turn to finish. This feature is called "steering" and allows you to adjust the AI's direction mid-turn.
+While the AI is executing a task, you can send follow-up messages in two ways without waiting for the current turn to finish:
 
-Steer messages are appended to the context after the current step completes, and the AI will see and respond to your message before the next step begins. Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
+- **Queue (Enter)**: Press `Enter` to queue your message for delivery after the current turn completes. The queued message count is shown in the input area title (e.g. `── input · 2 queued ──`). Press `↑` in an empty input box to recall the last queued message for editing.
+- **Inject immediately (Ctrl+S)**: Press `Ctrl+S` to inject your message directly into the running turn context — the model sees it right away.
 
-Any text you type in the input box during a turn but haven't yet submitted is preserved when the turn ends — it won't be lost. You can press `Enter` to send it as the next message, or continue editing.
+Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
 
 ::: tip
-Steer messages do not interrupt the AI's currently executing step — they are processed between steps. To interrupt immediately, use `Ctrl-C`.
+To interrupt the AI's execution immediately, use `Ctrl-C`.
 :::
+
+## Side questions
+
+While the AI is working, you can use the `/btw` command to ask a quick side question without interrupting the main conversation flow.
+
+```
+/btw What is the return type of this function?
+```
+
+Side questions run in an isolated context: they can see the conversation history but do not modify it, and tools are disabled. The response is displayed in a scrollable modal panel — use `↑`/`↓` to scroll, `Escape` to close.
+
+See [Slash commands reference](../reference/slash-commands.md#btw) for details.
 
 ## Background tasks
 
@@ -95,9 +112,9 @@ How background tasks work:
 
 1. The AI uses the `Shell` tool with `run_in_background=true` to launch the command
 2. The tool immediately returns a task ID, and the AI continues with other work
-3. When the task completes, the system automatically notifies the AI, which will inform you of the results
+3. When the task completes, if the AI is idle (waiting for user input), the system automatically triggers a new agent turn to process the results — no manual input needed
 
-You can use the `/task` slash command to open the interactive task browser, where you can view the status and output of all background tasks in real time. See [Slash commands reference](../reference/slash-commands.md#task) for details.
+You can use the `/task` slash command to open the interactive task browser, where you can view the status and output of all background tasks in real time (including tasks that are still running). See [Slash commands reference](../reference/slash-commands.md#task) for details.
 
 ::: tip
 By default, up to 4 background tasks can run simultaneously. This can be adjusted in the `[background]` section of the config file. All background tasks are terminated when the CLI exits by default. See [Configuration files](../configuration/config-files.md#background).
@@ -133,7 +150,7 @@ When you type `@` in a message, Kimi Code CLI will auto-complete file and direct
 Check if there are any issues with @src/components/Button.tsx
 ```
 
-After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion.
+After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion. In Git repositories, file discovery uses `git ls-files` first, enabling fast lookups even in large repos with tens of thousands of files; non-Git projects fall back to directory scanning.
 
 ## Structured questions
 

@@ -37,17 +37,20 @@ class EnterPlanMode(CallableTool2[Params]):
         self._toggle_callback: Callable[[], Awaitable[bool]] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
         self._plan_mode_checker: Callable[[], bool] | None = None
+        self._is_yolo: Callable[[], bool] | None = None
 
     def bind(
         self,
         toggle_callback: Callable[[], Awaitable[bool]],
         plan_file_path_getter: Callable[[], Path | None],
         plan_mode_checker: Callable[[], bool],
+        is_yolo: Callable[[], bool] | None = None,
     ) -> None:
         """Late-bind soul callbacks after KimiSoul is constructed."""
         self._toggle_callback = toggle_callback
         self._plan_file_path_getter = plan_file_path_getter
         self._plan_mode_checker = plan_mode_checker
+        self._is_yolo = is_yolo
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -62,6 +65,26 @@ class EnterPlanMode(CallableTool2[Params]):
             return ToolError(
                 message="EnterPlanMode is not properly initialized.",
                 brief="Not initialized",
+            )
+
+        # In yolo mode, auto-approve entering plan mode
+        if self._is_yolo and self._is_yolo():
+            await self._toggle_callback()
+            plan_path = self._plan_file_path_getter()
+            return ToolReturnValue(
+                is_error=False,
+                output=(
+                    f"Plan mode activated (auto-approved in non-interactive mode).\n"
+                    f"Plan file: {plan_path}\n"
+                    f"Workflow: identify key questions about the codebase → "
+                    f"use Agent(subagent_type='explore') to investigate if needed → "
+                    f"design approach → "
+                    f"modify the plan file with WriteFile or StrReplaceFile "
+                    f"(create it with WriteFile first if it does not exist) → "
+                    f"call ExitPlanMode.\n"
+                ),
+                message="Plan mode on (auto)",
+                display=[BriefDisplayBlock(text="Plan mode on (auto)")],
             )
 
         # Present confirmation dialog to user via QuestionRequest
@@ -135,7 +158,9 @@ class EnterPlanMode(CallableTool2[Params]):
                 output=(
                     f"Plan mode activated. You MUST NOT edit code files — only read and plan.\n"
                     f"Plan file: {plan_path}\n"
-                    f"Workflow: explore with Glob/Grep/ReadFile → design approach → "
+                    f"Workflow: identify key questions about the codebase → "
+                    f"use Agent(subagent_type='explore') to investigate if needed → "
+                    f"design approach → "
                     f"modify the plan file with WriteFile or StrReplaceFile "
                     f"(create it with WriteFile first if it does not exist) → "
                     f"call ExitPlanMode.\n"

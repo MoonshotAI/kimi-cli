@@ -1,26 +1,63 @@
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, cast
 
+from pydantic import BaseModel, ValidationError
+
 from kimi_cli.session import Session
 from kimi_cli.subagents.models import AgentInstanceRecord, AgentLaunchSpec, SubagentStatus
 from kimi_cli.utils.io import atomic_json_write
+from kimi_cli.utils.logging import logger
+
+
+class _AgentLaunchSpecPayload(BaseModel):
+    agent_id: str
+    subagent_type: str
+    model_override: str | None
+    effective_model: str | None
+    created_at: float
+
+
+class _AgentInstanceRecordPayload(BaseModel):
+    agent_id: str
+    subagent_type: str
+    status: str
+    description: str
+    created_at: float
+    updated_at: float
+    last_task_id: str | None = None
+    launch_spec: _AgentLaunchSpecPayload
+
+
+_VALID_SUBAGENT_STATUSES = cast(
+    tuple[str, ...],
+    ("idle", "running_foreground", "running_background", "completed", "failed", "killed"),
+)
 
 
 def _record_from_dict(data: dict[str, Any]) -> AgentInstanceRecord:
-    launch_spec = data["launch_spec"]
+    payload = _AgentInstanceRecordPayload.model_validate(data)
+    if payload.status not in _VALID_SUBAGENT_STATUSES:
+        raise ValueError(f"Invalid subagent status: {payload.status!r}")
     return AgentInstanceRecord(
-        agent_id=data["agent_id"],
-        subagent_type=data["subagent_type"],
-        status=data["status"],
-        description=data["description"],
-        created_at=data["created_at"],
-        updated_at=data["updated_at"],
-        last_task_id=data.get("last_task_id"),
-        launch_spec=AgentLaunchSpec(**launch_spec),
+        agent_id=payload.agent_id,
+        subagent_type=payload.subagent_type,
+        status=cast(SubagentStatus, payload.status),
+        description=payload.description,
+        created_at=payload.created_at,
+        updated_at=payload.updated_at,
+        last_task_id=payload.last_task_id,
+        launch_spec=AgentLaunchSpec(
+            agent_id=payload.launch_spec.agent_id,
+            subagent_type=payload.launch_spec.subagent_type,
+            model_override=payload.launch_spec.model_override,
+            effective_model=payload.launch_spec.effective_model,
+            created_at=payload.launch_spec.created_at,
+        ),
     )
 
 
@@ -89,9 +126,7 @@ class SubagentStore:
         meta = self.meta_path(agent_id)
         if not meta.exists():
             return None
-        import json
-
-        return _record_from_dict(json.loads(meta.read_text(encoding="utf-8")))
+        return _load_instance_record(meta)
 
     def require_instance(self, agent_id: str) -> AgentInstanceRecord:
         record = self.get_instance(agent_id)
@@ -135,9 +170,10 @@ class SubagentStore:
             meta = path / "meta.json"
             if not meta.exists():
                 continue
-            import json
-
-            records.append(_record_from_dict(json.loads(meta.read_text(encoding="utf-8"))))
+            record = _load_instance_record(meta)
+            if record is None:
+                continue
+            records.append(record)
         records.sort(key=lambda record: record.updated_at, reverse=True)
         return records
 
@@ -146,3 +182,15 @@ class SubagentStore:
         if not instance_dir.exists():
             return
         shutil.rmtree(instance_dir)
+
+
+def _load_instance_record(meta_path: Path) -> AgentInstanceRecord | None:
+    try:
+        return _record_from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError, ValidationError, TypeError, ValueError) as exc:
+        logger.warning(
+            "Skipping invalid subagent metadata {path}: {error}",
+            path=meta_path,
+            error=exc,
+        )
+        return None

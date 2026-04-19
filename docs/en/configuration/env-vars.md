@@ -113,7 +113,9 @@ export OPENAI_API_KEY="sk-xxx"
 | Environment Variable | Description |
 | --- | --- |
 | `KIMI_SHARE_DIR` | Customize the share directory path (default: `~/.kimi`) |
-| `KIMI_CLI_NO_AUTO_UPDATE` | Disable automatic update check |
+| `KIMI_CLI_NO_AUTO_UPDATE` | Disable all update-related features |
+| `KIMI_CLI_PASTE_CHAR_THRESHOLD` | Character threshold for folding pasted text (default: `1000`) |
+| `KIMI_CLI_PASTE_LINE_THRESHOLD` | Line threshold for folding pasted text (default: `15`) |
 
 ### `KIMI_SHARE_DIR`
 
@@ -131,7 +133,7 @@ See [Data Locations](./data-locations.md) for details.
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 
-When set to `1`, `true`, `t`, `yes`, or `y` (case-insensitive), disables background auto-update check in shell mode.
+When set to `1`, `true`, `t`, `yes`, or `y` (case-insensitive), disables all update-related features, including background auto-update check, the blocking update gate on startup, and the version hint in the welcome panel.
 
 ```sh
 export KIMI_CLI_NO_AUTO_UPDATE="1"
@@ -139,4 +141,34 @@ export KIMI_CLI_NO_AUTO_UPDATE="1"
 
 ::: tip
 If you installed Kimi Code CLI via Nix or other package managers, this environment variable is typically set automatically since updates are handled by the package manager.
+:::
+
+### `KIMI_CLI_PASTE_CHAR_THRESHOLD`
+
+In Agent mode, when pasted text exceeds this character count, it is folded into a placeholder (e.g., `[Pasted text #1 +10 lines]`) and expanded to full content on submit. Default: `1000`.
+
+```sh
+export KIMI_CLI_PASTE_CHAR_THRESHOLD="1000"
+```
+
+### `KIMI_CLI_PASTE_LINE_THRESHOLD`
+
+In Agent mode, when pasted text reaches this line count, it is folded into a placeholder. Default: `15`.
+
+```sh
+export KIMI_CLI_PASTE_LINE_THRESHOLD="15"
+```
+
+::: tip
+Some terminals (e.g., XShell over SSH) may break CJK input methods (Chinese/Japanese/Korean IME) after pasting multiline text. Symptoms include the IME candidate window not appearing or input becoming unresponsive until Ctrl+C is pressed.
+
+This happens because multiline text in the input buffer can confuse the terminal's cursor position tracking, which affects IME composition window placement. You can work around this by lowering the line threshold to fold multiline pastes into single-line placeholders:
+
+```sh
+export KIMI_CLI_PASTE_LINE_THRESHOLD="2"
+```
+
+With this setting, any paste containing a newline will be automatically folded, preventing multiline text from entering the input buffer. Single-line pastes (URLs, short commands, etc.) are not affected.
+
+Note: The two thresholds use OR logic (character count **or** line count), so lowering only the line threshold is sufficient. Avoid setting the character threshold to a very small value (e.g., `1`), as that would fold all non-empty pastes including single-line short text.
 :::

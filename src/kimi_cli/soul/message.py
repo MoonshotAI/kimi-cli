@@ -50,6 +50,10 @@ def tool_result_to_message(tool_result: ToolResult) -> Message:
             content.extend(_output_to_content_parts(tool_result.return_value.output))
         if not content:
             content.append(system("Tool output is empty."))
+        elif not any(isinstance(part, TextPart) for part in content):
+            # Ensure at least one TextPart exists so the LLM API won't reject
+            # the message with "text content is empty" (see #1663).
+            content.insert(0, system("Tool returned non-text content."))
 
     return Message(
         role="tool",

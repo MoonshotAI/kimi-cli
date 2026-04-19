@@ -1,4 +1,8 @@
-# Plugins
+# Plugins (Beta)
+
+::: warning Beta Feature
+The plugin system is currently in Beta. The implementation details and configuration definitions may change in future releases. Please use with caution in production environments and stay tuned for updates.
+:::
 
 The plugin system allows you to add custom tools to Kimi Code CLI, extending the AI's capabilities. Unlike MCP servers, plugins are lightweight local toolkits ideal for packaging project-specific scripts and utilities.
 

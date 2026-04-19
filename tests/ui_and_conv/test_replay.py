@@ -17,6 +17,85 @@ from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import SteerInput, StepBegin, TextPart, TurnBegin
 
 
+def _make_notification_message(notification_id: str = "n1") -> Message:
+    return Message(
+        role="user",
+        content=[
+            TextPart(
+                text=(
+                    f'<notification id="{notification_id}" category="task" '
+                    'type="task.failed" source_kind="background_task" source_id="t1">\n'
+                    "Title: Background task failed\n"
+                    "Severity: error\n"
+                    "</notification>"
+                )
+            )
+        ],
+    )
+
+
+def test_build_replay_turns_from_history_ignores_notifications() -> None:
+    """Notification messages must not create new replay turns."""
+    history = [
+        Message(role="user", content=[TextPart(text="Original question")]),
+        Message(role="assistant", content=[TextPart(text="First answer")]),
+        _make_notification_message("n1"),
+        Message(role="assistant", content=[TextPart(text="Follow-up answer")]),
+    ]
+
+    turns = _build_replay_turns_from_history(history)
+
+    assert len(turns) == 1
+    assert turns[0].user_message.extract_text(" ") == "Original question"
+    assert turns[0].n_steps == 2
+
+
+def test_build_replay_turns_from_history_ignores_leading_notification() -> None:
+    """Notifications before the first user message should be silently skipped."""
+    history = [
+        _make_notification_message("n1"),
+        Message(role="user", content=[TextPart(text="Hello")]),
+        Message(role="assistant", content=[TextPart(text="Hi")]),
+    ]
+
+    turns = _build_replay_turns_from_history(history)
+
+    assert len(turns) == 1
+    assert turns[0].user_message.extract_text(" ") == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_replay_recent_history_excludes_notifications(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: notifications should not be echoed during replay."""
+    history = [
+        Message(role="user", content=[TextPart(text="Real input")]),
+        Message(role="assistant", content=[TextPart(text="Response")]),
+        _make_notification_message("n1"),
+        Message(role="user", content=[TextPart(text="Second input")]),
+        Message(role="assistant", content=[TextPart(text="Second response")]),
+    ]
+
+    printed: list[str] = []
+    monkeypatch.setattr(
+        replay_module.console,
+        "print",
+        lambda text: printed.append(getattr(text, "plain", str(text))),
+    )
+
+    async def fake_visualize(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(replay_module, "visualize", fake_visualize)
+
+    await replay_recent_history(history)
+
+    assert printed == ["✨ Real input", "✨ Second input"]
+    assert not any("<notification" in p for p in printed)
+
+
 def test_build_replay_turns_from_history_ignores_system_reminders() -> None:
     history = [
         Message(role="user", content=[TextPart(text="Original question")]),
@@ -118,7 +197,7 @@ async def test_replay_recent_history_prefers_wire_when_turns_match(
     step_counts: list[int] = []
     monkeypatch.setattr(replay_module.console, "print", lambda *_args, **_kwargs: None)
 
-    async def fake_visualize(wire_ui, *, initial_status) -> None:
+    async def fake_visualize(wire_ui, *, initial_status, show_thinking_stream=False) -> None:
         steps = 0
         while True:
             try:

@@ -19,7 +19,7 @@ For details about plugins, see the [Plugins](./plugins.md) documentation.
 
 ## Skill discovery
 
-Kimi Code CLI uses a layered loading mechanism to discover skills, loading in the following priority order (later ones override skills with the same name):
+Kimi Code CLI uses a layered loading mechanism to discover skills, loading in the following priority order (earlier ones take priority for skills with the same name):
 
 **Built-in skills**
 
@@ -27,31 +27,46 @@ Skills shipped with the package, providing basic capabilities.
 
 **User-level skills**
 
-Stored in the user's home directory, effective across all projects. Kimi Code CLI checks the following directories in priority order and uses the first one that exists:
+Stored in the user's home directory, effective across all projects. Candidate directories are split into two groups; within each group, the first existing directory is selected, and results from both groups are merged independently (brand group has higher specificity and priority):
 
-1. `~/.config/agents/skills/` (recommended)
-2. `~/.agents/skills/`
-3. `~/.kimi/skills/`
-4. `~/.claude/skills/`
-5. `~/.codex/skills/`
+- **Brand group** (mutually exclusive):
+  1. `~/.kimi/skills/`
+  2. `~/.claude/skills/`
+  3. `~/.codex/skills/`
+- **Generic group** (mutually exclusive):
+  1. `~/.config/agents/skills/` (recommended)
+  2. `~/.agents/skills/`
+
+Both groups are searched independently and results are merged. When a skill with the same name exists in both groups, the brand group version takes priority.
+
+To load skills from all existing brand directories instead of only the first one, enable `merge_all_available_skills` in your config file:
+
+```toml
+merge_all_available_skills = true
+```
+
+When enabled, all existing brand directories are loaded and merged, with same-name skills resolved by priority: kimi > claude > codex. The generic group is not affected.
 
 **Project-level skills**
 
-Stored in the project directory, only effective within that project's working directory. Kimi Code CLI checks the following directories in priority order and uses the first one that exists:
+Stored in the project directory, only effective within that project's working directory. Similarly split into two groups:
 
-1. `.agents/skills/` (recommended)
-2. `.kimi/skills/`
-3. `.claude/skills/`
-4. `.codex/skills/`
+- **Brand group** (mutually exclusive):
+  1. `.kimi/skills/`
+  2. `.claude/skills/`
+  3. `.codex/skills/`
+- **Generic group**: `.agents/skills/`
 
-You can also specify other directories with the `--skills-dir` flag, which skips user-level and project-level skill discovery:
+The `merge_all_available_skills` config applies to project-level skills as well.
+
+You can also specify additional skills directories with the `--skills-dir` flag. This flag can be specified multiple times, and the directories override the auto-discovered user/project directories:
 
 ```sh
-kimi --skills-dir /path/to/my-skills
+kimi --skills-dir /path/to/my-skills --skills-dir /path/to/more-skills
 ```
 
 ::: tip
-Skills paths are independent of [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir). `KIMI_SHARE_DIR` customizes the storage location for configuration, sessions, logs, and other runtime data, but does not affect Skills search paths. Skills are cross-tool shared capability extensions (compatible with Kimi CLI, Claude, Codex, and others), which is a different type of data from application runtime data. To override Skills paths, use the `--skills-dir` flag.
+Skills paths are independent of [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir). `KIMI_SHARE_DIR` customizes the storage location for configuration, sessions, logs, and other runtime data, but does not affect Skills search paths. Skills are cross-tool shared capability extensions (compatible with Kimi CLI, Claude, Codex, and others), which is a different type of data from application runtime data. To specify custom skills paths, use the `--skills-dir` flag.
 :::
 
 ## Built-in skills

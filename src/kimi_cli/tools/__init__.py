@@ -20,7 +20,7 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
     else:
         json_str = json_content
     try:
-        curr_args: JsonType = json.loads(json_str)
+        curr_args: JsonType = json.loads(json_str, strict=False)
     except json.JSONDecodeError:
         return None
     if not curr_args:

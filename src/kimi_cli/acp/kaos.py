@@ -46,11 +46,15 @@ class ACPProcess:
 
     def __init__(
         self,
-        terminal: acp.TerminalHandle,
+        client: acp.Client,
+        session_id: str,
+        terminal_id: str,
         *,
         poll_interval: float = _DEFAULT_POLL_INTERVAL,
     ) -> None:
-        self._terminal = terminal
+        self._client = client
+        self._session_id = session_id
+        self._terminal_id = terminal_id
         self._poll_interval = poll_interval
         self._stdin = _NullWritable()
         self._stdout = asyncio.StreamReader()
@@ -77,7 +81,10 @@ class ACPProcess:
         return await self._exit_future
 
     async def kill(self) -> None:
-        await self._terminal.kill()
+        await self._client.kill_terminal(
+            session_id=self._session_id,
+            terminal_id=self._terminal_id,
+        )
 
     def _feed_output(self, output_response: acp.schema.TerminalOutputResponse) -> None:
         output = output_response.output
@@ -98,7 +105,12 @@ class ACPProcess:
         return 1 if exit_code is None else exit_code
 
     async def _poll_output(self) -> None:
-        exit_task = asyncio.create_task(self._terminal.wait_for_exit())
+        exit_task = asyncio.create_task(
+            self._client.wait_for_terminal_exit(
+                session_id=self._session_id,
+                terminal_id=self._terminal_id,
+            )
+        )
         exit_code: int | None = None
         try:
             while True:
@@ -107,7 +119,10 @@ class ACPProcess:
                     exit_code = exit_response.exit_code
                     break
 
-                output_response = await self._terminal.current_output()
+                output_response = await self._client.terminal_output(
+                    session_id=self._session_id,
+                    terminal_id=self._terminal_id,
+                )
                 self._feed_output(output_response)
                 if output_response.exit_status:
                     exit_code = output_response.exit_status.exit_code
@@ -120,7 +135,10 @@ class ACPProcess:
 
                 await asyncio.sleep(self._poll_interval)
 
-            final_output = await self._terminal.current_output()
+            final_output = await self._client.terminal_output(
+                session_id=self._session_id,
+                terminal_id=self._terminal_id,
+            )
             self._feed_output(final_output)
         except Exception as exc:
             error_note = f"[acp terminal error] {exc}\n"
@@ -138,7 +156,10 @@ class ACPProcess:
             if not self._exit_future.done():
                 self._exit_future.set_result(self._returncode)
             with suppress(Exception):
-                await self._terminal.release()
+                await self._client.release_terminal(
+                    session_id=self._session_id,
+                    terminal_id=self._terminal_id,
+                )
 
 
 class ACPKaos:

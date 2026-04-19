@@ -7,7 +7,7 @@ from contextvars import ContextVar
 import acp
 import streamingjson  # type: ignore[reportMissingTypeStubs]
 from kaos import Kaos, reset_current_kaos, set_current_kaos
-from kosong.chat_provider import ChatProviderError
+from kosong.chat_provider import APIStatusError, ChatProviderError
 
 from kimi_cli.acp.convert import (
     acp_blocks_to_content_parts,
@@ -28,6 +28,7 @@ from kimi_cli.wire.types import (
     MCPLoadingBegin,
     MCPLoadingEnd,
     Notification,
+    PlanDisplay,
     QuestionRequest,
     StatusUpdate,
     SteerInput,
@@ -141,6 +142,14 @@ class ACPSession:
         """The Kimi Code CLI instance bound to this ACP session."""
         return self._cli
 
+    def _is_oauth_session(self) -> bool:
+        """Return True if the current session uses OAuth-based authentication."""
+        try:
+            llm = self._cli.soul.runtime.llm
+            return llm is not None and getattr(llm.provider_config, "oauth", None) is not None
+        except AttributeError:
+            return False
+
     async def prompt(self, prompt: list[ACPContentBlock]) -> acp.PromptResponse:
         user_input = acp_blocks_to_content_parts(prompt)
         self._turn_state = _TurnState()
@@ -189,6 +198,8 @@ class ACPSession:
                         pass
                     case SubagentEvent():
                         pass
+                    case PlanDisplay():
+                        pass
                     case ApprovalRequest():
                         await self._handle_approval_request(msg)
                     case ToolCallRequest():
@@ -198,11 +209,19 @@ class ACPSession:
                             "QuestionRequest is unsupported in ACP session; resolving empty answer."
                         )
                         msg.resolve({})
+                    case _:
+                        pass
         except LLMNotSet as e:
             logger.exception("LLM not set:")
             raise acp.RequestError.auth_required() from e
         except LLMNotSupported as e:
             logger.exception("LLM not supported:")
+            raise acp.RequestError.internal_error({"error": str(e)}) from e
+        except APIStatusError as e:
+            if e.status_code == 401 and self._is_oauth_session():
+                logger.warning("Authentication failed (401), prompting re-login")
+                raise acp.RequestError.auth_required() from e
+            logger.exception("LLM API status error:")
             raise acp.RequestError.internal_error({"error": str(e)}) from e
         except ChatProviderError as e:
             logger.exception("LLM provider error:")

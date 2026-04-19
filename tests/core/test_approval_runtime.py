@@ -202,3 +202,32 @@ async def test_kimisoul_run_preserves_existing_approval_source(
         reset_current_approval_source(token)
 
     assert seen_sources == [source]
+
+
+@pytest.mark.asyncio
+async def test_approval_runtime_wait_for_response_times_out() -> None:
+    """wait_for_response should raise ApprovalCancelledError after timeout
+    instead of hanging forever when no resolve happens.
+
+    Regression test for: subagent approval requests that are never resolved
+    cause the entire session to hang permanently.
+    """
+    runtime = ApprovalRuntime()
+    request = runtime.create_request(
+        request_id="req-timeout",
+        tool_call_id="call-timeout",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/test.txt",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-timeout"),
+    )
+
+    # Use a very short timeout to avoid slow tests
+    with pytest.raises(ApprovalCancelledError):
+        await runtime.wait_for_response(request.id, timeout=0.05)
+
+    # After timeout, the request should be cancelled and cleaned up
+    record = runtime.get_request(request.id)
+    assert record is not None
+    assert record.status == "cancelled"

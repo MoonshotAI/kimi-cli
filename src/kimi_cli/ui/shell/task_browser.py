@@ -183,7 +183,7 @@ class TaskBrowserModel:
         if view is None:
             return "[no output available]"
 
-        path = self.manager.store.output_path(view.spec.id)
+        path = self.manager.resolve_output_path(view.spec.id)
         total_size = path.stat().st_size if path.exists() else 0
         output = self.manager.tail_output(
             view.spec.id,
@@ -481,24 +481,6 @@ def _task_timing_label(view: TaskView, *, now: float | None = None) -> str | Non
 
 
 def _task_browser_style() -> Style:
-    return Style.from_dict(
-        {
-            "header": "bg:#1f2937 #e5e7eb",
-            "header.title": "bg:#1f2937 #67e8f9 bold",
-            "header.meta": "bg:#1f2937 #9ca3af",
-            "status.running": "bg:#1f2937 #86efac bold",
-            "status.success": "bg:#1f2937 #86efac",
-            "status.warning": "bg:#1f2937 #fbbf24",
-            "status.error": "bg:#1f2937 #fca5a5",
-            "status.info": "bg:#1f2937 #93c5fd",
-            "task-list": "bg:#111827 #d1d5db",
-            "task-list.checked": "bg:#164e63 #ecfeff bold",
-            "frame.border": "#155e75",
-            "frame.label": "bg:#0f172a #67e8f9 bold",
-            "footer": "bg:#0f172a #cbd5e1",
-            "footer.key": "bg:#0f172a #67e8f9 bold",
-            "footer.text": "bg:#0f172a #cbd5e1",
-            "footer.warning": "bg:#7f1d1d #fecaca bold",
-            "footer.meta": "bg:#0f172a #94a3b8",
-        }
-    )
+    from kimi_cli.ui.theme import get_task_browser_style
+
+    return get_task_browser_style()

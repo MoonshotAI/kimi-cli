@@ -73,7 +73,7 @@ def test_question_request_answer(tmp_path) -> None:
         config_text=None,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,  # yolo to skip approval for other tools
+        yolo=False,  # yolo to skip approval for other tools
     )
     try:
         send_initialize(wire, capabilities={"supports_question": True})
@@ -140,7 +140,7 @@ def test_question_request_error_response(tmp_path) -> None:
         config_text=None,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
     try:
         send_initialize(wire, capabilities={"supports_question": True})
@@ -235,7 +235,7 @@ def test_ask_user_tool_hidden_when_question_not_supported(tmp_path) -> None:
         config_text=None,
         work_dir=work_dir,
         home_dir=home_dir,
-        yolo=True,
+        yolo=False,
     )
     try:
         # Initialize WITHOUT supports_question (defaults to false)

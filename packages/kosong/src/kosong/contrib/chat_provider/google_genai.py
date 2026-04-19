@@ -42,6 +42,7 @@ from kosong.chat_provider import (
     StreamedMessagePart,
     ThinkingEffort,
     TokenUsage,
+    convert_httpx_error,
 )
 from kosong.message import (
     AudioURLPart,
@@ -88,13 +89,15 @@ class GoogleGenAI:
         base_url: str | None = None,
         stream: bool = True,
         vertexai: bool | None = None,
+        default_headers: dict[str, str] | None = None,
         **client_kwargs: Any,
     ):
         self._model = model
         self._stream = stream
         self._base_url = base_url
+        http_options = HttpOptions(base_url=base_url, headers=default_headers)
         self._client: genai_client.Client = genai.Client(
-            http_options=HttpOptions(base_url=base_url),
+            http_options=http_options,
             api_key=api_key,
             vertexai=vertexai,
             **client_kwargs,
@@ -180,7 +183,8 @@ class GoogleGenAI:
                 case "medium":
                     # FIXME: medium not supported yet, use high
                     thinking_config.thinking_level = ThinkingLevel.HIGH
-                case "high":
+                case "high" | "xhigh" | "max":
+                    # xhigh/max are Anthropic-specific; degrade to HIGH for Gemini.
                     thinking_config.thinking_level = ThinkingLevel.HIGH
         else:
             match effort:
@@ -193,7 +197,8 @@ class GoogleGenAI:
                 case "medium":
                     thinking_config.thinking_budget = 4096
                     thinking_config.include_thoughts = True
-                case "high":
+                case "high" | "xhigh" | "max":
+                    # xhigh/max are Anthropic-specific; cap at Gemini's highest budget.
                     thinking_config.thinking_budget = 32_000
                     thinking_config.include_thoughts = True
 
@@ -299,6 +304,8 @@ class GoogleGenAIStreamedMessage:
                             yield message_part
         except genai_errors.APIError as exc:
             raise _convert_error(exc) from exc
+        except httpx.HTTPError as exc:
+            raise convert_httpx_error(exc) from exc
 
     def _process_part(self, part: Part):
         """Process a single part and yield message components (synchronous generator).
@@ -483,7 +490,6 @@ def _tool_message_to_function_response_part(
     response_data, tool_result_parts = _tool_result_to_response_and_parts(message.content)
     return Part(
         function_response=FunctionResponse(
-            id=message.tool_call_id,
             name=_tool_call_id_to_name(message.tool_call_id, tool_name_by_id),
             response=response_data,
             parts=tool_result_parts,
@@ -648,7 +654,7 @@ def message_to_google_genai(message: Message) -> Content:
     for tool_call in message.tool_calls or []:
         if tool_call.function.arguments:
             try:
-                parsed_arguments = json.loads(tool_call.function.arguments)
+                parsed_arguments = json.loads(tool_call.function.arguments, strict=False)
             except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
                 raise ChatProviderError("Tool call arguments must be valid JSON.") from exc
             if not isinstance(parsed_arguments, dict):
@@ -658,7 +664,6 @@ def message_to_google_genai(message: Message) -> Content:
             args = {}
 
         function_call = FunctionCall(
-            id=tool_call.id,
             name=tool_call.function.name,
             args=args,
         )

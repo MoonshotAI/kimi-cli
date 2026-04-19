@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.9.0 (2026-04-02)
+
+- Tests: Add `test_glob_includes_hidden_files` to verify glob matches dotfiles and hidden directories
+
+## 0.8.0 (2026-04-01)
+
+- Fix `writetext` converting LF to CRLF on Windows — open files with `newline=""` to disable Python's universal newline translation on write
+
 ## 0.7.0 (2026-02-06)
 
 - Add `env` parameter to `exec()` method for passing environment variables to subprocesses
