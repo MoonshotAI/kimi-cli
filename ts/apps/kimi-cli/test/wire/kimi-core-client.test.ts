@@ -150,7 +150,7 @@ function createFakeStack(): FakeStack {
     async createSession(options: CreateSessionOptions): Promise<ManagedSession> {
       nextId += 1;
       const sessionId = options.sessionId ?? `ses_fake${String(nextId)}`;
-      const eventBus = (options.eventBus as SessionEventBus | undefined) ?? new SessionEventBus();
+      const eventBus = (options.eventBus) ?? new SessionEventBus();
       return buildManaged(sessionId, eventBus);
     },
     async resumeSession(
@@ -234,7 +234,7 @@ async function collect(
     const race = await Promise.race([
       iterator.next(),
       new Promise<IteratorResult<WireMessage>>((resolve) => {
-        setTimeout(() => resolve({ value: undefined as unknown as WireMessage, done: true }), 50);
+        setTimeout(() =>{  resolve({ value: undefined as unknown as WireMessage, done: true }); }, 50);
       }),
     ]);
     if (race.done) continue;
@@ -378,6 +378,36 @@ describe('KimiCoreClient', () => {
     const [msg] = await collectTask;
     expect(msg!.method).toBe('content.delta');
     expect(msg!.data).toEqual({ type: 'text', text: 'resumed' });
+
+    await client.dispose();
+  });
+
+  // Phase 24 N_e — destroySession must unsubscribe the eventBus bridge so
+  // repeated create/destroy / switchModel cycles do not leak listeners.
+  // A stale listener would keep pushing into the queue of a torn-down
+  // session, either as a memory leak or (worse) as cross-session fanout.
+  it('destroySession unsubscribes the bus listener (Phase 24 N3/N_e)', async () => {
+    const { sessionManager, states } = createFakeStack();
+    const client = new KimiCoreClient({
+      sessionManager: sessionManager as never,
+      runtime: fakeRuntime(),
+      model: 'test-model',
+      systemPrompt: 'test',
+      buildTools: (): Tool[] => [],
+      config: fakeConfig(),
+      kaos: fakeKaos(),
+    });
+
+    const { session_id } = await client.createSession('/tmp');
+    const state = states.get(session_id)!;
+    const listenerCountBefore = state.eventBus.listenerCount();
+
+    await client.destroySession(session_id);
+
+    // After destroySession, the bus must have one fewer listener than
+    // before (the busListener registered by registerManagedSession is
+    // removed via `unsubscribeBus → eventBus.off`).
+    expect(state.eventBus.listenerCount()).toBeLessThan(listenerCountBefore);
 
     await client.dispose();
   });

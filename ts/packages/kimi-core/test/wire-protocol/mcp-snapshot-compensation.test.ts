@@ -17,17 +17,23 @@ import type { BusEvent } from '../../src/soul-plus/session-event-bus.js';
 import { SessionEventBus } from '../../src/soul-plus/session-event-bus.js';
 import type { SoulEvent } from '../../src/soul/index.js';
 
-// Helpers to create minimal typed SoulEvents for the test.
-// Cast through unknown because SoulEvent is a discriminated union and these
-// "mcp.*" shapes are extended event types outside the base Soul type set.
+// Helpers that mirror MCPManager's real event shapes (see
+// packages/kimi-core/src/soul/event-sink.ts for the SoulEvent schema and
+// packages/kimi-core/src/soul-plus/mcp/manager.ts for the emit sites).
+// snake_case field names match the discriminated union exactly so that
+// the bridge/adapter contract being asserted here is identical to what
+// production code feeds through the bus.
 function mcpLoading(): SoulEvent {
-  return { type: 'mcp.loading', data: { serverName: 'srv_a' } } as unknown as SoulEvent;
+  return {
+    type: 'mcp.loading',
+    data: { status: 'loading', server_name: 'srv_a' },
+  };
 }
 function mcpConnected(): SoulEvent {
   return {
     type: 'mcp.connected',
-    data: { serverName: 'srv_a', toolCount: 3 },
-  } as unknown as SoulEvent;
+    data: { server_id: 'srv_a', tool_count: 3 },
+  };
 }
 function mcpStatusSnapshot(): SoulEvent {
   return {
@@ -39,7 +45,7 @@ function mcpStatusSnapshot(): SoulEvent {
       toolCount: 3,
       servers: [{ name: 'srv_a', status: 'connected', toolCount: 3 }],
     },
-  } as unknown as SoulEvent;
+  };
 }
 
 describe('RR2-B-A mcp snapshot compensation (Phase 24)', () => {

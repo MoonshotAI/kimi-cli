@@ -198,23 +198,6 @@ export interface KimiCoreClientDeps {
    * subagents simply omit the field).
    */
   readonly agentTypeRegistry?: AgentTypeRegistry | undefined;
-  /**
-   * Phase 24 Step 4.5 — optional MCPManager. Used only for emitting a
-   * one-shot `status.update.mcp_status` snapshot into `sharedEventBus`
-   * after each session's bridge is installed (compensates for
-   * `MCPManager.loadAll` firing before any EventBus listener exists — see
-   * registerManagedSession and the N2 multi-session note therein).
-   * Not forwarded to SessionManager / SoulPlus (M2 decision); wire mcp.*
-   * methods read MCPManager directly via `DefaultHandlersDeps.mcpRegistry`
-   * in the wire path.
-   */
-  readonly mcpManager?: import('@moonshot-ai/core').MCPManager | undefined;
-  /**
-   * Phase 24 B-3 — shared EventBus pre-wired into MCPManager at construction
-   * so mcp.* events survive the loadAll → session-create ordering gap.
-   * When set, each session uses this bus instead of creating a fresh one.
-   */
-  readonly sharedEventBus?: SessionEventBus | undefined;
 }
 
 // ── KimiCoreClient ─────────────────────────────────────────────────
@@ -264,12 +247,10 @@ export class KimiCoreClient implements WireClient {
   }
 
   getInitializeResponse(): InitializeResult | undefined {
-    if (this.cachedInitializeResponse === undefined) {
-      // Lazy: `/hooks` asks for hooks capability before the CLI calls
+    // Lazy: `/hooks` asks for hooks capability before the CLI calls
       // `initialize()`. Build + cache on demand so the slash handler
       // does not have to wait for an explicit handshake.
-      this.cachedInitializeResponse = this.buildInitializeResponse();
-    }
+      this.cachedInitializeResponse ??= this.buildInitializeResponse();
     return this.cachedInitializeResponse;
   }
 
@@ -304,7 +285,7 @@ export class KimiCoreClient implements WireClient {
     mode: { kind: 'create'; workDir: string } | { kind: 'resume'; sessionId: string },
   ): Promise<{ session_id: string }> {
     const queue = new WireEventQueue();
-    const eventBus = this.deps.sharedEventBus ?? new SessionEventBus();
+    const eventBus = new SessionEventBus();
 
     // The session id is only known AFTER `createSession` / `resumeSession`
     // resolves (for `create` the id is allocated inside kimi-core; for
@@ -574,20 +555,6 @@ export class KimiCoreClient implements WireClient {
     };
     busListenerRef = busListener;
     eventBus.on(busListener);
-
-    // RR2-B-A: emit a status.update.mcp_status snapshot after the listener
-    // bridge is installed so the session sees the current MCP state even when
-    // MCPManager.loadAll events fired before any session existed.
-    //
-    // N2 multi-session note: when sharedEventBus is provided, all sessions
-    // share the same bus. Each createSession emits the snapshot to that
-    // shared bus, so every installed listener (including listeners for other
-    // sessions) receives it. This is intentional — the snapshot is
-    // process-level MCP state and all sessions need it. Safe as long as
-    // there is a single shared MCPManager per process (current design).
-    if (this.deps.mcpManager !== undefined) {
-      eventBus.emit({ type: 'status.update.mcp_status', data: this.deps.mcpManager.status() });
-    }
 
     return { session_id: managedId };
   }

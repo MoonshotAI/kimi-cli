@@ -437,8 +437,6 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   // events (mcp.loading / mcp.connected / mcp.tools_changed) are not lost.
   // The same bus is passed to KimiCoreClient so each session reuses it
   // instead of creating a fresh one (avoids multi-session routing bugs).
-  const sharedEventBus = new SessionEventBus();
-
   let mcpManager: MCPManager | undefined;
   const mcpTools: Tool[] = [];
   // Phase 21 Slice C.2.3 — assemble MCP configs in priority order:
@@ -451,9 +449,12 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   const mcpConfig = mergeMcpConfigs(mcpConfigsToMerge);
   if (mcpConfig !== undefined) {
     const parsed = parseMcpConfig(mcpConfig);
+    // Phase 24 MA1: TUI path does not consume mcp.* events (event-adapter
+    // returns null for them). eventSink left undefined; MCPManager runs
+    // silently. The `--wire` path sets eventSink on its own MCPManager
+    // instance so remote clients receive mcp.* events.
     const mcpResult = await buildMcpManager({
       config: parsed,
-      eventSink: sharedEventBus,
       logger: pinoToLogger(getLogger()).child({ component: 'mcp-manager' }),
       MCPManager,
       MCPConfigError,
@@ -549,8 +550,8 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     ];
     try {
       tools.push(new ReadMediaFileTool(localKaos, workspace, defaultCapabilities));
-    } catch (err) {
-      if (!(err instanceof SkipThisTool)) throw err;
+    } catch (error) {
+      if (!(error instanceof SkipThisTool)) throw error;
     }
     return [
       ...tools,
@@ -606,7 +607,7 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     if (opts.agentFile !== undefined) {
-      throw new Error(`failed to load --agent-file ${opts.agentFile}: ${msg}`);
+      throw new Error(`failed to load --agent-file ${opts.agentFile}: ${msg}`, { cause: error });
     }
     process.stderr.write(
       `warning: failed to load bundled subagent types; Agent tool will be disabled: ${msg}\n`,
@@ -627,8 +628,6 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     maxContextSize,
     rebuildRuntimeForModel,
     ...(agentTypeRegistry !== undefined ? { agentTypeRegistry } : {}),
-    ...(mcpManager !== undefined ? { mcpManager } : {}),
-    sharedEventBus,
   });
 
   // Phase 21 Slice F — `--session` with no id (argParser normalised to '')
@@ -702,8 +701,8 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     // Slice 5.2 (D4) — plan mode management on bootstrap.
     if (opts.session !== undefined || opts.continue) {
       // Resume path: detect conflict between CLI flag and persisted state.
-      await wireClient.schedulePlanModeReminder(resolvedSessionId, opts.plan === true);
-    } else if (opts.plan === true) {
+      await wireClient.schedulePlanModeReminder(resolvedSessionId,  opts.plan);
+    } else if (opts.plan) {
       // Codex C4: fresh session with --plan must activate plan mode in core,
       // not just the TUI state. Without this, TurnManager stays in default
       // mode and the LLM never sees plan-mode dynamic injections.
@@ -1113,7 +1112,7 @@ async function runWire(opts: CLIOptions): Promise<void> {
     // Store an error-swallowing tail so a failed swap does not wedge
     // the lock for the next caller; the actual rejection still
     // propagates through the `next` we return.
-    const tail = next.catch(() => undefined);
+    const tail = next.catch(() => {});
     swapLocks.set(sessionId, tail);
     try {
       await next;

@@ -24,7 +24,14 @@ interface McpLoadNotif {
 
 export interface BuildMcpManagerOptions {
   readonly config: McpConfig;
-  readonly eventSink: EventSink;
+  /**
+   * Optional event sink. When present (e.g. the `--wire` path feeds a
+   * shared `SessionEventBus` so remote clients see mcp.* events), MCPManager
+   * emits mcp.* / status.update.mcp_status through it. The TUI path leaves
+   * it undefined because `event-adapter.ts` returns null for mcp.* — the
+   * events would be silently dropped, so we skip the plumbing entirely.
+   */
+  readonly eventSink?: EventSink | undefined;
   readonly logger?: Logger | undefined;
   /** The MCPManager class (passed by value so callers control eager vs lazy import). */
   readonly MCPManager: new (opts: {
@@ -57,7 +64,7 @@ export async function buildMcpManager(
   try {
     manager = new opts.MCPManager({
       config: opts.config,
-      eventSink: opts.eventSink,
+      ...(opts.eventSink !== undefined ? { eventSink: opts.eventSink } : {}),
       ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
       onNotify: (notif: McpLoadNotif) => {
         if (notif.kind === 'loading') {
