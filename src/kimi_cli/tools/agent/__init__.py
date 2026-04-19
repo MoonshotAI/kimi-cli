@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from typing import override
 
+from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -135,6 +136,11 @@ class AgentTool(CallableTool2[Params]):
             return ToolError(
                 message=f"Unknown model alias: {params.model}",
                 brief="Invalid model alias",
+            )
+        if params.work_dir is not None and not KaosPath(params.work_dir).is_absolute():
+            return ToolError(
+                message=f"work_dir must be an absolute path, got: {params.work_dir}",
+                brief="Invalid work_dir",
             )
         if params.run_in_background:
             return await self._run_in_background(params)
