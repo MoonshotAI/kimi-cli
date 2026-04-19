@@ -41,6 +41,7 @@ import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 
 import type { HookEngine } from '../hooks/engine.js';
+import type { Logger } from '../utils/logger.js';
 import { WireHookExecutor, type WireHookSender } from '../hooks/wire-executor.js';
 import type { HookEventType, WireHookConfig } from '../hooks/types.js';
 import type { KosongAdapter, Runtime } from '../soul/runtime.js';
@@ -130,6 +131,14 @@ export interface DefaultHandlersDeps {
   readonly defaultModelProvider?: (() => string) | undefined;
   // Phase 21 §A — hook reverse-RPC timeout. Defaults to 30s.
   readonly hookTimeoutMs?: number | undefined;
+  // Phase 20 round-5 follow-up — logger forwarded into
+  // `SessionManager.createSession` so wire daemons (apps/kimi-cli
+  // --wire + SDK embedders with their own process) get the same
+  // NotificationManager observability as the in-process TUI. Note:
+  // the wire `session.resume` handler is a read-only replay snapshot
+  // and never calls `SessionManager.resumeSession`, so there is no
+  // resume-path plumbing here. Optional for unit tests that don't care.
+  readonly logger?: Logger | undefined;
 }
 
 // Phase 17 §B.7 — the 13 HookEvent types registered under
@@ -419,6 +428,8 @@ export function registerDefaultWireHandlers(
       eventBus,
       workspaceDir,
       ...(orchestrator !== undefined ? { orchestrator } : {}),
+      // Phase 20 round-5 follow-up — wire daemon logger plumbing.
+      ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
     });
     const data: SessionCreateResponseData = { session_id: managed.sessionId };
     return createWireResponse({

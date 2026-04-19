@@ -37,6 +37,7 @@ import {
   parseHookConfigs,
   type AgentTypeRegistry,
   type HookExecutor,
+  type Logger,
   type ManagedSession,
   type NotificationData,
   type PermissionMode,
@@ -198,6 +199,18 @@ export interface KimiCoreClientDeps {
    * subagents simply omit the field).
    */
   readonly agentTypeRegistry?: AgentTypeRegistry | undefined;
+  /**
+   * Phase 20 round-5 follow-up — structured logger forwarded into
+   * `SessionManager.createSession/resumeSession`, which threads it
+   * onward to `SoulPlusDeps.logger` → `NotificationManager`. Without
+   * this, NotificationManager's fan-out errors (wire subscriber
+   * throws, etc.) fall through to `noopLogger` and get silently
+   * dropped — the real observability regression Phase 20-B left on
+   * the table. Optional so SDK embedders that do their own logging
+   * can elide it; the `bootstrapCoreShell` CLI path always supplies
+   * a pino-backed adapter.
+   */
+  readonly logger?: Logger | undefined;
 }
 
 // ── KimiCoreClient ─────────────────────────────────────────────────
@@ -452,6 +465,10 @@ export class KimiCoreClient implements WireClient {
       ...(this.deps.agentTypeRegistry !== undefined
         ? { agentTypeRegistry: this.deps.agentTypeRegistry }
         : {}),
+      // Phase 20 round-5 follow-up — logger all the way to SoulPlus
+      // so NotificationManager's fan-out errors surface through the
+      // app's structured log sink instead of the default noopLogger.
+      ...(this.deps.logger !== undefined ? { logger: this.deps.logger } : {}),
     };
 
     const managed =
@@ -672,18 +689,34 @@ export class KimiCoreClient implements WireClient {
   }
 
   async compact(sessionId: string, customInstruction?: string): Promise<void> {
+    // Phase 20 round-5 follow-up — align with the `clear` contract
+    // (unknown session → throw). A stale sessionId previously made
+    // `/compact` "silently succeed" from the TUI's perspective while
+    // the actual session never ran compaction; throwing surfaces the
+    // drift at the slash layer where the user sees the error.
     const record = this.sessions.get(sessionId);
-    if (record === undefined) return;
+    if (record === undefined) {
+      throw new Error(`/compact: unknown session ${sessionId}`);
+    }
     await record.managed.sessionControl.compact(customInstruction);
   }
 
   async clear(sessionId: string): Promise<void> {
     // Phase 20 §A — delegate to SessionControl.clear(), which awaits the
     // WAL `context_cleared` append before zeroing the in-memory history.
-    // Silently no-op for unknown sessions so a stale `/clear` after a
-    // session change does not surface a generic error to the TUI.
+    //
+    // Round-5 review: an unknown session id MUST throw rather than
+    // silently succeed. The caller (slash `/clear` + performReload) uses
+    // the absence of an error as "core context is now gone"; if we
+    // swallow the unknown-session case, the TUI clears its transcript
+    // while the wrong session (or no session) is actually bound, and
+    // any subsequent prompt routes to that session with its old
+    // history still intact. Throwing lets performReload surface
+    // "core clear failed" + keep the transcript untouched.
     const record = this.sessions.get(sessionId);
-    if (record === undefined) return;
+    if (record === undefined) {
+      throw new Error(`/clear: unknown session ${sessionId}`);
+    }
     await record.managed.sessionControl.clear();
   }
 
@@ -796,13 +829,27 @@ export class KimiCoreClient implements WireClient {
   }
   async setThinking(_sessionId: string, _level: string): Promise<void> {}
   async setPlanMode(sessionId: string, enabled: boolean): Promise<void> {
+    // Round-7 review: an unknown session id used to silently no-op,
+    // which let a stale TUI sessionId confirm `/plan on` to the user
+    // while the real session (or no session at all) kept the old
+    // mode. Throw instead so slash dispatch routes the failure into
+    // the transcript. Mirrors `clear` / `compact`.
     const record = this.sessions.get(sessionId);
-    if (record === undefined) return;
+    if (record === undefined) {
+      throw new Error(`/plan: unknown session ${sessionId}`);
+    }
     await record.managed.sessionControl.setPlanMode(enabled);
   }
   async setYolo(sessionId: string, enabled: boolean): Promise<void> {
+    // Round-7 review: silent no-op was especially risky here — `/yolo`
+    // is a bypass-permissions toggle the user expects to take effect.
+    // A stale sessionId that swallowed the call could let the user
+    // believe auto-approval is live while the real session still
+    // gates every tool. Throw to surface the drift.
     const record = this.sessions.get(sessionId);
-    if (record === undefined) return;
+    if (record === undefined) {
+      throw new Error(`/yolo: unknown session ${sessionId}`);
+    }
     await record.managed.sessionControl.setYolo(enabled);
   }
 

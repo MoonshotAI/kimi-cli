@@ -25,6 +25,7 @@ import type { Mock } from 'vitest';
 import {
   CompactionOrchestrator,
   STATIC_DEFAULT_RUNTIME_STATE,
+  STATIC_NO_PENDING_TURN,
   type CompactionOrchestratorDeps,
 } from '../../src/soul-plus/compaction-orchestrator.js';
 import { SessionEventBus, SessionLifecycleStateMachine } from '../../src/soul-plus/index.js';
@@ -136,6 +137,7 @@ function buildHarness(overrides: Partial<CompactionOrchestratorDeps> = {}): Harn
     sink,
     journalWriter: contextState.journalWriter,
     runtimeStateProvider: STATIC_DEFAULT_RUNTIME_STATE,
+    getPendingTurnId: STATIC_NO_PENDING_TURN,
     ...overrides,
   };
 
@@ -160,14 +162,15 @@ function readTransitions(spy: { mock: { calls: unknown[][] } }): string[] {
 // ── Tests ──────────────────────────────────────────────────────────────
 
 describe('CompactionOrchestrator — executeCompaction', () => {
-  it('accepts exactly the 7 required deps on its constructor', () => {
-    // Structural assertion: the 7 required field names must be sufficient
+  it('accepts exactly the 8 required deps on its constructor', () => {
+    // Structural assertion: the required field names must be sufficient
     // to construct a CompactionOrchestrator. An Implementer that widens
     // the constructor with additional required deps will fail this test.
     // Phase 23 fix raised the count from 6 to 7 by adding
-    // `runtimeStateProvider` (the late-bound permission_mode / plan_mode
-    // snapshot needed so the post-rotate session_initialized reflects the
-    // current state instead of reverting to the original baseline).
+    // `runtimeStateProvider`. Phase 20 round-5 raised it to 8 by adding
+    // `getPendingTurnId` (required, not optional, so the /compact race
+    // guard cannot be silently bypassed by a new construction site that
+    // forgets to wire it).
     const h = buildHarness();
     const minimalDeps: CompactionOrchestratorDeps = {
       contextState: h.deps.contextState,
@@ -177,6 +180,7 @@ describe('CompactionOrchestrator — executeCompaction', () => {
       sink: h.deps.sink,
       journalWriter: h.deps.journalWriter,
       runtimeStateProvider: STATIC_DEFAULT_RUNTIME_STATE,
+      getPendingTurnId: STATIC_NO_PENDING_TURN,
     };
     expect(() => new CompactionOrchestrator(minimalDeps)).not.toThrow();
   });
@@ -338,6 +342,33 @@ describe('CompactionOrchestrator — triggerCompaction (manual /compact)', () =>
     await expect(orchestrator.triggerCompaction()).rejects.toThrow(
       /Cannot compact while a turn is active/i,
     );
+  });
+
+  it('refuses when getPendingTurnId reports an in-flight prompt launch (round-5 review)', async () => {
+    // `handlePrompt` sets `pendingLaunchTurnId` synchronously but only
+    // transitions lifecycle to 'active' after awaiting its journal
+    // appends. Without this guard `/compact` sees isIdle() === true
+    // during that window and races the prompt. The dep predicate
+    // returns the current pending id; triggerCompaction must refuse.
+    const h = buildHarness({
+      lifecycleStateMachine: new SessionLifecycleStateMachine('idle'),
+      getPendingTurnId: () => 'turn_pending_123',
+    });
+    const orchestrator = new CompactionOrchestrator(h.deps);
+    await expect(orchestrator.triggerCompaction()).rejects.toThrow(
+      /prompt launch is in flight/i,
+    );
+    // No transitions — guard must reject BEFORE any state mutation.
+    expect(readTransitions(h.transitionSpy)).toEqual([]);
+  });
+
+  it('proceeds when getPendingTurnId returns undefined (no in-flight turn)', async () => {
+    const h = buildHarness({
+      lifecycleStateMachine: new SessionLifecycleStateMachine('idle'),
+      getPendingTurnId: () => undefined,
+    });
+    const orchestrator = new CompactionOrchestrator(h.deps);
+    await expect(orchestrator.triggerCompaction()).resolves.toBeUndefined();
   });
 });
 

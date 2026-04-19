@@ -71,6 +71,14 @@ export const FORCE_FLUSH_KINDS: ReadonlySet<string> = new Set<string>([
   // Without it the wire can't be resumed, so we block the first createSession
   // return on a real fsync (v2 §4.5.4 + phase-23 §Step 5.2).
   'session_initialized',
+  // Phase 20 round-5 review — `/clear` is an explicit user-intent operation
+  // ("this context is gone now"). Without fsync, the 50ms batched-drain
+  // window between `ContextState.clear()` return and the next force-flush
+  // record can swallow the `context_cleared` entry on crash, so replay
+  // resurrects the pre-clear history. Same durability contract as
+  // `approval_response`: the moment we return success to the user, the
+  // record must be on disk.
+  'context_cleared',
 ]);
 
 /** Default drain timer cadence for `fsyncMode: 'batched'`. */

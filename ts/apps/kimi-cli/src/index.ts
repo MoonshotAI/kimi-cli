@@ -628,6 +628,13 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     maxContextSize,
     rebuildRuntimeForModel,
     ...(agentTypeRegistry !== undefined ? { agentTypeRegistry } : {}),
+    // Phase 20 round-5 follow-up — plumb the pino-backed Logger all
+    // the way to SessionManager so SoulPlus.NotificationManager stops
+    // dropping fan-out errors into noopLogger. `bootstrapCoreShell`
+    // is the sole production entry that constructs KimiCoreClient, so
+    // wiring it here guarantees every TUI and `--print` session gets
+    // the logger; wire-daemon has its own plumbing (see runWire).
+    logger: pinoToLogger(getLogger()).child({ component: 'session' }),
   });
 
   // Phase 21 Slice F — `--session` with no id (argParser normalised to '')
@@ -1155,6 +1162,10 @@ async function runWire(opts: CLIOptions): Promise<void> {
     rebuildRuntimeForModel: wireRebuildRuntimeForModel,
     // Phase 24 B-2 — pass MCPManager so mcp.list / mcp.refresh work.
     ...(wireMcpManager !== undefined ? { mcpRegistry: wireMcpManager } : {}),
+    // Phase 20 round-5 follow-up — wire daemon logger plumbing so
+    // sessions created via `session.create` wire frames get the same
+    // NotificationManager observability as TUI sessions.
+    logger: pinoToLogger(getLogger()).child({ component: 'session' }),
   });
 
   // Phase 17 §A.1 — per-session WireEventBridge, keyed by sessionId.

@@ -24,6 +24,7 @@ import type { CompactionProvider, JournalCapability } from '../../../src/soul/in
 import {
   CompactionOrchestrator,
   STATIC_DEFAULT_RUNTIME_STATE,
+  STATIC_NO_PENDING_TURN,
 } from '../../../src/soul-plus/compaction-orchestrator.js';
 import type { SessionLifecycleStateMachine } from '../../../src/soul-plus/lifecycle-state-machine.js';
 import type { ToolCallOrchestrator } from '../../../src/soul-plus/orchestrator.js';
@@ -64,6 +65,7 @@ export function makeRealSubcomponents(input: RealSubcomponentsInput): RealSubcom
     sink: input.sink,
     journalWriter: input.contextState.journalWriter,
     runtimeStateProvider: STATIC_DEFAULT_RUNTIME_STATE,
+    getPendingTurnId: STATIC_NO_PENDING_TURN,
     ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
     ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
   });

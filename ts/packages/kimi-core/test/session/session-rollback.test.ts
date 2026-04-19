@@ -192,6 +192,204 @@ describe('Phase 18 F.1 — SessionManager.rollbackSession', () => {
     await expect(mgr.rollbackSession('ses_does_not_exist', 1)).rejects.toThrow(/not found|unknown/i);
   });
 
+  it('rollback reserves lifecycle for the whole async body — a concurrent prompt launch is rejected as busy (round-7 race closure)', async () => {
+    // Round-7 review B1 regression guard: the previous rollback fix
+    // did a SYNC guard and then entered several awaits
+    // (`stateCache.read` / `readFile` / `atomicWrite`). In that
+    // window `TurnManager.handlePrompt` could sneak in, set
+    // `pendingLaunchTurnId`, and physically write `turn_begin` to
+    // wire.jsonl — which rollback's trailing `atomicWrite` would
+    // then overwrite. The fix is `tryReserveForMaintenance()` held
+    // through the whole body.
+    //
+    // We verify the structural reservation: while rollback's await
+    // body is in flight, `turnManager.tryReserveForMaintenance()`
+    // must return false (another maintenance op holds the slot).
+    const sessionId = 'ses_rollback_race';
+    const created = await mgr.createSession({
+      workspaceDir: tmp,
+      sessionId,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'test-model',
+    });
+    await created.sessionJournal.appendTurnBegin({
+      type: 'turn_begin',
+      turn_id: 'turn_1',
+      agent_type: 'main',
+      user_input: 'hi',
+      input_kind: 'user',
+    });
+
+    const turnManager = created.soulPlus.getTurnManager();
+    // Sanity: before rollback fires, a fresh reservation is grantable.
+    expect(turnManager.tryReserveForMaintenance()).toBe(true);
+    turnManager.releaseMaintenance();
+
+    // Fire rollback but DON'T await — while its promise is pending,
+    // any concurrent reservation request must fail.
+    const rollbackPromise = mgr.rollbackSession(sessionId, 1);
+
+    // Event-loop tick so rollback has entered its async body and
+    // holds the maintenance reservation.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(turnManager.tryReserveForMaintenance()).toBe(false);
+
+    await rollbackPromise;
+
+    // After rollback resolves, the reservation is released and new
+    // ones succeed.
+    expect(turnManager.tryReserveForMaintenance()).toBe(true);
+    turnManager.releaseMaintenance();
+
+    await mgr.closeSession(sessionId);
+  });
+
+  it('rollback transitions lifecycle to `completing` so concurrent non-turn journal writes are gated (round-8 review)', async () => {
+    // Round-8 review closed a secondary race: the `'active'` state
+    // `tryReserveForMaintenance` leaves the session in is mapped by
+    // SoulLifecycleGate to "writes allowed". A racing notification /
+    // system_reminder / background-task append could therefore land
+    // on wire.jsonl during rollback's async body and be overwritten
+    // by the trailing `atomicWrite(truncated)`. Transitioning further
+    // to `'completing'` makes JournalWriter's gate throw on any such
+    // append. This test pins the gate state during the async body.
+    const sessionId = 'ses_rollback_gate_completing';
+    const created = await mgr.createSession({
+      workspaceDir: tmp,
+      sessionId,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'test-model',
+    });
+    await created.sessionJournal.appendTurnBegin({
+      type: 'turn_begin',
+      turn_id: 'turn_1',
+      agent_type: 'main',
+      user_input: 'hi',
+      input_kind: 'user',
+    });
+
+    const rollbackPromise = mgr.rollbackSession(sessionId, 1);
+    // Yield twice so rollback has entered its async body and
+    // advanced the state machine past the reservation.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(created.lifecycleStateMachine.state).toBe('completing');
+
+    await rollbackPromise;
+
+    // After rollback resolves, release walks completing → idle.
+    expect(created.lifecycleStateMachine.state).toBe('idle');
+
+    await mgr.closeSession(sessionId);
+  });
+
+  it('rollback actively rejects concurrent journal appends through the gate (round-9 functional guard)', async () => {
+    // State-pinning alone (above test) proves we *transition* to
+    // `'completing'`. Round-9 review: also prove the gate mapping
+    // still fires — i.e. a concurrent `journalWriter.append` during
+    // rollback's window throws a `JournalGatedError`, not silently
+    // lands and gets overwritten by `atomicWrite`. If someone
+    // hypothetically broke the `completing → writes blocked` entry
+    // in `SoulLifecycleGate.mapTo3` without touching the state
+    // transitions, the previous test would still pass; this one
+    // wouldn't.
+    const sessionId = 'ses_rollback_gate_rejects_append';
+    const created = await mgr.createSession({
+      workspaceDir: tmp,
+      sessionId,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'test-model',
+    });
+    await created.sessionJournal.appendTurnBegin({
+      type: 'turn_begin',
+      turn_id: 'turn_1',
+      agent_type: 'main',
+      user_input: 'hi',
+      input_kind: 'user',
+    });
+
+    const rollbackPromise = mgr.rollbackSession(sessionId, 1);
+    // Yield so rollback's body enters and the state advances to
+    // 'completing'.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Attempt a non-compaction, non-force-flush append. The gate
+    // refuses while state is `'completing'`.
+    await expect(
+      created.journalWriter.append({
+        type: 'notification',
+        data: {
+          id: 'notif_race',
+          category: 'task',
+          type: 'task.started',
+          source_kind: 'background_task',
+          source_id: 'bg_race',
+          title: 't',
+          body: 'b',
+          severity: 'info',
+          targets: [],
+        },
+      }),
+    ).rejects.toThrow(/journal.*gated|completing/i);
+
+    await rollbackPromise;
+
+    // Post-rollback the gate returns to 'active' (writes allowed).
+    await expect(
+      created.journalWriter.append({
+        type: 'notification',
+        data: {
+          id: 'notif_post',
+          category: 'task',
+          type: 'task.started',
+          source_kind: 'background_task',
+          source_id: 'bg_post',
+          title: 't',
+          body: 'b',
+          severity: 'info',
+          targets: [],
+        },
+      }),
+    ).resolves.toBeDefined();
+
+    await mgr.closeSession(sessionId);
+  });
+
+  it('rollback releases maintenance reservation even when the body throws (so the session is not permanently stuck)', async () => {
+    // Failure-path companion to the race closure: if the body throws
+    // (e.g. state.json is missing), the try/finally must still flip
+    // lifecycle back to idle. Without this guarantee a single bad
+    // rollback could wedge a session for the rest of the process's
+    // lifetime.
+    const sessionId = 'ses_rollback_release_on_throw';
+    const created = await mgr.createSession({
+      workspaceDir: tmp,
+      sessionId,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'test-model',
+    });
+
+    // Delete state.json to force rollback's body to throw
+    // "session not found" AFTER the reservation was taken.
+    await rm(paths.statePath(sessionId), { force: true });
+
+    await expect(mgr.rollbackSession(sessionId, 1)).rejects.toThrow();
+
+    const turnManager = created.soulPlus.getTurnManager();
+    expect(turnManager.tryReserveForMaintenance()).toBe(true);
+    turnManager.releaseMaintenance();
+
+    await mgr.closeSession(sessionId);
+  });
+
   it.todo(
     'wire.jsonl truncation is atomic (write .tmp → rename), never leaving a partially-written file',
     // phase-18 §F.1 风险 2 / 铁律 W2: 读 wire.jsonl → 定位截断点 → 写 .tmp →
@@ -205,18 +403,11 @@ describe('Phase 18 F.1 — SessionManager.rollbackSession', () => {
     // 构造时注入的回调）后再写断言。
   );
 
-  it.todo(
-    'rollback is serialized against concurrent appendTurn writes (no interleave drops a turn)',
-    // phase-18 §F.1 风险 4 / Round 1 Major #1：
-    //   场景：rollback(n) 与下一个 turn 的 JournalWriter.append 在同一时刻
-    //   到达。rollback 读文件 → 计算 keepUpToLine → atomicWrite 的窗口内，
-    //   若一个 `turn_begin` / `turn_end` 已经写完磁盘但 rollback 是按旧快照
-    //   计算的 keepUpToLine，rename 会覆盖掉那一行，制造"丢 turn"的幻觉。
-    //   withStateLock 目前保证 rollback 之间互斥，但 JournalWriter.append
-    //   没有走 state lock。
-    //   修法路线：要么给 JournalWriter 也接上 state lock，要么让 rollback
-    //   先停掉 wire 写入（`journalWriter.quiesce()` + resume），或者在
-    //   rollback 入口先把 lifecycle 推成 `compacting`。
-    //   用 it.todo 占位记录该技术债；Slice 18-4 或后续 phase 再解决。
-  );
+  // Phase 20 round-8 closed this race by transitioning the lifecycle to
+  // `'completing'` right after `tryReserveForMaintenance()`, which causes
+  // `SoulLifecycleGate` to reject concurrent `JournalWriter.append` calls
+  // with a `JournalGatedError`. See the two tests above (state pinned to
+  // `completing` during rollback body + round-9 gate-rejection
+  // e2e). The old `it.todo` that used to sit here described this exact
+  // scenario as tech debt; removed because it's now covered.
 });

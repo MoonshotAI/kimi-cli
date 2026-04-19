@@ -1357,9 +1357,14 @@ export class InteractiveMode implements WireHandlerDelegate {
         // Phase 20 §A — drop the Core-side conversation context first
         // so the next prompt starts from an empty history. Runs AFTER
         // the `isStreaming` guard above so a mid-turn /clear never
-        // corrupts the active turn. If the wire call fails the UI
-        // reload is still useful (user still sees a clean transcript),
-        // so swallow the error and surface it as a status line instead.
+        // corrupts the active turn.
+        //
+        // Round-5 review: we only clear the UI transcript when the core
+        // clear succeeded. Doing the UI reload on failure hides the
+        // truth — user sees an empty screen, assumes the context is
+        // gone, then the next prompt lets the LLM see the full history.
+        // Keep the transcript intact and surface a prominent error so
+        // the user understands the clear did NOT happen.
         let clearErrorMessage: string | undefined;
         try {
           await this.wireClient.clear(this.state.sessionId);
@@ -1375,17 +1380,28 @@ export class InteractiveMode implements WireHandlerDelegate {
             clearErrorMessage = 'unknown error';
           }
         }
-        this.clearTranscriptAndRedraw();
-        this.addTranscriptEntry({
-          id: `reload-${String(Date.now())}`,
-          kind: 'status',
-          renderMode: 'plain',
-          content:
-            clearErrorMessage === undefined
-              ? 'Context cleared.'
-              : `Transcript cleared (core clear failed: ${clearErrorMessage}).`,
-          color: clearErrorMessage === undefined ? this.colors.textDim : this.colors.error,
-        });
+        if (clearErrorMessage === undefined) {
+          this.clearTranscriptAndRedraw();
+          this.addTranscriptEntry({
+            id: `reload-${String(Date.now())}`,
+            kind: 'status',
+            renderMode: 'plain',
+            content: 'Context cleared.',
+            color: this.colors.textDim,
+          });
+        } else {
+          // Do NOT touch the transcript — the session is still carrying
+          // its full history. Show the error inline where previous
+          // turns are still visible so the user can see what is still
+          // in context.
+          this.addTranscriptEntry({
+            id: `reload-${String(Date.now())}`,
+            kind: 'status',
+            renderMode: 'plain',
+            content: `/clear failed — conversation context was NOT cleared: ${clearErrorMessage}`,
+            color: this.colors.error,
+          });
+        }
         break;
       }
       case 'new':
@@ -1585,19 +1601,17 @@ export class InteractiveMode implements WireHandlerDelegate {
 
   private async togglePlanMode(): Promise<void> {
     const enabled = !this.state.planMode;
-    this.setState({ planMode: enabled });
-    this.addTranscriptEntry({
-      id: `plan-${String(Date.now())}`,
-      kind: 'status',
-      renderMode: 'plain',
-      content: `Plan mode: ${enabled ? 'ON' : 'OFF'}`,
-      color: this.colors.primary,
-    });
+    // Round-9 review: core first, TUI after — same ordering fix as
+    // the `/plan` slash command in round-8. The old "setState +
+    // transcript BEFORE await + rollback on catch" pattern left the
+    // transcript with a permanent "Plan mode: ON" announcement
+    // followed by an error — the header briefly lied even after the
+    // rollback restored the footer. Awaiting first means a wire
+    // rejection short-circuits before any TUI mutation; nothing to
+    // roll back, nothing to retract.
     try {
       await this.wireClient.setPlanMode(this.state.sessionId, enabled);
     } catch (err) {
-      // Roll back local state and surface the failure so the footer doesn't lie.
-      this.setState({ planMode: !enabled });
       const msg = err instanceof Error ? err.message : String(err);
       this.addTranscriptEntry({
         id: `plan-err-${String(Date.now())}`,
@@ -1606,7 +1620,16 @@ export class InteractiveMode implements WireHandlerDelegate {
         content: `Failed to toggle plan mode: ${msg}`,
         color: this.colors.error,
       });
+      return;
     }
+    this.setState({ planMode: enabled });
+    this.addTranscriptEntry({
+      id: `plan-${String(Date.now())}`,
+      kind: 'status',
+      renderMode: 'plain',
+      content: `Plan mode: ${enabled ? 'ON' : 'OFF'}`,
+      color: this.colors.primary,
+    });
   }
 
   private async persistInputHistory(text: string): Promise<void> {

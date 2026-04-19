@@ -79,6 +79,7 @@ import { InMemorySessionJournalImpl } from '../../src/storage/session-journal.js
 import {
   CompactionOrchestrator,
   STATIC_DEFAULT_RUNTIME_STATE,
+  STATIC_NO_PENDING_TURN,
 } from '../../src/soul-plus/compaction-orchestrator.js';
 import { PermissionClosureBuilder } from '../../src/soul-plus/permission-closure-builder.js';
 import { TurnLifecycleTracker } from '../../src/soul-plus/turn-lifecycle-tracker.js';
@@ -250,6 +251,7 @@ function buildHarness(): Harness {
     sink,
     journalWriter: contextState.journalWriter,
     runtimeStateProvider: STATIC_DEFAULT_RUNTIME_STATE,
+    getPendingTurnId: STATIC_NO_PENDING_TURN,
   });
   const permissionBuilder = new PermissionClosureBuilder({});
   const lifecycle = new TurnLifecycleTracker();

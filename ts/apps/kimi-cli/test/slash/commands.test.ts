@@ -181,6 +181,32 @@ describe('Slash commands', () => {
     expect(setAppState).toHaveBeenCalledWith({ planMode: false });
   });
 
+  it('/yolo does NOT flip the TUI when the wire call throws (round-8 call-site ordering)', async () => {
+    // Round-7 made `wireClient.setYolo` throw on unknown session id.
+    // Round-8 fixed the call-site so TUI mutation happens AFTER the
+    // await, not before — so a failing wire call short-circuits
+    // before `setAppState` can lie to the user. This test pins that
+    // contract: when wire throws, `setAppState` must not be called.
+    const cmd = registry.find('yolo')!;
+    const { ctx, setAppState } = makeCtx({ yolo: false });
+    (ctx.wireClient.setYolo as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('unknown session'),
+    );
+    await expect(cmd.execute('on', ctx)).rejects.toThrow(/unknown session/i);
+    expect(setAppState).not.toHaveBeenCalled();
+  });
+
+  it('/plan does NOT flip the TUI when the wire call throws (round-8 call-site ordering)', async () => {
+    // Same contract as /yolo above — core first, TUI after success.
+    const cmd = registry.find('plan')!;
+    const { ctx, setAppState } = makeCtx({ planMode: false });
+    (ctx.wireClient.setPlanMode as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('unknown session'),
+    );
+    await expect(cmd.execute('on', ctx)).rejects.toThrow(/unknown session/i);
+    expect(setAppState).not.toHaveBeenCalled();
+  });
+
   it('/model with no args emits the picker signal', async () => {
     const cmd = registry.find('model')!;
     const { ctx } = makeCtx({ model: 'gpt-4' });

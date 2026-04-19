@@ -38,6 +38,7 @@ import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
 import type { SessionMeta } from '../soul-plus/session-meta-service.js';
 import type { SkillManager } from '../soul-plus/skill/index.js';
 import { SoulPlus, type SoulPlusDeps } from '../soul-plus/soul-plus.js';
+import type { Logger } from '../utils/logger.js';
 import { cleanupStaleSubagents } from '../soul-plus/subagent-runner.js';
 import { SubagentStore } from '../soul-plus/subagent-store.js';
 import type { TurnManager } from '../soul-plus/turn-manager.js';
@@ -188,6 +189,15 @@ export interface CreateSessionOptions {
    * v2 §10.3.1).
    */
   agentTypeRegistry?: AgentTypeRegistry | undefined;
+  /**
+   * Phase 20 round-5 — structured logger forwarded into
+   * `SoulPlusDeps.logger` so NotificationManager / MCPManager wire
+   * fan-out errors through the app's log sink instead of falling back
+   * to `noopLogger` (silent drop). When omitted, SoulPlus defaults to
+   * `noopLogger` and those errors are invisible, which was the
+   * observability regression round-5 review flagged in Phase 20-B.
+   */
+  logger?: Logger | undefined;
 }
 
 export interface ResumeSessionOptions {
@@ -218,6 +228,8 @@ export interface ResumeSessionOptions {
   approvalStateStore?: ApprovalStateStore | undefined;
   /** Slice 5.3 — see CreateSessionOptions.agentTypeRegistry. */
   agentTypeRegistry?: AgentTypeRegistry | undefined;
+  /** Phase 20 round-5 — see CreateSessionOptions.logger. */
+  logger?: Logger | undefined;
 }
 
 /** A fully-assembled, running session. */
@@ -428,6 +440,12 @@ export class SessionManager {
             pathConfig: this.paths,
           }
         : {}),
+      // Phase 20 round-5 — close the observability regression:
+      // without this forward NotificationManager / MCPManager fall back
+      // to `noopLogger` and swallow every fan-out error (previously
+      // surfaced via `console.warn`). Host-supplied logger flows all
+      // the way through the SoulPlus deps chain.
+      ...(options.logger !== undefined ? { logger: options.logger } : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -711,6 +729,10 @@ export class SessionManager {
             pathConfig: this.paths,
           }
         : {}),
+      // Phase 20 round-5 — forward logger on resume too so
+      // restored sessions keep the same observability posture as fresh
+      // ones.
+      ...(options.logger !== undefined ? { logger: options.logger } : {}),
     };
     const soulPlus = new SoulPlus(soulPlusDeps);
 
@@ -969,95 +991,164 @@ export class SessionManager {
       );
     }
     return this.withStateLock(sessionId, async () => {
-      // Lifecycle guard — refuse rollback while a turn is mid-flight.
+      // Lifecycle guard — refuse rollback while a turn is mid-flight,
+      // and HOLD the reservation through the whole async body.
+      //
+      // Round-7 review: the previous attempt did sync guards (state +
+      // pending-turn-id) and then entered `await stateCache.read()` /
+      // `readFile` / `atomicWrite` without holding anything. Between
+      // those awaits, `TurnManager.handlePrompt` — which does NOT flow
+      // through `withStateLock` — could pass its own busy gate (state
+      // idle, no pendingLaunchTurnId yet), set its reservation, and
+      // physically `await appendTurnBegin` into wire.jsonl. The
+      // rollback's later `atomicWrite(truncated)` would then overwrite
+      // that `turn_begin`, silently eating the user's prompt.
+      //
+      // Round-8 extension: the `'active'` state that `tryReserveForMaintenance`
+      // leaves the session in is mapped by `SoulLifecycleGate` to the
+      // "writes allowed" JournalWriter gate. That closes the turn-
+      // launch race (which checks `isIdle()` directly) but NOT
+      // notifications / system_reminders / background-task appends,
+      // which only consult the gate. Those writes could still race
+      // `atomicWrite(truncated)` and get silently dropped.
+      //
+      // Transitioning idle → active → completing locks out both paths:
+      //   - `handlePrompt`'s `isIdle()` check fails on 'active' or
+      //     'completing'.
+      //   - JournalWriter's gate maps 'completing' to "writes blocked"
+      //     (JournalGatedError), so any racing notification append
+      //     throws at the gate rather than landing in wire.jsonl and
+      //     being overwritten.
+      // `releaseMaintenance` already walks completing → idle, so the
+      // existing release path stays correct.
+      //
+      // Embedded / test-only sessions (where `this.sessions.get(...)`
+      // returns undefined) have no TurnManager to reserve — nothing
+      // concurrent to race, so fall through directly.
       const live = this.sessions.get(sessionId);
-      if (live !== undefined && live.lifecycleStateMachine.state === 'active') {
-        throw new Error(
-          `rollbackSession: session "${sessionId}" is in 'active' state — cannot rollback during an active turn (lifecycle guard)`,
-        );
+      let turnManager: ReturnType<ManagedSession['soulPlus']['getTurnManager']> | undefined;
+      if (live !== undefined) {
+        turnManager = live.soulPlus.getTurnManager();
+        if (!turnManager.tryReserveForMaintenance()) {
+          // Two-fold failure cause:
+          //   - `!isIdle()` — lifecycle not idle (active / compacting / completing / destroying)
+          //   - `getCurrentTurnId() !== undefined` — handlePrompt has
+          //     pre-registered a pending turn launch but hasn't yet
+          //     transitioned lifecycle; state reads as 'idle' but the
+          //     session is logically busy.
+          const state = live.lifecycleStateMachine.state;
+          const pending = turnManager.getCurrentTurnId();
+          const detail =
+            pending !== undefined && state === 'idle'
+              ? `prompt launch in flight (${pending})`
+              : `lifecycle=${state}`;
+          throw new Error(
+            `rollbackSession: session "${sessionId}" is busy (${detail}) — cannot rollback while a turn, compaction, or another maintenance op is in flight`,
+          );
+        }
       }
 
-      // Existence — anchor on state.json so we throw a clear "not found"
-      // before touching the wire path.
-      const stateCache = new StateCache(this.paths.statePath(sessionId));
-      const stateExists = await stateCache.read();
-      if (stateExists === null) {
-        throw new Error(`rollbackSession: session "${sessionId}" not found`);
-      }
-
-      const wirePath = this.paths.wirePath(sessionId);
-      let raw: string;
+      // Round-9 review: advance to `'completing'` INSIDE the try so
+      // a hypothetical future `transitionTo` that rejects on some new
+      // invariant still ends up in `finally → releaseMaintenance()`,
+      // which walks `active → completing → idle` and never leaves the
+      // session wedged. `active → completing` is sanctioned today so
+      // this is defensive; cost is zero.
       try {
-        raw = await readFile(wirePath, 'utf-8');
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-          // No wire file yet → nothing to roll back. Invalidate the
-          // usage aggregator cache so a stale pre-ENOENT aggregation
-          // (left over from a prior incarnation of this session on the
-          // same process) cannot drift on the next read.
-          this.usageAggregator.invalidate(wirePath);
-          return { new_turn_count: 0 };
+        if (live !== undefined) {
+          live.lifecycleStateMachine.transitionTo('completing');
         }
-        throw err;
+        return await this.runRollbackBody(sessionId, nTurnsBack);
+      } finally {
+        turnManager?.releaseMaintenance();
       }
-
-      const lines = raw.split('\n');
-      // Track byte offsets of each `turn_begin` line. We rebuild rather
-      // than walk byte-by-byte: the resulting truncation point is "the
-      // offset of the (totalTurns - nTurnsBack)-th turn_begin line, or
-      // the end of the metadata header when nTurnsBack >= totalTurns".
-      const turnBeginIndices: number[] = [];
-      for (let i = 0; i < lines.length; i += 1) {
-        const line = lines[i]!;
-        if (line.length === 0) continue;
-        try {
-          const rec = JSON.parse(line) as { type?: string };
-          if (rec.type === 'turn_begin') {
-            turnBeginIndices.push(i);
-          }
-        } catch {
-          // Tolerate malformed trailing lines (e.g. a partial write the
-          // recovery layer would normally repair) — they cannot be
-          // turn_begin markers.
-        }
-      }
-
-      const totalTurns = turnBeginIndices.length;
-
-      // No-op fast path: nothing to truncate, but still flip the cache
-      // entry so a stale aggregation can't drift.
-      if (nTurnsBack <= 0) {
-        this.usageAggregator.invalidate(wirePath);
-        return { new_turn_count: totalTurns };
-      }
-
-      let keepUpToLine: number;
-      let newTurnCount: number;
-      if (nTurnsBack >= totalTurns) {
-        // Clear all turns. Keep everything before the first `turn_begin`
-        // (usually just the metadata header on line 0, but more broadly
-        // every non-turn record the JournalWriter emitted before the
-        // first turn_begin — e.g. an `init` record). When there are no
-        // turns at all, keep the entire file (it's already turn-free).
-        keepUpToLine = totalTurns > 0 ? turnBeginIndices[0]! : lines.length;
-        newTurnCount = 0;
-      } else {
-        // Drop the last `nTurnsBack` turn_begin records and everything
-        // after them.
-        keepUpToLine = turnBeginIndices[totalTurns - nTurnsBack]!;
-        newTurnCount = totalTurns - nTurnsBack;
-      }
-
-      // Rebuild content — preserve a trailing newline if the original
-      // had one (every JournalWriter append emits `\n` after the JSON
-      // payload, so a non-empty wire.jsonl always ends with `\n`).
-      const kept = lines.slice(0, keepUpToLine);
-      const truncated = `${kept.join('\n')}\n`;
-      await atomicWrite(wirePath, truncated);
-      this.usageAggregator.invalidate(wirePath);
-
-      return { new_turn_count: newTurnCount };
     });
+  }
+
+  private async runRollbackBody(
+    sessionId: string,
+    nTurnsBack: number,
+  ): Promise<{ new_turn_count: number }> {
+    // Existence — anchor on state.json so we throw a clear "not found"
+    // before touching the wire path.
+    const stateCache = new StateCache(this.paths.statePath(sessionId));
+    const stateExists = await stateCache.read();
+    if (stateExists === null) {
+      throw new Error(`rollbackSession: session "${sessionId}" not found`);
+    }
+
+    const wirePath = this.paths.wirePath(sessionId);
+    let raw: string;
+    try {
+      raw = await readFile(wirePath, 'utf-8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        // No wire file yet → nothing to roll back. Invalidate the
+        // usage aggregator cache so a stale pre-ENOENT aggregation
+        // (left over from a prior incarnation of this session on the
+        // same process) cannot drift on the next read.
+        this.usageAggregator.invalidate(wirePath);
+        return { new_turn_count: 0 };
+      }
+      throw err;
+    }
+
+    const lines = raw.split('\n');
+    // Track byte offsets of each `turn_begin` line. We rebuild rather
+    // than walk byte-by-byte: the resulting truncation point is "the
+    // offset of the (totalTurns - nTurnsBack)-th turn_begin line, or
+    // the end of the metadata header when nTurnsBack >= totalTurns".
+    const turnBeginIndices: number[] = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]!;
+      if (line.length === 0) continue;
+      try {
+        const rec = JSON.parse(line) as { type?: string };
+        if (rec.type === 'turn_begin') {
+          turnBeginIndices.push(i);
+        }
+      } catch {
+        // Tolerate malformed trailing lines (e.g. a partial write the
+        // recovery layer would normally repair) — they cannot be
+        // turn_begin markers.
+      }
+    }
+
+    const totalTurns = turnBeginIndices.length;
+
+    // No-op fast path: nothing to truncate, but still flip the cache
+    // entry so a stale aggregation can't drift.
+    if (nTurnsBack <= 0) {
+      this.usageAggregator.invalidate(wirePath);
+      return { new_turn_count: totalTurns };
+    }
+
+    let keepUpToLine: number;
+    let newTurnCount: number;
+    if (nTurnsBack >= totalTurns) {
+      // Clear all turns. Keep everything before the first `turn_begin`
+      // (usually just the metadata header on line 0, but more broadly
+      // every non-turn record the JournalWriter emitted before the
+      // first turn_begin — e.g. an `init` record). When there are no
+      // turns at all, keep the entire file (it's already turn-free).
+      keepUpToLine = totalTurns > 0 ? turnBeginIndices[0]! : lines.length;
+      newTurnCount = 0;
+    } else {
+      // Drop the last `nTurnsBack` turn_begin records and everything
+      // after them.
+      keepUpToLine = turnBeginIndices[totalTurns - nTurnsBack]!;
+      newTurnCount = totalTurns - nTurnsBack;
+    }
+
+    // Rebuild content — preserve a trailing newline if the original
+    // had one (every JournalWriter append emits `\n` after the JSON
+    // payload, so a non-empty wire.jsonl always ends with `\n`).
+    const kept = lines.slice(0, keepUpToLine);
+    const truncated = `${kept.join('\n')}\n`;
+    await atomicWrite(wirePath, truncated);
+    this.usageAggregator.invalidate(wirePath);
+
+    return { new_turn_count: newTurnCount };
   }
 
   /**
