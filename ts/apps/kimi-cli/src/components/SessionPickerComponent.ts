@@ -2,7 +2,7 @@
  * SessionPicker — pi-tui version of the session selection dialog.
  */
 
-import { Container, Text, matchesKey, Key, type Focusable } from '@mariozechner/pi-tui';
+import { Container, matchesKey, Key, type Focusable } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import type { SessionInfo } from '../wire/methods.js';
 import type { ColorPalette } from '../theme/colors.js';

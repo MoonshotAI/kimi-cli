@@ -424,11 +424,10 @@ export class ToolCallOrchestrator {
   ): Promise<ToolResult> | undefined {
     const tool = this.currentTools.get(toolCall.name);
     if (tool === undefined) return undefined;
-    const predicate = tool.isConcurrencySafe;
-    if (predicate === undefined) return undefined;
+    if (tool.isConcurrencySafe === undefined) return undefined;
     let safe: boolean;
     try {
-      safe = predicate.call(tool, toolCall.args);
+      safe = tool.isConcurrencySafe(toolCall.args);
     } catch {
       return undefined;
     }

@@ -36,7 +36,6 @@ import {
   ReadMediaFileTool,
   ReadTool,
   SkipThisTool,
-  SessionEventBus,
   SessionManager,
   SetTodoListTool,
   TaskListTool,
@@ -65,7 +64,6 @@ import {
   setProducerInfo,
 } from '@moonshot-ai/core';
 import type {
-  ApprovalRuntime,
   KimiConfig,
   McpConfig,
   OAuthResolver,
@@ -1198,7 +1196,7 @@ async function runWire(opts: CLIOptions): Promise<void> {
       // wire fan-out without requiring a bridge restart.
       getEventFilter: () => wireHandlersHandle.getEventFilter(managed.sessionId),
     });
-    bridgeDisposers.set(managed.sessionId, handle.dispose);
+    bridgeDisposers.set(managed.sessionId, () => handle.dispose());
     // Phase 24 RR2-B-A snapshot compensation (wire path).
     // MCPManager.loadAll fires mcp.loading / mcp.connected / mcp.tools_changed
     // before this bridge listener is installed; those events are permanently

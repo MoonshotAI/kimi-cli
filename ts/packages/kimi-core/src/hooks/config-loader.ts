@@ -106,8 +106,12 @@ export function parseHookConfigs(
       if (Number.isFinite(timeoutS) && timeoutS >= MIN_TIMEOUT_S && timeoutS <= MAX_TIMEOUT_S) {
         timeoutMs = timeoutS * 1000;
       } else {
+        const rawTimeout = obj['timeout'];
+        const displayTimeout = typeof rawTimeout === 'string' || typeof rawTimeout === 'number'
+          ? String(rawTimeout)
+          : '<invalid>';
         onWarning?.(
-          `hooks[${i}]: timeout ${String(obj['timeout'])} out of range [${MIN_TIMEOUT_S}, ${MAX_TIMEOUT_S}], using default ${DEFAULT_TIMEOUT_MS / 1000}s`,
+          `hooks[${i}]: timeout ${displayTimeout} out of range [${MIN_TIMEOUT_S}, ${MAX_TIMEOUT_S}], using default ${DEFAULT_TIMEOUT_MS / 1000}s`,
         );
       }
     }

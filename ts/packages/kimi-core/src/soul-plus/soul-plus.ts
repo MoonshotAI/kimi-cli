@@ -43,7 +43,7 @@ import {
 import { NotificationManager, type ShellDeliverCallback } from './notification-manager.js';
 import type { ToolCallOrchestrator } from './orchestrator.js';
 import { PermissionClosureBuilder } from './permission-closure-builder.js';
-import type { PermissionMode, PermissionRule } from './permission/index.js';
+import type { PermissionRule } from './permission/index.js';
 import type { SessionEventBus } from './session-event-bus.js';
 import {
   DefaultSessionControl,
@@ -233,9 +233,9 @@ export class SoulPlus {
         return turnManagerRef.getCurrentTurnId();
       },
     });
-    const permissionBuilder = new PermissionClosureBuilder({
-      ...(orchestrator !== undefined ? { orchestrator } : {}),
-    });
+    const permissionBuilder = new PermissionClosureBuilder(
+      orchestrator !== undefined ? { orchestrator } : {},
+    );
 
     // ── Components facade ───────────────────────────────────────────
     const hasSubagentInfra =

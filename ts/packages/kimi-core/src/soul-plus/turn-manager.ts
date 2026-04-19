@@ -636,14 +636,15 @@ export class TurnManager {
   ): Promise<TurnResult | undefined> {
     // Phase 1 (Decision #89): compute dynamic injections (plan mode /
     // yolo mode / host-supplied providers) and write them durably via
-    // ContextState.appendSystemReminder. The `await` on a void return
-    // is intentional — DynamicInjectionManager.computeInjections is
-    // sync, but providers internally fire-and-forget
-    // `appendSystemReminder` promises; the microtask yield introduced
-    // by the await lets those writes progress past their first `await`
+    // ContextState.appendSystemReminder. The explicit microtask yield
+    // below is intentional — DynamicInjectionManager.computeInjections
+    // is sync, but providers internally fire-and-forget
+    // `appendSystemReminder` promises; yielding one microtask lets
+    // those writes progress past their first `await`
     // (journalWriter.append) + history.push before `runSoulTurn`'s
     // first `buildMessages()` call.
-    await this.drainDynamicInjectionsIntoContext(turnId);
+    this.drainDynamicInjectionsIntoContext(turnId);
+    await Promise.resolve();
 
     let result: TurnResult | undefined;
     let reason: 'done' | 'cancelled' | 'error';

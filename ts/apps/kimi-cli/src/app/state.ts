@@ -7,14 +7,7 @@
 
 import type { Theme } from '../config/schema.js';
 import type { ModelAlias } from '@moonshot-ai/core';
-import type { ThemeStyles } from '../theme/styles.js';
-import type {
-  WireClient,
-  ApprovalRequestData,
-  ApprovalResponseData,
-  QuestionRequestData,
-} from '../wire/index.js';
-import type { SessionInfo } from '../wire/methods.js';
+import type { ApprovalRequestData, QuestionRequestData } from '../wire/index.js';
 
 // ── AppState ─────────────────────────────────────────────────────────
 

@@ -30,6 +30,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function pickErrorDetail(data: Record<string, unknown>): string {
+  if (typeof data['error_description'] === 'string') return data['error_description'];
+  if (typeof data['error'] === 'string') return data['error'];
+  return 'unknown';
+}
+
 function tokenFromResponse(payload: Record<string, unknown>): TokenInfo {
   // M7: required-field validation. Reject responses that are missing
   // any of the three load-bearing fields rather than persisting empty
@@ -51,8 +57,8 @@ function tokenFromResponse(payload: Record<string, unknown>): TokenInfo {
     accessToken,
     refreshToken,
     expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
-    scope: String(payload['scope'] ?? ''),
-    tokenType: String(payload['token_type'] ?? 'Bearer'),
+    scope: typeof payload['scope'] === 'string' ? payload['scope'] : '',
+    tokenType: typeof payload['token_type'] === 'string' ? payload['token_type'] : 'Bearer',
     expiresIn,
   };
 }
@@ -117,9 +123,7 @@ export async function requestDeviceAuthorization(
 
   if (status !== 200) {
     throw new OAuthError(
-      `Device authorization failed (HTTP ${status}): ${
-        String(data['error_description'] ?? data['error'] ?? 'unknown')
-      }`,
+      `Device authorization failed (HTTP ${status}): ${pickErrorDetail(data)}`,
     );
   }
 
@@ -142,7 +146,7 @@ export async function requestDeviceAuthorization(
   return {
     userCode,
     deviceCode,
-    verificationUri: String(data['verification_uri'] ?? ''),
+    verificationUri: typeof data['verification_uri'] === 'string' ? data['verification_uri'] : '',
     verificationUriComplete,
     expiresIn: data['expires_in'] !== undefined ? Number(data['expires_in']) : null,
     interval: Number(data['interval'] ?? 5),
@@ -178,14 +182,12 @@ export async function pollDeviceToken(
 
   if (status >= 500) {
     throw new OAuthError(
-      `Device token polling server error (HTTP ${status}): ${
-        String(data['error_description'] ?? data['error'] ?? 'unknown')
-      }`,
+      `Device token polling server error (HTTP ${status}): ${pickErrorDetail(data)}`,
     );
   }
 
-  const errorCode = String(data['error'] ?? 'unknown_error');
-  const description = String(data['error_description'] ?? '');
+  const errorCode = typeof data['error'] === 'string' ? data['error'] : 'unknown_error';
+  const description = typeof data['error_description'] === 'string' ? data['error_description'] : '';
   switch (errorCode) {
     case 'authorization_pending':
     case 'slow_down':
@@ -256,13 +258,15 @@ export async function refreshAccessToken(
 
     if (status === 401 || status === 403) {
       throw new OAuthUnauthorizedError(
-        String(data['error_description'] ?? 'Token refresh unauthorized.'),
+        typeof data['error_description'] === 'string'
+          ? data['error_description']
+          : 'Token refresh unauthorized.',
       );
     }
 
-    const desc = String(
-      data['error_description'] ?? `Token refresh failed (HTTP ${status}).`,
-    );
+    const desc = typeof data['error_description'] === 'string'
+      ? data['error_description']
+      : `Token refresh failed (HTTP ${status}).`;
     if (RETRYABLE_STATUSES.has(status)) {
       lastError = new RetryableRefreshError(desc);
       if (attempt < maxRetries - 1) {

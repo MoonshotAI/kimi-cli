@@ -14,7 +14,6 @@ import {
   Spacer,
   Text,
   type MarkdownTheme,
-  type EditorTheme,
 } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import type { LoginOptions } from '@moonshot-ai/core';
@@ -29,7 +28,6 @@ import type { SlashCommandContext } from '../slash/index.js';
 import { tryDispatchSkill } from '../slash/skill-dispatch.js';
 import { getColorPalette } from '../theme/colors.js';
 import type { ColorPalette } from '../theme/colors.js';
-import { createThemeStyles } from '../theme/styles.js';
 import { createMarkdownTheme, createEditorTheme } from '../theme/pi-tui-theme.js';
 
 import type {
@@ -212,7 +210,7 @@ export class InteractiveMode implements WireHandlerDelegate {
     };
 
     this.editor.onCtrlD = () => {
-      this.stop();
+      void this.stop();
     };
 
     this.editor.onEscape = () => {

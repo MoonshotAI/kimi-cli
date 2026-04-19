@@ -47,7 +47,6 @@ import {
   type SessionManager,
   type ShellDeliverCallback,
   type SkillManager,
-  type SoulEvent,
   type BusEvent,
   type Tool,
   type TurnLifecycleListener,

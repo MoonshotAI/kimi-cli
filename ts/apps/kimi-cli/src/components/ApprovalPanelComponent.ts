@@ -82,7 +82,6 @@ export class ApprovalPanelComponent extends Container implements Focusable {
   private buildUI(maxBodyHeight: number): void {
     this.clear();
     const { data } = this.request;
-    const maxDiffLines = Math.max(2, maxBodyHeight - 8);
 
     this.addChild(new Text(chalk.yellow('─'.repeat(60)), 0, 0));
     this.addChild(new Spacer(1));

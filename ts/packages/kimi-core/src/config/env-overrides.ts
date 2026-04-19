@@ -181,7 +181,7 @@ export function applyEnvOverrides(
   if (nextProvider !== undefined) {
     providers[selected.providerName] = nextProvider;
   }
-  const models = { ...(config.models ?? {}) };
+  const models = { ...config.models };
   if (nextModel !== undefined && selected.modelKey !== undefined) {
     models[selected.modelKey] = nextModel;
   }

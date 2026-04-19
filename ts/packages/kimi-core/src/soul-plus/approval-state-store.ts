@@ -70,7 +70,7 @@ class ChangeListenerRegistry {
   fire(snapshot: ApprovalStateSnapshot): void {
     // Iterate over a snapshot so a listener that unsubscribes itself
     // cannot shift the iteration it is part of.
-    for (const listener of [...this.listeners]) {
+    for (const listener of Array.from(this.listeners)) {
       try {
         // Listener type allows Promise<void>; detach async paths so
         // errors don't propagate (parity with SessionEventBus.safeDispatch).

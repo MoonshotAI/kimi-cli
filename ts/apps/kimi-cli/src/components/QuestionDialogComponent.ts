@@ -50,9 +50,9 @@ export class QuestionDialogComponent extends Container implements Focusable {
     this.maxVisibleOptions = maxVisibleOptions;
 
     const total = request.data.questions.length;
-    this.cursors = new Array<number>(total).fill(0);
+    this.cursors = Array.from({ length: total }, (): number => 0);
     this.multiSelections = Array.from({ length: total }, () => new Set<number>());
-    this.answers = new Array<string | undefined>(total).fill(undefined);
+    this.answers = Array.from({ length: total }, (): string | undefined => undefined);
   }
 
   // ── Input ─────────────────────────────────────────────────────────

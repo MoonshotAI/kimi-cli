@@ -6,7 +6,7 @@
  */
 
 import type { Component, MarkdownTheme } from '@mariozechner/pi-tui';
-import { Container, Markdown, Spacer, Text } from '@mariozechner/pi-tui';
+import { Container, Markdown } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 
 const BULLET = '● ';

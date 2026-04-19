@@ -1,5 +1,4 @@
 import type { WireClient } from '../wire/client.js';
-import type { WireMessage } from '../wire/wire-message.js';
 import type { SessionErrorData, TurnEndData } from '../wire/events.js';
 import type { InputFormat, OutputFormat } from '../cli/options.js';
 import { ExitCode, classifySessionError, createPrinter } from './printers.js';

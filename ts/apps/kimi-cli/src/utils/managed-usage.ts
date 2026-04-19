@@ -107,7 +107,8 @@ function limitLabel(
     if (typeof v === 'string' && v.length > 0) return v;
   }
   const duration = toInt(window['duration'] ?? item['duration'] ?? detail['duration']);
-  const timeUnit = String(window['timeUnit'] ?? item['timeUnit'] ?? detail['timeUnit'] ?? '');
+  const rawUnit = window['timeUnit'] ?? item['timeUnit'] ?? detail['timeUnit'];
+  const timeUnit = typeof rawUnit === 'string' ? rawUnit : '';
   if (duration !== null) {
     if (timeUnit.includes('MINUTE')) {
       if (duration >= 60 && duration % 60 === 0) return `${String(duration / 60)}h limit`;

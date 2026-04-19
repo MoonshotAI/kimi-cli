@@ -3,7 +3,7 @@
  */
 
 import type { Component } from '@mariozechner/pi-tui';
-import { Container, Text } from '@mariozechner/pi-tui';
+import { Text } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 import type { ColorPalette } from '../theme/colors.js';
 

@@ -5,6 +5,7 @@
 import { Editor, type EditorTheme, type TUI, matchesKey, Key } from '@mariozechner/pi-tui';
 import chalk from 'chalk';
 
+// oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
 const ANSI_SGR = /\x1b\[[0-9;]*m/g;
 
 /** Convert a visible-char index (ANSI-stripped) back to an index into the raw ANSI-bearing string. */
