@@ -32,6 +32,7 @@
  * `hookEngine.executeHooks(...)` — that stays hidden here.
  */
 
+import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -260,7 +261,66 @@ export class ToolCallOrchestrator {
       // Slice 2.2: run the permission phase after the pre-hook has
       // cleared the call. `permissionClosure` owns the deny/ask/allow
       // walk, approval routing, and timeout contract.
-      return permissionClosure(btcCtx, signal);
+      const permissionResult = await permissionClosure(btcCtx, signal);
+      if (permissionResult?.block === true) {
+        return permissionResult;
+      }
+
+      // Phase 25 Stage I (slice 25c-3) — atomic `tool_call` WAL row.
+      // We take contextState from `btcCtx.context` (not `this.deps`)
+      // because the orchestrator is typically constructed at app-level
+      // *before* any session exists; `btcCtx` always carries the active
+      // session's `SoulContextState` by construction (`runSoulTurn`
+      // passes its `context` parameter into every call). Runs only when
+      // Soul has threaded the per-step dynamic context (turnId /
+      // stepNumber / stepUuid) onto btcCtx; missing fields leave the
+      // hook transparent (back-compat for fixtures that don't drive
+      // the atomic WAL path).
+      //
+      // WAL-then-memory ordering: the `set(...)` into the shared map
+      // happens ONLY after `appendToolCall` resolves, so a durable-write
+      // throw never leaves an in-memory wireUuid registration that lacks
+      // a backing WAL row (test A.10).
+      if (
+        btcCtx.stepUuid !== undefined &&
+        btcCtx.turnId !== undefined &&
+        btcCtx.stepNumber !== undefined
+      ) {
+        const wireUuid = randomUUID();
+        const wrappedTool = this.currentTools.get(btcCtx.toolCall.name);
+        const display = wrappedTool?.display;
+        // `as never` absorbs the generic-parameter mismatch — `Tool` is
+        // erased to `Tool<unknown, unknown>` after registration, and
+        // `ToolDisplayHooks<Input>.getXxx` takes `Partial<Input>` /
+        // `Input`. `btcCtx.args` is `unknown`, which is not assignable
+        // into `Partial<unknown>` under strict variance, so we bridge
+        // through `never` — safe because each Tool's hooks only ever
+        // receive its own args at the call site below.
+        const activityDescription = display?.getActivityDescription?.(btcCtx.args as never);
+        const userFacingName = display?.getUserFacingName?.(btcCtx.args as never);
+        const inputDisplay = display?.getInputDisplay?.(btcCtx.args as never);
+
+        await btcCtx.context.appendToolCall({
+          uuid: wireUuid,
+          turnId: btcCtx.turnId,
+          step: btcCtx.stepNumber,
+          stepUuid: btcCtx.stepUuid,
+          data: {
+            tool_call_id: btcCtx.toolCall.id,
+            tool_name: btcCtx.toolCall.name,
+            args: btcCtx.args,
+            ...(activityDescription !== undefined
+              ? { activity_description: activityDescription }
+              : {}),
+            ...(userFacingName !== undefined ? { user_facing_name: userFacingName } : {}),
+            ...(inputDisplay !== undefined ? { input_display: inputDisplay } : {}),
+          },
+        });
+
+        btcCtx.toolCallByProviderId?.set(btcCtx.toolCall.id, wireUuid);
+      }
+
+      return permissionResult;
     };
   }
 

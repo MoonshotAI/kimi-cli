@@ -486,6 +486,23 @@ export interface BeforeToolCallContext {
   args: unknown;
   assistantMessage: AssistantMessage;
   context: SoulContextState;
+  /**
+   * Phase 25 Stage I — Soul-provided per-step dynamic context for the
+   * orchestrator to stamp atomic `tool_call` WAL rows. Optional so
+   * pre-25c-3 embedders / test fixtures that don't drive the atomic
+   * WAL path continue to compile.
+   */
+  turnId?: string | undefined;
+  stepNumber?: number | undefined;
+  stepUuid?: string | undefined;
+  /**
+   * Phase 25 Stage I — shared map used to bridge the orchestrator's
+   * `appendToolCall.uuid` back to Soul's `appendToolResult.parentUuid`.
+   * Orchestrator writes; Soul reads. Created fresh per step by
+   * `runSoulTurn` so cross-step entries never leak into the next step's
+   * parent lookup.
+   */
+  toolCallByProviderId?: Map<string, string> | undefined;
 }
 
 export interface BeforeToolCallResult {

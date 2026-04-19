@@ -141,6 +141,13 @@ export async function runSoulTurn(
       // replay-projector's interruption signal).
       const stepUuid = randomUUID();
       const turnId = context.currentTurnId?.() ?? UNKNOWN_TURN_ID;
+      // Phase 25 Stage I (slice 25c-3) — fresh per-step bridge map.
+      // The orchestrator's `appendToolCall` writer registers each
+      // freshly-minted wireUuid under `toolCall.id`; Soul's happy-path
+      // `appendToolResult` looks the parent uuid back up here. Allocated
+      // per step (not per turn) so an entry from step N never leaks into
+      // step N+1's parent lookup.
+      const toolCallByProviderId = new Map<string, string>();
 
       await context.appendStepBegin({ uuid: stepUuid, turnId, step: currentStep });
 
@@ -306,6 +313,15 @@ export async function runSoulTurn(
                   args: parsed.data,
                   assistantMessage: response.message,
                   context,
+                  // Phase 25 Stage I (slice 25c-3) — per-step dynamic
+                  // context for the orchestrator's `appendToolCall`
+                  // writer + the shared map it stamps wireUuids into so
+                  // Soul's happy-path `appendToolResult` can read them
+                  // back as `parentUuid`.
+                  turnId,
+                  stepNumber: currentStep,
+                  stepUuid,
+                  toolCallByProviderId,
                 },
                 signal,
               );
@@ -363,11 +379,12 @@ export async function runSoulTurn(
         // inside Pass 2 plus the post-for-loop checkpoint.
 
         // Pass 2 — happy-path executions + hook-block outcomes, written
-        // OUTSIDE the step envelope. `appendToolResult` is called with
-        // `parentUuid=undefined` because the happy-path `tool_call` row
-        // is not written by Soul in 25c-2 (deferred to 25c-3 orchestrator);
-        // the replay-projector will link via `tool_call_id` until the
-        // parent uuid is threaded through.
+        // OUTSIDE the step envelope. `appendToolResult` reads `parentUuid`
+        // from the per-step `toolCallByProviderId` map (populated by the
+        // orchestrator's `appendToolCall` write, slice 25c-3). Falls back
+        // to `undefined` on a miss (embed / pure-Soul tests without an
+        // orchestrator hook) — the replay-projector still links via
+        // `tool_call_id` in that legacy shape.
         for (const [index, item] of pending.entries()) {
           if (index > 0) {
             // §5.1.7 L1425 (relaxed — see comment above): skip tool #2+
@@ -383,7 +400,15 @@ export async function runSoulTurn(
           if (hookResult?.block === true) {
             const output = hookResult.reason ?? `Tool call "${toolCall.name}" was blocked`;
             deferredResults.set(toolCall.id, { output, isError: true });
-            await context.appendToolResult(undefined, toolCall.id, { output, isError: true });
+            // Phase 25 Stage I (slice 25c-3) — block path never reaches
+            // the orchestrator's `appendToolCall` writer (the hook
+            // short-circuits at permission/preHook), so the map lookup
+            // returns `undefined` and the result row stays parent-less.
+            await context.appendToolResult(
+              toolCallByProviderId.get(toolCall.id),
+              toolCall.id,
+              { output, isError: true },
+            );
             continue;
           }
           if (hookResult?.updatedInput !== undefined) {
@@ -432,10 +457,11 @@ export async function runSoulTurn(
               : `Tool "${toolCall.name}" failed: ${errorMessage(error)}`;
             const syntheticResult: ToolResult = { content: output, isError: true };
             deferredResults.set(toolCall.id, { output, isError: true });
-            await context.appendToolResult(undefined, toolCall.id, {
-              output,
-              isError: true,
-            });
+            await context.appendToolResult(
+              toolCallByProviderId.get(toolCall.id),
+              toolCall.id,
+              { output, isError: true },
+            );
             // Fire afterToolCall with the synthetic error result so
             // OnToolFailure hooks can observe tool exceptions (Slice 4).
             if (config.afterToolCall !== undefined) {
@@ -486,12 +512,20 @@ export async function runSoulTurn(
             if (isAbortError(afterError) || signal.aborted) {
               const output = `Tool "${toolCall.name}" aborted during afterToolCall hook.`;
               deferredResults.set(toolCall.id, { output, isError: true });
-              await context.appendToolResult(undefined, toolCall.id, { output, isError: true });
+              await context.appendToolResult(
+                toolCallByProviderId.get(toolCall.id),
+                toolCall.id,
+                { output, isError: true },
+              );
               throw afterError instanceof Error ? afterError : new Error(errorMessage(afterError));
             }
             const output = `afterToolCall hook failed for "${toolCall.name}": ${errorMessage(afterError)}`;
             deferredResults.set(toolCall.id, { output, isError: true });
-            await context.appendToolResult(undefined, toolCall.id, { output, isError: true });
+            await context.appendToolResult(
+              toolCallByProviderId.get(toolCall.id),
+              toolCall.id,
+              { output, isError: true },
+            );
             continue;
           }
 
@@ -507,7 +541,16 @@ export async function runSoulTurn(
             output: adaptedText,
             isError: finalResult.isError === true,
           });
-          await context.appendToolResult(undefined, toolCall.id, adapted);
+          // Phase 25 Stage I (slice 25c-3) — happy-path parent uuid is
+          // the wireUuid the orchestrator stamped during
+          // `buildBeforeToolCall`. Falls back to `undefined` when no
+          // orchestrator wiring is present (embed / pure-Soul tests),
+          // preserving slice 25c-2 semantics for those callers.
+          await context.appendToolResult(
+            toolCallByProviderId.get(toolCall.id),
+            toolCall.id,
+            adapted,
+          );
         }
 
         // §5.1.7 L1500: checkpoint after the tool for loop (catches any
