@@ -996,30 +996,53 @@ export class SessionManager {
       // idle, no pendingLaunchTurnId yet), set its reservation, and
       // physically `await appendTurnBegin` into wire.jsonl. The
       // rollback's later `atomicWrite(truncated)` would then overwrite
-      // that `turn_begin`, silently eating the user's prompt. That's
-      // the very destructive race Finding C claimed to close.
+      // that `turn_begin`, silently eating the user's prompt.
       //
-      // Real fix: atomically transition lifecycle `idle → active` via
-      // `tryReserveForMaintenance()` BEFORE any `await`, and release
-      // only after `atomicWrite` resolves. Any racing `handlePrompt`
-      // now sees `state === 'active'` in its sync busy gate and
-      // bounces with `agent_busy`.
+      // Round-8 extension: the `'active'` state that `tryReserveForMaintenance`
+      // leaves the session in is mapped by `SoulLifecycleGate` to the
+      // "writes allowed" JournalWriter gate. That closes the turn-
+      // launch race (which checks `isIdle()` directly) but NOT
+      // notifications / system_reminders / background-task appends,
+      // which only consult the gate. Those writes could still race
+      // `atomicWrite(truncated)` and get silently dropped.
+      //
+      // Transitioning idle → active → completing locks out both paths:
+      //   - `handlePrompt`'s `isIdle()` check fails on 'active' or
+      //     'completing'.
+      //   - JournalWriter's gate maps 'completing' to "writes blocked"
+      //     (JournalGatedError), so any racing notification append
+      //     throws at the gate rather than landing in wire.jsonl and
+      //     being overwritten.
+      // `releaseMaintenance` already walks completing → idle, so the
+      // existing release path stays correct.
       //
       // Embedded / test-only sessions (where `this.sessions.get(...)`
-      // returns undefined because nothing wired them into the
-      // SessionManager registry) have no TurnManager to reserve —
-      // there is nothing concurrent to race against, so fall through
-      // to the rollback body directly.
+      // returns undefined) have no TurnManager to reserve — nothing
+      // concurrent to race, so fall through directly.
       const live = this.sessions.get(sessionId);
       let turnManager: ReturnType<ManagedSession['soulPlus']['getTurnManager']> | undefined;
       if (live !== undefined) {
         turnManager = live.soulPlus.getTurnManager();
         if (!turnManager.tryReserveForMaintenance()) {
+          // Two-fold failure cause:
+          //   - `!isIdle()` — lifecycle not idle (active / compacting / completing / destroying)
+          //   - `getCurrentTurnId() !== undefined` — handlePrompt has
+          //     pre-registered a pending turn launch but hasn't yet
+          //     transitioned lifecycle; state reads as 'idle' but the
+          //     session is logically busy.
           const state = live.lifecycleStateMachine.state;
+          const pending = turnManager.getCurrentTurnId();
+          const detail =
+            pending !== undefined && state === 'idle'
+              ? `prompt launch in flight (${pending})`
+              : `lifecycle=${state}`;
           throw new Error(
-            `rollbackSession: session "${sessionId}" is busy (${state}) — cannot rollback while a turn, compaction, or another maintenance op is in flight`,
+            `rollbackSession: session "${sessionId}" is busy (${detail}) — cannot rollback while a turn, compaction, or another maintenance op is in flight`,
           );
         }
+        // Advance further to 'completing' so the JournalWriter gate
+        // actively refuses concurrent non-turn appends (round-8 fix).
+        live.lifecycleStateMachine.transitionTo('completing');
       }
 
       try {

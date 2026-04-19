@@ -247,6 +247,47 @@ describe('Phase 18 F.1 — SessionManager.rollbackSession', () => {
     await mgr.closeSession(sessionId);
   });
 
+  it('rollback transitions lifecycle to `completing` so concurrent non-turn journal writes are gated (round-8 review)', async () => {
+    // Round-8 review closed a secondary race: the `'active'` state
+    // `tryReserveForMaintenance` leaves the session in is mapped by
+    // SoulLifecycleGate to "writes allowed". A racing notification /
+    // system_reminder / background-task append could therefore land
+    // on wire.jsonl during rollback's async body and be overwritten
+    // by the trailing `atomicWrite(truncated)`. Transitioning further
+    // to `'completing'` makes JournalWriter's gate throw on any such
+    // append. This test pins the gate state during the async body.
+    const sessionId = 'ses_rollback_gate_completing';
+    const created = await mgr.createSession({
+      workspaceDir: tmp,
+      sessionId,
+      runtime: createNoopRuntime(),
+      tools: [],
+      model: 'test-model',
+    });
+    await created.sessionJournal.appendTurnBegin({
+      type: 'turn_begin',
+      turn_id: 'turn_1',
+      agent_type: 'main',
+      user_input: 'hi',
+      input_kind: 'user',
+    });
+
+    const rollbackPromise = mgr.rollbackSession(sessionId, 1);
+    // Yield twice so rollback has entered its async body and
+    // advanced the state machine past the reservation.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(created.lifecycleStateMachine.state).toBe('completing');
+
+    await rollbackPromise;
+
+    // After rollback resolves, release walks completing → idle.
+    expect(created.lifecycleStateMachine.state).toBe('idle');
+
+    await mgr.closeSession(sessionId);
+  });
+
   it('rollback releases maintenance reservation even when the body throws (so the session is not permanently stuck)', async () => {
     // Failure-path companion to the race closure: if the body throws
     // (e.g. state.json is missing), the try/finally must still flip

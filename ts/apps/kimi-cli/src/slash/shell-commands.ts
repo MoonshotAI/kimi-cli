@@ -126,8 +126,18 @@ const yoloCommand: SlashCommandDef = {
     else if (args === 'off') enabled = false;
     else enabled = !ctx.appState.yolo;
 
-    ctx.setAppState({ yolo: enabled });
+    // Round-8 review: call the wire FIRST, then flip the TUI. The old
+    // "setAppState before await" pattern was an optimistic UI update
+    // that worked when `setYolo` was a silent no-op (TUI drift was
+    // permanent but invisible-ish). Now that round-7 makes unknown
+    // sessions throw, flipping the TUI before the await leaves the
+    // user with status-bar showing yolo=on while core rejected the
+    // call — a direct contradiction of why we started throwing.
+    // Awaiting first means a wire throw short-circuits before any
+    // TUI mutation; slash dispatch catches the throw and surfaces it
+    // in the transcript, and state stays consistent with core.
     await ctx.wireClient.setYolo(ctx.appState.sessionId, enabled);
+    ctx.setAppState({ yolo: enabled });
     return ok(`YOLO mode: ${enabled ? 'on' : 'off'}`);
   },
 };
@@ -143,8 +153,12 @@ const planCommand: SlashCommandDef = {
     else if (args === 'off') enabled = false;
     else enabled = !ctx.appState.planMode;
 
-    ctx.setAppState({ planMode: enabled });
+    // Round-8 review: same ordering fix as `/yolo` — core first, TUI
+    // after. See the `yoloCommand.execute` comment for the full
+    // rationale (short version: post-round-7 throws + pre-await
+    // setAppState leave the TUI lying about session state).
     await ctx.wireClient.setPlanMode(ctx.appState.sessionId, enabled);
+    ctx.setAppState({ planMode: enabled });
     return ok(`Plan mode: ${enabled ? 'on' : 'off'}`);
   },
 };
@@ -182,8 +196,12 @@ const thinkingCommand: SlashCommandDef = {
     else if (args === 'off') enabled = false;
     else enabled = !ctx.appState.thinking;
 
-    ctx.setAppState({ thinking: enabled });
+    // Round-8 review: core first, TUI after — mirrors the yolo/plan
+    // ordering fix. `setThinking` is currently a wire-client no-op
+    // but the call-site pattern lines up with the others so a future
+    // real implementation inherits the consistent behaviour.
     await ctx.wireClient.setThinking(ctx.appState.sessionId, enabled ? 'extended' : 'none');
+    ctx.setAppState({ thinking: enabled });
     return ok(`Thinking: ${enabled ? 'on' : 'off'}`);
   },
 };
