@@ -117,6 +117,20 @@ When exiting with code 0, you can output structured JSON for more detailed infor
 
 When `permissionDecision` is `deny`, the operation is blocked and `permissionDecisionReason` is fed back to the LLM.
 
+For `PreToolUse` hooks, you can also provide `updatedInput` to transparently rewrite the tool input before execution:
+
+```json
+{
+  "hookSpecificOutput": {
+    "updatedInput": {
+      "command": "rtk git status"
+    }
+  }
+}
+```
+
+When `updatedInput` is provided (and the hook does not deny), the tool receives the updated input instead of the original. This is useful for integrations that need to transparently modify commands without blocking and retrying.
+
 ## Hook Script Examples
 
 ### Protect Sensitive Files

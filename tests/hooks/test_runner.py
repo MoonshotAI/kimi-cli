@@ -59,3 +59,25 @@ async def test_json_deny_takes_precedence_over_updated_input():
     result = await run_hook(cmd, {"tool_name": "Shell"}, timeout=5)
     assert result.action == "block"
     assert result.updated_input is None
+
+
+@pytest.mark.asyncio
+async def test_json_invalid_updated_input_is_ignored():
+    """Non-dict updatedInput values are ignored to prevent crashes in toolset."""
+    # string
+    cmd = """echo '{"hookSpecificOutput": {"updatedInput": "not-a-dict"}}' """
+    result = await run_hook(cmd, {"tool_name": "Shell"}, timeout=5)
+    assert result.action == "allow"
+    assert result.updated_input is None
+
+    # null
+    cmd = """echo '{"hookSpecificOutput": {"updatedInput": null}}' """
+    result = await run_hook(cmd, {"tool_name": "Shell"}, timeout=5)
+    assert result.action == "allow"
+    assert result.updated_input is None
+
+    # list
+    cmd = """echo '{"hookSpecificOutput": {"updatedInput": [1, 2]}}' """
+    result = await run_hook(cmd, {"tool_name": "Shell"}, timeout=5)
+    assert result.action == "allow"
+    assert result.updated_input is None

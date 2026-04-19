@@ -87,7 +87,9 @@ async def run_hook(
                     )
                 # Parse updatedInput for transparent command rewriting (e.g. RTK)
                 if "updatedInput" in hook_output:
-                    updated_input = cast(dict[str, Any], hook_output["updatedInput"])
+                    _ui = hook_output["updatedInput"]
+                    if isinstance(_ui, dict):
+                        updated_input = cast(dict[str, Any], _ui)
         except (json.JSONDecodeError, TypeError):
             pass
 

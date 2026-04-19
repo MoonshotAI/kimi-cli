@@ -117,6 +117,20 @@ Hook 命令从标准输入接收 JSON 格式的上下文信息，包含通用字
 
 当 `permissionDecision` 为 `deny` 时，会阻止操作并将 `permissionDecisionReason` 反馈给 LLM。
 
+对于 `PreToolUse` hooks，你还可以提供 `updatedInput` 来在执行前透明地重写工具输入：
+
+```json
+{
+  "hookSpecificOutput": {
+    "updatedInput": {
+      "command": "rtk git status"
+    }
+  }
+}
+```
+
+当提供了 `updatedInput`（且 hook 没有拒绝）时，工具会收到更新后的输入而非原始输入。这对于需要透明修改命令而无需阻塞和重试的集成场景非常有用。
+
 ## Hook 脚本示例
 
 ### 保护敏感文件
