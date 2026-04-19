@@ -154,6 +154,9 @@ class RecordingContextState implements FullContextState {
   currentTurnId(): string {
     return this.inner.currentTurnId?.() ?? 'no_turn';
   }
+  markBroken(error: Error): void {
+    this.inner.markBroken(error);
+  }
   get beforeStep(): (() => void) | undefined {
     return this.inner.beforeStep;
   }

@@ -30,6 +30,29 @@ export interface DanglingToolCall {
   readonly turnId: string;
   readonly toolCallId: string;
   readonly toolName: string;
+  /**
+   * Phase 25 — present when the dangling tool_call came from the atomic
+   * `tool_call` record path (legacy assistant_message source → undefined).
+   * `repairJournal` uses this to stamp `parent_uuid` on the synthetic
+   * tool_result so atomic and legacy syntheses don't collide downstream.
+   */
+  readonly toolCallUuid?: string | undefined;
+}
+
+/** Phase 25 — a step_begin record without a matching step_end. */
+export interface DanglingStep {
+  readonly stepUuid: string;
+  readonly turnId: string;
+  readonly step: number;
+}
+
+/** Phase 25 — a subagent_spawned record without a matching _completed/_failed. */
+export interface DanglingSubagent {
+  readonly agentId: string;
+  /** Matches `SubagentSpawnedRecord.data.parent_tool_call_id` (required on wire). */
+  readonly parentToolCallId: string;
+  readonly parentToolCallUuid?: string | undefined;
+  readonly spawnedSeq: number;
 }
 
 /** A turn_begin present without a matching turn_end. */
@@ -69,36 +92,126 @@ export interface RepairOptions {
 // ── Detection helpers (pure, no side effects) ──────────────────────────
 
 /**
- * Scan records for assistant_messages whose tool_calls lack matching
- * tool_result records. Returns one entry per dangling tool_call.
+ * Scan records for tool_calls that lack matching tool_result records.
+ * Covers both the legacy aggregated path (assistant_message.tool_calls,
+ * resolved by tool_result.tool_call_id) AND the Phase 25 atomic path
+ * (standalone `tool_call` rows, resolved only by
+ * tool_result.parent_uuid).
  *
- * Phase 25 Stage C — slice 25c-2 transitional scope: recovery only
- * inspects the legacy `assistant_message.tool_calls` path. Atomic
- * `tool_call` records (standalone rows) + `tool_result.parent_uuid`
- * anchoring will be covered by slices 25c-4/5 once the orchestrator
- * emits them; until then, slice 25c-2 keeps Soul's fallback
- * `appendToolCall` row in place but recovery scans the aggregated
- * path only to avoid double-counting during the transition.
+ * Decisions (Coordinator C.6 / C.7 / C.8):
+ *   - An atomic `tool_call` is only resolved by a tool_result that
+ *     carries `parent_uuid` matching the tool_call uuid. A tool_result
+ *     with just `tool_call_id` routes to the legacy matcher.
+ *   - When the same `tool_call_id` appears on both sides, the atomic
+ *     entry is authoritative and the legacy entry is deduplicated so
+ *     the pair is reported once, with `toolCallUuid` populated.
  */
 export function findDanglingToolCalls(records: readonly WireRecord[]): DanglingToolCall[] {
-  const dispatched = new Map<string, { turnId: string; toolName: string }>();
-  const resolved = new Set<string>();
+  // Legacy path: assistant_message.tool_calls dispatched by toolCallId,
+  // resolved by tool_result.tool_call_id.
+  const legacyDispatched = new Map<string, { turnId: string; toolName: string }>();
+  // Atomic path: tool_call records keyed by wire uuid, resolved by
+  // tool_result.parent_uuid matching the wire uuid.
+  const atomicDispatched = new Map<
+    string,
+    { turnId: string; toolName: string; toolCallId: string }
+  >();
+
+  const legacyResolved = new Set<string>(); // keyed by tool_call_id
+  const atomicResolved = new Set<string>(); // keyed by parent_uuid
 
   for (const r of records) {
     if (r.type === 'assistant_message') {
       for (const tc of r.tool_calls) {
-        dispatched.set(tc.id, { turnId: r.turn_id, toolName: tc.name });
+        legacyDispatched.set(tc.id, { turnId: r.turn_id, toolName: tc.name });
       }
+    } else if (r.type === 'tool_call') {
+      atomicDispatched.set(r.uuid, {
+        turnId: r.turn_id,
+        toolName: r.data.tool_name,
+        toolCallId: r.data.tool_call_id,
+      });
     } else if (r.type === 'tool_result') {
-      resolved.add(r.tool_call_id);
+      legacyResolved.add(r.tool_call_id);
+      if (r.parent_uuid !== undefined) {
+        atomicResolved.add(r.parent_uuid);
+      }
     }
   }
 
   const dangling: DanglingToolCall[] = [];
-  for (const [id, info] of dispatched) {
-    if (!resolved.has(id)) {
-      dangling.push({ turnId: info.turnId, toolCallId: id, toolName: info.toolName });
+  const reportedLegacyIds = new Set<string>();
+
+  // Atomic path first (decision C.7: atomic takes priority on dupe id).
+  for (const [uuid, info] of atomicDispatched) {
+    if (!atomicResolved.has(uuid)) {
+      dangling.push({
+        turnId: info.turnId,
+        toolCallId: info.toolCallId,
+        toolName: info.toolName,
+        toolCallUuid: uuid,
+      });
+      reportedLegacyIds.add(info.toolCallId);
     }
+  }
+
+  for (const [toolCallId, info] of legacyDispatched) {
+    if (reportedLegacyIds.has(toolCallId)) continue;
+    if (!legacyResolved.has(toolCallId)) {
+      dangling.push({ turnId: info.turnId, toolCallId, toolName: info.toolName });
+    }
+  }
+  return dangling;
+}
+
+/**
+ * Scan records for `step_begin` rows that lack a matching `step_end`
+ * (matched by `uuid`). Detection is set-subtraction so an out-of-order
+ * stream (step_end seen before step_begin) still resolves correctly.
+ */
+export function findDanglingSteps(records: readonly WireRecord[]): DanglingStep[] {
+  const begun = new Map<string, { turnId: string; step: number }>();
+  const ended = new Set<string>();
+  for (const r of records) {
+    if (r.type === 'step_begin') {
+      begun.set(r.uuid, { turnId: r.turn_id, step: r.step });
+    } else if (r.type === 'step_end') {
+      ended.add(r.uuid);
+    }
+  }
+  const dangling: DanglingStep[] = [];
+  for (const [stepUuid, info] of begun) {
+    if (!ended.has(stepUuid)) {
+      dangling.push({ stepUuid, turnId: info.turnId, step: info.step });
+    }
+  }
+  return dangling;
+}
+
+/**
+ * Scan records for `subagent_spawned` rows that lack a matching
+ * `subagent_completed` or `subagent_failed` (matched by `agent_id`).
+ * A completed/failed row without a matching spawn is ignored — there is
+ * no open outcome to close.
+ */
+export function findDanglingSubagents(records: readonly WireRecord[]): DanglingSubagent[] {
+  const spawned = new Map<string, DanglingSubagent>();
+  const settled = new Set<string>();
+  for (const r of records) {
+    if (r.type === 'subagent_spawned') {
+      spawned.set(r.data.agent_id, {
+        agentId: r.data.agent_id,
+        parentToolCallId: r.data.parent_tool_call_id,
+        parentToolCallUuid: r.data.parent_tool_call_uuid,
+        spawnedSeq: r.seq,
+      });
+    } else if (r.type === 'subagent_completed' || r.type === 'subagent_failed') {
+      settled.add(r.data.agent_id);
+    }
+  }
+  const dangling: DanglingSubagent[] = [];
+  for (const [, info] of spawned) {
+    if (!settled.has(info.agentId)) dangling.push(info);
   }
   return dangling;
 }
@@ -187,16 +300,15 @@ export async function repairJournal(options: RepairOptions): Promise<RepairResul
   }
 
   // Phase 2: repair dangling tool_calls → synthetic error tool_result.
-  // Phase 25 Stage C — slice 25c-2: `appendToolResult` gained a leading
-  // `parentUuid: string | undefined` argument. Legacy dangling tool_calls
-  // come from aggregated `assistant_message.tool_calls` rows that predate
-  // the atomic `tool_call` row (25b), so no parent uuid exists — pass
-  // `undefined` so the synthetic tool_result row omits `parent_uuid`
-  // entirely rather than stamping a bogus value.
+  // Phase 25 Stage G — slice 25c-4b: scan covers BOTH legacy aggregated
+  // rows and atomic `tool_call` rows. For atomic entries we carry the
+  // wire uuid through as `parentUuid` so the synthetic tool_result stamps
+  // `parent_uuid` and links the pair in the wire; legacy entries pass
+  // `undefined` (the field is omitted entirely).
   const danglingToolCalls = findDanglingToolCalls(records);
   for (const dtc of danglingToolCalls) {
     await contextState.appendToolResult(
-      undefined,
+      dtc.toolCallUuid,
       dtc.toolCallId,
       {
         output: 'crashed_before_execution',
@@ -222,6 +334,33 @@ export async function repairJournal(options: RepairOptions): Promise<RepairResul
     syntheticCount += 1;
   }
 
+  // Phase 4: repair dangling steps → synthetic step_end. No usage is
+  // attached — the step crashed before the LLM reported token counts.
+  const danglingSteps = findDanglingSteps(records);
+  for (const ds of danglingSteps) {
+    await contextState.appendStepEnd({
+      uuid: ds.stepUuid,
+      turnId: ds.turnId,
+      step: ds.step,
+    });
+    syntheticCount += 1;
+  }
+
+  // Phase 5: repair dangling subagents → synthetic subagent_failed with
+  // reason "crashed_before_outcome".
+  const danglingSubagents = findDanglingSubagents(records);
+  for (const dsa of danglingSubagents) {
+    await sessionJournal.appendSubagentFailed({
+      type: 'subagent_failed',
+      data: {
+        agent_id: dsa.agentId,
+        parent_tool_call_id: dsa.parentToolCallId,
+        error: 'crashed_before_outcome',
+      },
+    });
+    syntheticCount += 1;
+  }
+
   if (danglingApprovals.length > 0) {
     warnings.push(`repaired ${String(danglingApprovals.length)} dangling approval(s)`);
   }
@@ -230,6 +369,12 @@ export async function repairJournal(options: RepairOptions): Promise<RepairResul
   }
   if (danglingTurns.length > 0) {
     warnings.push(`repaired ${String(danglingTurns.length)} dangling turn(s)`);
+  }
+  if (danglingSteps.length > 0) {
+    warnings.push(`repaired ${String(danglingSteps.length)} dangling step(s)`);
+  }
+  if (danglingSubagents.length > 0) {
+    warnings.push(`repaired ${String(danglingSubagents.length)} dangling subagent(s)`);
   }
 
   // Suppress unused-variable lint for currentTurnId — it's available for

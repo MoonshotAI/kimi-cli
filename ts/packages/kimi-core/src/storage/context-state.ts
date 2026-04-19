@@ -3,6 +3,7 @@ import type { ContentPart, Message, ToolCall } from '@moonshot-ai/kosong';
 import type { EventSink } from '../soul/event-sink.js';
 import type { ToolInputDisplay } from '../soul/types.js';
 import type { UserInputPart } from '../wire-protocol/types.js';
+import { ContextStateBrokenError } from './errors.js';
 import { NoopJournalWriter, type JournalWriter } from './journal-writer.js';
 import type { NotificationRecord } from './wire-record.js';
 import { DefaultConversationProjector, type ConversationProjector } from './projector.js';
@@ -288,6 +289,15 @@ export interface FullContextState extends SoulContextState {
    * Two successive calls produce two records and both succeed (idempotent).
    */
   clear(): Promise<void>;
+
+  /**
+   * Phase 25 K0 (slice 25c-4b) — latch the broken flag so every
+   * subsequent `appendXxx` / `clear` / `applyConfigChange` /
+   * `resetToSummary` / `addUserMessages` call throws
+   * `ContextStateBrokenError` before any WAL or mirror mutation occurs.
+   * Idempotent: the first cause wins. Read paths stay open.
+   */
+  markBroken(error: Error): void;
 }
 
 // ── Shared implementation ─────────────────────────────────────────────
@@ -361,6 +371,35 @@ class BaseContextState implements FullContextState {
   /** M3 — pre-step hook wired by TurnManager (see setBeforeStepHook). */
   beforeStep: (() => void) | undefined = undefined;
 
+  // Phase 25 K0 (slice 25c-4b) — degraded/broken latch. Once a
+  // JournalWriter drain fails, SoulPlus calls `markBroken(cause)` so any
+  // subsequent write entry-point fails fast before mutating the WAL or
+  // the mirror. First cause wins (idempotent).
+  private _broken = false;
+  private _brokenError: Error | undefined;
+
+  /**
+   * Phase 25 K0 (slice 25c-4b) — flip the broken flag so every
+   * subsequent `appendXxx` throws `ContextStateBrokenError`. Idempotent:
+   * the first cause wins and is NOT replaced by subsequent markBroken
+   * calls. Read methods (buildMessages / drainSteerMessages / getHistory /
+   * get accessors) remain callable — only WAL-writing methods fail fast.
+   */
+  markBroken(error: Error): void {
+    if (this._broken) return;
+    this._broken = true;
+    this._brokenError = error;
+  }
+
+  private assertNotBroken(): void {
+    if (this._broken) {
+      throw new ContextStateBrokenError(
+        'ContextState is broken due to a prior persist error',
+        this._brokenError,
+      );
+    }
+  }
+
   constructor(opts: BaseContextStateOptions) {
     this.journalWriter = opts.journalWriter;
     this.projector = opts.projector ?? new DefaultConversationProjector();
@@ -433,6 +472,7 @@ class BaseContextState implements FullContextState {
   // ── Async writes (WAL-then-mirror) ──────────────────────────────────
 
   async appendUserMessage(input: UserInput, turnIdOverride?: string): Promise<void> {
+    this.assertNotBroken();
     // Slice 3 audit C1: the first `user_message` of a brand-new turn must
     // be durable-bound to the turn_id that TurnManager just allocated. The
     // `currentTurnId()` callback is set asynchronously in TurnManager and
@@ -488,6 +528,7 @@ class BaseContextState implements FullContextState {
   }
 
   async appendAssistantMessage(msg: AssistantMessagePayload): Promise<void> {
+    this.assertNotBroken();
     const append: Parameters<JournalWriter['append']>[0] = {
       type: 'assistant_message',
       turn_id: this.currentTurnId(),
@@ -536,6 +577,7 @@ class BaseContextState implements FullContextState {
     result: ToolResultPayload,
     turnIdOverride?: string,
   ): Promise<void> {
+    this.assertNotBroken();
     // Normalise `undefined` to `null` BEFORE the record is built. Without
     // this, `JSON.stringify({..., output: undefined})` silently drops the
     // `output` key, producing a `tool_result` row that is missing a
@@ -575,6 +617,7 @@ class BaseContextState implements FullContextState {
   // ── Phase 25 Stage D — atomic writers (WAL-then-mirror) ─────────────
 
   async appendStepBegin(input: StepBeginInput): Promise<void> {
+    this.assertNotBroken();
     await this.journalWriter.append({
       type: 'step_begin',
       uuid: input.uuid,
@@ -591,6 +634,7 @@ class BaseContextState implements FullContextState {
   }
 
   async appendStepEnd(input: StepEndInput): Promise<void> {
+    this.assertNotBroken();
     await this.journalWriter.append({
       type: 'step_end',
       uuid: input.uuid,
@@ -606,6 +650,7 @@ class BaseContextState implements FullContextState {
   }
 
   async appendContentPart(input: ContentPartInput): Promise<void> {
+    this.assertNotBroken();
     // Strict D-MSG-ID: reject orphan BEFORE any WAL write so an orphan
     // row can never land on disk and corrupt replay.
     const openMessage = this.openSteps.get(input.stepUuid);
@@ -640,6 +685,7 @@ class BaseContextState implements FullContextState {
   }
 
   async appendToolCall(input: ToolCallInput): Promise<void> {
+    this.assertNotBroken();
     const openMessage = this.openSteps.get(input.stepUuid);
     if (openMessage === undefined) {
       throw new Error(
@@ -698,12 +744,14 @@ class BaseContextState implements FullContextState {
   }
 
   async addUserMessages(steers: UserInput[]): Promise<void> {
+    this.assertNotBroken();
     for (const steer of steers) {
       await this.appendUserMessage(steer);
     }
   }
 
   async appendNotification(data: NotificationRecord['data']): Promise<void> {
+    this.assertNotBroken();
     // WAL write (no-op for InMemoryContextState via NoopJournalWriter)
     await this.journalWriter.append({
       type: 'notification',
@@ -719,6 +767,7 @@ class BaseContextState implements FullContextState {
   }
 
   async appendSystemReminder(data: { content: string }): Promise<void> {
+    this.assertNotBroken();
     // WAL write (no-op for InMemoryContextState via NoopJournalWriter)
     await this.journalWriter.append({
       type: 'system_reminder',
@@ -734,6 +783,7 @@ class BaseContextState implements FullContextState {
   }
 
   async clear(): Promise<void> {
+    this.assertNotBroken();
     // WAL-then-mirror §4.5.3: append the durable record FIRST. If the
     // append throws, the in-memory projection stays intact.
     await this.journalWriter.append({ type: 'context_cleared' });
@@ -742,6 +792,7 @@ class BaseContextState implements FullContextState {
   }
 
   async applyConfigChange(event: ConfigChangeEvent): Promise<void> {
+    this.assertNotBroken();
     switch (event.type) {
       case 'system_prompt_changed': {
         await this.journalWriter.append({
@@ -809,6 +860,7 @@ class BaseContextState implements FullContextState {
   }
 
   async resetToSummary(summary: SummaryMessage): Promise<void> {
+    this.assertNotBroken();
     await this.journalWriter.append({
       type: 'compaction',
       summary: summary.summary,

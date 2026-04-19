@@ -113,3 +113,25 @@ export class MalformedWireError extends Error {
     this.detail = detail;
   }
 }
+
+/**
+ * Phase 25 K0 (slice 25c-4b) — marker error thrown by every
+ * `BaseContextState.appendXxx` method once `markBroken(reason)` has
+ * been called (typically by JournalWriter.onPersistError wiring).
+ * Callers receiving this should abort the current turn — the WAL
+ * is no longer durable and any further mirror mutation would leave
+ * the session in a non-replayable state.
+ */
+export class ContextStateBrokenError extends Error {
+  // Narrow the inherited `Error.cause: unknown` (ES2022) to `Error | undefined`
+  // so callers can access `err.cause` without an unsafe `as { cause?: unknown }`
+  // cast. Matches the PROGRESS.md §K0 interface promise.
+  override readonly cause?: Error;
+  constructor(message: string, cause?: Error | undefined) {
+    super(message, cause !== undefined ? { cause } : undefined);
+    this.name = 'ContextStateBrokenError';
+    if (cause !== undefined) {
+      this.cause = cause;
+    }
+  }
+}
