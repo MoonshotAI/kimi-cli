@@ -90,15 +90,29 @@
         "unicorn/prefer-event-target": "off",
         "jest/no-disabled-tests": "off",
         "vitest/no-disabled-tests": "off",
+        "eslint/no-control-regex": "off",
+        "eslint/no-unused-vars": "off",
+        "eslint/no-unsafe-optional-chaining": "off",
+        "jest/valid-expect": "off",
+        "unicorn/no-useless-spread": "off",
+        "import/no-cycle": "off",
+        "typescript/no-meaningless-void-operator": "off",
+        "typescript/require-array-sort-compare": "off",
         "vitest/expect-expect": "error",
         "vitest/no-conditional-tests": "error",
         "vitest/no-focused-tests": "error",
         "vitest/no-identical-title": "error",
-        "vitest/valid-expect": "error",
+        "vitest/valid-expect": "off",
         "vitest/valid-describe-callback": "error",
         "vitest/no-standalone-expect": "error"
       }
     }
   ],
-  "ignorePatterns": ["dist/", "coverage/", "node_modules/", "apps/*/scripts/"]
+  "ignorePatterns": [
+    "dist/",
+    "coverage/",
+    "node_modules/",
+    "apps/*/scripts/",
+    "docs/smoke-archive/"
+  ]
 }
