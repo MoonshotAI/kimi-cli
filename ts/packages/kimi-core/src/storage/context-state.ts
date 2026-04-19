@@ -1,6 +1,7 @@
 import type { ContentPart, Message, ToolCall } from '@moonshot-ai/kosong';
 
 import type { EventSink } from '../soul/event-sink.js';
+import type { ToolInputDisplay } from '../soul/types.js';
 import type { UserInputPart } from '../wire-protocol/types.js';
 import { NoopJournalWriter, type JournalWriter } from './journal-writer.js';
 import type { NotificationRecord } from './wire-record.js';
@@ -28,6 +29,56 @@ export interface AssistantMessagePayload {
     output_tokens: number;
     cache_read_tokens?: number;
     cache_write_tokens?: number;
+  };
+}
+
+// Phase 25 Stage D — atomic write inputs (additive; legacy
+// `appendAssistantMessage` / `appendToolResult` remain in use. Caller
+// switchover lands in slice 25c-2).
+
+export interface StepBeginInput {
+  uuid: string;
+  turnId: string;
+  step: number;
+}
+
+export interface StepEndInput {
+  uuid: string;
+  turnId: string;
+  step: number;
+  usage?:
+    | {
+        input_tokens: number;
+        output_tokens: number;
+        cache_read_tokens?: number | undefined;
+        cache_write_tokens?: number | undefined;
+      }
+    | undefined;
+  finishReason?: string | undefined;
+}
+
+export interface ContentPartInput {
+  uuid: string;
+  turnId: string;
+  step: number;
+  stepUuid: string;
+  part:
+    | { kind: 'text'; text: string }
+    | { kind: 'think'; think: string; encrypted?: string | undefined };
+}
+
+export interface ToolCallInput {
+  uuid: string;
+  turnId: string;
+  step: number;
+  stepUuid: string;
+  data: {
+    tool_call_id: string;
+    tool_name: string;
+    args: unknown;
+    activity_description?: string | undefined;
+    user_facing_name?: string | undefined;
+    input_display?: ToolInputDisplay | undefined;
   };
 }
 
@@ -115,6 +166,14 @@ export interface SoulContextState {
   appendToolResult(toolCallId: string, result: ToolResultPayload): Promise<void>;
   addUserMessages(steers: UserInput[]): Promise<void>;
   applyConfigChange(event: ConfigChangeEvent): Promise<void>;
+
+  // Phase 25 Stage D — atomic writers. Additive relative to
+  // `appendAssistantMessage` / `appendToolResult`; production callers
+  // land in slice 25c-2.
+  appendStepBegin(input: StepBeginInput): Promise<void>;
+  appendStepEnd(input: StepEndInput): Promise<void>;
+  appendContentPart(input: ContentPartInput): Promise<void>;
+  appendToolCall(input: ToolCallInput): Promise<void>;
   // Phase 2: `resetToSummary` moved down to FullContextState. Soul must
   // not have reset power — compaction is orchestrated by TurnManager
   // which uses the FullContextState view.
@@ -263,6 +322,16 @@ class BaseContextState implements FullContextState {
   private _activeTools: Set<string>;
   private _tokenCountWithPending = 0;
   private steerBuffer: UserInput[] = [];
+  /**
+   * Phase 25 Stage D — open step registry for mirror aggregation. Maps a
+   * live `step_begin.uuid` to the assistant Message being built in that
+   * step. The Message reference is shared with `history[]` so content /
+   * tool_call mutations applied here are visible to `buildMessages()`
+   * immediately (铁律 4 "内存可见"). Entries are evicted by
+   * `appendStepEnd`, after which late parts with the same stepUuid are
+   * rejected (D-MSG-ID strict anchoring).
+   */
+  private openSteps: Map<string, Message> = new Map();
   /** M3 — pre-step hook wired by TurnManager (see setBeforeStepHook). */
   beforeStep: (() => void) | undefined = undefined;
 
@@ -463,6 +532,131 @@ class BaseContextState implements FullContextState {
       toolCalls: [],
       toolCallId,
     });
+  }
+
+  // ── Phase 25 Stage D — atomic writers (WAL-then-mirror) ─────────────
+
+  async appendStepBegin(input: StepBeginInput): Promise<void> {
+    await this.journalWriter.append({
+      type: 'step_begin',
+      uuid: input.uuid,
+      turn_id: input.turnId,
+      step: input.step,
+    });
+    const message: Message = {
+      role: 'assistant',
+      content: [],
+      toolCalls: [],
+    };
+    this.history.push(message);
+    this.openSteps.set(input.uuid, message);
+  }
+
+  async appendStepEnd(input: StepEndInput): Promise<void> {
+    await this.journalWriter.append({
+      type: 'step_end',
+      uuid: input.uuid,
+      turn_id: input.turnId,
+      step: input.step,
+      ...(input.usage !== undefined ? { usage: input.usage } : {}),
+      ...(input.finishReason !== undefined ? { finish_reason: input.finishReason } : {}),
+    });
+    this.openSteps.delete(input.uuid);
+    if (input.usage !== undefined) {
+      this._tokenCountWithPending += input.usage.input_tokens + input.usage.output_tokens;
+    }
+  }
+
+  async appendContentPart(input: ContentPartInput): Promise<void> {
+    // Strict D-MSG-ID: reject orphan BEFORE any WAL write so an orphan
+    // row can never land on disk and corrupt replay.
+    const openMessage = this.openSteps.get(input.stepUuid);
+    if (openMessage === undefined) {
+      throw new Error(
+        `appendContentPart: unknown stepUuid '${input.stepUuid}' (no open step_begin)`,
+      );
+    }
+    await this.journalWriter.append({
+      type: 'content_part',
+      uuid: input.uuid,
+      turn_id: input.turnId,
+      step: input.step,
+      step_uuid: input.stepUuid,
+      role: 'assistant',
+      part:
+        input.part.kind === 'text'
+          ? { kind: 'text', text: input.part.text }
+          : input.part.encrypted !== undefined
+            ? { kind: 'think', think: input.part.think, encrypted: input.part.encrypted }
+            : { kind: 'think', think: input.part.think },
+    });
+    if (input.part.kind === 'text') {
+      openMessage.content.push({ type: 'text', text: input.part.text });
+    } else {
+      const thinkPart: ContentPart = { type: 'think', think: input.part.think };
+      if (input.part.encrypted !== undefined) {
+        (thinkPart as { encrypted?: string }).encrypted = input.part.encrypted;
+      }
+      openMessage.content.push(thinkPart);
+    }
+  }
+
+  async appendToolCall(input: ToolCallInput): Promise<void> {
+    const openMessage = this.openSteps.get(input.stepUuid);
+    if (openMessage === undefined) {
+      throw new Error(
+        `appendToolCall: unknown stepUuid '${input.stepUuid}' (no open step_begin)`,
+      );
+    }
+    // Strip display-hint keys whose value is `undefined` so the WAL row
+    // matches the "no `undefined` keys on the wire" contract (the
+    // corresponding tests assert `.toBeUndefined()` on absence, not on
+    // an `undefined` value).
+    const data: {
+      tool_call_id: string;
+      tool_name: string;
+      args: unknown;
+      activity_description?: string | undefined;
+      user_facing_name?: string | undefined;
+      input_display?: ToolInputDisplay | undefined;
+    } = {
+      tool_call_id: input.data.tool_call_id,
+      tool_name: input.data.tool_name,
+      args: input.data.args,
+      ...(input.data.activity_description !== undefined
+        ? { activity_description: input.data.activity_description }
+        : {}),
+      ...(input.data.user_facing_name !== undefined
+        ? { user_facing_name: input.data.user_facing_name }
+        : {}),
+      ...(input.data.input_display !== undefined
+        ? { input_display: input.data.input_display }
+        : {}),
+    };
+    await this.journalWriter.append({
+      type: 'tool_call',
+      uuid: input.uuid,
+      turn_id: input.turnId,
+      step: input.step,
+      step_uuid: input.stepUuid,
+      data,
+    });
+    // Normalise undefined args to null — mirrors appendAssistantMessage
+    // (L489) so the two write paths produce identical in-memory ToolCall
+    // shapes. JSON.stringify(undefined) returns the native `undefined`
+    // (not a string), which would violate kosong's
+    // `ToolCall.function.arguments: string | null` contract.
+    const normalisedArgs =
+      input.data.args === undefined ? null : JSON.stringify(input.data.args);
+    const toolCall: ToolCall = {
+      type: 'function',
+      id: input.data.tool_call_id,
+      function: {
+        name: input.data.tool_name,
+        arguments: normalisedArgs,
+      },
+    };
+    openMessage.toolCalls.push(toolCall);
   }
 
   async addUserMessages(steers: UserInput[]): Promise<void> {

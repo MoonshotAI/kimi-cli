@@ -102,6 +102,18 @@ class RecordingContextState implements FullContextState {
   resetToSummary(...args: Parameters<FullContextState['resetToSummary']>): Promise<void> {
     return this.inner.resetToSummary(...args);
   }
+  appendStepBegin(...args: Parameters<FullContextState['appendStepBegin']>): Promise<void> {
+    return this.inner.appendStepBegin(...args);
+  }
+  appendStepEnd(...args: Parameters<FullContextState['appendStepEnd']>): Promise<void> {
+    return this.inner.appendStepEnd(...args);
+  }
+  appendContentPart(...args: Parameters<FullContextState['appendContentPart']>): Promise<void> {
+    return this.inner.appendContentPart(...args);
+  }
+  appendToolCall(...args: Parameters<FullContextState['appendToolCall']>): Promise<void> {
+    return this.inner.appendToolCall(...args);
+  }
   setBeforeStepHook(fn: (() => void) | undefined): void {
     this.inner.setBeforeStepHook(fn);
   }

@@ -31,7 +31,13 @@
  * accidentally grow a reference to SoulPlus internals.
  */
 
-import type { Message, ModelCapability } from '@moonshot-ai/kosong';
+import type {
+  Message,
+  ModelCapability,
+  TextPart as KosongTextPart,
+  ThinkPart as KosongThinkPart,
+  ToolCall as KosongToolCall,
+} from '@moonshot-ai/kosong';
 
 import type { AssistantMessage, StopReason, TokenUsage, ToolCall, ToolResult } from './types.js';
 
@@ -62,6 +68,24 @@ export interface ToolCallPartDelta {
   readonly arguments_chunk?: string | undefined;
 }
 
+/**
+ * Phase 25 Stage C — atomic streaming part routed to SoulPlus-layer
+ * ContextState writers. `content` covers a completed TextPart / ThinkPart
+ * (image / audio / video ContentParts are input-only and never emitted by
+ * kosong's output stream, so the union is narrowed to the two output
+ * variants). `tool_call` covers a completed ToolCall (args already
+ * finalised). Incremental tool_call fragments (ToolCallPart) still flow
+ * via `onToolCallPart`; they do NOT trigger `onAtomicPart`.
+ *
+ * If a future provider ever streams image / audio / video as assistant
+ * output, extend this union AND the routing filter in
+ * `kosong-adapter.ts` (`runOnce`'s `onMessagePart` handler) so new parts
+ * are not silently dropped.
+ */
+export type AtomicPart =
+  | { kind: 'content'; part: KosongTextPart | KosongThinkPart }
+  | { kind: 'tool_call'; toolCall: KosongToolCall };
+
 export interface ChatParams {
   messages: Message[];
   tools: LLMToolDefinition[];
@@ -88,6 +112,15 @@ export interface ChatParams {
    * `tool_call_part` and onward through the wire event-bridge.
    */
   onToolCallPart?: ((part: ToolCallPartDelta) => void) | undefined;
+  /**
+   * Phase 25 Stage C — fires on every completed streaming part (finished
+   * text / think / tool_call). Additive relative to `onDelta` /
+   * `onThinkDelta` / `onToolCallPart`: those still fire as before. Awaited
+   * by the adapter so downstream WAL writers can rely on sequential
+   * ordering of appends (matches kosong's `await callbacks.onMessagePart(...)`
+   * contract).
+   */
+  onAtomicPart?: ((part: AtomicPart) => Promise<void> | void) | undefined;
   /**
    * Slice 5 / 决策 #97 — fired by streaming wrappers as each tool_use
    * block finishes streaming so the orchestrator can prefetch ahead of

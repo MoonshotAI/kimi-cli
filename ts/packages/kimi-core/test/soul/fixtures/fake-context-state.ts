@@ -12,8 +12,12 @@ import type { Message } from '@moonshot-ai/kosong';
 import type {
   AssistantMessagePayload,
   ConfigChangeEvent,
+  ContentPartInput,
   SoulContextState,
+  StepBeginInput,
+  StepEndInput,
   SummaryMessage,
+  ToolCallInput,
   ToolResultPayload,
   UserInput,
 } from '../../../src/storage/context-state.js';
@@ -174,6 +178,20 @@ export class FakeContextState implements SoulContextState {
 
   async resetToSummary(summary: SummaryMessage): Promise<void> {
     this.calls.push({ kind: 'resetToSummary', summary });
+  }
+
+  // Phase 25 Stage D — atomic writers (test stub; no caller in slice 25c-1).
+  async appendStepBegin(_input: StepBeginInput): Promise<void> {
+    /* no-op — fakes don't mirror steps */
+  }
+  async appendStepEnd(_input: StepEndInput): Promise<void> {
+    /* no-op */
+  }
+  async appendContentPart(_input: ContentPartInput): Promise<void> {
+    /* no-op */
+  }
+  async appendToolCall(_input: ToolCallInput): Promise<void> {
+    /* no-op */
   }
 
   // ── Convenience filters ───────────────────────────────────────────

@@ -208,7 +208,9 @@ export class KosongAdapter implements KosongAdapterInterface {
     // aggregated in `result.message.toolCalls` below.
     const onDelta = params.onDelta;
     const onThinkDelta = params.onThinkDelta;
-    const needMessagePart = onDelta !== undefined || onThinkDelta !== undefined;
+    const onAtomicPart = params.onAtomicPart;
+    const needMessagePart =
+      onDelta !== undefined || onThinkDelta !== undefined || onAtomicPart !== undefined;
     let result: Awaited<ReturnType<typeof generate>>;
     try {
       result = await generate(
@@ -218,11 +220,22 @@ export class KosongAdapter implements KosongAdapterInterface {
         params.messages,
         needMessagePart
           ? {
-              onMessagePart: (part: KosongStreamedPart): void => {
+              onMessagePart: async (part: KosongStreamedPart): Promise<void> => {
                 if (part.type === 'text' && onDelta !== undefined) {
                   onDelta(part.text);
                 } else if (part.type === 'think' && onThinkDelta !== undefined) {
                   onThinkDelta(part.think);
+                }
+                // Phase 25 Stage C — route completed parts to onAtomicPart.
+                // Streaming deltas (`tool_call_part`) are intentionally
+                // filtered out; the fully-formed ToolCall header (type
+                // === 'function') is what downstream WAL writers anchor on.
+                if (onAtomicPart !== undefined) {
+                  if (part.type === 'text' || part.type === 'think') {
+                    await onAtomicPart({ kind: 'content', part });
+                  } else if (part.type === 'function') {
+                    await onAtomicPart({ kind: 'tool_call', toolCall: part });
+                  }
                 }
               },
             }
