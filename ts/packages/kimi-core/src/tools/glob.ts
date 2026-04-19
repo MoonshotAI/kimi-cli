@@ -8,17 +8,23 @@
  * LLM is relativized to the search base to save tokens; `output.paths`
  * keeps absolute paths so downstream Read/Edit can consume them directly.
  *
- * Safety rails (ports Python `glob.py:48-84, 141-149`):
- *   - `pattern` starting with `**` is rejected (would recurse the whole
- *     filesystem / every `node_modules`)
+ * Safety rails:
+ *   - Pure-wildcard patterns (nothing but `*` / `?` / `/`) are rejected
+ *     because they would enumerate every file under the search root and
+ *     invite symlink loops. Examples: `**`, `** / *`, `** / **`, `* / *`.
+ *     Constrained patterns (with any literal anchor such as an extension
+ *     or subdirectory) are allowed — the literal bounds the result set,
+ *     and the search base is already clamped to the workspace by
+ *     `assertPathAllowed`, so `**` cannot escape the workspace.
  *   - Patterns using brace expansion (`{a,b,c}`) are rejected up-front
  *     because the underlying `_globWalk` treats `{` / `}` as literals,
  *     so such patterns would silently match zero files.
  *   - `path` is validated against the workspace (cannot search `/`, `/etc`,
  *     or any directory outside the configured workspace)
- *   - match count is capped at `MAX_MATCHES`; iteration stops early to
- *     bound memory and to limit damage from symlink loops in the kaos
- *     `_globWalk` (which currently follows symlinks via `stat`)
+ *   - match count is capped at `MAX_MATCHES`; a separate `YIELD_SAFETY_CAP`
+ *     (MAX_MATCHES × 2) on the raw yield stream keeps symlink loops in
+ *     the kaos `_globWalk` from spinning forever even when the unique
+ *     cap would never trip.
  */
 
 import type { Kaos } from '@moonshot-ai/kaos';
@@ -52,7 +58,7 @@ export class GlobTool implements BuiltinTool<GlobInput, GlobOutput> {
     _signal: AbortSignal,
     _onUpdate?: (update: ToolUpdate) => void,
   ): Promise<ToolResult<GlobOutput>> {
-    if (args.pattern.startsWith('**')) {
+    if (isPureWildcard(args.pattern)) {
       const dirs = [this.workspace.workspaceDir, ...this.workspace.additionalDirs];
       const dirList = dirs.map((d) => `  - ${d}`).join('\n');
       let tree: string;
@@ -64,10 +70,11 @@ export class GlobTool implements BuiltinTool<GlobInput, GlobOutput> {
       return {
         isError: true,
         content:
-          `Pattern "${args.pattern}" starts with "**" which is not allowed. ` +
-          `A leading "**" would recursively search every directory (including large ` +
-          `trees like node_modules) and can trigger symlink loops. Use a more ` +
-          `specific pattern such as "src/**/*.ts" instead.\n\n` +
+          `Pattern "${args.pattern}" is a pure wildcard (only \`*\`, \`?\`, \`**\`, \`/\`) ` +
+          `and would enumerate every file under the search root, which can trigger ` +
+          `symlink loops and exhaust memory. Add a literal anchor — e.g. an extension ` +
+          `("${args.pattern === '**' || args.pattern === '**/*' ? '**/*.ts' : '**/*.md'}") ` +
+          `or a subdirectory ("src/**/*.ts") — to bound the result set.\n\n` +
           `Searchable roots:\n${dirList}\n\n` +
           `Top of ${this.workspace.workspaceDir}:\n${tree}`,
       };
@@ -191,6 +198,27 @@ function relativizeIfUnder(candidate: string, base: string): string {
     return candidate.slice(prefix.length);
   }
   return candidate;
+}
+
+/**
+ * Return true if `pattern` is pure wildcards — only `*`, `?`, `**`, `/`.
+ * Such patterns have no literal anchor and would enumerate every file
+ * under the search root. Backslash-escaped characters (`\X`) count as
+ * literals so `\*` or `\?` still means "pattern has an anchor".
+ */
+function isPureWildcard(pattern: string): boolean {
+  if (pattern === '') return false;
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === '\\' && i + 1 < pattern.length) {
+      // escaped literal — pattern has an anchor
+      return false;
+    }
+    if (ch !== '*' && ch !== '?' && ch !== '/') {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Return true iff `pattern` looks like it uses `{a,b,c}` brace expansion. */

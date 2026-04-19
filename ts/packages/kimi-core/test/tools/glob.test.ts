@@ -137,25 +137,63 @@ describe('GlobTool', () => {
 
   // ── C2 regression ──────────────────────────────────────────────────
 
-  it('rejects patterns starting with `**`', async () => {
+  it('rejects pure-wildcard pattern `**`', async () => {
     const tool = new GlobTool(createFakeKaos(), NARROW_WORKSPACE);
     const result = await tool.execute(
-      'call_c2_starstar',
+      'call_c2_pure_starstar',
       { pattern: '**' },
       new AbortController().signal,
     );
     expect(result.isError).toBe(true);
-    expect(toolContentString(result)).toContain('**');
+    expect(toolContentString(result)).toContain('pure wildcard');
   });
 
-  it('rejects patterns starting with `**/...`', async () => {
+  it('rejects pure-wildcard pattern `**/*`', async () => {
     const tool = new GlobTool(createFakeKaos(), NARROW_WORKSPACE);
     const result = await tool.execute(
-      'call_c2_starstar_prefix',
-      { pattern: '**/*.ts' },
+      'call_c2_pure_slash_star',
+      { pattern: '**/*' },
       new AbortController().signal,
     );
     expect(result.isError).toBe(true);
+    expect(toolContentString(result)).toContain('pure wildcard');
+  });
+
+  it('rejects pure-wildcard pattern `*/*`', async () => {
+    const tool = new GlobTool(createFakeKaos(), NARROW_WORKSPACE);
+    const result = await tool.execute(
+      'call_c2_pure_single',
+      { pattern: '*/*' },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBe(true);
+    expect(toolContentString(result)).toContain('pure wildcard');
+  });
+
+  it('accepts `**/<literal>` patterns (CC parity)', async () => {
+    // A leading `**` with a literal anchor (e.g. `**/*.md`, `**/package.json`)
+    // is valid — the search base is already clamped to the workspace so
+    // `**` cannot escape, and the literal suffix bounds the result set.
+    const kaos = createFakeKaos({
+      async *glob() {
+        yield '/my-workspace/src/a.md';
+        yield '/my-workspace/docs/README.md';
+      },
+      stat: vi.fn().mockResolvedValue(statFor(0)),
+    });
+    const tool = new GlobTool(kaos, {
+      workspaceDir: '/my-workspace',
+      additionalDirs: [],
+    });
+    const result = await tool.execute(
+      'call_starstar_constrained',
+      { pattern: '**/*.md' },
+      new AbortController().signal,
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.output?.paths).toEqual(
+      expect.arrayContaining(['/my-workspace/src/a.md', '/my-workspace/docs/README.md']),
+    );
   });
 
   it('rejects search paths outside the workspace', async () => {
@@ -352,22 +390,22 @@ describe('GlobTool', () => {
       });
       const result = await tool.execute(
         'call_starstar_listing',
-        { pattern: '**/*.txt' },
+        { pattern: '**' },
         new AbortController().signal,
       );
       expect(result.isError).toBe(true);
       const text = toolContentString(result);
       // Pin: the rejection lists at least one workspace path so the
-      // caller knows where to rescope. Red bar until src/tools/glob.ts
-      // enumerates the dir list.
+      // caller knows where to rescope. Uses a pure-wildcard pattern
+      // since the reject path now only fires for unanchored patterns.
       expect(text).toMatch(/\/my-workspace|\/extra-dir/);
     });
 
-    it('** rejection message includes a tree listing of the workspace root', async () => {
-      // Python `glob.py:50-62` appends a 2-level tree so the caller can
-      // re-scope without a second round-trip. TS parity: the rejection
-      // content must show both dir entries and file entries from the
-      // primary workspaceDir.
+    it('pure-wildcard rejection message includes a tree listing of the workspace root', async () => {
+      // Pin: when we reject a pure-wildcard pattern (`**`, `**/*`, …),
+      // the content should append a 2-level tree of workspaceDir so the
+      // caller can re-scope in the same turn instead of issuing a probe
+      // Glob / Bash to discover directory structure.
       type KaosArg = Parameters<typeof createFakeKaos>[0];
       const kaos = createFakeKaos({
         iterdir: (async function* (p: string) {
@@ -399,7 +437,7 @@ describe('GlobTool', () => {
       });
       const result = await tool.execute(
         'call_tree',
-        { pattern: '**/*.ts' },
+        { pattern: '**' },
         new AbortController().signal,
       );
       expect(result.isError).toBe(true);
