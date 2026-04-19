@@ -108,7 +108,7 @@ function makeOrchestrator(args: {
 
 // ── constants ─────────────────────────────────────────────────────────
 
-describe('Tool result budget — constants (决策 #96 L1)', () => {
+describe.sequential('Tool result budget — constants (决策 #96 L1)', () => {
   it('DEFAULT_BUILTIN_MAX_RESULT_CHARS = 50_000', () => {
     expect(DEFAULT_BUILTIN_MAX_RESULT_CHARS).toBe(50_000);
   });
@@ -119,7 +119,7 @@ describe('Tool result budget — constants (决策 #96 L1)', () => {
 
 // ── PathConfig extension (Q1 contract point, assumed option (a)) ─────
 
-describe('PathConfig.toolResultArchivePath (Q1 contract assumption)', () => {
+describe.sequential('PathConfig.toolResultArchivePath (Q1 contract assumption)', () => {
   it('builds a deterministic per-session, per-tool-call file path under sessionDir', () => {
     const cfg = new PathConfig({ home: '/test/kimi' });
     const p: string = cfg.toolResultArchivePath('ses_1', 'tc_42');
@@ -145,7 +145,7 @@ describe('PathConfig.toolResultArchivePath (Q1 contract assumption)', () => {
 
 // ── afterToolCall budget enforcement ──────────────────────────────────
 
-describe('Orchestrator — budget enforcement at afterToolCall seam', () => {
+describe.sequential('Orchestrator — budget enforcement at afterToolCall seam', () => {
   let workDir: string;
   let pathConfig: PathConfig;
 
@@ -155,7 +155,7 @@ describe('Orchestrator — budget enforcement at afterToolCall seam', () => {
   });
 
   afterEach(async () => {
-    await rm(workDir, { recursive: true, force: true });
+    await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('small result (< DEFAULT_BUILTIN_MAX_RESULT_CHARS) passes through unchanged and writes no file', async () => {
@@ -204,9 +204,14 @@ describe('Orchestrator — budget enforcement at afterToolCall seam', () => {
     );
 
     const replaced = out.content as string;
-    expect(replaced).toContain(prefix);
-    // The preview must NOT include any `Y` (past the 2000-char head).
-    expect(replaced.includes('Y')).toBe(false);
+    // `replaced` wraps the preview in `<persisted-output path="...">...</persisted-output>`,
+    // and the path embeds an mkdtemp suffix (base62 — may contain `Y`), so the
+    // Y-exclusion check must run only against the preview body.
+    const previewStart = replaced.indexOf('>\n') + 2;
+    const previewEnd = replaced.lastIndexOf('\n</persisted-output>');
+    const previewOnly = replaced.slice(previewStart, previewEnd);
+    expect(previewOnly).toContain(prefix);
+    expect(previewOnly.includes('Y')).toBe(false);
   });
 
   it('tool.maxResultSizeChars === Infinity never persists, even for huge content', async () => {
@@ -335,7 +340,7 @@ describe('Orchestrator — budget enforcement at afterToolCall seam', () => {
 import type { AfterToolCallContext, ToolCall } from '../../src/soul/types.js';
 import type { SoulContextState } from '../../src/storage/context-state.js';
 
-describe('Orchestrator — closure-path budget enforcement (end-to-end)', () => {
+describe.sequential('Orchestrator — closure-path budget enforcement (end-to-end)', () => {
   let workDir: string;
   let pathConfig: PathConfig;
 
@@ -345,7 +350,7 @@ describe('Orchestrator — closure-path budget enforcement (end-to-end)', () => 
   });
 
   afterEach(async () => {
-    await rm(workDir, { recursive: true, force: true });
+    await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('buildAfterToolCall closure persists oversized results when toolsByName is threaded', async () => {

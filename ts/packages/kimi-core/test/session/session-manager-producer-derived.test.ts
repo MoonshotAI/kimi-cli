@@ -75,7 +75,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   _resetProducerInfoForTest();
-  await rm(tmpDir, { recursive: true, force: true });
+  // Phase 16 SessionMetaService.flushDebounceMs = 200ms — teardown can race
+  // with an in-flight state.json write. Node's built-in retry absorbs the
+  // ENOTEMPTY/EBUSY window without growing custom helpers.
+  await rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 describe('SessionManager — state.json carries derived producer (T4.1)', () => {

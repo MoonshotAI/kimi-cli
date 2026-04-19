@@ -157,7 +157,9 @@ describe('PlanModeInjectionProvider — emitted text fingerprints', () => {
   ): string {
     const maybe = provider.getInjections(ctx);
     if (!Array.isArray(maybe)) return '';
-    return maybe.map((i) => i.content).join('\n');
+    return maybe
+      .map((i) => (typeof i.content === 'string' ? i.content : JSON.stringify(i.content)))
+      .join('\n');
   }
 
   it('full variant text contains "Plan mode is active" and workflow preamble', () => {
