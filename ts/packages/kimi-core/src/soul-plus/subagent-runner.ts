@@ -30,6 +30,7 @@
  *     branch is exercised by direct-runner tests only.
  */
 
+import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -340,10 +341,44 @@ export async function runSubagentTurn(
     },
   };
 
+  // R6 — minimal `beforeToolCall` hook mirroring the orchestrator's
+  // atomic `appendToolCall` write (see
+  // `Orchestrator.buildBeforeToolCall` in `orchestrator.ts`). Subagents
+  // still auto-approve every tool call (the hook returns `undefined`),
+  // but the WAL row + `toolCallByProviderId` registration is REQUIRED
+  // for message-replay correctness: without it, the child's replayed
+  // assistant message carries an empty `toolCalls[]`, the next LLM
+  // request ships a `role='tool'` item with a dangling `tool_call_id`,
+  // and Moonshot rejects with `400 tool_call_id is not found`.
+  //
+  // Unlike the orchestrator, we skip the ToolDisplayHooks projection
+  // (`activity_description` / `user_facing_name` / `input_display`) —
+  // subagents have no display surface to drive, so the base atomic row
+  // is sufficient.
   const childConfig: SoulConfig = {
     tools: childTools,
-    // Subagents auto-approve all tool calls in 5.3
-    // (no beforeToolCall / afterToolCall hooks)
+    beforeToolCall: async (btcCtx, _signal) => {
+      if (
+        btcCtx.stepUuid !== undefined &&
+        btcCtx.turnId !== undefined &&
+        btcCtx.stepNumber !== undefined
+      ) {
+        const wireUuid = randomUUID();
+        await btcCtx.context.appendToolCall({
+          uuid: wireUuid,
+          turnId: btcCtx.turnId,
+          step: btcCtx.stepNumber,
+          stepUuid: btcCtx.stepUuid,
+          data: {
+            tool_call_id: btcCtx.toolCall.id,
+            tool_name: btcCtx.toolCall.name,
+            args: btcCtx.args,
+          },
+        });
+        btcCtx.toolCallByProviderId?.set(btcCtx.toolCall.id, wireUuid);
+      }
+      return undefined;
+    },
   };
 
   // 4. Update status to running
