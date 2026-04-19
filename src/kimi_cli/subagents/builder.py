@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 
 from kaos.path import KaosPath
@@ -7,6 +8,7 @@ from kaos.path import KaosPath
 from kimi_cli.llm import clone_llm_with_model_alias
 from kimi_cli.soul.agent import Agent, Runtime, load_agent
 from kimi_cli.subagents.models import AgentLaunchSpec, AgentTypeDefinition
+from kimi_cli.utils.logging import logger
 
 
 class SubagentBuilder:
@@ -30,7 +32,14 @@ class SubagentBuilder:
         )
         work_dir_override: KaosPath | None = None
         if launch_spec.work_dir is not None:
-            work_dir_override = KaosPath(launch_spec.work_dir)
+            candidate = KaosPath(launch_spec.work_dir)
+            if not candidate.is_absolute():
+                logger.warning(
+                    "Ignoring non-absolute work_dir override: {path}",
+                    path=launch_spec.work_dir,
+                )
+            else:
+                work_dir_override = candidate
         runtime = self._root_runtime.copy_for_subagent(
             agent_id=agent_id,
             subagent_type=type_def.name,
@@ -42,7 +51,10 @@ class SubagentBuilder:
         if work_dir_override is not None:
             from kimi_cli.utils.path import list_directory
 
-            ls_output = await list_directory(work_dir_override)
+            try:
+                ls_output = await list_directory(work_dir_override)
+            except OSError:
+                ls_output = "[directory not readable]"
             runtime = replace(
                 runtime,
                 builtin_args=replace(runtime.builtin_args, KIMI_WORK_DIR_LS=ls_output),
