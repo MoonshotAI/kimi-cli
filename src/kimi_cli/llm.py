@@ -95,6 +95,36 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
     return applied
 
 
+def augment_provider_credentials_with_env_vars(provider: LLMProvider) -> dict[str, str]:
+    """Override provider credentials/base URL from environment variables without changing model.
+
+    This is used for secondary model selections, such as compaction, where the configured model
+    alias should remain stable even if the main chat model is overridden from the environment.
+    """
+
+    applied: dict[str, str] = {}
+
+    match provider.type:
+        case "kimi":
+            if base_url := os.getenv("KIMI_BASE_URL"):
+                provider.base_url = base_url
+                applied["KIMI_BASE_URL"] = base_url
+            if api_key := os.getenv("KIMI_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+                applied["KIMI_API_KEY"] = "******"
+        case "openai_legacy" | "openai_responses":
+            if base_url := os.getenv("OPENAI_BASE_URL"):
+                provider.base_url = base_url
+                applied["OPENAI_BASE_URL"] = base_url
+            if api_key := os.getenv("OPENAI_API_KEY"):
+                provider.api_key = SecretStr(api_key)
+                applied["OPENAI_API_KEY"] = "******"
+        case _:
+            pass
+
+    return applied
+
+
 def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> dict[str, str]:
     headers = {"User-Agent": USER_AGENT}
     if oauth:

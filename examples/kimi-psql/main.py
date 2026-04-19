@@ -276,6 +276,7 @@ async def create_psql_soul(llm: LLM | None, conninfo: str) -> KimiSoul:
         config=config,
         oauth=OAuthManager(config),
         llm=llm,
+        compaction_llm=None,
         session=session,
         yolo=True,  # Auto-approve read-only SQL queries
     )

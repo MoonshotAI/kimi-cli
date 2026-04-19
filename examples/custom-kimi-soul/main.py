@@ -35,6 +35,7 @@ class HakimiSoul(KimiSoul):
             config=config,
             oauth=OAuthManager(config),
             llm=llm,
+            compaction_llm=None,
             session=session,
             yolo=True,
         )

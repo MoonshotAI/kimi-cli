@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：支持通过插件提供自定义上下文压缩实现——插件可在 `plugin.json` 中声明 `compaction.entrypoint` 提供自定义压缩器；通过 `loop_control.compaction_plugin` 配置项指定使用哪个插件的压缩器
+- Core：新增 `loop_control.compaction_model` 配置项，可为上下文压缩指定专用模型
 ## 1.36.0 (2026-04-17)
 
 - Anthropic：修复 Claude Opus 4.7 返回 `invalid_request_error` 的问题——Opus 4.7 拒绝旧的 `{type: "enabled", budget_tokens: N}` 思考配置，现在会正确路由到 adaptive thinking，并显式设置 `display: "summarized"`，使思考内容仍能通过流返回（Opus 4.7 默默将该默认值改为 `"omitted"`）；Bedrock / Vertex 命名变体（如 `aws/claude-opus-4-7`、`anthropic.claude-opus-4-7-v1:0`）以及 `claude-mythos-preview` 也会被正确识别；未来的 Claude ≥ 4.6 版本会通过版本号外推自动识别，无需改代码

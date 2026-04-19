@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -28,6 +28,7 @@ from kimi_cli.skill import (
     resolve_skills_roots,
 )
 from kimi_cli.soul.approval import Approval, ApprovalState
+from kimi_cli.soul.compaction import Compaction, SimpleCompaction
 from kimi_cli.soul.denwarenji import DenwaRenji
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.subagents.models import AgentTypeDefinition, ToolPolicy
@@ -199,6 +200,8 @@ class Runtime:
     background_tasks: BackgroundTaskManager
     skills: dict[str, Skill]
     additional_dirs: list[KaosPath]
+    compaction_llm: LLM | None = None
+    compaction: Compaction = field(default_factory=SimpleCompaction)
     skills_dirs: list[KaosPath]
     subagent_store: SubagentStore | None = None
     approval_runtime: ApprovalRuntime | None = None
@@ -225,6 +228,7 @@ class Runtime:
         config: Config,
         oauth: OAuthManager,
         llm: LLM | None,
+        compaction_llm: LLM | None,
         session: Session,
         yolo: bool,
         skills_dirs: list[KaosPath] | None = None,
@@ -335,6 +339,7 @@ class Runtime:
             ),
             skills=skills_by_name,
             additional_dirs=additional_dirs,
+            compaction_llm=compaction_llm,
             # Only expose skills roots outside the workspace for Glob access;
             # project-level roots are already within work_dir.
             skills_dirs=[
@@ -346,6 +351,25 @@ class Runtime:
             role="root",
         )
 
+    def _new_compaction(self) -> Compaction:
+        compaction = type(self.compaction)()
+        plugin_dir = getattr(self.compaction, "__kimi_plugin_dir__", None)
+        if plugin_dir is not None:
+            from kimi_cli.plugin.compaction import _wrap_compactor_for_lazy_imports
+
+            return _wrap_compactor_for_lazy_imports(compaction, Path(plugin_dir))
+        return compaction
+
+    def resolve_compaction_llm(self, *, active_llm: LLM | None = None) -> LLM | None:
+        active_llm = self.llm if active_llm is None else active_llm
+        if active_llm is None:
+            return self.compaction_llm
+        if self.compaction_llm is None:
+            return active_llm
+        if self.compaction_llm.max_context_size < active_llm.max_context_size:
+            return active_llm
+        return self.compaction_llm
+
     def copy_for_subagent(
         self,
         *,
@@ -354,10 +378,11 @@ class Runtime:
         llm_override: LLM | None = None,
     ) -> Runtime:
         """Clone runtime for a subagent."""
+        active_llm = llm_override if llm_override is not None else self.llm
         return Runtime(
             config=self.config,
             oauth=self.oauth,
-            llm=llm_override if llm_override is not None else self.llm,
+            llm=active_llm,
             session=self.session,
             builtin_args=self.builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
@@ -369,6 +394,8 @@ class Runtime:
             skills=self.skills,
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
+            compaction_llm=self.resolve_compaction_llm(active_llm=active_llm),
+            compaction=self._new_compaction(),
             skills_dirs=self.skills_dirs,
             subagent_store=self.subagent_store,
             approval_runtime=self.approval_runtime,

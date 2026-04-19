@@ -49,7 +49,6 @@ from kimi_cli.soul import (
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import (
     CompactionResult,
-    SimpleCompaction,
     estimate_text_tokens,
     should_auto_compact,
 )
@@ -137,7 +136,7 @@ class KimiSoul:
         self._approval = agent.runtime.approval
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
-        self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._compaction = agent.runtime.compaction
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -620,7 +619,7 @@ class KimiSoul:
             command_name = f"{FLOW_COMMAND_PREFIX}{skill.name}"
             if command_name in seen_names:
                 logger.warning(
-                    "Skipping prompt flow slash command /{name}: name already registered",
+                    "Skipping flow slash command /{name}: name already registered",
                     name=command_name,
                 )
                 continue
@@ -966,13 +965,14 @@ class KimiSoul:
             ChatProviderError: When the chat provider returns an error.
         """
 
-        chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
+        compaction_llm = self._runtime.resolve_compaction_llm()
+        chat_provider = compaction_llm.chat_provider if compaction_llm is not None else None
 
         async def _run_compaction_once() -> CompactionResult:
-            if self._runtime.llm is None:
+            if compaction_llm is None:
                 raise LLMNotSet()
             return await self._compaction.compact(
-                self._context.history, self._runtime.llm, custom_instruction=custom_instruction
+                self._context.history, compaction_llm, custom_instruction=custom_instruction
             )
 
         @tenacity.retry(

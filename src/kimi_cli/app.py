@@ -16,7 +16,13 @@ from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
-from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
+from kimi_cli.exception import ConfigError
+from kimi_cli.llm import (
+    augment_provider_credentials_with_env_vars,
+    augment_provider_with_env_vars,
+    create_llm,
+    model_display_name,
+)
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
@@ -161,26 +167,28 @@ class KimiCLI:
 
         oauth = OAuthManager(config)
 
-        model: LLMModel | None = None
-        provider: LLMProvider | None = None
-
-        # try to use config file
-        if not model_name and config.default_model:
-            # no --model specified && default model is set in config
-            model = config.models[config.default_model]
-            provider = config.providers[model.provider]
-        if model_name and model_name in config.models:
-            # --model specified && model is set in config
-            model = config.models[model_name]
-            provider = config.providers[model.provider]
-
-        if not model:
+        selected_model = model_name or config.default_model
+        if selected_model and selected_model in config.models:
+            model = config.models[selected_model]
+            provider = config.providers.get(model.provider)
+            if provider is None:
+                logger.warning(
+                    "Provider {provider!r} for model {model!r} missing; using placeholder",
+                    provider=model.provider,
+                    model=selected_model,
+                )
+                model = LLMModel(provider="", model="", max_context_size=100_000)
+                provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
+        else:
+            if selected_model:
+                logger.warning(
+                    "Model {model!r} not found in config, using placeholder",
+                    model=selected_model,
+                )
             model = LLMModel(provider="", model="", max_context_size=100_000)
             provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
 
         # try overwrite with environment variables
-        assert provider is not None
-        assert model is not None
         env_overrides = augment_provider_with_env_vars(provider, model)
 
         # determine thinking mode
@@ -205,6 +213,46 @@ class KimiCLI:
             logger.info("Using LLM model: {model}", model=model)
             logger.info("Thinking mode: {thinking}", thinking=thinking)
 
+        compaction_llm = None
+        if config.loop_control.compaction_model is not None:
+            compaction_model_name = config.loop_control.compaction_model
+            compaction_model = config.models.get(compaction_model_name)
+            if compaction_model is None:
+                logger.warning(
+                    "Compaction model {model!r} not found in config, skipping",
+                    model=compaction_model_name,
+                )
+            else:
+                if llm is not None and compaction_model.max_context_size < llm.max_context_size:
+                    raise ConfigError(
+                        "Compaction model "
+                        f"{compaction_model_name!r} has max_context_size "
+                        f"{compaction_model.max_context_size}, smaller than active model "
+                        f"{selected_model!r} ({model.max_context_size})"
+                    )
+                compaction_provider = config.providers.get(compaction_model.provider)
+                if compaction_provider is None:
+                    logger.warning(
+                        "Compaction provider {provider!r} not found in config, skipping",
+                        provider=compaction_model.provider,
+                    )
+                else:
+                    compaction_provider = compaction_provider.model_copy(deep=True)
+                    compaction_model = compaction_model.model_copy(deep=True)
+                    augment_provider_credentials_with_env_vars(compaction_provider)
+                    compaction_llm = create_llm(
+                        compaction_provider,
+                        compaction_model,
+                        thinking=thinking,
+                        session_id=session.id,
+                        oauth=oauth,
+                    )
+                    if compaction_llm is not None:
+                        logger.info(
+                            "Using compaction LLM model: {model}",
+                            model=compaction_model,
+                        )
+
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
@@ -212,6 +260,7 @@ class KimiCLI:
             config,
             oauth,
             llm,
+            compaction_llm,
             session,
             yolo,
             skills_dirs=skills_dirs,
@@ -233,6 +282,20 @@ class KimiCLI:
                 refresh_plugin_configs(get_plugins_dir(), host_values)
         except Exception:
             logger.debug("Failed to refresh plugin configs, skipping")
+
+        if config.loop_control.compaction_plugin is not None:
+            from kimi_cli.plugin import PluginError
+            from kimi_cli.plugin.compaction import resolve_plugin_compactor
+            from kimi_cli.plugin.manager import get_plugins_dir
+
+            try:
+                runtime.compaction = resolve_plugin_compactor(
+                    get_plugins_dir(), config.loop_control.compaction_plugin
+                )
+            except PluginError as exc:
+                raise ConfigError(
+                    f"Invalid compaction plugin {config.loop_control.compaction_plugin!r}: {exc}"
+                ) from exc
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE

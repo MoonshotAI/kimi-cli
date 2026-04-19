@@ -34,6 +34,8 @@ def test_default_config_dump():
                 "max_steps_per_turn": 500,
                 "max_retries_per_step": 3,
                 "max_ralph_iterations": 0,
+                "compaction_model": None,
+                "compaction_plugin": None,
                 "reserved_context_size": 50000,
                 "compaction_trigger_ratio": 0.85,
             },
@@ -115,6 +117,25 @@ def test_load_config_reserved_context_size_too_low():
         load_config_from_string('{"loop_control": {"reserved_context_size": 500}}')
 
 
+def test_load_config_compaction_model():
+    config = load_config_from_string(
+        '{"loop_control": {"compaction_model": "compact"}, "models": {"compact": {"provider": "p", "model": "compact-model", "max_context_size": 4096}}, "providers": {"p": {"type": "_echo", "base_url": "", "api_key": ""}}}'
+    )
+    assert config.loop_control.compaction_model == "compact"
+
+
+def test_load_config_compaction_model_strips_whitespace():
+    config = load_config_from_string(
+        '{"loop_control": {"compaction_model": "  compact  "}, "models": {"compact": {"provider": "p", "model": "compact-model", "max_context_size": 4096}}, "providers": {"p": {"type": "_echo", "base_url": "", "api_key": ""}}}'
+    )
+    assert config.loop_control.compaction_model == "compact"
+
+
+def test_load_config_compaction_model_requires_known_model():
+    with pytest.raises(ConfigError, match="Compaction model missing not found in models"):
+        load_config_from_string('{"loop_control": {"compaction_model": "missing"}}')
+
+
 def test_load_config_compaction_trigger_ratio():
     config = load_config_from_string('{"loop_control": {"compaction_trigger_ratio": 0.8}}')
     assert config.loop_control.compaction_trigger_ratio == 0.8
@@ -123,6 +144,16 @@ def test_load_config_compaction_trigger_ratio():
 def test_load_config_compaction_trigger_ratio_default():
     config = load_config_from_string("{}")
     assert config.loop_control.compaction_trigger_ratio == 0.85
+
+
+def test_load_config_compaction_plugin():
+    config = load_config_from_string('{"loop_control": {"compaction_plugin": "alpha-plugin"}}')
+    assert config.loop_control.compaction_plugin == "alpha-plugin"
+
+
+def test_load_config_compaction_plugin_empty_becomes_none():
+    config = load_config_from_string('{"loop_control": {"compaction_plugin": "   "}}')
+    assert config.loop_control.compaction_plugin is None
 
 
 def test_load_config_compaction_trigger_ratio_too_low():
