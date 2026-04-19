@@ -36,6 +36,7 @@ import {
   ReadMediaFileTool,
   ReadTool,
   SkipThisTool,
+  SessionEventBus,
   SessionManager,
   SetTodoListTool,
   TaskListTool,
@@ -66,7 +67,6 @@ import type {
   ApprovalRuntime,
   KimiConfig,
   McpConfig,
-  McpLoadNotification,
   OAuthResolver,
   Runtime,
   Tool,
@@ -84,6 +84,7 @@ import { OptionConflictError, validateOptions } from './cli/options.js';
 import { ConfigLoadError, loadCliConfig } from './config/loader.js';
 import { mergeConfig } from './config/merge.js';
 import { mergeMcpConfigs } from '@moonshot-ai/core';
+import { buildMcpManager } from './mcp-bootstrap.js';
 import { LocalFetchURLProvider } from './providers/local-fetch-url.js';
 import { MoonshotFetchURLProvider } from './providers/moonshot-fetch-url.js';
 import { MoonshotWebSearchProvider } from './providers/moonshot-web-search.js';
@@ -432,6 +433,12 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   // after `loadKimiCoreConfig` preserved it. Absence of any `[mcp]`
   // section (or an empty / malformed one) is NOT a fatal condition —
   // we log and carry on with no MCP tools.
+  // Phase 24 B-3 — shared EventBus created before MCPManager so loadAll
+  // events (mcp.loading / mcp.connected / mcp.tools_changed) are not lost.
+  // The same bus is passed to KimiCoreClient so each session reuses it
+  // instead of creating a fresh one (avoids multi-session routing bugs).
+  const sharedEventBus = new SessionEventBus();
+
   let mcpManager: MCPManager | undefined;
   const mcpTools: Tool[] = [];
   // Phase 21 Slice C.2.3 — assemble MCP configs in priority order:
@@ -443,41 +450,17 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
   const mcpConfigsToMerge = collectMcpConfigs(kimiConfig.raw, opts);
   const mcpConfig = mergeMcpConfigs(mcpConfigsToMerge);
   if (mcpConfig !== undefined) {
-    try {
-      const parsed = parseMcpConfig(mcpConfig);
-      mcpManager = new MCPManager({
-        config: parsed,
-        logger: pinoToLogger(getLogger()).child({ component: 'mcp-manager' }),
-        onNotify: (notif: McpLoadNotification) => {
-          if (notif.kind === 'loading') {
-            process.stderr.write(`[mcp] ${notif.serverName}: connecting...\n`);
-          } else if (notif.kind === 'loaded') {
-            process.stderr.write(
-              `[mcp] ${notif.serverName}: ${String(notif.toolCount ?? 0)} tools loaded\n`,
-            );
-          } else {
-            process.stderr.write(
-              `[mcp] ${notif.serverName}: failed (${notif.error ?? 'unknown error'})\n`,
-            );
-          }
-        },
-        onStderr: (server, line) => {
-          process.stderr.write(`[mcp:${server}] ${line}\n`);
-        },
-      });
-      await mcpManager.loadAll();
-      mcpTools.push(...mcpManager.getTools());
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      process.stderr.write(`warning: MCP config invalid, skipping: ${message}\n`);
-      if (mcpManager !== undefined) {
-        await mcpManager.close();
-        mcpManager = undefined;
-      }
-      if (error instanceof MCPConfigError) {
-        // fall through — degraded mode
-      }
-    }
+    const parsed = parseMcpConfig(mcpConfig);
+    const mcpResult = await buildMcpManager({
+      config: parsed,
+      eventSink: sharedEventBus,
+      logger: pinoToLogger(getLogger()).child({ component: 'mcp-manager' }),
+      MCPManager,
+      MCPConfigError,
+      rethrowUnknown: false,
+    });
+    mcpManager = mcpResult.manager;
+    mcpTools.push(...mcpResult.tools);
   }
 
   // Phase 21 Slice C.2.2 — `--add-dir` extends WorkspaceConfig.
@@ -644,6 +627,8 @@ async function bootstrapCoreShell(opts: CLIOptions): Promise<ShellBootstrap> {
     maxContextSize,
     rebuildRuntimeForModel,
     ...(agentTypeRegistry !== undefined ? { agentTypeRegistry } : {}),
+    ...(mcpManager !== undefined ? { mcpManager } : {}),
+    sharedEventBus,
   });
 
   // Phase 21 Slice F — `--session` with no id (argParser normalised to '')
@@ -960,6 +945,8 @@ async function runWire(opts: CLIOptions): Promise<void> {
   const {
     AlwaysAllowApprovalRuntime,
     HookEngine,
+    MCPManager: MCPManagerCtor,
+    MCPConfigError: MCPConfigErrorCtor,
     RequestRouter,
     SessionEventBus,
     SessionManager: SessionManagerCtor,
@@ -972,6 +959,8 @@ async function runWire(opts: CLIOptions): Promise<void> {
     installWireEventBridge,
     loadConfig: loadKimiConfig,
     mapToWireError,
+    mergeMcpConfigs: mergeMcpConfigsFn,
+    parseMcpConfig: parseMcpConfigFn,
     registerDefaultWireHandlers,
     createWireResponse: makeResponse,
     PathConfig: PathConfigCtor,
@@ -1030,6 +1019,23 @@ async function runWire(opts: CLIOptions): Promise<void> {
   // factory and attach at createSession time, or (b) tag tasks with
   // session_id and filter in the session.getBackgroundTasks handler.
   const backgroundManager = new BackgroundProcessManager();
+
+  // Phase 24 B-2 — construct MCPManager in runWire so mcp.list / mcp.refresh
+  // wire handlers have a real registry instead of the fallback stub.
+  let wireMcpManager: import('@moonshot-ai/core').MCPManager | undefined;
+  const wireMcpConfigsToMerge = collectMcpConfigs(kimiConfig.raw, opts);
+  const wireMcpConfig = mergeMcpConfigsFn(wireMcpConfigsToMerge);
+  if (wireMcpConfig !== undefined) {
+    const parsed = parseMcpConfigFn(wireMcpConfig);
+    const wireResult = await buildMcpManager({
+      config: parsed,
+      eventSink: eventBus,
+      MCPManager: MCPManagerCtor,
+      MCPConfigError: MCPConfigErrorCtor,
+      rethrowUnknown: true,
+    });
+    wireMcpManager = wireResult.manager;
+  }
 
   // Phase 17 §A.1 / §C.1 — the orchestrator's sessionId closure
   // reads the session id most-recently created through this runner.
@@ -1148,6 +1154,8 @@ async function runWire(opts: CLIOptions): Promise<void> {
     server: transport,
     hookEngine,
     rebuildRuntimeForModel: wireRebuildRuntimeForModel,
+    // Phase 24 B-2 — pass MCPManager so mcp.list / mcp.refresh work.
+    ...(wireMcpManager !== undefined ? { mcpRegistry: wireMcpManager } : {}),
   });
 
   // Phase 17 §A.1 — per-session WireEventBridge, keyed by sessionId.
@@ -1172,6 +1180,21 @@ async function runWire(opts: CLIOptions): Promise<void> {
       getEventFilter: () => wireHandlersHandle.getEventFilter(managed.sessionId),
     });
     bridgeDisposers.set(managed.sessionId, handle.dispose);
+    // Phase 24 RR2-B-A snapshot compensation (wire path).
+    // MCPManager.loadAll fires mcp.loading / mcp.connected / mcp.tools_changed
+    // before this bridge listener is installed; those events are permanently
+    // dropped by SessionEventBus (no pre-subscribe buffer). Emit a catch-up
+    // snapshot here so the wire client sees the final MCP state.
+    //
+    // Shared-bus multi-session note: if runWire ever serves multiple concurrent
+    // sessions, each installBridge will emit a fresh snapshot to all existing
+    // bridge listeners. This is correct — MCP state is process-level and shared
+    // across sessions, so existing listeners receiving a re-emit is not a bug,
+    // just potentially redundant. See kimi-core-client.ts registerManagedSession
+    // for the TUI-path counterpart and its N2 annotation.
+    if (wireMcpManager !== undefined) {
+      eventBus.emit({ type: 'status.update.mcp_status', data: wireMcpManager.status() });
+    }
   };
 
   const originalCreate = sessionManager.createSession.bind(sessionManager);
@@ -1273,6 +1296,10 @@ async function runWire(opts: CLIOptions): Promise<void> {
         } catch {
           /* keep going — best-effort drain on EOF */
         }
+      }
+      // Phase 24 B-2 — close MCP connections on wire shutdown.
+      if (wireMcpManager !== undefined) {
+        await wireMcpManager.close().catch(() => {});
       }
       process.exit(0);
     })();

@@ -178,6 +178,7 @@ export class TurnManager {
   private permissionMode: PermissionMode;
   private pendingTurnOverrides: TurnPermissionOverrides | undefined;
   private planMode: boolean;
+  private thinkingLevel: string | undefined;
   private readonly sessionId: string;
   /**
    * Phase 18 A.13 — terminal reason per turn id for callers that
@@ -230,6 +231,14 @@ export class TurnManager {
 
   getPlanMode(): boolean {
     return this.planMode;
+  }
+
+  setThinkingLevel(level: string | undefined): void {
+    this.thinkingLevel = level;
+  }
+
+  getThinkingLevel(): string | undefined {
+    return this.thinkingLevel;
   }
 
   getAgentId(): string {

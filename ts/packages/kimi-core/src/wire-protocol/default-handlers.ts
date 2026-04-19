@@ -38,7 +38,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { z, ZodError } from 'zod';
+import { z } from 'zod';
 
 import type { HookEngine } from '../hooks/engine.js';
 import { WireHookExecutor, type WireHookSender } from '../hooks/wire-executor.js';
@@ -50,9 +50,10 @@ import type { WiredApprovalRuntime } from '../soul-plus/wired-approval-runtime.j
 import type { ApprovalStateStore } from '../soul-plus/approval-state-store.js';
 import type { ToolCallOrchestrator } from '../soul-plus/orchestrator.js';
 import type { SessionEventBus } from '../soul-plus/session-event-bus.js';
+import type { McpRegistry } from '../soul-plus/mcp/registry.js';
 import type { PathConfig } from '../session/path-config.js';
 import type { SessionManager } from '../session/session-manager.js';
-import type { RequestRouter } from '../router/request-router.js';
+import { RequestRouter } from '../router/request-router.js';
 import { SubagentStore } from '../soul-plus/subagent-store.js';
 import type { BackgroundProcessManager } from '../tools/background/manager.js';
 import type { Transport } from '../transport/types.js';
@@ -107,6 +108,9 @@ export interface DefaultHandlersDeps {
   // `session.setYolo` delegates to it instead of flipping
   // `SessionControl.setYolo` directly.
   readonly approvalStateStore?: ApprovalStateStore | undefined;
+  // Phase 24 Step 4.7 — real McpRegistry for mcp.list / mcp.refresh.
+  // When absent, mcp.list returns {servers:[]} (backward compat).
+  readonly mcpRegistry?: McpRegistry | undefined;
   // Phase 21 §A — `session.setModel` invokes this so the host can
   // rebuild the underlying Provider/Kosong adapter (live-switch). The
   // handler awaits the callback before invoking `SoulPlus.setModel` so
@@ -168,7 +172,6 @@ const SUPPORTED_WIRE_EVENTS = [
   'compaction.begin',
   'compaction.end',
   'notification',
-  'subagent.event',
   'hook.triggered',
   'hook.resolved',
   'session.error',
@@ -176,6 +179,21 @@ const SUPPORTED_WIRE_EVENTS = [
   'session.replay.end',
   // Phase 21 §A — typed thinking-level change forwarded by the bridge.
   'thinking.changed',
+  // Phase 24 — skill lifecycle events (Step 3).
+  'skill.invoked',
+  'skill.completed',
+  // Phase 24 — MCP server lifecycle events (Step 4).
+  'mcp.loading',
+  'mcp.connected',
+  'mcp.disconnected',
+  'mcp.error',
+  'mcp.tools_changed',
+  'mcp.resources_changed',
+  'mcp.auth_required',
+  // Phase 24 — MCP status update variant.
+  'status.update.mcp_status',
+  // Phase 16 — session meta changes forwarded by the bridge.
+  'session_meta.changed',
 ] as const;
 
 const SUPPORTED_WIRE_METHODS = [
@@ -300,6 +318,7 @@ export function registerDefaultWireHandlers(
     approvalStateStore,
     rebuildRuntimeForModel,
     hookTimeoutMs,
+    mcpRegistry,
   } = deps;
 
   // Phase 21 §A — per-session mutable state for the new wire methods.
@@ -839,10 +858,15 @@ export function registerDefaultWireHandlers(
     const managed = session as ReturnType<SessionManager['get']>;
     if (managed === undefined) throw new Error(`Session not found: ${msg.session_id}`);
     const payload = z.object({ enabled: z.boolean() }).parse(msg.data ?? {});
+    // Order matters: sessionControl.setYolo writes the wire record and flips
+    // TurnManager.permissionMode synchronously. Calling store.setYolo after this
+    // makes the onChanged listener's setPermissionMode idempotent (oldMode === newMode
+    // short-circuits), so we don't double-write. If order were reversed, the listener
+    // would flip TurnManager first, then sessionControl.setYolo would see previousMode
+    // === newMode and skip appendPermissionModeChanged, losing the wire record.
+    await managed.sessionControl.setYolo(payload.enabled);
     if (approvalStateStore !== undefined) {
       await approvalStateStore.setYolo(payload.enabled);
-    } else {
-      await managed.sessionControl.setYolo(payload.enabled);
     }
     // Phase 21 §A — emit a status.update so observers pick up the yolo
     // change (parity with test-helper handler).
@@ -1074,8 +1098,8 @@ export function registerDefaultWireHandlers(
     },
   );
 
-  // Phase 17 §B.4 — MCP methods return Noop responses so wire-schema
-  // round-trips validate. Real implementations ship in the CLI slice.
+  // Phase 24 Step 4.7 — mcp.list and mcp.refresh connected to real McpRegistry.
+  // Other MCP methods remain noop stubs (D4-4).
   const mcpNoop = (data: unknown) =>
     async (msg: WireMessage): Promise<WireMessage> =>
       createWireResponse({
@@ -1084,10 +1108,29 @@ export function registerDefaultWireHandlers(
         data,
       });
 
-  router.registerProcessMethod('mcp.list', mcpNoop({ servers: [] }));
+  router.registerProcessMethod('mcp.list', async (msg) => {
+    const snap = mcpRegistry?.status() ?? { servers: [] };
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { servers: snap.servers },
+    });
+  });
+
+  router.registerProcessMethod('mcp.refresh', async (msg) => {
+    const data = msg.data as { server_id?: string } | undefined;
+    if (mcpRegistry !== undefined && data?.server_id !== undefined) {
+      await mcpRegistry.refresh(data.server_id);
+    }
+    return createWireResponse({
+      requestId: msg.id,
+      sessionId: msg.session_id,
+      data: { ok: true },
+    });
+  });
+
   router.registerProcessMethod('mcp.connect', mcpNoop({ ok: true }));
   router.registerProcessMethod('mcp.disconnect', mcpNoop({ ok: true }));
-  router.registerProcessMethod('mcp.refresh', mcpNoop({ ok: true }));
   router.registerProcessMethod('mcp.listResources', mcpNoop({ resources: [] }));
   router.registerProcessMethod('mcp.readResource', mcpNoop({ contents: [] }));
   router.registerProcessMethod('mcp.listPrompts', mcpNoop({ prompts: [] }));
@@ -1096,10 +1139,10 @@ export function registerDefaultWireHandlers(
   router.registerProcessMethod('mcp.resetAuth', mcpNoop({ ok: true }));
 
   void createWireEvent;
-  void ZodError;
 
   return {
     getEventFilter: (sessionId: string): ReadonlySet<string> | undefined =>
       perSession.get(sessionId)?.eventFilter,
   };
 }
+

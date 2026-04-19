@@ -83,6 +83,7 @@ interface ClientSession {
   readonly approvalRuntime: TUIApprovalRuntime;
   readonly questionRuntime: TUIQuestionRuntime;
   readonly unsubscribeLifecycle: () => void;
+  readonly unsubscribeBus: () => void;
   seqCounter: number;
   currentTurnId: string | undefined;
   cumulativeUsage: CumulativeUsage;
@@ -197,6 +198,23 @@ export interface KimiCoreClientDeps {
    * subagents simply omit the field).
    */
   readonly agentTypeRegistry?: AgentTypeRegistry | undefined;
+  /**
+   * Phase 24 Step 4.5 — optional MCPManager. Used only for emitting a
+   * one-shot `status.update.mcp_status` snapshot into `sharedEventBus`
+   * after each session's bridge is installed (compensates for
+   * `MCPManager.loadAll` firing before any EventBus listener exists — see
+   * registerManagedSession and the N2 multi-session note therein).
+   * Not forwarded to SessionManager / SoulPlus (M2 decision); wire mcp.*
+   * methods read MCPManager directly via `DefaultHandlersDeps.mcpRegistry`
+   * in the wire path.
+   */
+  readonly mcpManager?: import('@moonshot-ai/core').MCPManager | undefined;
+  /**
+   * Phase 24 B-3 — shared EventBus pre-wired into MCPManager at construction
+   * so mcp.* events survive the loadAll → session-create ordering gap.
+   * When set, each session uses this bus instead of creating a fresh one.
+   */
+  readonly sharedEventBus?: SessionEventBus | undefined;
 }
 
 // ── KimiCoreClient ─────────────────────────────────────────────────
@@ -286,7 +304,7 @@ export class KimiCoreClient implements WireClient {
     mode: { kind: 'create'; workDir: string } | { kind: 'resume'; sessionId: string },
   ): Promise<{ session_id: string }> {
     const queue = new WireEventQueue();
-    const eventBus = new SessionEventBus();
+    const eventBus = this.deps.sharedEventBus ?? new SessionEventBus();
 
     // The session id is only known AFTER `createSession` / `resumeSession`
     // resolves (for `create` the id is allocated inside kimi-core; for
@@ -487,6 +505,11 @@ export class KimiCoreClient implements WireClient {
       },
     );
 
+    // N3: capture the bus listener reference so destroySession / dispose can
+    // call eventBus.off(busListener) and release the closure. Assigned right
+    // after the record is constructed (the listener body closes over record).
+    let busListenerRef: ((event: BusEvent) => void) | undefined;
+
     const record: ClientSession = {
       sessionId: managedId,
       managed,
@@ -495,6 +518,9 @@ export class KimiCoreClient implements WireClient {
       approvalRuntime,
       questionRuntime,
       unsubscribeLifecycle,
+      unsubscribeBus: () => {
+        if (busListenerRef !== undefined) eventBus.off(busListenerRef);
+      },
       seqCounter: 0,
       currentTurnId: undefined,
       cumulativeUsage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
@@ -508,7 +534,7 @@ export class KimiCoreClient implements WireClient {
     // `subagent.event` envelope that carries the parent tool call id,
     // so the TUI can graft them onto the spawning tool call's block.
     // Main-agent events (source === undefined) flow through unchanged.
-    eventBus.on((event: BusEvent) => {
+    const busListener = (event: BusEvent): void => {
       const ctx = {
         sessionId: record.sessionId,
         turnId: record.currentTurnId,
@@ -545,7 +571,23 @@ export class KimiCoreClient implements WireClient {
       if (event.type === 'step.end') {
         this.emitStatusUpdate(record);
       }
-    });
+    };
+    busListenerRef = busListener;
+    eventBus.on(busListener);
+
+    // RR2-B-A: emit a status.update.mcp_status snapshot after the listener
+    // bridge is installed so the session sees the current MCP state even when
+    // MCPManager.loadAll events fired before any session existed.
+    //
+    // N2 multi-session note: when sharedEventBus is provided, all sessions
+    // share the same bus. Each createSession emits the snapshot to that
+    // shared bus, so every installed listener (including listeners for other
+    // sessions) receives it. This is intentional — the snapshot is
+    // process-level MCP state and all sessions need it. Safe as long as
+    // there is a single shared MCPManager per process (current design).
+    if (this.deps.mcpManager !== undefined) {
+      eventBus.emit({ type: 'status.update.mcp_status', data: this.deps.mcpManager.status() });
+    }
 
     return { session_id: managedId };
   }
@@ -578,6 +620,7 @@ export class KimiCoreClient implements WireClient {
     const record = this.sessions.get(sessionId);
     if (record !== undefined) {
       record.unsubscribeLifecycle();
+      record.unsubscribeBus();
       record.approvalRuntime.disposeAll('session destroyed');
       record.questionRuntime.disposeAll();
       record.queue.close();
@@ -976,6 +1019,7 @@ export class KimiCoreClient implements WireClient {
   async dispose(): Promise<void> {
     for (const record of this.sessions.values()) {
       record.unsubscribeLifecycle();
+      record.unsubscribeBus();
       record.approvalRuntime.disposeAll('client disposed');
       record.questionRuntime.disposeAll();
       record.queue.close();

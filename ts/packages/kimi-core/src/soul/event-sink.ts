@@ -158,7 +158,49 @@ export type SoulEvent =
    * event with the bridge's per-session `seq` counter, preventing
    * multiple transient changes from colliding on `seq: 0`.
    */
-  | { type: 'thinking.changed'; level: string };
+  | { type: 'thinking.changed'; level: string }
+  /**
+   * Phase 24 Step 3 — skill lifecycle events. Emitted by SkillInlineWriter
+   * (and SkillManager fork path) after the WAL appendSkill* record settles.
+   * Fire-and-forget via EventBus; never persisted to wire.jsonl (铁律 L2.1).
+   */
+  | {
+      type: 'skill.invoked';
+      data: {
+        skill_name: string;
+        execution_mode: 'inline' | 'fork';
+        original_input: string;
+        sub_agent_id?: string | undefined;
+        invocation_trigger?: 'user-slash' | 'claude-proactive' | 'nested-skill' | undefined;
+        query_depth?: number | undefined;
+      };
+    }
+  | {
+      type: 'skill.completed';
+      // Inline mode has no explicit completion signal; this variant is reserved
+      // for the fork execution path (deferred to a later phase).
+      data: {
+        skill_name: string;
+        execution_mode: 'inline' | 'fork';
+        success: boolean;
+        error?: string | undefined;
+        sub_agent_id?: string | undefined;
+        invocation_trigger?: 'user-slash' | 'claude-proactive' | 'nested-skill' | undefined;
+        query_depth?: number | undefined;
+      };
+    }
+  /**
+   * Phase 24 Step 4 — MCP lifecycle events. Emitted by MCPManager when
+   * servers transition through lifecycle states. Never persisted (L2.1).
+   */
+  | { type: 'mcp.loading'; data: { status: 'loading' | 'loaded' | 'error'; server_name: string; error?: string | undefined } }
+  | { type: 'mcp.connected'; data: { server_id: string; capabilities?: unknown; tool_count: number } }
+  | { type: 'mcp.disconnected'; data: { server_id: string; reason: string } }
+  | { type: 'mcp.error'; data: { server_id: string; error: string; retry_in_ms?: number | undefined } }
+  | { type: 'mcp.tools_changed'; data: { server_id: string; added: string[]; removed: string[] } }
+  | { type: 'mcp.resources_changed'; data: { server_id: string } }
+  | { type: 'mcp.auth_required'; data: { server_id: string; auth_url: string } }
+  | { type: 'status.update.mcp_status'; data: { loading: boolean; total: number; connected: number; toolCount: number; servers: ReadonlyArray<{ name: string; status: string; toolCount: number; error?: string | undefined }> } };
 
 export interface EventSink {
   emit(event: SoulEvent): void;

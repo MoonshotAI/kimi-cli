@@ -43,7 +43,7 @@ import {
 import { NotificationManager, type ShellDeliverCallback } from './notification-manager.js';
 import type { ToolCallOrchestrator } from './orchestrator.js';
 import { PermissionClosureBuilder } from './permission-closure-builder.js';
-import type { PermissionRule } from './permission/index.js';
+import type { PermissionMode, PermissionRule } from './permission/index.js';
 import type { SessionEventBus } from './session-event-bus.js';
 import {
   DefaultSessionControl,
@@ -57,6 +57,7 @@ import { SoulLifecycleGate } from './soul-lifecycle-gate.js';
 import { SoulRegistry } from './soul-registry.js';
 import { StreamingKosongWrapper } from './streaming-kosong-wrapper.js';
 import { SkillTool } from '../tools/skill-tool.js';
+
 import type { SubagentStore } from './subagent-store.js';
 import { runSubagentTurn } from './subagent-runner.js';
 import { TurnLifecycleTracker } from './turn-lifecycle-tracker.js';
@@ -210,6 +211,7 @@ export class SoulPlus {
         return {
           permissionMode: turnManagerRef.getPermissionMode(),
           planMode: turnManagerRef.getPlanMode(),
+          thinkingLevel: turnManagerRef.getThinkingLevel(),
         };
       },
     });
@@ -386,18 +388,13 @@ export class SoulPlus {
       hookEngine: undefined,
     };
 
-    // Phase 18 L2-6 — bridge `ApprovalStateStore.setYolo` → live
-    // TurnManager permission mode flip. Without this listener, a
-    // wire `session.setYolo` would only persist the flag; tools
-    // launched in the SAME turn would still see the old
-    // permission mode. The listener is first-wins per onChanged
-    // dispatch; listener errors are isolated at the store layer
-    // (see `approval-state-store.ts::ChangeListenerRegistry`).
+    // Phase 18 L2-6 — bridge ApprovalStateStore → live TurnManager permission
+    // mode flip. Wire record is written by DefaultSessionControl.setYolo
+    // (which the session.setYolo wire handler always calls); keeping this
+    // listener sync avoids async-listener safety issues (B-1 Phase 24 RR1).
     if (deps.approvalStateStore !== undefined) {
       deps.approvalStateStore.onChanged((snapshot) => {
-        turnManager.setPermissionMode(
-          snapshot.yolo ? 'bypassPermissions' : 'default',
-        );
+        turnManager.setPermissionMode(snapshot.yolo ? 'bypassPermissions' : 'default');
       });
     }
   }
@@ -515,6 +512,11 @@ export class SoulPlus {
     return this.components.turnManager;
   }
 
+  /** Phase 24 24b — current thinking level; undefined when never set. */
+  getThinkingLevel(): string | undefined {
+    return this.components.turnManager.getThinkingLevel();
+  }
+
   /**
    * Phase 16 / 决策 #113 — access the SessionMetaService. Throws when
    * the service was not wired (see `SoulPlusDeps.stateCache` /
@@ -622,6 +624,7 @@ export class SoulPlus {
       type: 'thinking_changed',
       level,
     });
+    this.components.turnManager.setThinkingLevel(level);
     this.infra.eventBus.emit({ type: 'thinking.changed', level });
     this.components.turnManager.emitStatusUpdate({ input: 0, output: 0 });
   }

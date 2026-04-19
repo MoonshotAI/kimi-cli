@@ -164,6 +164,18 @@ export function adaptSoulEventToWireMessage(
         common,
       );
 
+    // Phase 24 P1.1 / P1.2 — skill and MCP lifecycle events have no TUI counterpart.
+    case 'skill.invoked':
+    case 'skill.completed':
+    case 'mcp.loading':
+    case 'mcp.connected':
+    case 'mcp.disconnected':
+    case 'mcp.error':
+    case 'mcp.tools_changed':
+    case 'mcp.resources_changed':
+    case 'mcp.auth_required':
+    case 'status.update.mcp_status':
+      return null;
 
     default: {
       // Exhaustive guard — adding a new SoulEvent variant without

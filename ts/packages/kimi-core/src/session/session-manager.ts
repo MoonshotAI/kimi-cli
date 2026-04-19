@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 
 import type { AgentTypeRegistry } from '../soul-plus/agent-type-registry.js';
+
 import { createWiredJournalCapability } from '../soul-plus/journal-capability.js';
 import { SoulLifecycleGate } from '../soul-plus/soul-lifecycle-gate.js';
 import { SessionLifecycleStateMachine } from '../soul-plus/lifecycle-state-machine.js';
@@ -724,6 +725,11 @@ export class SessionManager {
 
     // Phase 23 — permission mode is always defined from the wire baseline.
     turnManagerRef.setPermissionMode(effectivePermissionMode);
+
+    // Phase 24 24b — restore thinking level if it was set before the session closed.
+    if (projected.thinkingLevel !== undefined) {
+      turnManagerRef.setThinkingLevel(projected.thinkingLevel);
+    }
 
     // Slice 5.2 (T3.5) — restore plan_mode. Phase 23 projects from the
     // `session_initialized` baseline so `projected.planMode` is always

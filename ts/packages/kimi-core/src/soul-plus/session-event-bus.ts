@@ -74,6 +74,12 @@ export class SessionEventBus implements EventSink {
   private readonly listeners: SessionEventListener[] = [];
   private readonly notificationListeners: NotificationListener[] = [];
 
+  /**
+   * Fire-and-forget publish. There is NO pre-subscribe buffer — events emitted
+   * before a listener calls `on()` are permanently lost. Callers that need
+   * replay (e.g. MCPManager.loadAll firing before any session is created) must
+   * emit a catch-up snapshot after the listener is installed.
+   */
   emit(event: SoulEvent): void {
     // Iterate over a stable snapshot so a listener that mutates the bus
     // cannot shift the iteration it is part of. Main-agent emissions

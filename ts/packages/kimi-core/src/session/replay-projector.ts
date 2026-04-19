@@ -54,6 +54,11 @@ export interface ReplayProjectedState {
   /** Workspace dir captured in the session_initialized baseline. */
   readonly workspaceDir: string;
   /**
+   * Phase 24 24b — thinking level from baseline `thinking_level` field or
+   * last `thinking_changed` record. `undefined` when never set.
+   */
+  readonly thinkingLevel: string | undefined;
+  /**
    * Phase 16 / 决策 #113 — merged sessionMeta patch, built by folding
    * `session_meta_changed` records in seq order and deriving:
    *   - `turn_count` from the count of `turn_begin` records
@@ -97,6 +102,7 @@ export function projectReplayState(
   let permissionMode: PermissionMode = sessionInitialized.permission_mode;
   let tokenCount = 0;
   let planMode: boolean = sessionInitialized.plan_mode;
+  let thinkingLevel: string | undefined = sessionInitialized.thinking_level;
   const workspaceDir: string = sessionInitialized.workspace_dir;
   const sessionMetaPatch: ReplayProjectedState['sessionMetaPatch'] = { turn_count: 0 };
 
@@ -240,6 +246,12 @@ export function projectReplayState(
         break;
       }
 
+      case 'thinking_changed': {
+        // Phase 24 24b — last write wins; resume restores via TurnManager.
+        thinkingLevel = r.level;
+        break;
+      }
+
       case 'context_cleared': {
         // Slice 20-A — mirrors live `ContextState.clear()`: reset only
         // the accumulated conversation + token count. Config-class state
@@ -265,6 +277,7 @@ export function projectReplayState(
     permissionMode,
     tokenCount,
     planMode,
+    thinkingLevel,
     workspaceDir,
     sessionMetaPatch,
   };

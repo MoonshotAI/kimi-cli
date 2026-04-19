@@ -216,6 +216,24 @@ export function installWireEventBridge(
         // changed `thinking` more than once before the next turn).
         sendWire('thinking.changed', { level: event.level }, currentTurnId);
         return;
+      // Phase 24 Step 3 — skill lifecycle events
+      case 'skill.invoked':
+        sendWire('skill.invoked', event.data, currentTurnId);
+        return;
+      case 'skill.completed':
+        sendWire('skill.completed', event.data, currentTurnId);
+        return;
+      // Phase 24 Step 4 — MCP lifecycle events
+      case 'mcp.loading':
+      case 'mcp.connected':
+      case 'mcp.disconnected':
+      case 'mcp.error':
+      case 'mcp.tools_changed':
+      case 'mcp.resources_changed':
+      case 'mcp.auth_required':
+      case 'status.update.mcp_status':
+        sendWire(event.type, event.data, currentTurnId);
+        return;
       default: {
         // Unknown SoulEvent variant — tolerated at runtime so future types
         // don't brick the bridge. Type-level exhaustiveness guarded by the

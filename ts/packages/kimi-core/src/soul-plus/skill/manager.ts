@@ -116,16 +116,19 @@ export class DefaultSkillManager implements SkillManager {
     // before the user_message mirror so the journal observes the same
     // WAL-then-mirror order as SkillInlineWriter (claude-proactive path).
     if (context.sessionJournal !== undefined) {
+      const eventData = {
+        skill_name: skill.name,
+        execution_mode: 'inline' as const,
+        original_input: args,
+        invocation_trigger: 'user-slash' as const,
+      };
       await context.sessionJournal.appendSkillInvoked({
         type: 'skill_invoked',
         turn_id: context.turnId ?? 'pending',
-        data: {
-          skill_name: skill.name,
-          execution_mode: 'inline',
-          original_input: args,
-          invocation_trigger: 'user-slash',
-        },
+        data: eventData,
       });
+      // Phase 24 Step 3.2 — emit after WAL write (铁律 L2.5).
+      context.eventBus?.emit({ type: 'skill.invoked', data: eventData });
     }
     const prompt = buildInlinePrompt(skill.content, args);
     await context.contextState.appendUserMessage({ text: prompt });

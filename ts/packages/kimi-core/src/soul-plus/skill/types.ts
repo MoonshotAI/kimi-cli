@@ -10,6 +10,7 @@
 
 import type { FullContextState } from '../../storage/context-state.js';
 import type { SessionJournal } from '../../storage/session-journal.js';
+import type { SessionEventBus } from '../session-event-bus.js';
 
 export type SkillSource = 'builtin' | 'user' | 'project';
 
@@ -98,6 +99,12 @@ export interface SkillActivationContext {
    * Falls back to `'pending'` when omitted.
    */
   readonly turnId?: string | undefined;
+  /**
+   * Phase 24 Step 3.2 — EventBus for emitting `skill.invoked` SoulEvent
+   * after the WAL record settles (铁律 L2.5: write before emit).
+   * Optional so legacy callers without eventBus still compile.
+   */
+  readonly eventBus?: SessionEventBus | undefined;
 }
 
 export interface SkillManager {

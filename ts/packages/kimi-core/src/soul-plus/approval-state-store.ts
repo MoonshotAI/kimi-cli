@@ -37,7 +37,7 @@ export interface ApprovalStateSnapshot {
   readonly autoApproveActions: ReadonlySet<string>;
 }
 
-export type ApprovalStateChangeListener = (snapshot: ApprovalStateSnapshot) => void;
+export type ApprovalStateChangeListener = (snapshot: ApprovalStateSnapshot) => void | Promise<void>;
 
 export interface ApprovalStateStore {
   /** Load the current set of session-scoped auto-approve action labels. */
@@ -72,10 +72,11 @@ class ChangeListenerRegistry {
     // cannot shift the iteration it is part of.
     for (const listener of [...this.listeners]) {
       try {
-        listener(snapshot);
+        // Listener type allows Promise<void>; detach async paths so
+        // errors don't propagate (parity with SessionEventBus.safeDispatch).
+        Promise.resolve(listener(snapshot)).catch(() => {});
       } catch {
-        // Listener errors must never propagate back to callers
-        // (parity with SessionEventBus.safeDispatch).
+        // sync errors also swallowed
       }
     }
   }
@@ -108,6 +109,7 @@ export class InMemoryApprovalStateStore implements ApprovalStateStore {
   }
 
   async setYolo(enabled: boolean): Promise<void> {
+    if (this.yolo === enabled) return;
     this.yolo = enabled;
     this.fireChanged();
   }
@@ -181,6 +183,8 @@ export class SessionStateApprovalStateStore implements ApprovalStateStore {
   }
 
   async setYolo(enabled: boolean): Promise<void> {
+    if (this.cachedYolo === undefined) await this.getYolo();
+    if (this.cachedYolo === enabled) return;
     await this.writeState({ yolo: enabled });
     this.cachedYolo = enabled;
     this.fireChanged();

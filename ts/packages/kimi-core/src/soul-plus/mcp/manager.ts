@@ -32,10 +32,12 @@
  */
 
 import type { Tool } from '../../soul/index.js';
+import type { EventSink } from '../../soul/event-sink.js';
 import { noopLogger, type Logger } from '../../utils/logger.js';
 import { HttpMcpClient, StdioMcpClient, type MCPClient, type McpStderrCallback } from './client.js';
 import { isHttpServer, isStdioServer, type McpConfig, type McpServerConfig } from './config.js';
 import { mcpToolToKimiTool } from './tool-adapter.js';
+import type { McpRegistry, McpRegistrySnapshot, McpToolsChangedCallback } from './registry.js';
 
 /** Per-server lifecycle state. */
 export type MCPServerStatus = 'pending' | 'connecting' | 'connected' | 'failed';
@@ -82,6 +84,12 @@ export interface MCPManagerOptions {
    * Production callers inject the pino adapter (via apps/kimi-cli).
    */
   readonly logger?: Logger | undefined;
+  /**
+   * Phase 24 Step 4.4 — SoulPlus EventSink for emitting mcp.* SoulEvents.
+   * When provided, MCPManager emits lifecycle events to the SoulPlus EventBus.
+   * Optional for backward compat (no-op when absent).
+   */
+  readonly eventSink?: EventSink | undefined;
 }
 
 export type McpClientFactory = (
@@ -99,14 +107,16 @@ interface ServerState {
   error?: string | undefined;
 }
 
-export class MCPManager {
+export class MCPManager implements McpRegistry {
   private readonly servers: Map<string, ServerState> = new Map();
   private readonly onNotify: McpNotifyCallback | undefined;
   private readonly onStderr: McpStderrCallback | undefined;
   private readonly toolCallTimeoutMs: number | undefined;
   private readonly clientFactory: McpClientFactory;
   private readonly logger: Logger;
+  private readonly eventSink: EventSink | undefined;
   private loaded = false;
+  onToolsChanged: McpToolsChangedCallback | null = null;
 
   constructor(options: MCPManagerOptions) {
     this.onNotify = options.onNotify;
@@ -114,6 +124,7 @@ export class MCPManager {
     this.toolCallTimeoutMs = options.toolCallTimeoutMs;
     this.clientFactory = options.clientFactory ?? defaultClientFactory;
     this.logger = options.logger ?? noopLogger;
+    this.eventSink = options.eventSink;
 
     for (const [name, serverConfig] of Object.entries(options.config.mcpServers)) {
       const client = this.clientFactory(name, serverConfig, this.onStderr);
@@ -199,7 +210,7 @@ export class MCPManager {
 
   private async connectServer(state: ServerState): Promise<void> {
     state.status = 'connecting';
-    this.emit({ serverName: state.name, kind: 'loading' });
+    this.emitLoading(state.name, 'loading');
 
     try {
       await state.client.connect();
@@ -213,20 +224,30 @@ export class MCPManager {
         }),
       );
       state.status = 'connected';
-      this.emit({
-        serverName: state.name,
-        kind: 'loaded',
-        toolCount: state.tools.length,
+      this.emitLoading(state.name, 'loaded', undefined, state.tools.length);
+      this.eventSink?.emit({
+        type: 'mcp.connected',
+        data: { server_id: state.name, tool_count: state.tools.length },
       });
+      this.eventSink?.emit({
+        type: 'mcp.tools_changed',
+        data: {
+          server_id: state.name,
+          added: state.tools.map((t) => t.name),
+          removed: [],
+        },
+      });
+      this.emitStatusSnapshot();
     } catch (error) {
       state.status = 'failed';
       state.tools = [];
       state.error = error instanceof Error ? error.message : String(error);
-      this.emit({
-        serverName: state.name,
-        kind: 'failed',
-        error: state.error,
+      this.emitLoading(state.name, 'error', state.error);
+      this.eventSink?.emit({
+        type: 'mcp.error',
+        data: { server_id: state.name, error: state.error },
       });
+      this.emitStatusSnapshot();
       // Try to close any half-opened transport so a failed connect
       // does not leak a zombie subprocess. Swallow close errors — we
       // already logged the original failure.
@@ -238,14 +259,87 @@ export class MCPManager {
     }
   }
 
-  private emit(notif: McpLoadNotification): void {
-    if (this.onNotify === undefined) return;
+  private emitLoading(
+    serverName: string,
+    status: 'loading' | 'loaded' | 'error',
+    error?: string | undefined,
+    toolCount?: number | undefined,
+  ): void {
+    // Legacy onNotify callback (backward compat)
+    const kind = status === 'error' ? 'failed' : status;
     try {
-      this.onNotify(notif);
+      this.onNotify?.({ serverName, kind, ...(toolCount !== undefined ? { toolCount } : {}), ...(error !== undefined ? { error } : {}) });
     } catch {
-      // Host callbacks must not crash the session.
+      /* host callbacks must not crash */
+    }
+    // New EventBus path (Phase 24 L1)
+    try {
+      this.eventSink?.emit({
+        type: 'mcp.loading',
+        data: { status, server_name: serverName, ...(error !== undefined ? { error } : {}) },
+      });
+    } catch {
+      /* bus errors must not crash MCPManager */
     }
   }
+
+  private emitStatusSnapshot(): void {
+    if (this.eventSink === undefined) return;
+    this.eventSink.emit({ type: 'status.update.mcp_status', data: this.status() });
+  }
+
+  // ── McpRegistry interface implementation (Phase 24 D4-2 adapter pattern) ─
+
+  async register(_config: McpServerConfig & { readonly name: string }): Promise<void> {
+    throw new Error('MCPManager.register: dynamic add not supported in Phase 24');
+  }
+
+  async unregister(_serverId: string): Promise<void> {
+    throw new Error('MCPManager.unregister: dynamic remove not supported in Phase 24');
+  }
+
+  async refresh(serverId: string): Promise<void> {
+    const state = this.servers.get(serverId);
+    if (state === undefined) throw new Error(`mcp.refresh: server "${serverId}" not found`);
+    try { await state.client.close(); } catch { /* ignore */ }
+    state.status = 'pending';
+    state.tools = [];
+    state.error = undefined;
+    await this.connectServer(state);
+  }
+
+  list(): readonly MCPClient[] {
+    return [...this.servers.values()].map((s) => s.client);
+  }
+
+  get(serverId: string): MCPClient | undefined {
+    return this.servers.get(serverId)?.client;
+  }
+
+  status(): McpRegistrySnapshot {
+    const servers = [...this.servers.values()].map((s) => ({
+      name: s.name,
+      status: s.status,
+      toolCount: s.tools.length,
+      ...(s.error !== undefined ? { error: s.error } : {}),
+    }));
+    return {
+      loading: servers.some((s) => s.status === 'connecting' || s.status === 'pending'),
+      total: servers.length,
+      connected: servers.filter((s) => s.status === 'connected').length,
+      toolCount: servers.reduce((sum, s) => sum + s.toolCount, 0),
+      servers,
+    };
+  }
+
+  async startAll(): Promise<void> {
+    return this.loadAll();
+  }
+
+  async closeAll(): Promise<void> {
+    return this.close();
+  }
+
 }
 
 function defaultClientFactory(

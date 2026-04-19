@@ -60,6 +60,8 @@ import type { SessionInitializedRecord } from '../storage/wire-record.js';
 export interface RuntimeStateProvider {
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
+  /** Phase 24 24b — current thinking level; undefined when never set. */
+  readonly thinkingLevel: string | undefined;
 }
 
 /**
@@ -70,6 +72,7 @@ export interface RuntimeStateProvider {
 export const STATIC_DEFAULT_RUNTIME_STATE: () => RuntimeStateProvider = () => ({
   permissionMode: 'default',
   planMode: false,
+  thinkingLevel: undefined,
 });
 
 export interface CompactionOrchestratorDeps {
@@ -173,6 +176,7 @@ export class CompactionOrchestrator {
         active_tools: [...cs.activeTools],
         permission_mode: runtime.permissionMode,
         plan_mode: runtime.planMode,
+        thinking_level: runtime.thinkingLevel,
       });
 
       // Phase 3 铁律: drain the async-batch buffer BEFORE rotate so no
@@ -311,12 +315,13 @@ export class CompactionOrchestrator {
  * `session_initialized` with the live ContextState + TurnManager state.
  *
  * Identity-class fields (`type`, `seq`, `time`, `agent_type`, `session_id`,
- * `agent_id`, parent lineage, `workspace_dir`, `thinking_level`) are
- * preserved verbatim because they cannot legally mutate at runtime — see
- * the discriminated-union shape in `wire-record.ts`. The mutable fields
- * (`system_prompt`, `model`, `active_tools`, `permission_mode`,
- * `plan_mode`) are overwritten so the post-rotate baseline reflects the
- * compaction-time snapshot rather than the original startup config.
+ * `agent_id`, parent lineage, `workspace_dir`) are preserved verbatim
+ * because they cannot legally mutate at runtime — see the discriminated-union
+ * shape in `wire-record.ts`. The mutable fields (`system_prompt`, `model`,
+ * `active_tools`, `permission_mode`, `plan_mode`, `thinking_level`) are
+ * overwritten so the post-rotate baseline reflects the compaction-time
+ * snapshot rather than the original startup config. `thinking_level` is
+ * mutable: `session.setThinking` (Phase 24 24b) changes it at runtime.
  *
  * The generic preserves the discriminated-union narrowing so each branch
  * (main / sub / independent) returns its own concrete type.
@@ -329,6 +334,7 @@ function applyRuntimeOverlay<T extends SessionInitializedRecord>(
     readonly active_tools: readonly string[];
     readonly permission_mode: PermissionMode;
     readonly plan_mode: boolean;
+    readonly thinking_level: string | undefined;
   },
 ): T {
   return {
@@ -338,6 +344,7 @@ function applyRuntimeOverlay<T extends SessionInitializedRecord>(
     active_tools: [...overlay.active_tools],
     permission_mode: overlay.permission_mode,
     plan_mode: overlay.plan_mode,
+    ...(overlay.thinking_level !== undefined ? { thinking_level: overlay.thinking_level } : {}),
   };
 }
 

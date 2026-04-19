@@ -177,7 +177,6 @@ export type WireEventMethod =
   | 'compaction.begin'
   | 'compaction.end'
   | 'notification'
-  | 'subagent.event'
   | 'hook.triggered'
   | 'hook.resolved'
   | 'session.error'
@@ -186,10 +185,7 @@ export type WireEventMethod =
   | 'model.changed'
   | 'thinking.changed'
   | 'plan.display'
-  // Phase 17 §A.5 — session.replay chunked streaming. Client keys
-  // these off the originating request via `request_id` on the event
-  // envelope; `seq` is populated by `createWireEvent` so playback
-  // ordering is deterministic.
+  // Phase 17 §A.5 — session.replay chunked streaming.
   | 'session.replay.chunk'
   | 'session.replay.end'
   // Slice 7.2 (决策 #100) — MCP lifecycle events.
@@ -199,8 +195,14 @@ export type WireEventMethod =
   | 'mcp.tools_changed'
   | 'mcp.resources_changed'
   | 'mcp.auth_required'
+  // Phase 24 Step 4 — new MCP events.
+  | 'mcp.loading'
+  | 'status.update.mcp_status'
   // Phase 16 / 决策 #113 — sessionMeta patch event.
-  | 'session_meta.changed';
+  | 'session_meta.changed'
+  // Phase 24 Step 3 — skill lifecycle events.
+  | 'skill.invoked'
+  | 'skill.completed';
 
 // ── Channel type (§6.1) ─────────────────────────────────────────────────
 
