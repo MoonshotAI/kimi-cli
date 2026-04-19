@@ -64,7 +64,14 @@ export class DefaultConversationProjector implements ConversationProjector {
       : [];
     void options;
 
-    const merged = mergeAdjacentUserMessages(snapshot.history);
+    // Phase 25 K1 (slice 25c-4a) — defensive guard against any live
+    // path that accidentally pushes a `partial: true` Message into
+    // history. The replay-projector drops partial steps at the source
+    // (C6 / H3) but this filter is the second line of defence so
+    // partial messages never reach the LLM messages[] passed to the
+    // provider.
+    const nonPartial = snapshot.history.filter((m) => m.partial !== true);
+    const merged = mergeAdjacentUserMessages(nonPartial);
 
     const injectionMessages =
       ephemeralInjections.length === 0

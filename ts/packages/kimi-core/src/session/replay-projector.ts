@@ -106,6 +106,51 @@ export function projectReplayState(
   const workspaceDir: string = sessionInitialized.workspace_dir;
   const sessionMetaPatch: ReplayProjectedState['sessionMetaPatch'] = { turn_count: 0 };
 
+  // Phase 25 Stage F (slice 25c-4a) — atomic step reconstruction state.
+  // Accumulates text / think / tool_call parts for the currently open
+  // step, then flushes into `messages` on `step_end`. Partial steps
+  // (no step_end) are discarded at flush (decision C6 / H3) so a
+  // half-finished assistant message never seeds the next LLM call.
+  interface OpenStep {
+    stepUuid: string;
+    textChunks: string[];
+    thinkChunks: string[];
+    thinkEncrypted?: string | undefined;
+    toolCalls: ToolCall[];
+    hasStepEnd: boolean;
+  }
+  let openStep: OpenStep | null = null;
+
+  function flushOpenStep(): void {
+    if (openStep === null) return;
+    if (!openStep.hasStepEnd) {
+      // C6 / H3: partial step — discard entirely, do NOT push a
+      // placeholder Message.
+      openStep = null;
+      return;
+    }
+    const content: ContentPart[] = [];
+    if (openStep.thinkChunks.length > 0) {
+      const thinkPart: ContentPart = {
+        type: 'think',
+        think: openStep.thinkChunks.join(''),
+      };
+      if (openStep.thinkEncrypted !== undefined) {
+        (thinkPart as { encrypted?: string }).encrypted = openStep.thinkEncrypted;
+      }
+      content.push(thinkPart);
+    }
+    if (openStep.textChunks.length > 0) {
+      content.push({ type: 'text', text: openStep.textChunks.join('') });
+    }
+    messages.push({
+      role: 'assistant',
+      content,
+      toolCalls: openStep.toolCalls,
+    });
+    openStep = null;
+  }
+
   for (const r of records) {
     if (r.seq > lastSeq) {
       lastSeq = r.seq;
@@ -113,6 +158,7 @@ export function projectReplayState(
 
     switch (r.type) {
       case 'user_message': {
+        flushOpenStep();
         // Phase 14 §3.5 — `content` may now be a UserInputPart[]. Reduce
         // back to the legacy text-only shape for replay consumers by
         // concatenating text parts; non-text attachments are surfaced as
@@ -137,6 +183,7 @@ export function projectReplayState(
       }
 
       case 'assistant_message': {
+        flushOpenStep();
         const content: ContentPart[] = [];
         if (r.think !== null && r.think.length > 0) {
           const thinkPart: ContentPart = { type: 'think', think: r.think };
@@ -165,6 +212,7 @@ export function projectReplayState(
       }
 
       case 'tool_result': {
+        flushOpenStep();
         const text = typeof r.output === 'string' ? r.output : JSON.stringify(r.output);
         messages.push({
           role: 'tool',
@@ -176,6 +224,7 @@ export function projectReplayState(
       }
 
       case 'compaction': {
+        flushOpenStep();
         // Replace all prior messages with the compaction summary.
         // Mirrors BaseContextState.resetToSummary().
         messages = [
@@ -253,6 +302,7 @@ export function projectReplayState(
       }
 
       case 'context_cleared': {
+        flushOpenStep();
         // Slice 20-A — mirrors live `ContextState.clear()`: reset only
         // the accumulated conversation + token count. Config-class state
         // (model / systemPrompt / activeTools / permissionMode / planMode)
@@ -262,11 +312,82 @@ export function projectReplayState(
         break;
       }
 
+      case 'step_begin': {
+        flushOpenStep();
+        openStep = {
+          stepUuid: r.uuid,
+          textChunks: [],
+          thinkChunks: [],
+          toolCalls: [],
+          hasStepEnd: false,
+        };
+        break;
+      }
+
+      case 'content_part': {
+        if (openStep === null || openStep.stepUuid !== r.step_uuid) {
+          flushOpenStep();
+          openStep = {
+            stepUuid: r.step_uuid,
+            textChunks: [],
+            thinkChunks: [],
+            toolCalls: [],
+            hasStepEnd: false,
+          };
+        }
+        if (r.part.kind === 'text') {
+          openStep.textChunks.push(r.part.text);
+        } else {
+          openStep.thinkChunks.push(r.part.think);
+          if (r.part.encrypted !== undefined) {
+            openStep.thinkEncrypted = r.part.encrypted;
+          }
+        }
+        break;
+      }
+
+      case 'tool_call': {
+        if (openStep === null || openStep.stepUuid !== r.step_uuid) {
+          flushOpenStep();
+          openStep = {
+            stepUuid: r.step_uuid,
+            textChunks: [],
+            thinkChunks: [],
+            toolCalls: [],
+            hasStepEnd: false,
+          };
+        }
+        openStep.toolCalls.push({
+          type: 'function',
+          id: r.data.tool_call_id,
+          function: {
+            name: r.data.tool_name,
+            arguments: r.data.args === undefined ? null : JSON.stringify(r.data.args),
+          },
+        });
+        break;
+      }
+
+      case 'step_end': {
+        if (openStep !== null && openStep.stepUuid === r.uuid) {
+          openStep.hasStepEnd = true;
+          if (r.usage !== undefined) {
+            tokenCount += r.usage.input_tokens + r.usage.output_tokens;
+          }
+        }
+        flushOpenStep();
+        break;
+      }
+
       // Management-class records — no effect on conversation projection.
       default:
         break;
     }
   }
+
+  // Final flush for any open step at tail of records. Partial step (no
+  // step_end) is discarded per C6 / H3.
+  flushOpenStep();
 
   return {
     messages,
