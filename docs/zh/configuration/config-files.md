@@ -121,6 +121,7 @@ custom_headers = { "X-Custom-Header" = "value" }
 | `model` | `string` | 是 | 模型标识符（API 中使用的模型名称） |
 | `max_context_size` | `integer` | 是 | 最大上下文长度（token 数） |
 | `capabilities` | `array` | 否 | 模型能力列表，详见 [平台与模型](./providers.md#模型能力) |
+| `display_name` | `string` | 否 | 模型展示名。在欢迎界面、提示框状态栏、`/model` 选单和切换确认消息中显示；未设置时回落到 `model`。对于 OAuth 登录的托管模型，启动时会从供应商的 `/models` 接口自动刷新此字段 |
 
 示例：
 
