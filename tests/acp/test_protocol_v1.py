@@ -107,19 +107,28 @@ async def test_list_sessions_without_cwd(
     conn, _ = acp_client
     await conn.initialize(protocol_version=1)
 
-    work_dir = tmp_path / "workdir"
-    work_dir.mkdir(exist_ok=True)
-    session_resp = await conn.new_session(cwd=str(work_dir))
+    work_dir_a = tmp_path / "workdir_a"
+    work_dir_a.mkdir(exist_ok=True)
+    session_resp_a = await conn.new_session(cwd=str(work_dir_a))
+
+    work_dir_b = tmp_path / "workdir_b"
+    work_dir_b.mkdir(exist_ok=True)
+    session_resp_b = await conn.new_session(cwd=str(work_dir_b))
 
     # Must prompt first; Session.list() skips empty sessions
     await conn.prompt(
-        prompt=[acp.text_block("Hello")],
-        session_id=session_resp.session_id,
+        prompt=[acp.text_block("Hello from A")],
+        session_id=session_resp_a.session_id,
+    )
+    await conn.prompt(
+        prompt=[acp.text_block("Hello from B")],
+        session_id=session_resp_b.session_id,
     )
 
     list_resp = await conn.list_sessions()
     session_ids = [s.session_id for s in list_resp.sessions]
-    assert session_resp.session_id in session_ids
+    assert session_resp_a.session_id in session_ids
+    assert session_resp_b.session_id in session_ids
 
 
 async def test_resume_session(
