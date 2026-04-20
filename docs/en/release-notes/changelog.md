@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Tool: Fix file edits converting CRLF to LF — ReadFile and StrReplaceFile now preserve original line endings by opening files with newline=""; Windows-style files retain \r\n through read and edit operations
 - Auth: Auto-refresh the managed model list at startup for OAuth-logged-in users — the CLI now fetches the latest models from the provider's `/models` endpoint as a background task when the shell launches, so newly released models become available without needing to log out and log back in; failures are silent and never block startup, and custom `--config` sessions keep their previous behavior
 - Shell: Show the provider-supplied `display_name` (e.g. `k2.6-code-preview`) for managed models across the welcome panel, prompt status bar, `/model` picker, and `/model` switch confirmation messages; when the backend does not return one, the CLI falls back to the internal model ID as before
 
