@@ -272,10 +272,9 @@ class Print:
                             #   - kill_requested_at set → ``kill requested``
                             #   - neither              → ``kill failed``
                             post_kill_views = {
-                                v.spec.id: v
-                                for v in manager.list_tasks(status=None, limit=None)
+                                v.spec.id: v for v in manager.list_tasks(status=None, limit=None)
                             }
-                            label_lines = []
+                            label_lines: list[str] = []
                             for v in timed_out_views:
                                 latest = post_kill_views.get(v.spec.id, v)
                                 if is_terminal_status(latest.runtime.status):

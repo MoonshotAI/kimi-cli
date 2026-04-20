@@ -422,9 +422,7 @@ class KimiCLI:
                         f"  ({len(leaking)} tasks still running; stop request failed)\n"
                     )
                 if terminating:
-                    _write_original_stderr(
-                        f"  ({len(terminating)} tasks still terminating)\n"
-                    )
+                    _write_original_stderr(f"  ({len(terminating)} tasks still terminating)\n")
         except Exception:
             logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
 
