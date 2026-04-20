@@ -994,7 +994,10 @@ class OAuthManager:
             chat_provider.client.api_key = access_token
         elif isinstance(chat_provider, Anthropic):
             chat_provider._client.api_key = access_token  # pyright: ignore[reportPrivateUsage]
-            chat_provider._client.default_headers["Authorization"] = f"Bearer {access_token}"  # pyright: ignore[reportPrivateUsage]
+            # default_headers is a property that returns a new dict each call,
+            # so we must mutate the underlying _custom_headers dict for the
+            # updated Authorization header to persist on subsequent requests.
+            chat_provider._client._custom_headers["Authorization"] = f"Bearer {access_token}"  # pyright: ignore[reportPrivateUsage, reportIndexIssue]
         else:
             logger.warning(
                 "Cannot apply access token: unknown chat provider type {type}",

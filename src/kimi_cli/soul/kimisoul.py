@@ -1289,7 +1289,15 @@ class FlowRunner:
     async def _merge_ephemeral_to_main(self, soul: KimiSoul) -> None:
         if self._ephemeral_context is None:
             return
-        for i in range(self._parent_history_len, len(self._ephemeral_context.history)):
+        # If compaction happened during the flow, the ephemeral history was
+        # rebuilt from scratch and may be shorter than _parent_history_len.
+        # In that case we merge everything (the compacted summary is all we
+        # have). Otherwise we merge only the messages appended after the
+        # flow started.
+        start = self._parent_history_len
+        if start > len(self._ephemeral_context.history):
+            start = 0
+        for i in range(start, len(self._ephemeral_context.history)):
             message = self._ephemeral_context.history[i]
             prov = self._ephemeral_context.get_provenance(i)
             source = prov.source if prov else "flow"
