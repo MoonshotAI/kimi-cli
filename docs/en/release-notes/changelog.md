@@ -4,7 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
-- Print: Wait for background tasks before exiting — in one-shot `--print` mode, the process now waits for running background agents to finish and lets the model process their results, instead of exiting and killing them
+- Print: Wait for background tasks before exiting — in one-shot `--print` mode, the process now waits for running background agents to finish and lets the model process their results, instead of exiting and killing them. The wait is capped at `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)` (default ceiling 1h); on timeout the tasks are killed and the model gets one more turn via a `<system-reminder>` to summarise before exit
+- Shell/Print: On exit the CLI now lists each background task being killed (id + description) on stderr and waits out the configured grace period before reporting any workers that ignored the signal; `keep_alive_on_exit=true` still skips the entire path
 ## 1.36.0 (2026-04-17)
 
 - Anthropic: Fix Claude Opus 4.7 returning `invalid_request_error` — Opus 4.7 (which rejects the legacy `{type: "enabled", budget_tokens: N}` thinking config) now correctly uses adaptive thinking, and the client explicitly sets `display: "summarized"` so thinking content still streams back (Opus 4.7 silently changed the default to `"omitted"`); Bedrock/Vertex name variants (e.g., `aws/claude-opus-4-7`, `anthropic.claude-opus-4-7-v1:0`) and `claude-mythos-preview` are also recognised, and future Claude versions ≥ 4.6 are detected automatically via version extrapolation instead of hard-coded substring matching

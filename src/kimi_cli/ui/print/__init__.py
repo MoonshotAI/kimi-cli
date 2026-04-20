@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
 from functools import partial
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from kosong.chat_provider import (
 from kosong.message import Message
 from rich import print
 
+from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import ExitCode, InputFormat, OutputFormat
 from kimi_cli.soul import (
     LLMNotSet,
@@ -121,6 +123,37 @@ class Print:
                     ):
                         manager = runtime.background_tasks
                         notifications = runtime.notifications
+                        bg_config = runtime.config.background
+
+                        # Snapshot the active tasks at the moment we start
+                        # waiting.  Used both to derive the wait cap and to
+                        # name the specific tasks in the timeout follow-up
+                        # prompt.  The cap is the longest remaining task
+                        # budget, clipped to the global ceiling — buggy
+                        # tasks that never self-terminate can't hang the
+                        # CLI forever.
+                        initial_views = [
+                            v
+                            for v in manager.list_tasks(status=None, limit=None)
+                            if not is_terminal_status(v.runtime.status)
+                        ]
+                        if initial_views:
+                            agent_default = bg_config.agent_task_timeout_s
+                            # Use an explicit None check — the falsy idiom
+                            # ``v.spec.timeout_s or agent_default`` would
+                            # silently promote a legitimate ``timeout_s=0``
+                            # to the agent default (900s), contradicting
+                            # the caller's explicit intent.
+                            task_timeouts = [
+                                v.spec.timeout_s if v.spec.timeout_s is not None else agent_default
+                                for v in initial_views
+                            ]
+                            wait_cap = min(max(task_timeouts), bg_config.print_wait_ceiling_s)
+                        else:
+                            wait_cap = 0
+                        deadline = time.monotonic() + wait_cap
+                        timed_out = False
+
                         while not cancel_event.is_set():
                             # Drive reconcile() ourselves: the notification
                             # pump inside run_soul is no longer running, so
@@ -132,6 +165,10 @@ class Print:
                                 # completion notification.  Do this even if
                                 # other tasks are still active — progress on
                                 # completed tasks should not wait on siblings.
+                                # Pending notifications are checked BEFORE
+                                # the deadline: a late-completing task
+                                # should not lose its result just because
+                                # the cap has been breached.
                                 bg_prompt = (
                                     "<system-reminder>"
                                     "Background tasks have completed."
@@ -160,10 +197,89 @@ class Print:
                                 if notifications.has_pending_for_sink("llm"):
                                     continue
                                 break
+                            # Timeout check runs only when tasks are still
+                            # active: a loop iteration that would otherwise
+                            # break out cleanly must not be redirected into
+                            # the kill path just because the clock has
+                            # moved past the deadline (e.g. after a long
+                            # part-complete re-entry).
+                            if initial_views and time.monotonic() >= deadline:
+                                timed_out = True
+                                break
                             # Still waiting for tasks to finish.
                             await asyncio.sleep(1.0)
+
                         if cancel_event.is_set():
                             raise RunCancelled
+
+                        if timed_out:
+                            # Re-read the active list at timeout time so
+                            # tasks spawned mid-wait (e.g. by a part-
+                            # complete re-entry into the soul) are named
+                            # in the follow-up prompt too.
+                            timed_out_views = [
+                                v
+                                for v in manager.list_tasks(status=None, limit=None)
+                                if not is_terminal_status(v.runtime.status)
+                            ]
+                            killed = manager.kill_all_active(reason="print_wait_timeout")
+                            sys.stderr.write(
+                                f"timed out waiting for background tasks "
+                                f"({wait_cap}s), killed {len(killed)} tasks\n"
+                            )
+                            task_lines = "\n".join(
+                                f"  - {v.spec.id}: {v.spec.description} (killed)"
+                                for v in timed_out_views
+                            )
+                            timeout_prompt = (
+                                "<system-reminder>\n"
+                                f"Background tasks exceeded the {wait_cap}s wait"
+                                " limit and were terminated:\n"
+                                f"{task_lines}\n"
+                                "Summarize progress and inform the user,"
+                                " then conclude.\n"
+                                "</system-reminder>"
+                            )
+                            # The follow-up turn can fail (provider outage,
+                            # MaxStepsReached).  Swallow those so the exit
+                            # code stays FAILURE (the user already saw
+                            # "timed out ... killed N tasks" on stderr —
+                            # reclassifying to e.g. RETRYABLE would
+                            # contradict that), and ensure reconcile()
+                            # still runs in the ``finally`` block to flush
+                            # terminal notifications.  RunCancelled is
+                            # explicitly re-raised so Ctrl+C keeps its
+                            # cancel semantics (outer ``except RunCancelled``
+                            # → "Interrupted by user") instead of being
+                            # silently reclassified as a timeout.
+                            try:
+                                await run_soul(
+                                    self.soul,
+                                    timeout_prompt,
+                                    partial(visualize, self.output_format, self.final_only),
+                                    cancel_event,
+                                    runtime.session.wire_file,
+                                    runtime,
+                                )
+                            except RunCancelled:
+                                raise
+                            except Exception:
+                                logger.warning(
+                                    "Timeout follow-up soul turn failed; continuing shutdown",
+                                    exc_info=True,
+                                )
+                            finally:
+                                # The follow-up soul turn already took a
+                                # few seconds — enough natural window for
+                                # worker supervisors to notice the SIGTERM
+                                # and write their terminal status to disk.
+                                # One last reconcile picks up that on-disk
+                                # state so the persisted task view is
+                                # consistent with what the user was just
+                                # told ("killed"), instead of being stuck
+                                # on "running" until the next CLI start.
+                                manager.reconcile()
+                            return ExitCode.FAILURE
                 else:
                     logger.info("Empty command, skipping")
 

@@ -4,7 +4,8 @@
 
 ## 未发布
 
-- Print：退出前等待后台任务完成——在单次 `--print` 模式下，进程现在会等待仍在运行的后台 Agent 完成并让模型处理它们的结果，而不是直接退出并杀死它们
+- Print：退出前等待后台任务完成——在单次 `--print` 模式下，进程现在会等待仍在运行的后台 Agent 完成并让模型处理它们的结果，而不是直接退出并杀死它们。等待时长上限为 `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)`（默认上限 1 小时）；超时后杀死任务并通过 `<system-reminder>` 给模型最后一轮机会向用户总结后再退出
+- Shell/Print：退出时 CLI 会在 stderr 列出每个即将被 kill 的后台任务（id + 描述），等待配置的 grace period 后再汇报未响应信号的 worker；`keep_alive_on_exit=true` 仍会完全跳过此路径
 ## 1.36.0 (2026-04-17)
 
 - Anthropic：修复 Claude Opus 4.7 返回 `invalid_request_error` 的问题——Opus 4.7 拒绝旧的 `{type: "enabled", budget_tokens: N}` 思考配置，现在会正确路由到 adaptive thinking，并显式设置 `display: "summarized"`，使思考内容仍能通过流返回（Opus 4.7 默默将该默认值改为 `"omitted"`）；Bedrock / Vertex 命名变体（如 `aws/claude-opus-4-7`、`anthropic.claude-opus-4-7-v1:0`）以及 `claude-mythos-preview` 也会被正确识别；未来的 Claude ≥ 4.6 版本会通过版本号外推自动识别，无需改代码

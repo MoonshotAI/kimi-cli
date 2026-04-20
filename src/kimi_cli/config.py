@@ -106,6 +106,11 @@ class BackgroundConfig(BaseModel):
     )
     agent_task_timeout_s: int = Field(default=900, ge=60)
     """Maximum runtime in seconds for a background agent task. Default: 900 (15 min)."""
+    print_wait_ceiling_s: int = Field(default=3600, ge=1)
+    """Hard ceiling for how long ``--print`` mode waits for background tasks before
+    killing them and exiting. The effective wait is
+    ``min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)``.
+    Default: 3600 (1 hour)."""
 
 
 class NotificationConfig(BaseModel):

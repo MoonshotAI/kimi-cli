@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from kimi_cli.cli import ExitCode, InputFormat
+from kimi_cli.soul import RunCancelled
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.print import Print
 
@@ -32,20 +33,59 @@ from kimi_cli.ui.print import Print
 class _FakeState:
     """Mutable state that drives has_active_tasks / has_pending_for_sink."""
 
-    def __init__(self, *, active: bool = False, pending: bool = False):
+    def __init__(
+        self,
+        *,
+        active: bool = False,
+        pending: bool = False,
+        active_views: list[MagicMock] | None = None,
+    ):
         self.active = active
         self.pending = pending
         self.reconcile_count = 0
+        self.active_views: list[MagicMock] = list(active_views or [])
+        self.kill_reasons: list[str] = []
+
+
+def _fake_view(
+    task_id: str,
+    description: str = "desc",
+    *,
+    timeout_s: int | None = None,
+    status: str = "running",
+) -> MagicMock:
+    view = MagicMock()
+    view.spec.id = task_id
+    view.spec.description = description
+    view.spec.timeout_s = timeout_s
+    view.runtime.status = status
+    return view
 
 
 def _wire_manager(state: _FakeState) -> tuple[MagicMock, MagicMock]:
     manager = MagicMock()
-    manager.has_active_tasks = MagicMock(side_effect=lambda: state.active)
+    manager.has_active_tasks = MagicMock(
+        side_effect=lambda: state.active or bool(state.active_views)
+    )
 
     def _reconcile():
         state.reconcile_count += 1
 
     manager.reconcile = MagicMock(side_effect=_reconcile)
+
+    def _list_tasks(*, status=None, limit=None):
+        return list(state.active_views)
+
+    manager.list_tasks = MagicMock(side_effect=_list_tasks)
+
+    def _kill_all_active(*, reason: str = "Killed") -> list[str]:
+        state.kill_reasons.append(reason)
+        ids = [v.spec.id for v in state.active_views]
+        state.active_views = []
+        state.active = False
+        return ids
+
+    manager.kill_all_active = MagicMock(side_effect=_kill_all_active)
 
     notifications = MagicMock()
     notifications.has_pending_for_sink = MagicMock(side_effect=lambda sink: state.pending)
@@ -59,6 +99,8 @@ def _make_print_with_runtime(
     *,
     input_format: InputFormat = "text",
     keep_alive_on_exit: bool = False,
+    print_wait_ceiling_s: int = 3600,
+    agent_task_timeout_s: int = 900,
 ) -> tuple[Print, AsyncMock]:
     soul = AsyncMock(spec=KimiSoul)
     soul.runtime = MagicMock()
@@ -66,6 +108,8 @@ def _make_print_with_runtime(
     soul.runtime.background_tasks = manager
     soul.runtime.notifications = notifications
     soul.runtime.config.background.keep_alive_on_exit = keep_alive_on_exit
+    soul.runtime.config.background.print_wait_ceiling_s = print_wait_ceiling_s
+    soul.runtime.config.background.agent_task_timeout_s = agent_task_timeout_s
     soul.runtime.session.wire_file = tmp_path / "wire.jsonl"
 
     p = Print(
@@ -403,4 +447,440 @@ async def test_print_reruns_soul_even_with_active_sibling_tasks(
 
     assert code == ExitCode.SUCCESS
     # Re-entry happened even though active=True at that moment
+    assert len(run_soul_calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# Wait timeout: kill bg tasks + one final soul turn + FAILURE exit
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_print_wait_timeout_kills_and_reenters_soul(tmp_path: Path) -> None:
+    """When bg tasks exceed the wait cap, Print must kill them, tell the user
+    via stderr, inject a <system-reminder> describing the killed tasks, run
+    one more soul turn so the LLM can summarise, and exit FAILURE."""
+    views = [
+        _fake_view("b-001", "deploy staging", timeout_s=30),
+        _fake_view("b-002", 'agent "fix failing tests"', timeout_s=60),
+    ]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=5,
+        agent_task_timeout_s=900,
+    )
+
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        code = await p.run(command="kick off work")
+
+    assert code == ExitCode.FAILURE
+    # kill_all_active called exactly once with the timeout reason
+    assert state.kill_reasons == ["print_wait_timeout"]
+    # First soul run is the user command; second is the timeout follow-up
+    assert len(run_soul_calls) == 2
+    assert run_soul_calls[0] == "kick off work"
+    prompt = run_soul_calls[1]
+    assert "<system-reminder>" in prompt
+    # Task list appears in the follow-up prompt
+    assert "b-001" in prompt
+    assert "b-002" in prompt
+    assert "deploy staging" in prompt
+    assert "fix failing tests" in prompt
+
+
+@pytest.mark.asyncio
+async def test_print_wait_timeout_reconciles_after_followup_soul(tmp_path: Path) -> None:
+    """After the timeout follow-up soul turn runs, Print must reconcile() one
+    more time so on-disk runtime.status (written by the worker supervisor as
+    it shuts down during the soul turn) is picked up before we exit.
+
+    Without this, the final task view can remain "running" even though the
+    child was SIGTERM'd.
+    """
+    views = [_fake_view("b-001", "stubborn task", timeout_s=30)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    run_soul_calls: list[str] = []
+    reconcile_count_at_followup: list[int] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        if len(run_soul_calls) == 2:
+            # Snapshot reconcile count at the start of the follow-up turn
+            # so we can prove reconcile() was called AGAIN after we return.
+            reconcile_count_at_followup.append(state.reconcile_count)
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        code = await p.run(command="work")
+
+    assert code == ExitCode.FAILURE
+    assert len(run_soul_calls) == 2
+    assert len(reconcile_count_at_followup) == 1
+    # At least one reconcile must fire AFTER the follow-up soul turn, so the
+    # final on-disk status is picked up before exit.
+    assert state.reconcile_count > reconcile_count_at_followup[0]
+
+
+@pytest.mark.asyncio
+async def test_print_wait_timeout_survives_followup_soul_exception(tmp_path: Path) -> None:
+    """If the timeout follow-up soul turn raises (network error, MaxStepsReached,
+    etc.), Print must still:
+
+    - run reconcile() once more so the notification store is flushed;
+    - return ExitCode.FAILURE (not get re-classified via the outer except
+      handlers).
+
+    Otherwise the user sees a provider-error exit code while stderr has already
+    told them "timed out ... killed N tasks" — self-contradictory.
+    """
+    from kosong.chat_provider import ChatProviderError
+
+    views = [_fake_view("b-001", "stubborn", timeout_s=30)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    run_soul_calls: list[str] = []
+    reconcile_count_at_followup: list[int] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        if len(run_soul_calls) == 2:
+            reconcile_count_at_followup.append(state.reconcile_count)
+            raise ChatProviderError("simulated provider outage during follow-up")
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        code = await p.run(command="work")
+
+    assert code == ExitCode.FAILURE
+    assert len(run_soul_calls) == 2  # original + follow-up (which raised)
+    # Reconcile must still fire after the follow-up, even though it raised
+    assert state.reconcile_count > reconcile_count_at_followup[0]
+
+
+@pytest.mark.asyncio
+async def test_print_wait_timeout_followup_propagates_run_cancelled(tmp_path: Path) -> None:
+    """If the user presses Ctrl+C during the timeout follow-up soul turn,
+    ``run_soul`` raises ``RunCancelled``.  That must propagate to the outer
+    ``except RunCancelled`` handler (so the user sees "Interrupted by user"
+    and the cancel semantics stay intact), NOT be swallowed by the generic
+    ``except Exception`` catch-all that handles transient LLM failures.
+    """
+    views = [_fake_view("b-001", "stubborn", timeout_s=30)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        if len(run_soul_calls) == 2:
+            raise RunCancelled
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+        patch("kimi_cli.ui.print.logger") as mock_logger,
+    ):
+        code = await p.run(command="work")
+
+    # Both "swallowed" and "propagated" end in ExitCode.FAILURE, so we can't
+    # use code alone to distinguish.  Instead, verify the outer
+    # ``except RunCancelled`` branch was taken by observing its two distinct
+    # side effects, neither of which fire on the "swallowed via except
+    # Exception" path:
+    #
+    #   1. ``logger.error("Interrupted by user")`` fires
+    #   2. ``logger.warning("Timeout follow-up soul turn failed...")`` does NOT fire
+    assert code == ExitCode.FAILURE
+    assert len(run_soul_calls) == 2
+
+    error_calls = [str(c) for c in mock_logger.error.call_args_list]
+    assert any("Interrupted by user" in c for c in error_calls)
+
+    warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+    for c in warning_calls:
+        assert "Timeout follow-up soul turn failed" not in c
+
+
+@pytest.mark.asyncio
+async def test_print_wait_respects_zero_timeout_s(tmp_path: Path) -> None:
+    """A task with explicit ``timeout_s=0`` must NOT fall back to
+    ``agent_task_timeout_s`` via ``v.spec.timeout_s or default``.
+
+    Using the falsy ``or`` idiom silently promotes 0 to 900s, contradicting
+    the caller's explicit intent.  Enforce ``None``-only fallback.
+    """
+    views = [_fake_view("a", timeout_s=0)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=3600,
+        agent_task_timeout_s=900,
+    )
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        pass
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        await p.run(command="x")
+
+    # With timeout_s=0, wait_cap should be 0 → immediate timeout, not 900s.
+    assert state.kill_reasons == ["print_wait_timeout"]
+    # Should time out immediately, well under the agent default (900s).
+    assert clock[0] < 5
+
+
+@pytest.mark.asyncio
+async def test_print_wait_cap_uses_max_of_active_timeouts(tmp_path: Path) -> None:
+    """wait_cap should equal max(active.timeout_s) when below the ceiling."""
+    views = [
+        _fake_view("a", timeout_s=30),
+        _fake_view("b", timeout_s=60),
+        _fake_view("c", timeout_s=10),
+    ]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=3600,
+        agent_task_timeout_s=900,
+    )
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        pass
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        # The production loop sleeps 1s per poll; advance fake clock in larger
+        # steps to keep this test fast.
+        clock[0] += max(duration, 1.0)
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        await p.run(command="x")
+
+    # Cap = max([30, 60, 10]) = 60, well under the 3600 ceiling.
+    # Timeout should fire right around clock == 60.
+    assert state.kill_reasons == ["print_wait_timeout"]
+    assert 60 <= clock[0] <= 65
+
+
+@pytest.mark.asyncio
+async def test_print_wait_cap_respects_ceiling(tmp_path: Path) -> None:
+    """When a task has a very long timeout_s, the ceiling caps the wait."""
+    views = [_fake_view("x", timeout_s=10_000)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=5,
+        agent_task_timeout_s=900,
+    )
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        pass
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        await p.run(command="x")
+
+    # ceiling=5 caps the cap; should NOT wait anywhere near 10_000s.
+    assert state.kill_reasons == ["print_wait_timeout"]
+    assert clock[0] < 10
+
+
+@pytest.mark.asyncio
+async def test_pending_notification_preempts_timeout(tmp_path: Path) -> None:
+    """If a completion notification is pending at the same time the deadline
+    has passed, the pending path must win (option x): re-enter the soul, do
+    not trigger the timeout-kill path."""
+    views = [_fake_view("a", timeout_s=5)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=3600,
+        agent_task_timeout_s=900,
+    )
+
+    # On the first reconcile: publish a pending notification AND warp the
+    # clock past the deadline. The loop must still take the pending branch
+    # before checking the deadline.
+    clock = [0.0]  # initial monotonic → deadline = 0 + 5 = 5
+    reconcile_orig = manager.reconcile.side_effect
+
+    def reconcile_warp_clock():
+        reconcile_orig()
+        if state.reconcile_count == 1:
+            state.pending = True
+            clock[0] = 100.0  # 100 >> deadline(5)
+
+    manager.reconcile.side_effect = reconcile_warp_clock
+
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        if len(run_soul_calls) == 2:
+            # Re-entry drains pending and completes the task naturally.
+            state.pending = False
+            state.active_views.clear()
+            state.active = False
+
+    def fake_monotonic():
+        return clock[0]
+
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(duration):
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        code = await p.run(command="x")
+
+    # Pending wins over the (already-breached) deadline.
+    assert code == ExitCode.SUCCESS
+    assert state.kill_reasons == []
+    # 1 original + 1 pending re-entry, no timeout re-entry
     assert len(run_soul_calls) == 2

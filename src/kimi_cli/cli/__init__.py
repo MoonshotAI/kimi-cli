@@ -692,7 +692,7 @@ def kimi(
                     )
 
                 if not preserve_background_tasks:
-                    instance.shutdown_background_tasks()
+                    await instance.shutdown_background_tasks()
 
             return session, exit_code
         finally:

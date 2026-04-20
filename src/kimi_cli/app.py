@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import sys
 import warnings
 from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
@@ -14,6 +15,7 @@ from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.auth.oauth import OAuthManager
+from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
@@ -294,13 +296,57 @@ class KimiCLI:
         """Get the Session instance."""
         return self._runtime.session
 
-    def shutdown_background_tasks(self) -> None:
-        """Kill active background tasks on exit, unless keep_alive_on_exit is configured."""
-        if self._runtime.config.background.keep_alive_on_exit:
+    async def shutdown_background_tasks(self) -> None:
+        """Kill active background tasks on exit, unless keep_alive_on_exit is configured.
+
+        Prints a stderr notice naming each task so the user knows what is being
+        terminated, waits out the configured kill grace period so SIGTERM can
+        take effect, then reconciles and reports any workers that ignored the
+        signal.
+
+        This runs on the CLI's hard-shutdown path, so every failure mode must
+        be contained: disk IO errors from ``list_tasks`` / ``reconcile`` or
+        store corruption must not propagate and replace the real exit code
+        with a traceback.
+        """
+        bg_config = self._runtime.config.background
+        if bg_config.keep_alive_on_exit:
             return
-        killed = self._runtime.background_tasks.kill_all_active(reason="CLI session ended")
-        if killed:
-            logger.info("Stopped {n} background task(s) on exit: {ids}", n=len(killed), ids=killed)
+
+        try:
+            manager = self._runtime.background_tasks
+            active_views = [
+                v
+                for v in manager.list_tasks(status=None, limit=None)
+                if not is_terminal_status(v.runtime.status)
+            ]
+            if not active_views:
+                return
+
+            sys.stderr.write(f"\u26a0  Killing {len(active_views)} background tasks:\n")
+            for view in active_views:
+                description = view.spec.description or ""
+                if len(description) > 60:
+                    description = description[:57] + "..."
+                sys.stderr.write(f"  {view.spec.id}  {description}\n")
+
+            killed = manager.kill_all_active(reason="CLI session ended")
+            if killed:
+                logger.info(
+                    "Stopped {n} background task(s) on exit: {ids}", n=len(killed), ids=killed
+                )
+
+            await asyncio.sleep(bg_config.kill_grace_period_ms / 1000)
+            manager.reconcile()
+            survivors = [
+                v
+                for v in manager.list_tasks(status=None, limit=None)
+                if not is_terminal_status(v.runtime.status)
+            ]
+            if survivors:
+                sys.stderr.write(f"  ({len(survivors)} tasks still alive)\n")
+        except Exception:
+            logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
 
     @contextlib.asynccontextmanager
     async def _env(self) -> AsyncGenerator[None]:

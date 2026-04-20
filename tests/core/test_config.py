@@ -48,6 +48,7 @@ def test_default_config_dump():
                 "kill_grace_period_ms": 2000,
                 "keep_alive_on_exit": False,
                 "agent_task_timeout_s": 900,
+                "print_wait_ceiling_s": 3600,
             },
             "notifications": {
                 "claim_stale_after_ms": 15000,

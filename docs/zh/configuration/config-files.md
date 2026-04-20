@@ -148,7 +148,9 @@ capabilities = ["thinking", "image_in"]
 | --- | --- | --- | --- |
 | `max_running_tasks` | `integer` | `4` | 同时运行的最大后台任务数 |
 | `keep_alive_on_exit` | `boolean` | `false` | CLI 退出时是否保留后台任务运行；默认退出时终止所有后台任务 |
+| `kill_grace_period_ms` | `integer` | `2000` | CLI 退出发送 SIGTERM 后等待 worker 退出的宽限期（毫秒），超过后仍未退出的 worker 会被报告为残留 |
 | `agent_task_timeout_s` | `integer` | `900` | 后台 Agent 任务的最大运行时间（秒）；超时后任务标记为失败并通知主 Agent |
+| `print_wait_ceiling_s` | `integer` | `3600` | 一次性 `--print` 模式等待后台任务完成的硬上限（秒），超时则 kill 并退出。实际等待时间为"当前活跃任务中剩余预算最长的那个"，被此上限封顶 |
 
 ### `services`
 
