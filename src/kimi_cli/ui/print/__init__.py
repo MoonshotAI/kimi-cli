@@ -193,9 +193,13 @@ class Print:
                                 # outage while acknowledging a background
                                 # notification is not a command failure.
                                 # Let ``RunCancelled`` bubble (Ctrl+C
-                                # semantics) but swallow everything else
-                                # and break out so the natural success
-                                # path is preserved.
+                                # semantics); for anything else, drain the
+                                # pending notifications for this sink so
+                                # the loop doesn't tight-loop on the same
+                                # failing notification, and ``continue`` so
+                                # OTHER active tasks can still be waited on
+                                # (breaking would abandon them and let
+                                # shutdown force-kill them).
                                 try:
                                     await run_soul(
                                         self.soul,
@@ -211,10 +215,23 @@ class Print:
                                 except Exception:
                                     logger.warning(
                                         "Pending notification re-entry failed;"
-                                        " exiting wait loop with original exit code",
+                                        " draining pending notifications and"
+                                        " continuing to wait for remaining tasks",
                                         exc_info=True,
                                     )
-                                    break
+                                    # Force-drain pending LLM notifications
+                                    # so the loop does not tight-loop on the
+                                    # same failing notification.  They are
+                                    # effectively lost (the LLM never
+                                    # acknowledged them), but siblings can
+                                    # still be waited for and the original
+                                    # success exit code is preserved.
+                                    while True:
+                                        claimed = notifications.claim_for_sink("llm", limit=8)
+                                        if not claimed:
+                                            break
+                                        for view in claimed:
+                                            notifications.ack("llm", view.event.id)
                                 continue
                             if not manager.has_active_tasks():
                                 # Re-check once after noticing no active

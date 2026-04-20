@@ -94,6 +94,10 @@ def _wire_manager(state: _FakeState) -> tuple[MagicMock, MagicMock]:
 
     notifications = MagicMock()
     notifications.has_pending_for_sink = MagicMock(side_effect=lambda sink: state.pending)
+    # Default: nothing to claim.  Individual tests override to simulate
+    # a real drain-on-error path.
+    notifications.claim_for_sink = MagicMock(return_value=[])
+    notifications.ack = MagicMock()
     return manager, notifications
 
 
@@ -596,15 +600,23 @@ async def test_pending_reentry_soul_failure_preserves_success_exit_code(
 ) -> None:
     """A transient LLM failure during the pending-notification re-entry
     must NOT reclassify the user's already-successful original command to
-    ``RETRYABLE`` / ``FAILURE``.  The original ``run_soul`` call already
-    succeeded; a follow-up internal notification turn failing is not a
-    command failure.  Without the try/except, a ``ChatProviderError`` would
-    propagate to the outer handler and flip the exit code.
+    ``RETRYABLE`` / ``FAILURE`` AND must NOT cause other active background
+    tasks to be abandoned / force-killed by shutdown.
+
+    The fix: after catching the exception, drain the pending notifications
+    for this sink (so the loop does not tight-loop on the same failing
+    notification) and ``continue`` the wait loop — other active tasks are
+    still waited for, and when they complete naturally the original SUCCESS
+    exit code is preserved.
     """
     from kosong.chat_provider import ChatProviderError
 
-    views = [_fake_view("b-001", "long", timeout_s=30)]
-    state = _FakeState(active_views=views, pending=False)
+    # Two tasks: the first finishes and publishes a pending notification
+    # (which will cause the re-entry to fail); the second is still running
+    # and must be waited on after the failure is handled.
+    view_finished = _fake_view("b-finished", "done early", timeout_s=30)
+    view_other = _fake_view("b-other", "still running", timeout_s=30)
+    state = _FakeState(active_views=[view_finished, view_other], pending=False)
     manager, notifications = _wire_manager(state)
 
     p, _ = _make_print_with_runtime(
@@ -615,6 +627,8 @@ async def test_pending_reentry_soul_failure_preserves_success_exit_code(
         agent_task_timeout_s=900,
     )
 
+    # Drive pending: first reconcile publishes a notification for b-finished;
+    # claim_for_sink drains it (simulating the ack in the except handler).
     reconcile_orig = manager.reconcile.side_effect
 
     def first_reconcile_publishes():
@@ -624,21 +638,62 @@ async def test_pending_reentry_soul_failure_preserves_success_exit_code(
 
     manager.reconcile.side_effect = first_reconcile_publishes
 
+    claim_calls = []
+
+    def _claim_drains(sink, *, limit=8):
+        claim_calls.append(sink)
+        if state.pending:
+            state.pending = False
+            fake = MagicMock()
+            fake.event.id = "notif-b-finished"
+            return [fake]
+        return []
+
+    notifications.claim_for_sink.side_effect = _claim_drains
+
     run_soul_calls: list[str] = []
 
     async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
         run_soul_calls.append(user_input)
-        # Second call is the pending re-entry — fail it mid-loop.
+        # Second call is the pending re-entry — fail it.
         if len(run_soul_calls) == 2:
             raise ChatProviderError("simulated provider outage during re-entry")
 
-    with patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul):
+    # After the failed re-entry + drain, the loop should ``continue`` and
+    # hit ``asyncio.sleep`` before polling again.  We clear active_views
+    # inside the first sleep call so b-other "finishes naturally" while
+    # the loop is idle, driving the next iteration into the no-active
+    # break branch → SUCCESS.  If the fix had used ``break`` instead of
+    # ``continue``, we would never reach this sleep.
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(duration):
+        state.active_views = []
+        state.active = False
+        await real_sleep(0)
+
+    clock = [0.0]
+
+    def fake_monotonic():
+        return clock[0]
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
         code = await p.run(command="original user command")
 
     # Original command succeeded (first run_soul returned normally).
-    # Pending re-entry failure must not flip the outcome.
+    # Failed re-entry did not flip the outcome.
     assert code == ExitCode.SUCCESS
+    # run_soul called: [0] original cmd, [1] failed pending re-entry.
+    # No third call (pending was drained, not re-triggered).
     assert len(run_soul_calls) == 2
+    # The fix actually drained notifications via claim_for_sink("llm").
+    assert "llm" in claim_calls
+    # Ack was called for the drained notification.
+    notifications.ack.assert_called()
 
 
 @pytest.mark.asyncio

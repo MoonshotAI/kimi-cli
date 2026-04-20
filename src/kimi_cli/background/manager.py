@@ -223,7 +223,12 @@ class BackgroundTaskManager:
             raise RuntimeError("Too many background tasks are already running.")
 
         task_id = generate_task_id("agent")
-        effective_timeout = timeout_s or self._config.agent_task_timeout_s
+        # Explicit None check — the falsy idiom ``timeout_s or default``
+        # would silently promote a caller-supplied ``0`` to the agent
+        # default, matching the analogous fix in Print's wait-cap reader.
+        effective_timeout = (
+            timeout_s if timeout_s is not None else self._config.agent_task_timeout_s
+        )
         spec = TaskSpec(
             id=task_id,
             kind="agent",

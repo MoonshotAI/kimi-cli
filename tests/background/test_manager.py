@@ -210,6 +210,43 @@ async def test_create_agent_task_persists_default_timeout_on_spec(runtime, monke
 
 
 @pytest.mark.asyncio
+async def test_create_agent_task_zero_timeout_s_stays_zero(runtime, monkeypatch):
+    """``timeout_s=0`` must mean zero, not be silently promoted to
+    ``config.background.agent_task_timeout_s`` via the falsy ``or`` idiom.
+    Matches the analogous ``None`` check used by Print's wait-cap reader."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    manager = runtime.background_tasks
+
+    async def _noop(self):
+        return None
+
+    monkeypatch.setattr("kimi_cli.background.agent_runner.BackgroundAgentRunner.run", _noop)
+
+    view = manager.create_agent_task(
+        agent_id="a9999999",
+        subagent_type="coder",
+        prompt="zero timeout",
+        description="zero",
+        tool_call_id="tool-agent-zero",
+        model_override=None,
+        timeout_s=0,
+    )
+
+    assert view.spec.timeout_s == 0
+    task = manager._live_agent_tasks.pop(view.spec.id)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
 async def test_create_agent_task_persists_starting_state(runtime, monkeypatch):
     runtime.labor_market.add_builtin_type(
         AgentTypeDefinition(
