@@ -129,6 +129,27 @@ async def test_writetext_preserves_crlf_line_endings(local_kaos: LocalKaos):
     assert raw == b"hello\r\nworld\r\n", f"Expected CRLF preserved, got {raw!r}"
 
 
+async def test_readtext_can_preserve_line_endings(local_kaos: LocalKaos):
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "crlf-read.txt"
+    await local_kaos.writebytes(file_path, b"hello\r\nworld\r\n")
+
+    assert await local_kaos.readtext(file_path) == "hello\nworld\n"
+    assert await local_kaos.readtext(file_path, newline="") == "hello\r\nworld\r\n"
+
+
+async def test_readlines_can_preserve_line_endings(local_kaos: LocalKaos):
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "crlf-lines.txt"
+    await local_kaos.writebytes(file_path, b"hello\r\nworld\r\n")
+
+    normalized = [line async for line in local_kaos.readlines(file_path)]
+    preserved = [line async for line in local_kaos.readlines(file_path, newline="")]
+
+    assert normalized == ["hello\n", "world\n"]
+    assert preserved == ["hello\r\n", "world\r\n"]
+
+
 async def test_mkdir_with_parents(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     nested_dir = tmp_path / "a" / "b" / "c"

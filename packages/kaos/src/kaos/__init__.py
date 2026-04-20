@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 
 type StrOrKaosPath = str | KaosPath
+type Newline = Literal["", "\n", "\r\n", "\r"] | None
 
 
 @runtime_checkable
@@ -180,6 +181,7 @@ class Kaos(Protocol):
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: Newline = None,
     ) -> str:
         """Read the entire file contents as text."""
         ...
@@ -190,6 +192,7 @@ class Kaos(Protocol):
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: Newline = None,
     ) -> AsyncGenerator[str]:
         """Iterate over the lines of the file."""
         ...
@@ -308,8 +311,11 @@ async def readtext(
     *,
     encoding: str = "utf-8",
     errors: Literal["strict", "ignore", "replace"] = "strict",
+    newline: Newline = None,
 ) -> str:
-    return await get_current_kaos().readtext(path, encoding=encoding, errors=errors)
+    return await get_current_kaos().readtext(
+        path, encoding=encoding, errors=errors, newline=newline
+    )
 
 
 def readlines(
@@ -317,8 +323,9 @@ def readlines(
     *,
     encoding: str = "utf-8",
     errors: Literal["strict", "ignore", "replace"] = "strict",
+    newline: Newline = None,
 ) -> AsyncGenerator[str]:
-    return get_current_kaos().readlines(path, encoding=encoding, errors=errors)
+    return get_current_kaos().readlines(path, encoding=encoding, errors=errors, newline=newline)
 
 
 async def writebytes(path: StrOrKaosPath, data: bytes) -> int:

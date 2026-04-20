@@ -18,7 +18,15 @@ from asyncssh.constants import (
     FILEXFER_TYPE_SYMLINK,
 )
 
-from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, StrOrKaosPath
+from kaos import (
+    AsyncReadable,
+    AsyncWritable,
+    Kaos,
+    KaosProcess,
+    Newline,
+    StatResult,
+    StrOrKaosPath,
+)
 from kaos.path import KaosPath
 
 if TYPE_CHECKING:
@@ -227,6 +235,7 @@ class SSHKaos:
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: Newline = None,
     ) -> str:
         async with self._sftp.open(str(path), "r", encoding=encoding, errors=errors) as f:
             return await f.read()
@@ -237,10 +246,11 @@ class SSHKaos:
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: Newline = None,
     ) -> AsyncGenerator[str]:
         # NOTE: readlines is not supported by SFTPClientFile
-        text = await self.readtext(path, encoding=encoding, errors=errors)
-        for line in text.splitlines():
+        text = await self.readtext(path, encoding=encoding, errors=errors, newline=newline)
+        for line in text.splitlines(keepends=newline == ""):
             yield line
 
     async def writebytes(self, path: StrOrKaosPath, data: bytes) -> int:

@@ -95,6 +95,23 @@ async def test_replace_multiline_content(
     assert await file_path.read_text() == "Line 1\nModified line 2\nModified line 3\n"
 
 
+async def test_replace_preserves_crlf_when_edit_uses_crlf(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    file_path = temp_work_dir / "crlf.ts"
+    await file_path.write_bytes(b"const a = 1;\r\nconst b = 2;\r\n")
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="const b = 2;\r\n", new="const b = 3;\r\n"),
+        )
+    )
+
+    assert not result.is_error
+    assert await file_path.read_bytes() == b"const a = 1;\r\nconst b = 3;\r\n"
+
+
 async def test_replace_unicode_content(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):

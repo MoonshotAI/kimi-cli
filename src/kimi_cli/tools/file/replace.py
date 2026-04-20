@@ -129,7 +129,7 @@ class StrReplaceFile(CallableTool2[Params]):
                 )
 
             # Read the file content
-            content = await p.read_text(errors="replace")
+            content = await p.read_text(errors="replace", newline="")
 
             original_content = content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit

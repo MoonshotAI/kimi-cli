@@ -19,7 +19,15 @@ from collections.abc import Mapping
 import aiofiles
 import aiofiles.os
 
-from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, StrOrKaosPath
+from kaos import (
+    AsyncReadable,
+    AsyncWritable,
+    Kaos,
+    KaosProcess,
+    Newline,
+    StatResult,
+    StrOrKaosPath,
+)
 from kaos.path import KaosPath
 
 if TYPE_CHECKING:
@@ -119,9 +127,12 @@ class LocalKaos:
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: Newline = None,
     ) -> str:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
-        async with aiofiles.open(local_path, encoding=encoding, errors=errors) as f:
+        async with aiofiles.open(
+            local_path, encoding=encoding, errors=errors, newline=newline
+        ) as f:
             return await f.read()
 
     async def readlines(
@@ -130,9 +141,12 @@ class LocalKaos:
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: Newline = None,
     ) -> AsyncGenerator[str]:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
-        async with aiofiles.open(local_path, encoding=encoding, errors=errors) as f:
+        async with aiofiles.open(
+            local_path, encoding=encoding, errors=errors, newline=newline
+        ) as f:
             async for line in f:
                 yield line
 

@@ -163,18 +163,20 @@ class KaosPath:
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: kaos.Newline = None,
     ) -> str:
         """Read the entire file contents as text."""
-        return await kaos.readtext(self, encoding=encoding, errors=errors)
+        return await kaos.readtext(self, encoding=encoding, errors=errors, newline=newline)
 
     def read_lines(
         self,
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: kaos.Newline = None,
     ) -> AsyncGenerator[str]:
         """Iterate over the lines of the file."""
-        return kaos.readlines(self, encoding=encoding, errors=errors)
+        return kaos.readlines(self, encoding=encoding, errors=errors, newline=newline)
 
     async def write_bytes(self, data: bytes) -> int:
         """Write bytes data to the file."""

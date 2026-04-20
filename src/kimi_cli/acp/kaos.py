@@ -6,7 +6,15 @@ from contextlib import suppress
 from typing import Literal
 
 import acp
-from kaos import AsyncReadable, AsyncWritable, Kaos, KaosProcess, StatResult, StrOrKaosPath
+from kaos import (
+    AsyncReadable,
+    AsyncWritable,
+    Kaos,
+    KaosProcess,
+    Newline,
+    StatResult,
+    StrOrKaosPath,
+)
 from kaos.local import local_kaos
 from kaos.path import KaosPath
 
@@ -222,10 +230,13 @@ class ACPKaos:
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: Newline = None,
     ) -> str:
         abs_path = self._abs_path(path)
         if not self._supports_read:
-            return await self._fallback.readtext(abs_path, encoding=encoding, errors=errors)
+            return await self._fallback.readtext(
+                abs_path, encoding=encoding, errors=errors, newline=newline
+            )
         response = await self._client.read_text_file(path=abs_path, session_id=self._session_id)
         return response.content
 
@@ -235,8 +246,9 @@ class ACPKaos:
         *,
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
+        newline: Newline = None,
     ) -> AsyncGenerator[str]:
-        text = await self.readtext(path, encoding=encoding, errors=errors)
+        text = await self.readtext(path, encoding=encoding, errors=errors, newline=newline)
         for line in text.splitlines(keepends=True):
             yield line
 
