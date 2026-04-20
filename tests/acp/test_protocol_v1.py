@@ -99,6 +99,29 @@ async def test_list_sessions(
     assert session_resp.session_id in session_ids
 
 
+async def test_list_sessions_without_cwd(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """list_sessions without cwd returns sessions from all work directories."""
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    session_resp = await conn.new_session(cwd=str(work_dir))
+
+    # Must prompt first; Session.list() skips empty sessions
+    await conn.prompt(
+        prompt=[acp.text_block("Hello")],
+        session_id=session_resp.session_id,
+    )
+
+    list_resp = await conn.list_sessions()
+    session_ids = [s.session_id for s in list_resp.sessions]
+    assert session_resp.session_id in session_ids
+
+
 async def test_resume_session(
     acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
     tmp_path,
