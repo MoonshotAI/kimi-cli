@@ -560,6 +560,7 @@ def _apply_kimi_code_config(
             model=model_info.id,
             max_context_size=model_info.context_length,
             capabilities=capabilities,
+            display_name=model_info.display_name,
         )
 
     config.default_model = managed_model_key(platform.id, selected_model.id)
