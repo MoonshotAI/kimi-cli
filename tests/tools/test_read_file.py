@@ -230,6 +230,19 @@ async def test_read_unicode_file(read_file_tool: ReadFile, temp_work_dir: KaosPa
     )
 
 
+async def test_read_preserves_crlf_line_endings(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    crlf_file = temp_work_dir / "crlf.txt"
+    await crlf_file.write_bytes(b"first\r\nsecond\r\n")
+
+    result = await read_file_tool(Params(path=str(crlf_file)))
+
+    assert not result.is_error
+    assert result.output == "     1\tfirst\r\n     2\tsecond\r\n"
+    assert result.message == (
+        "2 lines read from file starting from line 1. Total lines in file: 2. End of file reached."
+    )
+
+
 async def test_read_edge_cases(read_file_tool: ReadFile, sample_file: KaosPath):
     """Test edge cases for line offset reading."""
     # Test reading from line 1 (should be same as default)

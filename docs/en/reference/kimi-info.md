@@ -27,15 +27,15 @@ kimi info [--json]
 
 ```sh
 $ kimi info
-kimi-cli version: 1.20.0
+kimi-cli version: 1.36.0
 agent spec versions: 1
-wire protocol: 1.7
-python version: 3.13.1
+wire protocol: 1.9
+python version: 3.14.3
 ```
 
 **JSON output**
 
 ```sh
 $ kimi info --json
-{"kimi_cli_version": "1.20.0", "agent_spec_versions": ["1"], "wire_protocol_version": "1.7", "python_version": "3.13.1"}
+{"kimi_cli_version": "1.36.0", "agent_spec_versions": ["1"], "wire_protocol_version": "1.9", "python_version": "3.14.3"}
 ```

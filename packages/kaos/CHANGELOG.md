@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `newline` parameter to `readtext` and `readlines` — pass `newline=""` to preserve original line endings (e.g. CRLF) instead of normalizing to LF
+
 ## 0.9.0 (2026-04-02)
 
 - Tests: Add `test_glob_includes_hidden_files` to verify glob matches dotfiles and hidden directories

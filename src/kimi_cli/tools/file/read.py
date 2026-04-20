@@ -178,7 +178,7 @@ class ReadFile(CallableTool2[Params]):
         max_bytes_reached = False
         collecting = True  # False once we've collected enough lines
         current_line_no = 0
-        async for line in p.read_lines(errors="replace"):
+        async for line in p.read_lines(errors="replace", newline=""):
             current_line_no += 1
             if not collecting:
                 continue
@@ -233,7 +233,7 @@ class ReadFile(CallableTool2[Params]):
         # Each entry: (line_no, truncated_line, was_truncated)
         tail_buf: deque[tuple[int, str, bool]] = deque(maxlen=tail_count)
         current_line_no = 0
-        async for line in p.read_lines(errors="replace"):
+        async for line in p.read_lines(errors="replace", newline=""):
             current_line_no += 1
             truncated = truncate_line(line, MAX_LINE_LENGTH)
             tail_buf.append((current_line_no, truncated, truncated != line))
