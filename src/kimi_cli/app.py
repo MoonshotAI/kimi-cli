@@ -311,6 +311,11 @@ class KimiCLI:
             attach_sink(sink)
 
         from kimi_cli.telemetry import track
+        from kimi_cli.telemetry.crash import install_asyncio_handler, set_phase
+
+        # App init finished — enter runtime phase and hook asyncio crashes.
+        install_asyncio_handler()
+        set_phase("runtime")
 
         track("started", resumed=resumed, yolo=yolo)
         track(
