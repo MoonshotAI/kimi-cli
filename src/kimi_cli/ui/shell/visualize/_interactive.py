@@ -35,6 +35,7 @@ from kimi_cli.ui.shell.visualize._question_panel import (
     QuestionRequestPanel,
 )
 from kimi_cli.utils.aioqueue import QueueShutDown
+from kimi_cli.utils.sound import play_done_sound
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     BtwBegin,
@@ -233,6 +234,8 @@ class _PromptLiveView(_LiveView):
                 if isinstance(msg, TurnEnd):
                     self._active_turn_depth = max(0, self._active_turn_depth - 1)
                     self._turn_ended = self._active_turn_depth == 0
+                    if self._turn_ended:
+                        play_done_sound()
                     self._flush_prompt_refresh()
                     continue
 
