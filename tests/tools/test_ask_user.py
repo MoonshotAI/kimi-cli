@@ -179,16 +179,16 @@ async def test_ask_user_no_tool_call(ask_user_tool: AskUserQuestion):
 
 
 # ---------------------------------------------------------------------------
-# Yolo mode tests
+# Interaction policy auto-dismiss tests
 # ---------------------------------------------------------------------------
 
 
-async def test_ask_user_yolo_auto_dismiss():
-    """In yolo mode, auto-dismiss without wire or tool_call context (short-circuits everything)."""
+async def test_ask_user_policy_auto_dismiss():
+    """Auto-dismiss policy can short-circuit without wire or tool_call context."""
     tool = AskUserQuestion()
-    tool.bind_approval(is_yolo=lambda: True)
+    tool.bind_interaction_policy(should_auto_dismiss=lambda: True)
 
-    # Deliberately do NOT set wire or tool_call — yolo should short-circuit before needing them
+    # Deliberately do NOT set wire or tool_call — policy short-circuits before needing them
     wire_token = _current_wire.set(None)
     try:
         result = await tool(_make_params())
@@ -196,15 +196,15 @@ async def test_ask_user_yolo_auto_dismiss():
         assert isinstance(result.output, str)
         parsed = json.loads(result.output)
         assert parsed["answers"] == {}
-        assert "yolo" in parsed.get("note", "").lower()
+        assert "auto-dismissed" in parsed.get("note", "").lower()
+        assert "interaction policy" in parsed.get("note", "").lower()
     finally:
         _current_wire.reset(wire_token)
 
 
 async def test_ask_user_unbound_falls_through():
-    """When bind_approval is never called (backward compat), falls through to normal flow."""
+    """When no interaction policy callback is bound, tool falls through to normal flow."""
     tool = AskUserQuestion()
-    # Do NOT call bind_approval — _is_yolo stays None
 
     wire_token = _current_wire.set(None)
     tool_call = ToolCall(
@@ -221,22 +221,23 @@ async def test_ask_user_unbound_falls_through():
         _current_wire.reset(wire_token)
 
 
-async def test_ask_user_yolo_dynamic_toggle():
-    """When yolo is toggled off dynamically, tool should fall through to normal flow."""
-    yolo_state = {"enabled": True}
+async def test_ask_user_policy_dynamic_toggle():
+    """When interaction policy toggles off dynamically, tool falls through to normal flow."""
+    should_auto_dismiss = {"enabled": True}
     tool = AskUserQuestion()
-    tool.bind_approval(is_yolo=lambda: yolo_state["enabled"])
+    tool.bind_interaction_policy(lambda: should_auto_dismiss["enabled"])
 
-    # First call: yolo on -> auto-dismiss
+    # First call: policy on -> auto-dismiss
     result = await tool(_make_params())
     assert not result.is_error
     assert isinstance(result.output, str)
-    assert "yolo" in result.output.lower()
+    assert "auto-dismissed" in result.output.lower()
+    assert "interaction policy" in result.output.lower()
 
-    # Toggle yolo off
-    yolo_state["enabled"] = False
+    # Toggle policy off
+    should_auto_dismiss["enabled"] = False
 
-    # Second call: yolo off -> needs wire (which isn't set -> error)
+    # Second call: policy off -> needs wire (which isn't set -> error)
     wire_token = _current_wire.set(None)
     tool_call = ToolCall(
         id="tc-toggle",

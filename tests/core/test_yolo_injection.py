@@ -26,6 +26,11 @@ async def test_injects_when_yolo_enabled():
     assert result[0].type == _YOLO_INJECTION_TYPE
     assert result[0].content == _YOLO_PROMPT
     assert "AskUserQuestion" in result[0].content
+    assert "client supports interactive questions" in result[0].content
+    assert "auto-dismissed" in result[0].content
+    assert "auto-approve" in result[0].content
+    assert "Do NOT call" not in result[0].content
+    assert "auto-approved in non-interactive mode" not in result[0].content
 
 
 async def test_no_injection_when_yolo_disabled():
