@@ -7,12 +7,15 @@ that sessions don't get stuck in a permanent "busy" state.
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
+import kimi_cli.web.runner.process as process_module
 from kimi_cli.web.models import SessionStatus
 from kimi_cli.web.runner.process import SessionProcess
 
@@ -162,3 +165,38 @@ def test_session_in_error_state_clears_stale_ids_on_new_prompt() -> None:
         sp.clear_in_flight()
 
     assert sp.is_busy is False
+
+
+@pytest.mark.asyncio
+async def test_session_process_start_uses_safe_python_path_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sp = SessionProcess(uuid4())
+    captured: dict[str, object] = {}
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            returncode=None,
+            stdin=object(),
+            stdout=object(),
+            stderr=object(),
+        )
+
+    def fake_create_task(coro):
+        coro.close()
+        return SimpleNamespace(done=lambda: False)
+
+    monkeypatch.setattr(process_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(process_module.asyncio, "create_task", fake_create_task)
+
+    await sp.start()
+
+    assert captured["args"] == (
+        sys.executable,
+        "-P",
+        "-m",
+        "kimi_cli.web.runner.worker",
+        str(sp.session_id),
+    )
