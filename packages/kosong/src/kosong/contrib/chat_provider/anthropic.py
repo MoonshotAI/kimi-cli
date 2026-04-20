@@ -87,6 +87,7 @@ from kosong.message import (
     ThinkPart,
     ToolCall,
     ToolCallPart,
+    VideoURLPart,
 )
 from kosong.tooling import Tool
 
@@ -454,6 +455,21 @@ class Anthropic:
                 blocks.append(TextBlockParam(type="text", text=part.text))
             elif isinstance(part, ImageURLPart):
                 blocks.append(_image_url_part_to_anthropic(part))
+            elif isinstance(part, VideoURLPart):
+                # Agent gateway (agent-gw.kimi.com) accepts video_url blocks
+                # even through the Anthropic Messages API format.
+                blocks.append(
+                    cast(
+                        ContentBlockParam,
+                        {
+                            "type": "video_url",
+                            "video_url": {
+                                "url": part.video_url.url,
+                                "id": part.video_url.id,
+                            },
+                        },
+                    )
+                )
             elif isinstance(part, ThinkPart):
                 if part.encrypted is None:
                     # missing signature, strip this thinking block.
@@ -628,6 +644,21 @@ def _tool_result_message_to_block(
                     blocks.append(TextBlockParam(type="text", text=part.text))
             elif isinstance(part, ImageURLPart):
                 blocks.append(_image_url_part_to_anthropic(part))
+            elif isinstance(part, VideoURLPart):
+                # Agent gateway (agent-gw.kimi.com) accepts video_url blocks
+                # even through the Anthropic Messages API format.
+                blocks.append(
+                    cast(
+                        ToolResultContent,
+                        {
+                            "type": "video_url",
+                            "video_url": {
+                                "url": part.video_url.url,
+                                "id": part.video_url.id,
+                            },
+                        },
+                    )
+                )
             else:
                 # https://docs.claude.com/en/docs/build-with-claude/files#file-types-and-content-blocks
                 # Anthropic API supports very limited file types

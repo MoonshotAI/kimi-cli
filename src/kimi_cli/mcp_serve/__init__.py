@@ -147,10 +147,12 @@ async def _run_kimi_agent(task: str, working_directory: str | None = None) -> st
     cancel_event = asyncio.Event()
     collector = _ResultCollector()
 
+    interrupted = False
     try:
         async for msg in kimi.run(task, cancel_event):
             collector.feed(msg)
             if isinstance(msg, StepInterrupted):
+                interrupted = True
                 break
     except asyncio.CancelledError:
         return "Task was cancelled."
@@ -159,6 +161,9 @@ async def _run_kimi_agent(task: str, working_directory: str | None = None) -> st
         return f"Error during execution: {e}"
     finally:
         await kimi.shutdown_background_tasks()
+
+    if interrupted:
+        return f"Error: Agent step was interrupted.\n\n{collector.build_result()}"
 
     return collector.build_result()
 

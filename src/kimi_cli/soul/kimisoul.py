@@ -1262,7 +1262,7 @@ class FlowRunner:
             await self._run_nodes(soul)
         finally:
             soul._context = old_context  # type: ignore[reportPrivateUsage]
-            if self._commit_mode == "merge" and not self._paused:
+            if self._commit_mode == "merge":
                 await self._merge_ephemeral_to_main(soul)
             await self._cleanup_ephemeral_context()
             if isinstance(toolset, KimiToolset):
@@ -1289,14 +1289,21 @@ class FlowRunner:
     async def _merge_ephemeral_to_main(self, soul: KimiSoul) -> None:
         if self._ephemeral_context is None:
             return
-        # If compaction happened during the flow, the ephemeral history was
-        # rebuilt from scratch and may be shorter than _parent_history_len.
-        # In that case we merge everything (the compacted summary is all we
-        # have). Otherwise we merge only the messages appended after the
-        # flow started.
         start = self._parent_history_len
         if start > len(self._ephemeral_context.history):
-            start = 0
+            # Compaction occurred: ephemeral was rebuilt from scratch and is
+            # shorter than the original parent history. Replace main's file
+            # and in-memory state entirely to avoid duplicating pre-flow
+            # messages that are still present in main.
+            import shutil
+
+            shutil.copy(self._tmp_file, soul._context.file_backend)  # type: ignore[reportPrivateUsage]
+            soul._context._history = list(self._ephemeral_context._history)  # type: ignore[reportPrivateUsage]
+            soul._context._provenance = dict(self._ephemeral_context._provenance)  # type: ignore[reportPrivateUsage]
+            soul._context._token_count = self._ephemeral_context._token_count  # type: ignore[reportPrivateUsage]
+            soul._context._pending_token_estimate = self._ephemeral_context._pending_token_estimate  # type: ignore[reportPrivateUsage]
+            soul._context._next_checkpoint_id = self._ephemeral_context._next_checkpoint_id  # type: ignore[reportPrivateUsage]
+            return
         for i in range(start, len(self._ephemeral_context.history)):
             message = self._ephemeral_context.history[i]
             prov = self._ephemeral_context.get_provenance(i)
