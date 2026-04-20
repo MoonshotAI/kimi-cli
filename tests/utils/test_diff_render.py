@@ -163,6 +163,187 @@ class TestHighlightHunk:
         # 3rd delete not paired
         assert not deletes[2].is_inline_paired
 
+    def test_inline_diff_with_tabs(self) -> None:
+        """Inline highlight offsets must account for tab-to-space expansion."""
+        old = "\told_value = 1"
+        new = "\tnew_value = 2"
+        hunks = _build_diff_lines(old, new, 1, 1)
+        hl = _make_highlighter("test.py")
+        _highlight_hunk(hl, hunks[0])
+        deletes = [dl for dl in hunks[0] if dl.kind == DiffLineKind.DELETE]
+        adds = [dl for dl in hunks[0] if dl.kind == DiffLineKind.ADD]
+        assert deletes[0].is_inline_paired
+        assert adds[0].is_inline_paired
+        assert deletes[0].content is not None
+        assert adds[0].content is not None
+        del_plain = deletes[0].content.plain
+        add_plain = adds[0].content.plain
+        assert "old_value" in del_plain
+        assert "new_value" in add_plain
+        # Verify the highlight spans cover the actual changed words,
+        # not characters shifted by unexpanded-tab offsets.
+        from kimi_cli.utils.rich.diff_render import get_diff_colors
+
+        colors = get_diff_colors()
+        assert deletes[0].content is not None
+        assert adds[0].content is not None
+        del_hl_spans = [
+            (s.start, s.end) for s in deletes[0].content.spans if s.style == colors.del_hl
+        ]
+        add_hl_spans = [(s.start, s.end) for s in adds[0].content.spans if s.style == colors.add_hl]
+        # The highlighted region in the old line must cover "old" (from old_value)
+        del_highlighted = "".join(del_plain[s:e] for s, e in del_hl_spans)
+        add_highlighted = "".join(add_plain[s:e] for s, e in add_hl_spans)
+        assert "old" in del_highlighted, f"expected 'old' in highlighted text: {del_highlighted!r}"
+        assert "new" in add_highlighted, f"expected 'new' in highlighted text: {add_highlighted!r}"
+
+    def test_inline_diff_tab_to_spaces(self) -> None:
+        """A change from tab to spaces should be highlighted as an inline diff."""
+        old = "\tvalue = 1"
+        new = "    value = 1"
+        hunks = _build_diff_lines(old, new, 1, 1)
+        hl = _make_highlighter("test.py")
+        _highlight_hunk(hl, hunks[0])
+        deletes = [dl for dl in hunks[0] if dl.kind == DiffLineKind.DELETE]
+        adds = [dl for dl in hunks[0] if dl.kind == DiffLineKind.ADD]
+        assert deletes[0].is_inline_paired
+        assert adds[0].is_inline_paired
+        # The inline highlight should cover the indentation region where
+        # tab vs spaces differ.
+        from kimi_cli.utils.rich.diff_render import get_diff_colors
+
+        colors = get_diff_colors()
+        assert deletes[0].content is not None
+        assert adds[0].content is not None
+        del_hl_spans = [
+            (s.start, s.end) for s in deletes[0].content.spans if s.style == colors.del_hl
+        ]
+        add_hl_spans = [(s.start, s.end) for s in adds[0].content.spans if s.style == colors.add_hl]
+        # There must be highlight spans — the whitespace change should not be invisible
+        assert del_hl_spans, "tab indentation should be highlighted in deleted line"
+        assert add_hl_spans, "space indentation should be highlighted in added line"
+
+    def test_inline_diff_mixed_tab_and_space(self) -> None:
+        """Inline highlight must handle a tab adjacent to a literal space."""
+        old = "a\t b"
+        new = "a   b"
+        hunks = _build_diff_lines(old, new, 1, 1)
+        hl = _make_highlighter("test.txt")
+        _highlight_hunk(hl, hunks[0])
+        deletes = [dl for dl in hunks[0] if dl.kind == DiffLineKind.DELETE]
+        adds = [dl for dl in hunks[0] if dl.kind == DiffLineKind.ADD]
+        assert deletes[0].is_inline_paired
+        assert adds[0].is_inline_paired
+        from kimi_cli.utils.rich.diff_render import get_diff_colors
+
+        colors = get_diff_colors()
+        assert deletes[0].content is not None
+        assert adds[0].content is not None
+        del_hl_spans = [
+            (s.start, s.end) for s in deletes[0].content.spans if s.style == colors.del_hl
+        ]
+        add_hl_spans = [(s.start, s.end) for s in adds[0].content.spans if s.style == colors.add_hl]
+        # The tab+space region in the old line must be highlighted with a
+        # non-zero width — not collapsed to an empty range.
+        assert del_hl_spans, "tab+space region should be highlighted in deleted line"
+        assert all(s < e for s, e in del_hl_spans), "highlight spans must have non-zero width"
+        assert add_hl_spans, "space region should be highlighted in added line"
+        assert all(s < e for s, e in add_hl_spans), "highlight spans must have non-zero width"
+
+    def test_inline_diff_tab_to_spaces_precise(self) -> None:
+        """Highlight spans must cover exactly the indentation region."""
+        # "a\tb" with tab_size=4: rendered as "a   b" (tab expands to 3 spaces)
+        # "a   b": literal 3 spaces
+        # The only difference is the tab vs 3 spaces — both render as "a   b".
+        # The highlight should cover the whitespace region (rendered[1:4]).
+        old = "a\tb"
+        new = "a   b"
+        hunks = _build_diff_lines(old, new, 1, 1)
+        hl = _make_highlighter("test.txt")
+        _highlight_hunk(hl, hunks[0])
+        deletes = [dl for dl in hunks[0] if dl.kind == DiffLineKind.DELETE]
+        adds = [dl for dl in hunks[0] if dl.kind == DiffLineKind.ADD]
+        assert deletes[0].is_inline_paired
+        assert adds[0].is_inline_paired
+        from kimi_cli.utils.rich.diff_render import get_diff_colors
+
+        colors = get_diff_colors()
+        assert deletes[0].content is not None
+        assert adds[0].content is not None
+        del_hl_spans = [
+            (s.start, s.end) for s in deletes[0].content.spans if s.style == colors.del_hl
+        ]
+        add_hl_spans = [(s.start, s.end) for s in adds[0].content.spans if s.style == colors.add_hl]
+        del_plain = deletes[0].content.plain  # "a   b"
+        add_plain = adds[0].content.plain  # "a   b"
+        del_highlighted = "".join(del_plain[s:e] for s, e in del_hl_spans)
+        add_highlighted = "".join(add_plain[s:e] for s, e in add_hl_spans)
+        # The highlighted region must be exactly the whitespace, not spill into "a" or "b".
+        assert "a" not in del_highlighted, f"'a' should not be highlighted: {del_hl_spans}"
+        assert "b" not in del_highlighted, f"'b' should not be highlighted: {del_hl_spans}"
+        assert "a" not in add_highlighted, f"'a' should not be highlighted: {add_hl_spans}"
+        assert "b" not in add_highlighted, f"'b' should not be highlighted: {add_hl_spans}"
+        assert del_hl_spans, "whitespace region should be highlighted in deleted line"
+        assert add_hl_spans, "whitespace region should be highlighted in added line"
+
+    def test_inline_diff_multiple_tabs_precise(self) -> None:
+        """Changing only the first tab must not highlight the second tab."""
+        # old: "a\t\ta" with tab_size=4 renders as "a       a"
+        #       a=col0, tab1 expands to 3sp (cols 1-3), tab2 expands to 4sp (cols 4-7), a=col8
+        # new: "a \ta" renders as "a   a"
+        #       a=col0, space=col1, tab expands to 2sp (cols 2-3), a=col4
+        # Only the first tab (old rendered[1:4]) should be highlighted,
+        # NOT the second tab (old rendered[4:8]).
+        old = "a\t\ta"
+        new = "a \ta"
+        hunks = _build_diff_lines(old, new, 1, 1)
+        hl = _make_highlighter("test.txt")
+        _highlight_hunk(hl, hunks[0])
+        deletes = [dl for dl in hunks[0] if dl.kind == DiffLineKind.DELETE]
+        assert deletes[0].is_inline_paired
+        assert deletes[0].content is not None
+        from kimi_cli.utils.rich.diff_render import get_diff_colors
+
+        colors = get_diff_colors()
+        del_hl_spans = [
+            (s.start, s.end) for s in deletes[0].content.spans if s.style == colors.del_hl
+        ]
+        # The highlight in the old line must cover only the first tab's
+        # rendered region [1:4], not spill into the second tab [4:8].
+        assert del_hl_spans, "first tab region should be highlighted"
+        for s, e in del_hl_spans:
+            assert e <= 4, (
+                f"highlight span ({s},{e}) extends into second tab region "
+                f"(rendered[4:8]), should stop at 4"
+            )
+
+    def test_inline_diff_trailing_whitespace(self) -> None:
+        """Trailing whitespace must be preserved and highlighted in diffs."""
+        old = "hello   "
+        new = "hello"
+        hunks = _build_diff_lines(old, new, 1, 1)
+        hl = _make_highlighter("test.txt")
+        _highlight_hunk(hl, hunks[0])  # should not raise
+        deletes = [dl for dl in hunks[0] if dl.kind == DiffLineKind.DELETE]
+        adds = [dl for dl in hunks[0] if dl.kind == DiffLineKind.ADD]
+        assert deletes[0].is_inline_paired
+        assert adds[0].is_inline_paired
+        # Trailing spaces must be preserved in the rendered content,
+        # not stripped away — they are a meaningful part of the diff.
+        assert deletes[0].content is not None
+        assert deletes[0].content.plain == "hello   "
+        from kimi_cli.utils.rich.diff_render import get_diff_colors
+
+        colors = get_diff_colors()
+        del_hl_spans = [
+            (s.start, s.end) for s in deletes[0].content.spans if s.style == colors.del_hl
+        ]
+        # The trailing spaces should be highlighted as the deleted region.
+        del_highlighted = "".join(deletes[0].content.plain[s:e] for s, e in del_hl_spans)
+        assert "   " in del_highlighted, (
+            f"trailing spaces should be highlighted, got: {del_highlighted!r}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # collect_diff_hunks

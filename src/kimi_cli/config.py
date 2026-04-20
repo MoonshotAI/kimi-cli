@@ -70,7 +70,7 @@ class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
     max_steps_per_turn: int = Field(
-        default=100,
+        default=500,
         ge=1,
         validation_alias=AliasChoices("max_steps_per_turn", "max_steps_per_run"),
     )
@@ -196,6 +196,16 @@ class Config(BaseModel):
     theme: Literal["dark", "light"] = Field(
         default="dark",
         description="Terminal color theme. Use 'light' for light terminal backgrounds.",
+    )
+    show_thinking_stream: bool = Field(
+        default=True,
+        description=(
+            "If true, stream the raw reasoning text in the live area as a "
+            "6-line scrolling preview and commit the full reasoning markdown "
+            "to history when the block ends. Default true. Set to false to "
+            "show only the compact 'Thinking ...' indicator and a one-line "
+            "trace summary."
+        ),
     )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(

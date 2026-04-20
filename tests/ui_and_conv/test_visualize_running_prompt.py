@@ -35,7 +35,16 @@ async def test_visualize_uses_prompt_live_view_when_prompt_session_and_steer_are
             called.append(("detach", delegate, None))
 
     class _DummyPromptLiveView:
-        def __init__(self, initial_status, *, prompt_session, steer, btw_runner=None, cancel_event):
+        def __init__(
+            self,
+            initial_status,
+            *,
+            prompt_session,
+            steer,
+            btw_runner=None,
+            cancel_event,
+            show_thinking_stream=False,
+        ):
             called.append(("init", initial_status, cancel_event))
             assert prompt_session is not None
             assert steer is not None

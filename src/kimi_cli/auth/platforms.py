@@ -35,7 +35,7 @@ class ModelInfo(BaseModel):
             caps.add("image_in")
         if self.supports_video_in:
             caps.add("video_in")
-        if "kimi-k2.5" in self.id.lower():
+        if self.id.lower().startswith("kimi-k2"):
             caps.update(("thinking", "image_in", "video_in"))
         return caps
 

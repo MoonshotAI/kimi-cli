@@ -8,6 +8,7 @@ except ModuleNotFoundError as exc:
 
 import copy
 import json
+import re
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, Unpack, cast
 
@@ -47,6 +48,7 @@ from anthropic.types import (
     MessageParam,
     MessageStartEvent,
     MetadataParam,
+    OutputConfigParam,
     RawContentBlockDeltaEvent,
     RawContentBlockStartEvent,
     RawMessageStreamEvent,
@@ -99,6 +101,107 @@ type MessagePayload = tuple[str | None, list[MessageParam]]
 type BetaFeatures = Literal["interleaved-thinking-2025-05-14"]
 
 
+# Models that accept adaptive thinking but don't expose a major.minor version
+# in their identifier (e.g. Claude Mythos Preview).
+_ADAPTIVE_MARKERS_NO_VERSION: tuple[str, ...] = ("mythos",)
+
+# Matches the Claude family's major.minor version inside a model identifier.
+# `\d{1,2}(?!\d)` prevents date suffixes like `sonnet-4-20250514` from being
+# misread as minor=20: `20` would be followed by another digit, so the
+# negative lookahead fails and the regex does not match at all.
+_FAMILY_VERSION_RE = re.compile(r"(?:opus|sonnet|haiku)[.-](\d+)[.-](\d{1,2})(?!\d)")
+
+# Adaptive thinking was introduced with Opus 4.6 / Sonnet 4.6.
+_ADAPTIVE_MIN_VERSION: tuple[int, int] = (4, 6)
+
+
+def _supports_adaptive_thinking(model: str) -> bool:
+    """Whether the given model id accepts `thinking: {type: "adaptive"}`.
+
+    Strategy: explicit marker for non-versioned models (e.g. Mythos), plus a
+    strict regex over the Claude family that extrapolates to unknown future
+    versions (>= 4.6) without code changes.
+    """
+    m = model.lower()
+    if any(marker in m for marker in _ADAPTIVE_MARKERS_NO_VERSION):
+        return True
+    if match := _FAMILY_VERSION_RE.search(m):
+        major, minor = int(match.group(1)), int(match.group(2))
+        return (major, minor) >= _ADAPTIVE_MIN_VERSION
+    return False
+
+
+def _is_opus_4_7(model: str) -> bool:
+    """Opus 4.7 specifically supports the ``xhigh`` effort level.
+
+    The docs explicitly enumerate ``xhigh`` support as "Available on Claude
+    Opus 4.7" — not "4.7 and later". We keep the check exact so that a
+    future Opus 4.8 that silently drops xhigh doesn't start returning 400.
+    Future versions fall back to the 4.6-family effort set (which still
+    covers ``max``) until this table is updated.
+    """
+    m = model.lower()
+    if match := re.search(r"opus[.-](\d+)[.-](\d{1,2})(?!\d)", m):
+        major, minor = int(match.group(1)), int(match.group(2))
+        return (major, minor) == (4, 7)
+    return False
+
+
+def _supported_efforts(model: str) -> frozenset["ThinkingEffort"]:
+    """Effort levels accepted by ``output_config.effort`` for the given model.
+
+    Per Anthropic docs:
+      - xhigh: Opus 4.7 only
+      - max:   Mythos, Opus 4.7, Opus 4.6, Sonnet 4.6 (and future adaptive models)
+      - low/medium/high: all models with effort support (including Opus 4.5+)
+    """
+    if _is_opus_4_7(model):
+        return frozenset({"low", "medium", "high", "xhigh", "max"})
+    if _supports_adaptive_thinking(model):
+        # 4.6 family / Mythos / future adaptive models: support max but not xhigh
+        return frozenset({"low", "medium", "high", "max"})
+    # Pre-4.6 models: capped at high
+    return frozenset({"low", "medium", "high"})
+
+
+def _clamp_effort(effort: "ThinkingEffort", model: str) -> "ThinkingEffort":
+    """Clamp an effort level to the highest one supported by the model.
+
+    Anything the model doesn't support falls back to ``high`` — the
+    universally available ceiling. ``off`` is passed through unchanged as
+    it represents "disable thinking" rather than an effort rank.
+    """
+    if effort == "off":
+        return effort
+    if effort in _supported_efforts(model):
+        return effort
+    return "high"
+
+
+def _supports_effort_param(model: str) -> bool:
+    """Whether the model accepts ``output_config.effort`` at all.
+
+    Per Anthropic's effort docs, the parameter is explicitly supported on
+    Claude Mythos Preview, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet
+    4.6, and Claude Opus 4.5. Adaptive-capable models all support it via the
+    adaptive pathway. For the legacy (manual thinking) pathway, only Opus
+    4.5 is explicitly listed.
+
+    We gate ``output_config`` emission on this predicate to avoid sending
+    effort to models that would reject it with a 400 (Claude 3.x, and
+    conservatively Sonnet 4 / Sonnet 4.5 / Haiku 4.5 which are not in the
+    explicit list). A false negative here means "effort not sent, no
+    regression from pre-effort behaviour"; a false positive would mean
+    "API 400 error", so we err on the side of silence.
+    """
+    if _supports_adaptive_thinking(model):
+        return True
+    # Opus 4.5 is the only legacy (non-adaptive) model that Anthropic docs
+    # explicitly confirm supports the effort parameter.
+    m = model.lower()
+    return "opus-4-5" in m or "opus-4.5" in m
+
+
 class Anthropic:
     """
     Chat provider backed by Anthropic's Messages API.
@@ -111,8 +214,14 @@ class Anthropic:
         temperature: float | None
         top_k: int | None
         top_p: float | None
-        # e.g., {"type": "adaptive"} or {"type": "enabled", "budget_tokens": 1024}
+        # e.g., {"type": "adaptive", "display": "summarized"}
+        # or   {"type": "enabled", "budget_tokens": 1024}
         thinking: ThinkingConfigParam | None
+        # e.g., {"effort": "high"} — soft guidance that applies to all output
+        # tokens. Used in adaptive thinking requests, and in legacy requests
+        # only when the model is on Anthropic's explicit effort-supporting
+        # list (see ``_supports_effort_param``).
+        output_config: OutputConfigParam | None
         # e.g., {"type": "auto", "disable_parallel_tool_use": True}
         tool_choice: ToolChoiceParam | None
 
@@ -155,6 +264,10 @@ class Anthropic:
         if thinking_config["type"] == "disabled":
             return "off"
         if thinking_config["type"] == "adaptive":
+            output_config = self._generation_kwargs.get("output_config") or {}
+            effort = output_config.get("effort")
+            if effort in ("low", "medium", "high", "xhigh", "max"):
+                return effort
             return "high"
         budget = thinking_config["budget_tokens"]
         if budget <= 1024:
@@ -234,40 +347,56 @@ class Anthropic:
         except (AnthropicError, httpx.HTTPError) as e:
             raise _convert_error(e) from e
 
-    def _use_adaptive_thinking(self) -> bool:
-        """Whether to use adaptive thinking (Opus 4.6+) instead of budget-based thinking."""
-        model = self._model.lower()
-        return "opus-4.6" in model or "opus-4-6" in model
-
     def with_thinking(self, effort: "ThinkingEffort") -> Self:
-        thinking_config: ThinkingConfigParam
-        if self._use_adaptive_thinking():
-            # Opus 4.6+: use adaptive thinking (budget_tokens is deprecated).
-            # The interleaved-thinking beta header is also not needed with adaptive.
-            match effort:
-                case "off":
-                    thinking_config = {"type": "disabled"}
-                case _:
-                    thinking_config = {"type": "adaptive"}  # type: ignore[typeddict-item]
-            new = self.with_generation_kwargs(thinking=thinking_config)
-            # Remove the now-unnecessary interleaved-thinking beta header.
+        if effort == "off":
+            new = self.with_generation_kwargs(thinking={"type": "disabled"})
+            # Clear any stale output_config from a prior adaptive configuration.
+            new._generation_kwargs.pop("output_config", None)
+            return new
+
+        # Clamp to whatever the model actually accepts. xhigh/max fall back
+        # to high on models that don't support them; low/medium/high pass
+        # through; max passes through on 4.6-family and newer.
+        effective = _clamp_effort(effort, self._model)
+        # SDK 0.78 OutputConfigParam TypedDict lists only low/medium/high/max.
+        # `xhigh` is valid on Opus 4.7 per the API docs but not yet typed.
+        output_config: OutputConfigParam = {"effort": effective}  # type: ignore[typeddict-item]
+
+        if _supports_adaptive_thinking(self._model):
+            # Opus 4.6+ / Sonnet 4.6+ / Mythos: adaptive thinking.
+            # `display: "summarized"` is required on Opus 4.7+ (where the default
+            # flipped to "omitted") and is a no-op on 4.6. Setting it
+            # unconditionally keeps thinking content visible across versions.
+            # SDK 0.78 TypedDict doesn't model `display` yet — thus the ignore.
+            thinking_config: ThinkingConfigParam = {
+                "type": "adaptive",
+                "display": "summarized",
+            }  # type: ignore[typeddict-item]
+            new = self.with_generation_kwargs(
+                thinking=thinking_config,
+                output_config=output_config,
+            )
+            # Adaptive mode auto-enables interleaved thinking, so the beta
+            # header is redundant. Drop it if still present from construction.
             if (
                 beta_features := new._generation_kwargs.get("beta_features")
             ) and "interleaved-thinking-2025-05-14" in beta_features:
                 beta_features.remove("interleaved-thinking-2025-05-14")
             return new
-        else:
-            # Pre-4.6 models: use legacy budget-based thinking.
-            match effort:
-                case "off":
-                    thinking_config = {"type": "disabled"}
-                case "low":
-                    thinking_config = {"type": "enabled", "budget_tokens": 1024}
-                case "medium":
-                    thinking_config = {"type": "enabled", "budget_tokens": 4096}
-                case "high":
-                    thinking_config = {"type": "enabled", "budget_tokens": 32_000}
-            return self.with_generation_kwargs(thinking=thinking_config)
+
+        # Pre-4.6 models: legacy budget-based thinking. After clamping,
+        # `effective` is guaranteed to be one of low/medium/high here.
+        # Only models that Anthropic's docs explicitly list as supporting the
+        # effort parameter (e.g. Opus 4.5) get `output_config` emitted; other
+        # pre-4.6 models (Sonnet 4, Sonnet 4.5, Haiku 4.5, Claude 3.x) omit it
+        # to avoid 400 validation errors on models that don't accept it.
+        budgets: dict[str, int] = {"low": 1024, "medium": 4096, "high": 32_000}
+        kwargs: dict[str, Any] = {
+            "thinking": {"type": "enabled", "budget_tokens": budgets[effective]},
+        }
+        if _supports_effort_param(self._model):
+            kwargs["output_config"] = output_config
+        return self.with_generation_kwargs(**kwargs)
 
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """

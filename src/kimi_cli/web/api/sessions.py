@@ -995,19 +995,29 @@ async def session_stream(
                     except ValueError:
                         in_message = None
                     if isinstance(in_message, JSONRPCPromptMessage):
-                        await websocket.send_text(
-                            JSONRPCErrorResponse(
-                                id=in_message.id,
-                                error=JSONRPCErrorObject(
-                                    code=ErrorCodes.INVALID_STATE,
-                                    message=(
-                                        "Session is busy; wait for completion before sending "
-                                        "a new prompt."
+                        # If the session is in error state, the in-flight IDs
+                        # are stale from a failed prompt.  Clear them so the
+                        # user can recover by sending a new message.
+                        if session_process.status.state == "error":
+                            logger.info(
+                                "Clearing stale in-flight prompts for "
+                                f"session {session_id} (was in error state)"
+                            )
+                            session_process.clear_in_flight()
+                        else:
+                            await websocket.send_text(
+                                JSONRPCErrorResponse(
+                                    id=in_message.id,
+                                    error=JSONRPCErrorObject(
+                                        code=ErrorCodes.INVALID_STATE,
+                                        message=(
+                                            "Session is busy; wait for completion before sending "
+                                            "a new prompt."
+                                        ),
                                     ),
-                                ),
-                            ).model_dump_json()
-                        )
-                        continue
+                                ).model_dump_json()
+                            )
+                            continue
 
                 # Update last_session_id on first successful prompt
                 if not last_session_id_updated:

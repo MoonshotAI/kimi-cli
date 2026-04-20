@@ -50,7 +50,7 @@ def model_display_name(model_name: str | None) -> str:
     if not model_name:
         return ""
     if model_name in ("kimi-for-coding", "kimi-code"):
-        return f"{model_name} (powered by kimi-k2.5)"
+        return "kimi-for-coding"
     return model_name
 
 

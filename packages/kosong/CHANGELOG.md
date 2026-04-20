@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.50.0 (2026-04-17)
+
+- Anthropic: Add adaptive thinking support for Claude Opus 4.7 — model capability detection now uses regex version extrapolation (covers `opus-4-7`, Bedrock/Vertex name variants such as `aws/claude-opus-4-7` and `anthropic.claude-opus-4-7-v1:0`, `claude-mythos-preview`, and future Claude versions ≥ 4.6) instead of hard-coded substring matching; adaptive requests now set `display: "summarized"` explicitly so thinking content still streams on Opus 4.7 (where the default flipped to `"omitted"`); the legacy `thinking: {type: "enabled", budget_tokens: N}` path is no longer used for Opus 4.7, which rejects it with 400
+- Anthropic: Plumb `output_config.effort` through both adaptive and legacy paths — the user-requested effort was previously dropped in adaptive mode, silently collapsing `low`/`medium` to the model default; effort is now faithfully forwarded, and on legacy paths it is emitted only for models that Anthropic's docs explicitly list as supporting the parameter (Opus 4.5 on top of all adaptive-capable models) to avoid 400 validation errors on Claude 3.x and other models that reject `output_config`
+- Core: Extend `ThinkingEffort` with `xhigh` and `max` — new tiers available on Opus 4.7 (`xhigh`), Opus 4.6 / Sonnet 4.6 / Claude Mythos Preview (`max`), and OpenAI models after `gpt-5.1-codex-max` (`xhigh`); providers clamp unsupported levels down transparently (e.g., `xhigh` → `high` on Opus 4.6, `max` → `xhigh` on OpenAI, `xhigh`/`max` → `high` on Gemini and Kimi)
+
+## 0.49.0 (2026-04-10)
+
+- Core: Treat think-only model responses (reasoning content with no text or tool calls) as incomplete response errors, enabling automatic retry instead of silently stopping the agent loop
 - OpenAI: Fix crash on streaming mid-flight disconnection — classify base `openai.APIError` (body=None) as retryable via heuristic message matching, so that `_run_with_connection_recovery` and tenacity retry logic correctly trigger instead of crashing
 
 ## 0.48.0 (2026-04-02)

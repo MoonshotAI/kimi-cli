@@ -34,13 +34,17 @@ from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
+    AudioURLPart,
     ContentPart,
+    ImageURLPart,
     MCPServerSnapshot,
     MCPStatusSnapshot,
+    TextPart,
     ToolCall,
     ToolCallRequest,
     ToolResult,
     ToolReturnValue,
+    VideoURLPart,
 )
 
 if TYPE_CHECKING:
@@ -642,15 +646,84 @@ class WireExternalTool(CallableTool):
             )
 
 
+# Maximum characters allowed in MCP tool output before truncation.
+# Built-in tools use 50K via ToolResultBuilder; MCP gets a wider budget because
+# multi-part results (e.g. text + image) are common, but still needs a cap to
+# prevent context overflow from tools like Playwright that return full DOMs.
+MCP_MAX_OUTPUT_CHARS = 100_000
+
+
+def _media_part_size(part: ContentPart) -> int | None:
+    """Return the payload size of a media part, or ``None`` for non-media parts."""
+    if isinstance(part, ImageURLPart):
+        return len(part.image_url.url)
+    if isinstance(part, AudioURLPart):
+        return len(part.audio_url.url)
+    if isinstance(part, VideoURLPart):
+        return len(part.video_url.url)
+    return None
+
+
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
     """Convert MCP tool result to kosong tool return value.
 
-    Raises:
-        ValueError: If any content part has unsupported type or mime type.
+    All content — text *and* inline media (``data:`` URLs) — is subject to
+    a shared *MCP_MAX_OUTPUT_CHARS* character budget.  Text parts are
+    truncated in-place; media parts that exceed the remaining budget are
+    dropped and replaced with a descriptive placeholder.
+
+    Unsupported content types are caught and replaced with a ``TextPart``
+    placeholder instead of crashing the turn.
     """
     content: list[ContentPart] = []
+    char_budget = MCP_MAX_OUTPUT_CHARS
+    truncated = False
+
     for part in result.content:
-        content.append(convert_mcp_content(part))
+        try:
+            converted = convert_mcp_content(part)
+        except ValueError as exc:
+            logger.warning(
+                "Skipping unsupported MCP content part: {error}",
+                error=exc,
+            )
+            converted = TextPart(text=f"[Unsupported content: {exc}]")
+
+        # --- budget enforcement (text) ---
+        if isinstance(converted, TextPart):
+            if char_budget <= 0:
+                truncated = True
+                continue
+            if len(converted.text) > char_budget:
+                converted = TextPart(text=converted.text[:char_budget])
+                truncated = True
+            char_budget -= len(converted.text)
+            content.append(converted)
+            continue
+
+        # --- budget enforcement (media: image / audio / video) ---
+        media_size = _media_part_size(converted)
+        if media_size is not None:
+            if media_size > char_budget:
+                truncated = True
+                continue  # drop the oversized media part silently
+            char_budget -= media_size
+            content.append(converted)
+            continue
+
+        # Unknown ContentPart subclass — pass through without budget impact
+        content.append(converted)
+
+    if truncated:
+        content.append(
+            TextPart(
+                text=(
+                    f"\n\n[Output truncated: exceeded {MCP_MAX_OUTPUT_CHARS} character limit. "
+                    "Use pagination or more specific queries to get remaining content.]"
+                )
+            )
+        )
+
     if result.is_error:
         return ToolError(
             output=content,

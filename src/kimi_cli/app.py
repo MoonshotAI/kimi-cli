@@ -460,6 +460,11 @@ class KimiCLI:
         """Run the Kimi Code CLI instance with shell UI."""
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
 
+        if command is None:
+            from kimi_cli.ui.shell.update import check_update_gate
+
+            check_update_gate()
+
         welcome_info = [
             WelcomeInfoItem(
                 name="Directory", value=str(shorten_home(self._runtime.session.work_dir))
@@ -506,16 +511,15 @@ class KimiCLI:
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )
-            if self._soul.model_name not in (
+            model_name = self._soul.model_name
+            if model_name not in (
                 "kimi-for-coding",
                 "kimi-code",
-                "kimi-k2.5",
-                "kimi-k2-5",
-            ):
+            ) and not model_name.startswith("kimi-k2"):
                 welcome_info.append(
                     WelcomeInfoItem(
                         name="Tip",
-                        value="send /login to use our latest kimi-k2.5 model",
+                        value="send /login to use Kimi for Coding",
                         level=WelcomeInfoItem.Level.WARN,
                     )
                 )

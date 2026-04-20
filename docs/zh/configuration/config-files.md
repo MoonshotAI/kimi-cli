@@ -30,6 +30,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `default_plan_mode` | `boolean` | 默认是否以计划模式启动新会话（默认为 `false`）；恢复的会话保留其原有状态 |
 | `default_editor` | `string` | 默认外部编辑器命令（如 `"vim"`、`"code --wait"`），为空时自动检测 |
 | `theme` | `string` | 终端配色主题，可选 `"dark"` 或 `"light"`（默认为 `"dark"`） |
+| `show_thinking_stream` | `boolean` | 是否在 Live 区域以 6 行滚动预览方式实时展示模型的原始思考文本，并在 thinking 块结束时把完整思考内容（Markdown）写入历史记录（默认为 `true`；设为 `false` 则仅显示紧凑的 `Thinking ...` 指示器和一行 trace 总结） |
 | `merge_all_available_skills` | `boolean` | 是否合并所有品牌目录中的 Skills（默认为 `false`）；详见 [Skills 配置](../customization/skills.md) |
 | `providers` | `table` | API 供应商配置 |
 | `models` | `table` | 模型配置 |
@@ -47,6 +48,7 @@ default_yolo = false
 default_plan_mode = false
 default_editor = ""
 theme = "dark"
+show_thinking_stream = true
 merge_all_available_skills = false
 
 [providers.kimi-for-coding]
@@ -60,7 +62,7 @@ model = "kimi-for-coding"
 max_context_size = 262144
 
 [loop_control]
-max_steps_per_turn = 100
+max_steps_per_turn = 500
 max_retries_per_step = 3
 max_ralph_iterations = 0
 reserved_context_size = 50000
@@ -132,7 +134,7 @@ capabilities = ["thinking", "image_in"]
 
 | 字段 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `max_steps_per_turn` | `integer` | `100` | 单轮最大步数（别名：`max_steps_per_run`） |
+| `max_steps_per_turn` | `integer` | `500` | 单轮最大步数（别名：`max_steps_per_run`） |
 | `max_retries_per_step` | `integer` | `3` | 单步最大重试次数 |
 | `max_ralph_iterations` | `integer` | `0` | 每个 User 消息后额外自动迭代次数；`0` 表示关闭；`-1` 表示无限 |
 | `reserved_context_size` | `integer` | `50000` | 预留给 LLM 响应生成的 token 数量；当 `context_tokens + reserved_context_size >= max_context_size` 时自动触发压缩 |

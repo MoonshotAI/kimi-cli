@@ -3,7 +3,14 @@ from __future__ import annotations
 import json
 from typing import Any, cast
 
-from kosong.chat_provider import ChatProviderError, StreamedMessagePart, TokenUsage
+from kosong.chat_provider import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    ChatProviderError,
+    StreamedMessagePart,
+    TokenUsage,
+)
 from kosong.message import (
     AudioURLPart,
     ImageURLPart,
@@ -34,6 +41,8 @@ def parse_echo_script(
 
         kind = key.strip().lower()
         payload = payload[1:] if payload.startswith(" ") else payload
+        if kind == "error":
+            _raise_simulated_error(payload.strip(), lineno, raw_line)
         if kind == "id":
             message_id = _strip_quotes(payload.strip())
             continue
@@ -194,3 +203,32 @@ def _strip_quotes(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
+
+
+def _raise_simulated_error(payload: str, lineno: int, raw_line: str) -> None:
+    """Raise a simulated provider error from an ``error:`` DSL directive.
+
+    Formats::
+
+        error: <status_code>                    → APIStatusError
+        error: <status_code> <message>          → APIStatusError
+        error: connection <message>             → APIConnectionError
+        error: timeout <message>                → APITimeoutError
+    """
+    if not payload:
+        raise ChatProviderError(f"Empty error payload at line {lineno}: {raw_line!r}")
+    first, _, rest = payload.partition(" ")
+    message = rest.strip() if rest else ""
+    lower = first.lower()
+    if lower == "connection":
+        raise APIConnectionError(message or "Simulated connection error")
+    if lower == "timeout":
+        raise APITimeoutError(message or "Simulated timeout error")
+    try:
+        status_code = int(first)
+    except ValueError:
+        raise ChatProviderError(
+            f"Invalid error spec at line {lineno}: expected status code or "
+            f"'connection'/'timeout', got {first!r}"
+        ) from None
+    raise APIStatusError(status_code, message or f"Simulated {status_code} error")

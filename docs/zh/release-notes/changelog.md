@@ -5,6 +5,42 @@
 ## 未发布
 
 - Print：退出前等待后台任务完成——在单次 `--print` 模式下，进程现在会等待仍在运行的后台 Agent 完成并让模型处理它们的结果，而不是直接退出并杀死它们
+## 1.36.0 (2026-04-17)
+
+- Anthropic：修复 Claude Opus 4.7 返回 `invalid_request_error` 的问题——Opus 4.7 拒绝旧的 `{type: "enabled", budget_tokens: N}` 思考配置，现在会正确路由到 adaptive thinking，并显式设置 `display: "summarized"`，使思考内容仍能通过流返回（Opus 4.7 默默将该默认值改为 `"omitted"`）；Bedrock / Vertex 命名变体（如 `aws/claude-opus-4-7`、`anthropic.claude-opus-4-7-v1:0`）以及 `claude-mythos-preview` 也会被正确识别；未来的 Claude ≥ 4.6 版本会通过版本号外推自动识别，无需改代码
+- Web：修复 Web 界面中 Markdown 渲染的间距问题——恢复段落、列表、代码块、引用块和标题之间的合理垂直间距，不再将所有外边距压缩为零
+- Shell：修复活跃 turn 期间加载指示器缺失的问题——月亮 spinner 现在作为兜底指示器，在模型仍在工作但没有其他指示器可见时自动显示，覆盖了工具调用完成后、turn 开始到首个 step 之间、以及 provider 发送空 thinking block 时的空白期
+- Core：将 `max_steps_per_turn` 默认值从 100 提高到 500，开箱即可支持更长的无中断 agent 运行
+- Web：修复代码块右上角复制、下载和预览按钮点击无响应的问题
+
+## 1.35.0 (2026-04-15)
+
+- Shell：将 `show_thinking_stream` 默认值改为 `true`，全新安装开箱即可看到流式思考预览；如需保留 1.32 的紧凑指示器，可在配置中将其设为 `false`
+- Web：修复流式 watchdog 在待处理审批请求或问题时误触发重连的问题——当用户正在处理审批请求或回答问题时，45 秒无消息 watchdog 不再强制重连，避免交互被打断
+- Web：修复会话流错误后的恢复问题——当会话进程退出或 read loop 发生异常时，现在在广播错误前先清除过期的 in-flight prompt ID，使前端能够发送新消息而非收到 "Session is busy"；活动状态指示器现在也会显示来自流的具体错误信息
+- Core：修复 Wire 服务端 prompt 处理未捕获异常导致会话永远卡在忙碌状态的问题——SSL 错误、连接错误及其他意外失败现在会被 fallback 处理器捕获并返回 INTERNAL_ERROR，避免异常逃逸导致会话无限挂起
+
+## 1.34.0 (2026-04-14)
+
+- Core：修复 `TaskStop` 取消卡住的后台 agent 时 CLI 崩溃的问题——终端不再打印 `Unhandled exception in event loop / Exception None` 并冻结；已取消的 task 现在会保留在管理器的 live-tasks 字典中，直到 runner 完成清理，避免 Python GC 在 task 仍处 pending 时回收它
+- Shell：修复包含 tab 的行内 Diff 高亮偏移错位的问题——原始代码的 Diff 偏移量现在通过 expandtabs 列跟踪映射到渲染后的位置，确保 tab 展开后高亮区间落在正确位置
+- Shell：新增 `show_thinking_stream` 配置项，可恢复旧版的流式思考预览体验——设为 `true` 后，Live 区域会显示经典的 `Thinking...` spinner 以及 6 行原始思考文本的滚动预览，思考块结束时把完整的思考 markdown 写入历史记录；默认为 `false`，保持 1.32 版本引入的紧凑指示器
+
+## 1.33.0 (2026-04-13)
+
+- Shell：将托管模型显示统一为 "Kimi for Code"，移除欢迎界面和 `/login` 提示中硬编码的 `kimi-k2.5` 版本号
+
+## 1.32.0 (2026-04-13)
+
+- Core：将 MCP 工具输出截断至 10 万字符以防止上下文溢出——所有内容类型（文本和内联媒体如 image/audio/video data URL）共享同一字符预算；Playwright 等返回完整 DOM（500KB+）或大型 base64 截图的工具现在会被截断并附加提示信息；超出预算的媒体部分会被丢弃；不支持的 MCP 内容类型会被优雅处理而非导致当前轮次崩溃
+- CLI：修复 PyInstaller 二进制包缺少延迟加载 CLI 子命令的问题——`kimi info`、`kimi export`、`kimi mcp`、`kimi plugin`、`kimi vis` 和 `kimi web` 现在在独立二进制分发中可正常使用
+- Shell：将思考指示器精简为紧凑的单行布局——显示 `Thinking` 标签、动画点、耗时、token 数和实时的 tokens/秒脉冲；结束后在历史中留下 `Thought for Xs · N tokens` 痕迹
+
+## 1.31.0 (2026-04-10)
+
+- Core：限制 `list_directory` 输出为深度受限的树形结构，防止大目录导致 token 超限——将无上限的扁平列表替换为 2 级树（根级最多 30 条、每个子目录最多 10 条），按目录优先的字母序排列，截断处显示 `"... and N more"` 提示以引导模型进一步探索（修复 #1809）
+- Shell：新增交互式 Shell 启动时的阻断式更新提醒——当检测到有新版本可用（来自已有的后台检查缓存）时，在 Shell 加载之前显示阻断提示，提供 `[Enter]` 立即升级、`[q]` 暂时跳过下次继续提醒、`[s]` 跳过该版本后续提醒；支持 `KIMI_CLI_NO_AUTO_UPDATE` 环境变量；替代了之前可用更新的重复 toast 通知
+- Auth：加固 OAuth 令牌刷新以防止不必要的重新登录——401 错误现在会自动触发令牌刷新并重试，而非强制 `/login`；多个同时运行的 CLI 实例通过跨进程文件锁协调刷新以避免竞争条件；令牌持久化使用原子写入配合 `fsync` 防止损坏；新增动态刷新阈值、令牌刷新过程中的 5xx 重试，以及正确的令牌吊销清理
 - Core：修复模型响应仅包含思考内容时 agent loop 静默停止的问题——将仅含思考内容（无文本或工具调用）的响应检测为不完整响应错误并自动重试
 - Core：修复长时间 streaming 过程中网络断连导致崩溃的问题——当 OpenAI SDK 在流式传输中途抛出基类 `APIError`（而非 `APIConnectionError`）时，现在能正确识别为可重试错误，自动触发重试和连接恢复，而不再直接崩溃退出
 - Shell：从 `/sessions` 选择器中排除空的当前会话——完全为空的会话（既无对话记录也无自定义标题）不再显示在会话列表中；有自定义标题的会话仍然正常显示
