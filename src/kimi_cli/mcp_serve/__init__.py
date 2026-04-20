@@ -70,7 +70,7 @@ class _ResultCollector:
                 self.tool_calls.append(self.current_tool_call)
             case ToolCallPart() as part:
                 if self.current_tool_call is not None:
-                    raw_args = getattr(part, "arguments", None)
+                    raw_args = getattr(part, "arguments_part", None)
                     if isinstance(raw_args, dict):
                         self.current_tool_call["args"] = raw_args
                     elif isinstance(raw_args, str):
@@ -153,7 +153,10 @@ async def _run_kimi_agent(task: str, working_directory: str | None = None) -> st
             collector.feed(msg)
             if isinstance(msg, StepInterrupted):
                 interrupted = True
-                break
+                # Do not break here; the underlying exception is re-raised
+                # immediately after StepInterrupted is emitted, and we need
+                # it to propagate out of the async iterator so callers see
+                # the real failure instead of a partial success.
     except asyncio.CancelledError:
         return "Task was cancelled."
     except Exception as e:

@@ -527,6 +527,59 @@ async def test_flow_runner_pause_keeps_temp_file(runtime: Runtime, tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_flow_runner_pause_resets_on_next_run(runtime: Runtime, tmp_path: Path) -> None:
+    """Reusing a FlowRunner after PAUSE should reset _paused so cleanup works."""
+    from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode
+    from kimi_cli.soul.kimisoul import FlowRunner
+
+    llm = _make_llm(
+        [
+            [TextPart(text="task result")],
+            [TextPart(text="<choice>PAUSE</choice>")],
+            [TextPart(text="task result 2")],
+            [TextPart(text="<choice>STOP</choice>")],
+        ],
+        set(),
+    )
+
+    toolset = SimpleToolset()
+    soul, context = _make_soul(runtime, llm, toolset, tmp_path)
+
+    nodes = {
+        "BEGIN": FlowNode(id="BEGIN", label="BEGIN", kind="begin"),
+        "END": FlowNode(id="END", label="END", kind="end"),
+        "T1": FlowNode(id="T1", label="Do the task", kind="task"),
+        "D1": FlowNode(id="D1", label="Decide", kind="decision"),
+    }
+    outgoing = {
+        "BEGIN": [FlowEdge(src="BEGIN", dst="T1", label=None)],
+        "T1": [FlowEdge(src="T1", dst="D1", label=None)],
+        "D1": [
+            FlowEdge(src="D1", dst="END", label="STOP"),
+            FlowEdge(src="D1", dst="END", label="PAUSE"),
+        ],
+        "END": [],
+    }
+    flow = Flow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
+
+    runner = FlowRunner(flow, name="pause_reset_test")
+
+    # First run pauses
+    await runner.run(soul, "")
+    assert runner._paused is True
+    assert runner._tmp_file is not None
+    assert runner._tmp_file.exists()
+
+    # Second run should reset _paused and complete cleanup
+    tmp_file_path = runner._tmp_file
+    await runner.run(soul, "")
+    assert runner._paused is False
+    # Temp file should have been cleaned up after the second run
+    assert tmp_file_path is not None
+    assert not tmp_file_path.exists()
+
+
+@pytest.mark.asyncio
 async def test_ralph_loop_disabled_skips_loop_prompt(runtime: Runtime, tmp_path: Path) -> None:
     runtime.config.loop_control.max_ralph_iterations = 0
 

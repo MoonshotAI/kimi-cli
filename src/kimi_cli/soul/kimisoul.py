@@ -1247,6 +1247,7 @@ class FlowRunner:
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
 
+        self._paused = False
         await self._setup_ephemeral_context(soul)
         assert self._ephemeral_context is not None
         old_context = soul._context  # type: ignore[reportPrivateUsage]
@@ -1322,11 +1323,21 @@ class FlowRunner:
         self._ephemeral_context = None
         self._tmp_file = None
 
+    @staticmethod
+    def _last_assistant_message(soul: KimiSoul, since_index: int) -> Message | None:
+        """Return the most recent assistant message in context at or after since_index."""
+        history = soul._context.history  # type: ignore[reportPrivateUsage]
+        for msg in reversed(history[since_index:]):
+            if msg.role == "assistant":
+                return msg
+        return None
+
     async def _run_nodes(self, soul: KimiSoul) -> None:
         detector = ConvergenceDetector()
         current_id = self._flow.begin_id
         moves = 0
         total_steps = 0
+        last_task_message: Message | None = None
         while True:
             if self._cancelled:
                 logger.info("Agent flow cancelled.")
@@ -1351,12 +1362,21 @@ class FlowRunner:
 
             if moves >= self._max_moves:
                 raise MaxStepsReached(total_steps)
-            next_id, steps_used, final_message = await self._execute_flow_node(soul, node, edges)
+
+            history_before_node = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+            next_id, steps_used, _final_message = await self._execute_flow_node(soul, node, edges)
             total_steps += steps_used
+
+            last_assistant = self._last_assistant_message(soul, since_index=history_before_node)
+            if node.kind != "decision" and last_assistant is not None:
+                last_task_message = last_assistant
 
             # Detect convergence on self-loop (CONTINUE)
             if node.kind == "decision" and next_id == current_id:
-                report = detector.record_iteration(final_message)
+                # Base convergence on the preceding task output rather than the
+                # decision turn itself, so stable CONTINUE rationales don't
+                # falsely trigger convergence while real work is changing.
+                report = detector.record_iteration(last_task_message)
                 if report.is_converged:
                     logger.warning(
                         "Auto-stopping flow after {moves} moves due to convergence detection. "
