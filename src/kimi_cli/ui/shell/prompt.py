@@ -32,9 +32,11 @@ from prompt_toolkit.completion import (
 )
 from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Condition, has_completions, has_focus, is_done
+from prompt_toolkit.enums import DEFAULT_BUFFER
+from prompt_toolkit.filters import Condition, has_completions, has_focus, is_done, is_searching
 from prompt_toolkit.formatted_text import AnyFormattedText, FormattedText, to_formatted_text
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout.containers import (
@@ -51,6 +53,17 @@ from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.utils import get_cwidth
 from pydantic import BaseModel, ValidationError
+
+# Support Shift+Enter and other enhanced key sequences from modern terminals
+# (xterm modifyOtherKeys and kitty keyboard protocol).
+for _seq in (
+    "\x1b[27;2;13~",  # xterm modifyOtherKeys: Shift+Enter
+    "\x1b[13;2u",     # kitty keyboard protocol: Shift+Enter
+    "\x1b[13;5u",     # kitty keyboard protocol: Ctrl+Enter
+    "\x1b[13;6u",     # kitty keyboard protocol: Ctrl+Shift+Enter
+):
+    if _seq not in ANSI_SEQUENCES:
+        ANSI_SEQUENCES[_seq] = Keys.ControlM
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
@@ -1150,7 +1163,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-x: toggle mode",
         "shift-tab: plan mode",
         "ctrl-o: editor",
-        "ctrl-j: newline",
+        "shift-enter / ctrl-j: newline",
         "/feedback: send feedback",
         "/theme: switch dark/light",
     ]
@@ -1234,6 +1247,19 @@ class CustomPromptSession:
 
         # Build key bindings
         _kb = KeyBindings()
+
+        _normal_enter_filter = has_focus(DEFAULT_BUFFER) & ~is_searching
+
+        @_kb.add("enter", filter=_normal_enter_filter)
+        def _(event: KeyPressEvent) -> None:
+            """Handle Enter: Shift+Enter inserts newline, plain Enter submits."""
+            if event.key_sequence and event.key_sequence[0].data in (
+                "\x1b[27;2;13~",  # xterm modifyOtherKeys: Shift+Enter
+                "\x1b[13;2u",      # kitty keyboard protocol: Shift+Enter
+            ):
+                event.current_buffer.insert_text("\n")
+            else:
+                event.current_buffer.validate_and_handle()
 
         def _accept_completion(buff: Buffer) -> None:
             """Accept the current or first completion, suppressing re-completion."""
@@ -1485,6 +1511,15 @@ class CustomPromptSession:
             bottom_toolbar=self._render_bottom_toolbar,
             style=get_prompt_style(),
         )
+
+        # Enable enhanced keyboard protocols so terminals can distinguish
+        # Shift+Enter from plain Enter.
+        try:
+            self._session.app.output.write_raw("\x1b[>4;1m")  # xterm modifyOtherKeys
+            self._session.app.output.write_raw("\x1b[>1u")     # kitty keyboard protocol
+            self._session.app.output.flush()
+        except Exception:
+            pass
         self._session.default_buffer.read_only = Condition(
             lambda: (
                 (delegate := self._active_prompt_delegate()) is not None
@@ -1850,6 +1885,16 @@ class CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
+
+        # Disable enhanced keyboard protocols on exit.
+        try:
+            session = getattr(self, "_session", None)
+            if session is not None:
+                session.app.output.write_raw("\x1b[>4;0m")  # xterm modifyOtherKeys
+                session.app.output.write_raw("\x1b[<u")      # kitty keyboard protocol
+                session.app.output.flush()
+        except Exception:
+            pass
 
     def _get_placeholder_manager(self) -> PromptPlaceholderManager:
         manager = getattr(self, "_placeholder_manager", None)
