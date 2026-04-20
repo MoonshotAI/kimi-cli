@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from kosong.message import ImageURLPart
 from kosong.tooling.empty import EmptyToolset
 
 import kimi_cli.soul.kimisoul as kimisoul_module
@@ -113,3 +114,31 @@ async def test_run_does_not_duplicate_turn_end_for_blocked_prompt(
         TextPart(text="blocked by hook"),
         TurnEnd(),
     ]
+
+
+@pytest.mark.asyncio
+async def test_run_extracts_text_parts_for_user_prompt_submit_hook(
+    runtime: Runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    soul = _make_soul(runtime, tmp_path)
+    seen_prompt: str | None = None
+
+    async def fake_trigger(_event: str, **kwargs):
+        nonlocal seen_prompt
+        seen_prompt = kwargs["input_data"]["prompt"]
+        return [SimpleNamespace(action="block", reason="blocked by hook")]
+
+    monkeypatch.setattr(soul._hook_engine, "trigger", fake_trigger)
+    monkeypatch.setattr(kimisoul_module, "wire_send", lambda _msg: None)
+
+    await soul.run(
+        [
+            TextPart(text="Check this image"),
+            ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/test.png")),
+            TextPart(text="And summarize it"),
+        ]
+    )
+
+    assert seen_prompt == "Check this image\nAnd summarize it"
