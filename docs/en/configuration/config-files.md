@@ -153,6 +153,7 @@ capabilities = ["thinking"]
 | `max_ralph_iterations` | `integer` | `0` | Extra iterations after each user message; `0` disables; `-1` is unlimited |
 | `reserved_context_size` | `integer` | `50000` | Reserved token count for LLM response generation; auto-compaction triggers when `context_tokens + reserved_context_size >= max_context_size` |
 | `compaction_trigger_ratio` | `float` | `0.85` | Context usage ratio threshold for auto-compaction (0.5–0.99); auto-compaction triggers when `context_tokens >= max_context_size * compaction_trigger_ratio`, whichever condition is met first with `reserved_context_size` |
+| `max_preserved_messages` | `integer` | `2` | Number of recent messages to preserve during compaction |
 
 ### `background`
 

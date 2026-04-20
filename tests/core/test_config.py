@@ -36,6 +36,7 @@ def test_default_config_dump():
                 "max_ralph_iterations": 0,
                 "reserved_context_size": 50000,
                 "compaction_trigger_ratio": 0.85,
+                "max_preserved_messages": 2,
             },
             "background": {
                 "max_running_tasks": 4,
@@ -124,6 +125,16 @@ def test_load_config_compaction_trigger_ratio():
 def test_load_config_compaction_trigger_ratio_default():
     config = load_config_from_string("{}")
     assert config.loop_control.compaction_trigger_ratio == 0.85
+
+
+def test_load_config_max_preserved_messages():
+    config = load_config_from_string('{"loop_control": {"max_preserved_messages": 5}}')
+    assert config.loop_control.max_preserved_messages == 5
+
+
+def test_load_config_max_preserved_messages_default():
+    config = load_config_from_string("{}")
+    assert config.loop_control.max_preserved_messages == 2
 
 
 def test_load_config_compaction_trigger_ratio_too_low():

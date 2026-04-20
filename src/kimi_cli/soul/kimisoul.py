@@ -137,7 +137,9 @@ class KimiSoul:
         self._approval = agent.runtime.approval
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
-        self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._compaction = SimpleCompaction(
+            max_preserved_messages=self._loop_control.max_preserved_messages
+        )
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
