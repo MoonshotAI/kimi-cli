@@ -185,15 +185,36 @@ class Print:
                                 # A user-configured prompt-blocking hook
                                 # would drop the notification and hang the
                                 # wait loop.
-                                await run_soul(
-                                    self.soul,
-                                    bg_prompt,
-                                    partial(visualize, self.output_format, self.final_only),
-                                    cancel_event,
-                                    runtime.session.wire_file,
-                                    runtime,
-                                    skip_user_prompt_hook=True,
-                                )
+                                #
+                                # Transient LLM failures here must not flip
+                                # the original command's exit code: the
+                                # user's real command (first ``run_soul``
+                                # call) already succeeded — a provider
+                                # outage while acknowledging a background
+                                # notification is not a command failure.
+                                # Let ``RunCancelled`` bubble (Ctrl+C
+                                # semantics) but swallow everything else
+                                # and break out so the natural success
+                                # path is preserved.
+                                try:
+                                    await run_soul(
+                                        self.soul,
+                                        bg_prompt,
+                                        partial(visualize, self.output_format, self.final_only),
+                                        cancel_event,
+                                        runtime.session.wire_file,
+                                        runtime,
+                                        skip_user_prompt_hook=True,
+                                    )
+                                except RunCancelled:
+                                    raise
+                                except Exception:
+                                    logger.warning(
+                                        "Pending notification re-entry failed;"
+                                        " exiting wait loop with original exit code",
+                                        exc_info=True,
+                                    )
+                                    break
                                 continue
                             if not manager.has_active_tasks():
                                 # Re-check once after noticing no active
@@ -219,6 +240,20 @@ class Print:
                             # spawned by a pending re-entry are also bound
                             # by the deadline.
                             if time.monotonic() >= deadline:
+                                # Race: the last task may have transitioned
+                                # to terminal state on disk in the tiny
+                                # window between the ``has_active_tasks()``
+                                # check above and this deadline test.  Do
+                                # one final reconcile + pending/active
+                                # re-check so a natural near-deadline
+                                # completion exits via the success path
+                                # instead of the (spurious) kill-and-
+                                # FAILURE path.
+                                manager.reconcile()
+                                if notifications.has_pending_for_sink("llm"):
+                                    continue
+                                if not manager.has_active_tasks():
+                                    break
                                 timed_out = True
                                 break
                             # Still waiting for tasks to finish.
@@ -335,7 +370,21 @@ class Print:
                                 # consistent with what the user was just
                                 # told ("killed"), instead of being stuck
                                 # on "running" until the next CLI start.
-                                manager.reconcile()
+                                #
+                                # Guard against reconcile raising inside
+                                # ``finally`` during a ``RunCancelled``
+                                # propagation: an unhandled exception here
+                                # would replace the active ``RunCancelled``
+                                # and bypass the outer ``except RunCancelled``
+                                # branch, surfacing as an ``Unknown error``
+                                # instead of ``Interrupted by user``.
+                                try:
+                                    manager.reconcile()
+                                except Exception:
+                                    logger.warning(
+                                        "Post-timeout reconcile failed; continuing exit",
+                                        exc_info=True,
+                                    )
                             return ExitCode.FAILURE
                 else:
                     logger.info("Empty command, skipping")

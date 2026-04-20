@@ -591,6 +591,189 @@ async def test_print_wait_timeout_followup_prompt_labels_from_post_kill_state(
 
 
 @pytest.mark.asyncio
+async def test_pending_reentry_soul_failure_preserves_success_exit_code(
+    tmp_path: Path,
+) -> None:
+    """A transient LLM failure during the pending-notification re-entry
+    must NOT reclassify the user's already-successful original command to
+    ``RETRYABLE`` / ``FAILURE``.  The original ``run_soul`` call already
+    succeeded; a follow-up internal notification turn failing is not a
+    command failure.  Without the try/except, a ``ChatProviderError`` would
+    propagate to the outer handler and flip the exit code.
+    """
+    from kosong.chat_provider import ChatProviderError
+
+    views = [_fake_view("b-001", "long", timeout_s=30)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=3600,
+        agent_task_timeout_s=900,
+    )
+
+    reconcile_orig = manager.reconcile.side_effect
+
+    def first_reconcile_publishes():
+        reconcile_orig()
+        if state.reconcile_count == 1:
+            state.pending = True
+
+    manager.reconcile.side_effect = first_reconcile_publishes
+
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        # Second call is the pending re-entry — fail it mid-loop.
+        if len(run_soul_calls) == 2:
+            raise ChatProviderError("simulated provider outage during re-entry")
+
+    with patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul):
+        code = await p.run(command="original user command")
+
+    # Original command succeeded (first run_soul returned normally).
+    # Pending re-entry failure must not flip the outcome.
+    assert code == ExitCode.SUCCESS
+    assert len(run_soul_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_timeout_finally_reconcile_failure_preserves_run_cancelled(
+    tmp_path: Path,
+) -> None:
+    """If the user presses Ctrl+C during the timeout follow-up soul turn
+    and the ``finally: manager.reconcile()`` block raises (disk IO
+    failure), the ``RunCancelled`` exception that is already propagating
+    must NOT be replaced by the reconcile exception.  Otherwise the outer
+    ``except RunCancelled`` branch is missed and the user sees an
+    ``Unknown error: ...`` traceback instead of the normal
+    ``Interrupted by user`` path.
+    """
+    views = [_fake_view("b-001", "long", timeout_s=30)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    reconcile_raise_after_followup = {"armed": False}
+    reconcile_orig = manager.reconcile.side_effect
+
+    def _reconcile():
+        reconcile_orig()
+        if reconcile_raise_after_followup["armed"]:
+            raise OSError("simulated disk IO failure")
+
+    manager.reconcile.side_effect = _reconcile
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        if user_input.startswith("<system-reminder>"):
+            reconcile_raise_after_followup["armed"] = True
+            raise RunCancelled
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+        patch("kimi_cli.ui.print.logger") as mock_logger,
+    ):
+        code = await p.run(command="work")
+
+    assert code == ExitCode.FAILURE
+    error_calls = [str(c) for c in mock_logger.error.call_args_list]
+    assert any("Interrupted by user" in c for c in error_calls)
+
+
+@pytest.mark.asyncio
+async def test_timeout_race_natural_completion_at_deadline_exits_success(
+    tmp_path: Path,
+) -> None:
+    """If the last background task finishes in the race window between the
+    ``has_active_tasks()`` check and the deadline comparison, the loop
+    must take one more reconcile pass and exit via the natural success
+    path instead of entering the kill-and-FAILURE branch.  The user's
+    command already succeeded; spurious ``ExitCode.FAILURE`` from a
+    near-deadline natural completion would confuse CI.
+    """
+    views = [_fake_view("b-001", "finishes just in time", timeout_s=30)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    # Wait loop reconcile call sequence with ceiling=2 and fake_sleep=1s:
+    #   iter1 top reconcile #1 (active), time=0<2 → sleep → clock=1
+    #   iter2 top reconcile #2 (active), time=1<2 → sleep → clock=2
+    #   iter3 top reconcile #3 (active), time=2>=2 → deadline branch →
+    #          race re-check reconcile #4  ← this is the window that the
+    #          fix uses to notice a natural completion that landed in the
+    #          brief gap between has_active_tasks() and the deadline test.
+    # The fake clears the task only on call #4, so the ONLY way the loop
+    # can still exit success is the race re-check.  Without that re-check
+    # the loop would already have entered the kill path on call #3.
+    reconcile_orig = manager.reconcile.side_effect
+
+    def _reconcile_clears_on_race():
+        reconcile_orig()
+        if state.reconcile_count == 4:
+            state.active_views = []
+            state.active = False
+
+    manager.reconcile.side_effect = _reconcile_clears_on_race
+
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        code = await p.run(command="work")
+
+    assert code == ExitCode.SUCCESS
+    assert len(run_soul_calls) == 1
+    assert state.kill_reasons == []
+
+
+@pytest.mark.asyncio
 async def test_print_wait_timeout_followup_prompt_distinguishes_kill_failures(
     tmp_path: Path,
 ) -> None:

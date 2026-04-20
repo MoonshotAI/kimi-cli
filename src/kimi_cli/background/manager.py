@@ -223,6 +223,7 @@ class BackgroundTaskManager:
             raise RuntimeError("Too many background tasks are already running.")
 
         task_id = generate_task_id("agent")
+        effective_timeout = timeout_s or self._config.agent_task_timeout_s
         spec = TaskSpec(
             id=task_id,
             kind="agent",
@@ -230,6 +231,11 @@ class BackgroundTaskManager:
             description=description,
             tool_call_id=tool_call_id,
             owner_role="root",
+            # Persist the effective timeout so downstream readers (e.g. the
+            # Print-mode ``print_wait_ceiling_s`` cap calculation) can honour
+            # an explicit per-agent timeout instead of always falling back to
+            # ``config.background.agent_task_timeout_s``.
+            timeout_s=effective_timeout,
             kind_payload={
                 "agent_id": agent_id,
                 "subagent_type": subagent_type,
@@ -243,7 +249,6 @@ class BackgroundTaskManager:
         runtime.status = "starting"
         runtime.updated_at = time.time()
         self._store.write_runtime(task_id, runtime)
-        effective_timeout = timeout_s or self._config.agent_task_timeout_s
         task = asyncio.create_task(
             BackgroundAgentRunner(
                 runtime=self._runtime,
