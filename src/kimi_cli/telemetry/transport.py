@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +115,10 @@ def _build_payload(events: list[dict[str, Any]], device_id: str) -> dict[str, An
 def _telemetry_dir() -> Path:
     path = get_share_dir() / "telemetry"
     path.mkdir(parents=True, exist_ok=True)
+    # Restrict to user-only: these JSONL files carry device_id / session_id /
+    # terminal / locale / os_version and should not be world-readable.
+    with suppress(OSError):
+        os.chmod(path, 0o700)
     return path
 
 
@@ -211,18 +217,27 @@ class AsyncTransport:
                         async with session.post(
                             self._endpoint, json=payload, headers=headers
                         ) as retry_resp:
-                            if retry_resp.status >= 500:
+                            if retry_resp.status >= 500 or retry_resp.status == 429:
                                 raise _TransientError(f"HTTP {retry_resp.status}")
                             elif retry_resp.status >= 400:
-                                # Client error (4xx) — not recoverable, don't retry
+                                # Client error (4xx, except 429) — not recoverable, don't retry
                                 logger.debug(
                                     "Anonymous retry got client error HTTP {status}, dropping",
                                     status=retry_resp.status,
                                 )
                                 return
                             return
-                    elif resp.status >= 400:
+                    elif resp.status >= 500 or resp.status == 429:
                         raise _TransientError(f"HTTP {resp.status}")
+                    elif resp.status >= 400:
+                        # Client error (4xx, except 429) — not recoverable, don't retry.
+                        # Avoids endless disk-spool accumulation from schema-mismatch
+                        # or auth-shape errors that will never succeed on re-send.
+                        logger.debug(
+                            "Telemetry got client error HTTP {status}, dropping",
+                            status=resp.status,
+                        )
+                        return
             except (aiohttp.ClientError, TimeoutError) as exc:
                 raise _TransientError(str(exc)) from exc
 
@@ -237,7 +252,10 @@ class AsyncTransport:
             return
         try:
             path = _telemetry_dir() / f"failed_{uuid.uuid4().hex[:12]}.jsonl"
-            with open(path, "a", encoding="utf-8") as f:
+            # Create with 0o600 up-front — avoids a race window where the
+            # file is briefly world-readable before a post-hoc chmod.
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with open(fd, "w", encoding="utf-8") as f:
                 for event in events:
                     f.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
                     f.write("\n")

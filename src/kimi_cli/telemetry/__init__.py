@@ -22,6 +22,7 @@ import atexit
 import time
 import uuid
 from collections import deque
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -83,8 +84,21 @@ def disable() -> None:
 
 
 def attach_sink(sink: EventSink) -> None:
-    """Attach the event sink and drain any queued events."""
+    """Attach the event sink and drain any queued events.
+
+    Multi-session ACP mode calls ``KimiCLI.create()`` per session, which
+    means ``attach_sink`` runs again while a previous sink may hold
+    un-flushed buffered events. Flush the old sink synchronously (writes
+    any pending events to the disk fallback) before replacing it, so
+    earlier sessions' events are not silently orphaned.
+    """
     global _sink
+    if _sink is not None and _sink is not sink:
+        # flush_sync already swallows its own transport failures;
+        # ``suppress`` guards against truly unexpected errors so sink
+        # replacement is never blocked by a flaky predecessor.
+        with suppress(Exception):
+            _sink.flush_sync()
     _sink = sink
     # Drain events that were queued before sink was ready,
     # backfilling device_id/session_id for events tracked before set_context().

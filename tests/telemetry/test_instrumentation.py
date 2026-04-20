@@ -563,16 +563,16 @@ class TestEventPropertyCorrectness:
         assert isinstance(event["properties"]["duration_s"], float)
 
     def test_startup_perf_has_four_phase_timings(self):
-        """startup_perf has duration_ms + config_ms + oauth_ms + mcp_ms (all int)."""
+        """startup_perf has duration_ms + config_ms + init_ms + mcp_ms (all int)."""
         track(
             "startup_perf",
             duration_ms=342,
             config_ms=42,
-            oauth_ms=100,
+            init_ms=100,
             mcp_ms=180,
         )
         event = _collect_events()[-1]
-        for field in ("duration_ms", "config_ms", "oauth_ms", "mcp_ms"):
+        for field in ("duration_ms", "config_ms", "init_ms", "mcp_ms"):
             assert field in event["properties"], f"missing {field}"
             assert isinstance(event["properties"][field], int)
 

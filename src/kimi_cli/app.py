@@ -229,7 +229,7 @@ class KimiCLI:
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
-        _phase_timings_ms["oauth_ms"] = int((time.monotonic() - _phase_t) * 1000)
+        _phase_timings_ms["init_ms"] = int((time.monotonic() - _phase_t) * 1000)
 
         # Refresh plugin configs with fresh credentials (e.g. OAuth tokens)
         try:
@@ -322,7 +322,7 @@ class KimiCLI:
             "startup_perf",
             duration_ms=int((time.monotonic() - _create_t0) * 1000),
             config_ms=_phase_timings_ms.get("config_ms", 0),
-            oauth_ms=_phase_timings_ms.get("oauth_ms", 0),
+            init_ms=_phase_timings_ms.get("init_ms", 0),
             mcp_ms=_phase_timings_ms.get("mcp_ms", 0),
         )
 

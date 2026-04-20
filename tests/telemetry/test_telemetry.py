@@ -116,6 +116,25 @@ class TestTrack:
         # accept should have been called once (before disable), not twice
         assert mock_sink.accept.call_count == 1
 
+    def test_attach_sink_flushes_previous_sink(self):
+        """Replacing the global sink (e.g. multi-session ACP) must flush the
+        previous sink so its buffered events aren't silently orphaned.
+        """
+        first_sink = MagicMock(spec=EventSink)
+        attach_sink(first_sink)
+        second_sink = MagicMock(spec=EventSink)
+        attach_sink(second_sink)
+        first_sink.flush_sync.assert_called_once()
+        # Second attach does not re-flush itself
+        second_sink.flush_sync.assert_not_called()
+
+    def test_attach_same_sink_twice_does_not_flush(self):
+        """Re-attaching the same sink is a no-op (no self-flush)."""
+        sink = MagicMock(spec=EventSink)
+        attach_sink(sink)
+        attach_sink(sink)
+        sink.flush_sync.assert_not_called()
+
     def test_event_id_is_hex_string(self):
         """Every event has a unique event_id (hex string)."""
         track("test_event")
@@ -533,8 +552,11 @@ class TestAsyncTransport:
             assert not failed_file.exists()
 
     @pytest.mark.asyncio
-    async def test_send_401_no_token_falls_back_to_disk(self, tmp_path: Path):
-        """401 response when no token is present should trigger disk fallback, not silently drop."""
+    async def test_send_401_no_token_drops(self, tmp_path: Path):
+        """401 when no token is present is treated as a non-recoverable client
+        error: drop events, do not spool to disk. Retrying would just replay
+        the same token-less request and hit 401 again until the 7-day expiry.
+        """
         transport = AsyncTransport(
             get_access_token=lambda: None,  # no token
             endpoint="https://mock.test/events",
@@ -557,9 +579,8 @@ class TestAsyncTransport:
         ):
             await transport.send([{"event": "test", "timestamp": 1.0}])
 
-        # Event should have been saved to disk rather than silently dropped
         saved_files = list(tmp_path.glob("failed_*.jsonl"))
-        assert len(saved_files) == 1
+        assert len(saved_files) == 0
 
     @pytest.mark.asyncio
     async def test_anonymous_retry_4xx_drops_events(self):
@@ -655,6 +676,63 @@ class TestAsyncTransport:
 
         saved_files = list(tmp_path.glob("failed_*.jsonl"))
         assert len(saved_files) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [400, 403, 404, 422])
+    async def test_send_4xx_drops_without_disk_fallback(self, tmp_path: Path, status_code: int):
+        """Non-429 4xx client errors are dropped, never spooled to disk.
+
+        Retrying an un-acked schema error / auth error would just waste
+        disk and network on every subsequent startup.
+        """
+        transport = AsyncTransport(
+            get_access_token=lambda: "valid-token",
+            endpoint="https://mock.test/events",
+            retry_backoffs_s=(),
+        )
+        mock_resp = MagicMock()
+        mock_resp.status = status_code
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_resp
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("kimi_cli.telemetry.transport._telemetry_dir", return_value=tmp_path),
+            patch("kimi_cli.utils.aiohttp.new_client_session", return_value=mock_session),
+        ):
+            await transport.send([{"event": "test", "timestamp": 1.0}])
+
+        assert list(tmp_path.glob("failed_*.jsonl")) == []
+
+    @pytest.mark.asyncio
+    async def test_send_429_treated_as_transient(self, tmp_path: Path):
+        """429 Too Many Requests is transient (server-imposed backoff), so
+        events should be spooled to disk after in-process retries exhaust.
+        """
+        transport = AsyncTransport(
+            get_access_token=lambda: None,
+            endpoint="https://mock.test/events",
+            retry_backoffs_s=(),
+        )
+        mock_resp = MagicMock()
+        mock_resp.status = 429
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_resp
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("kimi_cli.telemetry.transport._telemetry_dir", return_value=tmp_path),
+            patch("kimi_cli.utils.aiohttp.new_client_session", return_value=mock_session),
+        ):
+            await transport.send([{"event": "test", "timestamp": 1.0}])
+
+        assert len(list(tmp_path.glob("failed_*.jsonl"))) == 1
 
     @pytest.mark.asyncio
     async def test_send_unexpected_exception_falls_back_to_disk(self, tmp_path: Path):

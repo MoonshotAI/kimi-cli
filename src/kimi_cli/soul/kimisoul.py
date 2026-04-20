@@ -1307,14 +1307,14 @@ class FlowRunner:
         return FlowRunner(flow, max_moves=max_moves)
 
     async def run(self, soul: KimiSoul, args: str) -> None:
-        if self._name:
-            from kimi_cli.telemetry import track
-
-            track("flow_invoked", flow_name=self._name)
         if args.strip():
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
+        if self._name:
+            from kimi_cli.telemetry import track
+
+            track("flow_invoked", flow_name=self._name)
 
         current_id = self._flow.begin_id
         moves = 0
