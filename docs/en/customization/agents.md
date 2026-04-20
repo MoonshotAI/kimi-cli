@@ -114,17 +114,17 @@ agent:
   extend: default
   subagents:
     coder:
-      path: ./coder.yaml
+      path: ./coder-sub.yaml
       description: "Handle coding tasks"
     reviewer:
-      path: ./reviewer.yaml
+      path: ./reviewer-sub.yaml
       description: "Code review expert"
 ```
 
 Subagent files are also standard agent format, typically inheriting from the main agent:
 
 ```yaml
-# coder.yaml
+# coder-sub.yaml
 version: 1
 agent:
   extend: ./agent.yaml  # Inherit from main agent
@@ -139,9 +139,9 @@ The default agent configuration includes three built-in subagent types, each wit
 
 | Type | Purpose | Available tools |
 |------|---------|----------------|
-| `coder` | General software engineering: read/write files, run commands, search code | `Shell`, `ReadFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL` |
-| `explore` | Fast read-only codebase exploration: search, read, summarize | `Shell`, `ReadFile`, `Glob`, `Grep`, `SearchWeb`, `FetchURL` (no write tools) |
-| `plan` | Implementation planning and architecture design: analyze files, create plans | `ReadFile`, `Glob`, `Grep`, `SearchWeb`, `FetchURL` (no Shell, no write tools) |
+| `coder` | General software engineering: read/write files, run commands, search code | `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL` |
+| `explore` | Fast read-only codebase exploration: search, read, summarize | `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `SearchWeb`, `FetchURL` (no write tools) |
+| `plan` | Implementation planning and architecture design: analyze files, create plans | `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `SearchWeb`, `FetchURL` (no Shell, no write tools) |
 
 All subagent types are prohibited from nesting the `Agent` tool (subagents cannot create their own subagents). The `Agent` tool is only available to the root agent.
 
@@ -171,6 +171,7 @@ The following are all built-in tools in Kimi Code CLI.
 | `model` | string | Optional model override |
 | `resume` | string | Optional agent instance ID to resume an existing instance |
 | `run_in_background` | bool | Whether to run in background, default false |
+| `timeout` | int | Timeout in seconds, range 30–3600. Foreground defaults to no timeout (runs until completion), background defaults to 15 minutes; the task is stopped if the limit is exceeded |
 
 ### `AskUserQuestion`
 
@@ -190,11 +191,11 @@ The following are all built-in tools in Kimi Code CLI.
 ### `SetTodoList`
 
 - **Path**: `kimi_cli.tools.todo:SetTodoList`
-- **Description**: Manage todo list, track task progress
+- **Description**: Manage todo list, track task progress. Supports three usage modes: update mode (pass `todos` array to replace the entire list), query mode (omit `todos` to return the current list), and clear mode (pass an empty array `[]` to clear the list). Todo items are persisted to session state.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `todos` | array | Todo list items |
+| `todos` | array \| null | Todo list items. Omit to query the current list; pass `[]` to clear |
 | `todos[].title` | string | Todo item title |
 | `todos[].status` | string | Status: `pending`, `in_progress`, `done` |
 
@@ -215,7 +216,7 @@ When `run_in_background=true`, the command is launched as a background task and 
 ### `ReadFile`
 
 - **Path**: `kimi_cli.tools.file:ReadFile`
-- **Description**: Read text file content. Max 1000 lines per read, max 2000 characters per line. Files outside working directory require absolute paths. Every read returns the total number of lines in the file.
+- **Description**: Read text file content. Max 1000 lines per read, max 2000 characters per line. Files outside working directory require absolute paths. Every read returns the total number of lines in the file. Sensitive files (such as `.env`, SSH private keys, and cloud credentials) are rejected.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -246,7 +247,7 @@ When `run_in_background=true`, the command is launched as a background task and 
 ### `Grep`
 
 - **Path**: `kimi_cli.tools.file:Grep`
-- **Description**: Search file content with regular expressions, based on ripgrep
+- **Description**: Search file content with regular expressions, based on ripgrep. Hidden files (dotfiles) are searched by default, but files excluded by `.gitignore` are not. Sensitive files (such as `.env`, SSH private keys, and cloud credentials) are always filtered out, even when `include_ignored` is set.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -258,10 +259,12 @@ When `run_in_background=true`, the command is launched as a background task and 
 | `-B` | int | Show N lines before match |
 | `-A` | int | Show N lines after match |
 | `-C` | int | Show N lines before and after match |
-| `-n` | bool | Show line numbers |
+| `-n` | bool | Show line numbers, default true |
 | `-i` | bool | Case insensitive |
 | `multiline` | bool | Enable multiline matching |
-| `head_limit` | int | Limit output lines |
+| `head_limit` | int | Limit output lines, default 250 |
+| `offset` | int | Skip first N results for pagination, default 0 |
+| `include_ignored` | bool | Search files excluded by `.gitignore` (e.g. `node_modules`, build artifacts), default false |
 
 ### `WriteFile`
 

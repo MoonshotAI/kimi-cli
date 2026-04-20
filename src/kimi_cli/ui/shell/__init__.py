@@ -24,6 +24,7 @@ from rich.text import Text
 
 from kimi_cli import logger
 from kimi_cli.background import list_task_views
+from kimi_cli.llm import model_display_name
 from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -399,6 +400,7 @@ class Shell:
             await replay_recent_history(
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
+                show_thinking_stream=self.soul.runtime.config.show_thinking_stream,
             )
             await self.soul.start_background_mcp_loading()
 
@@ -445,7 +447,12 @@ class Shell:
             fast_refresh_provider=_mcp_status_loading,
             background_task_count_provider=_bg_task_count,
             model_capabilities=self.soul.model_capabilities or set(),
-            model_name=self.soul.model_name,
+            model_name=model_display_name(
+                self.soul.model_name,
+                self.soul.runtime.llm.model_config
+                if isinstance(self.soul, KimiSoul) and self.soul.runtime.llm
+                else None,
+            ),
             thinking=self.soul.thinking or False,
             agent_mode_slash_commands=list(self._available_slash_commands.values()),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
@@ -829,6 +836,7 @@ class Shell:
         try:
             snap = self.soul.status
             runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
+            show_thinking_stream = runtime.config.show_thinking_stream if runtime else False
             # Capture view reference via closure — _clear_active_view sets
             # _active_view=None inside visualize()'s finally (before run_soul
             # returns), so we must capture the view object independently.
@@ -858,6 +866,7 @@ class Shell:
                     unbind_running_input=self._unbind_running_input,
                     on_view_ready=_on_view_ready,
                     on_view_closed=self._clear_active_view,
+                    show_thinking_stream=show_thinking_stream,
                 ),
                 cancel_event,
                 runtime.session.wire_file if runtime else None,
@@ -909,6 +918,7 @@ class Shell:
                         unbind_running_input=self._unbind_running_input,
                         on_view_ready=_on_view_ready,
                         on_view_closed=self._clear_active_view,
+                        show_thinking_stream=show_thinking_stream,
                     ),
                     cancel_event,
                     runtime.session.wire_file if runtime else None,

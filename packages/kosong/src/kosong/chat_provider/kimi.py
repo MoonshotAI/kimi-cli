@@ -192,7 +192,8 @@ class Kimi:
                 reasoning_effort = "low"
             case "medium":
                 reasoning_effort = "medium"
-            case "high":
+            case "high" | "xhigh" | "max":
+                # Kimi's API caps at "high"; xhigh/max are Anthropic-specific.
                 reasoning_effort = "high"
         return self.with_generation_kwargs(reasoning_effort=reasoning_effort).with_extra_body(
             {

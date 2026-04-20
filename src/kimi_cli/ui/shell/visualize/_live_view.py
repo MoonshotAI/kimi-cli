@@ -100,10 +100,18 @@ async def _keyboard_listener(
 
 
 class _LiveView:
-    def __init__(self, initial_status: StatusUpdate, cancel_event: asyncio.Event | None = None):
+    def __init__(
+        self,
+        initial_status: StatusUpdate,
+        cancel_event: asyncio.Event | None = None,
+        *,
+        show_thinking_stream: bool = False,
+    ):
         self._cancel_event = cancel_event
+        self._show_thinking_stream = show_thinking_stream
 
-        self._mooning_spinner: Spinner | None = None
+        self._mooning_spinner = Spinner("moon", "")
+        self._active_turn_depth = 0
         self._compacting_spinner: Spinner | None = None
         self._mcp_loading_spinner: Spinner | None = None
         self._btw_spinner: Spinner | None = None
@@ -319,21 +327,31 @@ class _LiveView:
 
         Pure agent streaming status — no interactive overlays.
         Always safe to render regardless of modal state.
+
+        Display priority (highest → lowest):
+          1. MCP loading spinner (connecting to servers)
+          2. Compaction spinner (context compaction in progress)
+          3. Content blocks + tool call blocks (streaming output)
+          4. Moon spinner fallback (turn active but nothing else visible)
+        The btw spinner is always shown (side-channel, not mutually exclusive).
         """
         blocks: list[RenderableType] = []
         if self._btw_spinner is not None:
             blocks.append(self._btw_spinner)
         if self._mcp_loading_spinner is not None:
             blocks.append(self._mcp_loading_spinner)
-        elif self._mooning_spinner is not None:
-            blocks.append(self._mooning_spinner)
         elif self._compacting_spinner is not None:
             blocks.append(self._compacting_spinner)
         else:
+            has_main_content = False
             if self._current_content_block is not None:
                 blocks.append(self._current_content_block.compose())
+                has_main_content = True
             for tool_call in list(self._tool_call_blocks.values()):
                 blocks.append(tool_call.compose())
+                has_main_content = True
+            if not has_main_content and self._active_turn_depth > 0:
+                blocks.append(self._mooning_spinner)
         for notification in list(self._live_notification_blocks):
             blocks.append(notification.compose())
         return blocks
@@ -364,18 +382,18 @@ class _LiveView:
         if isinstance(msg, StepBegin):
             self.cleanup(is_interrupt=False)
             self._mcp_loading_spinner = None
-            self._mooning_spinner = Spinner("moon", "")
+            # Defensive: if StepBegin arrives without a preceding TurnBegin
+            # (e.g. during replay), ensure the turn is considered active.
+            if self._active_turn_depth == 0:
+                self._active_turn_depth = 1
             self.refresh_soon()
             return
 
-        if self._mooning_spinner is not None:
-            # any message other than StepBegin should end the mooning state
-            self._mooning_spinner = None
-            self.refresh_soon()
-
         match msg:
             case TurnBegin():
+                self._active_turn_depth += 1
                 self.flush_content()
+                self.refresh_soon()
             case SteerInput(user_input=user_input):
                 self.cleanup(is_interrupt=False)
                 content: list[ContentPart]
@@ -385,7 +403,7 @@ class _LiveView:
                     content = [TextPart(text=user_input)]
                 console.print(render_user_echo(Message(role="user", content=content)))
             case TurnEnd():
-                pass
+                self._active_turn_depth = max(0, self._active_turn_depth - 1)
             case CompactionBegin():
                 self._compacting_spinner = Spinner("balloon", "Compacting...")
                 self.refresh_soon()
@@ -583,10 +601,12 @@ class _LiveView:
         self.flush_notifications()
 
         # Clear transient spinners to prevent visual residuals after interrupts
-        self._mooning_spinner = None
         self._compacting_spinner = None
         self._mcp_loading_spinner = None
         self._btw_spinner = None
+
+        if is_interrupt:
+            self._active_turn_depth = 0
 
         while self._approval_request_queue:
             # should not happen, but just in case
@@ -629,18 +649,26 @@ class _LiveView:
     def append_content(self, part: ContentPart) -> None:
         match part:
             case ThinkPart(think=text) | TextPart(text=text):
-                if not text:
-                    return
                 is_think = isinstance(part, ThinkPart)
+                # Skip empty TextPart, but still create the block for empty
+                # ThinkPart so the "Thinking" indicator shows immediately
+                # (e.g. Anthropic/OpenAI block-start events yield think="").
+                if not text and not is_think:
+                    return
                 if self._current_content_block is None:
-                    self._current_content_block = _ContentBlock(is_think)
+                    self._current_content_block = _ContentBlock(
+                        is_think, show_thinking_stream=self._show_thinking_stream
+                    )
                     self.refresh_soon()
                 elif self._current_content_block.is_think != is_think:
                     self.flush_content()
-                    self._current_content_block = _ContentBlock(is_think)
+                    self._current_content_block = _ContentBlock(
+                        is_think, show_thinking_stream=self._show_thinking_stream
+                    )
                     self.refresh_soon()
-                self._current_content_block.append(text)
-                self.refresh_soon()
+                if text:
+                    self._current_content_block.append(text)
+                    self.refresh_soon()
             case _:
                 # TODO: support more content part types
                 pass

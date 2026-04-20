@@ -162,8 +162,10 @@ def _run_update_gate(current_version: str, latest_version: str) -> None:
         ("  Latest version    ", ""),
         (latest_version + "\n\n", "bold green"),
         ("  What's new:\n", ""),
-        ("    · " + CHANGELOG_URL_ZH + "\n", "dodger_blue1"),
-        ("    · " + CHANGELOG_URL_EN + "\n", "dodger_blue1"),
+        ("    · [中文]    ", ""),
+        (CHANGELOG_URL_ZH + "\n", "dodger_blue1"),
+        ("    · [English] ", ""),
+        (CHANGELOG_URL_EN + "\n", "dodger_blue1"),
     )
     console.print()
     console.print(

@@ -21,6 +21,7 @@ class ModelInfo(BaseModel):
     supports_reasoning: bool
     supports_image_in: bool
     supports_video_in: bool
+    display_name: str | None = None
 
     @property
     def capabilities(self) -> set[ModelCapability]:
@@ -35,7 +36,7 @@ class ModelInfo(BaseModel):
             caps.add("image_in")
         if self.supports_video_in:
             caps.add("video_in")
-        if "kimi-k2.5" in self.id.lower():
+        if self.id.lower().startswith("kimi-k2"):
             caps.update(("thinking", "image_in", "video_in"))
         return caps
 
@@ -216,6 +217,8 @@ async def _list_models(
         model_id = item.get("id")
         if not model_id:
             continue
+        raw_display_name = item.get("display_name")
+        display_name = str(raw_display_name) if raw_display_name else None
         result.append(
             ModelInfo(
                 id=str(model_id),
@@ -223,6 +226,7 @@ async def _list_models(
                 supports_reasoning=bool(item.get("supports_reasoning")),
                 supports_image_in=bool(item.get("supports_image_in")),
                 supports_video_in=bool(item.get("supports_video_in")),
+                display_name=display_name,
             )
         )
     return result
@@ -250,6 +254,7 @@ def _apply_models(
                 model=model.id,
                 max_context_size=model.context_length,
                 capabilities=capabilities,
+                display_name=model.display_name,
             )
             changed = True
             continue
@@ -265,6 +270,9 @@ def _apply_models(
             changed = True
         if existing.capabilities != capabilities:
             existing.capabilities = capabilities
+            changed = True
+        if existing.display_name != model.display_name:
+            existing.display_name = model.display_name
             changed = True
 
     removed_default = False

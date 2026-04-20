@@ -93,6 +93,14 @@ class BackgroundTaskManager:
             1 for view in self._store.list_views() if not is_terminal_status(view.runtime.status)
         )
 
+    def has_active_tasks(self) -> bool:
+        """Return True if any background tasks are in a non-terminal status.
+
+        This includes ``running``, ``awaiting_approval``, and any other
+        non-terminal state — not just actively executing tasks.
+        """
+        return self._active_task_count() > 0
+
     def _worker_command(self, task_dir: Path) -> list[str]:
         if getattr(sys, "frozen", False):
             return [
@@ -215,6 +223,12 @@ class BackgroundTaskManager:
             raise RuntimeError("Too many background tasks are already running.")
 
         task_id = generate_task_id("agent")
+        # Explicit None check — the falsy idiom ``timeout_s or default``
+        # would silently promote a caller-supplied ``0`` to the agent
+        # default, matching the analogous fix in Print's wait-cap reader.
+        effective_timeout = (
+            timeout_s if timeout_s is not None else self._config.agent_task_timeout_s
+        )
         spec = TaskSpec(
             id=task_id,
             kind="agent",
@@ -222,6 +236,11 @@ class BackgroundTaskManager:
             description=description,
             tool_call_id=tool_call_id,
             owner_role="root",
+            # Persist the effective timeout so downstream readers (e.g. the
+            # Print-mode ``print_wait_ceiling_s`` cap calculation) can honour
+            # an explicit per-agent timeout instead of always falling back to
+            # ``config.background.agent_task_timeout_s``.
+            timeout_s=effective_timeout,
             kind_payload={
                 "agent_id": agent_id,
                 "subagent_type": subagent_type,
@@ -235,7 +254,6 @@ class BackgroundTaskManager:
         runtime.status = "starting"
         runtime.updated_at = time.time()
         self._store.write_runtime(task_id, runtime)
-        effective_timeout = timeout_s or self._config.agent_task_timeout_s
         task = asyncio.create_task(
             BackgroundAgentRunner(
                 runtime=self._runtime,
@@ -250,6 +268,13 @@ class BackgroundTaskManager:
             ).run()
         )
         self._live_agent_tasks[task_id] = task
+        # Cleanup safety net for the case where the runner is cancelled before
+        # its first event-loop step. Python throws CancelledError into a
+        # FRAME_CREATED coroutine without executing any of the function body,
+        # so the runner's finally block never runs and cannot pop the entry
+        # itself. The done callback fires regardless of how the task ends, and
+        # is idempotent with the runner's own pop (both use pop(..., None)).
+        task.add_done_callback(lambda _t, tid=task_id: self._live_agent_tasks.pop(tid, None))
         return self._store.merged_view(task_id)
 
     def list_tasks(
@@ -348,7 +373,14 @@ class BackgroundTaskManager:
             self._mark_task_killed(task_id, reason)
             if self._runtime is not None and self._runtime.approval_runtime is not None:
                 self._runtime.approval_runtime.cancel_by_source("background_agent", task_id)
-            task = self._live_agent_tasks.pop(task_id, None)
+            # Keep the task in _live_agent_tasks until BackgroundAgentRunner's
+            # finally block removes it. asyncio holds tasks in a WeakSet, so if
+            # we drop the only strong reference here the still-pending task can
+            # be garbage-collected before cancellation propagates, which fires
+            # loop.call_exception_handler with no 'exception' field — surfacing
+            # as "Unhandled exception in event loop / Exception None" in the
+            # prompt_toolkit terminal.
+            task = self._live_agent_tasks.get(task_id)
             if task is not None:
                 task.cancel()
             return self._store.merged_view(task_id)

@@ -64,13 +64,15 @@ class LLMModel(BaseModel):
     """Maximum context size (unit: tokens)"""
     capabilities: set[ModelCapability] | None = None
     """Model capabilities"""
+    display_name: str | None = None
+    """Human-readable model name (sourced from the provider's models API when available)"""
 
 
 class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
     max_steps_per_turn: int = Field(
-        default=100,
+        default=500,
         ge=1,
         validation_alias=AliasChoices("max_steps_per_turn", "max_steps_per_run"),
     )
@@ -106,6 +108,11 @@ class BackgroundConfig(BaseModel):
     )
     agent_task_timeout_s: int = Field(default=900, ge=60)
     """Maximum runtime in seconds for a background agent task. Default: 900 (15 min)."""
+    print_wait_ceiling_s: int = Field(default=3600, ge=1)
+    """Hard ceiling for how long ``--print`` mode waits for background tasks before
+    killing them and exiting. The effective wait is
+    ``min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)``.
+    Default: 3600 (1 hour)."""
 
 
 class NotificationConfig(BaseModel):
@@ -196,6 +203,16 @@ class Config(BaseModel):
     theme: Literal["dark", "light"] = Field(
         default="dark",
         description="Terminal color theme. Use 'light' for light terminal backgrounds.",
+    )
+    show_thinking_stream: bool = Field(
+        default=True,
+        description=(
+            "If true, stream the raw reasoning text in the live area as a "
+            "6-line scrolling preview and commit the full reasoning markdown "
+            "to history when the block ends. Default true. Set to false to "
+            "show only the compact 'Thinking ...' indicator and a one-line "
+            "trace summary."
+        ),
     )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
