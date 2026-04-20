@@ -627,6 +627,69 @@ async def test_print_wait_timeout_survives_followup_soul_exception(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_print_wait_timeout_writes_to_original_stderr_when_redirected(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """When stderr is redirected to the logger, the "timed out ... killed N"
+    notice must still reach the user's terminal via ``open_original_stderr``,
+    not disappear into ``kimi.log``."""
+    import contextlib
+    import io
+
+    views = [_fake_view("b-001", "stubborn", timeout_s=30)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    captured = io.BytesIO()
+
+    class _FakeOriginalStream:
+        def write(self, data):
+            captured.write(data)
+
+        def flush(self):
+            pass
+
+    @contextlib.contextmanager
+    def fake_open_original_stderr():
+        yield _FakeOriginalStream()
+
+    monkeypatch.setattr("kimi_cli.ui.print.open_original_stderr", fake_open_original_stderr)
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        pass
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        await p.run(command="work")
+
+    output = captured.getvalue().decode("utf-8")
+    assert "timed out" in output
+    assert "killed 1 tasks" in output
+
+
+@pytest.mark.asyncio
 async def test_print_wait_timeout_followup_propagates_run_cancelled(tmp_path: Path) -> None:
     """If the user presses Ctrl+C during the timeout follow-up soul turn,
     ``run_soul`` raises ``RunCancelled``.  That must propagate to the outer

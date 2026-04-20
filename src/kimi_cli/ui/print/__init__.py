@@ -29,7 +29,7 @@ from kimi_cli.soul import (
 )
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.print.visualize import visualize
-from kimi_cli.utils.logging import logger
+from kimi_cli.utils.logging import logger, open_original_stderr
 from kimi_cli.utils.signals import install_sigint_handler
 
 
@@ -223,10 +223,22 @@ class Print:
                                 if not is_terminal_status(v.runtime.status)
                             ]
                             killed = manager.kill_all_active(reason="print_wait_timeout")
-                            sys.stderr.write(
+                            # ``sys.stderr`` has been redirected to the
+                            # logger pipe at this point in the CLI
+                            # lifecycle, so writing directly to it would
+                            # silently land in ``kimi.log``.  Use the
+                            # pre-redirect fd to surface the notice on the
+                            # user's terminal.
+                            timeout_notice = (
                                 f"timed out waiting for background tasks "
                                 f"({wait_cap}s), killed {len(killed)} tasks\n"
                             )
+                            with open_original_stderr() as stream:
+                                if stream is not None:
+                                    stream.write(timeout_notice.encode("utf-8", errors="replace"))
+                                    stream.flush()
+                                else:
+                                    sys.stderr.write(timeout_notice)
                             task_lines = "\n".join(
                                 f"  - {v.spec.id}: {v.spec.description} (killed)"
                                 for v in timed_out_views

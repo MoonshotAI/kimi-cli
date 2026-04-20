@@ -26,7 +26,7 @@ from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
-from kimi_cli.utils.logging import logger, redirect_stderr_to_logger
+from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, ContentPart, WireMessage
@@ -68,6 +68,22 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
     logger.configure(extra={"sid": ""}, patcher=_patch_session_id)
     if redirect_stderr:
         redirect_stderr_to_logger()
+
+
+def _write_original_stderr(text: str) -> None:
+    """Write a user-facing notice to the terminal even if ``fd=2`` has been
+    redirected into the logger by ``redirect_stderr_to_logger``.
+
+    Falls back to ``sys.stderr`` when no redirector is installed (tests,
+    early-startup code paths), matching the semantics of ``_emit_fatal_error``
+    in ``cli/__init__.py``.
+    """
+    with open_original_stderr() as stream:
+        if stream is not None:
+            stream.write(text.encode("utf-8", errors="replace"))
+            stream.flush()
+            return
+    sys.stderr.write(text)
 
 
 def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
@@ -323,12 +339,17 @@ class KimiCLI:
             if not active_views:
                 return
 
-            sys.stderr.write(f"\u26a0  Killing {len(active_views)} background tasks:\n")
+            # Build and emit the kill notice via ``open_original_stderr`` —
+            # ``sys.stderr.write`` alone would silently land in ``kimi.log``
+            # because ``redirect_stderr_to_logger`` has replaced fd=2 with a
+            # pipe into the logger by this point in the CLI lifecycle.
+            lines = [f"\u26a0  Killing {len(active_views)} background tasks:\n"]
             for view in active_views:
                 description = view.spec.description or ""
                 if len(description) > 60:
                     description = description[:57] + "..."
-                sys.stderr.write(f"  {view.spec.id}  {description}\n")
+                lines.append(f"  {view.spec.id}  {description}\n")
+            _write_original_stderr("".join(lines))
 
             killed = manager.kill_all_active(reason="CLI session ended")
             if killed:
@@ -344,7 +365,7 @@ class KimiCLI:
                 if not is_terminal_status(v.runtime.status)
             ]
             if survivors:
-                sys.stderr.write(f"  ({len(survivors)} tasks still alive)\n")
+                _write_original_stderr(f"  ({len(survivors)} tasks still alive)\n")
         except Exception:
             logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
 

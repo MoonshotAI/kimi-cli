@@ -12,6 +12,8 @@ On CLI exit (``/exit``, Ctrl+D, end of ``-p`` run), the user should see:
 
 from __future__ import annotations
 
+import contextlib
+import io
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -156,6 +158,50 @@ async def test_shutdown_reports_survivors_after_grace(capsys) -> None:
     assert "still alive" in captured.err
     # Survivor count (2) should appear
     assert "2" in captured.err
+
+
+@pytest.mark.asyncio
+async def test_shutdown_writes_to_original_stderr_when_redirected(monkeypatch) -> None:
+    """When stderr has been redirected to the logger via ``redirect_stderr_to_logger``,
+    the kill notice must still reach the user's terminal.  ``sys.stderr.write``
+    alone would silently send the notice into ``kimi.log`` (where fd=2 now
+    points), leaving the user with zero feedback about what was killed.
+
+    The fix uses ``open_original_stderr`` (same pattern as ``_emit_fatal_error``
+    in ``cli/__init__.py`` and the shell subprocess wrapper in ``ui/shell``).
+    """
+    views = [
+        _fake_view("b-001", "deploy staging"),
+        _fake_view("b-002", "fix tests"),
+    ]
+    cli, manager, _ = _make_cli(keep_alive=False, views=views)
+
+    captured = io.BytesIO()
+
+    class _FakeOriginalStream:
+        def write(self, data):
+            captured.write(data)
+
+        def flush(self):
+            pass
+
+    @contextlib.contextmanager
+    def fake_open_original_stderr():
+        yield _FakeOriginalStream()
+
+    monkeypatch.setattr("kimi_cli.app.open_original_stderr", fake_open_original_stderr)
+
+    async def fake_sleep(duration):
+        pass
+
+    with patch("kimi_cli.app.asyncio.sleep", side_effect=fake_sleep):
+        await cli.shutdown_background_tasks()
+
+    output = captured.getvalue().decode("utf-8")
+    assert "2" in output and "background task" in output.lower()
+    assert "b-001" in output
+    assert "deploy staging" in output
+    assert "b-002" in output
 
 
 @pytest.mark.asyncio
