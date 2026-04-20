@@ -88,6 +88,7 @@ def _make_cli(
     cli._soul = MagicMock()
     cli._runtime = runtime
     cli._env_overrides = {}
+    cli._bg_refresh_task = None
 
     return cli, manager, state
 
@@ -168,11 +169,11 @@ async def test_shutdown_reports_survivors_after_grace(capsys) -> None:
 
     captured = capsys.readouterr()
     # Survivors here all have kill_requested_at set (shutdown just wrote it).
-    # They shouldn't be labelled "still alive" — that would contradict the
+    # They shouldn't be labelled as leaks — that would contradict the
     # "Killing 2 background tasks" header.  Label them "still terminating"
     # so the user understands the worker is mid-shutdown.
     assert "still terminating" in captured.err
-    assert "still alive" not in captured.err
+    assert "stop request failed" not in captured.err
     assert "2" in captured.err
 
 
@@ -331,8 +332,8 @@ async def test_shutdown_survivors_from_failed_kill_labelled_alive(capsys) -> Non
         await cli.shutdown_background_tasks()
 
     captured = capsys.readouterr()
-    # Leaking task: never got kill-requested → "still alive" is accurate.
-    assert "still alive" in captured.err
+    # Leaking task: never got kill-requested → "stop request failed".
+    assert "stop request failed" in captured.err
     assert "still terminating" not in captured.err
 
 

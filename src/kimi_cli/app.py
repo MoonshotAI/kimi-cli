@@ -414,12 +414,17 @@ class KimiCLI:
                 # semantic contradiction.
                 terminating = [s for s in survivors if s.control.kill_requested_at is not None]
                 leaking = [s for s in survivors if s.control.kill_requested_at is None]
+                # Report leaks first — ``stop request failed`` is strictly
+                # more severe than ``still terminating`` (the latter will
+                # resolve on its own once the worker writes terminal state).
+                if leaking:
+                    _write_original_stderr(
+                        f"  ({len(leaking)} tasks still running; stop request failed)\n"
+                    )
                 if terminating:
                     _write_original_stderr(
                         f"  ({len(terminating)} tasks still terminating)\n"
                     )
-                if leaking:
-                    _write_original_stderr(f"  ({len(leaking)} tasks still alive)\n")
         except Exception:
             logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
 

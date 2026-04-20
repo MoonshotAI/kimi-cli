@@ -254,24 +254,44 @@ class Print:
                                     stream.flush()
                                 else:
                                     sys.stderr.write(timeout_notice)
-                            # ``kill_all_active`` may skip a task if its
-                            # ``kill()`` raises (e.g. disk IO during
-                            # ``write_control``), so the returned list is
-                            # the ground truth for "actually kill-requested".
-                            # Labelling a task ``(killed)`` in the LLM
-                            # follow-up prompt when its kill actually failed
-                            # would tell the user a lie — mark those with
-                            # ``(kill failed)`` instead.
-                            killed_set = set(killed)
-                            task_lines = "\n".join(
-                                f"  - {v.spec.id}: {v.spec.description} "
-                                + ("(killed)" if v.spec.id in killed_set else "(kill failed)")
-                                for v in timed_out_views
-                            )
+                            # Label each task by its real post-kill state
+                            # instead of a blanket ``(killed)``.  Reasons
+                            # the naive label is wrong:
+                            #   1. ``kill_all_active`` appends the id even
+                            #      when ``kill()`` early-returns because
+                            #      the task was already terminal (natural
+                            #      completion race between the snapshot
+                            #      and the kill loop).
+                            #   2. ``kill()`` can also raise after sending
+                            #      SIGTERM (e.g. merged_view IO failure),
+                            #      so absence from ``killed`` ≠ "no kill
+                            #      was attempted".
+                            # Re-read the current state after kill_all_active
+                            # and classify each task separately:
+                            #   - already-terminal → ``already finished``
+                            #   - kill_requested_at set → ``kill requested``
+                            #   - neither              → ``kill failed``
+                            post_kill_views = {
+                                v.spec.id: v
+                                for v in manager.list_tasks(status=None, limit=None)
+                            }
+                            label_lines = []
+                            for v in timed_out_views:
+                                latest = post_kill_views.get(v.spec.id, v)
+                                if is_terminal_status(latest.runtime.status):
+                                    label = "already finished"
+                                elif latest.control.kill_requested_at is not None:
+                                    label = "kill requested"
+                                else:
+                                    label = "kill failed"
+                                label_lines.append(
+                                    f"  - {v.spec.id}: {v.spec.description} ({label})"
+                                )
+                            task_lines = "\n".join(label_lines)
                             timeout_prompt = (
                                 "<system-reminder>\n"
                                 f"Background tasks exceeded the {wait_cap}s wait"
-                                " limit and were terminated:\n"
+                                " limit; stop was requested where possible:\n"
                                 f"{task_lines}\n"
                                 "Summarize progress and inform the user,"
                                 " then conclude.\n"

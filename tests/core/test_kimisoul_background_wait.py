@@ -53,12 +53,17 @@ def _fake_view(
     *,
     timeout_s: int | None = None,
     status: str = "running",
+    kill_requested_at: float | None = None,
 ) -> MagicMock:
     view = MagicMock()
     view.spec.id = task_id
     view.spec.description = description
     view.spec.timeout_s = timeout_s
     view.runtime.status = status
+    # Must pin to a real None — without this MagicMock auto-creates a
+    # truthy child mock, and ``control.kill_requested_at is not None``
+    # would always be True in production-code path checks.
+    view.control.kill_requested_at = kill_requested_at
     return view
 
 
@@ -513,6 +518,79 @@ async def test_print_wait_timeout_kills_and_reenters_soul(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_print_wait_timeout_followup_prompt_labels_from_post_kill_state(
+    tmp_path: Path,
+) -> None:
+    """After ``kill_all_active`` the follow-up prompt must describe each task
+    by its actual post-kill state, not by a blanket ``(killed)`` label:
+
+    - task already terminal before we got to kill it → ``already finished``
+    - kill-requested but worker still finalising        → ``kill requested``
+    - kill call failed (no ``kill_requested_at``)       → ``kill failed``
+
+    And the header must be neutral — saying "were terminated" contradicts a
+    ``(kill failed)`` entry.
+    """
+    # Three tasks, all non-terminal at snapshot time.  One per post-kill label:
+    view_done = _fake_view("b-done", "finished on its own", timeout_s=30)
+    view_dying = _fake_view("b-dying", "kill in flight", timeout_s=30)
+    view_leak = _fake_view("b-leak", "kill raised", timeout_s=30)
+    state = _FakeState(active_views=[view_done, view_dying, view_leak], pending=False)
+    manager, notifications = _wire_manager(state)
+
+    def partial_kill(*, reason: str = "Killed") -> list[str]:
+        state.kill_reasons.append(reason)
+        # b-done: completed on its own during the kill loop (race).
+        view_done.runtime.status = "completed"
+        # b-dying: kill succeeded, SIGTERM delivered, worker still finalising.
+        view_dying.control.kill_requested_at = 123.0
+        # b-leak: kill raised internally → no control write, status unchanged.
+        # ``kill_all_active`` appends b-done too (kill() early-returns for
+        # already-terminal, outer loop still appends), but NOT b-leak.
+        return ["b-done", "b-dying"]
+
+    manager.kill_all_active.side_effect = partial_kill
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        await p.run(command="work")
+
+    prompt = run_soul_calls[1]
+    # Header must not make the blanket "were terminated" claim
+    assert "were terminated" not in prompt
+    # Per-task labels must reflect each task's real post-kill state
+    assert "b-done: finished on its own (already finished)" in prompt
+    assert "b-dying: kill in flight (kill requested)" in prompt
+    assert "b-leak: kill raised (kill failed)" in prompt
+
+
+@pytest.mark.asyncio
 async def test_print_wait_timeout_followup_prompt_distinguishes_kill_failures(
     tmp_path: Path,
 ) -> None:
@@ -523,22 +601,18 @@ async def test_print_wait_timeout_followup_prompt_distinguishes_kill_failures(
     LLM, otherwise the LLM will tell the user a task was terminated when it
     wasn't.
     """
-    views = [
-        _fake_view("b-ok", "will be killed", timeout_s=30),
-        _fake_view("b-fail", "kill will fail", timeout_s=30),
-    ]
-    state = _FakeState(active_views=views, pending=False)
+    view_ok = _fake_view("b-ok", "will be killed", timeout_s=30)
+    view_fail = _fake_view("b-fail", "kill will fail", timeout_s=30)
+    state = _FakeState(active_views=[view_ok, view_fail], pending=False)
     manager, notifications = _wire_manager(state)
 
-    # Override kill_all_active to simulate b-fail's kill raising internally —
-    # the real implementation catches per-task exceptions and returns only the
-    # ids that actually got kill-requested.
+    # Simulate b-fail's kill raising internally: the real implementation
+    # catches per-task exceptions and leaves ``kill_requested_at`` unset.
+    # b-ok gets the normal treatment (``kill_requested_at`` written).
     def partial_kill(*, reason: str = "Killed") -> list[str]:
         state.kill_reasons.append(reason)
-        ids = [v.spec.id for v in state.active_views if v.spec.id != "b-fail"]
-        state.active_views = []
-        state.active = False
-        return ids
+        view_ok.control.kill_requested_at = 123.0
+        return ["b-ok"]
 
     manager.kill_all_active.side_effect = partial_kill
 
@@ -574,13 +648,12 @@ async def test_print_wait_timeout_followup_prompt_distinguishes_kill_failures(
 
     assert len(run_soul_calls) == 2
     prompt = run_soul_calls[1]
-    # b-ok was actually killed → labelled (killed)
-    assert "b-ok: will be killed (killed)" in prompt
-    # b-fail's kill failed → must NOT be labelled (killed); must be flagged
-    # so the LLM knows not to tell the user it was terminated.
-    assert "b-fail: kill will fail (killed)" not in prompt
-    assert "b-fail" in prompt  # still listed
-    assert "kill failed" in prompt or "still running" in prompt
+    # b-ok: kill_requested_at set, status still running → "kill requested"
+    assert "b-ok: will be killed (kill requested)" in prompt
+    # b-fail: kill raised internally, kill_requested_at stayed None →
+    # "kill failed" — must NOT be labelled as killed/terminated.
+    assert "b-fail: kill will fail (kill failed)" in prompt
+    assert "(killed)" not in prompt  # legacy blanket label is gone
 
 
 @pytest.mark.asyncio
