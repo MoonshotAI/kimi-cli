@@ -4,9 +4,10 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Print: Wait for background tasks before exiting — in one-shot `--print` mode, the process now waits for running background agents to finish and lets the model process their results, instead of exiting and killing them. The wait is capped at `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)` (default ceiling 1h); on timeout the tasks are killed and the model gets one more turn via a `<system-reminder>` to summarise before exit
+- Shell/Print: On exit the CLI now lists each background task being killed (id + description) on stderr and waits out the configured grace period before reporting any tasks that have not reached terminal state (split into "still terminating" for workers mid-shutdown vs "stop request failed" for genuinely leaking tasks); `keep_alive_on_exit=true` still skips the entire path
 - Auth: Auto-refresh the managed model list at startup for OAuth-logged-in users — the CLI now fetches the latest models from the provider's `/models` endpoint as a background task when the shell launches, so newly released models become available without needing to log out and log back in; failures are silent and never block startup, and custom `--config` sessions keep their previous behavior
 - Shell: Show the provider-supplied `display_name` (e.g. `k2.6-code-preview`) for managed models across the welcome panel, prompt status bar, `/model` picker, and `/model` switch confirmation messages; when the backend does not return one, the CLI falls back to the internal model ID as before
-
 ## 1.36.0 (2026-04-17)
 
 - Anthropic: Fix Claude Opus 4.7 returning `invalid_request_error` — Opus 4.7 (which rejects the legacy `{type: "enabled", budget_tokens: N}` thinking config) now correctly uses adaptive thinking, and the client explicitly sets `display: "summarized"` so thinking content still streams back (Opus 4.7 silently changed the default to `"omitted"`); Bedrock/Vertex name variants (e.g., `aws/claude-opus-4-7`, `anthropic.claude-opus-4-7-v1:0`) and `claude-mythos-preview` are also recognised, and future Claude versions ≥ 4.6 are detected automatically via version extrapolation instead of hard-coded substring matching
