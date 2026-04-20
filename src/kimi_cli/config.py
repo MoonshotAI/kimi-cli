@@ -64,6 +64,8 @@ class LLMModel(BaseModel):
     """Maximum context size (unit: tokens)"""
     capabilities: set[ModelCapability] | None = None
     """Model capabilities"""
+    display_name: str | None = None
+    """Human-readable model name (sourced from the provider's models API when available)"""
 
 
 class LoopControl(BaseModel):

@@ -86,6 +86,15 @@ def _write_original_stderr(text: str) -> None:
     sys.stderr.write(text)
 
 
+async def _refresh_managed_models_silent(config: Config) -> None:
+    from kimi_cli.auth.platforms import refresh_managed_models
+
+    try:
+        await refresh_managed_models(config)
+    except Exception as exc:
+        logger.warning("Background managed-model refresh failed: {error}", error=exc)
+
+
 def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
     subagent_store = getattr(runtime, "subagent_store", None)
     if subagent_store is None:
@@ -178,6 +187,8 @@ class KimiCLI:
         logger.info("Loaded config: {config}", config=config)
 
         oauth = OAuthManager(config)
+
+        bg_refresh_task = asyncio.create_task(_refresh_managed_models_silent(config))
 
         model: LLMModel | None = None
         provider: LLMProvider | None = None
@@ -290,17 +301,19 @@ class KimiCLI:
         soul.set_hook_engine(hook_engine)
         runtime.hook_engine = hook_engine
 
-        return KimiCLI(soul, runtime, env_overrides)
+        return KimiCLI(soul, runtime, env_overrides, bg_refresh_task)
 
     def __init__(
         self,
         _soul: KimiSoul,
         _runtime: Runtime,
         _env_overrides: dict[str, str],
+        _bg_refresh_task: asyncio.Task[None] | None = None,
     ) -> None:
         self._soul = _soul
         self._runtime = _runtime
         self._env_overrides = _env_overrides
+        self._bg_refresh_task = _bg_refresh_task
 
     @property
     def soul(self) -> KimiSoul:
@@ -325,6 +338,11 @@ class KimiCLI:
         store corruption must not propagate and replace the real exit code
         with a traceback.
         """
+        # Cancel the startup managed-model refresh task if it is still running
+        # so it does not outlive the CLI process.
+        if self._bg_refresh_task is not None and not self._bg_refresh_task.done():
+            self._bg_refresh_task.cancel()
+
         bg_config = self._runtime.config.background
         if bg_config.keep_alive_on_exit:
             return
@@ -404,6 +422,15 @@ class KimiCLI:
                     _write_original_stderr(f"  ({len(leaking)} tasks still alive)\n")
         except Exception:
             logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
+
+    async def await_bg_tasks_shutdown(self, timeout: float = 2.0) -> None:
+        """Await completion of the model-refresh background task after cancellation."""
+        task = self._bg_refresh_task
+        if task is None or task.done():
+            return
+        # Best-effort cleanup — errors inside the task are already logged.
+        with contextlib.suppress(TimeoutError, asyncio.CancelledError, Exception):
+            await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
 
     @contextlib.asynccontextmanager
     async def _env(self) -> AsyncGenerator[None]:
@@ -610,7 +637,10 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=model_display_name(self._soul.model_name),
+                    value=model_display_name(
+                        self._soul.model_name,
+                        self._runtime.llm.model_config if self._runtime.llm else None,
+                    ),
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )

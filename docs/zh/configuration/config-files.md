@@ -111,6 +111,10 @@ custom_headers = { "X-Custom-Header" = "value" }
 
 `models` 定义可用的模型。每个模型使用一个唯一的名称作为 key。
 
+::: warning 注意
+如果 `providers` 或 `models` 的 key 中包含 `.`，必须使用带引号的 TOML key。否则 TOML 会把 `.` 当作路径分隔符，将 key 解析为嵌套表。
+:::
+
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `provider` | `string` | 是 | 使用的供应商名称，必须在 `providers` 中定义 |
@@ -126,6 +130,16 @@ provider = "moonshot-cn"
 model = "kimi-k2-thinking-turbo"
 max_context_size = 262144
 capabilities = ["thinking", "image_in"]
+```
+
+如果模型名包含 `.`，需要使用带引号的 key：
+
+```toml
+[models."gpt-4.1"]
+provider = "openai"
+model = "gpt-4.1"
+max_context_size = 1047576
+capabilities = ["thinking"]
 ```
 
 ### `loop_control`
