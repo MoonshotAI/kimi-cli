@@ -339,23 +339,45 @@ class KimiCLI:
             if not active_views:
                 return
 
-            # Build and emit the kill notice via ``open_original_stderr`` —
-            # ``sys.stderr.write`` alone would silently land in ``kimi.log``
-            # because ``redirect_stderr_to_logger`` has replaced fd=2 with a
-            # pipe into the logger by this point in the CLI lifecycle.
-            lines = [f"\u26a0  Killing {len(active_views)} background tasks:\n"]
-            for view in active_views:
-                description = view.spec.description or ""
-                if len(description) > 60:
-                    description = description[:57] + "..."
-                lines.append(f"  {view.spec.id}  {description}\n")
-            _write_original_stderr("".join(lines))
+            # Split by whether the task has already been kill-requested (e.g.
+            # by the ``--print`` timeout path which ran immediately before
+            # this shutdown).  For those:
+            #   - don't re-announce on stderr (user saw the timeout notice)
+            #   - don't re-kill with a generic reason, which would overwrite
+            #     the more specific ``kill_reason`` on disk
+            # We still reconcile + grace-wait for them so they reach terminal
+            # status before the process exits.
+            fresh_targets = [v for v in active_views if v.control.kill_requested_at is None]
 
-            killed = manager.kill_all_active(reason="CLI session ended")
-            if killed:
-                logger.info(
-                    "Stopped {n} background task(s) on exit: {ids}", n=len(killed), ids=killed
-                )
+            if fresh_targets:
+                # Build and emit the kill notice via ``open_original_stderr``
+                # — ``sys.stderr.write`` alone would silently land in
+                # ``kimi.log`` because ``redirect_stderr_to_logger`` has
+                # replaced fd=2 with a pipe into the logger by this point.
+                lines = [f"\u26a0  Killing {len(fresh_targets)} background tasks:\n"]
+                for view in fresh_targets:
+                    description = view.spec.description or ""
+                    if len(description) > 60:
+                        description = description[:57] + "..."
+                    lines.append(f"  {view.spec.id}  {description}\n")
+                _write_original_stderr("".join(lines))
+
+                killed: list[str] = []
+                for view in fresh_targets:
+                    try:
+                        manager.kill(view.spec.id, reason="CLI session ended")
+                        killed.append(view.spec.id)
+                    except Exception:
+                        logger.exception(
+                            "Failed to kill task {task_id} during shutdown",
+                            task_id=view.spec.id,
+                        )
+                if killed:
+                    logger.info(
+                        "Stopped {n} background task(s) on exit: {ids}",
+                        n=len(killed),
+                        ids=killed,
+                    )
 
             await asyncio.sleep(bg_config.kill_grace_period_ms / 1000)
             manager.reconcile()
@@ -365,7 +387,21 @@ class KimiCLI:
                 if not is_terminal_status(v.runtime.status)
             ]
             if survivors:
-                _write_original_stderr(f"  ({len(survivors)} tasks still alive)\n")
+                # Distinguish "worker is mid-shutdown" (kill request on record,
+                # SIGTERM delivered, worker just hasn't written terminal state
+                # yet) from a genuine leak (never got kill-requested, i.e.
+                # ``manager.kill`` raised).  Without this split, users saw
+                # ``killed N`` from the --print timeout path immediately
+                # followed by ``(N tasks still alive)`` here — a direct
+                # semantic contradiction.
+                terminating = [s for s in survivors if s.control.kill_requested_at is not None]
+                leaking = [s for s in survivors if s.control.kill_requested_at is None]
+                if terminating:
+                    _write_original_stderr(
+                        f"  ({len(terminating)} tasks still terminating)\n"
+                    )
+                if leaking:
+                    _write_original_stderr(f"  ({len(leaking)} tasks still alive)\n")
         except Exception:
             logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
 

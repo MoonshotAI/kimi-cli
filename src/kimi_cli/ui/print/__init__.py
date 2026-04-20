@@ -150,7 +150,12 @@ class Print:
                             ]
                             wait_cap = min(max(task_timeouts), bg_config.print_wait_ceiling_s)
                         else:
-                            wait_cap = 0
+                            # No active tasks at snapshot time — fall back to
+                            # the ceiling so a pending re-entry that spawns
+                            # new long-running work still has a deadline.
+                            # Otherwise ``--print`` can hang forever on
+                            # mid-wait task creation.
+                            wait_cap = bg_config.print_wait_ceiling_s
                         deadline = time.monotonic() + wait_cap
                         timed_out = False
 
@@ -175,6 +180,11 @@ class Print:
                                     " Process their results."
                                     "</system-reminder>"
                                 )
+                                # Bypass ``UserPromptSubmit`` — this is an
+                                # internal synthetic prompt, not user input.
+                                # A user-configured prompt-blocking hook
+                                # would drop the notification and hang the
+                                # wait loop.
                                 await run_soul(
                                     self.soul,
                                     bg_prompt,
@@ -182,6 +192,7 @@ class Print:
                                     cancel_event,
                                     runtime.session.wire_file,
                                     runtime,
+                                    skip_user_prompt_hook=True,
                                 )
                                 continue
                             if not manager.has_active_tasks():
@@ -202,8 +213,12 @@ class Print:
                             # break out cleanly must not be redirected into
                             # the kill path just because the clock has
                             # moved past the deadline (e.g. after a long
-                            # part-complete re-entry).
-                            if initial_views and time.monotonic() >= deadline:
+                            # part-complete re-entry).  Using
+                            # ``has_active_tasks()`` rather than the
+                            # ``initial_views`` snapshot ensures tasks
+                            # spawned by a pending re-entry are also bound
+                            # by the deadline.
+                            if time.monotonic() >= deadline:
                                 timed_out = True
                                 break
                             # Still waiting for tasks to finish.
@@ -239,8 +254,18 @@ class Print:
                                     stream.flush()
                                 else:
                                     sys.stderr.write(timeout_notice)
+                            # ``kill_all_active`` may skip a task if its
+                            # ``kill()`` raises (e.g. disk IO during
+                            # ``write_control``), so the returned list is
+                            # the ground truth for "actually kill-requested".
+                            # Labelling a task ``(killed)`` in the LLM
+                            # follow-up prompt when its kill actually failed
+                            # would tell the user a lie — mark those with
+                            # ``(kill failed)`` instead.
+                            killed_set = set(killed)
                             task_lines = "\n".join(
-                                f"  - {v.spec.id}: {v.spec.description} (killed)"
+                                f"  - {v.spec.id}: {v.spec.description} "
+                                + ("(killed)" if v.spec.id in killed_set else "(kill failed)")
                                 for v in timed_out_views
                             )
                             timeout_prompt = (
@@ -272,6 +297,7 @@ class Print:
                                     cancel_event,
                                     runtime.session.wire_file,
                                     runtime,
+                                    skip_user_prompt_hook=True,
                                 )
                             except RunCancelled:
                                 raise

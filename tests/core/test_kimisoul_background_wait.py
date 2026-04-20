@@ -513,6 +513,77 @@ async def test_print_wait_timeout_kills_and_reenters_soul(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_print_wait_timeout_followup_prompt_distinguishes_kill_failures(
+    tmp_path: Path,
+) -> None:
+    """``kill_all_active`` can fail per task (e.g. ``write_control`` raises
+    on disk errors), returning only the ids that were actually kill-requested.
+    The timeout follow-up prompt must reflect that distinction — a task whose
+    kill failed must NOT be labelled ``(killed)`` in the prompt handed to the
+    LLM, otherwise the LLM will tell the user a task was terminated when it
+    wasn't.
+    """
+    views = [
+        _fake_view("b-ok", "will be killed", timeout_s=30),
+        _fake_view("b-fail", "kill will fail", timeout_s=30),
+    ]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    # Override kill_all_active to simulate b-fail's kill raising internally —
+    # the real implementation catches per-task exceptions and returns only the
+    # ids that actually got kill-requested.
+    def partial_kill(*, reason: str = "Killed") -> list[str]:
+        state.kill_reasons.append(reason)
+        ids = [v.spec.id for v in state.active_views if v.spec.id != "b-fail"]
+        state.active_views = []
+        state.active = False
+        return ids
+
+    manager.kill_all_active.side_effect = partial_kill
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        await p.run(command="work")
+
+    assert len(run_soul_calls) == 2
+    prompt = run_soul_calls[1]
+    # b-ok was actually killed → labelled (killed)
+    assert "b-ok: will be killed (killed)" in prompt
+    # b-fail's kill failed → must NOT be labelled (killed); must be flagged
+    # so the LLM knows not to tell the user it was terminated.
+    assert "b-fail: kill will fail (killed)" not in prompt
+    assert "b-fail" in prompt  # still listed
+    assert "kill failed" in prompt or "still running" in prompt
+
+
+@pytest.mark.asyncio
 async def test_print_wait_timeout_reconciles_after_followup_soul(tmp_path: Path) -> None:
     """After the timeout follow-up soul turn runs, Print must reconcile() one
     more time so on-disk runtime.status (written by the worker supervisor as
@@ -884,6 +955,138 @@ async def test_print_wait_cap_respects_ceiling(tmp_path: Path) -> None:
     # ceiling=5 caps the cap; should NOT wait anywhere near 10_000s.
     assert state.kill_reasons == ["print_wait_timeout"]
     assert clock[0] < 10
+
+
+@pytest.mark.asyncio
+async def test_print_synthetic_prompts_skip_user_prompt_hook(tmp_path: Path) -> None:
+    """The ``<system-reminder>`` prompts that Print sends into ``run_soul``
+    during pending re-entry and timeout follow-up are internal — not user
+    input.  They must bypass ``UserPromptSubmit`` hooks so a user-configured
+    prompt-blocking hook can't drop the notification and hang the wait loop.
+
+    We verify by checking that Print passes ``skip_user_prompt_hook=True``
+    via kwarg to both ``run_soul`` call sites (pending re-entry + timeout
+    follow-up).  The user's original command is NOT an internal synthetic
+    prompt, so its call must NOT set the flag.
+    """
+    views = [_fake_view("b-001", "long", timeout_s=30)]
+    state = _FakeState(active_views=views, pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=2,
+        agent_task_timeout_s=900,
+    )
+
+    reconcile_orig = manager.reconcile.side_effect
+
+    def first_reconcile_publishes():
+        reconcile_orig()
+        if state.reconcile_count == 1:
+            state.pending = True
+
+    manager.reconcile.side_effect = first_reconcile_publishes
+
+    call_flags: list[bool] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        call_flags.append(bool(kwargs.get("skip_user_prompt_hook", False)))
+        # Turn 2: drain pending, keep task alive until timeout.
+        if len(call_flags) == 2:
+            state.pending = False
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        await p.run(command="user request")
+
+    # Calls: [0]=original user command, [1]=pending re-entry, [2]=timeout follow-up
+    assert len(call_flags) == 3, f"expected 3 run_soul calls, got {call_flags}"
+    assert call_flags[0] is False, "original user command must not skip hook"
+    assert call_flags[1] is True, "pending re-entry synthetic prompt must skip hook"
+    assert call_flags[2] is True, "timeout follow-up synthetic prompt must skip hook"
+
+
+@pytest.mark.asyncio
+async def test_print_wait_timeout_catches_tasks_spawned_during_reentry(
+    tmp_path: Path,
+) -> None:
+    """If the initial snapshot has no active tasks but a pending re-entry
+    into the soul spawns new background work, the wait loop must STILL apply
+    the timeout (using the ceiling as a worst-case bound) — otherwise a
+    long-running task spawned mid-wait can hang ``--print`` indefinitely,
+    defeating the purpose of ``print_wait_ceiling_s``.
+    """
+    # Initial: no active views. Pump sets pending on the first reconcile to
+    # simulate a bg task that completed between run_soul returning and our
+    # first list_tasks snapshot.
+    state = _FakeState(active_views=[], pending=False)
+    manager, notifications = _wire_manager(state)
+
+    p, _ = _make_print_with_runtime(
+        tmp_path,
+        manager,
+        notifications,
+        print_wait_ceiling_s=5,
+        agent_task_timeout_s=900,
+    )
+
+    reconcile_orig = manager.reconcile.side_effect
+
+    def first_reconcile_publishes():
+        reconcile_orig()
+        if state.reconcile_count == 1:
+            state.pending = True
+
+    manager.reconcile.side_effect = first_reconcile_publishes
+
+    run_soul_calls: list[str] = []
+
+    async def fake_run_soul(soul_arg, user_input, *args, **kwargs):
+        run_soul_calls.append(user_input)
+        if len(run_soul_calls) == 2:
+            # Pending re-entry: drain the notification and simulate the LLM
+            # spawning a new long-running task before returning.
+            state.pending = False
+            state.active_views = [
+                _fake_view("b-new", "never ends", timeout_s=10_000),
+            ]
+
+    clock = [0.0]
+    real_sleep = asyncio.sleep
+
+    def fake_monotonic():
+        return clock[0]
+
+    async def fake_sleep(duration):
+        clock[0] += duration
+        await real_sleep(0)
+
+    with (
+        patch("kimi_cli.ui.print.run_soul", side_effect=fake_run_soul),
+        patch("kimi_cli.ui.print.asyncio.sleep", side_effect=fake_sleep),
+        patch("kimi_cli.ui.print.time.monotonic", side_effect=fake_monotonic),
+    ):
+        await p.run(command="work")
+
+    # Must time out via the ceiling (~5s), not the new task's 10000s timeout.
+    assert state.kill_reasons == ["print_wait_timeout"]
+    assert clock[0] < 15
 
 
 @pytest.mark.asyncio
