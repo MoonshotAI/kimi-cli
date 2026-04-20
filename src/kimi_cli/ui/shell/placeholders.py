@@ -230,6 +230,15 @@ class PlaceholderSpan:
     end: int
 
 
+@dataclass(slots=True, frozen=True)
+class CursorPlaceholderContext:
+    """Placeholder-aware view of the buffer around the cursor."""
+
+    starts_at_cursor: PlaceholderSpan | None
+    ends_at_cursor: PlaceholderSpan | None
+    selected: PlaceholderSpan | None
+
+
 class PlaceholderHandler(Protocol):
     def find_next(self, text: str, start: int = 0) -> PlaceholderTokenMatch | None: ...
 
@@ -461,20 +470,23 @@ class PromptPlaceholderManager:
     def create_image_placeholder(self, image: Image.Image) -> str | None:
         return self._image_handler.create_placeholder(image)
 
-    def find_placeholder_ending_at(self, text: str, cursor_position: int) -> PlaceholderSpan | None:
+    def cursor_context(
+        self,
+        text: str,
+        cursor_position: int,
+        selection: tuple[int, int] | None,
+    ) -> CursorPlaceholderContext:
         self._ensure_span_index(text)
-        return self._span_by_end.get(cursor_position)
-
-    def find_placeholder_starting_at(
-        self, text: str, cursor_position: int
-    ) -> PlaceholderSpan | None:
-        self._ensure_span_index(text)
-        return self._span_by_start.get(cursor_position)
-
-    def find_selected_placeholder(self, text: str, start: int, end: int) -> PlaceholderSpan | None:
-        self._ensure_span_index(text)
-        span = self._span_by_start.get(start)
-        return span if span is not None and span.end == end else None
+        selected: PlaceholderSpan | None = None
+        if selection is not None:
+            span = self._span_by_start.get(selection[0])
+            if span is not None and span.end == selection[1]:
+                selected = span
+        return CursorPlaceholderContext(
+            starts_at_cursor=self._span_by_start.get(cursor_position),
+            ends_at_cursor=self._span_by_end.get(cursor_position),
+            selected=selected,
+        )
 
     def _ensure_span_index(self, text: str) -> None:
         if text == self._span_index_text:

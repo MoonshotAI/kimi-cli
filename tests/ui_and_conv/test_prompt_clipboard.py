@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import shlex
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from PIL import Image
 from prompt_toolkit.filters import Condition
@@ -421,59 +422,35 @@ async def test_question_delegate_expands_placeholders_on_submit() -> None:
 def test_boundary_placeholder_keys_select_expected_span(monkeypatch) -> None:
     ps = _make_editing_prompt_session(monkeypatch)
     buffer = ps._session.default_buffer
+    backspace = partial(ps._placeholder_edit, direction="left", mode="destructive")
+    delete = partial(ps._placeholder_edit, direction="right", mode="destructive")
+    left = partial(ps._placeholder_edit, direction="left", mode="navigational")
+    right = partial(ps._placeholder_edit, direction="right", mode="navigational")
+
+    image_line = "before [image:abc123.png,10x10] after"
+    image_token = "[image:abc123.png,10x10]"
+    image_end = len("before [image:abc123.png,10x10]")
+    image_start = len("before ")
+
+    pasted_line = "before [Pasted text #1 +15 lines] after"
+    pasted_token = "[Pasted text #1 +15 lines]"
+    pasted_end = len("before [Pasted text #1 +15 lines]")
+
+    two_tokens_line = "[image:first.png,10x10] [image:second.png,20x20]"
+    two_tokens_target = "[image:second.png,20x20]"
+    two_tokens_end = len(two_tokens_line)
+    two_tokens_cursor = len("[image:first.png,10x10] ")
 
     cases = [
-        (
-            ps._handle_placeholder_backspace,
-            "before [image:abc123.png,10x10] after",
-            len("before [image:abc123.png,10x10]"),
-            "[image:abc123.png,10x10]",
-            "before [image:abc123.png,10x10] after",
-            len("before "),
-        ),
-        (
-            ps._handle_placeholder_delete,
-            "before [image:abc123.png,10x10] after",
-            len("before "),
-            "[image:abc123.png,10x10]",
-            "before [image:abc123.png,10x10] after",
-            len("before [image:abc123.png,10x10]"),
-        ),
-        (
-            ps._handle_placeholder_left,
-            "before [image:abc123.png,10x10] after",
-            len("before [image:abc123.png,10x10]"),
-            "[image:abc123.png,10x10]",
-            "before [image:abc123.png,10x10] after",
-            len("before "),
-        ),
-        (
-            ps._handle_placeholder_right,
-            "before [image:abc123.png,10x10] after",
-            len("before "),
-            "[image:abc123.png,10x10]",
-            "before [image:abc123.png,10x10] after",
-            len("before [image:abc123.png,10x10]"),
-        ),
-        (
-            ps._handle_placeholder_backspace,
-            "before [Pasted text #1 +15 lines] after",
-            len("before [Pasted text #1 +15 lines]"),
-            "[Pasted text #1 +15 lines]",
-            "before [Pasted text #1 +15 lines] after",
-            len("before "),
-        ),
-        (
-            ps._handle_placeholder_backspace,
-            "[image:first.png,10x10] [image:second.png,20x20]",
-            len("[image:first.png,10x10] [image:second.png,20x20]"),
-            "[image:second.png,20x20]",
-            "[image:first.png,10x10] [image:second.png,20x20]",
-            len("[image:first.png,10x10] "),
-        ),
+        (backspace, image_line, image_end, image_token, image_start),
+        (delete, image_line, image_start, image_token, image_end),
+        (left, image_line, image_end, image_token, image_start),
+        (right, image_line, image_start, image_token, image_end),
+        (backspace, pasted_line, pasted_end, pasted_token, len("before ")),
+        (backspace, two_tokens_line, two_tokens_end, two_tokens_target, two_tokens_cursor),
     ]
 
-    for handler, text, cursor, target, expected_text, expected_cursor in cases:
+    for handler, text, cursor, target, expected_cursor in cases:
         buffer.exit_selection()
         start = text.index(target)
         end = start + len(target)
@@ -481,7 +458,7 @@ def test_boundary_placeholder_keys_select_expected_span(monkeypatch) -> None:
 
         handler(_make_key_event(buffer))
 
-        assert buffer.text == expected_text
+        assert buffer.text == text
         assert buffer.document.selection_range() == (start, end)
         assert buffer.cursor_position == expected_cursor
 
@@ -490,36 +467,33 @@ def test_selected_placeholder_keys_delete_or_collapse(monkeypatch) -> None:
     ps = _make_editing_prompt_session(monkeypatch)
     token = "[image:abc123.png,10x10]"
     buffer = ps._session.default_buffer
+    text = f"before {token} after"
+    token_start = text.index(token)
+    token_end = token_start + len(token)
 
-    cases = [
-        (ps._handle_placeholder_backspace, "before [image:abc123.png,10x10] after", len("before ")),
-        (ps._handle_placeholder_delete, "before [image:abc123.png,10x10] after", len("before ")),
-        (
-            ps._handle_placeholder_left,
-            "before [image:abc123.png,10x10] after",
-            len("before "),
-        ),
-        (
-            ps._handle_placeholder_right,
-            "before [image:abc123.png,10x10] after",
-            len("before [image:abc123.png,10x10]"),
-        ),
+    cases: list[
+        tuple[
+            Literal["destructive", "navigational"],
+            Literal["left", "right"],
+            str,
+            int,
+        ]
+    ] = [
+        ("destructive", "left", "before  after", token_start),
+        ("destructive", "right", "before  after", token_start),
+        ("navigational", "left", text, token_start),
+        ("navigational", "right", text, token_end),
     ]
 
-    for handler, text, expected_cursor in cases:
+    for mode, direction, expected_text, expected_cursor in cases:
         buffer.exit_selection()
-        start = text.index(token)
-        end = start + len(token)
-        buffer.document = shell_prompt.Document(text=text, cursor_position=start)
+        buffer.document = shell_prompt.Document(text=text, cursor_position=token_start)
         buffer.start_selection()
-        buffer.cursor_position = end
+        buffer.cursor_position = token_end
 
-        handler(_make_key_event(buffer))
+        ps._placeholder_edit(_make_key_event(buffer), direction=direction, mode=mode)
 
-        if handler in {ps._handle_placeholder_backspace, ps._handle_placeholder_delete}:
-            assert buffer.text == "before  after"
-        else:
-            assert buffer.text == text
+        assert buffer.text == expected_text
         assert buffer.cursor_position == expected_cursor
         assert buffer.selection_state is None
 
@@ -529,30 +503,27 @@ def test_placeholder_atomic_editing_filters_reject_non_atomic_contexts(monkeypat
     buffer = ps._session.default_buffer
     token = "[image:abc123.png,10x10]"
 
+    # Cursor inside a placeholder -> no direction should arm.
     buffer.document = shell_prompt.Document(text=token, cursor_position=token.index("abc123"))
-    assert ps._should_handle_placeholder_backspace() is False
-    assert ps._should_handle_placeholder_left() is False
-    assert ps._should_handle_placeholder_right() is False
-    assert ps._should_handle_placeholder_delete() is False
+    assert ps._placeholder_edit_armed("left") is False
+    assert ps._placeholder_edit_armed("right") is False
 
+    # Selection is a proper subset of a placeholder -> no direction arms.
     text = f"before {token} after"
     start = text.index(token)
     buffer.document = shell_prompt.Document(text=text, cursor_position=start)
     buffer.start_selection()
     buffer.cursor_position = start + len(token) - 1
-    assert ps._selected_placeholder_span(buffer) is None
-    assert ps._should_handle_placeholder_backspace() is False
-    assert ps._should_handle_placeholder_delete() is False
-    assert ps._should_handle_placeholder_left() is False
-    assert ps._should_handle_placeholder_right() is False
+    assert ps._cursor_placeholder_context(buffer).selected is None
+    assert ps._placeholder_edit_armed("left") is False
+    assert ps._placeholder_edit_armed("right") is False
 
+    # Shell mode entirely disables atomic placeholder editing.
     shell_ps = _make_editing_prompt_session(monkeypatch, mode=PromptMode.SHELL)
     shell_buffer = shell_ps._session.default_buffer
     shell_buffer.document = shell_prompt.Document(text=token, cursor_position=len(token))
-    assert shell_ps._should_handle_placeholder_backspace() is False
-    assert shell_ps._should_handle_placeholder_left() is False
-    assert shell_ps._should_handle_placeholder_right() is False
-    assert shell_ps._should_handle_placeholder_delete() is False
+    assert shell_ps._placeholder_edit_armed("left") is False
+    assert shell_ps._placeholder_edit_armed("right") is False
 
 
 def test_non_placeholder_selection_at_boundary_does_not_get_replaced(monkeypatch) -> None:
@@ -567,12 +538,6 @@ def test_non_placeholder_selection_at_boundary_does_not_get_replaced(monkeypatch
     buffer.start_selection()
     buffer.cursor_position = non_placeholder_end
 
-    assert ps._selected_placeholder_span(buffer) is None
-    assert ps._should_handle_placeholder_backspace() is False
-    assert ps._should_handle_placeholder_left() is False
-
-    ps._handle_placeholder_backspace(_make_key_event(buffer))
-
-    assert buffer.text == text
-    assert buffer.document.selection_range() == (non_placeholder_start, non_placeholder_end)
-    assert buffer.cursor_position == non_placeholder_end
+    assert ps._cursor_placeholder_context(buffer).selected is None
+    assert ps._placeholder_edit_armed("left") is False
+    assert ps._placeholder_edit_armed("right") is False

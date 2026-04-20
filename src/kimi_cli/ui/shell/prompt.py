@@ -58,7 +58,7 @@ from kimi_cli.soul import StatusSnapshot, format_context_status
 from kimi_cli.ui.shell import placeholders as prompt_placeholders
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.placeholders import (
-    PlaceholderSpan,
+    CursorPlaceholderContext,
     PromptPlaceholderManager,
     normalize_pasted_text,
     sanitize_surrogates,
@@ -1457,26 +1457,34 @@ class CustomPromptSession:
         @_kb.add(
             Keys.Backspace,
             eager=True,
-            filter=Condition(self._should_handle_placeholder_backspace),
+            filter=Condition(lambda: self._placeholder_edit_armed("left")),
         )
         def _(event: KeyPressEvent) -> None:
-            self._handle_placeholder_backspace(event)
+            self._placeholder_edit(event, direction="left", mode="destructive")
 
         @_kb.add(
             Keys.Delete,
             eager=True,
-            filter=Condition(self._should_handle_placeholder_delete),
+            filter=Condition(lambda: self._placeholder_edit_armed("right")),
         )
         def _(event: KeyPressEvent) -> None:
-            self._handle_placeholder_delete(event)
+            self._placeholder_edit(event, direction="right", mode="destructive")
 
-        @_kb.add("left", eager=True, filter=Condition(self._should_handle_placeholder_left))
+        @_kb.add(
+            "left",
+            eager=True,
+            filter=Condition(lambda: self._placeholder_edit_armed("left")),
+        )
         def _(event: KeyPressEvent) -> None:
-            self._handle_placeholder_left(event)
+            self._placeholder_edit(event, direction="left", mode="navigational")
 
-        @_kb.add("right", eager=True, filter=Condition(self._should_handle_placeholder_right))
+        @_kb.add(
+            "right",
+            eager=True,
+            filter=Condition(lambda: self._placeholder_edit_armed("right")),
+        )
         def _(event: KeyPressEvent) -> None:
-            self._handle_placeholder_right(event)
+            self._placeholder_edit(event, direction="right", mode="navigational")
 
         @_kb.add(Keys.BracketedPaste, eager=True)
         def _(event: KeyPressEvent) -> None:
@@ -1896,119 +1904,53 @@ class CustomPromptSession:
             return None
         return self._session.default_buffer
 
-    def _selected_placeholder_span(self, buffer: Buffer) -> PlaceholderSpan | None:
-        if buffer.selection_state is None:
-            return None
-        start, end = buffer.document.selection_range()
-        return self._get_placeholder_manager().find_selected_placeholder(buffer.text, start, end)
-
-    def _has_non_placeholder_selection(self, buffer: Buffer) -> bool:
-        return (
-            buffer.selection_state is not None and self._selected_placeholder_span(buffer) is None
+    def _cursor_placeholder_context(self, buffer: Buffer) -> CursorPlaceholderContext:
+        selection = (
+            buffer.document.selection_range() if buffer.selection_state is not None else None
+        )
+        return self._get_placeholder_manager().cursor_context(
+            buffer.text, buffer.cursor_position, selection
         )
 
-    def _select_placeholder_span(
-        self, buffer: Buffer, span: PlaceholderSpan, *, enter_from_left: bool
-    ) -> None:
-        buffer.exit_selection()
-        buffer.cursor_position = span.start if enter_from_left else span.end
-        buffer.start_selection()
-        buffer.cursor_position = span.end if enter_from_left else span.start
-
-    def _collapse_selected_placeholder(self, buffer: Buffer, *, to_right: bool) -> None:
-        span = self._selected_placeholder_span(buffer)
-        if span is None:
-            return
-        buffer.exit_selection()
-        buffer.cursor_position = span.end if to_right else span.start
-
-    def _placeholder_span_at_boundary(
-        self, buffer: Buffer, *, boundary: Literal["start", "end"]
-    ) -> PlaceholderSpan | None:
-        manager = self._get_placeholder_manager()
-        if boundary == "start":
-            return manager.find_placeholder_starting_at(buffer.text, buffer.cursor_position)
-        return manager.find_placeholder_ending_at(buffer.text, buffer.cursor_position)
-
-    def _should_handle_placeholder_key(self, *, boundary: Literal["start", "end"]) -> bool:
+    def _placeholder_edit_armed(self, direction: Literal["left", "right"]) -> bool:
         buffer = self._active_edit_buffer()
         if buffer is None:
             return False
-        if self._has_non_placeholder_selection(buffer):
+        ctx = self._cursor_placeholder_context(buffer)
+        # Any selection that doesn't exactly match a placeholder yields to default handlers.
+        if buffer.selection_state is not None and ctx.selected is None:
             return False
-        if self._selected_placeholder_span(buffer) is not None:
+        if ctx.selected is not None:
             return True
-        return self._placeholder_span_at_boundary(buffer, boundary=boundary) is not None
+        boundary_span = ctx.ends_at_cursor if direction == "left" else ctx.starts_at_cursor
+        return boundary_span is not None
 
-    def _handle_placeholder_key(
+    def _placeholder_edit(
         self,
         event: KeyPressEvent,
         *,
-        boundary: Literal["start", "end"],
-        selected_action: Literal["delete", "collapse_left", "collapse_right"],
-        enter_from_left: bool,
+        direction: Literal["left", "right"],
+        mode: Literal["destructive", "navigational"],
     ) -> None:
         buffer = event.current_buffer
-        if self._has_non_placeholder_selection(buffer):
-            return
-        selected_span = self._selected_placeholder_span(buffer)
-        if selected_span is not None:
-            match selected_action:
-                case "delete":
-                    buffer.cut_selection()
-                case "collapse_left":
-                    self._collapse_selected_placeholder(buffer, to_right=False)
-                case "collapse_right":
-                    self._collapse_selected_placeholder(buffer, to_right=True)
+        ctx = self._cursor_placeholder_context(buffer)
+        if ctx.selected is not None:
+            if mode == "destructive":
+                buffer.cut_selection()
+            else:
+                buffer.exit_selection()
+                buffer.cursor_position = (
+                    ctx.selected.start if direction == "left" else ctx.selected.end
+                )
         else:
-            span = self._placeholder_span_at_boundary(buffer, boundary=boundary)
+            span = ctx.ends_at_cursor if direction == "left" else ctx.starts_at_cursor
             if span is not None:
-                self._select_placeholder_span(buffer, span, enter_from_left=enter_from_left)
+                enter_from_left = direction == "right"
+                buffer.exit_selection()
+                buffer.cursor_position = span.start if enter_from_left else span.end
+                buffer.start_selection()
+                buffer.cursor_position = span.end if enter_from_left else span.start
         event.app.invalidate()
-
-    def _should_handle_placeholder_backspace(self) -> bool:
-        return self._should_handle_placeholder_key(boundary="end")
-
-    def _handle_placeholder_backspace(self, event: KeyPressEvent) -> None:
-        self._handle_placeholder_key(
-            event,
-            boundary="end",
-            selected_action="delete",
-            enter_from_left=False,
-        )
-
-    def _should_handle_placeholder_delete(self) -> bool:
-        return self._should_handle_placeholder_key(boundary="start")
-
-    def _handle_placeholder_delete(self, event: KeyPressEvent) -> None:
-        self._handle_placeholder_key(
-            event,
-            boundary="start",
-            selected_action="delete",
-            enter_from_left=True,
-        )
-
-    def _should_handle_placeholder_left(self) -> bool:
-        return self._should_handle_placeholder_key(boundary="end")
-
-    def _handle_placeholder_left(self, event: KeyPressEvent) -> None:
-        self._handle_placeholder_key(
-            event,
-            boundary="end",
-            selected_action="collapse_left",
-            enter_from_left=False,
-        )
-
-    def _should_handle_placeholder_right(self) -> bool:
-        return self._should_handle_placeholder_key(boundary="start")
-
-    def _handle_placeholder_right(self, event: KeyPressEvent) -> None:
-        self._handle_placeholder_key(
-            event,
-            boundary="start",
-            selected_action="collapse_right",
-            enter_from_left=True,
-        )
 
     def _insert_pasted_text(self, buffer: Buffer, text: str) -> None:
         normalized = normalize_pasted_text(text)
