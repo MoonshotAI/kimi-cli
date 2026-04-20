@@ -206,8 +206,8 @@ async def test_auto_ralph_uses_ephemeral_context(runtime: Runtime, tmp_path: Pat
     turns = await _run_and_collect_turns(soul, user_input)
     # Only one TurnBegin from the outer soul.run(); _flow_turn no longer emits its own
     assert len(turns) == 1
-    # Main context stays clean because ephemeral context is used in discard mode
-    assert len(context.history) == 0
+    # Auto-ralph merges ephemeral context back so the LLM retains cross-turn memory
+    assert len(context.history) > 0
 
 
 @pytest.mark.asyncio

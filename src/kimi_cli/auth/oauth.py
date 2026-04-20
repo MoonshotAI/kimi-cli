@@ -994,6 +994,7 @@ class OAuthManager:
             chat_provider.client.api_key = access_token
         elif isinstance(chat_provider, Anthropic):
             chat_provider._client.api_key = access_token  # pyright: ignore[reportPrivateUsage]
+            chat_provider._client.default_headers["Authorization"] = f"Bearer {access_token}"  # pyright: ignore[reportPrivateUsage]
         else:
             logger.warning(
                 "Cannot apply access token: unknown chat provider type {type}",

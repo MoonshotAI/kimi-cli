@@ -85,10 +85,12 @@ async def usage(app: Shell, args: str):
 def _usage_url(model: LLMModel | None, provider: LLMProvider | None = None) -> str | None:
     if model is None:
         return None
-    # Prefer provider's configured base_url
-    if provider and provider.base_url:
-        return f"{provider.base_url.rstrip('/')}/usages"
+    # Prefer provider's configured base_url, but only for Kimi Code providers
     platform_id = parse_managed_provider_key(model.provider)
+    if provider and provider.base_url and platform_id is not None:
+        platform = get_platform_by_id(platform_id)
+        if platform and platform.id == KIMI_CODE_PLATFORM_ID:
+            return f"{provider.base_url.rstrip('/')}/usages"
     if platform_id is None:
         return None
     platform = get_platform_by_id(platform_id)

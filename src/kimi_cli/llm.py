@@ -142,8 +142,6 @@ def create_llm(
 
                 headers = _kimi_default_headers(provider, oauth)
                 headers["Authorization"] = f"Bearer {resolved_api_key}"
-                if provider.custom_headers:
-                    headers.update(dict(provider.custom_headers))
 
                 chat_provider = Anthropic(
                     model=model.model,
@@ -153,6 +151,17 @@ def create_llm(
                     metadata={"user_id": session_id} if session_id else None,
                     default_headers=headers,
                 )
+
+                gen_kwargs: Anthropic.GenerationKwargs = {}  # type: ignore[name-defined]
+                if temperature := os.getenv("KIMI_MODEL_TEMPERATURE"):
+                    gen_kwargs["temperature"] = float(temperature)
+                if top_p := os.getenv("KIMI_MODEL_TOP_P"):
+                    gen_kwargs["top_p"] = float(top_p)
+                if max_tokens := os.getenv("KIMI_MODEL_MAX_TOKENS"):
+                    gen_kwargs["max_tokens"] = int(max_tokens)
+
+                if gen_kwargs:
+                    chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)
             else:
                 from kosong.chat_provider.kimi import Kimi
 

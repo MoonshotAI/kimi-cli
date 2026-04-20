@@ -1239,7 +1239,7 @@ class FlowRunner:
 
         flow = Flow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
         max_moves = total_runs
-        return FlowRunner(flow, max_moves=max_moves)
+        return FlowRunner(flow, max_moves=max_moves, commit_mode="merge")
 
     async def run(self, soul: KimiSoul, args: str) -> None:
         if args.strip():
