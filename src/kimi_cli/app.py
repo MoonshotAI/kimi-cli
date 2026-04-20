@@ -215,6 +215,7 @@ class KimiCLI:
             session,
             yolo,
             skills_dirs=skills_dirs,
+            mcp_configs=mcp_configs,
         )
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
@@ -236,6 +237,12 @@ class KimiCLI:
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
+        if resumed:
+            # When resuming a session, MCP tools must be loaded immediately so the
+            # agent can use them from the very first turn. Otherwise deferred loading
+            # may complete after the system prompt / context has already been fixed.
+            defer_mcp_loading = False
+
         if startup_progress is not None:
             startup_progress("Loading agent...")
 

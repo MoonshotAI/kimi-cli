@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -208,6 +208,8 @@ class Runtime:
     role: Literal["root", "subagent"] = "root"
     hook_engine: Any = None
     """HookEngine instance, set by KimiCLI after soul creation."""
+    mcp_configs: list[Any] = field(default_factory=list)
+    """MCP configs inherited from the parent agent (for subagent use)."""
 
     def __post_init__(self) -> None:
         if self.subagent_store is None:
@@ -228,6 +230,7 @@ class Runtime:
         session: Session,
         yolo: bool,
         skills_dirs: list[KaosPath] | None = None,
+        mcp_configs: list[Any] | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
@@ -344,6 +347,7 @@ class Runtime:
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
             role="root",
+            mcp_configs=mcp_configs or [],
         )
 
     def copy_for_subagent(
@@ -376,6 +380,7 @@ class Runtime:
             subagent_id=agent_id,
             subagent_type=subagent_type,
             role="subagent",
+            mcp_configs=self.mcp_configs,
         )
 
 
