@@ -1254,9 +1254,11 @@ class FlowRunner:
         soul._context = self._ephemeral_context  # type: ignore[reportPrivateUsage]
 
         toolset = soul._agent.toolset  # type: ignore[reportPrivateUsage]
-        had_tool = False
+        original_flow_decision_tool = None
         if isinstance(toolset, KimiToolset):
-            had_tool = toolset.remove("flow_decision")
+            original_flow_decision_tool = toolset.find("flow_decision")
+            if original_flow_decision_tool is not None:
+                toolset.remove("flow_decision")
             toolset.add(FlowDecisionTool())
 
         try:
@@ -1268,8 +1270,8 @@ class FlowRunner:
             await self._cleanup_ephemeral_context()
             if isinstance(toolset, KimiToolset):
                 toolset.remove("flow_decision")
-                if had_tool:
-                    toolset.add(FlowDecisionTool())
+                if original_flow_decision_tool is not None:
+                    toolset.add(original_flow_decision_tool)
 
     async def _setup_ephemeral_context(self, soul: KimiSoul) -> None:
         session_dir = Path(soul._runtime.session.dir)  # type: ignore[reportPrivateUsage]
@@ -1368,14 +1370,15 @@ class FlowRunner:
             total_steps += steps_used
 
             last_assistant = self._last_assistant_message(soul, since_index=history_before_node)
-            if node.kind != "decision" and last_assistant is not None:
+            if last_assistant is not None:
+                # Capture assistant output from every node so that decision-only
+                # self-loops (e.g. ralph_loop) still have fresh convergence input
+                # on each iteration. Tool calls are hashed separately, so stable
+                # CONTINUE text without new work still converges correctly.
                 last_task_message = last_assistant
 
             # Detect convergence on self-loop (CONTINUE)
             if node.kind == "decision" and next_id == current_id:
-                # Base convergence on the preceding task output rather than the
-                # decision turn itself, so stable CONTINUE rationales don't
-                # falsely trigger convergence while real work is changing.
                 report = detector.record_iteration(last_task_message)
                 if report.is_converged:
                     logger.warning(

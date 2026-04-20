@@ -43,6 +43,8 @@ class IterationFingerprint:
 
         tool_call_names: list[str] = []
         tool_output_hashes: list[str] = []
+        if assistant_message and assistant_message.tool_calls:
+            tool_call_names = [tc.function.name for tc in assistant_message.tool_calls]
         if tool_results:
             for tr in tool_results:
                 # Best-effort: we don't have direct access to the original tool call name
@@ -129,6 +131,19 @@ class ConvergenceDetector:
         scores: list[float] = []
 
         if a.assistant_text_hash == b.assistant_text_hash:
+            scores.append(1.0)
+        else:
+            scores.append(0.0)
+
+        if a.tool_call_names and b.tool_call_names:
+            matches = sum(
+                1
+                for x, y in zip(a.tool_call_names, b.tool_call_names, strict=False)
+                if x == y
+            )
+            max_len = max(len(a.tool_call_names), len(b.tool_call_names))
+            scores.append(matches / max_len if max_len > 0 else 0.0)
+        elif not a.tool_call_names and not b.tool_call_names:
             scores.append(1.0)
         else:
             scores.append(0.0)
