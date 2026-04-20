@@ -121,6 +121,7 @@ If a `providers` or `models` key contains `.`, you must use a quoted TOML key. O
 | `model` | `string` | Yes | Model identifier (model name used in API) |
 | `max_context_size` | `integer` | Yes | Maximum context length (in tokens) |
 | `capabilities` | `array` | No | Model capability list, see [Providers](./providers.md#model-capabilities) for details |
+| `display_name` | `string` | No | Human-readable model name shown in the welcome panel, prompt status bar, `/model` picker, and switch confirmations; falls back to `model` when unset. For OAuth-logged-in managed models, this field is auto-refreshed from the provider's `/models` endpoint at startup |
 
 Example:
 
