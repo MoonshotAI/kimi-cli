@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
@@ -131,27 +131,50 @@ def create_llm(
 
     match provider.type:
         case "kimi":
-            from kosong.chat_provider.kimi import Kimi
+            if provider.base_url and "agent-gw" in provider.base_url:
+                # Agent gateway requires Anthropic Messages API format
+                from kosong.contrib.chat_provider.anthropic import Anthropic
 
-            chat_provider = Kimi(
-                model=model.model,
-                base_url=provider.base_url,
-                api_key=resolved_api_key,
-                default_headers=_kimi_default_headers(provider, oauth),
-            )
+                # Anthropic SDK appends /v1/messages to base_url
+                anthropic_base_url = provider.base_url.rstrip("/")
+                if anthropic_base_url.endswith("/v1"):
+                    anthropic_base_url = anthropic_base_url[:-3]
 
-            gen_kwargs: Kimi.GenerationKwargs = {}
-            if session_id:
-                gen_kwargs["prompt_cache_key"] = session_id
-            if temperature := os.getenv("KIMI_MODEL_TEMPERATURE"):
-                gen_kwargs["temperature"] = float(temperature)
-            if top_p := os.getenv("KIMI_MODEL_TOP_P"):
-                gen_kwargs["top_p"] = float(top_p)
-            if max_tokens := os.getenv("KIMI_MODEL_MAX_TOKENS"):
-                gen_kwargs["max_tokens"] = int(max_tokens)
+                headers = _kimi_default_headers(provider, oauth)
+                headers["Authorization"] = f"Bearer {resolved_api_key}"
+                if provider.custom_headers:
+                    headers.update(dict(provider.custom_headers))
 
-            if gen_kwargs:
-                chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)
+                chat_provider = Anthropic(
+                    model=model.model,
+                    base_url=anthropic_base_url,
+                    api_key=resolved_api_key,
+                    default_max_tokens=50000,
+                    metadata={"user_id": session_id} if session_id else None,
+                    default_headers=headers,
+                )
+            else:
+                from kosong.chat_provider.kimi import Kimi
+
+                chat_provider = Kimi(
+                    model=model.model,
+                    base_url=provider.base_url,
+                    api_key=resolved_api_key,
+                    default_headers=_kimi_default_headers(provider, oauth),
+                )
+
+                gen_kwargs: Kimi.GenerationKwargs = {}
+                if session_id:
+                    gen_kwargs["prompt_cache_key"] = session_id
+                if temperature := os.getenv("KIMI_MODEL_TEMPERATURE"):
+                    gen_kwargs["temperature"] = float(temperature)
+                if top_p := os.getenv("KIMI_MODEL_TOP_P"):
+                    gen_kwargs["top_p"] = float(top_p)
+                if max_tokens := os.getenv("KIMI_MODEL_MAX_TOKENS"):
+                    gen_kwargs["max_tokens"] = int(max_tokens)
+
+                if gen_kwargs:
+                    chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)
         case "openai_legacy":
             from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
 
@@ -173,13 +196,20 @@ def create_llm(
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic
 
+            headers = dict(provider.custom_headers) if provider.custom_headers else {}
+            anthropic_base_url = provider.base_url.rstrip("/") if provider.base_url else None
+            if anthropic_base_url and "agent-gw" in anthropic_base_url:
+                headers["Authorization"] = f"Bearer {resolved_api_key}"
+                if anthropic_base_url.endswith("/v1"):
+                    anthropic_base_url = anthropic_base_url[:-3]
+
             chat_provider = Anthropic(
                 model=model.model,
-                base_url=provider.base_url,
+                base_url=anthropic_base_url,
                 api_key=resolved_api_key,
                 default_max_tokens=50000,
                 metadata={"user_id": session_id} if session_id else None,
-                default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
+                default_headers=headers or None,
             )
         case "google_genai" | "gemini":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI
@@ -253,9 +283,7 @@ def clone_llm_with_model_alias(
     llm: LLM | None,
     config: Config,
     model_alias: str | None,
-    *,
-    session_id: str,
-    oauth: OAuthManager | None,
+    **create_llm_kwargs: Any,
 ) -> LLM | None:
     if model_alias is None:
         return llm
@@ -272,8 +300,7 @@ def clone_llm_with_model_alias(
         provider,
         model,
         thinking=thinking,
-        session_id=session_id,
-        oauth=oauth,
+        **create_llm_kwargs,
     )
 
 

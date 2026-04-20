@@ -15,7 +15,7 @@ from rich.text import Text
 
 from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
 from kimi_cli.auth.platforms import get_platform_by_id, parse_managed_provider_key
-from kimi_cli.config import LLMModel
+from kimi_cli.config import LLMModel, LLMProvider
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.slash import registry
@@ -47,7 +47,10 @@ async def usage(app: Shell, args: str):
         console.print("[red]LLM provider configuration not found.[/red]")
         return
 
-    usage_url = _usage_url(app.soul.runtime.llm.model_config)
+    usage_url = _usage_url(
+        app.soul.runtime.llm.model_config,
+        app.soul.runtime.llm.provider_config,
+    )
     if usage_url is None:
         console.print("[yellow]Usage is available on Kimi Code platform only.[/yellow]")
         return
@@ -79,9 +82,12 @@ async def usage(app: Shell, args: str):
     console.print(_build_usage_panel(summary, limits))
 
 
-def _usage_url(model: LLMModel | None) -> str | None:
+def _usage_url(model: LLMModel | None, provider: LLMProvider | None = None) -> str | None:
     if model is None:
         return None
+    # Prefer provider's configured base_url
+    if provider and provider.base_url:
+        return f"{provider.base_url.rstrip('/')}/usages"
     platform_id = parse_managed_provider_key(model.provider)
     if platform_id is None:
         return None

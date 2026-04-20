@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import override
 
 from kaos.path import KaosPath
-from kosong.chat_provider.kimi import Kimi
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -118,12 +117,12 @@ class ReadMediaFile(CallableTool2[Params]):
                 image_size = _extract_image_size(data)
             case "video":
                 data = await path.read_bytes()
-                if (llm := self._runtime.llm) and isinstance(llm.chat_provider, Kimi):
-                    part = await llm.chat_provider.files.upload_video(
+                if (llm := self._runtime.llm) and hasattr(llm.chat_provider, "files"):  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+                    part = await llm.chat_provider.files.upload_video(  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue,reportUnknownVariableType]
                         data=data,
                         mime_type=file_type.mime_type,
                     )
-                    wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})
+                    wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})  # pyright: ignore[reportUnknownArgumentType]
                 else:
                     data_url = _to_data_url(file_type.mime_type, data)
                     part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))

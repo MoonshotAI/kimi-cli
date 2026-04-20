@@ -167,6 +167,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.utils",
             "kimi_cli.tools.file.write",
+            "kimi_cli.tools.flow_decision",
             "kimi_cli.tools.plan",
             "kimi_cli.tools.plan.enter",
             "kimi_cli.tools.plan.heroes",

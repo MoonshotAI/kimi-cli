@@ -18,6 +18,11 @@ from kimi_cli.auth.oauth import OAuthManager
 from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
+from kimi_cli.constant import (
+    BG_TASK_SHUTDOWN_TIMEOUT,
+    DESCRIPTION_MAX_LEN,
+    DESCRIPTION_TRUNCATE_LEN,
+)
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
@@ -375,8 +380,8 @@ class KimiCLI:
                 lines = [f"\u26a0  Killing {len(fresh_targets)} background tasks:\n"]
                 for view in fresh_targets:
                     description = view.spec.description or ""
-                    if len(description) > 60:
-                        description = description[:57] + "..."
+                    if len(description) > DESCRIPTION_MAX_LEN:
+                        description = description[:DESCRIPTION_TRUNCATE_LEN] + "..."
                     lines.append(f"  {view.spec.id}  {description}\n")
                 _write_original_stderr("".join(lines))
 
@@ -426,7 +431,7 @@ class KimiCLI:
         except Exception:
             logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
 
-    async def await_bg_tasks_shutdown(self, timeout: float = 2.0) -> None:
+    async def await_bg_tasks_shutdown(self, timeout: float = BG_TASK_SHUTDOWN_TIMEOUT) -> None:
         """Await completion of the model-refresh background task after cancellation."""
         task = self._bg_refresh_task
         if task is None or task.done():

@@ -615,12 +615,18 @@ class WireServer:
             ua_suffix = f" ({ua_suffix.strip()})"
 
         from kosong.chat_provider.kimi import Kimi
+        from kosong.contrib.chat_provider.anthropic import Anthropic
 
         if isinstance(llm.chat_provider, Kimi):
             kimi_client = llm.chat_provider.client
             headers = dict(kimi_client._custom_headers)  # pyright: ignore[reportPrivateUsage]
             headers["User-Agent"] = f"{USER_AGENT}{ua_suffix}"
             kimi_client._custom_headers = headers  # pyright: ignore[reportPrivateUsage]
+        elif isinstance(llm.chat_provider, Anthropic):
+            anthropic_client = llm.chat_provider._client  # pyright: ignore[reportPrivateUsage]
+            headers = dict(anthropic_client._custom_headers)  # pyright: ignore[reportPrivateUsage]
+            headers["User-Agent"] = f"{USER_AGENT}{ua_suffix}"
+            anthropic_client._custom_headers = headers  # pyright: ignore[reportPrivateUsage]
 
     async def _handle_prompt(
         self, msg: JSONRPCPromptMessage

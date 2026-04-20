@@ -444,7 +444,7 @@ async def feedback(app: Shell, args: str):
         return
 
     api_key = soul.runtime.oauth.resolve_api_key(provider.api_key, provider.oauth)
-    feedback_url = f"{kimi_platform.base_url.rstrip('/')}/feedback"
+    feedback_url = f"{provider.base_url.rstrip('/')}/feedback"
 
     payload = {
         "session_id": soul.runtime.session.id,

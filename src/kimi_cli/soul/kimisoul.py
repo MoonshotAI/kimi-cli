@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
@@ -54,6 +55,7 @@ from kimi_cli.soul.compaction import (
     should_auto_compact,
 )
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.convergence import ConvergenceDetector
 from kimi_cli.soul.dynamic_injection import (
     DynamicInjection,
     DynamicInjectionProvider,
@@ -65,6 +67,7 @@ from kimi_cli.soul.message import check_message, system, system_reminder, tool_r
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
+from kimi_cli.tools.flow_decision import FlowDecisionTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
@@ -1180,10 +1183,20 @@ class FlowRunner:
         *,
         name: str | None = None,
         max_moves: int = DEFAULT_MAX_FLOW_MOVES,
+        commit_mode: str = "discard",
     ) -> None:
         self._flow = flow
         self._name = name
         self._max_moves = max_moves
+        self._commit_mode = commit_mode
+        self._cancelled = False
+        self._paused = False
+        self._ephemeral_context: Context | None = None
+        self._tmp_file: Path | None = None
+        self._parent_history_len: int = 0
+
+    def cancel(self) -> None:
+        self._cancelled = True
 
     @staticmethod
     def ralph_loop(
@@ -1206,10 +1219,12 @@ class FlowRunner:
         nodes["R2"] = FlowNode(
             id="R2",
             label=(
-                f"{prompt_text}. (You are running in an automated loop where the same "
-                "prompt is fed repeatedly. Only choose STOP when the task is fully complete. "
-                "Including it will stop further iterations. If you are not 100% sure, "
-                "choose CONTINUE.)"
+                f"{prompt_text}\n\n"
+                "[Flow control] This task is running in an automated iteration loop. "
+                "You have three options:\n"
+                "- CONTINUE: Keep working and refining.\n"
+                "- STOP: Finish and return results to the user.\n"
+                "- PAUSE: Suspend the loop and allow the user to interject."
             ).strip(),
             kind="decision",
         )
@@ -1220,6 +1235,7 @@ class FlowRunner:
         outgoing["R1"].append(FlowEdge(src="R1", dst="R2", label=None))
         outgoing["R2"].append(FlowEdge(src="R2", dst="R2", label="CONTINUE"))
         outgoing["R2"].append(FlowEdge(src="R2", dst="END", label="STOP"))
+        outgoing["R2"].append(FlowEdge(src="R2", dst="END", label="PAUSE"))
 
         flow = Flow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
         max_moves = total_runs
@@ -1231,10 +1247,76 @@ class FlowRunner:
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
 
+        await self._setup_ephemeral_context(soul)
+        assert self._ephemeral_context is not None
+        old_context = soul._context  # type: ignore[reportPrivateUsage]
+        soul._context = self._ephemeral_context  # type: ignore[reportPrivateUsage]
+
+        toolset = soul._agent.toolset  # type: ignore[reportPrivateUsage]
+        had_tool = False
+        if isinstance(toolset, KimiToolset):
+            had_tool = toolset.remove("flow_decision")
+            toolset.add(FlowDecisionTool())
+
+        try:
+            await self._run_nodes(soul)
+        finally:
+            soul._context = old_context  # type: ignore[reportPrivateUsage]
+            if self._commit_mode == "merge" and not self._paused:
+                await self._merge_ephemeral_to_main(soul)
+            await self._cleanup_ephemeral_context()
+            if isinstance(toolset, KimiToolset):
+                toolset.remove("flow_decision")
+                if had_tool:
+                    toolset.add(FlowDecisionTool())
+
+    async def _setup_ephemeral_context(self, soul: KimiSoul) -> None:
+        session_dir = Path(soul._runtime.session.dir)  # type: ignore[reportPrivateUsage]
+        self._tmp_file = session_dir / f"flow_{self._name or 'anonymous'}_context.jsonl"
+
+        main_file = soul._context.file_backend  # type: ignore[reportPrivateUsage]
+        if main_file.exists() and main_file.stat().st_size > 0:
+            import shutil
+
+            shutil.copy(main_file, self._tmp_file)
+        else:
+            self._tmp_file.touch()
+
+        self._ephemeral_context = Context(self._tmp_file, default_source="flow")
+        await self._ephemeral_context.restore()
+        self._parent_history_len = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+
+    async def _merge_ephemeral_to_main(self, soul: KimiSoul) -> None:
+        if self._ephemeral_context is None:
+            return
+        for i in range(self._parent_history_len, len(self._ephemeral_context.history)):
+            message = self._ephemeral_context.history[i]
+            prov = self._ephemeral_context.get_provenance(i)
+            source = prov.source if prov else "flow"
+            ts = prov.timestamp if prov else None
+            await soul._context.append_message(  # type: ignore[reportPrivateUsage]
+                message, source=source, timestamp=ts
+            )
+
+    async def _cleanup_ephemeral_context(self) -> None:
+        if self._paused:
+            # Keep temp file around for resume
+            return
+        if self._tmp_file and self._tmp_file.exists():
+            self._tmp_file.unlink(missing_ok=True)
+        self._ephemeral_context = None
+        self._tmp_file = None
+
+    async def _run_nodes(self, soul: KimiSoul) -> None:
+        detector = ConvergenceDetector()
         current_id = self._flow.begin_id
         moves = 0
         total_steps = 0
         while True:
+            if self._cancelled:
+                logger.info("Agent flow cancelled.")
+                return
+
             node = self._flow.nodes[current_id]
             edges = self._flow.outgoing.get(current_id, [])
 
@@ -1254,59 +1336,99 @@ class FlowRunner:
 
             if moves >= self._max_moves:
                 raise MaxStepsReached(total_steps)
-            next_id, steps_used = await self._execute_flow_node(soul, node, edges)
+            next_id, steps_used, final_message = await self._execute_flow_node(soul, node, edges)
             total_steps += steps_used
+
+            # Detect convergence on self-loop (CONTINUE)
+            if node.kind == "decision" and next_id == current_id:
+                report = detector.record_iteration(final_message)
+                if report.is_converged:
+                    logger.warning(
+                        "Auto-stopping flow after {moves} moves due to convergence detection. "
+                        "Similarity: {similarity:.2f}",
+                        moves=moves,
+                        similarity=report.similarity_score,
+                    )
+                    return
+
             if next_id is None:
                 return
             moves += 1
             current_id = next_id
+
+    def _extract_flow_decision(self, soul: KimiSoul, *, since_index: int) -> str | None:
+        """Scan ephemeral context history for a flow_decision tool call.
+
+        We read directly from context history instead of using a ContextVar because
+        KimiToolset.handle() wraps tool execution in asyncio.create_task(), and
+        ContextVar changes in a child task do not propagate back to the parent.
+
+        Args:
+            since_index: Only scan messages appended after this history index.
+                This avoids picking up stale decisions from pre-flow context.
+        """
+        history = soul._context.history  # type: ignore[reportPrivateUsage]
+        for msg in reversed(history[since_index:]):
+            if msg.role == "assistant" and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    if tc.function.name == "flow_decision":
+                        try:
+                            args = json.loads(tc.function.arguments or "{}")
+                            return args.get("choice")
+                        except json.JSONDecodeError:
+                            pass
+        return None
 
     async def _execute_flow_node(
         self,
         soul: KimiSoul,
         node: FlowNode,
         edges: list[FlowEdge],
-    ) -> tuple[str | None, int]:
+    ) -> tuple[str | None, int, Message | None]:
         if not edges:
             logger.error(
                 'Agent flow node "{node_id}" has no outgoing edges; stopping.',
                 node_id=node.id,
             )
-            return None, 0
+            return None, 0, None
 
         base_prompt = self._build_flow_prompt(node, edges)
         prompt = base_prompt
         steps_used = 0
-        while True:
-            result = await self._flow_turn(soul, prompt)
-            steps_used += result.step_count
-            if result.stop_reason == "tool_rejected":
-                logger.error("Agent flow stopped after tool rejection.")
-                return None, steps_used
 
-            if node.kind != "decision":
-                return edges[0].dst, steps_used
+        if self._cancelled:
+            logger.info("Agent flow cancelled during node execution.")
+            return None, steps_used, None
 
-            choice = (
-                parse_choice(result.final_message.extract_text(" "))
-                if result.final_message
-                else None
-            )
-            next_id = self._match_flow_edge(edges, choice)
-            if next_id is not None:
-                return next_id, steps_used
+        history_before_turn = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+        result = await self._flow_turn(soul, prompt)
+        steps_used += result.step_count
+        if result.stop_reason == "tool_rejected":
+            logger.error("Agent flow stopped after tool rejection.")
+            return None, steps_used, result.final_message
 
-            options = ", ".join(edge.label or "" for edge in edges)
-            logger.warning(
-                "Agent flow invalid choice. Got: {choice}. Available: {options}.",
-                choice=choice or "<missing>",
-                options=options,
-            )
-            prompt = (
-                f"{base_prompt}\n\n"
-                "Your last response did not include a valid choice. "
-                "Reply with one of the choices using <choice>...</choice>."
-            )
+        if node.kind != "decision":
+            return edges[0].dst, steps_used, result.final_message
+
+        choice = self._extract_flow_decision(soul, since_index=history_before_turn)
+        if choice is None and result.final_message:
+            choice = parse_choice(result.final_message.extract_text(" "))
+        if choice == "PAUSE":
+            self._paused = True
+            logger.info("Agent flow paused at node {node_id}", node_id=node.id)
+            return None, steps_used, result.final_message
+        next_id = self._match_flow_edge(edges, choice)
+        if next_id is not None:
+            return next_id, steps_used, result.final_message
+
+        # No valid choice — default to STOP rather than retrying and spamming
+        # the user with repeated [Flow control] prompts.
+        logger.warning(
+            "Agent flow invalid choice: {choice}. Available: {options}. Defaulting to STOP.",
+            choice=choice or "<missing>",
+            options=", ".join(edge.label or "" for edge in edges),
+        )
+        return None, steps_used, result.final_message
 
     @staticmethod
     def _build_flow_prompt(node: FlowNode, edges: list[FlowEdge]) -> str | list[ContentPart]:
@@ -1324,7 +1446,9 @@ class FlowRunner:
             "Available branches:",
             *(f"- {choice}" for choice in choices),
             "",
-            "Reply with a choice using <choice>...</choice>.",
+            "You MUST use the flow_decision tool to choose your next branch. "
+            "Call the tool with your chosen branch and a brief reasoning. "
+            "Do not reply with plain text — use the tool.",
         ]
         return "\n".join(lines)
 
@@ -1342,7 +1466,9 @@ class FlowRunner:
         soul: KimiSoul,
         prompt: str | list[ContentPart],
     ) -> TurnOutcome:
-        wire_send(TurnBegin(user_input=prompt))
-        res = await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
-        wire_send(TurnEnd())
-        return res
+        """Execute a single flow step without emitting TurnBegin/TurnEnd.
+
+        The flow's iterations are internal to a single user turn. The outer
+        soul.run() already sends TurnBegin/TurnEnd for the overall turn.
+        """
+        return await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]

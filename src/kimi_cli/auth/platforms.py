@@ -154,7 +154,7 @@ async def refresh_managed_models(config: Config) -> bool:
             )
             continue
         try:
-            models = await list_models(platform, api_key)
+            models = await list_models(platform, api_key, provider_base_url=provider.base_url)
         except Exception as exc:
             logger.error(
                 "Failed to refresh models for {platform}: {error}",
@@ -178,11 +178,13 @@ async def refresh_managed_models(config: Config) -> bool:
     return changed
 
 
-async def list_models(platform: Platform, api_key: str) -> list[ModelInfo]:
+async def list_models(
+    platform: Platform, api_key: str, *, provider_base_url: str | None = None
+) -> list[ModelInfo]:
     async with new_client_session() as session:
         models = await _list_models(
             session,
-            base_url=platform.base_url,
+            base_url=provider_base_url or platform.base_url,
             api_key=api_key,
         )
     if platform.allowed_prefixes is None:

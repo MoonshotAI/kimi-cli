@@ -542,9 +542,14 @@ def _apply_kimi_code_config(
         raise OAuthError("Kimi Code platform not found.")
 
     provider_key = managed_provider_key(platform.id)
+    existing_provider = config.providers.get(provider_key)
+    # Preserve custom base_url (e.g. agent gateway) during login
+    base_url = platform.base_url
+    if existing_provider and existing_provider.base_url:
+        base_url = existing_provider.base_url
     config.providers[provider_key] = LLMProvider(
         type="kimi",
-        base_url=platform.base_url,
+        base_url=base_url,
         api_key=SecretStr(""),
         oauth=oauth_ref,
     )
@@ -982,9 +987,18 @@ class OAuthManager:
         if runtime.llm.model_config.provider != provider_key:
             return
         from kosong.chat_provider.kimi import Kimi
+        from kosong.contrib.chat_provider.anthropic import Anthropic
 
-        assert isinstance(runtime.llm.chat_provider, Kimi), "Expected Kimi chat provider"
-        runtime.llm.chat_provider.client.api_key = access_token
+        chat_provider = runtime.llm.chat_provider
+        if isinstance(chat_provider, Kimi):
+            chat_provider.client.api_key = access_token
+        elif isinstance(chat_provider, Anthropic):
+            chat_provider._client.api_key = access_token  # pyright: ignore[reportPrivateUsage]
+        else:
+            logger.warning(
+                "Cannot apply access token: unknown chat provider type {type}",
+                type=type(chat_provider).__name__,
+            )
 
 
 if __name__ == "__main__":

@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from time import time
 from typing import Any, cast
 
 import aiofiles
@@ -17,8 +19,16 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import next_available_rotation
 
 
+@dataclass(slots=True)
+class ProvenanceEntry:
+    """Metadata about where a message came from and when it was created."""
+
+    source: str = "user"
+    timestamp: float | None = None
+
+
 class Context:
-    def __init__(self, file_backend: Path):
+    def __init__(self, file_backend: Path, *, default_source: str = "user"):
         self._file_backend = file_backend
         self._history: list[Message] = []
         self._token_count: int = 0
@@ -26,6 +36,8 @@ class Context:
         self._next_checkpoint_id: int = 0
         """The ID of the next checkpoint, starting from 0, incremented after each checkpoint."""
         self._system_prompt: str | None = None
+        self._provenance: dict[int, ProvenanceEntry] = {}
+        self._default_source = default_source
 
     async def restore(self) -> bool:
         logger.debug("Restoring context from file: {file_backend}", file_backend=self._file_backend)
@@ -87,6 +99,9 @@ class Context:
     @property
     def file_backend(self) -> Path:
         return self._file_backend
+
+    def get_provenance(self, index: int) -> ProvenanceEntry | None:
+        return self._provenance.get(index)
 
     async def write_system_prompt(self, prompt: str) -> None:
         """Write the system prompt as the first record of the context file.
@@ -166,6 +181,7 @@ class Context:
         self._token_count = 0
         self._next_checkpoint_id = 0
         self._system_prompt = None
+        self._provenance.clear()
         messages_after_last_usage: list[Message] = []
         async with (
             aiofiles.open(rotated_file_path, encoding="utf-8", errors="replace") as old_file,
@@ -228,16 +244,32 @@ class Context:
         self._pending_token_estimate = 0
         self._next_checkpoint_id = 0
         self._system_prompt = None
+        self._provenance.clear()
 
-    async def append_message(self, message: Message | Sequence[Message]):
+    async def append_message(
+        self,
+        message: Message | Sequence[Message],
+        *,
+        source: str | None = None,
+        timestamp: float | None = None,
+    ):
         logger.debug("Appending message(s) to context: {message}", message=message)
         messages = [message] if isinstance(message, Message) else message
+        start_index = len(self._history)
         self._history.extend(messages)
         self._pending_token_estimate += estimate_text_tokens(messages)
 
+        actual_source = source if source is not None else self._default_source
+        ts = timestamp if timestamp is not None else time()
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
-            for message in messages:
-                await f.write(message.model_dump_json(exclude_none=True) + "\n")
+            for i, msg in enumerate(messages):
+                record = json.loads(msg.model_dump_json(exclude_none=True))
+                record["_source"] = actual_source
+                record["_ts"] = ts
+                await f.write(json.dumps(record) + "\n")
+                self._provenance[start_index + i] = ProvenanceEntry(
+                    source=actual_source, timestamp=ts
+                )
 
     async def update_token_count(self, token_count: int):
         logger.debug("Updating token count in context: {token_count}", token_count=token_count)
@@ -324,6 +356,8 @@ class Context:
                 return False
             self._next_checkpoint_id = checkpoint_id + 1
             return True
+        source = line_json.pop("_source", "user")
+        timestamp = line_json.pop("_ts", None)
         try:
             message = Message.model_validate(line_json)
         except ValidationError as exc:
@@ -336,4 +370,5 @@ class Context:
             return False
         history.append(message)
         messages_after_last_usage.append(message)
+        self._provenance[len(history) - 1] = ProvenanceEntry(source=source, timestamp=timestamp)
         return True

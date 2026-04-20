@@ -116,6 +116,14 @@ class KimiToolset:
         """Restore a hidden tool to the LLM tool list."""
         self._hidden_tools.discard(tool_name)
 
+    def remove(self, tool_name: str) -> bool:
+        """Remove a tool from the toolset. Returns True if the tool existed."""
+        if tool_name in self._tool_dict:
+            del self._tool_dict[tool_name]
+            self._hidden_tools.discard(tool_name)
+            return True
+        return False
+
     @overload
     def find(self, tool_name_or_type: str) -> ToolType | None: ...
     @overload
