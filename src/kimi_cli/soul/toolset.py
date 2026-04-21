@@ -196,7 +196,9 @@ class KimiToolset:
                                 # hookSpecificOutput.updatedInput (Claude Code / rtk format)
                                 updated = parsed.get("updatedInput")
                                 if updated is None:
-                                    updated = parsed.get("hookSpecificOutput", {}).get("updatedInput")
+                                    hook_specific_output = parsed.get("hookSpecificOutput")
+                                    if isinstance(hook_specific_output, dict):
+                                        updated = hook_specific_output.get("updatedInput")
                                 if isinstance(updated, dict):
                                     arguments.update(updated)
                                     tool_input_dict = arguments

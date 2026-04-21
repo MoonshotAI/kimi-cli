@@ -148,7 +148,7 @@ print_wait_ceiling_s = 1800  # 将上限设为 30 分钟
 keep_alive_on_exit = true
 ```
 
-::: info 注意
+::: info 说明
 退出时，CLI 会在 stderr 上列出每个正在被终止的后台任务（ID + 描述），并在配置的宽限期后报告仍未到达终态的任务。
 :::
 
