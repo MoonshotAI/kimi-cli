@@ -191,6 +191,64 @@ class SuccessProvider:
         return self
 
 
+class SSLErrorProvider:
+    """A provider that raises ssl.SSLError (not in _handle_prompt's catch list)."""
+
+    name = "ssl-error"
+
+    @property
+    def model_name(self) -> str:
+        return "ssl-error"
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> None:
+        import ssl
+
+        raise ssl.SSLError(1, "[SSL] record layer failure (_ssl.c:2657)")
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        return False
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return self
+
+
+class ConnectionErrorProvider:
+    """A provider that raises ConnectionError."""
+
+    name = "conn-error"
+
+    @property
+    def model_name(self) -> str:
+        return "conn-error"
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> None:
+        raise ConnectionError("Connection reset by peer")
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        return False
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return self
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -457,3 +515,46 @@ async def test_acp_session_returns_internal_error_for_401_without_oauth() -> Non
         await session.prompt([acp.schema.TextContentBlock(type="text", text="hello")])
 
     assert exc_info.value.code != -32000  # NOT auth_required
+
+
+# ---------------------------------------------------------------------------
+# Tests: _handle_prompt fallback for uncaught exceptions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wire_server_catches_ssl_error(runtime: Runtime, tmp_path: Path) -> None:
+    """SSLError should be caught by the fallback except clause and return
+    INTERNAL_ERROR instead of escaping and leaving the session busy forever.
+    """
+    soul = _make_soul(runtime, SSLErrorProvider(), tmp_path)
+    server = WireServer(soul)
+
+    response = await server._handle_prompt(
+        JSONRPCPromptMessage(
+            id="1",
+            params=JSONRPCPromptMessage.Params(user_input="hello"),
+        )
+    )
+
+    assert isinstance(response, JSONRPCErrorResponse)
+    assert response.error.code == ErrorCodes.INTERNAL_ERROR
+    assert "SSLError" in response.error.message
+
+
+@pytest.mark.asyncio
+async def test_wire_server_catches_connection_error(runtime: Runtime, tmp_path: Path) -> None:
+    """ConnectionError should be caught by the fallback except clause."""
+    soul = _make_soul(runtime, ConnectionErrorProvider(), tmp_path)
+    server = WireServer(soul)
+
+    response = await server._handle_prompt(
+        JSONRPCPromptMessage(
+            id="1",
+            params=JSONRPCPromptMessage.Params(user_input="hello"),
+        )
+    )
+
+    assert isinstance(response, JSONRPCErrorResponse)
+    assert response.error.code == ErrorCodes.INTERNAL_ERROR
+    assert "ConnectionError" in response.error.message

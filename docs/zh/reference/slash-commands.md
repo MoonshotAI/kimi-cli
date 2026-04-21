@@ -314,6 +314,10 @@ YOLO 模式会跳过所有确认，请确保你了解可能的风险。
 
 切换到 Web UI。执行后 Kimi Code CLI 会启动 Web UI 服务器并在浏览器中打开当前会话，你可以在 Web UI 中继续对话。详见 [Web UI](./kimi-web.md)。
 
+### `/vis`
+
+切换到 Agent Tracing Visualizer。执行后 Kimi Code CLI 会启动可视化面板服务器并在浏览器中打开当前会话的追踪视图，你可以在其中检查 Wire 事件时间线、上下文消息和用量统计。详见 [Agent Tracing Visualizer](./kimi-vis.md)。
+
 ## 命令补全
 
 在输入框中输入 `/` 后，会自动显示可用命令列表。继续输入可过滤命令，支持模糊匹配，按 Enter 选择。

@@ -209,6 +209,9 @@ def get_device_id() -> str:
     device_id = uuid.uuid4().hex
     path.write_text(device_id, encoding="utf-8")
     _ensure_private_file(path)
+    from kimi_cli.telemetry import track
+
+    track("first_launch")
     return device_id
 
 
@@ -560,6 +563,7 @@ def _apply_kimi_code_config(
             model=model_info.id,
             max_context_size=model_info.context_length,
             capabilities=capabilities,
+            display_name=model_info.display_name,
         )
 
     config.default_model = managed_model_key(platform.id, selected_model.id)
@@ -782,6 +786,10 @@ class OAuthManager:
             return
         self._access_tokens[ref.key] = token.access_token
 
+    def get_cached_access_token(self, key: str) -> str | None:
+        """Get a cached access token by key, or None if not available."""
+        return self._access_tokens.get(key)
+
     def common_headers(self) -> dict[str, str]:
         return _common_headers()
 
@@ -960,15 +968,24 @@ class OAuthManager:
                         "OAuth credentials rejected: {error}",
                         error=exc,
                     )
+                    from kimi_cli.telemetry import track
+
+                    track("oauth_refresh", success=False, reason="unauthorized")
                     return
                 except Exception as exc:
                     if force:
                         raise
                     logger.warning("Failed to refresh OAuth token: {error}", error=exc)
+                    from kimi_cli.telemetry import track
+
+                    track("oauth_refresh", success=False, reason="network_or_other")
                     return
                 save_tokens(ref, refreshed)
                 self._cache_access_token(ref, refreshed)
                 self._apply_access_token(runtime, refreshed.access_token)
+                from kimi_cli.telemetry import track
+
+                track("oauth_refresh", success=True)
             finally:
                 xlock.release()
 

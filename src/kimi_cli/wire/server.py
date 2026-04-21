@@ -601,6 +601,11 @@ class WireServer:
             )
 
     def _apply_wire_client_info(self, client: ClientInfo | None) -> None:
+        if client is not None:
+            from kimi_cli.telemetry import set_client_info
+
+            set_client_info(name=client.name, version=client.version)
+
         if not isinstance(self._soul, KimiSoul):
             return
         llm = self._soul.runtime.llm
@@ -689,6 +694,15 @@ class WireServer:
             return JSONRPCSuccessResponse(
                 id=msg.id,
                 result={"status": Statuses.CANCELLED},
+            )
+        except Exception as e:
+            logger.exception("Unexpected error in prompt handler")
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INTERNAL_ERROR,
+                    message=f"{type(e).__name__}: {e}",
+                ),
             )
         finally:
             # Clean up any remaining pending requests from this turn.

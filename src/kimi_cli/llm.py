@@ -46,11 +46,13 @@ class LLM:
         return self.chat_provider.model_name
 
 
-def model_display_name(model_name: str | None) -> str:
+def model_display_name(model_name: str | None, model: LLMModel | None = None) -> str:
+    if model is not None and model.display_name:
+        return model.display_name
     if not model_name:
         return ""
     if model_name in ("kimi-for-coding", "kimi-code"):
-        return f"{model_name} (powered by kimi-k2.5)"
+        return "kimi-for-coding"
     return model_name
 
 

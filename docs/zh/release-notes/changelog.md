@@ -4,6 +4,44 @@
 
 ## 未发布
 
+## 1.37.0 (2026-04-20)
+
+- Print：退出前等待后台任务完成——在单次 `--print` 模式下，进程现在会等待仍在运行的后台 Agent 完成并让模型处理它们的结果，而不是直接退出并杀死它们。等待时长上限为 `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)`（默认上限 1 小时）；超时后杀死任务并通过 `<system-reminder>` 给模型最后一轮机会向用户总结后再退出
+- Shell/Print：退出时 CLI 会在 stderr 列出每个即将被 kill 的后台任务（id + 描述），等待配置的 grace period 后再汇报未达到终态的任务（区分为"still terminating"即 worker 正在退出 vs "stop request failed"即真正泄漏的任务）；`keep_alive_on_exit=true` 仍会完全跳过此路径
+- Auth：OAuth 登录用户启动时自动刷新托管模型列表——Shell 启动时会以后台任务形式请求 provider 的 `/models` 接口拉取最新模型，新上线的模型无需重新登录即可使用；失败时静默降级、不会阻塞启动；使用 `--config` 指定自定义配置文件的会话保持原有行为
+- Shell：托管模型现在统一展示 provider 返回的 `display_name`（如 `k2.6-code-preview`），覆盖欢迎界面、提示框状态栏、`/model` 选单和 `/model` 切换确认消息；若后端未返回 `display_name`，则回落到内部模型 ID
+
+## 1.36.0 (2026-04-17)
+
+- Anthropic：修复 Claude Opus 4.7 返回 `invalid_request_error` 的问题——Opus 4.7 拒绝旧的 `{type: "enabled", budget_tokens: N}` 思考配置，现在会正确路由到 adaptive thinking，并显式设置 `display: "summarized"`，使思考内容仍能通过流返回（Opus 4.7 默默将该默认值改为 `"omitted"`）；Bedrock / Vertex 命名变体（如 `aws/claude-opus-4-7`、`anthropic.claude-opus-4-7-v1:0`）以及 `claude-mythos-preview` 也会被正确识别；未来的 Claude ≥ 4.6 版本会通过版本号外推自动识别，无需改代码
+- Web：修复 Web 界面中 Markdown 渲染的间距问题——恢复段落、列表、代码块、引用块和标题之间的合理垂直间距，不再将所有外边距压缩为零
+- Shell：修复活跃 turn 期间加载指示器缺失的问题——月亮 spinner 现在作为兜底指示器，在模型仍在工作但没有其他指示器可见时自动显示，覆盖了工具调用完成后、turn 开始到首个 step 之间、以及 provider 发送空 thinking block 时的空白期
+- Core：将 `max_steps_per_turn` 默认值从 100 提高到 500，开箱即可支持更长的无中断 agent 运行
+- Web：修复代码块右上角复制、下载和预览按钮点击无响应的问题
+
+## 1.35.0 (2026-04-15)
+
+- Shell：将 `show_thinking_stream` 默认值改为 `true`，全新安装开箱即可看到流式思考预览；如需保留 1.32 的紧凑指示器，可在配置中将其设为 `false`
+- Web：修复流式 watchdog 在待处理审批请求或问题时误触发重连的问题——当用户正在处理审批请求或回答问题时，45 秒无消息 watchdog 不再强制重连，避免交互被打断
+- Web：修复会话流错误后的恢复问题——当会话进程退出或 read loop 发生异常时，现在在广播错误前先清除过期的 in-flight prompt ID，使前端能够发送新消息而非收到 "Session is busy"；活动状态指示器现在也会显示来自流的具体错误信息
+- Core：修复 Wire 服务端 prompt 处理未捕获异常导致会话永远卡在忙碌状态的问题——SSL 错误、连接错误及其他意外失败现在会被 fallback 处理器捕获并返回 INTERNAL_ERROR，避免异常逃逸导致会话无限挂起
+
+## 1.34.0 (2026-04-14)
+
+- Core：修复 `TaskStop` 取消卡住的后台 agent 时 CLI 崩溃的问题——终端不再打印 `Unhandled exception in event loop / Exception None` 并冻结；已取消的 task 现在会保留在管理器的 live-tasks 字典中，直到 runner 完成清理，避免 Python GC 在 task 仍处 pending 时回收它
+- Shell：修复包含 tab 的行内 Diff 高亮偏移错位的问题——原始代码的 Diff 偏移量现在通过 expandtabs 列跟踪映射到渲染后的位置，确保 tab 展开后高亮区间落在正确位置
+- Shell：新增 `show_thinking_stream` 配置项，可恢复旧版的流式思考预览体验——设为 `true` 后，Live 区域会显示经典的 `Thinking...` spinner 以及 6 行原始思考文本的滚动预览，思考块结束时把完整的思考 markdown 写入历史记录；默认为 `false`，保持 1.32 版本引入的紧凑指示器
+
+## 1.33.0 (2026-04-13)
+
+- Shell：将托管模型显示统一为 "Kimi for Code"，移除欢迎界面和 `/login` 提示中硬编码的 `kimi-k2.5` 版本号
+
+## 1.32.0 (2026-04-13)
+
+- Core：将 MCP 工具输出截断至 10 万字符以防止上下文溢出——所有内容类型（文本和内联媒体如 image/audio/video data URL）共享同一字符预算；Playwright 等返回完整 DOM（500KB+）或大型 base64 截图的工具现在会被截断并附加提示信息；超出预算的媒体部分会被丢弃；不支持的 MCP 内容类型会被优雅处理而非导致当前轮次崩溃
+- CLI：修复 PyInstaller 二进制包缺少延迟加载 CLI 子命令的问题——`kimi info`、`kimi export`、`kimi mcp`、`kimi plugin`、`kimi vis` 和 `kimi web` 现在在独立二进制分发中可正常使用
+- Shell：将思考指示器精简为紧凑的单行布局——显示 `Thinking` 标签、动画点、耗时、token 数和实时的 tokens/秒脉冲；结束后在历史中留下 `Thought for Xs · N tokens` 痕迹
+
 ## 1.31.0 (2026-04-10)
 
 - Core：限制 `list_directory` 输出为深度受限的树形结构，防止大目录导致 token 超限——将无上限的扁平列表替换为 2 级树（根级最多 30 条、每个子目录最多 10 条），按目录优先的字母序排列，截断处显示 `"... and N more"` 提示以引导模型进一步探索（修复 #1809）

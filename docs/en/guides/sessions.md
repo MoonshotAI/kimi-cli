@@ -46,6 +46,16 @@ Enter `/sessions` (or `/resume`) to view all sessions in the current working dir
 
 The list shows each session's title and last update time, helping you find the conversation you want to continue. Press `Ctrl-A` to toggle between showing sessions for the current directory only or across all directories, making it easy to find sessions across projects. Use `/title <text>` to set a custom title for the session, making it easier to find later.
 
+**Resume hint on exit**
+
+When a session exits — whether through normal exit, `Ctrl-C` interruption, `/undo`, `/fork`, `/sessions` switch, or other scenarios — Kimi Code CLI automatically prints a resume command hint:
+
+```
+To resume this session: kimi -r <session-id>
+```
+
+You can copy this command directly and run it in your terminal next time to quickly resume the session. Empty sessions do not show this hint.
+
 **Startup replay**
 
 When you continue an existing session, Kimi Code CLI will replay the previous conversation history so you can quickly understand the context. During replay, previous messages and AI responses will be displayed.
