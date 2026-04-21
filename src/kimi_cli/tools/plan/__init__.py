@@ -88,20 +88,20 @@ class ExitPlanMode(CallableTool2[Params]):
         self._toggle_callback: Callable[[], Awaitable[bool]] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
         self._plan_mode_checker: Callable[[], bool] | None = None
-        self._is_yolo: Callable[[], bool] | None = None
+        self._can_request_user_feedback: Callable[[], bool] | None = None
 
     def bind(
         self,
         toggle_callback: Callable[[], Awaitable[bool]],
         plan_file_path_getter: Callable[[], Path | None],
         plan_mode_checker: Callable[[], bool],
-        is_yolo: Callable[[], bool] | None = None,
+        can_request_user_feedback: Callable[[], bool] | None = None,
     ) -> None:
         """Late-bind soul callbacks after KimiSoul is constructed."""
         self._toggle_callback = toggle_callback
         self._plan_file_path_getter = plan_file_path_getter
         self._plan_mode_checker = plan_mode_checker
-        self._is_yolo = is_yolo
+        self._can_request_user_feedback = can_request_user_feedback
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -131,8 +131,8 @@ class ExitPlanMode(CallableTool2[Params]):
                 brief="No plan file",
             )
 
-        # In yolo mode, auto-approve the plan
-        if self._is_yolo and self._is_yolo():
+        # In non-interactive mode, auto-approve the plan
+        if self._can_request_user_feedback and not self._can_request_user_feedback():
             await self._toggle_callback()
             return ToolReturnValue(
                 is_error=False,

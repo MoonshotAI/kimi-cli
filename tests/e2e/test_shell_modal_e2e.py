@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from tests.e2e.shell_pty_helpers import (
+    find_session_dir,
     find_tool_result_output,
     make_home_dir,
     make_work_dir,
@@ -47,6 +48,99 @@ def _build_tool_call_line(tool_call_id: str, name: str, arguments: dict[str, obj
 # ---------------------------------------------------------------------------
 # Approval lifecycle tests
 # ---------------------------------------------------------------------------
+
+
+def test_yolo_enter_plan_still_requests_review(tmp_path: Path) -> None:
+    scripts = [
+        "\n".join(
+            [
+                "text: Need a plan before proceeding.",
+                _build_tool_call_line("tc-enter-plan", "EnterPlanMode", {}),
+            ]
+        ),
+        "text: Enter plan review complete.",
+    ]
+    config_path = write_scripted_config(tmp_path, scripts)
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        turn_mark = shell.mark()
+        shell.send_line("use plan mode")
+        shell.read_until_contains("Enter plan mode?", after=turn_mark, timeout=15.0)
+        time.sleep(0.3)
+        shell.send_key("enter")
+        shell.read_until_contains("Enter plan review complete.", after=turn_mark, timeout=15.0)
+        shell.read_until_contains("input · plan", after=turn_mark, timeout=15.0)
+
+        transcript = shell.normalized_text()[turn_mark:]
+        assert "Plan mode on (auto)" not in transcript
+    finally:
+        shell.close()
+
+
+def test_yolo_exit_plan_still_requests_review(tmp_path: Path) -> None:
+    scripts = [
+        "\n".join(
+            [
+                "text: Ready to review the plan.",
+                _build_tool_call_line("tc-exit-plan", "ExitPlanMode", {}),
+            ]
+        ),
+        "text: Exit plan review complete.",
+    ]
+    config_path = write_scripted_config(tmp_path, scripts)
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        toggle_mark = shell.mark()
+        shell.send_line("/plan on")
+        shell.read_until_contains("Plan mode ON.", after=toggle_mark, timeout=15.0)
+        shell.read_until_contains("input · plan", after=toggle_mark, timeout=15.0)
+
+        session_dir = find_session_dir(home_dir, work_dir)
+        state = json.loads((session_dir / "state.json").read_text(encoding="utf-8"))
+        slug = state["plan_slug"]
+        plan_path = home_dir / ".kimi" / "plans" / f"{slug}.md"
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        plan_path.write_text(
+            "# Test Plan\n1. Confirm the current EnterPlanMode and ExitPlanMode behavior.\n",
+            encoding="utf-8",
+        )
+
+        turn_mark = shell.mark()
+        shell.send_line("review the current plan")
+        shell.read_until_contains("Approve this plan", after=turn_mark, timeout=15.0)
+        shell.read_until_contains("Test Plan", after=turn_mark, timeout=15.0)
+        time.sleep(0.3)
+        shell.send_key("enter")
+        shell.read_until_contains("Exit plan review complete.", after=turn_mark, timeout=15.0)
+        next_prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=next_prompt_mark)
+
+        transcript = shell.normalized_text()[turn_mark:]
+        assert "Plan approved (auto)" not in transcript
+    finally:
+        shell.close()
 
 
 def test_approval_reject_via_key3(tmp_path: Path) -> None:

@@ -114,6 +114,9 @@ def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
 
 
 class KimiCLI:
+    def _set_user_feedback_enabled(self, enabled: bool) -> None:
+        self._runtime.can_request_user_feedback = enabled
+
     @staticmethod
     async def create(
         session: Session,
@@ -136,6 +139,7 @@ class KimiCLI:
         max_ralph_iterations: int | None = None,
         startup_progress: Callable[[str], None] | None = None,
         defer_mcp_loading: bool = False,
+        can_request_user_feedback: bool | None = None,
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -162,6 +166,9 @@ class KimiCLI:
                 interactive startup UI. Defaults to None.
             defer_mcp_loading (bool, optional): Defer MCP startup until the interactive shell is
                 ready. Defaults to False.
+            can_request_user_feedback (bool | None, optional): Override whether the runtime
+                should expose feedback-dependent flows such as AskUserQuestion and plan review.
+                Defaults to None, which preserves the runtime default.
 
         Raises:
             FileNotFoundError: When the agent file is not found.
@@ -245,6 +252,8 @@ class KimiCLI:
             yolo,
             skills_dirs=skills_dirs,
         )
+        if can_request_user_feedback is not None:
+            runtime.can_request_user_feedback = can_request_user_feedback
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
@@ -669,6 +678,7 @@ class KimiCLI:
                 level=WelcomeInfoItem.Level.INFO,
             )
         )
+        self._set_user_feedback_enabled(True)
         async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info, prefill_text=prefill_text)
             return await shell.run(command)
@@ -684,6 +694,7 @@ class KimiCLI:
         """Run the Kimi Code CLI instance with print UI."""
         from kimi_cli.ui.print import Print
 
+        self._set_user_feedback_enabled(False)
         async with self._env():
             print_ = Print(
                 self._soul,
@@ -698,6 +709,10 @@ class KimiCLI:
         """Run the Kimi Code CLI instance as ACP server."""
         from kimi_cli.ui.acp import ACP
 
+        # ACP currently supports approval flows but not QuestionRequest/plan review.
+        # Keep question-style feedback disabled so YOLO sessions preserve the
+        # previous unattended behavior instead of taking a dismiss-only path.
+        self._set_user_feedback_enabled(False)
         async with self._env():
             acp = ACP(self._soul)
             await acp.run()
@@ -706,6 +721,7 @@ class KimiCLI:
         """Run the Kimi Code CLI instance as Wire server over stdio."""
         from kimi_cli.wire.server import WireServer
 
+        self._set_user_feedback_enabled(True)
         async with self._env():
             server = WireServer(self._soul)
             await server.serve()

@@ -60,7 +60,10 @@ from kimi_cli.soul.dynamic_injection import (
     normalize_history,
 )
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
-from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
+from kimi_cli.soul.dynamic_injections.yolo_mode import (
+    NonInteractiveModeInjectionProvider,
+    YoloModeInjectionProvider,
+)
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -160,6 +163,7 @@ class KimiSoul:
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
             YoloModeInjectionProvider(),
+            NonInteractiveModeInjectionProvider(),
         ]
         self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False
@@ -188,8 +192,13 @@ class KimiSoul:
 
     @property
     def is_yolo(self) -> bool:
-        """Whether yolo (auto-approve / non-interactive) mode is enabled."""
+        """Whether yolo (auto-approve) mode is enabled."""
         return self._approval.is_yolo()
+
+    @property
+    def can_request_user_feedback(self) -> bool:
+        """Whether the current UI/client can ask the user questions and review plans."""
+        return self._runtime.can_request_user_feedback
 
     @property
     def plan_mode(self) -> bool:
@@ -253,21 +262,31 @@ class KimiSoul:
 
         exit_tool = self._agent.toolset.find("ExitPlanMode")
         if isinstance(exit_tool, ExitPlanMode):
-            exit_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            exit_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                lambda: self.can_request_user_feedback,
+            )
 
         # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            enter_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                lambda: self.can_request_user_feedback,
+            )
 
-        # AskUserQuestion — bind yolo checker for auto-dismiss
+        # AskUserQuestion — bind user-feedback availability for auto-dismiss
         from kimi_cli.tools.ask_user import AskUserQuestion
 
         ask_tool = self._agent.toolset.find("AskUserQuestion")
         if isinstance(ask_tool, AskUserQuestion):
-            ask_tool.bind_approval(self._approval.is_yolo)
+            ask_tool.bind_user_feedback(lambda: self.can_request_user_feedback)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
@@ -829,17 +848,19 @@ class KimiSoul:
 
         # Dynamic injection
         injections = await self._collect_injections()
+        effective_messages = list(self._context.history)
         if injections:
             combined_reminders = "\n".join(system_reminder(inj.content).text for inj in injections)
-            await self._context.append_message(
+            effective_messages.append(
                 Message(
                     role="user",
                     content=[TextPart(text=combined_reminders)],
                 )
             )
 
-        # Normalize: merge adjacent user messages for clean API input
-        effective_history = normalize_history(self._context.history)
+        # Normalize: merge adjacent user messages for clean API input.
+        # Dynamic injections are step-local and must not be persisted into context.
+        effective_history = normalize_history(effective_messages)
 
         async def _run_step_once() -> StepResult:
             # run an LLM step (may be interrupted)

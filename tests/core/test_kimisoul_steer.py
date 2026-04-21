@@ -349,19 +349,62 @@ async def test_step_merges_plain_steer_with_dynamic_injection_in_model_history(
     outcome = await soul._step()
 
     assert outcome is not None
-    assert soul.context.history[-3:] == [
+    assert soul.context.history[-2:] == [
         Message(role="user", content=[TextPart(text="Follow user note")]),
-        Message(
-            role="user",
-            content=[TextPart(text="<system-reminder>\nInternal reminder\n</system-reminder>")],
-        ),
         Message(role="assistant", content=[TextPart(text="done")]),
     ]
+    assert not any(is_system_reminder_message(msg) for msg in soul.context.history)
     assert captured_history[-1].role == "user"
     assert captured_history[-1].content == [
         TextPart(text="Follow user note"),
         TextPart(text="<system-reminder>\nInternal reminder\n</system-reminder>"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_step_keeps_runtime_specific_injections_out_of_persisted_history(
+    runtime: Runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    soul = _make_soul(runtime, tmp_path)
+    await soul.context.append_message(Message(role="user", content=[TextPart(text="Original question")]))
+    captured_history: list[Message] = []
+
+    async def fake_kosong_step(chat_provider, system_prompt, toolset, history, **kwargs):
+        captured_history[:] = list(history)
+        return StepResult(
+            id="step-2",
+            message=Message(role="assistant", content=[TextPart(text="done")]),
+            usage=None,
+            tool_calls=[],
+            _tool_result_futures={},
+        )
+
+    async def fake_collect_injections() -> list[DynamicInjection]:
+        return [DynamicInjection(type="non_interactive_mode", content="Do NOT call AskUserQuestion.")]
+
+    monkeypatch.setattr(soul, "_collect_injections", fake_collect_injections)
+    monkeypatch.setattr(kimisoul_module.kosong, "step", fake_kosong_step)
+    monkeypatch.setattr(kimisoul_module, "wire_send", lambda _msg: None)
+
+    outcome = await soul._step()
+
+    assert outcome is not None
+    assert all(not is_system_reminder_message(msg) for msg in soul.context.history)
+    assert captured_history[-1].role == "user"
+    assert captured_history[-1].content == [
+        TextPart(text="Original question"),
+        TextPart(text="<system-reminder>\nDo NOT call AskUserQuestion.\n</system-reminder>"),
+    ]
+
+    persisted = soul.context.file_backend.read_text(encoding="utf-8")
+    assert "Do NOT call AskUserQuestion." not in persisted
+
+    restored = Context(file_backend=soul.context.file_backend)
+    assert await restored.restore() is True
+    assert all(not is_system_reminder_message(msg) for msg in restored.history)
+    assert restored.history == soul.context.history
 
 
 class _SequenceStreamedMessage:

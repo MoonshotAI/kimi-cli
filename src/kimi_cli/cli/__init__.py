@@ -620,6 +620,7 @@ def kimi(
                 max_ralph_iterations=max_ralph_iterations,
                 startup_progress=startup_progress.update if ui == "shell" else None,
                 defer_mcp_loading=ui == "shell" and prompt is None,
+                can_request_user_feedback=False if ui in {"print", "acp"} else None,
             )
             startup_progress.stop()
 
