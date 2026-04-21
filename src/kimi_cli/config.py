@@ -235,6 +235,10 @@ class Config(BaseModel):
             "instead of using only the first one found"
         ),
     )
+    telemetry: bool = Field(
+        default=True,
+        description="Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.",
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

@@ -601,6 +601,11 @@ class WireServer:
             )
 
     def _apply_wire_client_info(self, client: ClientInfo | None) -> None:
+        if client is not None:
+            from kimi_cli.telemetry import set_client_info
+
+            set_client_info(name=client.name, version=client.version)
+
         if not isinstance(self._soul, KimiSoul):
             return
         llm = self._soul.runtime.llm
