@@ -50,6 +50,9 @@ async def init(soul: KimiSoul, args: str):
         f"Latest AGENTS.md file content:\n{agents_md}"
     )
     await soul.context.append_message(Message(role="user", content=[system_message]))
+    from kimi_cli.telemetry import track
+
+    track("init_complete")
 
 
 @registry.command
@@ -92,11 +95,15 @@ async def clear(soul: KimiSoul, args: str):
 @registry.command
 async def yolo(soul: KimiSoul, args: str):
     """Toggle YOLO mode (auto-approve all actions)"""
+    from kimi_cli.telemetry import track
+
     if soul.runtime.approval.is_yolo():
         soul.runtime.approval.set_yolo(False)
+        track("yolo_toggle", enabled=False)
         wire_send(TextPart(text="You only die once! Actions will require approval."))
     else:
         soul.runtime.approval.set_yolo(True)
+        track("yolo_toggle", enabled=True)
         wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
 
 

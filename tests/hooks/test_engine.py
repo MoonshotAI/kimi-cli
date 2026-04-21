@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from kimi_cli.hooks.config import HookDef
@@ -68,3 +70,15 @@ async def test_invalid_regex_skips_hook():
     # Should not raise, just skip the hook with invalid regex
     results = await engine.trigger("PreToolUse", matcher_value="Shell", input_data={})
     assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_telemetry_failure_does_not_discard_block_result(engine):
+    """Safety-critical: a telemetry failure MUST NOT cause the hook engine
+    to fail open. For PreToolUse block, dropping results to [] silently
+    bypasses the block — that's exactly what this guard prevents.
+    """
+    with patch("kimi_cli.telemetry.track", side_effect=RuntimeError("telemetry broken")):
+        results = await engine.trigger("PreToolUse", matcher_value="ReadFile", input_data={})
+    assert len(results) == 1
+    assert results[0].action == "block"
