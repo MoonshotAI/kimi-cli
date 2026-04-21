@@ -57,6 +57,7 @@ def test_default_config_dump():
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
             "hooks": [],
             "merge_all_available_skills": False,
+            "telemetry": True,
         }
     )
 
