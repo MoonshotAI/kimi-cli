@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from kosong.message import TextPart, ToolCall
 from kosong.tooling import ToolResult, ToolReturnValue
@@ -86,7 +88,7 @@ class TestRunKimiAgent:
         """End-to-end test with a real Kimi agent run."""
         result = await _run_kimi_agent(
             "What is your name? Reply in one sentence.",
-            working_directory="/devops/kimi-cli",
+            working_directory=str(Path.cwd()),
         )
         assert not result.startswith("Error:")
         assert len(result) > 0

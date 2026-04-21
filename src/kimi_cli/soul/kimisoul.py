@@ -1268,12 +1268,14 @@ class FlowRunner:
             try:
                 if self._commit_mode == "merge":
                     await self._merge_ephemeral_to_main(soul)
-                await self._cleanup_ephemeral_context()
             finally:
-                if isinstance(toolset, KimiToolset):
-                    toolset.remove("flow_decision")
-                    if original_flow_decision_tool is not None:
-                        toolset.add(original_flow_decision_tool)
+                try:
+                    await self._cleanup_ephemeral_context()
+                finally:
+                    if isinstance(toolset, KimiToolset):
+                        toolset.remove("flow_decision")
+                        if original_flow_decision_tool is not None:
+                            toolset.add(original_flow_decision_tool)
 
     async def _setup_ephemeral_context(self, soul: KimiSoul) -> None:
         import hashlib
@@ -1317,8 +1319,7 @@ class FlowRunner:
                 for m in self._ephemeral_context.history[: self._parent_history_len]
             )
             compacted = (
-                hashlib.sha256(ephemeral_prefix.encode()).hexdigest()
-                != self._parent_prefix_hash
+                hashlib.sha256(ephemeral_prefix.encode()).hexdigest() != self._parent_prefix_hash
             )
         elif self._parent_prefix_hash is not None:
             compacted = True
@@ -1437,7 +1438,11 @@ class FlowRunner:
 
             # Detect convergence on self-loop (CONTINUE)
             if node.kind == "decision" and next_id == current_id:
-                report = detector.record_iteration(last_task_message, tool_results)
+                # Exclude flow_decision from the fingerprint so that stable
+                # decision wording doesn't mask changing real work.
+                report = detector.record_iteration(
+                    last_task_message, tool_results, exclude_tool_names=["flow_decision"]
+                )
                 if report.is_converged:
                     logger.warning(
                         "Auto-stopping flow after {moves} moves due to convergence detection. "

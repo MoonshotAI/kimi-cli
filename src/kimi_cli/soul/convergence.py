@@ -37,14 +37,20 @@ class IterationFingerprint:
         cls,
         assistant_message: Message | None,
         tool_results: Sequence[ToolResult] | None = None,
+        exclude_tool_names: Sequence[str] | None = None,
     ) -> IterationFingerprint:
         text = assistant_message.extract_text(" ") if assistant_message else ""
         assistant_text_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
 
+        excluded = set(exclude_tool_names or ())
         tool_call_names: list[str] = []
         tool_output_hashes: list[str] = []
         if assistant_message and assistant_message.tool_calls:
-            tool_call_names = [tc.function.name for tc in assistant_message.tool_calls]
+            tool_call_names = [
+                tc.function.name
+                for tc in assistant_message.tool_calls
+                if tc.function.name not in excluded
+            ]
         if tool_results:
             for tr in tool_results:
                 # Best-effort: we don't have direct access to the original tool call name
@@ -77,8 +83,11 @@ class ConvergenceDetector:
         self,
         assistant_message: Message | None,
         tool_results: Sequence[ToolResult] | None = None,
+        exclude_tool_names: Sequence[str] | None = None,
     ) -> ConvergenceReport:
-        fingerprint = IterationFingerprint.from_turn(assistant_message, tool_results)
+        fingerprint = IterationFingerprint.from_turn(
+            assistant_message, tool_results, exclude_tool_names=exclude_tool_names
+        )
         self._fingerprints.append(fingerprint)
 
         if len(self._fingerprints) < self._min_repetitions + 1:
@@ -137,9 +146,7 @@ class ConvergenceDetector:
 
         if a.tool_call_names and b.tool_call_names:
             matches = sum(
-                1
-                for x, y in zip(a.tool_call_names, b.tool_call_names, strict=False)
-                if x == y
+                1 for x, y in zip(a.tool_call_names, b.tool_call_names, strict=False) if x == y
             )
             max_len = max(len(a.tool_call_names), len(b.tool_call_names))
             scores.append(matches / max_len if max_len > 0 else 0.0)

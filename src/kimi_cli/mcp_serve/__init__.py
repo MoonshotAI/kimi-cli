@@ -161,12 +161,15 @@ async def _run_kimi_agent(task: str, working_directory: str | None = None) -> st
         return "Task was cancelled."
     except Exception as e:
         logger.exception("Error during Kimi agent execution:")
+        if interrupted:
+            return (
+                f"Error: Agent step was interrupted.\n\n"
+                f"{collector.build_result()}\n\n"
+                f"Underlying error: {e}"
+            )
         return f"Error during execution: {e}"
     finally:
         await kimi.shutdown_background_tasks()
-
-    if interrupted:
-        return f"Error: Agent step was interrupted.\n\n{collector.build_result()}"
 
     return collector.build_result()
 

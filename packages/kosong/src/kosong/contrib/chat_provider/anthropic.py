@@ -248,6 +248,7 @@ class Anthropic:
         self._client = AsyncAnthropic(api_key=api_key, base_url=base_url, **client_kwargs)
         self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
         self._metadata = metadata
+        self._agent_gw = base_url is not None and "agent-gw" in base_url
         self._generation_kwargs: Anthropic.GenerationKwargs = {
             "max_tokens": default_max_tokens,
             "beta_features": ["interleaved-thinking-2025-05-14"],
@@ -445,7 +446,9 @@ class Anthropic:
                 content = message.extract_text(sep="\n")
             else:
                 content = message.content
-            block = _tool_result_message_to_block(message.tool_call_id, content)
+            block = _tool_result_message_to_block(
+                message.tool_call_id, content, agent_gw=self._agent_gw
+            )
             return MessageParam(role="user", content=[block])
 
         assert role in ("user", "assistant")
@@ -456,20 +459,25 @@ class Anthropic:
             elif isinstance(part, ImageURLPart):
                 blocks.append(_image_url_part_to_anthropic(part))
             elif isinstance(part, VideoURLPart):
-                # Agent gateway (agent-gw.kimi.com) accepts video_url blocks
-                # even through the Anthropic Messages API format.
-                blocks.append(
-                    cast(
-                        ContentBlockParam,
-                        {
-                            "type": "video_url",
-                            "video_url": {
-                                "url": part.video_url.url,
-                                "id": part.video_url.id,
+                if self._agent_gw:
+                    # Agent gateway (agent-gw.kimi.com) accepts video_url blocks
+                    # even through the Anthropic Messages API format.
+                    blocks.append(
+                        cast(
+                            ContentBlockParam,
+                            {
+                                "type": "video_url",
+                                "video_url": {
+                                    "url": part.video_url.url,
+                                    "id": part.video_url.id,
+                                },
                             },
-                        },
+                        )
                     )
-                )
+                else:
+                    # Standard Anthropic API does not support video_url blocks;
+                    # skip them to avoid request validation errors.
+                    continue
             elif isinstance(part, ThinkPart):
                 if part.encrypted is None:
                     # missing signature, strip this thinking block.
@@ -629,7 +637,9 @@ def _convert_tool(tool: Tool) -> ToolParam:
 
 
 def _tool_result_message_to_block(
-    tool_call_id: str, content: str | list[ContentPart]
+    tool_call_id: str,
+    content: str | list[ContentPart],
+    agent_gw: bool = False,
 ) -> ToolResultBlockParam:
     block_content: str | list[ToolResultContent]
     # If tool_result_process is `extract_text`, we join all text parts into one string
@@ -645,20 +655,25 @@ def _tool_result_message_to_block(
             elif isinstance(part, ImageURLPart):
                 blocks.append(_image_url_part_to_anthropic(part))
             elif isinstance(part, VideoURLPart):
-                # Agent gateway (agent-gw.kimi.com) accepts video_url blocks
-                # even through the Anthropic Messages API format.
-                blocks.append(
-                    cast(
-                        ToolResultContent,
-                        {
-                            "type": "video_url",
-                            "video_url": {
-                                "url": part.video_url.url,
-                                "id": part.video_url.id,
+                if agent_gw:
+                    # Agent gateway (agent-gw.kimi.com) accepts video_url blocks
+                    # even through the Anthropic Messages API format.
+                    blocks.append(
+                        cast(
+                            ToolResultContent,
+                            {
+                                "type": "video_url",
+                                "video_url": {
+                                    "url": part.video_url.url,
+                                    "id": part.video_url.id,
+                                },
                             },
-                        },
+                        )
                     )
-                )
+                else:
+                    # Standard Anthropic API does not support video_url blocks;
+                    # skip them to avoid request validation errors.
+                    continue
             else:
                 # https://docs.claude.com/en/docs/build-with-claude/files#file-types-and-content-blocks
                 # Anthropic API supports very limited file types
