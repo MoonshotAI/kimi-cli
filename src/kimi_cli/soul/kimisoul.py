@@ -1433,6 +1433,7 @@ class FlowRunner:
             soul._context._token_count = self._ephemeral_context._token_count  # type: ignore[reportPrivateUsage]
             soul._context._pending_token_estimate = self._ephemeral_context._pending_token_estimate  # type: ignore[reportPrivateUsage]
             soul._context._next_checkpoint_id = self._ephemeral_context._next_checkpoint_id  # type: ignore[reportPrivateUsage]
+            soul._context._system_prompt = self._ephemeral_context._system_prompt  # type: ignore[reportPrivateUsage]
             return
         for i in range(start, len(self._ephemeral_context.history)):
             message = self._ephemeral_context.history[i]
