@@ -88,5 +88,6 @@ class TestRunKimiAgent:
             "What is your name? Reply in one sentence.",
             working_directory="/devops/kimi-cli",
         )
+        assert not result.startswith("Error:")
         assert len(result) > 0
         assert "Kimi" in result or "kimi" in result.lower()

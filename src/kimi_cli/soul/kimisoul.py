@@ -1265,13 +1265,15 @@ class FlowRunner:
             await self._run_nodes(soul)
         finally:
             soul._context = old_context  # type: ignore[reportPrivateUsage]
-            if self._commit_mode == "merge":
-                await self._merge_ephemeral_to_main(soul)
-            await self._cleanup_ephemeral_context()
-            if isinstance(toolset, KimiToolset):
-                toolset.remove("flow_decision")
-                if original_flow_decision_tool is not None:
-                    toolset.add(original_flow_decision_tool)
+            try:
+                if self._commit_mode == "merge":
+                    await self._merge_ephemeral_to_main(soul)
+                await self._cleanup_ephemeral_context()
+            finally:
+                if isinstance(toolset, KimiToolset):
+                    toolset.remove("flow_decision")
+                    if original_flow_decision_tool is not None:
+                        toolset.add(original_flow_decision_tool)
 
     async def _setup_ephemeral_context(self, soul: KimiSoul) -> None:
         import hashlib
