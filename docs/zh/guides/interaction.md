@@ -117,7 +117,7 @@ Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-t
 你可以使用 `/task` 斜杠命令打开交互式任务浏览器，实时查看所有后台任务的状态和输出（包括正在运行中的任务）。详见 [斜杠命令参考](../reference/slash-commands.md#task)。
 
 ::: tip 提示
-默认最多同时运行 4 个后台任务，可在配置文件的 `[background]` 节中调整。CLI 退出时默认会终止所有后台任务。详见 [配置文件](../configuration/config-files.md#background)。
+默认最多同时运行 4 个后台任务，可在配置文件的 `[background]` 节中调整。CLI 退出时默认会终止所有后台任务，终止前会在 stderr 列出每个任务（id + 描述），等待配置的 `kill_grace_period_ms` 宽限期（默认 2 秒）后再报告仍未达到终态的任务。如果设置了 `keep_alive_on_exit = true`，则退出时保留后台任务运行。详见 [配置文件](../configuration/config-files.md#background)。
 :::
 
 ## 多行输入

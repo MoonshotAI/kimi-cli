@@ -117,7 +117,7 @@ How background tasks work:
 You can use the `/task` slash command to open the interactive task browser, where you can view the status and output of all background tasks in real time (including tasks that are still running). See [Slash commands reference](../reference/slash-commands.md#task) for details.
 
 ::: tip
-By default, up to 4 background tasks can run simultaneously. This can be adjusted in the `[background]` section of the config file. All background tasks are terminated when the CLI exits by default. See [Configuration files](../configuration/config-files.md#background).
+By default, up to 4 background tasks can run simultaneously. This can be adjusted in the `[background]` section of the config file. All background tasks are terminated when the CLI exits by default. Before exiting, the CLI lists each task (id + description) on stderr, waits out the configured `kill_grace_period_ms` grace period (default 2 seconds), then reports any tasks that have not reached terminal state. If `keep_alive_on_exit = true` is set, background tasks are kept running on exit. See [Configuration files](../configuration/config-files.md#background).
 :::
 
 ## Multi-line input

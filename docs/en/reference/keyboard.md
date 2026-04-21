@@ -158,6 +158,6 @@ The bottom status bar displays:
 - YOLO badge (yellow, when enabled)
 - Plan badge (blue, when enabled)
 - Shortcut hints
-- Context usage
+- Context usage progress bar (10 color-coded blocks: green under 70%, yellow 70–84%, red 85%+; token counts shown when available)
 
 The status bar automatically refreshes to update information.

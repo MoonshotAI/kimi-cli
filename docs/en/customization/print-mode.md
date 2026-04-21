@@ -19,6 +19,7 @@ Print mode characteristics:
 - **Non-interactive**: Exits automatically after executing instructions
 - **Auto-approval**: Implicitly enables `--yolo` mode, all operations are auto-approved, and interactive questions (`AskUserQuestion`) and plan mode switches are also handled automatically
 - **Text output**: AI responses are output to stdout
+- **Background task waiting**: In one-shot `--print` mode, if background tasks are still running, the process waits for them to finish and lets the model process their results instead of exiting and killing them. The wait is capped at the longest remaining task budget, clipped by the `print_wait_ceiling_s` setting (default 1 hour). On timeout, tasks are killed and the model gets a summary prompt before exit. See [config files](../configuration/config-files.md#background).
 
 <!-- TODO: Enable this example after supporting reading content from stdin and instructions from -p simultaneously
 **Pipeline examples**
