@@ -1274,6 +1274,8 @@ class FlowRunner:
                     toolset.add(original_flow_decision_tool)
 
     async def _setup_ephemeral_context(self, soul: KimiSoul) -> None:
+        import hashlib
+
         session_dir = Path(soul._runtime.session.dir)  # type: ignore[reportPrivateUsage]
         self._tmp_file = session_dir / f"flow_{self._name or 'anonymous'}_context.jsonl"
 
@@ -1288,16 +1290,40 @@ class FlowRunner:
         self._ephemeral_context = Context(self._tmp_file, default_source="flow")
         await self._ephemeral_context.restore()
         self._parent_history_len = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+        # Store a hash of the parent prefix so we can detect compaction during
+        # the flow (which rebuilds the ephemeral context and invalidates indices).
+        main_history = soul._context.history  # type: ignore[reportPrivateUsage]
+        if main_history:
+            prefix = "".join(m.model_dump_json() for m in main_history)
+            self._parent_prefix_hash = hashlib.sha256(prefix.encode()).hexdigest()
+        else:
+            self._parent_prefix_hash = None
 
     async def _merge_ephemeral_to_main(self, soul: KimiSoul) -> None:
         if self._ephemeral_context is None:
             return
+        import hashlib
+
         start = self._parent_history_len
-        if start > len(self._ephemeral_context.history):
-            # Compaction occurred: ephemeral was rebuilt from scratch and is
-            # shorter than the original parent history. Replace main's file
-            # and in-memory state entirely to avoid duplicating pre-flow
-            # messages that are still present in main.
+        # Detect compaction by comparing the ephemeral prefix with the original
+        # main-context prefix. Compaction rebuilds the ephemeral history, so
+        # indices become invalid even when the final length exceeds start.
+        compacted = False
+        if self._parent_prefix_hash is not None and self._ephemeral_context.history:
+            ephemeral_prefix = "".join(
+                m.model_dump_json()
+                for m in self._ephemeral_context.history[: self._parent_history_len]
+            )
+            compacted = (
+                hashlib.sha256(ephemeral_prefix.encode()).hexdigest()
+                != self._parent_prefix_hash
+            )
+        elif self._parent_prefix_hash is not None:
+            compacted = True
+
+        if start > len(self._ephemeral_context.history) or compacted:
+            # Compaction occurred: replace main's file and in-memory state
+            # entirely to avoid duplicating or mis-aligning messages.
             import shutil
 
             shutil.copy(self._tmp_file, soul._context.file_backend)  # type: ignore[reportPrivateUsage]
@@ -1333,6 +1359,33 @@ class FlowRunner:
             if msg.role == "assistant":
                 return msg
         return None
+
+    @staticmethod
+    def _tool_results_since(soul: KimiSoul, since_index: int) -> list[ToolResult]:
+        """Build synthetic ToolResult objects from tool messages appended after since_index.
+
+        The convergence detector hashes tool outputs; we reconstruct ToolResult
+        objects from the context history so those hashes participate in similarity.
+        """
+        from kosong.tooling import ToolReturnValue
+
+        history = soul._context.history  # type: ignore[reportPrivateUsage]
+        tool_results: list[ToolResult] = []
+        for msg in history[since_index:]:
+            if msg.role == "tool" and msg.tool_call_id is not None:
+                output = msg.extract_text(" ") or ""
+                tool_results.append(
+                    ToolResult(
+                        tool_call_id=msg.tool_call_id,
+                        return_value=ToolReturnValue(
+                            output=output,
+                            is_error=False,
+                            message="",
+                            display=[],
+                        ),
+                    )
+                )
+        return tool_results
 
     async def _run_nodes(self, soul: KimiSoul) -> None:
         detector = ConvergenceDetector()
@@ -1377,9 +1430,12 @@ class FlowRunner:
                 # CONTINUE text without new work still converges correctly.
                 last_task_message = last_assistant
 
+            # Gather tool results from this iteration for convergence detection
+            tool_results = self._tool_results_since(soul, since_index=history_before_node)
+
             # Detect convergence on self-loop (CONTINUE)
             if node.kind == "decision" and next_id == current_id:
-                report = detector.record_iteration(last_task_message)
+                report = detector.record_iteration(last_task_message, tool_results)
                 if report.is_converged:
                     logger.warning(
                         "Auto-stopping flow after {moves} moves due to convergence detection. "
