@@ -2209,14 +2209,17 @@ class CustomPromptSession:
         tc = get_toolbar_colors()
         if bounded >= 0.85:
             color = tc.context_critical
+            dim_color = tc.context_dim_critical
         elif bounded >= 0.70:
             color = tc.context_warn
+            dim_color = tc.context_dim_warn
         else:
             color = tc.context_ok
+            dim_color = tc.context_dim_ok
         frags: list[tuple[str, str]] = [
             ("", "Context "),
             (color, "█" * filled),
-            (tc.context_dim, "░" * (bar_width - filled)),
+            (dim_color, "░" * (bar_width - filled)),
             (color, f" {pct}%"),
         ]
         if status.max_context_tokens > 0:

@@ -635,7 +635,7 @@ class _StatusBlock:
                 color = "green"
             self.text = Text("Context ", justify="right")
             self.text.append("█" * filled, style=color)
-            self.text.append("░" * (bar_width - filled), style="dim")
+            self.text.append("░" * (bar_width - filled), style=f"dim {color}")
             self.text.append(f" {pct}%", style=color)
             if self._max_context_tokens > 0:
                 used = format_token_count(self._context_tokens)
