@@ -19,6 +19,7 @@ Print 模式的特点：
 - **非交互**：执行完指令后自动退出
 - **自动审批**：隐式启用 `--yolo` 模式，所有操作自动批准，交互式问答（`AskUserQuestion`）和计划模式切换也会自动处理
 - **文本输出**：AI 的回复输出到 stdout
+- **等待后台任务**：如果 Agent 在执行过程中启动了后台任务（如 `Shell` 或 `Agent` 工具的 `run_in_background=true`），进程会等待这些任务完成并让模型处理结果后再退出，而不是直接杀死它们
 
 <!-- TODO: 支持同时从 stdin 读取内容和 -p 读取指令后启用此示例
 **管道组合示例**
@@ -128,6 +129,28 @@ echo '{"role":"user","content":"你好"}' | kimi --print --input-format=stream-j
 ```json
 {"role": "tool", "tool_call_id": "tc_1", "content": "工具执行结果"}
 ```
+
+## 后台任务等待
+
+在 `--print` 模式下，如果 Agent 启动了后台任务，Kimi Code CLI 会在主流程结束后继续等待这些任务到达终态，然后给模型一轮额外机会来总结结果，最后才退出。这确保了后台 Agent 或长时间运行的 shell 命令不会被意外中断。
+
+等待时长的计算方式为：取所有活跃任务剩余超时时间的最大值，再用 `print_wait_ceiling_s` 封顶（默认 3600 秒，即 1 小时）。你可以在配置文件的 `[background]` 节中调整这个上限：
+
+```toml
+[background]
+print_wait_ceiling_s = 1800  # 将上限设为 30 分钟
+```
+
+如果等待超时，后台任务会被强制终止，模型会收到一条 `<system-reminder>` 来总结当前状态后再退出。如果你希望在退出时保留后台任务运行（不等待也不终止），可以设置 `keep_alive_on_exit = true`：
+
+```toml
+[background]
+keep_alive_on_exit = true
+```
+
+::: info 说明
+退出时，CLI 会在 stderr 上列出每个正在被终止的后台任务（ID + 描述），并在配置的宽限期后报告仍未到达终态的任务。
+:::
 
 ## 退出码
 

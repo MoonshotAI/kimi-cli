@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：允许 `PreToolUse` hooks 通过 `updatedInput` 重写工具输入——hook 现在可以在标准输出中返回 `{"updatedInput": {...}}` 或 `{"hookSpecificOutput": {"updatedInput": {...}}}`，在工具调用执行前将更新字段合并到待执行的工具调用中；重写后的输入也会转发给 Wire 外部工具
+
 ## 1.37.0 (2026-04-20)
 
 - Print：退出前等待后台任务完成——在单次 `--print` 模式下，进程现在会等待仍在运行的后台 Agent 完成并让模型处理它们的结果，而不是直接退出并杀死它们。等待时长上限为 `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)`（默认上限 1 小时）；超时后杀死任务并通过 `<system-reminder>` 给模型最后一轮机会向用户总结后再退出

@@ -117,6 +117,26 @@ When exiting with code 0, you can output structured JSON for more detailed infor
 
 When `permissionDecision` is `deny`, the operation is blocked and `permissionDecisionReason` is fed back to the LLM.
 
+For `PreToolUse`, an allowed hook can also return `updatedInput` to rewrite the pending tool call before it runs. Kimi Code CLI merges the object into the original tool input, so hooks can update one field while preserving the rest:
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "allow",
+    "updatedInput": {
+      "command": "rtk git status"
+    }
+  }
+}
+```
+
+The shorter top-level form is also supported:
+
+```json
+{"updatedInput": {"command": "rtk git status"}}
+```
+
 ## Hook Script Examples
 
 ### Protect Sensitive Files

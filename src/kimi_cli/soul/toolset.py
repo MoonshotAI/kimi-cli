@@ -184,6 +184,28 @@ class KimiToolset:
                             ),
                         )
 
+                # --- Apply updatedInput from allowed hooks ---
+                if isinstance(arguments, dict):
+                    for result in results:
+                        if result.action != "allow" or not result.stdout:
+                            continue
+                        try:
+                            parsed = json.loads(result.stdout)
+                            if isinstance(parsed, dict):
+                                # Support both direct updatedInput and nested
+                                # hookSpecificOutput.updatedInput (Claude Code / rtk format)
+                                updated = parsed.get("updatedInput")
+                                if updated is None:
+                                    hook_specific_output = parsed.get("hookSpecificOutput")
+                                    if isinstance(hook_specific_output, dict):
+                                        updated = hook_specific_output.get("updatedInput")
+                                if isinstance(updated, dict):
+                                    arguments.update(updated)
+                                    tool_input_dict = arguments
+                                    tool_call.function.arguments = json.dumps(arguments)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
                 # --- Execute tool ---
                 t0 = time.monotonic()
                 try:
