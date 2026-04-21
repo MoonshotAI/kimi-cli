@@ -22,6 +22,7 @@ from kosong.chat_provider import (
 from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
+from kimi_cli.exception import MCPRuntimeError
 from kimi_cli.approval_runtime import (
     ApprovalSource,
     get_current_approval_source_or_none,
@@ -695,6 +696,8 @@ class KimiSoul:
                 wire_send(MCPLoadingBegin())
             try:
                 await self.wait_for_background_mcp_loading()
+            except MCPRuntimeError as exc:
+                logger.warning("MCP server loading failed, continuing without MCP tools: {}", exc)
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
