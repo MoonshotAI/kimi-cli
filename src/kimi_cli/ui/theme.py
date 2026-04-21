@@ -144,6 +144,9 @@ class ToolbarColors:
     cwd: str
     bg_tasks: str
     tip: str
+    context_ok: str
+    context_warn: str
+    context_critical: str
 
 
 _TOOLBAR_DARK = ToolbarColors(
@@ -154,6 +157,9 @@ _TOOLBAR_DARK = ToolbarColors(
     cwd="fg:#666666",
     bg_tasks="fg:#888888",
     tip="fg:#555555",
+    context_ok="fg:#4ade80",
+    context_warn="fg:#fbbf24",
+    context_critical="fg:#f87171",
 )
 
 _TOOLBAR_LIGHT = ToolbarColors(
@@ -164,6 +170,9 @@ _TOOLBAR_LIGHT = ToolbarColors(
     cwd="fg:#6b7280",
     bg_tasks="fg:#4b5563",
     tip="fg:#9ca3af",
+    context_ok="fg:#16a34a",
+    context_warn="fg:#d97706",
+    context_critical="fg:#dc2626",
 )
 
 

@@ -54,7 +54,7 @@ from pydantic import BaseModel, ValidationError
 
 from kimi_cli.llm import ModelCapability
 from kimi_cli.share import get_share_dir
-from kimi_cli.soul import StatusSnapshot, format_context_status
+from kimi_cli.soul import StatusSnapshot, format_context_status, format_token_count
 from kimi_cli.ui.shell import placeholders as prompt_placeholders
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.placeholders import (
@@ -2155,8 +2155,8 @@ class CustomPromptSession:
         # ── line 2: toast (left) + context (right) — always rendered ──────
         fragments.append(("", "\n"))
 
-        right_text = self._render_right_span(status)
-        right_width = _display_width(right_text)
+        right_frags = self._render_right_span(status)
+        right_width = sum(_display_width(t) for _, t in right_frags)
 
         left_toast = _current_toast("left")
         if left_toast is not None:
@@ -2173,7 +2173,7 @@ class CustomPromptSession:
             left_width = 0
 
         fragments.append(("", " " * max(0, columns - left_width - right_width)))
-        fragments.append(("", right_text))
+        fragments.extend(right_frags)
 
         return FormattedText(fragments)
 
@@ -2196,12 +2196,25 @@ class CustomPromptSession:
         return self._tips[self._tip_rotation_index % len(self._tips)]
 
     @staticmethod
-    def _render_right_span(status: StatusSnapshot) -> str:
+    def _render_right_span(status: StatusSnapshot) -> list[tuple[str, str]]:
         current_toast = _current_toast("right")
-        if current_toast is None:
-            return format_context_status(
-                status.context_usage,
-                status.context_tokens,
-                status.max_context_tokens,
-            )
-        return current_toast.message
+        if current_toast is not None:
+            return [("", current_toast.message)]
+        bounded = max(0.0, min(status.context_usage, 1.0))
+        bar_width = 10
+        filled = round(bounded * bar_width)
+        bar = "█" * filled + "░" * (bar_width - filled)
+        pct = int(bounded * 100)
+        tc = get_toolbar_colors()
+        if bounded >= 0.85:
+            color = tc.context_critical
+        elif bounded >= 0.70:
+            color = tc.context_warn
+        else:
+            color = tc.context_ok
+        bar_pct = f"{bar} {pct}%"
+        if status.max_context_tokens > 0:
+            used = format_token_count(status.context_tokens)
+            total = format_token_count(status.max_context_tokens)
+            return [("", "Context "), (color, bar_pct), ("", f" ({used}/{total})")]
+        return [("", "Context "), (color, bar_pct)]
