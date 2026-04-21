@@ -19,8 +19,7 @@ import aiohttp
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
 
-# Mock endpoint — replace with real endpoint when backend is ready
-TELEMETRY_ENDPOINT = "https://telemetry.kimi.com/api/v1/events"
+TELEMETRY_ENDPOINT = "https://telemetry-logs.kimi.com/v1/event"
 
 SEND_TIMEOUT = aiohttp.ClientTimeout(total=10, sock_connect=5)
 DISK_EVENT_MAX_AGE_S = 7 * 24 * 3600  # 7 days
