@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Replace context usage percentage with a visual progress bar — the status bar and live area now display a 10-block bar (`████████░░`) with color-coded fill levels (green under 70%, yellow 70–84%, red 85%+) and dimmed empty blocks for a cleaner, more glanceable indicator; token counts remain shown when available
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin: Support installing plugins directly from a `.zip` URL — `kimi plugin install` now accepts HTTP(S) URLs ending in `.zip` (e.g. GitHub/GitLab archive links like `.../archive/refs/heads/main.zip`) and downloads + extracts them before resolving `plugin.json`, in addition to the existing git URL, local directory, and local zip-file sources
