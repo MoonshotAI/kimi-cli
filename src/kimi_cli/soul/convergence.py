@@ -38,9 +38,13 @@ class IterationFingerprint:
         assistant_message: Message | None,
         tool_results: Sequence[ToolResult] | None = None,
         exclude_tool_names: Sequence[str] | None = None,
+        ignore_text: bool = False,
     ) -> IterationFingerprint:
-        text = assistant_message.extract_text(" ") if assistant_message else ""
-        assistant_text_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
+        if ignore_text:
+            assistant_text_hash = ""
+        else:
+            text = assistant_message.extract_text(" ") if assistant_message else ""
+            assistant_text_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
 
         excluded = set(exclude_tool_names or ())
         tool_call_names: list[str] = []
@@ -84,9 +88,13 @@ class ConvergenceDetector:
         assistant_message: Message | None,
         tool_results: Sequence[ToolResult] | None = None,
         exclude_tool_names: Sequence[str] | None = None,
+        ignore_text: bool = False,
     ) -> ConvergenceReport:
         fingerprint = IterationFingerprint.from_turn(
-            assistant_message, tool_results, exclude_tool_names=exclude_tool_names
+            assistant_message,
+            tool_results,
+            exclude_tool_names=exclude_tool_names,
+            ignore_text=ignore_text,
         )
         self._fingerprints.append(fingerprint)
 

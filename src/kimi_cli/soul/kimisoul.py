@@ -1438,10 +1438,14 @@ class FlowRunner:
 
             # Detect convergence on self-loop (CONTINUE)
             if node.kind == "decision" and next_id == current_id:
-                # Exclude flow_decision from the fingerprint so that stable
-                # decision wording doesn't mask changing real work.
+                # Ignore assistant text on decision self-loops because the
+                # decision wording (e.g. "I'll continue") is inherently stable
+                # and can mask changing real work. Rely on tool calls/results.
                 report = detector.record_iteration(
-                    last_task_message, tool_results, exclude_tool_names=["flow_decision"]
+                    last_task_message,
+                    tool_results,
+                    exclude_tool_names=["flow_decision"],
+                    ignore_text=True,
                 )
                 if report.is_converged:
                     logger.warning(
