@@ -2203,7 +2203,6 @@ class CustomPromptSession:
         bounded = max(0.0, min(status.context_usage, 1.0))
         bar_width = 10
         filled = round(bounded * bar_width)
-        bar = "█" * filled + "░" * (bar_width - filled)
         pct = int(bounded * 100)
         tc = get_toolbar_colors()
         if bounded >= 0.85:
@@ -2212,9 +2211,14 @@ class CustomPromptSession:
             color = tc.context_warn
         else:
             color = tc.context_ok
-        bar_pct = f"{bar} {pct}%"
+        frags: list[tuple[str, str]] = [
+            ("", "Context "),
+            (color, "█" * filled),
+            (tc.context_dim, "░" * (bar_width - filled)),
+            (color, f" {pct}%"),
+        ]
         if status.max_context_tokens > 0:
             used = format_token_count(status.context_tokens)
             total = format_token_count(status.max_context_tokens)
-            return [("", "Context "), (color, bar_pct), ("", f" ({used}/{total})")]
-        return [("", "Context "), (color, bar_pct)]
+            frags.append(("", f" ({used}/{total})"))
+        return frags

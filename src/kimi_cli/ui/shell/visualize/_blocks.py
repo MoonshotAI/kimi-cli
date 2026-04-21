@@ -625,7 +625,6 @@ class _StatusBlock:
             bounded = max(0.0, min(self._context_usage, 1.0))
             bar_width = 10
             filled = round(bounded * bar_width)
-            bar = "█" * filled + "░" * (bar_width - filled)
             pct = int(bounded * 100)
             if bounded >= 0.85:
                 color = "red"
@@ -633,12 +632,11 @@ class _StatusBlock:
                 color = "yellow"
             else:
                 color = "green"
-            bar_pct = f"{bar} {pct}%"
             self.text = Text("Context ", justify="right")
+            self.text.append("█" * filled, style=color)
+            self.text.append("░" * (bar_width - filled), style="dim")
+            self.text.append(f" {pct}%", style=color)
             if self._max_context_tokens > 0:
                 used = format_token_count(self._context_tokens)
                 total = format_token_count(self._max_context_tokens)
-                self.text.append(bar_pct, style=color)
                 self.text.append(f" ({used}/{total})")
-            else:
-                self.text.append(bar_pct, style=color)
