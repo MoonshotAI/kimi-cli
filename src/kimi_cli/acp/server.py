@@ -305,13 +305,14 @@ class ACPServer:
     ) -> acp.schema.ListSessionsResponse:
         logger.info("Listing sessions for working directory: {cwd}", cwd=cwd)
         if cwd is None:
-            return acp.schema.ListSessionsResponse(sessions=[], next_cursor=None)
-        work_dir = KaosPath.unsafe_from_local_path(Path(cwd))
-        sessions = await Session.list(work_dir)
+            sessions = await Session.list_all()
+        else:
+            work_dir = KaosPath.unsafe_from_local_path(Path(cwd))
+            sessions = await Session.list(work_dir)
         return acp.schema.ListSessionsResponse(
             sessions=[
                 acp.schema.SessionInfo(
-                    cwd=cwd,
+                    cwd=cwd or str(s.work_dir),
                     session_id=s.id,
                     title=s.title,
                     updated_at=datetime.fromtimestamp(s.updated_at).astimezone().isoformat(),

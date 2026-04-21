@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- ACP: Fix `list_sessions` without `cwd` returning an empty list — when no working directory is provided, the endpoint now correctly returns sessions from all work directories via `Session.list_all()` instead of an empty result
+
 ## 1.37.0 (2026-04-20)
 
 - Print: Wait for background tasks before exiting — in one-shot `--print` mode, the process now waits for running background agents to finish and lets the model process their results, instead of exiting and killing them. The wait is capped at `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)` (default ceiling 1h); on timeout the tasks are killed and the model gets one more turn via a `<system-reminder>` to summarise before exit
