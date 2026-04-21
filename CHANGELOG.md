@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Replace context usage percentage with a visual progress bar — the status bar and live area now display a 10-block bar (`████████░░`) with color-coded fill levels (green under 70%, yellow 70–84%, red 85%+) and dimmed empty blocks for a cleaner, more glanceable indicator; token counts remain shown when available
+
 ## 1.37.0 (2026-04-20)
 
 - Print: Wait for background tasks before exiting — in one-shot `--print` mode, the process now waits for running background agents to finish and lets the model process their results, instead of exiting and killing them. The wait is capped at `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)` (default ceiling 1h); on timeout the tasks are killed and the model gets one more turn via a `<system-reminder>` to summarise before exit
