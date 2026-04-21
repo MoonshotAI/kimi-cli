@@ -24,6 +24,7 @@ from rich.text import Text
 
 from kimi_cli import logger
 from kimi_cli.background import list_task_views
+from kimi_cli.llm import model_display_name
 from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -436,7 +437,12 @@ class Shell:
             fast_refresh_provider=_mcp_status_loading,
             background_task_count_provider=_bg_task_count,
             model_capabilities=self.soul.model_capabilities or set(),
-            model_name=self.soul.model_name,
+            model_name=model_display_name(
+                self.soul.model_name,
+                self.soul.runtime.llm.model_config
+                if isinstance(self.soul, KimiSoul) and self.soul.runtime.llm
+                else None,
+            ),
             thinking=self.soul.thinking or False,
             agent_mode_slash_commands=list(self._available_slash_commands.values()),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),

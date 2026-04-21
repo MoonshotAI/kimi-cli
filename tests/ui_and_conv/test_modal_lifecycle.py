@@ -823,12 +823,12 @@ async def test_compose_agent_output_includes_spinners_and_tool_calls() -> None:
     from kimi_cli.wire.types import ToolCall
 
     view = _LiveView(StatusUpdate())
-    view._mooning_spinner = Spinner("moon", "thinking")
+    view._active_turn_depth = 1  # moon fallback requires active turn
 
     blocks = view.compose_agent_output()
     assert any(isinstance(b, Spinner) for b in blocks), "Should include spinner"
 
-    view._mooning_spinner = None
+    # Adding a tool call should replace the moon fallback
     tc = ToolCall(id="tc-1", function=ToolCall.FunctionBody(name="ReadFile", arguments="{}"))
     view.append_tool_call(tc)
 
@@ -844,6 +844,8 @@ async def test_render_agent_status_excludes_panels_in_interactive() -> None:
     active, the panel is rendered by the modal in Layer 2, NOT by
     render_agent_status() in Layer 1.
     """
+    from rich.spinner import Spinner
+
     from kimi_cli.ui.shell.visualize import _PromptLiveView
 
     view = object.__new__(_PromptLiveView)
@@ -851,7 +853,8 @@ async def test_render_agent_status_excludes_panels_in_interactive() -> None:
     view._btw_spinner = None
     view._btw_question = None
     view._mcp_loading_spinner = None
-    view._mooning_spinner = None
+    view._mooning_spinner = Spinner("moon", "")
+    view._active_turn_depth = 0
     view._compacting_spinner = None
     view._current_content_block = None
     view._tool_call_blocks = {}

@@ -180,7 +180,8 @@ async def model(app: Shell, args: str):
         model_cfg = config.models[name]
         provider_label = get_platform_name_for_provider(model_cfg.provider) or model_cfg.provider
         marker = " (current)" if name == curr_model_name else ""
-        label = f"{model_cfg.model} ({provider_label}){marker}"
+        display = model_cfg.display_name or model_cfg.model
+        label = f"{display} ({provider_label}){marker}"
         model_choices.append((name, label))
 
     try:
@@ -231,10 +232,11 @@ async def model(app: Shell, args: str):
     # Check if anything changed
     model_changed = curr_model_name != selected_model_name
     thinking_changed = curr_thinking != new_thinking
+    selected_display = selected_model_cfg.display_name or selected_model_cfg.model
 
     if not model_changed and not thinking_changed:
         console.print(
-            f"[yellow]Already using {selected_model_name} "
+            f"[yellow]Already using {selected_display} "
             f"with thinking {'on' if new_thinking else 'off'}.[/yellow]"
         )
         return
@@ -262,7 +264,7 @@ async def model(app: Shell, args: str):
     if thinking_changed:
         track("thinking_toggle", enabled=new_thinking)
     console.print(
-        f"[green]Switched to {selected_model_name} "
+        f"[green]Switched to {selected_display} "
         f"with thinking {'on' if new_thinking else 'off'}. "
         "Reloading...[/green]"
     )

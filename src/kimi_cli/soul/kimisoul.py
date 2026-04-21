@@ -502,7 +502,12 @@ class KimiSoul:
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
         return self._slash_commands
 
-    async def run(self, user_input: str | list[ContentPart]):
+    async def run(
+        self,
+        user_input: str | list[ContentPart],
+        *,
+        skip_user_prompt_hook: bool = False,
+    ):
         approval_source_token = None
         turn_started = False
         turn_finished = False
@@ -519,27 +524,34 @@ class KimiSoul:
 
             set_session_id(self._runtime.session.id)
 
-            # --- UserPromptSubmit hook ---
-            text_input_for_hook = user_input if isinstance(user_input, str) else ""
             from kimi_cli.hooks import events
 
-            hook_results = await self._hook_engine.trigger(
-                "UserPromptSubmit",
-                matcher_value=text_input_for_hook,
-                input_data=events.user_prompt_submit(
-                    session_id=self._runtime.session.id,
-                    cwd=str(Path.cwd()),
-                    prompt=text_input_for_hook,
-                ),
-            )
-            for result in hook_results:
-                if result.action == "block":
-                    wire_send(TurnBegin(user_input=user_input))
-                    turn_started = True
-                    wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
-                    wire_send(TurnEnd())
-                    turn_finished = True
-                    return
+            # --- UserPromptSubmit hook ---
+            # Synthetic internal prompts (e.g. background-task notification
+            # follow-ups injected by ``Print`` after a bg task finishes or
+            # the wait ceiling is hit) must bypass ``UserPromptSubmit``:
+            # they are not user input, and a user-configured prompt-blocking
+            # hook would drop the notification and hang the wait loop.
+            if not skip_user_prompt_hook:
+                text_input_for_hook = user_input if isinstance(user_input, str) else ""
+
+                hook_results = await self._hook_engine.trigger(
+                    "UserPromptSubmit",
+                    matcher_value=text_input_for_hook,
+                    input_data=events.user_prompt_submit(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        prompt=text_input_for_hook,
+                    ),
+                )
+                for result in hook_results:
+                    if result.action == "block":
+                        wire_send(TurnBegin(user_input=user_input))
+                        turn_started = True
+                        wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
+                        wire_send(TurnEnd())
+                        turn_finished = True
+                        return
 
             wire_send(TurnBegin(user_input=user_input))
             turn_started = True
@@ -830,6 +842,7 @@ class KimiSoul:
                 has_steers = await self._consume_pending_steers()
                 if has_steers:
                     continue  # steers injected, force another LLM step
+
                 final_message = (
                     step_outcome.assistant_message
                     if step_outcome.stop_reason == "no_tool_calls"

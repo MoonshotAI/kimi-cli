@@ -138,13 +138,23 @@ class Soul(Protocol):
         """List of available slash commands supported by the soul."""
         ...
 
-    async def run(self, user_input: str | list[ContentPart]):
+    async def run(
+        self,
+        user_input: str | list[ContentPart],
+        *,
+        skip_user_prompt_hook: bool = False,
+    ):
         """
         Run the agent with the given user input until the max steps or no more tool calls.
 
         Args:
             user_input (str | list[ContentPart]): The user input to the agent.
                 Can be a slash command call or natural language input.
+            skip_user_prompt_hook (bool): When True, suppress the
+                ``UserPromptSubmit`` hook for this run.  Use this for
+                internal/synthetic prompts (e.g. background-task
+                notifications) that are not user input and must not be
+                subject to user-configured prompt-blocking hooks.
 
         Raises:
             LLMNotSet: When the LLM is not set.
@@ -171,6 +181,8 @@ async def run_soul(
     cancel_event: asyncio.Event,
     wire_file: WireFile | None = None,
     runtime: Runtime | None = None,
+    *,
+    skip_user_prompt_hook: bool = False,
 ) -> None:
     """
     Run the soul with the given user input, connecting it to the UI loop with a `Wire`.
@@ -192,7 +204,9 @@ async def run_soul(
     ui_task = asyncio.create_task(ui_loop_fn(wire))
 
     logger.debug("Starting soul run")
-    soul_task = asyncio.create_task(soul.run(user_input))
+    soul_task = asyncio.create_task(
+        soul.run(user_input, skip_user_prompt_hook=skip_user_prompt_hook)
+    )
     notification_task = asyncio.create_task(_pump_notifications_to_wire(runtime, wire))
 
     cancel_event_task = asyncio.create_task(cancel_event.wait())

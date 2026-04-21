@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import sys
 import time
 import warnings
 from collections.abc import AsyncGenerator, Callable
@@ -15,6 +16,7 @@ from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 from kimi_cli.auth.oauth import KIMI_CODE_OAUTH_KEY, OAuthManager, get_device_id
+from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.constant import VERSION
@@ -27,7 +29,7 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.envvar import get_env_bool
-from kimi_cli.utils.logging import logger, redirect_stderr_to_logger
+from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, ContentPart, WireMessage
@@ -69,6 +71,31 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
     logger.configure(extra={"sid": ""}, patcher=_patch_session_id)
     if redirect_stderr:
         redirect_stderr_to_logger()
+
+
+def _write_original_stderr(text: str) -> None:
+    """Write a user-facing notice to the terminal even if ``fd=2`` has been
+    redirected into the logger by ``redirect_stderr_to_logger``.
+
+    Falls back to ``sys.stderr`` when no redirector is installed (tests,
+    early-startup code paths), matching the semantics of ``_emit_fatal_error``
+    in ``cli/__init__.py``.
+    """
+    with open_original_stderr() as stream:
+        if stream is not None:
+            stream.write(text.encode("utf-8", errors="replace"))
+            stream.flush()
+            return
+    sys.stderr.write(text)
+
+
+async def _refresh_managed_models_silent(config: Config) -> None:
+    from kimi_cli.auth.platforms import refresh_managed_models
+
+    try:
+        await refresh_managed_models(config)
+    except Exception as exc:
+        logger.warning("Background managed-model refresh failed: {error}", error=exc)
 
 
 def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
@@ -170,6 +197,8 @@ class KimiCLI:
 
         _phase_t = time.monotonic()
         oauth = OAuthManager(config)
+
+        bg_refresh_task = asyncio.create_task(_refresh_managed_models_silent(config))
 
         model: LLMModel | None = None
         provider: LLMProvider | None = None
@@ -326,17 +355,19 @@ class KimiCLI:
             mcp_ms=_phase_timings_ms.get("mcp_ms", 0),
         )
 
-        return KimiCLI(soul, runtime, env_overrides)
+        return KimiCLI(soul, runtime, env_overrides, bg_refresh_task)
 
     def __init__(
         self,
         _soul: KimiSoul,
         _runtime: Runtime,
         _env_overrides: dict[str, str],
+        _bg_refresh_task: asyncio.Task[None] | None = None,
     ) -> None:
         self._soul = _soul
         self._runtime = _runtime
         self._env_overrides = _env_overrides
+        self._bg_refresh_task = _bg_refresh_task
 
     @property
     def soul(self) -> KimiSoul:
@@ -348,13 +379,115 @@ class KimiCLI:
         """Get the Session instance."""
         return self._runtime.session
 
-    def shutdown_background_tasks(self) -> None:
-        """Kill active background tasks on exit, unless keep_alive_on_exit is configured."""
-        if self._runtime.config.background.keep_alive_on_exit:
+    async def shutdown_background_tasks(self) -> None:
+        """Kill active background tasks on exit, unless keep_alive_on_exit is configured.
+
+        Prints a stderr notice naming each task so the user knows what is being
+        terminated, waits out the configured kill grace period so SIGTERM can
+        take effect, then reconciles and reports any workers that ignored the
+        signal.
+
+        This runs on the CLI's hard-shutdown path, so every failure mode must
+        be contained: disk IO errors from ``list_tasks`` / ``reconcile`` or
+        store corruption must not propagate and replace the real exit code
+        with a traceback.
+        """
+        # Cancel the startup managed-model refresh task if it is still running
+        # so it does not outlive the CLI process.
+        if self._bg_refresh_task is not None and not self._bg_refresh_task.done():
+            self._bg_refresh_task.cancel()
+
+        bg_config = self._runtime.config.background
+        if bg_config.keep_alive_on_exit:
             return
-        killed = self._runtime.background_tasks.kill_all_active(reason="CLI session ended")
-        if killed:
-            logger.info("Stopped {n} background task(s) on exit: {ids}", n=len(killed), ids=killed)
+
+        try:
+            manager = self._runtime.background_tasks
+            active_views = [
+                v
+                for v in manager.list_tasks(status=None, limit=None)
+                if not is_terminal_status(v.runtime.status)
+            ]
+            if not active_views:
+                return
+
+            # Split by whether the task has already been kill-requested (e.g.
+            # by the ``--print`` timeout path which ran immediately before
+            # this shutdown).  For those:
+            #   - don't re-announce on stderr (user saw the timeout notice)
+            #   - don't re-kill with a generic reason, which would overwrite
+            #     the more specific ``kill_reason`` on disk
+            # We still reconcile + grace-wait for them so they reach terminal
+            # status before the process exits.
+            fresh_targets = [v for v in active_views if v.control.kill_requested_at is None]
+
+            if fresh_targets:
+                # Build and emit the kill notice via ``open_original_stderr``
+                # — ``sys.stderr.write`` alone would silently land in
+                # ``kimi.log`` because ``redirect_stderr_to_logger`` has
+                # replaced fd=2 with a pipe into the logger by this point.
+                lines = [f"\u26a0  Killing {len(fresh_targets)} background tasks:\n"]
+                for view in fresh_targets:
+                    description = view.spec.description or ""
+                    if len(description) > 60:
+                        description = description[:57] + "..."
+                    lines.append(f"  {view.spec.id}  {description}\n")
+                _write_original_stderr("".join(lines))
+
+                killed: list[str] = []
+                for view in fresh_targets:
+                    try:
+                        manager.kill(view.spec.id, reason="CLI session ended")
+                        killed.append(view.spec.id)
+                    except Exception:
+                        logger.exception(
+                            "Failed to kill task {task_id} during shutdown",
+                            task_id=view.spec.id,
+                        )
+                if killed:
+                    logger.info(
+                        "Stopped {n} background task(s) on exit: {ids}",
+                        n=len(killed),
+                        ids=killed,
+                    )
+
+            await asyncio.sleep(bg_config.kill_grace_period_ms / 1000)
+            manager.reconcile()
+            survivors = [
+                v
+                for v in manager.list_tasks(status=None, limit=None)
+                if not is_terminal_status(v.runtime.status)
+            ]
+            if survivors:
+                # Distinguish "worker is mid-shutdown" (kill request on record,
+                # SIGTERM delivered, worker just hasn't written terminal state
+                # yet) from a genuine leak (never got kill-requested, i.e.
+                # ``manager.kill`` raised).  Without this split, users saw
+                # ``killed N`` from the --print timeout path immediately
+                # followed by ``(N tasks still alive)`` here — a direct
+                # semantic contradiction.
+                terminating = [s for s in survivors if s.control.kill_requested_at is not None]
+                leaking = [s for s in survivors if s.control.kill_requested_at is None]
+                # Report leaks first — ``stop request failed`` is strictly
+                # more severe than ``still terminating`` (the latter will
+                # resolve on its own once the worker writes terminal state).
+                if leaking:
+                    _write_original_stderr(
+                        f"  ({len(leaking)} tasks still running; stop request failed)\n"
+                    )
+                if terminating:
+                    _write_original_stderr(f"  ({len(terminating)} tasks still terminating)\n")
+        except Exception:
+            logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
+
+    async def await_bg_tasks_shutdown(self, timeout: float = 2.0) -> None:
+        """Await completion of the model-refresh background task after cancellation."""
+        task = self._bg_refresh_task
+        if task is None or task.done():
+            return
+        # Best-effort cleanup — errors inside the task are already logged.
+        with contextlib.suppress(TimeoutError, asyncio.CancelledError, Exception):
+            await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
 
     @contextlib.asynccontextmanager
     async def _env(self) -> AsyncGenerator[None]:
@@ -561,7 +694,10 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=model_display_name(self._soul.model_name),
+                    value=model_display_name(
+                        self._soul.model_name,
+                        self._runtime.llm.model_config if self._runtime.llm else None,
+                    ),
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )
