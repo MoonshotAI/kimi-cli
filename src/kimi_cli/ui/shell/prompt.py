@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import asyncio
 import contextlib
 import json
@@ -2202,7 +2204,7 @@ class CustomPromptSession:
             return [("", current_toast.message)]
         bounded = max(0.0, min(status.context_usage, 1.0))
         bar_width = 10
-        filled = round(bounded * bar_width)
+        filled = math.ceil(bounded * bar_width) if bounded > 0 else 0
         pct = int(bounded * 100)
         tc = get_toolbar_colors()
         if bounded >= 0.85:

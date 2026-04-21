@@ -8,6 +8,7 @@ They have no knowledge of the event loop or prompt_toolkit.
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections import deque
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
@@ -624,7 +625,7 @@ class _StatusBlock:
         if status.context_usage is not None:
             bounded = max(0.0, min(self._context_usage, 1.0))
             bar_width = 10
-            filled = round(bounded * bar_width)
+            filled = math.ceil(bounded * bar_width) if bounded > 0 else 0
             pct = int(bounded * 100)
             if bounded >= 0.85:
                 color = "red"

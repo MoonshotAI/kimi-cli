@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
 from collections.abc import Callable, Coroutine
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -76,7 +77,7 @@ def format_context_status(
     """Format context status string for display in status bar."""
     bounded = max(0.0, min(context_usage, 1.0))
     bar_width = 10
-    filled = round(bounded * bar_width)
+    filled = math.ceil(bounded * bar_width) if bounded > 0 else 0
     bar = "█" * filled + "░" * (bar_width - filled)
     pct = int(bounded * 100)
     if max_context_tokens > 0:
