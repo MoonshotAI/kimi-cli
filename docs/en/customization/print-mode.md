@@ -19,6 +19,7 @@ Print mode characteristics:
 - **Non-interactive**: Exits automatically after executing instructions
 - **Auto-approval**: Implicitly enables `--yolo` mode, all operations are auto-approved, and interactive questions (`AskUserQuestion`) and plan mode switches are also handled automatically
 - **Text output**: AI responses are output to stdout
+- **Waits for background tasks**: If the agent launches background tasks during execution (e.g. `Shell` or `Agent` tool with `run_in_background=true`), the process waits for them to finish and lets the model process their results before exiting, instead of killing them immediately
 
 <!-- TODO: Enable this example after supporting reading content from stdin and instructions from -p simultaneously
 **Pipeline examples**
@@ -128,6 +129,28 @@ Assistant message with tool calls:
 ```json
 {"role": "tool", "tool_call_id": "tc_1", "content": "Tool execution result"}
 ```
+
+## Background task wait
+
+In `--print` mode, if the agent starts background tasks, Kimi Code CLI continues waiting for them to reach a terminal state after the main flow ends, then gives the model an extra turn to summarize results before exiting. This ensures background agents or long-running shell commands are not accidentally interrupted.
+
+The wait duration is calculated as the maximum remaining timeout across all active tasks, clipped by `print_wait_ceiling_s` (default 3600 seconds, i.e. 1 hour). You can adjust this ceiling in the `[background]` section of the config file:
+
+```toml
+[background]
+print_wait_ceiling_s = 1800  # Set ceiling to 30 minutes
+```
+
+If the wait times out, background tasks are forcibly terminated, and the model receives a `<system-reminder>` summarizing the current state before exit. If you prefer to keep background tasks running on exit (without waiting or terminating them), set `keep_alive_on_exit = true`:
+
+```toml
+[background]
+keep_alive_on_exit = true
+```
+
+::: info Note
+On exit, the CLI lists each background task being killed (ID + description) on stderr, and reports any tasks that have not reached terminal state after the configured grace period.
+:::
 
 ## Exit codes
 

@@ -117,6 +117,26 @@ Hook 命令从标准输入接收 JSON 格式的上下文信息，包含通用字
 
 当 `permissionDecision` 为 `deny` 时，会阻止操作并将 `permissionDecisionReason` 反馈给 LLM。
 
+对于 `PreToolUse`，允许继续的 hook 还可以返回 `updatedInput`，在工具调用执行前重写工具输入。Kimi Code CLI 会将该对象合并到原始工具输入中，因此 hook 可以只更新一个字段，同时保留其他字段：
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "allow",
+    "updatedInput": {
+      "command": "rtk git status"
+    }
+  }
+}
+```
+
+也支持更简短的顶层格式：
+
+```json
+{"updatedInput": {"command": "rtk git status"}}
+```
+
 ## Hook 脚本示例
 
 ### 保护敏感文件
