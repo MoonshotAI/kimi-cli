@@ -1276,6 +1276,9 @@ class CustomPromptSession:
             if self._active_prompt_delegate() is not None:
                 return
             self._mode = self._mode.toggle()
+            from kimi_cli.telemetry import track
+
+            track("shortcut_mode_switch", to_mode=self._mode.value)
             # Apply mode-specific settings
             self._apply_mode(event)
             # Redraw UI
@@ -1291,6 +1294,9 @@ class CustomPromptSession:
                 async def _toggle() -> None:
                     assert self._plan_mode_toggle_callback is not None
                     new_state = await self._plan_mode_toggle_callback()
+                    from kimi_cli.telemetry import track
+
+                    track("shortcut_plan_toggle", enabled=new_state)
                     if new_state:
                         toast("plan mode ON", topic="plan_mode", duration=3.0, immediate=True)
                     else:
@@ -1304,11 +1310,17 @@ class CustomPromptSession:
         @_kb.add("c-j", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
+            from kimi_cli.telemetry import track
+
+            track("shortcut_newline")
             event.current_buffer.insert_text("\n")
 
         @_kb.add("c-o", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Open current buffer in external editor."""
+            from kimi_cli.telemetry import track
+
+            track("shortcut_editor")
             self._open_in_external_editor(event)
 
         @_kb.add(
@@ -1463,6 +1475,9 @@ class CustomPromptSession:
 
             @_kb.add("c-v", eager=True)
             def _(event: KeyPressEvent) -> None:
+                from kimi_cli.telemetry import track
+
+                track("shortcut_paste")
                 if self._try_paste_media(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
