@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Web：在 aiohttp 客户端会话中启用 `trust_env`，以支持代理环境变量（`https_proxy`、`http_proxy` 等）
+
 ## 1.37.0 (2026-04-20)
 
 - Print：退出前等待后台任务完成——在单次 `--print` 模式下，进程现在会等待仍在运行的后台 Agent 完成并让模型处理它们的结果，而不是直接退出并杀死它们。等待时长上限为 `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)`（默认上限 1 小时）；超时后杀死任务并通过 `<system-reminder>` 给模型最后一轮机会向用户总结后再退出
