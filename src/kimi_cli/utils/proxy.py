@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 
 _PROXY_ENV_VARS = (
@@ -12,9 +13,22 @@ _PROXY_ENV_VARS = (
     "HTTPS_PROXY",
     "https_proxy",
 )
+_NO_PROXY_ENV_VARS = ("NO_PROXY", "no_proxy")
 
 _SOCKS_PREFIX = "socks://"
 _SOCKS5_PREFIX = "socks5://"
+
+
+def _is_unsupported_ipv6_cidr(value: str) -> bool:
+    if ":" not in value or "/" not in value:
+        return False
+
+    try:
+        network = ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        return False
+
+    return isinstance(network, ipaddress.IPv6Network)
 
 
 def normalize_proxy_env() -> None:
@@ -29,3 +43,13 @@ def normalize_proxy_env() -> None:
         value = os.environ.get(var)
         if value is not None and value.lower().startswith(_SOCKS_PREFIX):
             os.environ[var] = _SOCKS5_PREFIX + value[len(_SOCKS_PREFIX) :]
+
+    for var in _NO_PROXY_ENV_VARS:
+        value = os.environ.get(var)
+        if value is None:
+            continue
+
+        hosts = [host.strip() for host in value.split(",")]
+        filtered_hosts = [host for host in hosts if not _is_unsupported_ipv6_cidr(host)]
+        if filtered_hosts != hosts:
+            os.environ[var] = ",".join(host for host in filtered_hosts if host)

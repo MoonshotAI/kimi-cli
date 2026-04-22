@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+import httpx
 import pytest
 
 from kimi_cli.utils.proxy import normalize_proxy_env
@@ -74,3 +75,26 @@ class TestNormalizeProxyEnv:
         monkeypatch.setenv("ALL_PROXY", "Socks://127.0.0.1:10808/")
         normalize_proxy_env()
         assert os.environ["ALL_PROXY"] == "socks5://127.0.0.1:10808/"
+
+    def test_ipv6_cidr_in_no_proxy_does_not_break_httpx(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for var in (
+            "ALL_PROXY",
+            "all_proxy",
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "NO_PROXY",
+            "no_proxy",
+        ):
+            monkeypatch.delenv(var, raising=False)
+
+        monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:8080")
+        monkeypatch.setenv("NO_PROXY", "localhost,127.0.0.1,::1,fd00::/8,fe80::/10")
+
+        normalize_proxy_env()
+
+        client = httpx.Client()
+        client.close()
