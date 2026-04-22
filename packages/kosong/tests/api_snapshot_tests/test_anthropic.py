@@ -314,12 +314,7 @@ async def test_anthropic_message_conversion():
                                         },
                                         {"type": "text", "text": "5"},
                                     ],
-                                }
-                            ],
-                        },
-                        {
-                            "role": "user",
-                            "content": [
+                                },
                                 {
                                     "type": "tool_result",
                                     "tool_use_id": "call_mul",
@@ -332,7 +327,7 @@ async def test_anthropic_message_conversion():
                                         {"type": "text", "text": "20"},
                                     ],
                                     "cache_control": {"type": "ephemeral"},
-                                }
+                                },
                             ],
                         },
                     ],
@@ -852,3 +847,60 @@ async def test_anthropic_opus_46_xhigh_property_reflects_clamped_value():
     ).with_thinking("xhigh")
     # xhigh clamped to high for 4.6
     assert provider.thinking_effort == "high"
+
+
+async def test_anthropic_parallel_tool_results_merged_into_single_user_message():
+    """Parallel tool results must be packed into a single user message.
+
+    Per the Anthropic Messages API spec, every tool_use block in an assistant
+    message must be answered by tool_result blocks inside the same (single)
+    user message. Anthropic's official backend leniently merges consecutive
+    same-role turns, but strict Anthropic-compatible backends (e.g. DeepSeek's
+    /anthropic endpoint) reject the split form with 400 — and the docs warn
+    that the split form also silently teaches Claude to avoid parallel calls.
+    """
+    from common import ADD_TOOL, MUL_TOOL, capture_request
+
+    from kosong.message import ToolCall
+
+    history = [
+        Message(role="user", content="Calculate 2+3 and 4*5"),
+        Message(
+            role="assistant",
+            content="I'll calculate both.",
+            tool_calls=[
+                ToolCall(
+                    id="call_add",
+                    function=ToolCall.FunctionBody(name="add", arguments='{"a": 2, "b": 3}'),
+                ),
+                ToolCall(
+                    id="call_mul",
+                    function=ToolCall.FunctionBody(name="multiply", arguments='{"a": 4, "b": 5}'),
+                ),
+            ],
+        ),
+        Message(role="tool", content="5", tool_call_id="call_add"),
+        Message(role="tool", content="20", tool_call_id="call_mul"),
+    ]
+
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        )
+        body = await capture_request(mock, provider, "", [ADD_TOOL, MUL_TOOL], history)
+
+    messages = body["messages"]
+    # Expected wire layout:
+    #   [0] user      — original question
+    #   [1] assistant — text + two tool_use blocks
+    #   [2] user      — *both* tool_result blocks packed together
+    assert [m["role"] for m in messages] == ["user", "assistant", "user"], (
+        f"Parallel tool results should collapse into one trailing user message, "
+        f"got roles: {[m['role'] for m in messages]}"
+    )
+    tool_results = [b for b in messages[-1]["content"] if b["type"] == "tool_result"]
+    assert {b["tool_use_id"] for b in tool_results} == {"call_add", "call_mul"}
