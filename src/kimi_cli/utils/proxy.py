@@ -32,12 +32,16 @@ def _is_unsupported_ipv6_cidr(value: str) -> bool:
 
 
 def normalize_proxy_env() -> None:
-    """Rewrite ``socks://`` to ``socks5://`` in proxy environment variables.
+    """Normalize proxy environment variables for downstream HTTP clients.
 
     Many proxy tools (V2RayN, Clash, etc.) set ``ALL_PROXY=socks://...``, but
-    httpx and aiohttp only recognise ``socks5://``.  Since ``socks://`` is
-    effectively an alias for ``socks5://``, this function performs a safe
-    in-place replacement so that downstream HTTP clients work correctly.
+    httpx and aiohttp only recognise ``socks5://``. Since ``socks://`` is
+    effectively an alias for ``socks5://``, rewrite those values in place.
+
+    When a proxy is configured, current httpx releases can also crash during
+    startup if ``NO_PROXY`` contains IPv6 CIDR entries such as ``fd00::/8``.
+    Filter those unsupported patterns while preserving host-style entries like
+    ``::1``.
     """
     for var in _PROXY_ENV_VARS:
         value = os.environ.get(var)

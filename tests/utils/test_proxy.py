@@ -96,5 +96,5 @@ class TestNormalizeProxyEnv:
 
         normalize_proxy_env()
 
-        client = httpx.Client()
-        client.close()
+        with httpx.Client() as client:
+            assert client is not None
