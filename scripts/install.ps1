@@ -2,6 +2,11 @@ $ErrorActionPreference = "Stop"
 
 function Install-Uv {
   Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1" | Invoke-Expression
+
+  # Update the PATH environment variable for the current session
+  $MachinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+  $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+  $env:PATH = "$($MachinePath.TrimEnd(';'));$($UserPath.TrimEnd(';'))"
 }
 
 if (Get-Command uv -ErrorAction SilentlyContinue) {
