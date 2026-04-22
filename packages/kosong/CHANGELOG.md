@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.51.0 (2026-04-22)
+
+- Anthropic: Fix parallel tool results being split into multiple user messages — consecutive tool-result-only user messages are now merged into a single message, complying with the Anthropic Messages API spec that all `tool_use` blocks in an assistant turn must be answered within one user message; this fixes 400 errors on strict Anthropic-compatible backends (e.g. DeepSeek `/anthropic` endpoint) and prevents the official backend from silently teaching the model to avoid parallel tool calls
+
 ## 0.50.0 (2026-04-17)
 
 - Anthropic: Add adaptive thinking support for Claude Opus 4.7 — model capability detection now uses regex version extrapolation (covers `opus-4-7`, Bedrock/Vertex name variants such as `aws/claude-opus-4-7` and `anthropic.claude-opus-4-7-v1:0`, `claude-mythos-preview`, and future Claude versions ≥ 4.6) instead of hard-coded substring matching; adaptive requests now set `display: "summarized"` explicitly so thinking content still streams on Opus 4.7 (where the default flipped to `"omitted"`); the legacy `thinking: {type: "enabled", budget_tokens: N}` path is no longer used for Opus 4.7, which rejects it with 400
