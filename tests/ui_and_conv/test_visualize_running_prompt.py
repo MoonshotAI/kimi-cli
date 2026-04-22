@@ -962,42 +962,42 @@ def test_approval_feedback_renders_inline_input():
     assert "Type your feedback" in plain
 
 
-def test_approval_feedback_cursor_in_middle_renders_at_cursor_position():
-    """When the cursor is in the middle of the feedback text, the character
-    under the cursor is drawn with SGR reverse video (mimicking a terminal's
-    native block cursor), not pinned to the end of the line with a block glyph."""
-    delegate, buf, _ = _make_approval_delegate()
-    delegate._panel.selected_index = 3
+def test_approval_feedback_cursor_markup_in_middle():
+    """When the cursor is in the middle, the helper wraps the character under
+    it with [reverse] markup — mimicking a terminal's native block cursor."""
+    from kimi_cli.ui.shell.visualize._approval_panel import _render_feedback_with_cursor
 
-    # Put cursor at position 2 ("he|llo world" — on the first 'l').
-    buf.set_document(Document(text="hello world", cursor_position=2), bypass_readonly=True)
-
-    rendered = delegate.render_running_prompt_body(120)
-
-    import re
-
-    plain = re.sub(r"\x1b\[[^m]*m", "", rendered.value)
-    # Full text still present; no trailing block glyph when cursor is in the middle.
-    assert "hello world" in plain
-    assert "hello world\u2588" not in plain
-    # SGR attribute 7 (reverse) must appear in some SGR sequence in the output.
-    assert re.search(r"\x1b\[(?:[0-9]+;)*7(?:;[0-9]+)*m", rendered.value), (
-        f"expected reverse-video SGR in {rendered.value!r}"
-    )
+    # Cursor at position 2 ("he|llo world" — on the first 'l').
+    assert _render_feedback_with_cursor("hello world", 2) == "he[reverse]l[/reverse]lo world"
+    # Cursor at start.
+    assert _render_feedback_with_cursor("hello world", 0) == "[reverse]h[/reverse]ello world"
 
 
-def test_approval_feedback_cursor_at_end_renders_trailing_block():
-    """When the cursor sits past the last character, the block glyph trails the text."""
-    delegate, buf, _ = _make_approval_delegate()
-    delegate._panel.selected_index = 3
+def test_approval_feedback_cursor_markup_at_end():
+    """When the cursor sits past the last character, a trailing block glyph
+    is emitted (the reverse-video trick requires a character to invert)."""
+    from kimi_cli.ui.shell.visualize._approval_panel import _render_feedback_with_cursor
 
-    buf.set_document(Document(text="abc", cursor_position=3), bypass_readonly=True)
-    rendered = delegate.render_running_prompt_body(120)
+    assert _render_feedback_with_cursor("abc", 3) == "abc\u2588"
+    # Past-end cursor (defensive) also falls through to the trailing-block branch.
+    assert _render_feedback_with_cursor("abc", 10) == "abc\u2588"
+    # Empty text.
+    assert _render_feedback_with_cursor("", 0) == "\u2588"
+    # None means "unknown" — same fallback as end-of-text.
+    assert _render_feedback_with_cursor("abc", None) == "abc\u2588"
 
-    import re
 
-    plain = re.sub(r"\x1b\[[^m]*m", "", rendered.value)
-    assert "abc\u2588" in plain
+def test_approval_feedback_cursor_markup_escapes_rich_metachars():
+    """Rich markup tags typed by the user (e.g. ``[bold]``) must be escaped so
+    they are rendered as literal text instead of being interpreted as styles."""
+    from kimi_cli.ui.shell.visualize._approval_panel import _render_feedback_with_cursor
+
+    # The "[" that opens a tag-looking pattern gets escaped by Rich; the
+    # reverse-cursor wrapper is still applied around the character under the
+    # cursor ('o').
+    out = _render_feedback_with_cursor("[bold]hello", 6)
+    assert "[reverse]" in out and "[/reverse]" in out
+    assert r"\[bold]" in out
 
 
 @pytest.mark.asyncio
