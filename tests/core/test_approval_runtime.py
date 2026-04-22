@@ -231,3 +231,49 @@ async def test_approval_runtime_wait_for_response_times_out() -> None:
     record = runtime.get_request(request.id)
     assert record is not None
     assert record.status == "cancelled"
+    assert record.feedback == "approval timed out"
+
+
+@pytest.mark.asyncio
+async def test_approval_request_timeout_carries_feedback_to_result() -> None:
+    """Timeout feedback must survive round-trip through ``Approval.request``.
+
+    Regression test: when the 300s ``wait_for_response`` safety timeout fires
+    (e.g. the user stepped away from their session), ``_cancel_request`` sets
+    ``record.feedback = "approval timed out"`` before raising
+    ``ApprovalCancelledError``. ``Approval.request`` must read that feedback
+    back into the returned ``ApprovalResult`` — otherwise the resulting
+    ``ToolRejectedError`` falls back to the generic "Rejected by user" brief,
+    hiding the timeout cause from the user.
+    """
+    from kimi_cli.soul.approval import Approval, ApprovalState
+    from kimi_cli.soul.toolset import current_tool_call
+    from kimi_cli.wire.types import ToolCall
+
+    runtime = ApprovalRuntime()
+    approval = Approval(state=ApprovalState(), runtime=runtime)
+
+    token = current_tool_call.set(
+        ToolCall(id="test", function=ToolCall.FunctionBody(name="Shell", arguments=None))
+    )
+    try:
+        request_task = asyncio.create_task(
+            approval.request(sender="Shell", action="shell_exec", description="ls")
+        )
+        while not runtime.list_pending():
+            await asyncio.sleep(0)
+        pending = runtime.list_pending()[0]
+        # Drive the timeout path directly instead of waiting 300s: this is
+        # the same internal call ``wait_for_response`` makes when its own
+        # timeout expires (runtime.py uses ``feedback="approval timed out"``).
+        runtime._cancel_request(pending.id, feedback="approval timed out")
+        result = await request_task
+    finally:
+        current_tool_call.reset(token)
+
+    assert result.approved is False
+    assert result.feedback == "approval timed out"
+    # The user-visible rejection surface reflects the real reason rather
+    # than the generic "Rejected by user" fallback.
+    err = result.rejection_error()
+    assert err.brief == "Rejected: approval timed out"

@@ -177,7 +177,8 @@ class Approval:
                 tool_name=tool_call.function.name,
                 approval_mode="cancelled",
             )
-            return ApprovalResult(approved=False)
+            record = self._runtime.get_request(request_id)
+            return ApprovalResult(approved=False, feedback=record.feedback if record else "")
         from kimi_cli.telemetry import track
 
         match response:
