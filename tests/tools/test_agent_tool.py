@@ -978,16 +978,9 @@ async def test_agent_tool_background_agent_waits_for_approval(agent_tool, runtim
         assert msg.source_kind == "background_agent"
         assert msg.source_id == task_id
 
-        view = None
-        for _ in range(20):
-            view = runtime.background_tasks.get_task(task_id)
-            assert view is not None
-            if view.runtime.status == "awaiting_approval":
-                break
-            import asyncio
-
-            await asyncio.sleep(0.01)
-        assert view is not None
+        view = await runtime.background_tasks.wait_for_status(
+            task_id, "awaiting_approval", timeout_s=2
+        )
         assert view.runtime.status == "awaiting_approval"
 
         assert runtime.approval_runtime is not None
@@ -1050,16 +1043,7 @@ async def test_task_stop_kills_background_agent_waiting_for_approval(
     assert not result.is_error
     task_id = _extract_task_id(result.output)
 
-    import asyncio
-
-    view = None
-    for _ in range(20):
-        view = runtime.background_tasks.get_task(task_id)
-        assert view is not None
-        if view.runtime.status == "awaiting_approval":
-            break
-        await asyncio.sleep(0.01)
-    assert view is not None
+    view = await runtime.background_tasks.wait_for_status(task_id, "awaiting_approval", timeout_s=2)
     assert view.runtime.status == "awaiting_approval"
 
     stop_result = await task_stop_tool(task_stop_tool.params(task_id=task_id))
