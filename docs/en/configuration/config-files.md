@@ -121,6 +121,7 @@ If a `providers` or `models` key contains `.`, you must use a quoted TOML key. O
 | `model` | `string` | Yes | Model identifier (model name used in API) |
 | `max_context_size` | `integer` | Yes | Maximum context length (in tokens) |
 | `capabilities` | `array` | No | Model capability list, see [Providers](./providers.md#model-capabilities) for details |
+| `display_name` | `string` | No | Human-readable model name shown in the welcome panel, prompt status bar, `/model` picker, and switch confirmations; falls back to `model` when unset. For OAuth-logged-in managed models, this field is auto-refreshed from the provider's `/models` endpoint at startup |
 
 Example:
 
@@ -162,7 +163,9 @@ capabilities = ["thinking"]
 | --- | --- | --- | --- |
 | `max_running_tasks` | `integer` | `4` | Maximum number of concurrent background tasks |
 | `keep_alive_on_exit` | `boolean` | `false` | Whether to keep background tasks running when CLI exits; default is to terminate all background tasks on exit |
+| `kill_grace_period_ms` | `integer` | `2000` | Grace period (in milliseconds) to wait after sending SIGTERM during CLI shutdown before reporting any shell workers that have not yet written terminal state. Agent tasks transition to terminal synchronously on kill and do not use this grace period |
 | `agent_task_timeout_s` | `integer` | `900` | Maximum runtime in seconds for a background agent task; timed-out tasks are marked as failed and the main agent is notified |
+| `print_wait_ceiling_s` | `integer` | `3600` | Hard ceiling (in seconds) for how long one-shot `--print` mode waits for background tasks to finish before killing them and exiting. The effective wait is the longest remaining task budget, clipped by this ceiling |
 
 ### `services`
 

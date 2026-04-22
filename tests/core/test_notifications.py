@@ -227,7 +227,7 @@ async def test_kimi_cli_run_yields_root_hub_approvals(runtime: Runtime) -> None:
         def available_slash_commands(self):
             return []
 
-        async def run(self, _user_input: str) -> None:
+        async def run(self, _user_input: str, **_kwargs) -> None:
             assert self.runtime.approval_runtime is not None
             self.runtime.approval_runtime.create_request(
                 request_id="req-run-1",
@@ -284,7 +284,7 @@ async def test_kimi_cli_run_bridges_approval_resolution_back_to_runtime(runtime:
         def available_slash_commands(self):
             return []
 
-        async def run(self, _user_input: str) -> None:
+        async def run(self, _user_input: str, **_kwargs) -> None:
             assert self.runtime.approval_runtime is not None
             request = self.runtime.approval_runtime.create_request(
                 request_id="req-run-bridge-1",
@@ -366,7 +366,7 @@ async def test_kimi_cli_run_replays_pending_approvals_from_previous_turn(runtime
         def available_slash_commands(self):
             return []
 
-        async def run(self, _user_input: str) -> None:
+        async def run(self, _user_input: str, **_kwargs) -> None:
             assert self.runtime.approval_runtime is not None
             self.response, self.feedback = await self.runtime.approval_runtime.wait_for_response(
                 "req-run-replay-1"
@@ -401,7 +401,7 @@ async def test_run_soul_flushes_wire_notifications_published_right_before_turn_e
         def __init__(self, runtime: Runtime) -> None:
             self.runtime = runtime
 
-        async def run(self, _user_input: str) -> None:
+        async def run(self, _user_input: str, **_kwargs) -> None:
             await asyncio.sleep(0.05)
             self.runtime.notifications.publish(
                 NotificationEvent(

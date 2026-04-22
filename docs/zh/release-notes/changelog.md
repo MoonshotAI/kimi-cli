@@ -4,6 +4,16 @@
 
 ## 未发布
 
+- Shell：修复 approval 弹窗超时后被误报为 `Rejected by user` 的问题——300 秒安全超时后，工具调用会以 `Rejected: approval timed out` 拒绝，让离开电脑一段时间后回来的用户能分辨出这是超时而非自己的手动拒绝。经常长时间离开的话可以加 `--yolo`/`-y` 自动批准工具调用
+- Kosong：修复 Anthropic 供应商将并行工具结果拆分到多个 user message 的问题——现在会将仅包含工具结果的连续 user message 合并为单条消息，以符合 Anthropic Messages API 规范（assistant 一轮中的所有 `tool_use` 必须在同一条 user message 内回答）；修复了严格兼容后端（如 DeepSeek `/anthropic` 接口）返回 400 错误的问题，并避免官方后端静默地引导模型放弃并行工具调用
+
+## 1.37.0 (2026-04-20)
+
+- Print：退出前等待后台任务完成——在单次 `--print` 模式下，进程现在会等待仍在运行的后台 Agent 完成并让模型处理它们的结果，而不是直接退出并杀死它们。等待时长上限为 `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)`（默认上限 1 小时）；超时后杀死任务并通过 `<system-reminder>` 给模型最后一轮机会向用户总结后再退出
+- Shell/Print：退出时 CLI 会在 stderr 列出每个即将被 kill 的后台任务（id + 描述），等待配置的 grace period 后再汇报未达到终态的任务（区分为"still terminating"即 worker 正在退出 vs "stop request failed"即真正泄漏的任务）；`keep_alive_on_exit=true` 仍会完全跳过此路径
+- Auth：OAuth 登录用户启动时自动刷新托管模型列表——Shell 启动时会以后台任务形式请求 provider 的 `/models` 接口拉取最新模型，新上线的模型无需重新登录即可使用；失败时静默降级、不会阻塞启动；使用 `--config` 指定自定义配置文件的会话保持原有行为
+- Shell：托管模型现在统一展示 provider 返回的 `display_name`（如 `k2.6-code-preview`），覆盖欢迎界面、提示框状态栏、`/model` 选单和 `/model` 切换确认消息；若后端未返回 `display_name`，则回落到内部模型 ID
+
 ## 1.36.0 (2026-04-17)
 
 - Anthropic：修复 Claude Opus 4.7 返回 `invalid_request_error` 的问题——Opus 4.7 拒绝旧的 `{type: "enabled", budget_tokens: N}` 思考配置，现在会正确路由到 adaptive thinking，并显式设置 `display: "summarized"`，使思考内容仍能通过流返回（Opus 4.7 默默将该默认值改为 `"omitted"`）；Bedrock / Vertex 命名变体（如 `aws/claude-opus-4-7`、`anthropic.claude-opus-4-7-v1:0`）以及 `claude-mythos-preview` 也会被正确识别；未来的 Claude ≥ 4.6 版本会通过版本号外推自动识别，无需改代码
