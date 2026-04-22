@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Soul: RalphFlow architecture improvements — `flow_decision` tool is now scoped to decision nodes only, preventing misuse during task execution; the agent loop halts immediately after a `flow_decision` call, stopping extra content generation after the decision is recorded; convergence detection auto-stops repeating flows when the model repeats identical work across iterations
+- Soul: Fix ephemeral context merge after compaction during RalphFlow — when context compaction occurs inside a flow, the merged result now correctly preserves the compacted state instead of dropping messages
+
 ## 1.38.0 (2026-04-22)
 
 - Shell: Fix `Rejected by user` misleading message when an approval modal times out — after the 300s safety timeout, the tool call now rejects with `Rejected: approval timed out`, so users returning to their session after stepping away can tell the rejection was a timeout rather than a manual rejection. Pass `--yolo`/`-y` to auto-approve tool calls if you regularly leave sessions unattended

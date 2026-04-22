@@ -151,7 +151,7 @@ capabilities = ["thinking"]
 | --- | --- | --- | --- |
 | `max_steps_per_turn` | `integer` | `500` | Maximum steps per turn (alias: `max_steps_per_run`) |
 | `max_retries_per_step` | `integer` | `3` | Maximum retries per step |
-| `max_ralph_iterations` | `integer` | `0` | Extra iterations after each user message; `0` disables; `-1` is unlimited |
+| `max_ralph_iterations` | `integer` | `0` | RalphFlow extra iterations after each user message; `0` disables; `-1` is unlimited |
 | `reserved_context_size` | `integer` | `50000` | Reserved token count for LLM response generation; auto-compaction triggers when `context_tokens + reserved_context_size >= max_context_size` |
 | `compaction_trigger_ratio` | `float` | `0.85` | Context usage ratio threshold for auto-compaction (0.5–0.99); auto-compaction triggers when `context_tokens >= max_context_size * compaction_trigger_ratio`, whichever condition is met first with `reserved_context_size` |
 

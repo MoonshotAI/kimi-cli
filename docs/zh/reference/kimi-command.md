@@ -74,13 +74,21 @@ kimi [OPTIONS] COMMAND [ARGS]
 |------|------|
 | `--max-steps-per-turn N` | 单轮最大步数，覆盖配置文件中的 `loop_control.max_steps_per_turn` |
 | `--max-retries-per-step N` | 单步最大重试次数，覆盖配置文件中的 `loop_control.max_retries_per_step` |
-| `--max-ralph-iterations N` | Ralph 循环模式的迭代次数；`0` 表示关闭；`-1` 表示无限 |
+| `--max-ralph-iterations N` | RalphFlow 模式的迭代次数；`0` 表示关闭；`-1` 表示无限 |
 
-### Ralph 循环
+### RalphFlow
 
-[Ralph](https://ghuntley.com/ralph/) 是一种把 Agent 放进循环的技术：同一条提示词会被反复喂给 Agent，让它围绕一个任务持续迭代。
+RalphFlow 是基于 Prompt Flow 的自动化迭代架构。当 `--max-ralph-iterations` 非 `0` 时，Kimi Code CLI 会进入 RalphFlow 模式并自动循环执行任务。
 
-当 `--max-ralph-iterations` 非 `0` 时，Kimi Code CLI 会进入 Ralph 循环模式，自动循环执行任务，直到 Agent 输出 `<choice>STOP</choice>` 或达到迭代上限。
+每次迭代在**临时上下文**中运行，与主对话历史隔离。模型使用 `flow_decision` 工具选择下一步：
+
+- **`CONTINUE`** — 继续下一次迭代以持续完善任务。
+- **`STOP`** — 结束循环并将结果返回给用户。
+- **`PAUSE`** — 暂停循环，保留临时状态以便稍后恢复。
+
+**收敛检测**会在模型跨迭代重复相同工作时自动停止循环（相同的工具调用和输出），即使模型从未调用 `STOP` 也能防止无限循环。
+
+循环结束时，临时上下文会**合并回**主对话历史，因此跨轮次记忆得以保留。在配置中设置 `max_ralph_iterations = 0` 可关闭 RalphFlow。
 
 ## UI 模式
 
