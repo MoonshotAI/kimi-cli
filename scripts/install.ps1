@@ -5,8 +5,10 @@ function Install-Uv {
 
   # Update the PATH environment variable for the current session
   $MachinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+  if (-not $MachinePath) { $MachinePath = '' }
   $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-  $env:PATH = "$($MachinePath.TrimEnd(';'));$($UserPath.TrimEnd(';'))"
+  if (-not $UserPath) { $UserPath = '' }
+  $env:PATH = "$($MachinePath.TrimEnd(';'));$($UserPath.TrimEnd(';'))".Split(';', [System.StringSplitOptions]::RemoveEmptyEntries) -join ';'
 }
 
 if (Get-Command uv -ErrorAction SilentlyContinue) {
