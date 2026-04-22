@@ -1019,6 +1019,14 @@ class KimiSoul:
             )
 
         if result.tool_calls:
+            # When the only tool calls are flow_decision, stop the agent loop
+            # immediately to prevent the model from generating extra content
+            # after the flow decision has already been made.
+            non_flow_decision_calls = [
+                tc for tc in result.tool_calls if tc.function.name != "flow_decision"
+            ]
+            if not non_flow_decision_calls:
+                return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
@@ -1353,14 +1361,6 @@ class FlowRunner:
         old_context = soul._context  # type: ignore[reportPrivateUsage]
         soul._context = self._ephemeral_context  # type: ignore[reportPrivateUsage]
 
-        toolset = soul._agent.toolset  # type: ignore[reportPrivateUsage]
-        original_flow_decision_tool = None
-        if isinstance(toolset, KimiToolset):
-            original_flow_decision_tool = toolset.find("flow_decision")
-            if original_flow_decision_tool is not None:
-                toolset.remove("flow_decision")
-            toolset.add(FlowDecisionTool())
-
         try:
             await self._run_nodes(soul)
         finally:
@@ -1369,13 +1369,7 @@ class FlowRunner:
                 if self._commit_mode == "merge":
                     await self._merge_ephemeral_to_main(soul)
             finally:
-                try:
-                    await self._cleanup_ephemeral_context()
-                finally:
-                    if isinstance(toolset, KimiToolset):
-                        toolset.remove("flow_decision")
-                        if original_flow_decision_tool is not None:
-                            toolset.add(original_flow_decision_tool)
+                await self._cleanup_ephemeral_context()
 
     async def _setup_ephemeral_context(self, soul: KimiSoul) -> None:
         import hashlib
@@ -1616,8 +1610,25 @@ class FlowRunner:
             logger.info("Agent flow cancelled during node execution.")
             return None, steps_used, None
 
-        history_before_turn = len(soul._context.history)  # type: ignore[reportPrivateUsage]
-        result = await self._flow_turn(soul, prompt)
+        # Only inject flow_decision tool for decision nodes so the model
+        # doesn't misuse it during task execution.
+        toolset = soul._agent.toolset  # type: ignore[reportPrivateUsage]
+        added_flow_decision = False
+        if (
+            node.kind == "decision"
+            and isinstance(toolset, KimiToolset)
+            and toolset.find("flow_decision") is None
+        ):
+            toolset.add(FlowDecisionTool())
+            added_flow_decision = True
+
+        try:
+            history_before_turn = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+            result = await self._flow_turn(soul, prompt)
+        finally:
+            if added_flow_decision and isinstance(toolset, KimiToolset):
+                toolset.remove("flow_decision")
+
         steps_used += result.step_count
         if result.stop_reason == "tool_rejected":
             logger.error("Agent flow stopped after tool rejection.")
