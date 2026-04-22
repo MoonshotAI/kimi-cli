@@ -19,6 +19,7 @@ from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
@@ -275,7 +276,7 @@ async def test_flow_runner_uses_flow_decision_tool(runtime: Runtime, tmp_path: P
         set(),
     )
 
-    toolset = SimpleToolset()
+    toolset = KimiToolset()
     soul, context = _make_soul(runtime, llm, toolset, tmp_path)
 
     nodes = {
@@ -495,7 +496,7 @@ async def test_flow_runner_pause_keeps_temp_file(runtime: Runtime, tmp_path: Pat
         set(),
     )
 
-    toolset = SimpleToolset()
+    toolset = KimiToolset()
     soul, context = _make_soul(runtime, llm, toolset, tmp_path)
 
     nodes = {

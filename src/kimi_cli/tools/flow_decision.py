@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 
 class Params(BaseModel):
-    choice: str = Field(description="The flow control choice: CONTINUE, STOP, or PAUSE.")
+    choice: Literal["CONTINUE", "STOP", "PAUSE"] = Field(
+        description="The flow control choice: CONTINUE, STOP, or PAUSE."
+    )
     confidence: float = Field(
         description="Confidence level from 0.0 to 1.0.",
         ge=0.0,

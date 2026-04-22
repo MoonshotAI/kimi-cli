@@ -1288,6 +1288,7 @@ class FlowRunner:
         self._ephemeral_context: Context | None = None
         self._tmp_file: Path | None = None
         self._parent_history_len: int = 0
+        self._parent_prefix_hash: str | None = None
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -1346,6 +1347,7 @@ class FlowRunner:
             track("flow_invoked", flow_name=self._name)
 
         self._paused = False
+        self._cancelled = False
         await self._setup_ephemeral_context(soul)
         assert self._ephemeral_context is not None
         old_context = soul._context  # type: ignore[reportPrivateUsage]
@@ -1572,10 +1574,20 @@ class FlowRunner:
                 This avoids picking up stale decisions from pre-flow context.
         """
         history = soul._context.history  # type: ignore[reportPrivateUsage]
-        for msg in reversed(history[since_index:]):
+        history_slice = history[since_index:]
+        # Build a set of failed flow_decision tool call ids so we ignore
+        # decisions whose tool execution errored.
+        failed_tool_call_ids: set[str] = set()
+        for msg in history_slice:
+            if msg.role == "tool" and msg.tool_call_id:
+                text = msg.extract_text(" ")
+                if text.strip().startswith("<system>ERROR:"):
+                    failed_tool_call_ids.add(msg.tool_call_id)
+
+        for msg in reversed(history_slice):
             if msg.role == "assistant" and msg.tool_calls:
                 for tc in msg.tool_calls:
-                    if tc.function.name == "flow_decision":
+                    if tc.function.name == "flow_decision" and tc.id not in failed_tool_call_ids:
                         try:
                             args = json.loads(tc.function.arguments or "{}")
                             return args.get("choice")

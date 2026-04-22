@@ -450,6 +450,9 @@ async def feedback(app: Shell, args: str):
         return
 
     api_key = soul.runtime.oauth.resolve_api_key(provider.api_key, provider.oauth)
+    if not provider.base_url:
+        _fallback_to_issues()
+        return
     feedback_url = f"{provider.base_url.rstrip('/')}/feedback"
 
     payload = {
