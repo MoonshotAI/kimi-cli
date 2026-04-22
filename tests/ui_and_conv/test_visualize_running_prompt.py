@@ -917,7 +917,7 @@ def _make_approval_delegate(request=None):
     delegate = ApprovalPromptDelegate(
         request,
         on_response=lambda req, resp, feedback="": responses.append((req.id, resp, feedback)),
-        buffer_text_provider=lambda: buf.text,
+        buffer_text_provider=lambda: (buf.text, buf.cursor_position),
     )
     return delegate, buf, responses
 
@@ -960,6 +960,44 @@ def test_approval_feedback_renders_inline_input():
     plain = re.sub(r"\x1b\[[^m]*m", "", rendered.value)
     assert "use a safer command" in plain
     assert "Type your feedback" in plain
+
+
+def test_approval_feedback_cursor_in_middle_renders_at_cursor_position():
+    """When the cursor is in the middle of the feedback text, the character
+    under the cursor is drawn with SGR reverse video (mimicking a terminal's
+    native block cursor), not pinned to the end of the line with a block glyph."""
+    delegate, buf, _ = _make_approval_delegate()
+    delegate._panel.selected_index = 3
+
+    # Put cursor at position 2 ("he|llo world" — on the first 'l').
+    buf.set_document(Document(text="hello world", cursor_position=2), bypass_readonly=True)
+
+    rendered = delegate.render_running_prompt_body(120)
+
+    import re
+
+    plain = re.sub(r"\x1b\[[^m]*m", "", rendered.value)
+    # Full text still present; no trailing block glyph when cursor is in the middle.
+    assert "hello world" in plain
+    assert "hello world\u2588" not in plain
+    # SGR attribute 7 (reverse) must appear in some SGR sequence in the output.
+    assert re.search(r"\x1b\[(?:[0-9]+;)*7(?:;[0-9]+)*m", rendered.value), (
+        f"expected reverse-video SGR in {rendered.value!r}"
+    )
+
+
+def test_approval_feedback_cursor_at_end_renders_trailing_block():
+    """When the cursor sits past the last character, the block glyph trails the text."""
+    delegate, buf, _ = _make_approval_delegate()
+    delegate._panel.selected_index = 3
+
+    buf.set_document(Document(text="abc", cursor_position=3), bypass_readonly=True)
+    rendered = delegate.render_running_prompt_body(120)
+
+    import re
+
+    plain = re.sub(r"\x1b\[[^m]*m", "", rendered.value)
+    assert "abc\u2588" in plain
 
 
 @pytest.mark.asyncio

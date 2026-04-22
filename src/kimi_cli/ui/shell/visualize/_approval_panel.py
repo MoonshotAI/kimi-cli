@@ -45,6 +45,16 @@ class ApprovalContentBlock(NamedTuple):
     lexer: str = ""
 
 
+def _render_feedback_with_cursor(text: str, cursor: int | None) -> str:
+    if cursor is None or cursor >= len(text):
+        return f"{escape(text)}\u2588"
+    cursor = max(cursor, 0)
+    before = escape(text[:cursor])
+    at_cursor = escape(text[cursor])
+    after = escape(text[cursor + 1 :])
+    return f"{before}[reverse]{at_cursor}[/reverse]{after}"
+
+
 class ApprovalRequestPanel:
     FEEDBACK_OPTION_INDEX = 3
 
@@ -149,7 +159,12 @@ class ApprovalRequestPanel:
         # P2: non-diff blocks may have been truncated
         self.has_expandable_content = self._has_diff or self._non_diff_truncated
 
-    def render(self, *, feedback_text: str | None = None) -> RenderableType:
+    def render(
+        self,
+        *,
+        feedback_text: str | None = None,
+        feedback_cursor: int | None = None,
+    ) -> RenderableType:
         """Render the approval menu as a bordered panel."""
         content_lines: list[RenderableType] = [
             Text.from_markup(
@@ -182,11 +197,11 @@ class ApprovalRequestPanel:
             is_feedback_option = i == self.FEEDBACK_OPTION_INDEX
             if i == self.selected_index:
                 if is_feedback_option and show_inline_feedback:
-                    input_display = escape(feedback_text) if feedback_text else ""
+                    input_display = _render_feedback_with_cursor(
+                        feedback_text or "", feedback_cursor
+                    )
                     lines.append(
-                        Text.from_markup(
-                            f"[cyan]\u2192 \\[{num}] Reject: {input_display}\u2588[/cyan]"
-                        )
+                        Text.from_markup(f"[cyan]\u2192 \\[{num}] Reject: {input_display}[/cyan]")
                     )
                 else:
                     lines.append(Text(f"\u2192 [{num}] {option_text}", style="cyan"))
@@ -332,7 +347,7 @@ class ApprovalPromptDelegate:
         request: ApprovalRequest,
         *,
         on_response: Callable[[ApprovalRequest, ApprovalResponse.Kind, str], None],
-        buffer_text_provider: Callable[[], str] | None = None,
+        buffer_text_provider: Callable[[], tuple[str, int]] | None = None,
         text_expander: Callable[[str], str] | None = None,
     ) -> None:
         self._panel = ApprovalRequestPanel(request)
@@ -354,10 +369,14 @@ class ApprovalPromptDelegate:
 
     def render_running_prompt_body(self, columns: int) -> ANSI:
         feedback_text: str | None = None
-        if self._is_inline_feedback_active():
-            feedback_text = self._buffer_text_provider() if self._buffer_text_provider else ""
+        feedback_cursor: int | None = None
+        if self._is_inline_feedback_active() and self._buffer_text_provider is not None:
+            feedback_text, feedback_cursor = self._buffer_text_provider()
         body = render_to_ansi(
-            self._panel.render(feedback_text=feedback_text),
+            self._panel.render(
+                feedback_text=feedback_text,
+                feedback_cursor=feedback_cursor,
+            ),
             columns=columns,
         ).rstrip("\n")
         return ANSI(body)
