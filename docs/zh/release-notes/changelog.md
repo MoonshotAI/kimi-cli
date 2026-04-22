@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Kosong：修复 Kimi 供应商在 OAuth 令牌刷新后仍使用过期的 API 密钥的问题——`on_retryable_error` 现在从当前 client 读取 `api_key`，而不是缓存的 `_api_key`，因此在可重试错误后重建 client 时会保留通过 `client.api_key` 应用的 OAuth 令牌刷新
 - Shell：修复 approval 弹窗超时后被误报为 `Rejected by user` 的问题——300 秒安全超时后，工具调用会以 `Rejected: approval timed out` 拒绝，让离开电脑一段时间后回来的用户能分辨出这是超时而非自己的手动拒绝。经常长时间离开的话可以加 `--yolo`/`-y` 自动批准工具调用
 - Kosong：修复 Anthropic 供应商将并行工具结果拆分到多个 user message 的问题——现在会将仅包含工具结果的连续 user message 合并为单条消息，以符合 Anthropic Messages API 规范（assistant 一轮中的所有 `tool_use` 必须在同一条 user message 内回答）；修复了严格兼容后端（如 DeepSeek `/anthropic` 接口）返回 400 错误的问题，并避免官方后端静默地引导模型放弃并行工具调用
 
