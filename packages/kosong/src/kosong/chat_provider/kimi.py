@@ -42,6 +42,7 @@ from kosong.message import (
     VideoURLPart,
 )
 from kosong.tooling import Tool
+from kosong.utils.jsonschema import JsonDict, ensure_property_types
 
 if TYPE_CHECKING:
 
@@ -328,8 +329,17 @@ def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
                 },
             },
         )
-    else:
-        return tool_to_openai(tool)
+    converted = tool_to_openai(tool)
+    # Moonshot's API rejects parameter schemas whose nested properties omit
+    # `type` (e.g. enum-only properties exposed by some MCP servers). Patch
+    # the schema locally so such tools keep working against Kimi without
+    # requiring every MCP server author to tighten their schemas.
+    function = converted["function"]
+    parameters = function.get("parameters")
+    if isinstance(parameters, dict):
+        normalized = ensure_property_types(cast(JsonDict, parameters))
+        function["parameters"] = cast(dict[str, object], normalized)
+    return converted
 
 
 class KimiStreamedMessage:
