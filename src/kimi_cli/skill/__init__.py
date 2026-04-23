@@ -215,15 +215,27 @@ async def resolve_skills_roots(
     seen: set[str] = set()
 
     def _append(root: KaosPath, scope: SkillScope) -> None:
-        # Canonicalize so that symlinks, ``..`` segments, and trailing slashes
-        # don't create phantom duplicate entries. ``canonical`` requires the
-        # path to exist; callers already gated on ``is_dir``, but if that
-        # check raced or canonical fails for any reason, fall back to the raw
-        # string form rather than dropping the root.
+        # Dedupe so symlinks, ``..`` segments, and trailing slashes don't
+        # produce phantom duplicate entries in the system prompt. Note that
+        # ``KaosPath.canonical()`` only normalizes path segments; it does NOT
+        # resolve symlinks. So on local backends we walk symlinks via
+        # ``pathlib.Path.resolve()`` first, then fall through to
+        # ``canonical()`` for ``..`` / trailing-slash normalization. Non-local
+        # backends keep the canonical-only path because ``Path.resolve()``
+        # would walk the wrong filesystem.
+        resolved = root
+        if get_current_kaos().name == local_kaos.name:
+            try:
+                local_resolved = Path(str(root)).resolve()
+            except OSError:
+                # Keep the original path; canonical() below still does what it can.
+                pass
+            else:
+                resolved = KaosPath.unsafe_from_local_path(local_resolved)
         try:
-            canon = root.canonical()
+            canon = resolved.canonical()
         except OSError:
-            canon = root
+            canon = resolved
         key = str(canon)
         if key in seen:
             return

@@ -1271,7 +1271,15 @@ async def test_resolve_skills_roots_extra_skill_dirs_symlink_dedup(monkeypatch, 
     Two ``extra_skill_dirs`` entries — one pointing at the real directory, one
     via a symlink to the same place — must register as a single root; otherwise
     the system prompt would list the same skills twice under the Extra scope.
+    ``KaosPath.canonical()`` does not walk symlinks, so this relies on
+    ``_append`` running a ``Path.resolve()`` pass on local backends.
     """
+    import kimi_cli.skill as skill_mod
+
+    # Suppress built-in skills so we can make a tight ``len(roots) == 1``
+    # assertion — the point of this test is exactly that the real dir and the
+    # symlinked dir collapse to one root.
+    monkeypatch.setattr(skill_mod, "_supports_builtin_skills", lambda: False)
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty_home")
     monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
 
@@ -1290,15 +1298,23 @@ async def test_resolve_skills_roots_extra_skill_dirs_symlink_dedup(monkeypatch, 
         )
     )
 
-    # Both entries canonicalize to ``real`` — only one root survives.
-    real_canonical = real.resolve()
-    matches = [r for r in roots if Path(str(r)) == real_canonical]
-    assert len(matches) == 1
+    # Both entries must dedupe to exactly one root; neither the real nor the
+    # symlink version should appear twice in any form.
+    assert len(roots) == 1
+    # And that single root must be the real target (not the symlink path).
+    assert Path(str(roots[0])).resolve() == real.resolve()
 
 
 @pytest.mark.asyncio
 async def test_resolve_skills_roots_extra_skill_dirs_trailing_slash_dedup(monkeypatch, tmp_path):
     """Entries that differ only by a trailing slash collapse to one root."""
+    import kimi_cli.skill as skill_mod
+
+    # Suppress built-in skills so we can make a tight ``len(roots) == 1``
+    # assertion — otherwise the built-in roots would also land in ``roots``
+    # and we would only be able to assert ``real_kp`` is present once, which
+    # is weaker than what this test is meant to lock.
+    monkeypatch.setattr(skill_mod, "_supports_builtin_skills", lambda: False)
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty_home")
     monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
 
@@ -1314,8 +1330,74 @@ async def test_resolve_skills_roots_extra_skill_dirs_trailing_slash_dedup(monkey
             extra_skill_dirs=[str(real), str(real) + "/"],
         )
     )
+    # Both entries must collapse to exactly one root — no duplicate slot for
+    # the trailing-slash variant.
+    assert len(roots) == 1
     real_kp = KaosPath.unsafe_from_local_path(real)
     assert roots.count(real_kp) == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_skills_roots_extra_skill_dirs_symlink_scope_is_extra(monkeypatch, tmp_path):
+    """After symlink dedup the surviving root still carries ``scope='extra'``."""
+    import kimi_cli.skill as skill_mod
+
+    monkeypatch.setattr(skill_mod, "_supports_builtin_skills", lambda: False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty_home")
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+
+    work_dir = tmp_path / "project"
+    work_dir.mkdir()
+
+    scoped = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(work_dir),
+        extra_skill_dirs=[str(real), str(link)],
+    )
+
+    assert len(scoped) == 1
+    assert scoped[0].scope == "extra"
+
+
+@pytest.mark.asyncio
+async def test_resolve_skills_roots_extra_skill_dirs_symlink_stored_root_is_realpath(
+    monkeypatch, tmp_path
+):
+    """The stored root is the real target path, not the symlink the user typed.
+
+    Important for the system prompt's ``Path:`` field: showing the real path
+    keeps ``Path:`` lines stable across users who happen to add different
+    symlinks to the same underlying directory.
+    """
+    import kimi_cli.skill as skill_mod
+
+    monkeypatch.setattr(skill_mod, "_supports_builtin_skills", lambda: False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty_home")
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+
+    work_dir = tmp_path / "project"
+    work_dir.mkdir()
+
+    # Only pass the symlink — the stored root should still be the real path.
+    scoped = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(work_dir),
+        extra_skill_dirs=[str(link)],
+    )
+
+    assert len(scoped) == 1
+    stored = Path(str(scoped[0].root))
+    assert stored == real.resolve()
+    # Crucially, the symlink path does NOT appear in the stored root.
+    assert stored != link
 
 
 # ---------------------------------------------------------------------------
