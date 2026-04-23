@@ -19,11 +19,13 @@ Kimi Code CLI 支持两种扩展机制：
 
 ## Skill 发现
 
-Kimi Code CLI 采用分层加载机制发现 Skills，按以下优先级加载（先加载的同名 Skill 优先）：
+Kimi Code CLI 采用分层加载机制发现 Skills。当同名 Skill 存在于多个作用域时，越具体的作用域优先：
+
+**Project > User > Extra > Built-in**
 
 **内置 Skills**
 
-随软件包安装的 Skills，提供基础能力。
+随软件包安装的 Skills，提供基础能力。优先级最低。
 
 **用户级 Skills**
 
@@ -65,8 +67,47 @@ merge_all_available_skills = true
 kimi --skills-dir /path/to/my-skills --skills-dir /path/to/more-skills
 ```
 
+**额外 Skills 目录（追加式）**
+
+如果希望在**内置 / 用户级 / 项目级**自动发现的基础上**追加**自定义 Skills 目录（而不是替代它们），可在配置中设置 `extra_skill_dirs`：
+
+```toml
+extra_skill_dirs = [
+    "~/my-skills-collection",   # `~` 会展开为 $HOME
+    ".claude/plugins/my-skills", # 相对路径以“项目根”为基准解析
+    "/opt/team-shared/skills",  # 绝对路径原样使用
+]
+```
+
+每一项可以是绝对路径、`~` 前缀路径，或相对于项目根（即 `work_dir` 向上第一个包含 `.git` 的目录）的相对路径。不存在的条目会被静默跳过。从这些目录发现的 Skills 在系统提示中归入 `Extra` 作用域。
+
+**Skills 在系统提示中的呈现**
+
+发现的 Skills 按作用域分组注入系统提示（`Project` / `User` / `Extra` / `Built-in`）；空分组不渲染。这样 AI 就能区分"项目里的 skill"和"用户级的 skill"，避免推理时把两者混为一谈。
+
+**扁平 `.md` 形式的 Skill**
+
+除了标准的 `<name>/SKILL.md` 子目录结构，Skills 目录下单个 `.md` 文件也会被识别为一个 Skill。`name` 默认取文件名去掉 `.md`。
+
+```
+~/my-skills-collection/
+├── demo-ui-components.md    # 扁平：name = "demo-ui-components"
+└── deploy/                   # 子目录：name = "deploy"
+    └── SKILL.md
+```
+
+当同一目录下扁平 `.md` 和子目录形式同名时，以子目录为准，并记录一条警告日志。
+
+**description 解析规则**
+
+无论子目录还是扁平形式，每个 Skill 的 `description` 都走同一条链：
+
+1. Frontmatter 的 `description:` 字段（推荐 —— 遵循 [SKILL.md 规范](https://agentskills.io/specification)）
+2. 正文第一个非空行（回退；超过 240 字符会被截断）
+3. `"No description provided."`（兜底）
+
 ::: tip 提示
-Skills 路径独立于 [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir)。`KIMI_SHARE_DIR` 用于自定义配置、会话、日志等运行时数据的存储位置，不影响 Skills 的搜索路径。Skills 是跨工具共享的能力扩展（支持 Kimi CLI、Claude、Codex 等多个工具共用），与应用运行时数据是不同类型的数据。如需自定义 Skills 路径，请使用 `--skills-dir` 参数。
+Skills 路径独立于 [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir)。`KIMI_SHARE_DIR` 用于自定义配置、会话、日志等运行时数据的存储位置，不影响 Skills 的搜索路径。Skills 是跨工具共享的能力扩展（支持 Kimi CLI、Claude、Codex 等多个工具共用），与应用运行时数据是不同类型的数据。如需自定义 Skills 路径，请使用 `--skills-dir` 参数或 `extra_skill_dirs` 配置。
 :::
 
 ## 内置 Skills

@@ -235,6 +235,16 @@ class Config(BaseModel):
             "instead of using only the first one found"
         ),
     )
+    extra_skill_dirs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra directories to discover skills from, added on top of the "
+            "built-in / user / project locations. Each entry may be an absolute "
+            "path, ``~``-prefixed (expanded against $HOME), or relative to the "
+            "project root (the nearest ``.git`` directory above the work dir). "
+            "Missing paths are silently skipped."
+        ),
+    )
     telemetry: bool = Field(
         default=True,
         description="Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.",
