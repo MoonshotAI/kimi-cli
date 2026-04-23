@@ -545,10 +545,13 @@ class KimiToolset:
         self._deferred_mcp_load = None
         if self._mcp_loading_task:
             self._mcp_loading_task.cancel()
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await self._mcp_loading_task
         for server_info in self._mcp_servers.values():
-            await server_info.client.close()
+            try:
+                await server_info.client.close()
+            except Exception:
+                logger.warning("Failed to close MCP client", exc_info=True)
 
 
 @dataclass(slots=True)

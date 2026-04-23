@@ -67,12 +67,14 @@ def _cursor_position_unix() -> tuple[int, int] | None:
 
     fd = sys.stdin.fileno()
     oldterm = termios.tcgetattr(fd)
+    was_blocking = True
 
     try:
         tty.setcbreak(fd)
         # Make reads non-blocking so that asyncio cancellation (or a race
         # with prompt_toolkit's own stdin reader) cannot leave us stuck in
         # an uninterruptible os.read() syscall.
+        was_blocking = os.get_blocking(fd)
         os.set_blocking(fd, False)
         sys.stdout.write(_CURSOR_QUERY)
         sys.stdout.flush()
@@ -98,7 +100,7 @@ def _cursor_position_unix() -> tuple[int, int] | None:
                 return int(match.group(1)), int(match.group(2))
     finally:
         with contextlib.suppress(OSError):
-            os.set_blocking(fd, True)
+            os.set_blocking(fd, was_blocking)
         termios.tcsetattr(fd, termios.TCSADRAIN, oldterm)
 
     return None

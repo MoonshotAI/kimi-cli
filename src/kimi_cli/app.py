@@ -404,7 +404,7 @@ class KimiCLI:
             toolset = self.soul.agent.toolset
             if isinstance(toolset, KimiToolset):
                 await toolset.cleanup()
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             logger.warning("Error during toolset cleanup; continuing exit", exc_info=True)
 
         bg_config = self._runtime.config.background
