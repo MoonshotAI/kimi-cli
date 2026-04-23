@@ -41,6 +41,7 @@ from kosong.chat_provider.openai_common import (
     close_replaced_openai_client,
     convert_error,
     create_openai_client,
+    ensure_strict_json_schema,
     reasoning_effort_to_thinking_effort,
     thinking_effort_to_reasoning_effort,
 )
@@ -342,11 +343,14 @@ class OpenAIResponses:
 
 def _convert_tool(tool: Tool) -> ToolParam:
     """Convert a Kosong tool to an OpenAI Responses tool."""
+    parameters = tool.parameters
+    if tool.strict:
+        parameters = ensure_strict_json_schema(parameters)
     return {
         "type": "function",
         "name": tool.name,
         "description": tool.description,
-        "parameters": tool.parameters,
+        "parameters": parameters,
         "strict": tool.strict,
     }
 

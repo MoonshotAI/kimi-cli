@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import inspect
 import re
 from collections.abc import Awaitable, Mapping
@@ -7,6 +8,7 @@ from typing import Any, cast
 import httpx
 import openai
 from openai import AsyncOpenAI, OpenAIError
+from openai.lib._pydantic import _ensure_strict_json_schema  # type: ignore[reportPrivateUsage]
 from openai.types import ReasoningEffort
 from openai.types.chat import ChatCompletionToolParam
 
@@ -149,15 +151,26 @@ def reasoning_effort_to_thinking_effort(effort: ReasoningEffort) -> ThinkingEffo
             return "off"
 
 
+def ensure_strict_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Make a JSON schema compliant with OpenAI strict mode.
+
+    Mutates a deep copy so the original schema is preserved.
+    """
+    schema_copy = copy.deepcopy(schema)
+    return _ensure_strict_json_schema(schema_copy, path=(), root=schema_copy)
+
+
 def tool_to_openai(tool: Tool) -> ChatCompletionToolParam:
     """Convert a single tool to OpenAI tool format."""
-    # simply `model_dump` because the `Tool` type is OpenAI-compatible
+    parameters = tool.parameters
+    if tool.strict:
+        parameters = ensure_strict_json_schema(parameters)
     return {
         "type": "function",
         "function": {
             "name": tool.name,
             "description": tool.description,
-            "parameters": tool.parameters,
+            "parameters": parameters,
             "strict": tool.strict,
         },
     }
