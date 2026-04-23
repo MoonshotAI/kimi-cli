@@ -627,6 +627,7 @@ def _convert_tool(tool: Tool) -> ToolParam:
         "name": tool.name,
         "description": tool.description,
         "input_schema": tool.parameters,
+        "strict": tool.strict,
     }
 
 

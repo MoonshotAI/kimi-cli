@@ -193,6 +193,7 @@ async def test_anthropic_message_conversion():
                                 },
                                 "required": ["a", "b"],
                             },
+                            "strict": False,
                         },
                         {
                             "name": "multiply",
@@ -205,6 +206,7 @@ async def test_anthropic_message_conversion():
                                 },
                                 "required": ["a", "b"],
                             },
+                            "strict": False,
                             "cache_control": {"type": "ephemeral"},
                         },
                     ],
@@ -343,6 +345,7 @@ async def test_anthropic_message_conversion():
                                 },
                                 "required": ["a", "b"],
                             },
+                            "strict": False,
                         },
                         {
                             "name": "multiply",
@@ -355,6 +358,7 @@ async def test_anthropic_message_conversion():
                                 },
                                 "required": ["a", "b"],
                             },
+                            "strict": False,
                             "cache_control": {"type": "ephemeral"},
                         },
                     ],

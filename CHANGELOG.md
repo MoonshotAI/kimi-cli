@@ -12,6 +12,8 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Kosong: Fix parallel tool results being split into multiple user messages in Anthropic provider — consecutive tool-result-only user messages are now merged into a single message, complying with the Anthropic Messages API spec that all `tool_use` blocks in an assistant turn must be answered within one user message; this fixes 400 errors on strict Anthropic-compatible backends (e.g. DeepSeek `/anthropic` endpoint) and prevents the official backend from silently teaching the model to avoid parallel tool calls
+- Core: Enable strict parameter validation for built-in tools (`Grep`, `ReadFile`, `StrReplaceFile`, `WriteFile`, `Shell`, `SetTodoList`) — API requests now include `strict: true`, enforcing exact parameter schema compliance and reducing invalid tool call errors from model hallucinations
+- Kosong: Add `strict` field to `Tool` and `CallableTool2` definitions, and propagate it through OpenAI, OpenAI Responses, and Anthropic providers
 
 ## 1.37.0 (2026-04-20)
 

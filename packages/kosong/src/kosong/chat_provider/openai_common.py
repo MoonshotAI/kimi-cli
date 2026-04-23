@@ -158,5 +158,6 @@ def tool_to_openai(tool: Tool) -> ChatCompletionToolParam:
             "name": tool.name,
             "description": tool.description,
             "parameters": tool.parameters,
+            "strict": tool.strict,
         },
     }

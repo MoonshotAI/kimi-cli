@@ -383,6 +383,7 @@ def _strip_path_prefix(output: str, search_base: str) -> str:
 
 class Grep(CallableTool2[Params]):
     name: str = "Grep"
+    strict: bool = True
     description: str = load_desc(Path(__file__).parent / "grep.md")
     params: type[Params] = Params
 
