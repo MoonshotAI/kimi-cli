@@ -7,7 +7,21 @@ from kosong.utils.typing import JsonType
 
 type JsonDict = dict[str, JsonType]
 
-_COMBINATOR_KEYS = ("anyOf", "oneOf", "allOf", "$ref")
+# JSON Schema keywords that describe a property's shape without (or in
+# addition to) a ``type`` keyword. When any of these are present we skip
+# the type-filling step so we don't distort the schema's meaning —
+# ``not``/``if``/``then``/``else`` are less common but every bit as valid
+# as ``anyOf``/``oneOf``/``allOf``.
+_COMBINATOR_KEYS = (
+    "anyOf",
+    "oneOf",
+    "allOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "$ref",
+)
 
 
 def deref_json_schema(schema: JsonDict) -> JsonDict:
@@ -219,8 +233,14 @@ def _infer_type_from_values(values: list[JsonType]) -> str:
             inferred.add("string")
         elif value is None:
             inferred.add("null")
+        elif isinstance(value, dict):
+            inferred.add("object")
+        elif isinstance(value, list):  # pyright: ignore[reportUnnecessaryIsInstance]
+            inferred.add("array")
         else:
-            # Unknown / unsupported Python value type: use the safe fallback.
+            # Unreachable for well-formed JSON values, but defensive for
+            # non-JSON inputs (e.g. if a caller passes a tuple or custom
+            # object): fall back to the safe string type.
             return "string"
 
     if len(inferred) == 1:

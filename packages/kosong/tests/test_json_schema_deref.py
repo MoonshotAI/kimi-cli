@@ -231,8 +231,9 @@ def test_ensure_property_types_infers_structural_type_before_string_fallback():
 
 
 def test_ensure_property_types_leaves_combinators_alone():
-    """Properties using anyOf/oneOf/allOf/$ref legitimately declare their shape
-    without a top-level `type` — we must not overwrite that."""
+    """Properties using anyOf/oneOf/allOf/$ref/not/if/then/else legitimately
+    declare their shape without a top-level `type` — we must not overwrite
+    that, or we would narrow the schema's meaning."""
     schema: JsonSchema = {
         "type": "object",
         "properties": {
@@ -243,6 +244,15 @@ def test_ensure_property_types_leaves_combinators_alone():
                 ]
             },
             "ref_prop": {"$ref": "#/$defs/Something"},
+            # `not` / `if` / `then` / `else` are rarer JSON Schema combinators
+            # that must also be respected — adding `type: "string"` here would
+            # distort the constraint.
+            "negated": {"not": {"type": "number"}},
+            "conditional": {
+                "if": {"properties": {"kind": {"const": "a"}}},
+                "then": {"required": ["a_only"]},
+                "else": {"required": ["b_only"]},
+            },
         },
     }
     assert ensure_property_types(schema) == snapshot(
@@ -256,6 +266,39 @@ def test_ensure_property_types_leaves_combinators_alone():
                     ]
                 },
                 "ref_prop": {"$ref": "#/$defs/Something"},
+                "negated": {"not": {"type": "number"}},
+                "conditional": {
+                    "if": {"properties": {"kind": {"const": "a"}}},
+                    "then": {"required": ["a_only"]},
+                    "else": {"required": ["b_only"]},
+                },
+            },
+        }
+    )
+
+
+def test_ensure_property_types_infers_object_and_array_from_container_enum_values():
+    """Regression: enum/const with dict or list values must infer
+    `type: "object"` / `type: "array"` rather than fall back to `"string"`,
+    which would produce a self-contradictory schema (the enum values would
+    never validate against the declared type)."""
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {
+            "object_enum": {"enum": [{"a": 1}, {"a": 2}]},
+            "array_enum": {"enum": [[1, 2], [3]]},
+            "object_const": {"const": {"kind": "default"}},
+            "array_const": {"const": []},
+        },
+    }
+    assert ensure_property_types(schema) == snapshot(
+        {
+            "type": "object",
+            "properties": {
+                "object_enum": {"enum": [{"a": 1}, {"a": 2}], "type": "object"},
+                "array_enum": {"enum": [[1, 2], [3]], "type": "array"},
+                "object_const": {"const": {"kind": "default"}, "type": "object"},
+                "array_const": {"const": [], "type": "array"},
             },
         }
     )
