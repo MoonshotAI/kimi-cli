@@ -164,11 +164,12 @@ class ACPServer:
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         _default_mcp_file = get_global_mcp_config_file()
-        _default_mcp_configs = (
-            [_json.loads(_default_mcp_file.read_text(encoding="utf-8"))]
-            if _default_mcp_file.exists()
-            else []
-        )
+        _default_mcp_configs: list[object] = []
+        if _default_mcp_file.exists():
+            try:
+                _default_mcp_configs = [_json.loads(_default_mcp_file.read_text(encoding="utf-8"))]
+            except _json.JSONDecodeError:
+                logger.warning("Skipping malformed global MCP config file: {path}", path=_default_mcp_file)
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=_default_mcp_configs + [mcp_config],
@@ -240,11 +241,12 @@ class ACPServer:
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         _default_mcp_file = get_global_mcp_config_file()
-        _default_mcp_configs = (
-            [_json.loads(_default_mcp_file.read_text(encoding="utf-8"))]
-            if _default_mcp_file.exists()
-            else []
-        )
+        _default_mcp_configs: list[object] = []
+        if _default_mcp_file.exists():
+            try:
+                _default_mcp_configs = [_json.loads(_default_mcp_file.read_text(encoding="utf-8"))]
+            except _json.JSONDecodeError:
+                logger.warning("Skipping malformed global MCP config file: {path}", path=_default_mcp_file)
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=_default_mcp_configs + [mcp_config],
