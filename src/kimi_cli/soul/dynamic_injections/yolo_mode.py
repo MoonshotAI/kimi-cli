@@ -13,17 +13,25 @@ if TYPE_CHECKING:
 _YOLO_INJECTION_TYPE = "yolo_mode"
 
 _YOLO_PROMPT = (
-    "You are running in non-interactive mode. The user cannot answer questions "
-    "or provide feedback during execution.\n"
-    "- Do NOT call AskUserQuestion. If you need to make a decision, make your "
-    "best judgment and proceed.\n"
-    "- For EnterPlanMode / ExitPlanMode, they will be auto-approved. You can use "
-    "them normally but expect no user feedback."
+    "Yolo (auto-approve) mode is active. Tool calls that normally require "
+    "user approval will be auto-approved by the harness.\n"
+    "- You ARE still in an interactive session. The user is present and "
+    "CAN answer AskUserQuestion. Yolo only removes approval friction; "
+    "it does NOT remove the user.\n"
+    "- Use AskUserQuestion sparingly — only when a decision genuinely "
+    "changes your next action (missing requirements, ambiguous goals, "
+    "choosing between meaningfully different approaches). Do NOT use it "
+    "for routine confirmations or progress check-ins.\n"
+    "- For trivial decisions, exercise your best judgment and proceed.\n"
+    "- EnterPlanMode / ExitPlanMode will be auto-approved as well."
 )
 
 
 class YoloModeInjectionProvider(DynamicInjectionProvider):
-    """Injects a one-time reminder when yolo mode is active."""
+    """Injects a one-time reminder when yolo mode is active (and not afk).
+
+    Afk has its own provider with stricter guidance (no AskUserQuestion).
+    """
 
     def __init__(self) -> None:
         self._injected: bool = False
@@ -34,6 +42,12 @@ class YoloModeInjectionProvider(DynamicInjectionProvider):
         soul: KimiSoul,
     ) -> list[DynamicInjection]:
         if not soul.is_yolo:
+            return []
+        if soul.is_afk:
+            return []
+        if soul.is_subagent:
+            # Subagents have no AskUserQuestion tool and no real terminal user;
+            # claiming "the user is present" would be factually wrong.
             return []
         if self._injected:
             return []

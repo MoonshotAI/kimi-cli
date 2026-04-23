@@ -56,10 +56,14 @@ class ApprovalState:
     def __init__(
         self,
         yolo: bool = False,
+        afk: bool = False,
         auto_approve_actions: set[str] | None = None,
         on_change: Callable[[], None] | None = None,
     ):
         self.yolo = yolo
+        self.afk = afk
+        """Runtime-only flag. True when no user is present (e.g. ``--print`` or
+        ``--afk``). Implies auto-approve. Not persisted to session state."""
         self.auto_approve_actions: set[str] = auto_approve_actions or set()
         """Set of action names that should automatically be approved."""
         self._on_change = on_change
@@ -81,7 +85,7 @@ class Approval:
         self._runtime = runtime or ApprovalRuntime()
 
     def share(self) -> Approval:
-        """Create a new approval queue that shares state (yolo + auto-approve)."""
+        """Create a new approval queue that shares state (yolo + afk + auto-approve)."""
         return Approval(state=self._state, runtime=self._runtime)
 
     def set_runtime(self, runtime: ApprovalRuntime) -> None:
@@ -95,8 +99,29 @@ class Approval:
         self._state.yolo = yolo
         self._state.notify_change()
 
+    def set_afk(self, afk: bool) -> None:
+        """Toggle afk (away-from-keyboard) at runtime.
+
+        Afk is runtime-only and intentionally NOT persisted, so this does
+        NOT trigger ``on_change`` (which writes to session state).
+        """
+        self._state.afk = afk
+
     def is_yolo(self) -> bool:
+        """True when tool calls should be auto-approved.
+
+        Afk implies auto-approve, so this returns True whenever either the
+        explicit yolo flag or afk is set.
+        """
+        return self._state.yolo or self._state.afk
+
+    def is_yolo_flag(self) -> bool:
+        """True only when the user explicitly opted into yolo (not via afk)."""
         return self._state.yolo
+
+    def is_afk(self) -> bool:
+        """True when no user is present (away-from-keyboard)."""
+        return self._state.afk
 
     async def request(
         self,
@@ -132,13 +157,13 @@ class Approval:
             action=action,
             description=description,
         )
-        if self._state.yolo:
+        if self.is_yolo():
             from kimi_cli.telemetry import track
 
             track(
                 "tool_approved",
                 tool_name=tool_call.function.name,
-                approval_mode="yolo",
+                approval_mode="afk" if self._state.afk else "yolo",
             )
             return ApprovalResult(approved=True)
 

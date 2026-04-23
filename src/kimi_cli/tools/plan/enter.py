@@ -74,7 +74,7 @@ class EnterPlanMode(CallableTool2[Params]):
             return ToolReturnValue(
                 is_error=False,
                 output=(
-                    f"Plan mode activated (auto-approved in non-interactive mode).\n"
+                    f"Plan mode activated (auto-approved).\n"
                     f"Plan file: {plan_path}\n"
                     f"Workflow: identify key questions about the codebase → "
                     f"use Agent(subagent_type='explore') to investigate if needed → "

@@ -137,7 +137,7 @@ class ExitPlanMode(CallableTool2[Params]):
             return ToolReturnValue(
                 is_error=False,
                 output=(
-                    f"Plan approved (auto-approved in non-interactive mode). "
+                    f"Plan approved (auto-approved). "
                     f"Plan mode deactivated. All tools are now available.\n"
                     f"Plan saved to: {plan_path}\n\n"
                     f"## Approved Plan:\n{plan_content}"

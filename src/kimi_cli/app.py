@@ -127,6 +127,7 @@ class KimiCLI:
         thinking: bool | None = None,
         # Run mode
         yolo: bool = False,
+        afk: bool = False,
         plan_mode: bool = False,
         resumed: bool = False,
         ui_mode: str = "shell",
@@ -151,6 +152,9 @@ class KimiCLI:
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
+            afk (bool, optional): Away-from-keyboard mode (no user is present to answer
+                questions or approve actions). Implies auto-approve. Runtime-only,
+                not persisted to session state. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
                 MCP tools from. Defaults to None.
@@ -253,6 +257,7 @@ class KimiCLI:
             llm,
             session,
             yolo,
+            afk=afk,
             skills_dirs=skills_dirs,
         )
         runtime.notifications.recover()
@@ -346,7 +351,7 @@ class KimiCLI:
         install_asyncio_handler()
         set_phase("runtime")
 
-        track("started", resumed=resumed, yolo=yolo)
+        track("started", resumed=resumed, yolo=yolo, afk=afk)
         track(
             "startup_perf",
             duration_ms=int((time.monotonic() - _create_t0) * 1000),

@@ -203,6 +203,17 @@ def kimi(
             help="Start in plan mode. Default: no.",
         ),
     ] = False,
+    afk: Annotated[
+        bool,
+        typer.Option(
+            "--afk",
+            help=(
+                "Run in afk (away-from-keyboard) mode: no user is present, "
+                "AskUserQuestion is auto-dismissed, and tool calls are auto-approved. "
+                "Default: no."
+            ),
+        ),
+    ] = False,
     prompt: Annotated[
         str | None,
         typer.Option(
@@ -218,7 +229,8 @@ def kimi(
         typer.Option(
             "--print",
             help=(
-                "Run in print mode (non-interactive). Note: print mode implicitly adds `--yolo`."
+                "Run in print mode (non-interactive). Note: print mode implicitly adds "
+                "`--afk` (which also auto-approves tool calls)."
             ),
         ),
     ] = False,
@@ -609,7 +621,8 @@ def kimi(
                 config=config,
                 model_name=model_name,
                 thinking=thinking,
-                yolo=yolo or (ui == "print"),  # print mode implies yolo
+                yolo=yolo,
+                afk=afk or (ui == "print"),  # print mode implies afk
                 plan_mode=plan,
                 resumed=resumed,
                 agent_file=agent_file,

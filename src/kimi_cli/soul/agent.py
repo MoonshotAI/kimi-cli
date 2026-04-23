@@ -227,6 +227,7 @@ class Runtime:
         llm: LLM | None,
         session: Session,
         yolo: bool,
+        afk: bool = False,
         skills_dirs: list[KaosPath] | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
@@ -300,6 +301,7 @@ class Runtime:
 
         approval_state = ApprovalState(
             yolo=effective_yolo,
+            afk=afk,
             auto_approve_actions=saved_actions,
             on_change=_on_approval_change,
         )

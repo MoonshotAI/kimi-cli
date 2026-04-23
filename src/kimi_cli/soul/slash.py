@@ -97,7 +97,9 @@ async def yolo(soul: KimiSoul, args: str):
     """Toggle YOLO mode (auto-approve all actions)"""
     from kimi_cli.telemetry import track
 
-    if soul.runtime.approval.is_yolo():
+    # Inspect only the yolo flag, not the OR-combined is_yolo(): afk is independent
+    # and is toggled by /afk.
+    if soul.runtime.approval.is_yolo_flag():
         soul.runtime.approval.set_yolo(False)
         track("yolo_toggle", enabled=False)
         wire_send(TextPart(text="You only die once! Actions will require approval."))
@@ -105,6 +107,32 @@ async def yolo(soul: KimiSoul, args: str):
         soul.runtime.approval.set_yolo(True)
         track("yolo_toggle", enabled=True)
         wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
+
+
+@registry.command
+async def afk(soul: KimiSoul, args: str):
+    """Toggle afk (away-from-keyboard) mode.
+
+    In afk mode, AskUserQuestion is auto-dismissed and tool calls are
+    auto-approved. Useful when stepping away from the terminal but
+    letting the agent continue."""
+    from kimi_cli.telemetry import track
+
+    if soul.runtime.approval.is_afk():
+        soul.runtime.approval.set_afk(False)
+        track("afk_toggle", enabled=False)
+        wire_send(TextPart(text="afk mode disabled. You are back at the terminal."))
+    else:
+        soul.runtime.approval.set_afk(True)
+        track("afk_toggle", enabled=True)
+        wire_send(
+            TextPart(
+                text=(
+                    "afk mode enabled. AskUserQuestion will be auto-dismissed "
+                    "and tool calls auto-approved."
+                )
+            )
+        )
 
 
 @registry.command
