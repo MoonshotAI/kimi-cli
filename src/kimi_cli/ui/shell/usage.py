@@ -275,7 +275,7 @@ def _format_row(row: UsageRow, label_width: int) -> RenderableType:
 
 def _ratio_color(ratio: float) -> str:
     if ratio >= 0.9:
-        return "red"
+        return "green"
     if ratio >= 0.7:
         return "yellow"
-    return "green"
+    return "red"
