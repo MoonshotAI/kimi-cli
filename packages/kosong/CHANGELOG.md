@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Kimi: Add `keep` to `ThinkingConfig` (Moonshot `thinking.keep` passthrough for Preserved Thinking); value is typed as `Any` and forwarded unchanged, with case-preservation and no validation — callers choose a value the server accepts (e.g. `"all"`)
+- Kimi: Fix `with_extra_body` silently dropping earlier `thinking.*` fields on subsequent calls — the `thinking` sub-dict is now merged field-by-field so composing `with_thinking(...)` with `with_extra_body({"thinking": {...}})` preserves both contributions; other top-level keys retain last-writer-wins semantics
+
+## 0.51.0 (2026-04-22)
+
 - Anthropic: Fix parallel tool results being split into multiple user messages — consecutive tool-result-only user messages are now merged into a single message, complying with the Anthropic Messages API spec that all `tool_use` blocks in an assistant turn must be answered within one user message; this fixes 400 errors on strict Anthropic-compatible backends (e.g. DeepSeek `/anthropic` endpoint) and prevents the official backend from silently teaching the model to avoid parallel tool calls
 
 ## 0.50.0 (2026-04-17)

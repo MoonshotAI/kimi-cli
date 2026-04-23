@@ -1349,6 +1349,12 @@ class Shell:
                     continue
                 self._forward_approval_to_sink(request)
 
+    def _get_default_buffer_text_and_cursor(self) -> tuple[str, int]:
+        if self._prompt_session is None:
+            return "", 0
+        buf = self._prompt_session._session.default_buffer  # pyright: ignore[reportPrivateUsage]
+        return buf.text, buf.cursor_position
+
     def _activate_prompt_approval_modal(self) -> None:
         if self._prompt_session is None:
             return
@@ -1365,11 +1371,7 @@ class Shell:
             self._approval_modal = ApprovalPromptDelegate(
                 current_request,
                 on_response=self._handle_prompt_approval_response,
-                buffer_text_provider=(
-                    lambda: self._prompt_session._session.default_buffer.text  # pyright: ignore[reportPrivateUsage]
-                    if self._prompt_session is not None
-                    else ""
-                ),
+                buffer_state_provider=self._get_default_buffer_text_and_cursor,
                 text_expander=self._prompt_session._get_placeholder_manager().serialize_for_history,  # pyright: ignore[reportPrivateUsage]
             )
             self._prompt_session.attach_modal(self._approval_modal)
