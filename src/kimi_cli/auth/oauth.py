@@ -54,6 +54,7 @@ KEYRING_SERVICE = "kimi-code"
 REFRESH_INTERVAL_SECONDS = 60
 MIN_REFRESH_THRESHOLD_SECONDS = 300
 REFRESH_THRESHOLD_RATIO = 0.5
+UNAUTHORIZED_REFRESH_RETRY_COOLDOWN_SECONDS = 300
 _CROSS_PROCESS_LOCK_RETRIES = 5
 _RETRYABLE_REFRESH_STATUSES = {429, 500, 502, 503, 504}
 
@@ -143,6 +144,28 @@ class OAuthToken:
             token_type=str(payload.get("token_type") or ""),
             expires_in=float(payload.get("expires_in") or 0),
         )
+
+
+@dataclass(slots=True)
+class _RejectedRefreshState:
+    refresh_token: str
+    retry_after: float
+
+
+# Process-wide tombstone for refresh tokens that the server has rejected.
+#
+# Intentionally module-level rather than per-OAuthManager: OAuth credentials
+# are a process-wide resource (all managers in this process share the same
+# credentials file), so all managers should see the same "recently rejected"
+# state.  Without this, one manager's rejection would leave the persisted
+# token visible to the next manager that loads from disk, and we'd re-issue
+# the same dead refresh request and re-shadow a configured api_key fallback.
+#
+# Cross-process sharing is unnecessary — each process discovers the rejection
+# independently on its first attempt, and the tombstone auto-clears when the
+# on-disk refresh_token differs from the rejected one (i.e. another process
+# successfully rotated, or /login atomically rewrote the file).
+_REJECTED_REFRESH_TOKENS: dict[str, _RejectedRefreshState] = {}
 
 
 @dataclass(slots=True)
@@ -777,8 +800,37 @@ class OAuthManager:
     def _load_initial_tokens(self) -> None:
         for ref in self._iter_oauth_refs():
             token = load_tokens(ref)
-            if token:
+            if token and not self._should_suppress_persisted_token(ref, token):
                 self._cache_access_token(ref, token)
+
+    def _rejected_refresh_state(
+        self, ref: OAuthRef, refresh_token: str | None
+    ) -> _RejectedRefreshState | None:
+        if not refresh_token:
+            return None
+        state = _REJECTED_REFRESH_TOKENS.get(ref.key)
+        if state and state.refresh_token != refresh_token:
+            _REJECTED_REFRESH_TOKENS.pop(ref.key, None)
+            return None
+        return state
+
+    def _should_suppress_persisted_token(self, ref: OAuthRef, token: OAuthToken) -> bool:
+        return self._rejected_refresh_state(ref, token.refresh_token) is not None
+
+    def _can_retry_rejected_refresh_token(self, ref: OAuthRef, refresh_token: str | None) -> bool:
+        state = self._rejected_refresh_state(ref, refresh_token)
+        return state is None or time.time() >= state.retry_after
+
+    def _mark_refresh_token_rejected(self, ref: OAuthRef, refresh_token: str) -> None:
+        if not refresh_token:
+            return
+        _REJECTED_REFRESH_TOKENS[ref.key] = _RejectedRefreshState(
+            refresh_token=refresh_token,
+            retry_after=time.time() + UNAUTHORIZED_REFRESH_RETRY_COOLDOWN_SECONDS,
+        )
+
+    def _clear_rejected_refresh_token(self, ref: OAuthRef) -> None:
+        _REJECTED_REFRESH_TOKENS.pop(ref.key, None)
 
     def _cache_access_token(self, ref: OAuthRef, token: OAuthToken) -> None:
         if not token.access_token:
@@ -798,7 +850,7 @@ class OAuthManager:
             token = self._access_tokens.get(oauth.key)
             if token is None:
                 persisted = load_tokens(oauth)
-                if persisted:
+                if persisted and not self._should_suppress_persisted_token(oauth, persisted):
                     self._cache_access_token(oauth, persisted)
                     token = self._access_tokens.get(oauth.key)
             if token:
@@ -839,9 +891,17 @@ class OAuthManager:
         token = load_tokens(ref)
         if token is None:
             return
-        self._cache_access_token(ref, token)
-        if token.access_token:
-            self._apply_access_token(runtime, token.access_token)
+        if self._should_suppress_persisted_token(ref, token):
+            self._access_tokens.pop(ref.key, None)
+            self._apply_access_token(runtime, "")
+            if not self._can_retry_rejected_refresh_token(ref, token.refresh_token):
+                if force:
+                    raise OAuthUnauthorized("Refresh token was recently rejected.")
+                return
+        else:
+            self._cache_access_token(ref, token)
+            if token.access_token:
+                self._apply_access_token(runtime, token.access_token)
         await self._refresh_tokens(ref, token, runtime, force=force)
 
     @asynccontextmanager
@@ -899,7 +959,7 @@ class OAuthManager:
         # Always prefer persisted tokens before refresh to avoid stale cache
         # when multiple sessions might have already rotated the refresh token.
         persisted = load_tokens(ref)
-        if persisted:
+        if persisted and not self._should_suppress_persisted_token(ref, persisted):
             self._cache_access_token(ref, persisted)
         current_token = persisted or token
         if not current_token.refresh_token:
@@ -907,7 +967,7 @@ class OAuthManager:
         async with self._refresh_lock:
             # Re-check persisted token inside the in-process lock.
             persisted = load_tokens(ref)
-            if persisted:
+            if persisted and not self._should_suppress_persisted_token(ref, persisted):
                 self._cache_access_token(ref, persisted)
             current = persisted or current_token
             if not force:
@@ -921,6 +981,14 @@ class OAuthManager:
             refresh_token_value = current.refresh_token
             if not refresh_token_value:
                 return
+            if self._should_suppress_persisted_token(
+                ref, current
+            ) and not self._can_retry_rejected_refresh_token(ref, refresh_token_value):
+                self._access_tokens.pop(ref.key, None)
+                self._apply_access_token(runtime, "")
+                if force:
+                    raise OAuthUnauthorized("Refresh token was recently rejected.")
+                return
 
             # Acquire cross-process file lock to coordinate with other
             # kimi-cli instances (terminal, VS Code, web).
@@ -932,6 +1000,7 @@ class OAuthManager:
                     # may have refreshed while we waited.
                     locked_token = load_tokens(ref)
                     if locked_token and locked_token.refresh_token != refresh_token_value:
+                        self._clear_rejected_refresh_token(ref)
                         self._cache_access_token(ref, locked_token)
                         self._apply_access_token(runtime, locked_token.access_token)
                         return
@@ -940,6 +1009,7 @@ class OAuthManager:
                         if locked_token.expires_at and remaining >= _refresh_threshold(
                             locked_token.expires_in
                         ):
+                            self._clear_rejected_refresh_token(ref)
                             self._cache_access_token(ref, locked_token)
                             self._apply_access_token(runtime, locked_token.access_token)
                             return
@@ -953,15 +1023,25 @@ class OAuthManager:
                     await asyncio.sleep(1)
                     latest = load_tokens(ref)
                     if latest and latest.refresh_token != refresh_token_value:
+                        self._clear_rejected_refresh_token(ref)
                         self._cache_access_token(ref, latest)
                         self._apply_access_token(runtime, latest.access_token)
                         return
-                    # Clear in-memory state first, then delete the credential
-                    # file.  This order ensures that even if file deletion
-                    # fails, the revoked token is no longer used in-process.
+                    # delete_tokens(ref) would remove whatever the ref points
+                    # to on disk right now, not "the refresh_token that just
+                    # got 401".  A concurrent OAuthManager (another process,
+                    # or another manager in this process — app.py:199,
+                    # web/api/sessions.py:817, plugin paths) may have
+                    # legitimately rotated and written a valid new token into
+                    # this file between the load_tokens check above and here,
+                    # and we'd wipe it.  Clearing the in-memory cache is
+                    # enough; a short in-process tombstone prevents the same
+                    # rejected refresh_token from being immediately retried or
+                    # preferred over a configured static api_key fallback, and
+                    # /login still atomically overwrites the file.
+                    self._mark_refresh_token_rejected(ref, refresh_token_value)
                     self._access_tokens.pop(ref.key, None)
                     self._apply_access_token(runtime, "")
-                    delete_tokens(ref)
                     if force:
                         raise
                     logger.warning(
@@ -980,6 +1060,7 @@ class OAuthManager:
 
                     track("oauth_refresh", success=False, reason="network_or_other")
                     return
+                self._clear_rejected_refresh_token(ref)
                 save_tokens(ref, refreshed)
                 self._cache_access_token(ref, refreshed)
                 self._apply_access_token(runtime, refreshed.access_token)
@@ -1000,7 +1081,9 @@ class OAuthManager:
         from kosong.chat_provider.kimi import Kimi
 
         assert isinstance(runtime.llm.chat_provider, Kimi), "Expected Kimi chat provider"
-        runtime.llm.chat_provider.client.api_key = access_token
+        provider = runtime.config.providers.get(provider_key)
+        fallback_api_key = provider.api_key.get_secret_value() if provider else ""
+        runtime.llm.chat_provider.client.api_key = access_token or fallback_api_key
 
 
 if __name__ == "__main__":
