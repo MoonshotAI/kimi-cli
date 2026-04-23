@@ -983,7 +983,8 @@ class Shell:
             export_cmd = f"kimi export {session_id}" if session_id else "kimi export"
             console.print(
                 f"[red]Unexpected error: {e}[/red]\n"
-                f"[dim]Run [bold]{export_cmd}[/bold] and send the exported data to support "
+                f"[dim]Run [bold]{export_cmd}[/bold] and send the exported data to "
+                "[link=mailto:code@moonshot.ai]code@moonshot.ai[/link] "
                 "for assistance. Please do not share the exported file publicly.[/dim]"
             )
             raise  # re-raise unknown error
