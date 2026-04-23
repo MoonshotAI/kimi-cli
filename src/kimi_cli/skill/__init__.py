@@ -614,15 +614,19 @@ def _first_meaningful_line(content: str) -> str | None:
 
     Uses :func:`strip_frontmatter` to drop any leading YAML block, so the
     frontmatter-skipping logic lives in one place (see
-    :mod:`kimi_cli.utils.frontmatter`).
+    :mod:`kimi_cli.utils.frontmatter`). A malformed frontmatter opener that
+    never closes leaves ``strip_frontmatter`` a no-op; skip standalone
+    ``---`` delimiter lines here so the stray opener does not silently
+    become the fallback description.
     """
     from kimi_cli.utils.frontmatter import strip_frontmatter
 
     body = strip_frontmatter(content)
     for line in body.splitlines():
         stripped = line.strip()
-        if stripped:
-            return stripped
+        if not stripped or stripped == "---":
+            continue
+        return stripped
     return None
 
 

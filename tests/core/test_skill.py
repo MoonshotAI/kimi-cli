@@ -1708,3 +1708,52 @@ async def test_default_config_effectively_merges_user_brand_skill_dirs(monkeypat
 
     assert KaosPath.unsafe_from_local_path(kimi_dir) in roots
     assert KaosPath.unsafe_from_local_path(claude_dir) in roots
+
+
+# ---------------------------------------------------------------------------
+# Review follow-up: malformed frontmatter opener must not become description
+# ---------------------------------------------------------------------------
+#
+# If a skill file starts with `---` but never closes the YAML block, both
+# `parse_frontmatter` (returns None) and `strip_frontmatter` (leaves content
+# unchanged) give up — and the body-fallback path used to pick the first
+# non-empty line, which is the stray opener itself. The tests below lock the
+# fix: standalone `---` delimiter lines are skipped during fallback.
+
+
+@pytest.mark.asyncio
+async def test_discover_flat_md_malformed_frontmatter_opener_not_used_as_description(
+    tmp_path,
+):
+    """A flat .md skill starting with a stray ``---`` line (no closing delimiter)
+    does not end up with ``"---"`` as its description.
+    """
+    root = tmp_path / "skills"
+    root.mkdir()
+    # Malformed: opener ``---`` is there but never closes.
+    (root / "demo.md").write_text(
+        "---\n# Hello\nBody text.\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].description != "---"
+    assert skills[0].description == "# Hello"
+
+
+@pytest.mark.asyncio
+async def test_discover_subdir_skill_malformed_frontmatter_opener_not_used_as_description(
+    tmp_path,
+):
+    """Same guarantee for subdirectory-form skills: a malformed frontmatter
+    opener in SKILL.md must not bleed through as the description.
+    """
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(root / "demo", "---\n# Heading\nBody.\n")
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].description != "---"
+    assert skills[0].description == "# Heading"
