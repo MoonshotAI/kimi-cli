@@ -325,7 +325,7 @@ def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
     parameters = function.get("parameters")
     if isinstance(parameters, dict):
         normalized = ensure_property_types(cast(JsonDict, parameters))
-        function["parameters"] = cast("dict[str, object]", normalized)
+        function["parameters"] = cast(dict[str, object], normalized)
     return converted
 
 

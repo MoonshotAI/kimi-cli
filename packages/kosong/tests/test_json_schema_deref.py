@@ -122,10 +122,15 @@ def test_ensure_property_types_infers_from_enum_values():
         "properties": {
             "as_string": {"enum": ["a", "b"]},
             "as_integer": {"enum": [1, 2, 3]},
-            "as_number": {"enum": [1.0, 2]},
+            # integer ⊂ number, so {int, float} collapses to "number".
+            "int_and_float_as_number": {"enum": [1.0, 2]},
             "as_boolean": {"enum": [True, False]},
             "as_null": {"enum": [None]},
-            "mixed_fallback": {"enum": ["a", 1]},
+            # bool is NOT a subtype of int in JSON Schema, so {bool, int}
+            # must fall back to "string" rather than misclassify as "integer"
+            # (which would silently exclude the boolean values).
+            "bool_and_int_fallback": {"enum": [True, 1]},
+            "string_and_int_fallback": {"enum": ["a", 1]},
         },
     }
     resolved = ensure_property_types(schema)
@@ -135,10 +140,11 @@ def test_ensure_property_types_infers_from_enum_values():
             "properties": {
                 "as_string": {"enum": ["a", "b"], "type": "string"},
                 "as_integer": {"enum": [1, 2, 3], "type": "integer"},
-                "as_number": {"enum": [1.0, 2], "type": "number"},
+                "int_and_float_as_number": {"enum": [1.0, 2], "type": "number"},
                 "as_boolean": {"enum": [True, False], "type": "boolean"},
                 "as_null": {"enum": [None], "type": "null"},
-                "mixed_fallback": {"enum": ["a", 1], "type": "string"},
+                "bool_and_int_fallback": {"enum": [True, 1], "type": "string"},
+                "string_and_int_fallback": {"enum": ["a", 1], "type": "string"},
             },
         }
     )

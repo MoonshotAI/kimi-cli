@@ -146,19 +146,35 @@ def _normalize_property(node: JsonType) -> None:
 
 
 def _infer_type_from_values(values: list[JsonType]) -> str:
-    """Infer a JSON Schema ``type`` string from a list of concrete values."""
-    # ``bool`` is a subclass of ``int``; check it first so booleans are not
-    # misclassified as integers.
-    if all(isinstance(v, bool) for v in values):
-        return "boolean"
-    non_bool = [v for v in values if not isinstance(v, bool)]
-    if non_bool and all(isinstance(v, int) for v in non_bool):
-        return "integer"
-    if non_bool and all(isinstance(v, (int, float)) for v in non_bool):
+    """Infer a JSON Schema ``type`` string from a list of concrete values.
+
+    Classify each value, then:
+    - single type → return it
+    - ``{integer, number}`` → ``"number"`` (integer is a subset of number)
+    - anything else mixed (e.g. ``[True, 1]`` or ``["a", 1]``) → fall back to
+      ``"string"``, which Moonshot tolerates without cross-checking enum
+      values against the declared type
+    """
+    inferred: set[str] = set()
+    for value in values:
+        # ``bool`` is a subclass of ``int`` in Python, but JSON Schema treats
+        # booleans as a distinct type, so classify it before the numeric checks.
+        if isinstance(value, bool):
+            inferred.add("boolean")
+        elif isinstance(value, int):
+            inferred.add("integer")
+        elif isinstance(value, float):
+            inferred.add("number")
+        elif isinstance(value, str):
+            inferred.add("string")
+        elif value is None:
+            inferred.add("null")
+        else:
+            # Unknown / unsupported Python value type: use the safe fallback.
+            return "string"
+
+    if len(inferred) == 1:
+        return next(iter(inferred))
+    if inferred == {"integer", "number"}:
         return "number"
-    if all(isinstance(v, str) for v in values):
-        return "string"
-    if all(v is None for v in values):
-        return "null"
-    # Mixed / unknown: fall back to string, which Moonshot tolerates.
     return "string"
