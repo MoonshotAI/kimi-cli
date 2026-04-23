@@ -210,7 +210,17 @@ class ACPServer:
                     acp.schema.SessionMode(
                         id="default",
                         name="Default",
-                        description="The default mode.",
+                        description="Ask for approval before running commands.",
+                    ),
+                    acp.schema.SessionMode(
+                        id="edit",
+                        name="Accept Edits",
+                        description="Auto-approve all actions (yolo mode).",
+                    ),
+                    acp.schema.SessionMode(
+                        id="plan",
+                        name="Plan Mode",
+                        description="Plan only — no code execution.",
                     ),
                 ],
                 current_mode_id="default",
@@ -301,7 +311,17 @@ class ACPServer:
                     acp.schema.SessionMode(
                         id="default",
                         name="Default",
-                        description="The default mode.",
+                        description="Ask for approval before running commands.",
+                    ),
+                    acp.schema.SessionMode(
+                        id="edit",
+                        name="Accept Edits",
+                        description="Auto-approve all actions (yolo mode).",
+                    ),
+                    acp.schema.SessionMode(
+                        id="plan",
+                        name="Plan Mode",
+                        description="Plan only — no code execution.",
                     ),
                 ],
                 current_mode_id="default",
@@ -339,7 +359,22 @@ class ACPServer:
         )
 
     async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
-        assert mode_id == "default", "Only default mode is supported"
+        acp_session, _ = self.sessions[session_id]
+        soul = acp_session.cli.soul
+        if mode_id == "default":
+            soul.runtime.approval.set_yolo(False)
+            if soul.plan_mode:
+                await soul.toggle_plan_mode_from_manual()
+        elif mode_id == "edit":
+            soul.runtime.approval.set_yolo(True)
+            if soul.plan_mode:
+                await soul.toggle_plan_mode_from_manual()
+        elif mode_id == "plan":
+            soul.runtime.approval.set_yolo(False)
+            if not soul.plan_mode:
+                await soul.toggle_plan_mode_from_manual()
+        else:
+            raise acp.RequestError.invalid_params({"mode_id": f"Unknown mode: {mode_id}"})
 
     async def set_session_model(self, model_id: str, session_id: str, **kwargs: Any) -> None:
         logger.info(
