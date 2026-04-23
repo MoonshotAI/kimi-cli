@@ -203,9 +203,8 @@ class KimiSoul:
             *(
                 []
                 if self._runtime.config.skip_yolo_prompt_injection
-                else [YoloModeInjectionProvider()]
+                else [YoloModeInjectionProvider(), AfkModeInjectionProvider()]
             ),
-            AfkModeInjectionProvider(),
         ]
         self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False

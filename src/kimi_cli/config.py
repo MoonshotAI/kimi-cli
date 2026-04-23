@@ -198,9 +198,9 @@ class Config(BaseModel):
     skip_yolo_prompt_injection: bool = Field(
         default=False,
         description=(
-            "If true, suppress the system reminder that is normally injected when yolo mode "
-            "is active. Useful when building custom applications on top of KimiSoul that do "
-            "not need the non-interactive mode hint."
+            "If true, suppress the system reminders that are normally injected when yolo "
+            "or afk mode is active. Useful when building custom applications on top of "
+            "KimiSoul that do not need the non-interactive mode hint."
         ),
     )
     default_plan_mode: bool = Field(default=False, description="Default plan mode for new sessions")
