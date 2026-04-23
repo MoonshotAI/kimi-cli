@@ -14,6 +14,7 @@ from kimi_cli.ui.shell import prompt as shell_prompt
 from kimi_cli.ui.shell.prompt import (
     _GIT_STATUS_TTL,
     PROMPT_SYMBOL,
+    BgTaskCounts,
     CustomPromptSession,
     PromptMode,
     UserInput,
@@ -332,7 +333,7 @@ def test_bottom_toolbar_narrow_terminal_with_full_decoration(width: int, monkeyp
         model_name="kimi-latest",
         tips=["ctrl-x: toggle mode"],
     )
-    prompt_session._background_task_count_provider = lambda: 2
+    prompt_session._background_task_count_provider = lambda: BgTaskCounts(bash=2, agent=0)
 
     lines = _render_toolbar_lines(
         prompt_session,
@@ -350,6 +351,46 @@ def test_bottom_toolbar_narrow_terminal_with_full_decoration(width: int, monkeyp
     assert _display_width(lines[2]) <= width, (
         f"toast/context line overflows at width={width}: {_display_width(lines[2])}"
     )
+
+
+def test_bottom_toolbar_shows_bash_and_agent_badges_together(monkeypatch: Any) -> None:
+    prompt_session = _make_toolbar_session(tips=[])
+    prompt_session._background_task_count_provider = lambda: BgTaskCounts(bash=3, agent=1)
+
+    lines = _render_toolbar_lines(prompt_session, 120, monkeypatch)
+
+    assert "⚙ bash: 3" in lines[1], f"bash badge missing: {lines[1]!r}"
+    assert "⚙ agent: 1" in lines[1], f"agent badge missing: {lines[1]!r}"
+    assert lines[1].index("⚙ bash: 3") < lines[1].index("⚙ agent: 1"), (
+        f"bash badge must come before agent badge: {lines[1]!r}"
+    )
+
+
+def test_bottom_toolbar_shows_agent_badge_alone_when_no_bash(monkeypatch: Any) -> None:
+    prompt_session = _make_toolbar_session(tips=[])
+    prompt_session._background_task_count_provider = lambda: BgTaskCounts(bash=0, agent=2)
+
+    lines = _render_toolbar_lines(prompt_session, 120, monkeypatch)
+
+    assert "⚙ bash" not in lines[1], f"bash badge must not appear when count is 0: {lines[1]!r}"
+    assert "⚙ agent: 2" in lines[1], f"agent badge missing: {lines[1]!r}"
+
+
+def test_bottom_toolbar_drops_agent_badge_before_bash_when_narrow(monkeypatch: Any) -> None:
+    # With only ~width budget for one badge after CWD/mode, keeping bash and
+    # dropping agent is the documented priority.
+    prompt_session = _make_toolbar_session(tips=[])
+    prompt_session._background_task_count_provider = lambda: BgTaskCounts(bash=5, agent=5)
+
+    lines = _render_toolbar_lines(prompt_session, 40, monkeypatch)
+
+    # Must never overflow and the bash badge is preferred over the agent badge.
+    assert _display_width(lines[1]) <= 40
+    if "⚙ agent" in lines[1]:
+        # Only acceptable if bash also fit — otherwise priority is violated.
+        assert "⚙ bash" in lines[1], (
+            f"agent badge appeared without bash badge at narrow width: {lines[1]!r}"
+        )
 
 
 def test_mode_shows_full_with_model_name_on_wide_terminal(monkeypatch: Any) -> None:
