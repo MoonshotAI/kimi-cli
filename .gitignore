@@ -44,4 +44,4 @@ node_modules/
 static/
 .memo/
 .entire
-.claudedocs/AGENT-SPEC-REFERENCE.md
+docs/AGENT-SPEC-REFERENCE.md
