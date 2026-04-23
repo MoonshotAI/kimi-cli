@@ -304,10 +304,18 @@ Background tasks are started by the AI using the `Shell` tool with `run_in_backg
 
 ### `/yolo`
 
-Toggle YOLO mode. When enabled, all operations are automatically approved and a yellow YOLO badge appears in the status bar; enter the command again to disable.
+Toggle YOLO mode. When enabled, all tool calls are automatically approved and a yellow YOLO badge appears in the status bar; enter the command again to disable. YOLO only removes approval friction — the agent can still reach you via `AskUserQuestion`. `/yolo` and `/afk` are independent.
 
 ::: warning Note
-YOLO mode skips all confirmations. Make sure you understand the potential risks.
+YOLO mode skips all approval confirmations. Make sure you understand the potential risks.
+:::
+
+### `/afk`
+
+Toggle AFK (away-from-keyboard) mode. When enabled, AFK implies YOLO (all tool calls auto-approved) and additionally auto-dismisses any `AskUserQuestion` the agent sends — so the agent makes its own judgment instead of waiting for a reply that will not come. An orange AFK badge appears in the status bar independently of the YOLO badge; enter the command again to disable.
+
+::: warning Note
+AFK skips all approval confirmations AND removes the clarifying-question safety net. Only use when you genuinely cannot be at the terminal.
 :::
 
 ### `/web`

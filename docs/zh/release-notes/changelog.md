@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Core：修复 `--yolo` 模式意外阻止模型调用 `AskUserQuestion` 的问题——以前 yolo 会注入一段 system reminder，告诉模型当前处于“非交互模式”，不能向用户提问；同时 ask-user 工具在 yolo 下也会自动 dismiss。这两处都是错的：yolo 的真正语义只是“自动批准工具调用”，并不意味着“用户已离开”。现在 yolo 模式下用户仍然在线，prompt 措辞也更温和——明确告诉模型在关键决策点仍可以调用 `AskUserQuestion` 来澄清需求，只是不要滥用
+- CLI：把“自动审批”和“非交互”拆分为两个正交模式——`--yolo`（自动批准工具调用，但用户仍在终端前）和 `--afk` / `/afk`（away-from-keyboard：`AskUserQuestion` 会被自动 dismiss、工具调用也自动批准）。`--print` 现在隐式启用 `--afk` 而不是 `--yolo`（语义更准确：print 下没人坐在终端前）。状态栏独立显示 `yolo` 和 `afk`，`/yolo` 与 `/afk` 各自切换自身的 flag，互不干扰
+- Shell：修复 afk 开启时 `/yolo` 切换产生误导性 UI 文案的问题——以前 `/yolo` 读的是 yolo 和 afk 合并后的自动批准状态，afk 开着时按 `/yolo` 会说“现在需要审批”，但 afk 仍在继续自动批准。现在 `/yolo` 只读写 yolo 自身的 flag，不碰 afk
 - Core：新增 `skip_yolo_prompt_injection` 配置项，用于抑制 yolo 模式下注入的系统提示词——基于 `KimiSoul` 构建自定义应用且不需要该提示时很有用
 - Kimi：新增环境变量 `KIMI_MODEL_THINKING_KEEP`，将其值原样作为 `thinking.keep` 字段发送给 Moonshot API，用于启用 Preserved Thinking（例如 `export KIMI_MODEL_THINKING_KEEP=all` 可让模型在多轮之间保留历史 `reasoning_content`）；仅对支持 Preserved Thinking 的 Moonshot 模型（如 `kimi-k2.6` / `kimi-k2-thinking`）生效，未设置或空字符串时请求体不携带该字段、等同当前默认行为，且仅在当前模型真正处于 Thinking 模式时才注入，以避免 API 收到只有 `thinking.keep` 而缺少 `thinking.type` 的无效请求体。注意 `keep=all` 会因为重新发送历史推理内容而显著增加输入 token 与 API 费用
 - Kosong：修复 `Kimi.with_extra_body` 在后续调用新增其它 `thinking.*` 字段时静默丢掉已有 `thinking.type` 的问题——`thinking` 子对象现在按字段合并，而不是被整体浅覆盖，使得 `with_thinking(...)` 与 `with_extra_body({"thinking": {...}})` 组合使用时两次设置的字段都能保留
