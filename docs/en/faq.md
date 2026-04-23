@@ -19,7 +19,7 @@ Possible reasons for an invalid API key:
 
 ### Membership expired or quota exhausted
 
-If you're using the Kimi Code platform, you can check your current quota and membership status with the `/usage` command. If the quota is exhausted or membership expired, you need to renew or upgrade at [Kimi Code](https://kimi.com/coding).
+If you're using the Kimi Code platform, you can check your current quota and membership status with the `/usage` command, which also shows remaining percentages and color-coded quota status. If the quota is exhausted or membership expired, you need to renew or upgrade at [Kimi Code](https://kimi.com/coding).
 
 ## Interaction issues
 

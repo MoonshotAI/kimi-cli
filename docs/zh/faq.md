@@ -19,7 +19,7 @@ API 密钥无效可能的原因：
 
 ### 会员过期或配额用尽
 
-如果你使用 Kimi Code 平台，可以通过 `/usage` 命令查看当前的配额和会员状态。如果配额用尽或会员过期，需要在 [Kimi Code](https://kimi.com/coding) 续费或升级。
+如果你使用 Kimi Code 平台，可以通过 `/usage` 命令查看当前的配额、会员状态，以及各类配额的剩余百分比和颜色状态。如果配额用尽或会员过期，需要在 [Kimi Code](https://kimi.com/coding) 续费或升级。
 
 ## 交互问题
 
