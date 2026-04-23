@@ -51,8 +51,12 @@ if TYPE_CHECKING:
         _: RetryableChatProvider = kimi
 
 
-class ThinkingConfig(TypedDict, total=True):
+class ThinkingConfig(TypedDict, total=False):
     type: Literal["enabled", "disabled"]
+    keep: Any
+    """Moonshot-specific ``thinking.keep`` switch for preserved thinking.
+    Forwarded verbatim to the API; callers are responsible for choosing a value
+    the server accepts (e.g. ``"all"``)."""
 
 
 class ExtraBody(TypedDict, total=False, extra_items=Any):
@@ -220,6 +224,11 @@ class Kimi:
         """
         Copy the chat provider, updating the extra_body in generation kwargs.
 
+        Top-level keys follow last-writer-wins semantics, except for the
+        ``thinking`` key: its sub-dict is merged field-by-field so that a
+        later call adding ``thinking.keep`` does not erase a ``thinking.type``
+        installed by an earlier ``with_thinking`` call.
+
         Returns:
             Self: A new instance of the chat provider with updated extra_body.
         """
@@ -227,6 +236,10 @@ class Kimi:
         new_self._generation_kwargs = copy.deepcopy(self._generation_kwargs)
         old_extra_body = new_self._generation_kwargs.get("extra_body") or {}
         new_extra_body: ExtraBody = {**old_extra_body, **extra_body}
+        old_thinking = old_extra_body.get("thinking")
+        new_thinking = extra_body.get("thinking")
+        if old_thinking is not None and new_thinking is not None:
+            new_extra_body["thinking"] = {**old_thinking, **new_thinking}
         new_self._generation_kwargs["extra_body"] = new_extra_body
         return new_self
 
