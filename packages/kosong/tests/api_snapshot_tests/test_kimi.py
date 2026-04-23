@@ -8,7 +8,7 @@ from httpx import Response
 from inline_snapshot import snapshot
 
 from kosong.chat_provider.kimi import Kimi
-from kosong.message import Message, TextPart, ThinkPart
+from kosong.message import Message, TextPart, ThinkPart, ToolCall
 from kosong.tooling import Tool
 
 BUILTIN_TOOL = Tool(
@@ -34,6 +34,38 @@ TEST_CASES: dict[str, Case] = {
                 ],
             ),
             Message(role="user", content="Thanks!"),
+        ],
+    },
+    "assistant_tool_call_without_text": {
+        "history": [
+            Message(role="user", content="Call the add tool"),
+            Message(
+                role="assistant",
+                content=[],
+                tool_calls=[
+                    ToolCall(
+                        id="call_abc123",
+                        function=ToolCall.FunctionBody(name="add", arguments='{"a": 2, "b": 3}'),
+                    )
+                ],
+            ),
+            Message(role="tool", content="5", tool_call_id="call_abc123"),
+        ],
+    },
+    "assistant_tool_call_with_reasoning_only": {
+        "history": [
+            Message(role="user", content="Think and call the add tool"),
+            Message(
+                role="assistant",
+                content=[ThinkPart(think="I should call the tool.")],
+                tool_calls=[
+                    ToolCall(
+                        id="call_abc123",
+                        function=ToolCall.FunctionBody(name="add", arguments='{"a": 2, "b": 3}'),
+                    )
+                ],
+            ),
+            Message(role="tool", content="5", tool_call_id="call_abc123"),
         ],
     },
 }
@@ -282,6 +314,41 @@ async def test_kimi_message_conversion():
                             "reasoning_content": "Let me think...",
                         },
                         {"role": "user", "content": "Thanks!"},
+                    ],
+                    "tools": [],
+                },
+                "assistant_tool_call_without_text": {
+                    "messages": [
+                        {"role": "user", "content": "Call the add tool"},
+                        {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "type": "function",
+                                    "id": "call_abc123",
+                                    "function": {"name": "add", "arguments": '{"a": 2, "b": 3}'},
+                                }
+                            ],
+                        },
+                        {"role": "tool", "content": "5", "tool_call_id": "call_abc123"},
+                    ],
+                    "tools": [],
+                },
+                "assistant_tool_call_with_reasoning_only": {
+                    "messages": [
+                        {"role": "user", "content": "Think and call the add tool"},
+                        {
+                            "role": "assistant",
+                            "reasoning_content": "I should call the tool.",
+                            "tool_calls": [
+                                {
+                                    "type": "function",
+                                    "id": "call_abc123",
+                                    "function": {"name": "add", "arguments": '{"a": 2, "b": 3}'},
+                                }
+                            ],
+                        },
+                        {"role": "tool", "content": "5", "tool_call_id": "call_abc123"},
                     ],
                     "tools": [],
                 },
