@@ -5,6 +5,7 @@
 ## 未发布
 
 - Shell：错误提示中的 `kimi export` 命令现在会附带具体的会话 ID，并直接展示支持邮箱 `code@moonshot.ai`
+- Core：新增 `skip_yolo_prompt_injection` 配置项，用于抑制 yolo 模式下注入的系统提示词——基于 `KimiSoul` 构建自定义应用且不需要该提示时很有用
 - Kimi：新增环境变量 `KIMI_MODEL_THINKING_KEEP`，将其值原样作为 `thinking.keep` 字段发送给 Moonshot API，用于启用 Preserved Thinking（例如 `export KIMI_MODEL_THINKING_KEEP=all` 可让模型在多轮之间保留历史 `reasoning_content`）；仅对支持 Preserved Thinking 的 Moonshot 模型（如 `kimi-k2.6` / `kimi-k2-thinking`）生效，未设置或空字符串时请求体不携带该字段、等同当前默认行为，且仅在当前模型真正处于 Thinking 模式时才注入，以避免 API 收到只有 `thinking.keep` 而缺少 `thinking.type` 的无效请求体。注意 `keep=all` 会因为重新发送历史推理内容而显著增加输入 token 与 API 费用
 - Kosong：修复 `Kimi.with_extra_body` 在后续调用新增其它 `thinking.*` 字段时静默丢掉已有 `thinking.type` 的问题——`thinking` 子对象现在按字段合并，而不是被整体浅覆盖，使得 `with_thinking(...)` 与 `with_extra_body({"thinking": {...}})` 组合使用时两次设置的字段都能保留
 - Shell：修复审批请求反馈文本输入的光标渲染问题——光标块现在根据实际光标位置正确渲染，不再始终固定在行尾；当光标位于文本中间时，光标所在字符会以反色显示（模拟终端原生块光标效果）
