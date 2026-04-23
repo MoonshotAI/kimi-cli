@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import os
 import sys
 import time
 import warnings
@@ -58,7 +59,7 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
     if debug:
         logger.enable("kosong")
     logger.add(
-        get_share_dir() / "logs" / "kimi.log",
+        get_share_dir() / "logs" / f"kimi.{os.getpid()}.log",
         # FIXME: configure level for different modules
         level="TRACE" if debug else "INFO",
         format=(
