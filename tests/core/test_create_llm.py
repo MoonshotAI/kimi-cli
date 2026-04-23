@@ -413,7 +413,7 @@ def test_create_llm_kimi_thinking_keep_all_injects_field(monkeypatch):
 def test_create_llm_kimi_thinking_keep_arbitrary_value_passes_through(monkeypatch):
     """Non-'all' values must be forwarded unchanged — no casing normalization,
     no validation. The Moonshot API is the source of truth."""
-    monkeypatch.setenv("KIMI_MODEL_THINKING_KEEP", "FoO")
+    monkeypatch.setenv("KIMI_MODEL_THINKING_KEEP", "xYz")
     provider, model = _make_kimi_thinking_model()
 
     llm = create_llm(provider, model)
@@ -421,7 +421,7 @@ def test_create_llm_kimi_thinking_keep_arbitrary_value_passes_through(monkeypatc
     assert isinstance(llm.chat_provider, Kimi)
 
     extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
-    assert extra_body.get("thinking", {}).get("keep") == "FoO"
+    assert extra_body.get("thinking", {}).get("keep") == "xYz"
 
 
 def test_create_llm_kimi_thinking_keep_skipped_when_thinking_off(monkeypatch):
