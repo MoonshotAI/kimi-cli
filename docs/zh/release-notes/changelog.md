@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Kosong：修复接入某些 MCP 服务端（如 JetBrains Rider MCP 的 `truncateMode`）时，Moonshot API 以 `400 At path 'properties.X': type is not defined` 拒绝每次请求导致会话完全无法使用的问题——这些 MCP 工具的参数 schema 里有仅声明 `enum`/`const` 或根本没有类型提示的属性，符合 JSON Schema 规范但过不了 Moonshot 的严格校验；现在 Kimi 供应商会在发送前为每个工具 schema 补齐 JSON Schema `type`（尽量从 `enum`/`const` 值推断，否则默认 `"string"`），OpenAI 和 Anthropic 路径不受影响
+
 ## 1.38.0 (2026-04-22)
 
 - Shell：修复 approval 弹窗超时后被误报为 `Rejected by user` 的问题——300 秒安全超时后，工具调用会以 `Rejected: approval timed out` 拒绝，让离开电脑一段时间后回来的用户能分辨出这是超时而非自己的手动拒绝。经常长时间离开的话可以加 `--yolo`/`-y` 自动批准工具调用

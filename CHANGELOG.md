@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Kosong: Fix Moonshot 400 `At path 'properties.X': type is not defined` when an MCP server exposes tools whose parameter schemas have enum-only or otherwise type-less properties (seen with the JetBrains Rider MCP's `truncateMode`) — the Kimi provider now patches each tool's schema in-flight to fill in a JSON Schema `type` (inferred from `enum`/`const` values when possible, else defaulted to `"string"`), so the whole session no longer fails every request with a schema validation error; OpenAI and Anthropic paths are unaffected
+
 ## 1.38.0 (2026-04-22)
 
 - Shell: Fix `Rejected by user` misleading message when an approval modal times out — after the 300s safety timeout, the tool call now rejects with `Rejected: approval timed out`, so users returning to their session after stepping away can tell the rejection was a timeout rather than a manual rejection. Pass `--yolo`/`-y` to auto-approve tool calls if you regularly leave sessions unattended

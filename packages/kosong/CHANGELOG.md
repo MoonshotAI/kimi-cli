@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Kimi: Normalize MCP tool parameter schemas before sending to Moonshot — properties that declare `enum`/`const` but no `type` (or have no type hint at all) get an inferred `type` filled in, so MCP servers whose schemas are valid JSON Schema but not strict enough for Moonshot's validator (notably the JetBrains Rider MCP, whose `truncateMode` property is enum-only) no longer make every request fail with `400 At path 'properties.X': type is not defined`; the normalization is Kimi-specific and leaves OpenAI/Anthropic conversions untouched
+
 ## 0.51.0 (2026-04-22)
 
 - Anthropic: Fix parallel tool results being split into multiple user messages — consecutive tool-result-only user messages are now merged into a single message, complying with the Anthropic Messages API spec that all `tool_use` blocks in an assistant turn must be answered within one user message; this fixes 400 errors on strict Anthropic-compatible backends (e.g. DeepSeek `/anthropic` endpoint) and prevents the official backend from silently teaching the model to avoid parallel tool calls

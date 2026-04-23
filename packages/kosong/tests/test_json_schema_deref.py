@@ -5,7 +5,7 @@ from typing import Literal
 from inline_snapshot import snapshot
 from pydantic import BaseModel, Field
 
-from kosong.utils.jsonschema import deref_json_schema
+from kosong.utils.jsonschema import deref_json_schema, ensure_property_types
 from kosong.utils.typing import JsonType
 
 JsonSchema = dict[str, JsonType]
@@ -73,6 +73,173 @@ def test_simple_ref():
             "required": ["todos"],
             "title": "Params",
             "type": "object",
+        }
+    )
+
+
+def test_ensure_property_types_fills_missing_type_on_enum():
+    """Regression for Moonshot 400: an MCP tool property with only `enum` and
+    no `type` (as emitted by some JetBrains MCP tools, e.g. `truncateMode`)
+    must have `type` filled in so the schema passes Moonshot validation."""
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {
+            "truncateMode": {
+                "description": "How to truncate long outputs.",
+                "enum": ["smart", "full", "none"],
+            }
+        },
+    }
+    assert ensure_property_types(schema) == snapshot(
+        {
+            "type": "object",
+            "properties": {
+                "truncateMode": {
+                    "description": "How to truncate long outputs.",
+                    "enum": ["smart", "full", "none"],
+                    "type": "string",
+                }
+            },
+        }
+    )
+
+
+def test_ensure_property_types_does_not_mutate_input():
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {"x": {"enum": ["a", "b"]}},
+    }
+    ensure_property_types(schema)
+    assert schema == {
+        "type": "object",
+        "properties": {"x": {"enum": ["a", "b"]}},
+    }
+
+
+def test_ensure_property_types_infers_from_enum_values():
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {
+            "as_string": {"enum": ["a", "b"]},
+            "as_integer": {"enum": [1, 2, 3]},
+            "as_number": {"enum": [1.0, 2]},
+            "as_boolean": {"enum": [True, False]},
+            "as_null": {"enum": [None]},
+            "mixed_fallback": {"enum": ["a", 1]},
+        },
+    }
+    resolved = ensure_property_types(schema)
+    assert resolved == snapshot(
+        {
+            "type": "object",
+            "properties": {
+                "as_string": {"enum": ["a", "b"], "type": "string"},
+                "as_integer": {"enum": [1, 2, 3], "type": "integer"},
+                "as_number": {"enum": [1.0, 2], "type": "number"},
+                "as_boolean": {"enum": [True, False], "type": "boolean"},
+                "as_null": {"enum": [None], "type": "null"},
+                "mixed_fallback": {"enum": ["a", 1], "type": "string"},
+            },
+        }
+    )
+
+
+def test_ensure_property_types_handles_const():
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {"kind": {"const": "event"}},
+    }
+    assert ensure_property_types(schema) == snapshot(
+        {
+            "type": "object",
+            "properties": {"kind": {"const": "event", "type": "string"}},
+        }
+    )
+
+
+def test_ensure_property_types_defaults_to_string_when_no_hint():
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {"opaque": {"description": "Some value."}},
+    }
+    assert ensure_property_types(schema) == snapshot(
+        {
+            "type": "object",
+            "properties": {"opaque": {"description": "Some value.", "type": "string"}},
+        }
+    )
+
+
+def test_ensure_property_types_leaves_combinators_alone():
+    """Properties using anyOf/oneOf/allOf/$ref legitimately declare their shape
+    without a top-level `type` — we must not overwrite that."""
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {
+            "either": {
+                "anyOf": [
+                    {"type": "string"},
+                    {"enum": [1, 2]},  # nested branch still gets its type filled
+                ]
+            },
+            "ref_prop": {"$ref": "#/$defs/Something"},
+        },
+    }
+    assert ensure_property_types(schema) == snapshot(
+        {
+            "type": "object",
+            "properties": {
+                "either": {
+                    "anyOf": [
+                        {"type": "string"},
+                        {"enum": [1, 2], "type": "integer"},
+                    ]
+                },
+                "ref_prop": {"$ref": "#/$defs/Something"},
+            },
+        }
+    )
+
+
+def test_ensure_property_types_recurses_into_nested_objects_and_arrays():
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {
+            "nested": {
+                "type": "object",
+                "properties": {
+                    "choice": {"enum": ["a", "b"]},
+                },
+            },
+            "items_list": {
+                "type": "array",
+                "items": {"enum": [1, 2, 3]},
+            },
+            "free_map": {
+                "type": "object",
+                "additionalProperties": {"enum": ["x", "y"]},
+            },
+        },
+    }
+    assert ensure_property_types(schema) == snapshot(
+        {
+            "type": "object",
+            "properties": {
+                "nested": {
+                    "type": "object",
+                    "properties": {
+                        "choice": {"enum": ["a", "b"], "type": "string"},
+                    },
+                },
+                "items_list": {
+                    "type": "array",
+                    "items": {"enum": [1, 2, 3], "type": "integer"},
+                },
+                "free_map": {
+                    "type": "object",
+                    "additionalProperties": {"enum": ["x", "y"], "type": "string"},
+                },
+            },
         }
     )
 

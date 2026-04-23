@@ -7,6 +7,8 @@ from kosong.utils.typing import JsonType
 
 type JsonDict = dict[str, JsonType]
 
+_COMBINATOR_KEYS = ("anyOf", "oneOf", "allOf", "$ref")
+
 
 def deref_json_schema(schema: JsonDict) -> JsonDict:
     """Expand local `$ref` entries in a JSON Schema without infinite recursion."""
@@ -66,3 +68,97 @@ def deref_json_schema(schema: JsonDict) -> JsonDict:
     resolved.pop("definitions", None)
 
     return resolved
+
+
+def ensure_property_types(schema: JsonDict) -> JsonDict:
+    """Return a deep copy of ``schema`` with an explicit ``type`` on every property.
+
+    The Moonshot (Kimi) API rejects tool parameter schemas where a property
+    schema omits ``type`` — for example ``{"enum": ["smart", "full"]}`` with no
+    ``"type": "string"``. JSON Schema itself permits this (the property then
+    accepts any value), and providers such as OpenAI and Anthropic accept it,
+    but Moonshot's stricter validator returns HTTP 400 with
+    ``"At path 'properties.X': type is not defined"``.
+
+    This function walks any property schemas nested under ``properties``,
+    ``items``, ``additionalProperties``, ``anyOf``, ``oneOf``, and ``allOf``
+    and fills in a ``type`` when one is missing:
+
+    - when ``enum`` / ``const`` is present, the type is inferred from the values
+    - otherwise the type defaults to ``"string"``
+
+    Nodes that use combinators (``anyOf``/``oneOf``/``allOf``/``$ref``) are left
+    alone since they legitimately declare their shape without ``type``. The
+    outer schema object itself is treated as a container and never mutated —
+    only the property schemas it contains are normalized.
+    """
+    result: JsonDict = copy.deepcopy(schema)
+    _recurse_schema(result)
+    return result
+
+
+def _recurse_schema(node: JsonType) -> None:
+    """Walk into property-schema positions under ``node`` and normalize them.
+
+    ``node`` itself is treated as a container and is not normalized.
+    """
+    if not isinstance(node, dict):
+        return
+
+    props = node.get("properties")
+    if isinstance(props, dict):
+        for value in props.values():
+            _normalize_property(value)
+
+    items = node.get("items")
+    if isinstance(items, dict):
+        _normalize_property(items)
+    elif isinstance(items, list):
+        for value in items:
+            _normalize_property(value)
+
+    additional = node.get("additionalProperties")
+    if isinstance(additional, dict):
+        _normalize_property(additional)
+
+    for key in ("anyOf", "oneOf", "allOf"):
+        branches = node.get(key)
+        if isinstance(branches, list):
+            for value in branches:
+                _normalize_property(value)
+
+
+def _normalize_property(node: JsonType) -> None:
+    """Ensure ``node`` (a property schema) declares a ``type``, then recurse."""
+    if not isinstance(node, dict):
+        return
+
+    if "type" not in node and not any(key in node for key in _COMBINATOR_KEYS):
+        enum_values = node.get("enum")
+        if isinstance(enum_values, list) and enum_values:
+            node["type"] = _infer_type_from_values(enum_values)
+        elif "const" in node:
+            node["type"] = _infer_type_from_values([node["const"]])
+        else:
+            node["type"] = "string"
+
+    _recurse_schema(node)
+
+
+def _infer_type_from_values(values: list[JsonType]) -> str:
+    """Infer a JSON Schema ``type`` string from a list of concrete values."""
+    # ``bool`` is a subclass of ``int``; check it first so booleans are not
+    # misclassified as integers.
+    if all(isinstance(v, bool) for v in values):
+        return "boolean"
+    non_bool = [v for v in values if not isinstance(v, bool)]
+    if non_bool and all(isinstance(v, int) for v in non_bool):
+        return "integer"
+    if non_bool and all(isinstance(v, (int, float)) for v in non_bool):
+        return "number"
+    if all(isinstance(v, str) for v in values):
+        return "string"
+    if all(v is None for v in values):
+        return "null"
+    # Mixed / unknown: fall back to string, which Moonshot tolerates.
+    return "string"
