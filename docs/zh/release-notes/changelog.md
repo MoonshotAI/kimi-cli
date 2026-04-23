@@ -8,6 +8,12 @@
 - Skill：除了标准的 `<name>/SKILL.md` 子目录结构之外，现在也会识别 Skills 目录下的扁平 `<name>.md` 单文件 Skill——便于将扁平 Markdown 集合迁移到 Skills 目录；`name` 默认取文件名去掉 `.md` 后的部分（frontmatter 里显式写了 `name:` 时以 frontmatter 为准），描述解析与子目录形式统一走同一条三级链（frontmatter `description:` → 正文第一个非空行，超过 240 字符会截断 → `"No description provided."` 兜底）；当同目录下扁平 `.md` 和子目录形式同名时，以子目录为准，并记录一条警告日志
 - Skill：新增 `extra_skill_dirs` 配置项，用于在内置 / 用户级 / 项目级自动发现的基础上追加自定义 Skills 目录——每一项可以是绝对路径、`~` 前缀路径（会按 `$HOME` 展开），或相对于项目根的路径（即 `work_dir` 向上第一个包含 `.git` 的目录，不是当前工作目录）；不存在的条目会被静默跳过，同一路径的软链接或带尾部斜杠的写法会被 canonicalize 归并为一条根，避免同一目录在系统提示里重复出现
 - Skill：强化 Skill 发现对 `is_dir` / `iterdir` 抛出 `OSError` 的容错（例如 `extra_skill_dirs` 指向一个权限受限的目录）——受影响的条目会被记录并跳过，不会让整轮 Skill 发现失败中断
+- Core：新增 `skip_yolo_prompt_injection` 配置项，用于抑制 yolo 模式下注入的系统提示词——基于 `KimiSoul` 构建自定义应用且不需要该提示时很有用
+- Kimi：新增环境变量 `KIMI_MODEL_THINKING_KEEP`，将其值原样作为 `thinking.keep` 字段发送给 Moonshot API，用于启用 Preserved Thinking（例如 `export KIMI_MODEL_THINKING_KEEP=all` 可让模型在多轮之间保留历史 `reasoning_content`）；仅对支持 Preserved Thinking 的 Moonshot 模型（如 `kimi-k2.6` / `kimi-k2-thinking`）生效，未设置或空字符串时请求体不携带该字段、等同当前默认行为，且仅在当前模型真正处于 Thinking 模式时才注入，以避免 API 收到只有 `thinking.keep` 而缺少 `thinking.type` 的无效请求体。注意 `keep=all` 会因为重新发送历史推理内容而显著增加输入 token 与 API 费用
+- Kosong：修复 `Kimi.with_extra_body` 在后续调用新增其它 `thinking.*` 字段时静默丢掉已有 `thinking.type` 的问题——`thinking` 子对象现在按字段合并，而不是被整体浅覆盖，使得 `with_thinking(...)` 与 `with_extra_body({"thinking": {...}})` 组合使用时两次设置的字段都能保留
+- Kosong：修复 Kimi provider 在 `tool_calls` 旁发送空 `content` 导致 Moonshot API 返回 400 "text content is empty" 错误的问题。当 Assistant 消息带有工具调用且可见内容实际为空（无文本或仅包含空白 / think 部分）时，现在会完全省略 `content` 字段
+- Shell：修复审批请求反馈文本输入的光标渲染问题——光标块现在根据实际光标位置正确渲染，不再始终固定在行尾；当光标位于文本中间时，光标所在字符会以反色显示（模拟终端原生块光标效果）
+- Kosong：修复接入某些 MCP 服务端（如 JetBrains Rider MCP 的 `truncateMode`）时，Moonshot API 以 `400 At path 'properties.X': type is not defined` 拒绝每次请求导致会话完全无法使用的问题——这些 MCP 工具的参数 schema 里有仅声明 `enum`/`const` 或根本没有类型提示的属性，符合 JSON Schema 规范但过不了 Moonshot 的严格校验；现在 Kimi 供应商会在发送前为每个工具 schema 补齐 JSON Schema `type`（尽量从 `enum`/`const` 值推断，否则默认 `"string"`），OpenAI 和 Anthropic 路径不受影响
 
 ## 1.38.0 (2026-04-22)
 
