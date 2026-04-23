@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Error hints now include the specific session ID in the `kimi export` command and surface the direct support email address `code@moonshot.ai`
 - Core: Add `skip_yolo_prompt_injection` config option to suppress the system reminder normally injected when yolo mode is active — useful when building custom applications on top of `KimiSoul` that do not need the non-interactive mode hint
 - Kimi: Add `KIMI_MODEL_THINKING_KEEP` environment variable that forwards its value verbatim to the Moonshot API as `thinking.keep`, enabling Preserved Thinking (e.g. `export KIMI_MODEL_THINKING_KEEP=all` to retain historical `reasoning_content` across turns); effective only for Moonshot models supporting Preserved Thinking (e.g. `kimi-k2.6` / `kimi-k2-thinking`), unset or empty string preserves the previous behavior and omits the field, and the override only applies when the current model is actually in thinking mode so the API never receives a `thinking.keep` without the companion `thinking.type`. Note that `keep=all` increases input tokens and API cost because history reasoning is resent
 - Kosong: Fix `Kimi.with_extra_body` silently dropping previously set `thinking.type` when a later call added another `thinking.*` field — the `thinking` sub-dict is now merged field-by-field instead of shallow-replaced, so composing `with_thinking(...)` with `with_extra_body({"thinking": {...}})` preserves both contributions
