@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- CLI：屏蔽来自 `fastmcp` 的 `authlib.jose` 弃用警告——启动时自动忽略该警告，避免其污染终端或日志输出
 - Kosong：修复 Anthropic 供应商将并行工具结果拆分到多个 user message 的问题——现在会将仅包含工具结果的连续 user message 合并为单条消息，以符合 Anthropic Messages API 规范（assistant 一轮中的所有 `tool_use` 必须在同一条 user message 内回答）；修复了严格兼容后端（如 DeepSeek `/anthropic` 接口）返回 400 错误的问题，并避免官方后端静默地引导模型放弃并行工具调用
 
 ## 1.37.0 (2026-04-20)
