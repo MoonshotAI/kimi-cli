@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,8 @@ from kosong.tooling import ToolResult, ToolReturnValue
 
 from kimi_cli.mcp_serve import _ResultCollector, _run_kimi_agent, server
 from kimi_cli.wire.types import StepBegin
+
+_has_api_key = bool(os.getenv("KIMI_API_KEY") or os.getenv("OPENAI_API_KEY"))
 
 
 class TestResultCollector:
@@ -84,6 +87,7 @@ class TestRunKimiAgent:
         assert "not a valid directory" in result
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(not _has_api_key, reason="No API key available")
     async def test_simple_task(self) -> None:
         """End-to-end test with a real Kimi agent run."""
         result = await _run_kimi_agent(

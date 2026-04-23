@@ -311,10 +311,10 @@ async def test_flow_runner_auto_stops_on_convergence(runtime: Runtime, tmp_path:
 
     llm = _make_llm(
         [
-            [TextPart(text="same response every time")],
-            [TextPart(text="same response every time")],
-            [TextPart(text="same response every time")],
-            [TextPart(text="same response every time")],
+            [TextPart(text="task result")],
+            [TextPart(text="<choice>CONTINUE</choice>")],
+            [TextPart(text="<choice>CONTINUE</choice>")],
+            [TextPart(text="<choice>CONTINUE</choice>")],
         ],
         set(),
     )
