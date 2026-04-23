@@ -195,6 +195,14 @@ class Config(BaseModel):
     default_model: str = Field(default="", description="Default model to use")
     default_thinking: bool = Field(default=False, description="Default thinking mode")
     default_yolo: bool = Field(default=False, description="Default yolo (auto-approve) mode")
+    inject_yolo_prompt: bool = Field(
+        default=True,
+        description=(
+            "If true, inject a system reminder when yolo mode is active to inform the model "
+            "it is running non-interactively. Set to false to suppress the injection when "
+            "building custom applications on top of KimiSoul."
+        ),
+    )
     default_plan_mode: bool = Field(default=False, description="Default plan mode for new sessions")
     default_editor: str = Field(
         default="",

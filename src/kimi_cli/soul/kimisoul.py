@@ -199,7 +199,11 @@ class KimiSoul:
             self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
-            YoloModeInjectionProvider(),
+            *(
+                [YoloModeInjectionProvider()]
+                if self._runtime.config.inject_yolo_prompt
+                else []
+            ),
         ]
         self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False
