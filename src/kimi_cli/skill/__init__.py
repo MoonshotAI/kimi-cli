@@ -152,11 +152,20 @@ async def find_project_skills_dirs(
     """
     Return project-level skills directories from both brand and generic groups.
 
+    Discovery starts at the **project root** (the nearest ``.git`` ancestor
+    of ``work_dir``), so launching kimi-cli from a subdirectory — for example
+    a monorepo package — still surfaces skills defined at the repository root.
+    Falls back to ``work_dir`` itself when no ``.git`` marker is found, to
+    avoid accidentally walking up into unrelated parent trees.
+
     The brand group comes first because brand-specific directories have
     higher specificity.  When *merge_brands* is ``False`` (default), only the
     first existing brand directory is used.  When ``True``, all existing brand
     directories are included (priority order: kimi > claude > codex).
     """
+    from kimi_cli.utils.path import find_project_root
+
+    work_dir = await find_project_root(work_dir)
     dirs: list[KaosPath] = []
     brand_candidates = _get_project_brand_skills_dir_candidates(work_dir)
     if merge_brands:

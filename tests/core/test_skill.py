@@ -1566,3 +1566,82 @@ async def test_cli_skills_dir_wins_over_extra_skill_dirs_same_name(monkeypatch, 
 
     assert len(foos) == 1
     assert foos[0].description == "cli version"
+
+
+# ---------------------------------------------------------------------------
+# Commit 1 (A): walk up to the .git project root for project-scope discovery
+# ---------------------------------------------------------------------------
+#
+# Before this change, ``find_project_skills_dirs`` only looked directly under
+# the work directory. Launching kimi-cli from a subdirectory of a monorepo
+# therefore missed skills defined at the repository root. These tests lock in
+# the new behaviour: walk up to the nearest ``.git`` ancestor (fallback to the
+# work directory when no marker is found).
+
+
+@pytest.mark.asyncio
+async def test_find_project_skills_dirs_walks_up_to_git_root(tmp_path):
+    """Project-scope discovery starts at the nearest ``.git`` ancestor.
+
+    Launching from a nested subdirectory of a repo must still surface skills
+    defined at the repo root — otherwise running kimi-cli inside a monorepo
+    package silently loses all project-level skills.
+    """
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    repo_claude_skills = repo / ".claude" / "skills"
+    repo_claude_skills.mkdir(parents=True)
+    _write_skill(
+        repo_claude_skills / "foo",
+        "---\nname: foo\ndescription: repo-root foo\n---\n",
+    )
+
+    # Work dir is three levels deep inside the repo.
+    nested = repo / "packages" / "sub" / "pkg"
+    nested.mkdir(parents=True)
+
+    dirs = await find_project_skills_dirs(KaosPath.unsafe_from_local_path(nested))
+
+    # The repo-root .claude/skills is discovered, not some phantom dir under
+    # the nested work dir.
+    assert dirs == [KaosPath.unsafe_from_local_path(repo_claude_skills)]
+
+
+@pytest.mark.asyncio
+async def test_find_project_skills_dirs_without_git_falls_back_to_work_dir(tmp_path):
+    """With no ``.git`` marker anywhere up the chain, discovery stays at the work dir.
+
+    Lock down that we do NOT keep walking up into the user's ``$HOME`` or
+    filesystem root when the tree isn't a git repo — that would surface
+    unrelated ``.claude/skills`` from parent directories.
+    """
+    project = tmp_path / "project"
+    (project / ".claude" / "skills").mkdir(parents=True)
+    # Nested work dir has no skills and no .git marker.
+    work_dir = project / "foo"
+    work_dir.mkdir()
+
+    dirs = await find_project_skills_dirs(KaosPath.unsafe_from_local_path(work_dir))
+
+    # The candidate scanned is <work_dir>/.claude/skills (not <project>/...);
+    # since <work_dir>/.claude/skills doesn't exist, nothing is returned.
+    assert dirs == []
+
+
+@pytest.mark.asyncio
+async def test_find_project_skills_dirs_cwd_is_project_root_still_works(tmp_path):
+    """Regression: when the work dir already *is* the project root, behaviour
+    is unchanged (no-op walk-up).
+    """
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    claude_skills = repo / ".claude" / "skills"
+    claude_skills.mkdir(parents=True)
+    _write_skill(
+        claude_skills / "foo",
+        "---\nname: foo\ndescription: root foo\n---\n",
+    )
+
+    dirs = await find_project_skills_dirs(KaosPath.unsafe_from_local_path(repo))
+
+    assert dirs == [KaosPath.unsafe_from_local_path(claude_skills)]

@@ -51,7 +51,7 @@ When enabled, all existing brand directories are loaded and merged, with same-na
 
 **Project-level skills**
 
-Stored in the project directory, only effective within that project's working directory. Similarly split into two groups:
+Stored in the project directory, effective within that project. Candidate paths are resolved relative to the **project root** (the nearest `.git` ancestor of the work directory, falling back to the work directory itself when there is no `.git` marker), so launching kimi-cli from a subdirectory of a monorepo still surfaces skills defined at the repository root. The same two-group split as user-level skills applies:
 
 - **Brand group** (mutually exclusive):
   1. `.kimi/skills/`
