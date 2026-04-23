@@ -358,3 +358,34 @@ class TestFallback:
         (tmp_path / "a.py").write_text("")
         result = list_files_walk(tmp_path)
         assert "a.py" in result
+
+    def test_git_output_decode_failure_does_not_crash(self, tmp_path: Path, monkeypatch) -> None:
+        """Undecodable git output must not crash file discovery on Windows."""
+
+        def fake_run(cmd, **kwargs):
+            text = kwargs.get("text", False)
+            if "--deleted" in cmd or "--others" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd,
+                    0,
+                    stdout="" if text else b"",
+                    stderr="" if text else b"",
+                )
+            if text:
+                # Simulate Windows text-mode subprocess decoding failure, where
+                # stdout ends up as None after the reader thread dies.
+                return subprocess.CompletedProcess(cmd, 0, stdout=None, stderr="")
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout=b"src/\xadbad.py\0",
+                stderr=b"",
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        result = list_files_git(tmp_path)
+
+        assert result is not None
+        assert "src/" in result
+        assert any(path.endswith("bad.py") for path in result)
