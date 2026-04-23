@@ -140,9 +140,59 @@ def _normalize_property(node: JsonType) -> None:
         elif "const" in node:
             node["type"] = _infer_type_from_values([node["const"]])
         else:
-            node["type"] = "string"
+            node["type"] = _infer_type_from_structure(node)
 
     _recurse_schema(node)
+
+
+# Structural keywords that only make sense for a given JSON Schema type.
+# Used to infer `type` when enum/const are absent but the node otherwise
+# clearly describes an object or array or constrained scalar — setting
+# `type: "string"` on such a node would misadvertise the parameter shape
+# and cause the model to emit arguments that then fail downstream
+# `jsonschema.validate` against the tool's real parameter schema.
+_OBJECT_KEYWORDS = (
+    "properties",
+    "additionalProperties",
+    "patternProperties",
+    "propertyNames",
+    "required",
+    "minProperties",
+    "maxProperties",
+)
+_ARRAY_KEYWORDS = (
+    "items",
+    "prefixItems",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "contains",
+)
+_STRING_KEYWORDS = ("minLength", "maxLength", "pattern", "format")
+_NUMERIC_KEYWORDS = (
+    "minimum",
+    "maximum",
+    "multipleOf",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+)
+
+
+def _infer_type_from_structure(node: JsonDict) -> str:
+    """Infer a JSON Schema ``type`` from structural keywords in ``node``.
+
+    Used as the fallback when no ``enum`` / ``const`` is present. Defaults
+    to ``"string"`` only when the node carries no structural hints at all.
+    """
+    if any(k in node for k in _OBJECT_KEYWORDS):
+        return "object"
+    if any(k in node for k in _ARRAY_KEYWORDS):
+        return "array"
+    if any(k in node for k in _STRING_KEYWORDS):
+        return "string"
+    if any(k in node for k in _NUMERIC_KEYWORDS):
+        return "number"
+    return "string"
 
 
 def _infer_type_from_values(values: list[JsonType]) -> str:

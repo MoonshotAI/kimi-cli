@@ -176,6 +176,60 @@ def test_ensure_property_types_defaults_to_string_when_no_hint():
     )
 
 
+def test_ensure_property_types_infers_structural_type_before_string_fallback():
+    """Regression: nodes that lack `type`/`enum`/`const` but carry structural
+    JSON Schema keywords (properties, items, minLength, minimum, ...) must be
+    classified by shape. Defaulting to "string" for these would misadvertise
+    the parameter type to the model and cause tool-call arguments to fail
+    local `jsonschema.validate` against the original schema."""
+    schema: JsonSchema = {
+        "type": "object",
+        "properties": {
+            # object-shaped: has properties + required
+            "nested_object": {
+                "properties": {"host": {"type": "string"}},
+                "required": ["host"],
+            },
+            # object-shaped: open dict with additionalProperties
+            "free_form_map": {"additionalProperties": {"type": "string"}},
+            # array-shaped: declares items
+            "list_of_ints": {"items": {"type": "integer"}},
+            # array-shaped: only min/maxItems
+            "bounded_list": {"minItems": 1, "maxItems": 10},
+            # string-shaped: declares format/pattern
+            "email": {"format": "email"},
+            "slug": {"pattern": "^[a-z0-9-]+$"},
+            # number-shaped: has minimum/maximum
+            "bounded_number": {"minimum": 0, "maximum": 100},
+            # truly opaque: no hint at all → safe fallback to string
+            "opaque": {"description": "something"},
+        },
+    }
+    resolved = ensure_property_types(schema)
+    assert resolved == snapshot(
+        {
+            "type": "object",
+            "properties": {
+                "nested_object": {
+                    "properties": {"host": {"type": "string"}},
+                    "required": ["host"],
+                    "type": "object",
+                },
+                "free_form_map": {
+                    "additionalProperties": {"type": "string"},
+                    "type": "object",
+                },
+                "list_of_ints": {"items": {"type": "integer"}, "type": "array"},
+                "bounded_list": {"minItems": 1, "maxItems": 10, "type": "array"},
+                "email": {"format": "email", "type": "string"},
+                "slug": {"pattern": "^[a-z0-9-]+$", "type": "string"},
+                "bounded_number": {"minimum": 0, "maximum": 100, "type": "number"},
+                "opaque": {"description": "something", "type": "string"},
+            },
+        }
+    )
+
+
 def test_ensure_property_types_leaves_combinators_alone():
     """Properties using anyOf/oneOf/allOf/$ref legitimately declare their shape
     without a top-level `type` — we must not overwrite that."""
