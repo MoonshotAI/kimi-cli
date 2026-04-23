@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from kimi_cli.utils.file_filter import (
+    _parse_ls_files_output,
     is_ignored,
     list_files_git,
     list_files_walk,
@@ -359,22 +360,17 @@ class TestFallback:
         result = list_files_walk(tmp_path)
         assert "a.py" in result
 
-    def test_git_output_decode_failure_does_not_crash(self, tmp_path: Path, monkeypatch) -> None:
+    def test_undecodable_git_output_does_not_crash(self, tmp_path: Path, monkeypatch) -> None:
         """Undecodable git output must not crash file discovery on Windows."""
 
         def fake_run(cmd, **kwargs):
-            text = kwargs.get("text", False)
             if "--deleted" in cmd or "--others" in cmd:
                 return subprocess.CompletedProcess(
                     cmd,
                     0,
-                    stdout="" if text else b"",
-                    stderr="" if text else b"",
+                    stdout=b"",
+                    stderr=b"",
                 )
-            if text:
-                # Simulate Windows text-mode subprocess decoding failure, where
-                # stdout ends up as None after the reader thread dies.
-                return subprocess.CompletedProcess(cmd, 0, stdout=None, stderr="")
             return subprocess.CompletedProcess(
                 cmd,
                 0,
@@ -389,3 +385,7 @@ class TestFallback:
         assert result is not None
         assert "src/" in result
         assert any(path.endswith("bad.py") for path in result)
+
+    def test_parse_ls_files_output_tolerates_none_stdout(self) -> None:
+        """Missing stdout must be treated as empty output instead of crashing."""
+        assert _parse_ls_files_output(None) == []
