@@ -4,6 +4,7 @@
 
 - Kimi: Add `keep` to `ThinkingConfig` (Moonshot `thinking.keep` passthrough for Preserved Thinking); value is typed as `Any` and forwarded unchanged, with case-preservation and no validation — callers choose a value the server accepts (e.g. `"all"`)
 - Kimi: Fix `with_extra_body` silently dropping earlier `thinking.*` fields on subsequent calls — the `thinking` sub-dict is now merged field-by-field so composing `with_thinking(...)` with `with_extra_body({"thinking": {...}})` preserves both contributions; other top-level keys retain last-writer-wins semantics
+- Kimi: Fix sending empty `content` alongside `tool_calls`, which caused 400 "text content is empty" errors from the Moonshot API. When an assistant message has tool calls and its visible content is effectively empty (no text or only whitespace/think parts), the `content` field is now omitted entirely
 
 ## 0.51.0 (2026-04-22)
 
