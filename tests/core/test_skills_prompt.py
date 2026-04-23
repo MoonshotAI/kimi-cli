@@ -263,6 +263,6 @@ async def test_end_to_end_project_override_renders_correctly(tmp_path, monkeypat
     assert "extra version" not in rendered
 
     # (f) Defence-in-depth: also assert the Skill object itself carries
-    # project scope — a regression here would silently mis-group at render.
+    # project scope — a regression here would silently render under the wrong heading.
     by_name = {s.name: s for s in skills}
     assert by_name["foo"].scope == "project"
