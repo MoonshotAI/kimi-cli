@@ -18,6 +18,7 @@ The following environment variables take effect when using `kimi` type providers
 | `KIMI_MODEL_TEMPERATURE` | Generation parameter `temperature` |
 | `KIMI_MODEL_TOP_P` | Generation parameter `top_p` |
 | `KIMI_MODEL_MAX_TOKENS` | Generation parameter `max_tokens` |
+| `KIMI_MODEL_THINKING_KEEP` | Moonshot `thinking.keep` switch for preserved thinking (only applied when thinking mode is active) |
 
 ### `KIMI_BASE_URL`
 
@@ -82,6 +83,22 @@ Sets the generation parameter `max_tokens`, limiting the maximum tokens per resp
 ```sh
 export KIMI_MODEL_MAX_TOKENS="4096"
 ```
+
+### `KIMI_MODEL_THINKING_KEEP`
+
+Forwards the value verbatim to the Moonshot API as `thinking.keep`, enabling Preserved Thinking (see the [Moonshot docs](https://platform.kimi.com/docs/guide/use-kimi-k2-thinking-model#preserved-thinking)). Setting it to `all` causes the provider to preserve the reasoning content of previous assistant turns across requests. The value is passed through unchanged, no validation or case normalization is performed.
+
+```sh
+export KIMI_MODEL_THINKING_KEEP="all"
+```
+
+Empty string or unset means the field is omitted from the request (current default behavior). The override only applies when the model is actually in thinking mode; it is ignored for non-thinking runs so the API never receives a `thinking.keep` without the companion `thinking.type`.
+
+This parameter only takes effect on Moonshot models that support Preserved Thinking (e.g., `kimi-k2.6` / `kimi-k2-thinking`). Passing it to other models has no effect or may be rejected by the API; the CLI does not validate the model.
+
+::: warning Cost
+`thinking.keep=all` instructs the API to retain historical reasoning content across turns, which increases input tokens and therefore API cost. Only enable it when the preserved thinking behavior is required.
+:::
 
 ## OpenAI-compatible environment variables
 

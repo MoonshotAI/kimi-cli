@@ -4,6 +4,9 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Kimi: Add `KIMI_MODEL_THINKING_KEEP` environment variable that forwards its value verbatim to the Moonshot API as `thinking.keep`, enabling Preserved Thinking (e.g. `export KIMI_MODEL_THINKING_KEEP=all` to retain historical `reasoning_content` across turns); effective only for Moonshot models supporting Preserved Thinking (e.g. `kimi-k2.6` / `kimi-k2-thinking`), unset or empty string preserves the previous behavior and omits the field, and the override only applies when the current model is actually in thinking mode so the API never receives a `thinking.keep` without the companion `thinking.type`. Note that `keep=all` increases input tokens and API cost because history reasoning is resent
+- Kosong: Fix `Kimi.with_extra_body` silently dropping previously set `thinking.type` when a later call added another `thinking.*` field — the `thinking` sub-dict is now merged field-by-field instead of shallow-replaced, so composing `with_thinking(...)` with `with_extra_body({"thinking": {...}})` preserves both contributions
+
 ## 1.38.0 (2026-04-22)
 
 - Shell: Fix `Rejected by user` misleading message when an approval modal times out — after the 300s safety timeout, the tool call now rejects with `Rejected: approval timed out`, so users returning to their session after stepping away can tell the rejection was a timeout rather than a manual rejection. Pass `--yolo`/`-y` to auto-approve tool calls if you regularly leave sessions unattended
