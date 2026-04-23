@@ -41,13 +41,18 @@ Stored in the user's home directory, effective across all projects. Candidate di
 
 Both groups are searched independently and results are merged. When a skill with the same name exists in both groups, the brand group version takes priority.
 
-To load skills from all existing brand directories instead of only the first one, enable `merge_all_available_skills` in your config file:
+By default, **all existing brand directories are loaded and merged**, with same-name skills resolved by priority: kimi > claude > codex. The generic group is not affected. This "merge everything" behaviour is controlled by `merge_all_available_skills`, which defaults to `true`:
 
 ```toml
+# Default; merges every brand directory that exists.
 merge_all_available_skills = true
 ```
 
-When enabled, all existing brand directories are loaded and merged, with same-name skills resolved by priority: kimi > claude > codex. The generic group is not affected.
+Set it to `false` to restore the older first-match-only behaviour, where only the highest-priority existing brand directory is used (kimi, or claude if kimi is absent, and so on):
+
+```toml
+merge_all_available_skills = false
+```
 
 **Project-level skills**
 

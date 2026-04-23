@@ -1645,3 +1645,66 @@ async def test_find_project_skills_dirs_cwd_is_project_root_still_works(tmp_path
     dirs = await find_project_skills_dirs(KaosPath.unsafe_from_local_path(repo))
 
     assert dirs == [KaosPath.unsafe_from_local_path(claude_skills)]
+
+
+# ---------------------------------------------------------------------------
+# Commit 2 (B): Config.merge_all_available_skills defaults to True
+# ---------------------------------------------------------------------------
+#
+# Users with skills in more than one brand directory (for example both
+# ~/.kimi/skills and ~/.claude/skills after migrating from Claude Code)
+# previously lost visibility of everything in .claude/skills because the
+# default "first brand wins" behaviour would stop at .kimi/skills. Flipping
+# the Config default to True merges all existing brand dirs out of the box.
+# The two tests below lock both ends of that contract:
+#   (A) the Config value itself is True by default;
+#   (B) feeding Config()'s default into resolve_skills_roots actually
+#       surfaces every brand directory in the result.
+
+
+def test_config_default_merges_all_brand_skills():
+    """Default Config has merge_all_available_skills=True.
+
+    Lock the Config contract in isolation so a future regression that
+    silently flips the default back to False shows up as an obvious red
+    test, independent of the wiring inside Runtime.create.
+    """
+    from kimi_cli.config import Config
+
+    assert Config().merge_all_available_skills is True
+
+
+@pytest.mark.asyncio
+async def test_default_config_effectively_merges_user_brand_skill_dirs(monkeypatch, tmp_path):
+    """Default Config → resolve_skills_roots → both brand dirs appear.
+
+    End-to-end companion to the Config-contract test above: threads the
+    default Config value through the same bridge ``Runtime.create`` uses
+    (``merge_brands=config.merge_all_available_skills``) and asserts that
+    both ``~/.kimi/skills`` and ``~/.claude/skills`` are surfaced. If the
+    default is ever silently reverted, OR if the merge pipeline breaks for
+    ``merge_brands=True``, this test catches it.
+    """
+    from kimi_cli.config import Config
+
+    home_dir = tmp_path / "home"
+    kimi_dir = home_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    claude_dir = home_dir / ".claude" / "skills"
+    claude_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    work_dir = tmp_path / "project"
+    work_dir.mkdir()
+
+    # Simulate the single production bridge line in Runtime.create.
+    config = Config()
+    scoped = await resolve_skills_roots(
+        KaosPath.unsafe_from_local_path(work_dir),
+        merge_brands=config.merge_all_available_skills,
+    )
+    roots = [s.root for s in scoped]
+
+    assert KaosPath.unsafe_from_local_path(kimi_dir) in roots
+    assert KaosPath.unsafe_from_local_path(claude_dir) in roots

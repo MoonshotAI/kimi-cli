@@ -15,6 +15,7 @@
 - Shell：修复审批请求反馈文本输入的光标渲染问题——光标块现在根据实际光标位置正确渲染，不再始终固定在行尾；当光标位于文本中间时，光标所在字符会以反色显示（模拟终端原生块光标效果）
 - Kosong：修复接入某些 MCP 服务端（如 JetBrains Rider MCP 的 `truncateMode`）时，Moonshot API 以 `400 At path 'properties.X': type is not defined` 拒绝每次请求导致会话完全无法使用的问题——这些 MCP 工具的参数 schema 里有仅声明 `enum`/`const` 或根本没有类型提示的属性，符合 JSON Schema 规范但过不了 Moonshot 的严格校验；现在 Kimi 供应商会在发送前为每个工具 schema 补齐 JSON Schema `type`（尽量从 `enum`/`const` 值推断，否则默认 `"string"`），OpenAI 和 Anthropic 路径不受影响
 - Skill：项目级 Skill 发现现在会先向上查找最近的 `.git` 祖先目录，再查 `.kimi/skills` / `.claude/skills` / `.codex/skills` / `.agents/skills`，这样即使从子目录（例如 monorepo 的某个 package 内部）启动 kimi-cli，也能正确识别仓库根目录下定义的 Skills；找不到 `.git` 标记时，回退到工作目录本身，避免误入无关的上层目录
+- Skill：`merge_all_available_skills` 的默认值从 `false` 改为 `true`。kimi-cli 现在默认会合并用户级和项目级所有已存在的品牌 Skills 目录（`.kimi/skills`、`.claude/skills`、`.codex/skills`），而不是仅使用找到的第一个——让同时拥有多个品牌目录（例如同时保留 `~/.kimi/skills` 和 `~/.claude/skills`）的用户开箱即看到所有 Skills。**行为变更**：依赖旧默认（仅取第一个）的用户可通过在配置中显式设置 `merge_all_available_skills = false` 恢复旧行为。
 
 ## 1.38.0 (2026-04-22)
 
