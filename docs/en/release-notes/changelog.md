@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Error hints now include the specific session ID in the `kimi export` command and surface the direct support email address `code@moonshot.ai`
 - Kosong: Fix parallel tool results being split into multiple user messages in Anthropic provider — consecutive tool-result-only user messages are now merged into a single message, complying with the Anthropic Messages API spec that all `tool_use` blocks in an assistant turn must be answered within one user message; this fixes 400 errors on strict Anthropic-compatible backends (e.g. DeepSeek `/anthropic` endpoint) and prevents the official backend from silently teaching the model to avoid parallel tool calls
 
 ## 1.37.0 (2026-04-20)

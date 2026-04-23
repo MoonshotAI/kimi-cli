@@ -951,10 +951,16 @@ class Shell:
             else:
                 console.print(f"[red]LLM provider error: {e}[/red]")
             if not isinstance(e, APIStatusError) or e.status_code not in (401, 402, 403):
+                session_id = (
+                    self.soul.runtime.session.id if isinstance(self.soul, KimiSoul) else None
+                )
+                export_cmd = f"kimi export {session_id}" if session_id else "kimi export"
                 console.print(
-                    "[dim]If this persists, run [bold]kimi export[/bold] and send the "
-                    "exported data to support for assistance. "
-                    "Please do not share the exported file publicly.[/dim]"
+                    "[dim]If this persists, run the "
+                    f"[bold]{export_cmd}[/bold] command in your terminal "
+                    "and send the exported data to "
+                    "[link=mailto:code@moonshot.ai]code@moonshot.ai[/link] "
+                    "for assistance. Please do not share the exported file publicly.[/dim]"
                 )
         except MaxStepsReached as e:
             logger.warning("Max steps reached: {n_steps}", n_steps=e.n_steps)
@@ -973,9 +979,11 @@ class Shell:
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")
+            session_id = self.soul.runtime.session.id if isinstance(self.soul, KimiSoul) else None
+            export_cmd = f"kimi export {session_id}" if session_id else "kimi export"
             console.print(
                 f"[red]Unexpected error: {e}[/red]\n"
-                "[dim]Run [bold]kimi export[/bold] and send the exported data to support "
+                f"[dim]Run [bold]{export_cmd}[/bold] and send the exported data to support "
                 "for assistance. Please do not share the exported file publicly.[/dim]"
             )
             raise  # re-raise unknown error
