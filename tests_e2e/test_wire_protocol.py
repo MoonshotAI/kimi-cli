@@ -62,13 +62,7 @@ def test_initialize_handshake(tmp_path) -> None:
                         },
                         {
                             "name": "afk",
-                            "description": """\
-Toggle afk (away-from-keyboard) mode.
-
-In afk mode, AskUserQuestion is auto-dismissed and tool calls are
-auto-approved. Useful when stepping away from the terminal but
-letting the agent continue.\
-""",
+                            "description": "Toggle afk mode (auto-dismiss AskUserQuestion, auto-approve tool calls)",
                             "aliases": [],
                         },
                         {
@@ -178,13 +172,7 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         },
                         {
                             "name": "afk",
-                            "description": """\
-Toggle afk (away-from-keyboard) mode.
-
-In afk mode, AskUserQuestion is auto-dismissed and tool calls are
-auto-approved. Useful when stepping away from the terminal but
-letting the agent continue.\
-""",
+                            "description": "Toggle afk mode (auto-dismiss AskUserQuestion, auto-approve tool calls)",
                             "aliases": [],
                         },
                         {

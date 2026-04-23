@@ -111,11 +111,7 @@ async def yolo(soul: KimiSoul, args: str):
 
 @registry.command
 async def afk(soul: KimiSoul, args: str):
-    """Toggle afk (away-from-keyboard) mode.
-
-    In afk mode, AskUserQuestion is auto-dismissed and tool calls are
-    auto-approved. Useful when stepping away from the terminal but
-    letting the agent continue."""
+    """Toggle afk mode (auto-dismiss AskUserQuestion, auto-approve tool calls)"""
     from kimi_cli.telemetry import track
 
     if soul.runtime.approval.is_afk():
