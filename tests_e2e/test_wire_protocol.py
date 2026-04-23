@@ -61,6 +61,17 @@ def test_initialize_handshake(tmp_path) -> None:
                             "aliases": [],
                         },
                         {
+                            "name": "afk",
+                            "description": """\
+Toggle afk (away-from-keyboard) mode.
+
+In afk mode, AskUserQuestion is auto-dismissed and tool calls are
+auto-approved. Useful when stepping away from the terminal but
+letting the agent continue.\
+""",
+                            "aliases": [],
+                        },
+                        {
                             "name": "plan",
                             "description": "Toggle plan mode. Usage: /plan [on|off|view|clear]",
                             "aliases": [],
@@ -163,6 +174,17 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         {
                             "name": "yolo",
                             "description": "Toggle YOLO mode (auto-approve all actions)",
+                            "aliases": [],
+                        },
+                        {
+                            "name": "afk",
+                            "description": """\
+Toggle afk (away-from-keyboard) mode.
+
+In afk mode, AskUserQuestion is auto-dismissed and tool calls are
+auto-approved. Useful when stepping away from the terminal but
+letting the agent continue.\
+""",
                             "aliases": [],
                         },
                         {
