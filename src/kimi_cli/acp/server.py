@@ -11,6 +11,8 @@ import acp
 from kaos.path import KaosPath
 
 from kimi_cli.acp.kaos import ACPKaos
+import json as _json
+
 from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.tools import replace_tools
@@ -18,6 +20,7 @@ from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.acp.version import ACPVersionSpec, negotiate_version
 from kimi_cli.app import KimiCLI
 from kimi_cli.auth.oauth import KIMI_CODE_OAUTH_KEY, load_tokens
+from kimi_cli.cli.mcp import get_global_mcp_config_file
 from kimi_cli.config import LLMModel, OAuthRef, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.llm import create_llm, derive_model_capabilities
@@ -160,9 +163,15 @@ class ACPServer:
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
+        _default_mcp_file = get_global_mcp_config_file()
+        _default_mcp_configs = (
+            [_json.loads(_default_mcp_file.read_text(encoding="utf-8"))]
+            if _default_mcp_file.exists()
+            else []
+        )
         cli_instance = await KimiCLI.create(
             session,
-            mcp_configs=[mcp_config],
+            mcp_configs=_default_mcp_configs + [mcp_config],
             ui_mode="acp",
         )
         config = cli_instance.soul.runtime.config
@@ -230,9 +239,15 @@ class ACPServer:
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
+        _default_mcp_file = get_global_mcp_config_file()
+        _default_mcp_configs = (
+            [_json.loads(_default_mcp_file.read_text(encoding="utf-8"))]
+            if _default_mcp_file.exists()
+            else []
+        )
         cli_instance = await KimiCLI.create(
             session,
-            mcp_configs=[mcp_config],
+            mcp_configs=_default_mcp_configs + [mcp_config],
             resumed=True,  # _setup_session loads existing sessions
             ui_mode="acp",
         )
