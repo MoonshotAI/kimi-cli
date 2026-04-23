@@ -815,7 +815,19 @@ class OAuthManager:
         return state
 
     def _should_suppress_persisted_token(self, ref: OAuthRef, token: OAuthToken) -> bool:
-        return self._rejected_refresh_state(ref, token.refresh_token) is not None
+        state = self._rejected_refresh_state(ref, token.refresh_token)
+        if state is None:
+            return False
+        # Critical fix: check if another process has rotated the token on disk.
+        # The in-memory `token` may be stale; comparing only against it misses
+        # concurrent rotations. If the on-disk refresh_token differs from the
+        # tombstoned one, another instance successfully rotated — clear the tombstone
+        # and allow loading the fresh token.
+        disk_token = load_tokens(ref)
+        if disk_token and disk_token.refresh_token != state.refresh_token:
+            self._clear_rejected_refresh_token(ref)
+            return False
+        return True
 
     def _can_retry_rejected_refresh_token(self, ref: OAuthRef, refresh_token: str | None) -> bool:
         state = self._rejected_refresh_state(ref, refresh_token)
