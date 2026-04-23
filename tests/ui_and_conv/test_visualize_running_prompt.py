@@ -917,7 +917,7 @@ def _make_approval_delegate(request=None):
     delegate = ApprovalPromptDelegate(
         request,
         on_response=lambda req, resp, feedback="": responses.append((req.id, resp, feedback)),
-        buffer_text_provider=lambda: (buf.text, buf.cursor_position),
+        buffer_state_provider=lambda: (buf.text, buf.cursor_position),
     )
     return delegate, buf, responses
 

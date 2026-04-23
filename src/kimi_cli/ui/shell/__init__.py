@@ -1362,7 +1362,7 @@ class Shell:
             self._approval_modal = ApprovalPromptDelegate(
                 current_request,
                 on_response=self._handle_prompt_approval_response,
-                buffer_text_provider=self._get_default_buffer_text_and_cursor,
+                buffer_state_provider=self._get_default_buffer_text_and_cursor,
                 text_expander=self._prompt_session._get_placeholder_manager().serialize_for_history,  # pyright: ignore[reportPrivateUsage]
             )
             self._prompt_session.attach_modal(self._approval_modal)

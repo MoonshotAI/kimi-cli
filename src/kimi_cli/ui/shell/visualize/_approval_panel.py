@@ -347,12 +347,12 @@ class ApprovalPromptDelegate:
         request: ApprovalRequest,
         *,
         on_response: Callable[[ApprovalRequest, ApprovalResponse.Kind, str], None],
-        buffer_text_provider: Callable[[], tuple[str, int]] | None = None,
+        buffer_state_provider: Callable[[], tuple[str, int]] | None = None,
         text_expander: Callable[[str], str] | None = None,
     ) -> None:
         self._panel = ApprovalRequestPanel(request)
         self._on_response = on_response
-        self._buffer_text_provider = buffer_text_provider
+        self._buffer_state_provider = buffer_state_provider
         self._text_expander = text_expander
         self._feedback_draft: str = ""
 
@@ -365,13 +365,13 @@ class ApprovalPromptDelegate:
         self._feedback_draft = ""
 
     def _is_inline_feedback_active(self) -> bool:
-        return self._panel.is_feedback_selected and self._buffer_text_provider is not None
+        return self._panel.is_feedback_selected and self._buffer_state_provider is not None
 
     def render_running_prompt_body(self, columns: int) -> ANSI:
         feedback_text: str | None = None
         feedback_cursor: int | None = None
-        if self._is_inline_feedback_active() and self._buffer_text_provider is not None:
-            feedback_text, feedback_cursor = self._buffer_text_provider()
+        if self._is_inline_feedback_active() and self._buffer_state_provider is not None:
+            feedback_text, feedback_cursor = self._buffer_state_provider()
         body = render_to_ansi(
             self._panel.render(
                 feedback_text=feedback_text,
