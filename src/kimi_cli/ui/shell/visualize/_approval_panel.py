@@ -45,14 +45,15 @@ class ApprovalContentBlock(NamedTuple):
     lexer: str = ""
 
 
-def _render_feedback_with_cursor(text: str, cursor: int | None) -> str:
+def _render_feedback_with_cursor(text: str, cursor: int | None) -> Text:
     if cursor is None or cursor >= len(text):
-        return f"{escape(text)}\u2588"
+        return Text(text + "\u2588")
     cursor = max(cursor, 0)
-    before = escape(text[:cursor])
-    at_cursor = escape(text[cursor])
-    after = escape(text[cursor + 1 :])
-    return f"{before}[reverse]{at_cursor}[/reverse]{after}"
+    return Text.assemble(
+        Text(text[:cursor]),
+        Text(text[cursor], style="reverse"),
+        Text(text[cursor + 1 :]),
+    )
 
 
 class ApprovalRequestPanel:
@@ -201,7 +202,11 @@ class ApprovalRequestPanel:
                         feedback_text or "", feedback_cursor
                     )
                     lines.append(
-                        Text.from_markup(f"[cyan]\u2192 \\[{num}] Reject: {input_display}[/cyan]")
+                        Text.assemble(
+                            Text(f"\u2192 [{num}] Reject: "),
+                            input_display,
+                            style="cyan",
+                        )
                     )
                 else:
                     lines.append(Text(f"\u2192 [{num}] {option_text}", style="cyan"))
