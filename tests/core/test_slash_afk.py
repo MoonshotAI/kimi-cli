@@ -77,7 +77,7 @@ async def test_yolo_slash_under_afk_only_toggles_yolo_flag(
     /yolo must inspect only the yolo flag, not the OR-combined is_yolo()."""
     soul = _make_soul(runtime, tmp_path)
     # Afk on, yolo flag off -> is_yolo() True via OR, but yolo_flag is False.
-    soul.runtime.approval._state.afk = True  # pyright: ignore[reportPrivateUsage]
+    soul.runtime.approval.set_afk(True)
     assert soul.runtime.approval.is_yolo() is True
     assert soul.runtime.approval.is_yolo_flag() is False
 
@@ -93,6 +93,35 @@ async def test_yolo_slash_under_afk_only_toggles_yolo_flag(
     # Toast must reflect yolo being turned ON, not the misleading "require approval".
     assert any("auto-approved" in s.text.lower() for s in sent)
     assert not any("require approval" in s.text.lower() for s in sent)
+
+
+async def test_yolo_slash_off_under_afk_does_not_claim_approval_required(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: /yolo off while afk is on must not claim 'approval required'.
+
+    Prior bug: the toast emitted "Actions will require approval" but ``is_yolo()``
+    stayed True via afk, so tool calls kept being auto-approved. The toast now
+    calls out that afk is still keeping auto-approve on.
+    """
+    soul = _make_soul(runtime, tmp_path)
+    soul.runtime.approval.set_yolo(True)
+    soul.runtime.approval.set_afk(True)
+
+    sent: list[TextPart] = []
+    monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
+
+    await _run(yolo_slash, soul)
+
+    # Yolo flag flipped off; afk stays on; effective auto-approve stays on.
+    assert soul.runtime.approval.is_yolo_flag() is False
+    assert soul.runtime.approval.is_afk() is True
+    assert soul.runtime.approval.is_yolo() is True
+
+    # Toast must not lie about approvals being required.
+    joined = " ".join(s.text for s in sent).lower()
+    assert "afk" in joined
+    assert "auto-approve" in joined or "auto-approved" in joined
 
 
 async def test_yolo_slash_with_no_flags_turns_yolo_on(
@@ -124,7 +153,7 @@ async def test_status_snapshot_separates_yolo_and_afk(runtime: Runtime, tmp_path
     soul = _make_soul(runtime, tmp_path)
 
     # Afk only -> afk_enabled True, yolo_enabled False.
-    soul.runtime.approval._state.afk = True  # pyright: ignore[reportPrivateUsage]
+    soul.runtime.approval.set_afk(True)
     snap = soul.status
     assert snap.afk_enabled is True
     assert snap.yolo_enabled is False

@@ -102,7 +102,19 @@ async def yolo(soul: KimiSoul, args: str):
     if soul.runtime.approval.is_yolo_flag():
         soul.runtime.approval.set_yolo(False)
         track("yolo_toggle", enabled=False)
-        wire_send(TextPart(text="You only die once! Actions will require approval."))
+        if soul.runtime.approval.is_afk():
+            # Yolo off but afk still on -> tool calls remain auto-approved.
+            # Don't mislead the user into thinking approvals just came back.
+            wire_send(
+                TextPart(
+                    text=(
+                        "Yolo disabled, but afk is still on — tool calls remain "
+                        "auto-approved. Use /afk to turn off afk."
+                    )
+                )
+            )
+        else:
+            wire_send(TextPart(text="You only die once! Actions will require approval."))
     else:
         soul.runtime.approval.set_yolo(True)
         track("yolo_toggle", enabled=True)
@@ -117,7 +129,14 @@ async def afk(soul: KimiSoul, args: str):
     if soul.runtime.approval.is_afk():
         soul.runtime.approval.set_afk(False)
         track("afk_toggle", enabled=False)
-        wire_send(TextPart(text="afk mode disabled. You are back at the terminal."))
+        if soul.runtime.approval.is_yolo_flag():
+            wire_send(
+                TextPart(
+                    text=("afk mode disabled. You are back at the terminal. Yolo is still on.")
+                )
+            )
+        else:
+            wire_send(TextPart(text="afk mode disabled. You are back at the terminal."))
     else:
         soul.runtime.approval.set_afk(True)
         track("afk_toggle", enabled=True)
