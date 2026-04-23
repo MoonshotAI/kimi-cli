@@ -24,6 +24,7 @@ from rich.text import Text
 
 from kimi_cli import logger
 from kimi_cli.background import list_task_views
+from kimi_cli.llm import model_display_name
 from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -339,6 +340,8 @@ class Shell:
             await idle_events.put(_PromptEvent(kind="input", user_input=user_input))
 
     async def run(self, command: str | None = None) -> bool:
+        _run_start_time = time.monotonic()
+
         # Initialize theme from config
         if isinstance(self.soul, KimiSoul):
             from kimi_cli.ui.theme import set_active_theme
@@ -362,6 +365,14 @@ class Shell:
             self._start_background_task(self._auto_update())
 
         _print_welcome_info(self.soul.name or "Kimi Code CLI", self._welcome_info)
+
+        # Start telemetry periodic flush and disk retry
+        from kimi_cli.telemetry import get_sink
+
+        _telemetry_sink = get_sink()
+        if _telemetry_sink is not None:
+            _telemetry_sink.start_periodic_flush()
+            self._start_background_task(_telemetry_sink.retry_disk_events())
 
         if isinstance(self.soul, KimiSoul):
             watcher = NotificationWatcher(
@@ -426,7 +437,12 @@ class Shell:
             fast_refresh_provider=_mcp_status_loading,
             background_task_count_provider=_bg_task_count,
             model_capabilities=self.soul.model_capabilities or set(),
-            model_name=self.soul.model_name,
+            model_name=model_display_name(
+                self.soul.model_name,
+                self.soul.runtime.llm.model_config
+                if isinstance(self.soul, KimiSoul) and self.soul.runtime.llm
+                else None,
+            ),
             thinking=self.soul.thinking or False,
             agent_mode_slash_commands=list(self._available_slash_commands.values()),
             shell_mode_slash_commands=shell_mode_registry.list_commands(),
@@ -587,6 +603,9 @@ class Shell:
                     )
                     action = classify_input(input_text, is_streaming=False)
                     if action.kind == InputAction.BTW and isinstance(self.soul, KimiSoul):
+                        from kimi_cli.telemetry import track
+
+                        track("input_btw")
                         await self._run_btw_modal(action.args, prompt_session)
                         resume_prompt.set()
                         continue
@@ -601,6 +620,9 @@ class Shell:
                             and shell_slash_registry.find_command(slash_cmd_call.name) is None
                         )
                         if is_soul_slash:
+                            from kimi_cli.telemetry import track
+
+                            track("input_command", command=slash_cmd_call.name)
                             background_autotrigger_armed = True
                             resume_prompt.set()
                             await self.run_soul_command(slash_cmd_call.raw_input)
@@ -631,6 +653,21 @@ class Shell:
                     self._approval_modal = None
                 self._prompt_session = None
                 self._cancel_background_tasks()
+                # Track exit and flush remaining telemetry events.
+                # Cap the exit-path flush at 3 s so we don't block for ~50 s
+                # when the endpoint is unreachable (in-process retry backoff).
+                # On timeout the CancelledError handler in transport.send()
+                # persists in-flight events to disk; flush_sync() catches any
+                # events still in the buffer.
+                from kimi_cli.telemetry import track
+
+                track("exit", duration_s=time.monotonic() - _run_start_time)
+                if _telemetry_sink is not None:
+                    _telemetry_sink.stop_periodic_flush()
+                    try:
+                        await asyncio.wait_for(_telemetry_sink.flush(), timeout=3.0)
+                    except (TimeoutError, Exception):
+                        _telemetry_sink.flush_sync()
                 ensure_tty_sane()
 
         return shell_ok
@@ -667,6 +704,9 @@ class Shell:
             return
 
         logger.info("Running shell command: {cmd}", cmd=command)
+        from kimi_cli.telemetry import track
+
+        track("input_bash")
 
         proc: asyncio.subprocess.Process | None = None
 
@@ -694,14 +734,18 @@ class Shell:
 
     async def _run_slash_command(self, command_call: SlashCommandCall) -> None:
         from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
+        from kimi_cli.telemetry import track
 
         if command_call.name not in self._available_slash_commands:
             logger.info("Unknown slash command /{command}", command=command_call.name)
+            track("input_command_invalid")
             console.print(
                 f'[red]Unknown slash command "/{command_call.name}", '
                 'type "/" for all available commands[/red]'
             )
             return
+
+        track("input_command", command=command_call.name)
 
         command = shell_slash_registry.find_command(command_call.name)
         if command is None:
@@ -920,6 +964,12 @@ class Shell:
             )
         except RunCancelled:
             logger.info("Cancelled by user")
+            from kimi_cli.telemetry import track
+
+            _at_step = (
+                getattr(self.soul, "_current_step_no", 0) if isinstance(self.soul, KimiSoul) else 0
+            )
+            track("turn_interrupted", at_step=_at_step)
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")
@@ -1438,6 +1488,9 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
                             f"Please run `{_update_mod.UPGRADE_COMMAND}` to upgrade.[/yellow]"
                         )
                     )
+                    from kimi_cli.telemetry import track
+
+                    track("update_prompted", current=current_version, latest=latest_version)
 
     console.print(
         Panel(

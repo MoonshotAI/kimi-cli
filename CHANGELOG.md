@@ -11,8 +11,26 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.38.0 (2026-04-22)
+
+- Shell: Fix `Rejected by user` misleading message when an approval modal times out — after the 300s safety timeout, the tool call now rejects with `Rejected: approval timed out`, so users returning to their session after stepping away can tell the rejection was a timeout rather than a manual rejection. Pass `--yolo`/`-y` to auto-approve tool calls if you regularly leave sessions unattended
+- Auth: Fix OAuth users being forced to `/login` again after an unrelated refresh-token rotation race — when a concurrently-running kimi-cli instance (terminal, VS Code extension, or `kimi -p` one-shot) legitimately rotated the refresh token, the current instance's now-stale refresh request would come back with a 401, and a TOCTOU window between the "did another instance rotate?" disk check and the `delete_tokens` call could wipe the credentials file even though a valid rotated token was about to be written to it; the in-memory cache is still cleared so truly revoked tokens surface on the next request, but the file is preserved so a concurrent instance's freshly-rotated token can be recovered, and an eventual `/login` still overwrites it atomically
+- Kosong: Fix parallel tool results being split into multiple user messages in Anthropic provider — consecutive tool-result-only user messages are now merged into a single message, complying with the Anthropic Messages API spec that all `tool_use` blocks in an assistant turn must be answered within one user message; this fixes 400 errors on strict Anthropic-compatible backends (e.g. DeepSeek `/anthropic` endpoint) and prevents the official backend from silently teaching the model to avoid parallel tool calls
+
+## 1.37.0 (2026-04-20)
+
+- Print: Wait for background tasks before exiting — in one-shot `--print` mode, the process now waits for running background agents to finish and lets the model process their results, instead of exiting and killing them. The wait is capped at `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)` (default ceiling 1h); on timeout the tasks are killed and the model gets one more turn via a `<system-reminder>` to summarise before exit
+- Shell/Print: On exit the CLI now lists each background task being killed (id + description) on stderr and waits out the configured grace period before reporting any tasks that have not reached terminal state (split into "still terminating" for workers mid-shutdown vs "stop request failed" for genuinely leaking tasks); `keep_alive_on_exit=true` still skips the entire path
+- Auth: Auto-refresh the managed model list at startup for OAuth-logged-in users — the CLI now fetches the latest models from the provider's `/models` endpoint as a background task when the shell launches, so newly released models become available without needing to log out and log back in; failures are silent and never block startup, and custom `--config` sessions keep their previous behavior
+- Shell: Show the provider-supplied `display_name` (e.g. `k2.6-code-preview`) for managed models across the welcome panel, prompt status bar, `/model` picker, and `/model` switch confirmation messages; when the backend does not return one, the CLI falls back to the internal model ID as before
+
+## 1.36.0 (2026-04-17)
+
+- Anthropic: Fix Claude Opus 4.7 returning `invalid_request_error` — Opus 4.7 (which rejects the legacy `{type: "enabled", budget_tokens: N}` thinking config) now correctly uses adaptive thinking, and the client explicitly sets `display: "summarized"` so thinking content still streams back (Opus 4.7 silently changed the default to `"omitted"`); Bedrock/Vertex name variants (e.g., `aws/claude-opus-4-7`, `anthropic.claude-opus-4-7-v1:0`) and `claude-mythos-preview` are also recognised, and future Claude versions ≥ 4.6 are detected automatically via version extrapolation instead of hard-coded substring matching
+- Web: Fix markdown rendering spacing in the web UI — restore proper vertical spacing between paragraphs, lists, code blocks, blockquotes, and headings instead of collapsing all margins to zero
 - Shell: Fix missing loading indicator during active turns — the moon spinner now shows as a fallback whenever the model is working but no other indicator is visible, covering gaps after tool calls finish, between turn start and first step, and when an empty thinking block arrives from the provider
 - Core: Increase default `max_steps_per_turn` from 100 to 500 to allow longer uninterrupted agent runs out of the box
+- Web: Fix unresponsive copy, download, and preview buttons on rendered code blocks
 
 ## 1.35.0 (2026-04-15)
 

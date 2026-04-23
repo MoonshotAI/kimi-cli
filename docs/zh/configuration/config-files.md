@@ -111,12 +111,17 @@ custom_headers = { "X-Custom-Header" = "value" }
 
 `models` 定义可用的模型。每个模型使用一个唯一的名称作为 key。
 
+::: warning 注意
+如果 `providers` 或 `models` 的 key 中包含 `.`，必须使用带引号的 TOML key。否则 TOML 会把 `.` 当作路径分隔符，将 key 解析为嵌套表。
+:::
+
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `provider` | `string` | 是 | 使用的供应商名称，必须在 `providers` 中定义 |
 | `model` | `string` | 是 | 模型标识符（API 中使用的模型名称） |
 | `max_context_size` | `integer` | 是 | 最大上下文长度（token 数） |
 | `capabilities` | `array` | 否 | 模型能力列表，详见 [平台与模型](./providers.md#模型能力) |
+| `display_name` | `string` | 否 | 模型展示名。在欢迎界面、提示框状态栏、`/model` 选单和切换确认消息中显示；未设置时回落到 `model`。对于 OAuth 登录的托管模型，启动时会从供应商的 `/models` 接口自动刷新此字段 |
 
 示例：
 
@@ -126,6 +131,16 @@ provider = "moonshot-cn"
 model = "kimi-k2-thinking-turbo"
 max_context_size = 262144
 capabilities = ["thinking", "image_in"]
+```
+
+如果模型名包含 `.`，需要使用带引号的 key：
+
+```toml
+[models."gpt-4.1"]
+provider = "openai"
+model = "gpt-4.1"
+max_context_size = 1047576
+capabilities = ["thinking"]
 ```
 
 ### `loop_control`
@@ -148,7 +163,9 @@ capabilities = ["thinking", "image_in"]
 | --- | --- | --- | --- |
 | `max_running_tasks` | `integer` | `4` | 同时运行的最大后台任务数 |
 | `keep_alive_on_exit` | `boolean` | `false` | CLI 退出时是否保留后台任务运行；默认退出时终止所有后台任务 |
+| `kill_grace_period_ms` | `integer` | `2000` | CLI 退出发送 SIGTERM 后等待 shell worker 写入终态的宽限期（毫秒），超过后仍未退出的 worker 会被报告为残留。Agent 任务在 kill 时直接同步转为终态，不使用这个 grace period |
 | `agent_task_timeout_s` | `integer` | `900` | 后台 Agent 任务的最大运行时间（秒）；超时后任务标记为失败并通知主 Agent |
+| `print_wait_ceiling_s` | `integer` | `3600` | 一次性 `--print` 模式等待后台任务完成的硬上限（秒），超时则 kill 并退出。实际等待时间为"当前活跃任务中剩余预算最长的那个"，被此上限封顶 |
 
 ### `services`
 
