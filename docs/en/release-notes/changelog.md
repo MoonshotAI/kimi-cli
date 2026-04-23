@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Fix approval request feedback text cursor rendering — the block cursor now correctly renders at the actual cursor position instead of always being pinned to the end of the line; when the cursor is in the middle of the text, the character under the cursor is drawn with reverse video (mimicking a terminal's native block cursor)
+
 ## 1.38.0 (2026-04-22)
 
 - Shell: Fix `Rejected by user` misleading message when an approval modal times out — after the 300s safety timeout, the tool call now rejects with `Rejected: approval timed out`, so users returning to their session after stepping away can tell the rejection was a timeout rather than a manual rejection. Pass `--yolo`/`-y` to auto-approve tool calls if you regularly leave sessions unattended
