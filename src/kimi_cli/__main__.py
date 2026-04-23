@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import sys
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
+
+warnings.filterwarnings("ignore", message=r"authlib\.jose module is deprecated.*")
 
 
 def _prog_name() -> str:
