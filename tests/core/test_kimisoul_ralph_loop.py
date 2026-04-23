@@ -599,3 +599,33 @@ async def test_ralph_loop_disabled_skips_loop_prompt(runtime: Runtime, tmp_path:
             ]
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_flow_runner_sanitizes_name_in_temp_file(runtime: Runtime, tmp_path: Path) -> None:
+    """Flow names containing path separators must be sanitized to prevent traversal."""
+    from kimi_cli.skill.flow import Flow, FlowEdge, FlowNode
+    from kimi_cli.soul.kimisoul import FlowRunner
+
+    llm = _make_llm([[TextPart(text="done")]], set())
+    toolset = SimpleToolset()
+    soul, context = _make_soul(runtime, llm, toolset, tmp_path)
+
+    nodes = {
+        "BEGIN": FlowNode(id="BEGIN", label="BEGIN", kind="begin"),
+        "END": FlowNode(id="END", label="END", kind="end"),
+    }
+    outgoing = {"BEGIN": [FlowEdge(src="BEGIN", dst="END", label=None)], "END": []}
+    flow = Flow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
+
+    # Name with path separators should be sanitized
+    runner = FlowRunner(flow, name="evil/../path")
+    await runner._setup_ephemeral_context(soul)
+
+    # The temp file should be inside the session dir, not outside
+    assert runner._tmp_file is not None
+    assert runner._tmp_file.name == "flow_evil_.._path_context.jsonl"
+    assert runner._tmp_file.parent == Path(soul.runtime.session.dir)
+
+    # Cleanup
+    await runner._cleanup_ephemeral_context()

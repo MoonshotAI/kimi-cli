@@ -1379,7 +1379,8 @@ class FlowRunner:
         import hashlib
 
         session_dir = Path(soul._runtime.session.dir)  # type: ignore[reportPrivateUsage]
-        self._tmp_file = session_dir / f"flow_{self._name or 'anonymous'}_context.jsonl"
+        safe_name = (self._name or "anonymous").replace("/", "_").replace("\\", "_")
+        self._tmp_file = session_dir / f"flow_{safe_name}_context.jsonl"
 
         main_file = soul._context.file_backend  # type: ignore[reportPrivateUsage]
         if main_file.exists() and main_file.stat().st_size > 0:
@@ -1427,7 +1428,12 @@ class FlowRunner:
             # entirely to avoid duplicating or mis-aligning messages.
             import shutil
 
-            shutil.copy(self._tmp_file, soul._context.file_backend)  # type: ignore[reportPrivateUsage]
+            assert self._tmp_file is not None
+            main_file = soul._context.file_backend  # type: ignore[reportPrivateUsage]
+            # Atomic replace to avoid corrupting the main context on crash
+            tmp_target = main_file.with_suffix(".tmp")
+            shutil.copy(self._tmp_file, tmp_target)
+            tmp_target.replace(main_file)
             soul._context._history = list(self._ephemeral_context._history)  # type: ignore[reportPrivateUsage]
             soul._context._provenance = dict(self._ephemeral_context._provenance)  # type: ignore[reportPrivateUsage]
             soul._context._token_count = self._ephemeral_context._token_count  # type: ignore[reportPrivateUsage]
@@ -1550,7 +1556,7 @@ class FlowRunner:
                     logger.warning(
                         "Auto-stopping flow after {moves} moves due to convergence detection. "
                         "Similarity: {similarity:.2f}",
-                        moves=moves,
+                        moves=moves + 1,
                         similarity=report.similarity_score,
                     )
                     return
