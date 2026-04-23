@@ -964,13 +964,20 @@ def test_approval_feedback_renders_inline_input():
 
 def test_approval_feedback_cursor_markup_in_middle():
     """When the cursor is in the middle, the helper wraps the character under
-    it with [reverse] markup — mimicking a terminal's native block cursor."""
+    it with a reverse-video span — mimicking a terminal's native block cursor."""
+    from rich.text import Span
+
     from kimi_cli.ui.shell.visualize._approval_panel import _render_feedback_with_cursor
 
     # Cursor at position 2 ("he|llo world" — on the first 'l').
-    assert _render_feedback_with_cursor("hello world", 2) == "he[reverse]l[/reverse]lo world"
+    out = _render_feedback_with_cursor("hello world", 2)
+    assert out.plain == "hello world"
+    assert Span(2, 3, "reverse") in out.spans
+
     # Cursor at start.
-    assert _render_feedback_with_cursor("hello world", 0) == "[reverse]h[/reverse]ello world"
+    out = _render_feedback_with_cursor("hello world", 0)
+    assert out.plain == "hello world"
+    assert Span(0, 1, "reverse") in out.spans
 
 
 def test_approval_feedback_cursor_markup_at_end():
@@ -978,26 +985,27 @@ def test_approval_feedback_cursor_markup_at_end():
     is emitted (the reverse-video trick requires a character to invert)."""
     from kimi_cli.ui.shell.visualize._approval_panel import _render_feedback_with_cursor
 
-    assert _render_feedback_with_cursor("abc", 3) == "abc\u2588"
+    assert _render_feedback_with_cursor("abc", 3).plain == "abc\u2588"
     # Past-end cursor (defensive) also falls through to the trailing-block branch.
-    assert _render_feedback_with_cursor("abc", 10) == "abc\u2588"
+    assert _render_feedback_with_cursor("abc", 10).plain == "abc\u2588"
     # Empty text.
-    assert _render_feedback_with_cursor("", 0) == "\u2588"
+    assert _render_feedback_with_cursor("", 0).plain == "\u2588"
     # None means "unknown" — same fallback as end-of-text.
-    assert _render_feedback_with_cursor("abc", None) == "abc\u2588"
+    assert _render_feedback_with_cursor("abc", None).plain == "abc\u2588"
 
 
 def test_approval_feedback_cursor_markup_escapes_rich_metachars():
-    """Rich markup tags typed by the user (e.g. ``[bold]``) must be escaped so
-    they are rendered as literal text instead of being interpreted as styles."""
+    """Rich markup tags typed by the user (e.g. ``[bold]``) must render as
+    literal text, not be interpreted as styles — ``Text()`` takes plain strings."""
+    from rich.text import Span
+
     from kimi_cli.ui.shell.visualize._approval_panel import _render_feedback_with_cursor
 
-    # The "[" that opens a tag-looking pattern gets escaped by Rich; the
-    # reverse-cursor wrapper is still applied around the character under the
-    # cursor ('o').
+    # The "[bold]" prefix stays verbatim; the reverse-cursor span is still
+    # applied around the character under the cursor ('h').
     out = _render_feedback_with_cursor("[bold]hello", 6)
-    assert "[reverse]" in out and "[/reverse]" in out
-    assert r"\[bold]" in out
+    assert out.plain == "[bold]hello"
+    assert Span(6, 7, "reverse") in out.spans
 
 
 @pytest.mark.asyncio
