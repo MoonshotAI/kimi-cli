@@ -317,3 +317,82 @@ async def test_kimi_with_thinking():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["reasoning_effort"] == snapshot("high")
+
+
+async def test_kimi_with_extra_body_thinking_deep_merge():
+    """with_extra_body must deep-merge the ``thinking`` sub-dict so that
+    a later call adding ``thinking.keep`` does not erase ``thinking.type``
+    set by an earlier ``with_thinking`` call."""
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = (
+            Kimi(model="kimi-k2-turbo-preview", api_key="test-key", stream=False)
+            .with_thinking("high")
+            .with_extra_body({"thinking": {"keep": "all"}})
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled", "keep": "all"})
+
+
+async def test_kimi_with_extra_body_thinking_empty_dict_is_noop():
+    """Passing ``{"thinking": {}}`` must leave an earlier ``thinking.type``
+    intact. An empty ``thinking`` patch is a no-op, not a clearing signal."""
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = (
+            Kimi(model="kimi-k2-turbo-preview", api_key="test-key", stream=False)
+            .with_thinking("high")
+            .with_extra_body({"thinking": {}})
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled"})
+
+
+async def test_kimi_with_extra_body_thinking_starts_from_empty_dict():
+    """Seeding ``thinking`` with ``{}`` first, then populating it via
+    ``with_thinking`` must produce the populated config — the empty seed
+    must not block subsequent field additions."""
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = (
+            Kimi(model="kimi-k2-turbo-preview", api_key="test-key", stream=False)
+            .with_extra_body({"thinking": {}})
+            .with_thinking("high")
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled"})
+
+
+async def test_kimi_with_extra_body_non_thinking_key_shallow_merge():
+    """Only the ``thinking`` key gets deep-merge special-casing; other
+    top-level extra_body keys still follow the previous shallow-merge
+    semantics (last writer wins)."""
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = (
+            Kimi(model="kimi-k2-turbo-preview", api_key="test-key", stream=False)
+            .with_extra_body({"custom": {"a": 1}})  # pyright: ignore[reportArgumentType]
+            .with_extra_body({"custom": {"b": 2}})  # pyright: ignore[reportArgumentType]
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["custom"] == snapshot({"b": 2})
