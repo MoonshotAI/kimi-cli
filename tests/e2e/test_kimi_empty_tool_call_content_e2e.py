@@ -142,7 +142,7 @@ def _content_is_effectively_empty(content: Any) -> bool:
 async def mock_kimi_compat_server() -> AsyncIterator[MockKimiCompatServer]:
     server_holder: _MockKimiCompatServer | None = None
 
-    async def handler(request: web.Request) -> web.Response:
+    async def handler(request: web.Request) -> web.StreamResponse:
         assert server_holder is not None
         body = cast(dict[str, Any], await request.json())
         server_holder.requests.append(body)
@@ -251,6 +251,7 @@ async def _run_kimi_print_json(
     )
 
     stdout_bytes, stderr_bytes = await process.communicate()
+    assert process.returncode is not None
     return process.returncode, stdout_bytes.decode(), stderr_bytes.decode()
 
 
