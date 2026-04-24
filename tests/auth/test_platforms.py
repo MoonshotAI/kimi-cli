@@ -19,11 +19,12 @@ from kimi_cli.llm import model_display_name
 def _make_config_with_model(
     *,
     display_name: str | None = None,
+    api_key: str = "",
 ) -> Config:
     provider = LLMProvider(
         type="kimi",
         base_url="https://api.test/v1",
-        api_key=SecretStr(""),
+        api_key=SecretStr(api_key),
         oauth=OAuthRef(storage="file", key="oauth/kimi-code"),
     )
     model = LLMModel(
@@ -247,6 +248,53 @@ async def test_refresh_managed_models_retries_after_oauth_401():
 
     assert changed is False
     assert list_models_mock.await_count == 2
+    assert len(ensure_fresh_mock.await_args_list) == 2
+    assert ensure_fresh_mock.await_args_list[0].kwargs == {}
+    assert ensure_fresh_mock.await_args_list[1].kwargs == {"force": True}
+
+
+@pytest.mark.asyncio
+async def test_refresh_managed_models_401_falls_back_to_static_api_key_when_refresh_fails():
+    config = _make_config_with_model(api_key="static-api-key")
+    config.is_from_default_location = True
+
+    models = [
+        ModelInfo(
+            id="kimi-for-coding",
+            context_length=100_000,
+            supports_reasoning=False,
+            supports_image_in=False,
+            supports_video_in=False,
+            display_name=None,
+        )
+    ]
+    unauthorized = aiohttp.ClientResponseError(
+        request_info=MagicMock(real_url="https://api.test/v1/models"),
+        history=(),
+        status=401,
+        message="Unauthorized",
+    )
+
+    with (
+        patch(
+            "kimi_cli.auth.platforms.list_models",
+            AsyncMock(side_effect=[unauthorized, models]),
+        ) as list_models_mock,
+        patch(
+            "kimi_cli.auth.oauth.OAuthManager.ensure_fresh",
+            new=AsyncMock(side_effect=[None, RuntimeError("refresh failed")]),
+        ) as ensure_fresh_mock,
+        patch(
+            "kimi_cli.auth.oauth.OAuthManager.resolve_api_key",
+            side_effect=["oauth-access-token", "oauth-access-token"],
+        ),
+    ):
+        changed = await refresh_managed_models(config)
+
+    assert changed is False
+    assert list_models_mock.await_count == 2
+    assert list_models_mock.await_args_list[0].args[1] == "oauth-access-token"
+    assert list_models_mock.await_args_list[1].args[1] == "static-api-key"
     assert len(ensure_fresh_mock.await_args_list) == 2
     assert ensure_fresh_mock.await_args_list[0].kwargs == {}
     assert ensure_fresh_mock.await_args_list[1].kwargs == {"force": True}
