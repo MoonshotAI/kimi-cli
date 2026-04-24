@@ -31,7 +31,7 @@ The configuration file contains the following top-level configuration items:
 | `default_editor` | `string` | Default external editor command (e.g. `"vim"`, `"code --wait"`), auto-detects when empty |
 | `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |
 | `show_thinking_stream` | `boolean` | Whether to stream the raw reasoning text in the live area as a 6-line scrolling preview and commit the full reasoning markdown to history when the block ends (defaults to `true`; set to `false` to show only the compact `Thinking ...` indicator and a one-line trace summary) |
-| `merge_all_available_skills` | `boolean` | Whether to merge skills from all brand directories (defaults to `false`); see [Skills configuration](../customization/skills.md) |
+| `merge_all_available_skills` | `boolean` | Whether to merge skills from all brand directories (defaults to `true`); see [Skills configuration](../customization/skills.md) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -49,7 +49,7 @@ default_plan_mode = false
 default_editor = ""
 theme = "dark"
 show_thinking_stream = true
-merge_all_available_skills = false
+merge_all_available_skills = true
 
 [providers.kimi-for-coding]
 type = "kimi"

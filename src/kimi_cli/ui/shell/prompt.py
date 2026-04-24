@@ -1094,6 +1094,12 @@ class RunningPromptDelegate(Protocol):
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class BgTaskCounts:
+    bash: int = 0
+    agent: int = 0
+
+
 @runtime_checkable
 class AgentStatusProvider(Protocol):
     """Optional protocol for delegates that render always-visible agent status.
@@ -1170,7 +1176,7 @@ class CustomPromptSession:
         status_provider: Callable[[], StatusSnapshot],
         status_block_provider: Callable[[int], AnyFormattedText | None] | None = None,
         fast_refresh_provider: Callable[[], bool] | None = None,
-        background_task_count_provider: Callable[[], int] | None = None,
+        background_task_count_provider: Callable[[], BgTaskCounts] | None = None,
         model_capabilities: set[ModelCapability],
         model_name: str | None,
         thinking: bool,
@@ -2149,16 +2155,23 @@ class CustomPromptSession:
             fragments.extend([(tc.cwd, cwd_text), ("", "  ")])
             remaining -= cwd_w + 2
 
-        # Active background bash task count
-        bg_count = (
-            self._background_task_count_provider() if self._background_task_count_provider else 0
+        # Active background task counts (bash + agent, each rendered as its own
+        # badge). Order matters: bash renders first; if there isn't room for the
+        # agent badge too, drop agent and keep bash.
+        bg_counts = (
+            self._background_task_count_provider()
+            if self._background_task_count_provider
+            else BgTaskCounts()
         )
-        if bg_count > 0:
-            bg_text = f"⚙ bash: {bg_count}"
+        for kind_label, kind_count in (("bash", bg_counts.bash), ("agent", bg_counts.agent)):
+            if kind_count <= 0:
+                continue
+            bg_text = f"⚙ {kind_label}: {kind_count}"
             bg_width = _display_width(bg_text)
-            if remaining >= bg_width + 2:
-                fragments.extend([(tc.bg_tasks, bg_text), ("", "  ")])
-                remaining -= bg_width + 2
+            if remaining < bg_width + 2:
+                break
+            fragments.extend([(tc.bg_tasks, bg_text), ("", "  ")])
+            remaining -= bg_width + 2
 
         # Tips fill remaining space on line 1
         tip_text = self._get_two_rotating_tips()

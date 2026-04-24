@@ -45,6 +45,10 @@ class LLMProvider(BaseModel):
     """Environment variables to set before creating the provider instance"""
     custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests"""
+    reasoning_key: str | None = None
+    """Message field name carrying reasoning content for OpenAI-compatible APIs.
+    Applies to provider type ``openai_legacy``. Defaults to ``reasoning_content``
+    when unset. Use an empty string to disable reasoning round-tripping."""
     oauth: OAuthRef | None = None
     """OAuth credential reference (do not store tokens here)."""
 
@@ -237,10 +241,22 @@ class Config(BaseModel):
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
     hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")  # pyright: ignore[reportUnknownVariableType]
     merge_all_available_skills: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Merge skills from all existing brand directories (kimi/claude/codex) "
-            "instead of using only the first one found"
+            "instead of using only the first one found. Defaults to true so users "
+            "who keep skills in multiple brand directories see everything out of "
+            "the box; set to false to restore the first-match-only behaviour."
+        ),
+    )
+    extra_skill_dirs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra directories to discover skills from, added on top of the "
+            "built-in / user / project locations. Each entry may be an absolute "
+            "path, ``~``-prefixed (expanded against $HOME), or relative to the "
+            "project root (the nearest ``.git`` directory above the work dir). "
+            "Missing paths are silently skipped."
         ),
     )
     telemetry: bool = Field(

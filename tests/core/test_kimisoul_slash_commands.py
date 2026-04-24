@@ -28,12 +28,15 @@ def test_flow_skill_registers_skill_and_flow_commands(runtime: Runtime, tmp_path
     flow = _make_flow()
     skill_dir = tmp_path / "flow-skill"
     skill_dir.mkdir()
+    skill_dir_kp = KaosPath.unsafe_from_local_path(skill_dir)
     flow_skill = Skill(
         name="flow-skill",
         description="Flow skill",
         type="flow",
-        dir=KaosPath.unsafe_from_local_path(skill_dir),
+        dir=skill_dir_kp,
+        skill_md_file=skill_dir_kp / "SKILL.md",
         flow=flow,
+        scope="user",
     )
     runtime.skills = {"flow-skill": flow_skill}
 
