@@ -11,15 +11,20 @@ from kimi_cli.share import get_share_dir
 # Legacy plans dir for migration (hardcoded ~/.kimi/plans)
 _LEGACY_PLANS_DIR = Path.home() / ".kimi" / "plans"
 
+# Module-level flag to ensure migration only runs once per process
+_migration_done = False
+
 
 def _get_plans_dir() -> Path:
     """Get the plans directory, migrating from legacy if needed."""
+    global _migration_done
     plans_dir = get_share_dir() / "plans"
     plans_dir.mkdir(parents=True, exist_ok=True)
 
     # Auto-migrate: if legacy dir exists and is different from new dir, migrate files
-    if _LEGACY_PLANS_DIR.exists() and plans_dir != _LEGACY_PLANS_DIR:
+    if not _migration_done and _LEGACY_PLANS_DIR.exists() and plans_dir != _LEGACY_PLANS_DIR:
         _migrate_legacy_plans(plans_dir)
+        _migration_done = True
 
     return plans_dir
 
@@ -31,9 +36,11 @@ def _migrate_legacy_plans(target_dir: Path) -> None:
             if old_file.is_file():
                 new_file = target_dir / old_file.name
                 if not new_file.exists():
-                    # Copy file to new location (don't remove old one for safety)
+                    # Copy file to new location, then remove original
                     new_file.write_text(old_file.read_text(encoding="utf-8"), encoding="utf-8")
-        # Only remove legacy dir if it's now empty (all files migrated or already existed)
+                # Remove original file after successful copy (or if target already exists)
+                old_file.unlink()
+        # Only remove legacy dir if it's now empty (all files migrated)
         with contextlib.suppress(OSError):
             _LEGACY_PLANS_DIR.rmdir()  # Only succeeds if empty
     except Exception:
