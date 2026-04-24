@@ -1,9 +1,11 @@
 from types import SimpleNamespace
+from typing import cast
 
 from kosong.message import Message
 from rich.text import Text
 
 import kimi_cli.ui.shell as shell_module
+from kimi_cli.soul import Soul
 from kimi_cli.ui.shell import Shell
 from kimi_cli.ui.shell.echo import render_user_echo
 from kimi_cli.ui.shell.prompt import PromptMode, UserInput
@@ -34,7 +36,7 @@ def _make_shell(*command_names: str) -> Shell:
         )
         for name in command_names
     ]
-    return Shell(SimpleNamespace(available_slash_commands=commands))
+    return Shell(cast(Soul, SimpleNamespace(available_slash_commands=commands)))
 
 
 def test_echo_agent_input_prints_stringified_user_message(monkeypatch) -> None:
