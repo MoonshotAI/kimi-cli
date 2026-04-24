@@ -69,6 +69,28 @@ async def test_afk_slash_does_not_touch_yolo_flag(
     assert soul.runtime.approval.is_yolo_flag() is True
 
 
+async def test_afk_slash_off_appends_context_reminder(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    soul = _make_soul(runtime, tmp_path)
+    soul.runtime.approval.set_afk(True)
+    monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda _msg: None)
+
+    await _run(afk_slash, soul)
+
+    assert soul.runtime.approval.is_afk() is False
+    assert len(soul.context.history) == 1
+    msg = soul.context.history[-1]
+    assert msg.role == "user"
+    assert len(msg.content) == 1
+    assert isinstance(msg.content[0], TextPart)
+    reminder = msg.content[0].text
+    assert reminder.startswith("<system-reminder>")
+    assert "Afk mode is now disabled" in reminder
+    assert "Ignore any earlier afk mode reminders" in reminder
+    assert "AskUserQuestion is available again" in reminder
+
+
 async def test_yolo_slash_under_afk_only_toggles_yolo_flag(
     runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
