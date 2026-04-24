@@ -160,6 +160,68 @@ def test_create_llm_openai_legacy_custom_headers():
     }
 
 
+def test_create_llm_openai_legacy_default_reasoning_key():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://api.deepseek.com/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="openai_legacy",
+        model="deepseek-reasoner",
+        max_context_size=128000,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key == "reasoning_content"
+
+
+def test_create_llm_openai_legacy_custom_reasoning_key():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://example.test/v1",
+        api_key=SecretStr("test-key"),
+        reasoning_key="reasoning",
+    )
+    model = LLMModel(
+        provider="openai_legacy",
+        model="some-reasoner",
+        max_context_size=128000,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key == "reasoning"
+
+
+def test_create_llm_openai_legacy_disabled_reasoning_key():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://example.test/v1",
+        api_key=SecretStr("test-key"),
+        reasoning_key="",
+    )
+    model = LLMModel(
+        provider="openai_legacy",
+        model="plain-model",
+        max_context_size=128000,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key == ""
+
+
 def test_create_llm_openai_responses_custom_headers():
     provider = LLMProvider(
         type="openai_responses",
