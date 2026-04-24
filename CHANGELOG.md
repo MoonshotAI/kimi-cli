@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Show active background agent task count in the prompt status bar — the existing `⚙ bash: N` badge only counted background Shell tasks and filtered out background Agent subagents, so when many subagents were running the prompt looked idle and users could not tell work was in progress; the toolbar now renders `⚙ bash: N` and `⚙ agent: N` as two independent badges (each hidden when its count is 0) and drops the agent badge first when the terminal is too narrow to fit both
+
 ## 1.39.0 (2026-04-24)
 
 - Skill: Fix project-scope skills being ignored and user-scope skills silently winning name conflicts — the system prompt now groups discovered skills under `### Project` / `### User` / `### Extra` / `### Built-in` headings so the model can tell where each skill came from, and when the same name exists in multiple scopes the more specific scope wins (Project > User > Extra > Built-in) so a project's own `.kimi/skills/foo` or `.claude/skills/foo` correctly overrides a user-level or bundled `foo` instead of the other way around
