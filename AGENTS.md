@@ -211,3 +211,15 @@ and skill workflows.
    - `git tag 0.68` or `git tag pykaos-0.5.3`
    - `git push --tags`
 9. GitHub Actions handles the release after tags are pushed.
+
+## Agent behavior — flow control
+
+When a `[Flow control]` system-reminder appears, **you MUST use the `flow_decision` tool** to
+choose CONTINUE, STOP, or PAUSE. Do not reply with plain text. Do not reason your way around
+the instruction. The tool is real, it works, and you have used it before.
+
+**Hard rules:**
+- If the system says "You MUST use the flow_decision tool," call it immediately.
+- Never claim the tool does not exist, is a pseudo-tool, or is unavailable.
+- Never substitute a text response when the system demands a flow_decision call.
+- If you are confused about whether the tool exists, trust the system instruction and call it anyway.
