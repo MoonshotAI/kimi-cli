@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.52.0 (2026-04-24)
+
 - Kimi: Add `keep` to `ThinkingConfig` (Moonshot `thinking.keep` passthrough for Preserved Thinking); value is typed as `Any` and forwarded unchanged, with case-preservation and no validation — callers choose a value the server accepts (e.g. `"all"`)
 - Kimi: Fix `with_extra_body` silently dropping earlier `thinking.*` fields on subsequent calls — the `thinking` sub-dict is now merged field-by-field so composing `with_thinking(...)` with `with_extra_body({"thinking": {...}})` preserves both contributions; other top-level keys retain last-writer-wins semantics
 - Kimi: Normalize MCP tool parameter schemas before sending to Moonshot — properties that declare `enum`/`const` but no `type` (or have no type hint at all) get an inferred `type` filled in, so MCP servers whose schemas are valid JSON Schema but not strict enough for Moonshot's validator (notably the JetBrains Rider MCP, whose `truncateMode` property is enum-only) no longer make every request fail with `400 At path 'properties.X': type is not defined`; the normalization is Kimi-specific and leaves OpenAI/Anthropic conversions untouched
