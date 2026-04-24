@@ -24,6 +24,7 @@ from kimi_cli.session import Session
 from kimi_cli.skill import (
     Skill,
     discover_skills_from_roots,
+    format_skills_for_prompt,
     index_skills,
     resolve_skills_roots,
 )
@@ -35,7 +36,7 @@ from kimi_cli.subagents.registry import LaborMarket
 from kimi_cli.subagents.store import SubagentStore
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_directory, list_directory
+from kimi_cli.utils.path import find_project_root, is_within_directory, list_directory
 from kimi_cli.wire.root_hub import RootWireHub
 
 if TYPE_CHECKING:
@@ -65,21 +66,6 @@ class BuiltinSystemPromptArgs:
 
 
 _AGENTS_MD_MAX_BYTES = 32 * 1024  # 32 KiB
-
-
-async def _find_project_root(work_dir: KaosPath) -> KaosPath:
-    """Walk up from *work_dir* to find the nearest directory containing ``.git``.
-
-    Returns *work_dir* itself if no ``.git`` marker is found.
-    """
-    current = work_dir
-    while True:
-        if await (current / ".git").exists():
-            return current
-        parent = current.parent
-        if parent == current:  # filesystem root
-            return work_dir
-        current = parent
 
 
 async def _dirs_root_to_leaf(work_dir: KaosPath, project_root: KaosPath) -> list[KaosPath]:
@@ -116,7 +102,7 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
     Budget is allocated leaf-first so deeper (more specific) files are never
     truncated in favour of shallower ones.
     """
-    project_root = await _find_project_root(work_dir)
+    project_root = await find_project_root(work_dir)
     dirs = await _dirs_root_to_leaf(work_dir, project_root)
 
     # Phase 1: collect all candidate files (root → leaf order)
@@ -235,25 +221,19 @@ class Runtime:
             Environment.detect(),
         )
 
-        # Discover and format skills
-        skills_roots = await resolve_skills_roots(
+        # Discover and format skills (grouped by scope for the system prompt).
+        scoped_roots = await resolve_skills_roots(
             session.work_dir,
             skills_dirs=skills_dirs,
             merge_brands=config.merge_all_available_skills,
+            extra_skill_dirs=config.extra_skill_dirs or None,
         )
         # Canonicalize so symlinked skill directories match resolved paths
-        skills_roots_canonical = [r.canonical() for r in skills_roots]
-        skills = await discover_skills_from_roots(skills_roots)
+        skills_roots_canonical = [s.root.canonical() for s in scoped_roots]
+        skills = await discover_skills_from_roots(scoped_roots)
         skills_by_name = index_skills(skills)
         logger.info("Discovered {count} skill(s)", count=len(skills))
-        skills_formatted = "\n".join(
-            (
-                f"- {skill.name}\n"
-                f"  - Path: {skill.skill_md_file}\n"
-                f"  - Description: {skill.description}"
-            )
-            for skill in skills
-        )
+        skills_formatted = format_skills_for_prompt(skills)
 
         # Restore additional directories from session state, pruning stale entries
         additional_dirs: list[KaosPath] = []
