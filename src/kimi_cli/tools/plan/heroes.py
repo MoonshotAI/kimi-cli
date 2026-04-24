@@ -2,10 +2,44 @@
 
 from __future__ import annotations
 
+import contextlib
 import secrets
 from pathlib import Path
 
-PLANS_DIR = Path.home() / ".kimi" / "plans"
+from kimi_cli.share import get_share_dir
+
+# Legacy plans dir for migration (hardcoded ~/.kimi/plans)
+_LEGACY_PLANS_DIR = Path.home() / ".kimi" / "plans"
+
+
+def _get_plans_dir() -> Path:
+    """Get the plans directory, migrating from legacy if needed."""
+    plans_dir = get_share_dir() / "plans"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-migrate: if legacy dir exists and is different from new dir, migrate files
+    if _LEGACY_PLANS_DIR.exists() and plans_dir != _LEGACY_PLANS_DIR:
+        _migrate_legacy_plans(plans_dir)
+
+    return plans_dir
+
+
+def _migrate_legacy_plans(target_dir: Path) -> None:
+    """Migrate plan files from legacy ~/.kimi/plans to target_dir."""
+    try:
+        for old_file in _LEGACY_PLANS_DIR.glob("*.md"):
+            if old_file.is_file():
+                new_file = target_dir / old_file.name
+                if not new_file.exists():
+                    # Copy file to new location (don't remove old one for safety)
+                    new_file.write_text(old_file.read_text(encoding="utf-8"), encoding="utf-8")
+        # Only remove legacy dir if it's now empty (all files migrated or already existed)
+        with contextlib.suppress(OSError):
+            _LEGACY_PLANS_DIR.rmdir()  # Only succeeds if empty
+    except Exception:
+        # Migration failures should not block normal operation
+        pass
+
 
 HERO_NAMES: list[str] = [
     # --- Marvel ---
@@ -250,12 +284,12 @@ def get_or_create_slug(session_id: str) -> str:
     """Get or create a plan file slug for the given session."""
     if session_id in _slug_cache:
         return _slug_cache[session_id]
-    PLANS_DIR.mkdir(parents=True, exist_ok=True)
+    plans_dir = _get_plans_dir()
     slug = ""
     for _ in range(20):
         words = [secrets.choice(HERO_NAMES) for _ in range(3)]
         slug = "-".join(words)
-        if not (PLANS_DIR / f"{slug}.md").exists():
+        if not (plans_dir / f"{slug}.md").exists():
             break
     else:
         # All 20 attempts collided; append session prefix for uniqueness
@@ -266,7 +300,7 @@ def get_or_create_slug(session_id: str) -> str:
 
 def get_plan_file_path(session_id: str) -> Path:
     """Get the plan file path for the given session."""
-    return PLANS_DIR / f"{get_or_create_slug(session_id)}.md"
+    return _get_plans_dir() / f"{get_or_create_slug(session_id)}.md"
 
 
 def read_plan_file(session_id: str) -> str | None:

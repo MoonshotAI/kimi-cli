@@ -42,7 +42,7 @@ class TestPlanSlashCommand:
     async def test_plan_on(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -55,7 +55,7 @@ class TestPlanSlashCommand:
     async def test_plan_on_idempotent(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -68,7 +68,7 @@ class TestPlanSlashCommand:
     async def test_plan_off(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -83,7 +83,7 @@ class TestPlanSlashCommand:
     async def test_plan_off_idempotent(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -96,7 +96,7 @@ class TestPlanSlashCommand:
     async def test_plan_view_with_content(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -115,7 +115,7 @@ class TestPlanSlashCommand:
     async def test_plan_view_no_content(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -129,7 +129,7 @@ class TestPlanSlashCommand:
     async def test_plan_clear(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -149,7 +149,7 @@ class TestPlanSlashCommand:
     async def test_plan_toggle_on(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -162,7 +162,7 @@ class TestPlanSlashCommand:
     async def test_plan_toggle_off(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes._get_plans_dir", lambda: tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
