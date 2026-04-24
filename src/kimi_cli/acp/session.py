@@ -49,6 +49,8 @@ from kimi_cli.wire.types import (
 _current_turn_id = ContextVar[str | None]("current_turn_id", default=None)
 _terminal_tool_call_ids = ContextVar[set[str] | None]("terminal_tool_call_ids", default=None)
 
+APPROVAL_REQUIRED_NOTIFICATION = "kimi/approval_required"
+
 
 def get_current_acp_tool_call_id_or_none() -> str | None:
     """See `_ToolCallState.acp_tool_call_id`."""
@@ -415,6 +417,8 @@ class ACPSession:
                     )
                 )
 
+            await self._send_approval_required_notification(request, state)
+
             # Send permission request and wait for response
             logger.debug("Requesting permission for action: {action}", action=request.action)
             response = await self._conn.request_permission(
@@ -465,6 +469,31 @@ class ACPSession:
             logger.exception("Error handling approval request:")
             # On error, reject the request
             request.resolve("reject")
+
+    async def _send_approval_required_notification(
+        self, request: ApprovalRequest, state: _ToolCallState
+    ) -> None:
+        """Notify ACP clients that an approval is pending before opening the prompt."""
+        try:
+            await self._conn.ext_notification(
+                APPROVAL_REQUIRED_NOTIFICATION,
+                {
+                    "session_id": self._id,
+                    "request_id": request.id,
+                    "tool_call_id": state.acp_tool_call_id,
+                    "title": "Kimi: Approval required",
+                    "message": "Kimi: Approval required. Please check the Kimi Code panel.",
+                    "action_label": "Open Kimi",
+                    "focus_command": "kimi.webview.focus",
+                    "tool_title": state.get_title(),
+                    "approval_action": request.action,
+                    "description": request.description,
+                    "source_kind": request.source_kind,
+                    "source_id": request.source_id,
+                },
+            )
+        except Exception:
+            logger.debug("ACP client did not handle approval notification", exc_info=True)
 
     async def _send_plan_update(self, block: TodoDisplayBlock) -> None:
         """Send todo list updates as ACP agent plan updates."""
