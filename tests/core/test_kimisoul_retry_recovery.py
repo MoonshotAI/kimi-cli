@@ -279,8 +279,8 @@ async def test_step_retry_recovers_retryable_provider(runtime: Runtime, tmp_path
 
 
 @pytest.mark.asyncio
-async def test_step_connection_error_recovery_only_retries_once(
-    runtime: Runtime, tmp_path: Path
+async def test_step_connection_error_recovery_retries_up_to_three_times(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runtime.config.loop_control.max_retries_per_step = 5
     provider = AlwaysConnectionErrorProvider()
@@ -291,11 +291,21 @@ async def test_step_connection_error_recovery_only_retries_once(
     )
     soul, _ = _make_soul(runtime, llm, tmp_path)
 
+    # Patch asyncio.sleep to avoid adding ~7s of backoff delays to the test.
+    # We use a zero-delay yield so pending task cancellations (e.g. the
+    # notification pump in run_soul) are still processed.
+    _original_sleep = asyncio.sleep
+
+    async def _no_sleep(*_args: object, **_kwargs: object) -> None:
+        await _original_sleep(0)
+
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+
     with pytest.raises(APIConnectionError):
         await run_soul(soul, "trigger connection failure", _drain_ui_messages, asyncio.Event())
 
-    assert provider.generate_attempts == 2
-    assert provider.recovery_calls == 1
+    assert provider.generate_attempts == 4
+    assert provider.recovery_calls == 3
 
 
 @pytest.mark.asyncio
