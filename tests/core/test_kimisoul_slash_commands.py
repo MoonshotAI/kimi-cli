@@ -48,6 +48,8 @@ def test_flow_skill_registers_skill_and_flow_commands(runtime: Runtime, tmp_path
     )
     soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
 
-    command_names = {cmd.name for cmd in soul.available_slash_commands}
-    assert "skill:flow-skill" in command_names
-    assert "flow:flow-skill" in command_names
+    commands = {cmd.name: cmd for cmd in soul.available_slash_commands}
+    assert "skill:flow-skill" in commands
+    assert "flow:flow-skill" in commands
+    assert commands["skill:flow-skill"].completion_submit == "insert_only"
+    assert commands["flow:flow-skill"].completion_submit == "auto_submit"

@@ -1,7 +1,9 @@
 import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import overload
+from typing import Literal, overload
+
+CompletionSubmitPolicy = Literal["auto_submit", "insert_only"]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -10,6 +12,7 @@ class SlashCommand[F: Callable[..., None | Awaitable[None]]]:
     description: str
     func: F
     aliases: list[str]
+    completion_submit: CompletionSubmitPolicy = "auto_submit"
 
     def slash_name(self):
         """/name (aliases)"""

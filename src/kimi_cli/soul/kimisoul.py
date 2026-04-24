@@ -663,6 +663,7 @@ class KimiSoul:
                     func=self._make_skill_runner(skill),
                     description=skill.description or "",
                     aliases=[],
+                    completion_submit="insert_only",
                 )
             )
             seen_names.add(name)
