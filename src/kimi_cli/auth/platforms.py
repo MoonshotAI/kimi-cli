@@ -119,16 +119,18 @@ def get_platform_name_for_provider(provider_key: str) -> str | None:
     return platform.name if platform else None
 
 
-def _select_retry_api_key(
+def _select_retry_api_keys(
     *,
     attempted_api_key: str,
     resolved_api_key: str,
     fallback_api_key: str,
-) -> str:
+) -> list[str]:
+    result: list[str] = []
     for candidate in (resolved_api_key, fallback_api_key):
-        if candidate and candidate != attempted_api_key:
-            return candidate
-    return ""
+        if not candidate or candidate == attempted_api_key or candidate in result:
+            continue
+        result.append(candidate)
+    return result
 
 
 async def refresh_managed_models(config: Config) -> bool:
@@ -200,25 +202,30 @@ async def refresh_managed_models(config: Config) -> bool:
                     error=exc2,
                 )
 
-            retry_api_key = _select_retry_api_key(
+            retry_api_keys = _select_retry_api_keys(
                 attempted_api_key=api_key,
                 resolved_api_key=oauth_manager.resolve_api_key(provider.api_key, provider.oauth),
                 fallback_api_key=fallback_api_key,
             )
-            if not retry_api_key:
+            if not retry_api_keys:
                 logger.error(
                     "Failed to refresh models for {platform}: {error}",
                     platform=platform_id,
                     error=refresh_exc or exc,
                 )
                 continue
-            try:
-                models = await list_models(platform, retry_api_key)
-            except Exception as retry_exc:
+            retry_exc: Exception | None = None
+            for retry_api_key in retry_api_keys:
+                try:
+                    models = await list_models(platform, retry_api_key)
+                    break
+                except Exception as exc3:
+                    retry_exc = exc3
+            else:
                 logger.error(
                     "Failed to refresh models for {platform}: {error}",
                     platform=platform_id,
-                    error=retry_exc,
+                    error=retry_exc or refresh_exc or exc,
                 )
                 continue
         except Exception as exc:
