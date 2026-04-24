@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.39.0 (2026-04-24)
+
 - Skill: Fix project-scope skills being ignored and user-scope skills silently winning name conflicts — the system prompt now groups discovered skills under `### Project` / `### User` / `### Extra` / `### Built-in` headings so the model can tell where each skill came from, and when the same name exists in multiple scopes the more specific scope wins (Project > User > Extra > Built-in) so a project's own `.kimi/skills/foo` or `.claude/skills/foo` correctly overrides a user-level or bundled `foo` instead of the other way around
 - Skill: Accept single-file `<name>.md` skills alongside the canonical `<name>/SKILL.md` subdirectory layout — useful when migrating a flat markdown collection into a skills directory; `name` defaults to the filename stem (frontmatter `name:` still wins if set), description follows the same three-step chain as subdirectory skills (frontmatter `description:` → first non-empty body line, capped at 240 characters → `"No description provided."` placeholder), and if a flat and a subdirectory skill share a name in the same directory the subdirectory wins with a warning
 - Skill: Add `extra_skill_dirs` config field for pulling in custom skill directories on top of the built-in / user / project auto-discovery — each entry may be an absolute path, a `~`-prefixed path (expanded against `$HOME`), or a path relative to the project root (the nearest `.git` ancestor of the work directory, not the current working directory); non-existent entries are silently skipped and symlink/trailing-slash duplicates canonicalize to a single root so a path listed twice or aliased to an already-discovered directory does not render twice in the system prompt
