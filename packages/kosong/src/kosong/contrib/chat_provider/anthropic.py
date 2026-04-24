@@ -37,6 +37,7 @@ from anthropic import (
 from anthropic import (
     RateLimitError as AnthropicRateLimitError,
 )
+from anthropic import transform_schema as _anthropic_transform_schema
 from anthropic.lib.streaming import MessageStopEvent
 from anthropic.types import (
     Base64ImageSourceParam,
@@ -622,11 +623,26 @@ class AnthropicStreamedMessage:
             raise _convert_error(exc) from exc
 
 
+def ensure_anthropic_strict_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Make a JSON schema compliant with Anthropic strict tool use.
+
+    Anthropic's strict subset rejects ``minimum``/``maximum``/``minLength``/
+    ``maxLength``/``multipleOf``/``maxItems`` and requires ``additionalProperties:
+    false`` on objects. The official SDK helper strips those keywords and
+    appends them to ``description`` so the model still sees the constraints.
+    Mutates a deep copy so the original schema is preserved.
+    """
+    return _anthropic_transform_schema(copy.deepcopy(schema))
+
+
 def _convert_tool(tool: Tool) -> ToolParam:
+    schema = tool.parameters
+    if tool.strict:
+        schema = ensure_anthropic_strict_json_schema(schema)
     return {
         "name": tool.name,
         "description": tool.description,
-        "input_schema": tool.parameters,
+        "input_schema": schema,
         "strict": tool.strict,
     }
 
