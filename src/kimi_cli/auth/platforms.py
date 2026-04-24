@@ -140,13 +140,21 @@ async def refresh_managed_models(config: Config) -> bool:
             logger.warning("Managed platform not found: {platform}", platform=platform_id)
             continue
 
+        oauth_manager = None
         api_key = provider.api_key.get_secret_value()
-        if not api_key and provider.oauth:
-            from kimi_cli.auth.oauth import load_tokens
+        if provider.oauth:
+            from kimi_cli.auth.oauth import OAuthManager
 
-            token = load_tokens(provider.oauth)
-            if token:
-                api_key = token.access_token
+            oauth_manager = OAuthManager(config)
+            try:
+                await oauth_manager.ensure_fresh()
+            except Exception as exc:
+                logger.warning(
+                    "Failed to refresh OAuth token before model sync for {platform}: {error}",
+                    platform=platform_id,
+                    error=exc,
+                )
+            api_key = oauth_manager.resolve_api_key(provider.api_key, provider.oauth)
         if not api_key:
             logger.warning(
                 "Missing API key for managed provider: {provider}",
@@ -155,6 +163,31 @@ async def refresh_managed_models(config: Config) -> bool:
             continue
         try:
             models = await list_models(platform, api_key)
+        except aiohttp.ClientResponseError as exc:
+            if exc.status != 401 or provider.oauth is None or oauth_manager is None:
+                logger.error(
+                    "Failed to refresh models for {platform}: {error}",
+                    platform=platform_id,
+                    error=exc,
+                )
+                continue
+            logger.warning(
+                "Received 401 while refreshing models for {platform}; attempting token refresh",
+                platform=platform_id,
+            )
+            try:
+                await oauth_manager.ensure_fresh(force=True)
+                api_key = oauth_manager.resolve_api_key(provider.api_key, provider.oauth)
+                if not api_key:
+                    raise ValueError("OAuth refresh produced no access token")
+                models = await list_models(platform, api_key)
+            except Exception as retry_exc:
+                logger.error(
+                    "Failed to refresh models for {platform}: {error}",
+                    platform=platform_id,
+                    error=retry_exc,
+                )
+                continue
         except Exception as exc:
             logger.error(
                 "Failed to refresh models for {platform}: {error}",
