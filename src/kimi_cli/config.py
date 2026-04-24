@@ -259,6 +259,14 @@ class Config(BaseModel):
             "Missing paths are silently skipped."
         ),
     )
+    default_skills: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Skills to auto-activate at the start of every new session. "
+            "Each entry is a skill name (case-insensitive). Missing or unreadable "
+            "skills are logged and skipped."
+        ),
+    )
     telemetry: bool = Field(
         default=True,
         description="Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.",

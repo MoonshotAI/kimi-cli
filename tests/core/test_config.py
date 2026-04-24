@@ -58,6 +58,7 @@ def test_default_config_dump():
             "hooks": [],
             "merge_all_available_skills": True,
             "extra_skill_dirs": [],
+            "default_skills": [],
             "telemetry": True,
             "skip_yolo_prompt_injection": False,
         }

@@ -170,3 +170,113 @@ async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
     await KimiCLI.create(session, config=config)
 
     update_instance.assert_called_once_with("afg1", status="failed")
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_create_injects_default_skills_on_new_session(session, config, monkeypatch) -> None:
+    """Default skills are appended as user messages for new sessions."""
+    config.default_skills = ["caveman", "missing-skill"]
+    append_message = AsyncMock()
+    write_system_prompt = AsyncMock()
+
+    fake_skill = SimpleNamespace(name="caveman")
+    fake_runtime = SimpleNamespace(
+        session=session,
+        config=config,
+        llm=None,
+        notifications=SimpleNamespace(recover=lambda: None),
+        background_tasks=SimpleNamespace(reconcile=lambda: None),
+        skills={"caveman": fake_skill},
+    )
+    fake_agent = SimpleNamespace(name="Test Agent", system_prompt="Test system prompt")
+    fake_context = SimpleNamespace(system_prompt=None)
+    fake_context.restore = AsyncMock()
+    fake_context.write_system_prompt = write_system_prompt
+    fake_context.append_message = append_message
+
+    async def fake_runtime_create(*args, **kwargs):
+        return fake_runtime
+
+    async def fake_load_agent(*args, **kwargs):
+        return fake_agent
+
+    monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+    monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+    monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+    monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+    monkeypatch.setattr(
+        app_module,
+        "read_skill_text",
+        AsyncMock(return_value="Speak like caveman."),
+    )
+
+    class _FakeSoul:
+        def __init__(self, agent, context):
+            pass
+
+        def set_hook_engine(self, engine):
+            pass
+
+    monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+
+    await KimiCLI.create(session, config=config)
+
+    write_system_prompt.assert_awaited_once_with("Test system prompt")
+    append_message.assert_awaited_once()
+    # Verify the message content contains the skill text
+    call_args = append_message.await_args[0][0]
+    assert call_args.role == "user"
+    assert call_args.content[0].text == "Speak like caveman."
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_create_skips_default_skills_on_restored_session(session, config, monkeypatch) -> None:
+    """Default skills are NOT injected when restoring an existing session."""
+    config.default_skills = ["caveman"]
+    append_message = AsyncMock()
+
+    fake_runtime = SimpleNamespace(
+        session=session,
+        config=config,
+        llm=None,
+        notifications=SimpleNamespace(recover=lambda: None),
+        background_tasks=SimpleNamespace(reconcile=lambda: None),
+        skills={},
+    )
+    from dataclasses import dataclass
+    @dataclass(frozen=True)
+    class FakeAgent:
+        name: str
+        system_prompt: str
+    fake_agent = FakeAgent(name="Test Agent", system_prompt="Test system prompt")
+    fake_context = SimpleNamespace(system_prompt="Existing prompt")
+    fake_context.restore = AsyncMock()
+    fake_context.append_message = append_message
+
+    async def fake_runtime_create(*args, **kwargs):
+        return fake_runtime
+
+    async def fake_load_agent(*args, **kwargs):
+        return fake_agent
+
+    monkeypatch.setattr(app_module, "load_config", lambda conf: conf)
+    monkeypatch.setattr(app_module, "augment_provider_with_env_vars", lambda provider, model: {})
+    monkeypatch.setattr(app_module, "create_llm", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
+    monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
+    monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
+
+    class _FakeSoul:
+        def __init__(self, agent, context):
+            pass
+
+        def set_hook_engine(self, engine):
+            pass
+
+    monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
+
+    await KimiCLI.create(session, config=config)
+
+    append_message.assert_not_awaited()
