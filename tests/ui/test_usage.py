@@ -11,15 +11,14 @@ from kimi_cli.ui.shell.usage import _ratio_color
     ("ratio", "expected"),
     [
         (1.0, "green"),
-        (0.95, "green"),
-        (0.9, "green"),
-        (0.8, "yellow"),
-        (0.7, "yellow"),
-        (0.69, "red"),
+        (0.31, "green"),
+        (0.3, "yellow"),
+        (0.11, "yellow"),
         (0.1, "red"),
+        (0.0, "red"),
         (-0.1, "red"),
     ],
 )
 def test_ratio_color_uses_remaining_quota_ratio(ratio: float, expected: str) -> None:
-    """Higher remaining ratio should be safer, not more dangerous."""
+    """Remaining quota should only become dangerous near exhaustion."""
     assert _ratio_color(ratio) == expected
