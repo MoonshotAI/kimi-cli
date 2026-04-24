@@ -45,6 +45,10 @@ class LLMProvider(BaseModel):
     """Environment variables to set before creating the provider instance"""
     custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests"""
+    reasoning_key: str | None = None
+    """Message field name carrying reasoning content for OpenAI-compatible APIs.
+    Applies to provider type ``openai_legacy``. Defaults to ``reasoning_content``
+    when unset. Use an empty string to disable reasoning round-tripping."""
     oauth: OAuthRef | None = None
     """OAuth credential reference (do not store tokens here)."""
 
