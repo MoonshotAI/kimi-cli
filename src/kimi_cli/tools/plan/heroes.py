@@ -15,6 +15,15 @@ _LEGACY_PLANS_DIR = Path.home() / ".kimi" / "plans"
 _migration_done = False
 
 
+def _is_same_directory(path1: Path, path2: Path) -> bool:
+    """Check if two paths point to the same directory (handles symlinks via inode comparison)."""
+    try:
+        return path1.samefile(path2)
+    except (OSError, ValueError):
+        # If either path doesn't exist, fall back to string comparison
+        return path1 == path2
+
+
 def _get_plans_dir() -> Path:
     """Get the plans directory, migrating from legacy if needed."""
     global _migration_done
@@ -22,7 +31,7 @@ def _get_plans_dir() -> Path:
     plans_dir.mkdir(parents=True, exist_ok=True)
 
     # Auto-migrate: if legacy dir exists and is different from new dir, migrate files
-    if not _migration_done and _LEGACY_PLANS_DIR.exists() and plans_dir != _LEGACY_PLANS_DIR:
+    if not _migration_done and _LEGACY_PLANS_DIR.exists() and not _is_same_directory(plans_dir, _LEGACY_PLANS_DIR):
         _migrate_legacy_plans(plans_dir)
         _migration_done = True
 
