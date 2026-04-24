@@ -1178,6 +1178,7 @@ class KimiSoul:
         *,
         chat_provider: object | None = None,
         _auth_retried: bool = False,
+        _connection_retried: bool = False,
     ) -> Any:
         try:
             return await operation()
@@ -1206,9 +1207,22 @@ class KimiSoul:
             # Re-enter full recovery so that transient connection errors
             # on the retry are still handled by on_retryable_error.
             return await self._run_with_connection_recovery(
-                name, operation, chat_provider=chat_provider, _auth_retried=True
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=True,
+                _connection_retried=_connection_retried,
             )
         except (APIConnectionError, APITimeoutError) as error:
+            if _connection_retried:
+                logger.warning(
+                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
+                    name=name,
+                    error_type=type(error).__name__,
+                    error=error,
+                )
+                error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
+                raise
             if not isinstance(chat_provider, RetryableChatProvider):
                 raise
             try:
@@ -1232,17 +1246,15 @@ class KimiSoul:
                 name=name,
                 error_type=type(error).__name__,
             )
-            try:
-                return await operation()
-            except (APIConnectionError, APITimeoutError) as second_error:
-                logger.warning(
-                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
-                    name=name,
-                    error_type=type(second_error).__name__,
-                    error=second_error,
-                )
-                second_error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
-                raise
+            # Re-enter the full recovery path so a 401 on the retry can still
+            # trigger OAuth refresh instead of bubbling straight to the user.
+            return await self._run_with_connection_recovery(
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=_auth_retried,
+                _connection_retried=True,
+            )
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):
