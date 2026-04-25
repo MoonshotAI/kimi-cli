@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { KimiCliBrand } from "@/components/kimi-cli-brand";
+import { SessionRunningIndicator } from "./session-running-indicator";
 import {
   Dialog,
   DialogContent,
@@ -65,6 +66,7 @@ type SessionSummary = {
   updatedAt: string;
   workDir?: string | null;
   lastUpdated: Date;
+  isRunning?: boolean;
 };
 
 type ViewMode = "list" | "grouped";
@@ -924,16 +926,19 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                             className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
                                           />
                                         ) : (
-                                          <Tooltip delayDuration={500}>
-                                            <TooltipTrigger asChild>
-                                              <p className="text-sm font-medium text-foreground truncate">
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            {session.isRunning && <SessionRunningIndicator />}
+                                            <Tooltip delayDuration={500}>
+                                              <TooltipTrigger asChild>
+                                                <p className="text-sm font-medium text-foreground truncate min-w-0">
+                                                  {normalizeTitle(session.title)}
+                                                </p>
+                                              </TooltipTrigger>
+                                              <TooltipContent side="right" className="max-w-md">
                                                 {normalizeTitle(session.title)}
-                                              </p>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="right" className="max-w-md">
-                                              {normalizeTitle(session.title)}
-                                            </TooltipContent>
-                                          </Tooltip>
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </div>
                                         )}
                                         {!isEditing && (
                                           <span className="text-[10px] text-muted-foreground mt-1 block">
@@ -1044,10 +1049,11 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                             className="w-full text-sm font-medium text-foreground bg-background border border-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
                           />
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
+                            {session.isRunning && <SessionRunningIndicator />}
                             <Tooltip delayDuration={500}>
                               <TooltipTrigger asChild>
-                                <p className="text-sm font-medium text-foreground truncate flex-1">
+                                <p className="text-sm font-medium text-foreground truncate flex-1 min-w-0">
                                   {normalizeTitle(session.title)}
                                 </p>
                               </TooltipTrigger>
@@ -1055,7 +1061,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                 {normalizeTitle(session.title)}
                               </TooltipContent>
                             </Tooltip>
-                            <span className="text-[10px] text-muted-foreground shrink-0">
+                            <span className="text-[10px] text-muted-foreground shrink-0 ml-0.5">
                               {session.updatedAt}
                             </span>
                           </div>

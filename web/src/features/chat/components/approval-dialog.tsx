@@ -284,7 +284,7 @@ export function ApprovalDialog({
               )}
             >
               {feedbackMode ? "Cancel feedback" : "Decline with feedback"}
-              {!feedbackMode && !approvalPending && (
+              {!(feedbackMode || approvalPending) && (
                 <Kbd className="ml-1.5">4</Kbd>
               )}
             </Button>
