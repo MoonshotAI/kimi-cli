@@ -305,6 +305,13 @@ class ACPServer:
 
         acp_session, model_id_conv = self.sessions[session_id]
         config = acp_session.cli.soul.runtime.config
+        soul = acp_session.cli.soul
+        if soul.plan_mode:
+            current_mode_id = "plan"
+        elif getattr(soul.runtime.approval, "yolo", False):
+            current_mode_id = "edit"
+        else:
+            current_mode_id = "default"
         return acp.schema.ResumeSessionResponse(
             modes=acp.schema.SessionModeState(
                 available_modes=[
@@ -324,7 +331,7 @@ class ACPServer:
                         description="Plan only — no code execution.",
                     ),
                 ],
-                current_mode_id="default",
+                current_mode_id=current_mode_id,
             ),
             models=acp.schema.SessionModelState(
                 available_models=_expand_llm_models(config.models),
@@ -359,6 +366,9 @@ class ACPServer:
         )
 
     async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
+        if session_id not in self.sessions:
+            logger.error("Session not found: {id}", id=session_id)
+            raise acp.RequestError.invalid_params({"session_id": "Session not found"})
         acp_session, _ = self.sessions[session_id]
         soul = acp_session.cli.soul
         if mode_id == "default":
