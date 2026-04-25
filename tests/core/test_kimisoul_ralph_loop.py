@@ -624,7 +624,8 @@ async def test_flow_runner_sanitizes_name_in_temp_file(runtime: Runtime, tmp_pat
 
     # The temp file should be inside the session dir, not outside
     assert runner._tmp_file is not None
-    assert runner._tmp_file.name == "flow_evil_.._path_context.jsonl"
+    assert runner._tmp_file.name.startswith("flow_evil_.._path_")
+    assert runner._tmp_file.name.endswith("_context.jsonl")
     assert runner._tmp_file.parent == Path(soul.runtime.session.dir)
 
     # Cleanup

@@ -36,8 +36,9 @@ def _parse_tool_args(func: Any) -> dict[str, Any]:
         import json
 
         with contextlib.suppress(json.JSONDecodeError):
-            parsed: dict[str, Any] = json.loads(raw_args)
-            return parsed  # type: ignore[reportUnknownVariableType]
+            parsed = json.loads(raw_args)
+            if isinstance(parsed, dict):
+                return parsed  # type: ignore[reportUnknownVariableType]
     return {}
 
 
@@ -168,8 +169,12 @@ async def _run_kimi_agent(task: str, working_directory: str | None = None) -> st
                 f"Underlying error: {e}"
             )
         return f"Error during execution: {e}"
+    else:
+        if interrupted:
+            return f"Error: Agent step was interrupted.\n\n{collector.build_result()}\n\n"
     finally:
         await kimi.shutdown_background_tasks()
+        await session.delete()
 
     return collector.build_result()
 

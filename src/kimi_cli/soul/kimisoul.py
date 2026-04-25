@@ -1371,7 +1371,10 @@ class FlowRunner:
             track("flow_invoked", flow_name=self._name)
 
         self._paused = False
-        self._cancelled = False
+        # Only reset _cancelled if it was not set before run() started,
+        # so a pre-run cancel() call remains effective.
+        if not self._cancelled:
+            self._cancelled = False
         await self._setup_ephemeral_context(soul)
         assert self._ephemeral_context is not None
         old_context = soul._context  # type: ignore[reportPrivateUsage]
@@ -1392,7 +1395,12 @@ class FlowRunner:
 
         session_dir = Path(soul._runtime.session.dir)  # type: ignore[reportPrivateUsage]
         safe_name = (self._name or "anonymous").replace("/", "_").replace("\\", "_")
-        self._tmp_file = session_dir / f"flow_{safe_name}_context.jsonl"
+        # Use a unique suffix so concurrent or repeated flows don't collide.
+        unique_suffix = uuid.uuid4().hex[:8]
+        # Clean up any stale temp file from a previous run before creating a new one.
+        if self._tmp_file is not None and self._tmp_file.exists():
+            self._tmp_file.unlink(missing_ok=True)
+        self._tmp_file = session_dir / f"flow_{safe_name}_{unique_suffix}_context.jsonl"
 
         main_file = soul._context.file_backend  # type: ignore[reportPrivateUsage]
         if main_file.exists() and main_file.stat().st_size > 0:
@@ -1453,6 +1461,8 @@ class FlowRunner:
             soul._context._next_checkpoint_id = self._ephemeral_context._next_checkpoint_id  # type: ignore[reportPrivateUsage]
             soul._context._system_prompt = self._ephemeral_context._system_prompt  # type: ignore[reportPrivateUsage]
             return
+        # Replay new messages and sync in-memory state so token counts,
+        # checkpoints, and system prompt reflect the merged context.
         for i in range(start, len(self._ephemeral_context.history)):
             message = self._ephemeral_context.history[i]
             prov = self._ephemeral_context.get_provenance(i)
@@ -1461,6 +1471,11 @@ class FlowRunner:
             await soul._context.append_message(  # type: ignore[reportPrivateUsage]
                 message, source=source, timestamp=ts
             )
+        soul._context._token_count = self._ephemeral_context._token_count  # type: ignore[reportPrivateUsage]
+        soul._context._pending_token_estimate = self._ephemeral_context._pending_token_estimate  # type: ignore[reportPrivateUsage]
+        soul._context._next_checkpoint_id = self._ephemeral_context._next_checkpoint_id  # type: ignore[reportPrivateUsage]
+        soul._context._system_prompt = self._ephemeral_context._system_prompt  # type: ignore[reportPrivateUsage]
+        soul._context._provenance = dict(self._ephemeral_context._provenance)  # type: ignore[reportPrivateUsage]
 
     async def _cleanup_ephemeral_context(self) -> None:
         if self._paused:
@@ -1513,6 +1528,10 @@ class FlowRunner:
         moves = 0
         total_steps = 0
         last_task_message: Message | None = None
+        # Track the most recent non-decision (task) assistant message so
+        # convergence on decision self-loops compares actual work output
+        # rather than the flow-control reply.
+        last_non_decision_assistant: Message | None = None
         while True:
             if self._cancelled:
                 logger.info("Agent flow cancelled.")
@@ -1549,6 +1568,8 @@ class FlowRunner:
                 # on each iteration. Tool calls are hashed separately, so stable
                 # CONTINUE text without new work still converges correctly.
                 last_task_message = last_assistant
+                if node.kind != "decision":
+                    last_non_decision_assistant = last_assistant
 
             # Gather tool results from this iteration for convergence detection
             tool_results = self._tool_results_since(soul, since_index=history_before_node)
@@ -1558,8 +1579,10 @@ class FlowRunner:
                 # Ignore assistant text on decision self-loops because the
                 # decision wording (e.g. "I'll continue") is inherently stable
                 # and can mask changing real work. Rely on tool calls/results.
+                # Use the last task node's output rather than the decision reply
+                # so we compare actual work across iterations.
                 report = detector.record_iteration(
-                    last_task_message,
+                    last_non_decision_assistant or last_task_message,
                     tool_results,
                     exclude_tool_names=["flow_decision"],
                     ignore_text=True,

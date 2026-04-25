@@ -49,16 +49,23 @@ class IterationFingerprint:
         excluded = set(exclude_tool_names or ())
         tool_call_names: list[str] = []
         tool_output_hashes: list[str] = []
+
+        # Build a mapping of tool_call_id -> name so we can exclude tool
+        # outputs that belong to excluded tools (e.g. flow_decision).
+        tool_call_id_to_name: dict[str, str] = {}
         if assistant_message and assistant_message.tool_calls:
-            tool_call_names = [
-                tc.function.name
-                for tc in assistant_message.tool_calls
-                if tc.function.name not in excluded
-            ]
+            for tc in assistant_message.tool_calls:
+                tool_call_id_to_name[tc.id] = tc.function.name
+                if tc.function.name not in excluded:
+                    tool_call_names.append(tc.function.name)
+
         if tool_results:
             for tr in tool_results:
-                # Best-effort: we don't have direct access to the original tool call name
-                # from ToolResult, so we hash the stringified return value.
+                # Skip outputs from excluded tools (e.g. flow_decision) so
+                # stable decision text doesn't mask convergence.
+                name = tool_call_id_to_name.get(tr.tool_call_id, "")
+                if name in excluded:
+                    continue
                 tool_output_hashes.append(
                     hashlib.sha256(str(tr.return_value).encode()).hexdigest()[:16]
                 )
