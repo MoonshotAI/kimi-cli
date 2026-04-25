@@ -12,7 +12,9 @@
     "format": "biome check --write .",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@codemirror/lang-yaml": "^6.1.2",
@@ -73,16 +75,21 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.8",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/js-md5": "^0.8.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "jsdom": "^29.0.2",
     "rollup-plugin-visualizer": "6.0.3",
     "typescript": "~5.9.3",
     "ultracite": "^7.1.1",
     "vite": "^7.2.4",
-    "vite-plugin-node-polyfills": "0.24.0"
+    "vite-plugin-node-polyfills": "0.24.0",
+    "vitest": "^4.1.5"
   }
 }
