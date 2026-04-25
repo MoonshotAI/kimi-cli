@@ -197,6 +197,7 @@ class KimiSoul:
             from kimi_cli.tools.plan.heroes import seed_slug_cache
 
             seed_slug_cache(self._plan_session_id, self._runtime.session.state.plan_slug)
+        self._in_flow_turn: bool = False
         self._pending_plan_activation_injection: bool = False
         if self._plan_mode:
             self._ensure_plan_session_id()
@@ -1022,10 +1023,12 @@ class KimiSoul:
                 ],
             )
 
-        if result.tool_calls:
-            # When the only tool calls are flow_decision, stop the agent loop
-            # immediately to prevent the model from generating extra content
-            # after the flow decision has already been made.
+        if result.tool_calls and self._in_flow_turn:
+            # When the only tool calls are flow_decision inside a flow turn,
+            # stop the agent loop immediately to prevent the model from
+            # generating extra content after the flow decision has already
+            # been made. We gate this to flow turns so normal sessions that
+            # happen to register a flow_decision tool are not affected.
             non_flow_decision_calls = [
                 tc for tc in result.tool_calls if tc.function.name != "flow_decision"
             ]
@@ -1628,9 +1631,11 @@ class FlowRunner:
                 for tc in msg.tool_calls:
                     if tc.function.name == "flow_decision" and tc.id not in failed_tool_call_ids:
                         try:
-                            args = json.loads(tc.function.arguments or "{}")
-                            return args.get("choice")
-                        except json.JSONDecodeError:
+                            parsed = json.loads(tc.function.arguments or "{}")
+                            if isinstance(parsed, dict):
+                                d = cast("dict[str, Any]", parsed)
+                                return d.get("choice")
+                        except (json.JSONDecodeError, AttributeError):
                             pass
         return None
 
@@ -1743,4 +1748,8 @@ class FlowRunner:
         The flow's iterations are internal to a single user turn. The outer
         soul.run() already sends TurnBegin/TurnEnd for the overall turn.
         """
-        return await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
+        soul._in_flow_turn = True  # type: ignore[reportPrivateUsage]
+        try:
+            return await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
+        finally:
+            soul._in_flow_turn = False  # type: ignore[reportPrivateUsage]
