@@ -96,8 +96,29 @@ class Session:
         self.state.auto_archive_exempt = fresh.auto_archive_exempt
         save_session_state(self.state, self.dir)
 
-    async def delete(self) -> None:
-        """Delete the session directory."""
+    async def delete(self, *, remove_worktree: bool = True) -> None:
+        """Delete the session directory.
+
+        If the session was created inside a git worktree and *remove_worktree*
+        is ``True``, the git worktree is also removed (best-effort) so that
+        abandoned worktrees do not accumulate. Pass ``remove_worktree=False``
+        when the worktree is still in active use (e.g. ``/new`` slash command).
+        """
+        # Remove git worktree first, before the session directory disappears
+        if remove_worktree and self.state.worktree_path and self.state.parent_repo_path:
+            from kimi_cli.worktree import remove_worktree
+
+            try:
+                await remove_worktree(
+                    KaosPath(self.state.parent_repo_path),
+                    KaosPath(self.state.worktree_path),
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to remove git worktree {path}, session dir will still be deleted",
+                    path=self.state.worktree_path,
+                )
+
         session_dir = self.work_dir_meta.sessions_dir / self.id
         if not session_dir.exists():
             return
