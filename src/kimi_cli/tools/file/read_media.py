@@ -117,16 +117,48 @@ class ReadMediaFile(CallableTool2[Params]):
                 image_size = _extract_image_size(data)
             case "video":
                 data = await path.read_bytes()
-                if (llm := self._runtime.llm) and hasattr(llm.chat_provider, "files"):  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
-                    part = await llm.chat_provider.files.upload_video(  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue,reportUnknownVariableType]
-                        data=data,
-                        mime_type=file_type.mime_type,
-                    )
-                    wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})  # pyright: ignore[reportUnknownArgumentType]
+                llm = self._runtime.llm
+                uploaded_part: VideoURLPart | None = None
+                if llm:
+                    if hasattr(llm.chat_provider, "files"):  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+                        uploaded_part = await llm.chat_provider.files.upload_video(  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue,reportUnknownVariableType]
+                            data=data,
+                            mime_type=file_type.mime_type,
+                        )
+                    elif (
+                        llm.provider_config
+                        and llm.provider_config.type == "kimi"
+                        and llm.provider_config.base_url
+                        and "agent-gw" in llm.provider_config.base_url
+                    ):
+                        # Agent-gw uses Anthropic chat provider but still supports
+                        # video via the Kimi files API. Upload through Kimi and pass
+                        # the returned URL to the Anthropic provider.
+                        from kosong.chat_provider.kimi import Kimi
+
+                        api_key = self._runtime.oauth.resolve_api_key(
+                            llm.provider_config.api_key,
+                            llm.provider_config.oauth,
+                        )
+                        if api_key:
+                            model_name = (
+                                llm.model_config.model if llm.model_config else "kimi-for-coding"
+                            )
+                            kimi = Kimi(
+                                model=model_name,
+                                base_url=llm.provider_config.base_url,
+                                api_key=api_key,
+                            )
+                            uploaded_part = await kimi.files.upload_video(
+                                data=data,
+                                mime_type=file_type.mime_type,
+                            )
+                if uploaded_part is not None:
+                    part = uploaded_part  # type: ignore[reportUnknownVariableType]
                 else:
                     data_url = _to_data_url(file_type.mime_type, data)
                     part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
-                    wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})
+                wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})  # type: ignore[reportUnknownArgumentType]
                 image_size = None
 
         size_hint = ""
