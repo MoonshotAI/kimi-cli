@@ -1374,7 +1374,6 @@ class FlowRunner:
         if args.strip():
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
-            return
         if self._name:
             from kimi_cli.telemetry import track
 
@@ -1538,10 +1537,6 @@ class FlowRunner:
         moves = 0
         total_steps = 0
         last_task_message: Message | None = None
-        # Track the most recent non-decision (task) assistant message so
-        # convergence on decision self-loops compares actual work output
-        # rather than the flow-control reply.
-        last_non_decision_assistant: Message | None = None
         while True:
             if self._cancelled:
                 logger.info("Agent flow cancelled.")
@@ -1575,27 +1570,27 @@ class FlowRunner:
             if last_assistant is not None:
                 # Capture assistant output from every node so that decision-only
                 # self-loops (e.g. ralph_loop) still have fresh convergence input
-                # on each iteration. Tool calls are hashed separately, so stable
-                # CONTINUE text without new work still converges correctly.
+                # on each iteration.
                 last_task_message = last_assistant
-                if node.kind != "decision":
-                    last_non_decision_assistant = last_assistant
 
             # Gather tool results from this iteration for convergence detection
             tool_results = self._tool_results_since(soul, since_index=history_before_node)
 
             # Detect convergence on self-loop (CONTINUE)
             if node.kind == "decision" and next_id == current_id:
-                # Ignore assistant text on decision self-loops because the
-                # decision wording (e.g. "I'll continue") is inherently stable
-                # and can mask changing real work. Rely on tool calls/results.
-                # Use the last task node's output rather than the decision reply
-                # so we compare actual work across iterations.
+                # Only ignore text when there are non-flow_decision tool calls
+                # to compare. If the decision turn has no real tools, compare
+                # text so empty fingerprints don't produce false convergence.
+                has_real_tools = False
+                if last_task_message and last_task_message.tool_calls:
+                    has_real_tools = any(
+                        tc.function.name != "flow_decision" for tc in last_task_message.tool_calls
+                    )
                 report = detector.record_iteration(
-                    last_non_decision_assistant or last_task_message,
+                    last_task_message,
                     tool_results,
                     exclude_tool_names=["flow_decision"],
-                    ignore_text=True,
+                    ignore_text=has_real_tools,
                 )
                 if report.is_converged:
                     logger.warning(

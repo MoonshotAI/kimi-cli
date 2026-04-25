@@ -152,6 +152,19 @@ class ConvergenceDetector:
     @staticmethod
     def _compute_similarity(a: IterationFingerprint, b: IterationFingerprint) -> float:
         """Simple Jaccard-like similarity between two fingerprints."""
+        # If both fingerprints are completely empty, they shouldn't count as
+        # converged — the model might be making progress in text that we're
+        # intentionally ignoring.
+        if (
+            not a.assistant_text_hash
+            and not a.tool_call_names
+            and not a.tool_output_hashes
+            and not b.assistant_text_hash
+            and not b.tool_call_names
+            and not b.tool_output_hashes
+        ):
+            return 0.0
+
         scores: list[float] = []
 
         if a.assistant_text_hash == b.assistant_text_hash:
