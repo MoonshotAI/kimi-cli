@@ -1023,19 +1023,26 @@ class KimiSoul:
                 ],
             )
 
-        if result.tool_calls and self._in_flow_turn:
-            # When the only tool calls are flow_decision inside a flow turn,
-            # stop the agent loop immediately to prevent the model from
-            # generating extra content after the flow decision has already
-            # been made. We gate this to flow turns so normal sessions that
-            # happen to register a flow_decision tool are not affected.
-            non_flow_decision_calls = [
-                tc for tc in result.tool_calls if tc.function.name != "flow_decision"
-            ]
-            if not non_flow_decision_calls:
-                return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
+        if result.tool_calls:
+            if self._in_flow_turn:
+                # When the only tool calls are flow_decision inside a flow turn,
+                # stop the agent loop immediately to prevent the model from
+                # generating extra content after the flow decision has already
+                # been made. We gate this to flow turns so normal sessions that
+                # happen to register a flow_decision tool are not affected.
+                non_flow_decision_calls = [
+                    tc for tc in result.tool_calls if tc.function.name != "flow_decision"
+                ]
+                if not non_flow_decision_calls:
+                    return StepOutcome(
+                        stop_reason="no_tool_calls",
+                        assistant_message=result.message,
+                    )
             return None
-        return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
+        return StepOutcome(
+            stop_reason="no_tool_calls",
+            assistant_message=result.message,
+        )
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
@@ -1388,7 +1395,7 @@ class FlowRunner:
         finally:
             soul._context = old_context  # type: ignore[reportPrivateUsage]
             try:
-                if self._commit_mode == "merge":
+                if self._commit_mode == "merge" and not self._paused:
                     await self._merge_ephemeral_to_main(soul)
             finally:
                 await self._cleanup_ephemeral_context()

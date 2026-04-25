@@ -143,6 +143,7 @@ async def _run_kimi_agent(task: str, working_directory: str | None = None) -> st
         )
     except Exception as e:
         logger.exception("Failed to create KimiCLI:")
+        await session.delete()
         return f"Error initializing Kimi agent: {e}"
 
     cancel_event = asyncio.Event()
