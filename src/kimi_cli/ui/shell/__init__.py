@@ -76,6 +76,9 @@ _MAX_BG_AUTO_TRIGGER_FAILURES = 3
 _BG_AUTO_TRIGGER_INPUT_GRACE_S = 0.75
 """Delay background auto-trigger briefly after local prompt activity."""
 
+_LOOP_TICK_INTERVAL = 1.0
+"""How often to check for due loop tasks (seconds)."""
+
 
 class _BackgroundCompletionWatcher:
     """Watches for background task completions and auto-triggers the agent.
@@ -112,19 +115,21 @@ class _BackgroundCompletionWatcher:
         if self._event is not None:
             self._event.clear()
 
-    async def wait_for_next(self, idle_events: asyncio.Queue[_PromptEvent]) -> _PromptEvent | None:
-        """Wait for either a user prompt event or a background completion.
+    async def wait_for_next(
+        self,
+        idle_events: asyncio.Queue[_PromptEvent],
+        loop_fire_event: asyncio.Event | None = None,
+        bg_enabled: bool | None = None,
+    ) -> _PromptEvent | None:
+        """Wait for either a user prompt event, a background completion, or a loop fire.
 
         Returns the prompt event if user input arrived first, or ``None``
         if a background task completed with unclaimed LLM notifications.
+        Returns a _PromptEvent(kind="loop") if a loop task fired.
         User input always takes priority over background completions.
         """
-        if self.enabled and self._has_pending_llm_notifications():
-            # Pending notifications already exist (for example after resume).
-            # Before the user sends the first foreground turn after resume,
-            # pending background notifications should not auto-trigger a run.
-            # Once the shell is armed by a user-triggered turn, pending
-            # notifications can resume the normal auto-follow-up behavior.
+        use_bg = self.enabled if bg_enabled is None else bg_enabled
+        if use_bg and self._has_pending_llm_notifications():
             try:
                 return idle_events.get_nowait()
             except asyncio.QueueEmpty:
@@ -132,28 +137,42 @@ class _BackgroundCompletionWatcher:
                     return None
 
         idle_task = asyncio.create_task(idle_events.get())
-        if not self.enabled:
+        if not use_bg and loop_fire_event is None:
             return await idle_task
 
-        assert self._event is not None
-        bg_wait_task = asyncio.create_task(self._event.wait())
+        wait_tasks: list[asyncio.Task[Any]] = [idle_task]
+        if use_bg:
+            assert self._event is not None
+            wait_tasks.append(asyncio.create_task(self._event.wait()))
+        loop_wait_task: asyncio.Task[bool] | None = None
+        if loop_fire_event is not None:
+            loop_wait_task = asyncio.create_task(loop_fire_event.wait())
+            wait_tasks.append(loop_wait_task)
 
         done, _ = await asyncio.wait(
-            [idle_task, bg_wait_task],
+            wait_tasks,
             return_when=asyncio.FIRST_COMPLETED,
         )
-        for t in (idle_task, bg_wait_task):
+        for t in wait_tasks:
             if t not in done:
                 t.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await t
 
         if idle_task in done:
-            if bg_wait_task in done:
+            if self._event is not None and self._event.is_set():
                 self._event.clear()
+            if loop_fire_event is not None and loop_fire_event.is_set():
+                loop_fire_event.clear()
             return idle_task.result()
 
+        if loop_wait_task is not None and loop_wait_task in done:
+            if loop_fire_event is not None:
+                loop_fire_event.clear()
+            return _PromptEvent(kind="loop")
+
         # Only bg fired
+        assert self._event is not None
         self._event.clear()
         if self._has_pending_llm_notifications():
             if self._can_auto_trigger_pending():
@@ -388,6 +407,7 @@ class Shell:
             )
             self._start_background_task(watcher.run_forever())
             self._start_background_task(self._watch_root_wire_hub())
+            self._start_background_task(self._watch_loop_scheduler())
             await replay_recent_history(
                 self.soul.context.history,
                 wire_file=self.soul.wire_file,
@@ -496,6 +516,12 @@ class Shell:
             shell_ok = True
             bg_auto_failures = 0
             deferred_bg_trigger = False
+
+            def _get_loop_fire_event() -> asyncio.Event | None:
+                if isinstance(self.soul, KimiSoul):
+                    return self.soul.loop_scheduler.fire_event
+                return None
+
             try:
                 while True:
                     if deferred_bg_trigger and not self._should_defer_background_auto_trigger(
@@ -510,10 +536,27 @@ class Shell:
                         )
                     else:
                         bg_watcher.clear()
-                        if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
-                            result = await idle_events.get()
+                        loop_fire = _get_loop_fire_event()
+                        if (
+                            loop_fire is not None
+                            and isinstance(self.soul, KimiSoul)
+                            and self.soul.loop_scheduler.has_pending
+                        ):
+                            result = _PromptEvent(kind="loop")
                         else:
-                            result = await bg_watcher.wait_for_next(idle_events)
+                            if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
+                                if loop_fire is not None and isinstance(self.soul, KimiSoul):
+                                    result = await bg_watcher.wait_for_next(
+                                        idle_events,
+                                        loop_fire_event=loop_fire,
+                                        bg_enabled=False,
+                                    )
+                                else:
+                                    result = await idle_events.get()
+                            else:
+                                result = await bg_watcher.wait_for_next(
+                                    idle_events, loop_fire_event=loop_fire
+                                )
 
                     if result is None:
                         if self._should_defer_background_auto_trigger(prompt_session):
@@ -550,6 +593,33 @@ class Shell:
                         continue
 
                     if event.kind == "bg_noop":
+                        continue
+
+                    if event.kind == "loop":
+                        if not isinstance(self.soul, KimiSoul):
+                            continue
+                        scheduler = self.soul.loop_scheduler
+                        due = scheduler.pop_due_prompt()
+                        if due is None:
+                            continue
+                        task_id, prompt = due
+                        task = scheduler.tasks.get(task_id)
+                        iteration = task.iterations if task else 0
+                        from kimi_cli.soul.loop import build_loop_user_message
+
+                        msg = build_loop_user_message(prompt, iteration, task_id)
+                        user_text = msg.extract_text(" ")
+                        console.print(
+                            f"[cyan]\\loop iteration #{iteration} (task {task_id})[/cyan]"
+                        )
+                        bg_auto_failures = 0
+                        deferred_bg_trigger = False
+                        resume_prompt.set()
+                        ok = await self.run_soul_command(user_text)
+                        console.print()
+                        if self._exit_after_run:
+                            console.print("Bye!")
+                            break
                         continue
 
                     if event.kind == "interrupt":
@@ -1050,6 +1120,21 @@ class Shell:
         if idle_task in done:
             return idle_task.result()
         return _PromptEvent(kind="input_activity")
+
+    async def _watch_loop_scheduler(self) -> None:
+        """Periodically tick the loop scheduler and signal when tasks are due."""
+        if not isinstance(self.soul, KimiSoul):
+            return
+        scheduler = self.soul.loop_scheduler
+        while True:
+            try:
+                await asyncio.sleep(_LOOP_TICK_INTERVAL)
+                if scheduler.list_tasks():
+                    scheduler.tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Loop scheduler tick failed")
 
     async def _watch_root_wire_hub(self) -> None:
         if not isinstance(self.soul, KimiSoul):

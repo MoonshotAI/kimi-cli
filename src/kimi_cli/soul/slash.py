@@ -290,3 +290,70 @@ async def import_context(soul: KimiSoul, args: str):
                 "The content is now part of your session context."
             )
         )
+
+
+@registry.command
+async def loop(soul: KimiSoul, args: str):
+    """Run a prompt repeatedly on a schedule. Usage: /loop [interval] [prompt]"""
+    from kimi_cli.soul.loop import (
+        BUILTIN_MAINTENANCE_PROMPT,
+        load_loop_md,
+        parse_interval,
+    )
+
+    scheduler = soul.loop_scheduler
+
+    args = args.strip()
+
+    if args in ("stop", "cancel", "off"):
+        if not scheduler.tasks:
+            wire_send(TextPart(text="No active loop tasks."))
+            return
+        count = scheduler.cancel_all()
+        wire_send(TextPart(text=f"Stopped {count} loop task(s)."))
+        return
+
+    if args in ("list", "status", "ls"):
+        active = scheduler.list_tasks()
+        if not active:
+            wire_send(TextPart(text="No active loop tasks."))
+            return
+        lines = [t.describe() for t in active]
+        wire_send(TextPart(text="Active loop tasks:\n\n" + "\n\n".join(lines)))
+        return
+
+    interval_seconds, remaining_prompt = parse_interval(args)
+    prompt = remaining_prompt.strip()
+
+    if not prompt:
+        loop_md = await load_loop_md(soul.runtime.builtin_args.KIMI_WORK_DIR)
+        if loop_md:
+            prompt = loop_md
+            logger.info("Using loop.md prompt ({len} chars)", len=len(prompt))
+        else:
+            prompt = BUILTIN_MAINTENANCE_PROMPT
+
+    if interval_seconds is None:
+        interval_seconds = 600.0
+        logger.info("No interval provided, using self-paced default of 10m")
+
+    try:
+        task = scheduler.create_task(
+            prompt=prompt,
+            interval_seconds=interval_seconds,
+            recurring=True,
+        )
+    except ValueError as exc:
+        wire_send(TextPart(text=str(exc)))
+        return
+    scheduler.enqueue_first(task)
+    wire_send(
+        TextPart(
+            text=(
+                f"Loop started (task {task.id}): running every {task.display_interval}.\n"
+                f"Prompt: {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n\n"
+                "Running first iteration now. "
+                "Use /loop list to see active tasks, /loop stop to cancel."
+            )
+        )
+    )

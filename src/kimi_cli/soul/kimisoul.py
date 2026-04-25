@@ -61,6 +61,7 @@ from kimi_cli.soul.dynamic_injection import (
 )
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
+from kimi_cli.soul.loop import LoopScheduler
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -215,6 +216,7 @@ class KimiSoul:
 
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
+        self._loop_scheduler: LoopScheduler = LoopScheduler()
 
     @property
     def name(self) -> str:
@@ -438,6 +440,10 @@ class KimiSoul:
     @property
     def context(self) -> Context:
         return self._context
+
+    @property
+    def loop_scheduler(self) -> LoopScheduler:
+        return self._loop_scheduler
 
     @property
     def _context_usage(self) -> float:
