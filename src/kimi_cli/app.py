@@ -23,6 +23,7 @@ from kimi_cli.constant import VERSION
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
+from kimi_cli.skill import normalize_skill_name, read_skill_text
 from kimi_cli.soul import run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
@@ -297,6 +298,25 @@ class KimiCLI:
             agent = dataclasses.replace(agent, system_prompt=context.system_prompt)
         else:
             await context.write_system_prompt(agent.system_prompt)
+            # Auto-activate default skills for new sessions
+            for skill_name in config.default_skills:
+                skill = runtime.skills.get(normalize_skill_name(skill_name))
+                if skill is None:
+                    logger.warning(
+                        "Default skill '{name}' not found; skipping",
+                        name=skill_name,
+                    )
+                    continue
+                skill_text = await read_skill_text(skill)
+                if skill_text is None:
+                    logger.warning(
+                        "Failed to read default skill '{name}'; skipping",
+                        name=skill_name,
+                    )
+                    continue
+                from kosong.message import Message
+
+                await context.append_message(Message(role="user", content=skill_text))
 
         soul = KimiSoul(agent, context=context)
 
