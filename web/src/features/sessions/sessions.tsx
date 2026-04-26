@@ -28,6 +28,7 @@ import {
   CheckSquare,
   Square,
   PanelLeftClose,
+  GitBranch,
 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { KimiCliBrand } from "@/components/kimi-cli-brand";
@@ -67,6 +68,7 @@ type SessionSummary = {
   workDir?: string | null;
   lastUpdated: Date;
   isRunning?: boolean;
+  worktreePath?: string | null;
 };
 
 type ViewMode = "list" | "grouped";
@@ -87,6 +89,11 @@ function shortenPath(path: string, maxLen = 30): string {
   const parts = path.split("/").filter(Boolean);
   if (parts.length <= 2) return path;
   return ".../" + parts.slice(-2).join("/");
+}
+
+function worktreeBasename(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
 }
 
 type SessionsSidebarProps = {
@@ -194,10 +201,16 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
       .trim();
   }, []);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; sessionId: string; sessionTitle: string }>({
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean;
+    sessionId: string;
+    sessionTitle: string;
+    worktreePath: string | null;
+  }>({
     open: false,
     sessionId: "",
     sessionTitle: "",
+    worktreePath: null,
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -470,6 +483,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
         open: true,
         sessionId: session.id,
         sessionTitle: normalizeTitle(session.title ?? "Unknown Session"),
+        worktreePath: session.worktreePath ?? null,
       });
     },
     [normalizeTitle],
@@ -479,11 +493,11 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
     if (deleteConfirm.sessionId) {
       onDeleteSession(deleteConfirm.sessionId);
     }
-    setDeleteConfirm({ open: false, sessionId: "", sessionTitle: "" });
+    setDeleteConfirm({ open: false, sessionId: "", sessionTitle: "", worktreePath: null });
   };
 
   const handleCancelDelete = () => {
-    setDeleteConfirm({ open: false, sessionId: "", sessionTitle: "" });
+    setDeleteConfirm({ open: false, sessionId: "", sessionTitle: "", worktreePath: null });
   };
 
   const handleRefreshSessions = async () => {
@@ -928,6 +942,16 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                         ) : (
                                           <div className="flex items-center gap-1.5 min-w-0">
                                             {session.isRunning && <SessionRunningIndicator />}
+                                            {session.worktreePath && (
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <GitBranch className="size-3 shrink-0 text-muted-foreground" />
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right">
+                                                  Worktree · {shortenPath(session.worktreePath)}
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            )}
                                             <Tooltip delayDuration={500}>
                                               <TooltipTrigger asChild>
                                                 <p className="text-sm font-medium text-foreground truncate min-w-0">
@@ -1051,6 +1075,16 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                         ) : (
                           <div className="flex items-center gap-1.5">
                             {session.isRunning && <SessionRunningIndicator />}
+                            {session.worktreePath && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <GitBranch className="size-3 shrink-0 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent side="right">
+                                  Worktree · {shortenPath(session.worktreePath)}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
                             <Tooltip delayDuration={500}>
                               <TooltipTrigger asChild>
                                 <p className="text-sm font-medium text-foreground truncate flex-1 min-w-0">
@@ -1253,6 +1287,16 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
               This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
+          {deleteConfirm.worktreePath && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+              <span>
+                This session's git worktree (
+                <code className="font-mono">{worktreeBasename(deleteConfirm.worktreePath)}</code>
+                ) will also be removed. Any uncommitted work in the worktree will be lost.
+              </span>
+            </div>
+          )}
           <DialogFooter className="gap-2 w-full justify-end">
             <Button variant="outline" onClick={handleCancelDelete}>
               Cancel

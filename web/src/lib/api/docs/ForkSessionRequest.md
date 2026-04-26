@@ -1,31 +1,23 @@
 
-# CreateSessionRequest
+# ForkSessionRequest
 
-Create session request.
+Fork session request.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`workDir` | string
-`createDir` | boolean
-`worktree` | boolean
-`worktreeBranch` | string
-`worktreeName` | string
+`turnIndex` | number
 
 ## Example
 
 ```typescript
-import type { CreateSessionRequest } from ''
+import type { ForkSessionRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "workDir": null,
-  "createDir": null,
-  "worktree": null,
-  "worktreeBranch": null,
-  "worktreeName": null,
-} satisfies CreateSessionRequest
+  "turnIndex": null,
+} satisfies ForkSessionRequest
 
 console.log(example)
 
@@ -34,7 +26,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as CreateSessionRequest
+const exampleParsed = JSON.parse(exampleJSON) as ForkSessionRequest
 console.log(exampleParsed)
 ```
 

@@ -15,6 +15,8 @@ Name | Type
 `workDir` | string
 `sessionDir` | string
 `archived` | boolean
+`worktreePath` | string
+`parentRepoPath` | string
 
 ## Example
 
@@ -31,6 +33,8 @@ const example = {
   "workDir": null,
   "sessionDir": null,
   "archived": null,
+  "worktreePath": null,
+  "parentRepoPath": null,
 } satisfies Session
 
 console.log(example)

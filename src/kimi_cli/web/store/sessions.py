@@ -177,6 +177,8 @@ def _build_joint_session(entry: SessionIndexEntry) -> JointSession:
         session_dir=str(entry.session_dir),
         kimi_cli_session=kimi_session,
         archived=entry.state.archived,
+        worktree_path=entry.state.worktree_path,
+        parent_repo_path=entry.state.parent_repo_path,
     )
 
 
