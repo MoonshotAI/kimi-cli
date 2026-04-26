@@ -83,7 +83,7 @@ fn main() {
             let child_slot = backend_child.clone();
             let token_for_state = token.clone();
 
-            tauri::async_runtime::block_on(async move {
+            let spawned = tauri::async_runtime::block_on(async move {
                 let mut cmd = Command::new("kimi");
                 cmd.arg("web")
                     .arg("--port").arg(port.to_string())
@@ -106,7 +106,7 @@ fn main() {
                             .kind(MessageDialogKind::Error)
                             .title("Kimi")
                             .blocking_show();
-                        return;
+                        return false;
                     }
                 };
 
@@ -128,7 +128,14 @@ fn main() {
                 }
 
                 *child_slot.lock().await = Some(child);
+                true
             });
+
+            // If spawn failed the user has already seen a dialog; abort setup
+            // so we don't waste 30s polling a dead port and show a second dialog.
+            if !spawned {
+                return Err("failed to spawn kimi backend".into());
+            }
 
             // Block the main thread (pre-window) on health check; cheap and simple.
             let healthy = wait_for_healthy(port, Duration::from_secs(30));
@@ -141,6 +148,7 @@ fn main() {
                     .kind(MessageDialogKind::Error)
                     .title("Kimi")
                     .blocking_show();
+                return Err("kimi backend health check timed out".into());
             }
 
             app.manage(BackendInfo { port, token: token_for_state });
