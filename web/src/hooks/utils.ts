@@ -1,4 +1,5 @@
 import { v4 as uuidV4 } from "uuid";
+import { getTauriBackendUrl } from "@/lib/tauri";
 
 /**
  * Check if running on macOS.
@@ -29,6 +30,10 @@ export function hasPlatformModifier(
  * - Production web: same-origin, so empty string
  */
 export function getApiBaseUrl(): string {
+  const tauriUrl = getTauriBackendUrl();
+  if (tauriUrl) {
+    return tauriUrl;
+  }
   return "";
 }
 

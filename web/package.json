@@ -36,6 +36,7 @@
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-table": "^8.21.3",
+    "@tauri-apps/api": "^2.10.1",
     "@uiw/react-codemirror": "^4.25.3",
     "@xyflow/react": "^12.9.3",
     "ai": "^5.0.99",
