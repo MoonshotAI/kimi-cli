@@ -42,6 +42,7 @@ import { CodeBlock } from "./code-block";
 import {
   DisplayContent,
   type DisplayItem,
+  DiffContent
 } from "@/features/tool/components/display-content";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
@@ -272,6 +273,8 @@ type TreeParam = {
   isTruncated: boolean;
   valueType: "string" | "boolean" | "number" | "object";
   isLast: boolean;
+  rawValue: any,
+  rawInput: any
 };
 
 // ANSI escape code stripping
@@ -331,7 +334,7 @@ const formatTreeParams = (input: ToolUIPart["input"]): TreeParam[] => {
       valueType = "object";
       fullValue = JSON.stringify(value, null, 2);
       displayValue = JSON.stringify(value);
-      isTruncated = true;
+      isTruncated = true; 
     } else {
       displayValue = String(value);
       fullValue = displayValue;
@@ -343,6 +346,8 @@ const formatTreeParams = (input: ToolUIPart["input"]): TreeParam[] => {
       isTruncated,
       valueType,
       isLast: index === entries.length - 1,
+      rawValue: value,
+      rawInput: input
     };
   });
 };
@@ -384,6 +389,38 @@ const LongParam = ({ param }: { param: TreeParam }) => {
   const cleanValue =
     param.valueType === "object" ? param.fullValue : stripAnsi(param.fullValue);
   const preview = cleanValue.split("\n")[0].slice(0, 80);
+  let codeblockdiv = null
+  if(param.key ==='edit') {
+    try {
+      const parsed = JSON.parse(cleanValue)
+      if ('old' in parsed && 'new' in parsed) {
+          codeblockdiv = <DiffContent data={{
+            type: 'diff',
+            path: param.rawInput.path,
+            old_text: parsed.old,
+            new_text: parsed.new,
+            is_summary: false
+          }}/>
+      } else if (Array.isArray(parsed) && parsed.length > 0 && 'new' in parsed[0] && 'old' in parsed[0]) {
+        codeblockdiv = parsed.map((v, i) => {
+          return <DiffContent key={i} data={{
+            type: 'diff',
+            path: param.rawInput.path,
+            old_text: v.old,
+            new_text: v.new,
+            is_summary: false
+          }}/>
+        })
+      } else {
+        codeblockdiv = <CodeBlock code={cleanValue} language={language} />
+      }
+    } catch (error) {
+      codeblockdiv = <CodeBlock code={cleanValue} language={language} /> //fallback
+    }
+  } else {
+    codeblockdiv = <CodeBlock code={cleanValue} language={language} />
+  }
+
 
   return (
     <div className="space-y-1">
@@ -417,7 +454,7 @@ const LongParam = ({ param }: { param: TreeParam }) => {
       </div>
       {expanded && (
         <div className="ml-4">
-          <CodeBlock code={cleanValue} language={language} />
+          {codeblockdiv}
         </div>
       )}
     </div>
