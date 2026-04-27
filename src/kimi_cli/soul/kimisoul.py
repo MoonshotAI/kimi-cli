@@ -639,8 +639,11 @@ class KimiSoul:
                                 work_dir=str(session.work_dir),
                                 topic=session.state.custom_title,
                             )
-                        except Exception:
-                            logger.debug("Failed to refresh terminal title")
+                        except OSError:
+                            logger.opt(exception=True).debug(
+                                "Failed to refresh terminal title for session {session_id}",
+                                session_id=session.id,
+                            )
         finally:
             if turn_started and not turn_finished:
                 wire_send(TurnEnd())

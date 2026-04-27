@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import io
+import os
 import sys
 
 import pytest
 
 from kimi_cli.utils import proctitle
+
+
+@pytest.fixture(autouse=True)
+def _reset_cached_handle(monkeypatch: pytest.MonkeyPatch):
+    """Reset the module-level cache so each test sees a clean slate."""
+    monkeypatch.setattr(proctitle, "_original_stderr_handle", None)
 
 
 def test_truncate_topic_collapses_whitespace():
@@ -57,6 +64,23 @@ def test_compose_terminal_title_normalizes_trailing_separator():
     assert title.endswith("proj")
 
 
+def test_compose_terminal_title_preserves_chinese_characters():
+    title = proctitle.compose_session_terminal_title(
+        work_dir="C:/项目/我的-app",
+        topic="重构鉴权 模块",
+    )
+    assert "重构鉴权 模块" in title
+    assert "我的-app" in title
+
+
+def test_compose_terminal_title_preserves_emoji():
+    title = proctitle.compose_session_terminal_title(
+        work_dir="/x/proj",
+        topic="🚀 ship release",
+    )
+    assert "🚀 ship release" in title
+
+
 class _TTYStringIO(io.StringIO):
     def isatty(self) -> bool:  # type: ignore[override]
         return True
@@ -86,3 +110,158 @@ def test_update_terminal_title_for_session_emits_composed_title(
         topic="ship release",
     )
     assert fake.getvalue() == "\033]0;Kimi Code \u00b7 ship release \u00b7 proj\007"
+
+
+def test_sanitize_osc_payload_strips_c0_c1_and_del():
+    raw = "ok\x07\x1b[31mEVIL\x00\x1f\x7f\x80\x9fend"
+    assert proctitle._sanitize_osc_payload(raw) == "ok[31mEVILend"
+
+
+def test_sanitize_osc_payload_preserves_unicode():
+    raw = "中文 日本語 🚀 café"
+    assert proctitle._sanitize_osc_payload(raw) == raw
+
+
+def test_set_terminal_title_sanitizes_control_bytes(monkeypatch: pytest.MonkeyPatch):
+    fake = _TTYStringIO()
+    monkeypatch.setattr(sys, "stderr", fake)
+    proctitle.set_terminal_title("evil\x07\x1b]0;hijack\x07tail")
+    written = fake.getvalue()
+    assert written.startswith("\033]0;")
+    assert written.endswith("\007")
+    payload = written[len("\033]0;") : -1]
+    for forbidden in ("\x1b", "\x07", "\n", "\r", "\t", "\x1f", "\x9f", "\x7f"):
+        assert forbidden not in payload, f"control byte {forbidden!r} leaked into payload"
+    assert payload == "evil]0;hijacktail"
+
+
+def test_set_terminal_title_chinese_round_trip_via_osc(monkeypatch: pytest.MonkeyPatch):
+    fake = _TTYStringIO()
+    monkeypatch.setattr(sys, "stderr", fake)
+    title = proctitle.compose_session_terminal_title(
+        work_dir="C:/项目/我的-app",
+        topic="重构鉴权 模块 to use JWT",
+    )
+    proctitle.set_terminal_title(title)
+    written = fake.getvalue()
+    payload = written[len("\033]0;") : -1]
+    assert payload == title
+    assert "重构鉴权" in payload
+    assert "我的-app" in payload
+
+
+def test_set_terminal_title_emoji_round_trip_via_osc(monkeypatch: pytest.MonkeyPatch):
+    fake = _TTYStringIO()
+    monkeypatch.setattr(sys, "stderr", fake)
+    title = "Kimi Code \u00b7 🚀 ship release \u00b7 proj"
+    proctitle.set_terminal_title(title)
+    payload = fake.getvalue()[len("\033]0;") : -1]
+    assert payload == title
+    assert "🚀" in payload
+
+
+class _TTYBytesIO(io.BytesIO):
+    """BytesIO that pretends to wrap a TTY-bound fd via a sentinel fileno."""
+
+    _SENTINEL_FD = 4242
+
+    def fileno(self) -> int:  # type: ignore[override]
+        return self._SENTINEL_FD
+
+
+def test_set_terminal_title_uses_pre_redirect_handle_when_stderr_redirected(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """After redirect_stderr_to_logger swaps fd 2 for a pipe, sys.stderr.isatty()
+    is False but the title must still reach the original terminal via the
+    cached pre-redirect handle from utils.logging.get_original_stderr_handle.
+    """
+    redirected_stderr = io.StringIO()  # default isatty() == False, like the pipe
+    monkeypatch.setattr(sys, "stderr", redirected_stderr)
+
+    captured = _TTYBytesIO()
+    real_isatty = os.isatty
+
+    def fake_isatty(fd: int) -> bool:
+        if fd == _TTYBytesIO._SENTINEL_FD:
+            return True
+        return real_isatty(fd)
+
+    monkeypatch.setattr(os, "isatty", fake_isatty)
+    monkeypatch.setattr(
+        "kimi_cli.utils.logging.get_original_stderr_handle",
+        lambda: captured,
+    )
+
+    proctitle.set_terminal_title("from-redirected")
+
+    # Must NOT have written to the redirected (non-TTY) sys.stderr
+    assert redirected_stderr.getvalue() == ""
+    # Must have written the OSC payload to the cached original-stderr handle
+    assert captured.getvalue() == b"\033]0;from-redirected\007"
+    # And the handle must now be cached for subsequent calls
+    assert proctitle._original_stderr_handle is captured
+
+
+def test_set_terminal_title_falls_back_to_stderr_when_redirector_not_installed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake = _TTYStringIO()
+    monkeypatch.setattr(sys, "stderr", fake)
+    monkeypatch.setattr(
+        "kimi_cli.utils.logging.get_original_stderr_handle",
+        lambda: None,
+    )
+    proctitle.set_terminal_title("startup")
+    assert fake.getvalue() == "\033]0;startup\007"
+    assert proctitle._original_stderr_handle is None
+
+
+def test_set_terminal_title_noop_when_original_stderr_not_tty(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """If the user already redirected stderr to a file before launch, the
+    pre-redirect fd is not a TTY either; emitting OSC bytes there would
+    corrupt the file. We must no-op in that case.
+    """
+    redirected_stderr = io.StringIO()  # not a TTY
+    monkeypatch.setattr(sys, "stderr", redirected_stderr)
+
+    writes: list[bytes] = []
+
+    class _NonTTYHandle:
+        closed = False
+
+        def fileno(self) -> int:
+            return 4243
+
+        def write(self, data: bytes) -> int:
+            writes.append(data)
+            return len(data)
+
+        def flush(self) -> None:
+            pass
+
+        def close(self) -> None:
+            self.closed = True
+
+    handle = _NonTTYHandle()
+    real_isatty = os.isatty
+
+    def fake_isatty(fd: int) -> bool:
+        if fd == 4243:
+            return False
+        return real_isatty(fd)
+
+    monkeypatch.setattr(os, "isatty", fake_isatty)
+    monkeypatch.setattr(
+        "kimi_cli.utils.logging.get_original_stderr_handle",
+        lambda: handle,
+    )
+
+    proctitle.set_terminal_title("nowhere")
+
+    assert redirected_stderr.getvalue() == ""
+    assert writes == []
+    assert handle.closed is True
+    assert proctitle._original_stderr_handle is None

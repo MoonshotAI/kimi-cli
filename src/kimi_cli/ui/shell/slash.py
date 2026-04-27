@@ -558,8 +558,11 @@ async def title(app: Shell, args: str):
             work_dir=str(session.work_dir),
             topic=new_title,
         )
-    except Exception:
-        pass
+    except OSError:
+        logger.opt(exception=True).debug(
+            "Failed to refresh terminal title for session {session_id}",
+            session_id=session.id,
+        )
     console.print(f"[green]Session title set to: {new_title}[/green]")
 
 

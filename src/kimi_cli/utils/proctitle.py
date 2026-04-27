@@ -1,11 +1,75 @@
 from __future__ import annotations
 
+import contextlib
 import os
+import re
 import sys
+import threading
+from typing import IO
 
 # Maximum length of the topic snippet rendered in the terminal title. Tabs
 # are typically narrow; 40 characters fits while still being descriptive.
 _TITLE_TOPIC_MAX = 40
+
+# Strip C0 controls (0x00-0x1f), DEL (0x7f), and C1 controls (0x80-0x9f)
+# from the OSC payload. Without this, a topic or cwd basename containing
+# BEL / ESC / CR / LF could terminate the title sequence early and let an
+# attacker inject arbitrary terminal escape codes. All other Unicode
+# (Chinese, Japanese, emoji, accented Latin, etc.) is preserved verbatim.
+_OSC_CONTROL_BYTES_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _sanitize_osc_payload(payload: str) -> str:
+    """Strip control bytes that could break out of an OSC title sequence."""
+    return _OSC_CONTROL_BYTES_RE.sub("", payload)
+
+
+# Cached binary handle to the pre-redirect stderr fd. Opened lazily on
+# first successful use and held for the process lifetime so we avoid an
+# os.dup + fdopen round-trip on every title refresh. The redirector is
+# installed after CLI parsing, so early callers (init_process_name) fall
+# back to sys.stderr until then.
+_original_stderr_lock = threading.Lock()
+_original_stderr_handle: IO[bytes] | None = None
+
+
+def _get_original_stderr_handle() -> IO[bytes] | None:
+    """Return a cached, TTY-bound handle to the pre-redirect stderr, or None.
+
+    Returns ``None`` if the stderr redirector has not been installed yet
+    (callers should fall back to ``sys.stderr``) or if the original stderr
+    fd is not a TTY (callers should no-op rather than emit OSC bytes into
+    a log file or pipe). Negative results from "redirector not installed"
+    are intentionally not cached so a later call after the redirector is
+    installed can still succeed.
+    """
+    global _original_stderr_handle
+    handle = _original_stderr_handle
+    if handle is not None:
+        return handle
+    with _original_stderr_lock:
+        if _original_stderr_handle is not None:
+            return _original_stderr_handle
+        # Lazy import: utils.logging pulls in `kimi_cli.logger`, which
+        # touches several utils modules during startup.
+        from kimi_cli.utils.logging import get_original_stderr_handle
+
+        try:
+            candidate = get_original_stderr_handle()
+        except OSError:
+            return None
+        if candidate is None:
+            return None
+        try:
+            is_tty = os.isatty(candidate.fileno())
+        except OSError:
+            is_tty = False
+        if not is_tty:
+            with contextlib.suppress(OSError):
+                candidate.close()
+            return None
+        _original_stderr_handle = candidate
+        return candidate
 
 
 def set_process_title(title: str) -> None:
@@ -19,15 +83,35 @@ def set_process_title(title: str) -> None:
 
 
 def set_terminal_title(title: str) -> None:
-    """Set the terminal tab/window title via ANSI OSC escape sequence.
+    """Set the terminal tab/window title via an ANSI OSC escape sequence.
 
-    Only writes when stderr is a TTY to avoid polluting piped output.
+    Prefers the pre-redirect stderr fd (via the logging redirector) so
+    that title refreshes keep working after ``redirect_stderr_to_logger``
+    swaps fd 2 for a pipe. Falls back to ``sys.stderr`` only when no
+    redirector is installed yet (early startup, before CLI fully boots).
+    No-ops when no TTY is reachable, so piped output and ``kimi --print``
+    never see stray OSC bytes. The composed payload is sanitized at this
+    chokepoint to prevent control-byte injection from user-influenced
+    topic strings or filesystem-derived cwd basenames.
     """
-    if not sys.stderr.isatty():
+    payload = _sanitize_osc_payload(title)
+    osc = f"\033]0;{payload}\007"
+
+    handle = _get_original_stderr_handle()
+    if handle is not None:
+        try:
+            handle.write(osc.encode("utf-8", errors="replace"))
+            handle.flush()
+        except OSError:
+            pass
+        return
+
+    stderr = sys.stderr
+    if not stderr.isatty():
         return
     try:
-        sys.stderr.write(f"\033]0;{title}\007")
-        sys.stderr.flush()
+        stderr.write(osc)
+        stderr.flush()
     except OSError:
         pass
 

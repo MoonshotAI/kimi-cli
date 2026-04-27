@@ -122,3 +122,17 @@ def open_original_stderr() -> Iterator[IO[bytes] | None]:
     finally:
         if stream is not None:
             stream.close()
+
+
+def get_original_stderr_handle() -> IO[bytes] | None:
+    """Return a fresh binary handle to the pre-redirect stderr fd, if any.
+
+    Returns ``None`` when stderr redirection has not been installed yet, in
+    which case ``sys.stderr`` still points at the original fd and callers
+    can write to it directly. The caller owns the returned handle and is
+    responsible for closing it (or caching it for the process lifetime).
+    """
+    redirector = _stderr_redirector
+    if redirector is None:
+        return None
+    return redirector.open_original_stderr_handle()
