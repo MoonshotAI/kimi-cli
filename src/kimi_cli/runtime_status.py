@@ -1,19 +1,33 @@
 """Runtime status file for an active interactive Kimi session.
 
 This module writes a small JSON file at ``<session_dir>/runtime.json`` while
-an interactive Kimi session is alive, and removes it on shutdown. It exists
-so that **external** tools (terminal multiplexers, tab managers, IDE
-integrations, observability daemons) can answer the question:
+an interactive Kimi session is alive. It exists so that **external** tools
+(terminal multiplexers, tab managers, IDE integrations, observability
+daemons) can answer the question:
 
     "Which Kimi session is the running PID X serving?"
 
 The CLI does not embed the session id in ``argv`` for fresh (non-resumed)
-sessions, and the OS process title can be truncated, so a side-channel file
-that records the explicit ``(pid, session_id, work_dir, ...)`` tuple is the
-most reliable cross-platform signal.
+sessions, and the OS process title can be truncated, so a side-channel
+file that records the explicit ``(pid, session_id, work_dir, ...)`` tuple
+is the most reliable cross-platform signal.
 
-The file is written atomically and contains a small, stable schema. External
-consumers should treat unknown fields as forward-compatible additions.
+Lifecycle:
+
+* Written on session start (clean launch or ``--resume``); the resume case
+  atomically overwrites whatever the previous PID wrote.
+* Never deleted by kimi-cli — neither on clean ``/quit`` nor on crash. From
+  an external observer's standpoint a clean quit and a force-kill are
+  indistinguishable on disk: in both cases the recorded PID no longer
+  exists. Consumers that need certainty should always verify the PID is
+  alive before treating a record as live.
+* The file is removed only when the surrounding session directory itself
+  is deleted via ``/delete`` (or manual cleanup), which gives a natural
+  bound on accumulation.
+
+The file is written atomically via :func:`atomic_json_write` and contains
+a small, stable schema. External consumers should treat unknown fields as
+forward-compatible additions.
 """
 
 from __future__ import annotations
@@ -74,10 +88,10 @@ def write_runtime_status(
 
     Returns the path of the file that was written. Exceptions from the
     underlying I/O (``OSError``, ``PermissionError``, read-only
-    filesystem, etc.) propagate to the caller; this function does not
-    log or swallow them. Callers that want best-effort semantics should
-    wrap the call in ``contextlib.suppress(OSError)``. On failure, no
-    leftover ``.tmp`` file is kept on disk.
+    filesystem, etc.) propagate to the caller; this function does not log
+    or swallow them. Callers that want best-effort semantics should wrap
+    the call in ``contextlib.suppress(OSError)``. On failure no leftover
+    ``.tmp`` file is kept on disk.
     """
     status = RuntimeStatus(
         schema_version=RUNTIME_STATUS_SCHEMA_VERSION,
@@ -93,18 +107,6 @@ def write_runtime_status(
     return target
 
 
-def clear_runtime_status(session_dir: Path) -> None:
-    """Remove the runtime status file for this session, if present.
-
-    Safe to call multiple times and on directories that no longer exist.
-    """
-    target = _runtime_status_path(session_dir)
-    try:
-        target.unlink(missing_ok=True)
-    except OSError:
-        logger.debug("Failed to remove runtime status file {file}", file=target)
-
-
 def read_runtime_status(session_dir: Path) -> RuntimeStatus | None:
     """Read the runtime status file from a session directory, if present.
 
@@ -114,6 +116,11 @@ def read_runtime_status(session_dir: Path) -> RuntimeStatus | None:
     and any field whose JSON type does not match the dataclass — the
     function never coerces ``None`` / list / dict into a string just to
     satisfy the constructor.
+
+    Note: a returned record only proves that *some* Kimi process once
+    claimed this session. The PID may already be dead (clean quit or
+    crash). Consumers must verify liveness themselves before treating
+    the record as a currently-running session.
     """
     target = _runtime_status_path(session_dir)
     try:

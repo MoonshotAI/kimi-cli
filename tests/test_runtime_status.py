@@ -6,7 +6,6 @@ from pathlib import Path
 from kimi_cli.runtime_status import (
     RUNTIME_STATUS_FILENAME,
     RUNTIME_STATUS_SCHEMA_VERSION,
-    clear_runtime_status,
     read_runtime_status,
     write_runtime_status,
 )
@@ -77,19 +76,6 @@ def test_read_runtime_status_unknown_schema_returns_none(tmp_path: Path):
         encoding="utf-8",
     )
     assert read_runtime_status(tmp_path) is None
-
-
-def test_clear_runtime_status_is_idempotent(tmp_path: Path):
-    write_runtime_status(tmp_path, session_id="x", work_dir="/w", pid=1)
-    assert (tmp_path / RUNTIME_STATUS_FILENAME).exists()
-    clear_runtime_status(tmp_path)
-    assert not (tmp_path / RUNTIME_STATUS_FILENAME).exists()
-    clear_runtime_status(tmp_path)
-
-
-def test_clear_runtime_status_on_missing_dir_does_not_raise(tmp_path: Path):
-    missing = tmp_path / "nope"
-    clear_runtime_status(missing)
 
 
 def test_runtime_status_preserves_chinese_chars(tmp_path: Path):
@@ -171,3 +157,16 @@ def test_read_runtime_status_rejects_list_work_dir(tmp_path: Path):
         encoding="utf-8",
     )
     assert read_runtime_status(tmp_path) is None
+
+
+def test_runtime_status_overwrites_previous_pid(tmp_path: Path):
+    """Resume case: the next session start atomically overwrites the file
+    with its own PID — there is no separate cleanup step on /quit, so the
+    file simply carries the latest PID until the session dir is deleted."""
+    write_runtime_status(tmp_path, session_id="abc", work_dir="/w", pid=1000)
+    first = read_runtime_status(tmp_path)
+    assert first is not None and first.pid == 1000
+
+    write_runtime_status(tmp_path, session_id="abc", work_dir="/w", pid=2000)
+    second = read_runtime_status(tmp_path)
+    assert second is not None and second.pid == 2000
