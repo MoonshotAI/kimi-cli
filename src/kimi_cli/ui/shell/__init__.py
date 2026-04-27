@@ -27,12 +27,13 @@ from kimi_cli.background import list_task_views
 from kimi_cli.llm import model_display_name
 from kimi_cli.notifications import NotificationManager, NotificationWatcher
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
-from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.kimisoul import FLOW_COMMAND_PREFIX, KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
 from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
 from kimi_cli.ui.shell.prompt import (
+    BgTaskCounts,
     CustomPromptSession,
     CwdLostError,
     PromptMode,
@@ -40,8 +41,8 @@ from kimi_cli.ui.shell.prompt import (
     toast,
 )
 from kimi_cli.ui.shell.replay import replay_recent_history
+from kimi_cli.ui.shell.slash import SKILL_COMMAND_PREFIX, shell_mode_registry
 from kimi_cli.ui.shell.slash import registry as shell_slash_registry
-from kimi_cli.ui.shell.slash import shell_mode_registry
 from kimi_cli.ui.shell.update import LATEST_VERSION_FILE, UpdateResult, do_update, semver_tuple
 from kimi_cli.ui.shell.visualize import (
     ApprovalPromptDelegate,
@@ -74,6 +75,9 @@ _MAX_BG_AUTO_TRIGGER_FAILURES = 3
 
 _BG_AUTO_TRIGGER_INPUT_GRACE_S = 0.75
 """Delay background auto-trigger briefly after local prompt activity."""
+
+_VISIBLE_WORKFLOW_SLASH_PREFIXES = (SKILL_COMMAND_PREFIX, FLOW_COMMAND_PREFIX)
+"""Explicit skill/flow prefixes that should remain visible in transcript."""
 
 
 class _BackgroundCompletionWatcher:
@@ -255,11 +259,23 @@ class Shell:
         return resolved_call
 
     @staticmethod
-    def _should_echo_agent_input(user_input: UserInput) -> bool:
+    def _should_echo_workflow_slash_input(user_input: UserInput) -> bool:
+        command_call = Shell._agent_slash_command_call(user_input)
+        return command_call is not None and command_call.name.startswith(
+            _VISIBLE_WORKFLOW_SLASH_PREFIXES
+        )
+
+    def _should_echo_agent_input(self, user_input: UserInput) -> bool:
         if user_input.mode != PromptMode.AGENT:
             return False
         if Shell._should_exit_input(user_input):
             return False
+        # Phase 1 policy: keep operational slash commands hidden, but show
+        # explicit `/skill:*` and `/flow:*` inputs because they represent
+        # user-visible workflow intent and otherwise vanish from transcript
+        # even when the command later fails to resolve.
+        if self._should_echo_workflow_slash_input(user_input):
+            return True
         return Shell._agent_slash_command_call(user_input) is None
 
     @staticmethod
@@ -416,26 +432,28 @@ class Shell:
         @dataclass
         class _BgCountCache:
             time: float = 0.0
-            count: int = 0
+            counts: BgTaskCounts = BgTaskCounts()
 
         _bg_cache = _BgCountCache()
 
-        def _bg_task_count() -> int:
+        def _bg_task_counts() -> BgTaskCounts:
             if not isinstance(self.soul, KimiSoul):
-                return 0
+                return BgTaskCounts()
             now = time.monotonic()
             if now - _bg_cache.time < 1.0:
-                return _bg_cache.count
+                return _bg_cache.counts
             views = list_task_views(self.soul.runtime.background_tasks, active_only=True)
-            _bg_cache.count = sum(1 for v in views if v.spec.kind == "bash")
+            bash_n = sum(1 for v in views if v.spec.kind == "bash")
+            agent_n = sum(1 for v in views if v.spec.kind == "agent")
+            _bg_cache.counts = BgTaskCounts(bash=bash_n, agent=agent_n)
             _bg_cache.time = now
-            return _bg_cache.count
+            return _bg_cache.counts
 
         with CustomPromptSession(
             status_provider=lambda: self.soul.status,
             status_block_provider=_mcp_status_block,
             fast_refresh_provider=_mcp_status_loading,
-            background_task_count_provider=_bg_task_count,
+            background_task_count_provider=_bg_task_counts,
             model_capabilities=self.soul.model_capabilities or set(),
             model_name=model_display_name(
                 self.soul.model_name,
