@@ -82,6 +82,8 @@ async def test_skill_slash_run_does_not_auto_generate_session_title(
             description="Demo skill",
             type="standard",
             dir=KaosPath.unsafe_from_local_path(skill_dir),
+            skill_md_file=KaosPath.unsafe_from_local_path(skill_dir / "SKILL.md"),
+            scope="user",
         )
     }
 
