@@ -94,12 +94,6 @@ Wheel controls:
 - `UV_PYTHON` (default: local `python3`)
 - `UV_PYTHON_INSTALL_MIRROR` (optional mirror for uv Python downloads)
 
-Git settings are kept as fallback:
-
-- `KIMI_CLI_GIT_URL` (default: current repo `origin` URL)
-- `KIMI_CLI_GIT_REF` (default: current `HEAD` commit)
-- `GH_MIRROR_PREFIX` (optional: prefixes `origin` URL when `KIMI_CLI_GIT_URL` is unset)
-
 Example override:
 
 ```bash

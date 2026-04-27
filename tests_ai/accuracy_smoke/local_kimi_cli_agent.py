@@ -9,7 +9,7 @@ from harbor.environments.base import BaseEnvironment
 
 
 class LocalKimiCli(KimiCli):
-    """Harbor Kimi agent that installs kimi-cli from a git ref."""
+    """Harbor Kimi agent that installs kimi-cli from a local wheel."""
 
     @staticmethod
     def name() -> str:
@@ -38,30 +38,4 @@ class LocalKimiCli(KimiCli):
             await self.exec_as_agent(environment, command=install_cmd)
             return
 
-        repo_url = os.environ.get("KIMI_CLI_GIT_URL")
-        git_ref = os.environ.get("KIMI_CLI_GIT_REF")
-        if not repo_url or not git_ref:
-            raise ValueError(
-                "Provide KIMI_CLI_WHEEL_PATH, or KIMI_CLI_GIT_URL and KIMI_CLI_GIT_REF."
-            )
-
-        await self.exec_as_root(
-            environment,
-            command="apt-get update && apt-get install -y git curl",
-            env={"DEBIAN_FRONTEND": "noninteractive"},
-        )
-
-        repo_quoted = shlex.quote(repo_url)
-        ref_quoted = shlex.quote(git_ref)
-        install_cmd = (
-            "set -euo pipefail; "
-            "curl -LsSf https://astral.sh/uv/install.sh | bash && "
-            'export PATH="$HOME/.local/bin:$PATH" && '
-            "rm -rf /tmp/kimi-cli-src && "
-            f"git clone --depth 1 {repo_quoted} /tmp/kimi-cli-src && "
-            f"git -C /tmp/kimi-cli-src fetch --depth 1 origin {ref_quoted} && "
-            "git -C /tmp/kimi-cli-src checkout FETCH_HEAD && "
-            "uv tool install --python 3.13 /tmp/kimi-cli-src && "
-            "kimi --version"
-        )
-        await self.exec_as_agent(environment, command=install_cmd)
+        raise ValueError("KIMI_CLI_WHEEL_PATH is required.")
