@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Prepare benchmark runtime:
+# 1) install pinned Harbor CLI
+# 2) clone/update pinned Terminal-Bench-2 cache
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required but not found. Install uv first." >&2
+  exit 1
+fi
+
+HARBOR_VERSION="${HARBOR_VERSION:-0.5.0}"
+
+echo "Installing Harbor pinned version: ${HARBOR_VERSION}"
+uv tool install --force "harbor==${HARBOR_VERSION}"
+harbor --version
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEFAULT_TARGET_DIR="${ROOT_DIR}/terminal_bench_2_cache"
 TARGET_DIR="${TERMINAL_BENCH_2_DIR:-$DEFAULT_TARGET_DIR}"
-MIRROR_PREFIX="${GH_MIRROR_PREFIX:-http://ghfast.top/}"
+MIRROR_PREFIX="${GH_MIRROR_PREFIX:-}"
 UPSTREAM_REPO="https://github.com/laude-institute/terminal-bench-2"
 CLONE_URL="${MIRROR_PREFIX}${UPSTREAM_REPO}"
 TERMINAL_BENCH_2_REF="${TERMINAL_BENCH_2_REF:-53ff2b87d621bdb97b455671f2bd9728b7d86c11}"
