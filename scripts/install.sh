@@ -20,6 +20,7 @@ if command -v uv >/dev/null 2>&1; then
   UV_BIN="uv"
 else
   install_uv
+  source "$HOME/.local/bin/env"
   UV_BIN="uv"
 fi
 
