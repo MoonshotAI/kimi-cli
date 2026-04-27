@@ -584,7 +584,11 @@ def kimi(
             if _initial_topic == "Untitled":
                 _initial_topic = None
             update_terminal_title_for_session(
-                work_dir=str(work_dir),
+                # session.work_dir is canonicalized by Session.create / find /
+                # continue_; the raw CLI work_dir argument may still be a
+                # relative path like "." or "..", which would render as a
+                # useless tab title basename.
+                work_dir=str(session.work_dir),
                 topic=_initial_topic,
             )
 
