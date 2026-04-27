@@ -625,6 +625,22 @@ class KimiSoul:
                             fresh.custom_title = title
                             save_session_state(fresh, session.dir)
                         session.state.custom_title = fresh.custom_title
+
+                        # Reflect the freshly-derived topic in the terminal
+                        # tab/window title so multi-tab users can identify
+                        # each session. Best-effort; never let it disrupt
+                        # the turn loop.
+                        try:
+                            from kimi_cli.utils.proctitle import (
+                                update_terminal_title_for_session,
+                            )
+
+                            update_terminal_title_for_session(
+                                work_dir=str(session.work_dir),
+                                topic=session.state.custom_title,
+                            )
+                        except Exception:
+                            logger.debug("Failed to refresh terminal title")
         finally:
             if turn_started and not turn_finished:
                 wire_send(TurnEnd())
