@@ -83,7 +83,7 @@ class ApprovalRuntime:
         return request
 
     async def wait_for_response(
-        self, request_id: str, timeout: float = 300.0
+        self, request_id: str, timeout: float | None = None
     ) -> tuple[ApprovalResponseKind, str]:
         waiter = self._waiters.get(request_id)
         request = self._requests.get(request_id)
@@ -97,6 +97,8 @@ class ApprovalRuntime:
                 return request.response, request.feedback
             waiter = asyncio.get_running_loop().create_future()
             self._waiters[request_id] = waiter
+        if timeout is None:
+            return await asyncio.shield(waiter)
         try:
             return await asyncio.wait_for(asyncio.shield(waiter), timeout=timeout)
         except TimeoutError:

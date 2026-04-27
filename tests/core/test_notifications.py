@@ -12,11 +12,11 @@ from kosong.message import Message, TextPart
 from kosong.tooling.empty import EmptyToolset
 
 from kimi_cli.app import KimiCLI
-from kimi_cli.approval_runtime import ApprovalSource
+from kimi_cli.approval_runtime import ApprovalSource, get_current_approval_source_or_none
 from kimi_cli.background import TaskRuntime, TaskSpec
 from kimi_cli.llm import LLM
 from kimi_cli.notifications import NotificationEvent
-from kimi_cli.soul import StatusSnapshot, _current_wire, run_soul
+from kimi_cli.soul import RunCancelled, StatusSnapshot, _current_wire, run_soul
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -321,6 +321,124 @@ async def test_kimi_cli_run_bridges_approval_resolution_back_to_runtime(runtime:
     assert record.status == "resolved"
     assert record.response == "approve"
     assert [response.request_id for response in seen_responses] == ["req-run-bridge-1"]
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_run_cancels_abandoned_approval_stream(
+    runtime: Runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert runtime.approval_runtime is not None
+
+    async def fake_turn(self, _user_message):
+        source = get_current_approval_source_or_none()
+        assert source is not None
+        request = runtime.approval_runtime.create_request(
+            request_id="req-run-abandoned-approval",
+            tool_call_id="call-run-abandoned-approval",
+            sender="WriteFile",
+            action="edit file",
+            description="write file",
+            display=[],
+            source=source,
+        )
+        await runtime.approval_runtime.wait_for_response(request.id)
+
+    async def fake_ensure_fresh(_runtime):
+        return None
+
+    monkeypatch.setattr(KimiSoul, "_turn", fake_turn)
+    monkeypatch.setattr(runtime.oauth, "ensure_fresh", fake_ensure_fresh)
+
+    soul = KimiSoul(
+        Agent(
+            name="Approval Stream Agent",
+            system_prompt="System prompt.",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        ),
+        context=Context(file_backend=tmp_path / "history.jsonl"),
+    )
+    cli = KimiCLI(soul, runtime, {})
+    cancel_event = asyncio.Event()
+    stream = cli.run("ping", cancel_event)
+
+    request: ApprovalRequest | None = None
+    for _ in range(10):
+        msg = await asyncio.wait_for(anext(stream), timeout=1.0)
+        if isinstance(msg, ApprovalRequest):
+            request = msg
+            break
+    assert request is not None
+
+    await asyncio.wait_for(stream.aclose(), timeout=1.0)
+
+    record = runtime.approval_runtime.get_request("req-run-abandoned-approval")
+    assert record is not None
+    assert record.status == "cancelled"
+    assert record.response == "reject"
+    assert runtime.approval_runtime.list_pending() == []
+    assert not cancel_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_kimi_cli_run_propagates_external_cancel_event(
+    runtime: Runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert runtime.approval_runtime is not None
+
+    async def fake_turn(self, _user_message):
+        source = get_current_approval_source_or_none()
+        assert source is not None
+        request = runtime.approval_runtime.create_request(
+            request_id="req-run-external-cancel",
+            tool_call_id="call-run-external-cancel",
+            sender="WriteFile",
+            action="edit file",
+            description="write file",
+            display=[],
+            source=source,
+        )
+        await runtime.approval_runtime.wait_for_response(request.id)
+
+    async def fake_ensure_fresh(_runtime):
+        return None
+
+    monkeypatch.setattr(KimiSoul, "_turn", fake_turn)
+    monkeypatch.setattr(runtime.oauth, "ensure_fresh", fake_ensure_fresh)
+
+    soul = KimiSoul(
+        Agent(
+            name="Approval Stream Agent",
+            system_prompt="System prompt.",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        ),
+        context=Context(file_backend=tmp_path / "history.jsonl"),
+    )
+    cli = KimiCLI(soul, runtime, {})
+    cancel_event = asyncio.Event()
+    stream = cli.run("ping", cancel_event)
+
+    request: ApprovalRequest | None = None
+    for _ in range(10):
+        msg = await asyncio.wait_for(anext(stream), timeout=1.0)
+        if isinstance(msg, ApprovalRequest):
+            request = msg
+            break
+    assert request is not None
+
+    cancel_event.set()
+    with pytest.raises(RunCancelled):
+        while True:
+            await asyncio.wait_for(anext(stream), timeout=1.0)
+
+    record = runtime.approval_runtime.get_request("req-run-external-cancel")
+    assert record is not None
+    assert record.status == "cancelled"
 
 
 @pytest.mark.asyncio
