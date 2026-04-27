@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from kimi_cli import runtime_status as rs
 from kimi_cli.runtime_status import (
     RUNTIME_STATUS_FILENAME,
     RUNTIME_STATUS_SCHEMA_VERSION,
@@ -139,3 +142,94 @@ def test_write_runtime_status_no_tmp_leftover_on_failure(tmp_path: Path, monkeyp
     assert not (tmp_path / RUNTIME_STATUS_FILENAME).exists()
     leftovers = list(tmp_path.glob("*.tmp"))
     assert leftovers == [], f"unexpected leftovers: {leftovers}"
+
+
+def test_write_creates_pid_index_mirror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    share = tmp_path / "share"
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(share))
+    session_dir = tmp_path / "sess"
+    session_dir.mkdir()
+
+    rs.write_runtime_status(session_dir, session_id="abc", work_dir="/w", pid=4242)
+
+    mirror = share / "runtime" / "4242.json"
+    assert mirror.exists()
+    body = json.loads(mirror.read_text(encoding="utf-8"))
+    assert body["pid"] == 4242
+    assert body["session_id"] == "abc"
+    # Per-session and PID-keyed mirror must contain identical fields.
+    perSession = json.loads((session_dir / "runtime.json").read_text(encoding="utf-8"))
+    assert perSession == body
+
+
+def test_clear_removes_pid_index_mirror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    share = tmp_path / "share"
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(share))
+    session_dir = tmp_path / "sess"
+    session_dir.mkdir()
+    rs.write_runtime_status(session_dir, session_id="abc", work_dir="/w", pid=4242)
+
+    rs.clear_runtime_status(session_dir)
+
+    assert not (session_dir / "runtime.json").exists()
+    assert not (share / "runtime" / "4242.json").exists()
+
+
+def test_find_runtime_status_by_pid_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    share = tmp_path / "share"
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(share))
+    session_dir = tmp_path / "sess"
+    session_dir.mkdir()
+    rs.write_runtime_status(session_dir, session_id="aaa-bbb", work_dir="C:/proj", pid=999)
+
+    found = rs.find_runtime_status_by_pid(999)
+    assert found is not None
+    assert found.pid == 999
+    assert found.session_id == "aaa-bbb"
+    assert found.work_dir == "C:/proj"
+
+
+def test_find_runtime_status_by_pid_missing_returns_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    share = tmp_path / "share"
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(share))
+    assert rs.find_runtime_status_by_pid(123456) is None
+
+
+def test_pid_index_mirror_preserves_chinese_chars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    share = tmp_path / "share"
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(share))
+    session_dir = tmp_path / "sess"
+    session_dir.mkdir()
+    rs.write_runtime_status(
+        session_dir,
+        session_id="\u4e2d\u6587-uuid-aaa",
+        work_dir="D:/\u9879\u76ee/\u6211\u7684-app",
+        pid=7777,
+    )
+
+    mirror = share / "runtime" / "7777.json"
+    body = json.loads(mirror.read_text(encoding="utf-8"))
+    assert body["session_id"] == "\u4e2d\u6587-uuid-aaa"
+    assert body["work_dir"] == "D:/\u9879\u76ee/\u6211\u7684-app"
+
+    found = rs.find_runtime_status_by_pid(7777)
+    assert found is not None
+    assert found.session_id == "\u4e2d\u6587-uuid-aaa"
+    assert found.work_dir == "D:/\u9879\u76ee/\u6211\u7684-app"
+
+
+def test_clear_with_explicit_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    share = tmp_path / "share"
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(share))
+    session_dir = tmp_path / "sess"
+    session_dir.mkdir()
+    rs.write_runtime_status(session_dir, session_id="abc", work_dir="/w", pid=5555)
+
+    # Per-session file removed by some other path; we still want the
+    # PID-keyed mirror to be cleaned up if the caller passes pid.
+    (session_dir / "runtime.json").unlink()
+    rs.clear_runtime_status(session_dir, pid=5555)
+
+    assert not (share / "runtime" / "5555.json").exists()
