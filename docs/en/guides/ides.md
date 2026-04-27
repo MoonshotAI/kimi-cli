@@ -8,31 +8,7 @@ Before configuring your IDE, make sure you have installed Kimi Code CLI and comp
 
 ## Using in Zed
 
-[Zed](https://zed.dev/) is a modern IDE that supports ACP.
-
-Add the following to Zed's configuration file `~/.config/zed/settings.json`:
-
-```json
-{
-  "agent_servers": {
-    "Kimi Code CLI": {
-      "type": "custom",
-      "command": "kimi",
-      "args": ["acp"],
-      "env": {}
-    }
-  }
-}
-```
-
-Configuration notes:
-
-- `type`: Fixed value `"custom"`
-- `command`: Path to the Kimi Code CLI command. If `kimi` is not in PATH, use the full path
-- `args`: Startup arguments. `acp` enables ACP mode
-- `env`: Environment variables, usually left empty
-
-After saving the configuration, you can create Kimi Code CLI sessions in Zed's Agent panel.
+[Zed](https://zed.dev/) is a modern IDE that supports ACP. To use Kimi CLI within Zed, you can install it via the [ACP registry](https://agentclientprotocol.com/get-started/registry) in Zed by launching the command palette and typing `zed: acp registry`.
 
 ## Using in JetBrains IDEs
 
