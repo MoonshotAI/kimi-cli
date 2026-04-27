@@ -39,7 +39,7 @@ requires = ["uv_build>=0.8.5,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = ["kosong"]
+module-name = "kosong"
 
 [tool.ruff]
 line-length = 100
