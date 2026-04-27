@@ -93,3 +93,49 @@ def test_clear_runtime_status_on_missing_dir_does_not_raise(tmp_path: Path):
     missing = tmp_path / "nope"
     # Calling on a directory that does not exist must not raise.
     clear_runtime_status(missing)
+
+
+def test_runtime_status_roundtrip_with_non_ascii(tmp_path: Path):
+    # Session ids and work-dir basenames may legitimately contain non-ASCII
+    # characters (Chinese, Japanese, etc.). Verify they round-trip through the
+    # file unchanged and are stored as literal UTF-8, not escaped.
+    session_id = "中文-uuid-aaa"
+    work_dir = "C:/项目/我的-app"
+    write_runtime_status(tmp_path, session_id=session_id, work_dir=work_dir, pid=7)
+
+    raw = (tmp_path / RUNTIME_STATUS_FILENAME).read_text(encoding="utf-8")
+    # Literal characters present, not \uXXXX escapes (atomic_json_write uses
+    # ensure_ascii=False).
+    assert "中文-uuid-aaa" in raw
+    assert "项目" in raw and "我的-app" in raw
+    assert "\\u" not in raw
+
+    status = read_runtime_status(tmp_path)
+    assert status is not None
+    assert status.session_id == session_id
+    assert status.work_dir == work_dir
+
+
+def test_write_runtime_status_no_tmp_leftover_on_failure(tmp_path: Path, monkeypatch):
+    # Simulate an I/O failure during the tmp-file write and assert that the
+    # exception propagates and no .tmp file is left behind.
+    import os as _os
+
+    real_fdopen = _os.fdopen
+
+    def boom_fdopen(*args, **kwargs):
+        f = real_fdopen(*args, **kwargs)
+        f.close()
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(_os, "fdopen", boom_fdopen)
+
+    import pytest
+
+    with pytest.raises(OSError, match="simulated write failure"):
+        write_runtime_status(tmp_path, session_id="x", work_dir="/w", pid=1)
+
+    # Final file must not exist, and no .tmp leftover either.
+    assert not (tmp_path / RUNTIME_STATUS_FILENAME).exists()
+    leftovers = list(tmp_path.glob("*.tmp"))
+    assert leftovers == [], f"unexpected leftovers: {leftovers}"

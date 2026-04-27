@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import cast
 
+from kimi_cli.utils.io import atomic_json_write
 from kimi_cli.utils.logging import logger
 
 RUNTIME_STATUS_FILENAME = "runtime.json"
@@ -67,10 +68,17 @@ def write_runtime_status(
 ) -> Path:
     """Atomically write the runtime status file for this session.
 
-    Returns the path of the file written. Failures are logged and re-raised
-    only when they would leave a partially written file behind; the typical
-    error path (read-only filesystem, exotic locale) is silently swallowed
-    by the caller in :mod:`kimi_cli.cli`.
+    Writes ``<session_dir>/runtime.json`` via tmp-file + ``os.replace``, so an
+    external observer never sees a partially written file: it sees either the
+    previous contents or the fully committed new contents.
+
+    Returns the path of the file that was written.
+
+    Exceptions from the underlying I/O (``OSError``, ``PermissionError``,
+    read-only filesystem, etc.) are propagated to the caller; this function
+    does not log or swallow them. Callers that want best-effort semantics
+    should wrap the call in ``contextlib.suppress(OSError)``. On failure, no
+    leftover ``.tmp`` file is kept on disk.
     """
     status = RuntimeStatus(
         schema_version=RUNTIME_STATUS_SCHEMA_VERSION,
@@ -82,10 +90,7 @@ def write_runtime_status(
         kimi_version=_safe_kimi_version(),
     )
     target = _runtime_status_path(session_dir)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    payload = json.dumps(asdict(status), ensure_ascii=False, sort_keys=True)
-    tmp.write_text(payload, encoding="utf-8")
-    os.replace(tmp, target)
+    atomic_json_write(asdict(status), target)
     return target
 
 

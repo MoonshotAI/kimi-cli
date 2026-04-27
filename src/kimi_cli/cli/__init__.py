@@ -537,6 +537,11 @@ def kimi(
             The session and the exit code (0 = success, 1 = failure, 75 = retryable).
         """
         startup_progress = ShellStartupProgress(enabled=ui == "shell")
+        # Tracks state needed by the outer finally so that runtime.json and the
+        # OS process title are always reset, even when KimiCLI.create() or the
+        # SessionStart hook raises before the inner try/finally is entered.
+        runtime_status_written = False
+        runtime_status_session: Session | None = None
         try:
             startup_progress.update("Preparing session...")
 
@@ -590,6 +595,8 @@ def kimi(
                     work_dir=str(work_dir),
                     pid=_runtime_status_os.getpid(),
                 )
+                runtime_status_written = True
+                runtime_status_session = session
 
             nonlocal _latest_created_session
             _latest_created_session = session
@@ -729,6 +736,26 @@ def kimi(
             return session, exit_code
         finally:
             startup_progress.stop()
+            # Always drop the runtime status file and reset the OS process title
+            # when leaving _run(), even if startup failed before the inner
+            # try/finally was entered (e.g. KimiCLI.create() or SessionStart
+            # raised). Without this, runtime.json would keep pointing at a dead
+            # PID, and ps / Task Manager would keep showing a stale
+            # "session=<id>" tag on the same PID after it exits or transitions
+            # to web/vis. clear_runtime_status uses missing_ok=True, so calling
+            # it twice (here and in the inner finally) is safe. On Reload the
+            # next _run() iteration writes a fresh runtime.json and sets a new
+            # session-tagged title shortly after, so the brief "Kimi Code"
+            # window is acceptable.
+            if runtime_status_written and runtime_status_session is not None:
+                with contextlib.suppress(Exception):
+                    from kimi_cli.runtime_status import clear_runtime_status
+
+                    clear_runtime_status(runtime_status_session.dir)
+            with contextlib.suppress(Exception):
+                from kimi_cli.utils.proctitle import set_process_title
+
+                set_process_title("Kimi Code")
 
     async def _delete_empty_session(session: Session) -> None:
         """Delete an empty session directory and clear last_session_id if it pointed to it."""
@@ -818,6 +845,14 @@ def kimi(
             # the most recent _run() call, which may have failed before returning.
             # last_session is from a *previous* iteration and must not be touched.
             if _latest_created_session is not None:
+                # _run()'s outer finally already attempts this, but call it again
+                # here so a stale runtime.json never survives a startup failure
+                # that escapes _run() — the file would otherwise keep pointing at
+                # a PID that is about to exit.
+                with contextlib.suppress(Exception):
+                    from kimi_cli.runtime_status import clear_runtime_status
+
+                    clear_runtime_status(_latest_created_session.dir)
                 _print_resume_hint(_latest_created_session)
                 if _latest_created_session.is_empty():
                     with contextlib.suppress(Exception):
