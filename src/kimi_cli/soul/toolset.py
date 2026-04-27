@@ -189,6 +189,7 @@ class KimiToolset:
                 try:
                     ret = await tool.call(arguments)
                 except Exception as e:
+                    tool_elapsed = time.monotonic() - t0
                     logger.exception(
                         "Tool execution failed: {tool_name} (call_id={call_id})",
                         tool_name=tool_call.function.name,
@@ -214,6 +215,21 @@ class KimiToolset:
                         if not t.cancelled() and t.exception()
                         else None
                     )
+                    from kimi_cli.telemetry import track
+
+                    _error_type = type(e).__name__
+                    track(
+                        "tool_error",
+                        tool_name=tool_call.function.name,
+                        error_type=_error_type,
+                    )
+                    track(
+                        "tool_call",
+                        tool_name=tool_call.function.name,
+                        success=False,
+                        duration_ms=int(tool_elapsed * 1000),
+                        error_type=_error_type,
+                    )
                     return ToolResult(
                         tool_call_id=tool_call.id,
                         return_value=ToolRuntimeError(str(e)),
@@ -225,6 +241,14 @@ class KimiToolset:
                     tool_name=tool_call.function.name,
                     elapsed=tool_elapsed,
                     call_id=tool_call.id,
+                )
+                from kimi_cli.telemetry import track as _track_tool_call
+
+                _track_tool_call(
+                    "tool_call",
+                    tool_name=tool_call.function.name,
+                    success=not isinstance(ret, ToolError),
+                    duration_ms=int(tool_elapsed * 1000),
                 )
 
                 # --- PostToolUse (fire-and-forget) ---

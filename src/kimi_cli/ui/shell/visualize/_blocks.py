@@ -47,9 +47,20 @@ from kimi_cli.wire.types import (
 
 _ELLIPSIS = "..."
 _THINKING_PREVIEW_LINES = 6
-_PENDING_PREVIEW_LINES = 8
 _SELF_CLOSING_BLOCKS = frozenset(("fence", "code_block", "hr", "html_block"))
 MAX_SUBAGENT_TOOL_CALLS_TO_SHOW = 4
+
+# Animated bullet frames shown after the "Thinking" label. Dots grow in
+# from the left, reach three, then drain out from the left — a continuous
+# rightward flow that loops every ``_BULLET_FRAME_INTERVAL * len(frames)``.
+_BULLET_FRAMES = (".  ", ".. ", "...", " ..", "  .", "   ")
+_BULLET_FRAME_INTERVAL = 0.13  # seconds per frame
+
+
+def _bullet_frame_for(elapsed: float) -> str:
+    """Select the current bullet frame from wall-clock elapsed time."""
+    idx = int(elapsed / _BULLET_FRAME_INTERVAL) % len(_BULLET_FRAMES)
+    return _BULLET_FRAMES[idx]
 
 
 def _truncate_to_display_width(line: str, max_width: int) -> str:
@@ -170,12 +181,22 @@ class _ContentBlock:
     giving users real-time streaming output.  Only the unconfirmed tail remains
     in the transient Rich Live area.
 
-    For **thinking** (``is_think=True``), content stays in the Live area as a
-    scrolling preview until the block is finalized.
+    For **thinking** (``is_think=True``), the default behavior is to keep the
+    raw reasoning text only for token accounting and never render it.  The
+    Live area shows a compact ``Thinking`` label with an animated bullet
+    sequence, elapsed time, token count, and a live tokens/second pulse;
+    when the block ends, a one-liner ``Thought for Xs · N tokens`` is
+    committed to history in grey italics.
+
+    When ``show_thinking_stream=True``, the legacy behavior is restored: the
+    Live area shows a ``Thinking...`` spinner above a 6-line scrolling preview
+    of the raw reasoning text, and the full reasoning markdown is committed
+    to history when the block ends.
     """
 
-    def __init__(self, is_think: bool):
+    def __init__(self, is_think: bool, *, show_thinking_stream: bool = False):
         self.is_think = is_think
+        self._show_thinking_stream = show_thinking_stream
         self._spinner = Spinner("dots", "")
         self.raw_text = ""
         # Accumulated float estimate — avoids per-chunk int truncation.
@@ -195,35 +216,48 @@ class _ContentBlock:
             self._flush_committed()
 
     def compose(self) -> RenderableType:
-        """Render the transient Live area content."""
-        pending = self._pending_text()
+        """Render the transient Live area content.
 
-        # Thinking: always show spinner + preview.
+        Thinking mode shows the italic ``Thinking`` label with animated
+        bullets; composing mode shows the dots spinner over the
+        uncommitted markdown tail.  When ``show_thinking_stream`` is enabled,
+        thinking mode falls back to the legacy ``Thinking...`` spinner stacked
+        above a 6-line scrolling preview of the raw reasoning text.
+        """
         if self.is_think:
-            spinner = self._compose_spinner()
-            if not pending:
-                return spinner
-            preview = self._build_preview(pending)
-            return Group(spinner, Text(preview, style="grey50 italic"))
-
-        # Composing: always show spinner with elapsed time and token count.
-        # Committed blocks are already printed permanently above.
+            if self._show_thinking_stream:
+                return self._compose_thinking_stream()
+            return self._compose_thinking()
         return self._compose_spinner()
 
     def compose_final(self) -> RenderableType:
         """Render the remaining uncommitted content when the block ends."""
+        if self.is_think:
+            if self._show_thinking_stream:
+                remaining = self._pending_text()
+                if not remaining:
+                    return Text("")
+                return BulletColumns(
+                    Markdown(remaining, style="grey50 italic"),
+                    bullet_style="grey50",
+                )
+            elapsed_str = format_elapsed(time.monotonic() - self._start_time)
+            count_str = format_token_count(int(self._token_count))
+            return Text(
+                f"Thought for {elapsed_str} · {count_str} tokens",
+                style="grey50 italic",
+            )
         remaining = self._pending_text()
         if not remaining:
             return Text("")
-        if self.is_think:
-            return BulletColumns(
-                Markdown(remaining, style="grey50 italic"),
-                bullet_style="grey50",
-            )
         return self._wrap_bullet(Markdown(remaining))
 
     def has_pending(self) -> bool:
         """Whether there is uncommitted content to flush."""
+        # Thinking blocks always commit a final trace line if any content
+        # was received, so gate on raw_text rather than uncommitted length.
+        if self.is_think:
+            return bool(self.raw_text)
         return bool(self._pending_text())
 
     # -- Private -------------------------------------------------------------
@@ -252,23 +286,67 @@ class _ContentBlock:
 
     def _compose_spinner(self) -> Spinner:
         elapsed = time.monotonic() - self._start_time
-        label = "Thinking..." if self.is_think else "Composing..."
         elapsed_str = format_elapsed(elapsed)
         count_str = f"{format_token_count(int(self._token_count))} tokens"
 
         self._spinner.text = Text.assemble(
-            (label, ""),
+            ("Composing...", ""),
+            (f" {elapsed_str}", "grey50"),
+            (f" · {count_str}", "grey50"),
+        )
+        return self._spinner
+
+    def _compose_thinking_stream(self) -> RenderableType:
+        """Legacy 'Thinking...' spinner stacked over a 6-line scrolling preview."""
+        spinner = self._compose_thinking_spinner()
+        pending = self._pending_text()
+        if not pending:
+            return spinner
+        preview = self._build_preview(pending)
+        return Group(spinner, Text(preview, style="grey50 italic"))
+
+    def _compose_thinking_spinner(self) -> Spinner:
+        """Legacy 'Thinking...' spinner header used by the stream-mode preview."""
+        elapsed = time.monotonic() - self._start_time
+        elapsed_str = format_elapsed(elapsed)
+        count_str = f"{format_token_count(int(self._token_count))} tokens"
+        self._spinner.text = Text.assemble(
+            ("Thinking...", ""),
             (f" {elapsed_str}", "grey50"),
             (f" · {count_str}", "grey50"),
         )
         return self._spinner
 
     def _build_preview(self, text: str) -> str:
-        max_lines = _THINKING_PREVIEW_LINES if self.is_think else _PENDING_PREVIEW_LINES
+        """Tail-trim *text* to the last ``_THINKING_PREVIEW_LINES`` and clamp width."""
         max_width = console.width - 2 if console.width else 78
-        tail_text = _tail_lines(text, max_lines)
+        tail_text = _tail_lines(text, _THINKING_PREVIEW_LINES)
         lines = tail_text.split("\n")
         return "\n".join(_truncate_to_display_width(line, max_width) for line in lines)
+
+    def _compose_thinking(self) -> Text:
+        """Render the thinking line: italic Thinking + bullets + metadata."""
+        elapsed = time.monotonic() - self._start_time
+        elapsed_str = format_elapsed(elapsed)
+        tokens_int = int(self._token_count)
+        count_str = f"{format_token_count(tokens_int)} tokens"
+        frame = _bullet_frame_for(elapsed)
+
+        parts: list[tuple[str, str | Style]] = [
+            ("Thinking", "italic"),
+            (f" {frame}", "cyan"),
+            (f"  {elapsed_str}", "grey50"),
+            (f" · {count_str}", "grey50"),
+        ]
+
+        # Live tok/s pulse — a real heartbeat signal that confirms the model
+        # is still streaming even when the raw content is hidden.
+        if elapsed > 0.5 and tokens_int > 0:
+            rate = int(tokens_int / elapsed)
+            if rate > 0:
+                parts.append((f" · {rate} tok/s", "grey50"))
+
+        return Text.assemble(*parts)
 
 
 class _ToolCallBlock:

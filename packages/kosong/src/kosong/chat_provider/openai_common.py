@@ -125,6 +125,14 @@ def thinking_effort_to_reasoning_effort(effort: ThinkingEffort) -> ReasoningEffo
             return "medium"
         case "high":
             return "high"
+        case "xhigh":
+            # OpenAI supports xhigh natively for models after gpt-5.1-codex-max.
+            return "xhigh"
+        case "max":
+            # OpenAI's ceiling is xhigh; kosong's ``max`` (Anthropic-specific)
+            # clamps to the highest level OpenAI accepts rather than dropping
+            # down to high.
+            return "xhigh"
 
 
 def reasoning_effort_to_thinking_effort(effort: ReasoningEffort) -> ThinkingEffort:
@@ -133,8 +141,10 @@ def reasoning_effort_to_thinking_effort(effort: ReasoningEffort) -> ThinkingEffo
             return "low"
         case "medium":
             return "medium"
-        case "high" | "xhigh":
+        case "high":
             return "high"
+        case "xhigh":
+            return "xhigh"
         case "none" | None:
             return "off"
 

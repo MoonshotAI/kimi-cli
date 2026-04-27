@@ -45,6 +45,10 @@ class LLMProvider(BaseModel):
     """Environment variables to set before creating the provider instance"""
     custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests"""
+    reasoning_key: str | None = None
+    """Message field name carrying reasoning content for OpenAI-compatible APIs.
+    Applies to provider type ``openai_legacy``. Defaults to ``reasoning_content``
+    when unset. Use an empty string to disable reasoning round-tripping."""
     oauth: OAuthRef | None = None
     """OAuth credential reference (do not store tokens here)."""
 
@@ -64,13 +68,15 @@ class LLMModel(BaseModel):
     """Maximum context size (unit: tokens)"""
     capabilities: set[ModelCapability] | None = None
     """Model capabilities"""
+    display_name: str | None = None
+    """Human-readable model name (sourced from the provider's models API when available)"""
 
 
 class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
     max_steps_per_turn: int = Field(
-        default=100,
+        default=500,
         ge=1,
         validation_alias=AliasChoices("max_steps_per_turn", "max_steps_per_run"),
     )
@@ -106,6 +112,11 @@ class BackgroundConfig(BaseModel):
     )
     agent_task_timeout_s: int = Field(default=900, ge=60)
     """Maximum runtime in seconds for a background agent task. Default: 900 (15 min)."""
+    print_wait_ceiling_s: int = Field(default=3600, ge=1)
+    """Hard ceiling for how long ``--print`` mode waits for background tasks before
+    killing them and exiting. The effective wait is
+    ``min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)``.
+    Default: 3600 (1 hour)."""
 
 
 class NotificationConfig(BaseModel):
@@ -188,6 +199,14 @@ class Config(BaseModel):
     default_model: str = Field(default="", description="Default model to use")
     default_thinking: bool = Field(default=False, description="Default thinking mode")
     default_yolo: bool = Field(default=False, description="Default yolo (auto-approve) mode")
+    skip_yolo_prompt_injection: bool = Field(
+        default=False,
+        description=(
+            "If true, suppress the system reminder that is normally injected when yolo mode "
+            "is active. Useful when building custom applications on top of KimiSoul that do "
+            "not need the non-interactive mode hint."
+        ),
+    )
     default_plan_mode: bool = Field(default=False, description="Default plan mode for new sessions")
     default_editor: str = Field(
         default="",
@@ -196,6 +215,16 @@ class Config(BaseModel):
     theme: Literal["dark", "light"] = Field(
         default="dark",
         description="Terminal color theme. Use 'light' for light terminal backgrounds.",
+    )
+    show_thinking_stream: bool = Field(
+        default=True,
+        description=(
+            "If true, stream the raw reasoning text in the live area as a "
+            "6-line scrolling preview and commit the full reasoning markdown "
+            "to history when the block ends. Default true. Set to false to "
+            "show only the compact 'Thinking ...' indicator and a one-line "
+            "trace summary."
+        ),
     )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
@@ -212,11 +241,27 @@ class Config(BaseModel):
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
     hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")  # pyright: ignore[reportUnknownVariableType]
     merge_all_available_skills: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Merge skills from all existing brand directories (kimi/claude/codex) "
-            "instead of using only the first one found"
+            "instead of using only the first one found. Defaults to true so users "
+            "who keep skills in multiple brand directories see everything out of "
+            "the box; set to false to restore the first-match-only behaviour."
         ),
+    )
+    extra_skill_dirs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra directories to discover skills from, added on top of the "
+            "built-in / user / project locations. Each entry may be an absolute "
+            "path, ``~``-prefixed (expanded against $HOME), or relative to the "
+            "project root (the nearest ``.git`` directory above the work dir). "
+            "Missing paths are silently skipped."
+        ),
+    )
+    telemetry: bool = Field(
+        default=True,
+        description="Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.",
     )
 
     @model_validator(mode="after")

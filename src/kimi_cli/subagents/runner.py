@@ -293,22 +293,20 @@ class ForegroundSubagentRunner:
             output_writer.stage("run_soul_finished")
 
             # --- SubagentStop hook ---
-            _hook_task = asyncio.create_task(
-                hook_engine.trigger(
-                    "SubagentStop",
-                    matcher_value=actual_type,
-                    input_data=hook_events.subagent_stop(
-                        session_id=self._runtime.session.id,
-                        cwd=str(Path.cwd()),
-                        agent_name=actual_type,
-                        response=(final_response or "")[:500],
-                    ),
-                )
-            )
-            _hook_task.add_done_callback(
-                lambda t: logger.error("Hook failed: {}", t.exception())
-                if not t.cancelled() and t.exception()
-                else None
+            # fire_and_forget_trigger keeps a strong reference to the task on
+            # the hook engine so it cannot be garbage-collected before it
+            # finishes. Without that, asyncio's WeakSet bookkeeping would let
+            # GC reap the still-pending task and trigger the broken
+            # "Exception None" loop-handler path.
+            hook_engine.fire_and_forget_trigger(
+                "SubagentStop",
+                matcher_value=actual_type,
+                input_data=hook_events.subagent_stop(
+                    session_id=self._runtime.session.id,
+                    cwd=str(Path.cwd()),
+                    agent_name=actual_type,
+                    response=(final_response or "")[:500],
+                ),
             )
         except asyncio.CancelledError:
             self._store.update_instance(agent_id, status="killed")
@@ -383,6 +381,9 @@ class ForegroundSubagentRunner:
                 effective_model=req.model or type_def.default_model,
             ),
         )
+        from kimi_cli.telemetry import track
+
+        track("subagent_created")
         return PreparedInstance(
             record=record,
             actual_type=actual_type,

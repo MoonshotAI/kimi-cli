@@ -4,6 +4,15 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.39.0
+
+### `merge_all_available_skills` default flipped to `true`
+
+The `merge_all_available_skills` config option default has changed from `false` to `true`. kimi-cli now merges all existing user- and project-level brand skill directories (`.kimi/skills`, `.claude/skills`, `.codex/skills`) by default instead of only using the first one found. Users who keep skills in multiple brand directories — for example both `~/.kimi/skills` and `~/.claude/skills` — will see every skill out of the box after upgrading.
+
+- **Affected**: Users who maintain multiple brand skill directories and relied on the first-match behavior to hide duplicates
+- **Migration**: Set `merge_all_available_skills = false` in your config to restore the previous first-match behavior
+
 ## 1.25.0
 
 ### Wire protocol 1.6 — subagent and approval field changes

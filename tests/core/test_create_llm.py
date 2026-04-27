@@ -160,6 +160,68 @@ def test_create_llm_openai_legacy_custom_headers():
     }
 
 
+def test_create_llm_openai_legacy_default_reasoning_key():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://api.deepseek.com/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="openai_legacy",
+        model="deepseek-reasoner",
+        max_context_size=128000,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key == "reasoning_content"
+
+
+def test_create_llm_openai_legacy_custom_reasoning_key():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://example.test/v1",
+        api_key=SecretStr("test-key"),
+        reasoning_key="reasoning",
+    )
+    model = LLMModel(
+        provider="openai_legacy",
+        model="some-reasoner",
+        max_context_size=128000,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key == "reasoning"
+
+
+def test_create_llm_openai_legacy_disabled_reasoning_key():
+    from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+
+    provider = LLMProvider(
+        type="openai_legacy",
+        base_url="https://example.test/v1",
+        api_key=SecretStr("test-key"),
+        reasoning_key="",
+    )
+    model = LLMModel(
+        provider="openai_legacy",
+        model="plain-model",
+        max_context_size=128000,
+    )
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, OpenAILegacy)
+    assert llm.chat_provider._reasoning_key == ""
+
+
 def test_create_llm_openai_responses_custom_headers():
     provider = LLMProvider(
         type="openai_responses",
@@ -328,4 +390,155 @@ def test_create_llm_openai_responses_thinking_false_no_reasoning_in_params():
             "base_url": "https://openrouter.ai/api/v1/",
             "reasoning_effort": None,
         }
+    )
+
+
+def _make_kimi_thinking_model() -> tuple[LLMProvider, LLMModel]:
+    """Helper: build a kimi provider + always-thinking model pair."""
+    provider = LLMProvider(
+        type="kimi",
+        base_url="https://api.test/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="kimi",
+        model="kimi-k2-thinking-turbo",
+        max_context_size=4096,
+        capabilities=None,
+    )
+    return provider, model
+
+
+def _make_kimi_plain_model() -> tuple[LLMProvider, LLMModel]:
+    """Helper: build a kimi provider + non-thinking model pair."""
+    provider = LLMProvider(
+        type="kimi",
+        base_url="https://api.test/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="kimi",
+        model="kimi-k2-turbo-preview",
+        max_context_size=4096,
+        capabilities=None,
+    )
+    return provider, model
+
+
+def test_create_llm_kimi_thinking_keep_not_set_omits_field(monkeypatch):
+    """When KIMI_MODEL_THINKING_KEEP is unset, extra_body.thinking must not
+    contain a ``keep`` key, even for always-thinking models."""
+    monkeypatch.delenv("KIMI_MODEL_THINKING_KEEP", raising=False)
+    provider, model = _make_kimi_thinking_model()
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
+    thinking = extra_body.get("thinking") or {}
+    assert "keep" not in thinking
+    assert thinking.get("type") == "enabled"
+
+
+def test_create_llm_kimi_thinking_keep_empty_string_omits_field(monkeypatch):
+    """An empty-string env value must be treated as unset (consistent with
+    other KIMI_MODEL_* envs that use walrus-truthy reads)."""
+    monkeypatch.setenv("KIMI_MODEL_THINKING_KEEP", "")
+    provider, model = _make_kimi_thinking_model()
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
+    thinking = extra_body.get("thinking") or {}
+    assert "keep" not in thinking
+
+
+def test_create_llm_kimi_thinking_keep_all_injects_field(monkeypatch):
+    """With a thinking-capable model and KIMI_MODEL_THINKING_KEEP=all, the
+    provider's extra_body.thinking must carry both ``type`` (set by
+    with_thinking) and ``keep`` (set by the env)."""
+    monkeypatch.setenv("KIMI_MODEL_THINKING_KEEP", "all")
+    provider, model = _make_kimi_thinking_model()
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.model_parameters.get("extra_body") == snapshot(
+        {"thinking": {"type": "enabled", "keep": "all"}}
+    )
+
+
+def test_create_llm_kimi_thinking_keep_arbitrary_value_passes_through(monkeypatch):
+    """Non-'all' values must be forwarded unchanged — no casing normalization,
+    no validation. The Moonshot API is the source of truth."""
+    monkeypatch.setenv("KIMI_MODEL_THINKING_KEEP", "xYz")
+    provider, model = _make_kimi_thinking_model()
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
+    assert extra_body.get("thinking", {}).get("keep") == "xYz"
+
+
+def test_create_llm_kimi_thinking_keep_skipped_when_thinking_off(monkeypatch):
+    """When thinking=False (with_thinking("off")), keep must NOT be injected,
+    even if the env is set. Avoids sending a `thinking.keep` without an
+    accompanying `thinking.type` that the API actually honors."""
+    monkeypatch.setenv("KIMI_MODEL_THINKING_KEEP", "all")
+    provider, model = _make_kimi_plain_model()
+    # capabilities is None and model name has no "thinking"/"reason" marker, so
+    # derive_model_capabilities returns an empty set. thinking=False then drives
+    # with_thinking("off").
+    llm = create_llm(provider, model, thinking=False)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
+    thinking = extra_body.get("thinking") or {}
+    assert "keep" not in thinking
+
+
+def test_create_llm_kimi_thinking_keep_skipped_when_no_thinking_branch(monkeypatch):
+    """When the model has no thinking capability and thinking is None, neither
+    with_thinking branch runs — keep must also NOT be injected."""
+    monkeypatch.setenv("KIMI_MODEL_THINKING_KEEP", "all")
+    provider, model = _make_kimi_plain_model()
+
+    llm = create_llm(provider, model, thinking=None)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
+    # extra_body might be missing entirely (no thinking branch ran), or present
+    # with no thinking key. Both are acceptable; what must hold is "no keep".
+    thinking = extra_body.get("thinking") or {}
+    assert "keep" not in thinking
+
+
+def test_create_llm_kimi_thinking_keep_injected_on_explicit_thinking_true(monkeypatch):
+    """Covers the second half of the ``thinking_on`` condition: a
+    thinking-capable (but not always_thinking) model with explicit
+    ``thinking=True``. This exercises a different branch of
+    ``"always_thinking" in capabilities or (thinking is True and "thinking" in capabilities)``
+    than the always-thinking-name-based tests above."""
+    monkeypatch.setenv("KIMI_MODEL_THINKING_KEEP", "all")
+    provider, model = _make_kimi_plain_model()
+    # Model name has no "thinking"/"reason" marker, so derive_model_capabilities
+    # returns an empty set; manually granting only the "thinking" capability
+    # means always_thinking is NOT in capabilities — thinking_on is driven
+    # solely by the explicit thinking=True argument.
+    model.capabilities = {"thinking"}
+
+    llm = create_llm(provider, model, thinking=True)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.model_parameters.get("extra_body") == snapshot(
+        {"thinking": {"type": "enabled", "keep": "all"}}
     )
