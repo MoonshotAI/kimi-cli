@@ -108,3 +108,66 @@ def test_runtime_status_preserves_chinese_chars(tmp_path: Path):
     assert status.work_dir == "D:/\u9879\u76ee/\u6211\u7684-app"
     raw_bytes = (tmp_path / RUNTIME_STATUS_FILENAME).read_bytes()
     assert "\u4e2d\u6587".encode() in raw_bytes
+
+
+def test_read_runtime_status_invalid_utf8_returns_none(tmp_path: Path):
+    # Truncated multi-byte sequence — Path.read_text(encoding='utf-8')
+    # would raise UnicodeDecodeError; the helper must swallow it.
+    (tmp_path / RUNTIME_STATUS_FILENAME).write_bytes(b"\xff\xfe garbage")
+    assert read_runtime_status(tmp_path) is None
+
+
+def test_read_runtime_status_rejects_wrong_field_types(tmp_path: Path):
+    # session_id is null instead of string — must NOT be silently coerced
+    # to "None"; treat as malformed.
+    (tmp_path / RUNTIME_STATUS_FILENAME).write_text(
+        json.dumps(
+            {
+                "schema_version": RUNTIME_STATUS_SCHEMA_VERSION,
+                "pid": 1,
+                "session_id": None,
+                "work_dir": "/w",
+                "hostname": "h",
+                "started_at": 0.0,
+                "kimi_version": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert read_runtime_status(tmp_path) is None
+
+
+def test_read_runtime_status_rejects_non_int_pid(tmp_path: Path):
+    (tmp_path / RUNTIME_STATUS_FILENAME).write_text(
+        json.dumps(
+            {
+                "schema_version": RUNTIME_STATUS_SCHEMA_VERSION,
+                "pid": "1234",  # string, not int
+                "session_id": "abc",
+                "work_dir": "/w",
+                "hostname": "h",
+                "started_at": 0.0,
+                "kimi_version": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert read_runtime_status(tmp_path) is None
+
+
+def test_read_runtime_status_rejects_list_work_dir(tmp_path: Path):
+    (tmp_path / RUNTIME_STATUS_FILENAME).write_text(
+        json.dumps(
+            {
+                "schema_version": RUNTIME_STATUS_SCHEMA_VERSION,
+                "pid": 1,
+                "session_id": "abc",
+                "work_dir": ["/", "w"],
+                "hostname": "h",
+                "started_at": 0.0,
+                "kimi_version": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert read_runtime_status(tmp_path) is None

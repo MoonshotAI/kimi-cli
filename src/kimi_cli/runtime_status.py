@@ -109,14 +109,18 @@ def read_runtime_status(session_dir: Path) -> RuntimeStatus | None:
     """Read the runtime status file from a session directory, if present.
 
     Returns ``None`` if the file is missing, malformed, or written by a
-    schema version this code does not understand.
+    schema version this code does not understand. "Malformed" includes
+    truncated UTF-8, syntactically invalid JSON, a non-object payload,
+    and any field whose JSON type does not match the dataclass — the
+    function never coerces ``None`` / list / dict into a string just to
+    satisfy the constructor.
     """
     target = _runtime_status_path(session_dir)
     try:
         raw = target.read_text(encoding="utf-8")
     except FileNotFoundError:
         return None
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         logger.debug("Failed to read runtime status file {file}", file=target)
         return None
 
@@ -132,18 +136,35 @@ def read_runtime_status(session_dir: Path) -> RuntimeStatus | None:
     if parsed.get("schema_version") != RUNTIME_STATUS_SCHEMA_VERSION:
         return None
 
-    try:
-        return RuntimeStatus(
-            schema_version=int(parsed["schema_version"]),  # type: ignore[arg-type]
-            pid=int(parsed["pid"]),  # type: ignore[arg-type]
-            session_id=str(parsed["session_id"]),
-            work_dir=str(parsed["work_dir"]),
-            hostname=str(parsed["hostname"]),
-            started_at=float(parsed["started_at"]),  # type: ignore[arg-type]
-            kimi_version=(
-                None if parsed.get("kimi_version") is None else str(parsed["kimi_version"])
-            ),
-        )
-    except (KeyError, TypeError, ValueError):
-        logger.debug("Incomplete runtime status file {file}", file=target)
+    schema_version = parsed.get("schema_version")
+    pid = parsed.get("pid")
+    session_id = parsed.get("session_id")
+    work_dir = parsed.get("work_dir")
+    hostname = parsed.get("hostname")
+    started_at = parsed.get("started_at")
+    kimi_version = parsed.get("kimi_version")
+
+    if not isinstance(schema_version, int):
         return None
+    if not isinstance(pid, int):
+        return None
+    if not isinstance(session_id, str):
+        return None
+    if not isinstance(work_dir, str):
+        return None
+    if not isinstance(hostname, str):
+        return None
+    if not isinstance(started_at, (int, float)) or isinstance(started_at, bool):
+        return None
+    if kimi_version is not None and not isinstance(kimi_version, str):
+        return None
+
+    return RuntimeStatus(
+        schema_version=schema_version,
+        pid=pid,
+        session_id=session_id,
+        work_dir=work_dir,
+        hostname=hostname,
+        started_at=float(started_at),
+        kimi_version=kimi_version,
+    )
