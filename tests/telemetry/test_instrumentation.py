@@ -897,6 +897,8 @@ class TestCompactionTracking:
         fake_result.messages = []
         fake_result.estimated_token_count = estimated_after
         soul._run_with_connection_recovery = AsyncMock(return_value=fake_result)
+
+        soul._injection_providers = []
         return soul
 
     @pytest.mark.asyncio
