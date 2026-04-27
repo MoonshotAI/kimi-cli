@@ -90,6 +90,7 @@ async def test_acp_prompt_cancel_closes_abandoned_approval_stream(
     assert runtime.approval_runtime is not None
 
     async def fake_turn(self, _user_message):
+        assert runtime.approval_runtime is not None
         source = get_current_approval_source_or_none()
         assert source is not None
         tool_call_id = "call-acp-abandoned-approval"
@@ -135,6 +136,7 @@ async def test_acp_prompt_cancel_closes_abandoned_approval_stream(
         await asyncio.wait_for(prompt_task, timeout=1.0)
 
     async def wait_for_cancelled_approval() -> None:
+        assert runtime.approval_runtime is not None
         for _ in range(20):
             record = runtime.approval_runtime.get_request("req-acp-abandoned-approval")
             if record is not None and record.status == "cancelled":

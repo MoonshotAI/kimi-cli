@@ -332,6 +332,7 @@ async def test_kimi_cli_run_cancels_abandoned_approval_stream(
     assert runtime.approval_runtime is not None
 
     async def fake_turn(self, _user_message):
+        assert runtime.approval_runtime is not None
         source = get_current_approval_source_or_none()
         assert source is not None
         request = runtime.approval_runtime.create_request(
@@ -391,6 +392,7 @@ async def test_kimi_cli_run_propagates_external_cancel_event(
     assert runtime.approval_runtime is not None
 
     async def fake_turn(self, _user_message):
+        assert runtime.approval_runtime is not None
         source = get_current_approval_source_or_none()
         assert source is not None
         request = runtime.approval_runtime.create_request(
