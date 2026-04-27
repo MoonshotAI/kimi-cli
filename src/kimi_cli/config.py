@@ -76,7 +76,7 @@ class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
     max_steps_per_turn: int = Field(
-        default=500,
+        default=1000,
         ge=1,
         validation_alias=AliasChoices("max_steps_per_turn", "max_steps_per_run"),
     )
