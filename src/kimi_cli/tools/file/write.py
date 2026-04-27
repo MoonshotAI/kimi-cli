@@ -14,7 +14,7 @@ from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.utils.path import is_within_directory, is_within_workspace
 
 _BASE_DESCRIPTION = load_desc(Path(__file__).parent / "write.md")
 
@@ -47,6 +47,7 @@ class WriteFile(CallableTool2[Params]):
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
         self._additional_dirs = runtime.additional_dirs
         self._approval = approval
+        self._auto_approve_dirs = runtime.config.auto_approve_workspace_dirs or []
         self._plan_mode_checker: Callable[[], bool] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
 
@@ -56,6 +57,15 @@ class WriteFile(CallableTool2[Params]):
         """Bind plan mode state checker and plan file path getter."""
         self._plan_mode_checker = checker
         self._plan_file_path_getter = path_getter
+
+    def _is_auto_approved_dir(self, path: KaosPath) -> bool:
+        """Check if path is within a configured auto-approve workspace directory."""
+        if not self._auto_approve_dirs:
+            return False
+        for dir_name in self._auto_approve_dirs:
+            if is_within_directory(path, self._work_dir / dir_name):
+                return True
+        return False
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to write."""
@@ -134,8 +144,8 @@ class WriteFile(CallableTool2[Params]):
                 new_text,
             )
 
-            # Plan file writes are auto-approved; other writes need approval
-            if not is_plan_file_write:
+            # Plan file writes and auto-approved dirs are skipped; other writes need approval
+            if not is_plan_file_write and not self._is_auto_approved_dir(p):
                 action = (
                     FileActions.EDIT
                     if is_within_workspace(p, self._work_dir, self._additional_dirs)
