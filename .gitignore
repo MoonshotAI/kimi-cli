@@ -29,6 +29,8 @@ src/kimi_cli/vis/static/
 
 # Generated reports
 tests_ai/report.json
+tests_ai/terminal_bench_2_cache/
+jobs/
 
 # nix build result
 result
