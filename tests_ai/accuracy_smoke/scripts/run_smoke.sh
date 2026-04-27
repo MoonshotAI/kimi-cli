@@ -7,7 +7,8 @@ DEFAULT_BENCH_DIR="${BASE_DIR}/../terminal_bench_2_cache"
 BENCH_DIR="${TERMINAL_BENCH_2_DIR:-$DEFAULT_BENCH_DIR}"
 REPO_ROOT="$(cd "${BASE_DIR}/../.." && pwd)"
 WHEEL_DIR="${KIMI_CLI_WHEEL_DIR:-${REPO_ROOT}/dist/accuracy_smoke}"
-MODEL="${HARBOR_MODEL:-kimi/kimi-k2-turbo-preview}"
+JOBS_DIR="${HARBOR_JOBS_DIR:-${REPO_ROOT}/jobs}"
+MODEL="${HARBOR_MODEL:-kimi/kimi-for-coding}"
 AGENT_IMPORT_PATH="${HARBOR_AGENT_IMPORT_PATH:-tests_ai.accuracy_smoke.local_kimi_cli_agent:LocalKimiCli}"
 ORIGIN_GIT_URL="$(git -C "${REPO_ROOT}" remote get-url origin)"
 GH_MIRROR_PREFIX="${GH_MIRROR_PREFIX:-}"
@@ -69,6 +70,13 @@ KIMI_CLI_WHEEL_PATH="$(ls -t "${WHEEL_DIR}"/*.whl | head -n 1)"
 echo "Using local kimi-cli wheel: ${KIMI_CLI_WHEEL_PATH}"
 echo "Git fallback source: ${KIMI_CLI_GIT_URL} @ ${KIMI_CLI_GIT_REF}"
 
+mkdir -p "${JOBS_DIR}"
+SUMMARY_TSV="${BASE_DIR}/accuracy_smoke_rewards_$(date +%Y%m%d_%H%M%S).tsv"
+{
+  echo -e "task\treward_mean\tn_errors\tjob_dir\tresult_json"
+} > "${SUMMARY_TSV}"
+echo "Writing reward summary to ${SUMMARY_TSV}"
+
 while IFS= read -r task || [ -n "${task}" ]; do
   [ -z "${task}" ] && continue
   task_dir="${BENCH_DIR}/${task}"
@@ -81,7 +89,43 @@ while IFS= read -r task || [ -n "${task}" ]; do
     KIMI_CLI_GIT_URL="${KIMI_CLI_GIT_URL}" \
     KIMI_CLI_GIT_REF="${KIMI_CLI_GIT_REF}" \
     harbor run -p "${task_dir}" \
+      --jobs-dir "${JOBS_DIR}" \
       --agent-import-path "${AGENT_IMPORT_PATH}" \
       -m "${MODEL}" \
       --n-concurrent 1
+
+  latest_job_dir="$(ls -td "${JOBS_DIR}"/20* 2>/dev/null | head -n 1 || true)"
+  if [ -z "${latest_job_dir}" ] || [ ! -f "${latest_job_dir}/result.json" ]; then
+    echo "Warning: result.json not found for task ${task}" >&2
+    continue
+  fi
+
+  python - "${task}" "${latest_job_dir}" "${SUMMARY_TSV}" <<'PY'
+import json
+import pathlib
+import sys
+
+task, job_dir, out_tsv = sys.argv[1:4]
+result_path = pathlib.Path(job_dir) / "result.json"
+data = json.loads(result_path.read_text(encoding="utf-8"))
+evals = data.get("stats", {}).get("evals", {})
+if evals:
+    entry = next(iter(evals.values()))
+    metrics = entry.get("metrics", [])
+    reward_mean = metrics[0].get("mean") if metrics else None
+    n_errors = entry.get("n_errors")
+else:
+    reward_mean = None
+    n_errors = data.get("stats", {}).get("n_errors")
+with open(out_tsv, "a", encoding="utf-8") as f:
+    f.write(
+        f"{task}\t{reward_mean if reward_mean is not None else ''}\t"
+        f"{n_errors if n_errors is not None else ''}\t{job_dir}\t{result_path}\n"
+    )
+print(f"Collected reward: task={task}, mean={reward_mean}, errors={n_errors}")
+PY
 done < "${TASK_FILE}"
+
+echo
+echo "=== Accuracy smoke reward summary ==="
+cat "${SUMMARY_TSV}"

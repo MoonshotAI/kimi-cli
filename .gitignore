@@ -31,6 +31,7 @@ src/kimi_cli/vis/static/
 tests_ai/report.json
 tests_ai/terminal_bench_2_cache/
 jobs/
+tests_ai/accuracy_smoke/*.tsv
 
 # nix build result
 result

@@ -72,6 +72,10 @@ bash tests_ai/accuracy_smoke/scripts/run_smoke.sh
 For CI, store the key in secret variables and inject it as an environment
 variable at runtime. Do not commit API keys into this repository.
 
+Model selection:
+
+- `HARBOR_MODEL` (default: `kimi/kimi-for-coding`)
+
 ## Use current kimi-cli source (not release build)
 
 `run_smoke.sh` defaults to evaluating the current repository commit by using a
@@ -86,6 +90,7 @@ are included automatically.
 Wheel controls:
 
 - `KIMI_CLI_WHEEL_DIR` (default: `dist/accuracy_smoke`)
+- `HARBOR_JOBS_DIR` (default: `jobs`)
 - `UV_PYTHON` (default: local `python3`)
 - `UV_PYTHON_INSTALL_MIRROR` (optional mirror for uv Python downloads)
 
@@ -105,6 +110,10 @@ KIMI_CLI_WHEEL_DIR=/tmp/kimi-wheel-cache \
 If `GH_MIRROR_PREFIX` is set and `UV_PYTHON_INSTALL_MIRROR` is unset,
 `run_smoke.sh` automatically prefixes uv Python-download URLs with
 `GH_MIRROR_PREFIX`.
+
+After each task run, `run_smoke.sh` collects reward stats from the latest
+`jobs/<timestamp>/result.json` and writes a summary TSV file under
+`tests_ai/accuracy_smoke/` (filename starts with `accuracy_smoke_rewards_`).
 
 ## Notes
 
