@@ -82,3 +82,13 @@ def test_compose_session_process_title_token_count_remains_three_with_spaces():
     # Naive split-on-whitespace must yield exactly 3 tokens, preserving the
     # documented machine-readable contract.
     assert title.split() == ["kimi-code", "session=12345678", "cwd=a_b_c_d"]
+
+
+def test_compose_session_process_title_sanitizes_session_id_with_spaces():
+    # --session/--resume accepts arbitrary user input, so ids carrying
+    # whitespace or '=' must also be sanitized to keep the split contract.
+    title = proctitle.compose_session_process_title(
+        "my id=1",
+        work_dir="/tmp/proj",
+    )
+    assert title.split() == ["kimi-code", "session=my_id_1", "cwd=proj"]

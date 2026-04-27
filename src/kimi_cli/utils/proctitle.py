@@ -87,7 +87,10 @@ def compose_session_process_title(
     repository under, say, ``.../John Doe/`` would yield ``cwd=John Doe``
     and break naive token parsing.
     """
-    parts: list[str] = [base_name, f"session={_short_session_id(session_id)}"]
+    parts: list[str] = [
+        base_name,
+        f"session={_sanitize_proctitle_token(_short_session_id(session_id))}",
+    ]
     if work_dir is not None:
         basename = os.path.basename(os.path.normpath(str(work_dir)))
         if basename:
