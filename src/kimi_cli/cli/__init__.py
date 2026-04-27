@@ -577,9 +577,15 @@ def kimi(
             # auto-generated topic, and on /title).
             from kimi_cli.utils.proctitle import update_terminal_title_for_session
 
+            # Skip the placeholder title that Session.refresh() assigns to
+            # empty sessions; otherwise every fresh tab would display the
+            # noisy and identical "Untitled" topic.
+            _initial_topic = session.state.custom_title or session.title or None
+            if _initial_topic == "Untitled":
+                _initial_topic = None
             update_terminal_title_for_session(
                 work_dir=str(work_dir),
-                topic=session.state.custom_title or session.title or None,
+                topic=_initial_topic,
             )
 
             nonlocal _latest_created_session

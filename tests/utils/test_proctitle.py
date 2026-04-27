@@ -265,3 +265,62 @@ def test_set_terminal_title_noop_when_original_stderr_not_tty(
     assert writes == []
     assert handle.closed is True
     assert proctitle._original_stderr_handle is None
+
+
+class _AsciiOnlyTTY(io.StringIO):
+    encoding = "ascii"
+
+    def isatty(self) -> bool:  # type: ignore[override]
+        return True
+
+
+def test_set_terminal_title_degrades_on_unencodable_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Force the original-stderr-handle path to miss so the sys.stderr
+    # fallback is exercised.
+    proctitle._original_stderr_handle = None
+    proctitle._original_stderr_attempted = True
+    monkeypatch.setattr(
+        "kimi_cli.utils.logging.get_original_stderr_handle",
+        lambda: None,
+    )
+
+    fake = _AsciiOnlyTTY()
+    monkeypatch.setattr(sys, "stderr", fake)
+
+    # Chinese characters cannot be encoded in ascii; the fallback must
+    # NOT raise UnicodeEncodeError, it should write a best-effort form.
+    proctitle.set_terminal_title("hello \u4e2d\u6587")
+
+    out = fake.getvalue()
+    assert out.startswith("\033]0;")
+    assert out.endswith("\007")
+    # Original Chinese chars are replaced with '?', but the surrounding
+    # OSC envelope and ASCII text are preserved intact.
+    assert "hello" in out
+    assert "?" in out
+
+
+def test_set_terminal_title_degrades_when_stderr_write_raises(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    proctitle._original_stderr_handle = None
+    proctitle._original_stderr_attempted = True
+    monkeypatch.setattr(
+        "kimi_cli.utils.logging.get_original_stderr_handle",
+        lambda: None,
+    )
+
+    class _BoomTTY(io.StringIO):
+        encoding = "utf-8"
+
+        def isatty(self) -> bool:  # type: ignore[override]
+            return True
+
+        def write(self, s: str) -> int:  # type: ignore[override]
+            raise UnicodeEncodeError("ascii", s, 0, 1, "boom")
+
+    monkeypatch.setattr(sys, "stderr", _BoomTTY())
+    # Must not propagate; title updates are best-effort.
+    proctitle.set_terminal_title("anything")

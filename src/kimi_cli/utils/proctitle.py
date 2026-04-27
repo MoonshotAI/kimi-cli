@@ -109,10 +109,16 @@ def set_terminal_title(title: str) -> None:
     stderr = sys.stderr
     if not stderr.isatty():
         return
+    # On legacy Windows code pages or ASCII/C locale, stderr cannot encode
+    # arbitrary Unicode (Chinese topic, emoji, etc.) and would otherwise
+    # raise UnicodeEncodeError mid-startup. Title updates are best-effort,
+    # so degrade gracefully: substitute unencodable characters with "?".
     try:
-        stderr.write(osc)
+        encoding = getattr(stderr, "encoding", None) or "utf-8"
+        safe = osc.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        stderr.write(safe)
         stderr.flush()
-    except OSError:
+    except (OSError, UnicodeError, LookupError):
         pass
 
 
