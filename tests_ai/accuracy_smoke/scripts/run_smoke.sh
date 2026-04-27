@@ -79,7 +79,7 @@ while IFS= read -r task || [ -n "${task}" ]; do
     continue
   fi
 
-  python - "${task}" "${latest_job_dir}" "${SUMMARY_TSV}" <<'PY'
+  python3 - "${task}" "${latest_job_dir}" "${SUMMARY_TSV}" <<'PY'
 import json
 import pathlib
 import sys
