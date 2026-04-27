@@ -49,6 +49,22 @@ def _short_session_id(session_id: str) -> str:
     return compact[:_SHORT_SESSION_ID_LEN] or session_id
 
 
+def _sanitize_proctitle_token(value: str) -> str:
+    """Make ``value`` safe to embed in a ``key=value`` process-title token.
+
+    Whitespace and ``=`` would break naive split-on-whitespace parsing by
+    external observers, so both are replaced with ``_``. All other Unicode,
+    including non-ASCII path components, is preserved verbatim.
+    """
+    chars: list[str] = []
+    for ch in value:
+        if ch.isspace() or ch == "=":
+            chars.append("_")
+        else:
+            chars.append(ch)
+    return "".join(chars)
+
+
 def compose_session_process_title(
     session_id: str,
     work_dir: str | os.PathLike[str] | None = None,
@@ -65,13 +81,17 @@ def compose_session_process_title(
     explicit ``--session`` flag, which is the common case.
 
     The ``key=value`` token form is intentional: it parses with simple
-    splits and avoids ambiguity if user-facing branding changes.
+    splits and avoids ambiguity if user-facing branding changes. To keep
+    that contract intact, whitespace and ``=`` inside the cwd basename are
+    replaced with ``_`` via :func:`_sanitize_proctitle_token`; otherwise a
+    repository under, say, ``.../John Doe/`` would yield ``cwd=John Doe``
+    and break naive token parsing.
     """
     parts: list[str] = [base_name, f"session={_short_session_id(session_id)}"]
     if work_dir is not None:
         basename = os.path.basename(os.path.normpath(str(work_dir)))
         if basename:
-            parts.append(f"cwd={basename}")
+            parts.append(f"cwd={_sanitize_proctitle_token(basename)}")
     return " ".join(parts)
 
 

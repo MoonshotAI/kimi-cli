@@ -48,3 +48,37 @@ def test_set_session_process_title_dispatches_to_setproctitle(monkeypatch: pytes
     monkeypatch.setattr(proctitle, "set_process_title", lambda title: captured.append(title))
     proctitle.set_session_process_title("12345678-aaaa-bbbb-cccc-dddddddddddd", "/tmp/proj")
     assert captured == ["kimi-code session=12345678 cwd=proj"]
+
+
+def test_compose_session_process_title_replaces_spaces_in_cwd():
+    title = proctitle.compose_session_process_title(
+        "12345678-aaaa-bbbb-cccc-dddddddddddd",
+        work_dir="/home/John Doe/my project",
+    )
+    assert title == "kimi-code session=12345678 cwd=my_project"
+
+
+def test_compose_session_process_title_replaces_equals_in_cwd():
+    title = proctitle.compose_session_process_title(
+        "12345678-aaaa-bbbb-cccc-dddddddddddd",
+        work_dir="/srv/key=value",
+    )
+    assert title == "kimi-code session=12345678 cwd=key_value"
+
+
+def test_compose_session_process_title_preserves_unicode_cwd():
+    title = proctitle.compose_session_process_title(
+        "12345678-aaaa-bbbb-cccc-dddddddddddd",
+        work_dir="C:/项目/我的-app",
+    )
+    assert title == "kimi-code session=12345678 cwd=我的-app"
+
+
+def test_compose_session_process_title_token_count_remains_three_with_spaces():
+    title = proctitle.compose_session_process_title(
+        "12345678-aaaa-bbbb-cccc-dddddddddddd",
+        work_dir="/x/a b c d",
+    )
+    # Naive split-on-whitespace must yield exactly 3 tokens, preserving the
+    # documented machine-readable contract.
+    assert title.split() == ["kimi-code", "session=12345678", "cwd=a_b_c_d"]
