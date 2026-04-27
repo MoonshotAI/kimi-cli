@@ -584,17 +584,11 @@ def kimi(
             import contextlib as _runtime_status_contextlib
             import os as _runtime_status_os
 
-            from kimi_cli.runtime_status import (
-                prune_stale_pid_index,
-                write_runtime_status,
-            )
+            from kimi_cli.runtime_status import write_runtime_status
             from kimi_cli.utils.proctitle import set_session_process_title
 
             set_session_process_title(session.id, str(work_dir))
             with _runtime_status_contextlib.suppress(OSError):
-                # Best-effort sweep of orphan PID-index mirrors left behind
-                # by previously force-killed sessions, before our own write.
-                prune_stale_pid_index()
                 write_runtime_status(
                     session.dir,
                     session_id=session.id,
