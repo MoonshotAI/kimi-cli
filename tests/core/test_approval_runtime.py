@@ -129,6 +129,60 @@ async def test_approval_runtime_wait_for_response_explicit_timeout() -> None:
 
 
 @pytest.mark.asyncio
+async def test_approval_runtime_cancelled_waiter_does_not_orphan_shared_waiter() -> None:
+    runtime = ApprovalRuntime()
+    request = runtime.create_request(
+        request_id="req-shared-cancel",
+        tool_call_id="call-shared-cancel",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/test.txt",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-shared-cancel"),
+    )
+
+    waiter_one = asyncio.create_task(runtime.wait_for_response(request.id))
+    waiter_two = asyncio.create_task(runtime.wait_for_response(request.id))
+
+    await asyncio.sleep(0)
+    waiter_one.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter_one
+
+    assert runtime.resolve(request.id, "approve") is True
+    response, feedback = await waiter_two
+    assert response == "approve"
+    assert feedback == ""
+
+
+@pytest.mark.asyncio
+async def test_approval_runtime_timeout_cancels_all_shared_waiters() -> None:
+    runtime = ApprovalRuntime()
+    request = runtime.create_request(
+        request_id="req-shared-timeout",
+        tool_call_id="call-shared-timeout",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/test.txt",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-shared-timeout"),
+    )
+
+    waiter_one = asyncio.create_task(runtime.wait_for_response(request.id, timeout=0.05))
+    waiter_two = asyncio.create_task(runtime.wait_for_response(request.id))
+
+    with pytest.raises(ApprovalCancelledError):
+        await waiter_one
+    with pytest.raises(ApprovalCancelledError):
+        await waiter_two
+
+    record = runtime.get_request(request.id)
+    assert record is not None
+    assert record.status == "cancelled"
+    assert record.feedback == "approval timed out"
+
+
+@pytest.mark.asyncio
 async def test_approval_runtime_cancel_by_source() -> None:
     runtime = ApprovalRuntime()
     request = runtime.create_request(
