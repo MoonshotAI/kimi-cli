@@ -151,9 +151,9 @@ def read_runtime_status(session_dir: Path) -> RuntimeStatus | None:
     started_at = parsed.get("started_at")
     kimi_version = parsed.get("kimi_version")
 
-    if not isinstance(schema_version, int):
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool):
         return None
-    if not isinstance(pid, int):
+    if not isinstance(pid, int) or isinstance(pid, bool):
         return None
     if not isinstance(session_id, str):
         return None

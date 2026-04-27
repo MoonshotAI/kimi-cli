@@ -170,3 +170,47 @@ def test_runtime_status_overwrites_previous_pid(tmp_path: Path):
     write_runtime_status(tmp_path, session_id="abc", work_dir="/w", pid=2000)
     second = read_runtime_status(tmp_path)
     assert second is not None and second.pid == 2000
+
+
+def test_read_runtime_status_rejects_bool_pid(tmp_path: Path):
+    """Python's bool is a subclass of int; the type guard must exclude it
+    so a corrupted/hand-edited 'pid: true' is not accepted as pid=1."""
+    (tmp_path / RUNTIME_STATUS_FILENAME).write_text(
+        json.dumps(
+            {
+                "schema_version": RUNTIME_STATUS_SCHEMA_VERSION,
+                "pid": True,
+                "session_id": "abc",
+                "work_dir": "/w",
+                "hostname": "h",
+                "started_at": 0.0,
+                "kimi_version": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert read_runtime_status(tmp_path) is None
+
+
+def test_read_runtime_status_rejects_bool_schema_version(tmp_path: Path):
+    (tmp_path / RUNTIME_STATUS_FILENAME).write_text(
+        json.dumps(
+            {
+                "schema_version": True,
+                "pid": 1,
+                "session_id": "abc",
+                "work_dir": "/w",
+                "hostname": "h",
+                "started_at": 0.0,
+                "kimi_version": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    # The earlier 'schema_version != 1' equality check already rejects True
+    # before the isinstance guard runs (True == 1 in Python, but JSON
+    # decode keeps the bool type and dict.get returns the bool object,
+    # which still equals 1). Defense in depth via the bool guard ensures
+    # the malformed payload is rejected even if the equality semantics
+    # change in future Python versions.
+    assert read_runtime_status(tmp_path) is None
