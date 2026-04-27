@@ -31,7 +31,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `default_editor` | `string` | 默认外部编辑器命令（如 `"vim"`、`"code --wait"`），为空时自动检测 |
 | `theme` | `string` | 终端配色主题，可选 `"dark"` 或 `"light"`（默认为 `"dark"`） |
 | `show_thinking_stream` | `boolean` | 是否在 Live 区域以 6 行滚动预览方式实时展示模型的原始思考文本，并在 thinking 块结束时把完整思考内容（Markdown）写入历史记录（默认为 `true`；设为 `false` 则仅显示紧凑的 `Thinking ...` 指示器和一行 trace 总结） |
-| `merge_all_available_skills` | `boolean` | 是否合并所有品牌目录中的 Skills（默认为 `false`）；详见 [Skills 配置](../customization/skills.md) |
+| `merge_all_available_skills` | `boolean` | 是否合并所有品牌目录中的 Skills（默认为 `true`）；详见 [Skills 配置](../customization/skills.md) |
 | `providers` | `table` | API 供应商配置 |
 | `models` | `table` | 模型配置 |
 | `loop_control` | `table` | Agent 循环控制参数 |
@@ -49,7 +49,7 @@ default_plan_mode = false
 default_editor = ""
 theme = "dark"
 show_thinking_stream = true
-merge_all_available_skills = false
+merge_all_available_skills = true
 
 [providers.kimi-for-coding]
 type = "kimi"
@@ -121,6 +121,7 @@ custom_headers = { "X-Custom-Header" = "value" }
 | `model` | `string` | 是 | 模型标识符（API 中使用的模型名称） |
 | `max_context_size` | `integer` | 是 | 最大上下文长度（token 数） |
 | `capabilities` | `array` | 否 | 模型能力列表，详见 [平台与模型](./providers.md#模型能力) |
+| `display_name` | `string` | 否 | 模型展示名。在欢迎界面、提示框状态栏、`/model` 选单和切换确认消息中显示；未设置时回落到 `model`。对于 OAuth 登录的托管模型，启动时会从供应商的 `/models` 接口自动刷新此字段 |
 
 示例：
 
@@ -162,7 +163,9 @@ capabilities = ["thinking"]
 | --- | --- | --- | --- |
 | `max_running_tasks` | `integer` | `4` | 同时运行的最大后台任务数 |
 | `keep_alive_on_exit` | `boolean` | `false` | CLI 退出时是否保留后台任务运行；默认退出时终止所有后台任务 |
+| `kill_grace_period_ms` | `integer` | `2000` | CLI 退出发送 SIGTERM 后等待 shell worker 写入终态的宽限期（毫秒），超过后仍未退出的 worker 会被报告为残留。Agent 任务在 kill 时直接同步转为终态，不使用这个 grace period |
 | `agent_task_timeout_s` | `integer` | `900` | 后台 Agent 任务的最大运行时间（秒）；超时后任务标记为失败并通知主 Agent |
+| `print_wait_ceiling_s` | `integer` | `3600` | 一次性 `--print` 模式等待后台任务完成的硬上限（秒），超时则 kill 并退出。实际等待时间为"当前活跃任务中剩余预算最长的那个"，被此上限封顶 |
 
 ### `services`
 

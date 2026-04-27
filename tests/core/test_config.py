@@ -48,6 +48,7 @@ def test_default_config_dump():
                 "kill_grace_period_ms": 2000,
                 "keep_alive_on_exit": False,
                 "agent_task_timeout_s": 900,
+                "print_wait_ceiling_s": 3600,
             },
             "notifications": {
                 "claim_stale_after_ms": 15000,
@@ -55,7 +56,10 @@ def test_default_config_dump():
             "services": {"moonshot_search": None, "moonshot_fetch": None},
             "mcp": {"client": {"tool_call_timeout_ms": 60000}},
             "hooks": [],
-            "merge_all_available_skills": False,
+            "merge_all_available_skills": True,
+            "extra_skill_dirs": [],
+            "telemetry": True,
+            "skip_yolo_prompt_injection": False,
         }
     )
 

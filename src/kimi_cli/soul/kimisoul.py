@@ -96,6 +96,46 @@ FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
 
 
+def classify_api_error(e: Exception) -> tuple[str, int | None]:
+    """Classify an LLM API exception into (error_type, status_code).
+
+    Exposed at module level so telemetry tests can import the real function
+    instead of duplicating the classification table.
+
+    Returns:
+        (error_type, status_code) where status_code is None for non-HTTP errors.
+    """
+    status_code: int | None = None
+    if isinstance(e, APIStatusError):
+        status = getattr(e, "status_code", getattr(e, "status", 0))
+        status_code = int(status) if status else None
+        if status == 429:
+            return "rate_limit", status_code
+        if status in (401, 403):
+            return "auth", status_code
+        if status >= 500:
+            return "5xx_server", status_code
+        if 400 <= status < 500:
+            msg_lower = str(e).lower()
+            if (
+                "context length" in msg_lower
+                or "context_length" in msg_lower
+                or "max tokens" in msg_lower
+                or "maximum context" in msg_lower
+                or "too many tokens" in msg_lower
+            ):
+                return "context_overflow", status_code
+            return "4xx_client", status_code
+        return "api", status_code
+    if isinstance(e, APIConnectionError):
+        return "network", None
+    if isinstance(e, (APITimeoutError, TimeoutError)):
+        return "timeout", None
+    if isinstance(e, APIEmptyResponseError):
+        return "empty_response", None
+    return "other", None
+
+
 type StepStopReason = Literal["no_tool_calls", "tool_rejected"]
 
 
@@ -159,7 +199,11 @@ class KimiSoul:
             self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
-            YoloModeInjectionProvider(),
+            *(
+                []
+                if self._runtime.config.skip_yolo_prompt_injection
+                else [YoloModeInjectionProvider()]
+            ),
         ]
         self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False
@@ -462,7 +506,12 @@ class KimiSoul:
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
         return self._slash_commands
 
-    async def run(self, user_input: str | list[ContentPart]):
+    async def run(
+        self,
+        user_input: str | list[ContentPart],
+        *,
+        skip_user_prompt_hook: bool = False,
+    ):
         approval_source_token = None
         turn_started = False
         turn_finished = False
@@ -479,27 +528,34 @@ class KimiSoul:
 
             set_session_id(self._runtime.session.id)
 
-            # --- UserPromptSubmit hook ---
-            text_input_for_hook = user_input if isinstance(user_input, str) else ""
             from kimi_cli.hooks import events
 
-            hook_results = await self._hook_engine.trigger(
-                "UserPromptSubmit",
-                matcher_value=text_input_for_hook,
-                input_data=events.user_prompt_submit(
-                    session_id=self._runtime.session.id,
-                    cwd=str(Path.cwd()),
-                    prompt=text_input_for_hook,
-                ),
-            )
-            for result in hook_results:
-                if result.action == "block":
-                    wire_send(TurnBegin(user_input=user_input))
-                    turn_started = True
-                    wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
-                    wire_send(TurnEnd())
-                    turn_finished = True
-                    return
+            # --- UserPromptSubmit hook ---
+            # Synthetic internal prompts (e.g. background-task notification
+            # follow-ups injected by ``Print`` after a bg task finishes or
+            # the wait ceiling is hit) must bypass ``UserPromptSubmit``:
+            # they are not user input, and a user-configured prompt-blocking
+            # hook would drop the notification and hang the wait loop.
+            if not skip_user_prompt_hook:
+                text_input_for_hook = user_input if isinstance(user_input, str) else ""
+
+                hook_results = await self._hook_engine.trigger(
+                    "UserPromptSubmit",
+                    matcher_value=text_input_for_hook,
+                    input_data=events.user_prompt_submit(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        prompt=text_input_for_hook,
+                    ),
+                )
+                for result in hook_results:
+                    if result.action == "block":
+                        wire_send(TurnBegin(user_input=user_input))
+                        turn_started = True
+                        wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
+                        wire_send(TurnEnd())
+                        turn_finished = True
+                        return
 
             wire_send(TurnBegin(user_input=user_input))
             turn_started = True
@@ -653,6 +709,9 @@ class KimiSoul:
 
     def _make_skill_runner(self, skill: Skill) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
+            from kimi_cli.telemetry import track
+
+            track("skill_invoked", skill_name=_skill.name)
             skill_text = await read_skill_text(_skill)
             if skill_text is None:
                 wire_send(
@@ -683,17 +742,38 @@ class KimiSoul:
                 wire_send(MCPLoadingBegin())
             try:
                 await self.wait_for_background_mcp_loading()
+                # Track MCP connection result
+                if loading:
+                    from kimi_cli.telemetry import track as _track_mcp
+
+                    mcp_snap = self._mcp_status_snapshot()
+                    if mcp_snap:
+                        if mcp_snap.connected > 0:
+                            _track_mcp(
+                                "mcp_connected",
+                                server_count=mcp_snap.connected,
+                                total_count=mcp_snap.total,
+                            )
+                        _failed = mcp_snap.total - mcp_snap.connected
+                        if _failed > 0:
+                            _track_mcp(
+                                "mcp_failed",
+                                failed_count=_failed,
+                                total_count=mcp_snap.total,
+                            )
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
         step_no = 0
+        self._current_step_no = 0
         while True:
             step_no += 1
             if step_no > self._loop_control.max_steps_per_turn:
                 raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
+            self._current_step_no = step_no
             wire_send(StepBegin(n=step_no))
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
@@ -735,6 +815,14 @@ class KimiSoul:
                     request_id=req_id,
                 )
                 wire_send(StepInterrupted())
+                # Track API/step errors
+                from kimi_cli.telemetry import track
+
+                error_type, status_code = classify_api_error(e)
+                if status_code is not None:
+                    track("api_error", error_type=error_type, status_code=status_code)
+                else:
+                    track("api_error", error_type=error_type)
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
@@ -758,6 +846,7 @@ class KimiSoul:
                 has_steers = await self._consume_pending_steers()
                 if has_steers:
                     continue  # steers injected, force another LLM step
+
                 final_message = (
                     step_outcome.assistant_message
                     if step_outcome.stop_reason == "no_tool_calls"
@@ -990,6 +1079,7 @@ class KimiSoul:
             )
 
         trigger_reason = "manual" if custom_instruction else "auto"
+        before_tokens = self._context.token_count
         from kimi_cli.hooks import events
 
         await self._hook_engine.trigger(
@@ -999,12 +1089,23 @@ class KimiSoul:
                 session_id=self._runtime.session.id,
                 cwd=str(Path.cwd()),
                 trigger=trigger_reason,
-                token_count=self._context.token_count,
+                token_count=before_tokens,
             ),
         )
 
         wire_send(CompactionBegin())
-        compaction_result = await _compact_with_retry()
+        try:
+            compaction_result = await _compact_with_retry()
+        except Exception:
+            from kimi_cli.telemetry import track
+
+            track(
+                "compaction_triggered",
+                trigger_type=trigger_reason,
+                before_tokens=before_tokens,
+                success=False,
+            )
+            raise
         await self._context.clear()
         await self._context.write_system_prompt(self._agent.system_prompt)
         await self._checkpoint()
@@ -1031,6 +1132,16 @@ class KimiSoul:
         await self._context.update_token_count(estimated_token_count)
 
         wire_send(CompactionEnd())
+
+        from kimi_cli.telemetry import track
+
+        track(
+            "compaction_triggered",
+            trigger_type=trigger_reason,
+            before_tokens=before_tokens,
+            after_tokens=estimated_token_count,
+            success=True,
+        )
 
         _hook_task = asyncio.create_task(
             self._hook_engine.trigger(
@@ -1067,6 +1178,7 @@ class KimiSoul:
         *,
         chat_provider: object | None = None,
         _auth_retried: bool = False,
+        _connection_retried: bool = False,
     ) -> Any:
         try:
             return await operation()
@@ -1095,9 +1207,22 @@ class KimiSoul:
             # Re-enter full recovery so that transient connection errors
             # on the retry are still handled by on_retryable_error.
             return await self._run_with_connection_recovery(
-                name, operation, chat_provider=chat_provider, _auth_retried=True
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=True,
+                _connection_retried=_connection_retried,
             )
         except (APIConnectionError, APITimeoutError) as error:
+            if _connection_retried:
+                logger.warning(
+                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
+                    name=name,
+                    error_type=type(error).__name__,
+                    error=error,
+                )
+                error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
+                raise
             if not isinstance(chat_provider, RetryableChatProvider):
                 raise
             try:
@@ -1121,17 +1246,15 @@ class KimiSoul:
                 name=name,
                 error_type=type(error).__name__,
             )
-            try:
-                return await operation()
-            except (APIConnectionError, APITimeoutError) as second_error:
-                logger.warning(
-                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
-                    name=name,
-                    error_type=type(second_error).__name__,
-                    error=second_error,
-                )
-                second_error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
-                raise
+            # Re-enter the full recovery path so a 401 on the retry can still
+            # trigger OAuth refresh instead of bubbling straight to the user.
+            return await self._run_with_connection_recovery(
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=_auth_retried,
+                _connection_retried=True,
+            )
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):
@@ -1217,6 +1340,10 @@ class FlowRunner:
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
+        if self._name:
+            from kimi_cli.telemetry import track
+
+            track("flow_invoked", flow_name=self._name)
 
         current_id = self._flow.begin_id
         moves = 0

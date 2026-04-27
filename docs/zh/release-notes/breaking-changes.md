@@ -4,6 +4,15 @@
 
 ## 未发布
 
+## 1.39.0
+
+### `merge_all_available_skills` 默认值翻转为 `true`
+
+`merge_all_available_skills` 配置项的默认值从 `false` 改为 `true`。kimi-cli 现在默认会合并用户级和项目级所有已存在的品牌 Skills 目录（`.kimi/skills`、`.claude/skills`、`.codex/skills`），而不是仅使用找到的第一个。升级后，同时维护多个品牌目录（例如同时保留 `~/.kimi/skills` 和 `~/.claude/skills`）的用户会开箱即看到全部 Skills。
+
+- **受影响**：同时维护多个品牌 Skills 目录，并依赖旧的"仅取第一个"行为来隐藏重复项的用户
+- **迁移**：在配置中显式设置 `merge_all_available_skills = false` 可恢复旧的仅匹配第一个目录的行为
+
 ## 1.25.0
 
 ### Wire 协议 1.6——子 Agent 与审批字段变更
