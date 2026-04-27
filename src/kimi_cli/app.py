@@ -624,7 +624,10 @@ class KimiCLI:
                 await cancel_event.wait()
                 run_cancel_event.set()
 
-            external_cancel_task = asyncio.create_task(_mirror_external_cancel())
+            external_cancel_task = asyncio.create_task(
+                _mirror_external_cancel(),
+                name="cancel-event-mirror",
+            )
             soul_task = asyncio.create_task(
                 run_soul(
                     self.soul,

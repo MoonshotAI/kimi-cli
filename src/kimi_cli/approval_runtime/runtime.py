@@ -97,10 +97,14 @@ class ApprovalRuntime:
                 return request.response, request.feedback
             waiter = asyncio.get_running_loop().create_future()
             self._waiters[request_id] = waiter
-        if timeout is None:
-            return await asyncio.shield(waiter)
         try:
+            if timeout is None:
+                return await asyncio.shield(waiter)
             return await asyncio.wait_for(asyncio.shield(waiter), timeout=timeout)
+        except asyncio.CancelledError:
+            if self._waiters.get(request_id) is waiter:
+                self._waiters.pop(request_id, None)
+            raise
         except TimeoutError:
             logger.warning(
                 "Approval request {id} timed out after {t}s",
