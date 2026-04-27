@@ -68,6 +68,13 @@ def _get_original_stderr_handle() -> IO[bytes] | None:
             with contextlib.suppress(OSError):
                 candidate.close()
             return None
+        # Mark the cached fd non-inheritable so subprocesses spawned later
+        # (shell commands, MCP servers) do not accidentally inherit a TTY
+        # handle they should not own. The redirector returns an
+        # inheritable fd by default; flipping the flag here is local to
+        # our cached copy.
+        with contextlib.suppress(OSError, AttributeError):
+            os.set_inheritable(candidate.fileno(), False)
         _original_stderr_handle = candidate
         return candidate
 

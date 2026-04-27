@@ -322,3 +322,49 @@ def test_set_terminal_title_degrades_when_stderr_write_raises(
     monkeypatch.setattr(sys, "stderr", _BoomTTY())
     # Must not propagate; title updates are best-effort.
     proctitle.set_terminal_title("anything")
+
+
+def test_get_original_stderr_handle_marks_fd_non_inheritable(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Cached fd must not leak into spawned subprocesses."""
+    import contextlib as _contextlib
+    import os as _os
+
+    # Build a real OS pipe and pretend its read end is the original TTY.
+    rfd, wfd = _os.pipe()
+    _os.set_inheritable(rfd, True)  # simulate the redirector's default
+
+    class _FakeTTY:
+        def __init__(self, fd: int):
+            self._fd = fd
+
+        def fileno(self) -> int:
+            return self._fd
+
+        def write(self, data: bytes) -> int:
+            return 0
+
+        def flush(self) -> None:
+            pass
+
+        def close(self) -> None:
+            with _contextlib.suppress(OSError):
+                _os.close(self._fd)
+
+    handle = _FakeTTY(rfd)
+    monkeypatch.setattr(
+        "kimi_cli.utils.logging.get_original_stderr_handle",
+        lambda: handle,
+    )
+    monkeypatch.setattr(_os, "isatty", lambda fd: fd == rfd)
+
+    try:
+        result = proctitle._get_original_stderr_handle()
+        assert result is handle
+        assert _os.get_inheritable(rfd) is False
+    finally:
+        with _contextlib.suppress(OSError):
+            handle.close()
+        with _contextlib.suppress(OSError):
+            _os.close(wfd)
