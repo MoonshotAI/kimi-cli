@@ -278,9 +278,9 @@ def test_set_terminal_title_degrades_on_unencodable_stderr(
     monkeypatch: pytest.MonkeyPatch,
 ):
     # Force the original-stderr-handle path to miss so the sys.stderr
-    # fallback is exercised.
-    proctitle._original_stderr_handle = None
-    proctitle._original_stderr_attempted = True
+    # fallback is exercised. The autouse _reset_cached_handle fixture
+    # already nulled the cache; we additionally stub the lookup helper
+    # to simulate "redirector not yet installed".
     monkeypatch.setattr(
         "kimi_cli.utils.logging.get_original_stderr_handle",
         lambda: None,
@@ -305,8 +305,6 @@ def test_set_terminal_title_degrades_on_unencodable_stderr(
 def test_set_terminal_title_degrades_when_stderr_write_raises(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    proctitle._original_stderr_handle = None
-    proctitle._original_stderr_attempted = True
     monkeypatch.setattr(
         "kimi_cli.utils.logging.get_original_stderr_handle",
         lambda: None,
