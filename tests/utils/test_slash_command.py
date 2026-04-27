@@ -54,6 +54,11 @@ def test_parse_slash_command_call():
         SlashCommandCall(name="skill:doc-writing", args="", raw_input="/skill:doc-writing")
     )
 
+    # Test ? alias for help 
+    result = parse_slash_command_call("/?")
+    assert result == snapshot(SlashCommandCall(name="?", args="", raw_input="/?"))
+
+    
     # Edge cases: double slash
     assert parse_slash_command_call("//comment") is None
     assert parse_slash_command_call("//") is None
