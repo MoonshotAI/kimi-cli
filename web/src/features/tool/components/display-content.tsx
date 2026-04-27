@@ -508,7 +508,7 @@ const DiffSummaryContent = ({ data }: { data: DiffDisplayData }) => {
   );
 };
 
-const DiffContent = ({ data }: { data: DiffDisplayData }) => {
+export const DiffContent = ({ data }: { data: DiffDisplayData }) => {
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
