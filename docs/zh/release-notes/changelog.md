@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：修复上下文压缩后 yolo 模式提示词丢失的问题——当 yolo 模式处于激活状态时，非交互模式下的指导提示（不要调用 AskUserQuestion、计划模式切换自动批准等）现在会在每次上下文压缩后的第一个 LLM 步骤重新注入，而不是在原始提示被折叠进压缩摘要后静默消失
+
 ## 1.39.0 (2026-04-24)
 
 - Skill：修复项目级 Skill 被忽略、用户级 Skill 在同名冲突时静默获胜的问题——系统提示现在会把发现到的 Skill 按 `### Project` / `### User` / `### Extra` / `### Built-in` 四个分组呈现，让模型能分辨出每个 Skill 来自哪一层；当同一 Skill 名称同时存在于多个作用域时，越具体的作用域优先（Project > User > Extra > Built-in），项目自身的 `.kimi/skills/foo` 或 `.claude/skills/foo` 现在能正确覆盖用户级或内置的同名 `foo`，而不是被它们覆盖

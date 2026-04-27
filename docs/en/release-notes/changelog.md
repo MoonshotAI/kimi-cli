@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Fix yolo mode reminder being lost after context compaction — the non-interactive-mode guidance ("don't call AskUserQuestion, plan-mode toggles are auto-approved") is now re-injected on the first LLM step after each compaction while yolo remains active, instead of being silently dropped when the original reminder is folded into the compaction summary
+
 ## 1.39.0 (2026-04-24)
 
 - Skill: Fix project-scope skills being ignored and user-scope skills silently winning name conflicts — the system prompt now groups discovered skills under `### Project` / `### User` / `### Extra` / `### Built-in` headings so the model can tell where each skill came from, and when the same name exists in multiple scopes the more specific scope wins (Project > User > Extra > Built-in) so a project's own `.kimi/skills/foo` or `.claude/skills/foo` correctly overrides a user-level or bundled `foo` instead of the other way around
