@@ -15,6 +15,7 @@ Only write entries that are worth mentioning to users.
 - Shell: Show active background agent task count in the prompt status bar — the existing `⚙ bash: N` badge only counted background Shell tasks and filtered out background Agent subagents, so when many subagents were running the prompt looked idle and users could not tell work was in progress; the toolbar now renders `⚙ bash: N` and `⚙ agent: N` as two independent badges (each hidden when its count is 0) and drops the agent badge first when the terminal is too narrow to fit both
 - Auth: Fix managed model list refresh silently failing for OAuth users with expired tokens — the background `/models` sync now detects 401 responses, forces an OAuth token refresh, and retries with the refreshed token; if the refresh fails or the refreshed token is still rejected, it falls back to the originally configured static API key instead of skipping the provider
 - Core: Fix connection recovery not triggering OAuth refresh when the retry returns 401 — after recreating the HTTP client on `APIConnectionError` or `APITimeoutError`, the retry now re-enters the full recovery path so a subsequent 401 correctly refreshes the OAuth token instead of bubbling to the user as an unrecoverable error
+- Shell: Echo `/skill:*` and `/flow:*` inputs in the transcript so workflow commands stay visible after enter; operational slash commands like `/usage` and `/model` remain hidden
 
 ## 1.39.0 (2026-04-24)
 
