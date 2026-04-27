@@ -233,3 +233,46 @@ def test_clear_with_explicit_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     rs.clear_runtime_status(session_dir, pid=5555)
 
     assert not (share / "runtime" / "5555.json").exists()
+
+
+def test_prune_stale_pid_index_removes_dead_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    share = tmp_path / "share"
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(share))
+    pid_dir = share / "runtime"
+    pid_dir.mkdir(parents=True)
+
+    import os as _os
+
+    live_pid = _os.getpid()
+    # Use a clearly-bogus high pid that won't be allocated.
+    bogus_pid = 9_999_999
+
+    (pid_dir / f"{live_pid}.json").write_text("{}", encoding="utf-8")
+    (pid_dir / f"{bogus_pid}.json").write_text("{}", encoding="utf-8")
+    (pid_dir / "not-a-pid.json").write_text("{}", encoding="utf-8")
+    (pid_dir / "ignored.txt").write_text("noise", encoding="utf-8")
+
+    removed = rs.prune_stale_pid_index()
+
+    # The bogus PID file is gone; the live one and non-pid filenames stay.
+    assert not (pid_dir / f"{bogus_pid}.json").exists()
+    assert (pid_dir / f"{live_pid}.json").exists()
+    assert (pid_dir / "not-a-pid.json").exists()
+    assert (pid_dir / "ignored.txt").exists()
+    assert removed >= 1
+
+
+def test_prune_stale_pid_index_when_dir_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    share = tmp_path / "share"
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(share))
+    # No runtime/ directory created at all — must not raise, returns 0.
+    assert rs.prune_stale_pid_index() == 0
+
+
+def test_is_pid_alive_basic(monkeypatch: pytest.MonkeyPatch):
+    import os as _os
+
+    assert rs._is_pid_alive(_os.getpid()) is True
+    assert rs._is_pid_alive(0) is False
+    assert rs._is_pid_alive(-1) is False
+    assert rs._is_pid_alive(9_999_999) is False

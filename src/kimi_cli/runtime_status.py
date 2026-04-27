@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -226,3 +227,91 @@ def find_runtime_status_by_pid(pid: int) -> RuntimeStatus | None:
         logger.debug("Failed to read PID index file {file}", file=target)
         return None
     return _parse_runtime_payload(raw, target)
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Best-effort cross-platform liveness check for a PID.
+
+    On POSIX, ``os.kill(pid, 0)`` does not deliver a signal; it just probes
+    permission to send one and raises ``ProcessLookupError`` when the PID
+    is gone. On Windows, ``os.kill(pid, 0)`` is **not** a no-op — signal 0
+    maps to ``CTRL_C_EVENT``, so we use ``OpenProcess`` via ``ctypes``
+    instead. ``PermissionError`` (POSIX) is treated as "alive" because the
+    process exists, just not under our user.
+    """
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        return _is_pid_alive_windows(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _is_pid_alive_windows(pid: int) -> bool:
+    """Liveness check for Windows that does not signal the target process.
+
+    Opens a minimal-rights handle to the PID and inspects its exit status.
+    A handle on a still-running process reports exit code ``STILL_ACTIVE``
+    (259); anything else (or failure to open) means the process is gone or
+    inaccessible. Always closes the handle.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return False
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return False
+        return exit_code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def prune_stale_pid_index() -> int:
+    """Remove ``<share_dir>/runtime/<pid>.json`` files whose PID is dead.
+
+    Sweeps the PID-index directory once and unlinks any mirror whose PID
+    no longer points to a running process. Safe to call at startup so the
+    directory does not accumulate orphans from crashed or force-killed
+    sessions over time. Returns the number of files removed.
+    """
+    pid_dir = _pid_index_dir()
+    if not pid_dir.exists():
+        return 0
+    removed = 0
+    for entry in pid_dir.iterdir():
+        if entry.suffix != ".json":
+            continue
+        try:
+            pid = int(entry.stem)
+        except ValueError:
+            continue
+        if _is_pid_alive(pid):
+            continue
+        try:
+            entry.unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            logger.debug("Failed to prune stale PID index file {file}", file=entry)
+    return removed
