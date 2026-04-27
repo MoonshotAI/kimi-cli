@@ -10,6 +10,7 @@ import pytest
 import kimi_cli.ui.shell as shell_module
 from kimi_cli.soul import Soul
 from kimi_cli.ui.shell.prompt import PromptMode, UserInput
+from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.wire.types import TextPart
 
 
@@ -65,6 +66,10 @@ def _make_fake_soul():
         thinking=False,
         status=SimpleNamespace(context_usage=0.0, context_tokens=0, max_context_tokens=0),
     )
+
+
+def _noop(app: object, args: str) -> None:
+    pass
 
 
 @pytest.fixture
@@ -147,6 +152,132 @@ async def test_shell_run_dispatches_visible_slash_with_expanded_placeholder_args
     assert command_call.args == "line1\nline2\nline3"
     assert command_call.raw_input == "/fakecmd line1\nline2\nline3"
     assert printed == ["Bye!"]
+
+
+@pytest.mark.asyncio
+async def test_shell_run_echoes_visible_skill_slash_with_placeholder_before_dispatch(
+    monkeypatch, _patched_shell_run
+) -> None:
+    printed = _patched_shell_run
+    _FakePromptSession.responses = deque(
+        [
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/skill:demo [Pasted text #1 +3 lines]",
+                resolved_command="/skill:demo line1\nline2\nline3",
+                content=[TextPart(text="line1\nline2\nline3")],
+            ),
+            EOFError(),
+        ]
+    )
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    shell._available_slash_commands["skill:demo"] = SlashCommand(
+        name="skill:demo",
+        description="demo skill",
+        func=_noop,
+        aliases=[],
+    )
+    shell.run_soul_command = AsyncMock(return_value=True)
+    shell._run_slash_command = AsyncMock()
+
+    result = await shell.run()
+
+    assert result is True
+    assert _FakePromptSession.instances[0].prompt_calls == 2
+    shell.run_soul_command.assert_awaited_once_with("/skill:demo line1\nline2\nline3")
+    shell._run_slash_command.assert_not_awaited()
+    assert printed == ["✨ /skill:demo [Pasted text #1 +3 lines]", "", "Bye!"]
+
+
+@pytest.mark.asyncio
+async def test_shell_run_echoes_visible_flow_slash_with_placeholder_before_dispatch(
+    monkeypatch, _patched_shell_run
+) -> None:
+    printed = _patched_shell_run
+    _FakePromptSession.responses = deque(
+        [
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/flow:demo [Pasted text #1 +3 lines]",
+                resolved_command="/flow:demo line1\nline2\nline3",
+                content=[TextPart(text="line1\nline2\nline3")],
+            ),
+            EOFError(),
+        ]
+    )
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    shell._available_slash_commands["flow:demo"] = SlashCommand(
+        name="flow:demo",
+        description="demo flow",
+        func=_noop,
+        aliases=[],
+    )
+    shell.run_soul_command = AsyncMock(return_value=True)
+    shell._run_slash_command = AsyncMock()
+
+    result = await shell.run()
+
+    assert result is True
+    assert _FakePromptSession.instances[0].prompt_calls == 2
+    shell.run_soul_command.assert_awaited_once_with("/flow:demo line1\nline2\nline3")
+    shell._run_slash_command.assert_not_awaited()
+    assert printed == ["✨ /flow:demo [Pasted text #1 +3 lines]", "", "Bye!"]
+
+
+@pytest.mark.asyncio
+async def test_shell_run_echoes_unregistered_skill_slash_before_unknown_dispatch(
+    monkeypatch, _patched_shell_run
+) -> None:
+    printed = _patched_shell_run
+    _FakePromptSession.responses = deque(
+        [
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/skill:not-found 修一下登录",
+                resolved_command="/skill:not-found 修一下登录",
+                content=[TextPart(text="/skill:not-found 修一下登录")],
+            ),
+            EOFError(),
+        ]
+    )
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    shell.run_soul_command = AsyncMock(return_value=True)
+    shell._run_slash_command = AsyncMock()
+
+    result = await shell.run()
+
+    assert result is True
+    shell.run_soul_command.assert_not_awaited()
+    shell._run_slash_command.assert_awaited_once()
+    assert printed == ["✨ /skill:not-found 修一下登录", "Bye!"]
+
+
+@pytest.mark.asyncio
+async def test_shell_run_echoes_unregistered_flow_slash_before_unknown_dispatch(
+    monkeypatch, _patched_shell_run
+) -> None:
+    printed = _patched_shell_run
+    _FakePromptSession.responses = deque(
+        [
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/flow:not-found 执行一下",
+                resolved_command="/flow:not-found 执行一下",
+                content=[TextPart(text="/flow:not-found 执行一下")],
+            ),
+            EOFError(),
+        ]
+    )
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    shell.run_soul_command = AsyncMock(return_value=True)
+    shell._run_slash_command = AsyncMock()
+
+    result = await shell.run()
+
+    assert result is True
+    shell.run_soul_command.assert_not_awaited()
+    shell._run_slash_command.assert_awaited_once()
+    assert printed == ["✨ /flow:not-found 执行一下", "Bye!"]
 
 
 @pytest.mark.asyncio
