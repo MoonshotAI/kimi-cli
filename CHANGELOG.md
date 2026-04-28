@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Web: Keep tool media previews visible when tool details are collapsed — images and videos returned by tools now render below the tool card instead of inside the collapsible detail area, so preview thumbnails remain accessible after collapsing a tool
 - Kosong: Fix stale API key after OAuth token refresh in Kimi provider — `on_retryable_error` now reads the current `api_key` from the live client instead of the cached `_api_key`, so that OAuth token refreshes applied via `client.api_key` are preserved when the client is rebuilt after a retryable error
 - Core: Approval requests no longer auto-timeout after 5 minutes, which previously surfaced as `Rejected by user`; active foreground and subagent approvals now wait indefinitely for user response
 - Core: Fix yolo mode reminder being lost after context compaction — the non-interactive-mode guidance ("don't call AskUserQuestion, plan-mode toggles are auto-approved") is now re-injected on the first LLM step after each compaction while yolo remains active, instead of being silently dropped when the original reminder is folded into the compaction summary

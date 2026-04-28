@@ -211,7 +211,7 @@ const renderToolMessage = ({
     : null;
 
   const toolBlock = (
-    <>
+    <div className="space-y-1">
       <Tool
         key={`${message.id}-${blocksExpanded}`}
         defaultOpen={blocksExpanded}
@@ -225,7 +225,6 @@ const renderToolMessage = ({
         <ToolContent>
           {toolCall.input ? <ToolInput input={toolCall.input} /> : null}
           <ToolDisplay display={toolCall.display} isError={toolCall.isError} />
-          {toolCall.mediaParts ? <ToolMediaPreview mediaParts={toolCall.mediaParts} /> : null}
           {toolCall.subagentSteps && toolCall.subagentSteps.length > 0 ? (
             <SubagentActivity
               steps={toolCall.subagentSteps}
@@ -312,12 +311,15 @@ const renderToolMessage = ({
           ) : null}
         </ToolContent>
       </Tool>
+      {toolCall.mediaParts ? (
+        <ToolMediaPreview mediaParts={toolCall.mediaParts} />
+      ) : null}
       {isApprovalRequested ? (
         <div className={assistantMetaTextClass}>Waiting for your approval…</div>
       ) : isApprovalDenied ? (
         <div className={assistantMetaTextClass}>Tool execution cancelled.</div>
       ) : null}
-    </>
+    </div>
   );
 
   // Sub-agent origin: wrap in a visually demoted container with source label
