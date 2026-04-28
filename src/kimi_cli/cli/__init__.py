@@ -687,6 +687,18 @@ def kimi(
                     r = Reload(session_id=session.id, prefill_text=e.prefill_text)
                     r.source_session = session
                     raise r from e
+                # If the reload targets a different session (e.g. /new, /fork,
+                # /undo), the same PID is about to start serving that other
+                # session. Drop the current session's runtime.json first so it
+                # does not falsely keep claiming this live PID — the next _run()
+                # iteration will write a fresh runtime.json for the new session.
+                # Same-session reloads are fine because write_runtime_status
+                # atomically overwrites the existing record.
+                if e.session_id != session.id:
+                    with contextlib.suppress(Exception):
+                        from kimi_cli.runtime_status import clear_runtime_status
+
+                        clear_runtime_status(session.dir)
                 e.source_session = session
                 raise
             except SwitchToWeb:
