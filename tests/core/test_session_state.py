@@ -457,3 +457,30 @@ class TestApprovalStateCallback:
         approval = Approval(state=state)
         approval.set_yolo(True)  # should not raise
         assert state.yolo is True
+
+    @pytest.mark.asyncio
+    async def test_glob_pattern_auto_approve(self):
+        from kimi_cli.soul.approval import Approval, ApprovalState
+        from kimi_cli.soul.toolset import current_tool_call
+        from kimi_cli.wire.types import ToolCall
+
+        state = ApprovalState(auto_approve_actions={"mcp:obsidian_*", "Shell"})
+        approval = Approval(state=state)
+
+        token = current_tool_call.set(
+            ToolCall(
+                id="test", function=ToolCall.FunctionBody(name="obsidian_search", arguments=None)
+            )
+        )
+        try:
+            result = await approval.request(
+                sender="obsidian_search", action="mcp:obsidian_search", description="search"
+            )
+            assert result.approved is True
+
+            result2 = await approval.request(
+                sender="obsidian_write", action="mcp:obsidian_write", description="write"
+            )
+            assert result2.approved is True
+        finally:
+            current_tool_call.reset(token)
