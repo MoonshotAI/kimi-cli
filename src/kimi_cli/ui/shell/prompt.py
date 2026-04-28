@@ -1161,7 +1161,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "/theme: switch dark/light",
     ]
     if clipboard_available:
-        tips.append("ctrl-v: paste clipboard")
+        tips.append("ctrl-v/alt-v: paste clipboard")
     tips.append("@: mention files")
     return tips
 
@@ -1482,6 +1482,19 @@ class CustomPromptSession:
                 from kimi_cli.telemetry import track
 
                 track("shortcut_paste")
+                if self._try_paste_media(event):
+                    return
+                clipboard_data = event.app.clipboard.get_data()
+                if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                    return
+                self._insert_pasted_text(event.current_buffer, clipboard_data.text)
+                event.app.invalidate()
+
+            @_kb.add("escape", "v", eager=True)
+            def _(event: KeyPressEvent) -> None:
+                from kimi_cli.telemetry import track
+
+                track("shortcut_paste_alt")
                 if self._try_paste_media(event):
                     return
                 clipboard_data = event.app.clipboard.get_data()
