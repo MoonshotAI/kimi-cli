@@ -243,7 +243,23 @@ class OpenAIResponses:
 
         # tool role → function_call_output (return value from a prior tool call)
         if role == "tool":
-            call_id = message.tool_call_id or ""
+            call_id = message.tool_call_id
+            if not call_id:
+                # Convert malformed tool result into a user-visible retry prompt
+                # instead of hard-failing the request.
+                retry_text = (
+                    "[SYSTEM NOTICE] You attempted to return a tool result, but the "
+                    "`tool_call_id` is missing or empty. Every tool result must reference "
+                    "the exact `id` from the assistant's `tool_use` block. "
+                    "Please retry the tool call with the correct `tool_call_id`."
+                )
+                return [
+                    {
+                        "role": "user",
+                        "content": retry_text,
+                        "type": "message",
+                    }
+                ]
             if self._tool_message_conversion == "extract_text":
                 content = message.extract_text(sep="\n")
             else:

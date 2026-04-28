@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 from pathlib import Path
 from typing import Literal, Self
 
@@ -93,6 +95,13 @@ class LoopControl(BaseModel):
     """Context usage ratio threshold for auto-compaction. Default is 0.85 (85%).
     Auto-compaction triggers when context_tokens >= max_context_size * compaction_trigger_ratio
     or when context_tokens + reserved_context_size >= max_context_size."""
+
+    @model_validator(mode="after")
+    def apply_env_overrides(self) -> LoopControl:
+        if env_val := os.getenv("KIMI_RESERVED_CONTEXT_SIZE"):
+            with contextlib.suppress(ValueError):
+                self.reserved_context_size = int(env_val)
+        return self
 
 
 class BackgroundConfig(BaseModel):

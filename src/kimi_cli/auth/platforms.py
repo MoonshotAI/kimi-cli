@@ -336,15 +336,22 @@ def _apply_models(
             changed = True
             continue
 
+        # Preserve user-configured max_context_size when larger than API-reported value.
+        # The API may under-report context length (e.g., 262144 vs actual 2M support).
+        if existing.max_context_size > model.context_length:
+            # Keep user's larger value; do not mark changed since we're preserving
+            pass
+        elif existing.max_context_size < model.context_length:
+            existing.max_context_size = model.context_length
+            changed = True
+
         if existing.provider != provider_key:
             existing.provider = provider_key
             changed = True
         if existing.model != model.id:
             existing.model = model.id
             changed = True
-        if existing.max_context_size != model.context_length:
-            existing.max_context_size = model.context_length
-            changed = True
+
         if existing.capabilities != capabilities:
             existing.capabilities = capabilities
             changed = True

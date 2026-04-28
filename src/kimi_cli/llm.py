@@ -78,6 +78,8 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
             if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
                 model.max_context_size = int(max_context_size)
                 applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = max_context_size
+            if reserved_context_size := os.getenv("KIMI_RESERVED_CONTEXT_SIZE"):
+                applied["KIMI_RESERVED_CONTEXT_SIZE"] = reserved_context_size
             if capabilities := os.getenv("KIMI_MODEL_CAPABILITIES"):
                 caps_lower = (cap.strip().lower() for cap in capabilities.split(",") if cap.strip())
                 model.capabilities = set(
@@ -299,9 +301,16 @@ def create_llm(
         ):
             chat_provider = chat_provider.with_extra_body({"thinking": {"keep": thinking_keep}})
 
+    # Cap max_context_size to Anthropic API limit when using agent gateway.
+    # The agent gateway (agent-gw.kimi.com) uses Anthropic Messages API format
+    # which has a hard 262144 token limit regardless of the model's capability.
+    max_context_size = model.max_context_size
+    if provider.type == "kimi" and provider.base_url and "agent-gw" in provider.base_url:
+        max_context_size = min(max_context_size, 262_144)
+
     return LLM(
         chat_provider=chat_provider,
-        max_context_size=model.max_context_size,
+        max_context_size=max_context_size,
         capabilities=capabilities,
         model_config=model,
         provider_config=provider,

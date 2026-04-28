@@ -586,10 +586,16 @@ def _apply_kimi_code_config(
 
     for model_info in models:
         capabilities = model_info.capabilities or None
-        config.models[managed_model_key(platform.id, model_info.id)] = LLMModel(
+        model_key = managed_model_key(platform.id, model_info.id)
+        existing = config.models.get(model_key)
+        # Preserve user-configured max_context_size when larger than API-reported value.
+        max_context_size = model_info.context_length
+        if existing is not None and existing.max_context_size > max_context_size:
+            max_context_size = existing.max_context_size
+        config.models[model_key] = LLMModel(
             provider=provider_key,
             model=model_info.id,
-            max_context_size=model_info.context_length,
+            max_context_size=max_context_size,
             capabilities=capabilities,
             display_name=model_info.display_name,
         )

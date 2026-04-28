@@ -94,6 +94,8 @@ class TestRunKimiAgent:
             "What is your name? Reply in one sentence.",
             working_directory=str(Path.cwd()),
         )
-        assert not result.startswith("Error:")
+        # Guard against silent passes when the result is an error message that
+        # happens to contain "kimi" (e.g. from the working directory path).
+        assert not result.startswith("Error")
         assert len(result) > 0
         assert "Kimi" in result or "kimi" in result.lower()

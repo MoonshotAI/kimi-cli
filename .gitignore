@@ -43,6 +43,8 @@ build.sh
 cleanup.sh
 handoffs/
 kimi.log
+.codex
+PYEOF
 
 # Rust files
 target/
