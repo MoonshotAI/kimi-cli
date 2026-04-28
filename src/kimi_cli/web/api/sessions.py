@@ -106,18 +106,30 @@ def get_runner_ws(ws: WebSocket) -> KimiCLIRunner:
     return ws.app.state.runner
 
 
-def get_editable_session(
-    session_id: UUID,
-    runner: KimiCLIRunner,
-) -> JointSession:
-    """Get a session and verify it's not busy."""
+def get_session_or_404(session_id: UUID) -> JointSession:
+    """Load a session by id, raising 404 if it doesn't exist."""
     session = load_session_by_id(session_id)
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
         )
-    # Check if session is busy
+    return session
+
+
+def get_editable_session(
+    session_id: UUID,
+    runner: KimiCLIRunner,
+) -> JointSession:
+    """Get a session and verify it's not busy.
+
+    Use for operations that cannot run concurrently with a live worker
+    (delete, fork, upload). For state-only edits (rename, archive,
+    generate-title) the worker merges externally-mutable fields back
+    via ``Session.save_state``; those endpoints can use
+    :func:`get_session_or_404` instead.
+    """
+    session = get_session_or_404(session_id)
     session_process = runner.get_session(session_id)
     if session_process and session_process.is_busy:
         raise HTTPException(
@@ -586,12 +598,16 @@ async def delete_session(session_id: UUID, runner: KimiCLIRunner = Depends(get_r
 async def update_session(
     session_id: UUID,
     request: UpdateSessionRequest,
-    runner: KimiCLIRunner = Depends(get_runner),
 ) -> Session:
-    """Update a session (e.g., rename title or archive/unarchive)."""
+    """Update a session (e.g., rename title or archive/unarchive).
+
+    Safe to invoke while a worker is running: only externally-mutable
+    fields are touched, and ``Session.save_state`` reloads them from
+    disk before each worker write.
+    """
     from kimi_cli.session_state import load_session_state, save_session_state
 
-    session = get_editable_session(session_id, runner)
+    session = get_session_or_404(session_id)
     session_dir = session.kimi_cli_session.dir
     state = load_session_state(session_dir)
 
@@ -749,14 +765,16 @@ async def fork_session_endpoint(
 async def generate_session_title(
     session_id: UUID,
     request: GenerateTitleRequest | None = None,
-    runner: KimiCLIRunner = Depends(get_runner),
 ) -> GenerateTitleResponse:
     """Generate a concise session title using AI based on the first conversation turn.
 
     If request body is empty or parameters are missing, the backend will
     automatically read the first turn from wire.jsonl.
+
+    Safe to invoke while a worker is running: the final write reloads
+    state from disk to merge concurrent worker changes.
     """
-    session = get_editable_session(session_id, runner)
+    session = get_session_or_404(session_id)
     session_dir = session.kimi_cli_session.dir
 
     from kimi_cli.session_state import load_session_state, save_session_state
@@ -789,6 +807,11 @@ async def generate_session_title(
     # If AI generation failed too many times, use fallback and mark as generated
     if state.title_generate_attempts >= 3:
         fresh = load_session_state(session_dir)
+        # Respect a title finalized by another request/user action while we
+        # were preparing a fallback.
+        if fresh.title_generated:
+            invalidate_sessions_cache()
+            return GenerateTitleResponse(title=fresh.custom_title or "Untitled")
         fresh.custom_title = fallback_title
         fresh.title_generated = True
         save_session_state(fresh, session_dir)
@@ -856,6 +879,11 @@ Title:"""
     # Read-modify-write: reload fresh state to avoid overwriting
     # worker changes made during the LLM call
     fresh = load_session_state(session_dir)
+    # Another request or manual rename may have finalized the title while the
+    # LLM call was in flight. Preserve that newer title instead of clobbering it.
+    if fresh.title_generated:
+        invalidate_sessions_cache()
+        return GenerateTitleResponse(title=fresh.custom_title or "Untitled")
     fresh.custom_title = title
     if ai_generated:
         fresh.title_generated = True
