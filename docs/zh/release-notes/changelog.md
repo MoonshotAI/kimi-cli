@@ -4,15 +4,15 @@
 
 ## 未发布
 
-- Core：修复 `--yolo` 模式意外阻止模型调用 `AskUserQuestion` 的问题——以前 yolo 会注入一段 system reminder，告诉模型当前处于“非交互模式”，不能向用户提问；同时 ask-user 工具在 yolo 下也会自动 dismiss。这两处都是错的：yolo 的真正语义只是“自动批准工具调用”，并不意味着“用户已离开”。现在 yolo 模式下用户仍然在线，prompt 措辞也更温和——明确告诉模型在关键决策点仍可以调用 `AskUserQuestion` 来澄清需求，只是不要滥用
+- Core：修复 `--yolo` 模式意外阻止模型调用 `AskUserQuestion` 的问题——以前 yolo 会注入一段 system reminder，告诉模型当前处于“非交互模式”，不能向用户提问；同时 ask-user 工具在 yolo 下也会自动 dismiss。这两处都是错的：yolo 的真正语义只是“自动批准工具调用”，并不意味着“用户已离开”。现在 yolo 只是 runtime 审批策略，不再向模型注入指导；用户仍可通过 `AskUserQuestion` 触达
 - CLI：把“自动审批”和“非交互”拆分为两个正交模式——`--yolo`（自动批准工具调用，但用户仍在终端前）和 `--afk` / `/afk`（away-from-keyboard：`AskUserQuestion` 会被自动 dismiss、工具调用也自动批准）。`--print` 现在隐式启用 `--afk` 而不是 `--yolo`（语义更准确：print 下没人坐在终端前）。状态栏独立显示 `yolo` 和 `afk`，`/yolo` 与 `/afk` 各自切换自身的 flag，互不干扰
+- Config：由于 yolo 不再向模型注入指导，`skip_yolo_prompt_injection` 重命名为 `skip_afk_prompt_injection`。旧配置键如果仍存在会被忽略
 - Shell：修复 afk 开启时 `/yolo` 切换产生误导性 UI 文案的问题——以前 `/yolo` 读的是 yolo 和 afk 合并后的自动批准状态，afk 开着时按 `/yolo` 会说“现在需要审批”，但 afk 仍在继续自动批准。现在 `/yolo` 只读写 yolo 自身的 flag，不碰 afk
 - Web：修复 AI 标题生成在用户已手动重命名后才返回时覆盖手动标题的问题——最终写入前会重新读取状态，若另一请求已将 `title_generated` 标记为完成，则尊重新标题不再覆盖
 - Web：会话重命名、归档、取消归档、生成标题失败时弹出 toast 提示，而不仅仅是记录到 console
 - Web：折叠工具详情后仍保留工具媒体预览——工具返回的图片和视频现在渲染在工具卡片下方，而不是折叠详情区域内部，因此折叠工具后预览缩略图仍然可见
 - Kosong：修复 Kimi 供应商在 OAuth 令牌刷新后仍使用过期的 API 密钥的问题——`on_retryable_error` 现在从当前 client 读取 `api_key`，而不是缓存的 `_api_key`，因此在可重试错误后重建 client 时会保留通过 `client.api_key` 应用的 OAuth 令牌刷新
 - Core：修复审批请求 5 分钟自动超时并被误报为 `Rejected by user` 的问题；现在活跃的前台和子 Agent 审批请求都会无限等待用户响应
-- Core：修复上下文压缩后 yolo 模式提示词丢失的问题——当 yolo 模式处于激活状态时，非交互模式下的指导提示（不要调用 AskUserQuestion、计划模式切换自动批准等）现在会在每次上下文压缩后的第一个 LLM 步骤重新注入，而不是在原始提示被折叠进压缩摘要后静默消失
 - Shell：修复 `/usage` 剩余额度渲染错误——进度条、告警颜色和 `% left` 文案现在都统一基于剩余额度比例计算，剩余额度充足时显示为绿色满格，接近耗尽时显示为黄色或红色
 - Shell：在提示框状态栏显示当前正在运行的后台 Agent 任务数——原有的 `⚙ bash: N` 徽章只统计后台 Shell 任务，把后台 Agent 子代理过滤掉了，所以多个子代理同时在跑时提示框看起来像空闲，用户无法判断工作是否还在进行；现在状态栏会渲染 `⚙ bash: N` 与 `⚙ agent: N` 两个相互独立的徽章（任一计数为 0 时自动隐藏），终端太窄无法同时容纳两者时优先丢弃 agent 徽章
 - Auth：修复 OAuth 用户 access token 过期时托管模型列表刷新静默失败的问题——后台 `/models` 同步任务现在会检测 401 响应，强制进行 OAuth token 刷新并用刷新后的 token 重试；如果刷新本身失败或刷新后的 token 仍被拒绝，则回退到最初配置的静态 API 密钥，而不是跳过该 provider

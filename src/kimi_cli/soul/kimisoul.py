@@ -61,7 +61,6 @@ from kimi_cli.soul.dynamic_injection import (
 )
 from kimi_cli.soul.dynamic_injections.afk_mode import AfkModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
-from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -202,8 +201,8 @@ class KimiSoul:
             PlanModeInjectionProvider(),
             *(
                 []
-                if self._runtime.config.skip_yolo_prompt_injection
-                else [YoloModeInjectionProvider(), AfkModeInjectionProvider()]
+                if self._runtime.config.skip_afk_prompt_injection
+                else [AfkModeInjectionProvider()]
             ),
         ]
         self._hook_engine: HookEngine = HookEngine()

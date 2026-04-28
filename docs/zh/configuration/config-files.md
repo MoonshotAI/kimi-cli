@@ -27,6 +27,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `default_model` | `string` | 默认使用的模型名称，必须是 `models` 中定义的模型 |
 | `default_thinking` | `boolean` | 默认是否开启 Thinking 模式（默认为 `false`） |
 | `default_yolo` | `boolean` | 默认是否开启 YOLO（自动审批）模式（默认为 `false`） |
+| `skip_afk_prompt_injection` | `boolean` | 是否抑制 AFK 模式的系统提示词注入（默认为 `false`） |
 | `default_plan_mode` | `boolean` | 默认是否以计划模式启动新会话（默认为 `false`）；恢复的会话保留其原有状态 |
 | `default_editor` | `string` | 默认外部编辑器命令（如 `"vim"`、`"code --wait"`），为空时自动检测 |
 | `theme` | `string` | 终端配色主题，可选 `"dark"` 或 `"light"`（默认为 `"dark"`） |
@@ -45,6 +46,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 default_model = "kimi-for-coding"
 default_thinking = false
 default_yolo = false
+skip_afk_prompt_injection = false
 default_plan_mode = false
 default_editor = ""
 theme = "dark"
