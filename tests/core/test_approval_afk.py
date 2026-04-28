@@ -9,13 +9,15 @@ def test_yolo_only() -> None:
     approval = Approval(yolo=True)
     assert approval.is_yolo() is True
     assert approval.is_yolo_flag() is True
+    assert approval.is_auto_approve() is True
     assert approval.is_afk() is False
 
 
 def test_afk_only() -> None:
     state = ApprovalState(yolo=False, afk=True)
     approval = Approval(state=state)
-    assert approval.is_yolo() is True  # OR'ed with afk
+    assert approval.is_auto_approve() is True
+    assert approval.is_yolo() is False
     assert approval.is_yolo_flag() is False  # explicit flag only
     assert approval.is_afk() is True
 
@@ -24,12 +26,14 @@ def test_yolo_and_afk() -> None:
     state = ApprovalState(yolo=True, afk=True)
     approval = Approval(state=state)
     assert approval.is_yolo() is True
+    assert approval.is_auto_approve() is True
     assert approval.is_afk() is True
 
 
 def test_neither_flag_set() -> None:
     approval = Approval(yolo=False)
     assert approval.is_yolo() is False
+    assert approval.is_auto_approve() is False
     assert approval.is_afk() is False
 
 
@@ -39,10 +43,12 @@ def test_set_yolo_does_not_touch_afk() -> None:
     approval.set_yolo(True)
     assert approval.is_afk() is True
     assert approval.is_yolo() is True
+    assert approval.is_auto_approve() is True
     approval.set_yolo(False)
-    # Afk keeps is_yolo() True even after the explicit flag is cleared.
+    # Afk keeps auto-approve on even after the explicit yolo flag is cleared.
     assert approval.is_afk() is True
-    assert approval.is_yolo() is True
+    assert approval.is_yolo() is False
+    assert approval.is_auto_approve() is True
 
 
 def test_shared_state_preserves_afk() -> None:
@@ -50,7 +56,8 @@ def test_shared_state_preserves_afk() -> None:
     parent = Approval(state=state)
     child = parent.share()
     assert child.is_afk() is True
-    assert child.is_yolo() is True
+    assert child.is_yolo() is False
+    assert child.is_auto_approve() is True
 
 
 def test_set_afk_toggles_without_on_change() -> None:

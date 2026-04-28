@@ -39,11 +39,18 @@ class AfkModeInjectionProvider(DynamicInjectionProvider):
     ) -> list[DynamicInjection]:
         if not soul.is_afk:
             return []
-        if soul.is_subagent:
-            # Subagents have no AskUserQuestion tool; repeating the rule
-            # just burns tokens on every subagent turn.
-            return []
         if self._injected:
             return []
         self._injected = True
         return [DynamicInjection(type=_AFK_INJECTION_TYPE, content=_AFK_PROMPT)]
+
+    async def on_context_compacted(self) -> None:
+        # Compaction rewrites history; the prior afk reminder may have been
+        # summarized away, so let the next afk step restate the constraint.
+        self._injected = False
+
+    async def on_afk_changed(self, enabled: bool) -> None:
+        # A runtime toggle changes the latest truth about user presence.
+        # Re-arm so the next LLM step can inject the current afk guidance.
+        _ = enabled
+        self._injected = False

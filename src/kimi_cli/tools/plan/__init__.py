@@ -88,20 +88,20 @@ class ExitPlanMode(CallableTool2[Params]):
         self._toggle_callback: Callable[[], Awaitable[bool]] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
         self._plan_mode_checker: Callable[[], bool] | None = None
-        self._is_yolo: Callable[[], bool] | None = None
+        self._should_auto_approve_exit: Callable[[], bool] | None = None
 
     def bind(
         self,
         toggle_callback: Callable[[], Awaitable[bool]],
         plan_file_path_getter: Callable[[], Path | None],
         plan_mode_checker: Callable[[], bool],
-        is_yolo: Callable[[], bool] | None = None,
+        should_auto_approve_exit: Callable[[], bool] | None = None,
     ) -> None:
         """Late-bind soul callbacks after KimiSoul is constructed."""
         self._toggle_callback = toggle_callback
         self._plan_file_path_getter = plan_file_path_getter
         self._plan_mode_checker = plan_mode_checker
-        self._is_yolo = is_yolo
+        self._should_auto_approve_exit = should_auto_approve_exit
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -131,8 +131,8 @@ class ExitPlanMode(CallableTool2[Params]):
                 brief="No plan file",
             )
 
-        # In yolo mode, auto-approve the plan
-        if self._is_yolo and self._is_yolo():
+        # Auto-approve plan approval only when no user is present (afk).
+        if self._should_auto_approve_exit and self._should_auto_approve_exit():
             await self._toggle_callback()
             return ToolReturnValue(
                 is_error=False,

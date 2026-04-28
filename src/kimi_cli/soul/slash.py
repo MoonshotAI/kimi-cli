@@ -108,8 +108,7 @@ async def yolo(soul: KimiSoul, args: str):
     """Toggle YOLO mode (auto-approve all actions)"""
     from kimi_cli.telemetry import track
 
-    # Inspect only the yolo flag, not the OR-combined is_yolo(): afk is independent
-    # and is toggled by /afk.
+    # Inspect only the yolo flag: afk is independent and is toggled by /afk.
     if soul.runtime.approval.is_yolo_flag():
         soul.runtime.approval.set_yolo(False)
         track("yolo_toggle", enabled=False)
@@ -139,6 +138,7 @@ async def afk(soul: KimiSoul, args: str):
 
     if soul.runtime.approval.is_afk():
         soul.runtime.approval.set_afk(False)
+        await soul.notify_afk_changed(False)
         await soul.context.append_message(
             Message(role="user", content=[system_reminder(_AFK_DISABLED_REMINDER)])
         )
@@ -153,6 +153,7 @@ async def afk(soul: KimiSoul, args: str):
             wire_send(TextPart(text="afk mode disabled. You are back at the terminal."))
     else:
         soul.runtime.approval.set_afk(True)
+        await soul.notify_afk_changed(True)
         track("afk_toggle", enabled=True)
         wire_send(
             TextPart(

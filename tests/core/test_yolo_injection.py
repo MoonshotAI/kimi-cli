@@ -35,9 +35,10 @@ async def test_injects_when_yolo_enabled():
     assert len(result) == 1
     assert result[0].type == _YOLO_INJECTION_TYPE
     assert result[0].content == _YOLO_PROMPT
-    # New prompt must clarify the user is still present and AskUserQuestion is usable.
-    assert "AskUserQuestion" in result[0].content
-    assert "Do NOT call AskUserQuestion" not in result[0].content
+    assert "auto-approved" in result[0].content
+    assert "AskUserQuestion" not in result[0].content
+    assert "afk or non-interactive" in result[0].content
+    assert "ExitPlanMode still requires" in result[0].content
 
 
 async def test_no_injection_when_yolo_disabled():
@@ -54,12 +55,12 @@ async def test_no_injection_when_afk_active():
     assert result == []
 
 
-async def test_no_injection_in_subagent():
-    """Subagent has no AskUserQuestion tool and no real terminal user; yolo prompt
-    would falsely claim a human is available. Provider must stay silent."""
+async def test_injects_in_subagent():
+    """Yolo only means auto-approve, so the reminder is valid for subagents too."""
     provider = YoloModeInjectionProvider()
     result = await provider.get_injections([], _mock_soul(is_yolo=True, is_subagent=True))
-    assert result == []
+    assert len(result) == 1
+    assert result[0].type == _YOLO_INJECTION_TYPE
 
 
 async def test_injection_lifecycle():

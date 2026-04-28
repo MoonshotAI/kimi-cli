@@ -15,22 +15,17 @@ _YOLO_INJECTION_TYPE = "yolo_mode"
 _YOLO_PROMPT = (
     "Yolo (auto-approve) mode is active. Tool calls that normally require "
     "user approval will be auto-approved by the harness.\n"
-    "- You ARE still in an interactive session. The user is present and "
-    "CAN answer AskUserQuestion. Yolo only removes approval friction; "
-    "it does NOT remove the user.\n"
-    "- Use AskUserQuestion sparingly — only when a decision genuinely "
-    "changes your next action (missing requirements, ambiguous goals, "
-    "choosing between meaningfully different approaches). Do NOT use it "
-    "for routine confirmations or progress check-ins.\n"
-    "- For trivial decisions, exercise your best judgment and proceed.\n"
-    "- EnterPlanMode / ExitPlanMode will be auto-approved as well."
+    "- Yolo only changes permission approval behavior. It does NOT make "
+    "the session afk or non-interactive.\n"
+    "- EnterPlanMode will be auto-approved. ExitPlanMode still requires "
+    "user approval for the proposed plan."
 )
 
 
 class YoloModeInjectionProvider(DynamicInjectionProvider):
     """Injects a one-time reminder when yolo mode is active (and not afk).
 
-    Afk has its own provider with stricter guidance (no AskUserQuestion).
+    Afk has its own provider with stricter non-interactive guidance.
     """
 
     def __init__(self) -> None:
@@ -44,10 +39,6 @@ class YoloModeInjectionProvider(DynamicInjectionProvider):
         if not soul.is_yolo:
             return []
         if soul.is_afk:
-            return []
-        if soul.is_subagent:
-            # Subagents have no AskUserQuestion tool and no real terminal user;
-            # claiming "the user is present" would be factually wrong.
             return []
         if self._injected:
             return []

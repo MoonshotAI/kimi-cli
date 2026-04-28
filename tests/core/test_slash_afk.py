@@ -9,6 +9,7 @@ from kosong.tooling.empty import EmptyToolset
 
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.dynamic_injection import DynamicInjection, DynamicInjectionProvider
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.slash import afk as afk_slash
 from kimi_cli.soul.slash import yolo as yolo_slash
@@ -55,6 +56,32 @@ async def test_afk_slash_toggles_afk_flag(
     assert any("afk" in s.text.lower() and "disabled" in s.text.lower() for s in sent)
 
 
+async def test_afk_slash_notifies_injection_providers(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class RecorderProvider(DynamicInjectionProvider):
+        def __init__(self) -> None:
+            self.calls: list[bool] = []
+
+        async def get_injections(self, history, soul) -> list[DynamicInjection]:
+            _ = (history, soul)
+            return []
+
+        async def on_afk_changed(self, enabled: bool) -> None:
+            self.calls.append(enabled)
+
+    soul = _make_soul(runtime, tmp_path)
+    recorder = RecorderProvider()
+    soul.add_injection_provider(recorder)
+    monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda _msg: None)
+
+    await _run(afk_slash, soul)
+    await _run(afk_slash, soul)
+    await _run(afk_slash, soul)
+
+    assert recorder.calls == [True, False, True]
+
+
 async def test_afk_slash_does_not_touch_yolo_flag(
     runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -96,11 +123,12 @@ async def test_yolo_slash_under_afk_only_toggles_yolo_flag(
 ) -> None:
     """Regression: /yolo under afk-only used to fire the 'require approval' branch
     and claim approval is now required, while afk kept auto-approving.
-    /yolo must inspect only the yolo flag, not the OR-combined is_yolo()."""
+    /yolo must inspect only the yolo flag, not the auto-approve state."""
     soul = _make_soul(runtime, tmp_path)
-    # Afk on, yolo flag off -> is_yolo() True via OR, but yolo_flag is False.
+    # Afk on, yolo flag off -> auto-approve True, but yolo flag False.
     soul.runtime.approval.set_afk(True)
-    assert soul.runtime.approval.is_yolo() is True
+    assert soul.runtime.approval.is_auto_approve() is True
+    assert soul.runtime.approval.is_yolo() is False
     assert soul.runtime.approval.is_yolo_flag() is False
 
     sent: list[TextPart] = []
@@ -122,9 +150,9 @@ async def test_yolo_slash_off_under_afk_does_not_claim_approval_required(
 ) -> None:
     """Regression: /yolo off while afk is on must not claim 'approval required'.
 
-    Prior bug: the toast emitted "Actions will require approval" but ``is_yolo()``
-    stayed True via afk, so tool calls kept being auto-approved. The toast now
-    calls out that afk is still keeping auto-approve on.
+    Prior bug: the toast emitted "Actions will require approval" while afk kept
+    tool calls auto-approved. The toast now calls out that afk is still keeping
+    auto-approve on.
     """
     soul = _make_soul(runtime, tmp_path)
     soul.runtime.approval.set_yolo(True)
@@ -138,7 +166,8 @@ async def test_yolo_slash_off_under_afk_does_not_claim_approval_required(
     # Yolo flag flipped off; afk stays on; effective auto-approve stays on.
     assert soul.runtime.approval.is_yolo_flag() is False
     assert soul.runtime.approval.is_afk() is True
-    assert soul.runtime.approval.is_yolo() is True
+    assert soul.runtime.approval.is_yolo() is False
+    assert soul.runtime.approval.is_auto_approve() is True
 
     # Toast must not lie about approvals being required.
     joined = " ".join(s.text for s in sent).lower()
@@ -168,9 +197,9 @@ async def test_yolo_slash_with_no_flags_turns_yolo_on(
 async def test_status_snapshot_separates_yolo_and_afk(runtime: Runtime, tmp_path: Path) -> None:
     """Status bar must tell yolo_enabled and afk_enabled apart.
 
-    Previously `yolo_enabled` was `is_yolo()` (OR'ed with afk), which showed 'yolo'
-    in the status bar even when only afk was on. Now yolo_enabled only reflects
-    the explicit yolo flag.
+    Previously `yolo_enabled` reflected the auto-approve state, which showed
+    'yolo' in the status bar even when only afk was on. Now yolo_enabled only
+    reflects the explicit yolo flag.
     """
     soul = _make_soul(runtime, tmp_path)
 

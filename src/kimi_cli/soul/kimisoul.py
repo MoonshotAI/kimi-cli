@@ -233,8 +233,13 @@ class KimiSoul:
 
     @property
     def is_yolo(self) -> bool:
-        """Whether auto-approve is active (explicit yolo flag, or implied by afk)."""
+        """Whether explicit yolo mode is active."""
         return self._approval.is_yolo()
+
+    @property
+    def is_auto_approve(self) -> bool:
+        """Whether tool approvals are bypassed (explicit yolo, or implied by afk)."""
+        return self._approval.is_auto_approve()
 
     @property
     def is_afk(self) -> bool:
@@ -296,6 +301,18 @@ class KimiSoul:
                     exc_info=True,
                 )
 
+    async def notify_afk_changed(self, enabled: bool) -> None:
+        """Notify dynamic injection providers that afk mode changed."""
+        for provider in self._injection_providers:
+            try:
+                await provider.on_afk_changed(enabled)
+            except Exception:
+                logger.warning(
+                    "injection provider %s on_afk_changed failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
+
     def _bind_plan_mode_tools(self) -> None:
         """Bind plan mode state to tools that support it."""
         if not isinstance(self._agent.toolset, KimiToolset):
@@ -325,14 +342,24 @@ class KimiSoul:
 
         exit_tool = self._agent.toolset.find("ExitPlanMode")
         if isinstance(exit_tool, ExitPlanMode):
-            exit_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            exit_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                self._approval.is_afk,
+            )
 
         # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            enter_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                self._approval.is_auto_approve,
+            )
 
         # AskUserQuestion — bind afk checker for auto-dismiss.
         # Yolo alone keeps the tool live; only afk (no user present) dismisses.

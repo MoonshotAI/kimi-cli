@@ -39,6 +39,7 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
         plan_path = soul.get_plan_file_path()
         plan_path_str = str(plan_path) if plan_path else None
         plan_exists = plan_path is not None and plan_path.exists()
+        afk = soul.is_afk
 
         # Manual toggles schedule a one-shot activation reminder for the next LLM step.
         if soul.consume_pending_plan_activation_injection():
@@ -48,13 +49,13 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
                 return [
                     DynamicInjection(
                         type="plan_mode_reentry",
-                        content=_reentry_reminder(plan_path_str),
+                        content=_reentry_reminder(plan_path_str, afk=afk),
                     )
                 ]
             return [
                 DynamicInjection(
                     type="plan_mode",
-                    content=_full_reminder(plan_path_str, plan_exists),
+                    content=_full_reminder(plan_path_str, plan_exists, afk=afk),
                 )
             ]
 
@@ -74,7 +75,7 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
             return [
                 DynamicInjection(
                     type="plan_mode",
-                    content=_full_reminder(plan_path_str, plan_exists),
+                    content=_full_reminder(plan_path_str, plan_exists, afk=afk),
                 )
             ]
 
@@ -86,9 +87,9 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
         self._inject_count += 1
         is_full = self._inject_count % _FULL_EVERY_N == 1
         if is_full:
-            content = _full_reminder(plan_path_str, plan_exists)
+            content = _full_reminder(plan_path_str, plan_exists, afk=afk)
         else:
-            content = _sparse_reminder(plan_path_str)
+            content = _sparse_reminder(plan_path_str, afk=afk)
         return [DynamicInjection(type="plan_mode", content=content)]
 
 
@@ -111,6 +112,8 @@ def _has_plan_reminder(msg: Message) -> bool:
 def _full_reminder(
     plan_file_path: str | None = None,
     plan_exists: bool = False,
+    *,
+    afk: bool = False,
 ) -> str:
     lines = [
         "Plan mode is active. You MUST NOT make any edits "
@@ -148,43 +151,70 @@ def _full_reminder(
         ]
     )
     # Multi-approach handling
-    lines.extend(
-        [
-            "",
-            "## Handling multiple approaches",
-            "Keep it focused: at most 2-3 meaningfully different approaches. "
-            "Do NOT pad with minor variations — if one approach is clearly "
-            "superior, just propose that one.",
-            "When the best approach depends on user preferences, constraints, "
-            "or context you don't have, use AskUserQuestion to clarify first. "
-            "This helps you write a better, more targeted plan rather than "
-            "dumping multiple options for the user to sort through.",
-            "When you do include multiple approaches in the plan, you MUST pass them "
-            "as the `options` parameter when calling ExitPlanMode, so the user can select which "
-            "approach to execute at approval time.",
-            "NEVER write multiple approaches in the plan and call ExitPlanMode without the "
-            "`options` parameter — the user will only see Approve/Reject with no way to choose.",
-        ]
-    )
+    if afk:
+        lines.extend(
+            [
+                "",
+                "## Handling multiple approaches",
+                "No user is present in afk mode. Do NOT call AskUserQuestion "
+                "to resolve preferences, constraints, or missing context.",
+                "Use the available context to choose one best recommendation. "
+                "Mention important trade-offs in the plan, but do not rely on "
+                "the user selecting between options.",
+                "If several approaches remain plausible, pick the one with the "
+                "best risk/reversibility profile and state that assumption in the plan.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "## Handling multiple approaches",
+                "Keep it focused: at most 2-3 meaningfully different approaches. "
+                "Do NOT pad with minor variations — if one approach is clearly "
+                "superior, just propose that one.",
+                "When the best approach depends on user preferences, constraints, "
+                "or context you don't have, use AskUserQuestion to clarify first. "
+                "This helps you write a better, more targeted plan rather than "
+                "dumping multiple options for the user to sort through.",
+                "When you do include multiple approaches in the plan, you MUST pass them "
+                "as the `options` parameter when calling ExitPlanMode, so the user can "
+                "select which approach to execute at approval time.",
+                "NEVER write multiple approaches in the plan and call ExitPlanMode without "
+                "the `options` parameter — the user will only see Approve/Reject with "
+                "no way to choose.",
+            ]
+        )
     # Turn ending constraint + anti-pattern
-    lines.extend(
-        [
-            "",
-            "AskUserQuestion is for clarifying missing requirements or user preferences "
-            "that affect the plan.",
-            "Never ask about plan approval via text or AskUserQuestion.",
-            "Your turn must end with either AskUserQuestion "
-            "(to clarify requirements or preferences) "
-            "or ExitPlanMode (to request plan approval). "
-            "Do NOT end your turn any other way.",
-            "Do NOT use AskUserQuestion to ask about plan approval or reference "
-            '"the plan" — the user cannot see the plan until you call ExitPlanMode.',
-        ]
-    )
+    if afk:
+        lines.extend(
+            [
+                "",
+                "Afk mode is active: do NOT use AskUserQuestion in plan mode. "
+                "It will not produce a useful answer.",
+                "Your turn must end with ExitPlanMode after the plan file is written "
+                "or updated. Do NOT end your turn any other way.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "AskUserQuestion is for clarifying missing requirements or user preferences "
+                "that affect the plan.",
+                "Never ask about plan approval via text or AskUserQuestion.",
+                "Your turn must end with either AskUserQuestion "
+                "(to clarify requirements or preferences) "
+                "or ExitPlanMode (to request plan approval). "
+                "Do NOT end your turn any other way.",
+                "Do NOT use AskUserQuestion to ask about plan approval or reference "
+                '"the plan" — the user cannot see the plan until you call ExitPlanMode.',
+            ]
+        )
     return "\n".join(lines)
 
 
-def _sparse_reminder(plan_file_path: str | None = None) -> str:
+def _sparse_reminder(plan_file_path: str | None = None, *, afk: bool = False) -> str:
     parts = [
         "Plan mode still active (see full instructions earlier).",
     ]
@@ -192,22 +222,34 @@ def _sparse_reminder(plan_file_path: str | None = None) -> str:
         parts.append(f"Read-only except plan file ({plan_file_path}).")
     else:
         parts.append("Read-only.")
-    parts.extend(
-        [
-            "Use WriteFile or StrReplaceFile to modify the plan file. "
-            "If it does not exist yet, create it with WriteFile first.",
-            "Use AskUserQuestion to clarify user preferences "
-            "when it helps you write a better plan.",
-            "If the plan has multiple approaches, "
-            "pass options to ExitPlanMode so the user can choose.",
-            "End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for approval).",
-            "Never ask about plan approval via text or AskUserQuestion.",
-        ]
+    parts.append(
+        "Use WriteFile or StrReplaceFile to modify the plan file. "
+        "If it does not exist yet, create it with WriteFile first."
     )
+    if afk:
+        parts.extend(
+            [
+                "Afk mode is active: do NOT use AskUserQuestion.",
+                "Choose one best recommendation from available context.",
+                "End turns with ExitPlanMode after writing or updating the plan.",
+            ]
+        )
+    else:
+        parts.extend(
+            [
+                "Use AskUserQuestion to clarify user preferences "
+                "when it helps you write a better plan.",
+                "If the plan has multiple approaches, "
+                "pass options to ExitPlanMode so the user can choose.",
+                "End turns with AskUserQuestion (for clarifications) or ExitPlanMode "
+                "(for approval).",
+                "Never ask about plan approval via text or AskUserQuestion.",
+            ]
+        )
     return " ".join(parts)
 
 
-def _reentry_reminder(plan_file_path: str | None = None) -> str:
+def _reentry_reminder(plan_file_path: str | None = None, *, afk: bool = False) -> str:
     """One-shot reminder when re-entering plan mode with an existing plan."""
     lines = [
         "Plan mode is active. You MUST NOT make any edits "
@@ -228,11 +270,26 @@ def _reentry_reminder(plan_file_path: str | None = None) -> str:
         "If same task: update the existing plan.",
         "4. You may use WriteFile or StrReplaceFile to modify the plan file. "
         "If the file does not exist yet, create it with WriteFile first.",
-        "5. Use AskUserQuestion to clarify missing requirements "
-        "or user preferences that affect the plan.",
-        "6. Always edit the plan file before calling ExitPlanMode.",
-        "",
-        "Your turn must end with either AskUserQuestion (to clarify requirements) "
-        "or ExitPlanMode (to request plan approval).",
     ]
+    if afk:
+        lines.extend(
+            [
+                "5. Afk mode is active: do NOT use AskUserQuestion. "
+                "Resolve uncertainty with best judgment from available context.",
+                "6. Always edit the plan file before calling ExitPlanMode.",
+                "",
+                "Your turn must end with ExitPlanMode after the plan file is written or updated.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "5. Use AskUserQuestion to clarify missing requirements "
+                "or user preferences that affect the plan.",
+                "6. Always edit the plan file before calling ExitPlanMode.",
+                "",
+                "Your turn must end with either AskUserQuestion (to clarify requirements) "
+                "or ExitPlanMode (to request plan approval).",
+            ]
+        )
     return "\n".join(lines)

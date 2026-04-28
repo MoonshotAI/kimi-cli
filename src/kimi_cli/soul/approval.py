@@ -107,7 +107,7 @@ class Approval:
         """
         self._state.afk = afk
 
-    def is_yolo(self) -> bool:
+    def is_auto_approve(self) -> bool:
         """True when tool calls should be auto-approved.
 
         Afk implies auto-approve, so this returns True whenever either the
@@ -115,9 +115,13 @@ class Approval:
         """
         return self._state.yolo or self._state.afk
 
+    def is_yolo(self) -> bool:
+        """True only when the user explicitly opted into yolo."""
+        return self._state.yolo
+
     def is_yolo_flag(self) -> bool:
         """True only when the user explicitly opted into yolo (not via afk)."""
-        return self._state.yolo
+        return self.is_yolo()
 
     def is_afk(self) -> bool:
         """True when no user is present (away-from-keyboard)."""
@@ -157,7 +161,7 @@ class Approval:
             action=action,
             description=description,
         )
-        if self.is_yolo():
+        if self.is_auto_approve():
             from kimi_cli.telemetry import track
 
             track(
