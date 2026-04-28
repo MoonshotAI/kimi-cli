@@ -232,7 +232,7 @@ def _format_reset_time(val: str) -> str:
 def _to_int(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -261,14 +261,20 @@ def _build_usage_panel(summary: UsageRow | None, limits: list[UsageRow]) -> Pane
 
 
 def _format_row(row: UsageRow, label_width: int) -> RenderableType:
-    ratio = (row.limit - row.used) / row.limit if row.limit > 0 else 0
-    color = _ratio_color(ratio)
+    remaining, remaining_ratio, bar_total = _remaining_quota(row)
+    color = _ratio_color(remaining_ratio)
 
     label = Text(f"{row.label:<{label_width}}  ", style="cyan")
-    bar = ProgressBar(total=row.limit or 1, completed=row.used, width=20, complete_style=color)
+    bar = ProgressBar(
+        total=bar_total,
+        completed=remaining,
+        width=20,
+        complete_style=color,
+        finished_style=color,
+    )
 
     detail = Text()
-    percent = ratio * 100
+    percent = remaining_ratio * 100
     detail.append(f"  {percent:.0f}% left", style="bold")
     if row.reset_hint:
         detail.append(f"  ({row.reset_hint})", style="grey50")
@@ -281,9 +287,17 @@ def _format_row(row: UsageRow, label_width: int) -> RenderableType:
     return t
 
 
-def _ratio_color(ratio: float) -> str:
-    if ratio >= 0.9:
+def _remaining_quota(row: UsageRow) -> tuple[int, float, int]:
+    if row.limit <= 0:
+        return 0, 0, 1
+
+    remaining = min(max(row.limit - row.used, 0), row.limit)
+    return remaining, remaining / row.limit, row.limit
+
+
+def _ratio_color(remaining_ratio: float) -> str:
+    if remaining_ratio <= 0.1:
         return "red"
-    if ratio >= 0.7:
+    if remaining_ratio <= 0.3:
         return "yellow"
     return "green"

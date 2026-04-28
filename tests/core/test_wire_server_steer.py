@@ -7,12 +7,15 @@ import pytest
 from kosong.message import ContentPart
 from kosong.tooling.empty import EmptyToolset
 
+import kimi_cli.telemetry as telemetry_mod
 from kimi_cli.approval_runtime import ApprovalSource
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.telemetry import set_context
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire.jsonrpc import (
+    ClientInfo,
     ErrorCodes,
     JSONRPCErrorResponse,
     JSONRPCEventMessage,
@@ -33,6 +36,41 @@ def _make_soul(runtime: Runtime, tmp_path: Path) -> KimiSoul:
         runtime=runtime,
     )
     return KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+
+
+def _reset_telemetry() -> None:
+    telemetry_mod._event_queue.clear()
+    telemetry_mod._device_id = None
+    telemetry_mod._session_id = None
+    telemetry_mod._client_info = None
+    telemetry_mod._session_started_sessions.clear()
+    telemetry_mod._sink = None
+    telemetry_mod._disabled = False
+
+
+def test_wire_client_info_emits_session_started(
+    runtime: Runtime,
+    tmp_path: Path,
+) -> None:
+    _reset_telemetry()
+    try:
+        set_context(device_id="dev-wire", session_id=runtime.session.id)
+        runtime.ui_mode = "wire"
+        runtime.resumed = True
+        soul = _make_soul(runtime, tmp_path)
+        server = WireServer(soul)
+
+        server._track_session_started(ClientInfo(name="kiwi", version="1.2.3"))
+
+        event = telemetry_mod._event_queue[-1]
+        assert event["event"] == "session_started"
+        assert event["session_id"] == runtime.session.id
+        assert event["properties"]["client_name"] == "kiwi"
+        assert event["properties"]["client_version"] == "1.2.3"
+        assert event["properties"]["ui_mode"] == "wire"
+        assert event["properties"]["resumed"] is True
+    finally:
+        _reset_telemetry()
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TASK_FILE="${BASE_DIR}/terminal_bench_2_tasks_default.txt"
+DEFAULT_BENCH_DIR="${BASE_DIR}/../terminal_bench_2_cache"
+BENCH_DIR="${TERMINAL_BENCH_2_DIR:-$DEFAULT_BENCH_DIR}"
+REPO_ROOT="$(cd "${BASE_DIR}/../.." && pwd)"
+WHEEL_DIR="${KIMI_CLI_WHEEL_DIR:-${REPO_ROOT}/dist/accuracy_smoke}"
+JOBS_DIR="${HARBOR_JOBS_DIR:-${REPO_ROOT}/jobs}"
+MODEL="${HARBOR_MODEL:-kimi/kimi-for-coding}"
+AGENT_IMPORT_PATH="${HARBOR_AGENT_IMPORT_PATH:-tests_ai.accuracy_smoke.local_kimi_cli_agent:LocalKimiCli}"
+GH_MIRROR_PREFIX="${GH_MIRROR_PREFIX:-}"
+UV_PYTHON="${UV_PYTHON:-$(command -v python3)}"
+UV_PYTHON_INSTALL_MIRROR="${UV_PYTHON_INSTALL_MIRROR:-}"
+
+if ! command -v harbor >/dev/null 2>&1; then
+  echo "harbor is not installed. Run prepare_env.sh first." >&2
+  exit 1
+fi
+
+if [ ! -f "${TASK_FILE}" ]; then
+  echo "Task file not found: ${TASK_FILE}" >&2
+  exit 1
+fi
+
+if [ ! -f "${BENCH_DIR}/README.md" ]; then
+  echo "Terminal-Bench-2 not found in ${BENCH_DIR}" >&2
+  echo "Run prepare_env.sh or set TERMINAL_BENCH_2_DIR." >&2
+  exit 1
+fi
+
+if [ -z "${KIMI_API_KEY:-}" ] && [ -z "${MOONSHOT_API_KEY:-}" ]; then
+  echo "Missing API key. Set KIMI_API_KEY or MOONSHOT_API_KEY first." >&2
+  echo 'Example: export KIMI_API_KEY="your_api_key"' >&2
+  exit 1
+fi
+
+mkdir -p "${WHEEL_DIR}"
+echo "Building local kimi-cli wheel into ${WHEEL_DIR}"
+if [ -n "${GH_MIRROR_PREFIX}" ] && [ -z "${UV_PYTHON_INSTALL_MIRROR}" ]; then
+  UV_PYTHON_INSTALL_MIRROR="${GH_MIRROR_PREFIX}https://github.com/astral-sh/python-build-standalone/releases/download"
+fi
+echo "Using UV_PYTHON=${UV_PYTHON}"
+if [ -n "${UV_PYTHON_INSTALL_MIRROR}" ]; then
+  echo "Using UV_PYTHON_INSTALL_MIRROR=${UV_PYTHON_INSTALL_MIRROR}"
+fi
+UV_PYTHON="${UV_PYTHON}" UV_PYTHON_INSTALL_MIRROR="${UV_PYTHON_INSTALL_MIRROR}" \
+  uv build --package kimi-cli --out-dir "${WHEEL_DIR}" >/dev/null
+KIMI_CLI_WHEEL_PATH="$(ls -t "${WHEEL_DIR}"/*.whl | head -n 1)"
+
+echo "Using local kimi-cli wheel: ${KIMI_CLI_WHEEL_PATH}"
+
+mkdir -p "${JOBS_DIR}"
+SUMMARY_TSV="${BASE_DIR}/accuracy_smoke_rewards_$(date +%Y%m%d_%H%M%S).tsv"
+{
+  echo -e "task\treward_mean\tn_errors\tjob_dir\tresult_json"
+} > "${SUMMARY_TSV}"
+echo "Writing reward summary to ${SUMMARY_TSV}"
+
+while IFS= read -r task || [ -n "${task}" ]; do
+  [ -z "${task}" ] && continue
+  task_dir="${BENCH_DIR}/${task}"
+  if [ ! -d "${task_dir}" ]; then
+    echo "Skipping missing task: ${task_dir}" >&2
+    continue
+  fi
+  echo "=== Running task: ${task} ==="
+  KIMI_CLI_WHEEL_PATH="${KIMI_CLI_WHEEL_PATH}" \
+    harbor run -p "${task_dir}" \
+      --jobs-dir "${JOBS_DIR}" \
+      --agent-import-path "${AGENT_IMPORT_PATH}" \
+      -m "${MODEL}" \
+      --n-concurrent 1
+
+  latest_job_dir="$(ls -td "${JOBS_DIR}"/20* 2>/dev/null | head -n 1 || true)"
+  if [ -z "${latest_job_dir}" ] || [ ! -f "${latest_job_dir}/result.json" ]; then
+    echo "Warning: result.json not found for task ${task}" >&2
+    continue
+  fi
+
+  python3 - "${task}" "${latest_job_dir}" "${SUMMARY_TSV}" <<'PY'
+import json
+import pathlib
+import sys
+
+task, job_dir, out_tsv = sys.argv[1:4]
+result_path = pathlib.Path(job_dir) / "result.json"
+data = json.loads(result_path.read_text(encoding="utf-8"))
+evals = data.get("stats", {}).get("evals", {})
+if evals:
+    entry = next(iter(evals.values()))
+    metrics = entry.get("metrics", [])
+    reward_mean = metrics[0].get("mean") if metrics else None
+    n_errors = entry.get("n_errors")
+else:
+    reward_mean = None
+    n_errors = data.get("stats", {}).get("n_errors")
+with open(out_tsv, "a", encoding="utf-8") as f:
+    f.write(
+        f"{task}\t{reward_mean if reward_mean is not None else ''}\t"
+        f"{n_errors if n_errors is not None else ''}\t{job_dir}\t{result_path}\n"
+    )
+print(f"Collected reward: task={task}, mean={reward_mean}, errors={n_errors}")
+PY
+done < "${TASK_FILE}"
+
+echo
+echo "=== Accuracy smoke reward summary ==="
+cat "${SUMMARY_TSV}"
