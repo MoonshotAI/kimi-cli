@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -48,6 +50,12 @@ class BackgroundTaskManager:
         self._runtime: Runtime | None = None
         self._live_agent_tasks: dict[str, asyncio.Task[None]] = {}
         self._completion_event: asyncio.Event = asyncio.Event()
+        # Per-task futures awakened whenever a status transition is observed.
+        # Populated by wait_for_status() and resolved by _notify_status_changed().
+        self._status_waiters: dict[str, list[asyncio.Future[None]]] = {}
+        # Lazily-captured event loop so _notify_status_changed can be called
+        # from threads (via asyncio.to_thread) and still reach waiters.
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def completion_event(self) -> asyncio.Event:
@@ -342,6 +350,135 @@ class BackgroundTaskManager:
                 return view
             await asyncio.sleep(self._config.wait_poll_interval_ms / 1000)
 
+    async def wait_for_status(
+        self,
+        task_id: str,
+        target: TaskStatus | Callable[[TaskStatus], bool],
+        *,
+        timeout_s: float = 5.0,
+    ) -> TaskView:
+        """Await until the task's status matches ``target``, or raise ``TimeoutError``.
+
+        ``target`` is either a specific ``TaskStatus`` or a predicate over the
+        current status. The wait is event-driven: the ``_mark_task_*`` writers
+        on *this* manager instance call :meth:`_notify_status_changed` after
+        updating the store, which resolves any pending futures registered here.
+
+        Scope (important):
+            This primitive only observes transitions that are produced by
+            ``_mark_task_*`` on the same manager instance. It is intended for
+            agent-task transitions driven in-process by ``BackgroundAgentRunner``
+            (notably ``"awaiting_approval"`` and the terminal statuses emitted
+            by ``_mark_task_{completed,failed,killed,timed_out}``).
+
+            Transitions written directly through the store bypass the notifier
+            and will NOT wake waiters here. Known bypass paths include:
+
+            * bash worker process updates to ``runtime.json`` (a separate
+              process; heartbeats, exit status, etc.)
+            * initial ``"starting"`` writes in ``create_bash_task`` and
+              ``create_agent_task``
+            * ``recover()`` writes of ``"lost"``/``"killed"`` for orphaned
+              tasks on startup
+
+            For observing statuses produced by any of those paths, use
+            :meth:`wait` (polling-based, terminal-only) instead.
+        """
+        if callable(target):
+            predicate: Callable[[TaskStatus], bool] = target
+        else:
+            target_status = target
+
+            def _match(status: TaskStatus) -> bool:
+                return status == target_status
+
+            predicate = _match
+
+        loop = asyncio.get_running_loop()
+        self._loop = loop  # lazy capture so thread-side notifiers can reach us
+        deadline = loop.time() + timeout_s
+        while True:
+            # Register the waiter BEFORE reading the store, so a notification
+            # that fires between our read and the registration cannot be lost.
+            # If the target was already reached (or reached between registration
+            # and this check), the post-registration merged_view below returns
+            # it immediately.
+            fut: asyncio.Future[None] = loop.create_future()
+            waiters = self._status_waiters.setdefault(task_id, [])
+            waiters.append(fut)
+            try:
+                view = self._store.merged_view(task_id)
+                if predicate(view.runtime.status):
+                    return view
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f"Timed out after {timeout_s}s waiting for status on task "
+                        f"{task_id!r}; current status: {view.runtime.status!r}"
+                    )
+                try:
+                    await asyncio.wait_for(fut, timeout=remaining)
+                except TimeoutError:
+                    # Loop around for a final predicate check; if still not
+                    # matching, the remaining<=0 branch above raises with a
+                    # descriptive message.
+                    continue
+            finally:
+                # Drop our future from the waiter list so timed-out or cancelled
+                # waits don't accumulate stale entries. _resolve_status_waiters
+                # pops the whole list, so if it already fired this is a no-op.
+                current = self._status_waiters.get(task_id)
+                if current is not None:
+                    with contextlib.suppress(ValueError):
+                        current.remove(fut)
+                    if not current:
+                        self._status_waiters.pop(task_id, None)
+                # If we're returning via an early predicate-match (or any other
+                # path that never awaited the future), cancel it so it doesn't
+                # get GC'd while still pending and emit 'Future was destroyed
+                # but it is pending!' via the loop's exception handler.
+                if not fut.done():
+                    fut.cancel()
+
+    def _notify_status_changed(self, task_id: str) -> None:
+        """Wake any :meth:`wait_for_status` waiters for this task.
+
+        Safe to call from the event loop or from another thread (e.g. via
+        ``asyncio.to_thread``). If the manager has not yet observed its event
+        loop (no ``wait_for_status`` call has been made), the notification is a
+        no-op because there cannot be any waiters.
+        """
+        # Use getattr so minimally-constructed instances (e.g. test harnesses
+        # that bypass __init__) cannot turn a best-effort notification into a
+        # real AttributeError.
+        if not getattr(self, "_status_waiters", None):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = getattr(self, "_loop", None)
+            if loop is None or loop.is_closed():
+                return
+            # call_soon_threadsafe can still race with loop shutdown and raise
+            # RuntimeError if the loop is closed between the check above and
+            # the scheduling call. Treat that as a best-effort no-op so a
+            # background agent_runner thread does not surface a spurious error.
+            try:
+                loop.call_soon_threadsafe(self._resolve_status_waiters, task_id)
+            except RuntimeError:
+                return
+            return
+        self._loop = loop
+        self._resolve_status_waiters(task_id)
+
+    def _resolve_status_waiters(self, task_id: str) -> None:
+        waiters = getattr(self, "_status_waiters", None)
+        if waiters is None:
+            return
+        for fut in waiters.pop(task_id, []):
+            if not fut.done():
+                fut.set_result(None)
+
     def _best_effort_kill(self, runtime: TaskRuntime) -> None:
         try:
             if os.name == "nt":
@@ -561,6 +698,7 @@ class BackgroundTaskManager:
         runtime.heartbeat_at = runtime.updated_at
         runtime.failure_reason = None
         self._store.write_runtime(task_id, runtime)
+        self._notify_status_changed(task_id)
 
     def _mark_task_awaiting_approval(self, task_id: str, reason: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -570,6 +708,7 @@ class BackgroundTaskManager:
         runtime.updated_at = time.time()
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
+        self._notify_status_changed(task_id)
 
     def _mark_task_completed(self, task_id: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -580,6 +719,7 @@ class BackgroundTaskManager:
         runtime.finished_at = runtime.updated_at
         runtime.failure_reason = None
         self._store.write_runtime(task_id, runtime)
+        self._notify_status_changed(task_id)
         from kimi_cli.telemetry import track
 
         if runtime.started_at and runtime.finished_at:
@@ -595,6 +735,7 @@ class BackgroundTaskManager:
         runtime.finished_at = runtime.updated_at
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
+        self._notify_status_changed(task_id)
         from kimi_cli.telemetry import track
 
         if runtime.started_at and runtime.finished_at:
@@ -617,6 +758,7 @@ class BackgroundTaskManager:
         runtime.timed_out = True
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
+        self._notify_status_changed(task_id)
         from kimi_cli.telemetry import track
 
         if runtime.started_at and runtime.finished_at:
@@ -638,6 +780,7 @@ class BackgroundTaskManager:
         runtime.interrupted = True
         runtime.failure_reason = reason
         self._store.write_runtime(task_id, runtime)
+        self._notify_status_changed(task_id)
         from kimi_cli.telemetry import track
 
         if runtime.started_at and runtime.finished_at:

@@ -1155,3 +1155,248 @@ async def test_manager_surfaces_timeout_failure(runtime):
     assert waited.runtime.interrupted is True
     assert waited.runtime.timed_out is True
     assert waited.runtime.failure_reason == "Command timed out after 1s"
+
+
+# ---------------------------------------------------------------------------
+# wait_for_status primitive
+# ---------------------------------------------------------------------------
+
+
+def _seed_running_task(manager, task_id: str) -> None:
+    """Persist a minimal 'running' agent task directly to the store."""
+    spec = TaskSpec(
+        id=task_id,
+        kind="agent",
+        session_id=manager._session.id,
+        description="wait_for_status test",
+        tool_call_id=f"tc-{task_id}",
+    )
+    manager.store.create_task(spec)
+    manager.store.write_runtime(task_id, TaskRuntime(status="running", updated_at=time.time()))
+
+
+async def test_wait_for_status_returns_immediately_when_already_matching(runtime):
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00001")
+
+    view = await manager.wait_for_status("wfs00001", "running", timeout_s=1)
+    assert view.runtime.status == "running"
+
+
+async def test_wait_for_status_wakes_on_transition_event(runtime):
+    """wait_for_status must return as soon as _mark_task_* writes the target status."""
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00002")
+
+    async def _flip_later() -> None:
+        await asyncio.sleep(0.01)
+        manager._mark_task_awaiting_approval("wfs00002", "please approve")
+
+    flipper = asyncio.create_task(_flip_later())
+    try:
+        view = await manager.wait_for_status("wfs00002", "awaiting_approval", timeout_s=2)
+    finally:
+        await flipper
+
+    assert view.runtime.status == "awaiting_approval"
+
+
+async def test_wait_for_status_times_out_when_never_matching(runtime):
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00003")
+
+    with pytest.raises(TimeoutError, match="Timed out"):
+        await manager.wait_for_status("wfs00003", "awaiting_approval", timeout_s=0.05)
+
+
+async def test_wait_for_status_notifies_across_thread_boundary(runtime):
+    """Simulate _mark_task_* being called from asyncio.to_thread; the waiter must wake."""
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00004")
+
+    async def _flip_via_thread() -> None:
+        await asyncio.sleep(0.01)
+        await asyncio.to_thread(manager._mark_task_awaiting_approval, "wfs00004", "x")
+
+    flipper = asyncio.create_task(_flip_via_thread())
+    try:
+        view = await manager.wait_for_status("wfs00004", "awaiting_approval", timeout_s=2)
+    finally:
+        await flipper
+
+    assert view.runtime.status == "awaiting_approval"
+
+
+async def test_wait_for_status_does_not_leave_pending_future_on_early_return(runtime):
+    """Early predicate-match returns must not leave a pending Future behind.
+
+    A Future that is registered but never awaited would otherwise be GC'd
+    in pending state and emit a ``Future was destroyed but it is pending!``
+    message via the loop's exception handler.
+    """
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00010")  # status == 'running' already matches
+
+    loop = asyncio.get_running_loop()
+    original_create_future = loop.create_future
+    created: list[asyncio.Future[None]] = []
+
+    def capturing_create_future() -> asyncio.Future[None]:
+        fut = original_create_future()
+        created.append(fut)
+        return fut
+
+    loop.create_future = capturing_create_future  # type: ignore[method-assign]
+    try:
+        view = await manager.wait_for_status("wfs00010", "running", timeout_s=1)
+    finally:
+        loop.create_future = original_create_future  # type: ignore[method-assign]
+
+    assert view.runtime.status == "running"
+    assert created, "wait_for_status should have created at least one Future"
+    for fut in created:
+        assert fut.done(), f"Future {fut!r} left pending after early return"
+
+
+async def test_wait_for_status_no_lost_wakeup_between_read_and_register(runtime):
+    """A notification that fires between the store read and future registration
+    must not be lost. The waiter registers before reading, so either the
+    post-registration read returns the new status, or the pending future is
+    resolved by the notification.
+    """
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00008")
+
+    original_merged_view = manager._store.merged_view
+    fired = {"done": False}
+
+    def racing_merged_view(task_id: str):
+        view = original_merged_view(task_id)
+        # Simulate a concurrent transition happening after this read but before
+        # the waiter gets a chance to await the future. With the pre-registration
+        # design, the NEXT loop iteration's merged_view will observe the new
+        # status (because we ran _mark_task_* synchronously here).
+        if task_id == "wfs00008" and not fired["done"]:
+            fired["done"] = True
+            manager._mark_task_awaiting_approval("wfs00008", "raced")
+        return view
+
+    manager._store.merged_view = racing_merged_view  # type: ignore[method-assign]
+    try:
+        view = await manager.wait_for_status("wfs00008", "awaiting_approval", timeout_s=2)
+    finally:
+        manager._store.merged_view = original_merged_view  # type: ignore[method-assign]
+
+    assert view.runtime.status == "awaiting_approval"
+    assert fired["done"]
+
+
+async def test_wait_for_status_cleans_up_future_on_timeout(runtime):
+    """Timed-out waits must not leak futures into _status_waiters."""
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00006")
+
+    for _ in range(3):
+        with pytest.raises(TimeoutError):
+            await manager.wait_for_status("wfs00006", "awaiting_approval", timeout_s=0.02)
+
+    assert "wfs00006" not in manager._status_waiters
+
+
+async def test_wait_for_status_cleans_up_future_on_cancellation(runtime):
+    """Cancelled waits must also remove their future from _status_waiters."""
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00007")
+
+    waiter = asyncio.create_task(
+        manager.wait_for_status("wfs00007", "awaiting_approval", timeout_s=5)
+    )
+
+    # Deterministically wait for the waiter task to register its future
+    # instead of sleeping for a fixed duration (which can race on slow CI).
+    async def _await_registration() -> None:
+        while not manager._status_waiters.get("wfs00007"):
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(_await_registration(), timeout=2)
+    assert manager._status_waiters.get("wfs00007")  # registered
+
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+
+    assert "wfs00007" not in manager._status_waiters
+
+
+async def test_notify_status_changed_is_noop_when_loop_is_closed(runtime):
+    """A background thread notifying after loop shutdown must not raise.
+
+    Simulates the agent_runner thread path: we capture the loop (as
+    wait_for_status would), close it, then invoke _notify_status_changed
+    from a non-loop thread. With a closed loop, the notification must be
+    a best-effort no-op even if call_soon_threadsafe would otherwise raise.
+
+    The test seeds _status_waiters with a real pending future so the early
+    ``not _status_waiters`` short-circuit doesn't fire; the function must
+    actually reach the loop.is_closed() guard in the thread-path branch.
+    """
+    import threading
+
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00009")
+
+    # Create the future on the fake loop BEFORE closing it (create_future
+    # on a closed loop would itself raise).
+    fake_loop = asyncio.new_event_loop()
+    fut: asyncio.Future[None] = fake_loop.create_future()
+    fake_loop.close()
+
+    original_loop = manager._loop
+    manager._loop = fake_loop
+    manager._status_waiters["wfs00009"] = [fut]
+
+    error: list[BaseException] = []
+
+    def _notify() -> None:
+        try:
+            manager._notify_status_changed("wfs00009")
+        except BaseException as exc:  # noqa: BLE001
+            error.append(exc)
+
+    try:
+        thread = threading.Thread(target=_notify)
+        thread.start()
+        thread.join(timeout=1)
+        assert not thread.is_alive()
+        assert not error, f"_notify_status_changed raised: {error!r}"
+        # Future is left unresolved because the loop is closed; that's the
+        # best-effort semantics we're asserting.
+        assert not fut.done()
+    finally:
+        # Restore the manager to a clean state so later tests on the same
+        # fixture instance don't inherit our closed fake loop or leftover
+        # waiter registration.
+        manager._loop = original_loop
+        manager._status_waiters.pop("wfs00009", None)
+
+
+async def test_wait_for_status_accepts_predicate(runtime):
+    """Predicate form supports awaiting any of multiple target statuses."""
+    manager = runtime.background_tasks
+    _seed_running_task(manager, "wfs00005")
+
+    async def _complete_later() -> None:
+        await asyncio.sleep(0.01)
+        manager._mark_task_completed("wfs00005")
+
+    flipper = asyncio.create_task(_complete_later())
+    try:
+        view = await manager.wait_for_status(
+            "wfs00005",
+            lambda s: s in ("awaiting_approval", "completed"),
+            timeout_s=2,
+        )
+    finally:
+        await flipper
+
+    assert view.runtime.status == "completed"
