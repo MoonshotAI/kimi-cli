@@ -545,6 +545,15 @@ class KimiSoul:
 
             set_session_id(self._runtime.session.id)
 
+            # --- UserPromptSubmit hook ---
+            if isinstance(user_input, str):
+                text_input_for_hook = user_input
+            else:
+                _parts: list[str] = []
+                for _part in user_input:
+                    if getattr(_part, "type", None) == "text":
+                        _parts.append(getattr(_part, "text", ""))
+                text_input_for_hook = "".join(_parts)
             from kimi_cli.hooks import events
 
             # --- UserPromptSubmit hook ---
