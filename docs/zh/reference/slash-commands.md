@@ -312,7 +312,7 @@ YOLO 模式会跳过所有审批确认，请确保你了解可能的风险。
 
 ### `/afk`
 
-切换 AFK（away-from-keyboard）模式。开启后在 YOLO 基础上进一步自动 dismiss Agent 发出的任何 `AskUserQuestion`——让 Agent 自己做判断，不再等待一个永远不会到来的回答。状态栏会显示独立的橙色 AFK 标识，与 YOLO 标识互不相干；再次输入可关闭。
+切换 AFK（away-from-keyboard）模式。开启后会自动批准所有工具调用，并进一步自动 dismiss Agent 发出的任何 `AskUserQuestion`——让 Agent 自己做判断，不再等待一个永远不会到来的回答。状态栏会显示独立的橙色 AFK 标识，与 YOLO 标识互不相干；再次输入可关闭。
 
 ::: warning 注意
 AFK 会跳过所有审批确认，并且去掉提问澄清的安全网。仅在你确实无法守在终端前时使用。

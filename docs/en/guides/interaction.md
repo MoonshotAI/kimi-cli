@@ -42,6 +42,8 @@ There are four ways to enter plan mode:
 
 You can also set `default_plan_mode = true` in the config file to start every new session in plan mode by default. See [Configuration files](../configuration/config-files.md).
 
+In YOLO mode, AI-initiated entry into plan mode is auto-approved, but exiting plan mode with `ExitPlanMode` still asks you to approve the plan. In AFK mode, both entering and exiting plan mode are auto-approved because no user is present.
+
 When plan mode is active, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
 
 ### Reviewing plans
@@ -213,10 +215,10 @@ kimi --afk
 /afk
 ```
 
-AFK implies YOLO (all tool calls are auto-approved), and additionally auto-dismisses any `AskUserQuestion` the model tries to send — so the agent makes its own best judgment instead of waiting for an answer that will never come. `--print` implicitly enables `--afk` for the same reason.
+AFK also auto-approves all tool calls, and additionally auto-dismisses any `AskUserQuestion` the model tries to send — so the agent makes its own best judgment instead of waiting for an answer that will never come. `--print` implicitly enables `--afk` for the same reason.
 
 When AFK is active, an orange AFK badge appears in the status bar, independent of the YOLO badge. Enter `/afk` again to disable it.
 
 ::: warning Note
-AFK skips all approval confirmations AND removes the safety net of clarifying questions. Only use when you genuinely cannot be at the terminal and trust the current scope.
+AFK skips all approval confirmations and removes the safety net of clarifying questions. Only use when you genuinely cannot be at the terminal and trust the current scope.
 :::

@@ -312,10 +312,10 @@ YOLO mode skips all approval confirmations. Make sure you understand the potenti
 
 ### `/afk`
 
-Toggle AFK (away-from-keyboard) mode. When enabled, AFK implies YOLO (all tool calls auto-approved) and additionally auto-dismisses any `AskUserQuestion` the agent sends — so the agent makes its own judgment instead of waiting for a reply that will not come. An orange AFK badge appears in the status bar independently of the YOLO badge; enter the command again to disable.
+Toggle AFK (away-from-keyboard) mode. When enabled, AFK auto-approves all tool calls and additionally auto-dismisses any `AskUserQuestion` the agent sends — so the agent makes its own judgment instead of waiting for a reply that will not come. An orange AFK badge appears in the status bar independently of the YOLO badge; enter the command again to disable.
 
 ::: warning Note
-AFK skips all approval confirmations AND removes the clarifying-question safety net. Only use when you genuinely cannot be at the terminal.
+AFK skips all approval confirmations and removes the clarifying-question safety net. Only use when you genuinely cannot be at the terminal.
 :::
 
 ### `/web`

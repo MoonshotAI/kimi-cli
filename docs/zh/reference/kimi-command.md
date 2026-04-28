@@ -121,7 +121,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 | `--yolo` | `-y` | 自动批准所有工具调用（用户仍可回应 `AskUserQuestion`） |
 | `--yes` | | `--yolo` 的别名 |
 | `--auto-approve` | | `--yolo` 的别名 |
-| `--afk` | | Away-from-keyboard 模式：在 `--yolo` 基础上再自动 dismiss `AskUserQuestion`，适用于无人值守场景 |
+| `--afk` | | Away-from-keyboard 模式：自动批准所有工具调用，并自动 dismiss `AskUserQuestion`，适用于无人值守场景 |
 
 ::: warning 注意
 YOLO 或 AFK 模式下，所有文件修改和 Shell 命令都会自动执行，请谨慎使用。

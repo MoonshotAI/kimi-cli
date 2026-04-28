@@ -121,7 +121,7 @@ Default loads `~/.kimi/mcp.json` (if exists). See [Model Context Protocol](../cu
 | `--yolo` | `-y` | Auto-approve all tool calls (user still reachable for `AskUserQuestion`) |
 | `--yes` | | Alias for `--yolo` |
 | `--auto-approve` | | Alias for `--yolo` |
-| `--afk` | | Away-from-keyboard: auto-approve tool calls AND auto-dismiss `AskUserQuestion`. Use when no user will be at the terminal |
+| `--afk` | | Away-from-keyboard: auto-approve tool calls and auto-dismiss `AskUserQuestion`. Use when no user will be at the terminal |
 
 ::: warning Note
 In YOLO or AFK mode, all file modifications and shell commands are automatically executed. Use with caution.
