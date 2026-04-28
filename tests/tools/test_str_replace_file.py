@@ -246,3 +246,30 @@ async def test_replace_empty_strings(
     assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello !"
+
+
+async def test_replace_auto_approved_workspace_dir(runtime, temp_work_dir: KaosPath):
+    """Test that edits in auto-approved workspace dirs skip approval."""
+    from kimi_cli.soul.approval import Approval
+    from kimi_cli.soul.toolset import current_tool_call
+    from kimi_cli.wire.types import ToolCall
+
+    runtime.config.auto_approve_workspace_dirs = ["plans"]
+    approval = Approval(yolo=False)
+    tool = StrReplaceFile(runtime, approval)
+
+    plans_dir = temp_work_dir / "plans"
+    await plans_dir.mkdir(parents=True, exist_ok=True)
+    file_path = plans_dir / "todo.txt"
+    await file_path.write_text("old content")
+
+    token = current_tool_call.set(
+        ToolCall(id="test", function=ToolCall.FunctionBody(name="StrReplaceFile", arguments=None))
+    )
+    try:
+        result = await tool(Params(path=str(file_path), edit=Edit(old="old", new="new")))
+    finally:
+        current_tool_call.reset(token)
+
+    assert not result.is_error
+    assert await file_path.read_text() == "new content"

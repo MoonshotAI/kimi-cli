@@ -271,16 +271,21 @@ class Runtime:
 
         # Merge CLI flag with persisted session state
         effective_yolo = yolo or session.state.approval.yolo
+        default_actions = set(config.default_auto_approve_actions or [])
         saved_actions = set(session.state.approval.auto_approve_actions)
 
         def _on_approval_change() -> None:
             session.state.approval.yolo = approval_state.yolo
-            session.state.approval.auto_approve_actions = set(approval_state.auto_approve_actions)
+            # Subtract config defaults before persisting so that removing a
+            # pattern from config actually disables it in existing sessions.
+            session.state.approval.auto_approve_actions = (
+                set(approval_state.auto_approve_actions) - default_actions
+            )
             session.save_state()
 
         approval_state = ApprovalState(
             yolo=effective_yolo,
-            auto_approve_actions=saved_actions,
+            auto_approve_actions=default_actions | saved_actions,
             on_change=_on_approval_change,
         )
         notifications = NotificationManager(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import uuid
 from collections.abc import Callable
 from typing import Literal
@@ -142,7 +143,11 @@ class Approval:
             )
             return ApprovalResult(approved=True)
 
-        if action in self._state.auto_approve_actions:
+        # Fast path: exact match handles action names containing glob-special
+        # characters (e.g. brackets) that fnmatch would misinterpret.
+        if action in self._state.auto_approve_actions or any(
+            fnmatch.fnmatch(action, pattern) for pattern in self._state.auto_approve_actions
+        ):
             from kimi_cli.telemetry import track
 
             track(

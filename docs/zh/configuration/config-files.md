@@ -32,6 +32,8 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `theme` | `string` | 终端配色主题，可选 `"dark"` 或 `"light"`（默认为 `"dark"`） |
 | `show_thinking_stream` | `boolean` | 是否在 Live 区域以 6 行滚动预览方式实时展示模型的原始思考文本，并在 thinking 块结束时把完整思考内容（Markdown）写入历史记录（默认为 `true`；设为 `false` 则仅显示紧凑的 `Thinking ...` 指示器和一行 trace 总结） |
 | `merge_all_available_skills` | `boolean` | 是否合并所有品牌目录中的 Skills（默认为 `true`）；详见 [Skills 配置](../customization/skills.md) |
+| `default_auto_approve_actions` | `array` | 每次会话默认自动审批的操作名称模式列表。支持 glob 通配符（`*`、`?`）。示例：`["mcp:obsidian_*"]`。默认为 `[]` |
+| `auto_approve_workspace_dirs` | `array` | 文件写入/编辑操作自动跳过审批的工作区目录名称列表（相对于 `work_dir`）。示例：`["skills", "plans"]`。默认为 `[]` |
 | `providers` | `table` | API 供应商配置 |
 | `models` | `table` | 模型配置 |
 | `loop_control` | `table` | Agent 循环控制参数 |
@@ -50,6 +52,12 @@ default_editor = ""
 theme = "dark"
 show_thinking_stream = true
 merge_all_available_skills = true
+
+# 默认自动审批所有 Obsidian MCP 工具
+# default_auto_approve_actions = ["mcp:obsidian_*"]
+
+# 在这些工作区目录内的文件编辑操作跳过审批
+# auto_approve_workspace_dirs = ["skills", "plans"]
 
 [providers.kimi-for-coding]
 type = "kimi"
