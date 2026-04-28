@@ -206,6 +206,12 @@ class Shell:
         }
         """Shell-level slash commands + soul-level slash commands. Name to command mapping."""
 
+        # Sync user prompt color from runtime config so echo rendering picks it up.
+        if isinstance(soul, KimiSoul):
+            from kimi_cli.ui.theme import set_user_prompt_color
+
+            set_user_prompt_color(soul.runtime.config.prompt_text_color or None)
+
     @property
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
         """Get all available slash commands, including shell-level and soul-level commands."""

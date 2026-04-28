@@ -215,6 +215,10 @@ class Config(BaseModel):
         default="dark",
         description="Terminal color theme. Use 'light' for light terminal backgrounds.",
     )
+    prompt_text_color: str = Field(
+        default="",
+        description="Rich style for the user prompt text (e.g. 'dim', 'cyan').",
+    )
     show_thinking_stream: bool = Field(
         default=True,
         description=(

@@ -239,3 +239,21 @@ def get_toolbar_colors() -> ToolbarColors:
 
 def get_mcp_prompt_colors() -> MCPPromptColors:
     return _MCP_PROMPT_LIGHT if _active_theme == "light" else _MCP_PROMPT_DARK
+
+
+# ---------------------------------------------------------------------------
+# User prompt echo colors (overrides terminal default when set)
+# ---------------------------------------------------------------------------
+
+_prompt_text_color: str | None = None
+
+
+def set_user_prompt_color(text: str | None) -> None:
+    """Set custom color for user prompt echo rendering."""
+    global _prompt_text_color
+    _prompt_text_color = text
+
+
+def get_user_prompt_color() -> str | None:
+    """Return the active text color or None for terminal default."""
+    return _prompt_text_color
