@@ -38,6 +38,11 @@ def is_clipboard_available() -> bool:
         return False
 
 
+def copy_text_to_clipboard(text: str) -> None:
+    """Copy plain text to the system clipboard."""
+    pyperclip.copy(text)
+
+
 def grab_media_from_clipboard() -> ClipboardResult | None:
     """Read media from the clipboard.
 

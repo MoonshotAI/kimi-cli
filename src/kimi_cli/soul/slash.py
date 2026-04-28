@@ -93,6 +93,33 @@ async def clear(soul: KimiSoul, args: str):
 
 
 @registry.command
+async def copy(soul: KimiSoul, args: str):
+    """Copy the latest assistant response to the clipboard"""
+    from kimi_cli.utils.clipboard import copy_text_to_clipboard, is_clipboard_available
+    from kimi_cli.utils.export import format_assistant_message_md
+
+    if not is_clipboard_available():
+        wire_send(TextPart(text="Clipboard is not available on this system."))
+        return
+
+    last_assistant = next(
+        (m for m in reversed(soul.context.history) if m.role == "assistant"),
+        None,
+    )
+    if last_assistant is None:
+        wire_send(TextPart(text="No assistant response to copy."))
+        return
+
+    markdown = format_assistant_message_md(last_assistant)
+    if not markdown:
+        wire_send(TextPart(text="The latest response is empty."))
+        return
+
+    copy_text_to_clipboard(markdown)
+    wire_send(TextPart(text="Copied the latest assistant response to clipboard."))
+
+
+@registry.command
 async def yolo(soul: KimiSoul, args: str):
     """Toggle YOLO mode (auto-approve all actions)"""
     from kimi_cli.telemetry import track

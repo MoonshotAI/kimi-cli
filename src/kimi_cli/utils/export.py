@@ -100,6 +100,30 @@ def _format_content_part_md(part: ContentPart) -> str:
             return f"[{part.type}]"
 
 
+def format_assistant_message_md(msg: Message) -> str:
+    """Format a single assistant message as markdown.
+
+    Includes text, thinking, media placeholders, and tool calls.
+    Returns an empty string for non-assistant messages.
+    """
+    if msg.role != "assistant":
+        return ""
+
+    lines: list[str] = []
+    for part in msg.content:
+        text = _format_content_part_md(part)
+        if text.strip():
+            lines.append(text)
+            lines.append("")
+
+    if msg.tool_calls:
+        for tc in msg.tool_calls:
+            lines.append(_format_tool_call_md(tc))
+            lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 def _format_tool_call_md(tool_call: ToolCall) -> str:
     """Convert a ToolCall to a markdown sub-section with a readable title."""
     args_raw = tool_call.function.arguments or "{}"

@@ -14,6 +14,7 @@ dependencies = [
     "loguru>=0.6.0,<0.8",
     "prompt-toolkit==3.0.52",
     "pillow==12.1.0",
+    "pyperclip>=1.8.0",
     "pyyaml==6.0.3",
     "rich==14.2.0",
     "ripgrepy==2.2.0",
