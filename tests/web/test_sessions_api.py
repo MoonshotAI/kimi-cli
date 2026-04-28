@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 import pytest
@@ -11,6 +12,9 @@ from kimi_cli.session import Session
 from kimi_cli.session_state import load_session_state, save_session_state
 from kimi_cli.web.api import sessions as sessions_api
 from kimi_cli.web.models import GenerateTitleRequest
+
+if TYPE_CHECKING:
+    from kimi_cli.web.runner.process import KimiCLIRunner
 
 
 @pytest.fixture
@@ -39,6 +43,13 @@ class _FakeOAuthManager:
         pass
 
     async def ensure_fresh(self) -> None:
+        return None
+
+
+class _FakeRunner:
+    """Stand-in for ``KimiCLIRunner`` for tests that bypass FastAPI dependency injection."""
+
+    def get_session(self, _session_id: UUID) -> None:
         return None
 
 
@@ -95,6 +106,7 @@ async def test_generate_title_preserves_concurrent_manual_title(
             user_message="debug the flaky web session rename issue",
             assistant_response="I'll inspect the session state writes.",
         ),
+        runner=cast("KimiCLIRunner", _FakeRunner()),
     )
 
     state = load_session_state(session.dir)

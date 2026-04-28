@@ -4,8 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
-- Web: Fix session rename, archive, and title generation being incorrectly rejected when the session is busy — these state-only edits now bypass the busy check and safely merge concurrent worker changes via on-disk state reloads. Title generation also preserves a title finalized by another request while the LLM call was in flight
-- Web: Show toast error notifications in the web UI for session rename, archive, unarchive, delete, and title generation failures
+- Web: Fix AI title generation overwriting a manually-set title when the LLM call finishes after the user has already renamed the session — the final write now reloads state and yields to a `title_generated` flag set by another request
+- Web: Surface session rename, archive, unarchive, and title generation failures as toast notifications instead of only logging to the console
 - Kosong: Fix stale API key after OAuth token refresh in Kimi provider — `on_retryable_error` now reads the current `api_key` from the live client instead of the cached `_api_key`, so that OAuth token refreshes applied via `client.api_key` are preserved when the client is rebuilt after a retryable error
 - Core: Approval requests no longer auto-timeout after 5 minutes, which previously surfaced as `Rejected by user`; active foreground and subagent approvals now wait indefinitely for user response
 - Core: Fix yolo mode reminder being lost after context compaction — the non-interactive-mode guidance ("don't call AskUserQuestion, plan-mode toggles are auto-approved") is now re-injected on the first LLM step after each compaction while yolo remains active, instead of being silently dropped when the original reminder is folded into the compaction summary

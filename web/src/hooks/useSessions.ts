@@ -513,7 +513,6 @@ export function useSessions(): UseSessionsReturn {
         const message =
           err instanceof Error ? err.message : "Failed to delete session";
         setError(message);
-        toast.error(message);
         return false;
       } finally {
         setIsLoading(false);
