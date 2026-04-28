@@ -1484,8 +1484,16 @@ class CustomPromptSession:
                 track("shortcut_paste")
                 if self._try_paste_media(event):
                     return
-                clipboard_data = event.app.clipboard.get_data()
+                try:
+                    clipboard_data = event.app.clipboard.get_data()
+                except TypeError:
+                    # pyperclip.paste() returns None when the clipboard is
+                    # empty or holds non-text data (e.g. a screenshot),
+                    # which causes a TypeError inside prompt_toolkit.
+                    return
                 if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                    return
+                if not clipboard_data.text:
                     return
                 self._insert_pasted_text(event.current_buffer, clipboard_data.text)
                 event.app.invalidate()
