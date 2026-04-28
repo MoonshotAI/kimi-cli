@@ -46,7 +46,7 @@ from kimi_cli.soul import (
     StatusSnapshot,
     wire_send,
 )
-from kimi_cli.soul.agent import Agent, Runtime
+from kimi_cli.soul.agent import Agent, Runtime, load_system_prompt
 from kimi_cli.soul.compaction import (
     CompactionResult,
     SimpleCompaction,
@@ -178,6 +178,7 @@ class KimiSoul:
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
         self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._system_prompt = agent.system_prompt
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -449,6 +450,11 @@ class KimiSoul:
         return self._agent
 
     @property
+    def system_prompt(self) -> str:
+        """The current system prompt, re-rendered after skill reloads."""
+        return self._system_prompt
+
+    @property
     def runtime(self) -> Runtime:
         return self._runtime
 
@@ -521,6 +527,21 @@ class KimiSoul:
 
     @property
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
+        return self._slash_commands
+
+    async def refresh_slash_commands(self) -> list[SlashCommand[Any]]:
+        """Reload skills from disk and rebuild the slash command registry."""
+        await self._runtime.reload_skills()
+        self._slash_commands = self._build_slash_commands()
+        self._slash_command_map = self._index_slash_commands(self._slash_commands)
+        # Re-render the system prompt so that updated builtin_args (e.g. KIMI_SKILLS)
+        # are reflected after context compaction.
+        if self._agent.system_prompt_path is not None:
+            self._system_prompt = load_system_prompt(
+                self._agent.system_prompt_path,
+                self._agent.system_prompt_args or {},
+                self._runtime.builtin_args,
+            )
         return self._slash_commands
 
     async def run(
@@ -943,7 +964,7 @@ class KimiSoul:
             # run an LLM step (may be interrupted)
             return await kosong.step(
                 chat_provider,
-                self._agent.system_prompt,
+                self._system_prompt,
                 self._agent.toolset,
                 effective_history,
                 on_message_part=wire_send,
@@ -1129,7 +1150,7 @@ class KimiSoul:
             )
             raise
         await self._context.clear()
-        await self._context.write_system_prompt(self._agent.system_prompt)
+        await self._context.write_system_prompt(self._system_prompt)
         await self._checkpoint()
         await self._context.append_message(compaction_result.messages)
         estimated_token_count = compaction_result.estimated_token_count

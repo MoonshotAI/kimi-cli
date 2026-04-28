@@ -211,6 +211,23 @@ class Shell:
         """Get all available slash commands, including shell-level and soul-level commands."""
         return self._available_slash_commands
 
+    def refresh_slash_commands(self) -> None:
+        """Sync slash commands from the soul and update prompt completers."""
+        if not isinstance(self.soul, KimiSoul):
+            return
+        soul_commands = self.soul.available_slash_commands
+        shell_commands = shell_slash_registry.list_commands()
+        self._available_slash_commands = {
+            **{cmd.name: cmd for cmd in soul_commands},
+            **{cmd.name: cmd for cmd in shell_commands},
+        }
+        if self._prompt_session is not None:
+            # refresh_slash_completers only rebuilds the agent-mode completer;
+            # shell-mode completer is static and never changes dynamically.
+            self._prompt_session.refresh_slash_completers(
+                list(self._available_slash_commands.values())
+            )
+
     def _print_cwd_lost_crash(self) -> None:
         """Print a crash report when the working directory is no longer accessible."""
         runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
@@ -1011,6 +1028,7 @@ class Shell:
                 console.print(f"[yellow]Queued message dropped: {msg.command}[/yellow]")
             self._maybe_present_pending_approvals()
             remove_sigint()
+            self.refresh_slash_commands()
         return False
 
     @staticmethod

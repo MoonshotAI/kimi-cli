@@ -80,7 +80,7 @@ async def clear(soul: KimiSoul, args: str):
     """Clear the context"""
     logger.info("Running `/clear`")
     await soul.context.clear()
-    await soul.context.write_system_prompt(soul.agent.system_prompt)
+    await soul.context.write_system_prompt(soul.system_prompt)
     wire_send(TextPart(text="The context has been cleared."))
     snap = soul.status
     wire_send(
@@ -290,3 +290,32 @@ async def import_context(soul: KimiSoul, args: str):
                 "The content is now part of your session context."
             )
         )
+
+
+@registry.command(name="reload-skills")
+async def reload_skills(soul: KimiSoul, args: str):
+    """Reload available skills from disk without restarting the session."""
+    from kimi_cli.telemetry import track
+
+    track("reload_skills")
+    await soul.refresh_slash_commands()
+
+    new_skills = [
+        cmd for cmd in soul.available_slash_commands if cmd.name.startswith("skill:")
+    ]
+    skill_names = [cmd.name.removeprefix("skill:") for cmd in new_skills]
+
+    msg = f"Skills reloaded. {len(skill_names)} skill(s) now available."
+    if skill_names:
+        msg += f"\n\nAvailable skills: {', '.join(skill_names)}"
+
+    # Inject updated skills list into the context so the LLM is aware.
+    skills_formatted = soul.runtime.builtin_args.KIMI_SKILLS
+    system_message = system(
+        "The user just ran `/reload-skills` slash command. "
+        "The system has rescanned skill directories and updated the available skills. "
+        f"Latest available skills:\n{skills_formatted}"
+    )
+    await soul.context.append_message(Message(role="user", content=[system_message]))
+
+    wire_send(TextPart(text=msg))

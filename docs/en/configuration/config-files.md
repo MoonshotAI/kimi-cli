@@ -27,6 +27,7 @@ The configuration file contains the following top-level configuration items:
 | `default_model` | `string` | Default model name, must be a model defined in `models` |
 | `default_thinking` | `boolean` | Whether to enable thinking mode by default (defaults to `false`) |
 | `default_yolo` | `boolean` | Whether to enable YOLO (auto-approve) mode by default (defaults to `false`) |
+| `skip_yolo_prompt_injection` | `boolean` | Suppress the system reminder normally injected when yolo mode is active (defaults to `false`). Useful when building custom applications on top of `KimiSoul` that do not need the non-interactive mode hint |
 | `default_plan_mode` | `boolean` | Whether to start new sessions in plan mode by default (defaults to `false`); resumed sessions preserve their existing state |
 | `default_editor` | `string` | Default external editor command (e.g. `"vim"`, `"code --wait"`), auto-detects when empty |
 | `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |

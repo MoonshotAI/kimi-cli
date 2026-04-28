@@ -116,6 +116,8 @@ How background tasks work:
 
 You can use the `/task` slash command to open the interactive task browser, where you can view the status and output of all background tasks in real time (including tasks that are still running). See [Slash commands reference](../reference/slash-commands.md#task) for details.
 
+The bottom status bar shows the number of currently active background tasks as two independent badges: `⚙ bash: N` (background Shell tasks) and `⚙ agent: N` (background Agent subtasks). Each badge is hidden when its count is zero. When the terminal is too narrow to fit both, the `bash` badge is kept and the `agent` badge is dropped first.
+
 ::: tip
 By default, up to 4 background tasks can run simultaneously. This can be adjusted in the `[background]` section of the config file. All background tasks are terminated when the CLI exits by default. See [Configuration files](../configuration/config-files.md#background).
 :::

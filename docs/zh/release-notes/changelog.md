@@ -12,6 +12,7 @@
 - Auth：修复 OAuth 用户 access token 过期时托管模型列表刷新静默失败的问题——后台 `/models` 同步任务现在会检测 401 响应，强制进行 OAuth token 刷新并用刷新后的 token 重试；如果刷新本身失败或刷新后的 token 仍被拒绝，则回退到最初配置的静态 API 密钥，而不是跳过该 provider
 - Core：修复连接恢复后重试返回 401 时未能触发 OAuth 刷新的问题——在 `APIConnectionError` 或 `APITimeoutError` 后重建 HTTP 客户端时，重试现在会重新进入完整恢复路径，使得后续的 401 能正确刷新 OAuth token，而不是作为不可恢复的错误直接抛给用户
 - Shell：在 transcript 中回显 `/skill:*` 和 `/flow:*` 输入，工作流命令按下回车后不再消失；`/usage`、`/model` 等操作类斜杠命令仍然保持隐藏
+- Core：新增 `/reload-skills` 斜杠命令，支持在不重启会话的情况下重新扫描 Skill 目录并发现新技能——运行时技能注册表、斜杠命令列表、Shell 提示框自动补全以及 LLM 系统提示词都会立即更新，新发现的 `/skill:*` 和 `/flow:*` 命令即刻可用
 - Core：将默认 `max_steps_per_turn` 从 500 提升到 1000，长任务更不容易撞到单轮步数上限
 
 ## 1.39.0 (2026-04-24)
