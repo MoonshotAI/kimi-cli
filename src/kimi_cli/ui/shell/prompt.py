@@ -58,6 +58,7 @@ from kimi_cli.soul import StatusSnapshot, format_context_status
 from kimi_cli.ui.shell import placeholders as prompt_placeholders
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.placeholders import (
+    CursorPlaceholderContext,
     PromptPlaceholderManager,
     normalize_pasted_text,
     sanitize_surrogates,
@@ -1471,6 +1472,38 @@ class CustomPromptSession:
         def _(event: KeyPressEvent) -> None:
             self._handle_running_prompt_key("6", event)
 
+        @_kb.add(
+            Keys.Backspace,
+            eager=True,
+            filter=Condition(lambda: self._placeholder_edit_armed("left")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._placeholder_edit(event, direction="left", mode="destructive")
+
+        @_kb.add(
+            Keys.Delete,
+            eager=True,
+            filter=Condition(lambda: self._placeholder_edit_armed("right")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._placeholder_edit(event, direction="right", mode="destructive")
+
+        @_kb.add(
+            "left",
+            eager=True,
+            filter=Condition(lambda: self._placeholder_edit_armed("left")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._placeholder_edit(event, direction="left", mode="navigational")
+
+        @_kb.add(
+            "right",
+            eager=True,
+            filter=Condition(lambda: self._placeholder_edit_armed("right")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._placeholder_edit(event, direction="right", mode="navigational")
+
         @_kb.add(Keys.BracketedPaste, eager=True)
         def _(event: KeyPressEvent) -> None:
             self._handle_bracketed_paste(event)
@@ -1880,6 +1913,65 @@ class CustomPromptSession:
             self._placeholder_manager = manager
             self._attachment_cache = manager.attachment_cache
         return manager
+
+    def _placeholder_editing_enabled(self) -> bool:
+        return self._mode == PromptMode.AGENT and self._active_prompt_delegate() is None
+
+    def _active_edit_buffer(self) -> Buffer | None:
+        if not self._placeholder_editing_enabled() or not hasattr(self, "_session"):
+            return None
+        app = get_app_or_none()
+        if app is not None and app.current_buffer is not self._session.default_buffer:
+            return None
+        return self._session.default_buffer
+
+    def _cursor_placeholder_context(self, buffer: Buffer) -> CursorPlaceholderContext:
+        selection = (
+            buffer.document.selection_range() if buffer.selection_state is not None else None
+        )
+        return self._get_placeholder_manager().cursor_context(
+            buffer.text, buffer.cursor_position, selection
+        )
+
+    def _placeholder_edit_armed(self, direction: Literal["left", "right"]) -> bool:
+        buffer = self._active_edit_buffer()
+        if buffer is None:
+            return False
+        ctx = self._cursor_placeholder_context(buffer)
+        # Any selection that doesn't exactly match a placeholder yields to default handlers.
+        if buffer.selection_state is not None and ctx.selected is None:
+            return False
+        if ctx.selected is not None:
+            return True
+        boundary_span = ctx.ends_at_cursor if direction == "left" else ctx.starts_at_cursor
+        return boundary_span is not None
+
+    def _placeholder_edit(
+        self,
+        event: KeyPressEvent,
+        *,
+        direction: Literal["left", "right"],
+        mode: Literal["destructive", "navigational"],
+    ) -> None:
+        buffer = event.current_buffer
+        ctx = self._cursor_placeholder_context(buffer)
+        if ctx.selected is not None:
+            if mode == "destructive":
+                buffer.cut_selection()
+            else:
+                buffer.exit_selection()
+                buffer.cursor_position = (
+                    ctx.selected.start if direction == "left" else ctx.selected.end
+                )
+        else:
+            span = ctx.ends_at_cursor if direction == "left" else ctx.starts_at_cursor
+            if span is not None:
+                enter_from_left = direction == "right"
+                buffer.exit_selection()
+                buffer.cursor_position = span.start if enter_from_left else span.end
+                buffer.start_selection()
+                buffer.cursor_position = span.end if enter_from_left else span.start
+        event.app.invalidate()
 
     def _insert_pasted_text(self, buffer: Buffer, text: str) -> None:
         normalized = normalize_pasted_text(text)

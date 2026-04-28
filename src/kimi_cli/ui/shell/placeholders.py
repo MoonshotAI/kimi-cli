@@ -224,6 +224,21 @@ class PlaceholderTokenMatch:
     match: re.Match[str]
 
 
+@dataclass(slots=True, frozen=True)
+class PlaceholderSpan:
+    start: int
+    end: int
+
+
+@dataclass(slots=True, frozen=True)
+class CursorPlaceholderContext:
+    """Placeholder-aware view of the buffer around the cursor."""
+
+    starts_at_cursor: PlaceholderSpan | None
+    ends_at_cursor: PlaceholderSpan | None
+    selected: PlaceholderSpan | None
+
+
 class PlaceholderHandler(Protocol):
     def find_next(self, text: str, start: int = 0) -> PlaceholderTokenMatch | None: ...
 
@@ -441,6 +456,9 @@ class PromptPlaceholderManager:
             self._text_handler,
             self._image_handler,
         )
+        self._span_index_text: str | None = None
+        self._span_by_start: dict[int, PlaceholderSpan] = {}
+        self._span_by_end: dict[int, PlaceholderSpan] = {}
 
     @property
     def attachment_cache(self) -> AttachmentCache:
@@ -451,6 +469,39 @@ class PromptPlaceholderManager:
 
     def create_image_placeholder(self, image: Image.Image) -> str | None:
         return self._image_handler.create_placeholder(image)
+
+    def cursor_context(
+        self,
+        text: str,
+        cursor_position: int,
+        selection: tuple[int, int] | None,
+    ) -> CursorPlaceholderContext:
+        self._ensure_span_index(text)
+        selected: PlaceholderSpan | None = None
+        if selection is not None:
+            span = self._span_by_start.get(selection[0])
+            if span is not None and span.end == selection[1]:
+                selected = span
+        return CursorPlaceholderContext(
+            starts_at_cursor=self._span_by_start.get(cursor_position),
+            ends_at_cursor=self._span_by_end.get(cursor_position),
+            selected=selected,
+        )
+
+    def _ensure_span_index(self, text: str) -> None:
+        if text == self._span_index_text:
+            return
+        self._span_index_text = text
+        self._span_by_start.clear()
+        self._span_by_end.clear()
+        if "[" not in text:
+            return
+        cursor = 0
+        while match := self._find_next_match(text, cursor):
+            span = PlaceholderSpan(start=match.start, end=match.end)
+            self._span_by_start[match.start] = span
+            self._span_by_end[match.end] = span
+            cursor = match.end
 
     def resolve_command(self, command: str) -> ResolvedPromptCommand:
         content: list[ContentPart] = []

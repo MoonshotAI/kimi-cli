@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import shlex
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from PIL import Image
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyPressEvent
 
 if TYPE_CHECKING:
     from prompt_toolkit.buffer import Buffer
 
 from kimi_cli.llm import ModelCapability
+from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell import prompt as shell_prompt
 from kimi_cli.ui.shell.prompt import PromptMode
 from kimi_cli.utils.clipboard import ClipboardResult
@@ -32,6 +35,10 @@ class _DummyApp:
 
     def invalidate(self) -> None:
         self.invalidated = True
+
+
+def _make_key_event(buffer: Buffer) -> KeyPressEvent:
+    return cast(KeyPressEvent, SimpleNamespace(current_buffer=buffer, app=_DummyApp()))
 
 
 class _FakeAttachmentCache(shell_prompt.AttachmentCache):
@@ -57,6 +64,25 @@ def _make_prompt_session(
         path=Path("/tmp/abc123.png"),
     )
     ps._attachment_cache = _FakeAttachmentCache(cached)
+    return ps
+
+
+def _make_editing_prompt_session(
+    monkeypatch, *, mode: PromptMode = PromptMode.AGENT
+) -> shell_prompt.CustomPromptSession:
+    monkeypatch.setattr(shell_prompt, "is_clipboard_available", lambda: False)
+    ps = shell_prompt.CustomPromptSession(
+        status_provider=lambda: StatusSnapshot(context_usage=0.0),
+        model_capabilities=cast(set[ModelCapability], {"image_in"}),
+        model_name=None,
+        thinking=False,
+        agent_mode_slash_commands=[],
+        shell_mode_slash_commands=[],
+    )
+    ps._mode = mode
+    ps._apply_mode()
+    ps._session.default_buffer.start_completion = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    ps._session.default_buffer.validate_while_typing = Condition(lambda: False)
     return ps
 
 
@@ -391,3 +417,127 @@ async def test_question_delegate_expands_placeholders_on_submit() -> None:
     assert expand_calls[0] == "prefix [Pasted text #1 +19 lines]"
     assert len(submitted_texts) == 1
     assert full_text in submitted_texts[0]
+
+
+def test_boundary_placeholder_keys_select_expected_span(monkeypatch) -> None:
+    ps = _make_editing_prompt_session(monkeypatch)
+    buffer = ps._session.default_buffer
+    backspace = partial(ps._placeholder_edit, direction="left", mode="destructive")
+    delete = partial(ps._placeholder_edit, direction="right", mode="destructive")
+    left = partial(ps._placeholder_edit, direction="left", mode="navigational")
+    right = partial(ps._placeholder_edit, direction="right", mode="navigational")
+
+    image_line = "before [image:abc123.png,10x10] after"
+    image_token = "[image:abc123.png,10x10]"
+    image_end = len("before [image:abc123.png,10x10]")
+    image_start = len("before ")
+
+    pasted_line = "before [Pasted text #1 +15 lines] after"
+    pasted_token = "[Pasted text #1 +15 lines]"
+    pasted_end = len("before [Pasted text #1 +15 lines]")
+
+    two_tokens_line = "[image:first.png,10x10] [image:second.png,20x20]"
+    two_tokens_target = "[image:second.png,20x20]"
+    two_tokens_end = len(two_tokens_line)
+    two_tokens_cursor = len("[image:first.png,10x10] ")
+
+    cases = [
+        (backspace, image_line, image_end, image_token, image_start),
+        (delete, image_line, image_start, image_token, image_end),
+        (left, image_line, image_end, image_token, image_start),
+        (right, image_line, image_start, image_token, image_end),
+        (backspace, pasted_line, pasted_end, pasted_token, len("before ")),
+        (backspace, two_tokens_line, two_tokens_end, two_tokens_target, two_tokens_cursor),
+    ]
+
+    for handler, text, cursor, target, expected_cursor in cases:
+        buffer.exit_selection()
+        start = text.index(target)
+        end = start + len(target)
+        buffer.document = shell_prompt.Document(text=text, cursor_position=cursor)
+
+        handler(_make_key_event(buffer))
+
+        assert buffer.text == text
+        assert buffer.document.selection_range() == (start, end)
+        assert buffer.cursor_position == expected_cursor
+
+
+def test_selected_placeholder_keys_delete_or_collapse(monkeypatch) -> None:
+    ps = _make_editing_prompt_session(monkeypatch)
+    token = "[image:abc123.png,10x10]"
+    buffer = ps._session.default_buffer
+    text = f"before {token} after"
+    token_start = text.index(token)
+    token_end = token_start + len(token)
+
+    cases: list[
+        tuple[
+            Literal["destructive", "navigational"],
+            Literal["left", "right"],
+            str,
+            int,
+        ]
+    ] = [
+        ("destructive", "left", "before  after", token_start),
+        ("destructive", "right", "before  after", token_start),
+        ("navigational", "left", text, token_start),
+        ("navigational", "right", text, token_end),
+    ]
+
+    for mode, direction, expected_text, expected_cursor in cases:
+        buffer.exit_selection()
+        buffer.document = shell_prompt.Document(text=text, cursor_position=token_start)
+        buffer.start_selection()
+        buffer.cursor_position = token_end
+
+        ps._placeholder_edit(_make_key_event(buffer), direction=direction, mode=mode)
+
+        assert buffer.text == expected_text
+        assert buffer.cursor_position == expected_cursor
+        assert buffer.selection_state is None
+
+
+def test_placeholder_atomic_editing_filters_reject_non_atomic_contexts(monkeypatch) -> None:
+    ps = _make_editing_prompt_session(monkeypatch)
+    buffer = ps._session.default_buffer
+    token = "[image:abc123.png,10x10]"
+
+    # Cursor inside a placeholder -> no direction should arm.
+    buffer.document = shell_prompt.Document(text=token, cursor_position=token.index("abc123"))
+    assert ps._placeholder_edit_armed("left") is False
+    assert ps._placeholder_edit_armed("right") is False
+
+    # Selection is a proper subset of a placeholder -> no direction arms.
+    text = f"before {token} after"
+    start = text.index(token)
+    buffer.document = shell_prompt.Document(text=text, cursor_position=start)
+    buffer.start_selection()
+    buffer.cursor_position = start + len(token) - 1
+    assert ps._cursor_placeholder_context(buffer).selected is None
+    assert ps._placeholder_edit_armed("left") is False
+    assert ps._placeholder_edit_armed("right") is False
+
+    # Shell mode entirely disables atomic placeholder editing.
+    shell_ps = _make_editing_prompt_session(monkeypatch, mode=PromptMode.SHELL)
+    shell_buffer = shell_ps._session.default_buffer
+    shell_buffer.document = shell_prompt.Document(text=token, cursor_position=len(token))
+    assert shell_ps._placeholder_edit_armed("left") is False
+    assert shell_ps._placeholder_edit_armed("right") is False
+
+
+def test_non_placeholder_selection_at_boundary_does_not_get_replaced(monkeypatch) -> None:
+    ps = _make_editing_prompt_session(monkeypatch)
+    token = "[image:abc123.png,10x10]"
+    text = f"prefix {token} suffix"
+    token_start = text.index(token)
+    non_placeholder_start = text.index("prefix")
+    non_placeholder_end = token_start
+    buffer = ps._session.default_buffer
+    buffer.document = shell_prompt.Document(text=text, cursor_position=non_placeholder_start)
+    buffer.start_selection()
+    buffer.cursor_position = non_placeholder_end
+
+    assert ps._cursor_placeholder_context(buffer).selected is None
+    assert ps._placeholder_edit_armed("left") is False
+    assert ps._placeholder_edit_armed("right") is False
