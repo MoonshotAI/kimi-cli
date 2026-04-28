@@ -1694,23 +1694,30 @@ class FlowRunner:
 
         while True:
             # Only inject flow_decision tool for decision nodes so the model
-            # doesn't misuse it during task execution.
+            # doesn't misuse it during task execution. Hide all other tools
+            # to force the model to use flow_decision.
             toolset = soul._agent.toolset  # type: ignore[reportPrivateUsage]
             added_flow_decision = False
-            if (
-                node.kind == "decision"
-                and isinstance(toolset, KimiToolset)
-                and toolset.find("flow_decision") is None
-            ):
-                toolset.add(FlowDecisionTool())
-                added_flow_decision = True
+            hidden_tools: list[str] = []
+            if node.kind == "decision" and isinstance(toolset, KimiToolset):
+                if toolset.find("flow_decision") is None:
+                    toolset.add(FlowDecisionTool())
+                    added_flow_decision = True
+                # Hide all non-flow_decision tools to prevent the model from
+                # calling shell/file/etc. instead of making a flow decision.
+                for tool_name in list(toolset._tool_dict.keys()):
+                    if tool_name != "flow_decision" and toolset.hide(tool_name):
+                        hidden_tools.append(tool_name)
 
             try:
                 history_before_turn = len(soul._context.history)  # type: ignore[reportPrivateUsage]
                 result = await self._flow_turn(soul, prompt)
             finally:
-                if added_flow_decision and isinstance(toolset, KimiToolset):
-                    toolset.remove("flow_decision")
+                if isinstance(toolset, KimiToolset):
+                    for tool_name in hidden_tools:
+                        toolset.unhide(tool_name)
+                    if added_flow_decision:
+                        toolset.remove("flow_decision")
 
             steps_used += result.step_count
             if result.stop_reason == "tool_rejected":
@@ -1766,9 +1773,10 @@ class FlowRunner:
             "Available branches:",
             *(f"- {choice}" for choice in choices),
             "",
-            "You MUST use the flow_decision tool to choose your next branch. "
-            "Call the tool with your chosen branch and a brief reasoning. "
-            "Do not reply with plain text — use the tool.",
+            "CRITICAL: You MUST use the flow_decision tool to choose your next branch. "
+            "You have NO other tools available. Do NOT call shell, file, web, or any other tool. "
+            "Call flow_decision with your chosen branch and a brief reasoning. "
+            "Do not reply with plain text — use the flow_decision tool ONLY.",
         ]
         return "\n".join(lines)
 
