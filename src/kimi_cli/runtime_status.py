@@ -16,14 +16,15 @@ Lifecycle:
 
 * Written on session start (clean launch or ``--resume``); the resume case
   atomically overwrites whatever the previous PID wrote.
-* Never deleted by kimi-cli — neither on clean ``/quit`` nor on crash. From
-  an external observer's standpoint a clean quit and a force-kill are
-  indistinguishable on disk: in both cases the recorded PID no longer
-  exists. Consumers that need certainty should always verify the PID is
-  alive before treating a record as live.
-* The file is removed only when the surrounding session directory itself
-  is deleted via ``/delete`` (or manual cleanup), which gives a natural
-  bound on accumulation.
+* Not deleted on clean ``/quit`` or on crash. From an external observer's
+  standpoint the recorded PID no longer exists in either case, so a
+  liveness check is sufficient and an explicit cleanup adds nothing.
+* **Is** deleted on ``/web`` and ``/vis`` mode switches via
+  :func:`clear_runtime_status`, because the same PID keeps running while
+  no longer serving the recorded session — without cleanup the file would
+  pass a naive liveness check and falsely claim the session is live.
+* Removed naturally when the surrounding session directory itself is
+  deleted via ``/delete``, which gives a natural bound on accumulation.
 
 The file is written atomically via :func:`atomic_json_write` and contains
 a small, stable schema. External consumers should treat unknown fields as
@@ -105,6 +106,30 @@ def write_runtime_status(
     target = _runtime_status_path(session_dir)
     atomic_json_write(asdict(status), target)
     return target
+
+
+def clear_runtime_status(session_dir: Path) -> None:
+    """Remove ``<session_dir>/runtime.json`` if present.
+
+    Intentionally **not** called on ``/quit`` — when the kimi process
+    exits, an external observer's PID-liveness check already detects
+    the missing process, so a stale record is harmless. This helper
+    exists for the narrow case where the **same PID continues running**
+    but stops serving the recorded session: notably the ``/web`` and
+    ``/vis`` mode switches in ``cli/__init__.py``. Without this call,
+    ``runtime.json`` would still claim a live PID-to-session mapping
+    that the process no longer honours, breaking the documented
+    observability contract.
+
+    Safe to call multiple times and on directories that no longer
+    exist; ``OSError`` is swallowed so cleanup cannot disrupt the
+    surrounding control flow.
+    """
+    target = _runtime_status_path(session_dir)
+    try:
+        target.unlink(missing_ok=True)
+    except OSError:
+        logger.debug("Failed to remove runtime status file {file}", file=target)
 
 
 def read_runtime_status(session_dir: Path) -> RuntimeStatus | None:

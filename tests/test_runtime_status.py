@@ -6,6 +6,7 @@ from pathlib import Path
 from kimi_cli.runtime_status import (
     RUNTIME_STATUS_FILENAME,
     RUNTIME_STATUS_SCHEMA_VERSION,
+    clear_runtime_status,
     read_runtime_status,
     write_runtime_status,
 )
@@ -214,3 +215,28 @@ def test_read_runtime_status_rejects_bool_schema_version(tmp_path: Path):
     # the malformed payload is rejected even if the equality semantics
     # change in future Python versions.
     assert read_runtime_status(tmp_path) is None
+
+
+def test_clear_runtime_status_removes_file(tmp_path: Path):
+    """Targeted use case: SwitchToWeb / SwitchToVis where the same PID
+    keeps running but no longer serves the recorded session. The
+    runtime.json must be removed so external liveness checks do not
+    falsely treat the stale mapping as live."""
+    write_runtime_status(tmp_path, session_id="abc", work_dir="/w", pid=1)
+    assert (tmp_path / RUNTIME_STATUS_FILENAME).exists()
+    clear_runtime_status(tmp_path)
+    assert not (tmp_path / RUNTIME_STATUS_FILENAME).exists()
+
+
+def test_clear_runtime_status_is_idempotent(tmp_path: Path):
+    # Already absent: calling clear must not raise.
+    clear_runtime_status(tmp_path)
+    write_runtime_status(tmp_path, session_id="abc", work_dir="/w", pid=1)
+    clear_runtime_status(tmp_path)
+    # Second call after the file is gone: still must not raise.
+    clear_runtime_status(tmp_path)
+
+
+def test_clear_runtime_status_on_missing_dir_does_not_raise(tmp_path: Path):
+    # Pointing at a directory that does not exist is also safe.
+    clear_runtime_status(tmp_path / "does-not-exist")
