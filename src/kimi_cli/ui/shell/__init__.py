@@ -200,6 +200,8 @@ class Shell:
         self._current_prompt_approval_request: ApprovalRequest | None = None
         self._approval_modal: ApprovalPromptDelegate | None = None
         self._exit_after_run = False
+        self._consecutive_interrupts = 0
+        self._last_interrupt_time = 0.0
         self._available_slash_commands: dict[str, SlashCommand[Any]] = {
             **{cmd.name: cmd for cmd in soul.available_slash_commands},
             **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
@@ -568,7 +570,21 @@ class Shell:
                         continue
 
                     if event.kind == "interrupt":
-                        console.print("[grey50]Tip: press Ctrl-D or send 'exit' to quit[/grey50]")
+                        now = time.monotonic()
+                        if now - self._last_interrupt_time < 2.0:
+                            self._consecutive_interrupts += 1
+                        else:
+                            self._consecutive_interrupts = 1
+                        self._last_interrupt_time = now
+
+                        remaining = 3 - self._consecutive_interrupts
+                        if remaining <= 0:
+                            console.print("Bye!")
+                            break
+                        console.print(
+                            f"[grey50]Tip: press Ctrl-C {remaining} more time{'s' if remaining > 1 else ''} to quit,"
+                            " or press Ctrl-D, or send 'exit'[/grey50]"
+                        )
                         resume_prompt.set()
                         continue
 
@@ -587,6 +603,7 @@ class Shell:
 
                     user_input = event.user_input
                     assert user_input is not None
+                    self._consecutive_interrupts = 0
                     bg_auto_failures = 0
                     deferred_bg_trigger = False
                     if not user_input:
