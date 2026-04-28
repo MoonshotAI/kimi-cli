@@ -206,9 +206,11 @@ class OpenAILegacy:
                 reasoning_content += part.think
             else:
                 content.append(part)
-        # if tool message and `tool_result_conversion` is `extract_text`, patch all text parts into
-        # one so that we can make use of the serialization process of `Message` to output string
-        if message.role == "tool" and self._tool_message_conversion == "extract_text":
+        # OpenAI Chat Completions API requires tool message content to be a string,
+        # so always collapse multi-part tool results into one TextPart.
+        # Without this, multiple ContentParts serialize as a JSON array which
+        # triggers "invalid type: sequence, expected a string" (fixes #1762).
+        if message.role == "tool":
             message.content = [TextPart(text=message.extract_text(sep="\n"))]
         else:
             message.content = content
