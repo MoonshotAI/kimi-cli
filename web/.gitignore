@@ -23,3 +23,8 @@ dist-ssr
 
 .vite
 .claude
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

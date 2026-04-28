@@ -256,6 +256,95 @@ jobs:
                   f"{expected}, got: {deps}"
               )
 
+  web-e2e:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          allow-prereleases: true
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "0.8.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Prepare building environment
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make prepare
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build web assets
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: make build-web
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: Start backend with _scripted_echo
+        env:
+          UV_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+          KIMI_SHARE_DIR: /tmp/kimi-e2e
+        run: |
+          mkdir -p /tmp/kimi-e2e
+          SCRIPTS_PATH=$(realpath web/tests/e2e/fixtures/echo-scripts.txt)
+          cat > /tmp/kimi-e2e/config.toml <<TOML
+          default_model = "scripted"
+          [models.scripted]
+          provider = "scripted_provider"
+          model = "scripted_echo"
+          max_context_size = 100000
+          [providers.scripted_provider]
+          type = "_scripted_echo"
+          base_url = ""
+          api_key = ""
+          [providers.scripted_provider.env]
+          KIMI_SCRIPTED_ECHO_SCRIPTS = "$SCRIPTS_PATH"
+          KIMI_SCRIPTED_ECHO_TRACE = "1"
+          TOML
+          uv run kimi web --no-open --dangerously-omit-auth &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:5494/healthz && break; sleep 1; done
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        working-directory: web
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: web/test-results/
+          retention-days: 7
+
   nix-test:
     strategy:
       fail-fast: true
