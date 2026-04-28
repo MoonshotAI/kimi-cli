@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.40.0
+
 ### `--print` 现在使用 runtime AFK 语义而不是 YOLO 语义
 
 Print 模式仍然是非交互运行，并且会自动处理审批，但现在设置的是仅本次调用生效的 AFK 覆盖，而不是启用 YOLO。也就是说，`--print` 会把用户视为不在场并自动 dismiss `AskUserQuestion`，但之后以交互方式恢复同一会话时，不会仅仅因为之前运行过 Print 模式而继承 AFK。

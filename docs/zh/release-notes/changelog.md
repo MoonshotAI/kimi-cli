@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.40.0 (2026-04-28)
+
 - Core：修复 `--yolo` 模式意外阻止模型调用 `AskUserQuestion` 的问题——以前 yolo 会注入一段 system reminder，告诉模型当前处于“非交互模式”，不能向用户提问；同时 ask-user 工具在 yolo 下也会自动 dismiss。这两处都是错的：yolo 只绕过权限审批，并不意味着“用户已离开”。现在 yolo 不再向模型注入指导；用户仍可通过 `AskUserQuestion` 触达
 - CLI：把权限审批绕过和无人值守执行拆分为两个正交模式——`--yolo` 表示用户仍在终端前、但绕过权限审批；`--afk` / `/afk` 表示 away-from-keyboard：`AskUserQuestion` 会被自动 dismiss，审批也会自动处理。`--print` 现在使用 runtime AFK 行为而不是 yolo，更符合它的非交互执行模型。状态栏独立显示 `yolo` 和 `afk`，`/yolo` 与 `/afk` 各自切换自身的 flag，互不干扰
 - Config：由于 yolo 不再向模型注入指导，`skip_yolo_prompt_injection` 替换为 `skip_afk_prompt_injection`。旧配置键如果仍存在会被忽略
