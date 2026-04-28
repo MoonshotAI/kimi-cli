@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Kimi: Fix stale API key after OAuth token refresh — `on_retryable_error` now reads the current `api_key` from the live client instead of the cached `_api_key`, so that OAuth token refreshes applied via `client.api_key` are preserved when the client is rebuilt after a retryable error
+
 ## 0.52.0 (2026-04-24)
 
 - Kimi: Add `keep` to `ThinkingConfig` (Moonshot `thinking.keep` passthrough for Preserved Thinking); value is typed as `Any` and forwarded unchanged, with case-preservation and no validation — callers choose a value the server accepts (e.g. `"all"`)
@@ -10,7 +12,6 @@
 - Kimi: Fix sending empty `content` alongside `tool_calls`, which caused 400 "text content is empty" errors from the Moonshot API. When an assistant message has tool calls and its visible content is effectively empty (no text or only whitespace/think parts), the `content` field is now omitted entirely
 
 ## 0.51.0 (2026-04-22)
-
 - Anthropic: Fix parallel tool results being split into multiple user messages — consecutive tool-result-only user messages are now merged into a single message, complying with the Anthropic Messages API spec that all `tool_use` blocks in an assistant turn must be answered within one user message; this fixes 400 errors on strict Anthropic-compatible backends (e.g. DeepSeek `/anthropic` endpoint) and prevents the official backend from silently teaching the model to avoid parallel tool calls
 
 ## 0.50.0 (2026-04-17)

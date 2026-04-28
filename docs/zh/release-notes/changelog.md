@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Kosong：修复 Kimi 供应商在 OAuth 令牌刷新后仍使用过期的 API 密钥的问题——`on_retryable_error` 现在从当前 client 读取 `api_key`，而不是缓存的 `_api_key`，因此在可重试错误后重建 client 时会保留通过 `client.api_key` 应用的 OAuth 令牌刷新
 - Core：修复审批请求 5 分钟自动超时并被误报为 `Rejected by user` 的问题；现在活跃的前台和子 Agent 审批请求都会无限等待用户响应
 - Core：修复上下文压缩后 yolo 模式提示词丢失的问题——当 yolo 模式处于激活状态时，非交互模式下的指导提示（不要调用 AskUserQuestion、计划模式切换自动批准等）现在会在每次上下文压缩后的第一个 LLM 步骤重新注入，而不是在原始提示被折叠进压缩摘要后静默消失
 - Shell：修复 `/usage` 剩余额度渲染错误——进度条、告警颜色和 `% left` 文案现在都统一基于剩余额度比例计算，剩余额度充足时显示为绿色满格，接近耗尽时显示为黄色或红色
@@ -30,7 +31,6 @@
 - Skill：`merge_all_available_skills` 的默认值从 `false` 改为 `true`。kimi-cli 现在默认会合并用户级和项目级所有已存在的品牌 Skills 目录（`.kimi/skills`、`.claude/skills`、`.codex/skills`），而不是仅使用找到的第一个——让同时拥有多个品牌目录（例如同时保留 `~/.kimi/skills` 和 `~/.claude/skills`）的用户开箱即看到所有 Skills。**行为变更**：依赖旧默认（仅取第一个）的用户可通过在配置中显式设置 `merge_all_available_skills = false` 恢复旧行为。
 
 ## 1.38.0 (2026-04-22)
-
 - Shell：修复 approval 弹窗超时后被误报为 `Rejected by user` 的问题——300 秒安全超时后，工具调用会以 `Rejected: approval timed out` 拒绝，让离开电脑一段时间后回来的用户能分辨出这是超时而非自己的手动拒绝。经常长时间离开的话可以加 `--yolo`/`-y` 自动批准工具调用
 - Auth：修复 OAuth 用户因并发实例的 refresh token 轮换竞态被反复要求 `/login` 的问题——当另一个并发运行的 kimi-cli 实例（终端、VS Code 插件或 `kimi -p` 一次性命令）合法地轮换了 refresh token，当前实例手里过期的 refresh 请求会从服务端拿回 401，“别的实例是否刚轮换过”的磁盘检查与 `delete_tokens` 调用之间存在 TOCTOU 竞态，即使磁盘上马上会被写入一份有效的新 token，凭证文件也会被误删，迫使用户重新登录；现在依旧清理内存缓存（真正失效的 token 会在下一次请求时浮现），但保留文件，让并发实例刚写入的新 token 有机会被恢复，最终的 `/login` 仍会原子覆盖该文件
 - Kosong：修复 Anthropic 供应商将并行工具结果拆分到多个 user message 的问题——现在会将仅包含工具结果的连续 user message 合并为单条消息，以符合 Anthropic Messages API 规范（assistant 一轮中的所有 `tool_use` 必须在同一条 user message 内回答）；修复了严格兼容后端（如 DeepSeek `/anthropic` 接口）返回 400 错误的问题，并避免官方后端静默地引导模型放弃并行工具调用
