@@ -190,6 +190,8 @@ type UseSessionStreamOptions = {
   onSessionStatus?: (status: SessionStatus) => void;
   /** Callback when first turn is complete (for auto-renaming) */
   onFirstTurnComplete?: () => void;
+  /** Callback when reconnecting (to refresh external data like session list) */
+  onReconnect?: () => void;
 };
 
 type UseSessionStreamReturn = {
@@ -842,7 +844,7 @@ export function useSessionStream(
   }, []);
 
   // Reset all state
-  const resetState = useCallback((preserveSlashCommands = false) => {
+  const resetState = useCallback((preserveSlashCommands = false, preserveMessages = false) => {
     resetStepState();
     currentToolCallsRef.current?.clear();
     currentToolCallIdRef.current = null;
@@ -856,8 +858,6 @@ export function useSessionStream(
     setError(null);
     setSessionStatus(null);
     lastStatusSeqRef.current = null;
-    isReplayingRef.current = true;
-    setIsReplayingHistory(true);
     setAwaitingFirstResponse(false);
     // Reset first turn tracking
     hasTurnStartedRef.current = false;
@@ -877,6 +877,15 @@ export function useSessionStream(
     } else if (slashCommandsLenRef.current > 0) {
       usingCachedCommandsRef.current = true;
     }
+    // Handle messages: preserve or clear
+    if (!preserveMessages) {
+      setMessages([]);
+      // Only reset replay state when clearing messages
+      isReplayingRef.current = true;
+      setIsReplayingHistory(true);
+    }
+    // Note: when preserveMessages=true (reconnect), we keep isReplayingHistory unchanged
+    // to avoid triggering scroll in VirtualizedMessageList
   }, [resetStepState, setAwaitingFirstResponse]);
 
   // Process a SubagentEvent: accumulate inner events into parent Agent tool's subagentSteps
@@ -2081,6 +2090,8 @@ export function useSessionStream(
             "[SessionStream] History loaded, waiting for environment...",
           );
           isReplayingRef.current = false;
+          // Set isReplayingHistory to false to prevent layout shifts on reconnect
+          setIsReplayingHistory(false);
           // Keep status as "submitted" - input stays disabled until session_status
           setStatus((current) => (current === "ready" ? current : "submitted"));
 
@@ -2380,15 +2391,20 @@ export function useSessionStream(
     [updateMessageById],
   );
 
-  // Connect to WebSocket
-  const connect = useCallback(() => {
+  // Connect options type
+type ConnectOptions = {
+  isReconnect?: boolean;
+};
+
+// Connect to WebSocket
+  const connect = useCallback((options?: ConnectOptions) => {
     if (!sessionId) return;
 
+    const isReconnect = options?.isReconnect ?? false;
     initializeRetryCountRef.current = 0; // Reset retry count for new connection
 
     // Close existing connection
     if (wsRef.current) {
-      console.log("[SessionStream] Closing existing WebSocket");
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -2398,8 +2414,15 @@ export function useSessionStream(
     }
 
     awaitingIdleRef.current = false;
-    resetState(true);  // preserve slashCommands on reconnect
-    setMessages([]);
+    
+    if (isReconnect) {
+      // Reconnect: preserve messages and slash commands
+      resetState(true, true);
+    } else {
+      // First connect: reset everything
+      resetState(true);
+    }
+    
     setStatus("submitted");
     setAwaitingFirstResponse(Boolean(pendingMessageRef.current));
 
@@ -2760,9 +2783,11 @@ export function useSessionStream(
     disconnect();
     // Small delay before reconnecting
     reconnectTimeoutRef.current = window.setTimeout(() => {
-      connect();
+      connect({ isReconnect: true });
+      // Trigger reconnect callback to refresh external data (e.g., session list)
+      options.onReconnect?.();
     }, 100);
-  }, [disconnect, connect]);
+  }, [disconnect, connect, options.onReconnect]);
 
   // Keep refs in sync so useLayoutEffect can use stable references
   connectRef.current = connect;
