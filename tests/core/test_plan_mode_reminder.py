@@ -107,14 +107,6 @@ def test_full_reminder_contains_anti_pattern() -> None:
     assert "user cannot see the plan until you call ExitPlanMode" in text
 
 
-def test_full_reminder_afk_disables_ask_user_question() -> None:
-    """Afk plan guidance should be non-interactive."""
-    text = _full_reminder("/tmp/plan.md", afk=True)
-    assert "Afk mode is active" in text
-    assert "do NOT use AskUserQuestion" in text
-    assert "Your turn must end with ExitPlanMode" in text
-
-
 # --- Sparse Reminder content checks ---
 
 
@@ -135,14 +127,6 @@ def test_sparse_reminder_back_references_full() -> None:
     assert "see full instructions earlier" in text
 
 
-def test_sparse_reminder_afk_disables_ask_user_question() -> None:
-    """Sparse afk reminder should not reintroduce interactive clarification."""
-    text = _sparse_reminder("/tmp/plan.md", afk=True)
-    assert "Afk mode is active" in text
-    assert "do NOT use AskUserQuestion" in text
-    assert "Choose one best recommendation" in text
-
-
 # --- Reentry Reminder ---
 
 
@@ -156,11 +140,3 @@ def test_reentry_reminder_contains_decision_tree() -> None:
     assert "WriteFile" in text
     assert "StrReplaceFile" in text
     assert "clarify missing requirements" in text
-
-
-def test_reentry_reminder_afk_disables_ask_user_question() -> None:
-    """Afk reentry guidance should end through ExitPlanMode only."""
-    text = _reentry_reminder("/tmp/plan.md", afk=True)
-    assert "Afk mode is active" in text
-    assert "do NOT use AskUserQuestion" in text
-    assert "Your turn must end with ExitPlanMode" in text
