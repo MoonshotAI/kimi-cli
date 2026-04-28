@@ -100,7 +100,9 @@ class LoopControl(BaseModel):
     def apply_env_overrides(self) -> LoopControl:
         if env_val := os.getenv("KIMI_RESERVED_CONTEXT_SIZE"):
             with contextlib.suppress(ValueError):
-                self.reserved_context_size = int(env_val)
+                value = int(env_val)
+                if value >= 1000:
+                    self.reserved_context_size = value
         return self
 
 

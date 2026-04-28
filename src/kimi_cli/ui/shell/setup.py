@@ -151,6 +151,7 @@ def _apply_setup_result(result: _SetupResult) -> None:
     for key, model in list(config.models.items()):
         if model.provider == provider_key:
             del config.models[key]
+    selected_model_key = model_key
     for model_info in result.models:
         capabilities = model_info.capabilities or None
         model_key = managed_model_key(result.platform.id, model_info.id)
@@ -165,7 +166,7 @@ def _apply_setup_result(result: _SetupResult) -> None:
             max_context_size=max_context_size,
             capabilities=capabilities,
         )
-    config.default_model = model_key
+    config.default_model = selected_model_key
     config.default_thinking = result.thinking
 
     if result.platform.search_url:
