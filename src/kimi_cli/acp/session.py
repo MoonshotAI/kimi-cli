@@ -91,7 +91,8 @@ class _ToolCallState:
         # with the same tool call ID (on the LLM side). To avoid confusion of the
         # ACP client, we ensure the uniqueness by prefixing with the turn ID.
         turn_id = _current_turn_id.get()
-        assert turn_id is not None
+        if turn_id is None:
+            raise RuntimeError("acp_tool_call_id accessed outside of a turn")
         return f"{turn_id}/{self.tool_call.id}"
 
     def append_args_part(self, args_part: str) -> None:
@@ -286,7 +287,8 @@ class ACPSession:
 
     async def _send_tool_call(self, tool_call: ToolCall):
         """Send tool call to client."""
-        assert self._turn_state is not None
+        if self._turn_state is None:
+            raise RuntimeError("Tool call received outside of a turn")
         if not self._id or not self._conn:
             return
 
@@ -314,7 +316,8 @@ class ACPSession:
 
     async def _send_tool_call_part(self, part: ToolCallPart):
         """Send tool call part (streaming arguments)."""
-        assert self._turn_state is not None
+        if self._turn_state is None:
+            raise RuntimeError("Tool call part received outside of a turn")
         if (
             not self._id
             or not self._conn
@@ -347,7 +350,8 @@ class ACPSession:
 
     async def _send_tool_result(self, result: ToolResult):
         """Send tool result to client."""
-        assert self._turn_state is not None
+        if self._turn_state is None:
+            raise RuntimeError("Tool result received outside of a turn")
         if not self._id or not self._conn:
             return
 
@@ -381,7 +385,8 @@ class ACPSession:
 
     async def _handle_approval_request(self, request: ApprovalRequest):
         """Handle approval request by sending permission request to client."""
-        assert self._turn_state is not None
+        if self._turn_state is None:
+            raise RuntimeError("Approval request received outside of a turn")
         if not self._id or not self._conn:
             logger.warning("No session ID, auto-rejecting approval request")
             request.resolve("reject")
