@@ -530,12 +530,12 @@ class KimiSoul:
         skip_user_prompt_hook: bool = False,
     ):
         approval_source_token = None
+        created_approval_source: ApprovalSource | None = None
         turn_started = False
         turn_finished = False
         if get_current_approval_source_or_none() is None:
-            approval_source_token = set_current_approval_source(
-                ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
-            )
+            created_approval_source = ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
+            approval_source_token = set_current_approval_source(created_approval_source)
         try:
             # Refresh OAuth tokens on each turn to avoid idle-time expirations.
             await self._runtime.oauth.ensure_fresh(self._runtime)
@@ -645,6 +645,11 @@ class KimiSoul:
         finally:
             if turn_started and not turn_finished:
                 wire_send(TurnEnd())
+            if created_approval_source is not None and self._runtime.approval_runtime is not None:
+                self._runtime.approval_runtime.cancel_by_source(
+                    created_approval_source.kind,
+                    created_approval_source.id,
+                )
             if approval_source_token is not None:
                 reset_current_approval_source(approval_source_token)
 

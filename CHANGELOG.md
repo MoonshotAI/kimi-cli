@@ -11,6 +11,7 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Approval requests no longer auto-timeout after 5 minutes, which previously surfaced as `Rejected by user`; active foreground and subagent approvals now wait indefinitely for user response
 - Core: Fix yolo mode reminder being lost after context compaction — the non-interactive-mode guidance ("don't call AskUserQuestion, plan-mode toggles are auto-approved") is now re-injected on the first LLM step after each compaction while yolo remains active, instead of being silently dropped when the original reminder is folded into the compaction summary
 - Shell: Fix `/usage` remaining quota rendering — the progress bar, warning colors, and `% left` label now all use the remaining quota ratio consistently, so high remaining quota shows as green/full and near-exhausted quota shows as yellow or red
 - Shell: Show active background agent task count in the prompt status bar — the existing `⚙ bash: N` badge only counted background Shell tasks and filtered out background Agent subagents, so when many subagents were running the prompt looked idle and users could not tell work was in progress; the toolbar now renders `⚙ bash: N` and `⚙ agent: N` as two independent badges (each hidden when its count is 0) and drops the agent badge first when the terminal is too narrow to fit both
