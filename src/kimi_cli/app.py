@@ -315,6 +315,7 @@ class KimiCLI:
         hook_engine = HookEngine(config.hooks, cwd=str(session.work_dir))
         soul.set_hook_engine(hook_engine)
         runtime.hook_engine = hook_engine
+        runtime.approval.set_hook_engine(hook_engine)
 
         # --- Initialize telemetry ---
         from kimi_cli.telemetry import attach_sink, set_context
