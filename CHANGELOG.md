@@ -17,6 +17,10 @@ Only write entries that are worth mentioning to users.
 - Auth: Fix managed model list refresh silently failing for OAuth users with expired tokens — the background `/models` sync now detects 401 responses, forces an OAuth token refresh, and retries with the refreshed token; if the refresh fails or the refreshed token is still rejected, it falls back to the originally configured static API key instead of skipping the provider
 - Core: Fix connection recovery not triggering OAuth refresh when the retry returns 401 — after recreating the HTTP client on `APIConnectionError` or `APITimeoutError`, the retry now re-enters the full recovery path so a subsequent 401 correctly refreshes the OAuth token instead of bubbling to the user as an unrecoverable error
 - Shell: Echo `/skill:*` and `/flow:*` inputs in the transcript so workflow commands stay visible after enter; operational slash commands like `/usage` and `/model` remain hidden
+- Core: Add `default_auto_approve_actions` config option — list of glob patterns for actions to auto-approve by default in every session; merged with any session-specific interactive approvals and supports wildcards such as `mcp:obsidian_*`
+- Core: Add `auto_approve_workspace_dirs` config option — list of workspace directory names (relative to `work_dir`) where `WriteFile` and `StrReplaceFile` approvals are skipped automatically; useful for skills, plans, notes, or other directories the agent routinely modifies
+- Core: New config files are now created from a commented TOML template with inline documentation and examples instead of a plain serialized dump
+- Approval: Auto-approve actions now support glob pattern matching via `fnmatch` — exact match is checked first, then pattern expansion, so action names containing glob-special characters are handled safely
 
 ## 1.39.0 (2026-04-24)
 

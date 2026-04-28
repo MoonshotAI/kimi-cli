@@ -171,3 +171,28 @@ async def test_write_large_content(write_file_tool: WriteFile, temp_work_dir: Ka
     assert not result.is_error
     assert await file_path.exists()
     assert await file_path.read_text() == content
+
+
+async def test_write_auto_approved_workspace_dir(runtime, temp_work_dir: KaosPath):
+    """Test that writes to auto-approved workspace dirs skip approval."""
+    from kimi_cli.soul.approval import Approval
+    from kimi_cli.soul.toolset import current_tool_call
+    from kimi_cli.wire.types import ToolCall
+
+    runtime.config.auto_approve_workspace_dirs = ["skills"]
+    approval = Approval(yolo=False)
+    tool = WriteFile(runtime, approval)
+
+    skills_dir = temp_work_dir / "skills"
+    await skills_dir.mkdir(parents=True, exist_ok=True)
+
+    token = current_tool_call.set(
+        ToolCall(id="test", function=ToolCall.FunctionBody(name="WriteFile", arguments=None))
+    )
+    try:
+        result = await tool(Params(path=str(skills_dir / "test.txt"), content="hello"))
+    finally:
+        current_tool_call.reset(token)
+
+    assert not result.is_error
+    assert await (skills_dir / "test.txt").read_text() == "hello"

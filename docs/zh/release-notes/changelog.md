@@ -10,6 +10,10 @@
 - Auth：修复 OAuth 用户 access token 过期时托管模型列表刷新静默失败的问题——后台 `/models` 同步任务现在会检测 401 响应，强制进行 OAuth token 刷新并用刷新后的 token 重试；如果刷新本身失败或刷新后的 token 仍被拒绝，则回退到最初配置的静态 API 密钥，而不是跳过该 provider
 - Core：修复连接恢复后重试返回 401 时未能触发 OAuth 刷新的问题——在 `APIConnectionError` 或 `APITimeoutError` 后重建 HTTP 客户端时，重试现在会重新进入完整恢复路径，使得后续的 401 能正确刷新 OAuth token，而不是作为不可恢复的错误直接抛给用户
 - Shell：在 transcript 中回显 `/skill:*` 和 `/flow:*` 输入，工作流命令按下回车后不再消失；`/usage`、`/model` 等操作类斜杠命令仍然保持隐藏
+- Core：新增 `default_auto_approve_actions` 配置项——用于设置每次会话默认自动审批的操作名称模式列表，支持与会话级交互式自动审批合并，可使用 `mcp:obsidian_*` 等 glob 通配符
+- Core：新增 `auto_approve_workspace_dirs` 配置项——用于设置自动跳过文件写入 / 编辑审批的工作区目录名称列表（相对于 `work_dir`），适用于 Skills、plans、notes 等 Agent 经常修改的目录
+- Core：首次生成配置文件时，CLI 现在会写入带注释和示例的 TOML 模板，而不是纯序列化配置
+- Approval：自动审批操作现在支持 glob 模式匹配——优先检查精确匹配，再进行模式扩展，因此包含 glob 特殊字符的操作名也能被安全处理
 
 ## 1.39.0 (2026-04-24)
 

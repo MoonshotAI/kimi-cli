@@ -263,6 +263,20 @@ class Config(BaseModel):
         default=True,
         description="Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.",
     )
+    default_auto_approve_actions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of action name patterns to auto-approve by default in every session. "
+            "Supports glob patterns (*, ?). Examples: 'mcp:obsidian_*', 'edit file'."
+        ),
+    )
+    auto_approve_workspace_dirs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of workspace directory names (relative to work_dir) for which "
+            "file write/edit approvals should be skipped automatically."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
@@ -279,6 +293,85 @@ def get_config_file() -> Path:
     return get_share_dir() / "config.toml"
 
 
+_DEFAULT_CONFIG_TEMPLATE = """\
+# Kimi Code CLI configuration file
+# Documentation: https://kimi-cli.github.io/configuration/config-files
+
+# Default model to use for new sessions. Must match a key in the [models] table.
+default_model = ""
+
+# Default behavior flags
+default_thinking = false
+default_yolo = false
+default_plan_mode = false
+
+# External editor command (e.g. "vim", "code --wait"). Leave empty for auto-detect.
+default_editor = ""
+
+# Terminal color theme: "dark" or "light"
+theme = "dark"
+
+# Stream reasoning text in the live area? Set to false for a compact indicator only.
+show_thinking_stream = true
+
+# Merge skills from all brand directories (kimi, claude, codex, etc.)
+merge_all_available_skills = true
+
+# ------------------------------------------------------------------------------
+# Auto-approval configuration
+# ------------------------------------------------------------------------------
+# Glob patterns for actions that should be auto-approved in EVERY session.
+# These are merged with any session-specific approvals you make interactively.
+# Examples:
+#   default_auto_approve_actions = ["mcp:obsidian_*"]
+#   default_auto_approve_actions = ["mcp:obsidian_*", "mcp:memory_*"]
+default_auto_approve_actions = []
+
+# Workspace directory names (relative to the current work_dir) where file
+# write/edit approvals are skipped automatically. Useful for skills, plans,
+# notes, or other directories the agent routinely modifies.
+# Examples:
+#   auto_approve_workspace_dirs = ["skills", "plans"]
+#   auto_approve_workspace_dirs = ["docs", "notes"]
+auto_approve_workspace_dirs = []
+
+# Extra directories to discover skills from (absolute, ~-prefixed, or relative)
+extra_skill_dirs = []
+
+# Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.
+telemetry = true
+
+# Suppress the YOLO mode hint injected into the system prompt.
+skip_yolo_prompt_injection = false
+
+[loop_control]
+max_steps_per_turn = 500
+max_retries_per_step = 3
+max_ralph_iterations = 0
+reserved_context_size = 50000
+compaction_trigger_ratio = 0.85
+
+[background]
+max_running_tasks = 4
+read_max_bytes = 30000
+notification_tail_lines = 20
+notification_tail_chars = 3000
+wait_poll_interval_ms = 500
+worker_heartbeat_interval_ms = 5000
+worker_stale_after_ms = 15000
+kill_grace_period_ms = 2000
+keep_alive_on_exit = false
+agent_task_timeout_s = 900
+print_wait_ceiling_s = 3600
+
+[notifications]
+claim_stale_after_ms = 15000
+
+[mcp.client]
+tool_call_timeout_ms = 60000
+"""
+
+
 def get_default_config() -> Config:
     """Get the default configuration."""
     return Config(
@@ -287,6 +380,12 @@ def get_default_config() -> Config:
         providers={},
         services=Services(),
     )
+
+
+def _write_default_config_file(config_file: Path) -> None:
+    """Write the default config file with comments and examples."""
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(_DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
 
 
 def load_config(config_file: Path | None = None) -> Config:
@@ -315,9 +414,16 @@ def load_config(config_file: Path | None = None) -> Config:
         _migrate_json_config_to_toml()
 
     if not config_file.exists():
-        config = get_default_config()
-        logger.debug("No config file found, creating default config: {config}", config=config)
-        save_config(config, config_file)
+        logger.debug("No config file found, creating default config at: {file}", file=config_file)
+        _write_default_config_file(config_file)
+        try:
+            data = tomlkit.loads(_DEFAULT_CONFIG_TEMPLATE)
+            config = Config.model_validate(data)
+        except (TOMLKitError, ValidationError) as e:
+            # This should never happen because the template is static and tested,
+            # but fall back to the plain default config if it does.
+            logger.warning("Default config template failed validation: {error}", error=e)
+            config = get_default_config()
         config.is_from_default_location = is_default_config_file
         config.source_file = config_file
         return config

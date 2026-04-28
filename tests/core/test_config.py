@@ -60,6 +60,8 @@ def test_default_config_dump():
             "extra_skill_dirs": [],
             "telemetry": True,
             "skip_yolo_prompt_injection": False,
+            "default_auto_approve_actions": [],
+            "auto_approve_workspace_dirs": [],
         }
     )
 
@@ -81,6 +83,23 @@ def test_load_config_sets_source_file(tmp_path):
 
     assert config.source_file == config_file.resolve()
     assert not config.is_from_default_location
+
+
+def test_load_config_creates_template_with_comments(tmp_path):
+    """New config files should be created from the commented template."""
+    config_file = tmp_path / "config.toml"
+
+    config = load_config(config_file)
+
+    text = config_file.read_text(encoding="utf-8")
+    assert "# Auto-approval configuration" in text
+    assert "default_auto_approve_actions" in text
+    assert "auto_approve_workspace_dirs" in text
+    # Compare excluding metadata fields that differ by load path
+    assert (
+        config.model_dump(exclude={"is_from_default_location", "source_file"})
+        == get_default_config().model_dump()
+    )
 
 
 def test_load_config_text_has_no_source_file():
