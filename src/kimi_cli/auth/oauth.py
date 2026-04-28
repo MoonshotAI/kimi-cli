@@ -580,18 +580,21 @@ def _apply_kimi_code_config(
         oauth=oauth_ref,
     )
 
+    # Snapshot existing max_context_size values before deleting models,
+    # so the preservation logic below can actually find them.
+    existing_max_context: dict[str, int] = {}
     for key, model in list(config.models.items()):
         if model.provider == provider_key:
+            existing_max_context[key] = model.max_context_size
             del config.models[key]
 
     for model_info in models:
         capabilities = model_info.capabilities or None
         model_key = managed_model_key(platform.id, model_info.id)
-        existing = config.models.get(model_key)
         # Preserve user-configured max_context_size when larger than API-reported value.
         max_context_size = model_info.context_length
-        if existing is not None and existing.max_context_size > max_context_size:
-            max_context_size = existing.max_context_size
+        if model_key in existing_max_context and existing_max_context[model_key] > max_context_size:
+            max_context_size = existing_max_context[model_key]
         config.models[model_key] = LLMModel(
             provider=provider_key,
             model=model_info.id,

@@ -305,7 +305,7 @@ def create_llm(
     # The agent gateway (agent-gw.kimi.com) uses Anthropic Messages API format
     # which has a hard 262144 token limit regardless of the model's capability.
     max_context_size = model.max_context_size
-    if provider.type == "kimi" and provider.base_url and "agent-gw" in provider.base_url:
+    if provider.base_url and "agent-gw" in provider.base_url:
         max_context_size = min(max_context_size, 262_144)
 
     return LLM(

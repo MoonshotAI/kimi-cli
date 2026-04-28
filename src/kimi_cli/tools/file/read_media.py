@@ -149,10 +149,15 @@ class ReadMediaFile(CallableTool2[Params]):
                                 base_url=llm.provider_config.base_url,
                                 api_key=api_key,
                             )
-                            uploaded_part = await kimi.files.upload_video(
-                                data=data,
-                                mime_type=file_type.mime_type,
-                            )
+                            try:
+                                uploaded_part = await kimi.files.upload_video(
+                                    data=data,
+                                    mime_type=file_type.mime_type,
+                                )
+                            finally:
+                                from kosong.chat_provider.openai_common import close_openai_client
+
+                                close_openai_client(kimi.client)
                 if uploaded_part is not None:
                     part = uploaded_part  # type: ignore[reportUnknownVariableType]
                 else:
