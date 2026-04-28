@@ -152,19 +152,17 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 6, "context_after": 11, "wire_before": 6, "wire_after": 11})
+    } == snapshot({"context_before": 5, "context_after": 9, "wire_before": 6, "wire_after": 11})
     assert _read_roles(context_file) == snapshot(
         [
             "_system_prompt",
             "_checkpoint",
             "user",
             "_checkpoint",
-            "user",
             "assistant",
             "_checkpoint",
             "user",
             "_checkpoint",
-            "user",
             "assistant",
         ]
     )
@@ -245,7 +243,7 @@ def test_clear_context_rotates(tmp_path) -> None:
     )
     assert rotated == snapshot(["context_1.jsonl"])
     assert _read_roles(session_dir / rotated[0]) == snapshot(
-        ["_system_prompt", "_checkpoint", "user", "_checkpoint", "user", "assistant"]
+        ["_system_prompt", "_checkpoint", "user", "_checkpoint", "assistant"]
     )
 
 
@@ -302,8 +300,8 @@ def test_manual_compact(tmp_path) -> None:
                     "method": "event",
                     "type": "StatusUpdate",
                     "payload": {
-                        "context_usage": 0.00117,
-                        "context_tokens": 117,
+                        "context_usage": 1e-05,
+                        "context_tokens": 1,
                         "max_context_tokens": 100000,
                         "token_usage": None,
                         "message_id": None,
