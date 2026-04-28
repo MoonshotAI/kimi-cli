@@ -223,6 +223,158 @@ async def add_dir(soul: KimiSoul, args: str):
     logger.info("Added additional directory: {path}", path=path)
 
 
+def _format_pending_list(soul: KimiSoul) -> str:
+    """Format the pending edits list for display."""
+    pending = soul.runtime.session.state.pending_edits
+    if not pending:
+        return "待修改清单为空。"
+    lines = [f"待修改清单（共 {len(pending)} 项）："]
+    for i, edit in enumerate(pending, 1):
+        lines.append(f"  {i}. [{edit.tool_name}] {edit.description}")
+    return "\n".join(lines)
+
+
+@registry.command
+async def execute(soul: KimiSoul, args: str):
+    """解除只读模式，并批量执行待修改清单中的操作"""
+    if not soul.is_readonly:
+        wire_send(TextPart(text="当前不处于只读模式，无需执行此命令。"))
+        return
+
+    pending = soul.runtime.session.state.pending_edits
+    soul.set_readonly(False)
+
+    if pending:
+        # Build a system message instructing the AI to execute pending edits
+        lines = [
+            "用户已通过 /execute 解除只读模式。请按照以下待修改清单按顺序执行操作：",
+            "",
+        ]
+        for i, edit in enumerate(pending, 1):
+            lines.append(f"{i}. [{edit.tool_name}] {edit.description}")
+        lines.extend([
+            "",
+            "注意：",
+            "- 请严格按照上述顺序执行",
+            "- 每个操作完成后等待结果再继续下一个",
+            "- 如果某一步失败，请分析原因并决定是否继续",
+            "- 执行完所有操作后，向用户汇报完成情况",
+        ])
+        await soul.context.append_message(
+            Message(role="user", content=[system("\n".join(lines))])
+        )
+        # Clear the pending edits list
+        soul.runtime.session.state.pending_edits = []
+        soul.runtime.session.save_state()
+        wire_send(TextPart(text="已解除只读模式，并将待修改清单注入对话上下文。AI 将按顺序执行。"))
+    else:
+        wire_send(TextPart(text="已解除只读模式。现在可以修改文件和执行 Shell 命令。"))
+
+    wire_send(StatusUpdate(readonly_mode=False))
+
+
+@registry.command
+async def readonly(soul: KimiSoul, args: str):
+    """进入只读模式，禁止修改文件和执行命令"""
+    if soul.is_readonly:
+        wire_send(TextPart(text="当前已处于只读模式。"))
+        return
+
+    soul.set_readonly(True)
+    wire_send(TextPart(text="已进入只读模式。文件修改和 Shell 命令已被禁用。发送 /execute 可解除。"))
+    wire_send(StatusUpdate(readonly_mode=True))
+
+
+@registry.command(name="pending")
+async def pending_list(soul: KimiSoul, args: str):
+    """查看待修改清单"""
+    text = _format_pending_list(soul)
+    wire_send(TextPart(text=text))
+
+
+@registry.command(name="pending-remove")
+async def pending_remove(soul: KimiSoul, args: str):
+    """按序号删除待修改清单中的某一项。Usage: /pending-remove <序号>"""
+    pending = soul.runtime.session.state.pending_edits
+    if not pending:
+        wire_send(TextPart(text="待修改清单为空，无需删除。"))
+        return
+
+    arg = args.strip()
+    if not arg:
+        wire_send(TextPart(text="Usage: /pending-remove <序号>。使用 /pending 查看清单序号。"))
+        return
+
+    try:
+        idx = int(arg)
+    except ValueError:
+        wire_send(TextPart(text=f"无效的序号: `{arg}`，请输入数字。"))
+        return
+
+    if idx < 1 or idx > len(pending):
+        wire_send(TextPart(text=f"序号 {idx} 超出范围（共 {len(pending)} 项）。"))
+        return
+
+    removed = pending.pop(idx - 1)
+    soul.runtime.session.save_state()
+    wire_send(TextPart(text=f"已删除第 {idx} 项: [{removed.tool_name}] {removed.description}"))
+
+
+@registry.command(name="pending-edit")
+async def pending_edit(soul: KimiSoul, args: str):
+    """把指定项的参数注入对话上下文以便修改。Usage: /pending-edit <序号>"""
+    pending = soul.runtime.session.state.pending_edits
+    if not pending:
+        wire_send(TextPart(text="待修改清单为空，无可编辑项。"))
+        return
+
+    arg = args.strip()
+    if not arg:
+        wire_send(TextPart(text="Usage: /pending-edit <序号>。使用 /pending 查看清单序号。"))
+        return
+
+    try:
+        idx = int(arg)
+    except ValueError:
+        wire_send(TextPart(text=f"无效的序号: `{arg}`，请输入数字。"))
+        return
+
+    if idx < 1 or idx > len(pending):
+        wire_send(TextPart(text=f"序号 {idx} 超出范围（共 {len(pending)} 项）。"))
+        return
+
+    edit = pending[idx - 1]
+    import json
+
+    params_json = json.dumps(edit.params, ensure_ascii=False, indent=2)
+    lines = [
+        f"用户希望修改待修改清单中的第 {idx} 项。",
+        f"原操作工具: {edit.tool_name}",
+        f"原描述: {edit.description}",
+        f"原参数:\n```json\n{params_json}\n```",
+        "",
+        "请根据用户的新要求，直接调用相应的工具重新发起操作（系统会将其记录为新待修改清单项）。",
+        f"旧项（第 {idx} 项）可以由用户稍后发送 /pending-remove {idx} 删除。",
+    ]
+    await soul.context.append_message(
+        Message(role="user", content=[system("\n".join(lines))])
+    )
+    wire_send(
+        TextPart(
+            text=f"已将第 {idx} 项的参数注入对话上下文。请告诉 AI 你想如何修改这一项。"
+        )
+    )
+
+
+@registry.command(name="pending-clear")
+async def pending_clear(soul: KimiSoul, args: str):
+    """清空待修改清单"""
+    count = len(soul.runtime.session.state.pending_edits)
+    soul.runtime.session.state.pending_edits = []
+    soul.runtime.session.save_state()
+    wire_send(TextPart(text=f"已清空待修改清单（清除了 {count} 项）。"))
+
+
 @registry.command
 async def export(soul: KimiSoul, args: str):
     """Export current session context to a markdown file"""

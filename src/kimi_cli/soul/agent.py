@@ -194,6 +194,7 @@ class Runtime:
     role: Literal["root", "subagent"] = "root"
     ui_mode: str = "shell"
     resumed: bool = False
+    readonly: bool = False
     hook_engine: Any = None
     """HookEngine instance, set by KimiCLI after soul creation."""
 
@@ -215,6 +216,7 @@ class Runtime:
         llm: LLM | None,
         session: Session,
         yolo: bool,
+        readonly: bool = False,
         skills_dirs: list[KaosPath] | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
@@ -272,7 +274,11 @@ class Runtime:
             additional_dirs_info = "\n\n".join(parts)
 
         # Merge CLI flag with persisted session state
+        effective_readonly = readonly or session.state.readonly
         effective_yolo = yolo or session.state.approval.yolo
+        # Readonly mode takes precedence: disable yolo when readonly is active
+        if effective_readonly:
+            effective_yolo = False
         saved_actions = set(session.state.approval.auto_approve_actions)
 
         def _on_approval_change() -> None:
@@ -282,6 +288,7 @@ class Runtime:
 
         approval_state = ApprovalState(
             yolo=effective_yolo,
+            readonly=effective_readonly,
             auto_approve_actions=saved_actions,
             on_change=_on_approval_change,
         )
@@ -326,6 +333,7 @@ class Runtime:
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
             role="root",
+            readonly=effective_readonly,
         )
 
     def copy_for_subagent(
@@ -358,6 +366,7 @@ class Runtime:
             subagent_id=agent_id,
             subagent_type=subagent_type,
             role="subagent",
+            readonly=self.readonly,
         )
 
 

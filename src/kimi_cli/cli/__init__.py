@@ -203,6 +203,13 @@ def kimi(
             help="Start in plan mode. Default: no.",
         ),
     ] = False,
+    readonly: Annotated[
+        bool,
+        typer.Option(
+            "--readonly",
+            help="Start in readonly mode (block all file modifications). Default: no.",
+        ),
+    ] = False,
     prompt: Annotated[
         str | None,
         typer.Option(
@@ -611,6 +618,7 @@ def kimi(
                 thinking=thinking,
                 yolo=yolo or (ui == "print"),  # print mode implies yolo
                 plan_mode=plan,
+                readonly=readonly,
                 resumed=resumed,
                 agent_file=agent_file,
                 mcp_configs=mcp_configs,

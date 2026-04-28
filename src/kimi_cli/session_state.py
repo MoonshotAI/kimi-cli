@@ -24,6 +24,19 @@ class TodoItemState(BaseModel):
     status: Literal["pending", "in_progress", "done"]
 
 
+class PendingEdit(BaseModel):
+    """A pending edit operation recorded in readonly mode."""
+
+    tool_name: str
+    """Name of the tool that was intercepted, e.g. 'WriteFile', 'StrReplaceFile', 'Shell'."""
+    params: dict[str, object] = Field(default_factory=dict)
+    """The parameters that were passed to the tool."""
+    description: str = ""
+    """Human-readable description of the operation."""
+    timestamp: float = Field(default_factory=lambda: __import__("time").time())
+    """Unix timestamp when the edit was recorded."""
+
+
 class SessionState(BaseModel):
     version: int = 1
     approval: ApprovalStateData = Field(default_factory=ApprovalStateData)
@@ -32,6 +45,7 @@ class SessionState(BaseModel):
     title_generated: bool = False
     title_generate_attempts: int = 0
     plan_mode: bool = False
+    readonly: bool = False
     plan_session_id: str | None = None
     plan_slug: str | None = None
     # Archive state (previously in metadata.json)
@@ -41,6 +55,8 @@ class SessionState(BaseModel):
     auto_archive_exempt: bool = False
     # Todo list state
     todos: list[TodoItemState] = Field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
+    # Pending edits (recorded in readonly mode)
+    pending_edits: list[PendingEdit] = Field(default_factory=list)
 
 
 _LEGACY_METADATA_FILENAME = "metadata.json"

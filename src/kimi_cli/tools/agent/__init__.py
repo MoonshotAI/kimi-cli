@@ -118,6 +118,11 @@ class AgentTool(CallableTool2[Params]):
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
+        if getattr(self._runtime, "readonly", False):
+            return ToolError(
+                message="当前处于只读模式，无法启动子代理。请发送 /execute 解除只读模式后再执行此操作。",
+                brief="Readonly mode active",
+            )
         if self._runtime.role != "root":
             return ToolError(
                 message="Subagents cannot launch other subagents.",

@@ -128,6 +128,7 @@ class KimiCLI:
         # Run mode
         yolo: bool = False,
         plan_mode: bool = False,
+        readonly: bool = False,
         resumed: bool = False,
         ui_mode: str = "shell",
         # Extensions
@@ -151,6 +152,7 @@ class KimiCLI:
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
+            readonly (bool, optional): Block all file modifications. Defaults to False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
                 MCP tools from. Defaults to None.
@@ -247,12 +249,16 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
+        # Determine readonly mode (CLI flag overrides config default)
+        effective_readonly = readonly or config.default_readonly
+
         runtime = await Runtime.create(
             config,
             oauth,
             llm,
             session,
             yolo,
+            readonly=effective_readonly,
             skills_dirs=skills_dirs,
         )
         runtime.ui_mode = ui_mode

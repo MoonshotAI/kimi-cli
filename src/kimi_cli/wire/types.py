@@ -174,6 +174,8 @@ class StatusUpdate(BaseModel):
     """The message ID of the current step."""
     plan_mode: bool | None = None
     """Whether plan mode (read-only) is active. None means no change."""
+    readonly_mode: bool | None = None
+    """Whether readonly mode (block all file modifications) is active. None means no change."""
     mcp_status: MCPStatusSnapshot | None = None
     """The current MCP startup snapshot. None means no change."""
 

@@ -13,7 +13,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock, ShellDisplayBlock
-from kimi_cli.tools.utils import ToolResultBuilder, load_desc
+from kimi_cli.tools.utils import ToolResultBuilder, load_desc, record_pending_edit
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.subprocess_env import get_noninteractive_env
@@ -73,12 +73,161 @@ class Shell(CallableTool2[Params]):
         self._shell_path = environment.shell_path
         self._runtime = runtime
 
+    @staticmethod
+    def _is_readonly_safe_command(command: str) -> bool:
+        """判断 Shell 命令在只读模式下是否安全（不会修改文件系统）。
+
+        采用保守策略：只放行明确已知的只读命令，其余一律视为危险。
+        """
+        stripped = command.strip().lower()
+
+        # 1. 基础危险符号：重定向
+        if ">" in stripped or ">>" in stripped:
+            return False
+
+        # 2. 管道写入
+        if "| tee" in stripped:
+            return False
+
+        # 3. 常见文件操作命令
+        dangerous_prefixes = (
+            "rm ", "mv ", "cp ", "chmod ", "chown ", "mkdir ", "rmdir ",
+            "touch ", "mkfifo ", "ln ", "dd ", "truncate ",
+        )
+        if stripped.startswith(dangerous_prefixes):
+            return False
+
+        # 4. git 危险操作
+        dangerous_git = (
+            "git push", "git commit", "git merge", "git rebase",
+            "git reset", "git cherry-pick", "git stash", "git clean",
+            "git checkout -b", "git checkout --", "git revert",
+        )
+        for dg in dangerous_git:
+            if dg in stripped:
+                return False
+
+        # 5. sed 原地编辑
+        if "sed " in stripped and " -i" in stripped:
+            return False
+
+        # 6. 安装/构建/包管理命令
+        install_prefixes = (
+            "pip install", "pip uninstall", "npm install", "npm uninstall",
+            "npm ci", "npm publish", "yarn add", "yarn remove", "pnpm install",
+            "cargo build", "cargo install", "make ", "cmake ", "g++ ", "gcc ",
+        )
+        if stripped.startswith(install_prefixes):
+            return False
+
+        # 7. PowerShell / .NET 文件写入 API（绕过检测的常见方式）
+        dotnet_file_ops = (
+            "writealltext", "writealllines", "writeallbytes",
+            "appendalltext", "appendalllines",
+            "file.create", "file.delete", "file.move", "file.copy",
+            "file.replace", "file.setattributes",
+            "directory.create", "directory.delete", "directory.move",
+            "streamwriter", "filestream", "binarywriter",
+        )
+        for pattern in dotnet_file_ops:
+            if pattern in stripped:
+                return False
+
+        # 8. PowerShell Cmdlet 文件操作
+        ps_file_ops = (
+            "set-content", "add-content", "out-file", "new-item",
+            "remove-item", "rename-item", "copy-item", "move-item",
+            "clear-content", "export-csv", "export-clixml",
+        )
+        for pattern in ps_file_ops:
+            if pattern in stripped:
+                return False
+
+        # 9. Python 文件写入（通过 -c 参数）
+        if any(x in stripped for x in ("python -c", "python3 -c", "py -c")):
+            py_write_patterns = (
+                "open(", "os.remove", "os.rename", "os.mkdir", "os.rmdir",
+                "os.makedirs", "shutil.copy", "shutil.move", "shutil.rmtree",
+                "pathlib.", "file.write", ".write(",
+            )
+            for pattern in py_write_patterns:
+                if pattern in stripped:
+                    return False
+
+        # 10. Node.js / JavaScript 文件写入（通过 -e 参数）
+        if "node -e" in stripped or "node -p" in stripped or "node --eval" in stripped:
+            return False
+
+        # 11. 其他脚本解释器调用（一律视为危险，无法判断其内部行为）
+        script_exec = (
+            "bash -c", "sh -c", "zsh -c", "pwsh -c", "cmd /c",
+            "php ", "ruby ", "perl ", "lua ", "tcl ", "awk -f", "gawk -f",
+        )
+        if stripped.startswith(script_exec):
+            return False
+
+        # 12. 网络下载命令（可能写入文件）
+        download_cmds = (
+            "curl -o", "curl --output", "wget -o", "wget --output-document",
+            "invoke-webrequest", "start-bitstransfer",
+        )
+        for pattern in download_cmds:
+            if pattern in stripped:
+                return False
+
+        return True
+
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
         builder = ToolResultBuilder()
 
         if not params.command:
             return builder.error("Command cannot be empty.", brief="Empty command")
+
+        # Readonly mode: block dangerous shell commands, allow read-only ones
+        if getattr(self._runtime, "readonly", False):
+            # Background tasks are always blocked in readonly mode
+            if params.run_in_background:
+                record_pending_edit(
+                    self._runtime,
+                    tool_name=self.name,
+                    params={
+                        "command": params.command,
+                        "timeout": params.timeout,
+                        "run_in_background": True,
+                        "description": params.description,
+                    },
+                    description=f"后台执行 Shell 命令 `{params.command[:80]}{'...' if len(params.command) > 80 else ''}`",
+                )
+                pending_count = len(self._runtime.session.state.pending_edits)
+                return builder.error(
+                    f"当前处于只读模式，后台 Shell 命令被禁用。"
+                    f"该操作已暂存到待修改清单（共 {pending_count} 项）。"
+                    f"发送 /pending 查看清单，发送 /execute 批量执行所有暂存操作。",
+                    brief="Readonly mode active",
+                )
+
+            # Foreground commands: allow read-only safe commands
+            if not self._is_readonly_safe_command(params.command):
+                record_pending_edit(
+                    self._runtime,
+                    tool_name=self.name,
+                    params={
+                        "command": params.command,
+                        "timeout": params.timeout,
+                        "run_in_background": False,
+                        "description": params.description,
+                    },
+                    description=f"执行 Shell 命令 `{params.command[:80]}{'...' if len(params.command) > 80 else ''}`",
+                )
+                pending_count = len(self._runtime.session.state.pending_edits)
+                return builder.error(
+                    f"当前处于只读模式，该 Shell 命令可能修改文件系统，已被拦截。"
+                    f"该操作已暂存到待修改清单（共 {pending_count} 项）。"
+                    f"发送 /pending 查看清单，发送 /execute 批量执行所有暂存操作。",
+                    brief="Readonly mode active",
+                )
+            # Safe command → proceed normally below
 
         if params.run_in_background:
             return await self._run_in_background(params)

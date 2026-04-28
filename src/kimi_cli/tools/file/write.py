@@ -11,7 +11,7 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DisplayBlock
 from kimi_cli.tools.file import FileActions
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
-from kimi_cli.tools.utils import load_desc
+from kimi_cli.tools.utils import load_desc, record_pending_edit
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import is_within_workspace
@@ -77,6 +77,24 @@ class WriteFile(CallableTool2[Params]):
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
+        # Readonly mode: block all write operations and record to pending edits
+        if getattr(self._runtime, "readonly", False):
+            record_pending_edit(
+                self._runtime,
+                tool_name=self.name,
+                params={"path": params.path, "content": params.content, "mode": params.mode},
+                description=f"写入文件 `{params.path}`（{params.mode}）",
+            )
+            pending_count = len(self._runtime.session.state.pending_edits)
+            return ToolError(
+                message=(
+                    f"当前处于只读模式，无法直接写入文件。"
+                    f"该操作已暂存到待修改清单（共 {pending_count} 项）。"
+                    f"发送 /pending 查看清单，发送 /execute 批量执行所有暂存操作。"
+                ),
+                brief="Readonly mode active",
+            )
+
         # TODO: checks:
         # - check if the path may contain secrets
         if not params.path:

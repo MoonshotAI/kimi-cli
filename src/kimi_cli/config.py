@@ -208,6 +208,9 @@ class Config(BaseModel):
         ),
     )
     default_plan_mode: bool = Field(default=False, description="Default plan mode for new sessions")
+    default_readonly: bool = Field(
+        default=False, description="Default readonly mode (block all file modifications)"
+    )
     default_editor: str = Field(
         default="",
         description="Default external editor command (e.g. 'vim', 'code --wait')",

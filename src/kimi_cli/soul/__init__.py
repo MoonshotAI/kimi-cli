@@ -90,6 +90,8 @@ class StatusSnapshot:
     """Whether YOLO (auto-approve) mode is enabled."""
     plan_mode: bool = False
     """Whether plan mode (read-only research and planning) is active."""
+    readonly: bool = False
+    """Whether readonly mode (block all file modifications) is active."""
     context_tokens: int = 0
     """The number of tokens currently in the context."""
     max_context_tokens: int = 0

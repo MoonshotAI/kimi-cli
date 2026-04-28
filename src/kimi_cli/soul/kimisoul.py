@@ -60,6 +60,7 @@ from kimi_cli.soul.dynamic_injection import (
     normalize_history,
 )
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
+from kimi_cli.soul.dynamic_injections.readonly_mode import ReadonlyModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
@@ -199,6 +200,7 @@ class KimiSoul:
             self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
+            ReadonlyModeInjectionProvider(),
             *(
                 []
                 if self._runtime.config.skip_yolo_prompt_injection
@@ -239,6 +241,18 @@ class KimiSoul:
     def plan_mode(self) -> bool:
         """Whether plan mode (read-only research and planning) is active."""
         return self._plan_mode
+
+    @property
+    def is_readonly(self) -> bool:
+        """Whether readonly mode (block all file modifications) is active."""
+        return self._runtime.readonly
+
+    def set_readonly(self, enabled: bool) -> None:
+        """Enable or disable readonly mode."""
+        self._runtime.readonly = enabled
+        self._runtime.session.state.readonly = enabled
+        self._runtime.session.save_state()
+        self._approval.set_readonly(enabled)
 
     @property
     def hook_engine(self) -> HookEngine:
@@ -439,6 +453,7 @@ class KimiSoul:
             context_usage=self._context_usage,
             yolo_enabled=self._approval.is_yolo(),
             plan_mode=self._plan_mode,
+            readonly=self.is_readonly,
             context_tokens=token_count,
             max_context_tokens=max_size,
             mcp_status=self._mcp_status_snapshot(),

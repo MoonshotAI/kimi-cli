@@ -56,10 +56,12 @@ class ApprovalState:
     def __init__(
         self,
         yolo: bool = False,
+        readonly: bool = False,
         auto_approve_actions: set[str] | None = None,
         on_change: Callable[[], None] | None = None,
     ):
         self.yolo = yolo
+        self.readonly = readonly
         self.auto_approve_actions: set[str] = auto_approve_actions or set()
         """Set of action names that should automatically be approved."""
         self._on_change = on_change
@@ -97,6 +99,13 @@ class Approval:
 
     def is_yolo(self) -> bool:
         return self._state.yolo
+
+    def set_readonly(self, readonly: bool) -> None:
+        self._state.readonly = readonly
+        self._state.notify_change()
+
+    def is_readonly(self) -> bool:
+        return self._state.readonly
 
     async def request(
         self,

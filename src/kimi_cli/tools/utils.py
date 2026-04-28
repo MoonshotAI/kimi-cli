@@ -1,9 +1,41 @@
 import re
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment, Undefined
 from kosong.tooling import BriefDisplayBlock, DisplayBlock, ToolError, ToolReturnValue
 from kosong.utils.typing import JsonType
+
+from kimi_cli.session_state import PendingEdit
+from kimi_cli.utils.logging import logger
+
+
+def record_pending_edit(
+    runtime: Any,
+    tool_name: str,
+    params: dict[str, object],
+    description: str,
+) -> None:
+    """Record an intercepted tool call to the pending edits list in readonly mode.
+
+    Args:
+        runtime: The agent runtime (must have `.session.state.pending_edits`).
+        tool_name: Name of the tool that was intercepted.
+        params: The parameters passed to the tool.
+        description: Human-readable description of the operation.
+    """
+    try:
+        session = runtime.session
+        session.state.pending_edits.append(
+            PendingEdit(
+                tool_name=tool_name,
+                params=params,
+                description=description,
+            )
+        )
+        session.save_state()
+    except Exception as e:
+        logger.warning("Failed to record pending edit: {error}", error=e)
 
 
 class _KeepPlaceholderUndefined(Undefined):
