@@ -525,6 +525,7 @@ class WireServer:
             result["hooks"] = cast(JsonType, hooks_info)
 
         self._apply_wire_client_info(msg.params.client)
+        self._track_session_started(msg.params.client)
 
         if msg.params.capabilities is not None:
             self._client_supports_question = msg.params.capabilities.supports_question
@@ -627,6 +628,19 @@ class WireServer:
             headers["User-Agent"] = f"{USER_AGENT}{ua_suffix}"
             kimi_client._custom_headers = headers  # pyright: ignore[reportPrivateUsage]
 
+    def _track_session_started(self, client: ClientInfo | None) -> None:
+        if not isinstance(self._soul, KimiSoul):
+            return
+
+        from kimi_cli.telemetry import track_session_started_once
+
+        track_session_started_once(
+            ui_mode="wire",
+            resumed=self._soul.runtime.resumed,
+            client_name=client.name if client is not None else None,
+            client_version=client.version if client is not None else None,
+        )
+
     async def _handle_prompt(
         self, msg: JSONRPCPromptMessage
     ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
@@ -638,6 +652,9 @@ class WireServer:
                     code=ErrorCodes.INVALID_STATE, message="An agent turn is already in progress"
                 ),
             )
+
+        if not self._initialized:
+            self._track_session_started(None)
 
         self._cancel_event = asyncio.Event()
         runtime = self._soul.runtime if isinstance(self._soul, KimiSoul) else None

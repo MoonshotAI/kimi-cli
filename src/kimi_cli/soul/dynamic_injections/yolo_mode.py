@@ -53,3 +53,8 @@ class YoloModeInjectionProvider(DynamicInjectionProvider):
             return []
         self._injected = True
         return [DynamicInjection(type=_YOLO_INJECTION_TYPE, content=_YOLO_PROMPT)]
+
+    async def on_context_compacted(self) -> None:
+        # Compaction wipes history; the reminder may have been summarized away.
+        # Clear the one-shot flag so the next step re-injects while yolo is active.
+        self._injected = False

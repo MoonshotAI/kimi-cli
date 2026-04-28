@@ -181,11 +181,15 @@ class Kimi:
 
     def on_retryable_error(self, error: BaseException) -> bool:
         old_client = self.client
+        # Read api_key from the live client (not self._api_key) so that
+        # OAuth token refreshes applied via client.api_key are preserved.
+        current_api_key = old_client.api_key
         self.client = create_openai_client(
-            api_key=self._api_key,
+            api_key=current_api_key,
             base_url=self._base_url,
             client_kwargs=self._client_kwargs,
         )
+        self._api_key = current_api_key
         close_replaced_openai_client(old_client, client_kwargs=self._client_kwargs)
         return True
 

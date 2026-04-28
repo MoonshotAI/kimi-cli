@@ -49,6 +49,7 @@ class ApprovalRuntime:
     def __init__(self) -> None:
         self._requests: dict[str, ApprovalRequestRecord] = {}
         self._waiters: dict[str, asyncio.Future[tuple[ApprovalResponseKind, str]]] = {}
+        self._waiter_counts: dict[str, int] = {}
         self._subscribers: dict[str, Callable[[ApprovalRuntimeEvent], None]] = {}
         self._root_wire_hub: RootWireHub | None = None
 
@@ -83,7 +84,7 @@ class ApprovalRuntime:
         return request
 
     async def wait_for_response(
-        self, request_id: str, timeout: float = 300.0
+        self, request_id: str, timeout: float | None = None
     ) -> tuple[ApprovalResponseKind, str]:
         waiter = self._waiters.get(request_id)
         request = self._requests.get(request_id)
@@ -97,7 +98,10 @@ class ApprovalRuntime:
                 return request.response, request.feedback
             waiter = asyncio.get_running_loop().create_future()
             self._waiters[request_id] = waiter
+        self._waiter_counts[request_id] = self._waiter_counts.get(request_id, 0) + 1
         try:
+            if timeout is None:
+                return await asyncio.shield(waiter)
             return await asyncio.wait_for(asyncio.shield(waiter), timeout=timeout)
         except TimeoutError:
             logger.warning(
@@ -105,12 +109,22 @@ class ApprovalRuntime:
                 id=request_id,
                 t=timeout,
             )
-            # Pop the waiter before cancelling so _cancel_request won't
-            # set_exception on a future that nobody is awaiting (which would
-            # trigger an "exception was never retrieved" warning from asyncio).
-            self._waiters.pop(request_id, None)
+            # If this timeout is the only remaining observer, drop the shared
+            # waiter before cancelling so we do not later set_exception on an
+            # unobserved future. If other observers still exist, keep the
+            # shared waiter registered so they receive the cancellation too.
+            if self._waiter_counts.get(request_id, 0) <= 1:
+                self._waiters.pop(request_id, None)
             self._cancel_request(request_id, feedback="approval timed out")
             raise ApprovalCancelledError(request_id) from None
+        finally:
+            remaining = self._waiter_counts.get(request_id, 0) - 1
+            if remaining > 0:
+                self._waiter_counts[request_id] = remaining
+            else:
+                self._waiter_counts.pop(request_id, None)
+                if request.status == "pending" and self._waiters.get(request_id) is waiter:
+                    self._waiters.pop(request_id, None)
 
     def resolve(self, request_id: str, response: ApprovalResponseKind, feedback: str = "") -> bool:
         request = self._requests.get(request_id)

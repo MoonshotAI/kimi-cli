@@ -279,6 +279,23 @@ class KimiSoul:
                 )
         return injections
 
+    async def _notify_injection_providers_compacted(self) -> None:
+        """Notify all injection providers that the context has been compacted.
+
+        Failures are isolated per-provider so a buggy third-party provider
+        cannot abort compaction (which would skip CompactionEnd wire events
+        and PostCompact telemetry).
+        """
+        for provider in self._injection_providers:
+            try:
+                await provider.on_context_compacted()
+            except Exception:
+                logger.warning(
+                    "injection provider %s on_context_compacted failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
+
     def _bind_plan_mode_tools(self) -> None:
         """Bind plan mode state to tools that support it."""
         if not isinstance(self._agent.toolset, KimiToolset):
@@ -526,12 +543,12 @@ class KimiSoul:
         skip_user_prompt_hook: bool = False,
     ):
         approval_source_token = None
+        created_approval_source: ApprovalSource | None = None
         turn_started = False
         turn_finished = False
         if get_current_approval_source_or_none() is None:
-            approval_source_token = set_current_approval_source(
-                ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
-            )
+            created_approval_source = ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
+            approval_source_token = set_current_approval_source(created_approval_source)
         try:
             # Refresh OAuth tokens on each turn to avoid idle-time expirations.
             await self._runtime.oauth.ensure_fresh(self._runtime)
@@ -641,6 +658,11 @@ class KimiSoul:
         finally:
             if turn_started and not turn_finished:
                 wire_send(TurnEnd())
+            if created_approval_source is not None and self._runtime.approval_runtime is not None:
+                self._runtime.approval_runtime.cancel_by_source(
+                    created_approval_source.kind,
+                    created_approval_source.id,
+                )
             if approval_source_token is not None:
                 reset_current_approval_source(approval_source_token)
 
@@ -1144,6 +1166,12 @@ class KimiSoul:
         # Estimate token count so context_usage is not reported as 0%
         await self._context.update_token_count(estimated_token_count)
 
+        # Notify dynamic injection providers that history has been rebuilt so
+        # they can reset any one-shot throttling state. Failures are isolated
+        # per-provider so compaction completion (wire event + telemetry) is
+        # not affected by a buggy provider.
+        await self._notify_injection_providers_compacted()
+
         wire_send(CompactionEnd())
 
         from kimi_cli.telemetry import track
@@ -1191,6 +1219,7 @@ class KimiSoul:
         *,
         chat_provider: object | None = None,
         _auth_retried: bool = False,
+        _connection_retried: bool = False,
     ) -> Any:
         try:
             return await operation()
@@ -1219,9 +1248,22 @@ class KimiSoul:
             # Re-enter full recovery so that transient connection errors
             # on the retry are still handled by on_retryable_error.
             return await self._run_with_connection_recovery(
-                name, operation, chat_provider=chat_provider, _auth_retried=True
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=True,
+                _connection_retried=_connection_retried,
             )
         except (APIConnectionError, APITimeoutError) as error:
+            if _connection_retried:
+                logger.warning(
+                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
+                    name=name,
+                    error_type=type(error).__name__,
+                    error=error,
+                )
+                error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
+                raise
             if not isinstance(chat_provider, RetryableChatProvider):
                 raise
             try:
@@ -1245,17 +1287,15 @@ class KimiSoul:
                 name=name,
                 error_type=type(error).__name__,
             )
-            try:
-                return await operation()
-            except (APIConnectionError, APITimeoutError) as second_error:
-                logger.warning(
-                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
-                    name=name,
-                    error_type=type(second_error).__name__,
-                    error=second_error,
-                )
-                second_error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
-                raise
+            # Re-enter the full recovery path so a 401 on the retry can still
+            # trigger OAuth refresh instead of bubbling straight to the user.
+            return await self._run_with_connection_recovery(
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=_auth_retried,
+                _connection_retried=True,
+            )
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):

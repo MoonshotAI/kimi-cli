@@ -34,6 +34,7 @@ def _reset_telemetry_state():
     telemetry_mod._device_id = None
     telemetry_mod._session_id = None
     telemetry_mod._client_info = None
+    telemetry_mod._session_started_sessions.clear()
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
     yield
@@ -41,6 +42,7 @@ def _reset_telemetry_state():
     telemetry_mod._device_id = None
     telemetry_mod._session_id = None
     telemetry_mod._client_info = None
+    telemetry_mod._session_started_sessions.clear()
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
 
@@ -763,8 +765,8 @@ class TestContextEnrichment:
 # ---------------------------------------------------------------------------
 
 
-class TestClientInfo:
-    """Verify set_client_info and its propagation through sink enrichment."""
+class TestSessionStarted:
+    """Verify session_started attribution and client info handling."""
 
     def _make_sink(self) -> tuple[EventSink, MagicMock]:
         transport = MagicMock(spec=AsyncTransport)
@@ -776,31 +778,14 @@ class TestClientInfo:
         sink.flush_sync()
         return transport.save_to_disk.call_args[0][0][0]
 
-    def test_no_client_info_means_fields_absent(self):
-        """If set_client_info is never called, context has neither field."""
-        sink, transport = self._make_sink()
-        enriched = self._enrich(sink, transport)
-        assert "client_name" not in enriched["context"]
-        assert "client_version" not in enriched["context"]
-
-    def test_set_client_info_populates_both_fields(self):
-        """set_client_info with name+version injects both into context."""
+    def test_context_never_contains_client_info(self):
+        """Client attribution belongs on session_started properties, not context."""
         from kimi_cli.telemetry import set_client_info
 
         set_client_info(name="vscode", version="1.90.0")
         sink, transport = self._make_sink()
         enriched = self._enrich(sink, transport)
-        assert enriched["context"]["client_name"] == "vscode"
-        assert enriched["context"]["client_version"] == "1.90.0"
-
-    def test_set_client_info_name_only_omits_version(self):
-        """When version is None, client_version key is not added."""
-        from kimi_cli.telemetry import set_client_info
-
-        set_client_info(name="zed")
-        sink, transport = self._make_sink()
-        enriched = self._enrich(sink, transport)
-        assert enriched["context"]["client_name"] == "zed"
+        assert "client_name" not in enriched["context"]
         assert "client_version" not in enriched["context"]
 
     def test_set_client_info_empty_name_is_ignored(self):
@@ -809,11 +794,7 @@ class TestClientInfo:
 
         set_client_info(name="cursor", version="0.40.0")
         set_client_info(name="", version="anything")
-        sink, transport = self._make_sink()
-        enriched = self._enrich(sink, transport)
-        # Previous value preserved
-        assert enriched["context"]["client_name"] == "cursor"
-        assert enriched["context"]["client_version"] == "0.40.0"
+        assert telemetry_mod._client_info == ("cursor", "0.40.0")
 
     def test_set_client_info_overwrites_previous(self):
         """Non-empty set_client_info replaces the tuple atomically."""
@@ -821,10 +802,7 @@ class TestClientInfo:
 
         set_client_info(name="vscode", version="1.90.0")
         set_client_info(name="zed", version="0.180.0")
-        sink, transport = self._make_sink()
-        enriched = self._enrich(sink, transport)
-        assert enriched["context"]["client_name"] == "zed"
-        assert enriched["context"]["client_version"] == "0.180.0"
+        assert telemetry_mod._client_info == ("zed", "0.180.0")
 
     def test_client_info_stored_as_tuple(self):
         """_client_info is stored as a tuple so readers never see a half-update."""
@@ -833,17 +811,59 @@ class TestClientInfo:
         set_client_info(name="kimi-web", version="2.0.0")
         assert telemetry_mod._client_info == ("kimi-web", "2.0.0")
 
-    def test_values_pass_through_verbatim(self):
-        """No sanitization: values should reach the backend unchanged."""
-        from kimi_cli.telemetry import set_client_info
+    def test_track_session_started_shell(self):
+        from kimi_cli.telemetry import track_session_started_once
 
-        weird_name = "VS Code\n(Insiders)"
-        weird_version = "1.90.0-beta\ttest"
-        set_client_info(name=weird_name, version=weird_version)
-        sink, transport = self._make_sink()
-        enriched = self._enrich(sink, transport)
-        assert enriched["context"]["client_name"] == weird_name
-        assert enriched["context"]["client_version"] == weird_version
+        set_context(device_id="dev", session_id="sess-shell")
+        track_session_started_once(ui_mode="shell", resumed=False)
+
+        event = _collect_events()[-1]
+        assert event["event"] == "session_started"
+        assert event["properties"]["client_name"] == "shell"
+        assert event["properties"]["client_version"] is None
+        assert event["properties"]["ui_mode"] == "shell"
+        assert event["properties"]["resumed"] is False
+
+    def test_track_session_started_wire_uses_current_client_info(self):
+        from kimi_cli.telemetry import set_client_info, track_session_started_once
+
+        set_context(device_id="dev", session_id="sess-wire")
+        set_client_info(name="kiwi", version="1.2.3")
+        track_session_started_once(ui_mode="wire", resumed=True)
+
+        event = _collect_events()[-1]
+        assert event["event"] == "session_started"
+        assert event["properties"]["client_name"] == "kiwi"
+        assert event["properties"]["client_version"] == "1.2.3"
+        assert event["properties"]["ui_mode"] == "wire"
+        assert event["properties"]["resumed"] is True
+
+    def test_track_session_started_once_per_session(self):
+        from kimi_cli.telemetry import track_session_started_once
+
+        set_context(device_id="dev", session_id="sess-once")
+        track_session_started_once(ui_mode="wire", resumed=False, client_name="kiwi")
+        track_session_started_once(ui_mode="wire", resumed=False, client_name="vscode")
+
+        events = [event for event in _collect_events() if event["event"] == "session_started"]
+        assert len(events) == 1
+        assert events[0]["properties"]["client_name"] == "kiwi"
+
+    def test_track_session_started_explicit_client_info_wins(self):
+        from kimi_cli.telemetry import set_client_info, track_session_started_once
+
+        set_context(device_id="dev", session_id="sess-explicit")
+        set_client_info(name="kiwi", version="1.2.3")
+        track_session_started_once(
+            ui_mode="wire",
+            resumed=False,
+            client_name="kimi-code-for-vs-code",
+            client_version="1.90.0",
+        )
+
+        event = _collect_events()[-1]
+        assert event["properties"]["client_name"] == "kimi-code-for-vs-code"
+        assert event["properties"]["client_version"] == "1.90.0"
 
 
 # ---------------------------------------------------------------------------
@@ -897,6 +917,8 @@ class TestCompactionTracking:
         fake_result.messages = []
         fake_result.estimated_token_count = estimated_after
         soul._run_with_connection_recovery = AsyncMock(return_value=fake_result)
+
+        soul._injection_providers = []
         return soul
 
     @pytest.mark.asyncio

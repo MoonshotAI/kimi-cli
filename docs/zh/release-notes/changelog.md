@@ -7,15 +7,34 @@
 - Core：修复 `--yolo` 模式意外阻止模型调用 `AskUserQuestion` 的问题——以前 yolo 会注入一段 system reminder，告诉模型当前处于“非交互模式”，不能向用户提问；同时 ask-user 工具在 yolo 下也会自动 dismiss。这两处都是错的：yolo 的真正语义只是“自动批准工具调用”，并不意味着“用户已离开”。现在 yolo 模式下用户仍然在线，prompt 措辞也更温和——明确告诉模型在关键决策点仍可以调用 `AskUserQuestion` 来澄清需求，只是不要滥用
 - CLI：把“自动审批”和“非交互”拆分为两个正交模式——`--yolo`（自动批准工具调用，但用户仍在终端前）和 `--afk` / `/afk`（away-from-keyboard：`AskUserQuestion` 会被自动 dismiss、工具调用也自动批准）。`--print` 现在隐式启用 `--afk` 而不是 `--yolo`（语义更准确：print 下没人坐在终端前）。状态栏独立显示 `yolo` 和 `afk`，`/yolo` 与 `/afk` 各自切换自身的 flag，互不干扰
 - Shell：修复 afk 开启时 `/yolo` 切换产生误导性 UI 文案的问题——以前 `/yolo` 读的是 yolo 和 afk 合并后的自动批准状态，afk 开着时按 `/yolo` 会说“现在需要审批”，但 afk 仍在继续自动批准。现在 `/yolo` 只读写 yolo 自身的 flag，不碰 afk
+- Web：折叠工具详情后仍保留工具媒体预览——工具返回的图片和视频现在渲染在工具卡片下方，而不是折叠详情区域内部，因此折叠工具后预览缩略图仍然可见
+- Kosong：修复 Kimi 供应商在 OAuth 令牌刷新后仍使用过期的 API 密钥的问题——`on_retryable_error` 现在从当前 client 读取 `api_key`，而不是缓存的 `_api_key`，因此在可重试错误后重建 client 时会保留通过 `client.api_key` 应用的 OAuth 令牌刷新
+- Core：修复审批请求 5 分钟自动超时并被误报为 `Rejected by user` 的问题；现在活跃的前台和子 Agent 审批请求都会无限等待用户响应
+- Core：修复上下文压缩后 yolo 模式提示词丢失的问题——当 yolo 模式处于激活状态时，非交互模式下的指导提示（不要调用 AskUserQuestion、计划模式切换自动批准等）现在会在每次上下文压缩后的第一个 LLM 步骤重新注入，而不是在原始提示被折叠进压缩摘要后静默消失
+- Shell：修复 `/usage` 剩余额度渲染错误——进度条、告警颜色和 `% left` 文案现在都统一基于剩余额度比例计算，剩余额度充足时显示为绿色满格，接近耗尽时显示为黄色或红色
+- Shell：在提示框状态栏显示当前正在运行的后台 Agent 任务数——原有的 `⚙ bash: N` 徽章只统计后台 Shell 任务，把后台 Agent 子代理过滤掉了，所以多个子代理同时在跑时提示框看起来像空闲，用户无法判断工作是否还在进行；现在状态栏会渲染 `⚙ bash: N` 与 `⚙ agent: N` 两个相互独立的徽章（任一计数为 0 时自动隐藏），终端太窄无法同时容纳两者时优先丢弃 agent 徽章
+- Auth：修复 OAuth 用户 access token 过期时托管模型列表刷新静默失败的问题——后台 `/models` 同步任务现在会检测 401 响应，强制进行 OAuth token 刷新并用刷新后的 token 重试；如果刷新本身失败或刷新后的 token 仍被拒绝，则回退到最初配置的静态 API 密钥，而不是跳过该 provider
+- Core：修复连接恢复后重试返回 401 时未能触发 OAuth 刷新的问题——在 `APIConnectionError` 或 `APITimeoutError` 后重建 HTTP 客户端时，重试现在会重新进入完整恢复路径，使得后续的 401 能正确刷新 OAuth token，而不是作为不可恢复的错误直接抛给用户
+- Shell：在 transcript 中回显 `/skill:*` 和 `/flow:*` 输入，工作流命令按下回车后不再消失；`/usage`、`/model` 等操作类斜杠命令仍然保持隐藏
+- Core：将默认 `max_steps_per_turn` 从 500 提升到 1000，长任务更不容易撞到单轮步数上限
+
+## 1.39.0 (2026-04-24)
+
+- Skill：修复项目级 Skill 被忽略、用户级 Skill 在同名冲突时静默获胜的问题——系统提示现在会把发现到的 Skill 按 `### Project` / `### User` / `### Extra` / `### Built-in` 四个分组呈现，让模型能分辨出每个 Skill 来自哪一层；当同一 Skill 名称同时存在于多个作用域时，越具体的作用域优先（Project > User > Extra > Built-in），项目自身的 `.kimi/skills/foo` 或 `.claude/skills/foo` 现在能正确覆盖用户级或内置的同名 `foo`，而不是被它们覆盖
+- Skill：除了标准的 `<name>/SKILL.md` 子目录结构之外，现在也会识别 Skills 目录下的扁平 `<name>.md` 单文件 Skill——便于将扁平 Markdown 集合迁移到 Skills 目录；`name` 默认取文件名去掉 `.md` 后的部分（frontmatter 里显式写了 `name:` 时以 frontmatter 为准），描述解析与子目录形式统一走同一条三级链（frontmatter `description:` → 正文第一个非空行，超过 240 字符会截断 → `"No description provided."` 兜底）；当同目录下扁平 `.md` 和子目录形式同名时，以子目录为准，并记录一条警告日志
+- Skill：新增 `extra_skill_dirs` 配置项，用于在内置 / 用户级 / 项目级自动发现的基础上追加自定义 Skills 目录——每一项可以是绝对路径、`~` 前缀路径（会按 `$HOME` 展开），或相对于项目根的路径（即 `work_dir` 向上第一个包含 `.git` 的目录，不是当前工作目录）；不存在的条目会被静默跳过，同一路径的软链接或带尾部斜杠的写法会被 canonicalize 归并为一条根，避免同一目录在系统提示里重复出现
+- Skill：强化 Skill 发现对 `is_dir` / `iterdir` 抛出 `OSError` 的容错（例如 `extra_skill_dirs` 指向一个权限受限的目录）——受影响的条目会被记录并跳过，不会让整轮 Skill 发现失败中断
+- Core：修复 DeepSeek V4（以及其它走 `openai_legacy` 的 OpenAI 兼容 Thinking 模式后端）在思考轮次后紧跟工具调用时，被 API 以 400 `The reasoning_content in the thinking mode must be passed back to the API` 拒绝的问题——`openai_legacy` 供应商现在默认 `reasoning_key = "reasoning_content"`，模型响应中的推理内容会被正确存入历史，并在后续轮次自动回传给 API。同时给 `LLMProvider` 新增可选字段 `reasoning_key`，便于覆盖字段名（例如非标网关使用的 `"reasoning"`）或设置为 `""` 完全关闭推理内容回传
 - Core：新增 `skip_yolo_prompt_injection` 配置项，用于抑制 yolo 模式下注入的系统提示词——基于 `KimiSoul` 构建自定义应用且不需要该提示时很有用
 - Kimi：新增环境变量 `KIMI_MODEL_THINKING_KEEP`，将其值原样作为 `thinking.keep` 字段发送给 Moonshot API，用于启用 Preserved Thinking（例如 `export KIMI_MODEL_THINKING_KEEP=all` 可让模型在多轮之间保留历史 `reasoning_content`）；仅对支持 Preserved Thinking 的 Moonshot 模型（如 `kimi-k2.6` / `kimi-k2-thinking`）生效，未设置或空字符串时请求体不携带该字段、等同当前默认行为，且仅在当前模型真正处于 Thinking 模式时才注入，以避免 API 收到只有 `thinking.keep` 而缺少 `thinking.type` 的无效请求体。注意 `keep=all` 会因为重新发送历史推理内容而显著增加输入 token 与 API 费用
 - Kosong：修复 `Kimi.with_extra_body` 在后续调用新增其它 `thinking.*` 字段时静默丢掉已有 `thinking.type` 的问题——`thinking` 子对象现在按字段合并，而不是被整体浅覆盖，使得 `with_thinking(...)` 与 `with_extra_body({"thinking": {...}})` 组合使用时两次设置的字段都能保留
 - Kosong：修复 Kimi provider 在 `tool_calls` 旁发送空 `content` 导致 Moonshot API 返回 400 "text content is empty" 错误的问题。当 Assistant 消息带有工具调用且可见内容实际为空（无文本或仅包含空白 / think 部分）时，现在会完全省略 `content` 字段
 - Shell：修复审批请求反馈文本输入的光标渲染问题——光标块现在根据实际光标位置正确渲染，不再始终固定在行尾；当光标位于文本中间时，光标所在字符会以反色显示（模拟终端原生块光标效果）
 - Kosong：修复接入某些 MCP 服务端（如 JetBrains Rider MCP 的 `truncateMode`）时，Moonshot API 以 `400 At path 'properties.X': type is not defined` 拒绝每次请求导致会话完全无法使用的问题——这些 MCP 工具的参数 schema 里有仅声明 `enum`/`const` 或根本没有类型提示的属性，符合 JSON Schema 规范但过不了 Moonshot 的严格校验；现在 Kimi 供应商会在发送前为每个工具 schema 补齐 JSON Schema `type`（尽量从 `enum`/`const` 值推断，否则默认 `"string"`），OpenAI 和 Anthropic 路径不受影响
+- Skill：项目级 Skill 发现现在会先向上查找最近的 `.git` 祖先目录，再查 `.kimi/skills` / `.claude/skills` / `.codex/skills` / `.agents/skills`，这样即使从子目录（例如 monorepo 的某个 package 内部）启动 kimi-cli，也能正确识别仓库根目录下定义的 Skills；找不到 `.git` 标记时，回退到工作目录本身，避免误入无关的上层目录
+- Skill：`merge_all_available_skills` 的默认值从 `false` 改为 `true`。kimi-cli 现在默认会合并用户级和项目级所有已存在的品牌 Skills 目录（`.kimi/skills`、`.claude/skills`、`.codex/skills`），而不是仅使用找到的第一个——让同时拥有多个品牌目录（例如同时保留 `~/.kimi/skills` 和 `~/.claude/skills`）的用户开箱即看到所有 Skills。**行为变更**：依赖旧默认（仅取第一个）的用户可通过在配置中显式设置 `merge_all_available_skills = false` 恢复旧行为。
 
 ## 1.38.0 (2026-04-22)
-
 - Shell：修复 approval 弹窗超时后被误报为 `Rejected by user` 的问题——300 秒安全超时后，工具调用会以 `Rejected: approval timed out` 拒绝，让离开电脑一段时间后回来的用户能分辨出这是超时而非自己的手动拒绝。经常长时间离开的话可以加 `--yolo`/`-y` 自动批准工具调用
 - Auth：修复 OAuth 用户因并发实例的 refresh token 轮换竞态被反复要求 `/login` 的问题——当另一个并发运行的 kimi-cli 实例（终端、VS Code 插件或 `kimi -p` 一次性命令）合法地轮换了 refresh token，当前实例手里过期的 refresh 请求会从服务端拿回 401，“别的实例是否刚轮换过”的磁盘检查与 `delete_tokens` 调用之间存在 TOCTOU 竞态，即使磁盘上马上会被写入一份有效的新 token，凭证文件也会被误删，迫使用户重新登录；现在依旧清理内存缓存（真正失效的 token 会在下一次请求时浮现），但保留文件，让并发实例刚写入的新 token 有机会被恢复，最终的 `/login` 仍会原子覆盖该文件
 - Kosong：修复 Anthropic 供应商将并行工具结果拆分到多个 user message 的问题——现在会将仅包含工具结果的连续 user message 合并为单条消息，以符合 Anthropic Messages API 规范（assistant 一轮中的所有 `tool_use` 必须在同一条 user message 内回答）；修复了严格兼容后端（如 DeepSeek `/anthropic` 接口）返回 400 错误的问题，并避免官方后端静默地引导模型放弃并行工具调用

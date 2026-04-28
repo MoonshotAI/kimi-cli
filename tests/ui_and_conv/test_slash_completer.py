@@ -100,6 +100,30 @@ def test_completion_display_uses_canonical_command_name():
     assert completions[0].display_meta_text == "help command"
 
 
+def test_skill_completion_path_still_returns_registered_skill_command():
+    completer = SlashCommandCompleter(
+        [
+            _make_command("skill:demo"),
+            _make_command("help"),
+        ]
+    )
+
+    assert _completion_texts(completer, "/skill:de") == ["/skill:demo"]
+    assert _completion_texts(completer, "/skill:demo") == []
+
+
+def test_flow_completion_path_still_returns_registered_flow_command():
+    completer = SlashCommandCompleter(
+        [
+            _make_command("flow:demo"),
+            _make_command("help"),
+        ]
+    )
+
+    assert _completion_texts(completer, "/flow:de") == ["/flow:demo"]
+    assert _completion_texts(completer, "/flow:demo") == []
+
+
 def test_wrap_to_width_respects_width():
     lines = _wrap_to_width(
         "Help address review issue comments on the open GitHub PR",
