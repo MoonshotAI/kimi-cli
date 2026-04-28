@@ -4,6 +4,8 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.40.0
+
 ### `--print` now uses runtime AFK semantics instead of YOLO semantics
 
 Print mode still runs non-interactively and handles approvals automatically, but it now sets an invocation-only AFK overlay instead of enabling YOLO. This means `--print` treats the user as unavailable and auto-dismisses `AskUserQuestion`, while later interactive resumes do not inherit AFK solely because of a previous print run.

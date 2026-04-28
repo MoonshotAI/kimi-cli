@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.40.0 (2026-04-28)
+
 - Core: Fix `--yolo` mode unintentionally preventing the model from calling `AskUserQuestion` — yolo used to inject a system reminder telling the model it was in "non-interactive mode" and must not ask, and the ask-user tool auto-dismissed in yolo. Both were wrong: yolo only bypasses permission approvals; it does not mean "the user is gone". Yolo no longer injects model guidance, and the user remains reachable through `AskUserQuestion`
 - CLI: Split permission bypass from unattended execution — `--yolo` bypasses permission approvals while the user is still at the terminal, while `--afk` / `/afk` means away-from-keyboard: `AskUserQuestion` is auto-dismissed and approvals are handled automatically. `--print` now uses runtime AFK behavior instead of yolo, matching its non-interactive execution model. The status bar shows `yolo` and `afk` independently, and `/yolo` and `/afk` toggle their own flag without disturbing the other
 - Config: Replace `skip_yolo_prompt_injection` with `skip_afk_prompt_injection` now that yolo no longer injects model guidance. The old config key is ignored if present
