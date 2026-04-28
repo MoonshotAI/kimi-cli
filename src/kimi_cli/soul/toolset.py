@@ -412,9 +412,16 @@ class KimiToolset:
                 connected.
         """
         import fastmcp
+        from fastmcp.client.logging import LogMessage
         from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
 
         from kimi_cli.ui.shell.prompt import toast
+
+        async def _mcp_log_handler(message: LogMessage) -> None:
+            """Route MCP server log notifications to loguru instead of rich stderr."""
+            data = message.data
+            msg = data.get("message") or data.get("msg") or str(data)
+            logger.debug("MCP server log: {msg}", msg=msg)
 
         async def _check_oauth_tokens(server_url: str) -> bool:
             """Check if OAuth tokens exist for the server."""
@@ -515,7 +522,10 @@ class KimiToolset:
                 if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
                     oauth_servers[server_name] = server_config.url
 
-                client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+                client = fastmcp.Client(
+                    MCPConfig(mcpServers={server_name: server_config}),
+                    log_handler=_mcp_log_handler,
+                )
                 self._mcp_servers[server_name] = MCPServerInfo(
                     status="pending", client=client, tools=[]
                 )
