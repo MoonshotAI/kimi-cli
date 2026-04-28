@@ -68,7 +68,15 @@ class WriteFile(CallableTool2[Params]):
             if KaosPath(dir_name).is_absolute():
                 logger.warning("Ignoring absolute auto_approve_workspace_dir: {dir}", dir=dir_name)
                 continue
-            if is_within_directory(path, (self._work_dir / dir_name).canonical()):
+            resolved = (self._work_dir / dir_name).canonical()
+            # Reject entries that escape work_dir via ".." traversal.
+            if not is_within_directory(resolved, self._work_dir):
+                logger.warning(
+                    "Ignoring auto_approve_workspace_dir that escapes workspace: {dir}",
+                    dir=dir_name,
+                )
+                continue
+            if is_within_directory(path, resolved):
                 return True
         return False
 
