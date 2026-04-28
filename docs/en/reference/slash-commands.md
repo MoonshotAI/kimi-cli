@@ -130,6 +130,22 @@ Alias: `/resume`
 
 Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel. Press `Ctrl-A` to toggle between showing sessions for the current directory only or across all directories.
 
+### `/delete`
+
+Delete a session from the current working directory.
+
+Alias: `/remove`
+
+Usage:
+
+- `/delete <session_id>`: Delete the specified session in the current working directory
+- `/delete`: Open the session picker and choose a session to delete
+
+Behavior constraints:
+- Cannot delete the current active session
+- Cross-directory deletion is rejected in this command; switch to that project and run `/delete` there
+- A confirmation prompt is required before deletion
+
 ### `/title`
 
 View or set the current session title. The configured title is shown in the `/sessions` list, making it easier to identify and find sessions.

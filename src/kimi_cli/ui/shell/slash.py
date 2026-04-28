@@ -1,25 +1,31 @@
 from __future__ import annotations
 
 import asyncio
+import shlex
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
+from rich.prompt import Confirm
 
 from kimi_cli import logger
 from kimi_cli.auth.platforms import get_platform_name_for_provider, refresh_managed_models
 from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
 from kimi_cli.config import load_config, save_config
 from kimi_cli.exception import ConfigError
+from kimi_cli.metadata import load_metadata, save_metadata
 from kimi_cli.session import Session
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.mcp_status import render_mcp_console
+from kimi_cli.ui.shell.session_picker import SessionPickerApp
 from kimi_cli.ui.shell.task_browser import TaskBrowserApp
 from kimi_cli.utils.changelog import CHANGELOG
 from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandRegistry
 
 if TYPE_CHECKING:
+    from kaos.path import KaosPath
+
     from kimi_cli.ui.shell import Shell
 
 type ShellSlashCmdFunc = Callable[[Shell, str], None | Awaitable[None]]
@@ -33,6 +39,24 @@ Raises:
 
 registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 shell_mode_registry = SlashCommandRegistry[ShellSlashCmdFunc]()
+
+_DELETE_USAGE = "[yellow]Usage: /delete \\[session_id][/yellow]"
+_DELETE_CROSS_WORK_DIR = (
+    "[yellow]Cannot delete sessions from a different working directory in this command. "
+    "Switch to that project and run /delete there.[/yellow]"
+)
+_DELETE_INVALID_SESSION_ID = "[red]Invalid session id.[/red]"
+_DELETE_NOT_FOUND = "[yellow]Session not found in current working directory: {session_id}[/yellow]"
+_DELETE_CURRENT_FORBIDDEN = (
+    "[yellow]Cannot delete the current session. Switch to another session first.[/yellow]"
+)
+_DELETE_CANCELLED = "[yellow]Deletion cancelled.[/yellow]"
+_DELETE_FAILED = "[red]Failed to delete session {session_id}: {error}[/red]"
+_DELETE_METADATA_WARNING = (
+    "[yellow]Session deleted, but failed to update metadata. "
+    "Please run /sessions to verify state.[/yellow]"
+)
+_DELETE_SUCCESS = "[green]Deleted session {session_id}.[/green]"
 
 
 def ensure_kimi_soul(app: Shell) -> KimiSoul | None:
@@ -589,6 +613,122 @@ async def list_sessions(app: Shell, args: str):
     track("session_resume")
     console.print(f"[green]Switching to session {selection}...[/green]")
     raise Reload(session_id=selection)
+
+
+def _validate_session_id_compat(raw: str) -> str | None:
+    session_id = raw.strip()
+    if not session_id:
+        return None
+    if "/" in session_id or "\\" in session_id:
+        return None
+    if ".." in session_id or "\x00" in session_id:
+        return None
+    return session_id
+
+
+def _confirm_delete(session_id: str, work_dir: KaosPath) -> bool:
+    return Confirm.ask(f'Delete session "{session_id}" in "{work_dir}"?', default=False)
+
+
+def _clear_last_session_id_if_matches(work_dir: KaosPath, session_id: str) -> None:
+    metadata = load_metadata()
+    work_dir_meta = metadata.get_work_dir_meta(work_dir)
+    if work_dir_meta is None:
+        return
+    if work_dir_meta.last_session_id != session_id:
+        return
+    work_dir_meta.last_session_id = None
+    save_metadata(metadata)
+
+
+async def _delete_session_by_id(app: Shell, target_session_id: str) -> None:
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    current_session = soul.runtime.session
+    work_dir = current_session.work_dir
+    session_id = _validate_session_id_compat(target_session_id)
+    if session_id is None:
+        console.print(_DELETE_INVALID_SESSION_ID)
+        return
+
+    target = await Session.find(work_dir, session_id)
+    if target is None:
+        console.print(_DELETE_NOT_FOUND.format(session_id=session_id))
+        return
+
+    if target.id == current_session.id:
+        console.print(_DELETE_CURRENT_FORBIDDEN)
+        return
+
+    # Confirm.ask() is synchronous; run it in a worker thread to avoid
+    # blocking the event loop while waiting for user input.
+    try:
+        confirmed = await asyncio.to_thread(_confirm_delete, target.id, target.work_dir)
+    except EOFError:
+        console.print(_DELETE_CANCELLED)
+        return
+
+    if not confirmed:
+        console.print(_DELETE_CANCELLED)
+        return
+
+    try:
+        await target.delete()
+    except Exception as exc:
+        console.print(_DELETE_FAILED.format(session_id=target.id, error=exc))
+        return
+
+    try:
+        _clear_last_session_id_if_matches(work_dir, target.id)
+    except Exception as exc:
+        logger.exception(
+            "Failed to clear last_session_id after deleting session {session_id}: {error}",
+            session_id=target.id,
+            error=exc,
+        )
+        console.print(_DELETE_METADATA_WARNING)
+        return
+
+    console.print(_DELETE_SUCCESS.format(session_id=target.id))
+
+
+@registry.command(name="delete", aliases=["remove"])
+async def delete(app: Shell, args: str):
+    """Delete a session in current working directory"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    current_session = soul.runtime.session
+    raw_args = args.strip()
+
+    if raw_args:
+        try:
+            parts = shlex.split(raw_args)
+        except ValueError:
+            console.print(_DELETE_USAGE)
+            return
+        if len(parts) != 1:
+            console.print(_DELETE_USAGE)
+            return
+        await _delete_session_by_id(app, parts[0])
+        return
+
+    result = await SessionPickerApp(
+        work_dir=current_session.work_dir,
+        current_session=current_session,
+    ).run()
+    if result is None:
+        return
+
+    selection, selected_work_dir = result
+    if selected_work_dir != current_session.work_dir:
+        console.print(_DELETE_CROSS_WORK_DIR)
+        return
+
+    await _delete_session_by_id(app, selection)
 
 
 @registry.command(name="task")
