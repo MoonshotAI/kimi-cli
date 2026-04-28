@@ -129,5 +129,5 @@ Content returned by MCP tools may contain malicious instructions attempting to t
 - Keep manual approval for high-risk operations
 
 ::: warning Note
-In YOLO mode, MCP tool operations will also be automatically approved. It's recommended to only use YOLO mode when you fully trust the MCP servers.
+In YOLO or AFK mode, MCP tool calls will also be automatically approved. Use these modes only when you fully trust the MCP servers.
 :::

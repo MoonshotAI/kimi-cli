@@ -127,6 +127,8 @@ class KimiCLI:
         thinking: bool | None = None,
         # Run mode
         yolo: bool = False,
+        afk: bool = False,
+        runtime_afk: bool = False,
         plan_mode: bool = False,
         resumed: bool = False,
         ui_mode: str = "shell",
@@ -151,6 +153,11 @@ class KimiCLI:
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
+            afk (bool, optional): Invocation-level away-from-keyboard mode (no user is present
+                to answer questions or approve actions). Implies auto-approve. Defaults to False.
+            runtime_afk (bool, optional): Internal invocation-only afk overlay, used by print mode
+                so it stays non-interactive without changing persisted session afk. Defaults to
+                False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
                 MCP tools from. Defaults to None.
@@ -253,6 +260,8 @@ class KimiCLI:
             llm,
             session,
             yolo,
+            afk=afk,
+            runtime_afk=runtime_afk,
             skills_dirs=skills_dirs,
         )
         runtime.ui_mode = ui_mode
@@ -350,7 +359,12 @@ class KimiCLI:
 
         if ui_mode != "wire":
             track_session_started_once(ui_mode=ui_mode, resumed=resumed)
-        track("started", resumed=resumed, yolo=yolo)
+        track(
+            "started",
+            resumed=resumed,
+            yolo=runtime.approval.is_yolo(),
+            afk=runtime.approval.is_afk(),
+        )
         track(
             "startup_perf",
             duration_ms=int((time.monotonic() - _create_t0) * 1000),

@@ -45,6 +45,15 @@ class DynamicInjectionProvider(ABC):
         """
         return None
 
+    async def on_afk_changed(self, enabled: bool) -> None:
+        """Called when afk mode is toggled at runtime.
+
+        Override to reset internal throttling state when a mode-specific
+        reminder should be eligible to fire again after a user toggle.
+        """
+        _ = enabled
+        return None
+
 
 def normalize_history(history: Sequence[Message]) -> list[Message]:
     """Merge adjacent user messages to produce a clean API input sequence.

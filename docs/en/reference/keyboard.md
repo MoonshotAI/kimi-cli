@@ -156,6 +156,7 @@ The bottom status bar displays:
 - Current time
 - Current mode (agent/shell) and model name (in agent mode)
 - YOLO badge (yellow, when enabled)
+- AFK badge (orange, when enabled)
 - Plan badge (blue, when enabled)
 - Shortcut hints
 - Context usage

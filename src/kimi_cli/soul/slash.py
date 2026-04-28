@@ -13,7 +13,8 @@ from kimi_cli import logger
 from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context
-from kimi_cli.soul.message import system
+from kimi_cli.soul.dynamic_injections.afk_mode import AFK_DISABLED_REMINDER
+from kimi_cli.soul.message import system, system_reminder
 from kimi_cli.utils.export import is_sensitive_file
 from kimi_cli.utils.path import sanitize_cli_path, shorten_home
 from kimi_cli.utils.slashcmd import SlashCommandRegistry
@@ -97,14 +98,61 @@ async def yolo(soul: KimiSoul, args: str):
     """Toggle YOLO mode (auto-approve all actions)"""
     from kimi_cli.telemetry import track
 
-    if soul.runtime.approval.is_yolo():
+    # Inspect only the yolo flag: afk is independent and is toggled by /afk.
+    if soul.runtime.approval.is_yolo_flag():
         soul.runtime.approval.set_yolo(False)
         track("yolo_toggle", enabled=False)
-        wire_send(TextPart(text="You only die once! Actions will require approval."))
+        if soul.runtime.approval.is_afk():
+            # Yolo off but afk still on -> tool calls remain auto-approved.
+            # Don't mislead the user into thinking approvals just came back.
+            wire_send(
+                TextPart(
+                    text=(
+                        "Yolo disabled, but afk is still on — tool calls remain "
+                        "auto-approved. Use /afk to turn off afk."
+                    )
+                )
+            )
+        else:
+            wire_send(TextPart(text="You only die once! Actions will require approval."))
     else:
         soul.runtime.approval.set_yolo(True)
         track("yolo_toggle", enabled=True)
         wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
+
+
+@registry.command
+async def afk(soul: KimiSoul, args: str):
+    """Toggle afk mode (auto-dismiss AskUserQuestion, auto-approve tool calls)"""
+    from kimi_cli.telemetry import track
+
+    if soul.runtime.approval.is_afk():
+        soul.runtime.approval.set_afk(False)
+        await soul.notify_afk_changed(False)
+        await soul.context.append_message(
+            Message(role="user", content=[system_reminder(AFK_DISABLED_REMINDER)])
+        )
+        track("afk_toggle", enabled=False)
+        if soul.runtime.approval.is_yolo_flag():
+            wire_send(
+                TextPart(
+                    text=("afk mode disabled. You are back at the terminal. Yolo is still on.")
+                )
+            )
+        else:
+            wire_send(TextPart(text="afk mode disabled. You are back at the terminal."))
+    else:
+        soul.runtime.approval.set_afk(True)
+        await soul.notify_afk_changed(True)
+        track("afk_toggle", enabled=True)
+        wire_send(
+            TextPart(
+                text=(
+                    "afk mode enabled. AskUserQuestion will be auto-dismissed "
+                    "and tool calls auto-approved."
+                )
+            )
+        )
 
 
 @registry.command
