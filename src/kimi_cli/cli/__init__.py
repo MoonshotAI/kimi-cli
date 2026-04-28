@@ -570,19 +570,17 @@ def kimi(
                 session = await Session.create(work_dir)
                 logger.info("Created new session: {session_id}", session_id=session.id)
 
-            # Make the live session externally observable. The OS process
-            # title now embeds the session id (visible to ps / Task Manager),
-            # and a small JSON status file under the session dir records the
-            # (pid, session_id, work_dir, ...) tuple so terminal multiplexers
-            # and IDE integrations can map a running process to its session
-            # even when it was started without --session/--resume.
+            # Make the live session externally observable. A small JSON
+            # status file under the session dir records the
+            # (pid, session_id, work_dir, ...) tuple so terminal
+            # multiplexers and IDE integrations can map a running process
+            # to its session even when it was started without
+            # --session/--resume.
             import contextlib as _runtime_status_contextlib
             import os as _runtime_status_os
 
             from kimi_cli.runtime_status import write_runtime_status
-            from kimi_cli.utils.proctitle import set_session_process_title
 
-            set_session_process_title(session.id, str(work_dir))
             with _runtime_status_contextlib.suppress(OSError):
                 write_runtime_status(
                     session.dir,
@@ -741,17 +739,6 @@ def kimi(
             return session, exit_code
         finally:
             startup_progress.stop()
-            # Reset the OS process title when leaving _run() so that the
-            # SwitchToWeb / SwitchToVis path (where the same PID continues
-            # running but no longer serves an interactive session) does
-            # not keep showing a stale "session=<id>" tag in ps / Task
-            # Manager. On Reload the next _run() iteration sets a new
-            # session-tagged title shortly after, so the brief "Kimi Code"
-            # window is acceptable.
-            with contextlib.suppress(Exception):
-                from kimi_cli.utils.proctitle import set_process_title
-
-                set_process_title("Kimi Code")
 
     async def _delete_empty_session(session: Session) -> None:
         """Delete an empty session directory and clear last_session_id if it pointed to it."""
