@@ -30,7 +30,15 @@ from kosong.chat_provider.openai_common import (
     tool_to_openai,
 )
 from kosong.contrib.chat_provider.common import ToolMessageConversion
-from kosong.message import ContentPart, Message, TextPart, ThinkPart, ToolCall, ToolCallPart
+from kosong.message import (
+    ContentPart,
+    ImageURLPart,
+    Message,
+    TextPart,
+    ThinkPart,
+    ToolCall,
+    ToolCallPart,
+)
 from kosong.tooling import Tool
 
 if TYPE_CHECKING:
@@ -38,6 +46,11 @@ if TYPE_CHECKING:
     def type_check(openai_legacy: "OpenAILegacy"):
         _: ChatProvider = openai_legacy
         _: RetryableChatProvider = openai_legacy
+
+
+# ContentPart subclasses that can be filtered by supported_content_types
+# Note: ToolCall and ToolCallPart are NOT ContentPart subclasses, they are handled separately
+_CONTENT_PART_TYPES: set[type] = {TextPart, ImageURLPart}
 
 
 class OpenAILegacy:
@@ -77,6 +90,7 @@ class OpenAILegacy:
         stream: bool = True,
         reasoning_key: str | None = None,
         tool_message_conversion: ToolMessageConversion | None = None,
+        supported_content_types: set[type] | None = None,
         **client_kwargs: Any,
     ):
         """
@@ -84,6 +98,12 @@ class OpenAILegacy:
 
         To support OpenAI-compatible APIs that inject reasoning content in a extra field in
         the message, such as `{"reasoning": ...}`, `reasoning_key` can be set to the key name.
+
+        Args:
+            supported_content_types: Set of ContentPart subclass types that the API supports.
+                If None, defaults to {TextPart, ImageURLPart}.
+                Only ContentPart subclasses (TextPart, ImageURLPart, etc.) should be included.
+                ToolCall and ToolCallPart are handled separately by message serialization.
         """
         self.model = model
         self.stream = stream
@@ -100,6 +120,13 @@ class OpenAILegacy:
         self._reasoning_key = reasoning_key
         self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
         self._generation_kwargs: OpenAILegacy.GenerationKwargs = {}
+        # Use explicit None check instead of `or` to handle empty set correctly.
+        # An empty set is falsy in Python, which would incorrectly trigger the default.
+        self._supported_content_types: set[type] = (
+            supported_content_types
+            if supported_content_types is not None
+            else {TextPart, ImageURLPart}
+        )
 
     @property
     def model_name(self) -> str:
@@ -139,10 +166,18 @@ class OpenAILegacy:
                 reasoning_effort = "medium"
 
         try:
+            # Build tools parameter: omit if empty to avoid API errors.
+            # Some APIs (DashScope, Xunfei) reject empty tools array with errors like:
+            # - "[] is too short - 'tools'" (DashScope)
+            # - "EngineInternalError: Bad Request" (Xunfei)
+            # See: https://github.com/MoonshotAI/kimi-cli/issues/1344
+            tools_param = (
+                [tool_to_openai(tool) for tool in tools] if tools else omit
+            )
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                tools=(tool_to_openai(tool) for tool in tools),
+                tools=tools_param,
                 stream=self.stream,
                 stream_options={"include_usage": True} if self.stream else omit,
                 reasoning_effort=reasoning_effort,
@@ -193,7 +228,12 @@ class OpenAILegacy:
         return model_parameters
 
     def _convert_message(self, message: Message) -> ChatCompletionMessageParam:
-        """Convert a Kosong message to OpenAI message."""
+        """Convert a Kosong message to OpenAI message.
+
+        Filters out content parts that are not supported by the API (e.g., VideoURLPart, AudioURLPart).
+        This prevents API errors when sending messages containing multimedia content to APIs that
+        don't support them. See: https://github.com/MoonshotAI/kimi-cli/issues/796
+        """
         # Note: for openai, `developer` role is more standard, but `system` is still accepted.
         # And many openai-compatible models do not accept `developer` role.
         # So we use `system` role here. OpenAIResponses will use `developer` role.
@@ -204,8 +244,10 @@ class OpenAILegacy:
         for part in message.content:
             if isinstance(part, ThinkPart):
                 reasoning_content += part.think
-            else:
+            elif type(part) in self._supported_content_types:
+                # Only include content types supported by this API
                 content.append(part)
+            # else: filter out unsupported content types (e.g., VideoURLPart, AudioURLPart)
         # if tool message and `tool_result_conversion` is `extract_text`, patch all text parts into
         # one so that we can make use of the serialization process of `Message` to output string
         if message.role == "tool" and self._tool_message_conversion == "extract_text":
