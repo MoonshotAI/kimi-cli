@@ -16,6 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { MermaidDiagram } from "./mermaid-diagram";
 import {
   type ComponentProps,
   createContext,
@@ -70,6 +71,8 @@ const DOWNLOAD_EXTENSION_BY_LANGUAGE: Record<string, string> = {
   yml: "yml",
   markdown: "md",
   md: "md",
+  mermaid: "mmd",
+  mmd: "mmd",
   python: "py",
   py: "py",
   go: "go",
@@ -306,25 +309,27 @@ export const CodeBlock = ({
     hadLineNumbers,
     numbers,
   } = useMemo(() => sanitizeCodeForLineNumbers(code ?? ""), [code]);
+  const normalizedLanguage = language?.toLowerCase();
+  const isMermaid = normalizedLanguage === "mermaid";
   const copyText = sanitizedCode;
   const wantLineNumbers = showLineNumbers || hadLineNumbers;
   const cacheKey = useMemo(() => {
-    if (!language) {
+    if (!normalizedLanguage || isMermaid) {
       return null;
     }
     return getHighlightCacheKey(
       sanitizedCode,
-      language,
+      normalizedLanguage,
       wantLineNumbers,
       numbers,
     );
-  }, [sanitizedCode, language, wantLineNumbers, numbers]);
+  }, [isMermaid, normalizedLanguage, sanitizedCode, wantLineNumbers, numbers]);
 
   useEffect(() => {
     let cancelled = false;
     setHtml("");
     setDarkHtml("");
-    if (!language || !cacheKey) {
+    if (!normalizedLanguage || !cacheKey) {
       return () => {
         cancelled = true;
       };
@@ -337,7 +342,7 @@ export const CodeBlock = ({
         cancelled = true;
       };
     }
-    highlightCode(sanitizedCode, language, wantLineNumbers, numbers).then(
+    highlightCode(sanitizedCode, normalizedLanguage, wantLineNumbers, numbers).then(
       (highlighted) => {
         if (cancelled || !highlighted) {
           return;
@@ -351,7 +356,7 @@ export const CodeBlock = ({
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, language, numbers, sanitizedCode, wantLineNumbers]);
+  }, [cacheKey, normalizedLanguage, numbers, sanitizedCode, wantLineNumbers]);
 
   // Keep fallback layout close to highlighted output to minimize height deltas.
   const contentClassName = [
@@ -412,31 +417,37 @@ export const CodeBlock = ({
             )}
           >
             <div className="relative">
-              {html ? (
-                <div
-                  className={cn("dark:hidden", contentClassName)}
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-                  dangerouslySetInnerHTML={{ __html: html }}
-                />
+              {isMermaid ? (
+                <MermaidDiagram code={copyText} />
               ) : (
-                <div className={cn("dark:hidden", contentClassName)}>
-                  <pre>
-                    <code>{copyText}</code>
-                  </pre>
-                </div>
-              )}
-              {darkHtml ? (
-                <div
-                  className={cn("hidden dark:block", contentClassName)}
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-                  dangerouslySetInnerHTML={{ __html: darkHtml }}
-                />
-              ) : (
-                <div className={cn("hidden dark:block", contentClassName)}>
-                  <pre>
-                    <code>{copyText}</code>
-                  </pre>
-                </div>
+                <>
+                  {html ? (
+                    <div
+                      className={cn("dark:hidden", contentClassName)}
+                      // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
+                  ) : (
+                    <div className={cn("dark:hidden", contentClassName)}>
+                      <pre>
+                        <code>{copyText}</code>
+                      </pre>
+                    </div>
+                  )}
+                  {darkHtml ? (
+                    <div
+                      className={cn("hidden dark:block", contentClassName)}
+                      // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
+                      dangerouslySetInnerHTML={{ __html: darkHtml }}
+                    />
+                  ) : (
+                    <div className={cn("hidden dark:block", contentClassName)}>
+                      <pre>
+                        <code>{copyText}</code>
+                      </pre>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
