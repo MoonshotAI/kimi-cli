@@ -57,13 +57,18 @@ class ApprovalState:
         self,
         yolo: bool = False,
         afk: bool = False,
+        runtime_afk: bool = False,
         auto_approve_actions: set[str] | None = None,
         on_change: Callable[[], None] | None = None,
     ):
         self.yolo = yolo
         self.afk = afk
-        """Runtime-only flag. True when no user is present (e.g. ``--print`` or
-        ``--afk``). Implies auto-approve. Not persisted to session state."""
+        """Persisted session flag. True when no user is present.
+
+        Implies auto-approve and is restored with the session.
+        """
+        self.runtime_afk = runtime_afk
+        """Invocation-only afk flag, e.g. ``--afk`` or ``--print``. Not persisted."""
         self.auto_approve_actions: set[str] = auto_approve_actions or set()
         """Set of action names that should automatically be approved."""
         self._on_change = on_change
@@ -85,7 +90,7 @@ class Approval:
         self._runtime = runtime or ApprovalRuntime()
 
     def share(self) -> Approval:
-        """Create a new approval queue that shares state (yolo + afk + auto-approve)."""
+        """Create a new approval queue that shares approval state."""
         return Approval(state=self._state, runtime=self._runtime)
 
     def set_runtime(self, runtime: ApprovalRuntime) -> None:
@@ -100,12 +105,20 @@ class Approval:
         self._state.notify_change()
 
     def set_afk(self, afk: bool) -> None:
-        """Toggle afk (away-from-keyboard) at runtime.
+        """Toggle persisted afk (away-from-keyboard) mode.
 
-        Afk is runtime-only and intentionally NOT persisted, so this does
-        NOT trigger ``on_change`` (which writes to session state).
+        Turning it off also clears any invocation-only afk overlay so an
+        interactive session started with ``--afk`` can return to interactive
+        behavior via ``/afk``.
         """
         self._state.afk = afk
+        if not afk:
+            self._state.runtime_afk = False
+        self._state.notify_change()
+
+    def set_runtime_afk(self, afk: bool) -> None:
+        """Toggle invocation-only afk mode without persisting it."""
+        self._state.runtime_afk = afk
 
     def is_auto_approve(self) -> bool:
         """True when tool calls should be auto-approved.
@@ -113,7 +126,7 @@ class Approval:
         Afk implies auto-approve, so this returns True whenever either the
         explicit yolo flag or afk is set.
         """
-        return self._state.yolo or self._state.afk
+        return self._state.yolo or self.is_afk()
 
     def is_yolo(self) -> bool:
         """True only when the user explicitly opted into yolo."""
@@ -125,7 +138,15 @@ class Approval:
 
     def is_afk(self) -> bool:
         """True when no user is present (away-from-keyboard)."""
+        return self._state.afk or self._state.runtime_afk
+
+    def is_afk_flag(self) -> bool:
+        """True only when persisted afk mode is active."""
         return self._state.afk
+
+    def is_runtime_afk(self) -> bool:
+        """True only when afk came from this invocation."""
+        return self._state.runtime_afk
 
     async def request(
         self,
@@ -167,7 +188,7 @@ class Approval:
             track(
                 "tool_approved",
                 tool_name=tool_call.function.name,
-                approval_mode="afk" if self._state.afk else "yolo",
+                approval_mode="afk" if self.is_afk() else "yolo",
             )
             return ApprovalResult(approved=True)
 

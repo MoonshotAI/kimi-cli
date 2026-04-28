@@ -229,8 +229,8 @@ def kimi(
         typer.Option(
             "--print",
             help=(
-                "Run in print mode (non-interactive). Note: print mode implicitly adds "
-                "`--afk` (which also auto-approves tool calls)."
+                "Run in print mode (non-interactive). Print mode auto-dismisses "
+                "AskUserQuestion and auto-approves tool calls for this invocation."
             ),
         ),
     ] = False,
@@ -622,7 +622,8 @@ def kimi(
                 model_name=model_name,
                 thinking=thinking,
                 yolo=yolo,
-                afk=afk or (ui == "print"),  # print mode implies afk
+                afk=afk,
+                runtime_afk=ui == "print",
                 plan_mode=plan,
                 resumed=resumed,
                 agent_file=agent_file,

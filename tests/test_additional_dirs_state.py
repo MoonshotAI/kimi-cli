@@ -32,6 +32,7 @@ def test_session_state_backward_compatibility(tmp_path: Path):
 
     loaded = load_session_state(tmp_path)
     assert loaded.additional_dirs == []
+    assert loaded.approval.afk is False
 
 
 def test_session_state_preserves_other_fields(tmp_path: Path):
@@ -43,4 +44,5 @@ def test_session_state_preserves_other_fields(tmp_path: Path):
 
     loaded = load_session_state(tmp_path)
     assert loaded.approval.yolo is True
+    assert loaded.approval.afk is False
     assert loaded.additional_dirs == ["/extra"]

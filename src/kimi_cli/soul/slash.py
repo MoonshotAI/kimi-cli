@@ -13,6 +13,7 @@ from kimi_cli import logger
 from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import load_agents_md
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.dynamic_injections.afk_mode import AFK_DISABLED_REMINDER
 from kimi_cli.soul.message import system, system_reminder
 from kimi_cli.utils.export import is_sensitive_file
 from kimi_cli.utils.path import sanitize_cli_path, shorten_home
@@ -31,17 +32,6 @@ Raises:
 """
 
 registry = SlashCommandRegistry[SoulSlashCmdFunc]()
-
-_AFK_DISABLED_REMINDER = (
-    "Afk mode is now disabled. The user is back at the terminal and CAN answer "
-    "AskUserQuestion.\n"
-    "- Ignore any earlier afk mode reminders that said no user is present or "
-    "that you must not call AskUserQuestion.\n"
-    "- AskUserQuestion is available again when a decision genuinely changes "
-    "your next action. Do not ask routine confirmations or progress check-ins.\n"
-    "- Tool calls are no longer auto-approved by afk. They may still be "
-    "auto-approved if yolo mode remains active."
-)
 
 
 @registry.command
@@ -140,7 +130,7 @@ async def afk(soul: KimiSoul, args: str):
         soul.runtime.approval.set_afk(False)
         await soul.notify_afk_changed(False)
         await soul.context.append_message(
-            Message(role="user", content=[system_reminder(_AFK_DISABLED_REMINDER)])
+            Message(role="user", content=[system_reminder(AFK_DISABLED_REMINDER)])
         )
         track("afk_toggle", enabled=False)
         if soul.runtime.approval.is_yolo_flag():

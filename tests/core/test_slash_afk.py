@@ -47,12 +47,14 @@ async def test_afk_slash_toggles_afk_flag(
     assert soul.runtime.approval.is_afk() is False
     await _run(afk_slash, soul)
     assert soul.runtime.approval.is_afk() is True
+    assert soul.runtime.approval.is_afk_flag() is True
     assert any("afk" in s.text.lower() and "enabled" in s.text.lower() for s in sent)
 
     # Toggle off.
     sent.clear()
     await _run(afk_slash, soul)
     assert soul.runtime.approval.is_afk() is False
+    assert soul.runtime.approval.is_afk_flag() is False
     assert any("afk" in s.text.lower() and "disabled" in s.text.lower() for s in sent)
 
 
@@ -116,6 +118,21 @@ async def test_afk_slash_off_appends_context_reminder(
     assert "Afk mode is now disabled" in reminder
     assert "Ignore any earlier afk mode reminders" in reminder
     assert "AskUserQuestion is available again" in reminder
+
+
+async def test_afk_slash_off_clears_runtime_afk_overlay(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    soul = _make_soul(runtime, tmp_path)
+    soul.runtime.approval.set_runtime_afk(True)
+    assert soul.runtime.approval.is_afk() is True
+    assert soul.runtime.approval.is_afk_flag() is False
+    monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda _msg: None)
+
+    await _run(afk_slash, soul)
+
+    assert soul.runtime.approval.is_afk() is False
+    assert soul.runtime.approval.is_runtime_afk() is False
 
 
 async def test_yolo_slash_under_afk_only_toggles_yolo_flag(

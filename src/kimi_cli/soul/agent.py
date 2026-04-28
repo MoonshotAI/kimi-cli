@@ -216,6 +216,7 @@ class Runtime:
         session: Session,
         yolo: bool,
         afk: bool = False,
+        runtime_afk: bool = False,
         skills_dirs: list[KaosPath] | None = None,
     ) -> Runtime:
         ls_output, agents_md, environment = await asyncio.gather(
@@ -272,18 +273,23 @@ class Runtime:
                 parts.append(f"### `{d}`\n\n```\n{dir_ls}\n```")
             additional_dirs_info = "\n\n".join(parts)
 
-        # Merge CLI flag with persisted session state
+        # Merge invocation flags with persisted session state.
         effective_yolo = yolo or session.state.approval.yolo
+        if afk and not session.state.approval.afk:
+            session.state.approval.afk = True
+            session.save_state()
         saved_actions = set(session.state.approval.auto_approve_actions)
 
         def _on_approval_change() -> None:
             session.state.approval.yolo = approval_state.yolo
+            session.state.approval.afk = approval_state.afk
             session.state.approval.auto_approve_actions = set(approval_state.auto_approve_actions)
             session.save_state()
 
         approval_state = ApprovalState(
             yolo=effective_yolo,
-            afk=afk,
+            afk=session.state.approval.afk,
+            runtime_afk=runtime_afk,
             auto_approve_actions=saved_actions,
             on_change=_on_approval_change,
         )

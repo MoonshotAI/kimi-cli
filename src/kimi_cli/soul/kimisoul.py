@@ -247,6 +247,11 @@ class KimiSoul:
         return self._approval.is_afk()
 
     @property
+    def is_afk_flag(self) -> bool:
+        """Whether persisted afk mode is active."""
+        return self._approval.is_afk_flag()
+
+    @property
     def is_subagent(self) -> bool:
         """Whether this soul is running as a subagent rather than the root session."""
         return self._runtime.role == "subagent"

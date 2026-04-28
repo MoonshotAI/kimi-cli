@@ -13,12 +13,14 @@ from kimi_cli.soul.dynamic_injections.afk_mode import (
 
 def _mock_soul(
     is_afk: bool,
+    is_afk_flag: bool = True,
     is_yolo: bool = False,
     is_subagent: bool = False,
     has_ask_user: bool = True,
 ) -> MagicMock:
     soul = MagicMock()
     soul.is_afk = is_afk
+    soul.is_afk_flag = is_afk_flag
     soul.is_yolo = is_yolo
     soul.is_subagent = is_subagent
     soul.has_tool.return_value = has_ask_user
@@ -35,17 +37,32 @@ async def test_injects_when_afk_enabled() -> None:
     assert "Do NOT call AskUserQuestion" in result[0].content
 
 
+async def test_runtime_afk_does_not_inject_prompt() -> None:
+    provider = AfkModeInjectionProvider()
+    result = await provider.get_injections([], _mock_soul(is_afk=True, is_afk_flag=False))
+    assert result == []
+
+
 async def test_no_injection_when_afk_disabled() -> None:
     provider = AfkModeInjectionProvider()
     result = await provider.get_injections([], _mock_soul(is_afk=False))
     assert result == []
 
 
-async def test_injected_once_even_if_afk_stays_on() -> None:
+async def test_persistent_afk_injected_once_even_if_afk_stays_on() -> None:
     provider = AfkModeInjectionProvider()
     first = await provider.get_injections([], _mock_soul(is_afk=True))
     second = await provider.get_injections([], _mock_soul(is_afk=True))
     assert len(first) == 1
+    assert second == []
+
+
+async def test_runtime_afk_does_not_rearm_prompt() -> None:
+    provider = AfkModeInjectionProvider()
+    soul = _mock_soul(is_afk=True, is_afk_flag=False)
+    first = await provider.get_injections([], soul)
+    second = await provider.get_injections([], soul)
+    assert first == []
     assert second == []
 
 

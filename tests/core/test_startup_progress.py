@@ -68,6 +68,7 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
         session=session,
         config=config,
         llm=None,
+        approval=SimpleNamespace(is_yolo=lambda: False, is_afk=lambda: False),
         notifications=SimpleNamespace(recover=lambda: None),
         background_tasks=SimpleNamespace(reconcile=lambda: None),
     )
@@ -124,6 +125,7 @@ async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
         session=session,
         config=config,
         llm=None,
+        approval=SimpleNamespace(is_yolo=lambda: False, is_afk=lambda: False),
         notifications=SimpleNamespace(recover=lambda: None),
         background_tasks=SimpleNamespace(reconcile=lambda: None),
         subagent_store=SimpleNamespace(

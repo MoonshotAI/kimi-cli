@@ -25,9 +25,20 @@ _AFK_PROMPT = (
     "decisions to a human."
 )
 
+AFK_DISABLED_REMINDER = (
+    "Afk mode is now disabled. The user is back at the terminal and CAN answer "
+    "AskUserQuestion.\n"
+    "- Ignore any earlier afk mode reminders that said no user is present or "
+    "that you must not call AskUserQuestion.\n"
+    "- AskUserQuestion is available again when a decision genuinely changes "
+    "your next action. Do not ask routine confirmations or progress check-ins.\n"
+    "- Tool calls are no longer auto-approved by afk. They may still be "
+    "auto-approved if yolo mode remains active."
+)
+
 
 class AfkModeInjectionProvider(DynamicInjectionProvider):
-    """Injects a one-time reminder when afk (away-from-keyboard) mode is active."""
+    """Injects afk (away-from-keyboard) guidance when no user is present."""
 
     def __init__(self) -> None:
         self._injected: bool = False
@@ -37,8 +48,12 @@ class AfkModeInjectionProvider(DynamicInjectionProvider):
         history: Sequence[Message],
         soul: KimiSoul,
     ) -> list[DynamicInjection]:
+        _ = history
         if not soul.is_afk:
             return []
+        if not soul.is_afk_flag:
+            return []
+
         if self._injected:
             return []
         self._injected = True

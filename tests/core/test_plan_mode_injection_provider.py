@@ -15,10 +15,12 @@ def _make_soul_mock(
     plan_path: Path | None = None,
     consume_pending: bool = False,
     is_afk: bool = False,
+    is_afk_flag: bool | None = None,
 ) -> MagicMock:
     soul = MagicMock()
     type(soul).plan_mode = PropertyMock(return_value=plan_mode)
     soul.is_afk = is_afk
+    soul.is_afk_flag = is_afk if is_afk_flag is None else is_afk_flag
     soul.get_plan_file_path.return_value = plan_path
     soul.consume_pending_plan_activation_injection.return_value = consume_pending
     return soul
@@ -122,6 +124,21 @@ class TestPlanModeInjectionProvider:
         assert "Afk mode is active" in result[0].content
         assert "do NOT use AskUserQuestion" in result[0].content
         assert "ExitPlanMode" in result[0].content
+
+    async def test_runtime_afk_plan_reminder_uses_persisted_state_only(self) -> None:
+        provider = PlanModeInjectionProvider()
+        soul = _make_soul_mock(
+            plan_mode=True,
+            plan_path=Path("/tmp/plan.md"),
+            is_afk=True,
+            is_afk_flag=False,
+        )
+
+        result = await provider.get_injections([], soul)
+
+        assert len(result) == 1
+        assert "Afk mode is active" not in result[0].content
+        assert "AskUserQuestion is for clarifying" in result[0].content
 
     async def test_pending_activation_with_plan_returns_reentry(self, tmp_path: Path) -> None:
         provider = PlanModeInjectionProvider()

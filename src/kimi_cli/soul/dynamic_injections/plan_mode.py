@@ -39,7 +39,7 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
         plan_path = soul.get_plan_file_path()
         plan_path_str = str(plan_path) if plan_path else None
         plan_exists = plan_path is not None and plan_path.exists()
-        afk = soul.is_afk
+        afk = soul.is_afk_flag
 
         # Manual toggles schedule a one-shot activation reminder for the next LLM step.
         if soul.consume_pending_plan_activation_injection():

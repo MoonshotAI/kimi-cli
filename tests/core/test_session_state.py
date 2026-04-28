@@ -25,6 +25,7 @@ class TestSessionState:
         state = SessionState()
         assert state.version == 1
         assert state.approval.yolo is False
+        assert state.approval.afk is False
         assert state.approval.auto_approve_actions == set()
         assert state.custom_title is None
         assert state.title_generated is False
@@ -35,6 +36,7 @@ class TestSessionState:
         state = SessionState(
             approval=ApprovalStateData(
                 yolo=True,
+                afk=True,
                 auto_approve_actions={"Shell", "WriteFile"},
             ),
         )
@@ -43,6 +45,7 @@ class TestSessionState:
         loaded = load_session_state(state_dir)
         assert loaded.version == 1
         assert loaded.approval.yolo is True
+        assert loaded.approval.afk is True
         assert loaded.approval.auto_approve_actions == {"Shell", "WriteFile"}
 
     def test_load_missing_file_returns_default(self, state_dir: Path):
@@ -66,6 +69,7 @@ class TestSessionState:
         data = json.loads(state_file.read_text(encoding="utf-8"))
         assert data["version"] == 1
         assert data["approval"]["yolo"] is True
+        assert data["approval"]["afk"] is False
         assert set(data["approval"]["auto_approve_actions"]) == {"Shell"}
 
     def test_overwrite_existing_state(self, state_dir: Path):
@@ -241,6 +245,7 @@ class TestSessionState:
 
         loaded = load_session_state(state_dir)
         assert loaded.approval.yolo is True
+        assert loaded.approval.afk is False
         # New fields should have defaults
         assert loaded.custom_title is None
         assert loaded.title_generated is False
