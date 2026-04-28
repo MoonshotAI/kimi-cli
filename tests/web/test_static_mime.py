@@ -29,7 +29,8 @@ def test_web_static_js_uses_javascript_mime_when_system_mapping_is_plain_text(
         with TestClient(web_app.create_app()) as client:
             response = client.get("/assets/index-test.js")
     finally:
-        mimetypes.add_type(original_js_mime or "text/javascript", ".js")
+        if original_js_mime is not None:
+            mimetypes.add_type(original_js_mime, ".js")
 
     assert response.status_code == 200
     assert response.headers["content-type"].split(";")[0] == "text/javascript"
