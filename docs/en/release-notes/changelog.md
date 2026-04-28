@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Fix session rename, archive, and title generation being incorrectly rejected when the session is busy — these state-only edits now bypass the busy check and safely merge concurrent worker changes via on-disk state reloads. Title generation also preserves a title finalized by another request while the LLM call was in flight
+- Web: Show toast error notifications in the web UI for session rename, archive, unarchive, delete, and title generation failures
 - Core: Approval requests no longer auto-timeout after 5 minutes, which previously surfaced as `Rejected by user`; active foreground and subagent approvals now wait indefinitely for user response
 - Core: Fix yolo mode reminder being lost after context compaction — the non-interactive-mode guidance ("don't call AskUserQuestion, plan-mode toggles are auto-approved") is now re-injected on the first LLM step after each compaction while yolo remains active, instead of being silently dropped when the original reminder is folded into the compaction summary
 - Shell: Fix `/usage` remaining quota rendering — the progress bar, warning colors, and `% left` label now all use the remaining quota ratio consistently, so high remaining quota shows as green/full and near-exhausted quota shows as yellow or red
