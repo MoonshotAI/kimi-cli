@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
+import re
 import uuid
 from collections.abc import Callable
 from typing import Literal
@@ -53,6 +54,9 @@ class ApprovalResult:
         return ToolRejectedError()
 
 
+_GLOB_SPECIAL_RE = re.compile(r"[*?\[\]]")
+
+
 class ApprovalState:
     def __init__(
         self,
@@ -61,9 +65,31 @@ class ApprovalState:
         on_change: Callable[[], None] | None = None,
     ):
         self.yolo = yolo
-        self.auto_approve_actions: set[str] = auto_approve_actions or set()
-        """Set of action names that should automatically be approved."""
+        # Separate exact action names from glob patterns so that fnmatch is
+        # only applied to entries that actually contain glob-special characters.
+        self._auto_approve_exact: set[str] = set()
+        self._auto_approve_patterns: list[str] = []
+        for entry in (auto_approve_actions or set()):
+            if _GLOB_SPECIAL_RE.search(entry):
+                self._auto_approve_patterns.append(entry)
+            else:
+                self._auto_approve_exact.add(entry)
         self._on_change = on_change
+
+    def is_auto_approved(self, action: str) -> bool:
+        """Return True if *action* matches an exact name or a glob pattern."""
+        if action in self._auto_approve_exact:
+            return True
+        return any(fnmatch.fnmatch(action, p) for p in self._auto_approve_patterns)
+
+    def add_auto_approve_action(self, action: str) -> None:
+        """Add *action* as an exact auto-approve name (not a glob pattern)."""
+        self._auto_approve_exact.add(action)
+
+    @property
+    def auto_approve_actions(self) -> set[str]:
+        """All auto-approve entries (exact names + glob patterns) for persistence."""
+        return self._auto_approve_exact | set(self._auto_approve_patterns)
 
     def notify_change(self) -> None:
         if self._on_change is not None:
@@ -143,11 +169,7 @@ class Approval:
             )
             return ApprovalResult(approved=True)
 
-        # Fast path: exact match handles action names containing glob-special
-        # characters (e.g. brackets) that fnmatch would misinterpret.
-        if action in self._state.auto_approve_actions or any(
-            fnmatch.fnmatch(action, pattern) for pattern in self._state.auto_approve_actions
-        ):
+        if self._state.is_auto_approved(action):
             from kimi_cli.telemetry import track
 
             track(
@@ -200,7 +222,7 @@ class Approval:
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
                 )
-                self._state.auto_approve_actions.add(action)
+                self._state.add_auto_approve_action(action)
                 self._state.notify_change()
                 for pending in self._runtime.list_pending():
                     if pending.action == action:

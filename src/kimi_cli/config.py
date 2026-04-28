@@ -415,15 +415,29 @@ def load_config(config_file: Path | None = None) -> Config:
 
     if not config_file.exists():
         logger.debug("No config file found, creating default config at: {file}", file=config_file)
-        _write_default_config_file(config_file)
-        try:
-            data = tomlkit.loads(_DEFAULT_CONFIG_TEMPLATE)
-            config = Config.model_validate(data)
-        except (TOMLKitError, ValidationError) as e:
-            # This should never happen because the template is static and tested,
-            # but fall back to the plain default config if it does.
-            logger.warning("Default config template failed validation: {error}", error=e)
-            config = get_default_config()
+        if config_file.suffix.lower() == ".json":
+            # Write a valid JSON default so subsequent loads via json.loads succeed.
+            default_config = get_default_config()
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_file.write_text(
+                json.dumps(
+                    default_config.model_dump(mode="json", exclude_none=True),
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            config = default_config
+        else:
+            _write_default_config_file(config_file)
+            try:
+                data = tomlkit.loads(_DEFAULT_CONFIG_TEMPLATE)
+                config = Config.model_validate(data)
+            except (TOMLKitError, ValidationError) as e:
+                # This should never happen because the template is static and tested,
+                # but fall back to the plain default config if it does.
+                logger.warning("Default config template failed validation: {error}", error=e)
+                config = get_default_config()
         config.is_from_default_location = is_default_config_file
         config.source_file = config_file
         return config
