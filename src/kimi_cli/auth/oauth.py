@@ -11,7 +11,7 @@ import tempfile
 import time
 import uuid
 import webbrowser
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,6 +176,44 @@ class DeviceAuthorization:
     verification_uri_complete: str
     expires_in: int | None
     interval: int
+
+
+async def _await_or_cancel[T](awaitable: Awaitable[T], cancel_event: asyncio.Event | None) -> T:
+    if cancel_event is None:
+        return await awaitable
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+
+    work_task = asyncio.create_task(awaitable)
+    cancel_task = asyncio.create_task(cancel_event.wait())
+    try:
+        done, _ = await asyncio.wait(
+            [work_task, cancel_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if cancel_task in done:
+            work_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await work_task
+            raise asyncio.CancelledError()
+        return await work_task
+    finally:
+        cancel_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await cancel_task
+
+
+async def _sleep_or_cancel(delay: float, cancel_event: asyncio.Event | None) -> None:
+    if cancel_event is None:
+        await asyncio.sleep(delay)
+        return
+    if cancel_event.is_set():
+        raise asyncio.CancelledError()
+    try:
+        await asyncio.wait_for(cancel_event.wait(), timeout=delay)
+    except TimeoutError:
+        return
+    raise asyncio.CancelledError()
 
 
 def _oauth_host() -> str:
@@ -608,7 +646,10 @@ def _apply_kimi_code_config(
 
 
 async def login_kimi_code(
-    config: Config, *, open_browser: bool = True
+    config: Config,
+    *,
+    open_browser: bool = True,
+    cancel_event: asyncio.Event | None = None,
 ) -> AsyncIterator[OAuthEvent]:
     if not config.is_from_default_location:
         yield OAuthEvent(
@@ -625,6 +666,8 @@ async def login_kimi_code(
     auth: DeviceAuthorization
     token: OAuthToken | None = None
     while True:
+        if cancel_event is not None and cancel_event.is_set():
+            raise asyncio.CancelledError()
         try:
             auth = await request_device_authorization()
         except Exception as exc:
@@ -653,7 +696,7 @@ async def login_kimi_code(
         printed_wait = False
         try:
             while True:
-                status, data = await _request_device_token(auth)
+                status, data = await _await_or_cancel(_request_device_token(auth), cancel_event)
                 if status == 200 and "access_token" in data:
                     token = OAuthToken.from_response(data)
                     break
@@ -671,7 +714,7 @@ async def login_kimi_code(
                         },
                     )
                     printed_wait = True
-                await asyncio.sleep(interval)
+                await _sleep_or_cancel(interval, cancel_event)
         except OAuthDeviceExpired:
             yield OAuthEvent("info", "Device code expired, restarting login...")
             continue
