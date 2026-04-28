@@ -231,6 +231,40 @@ def _read_wire_lines(wire_file: Path) -> list[str]:
     return result
 
 
+def _resolve_default_work_dir(http_request: Request) -> tuple[Path, bool]:
+    """Resolve default work_dir for session creation.
+
+    Prefer app startup directory; fallback to HOME when unavailable.
+    """
+    startup_dir = getattr(http_request.app.state, "startup_dir", None)
+    if isinstance(startup_dir, str) and startup_dir.strip():
+        candidate = Path(startup_dir).expanduser()
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError) as exc:
+            logger.warning(
+                "Failed to resolve startup_dir, fallback to home: startup_dir={startup_dir}, error={error}",
+                startup_dir=startup_dir,
+                error=str(exc),
+            )
+        else:
+            if resolved.exists() and resolved.is_dir():
+                return resolved, False
+
+            reason = "does not exist"
+            if resolved.exists():
+                reason = "not a directory"
+            logger.warning(
+                "Invalid startup_dir, fallback to home: startup_dir={startup_dir}, reason={reason}",
+                startup_dir=str(resolved),
+                reason=reason,
+            )
+    else:
+        logger.warning("Missing startup_dir, fallback to home")
+
+    return Path.home(), True
+
+
 async def replay_history(ws: WebSocket, session_dir: Path) -> None:
     """Replay historical wire messages from wire.jsonl to a WebSocket."""
     wire_file = session_dir / "wire.jsonl"
@@ -296,9 +330,11 @@ async def get_session(
 
 
 @router.post("/", summary="Create a new session")
-async def create_session(request: CreateSessionRequest | None = None) -> Session:
+async def create_session(
+    http_request: Request, request: CreateSessionRequest | None = None
+) -> Session:
     """Create a new session."""
-    # Use provided work_dir or default to user's home directory
+    requested_work_dir = request.work_dir if request else None
     if request and request.work_dir:
         work_dir_path = Path(request.work_dir).expanduser().resolve()
         # Validate the directory exists
@@ -330,7 +366,14 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
             )
         work_dir = KaosPath.unsafe_from_local_path(work_dir_path)
     else:
-        work_dir = KaosPath.unsafe_from_local_path(Path.home())
+        effective_work_dir, used_fallback_home = _resolve_default_work_dir(http_request)
+        work_dir = KaosPath.unsafe_from_local_path(effective_work_dir)
+        logger.info(
+            "Resolved create_session default work_dir: requested_work_dir={requested_work_dir}, effective_work_dir={effective_work_dir}, used_fallback_home={used_fallback_home}",
+            requested_work_dir=requested_work_dir,
+            effective_work_dir=str(effective_work_dir),
+            used_fallback_home=used_fallback_home,
+        )
     kimi_cli_session = await KimiCLISession.create(work_dir=work_dir)
     context_file = kimi_cli_session.dir / "context.jsonl"
     invalidate_sessions_cache()
