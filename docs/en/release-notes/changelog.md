@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Web: Fix AI title generation overwriting a manually-set title when the LLM call finishes after the user has already renamed the session — the final write now reloads state and yields to a `title_generated` flag set by another request
+- Web: Surface session rename, archive, unarchive, and title generation failures as toast notifications instead of only logging to the console
 - Web: Keep tool media previews visible when tool details are collapsed — images and videos returned by tools now render below the tool card instead of inside the collapsible detail area, so preview thumbnails remain accessible after collapsing a tool
 - Kosong: Fix stale API key after OAuth token refresh in Kimi provider — `on_retryable_error` now reads the current `api_key` from the live client instead of the cached `_api_key`, so that OAuth token refreshes applied via `client.api_key` are preserved when the client is rebuilt after a retryable error
 - Core: Approval requests no longer auto-timeout after 5 minutes, which previously surfaced as `Rejected by user`; active foreground and subagent approvals now wait indefinitely for user response
