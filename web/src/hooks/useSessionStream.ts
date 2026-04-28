@@ -316,6 +316,13 @@ export function useSessionStream(
   const disconnectRef = useRef<() => void>(() => undefined);
   const reconnectRef = useRef<() => void>(() => undefined);
   const resetStateRef = useRef<(preserveSlashCommands?: boolean) => void>(() => undefined);
+  // Refs for callbacks used inside connect() — keeps connect() stable across re-renders
+  const handleMessageRef = useRef<(data: string) => void>(() => undefined);
+  const onErrorRef = useRef<((error: Error) => void) | undefined>(undefined);
+  const sendInitializeRef = useRef<(ws: WebSocket) => void>(() => undefined);
+  const sendPendingMessageRef = useRef<(ws: WebSocket) => void>(() => undefined);
+  const getWebSocketUrlRef = useRef<(sid: string) => string>(() => "");
+  const completeStreamingMessagesRef = useRef<() => void>(() => undefined);
   const historyCompleteTimeoutRef = useRef<number | null>(null);
   const isReplayingRef = useRef(true); // Track if we're still replaying history
   const pendingMessageRef = useRef<string | null>(null); // Message to send after connection
@@ -2381,6 +2388,9 @@ export function useSessionStream(
   );
 
   // Connect to WebSocket
+  // Uses refs for all callback dependencies to keep this callback stable and
+  // prevent reconnection storms caused by callback identity changes cascading
+  // through connect → reconnect → sendMessage → queue auto-send effects.
   const connect = useCallback(() => {
     if (!sessionId) return;
 
@@ -2398,12 +2408,12 @@ export function useSessionStream(
     }
 
     awaitingIdleRef.current = false;
-    resetState(true);  // preserve slashCommands on reconnect
+    resetStateRef.current(true);  // preserve slashCommands on reconnect
     setMessages([]);
     setStatus("submitted");
     setAwaitingFirstResponse(Boolean(pendingMessageRef.current));
 
-    const wsUrl = getWebSocketUrl(sessionId);
+    const wsUrl = getWebSocketUrlRef.current(sessionId);
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -2463,10 +2473,10 @@ export function useSessionStream(
         watchdogIntervalRef.current = watchdogIntervalId;
 
         // Send initialize message to get slash commands
-        sendInitialize(ws);
+        sendInitializeRef.current(ws);
 
         // Send pending message immediately after connection
-        sendPendingMessage(ws);
+        sendPendingMessageRef.current(ws);
       };
 
       ws.onmessage = (event) => {
@@ -2475,7 +2485,7 @@ export function useSessionStream(
         }
 
         lastWsMessageTimeRef.current = Date.now();
-        handleMessage(event.data);
+        handleMessageRef.current(event.data);
       };
 
       ws.onerror = (event) => {
@@ -2486,7 +2496,7 @@ export function useSessionStream(
         console.error("[SessionStream] WebSocket error:", event);
         const err = new Error("WebSocket connection error");
         setError(err);
-        onError?.(err);
+        onErrorRef.current?.(err);
         setAwaitingFirstResponse(false);
         awaitingIdleRef.current = false;
         pendingMessageRef.current = null; // Clear pending message on error
@@ -2515,15 +2525,15 @@ export function useSessionStream(
         if (event.code === 4004) {
           const err = new Error("Session not found");
           setError(err);
-          onError?.(err);
+          onErrorRef.current?.(err);
         } else if (event.code === 4029) {
           const err = new Error("Too many concurrent sessions");
           setError(err);
-          onError?.(err);
+          onErrorRef.current?.(err);
         }
 
         // Mark all streaming/subagent messages as complete
-        completeStreamingMessages();
+        completeStreamingMessagesRef.current();
         setStatus("ready");
       };
     } catch (err) {
@@ -2531,24 +2541,13 @@ export function useSessionStream(
       const connectionError =
         err instanceof Error ? err : new Error(String(err));
       setError(connectionError);
-      onError?.(connectionError);
+      onErrorRef.current?.(connectionError);
       awaitingIdleRef.current = false;
       setAwaitingFirstResponse(false);
       setStatus("error");
       pendingMessageRef.current = null; // Clear pending message on error
     }
-  }, [
-    sessionId,
-    resetState,
-    setMessages,
-    getWebSocketUrl,
-    handleMessage,
-    onError,
-    sendInitialize,
-    sendPendingMessage,
-    setAwaitingFirstResponse,
-    completeStreamingMessages,
-  ]);
+  }, [sessionId, setMessages, setAwaitingFirstResponse]);
 
   // Send cancel message to server
   // Disconnect
@@ -2586,8 +2585,8 @@ export function useSessionStream(
     }
 
     // Mark all streaming/subagent messages as complete
-    completeStreamingMessages();
-  }, [completeStreamingMessages, setAwaitingFirstResponse, setMessages]);
+    completeStreamingMessagesRef.current();
+  }, [setAwaitingFirstResponse, setMessages]);
 
   // Send cancel request or disconnect if stream not ready
   const cancel = useCallback(() => {
@@ -2663,7 +2662,7 @@ export function useSessionStream(
           return msg;
         }),
       );
-      disconnect();
+      disconnectRef.current();
       return;
     }
 
@@ -2753,23 +2752,29 @@ export function useSessionStream(
     } catch (err) {
       console.error("[SessionStream] Failed to send cancel request:", err);
     }
-  }, [status, disconnect, setAwaitingFirstResponse, setMessages]);
+  }, [status, setAwaitingFirstResponse, setMessages]);
 
   // Reconnect
   const reconnect = useCallback(() => {
-    disconnect();
+    disconnectRef.current();
     // Small delay before reconnecting
     reconnectTimeoutRef.current = window.setTimeout(() => {
-      connect();
+      connectRef.current();
     }, 100);
-  }, [disconnect, connect]);
+  }, []);
 
-  // Keep refs in sync so useLayoutEffect can use stable references
+  // Keep refs in sync so callbacks and useLayoutEffect can use stable references
   connectRef.current = connect;
   disconnectRef.current = disconnect;
   reconnectRef.current = reconnect;
   resetStateRef.current = resetState;
   statusRef.current = status;
+  handleMessageRef.current = handleMessage;
+  onErrorRef.current = onError;
+  sendInitializeRef.current = sendInitialize;
+  sendPendingMessageRef.current = sendPendingMessage;
+  getWebSocketUrlRef.current = getWebSocketUrl;
+  completeStreamingMessagesRef.current = completeStreamingMessages;
 
   // Send message to session (auto-connects if not connected)
   const sendMessage = useCallback(
@@ -2786,7 +2791,7 @@ export function useSessionStream(
         }
 
         pendingMessageRef.current = trimmedText;
-        connect();
+        connectRef.current();
         return;
       }
 
@@ -2804,7 +2809,7 @@ export function useSessionStream(
       awaitingIdleRef.current = false;
       setStatus("streaming");
     },
-    [sessionId, connect, setAwaitingFirstResponse],
+    [sessionId, setAwaitingFirstResponse],
   );
 
   // Clear messages
