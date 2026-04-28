@@ -199,6 +199,13 @@ class OpenAILegacy:
         # So we use `system` role here. OpenAIResponses will use `developer` role.
         # See https://cdn.openai.com/spec/model-spec-2024-05-08.html#definitions
         message = message.model_copy(deep=True)
+        # Normalize empty tool_call arguments to valid JSON so that
+        # OpenAI-compatible proxies can parse them into a dict
+        # (e.g. Anthropic's tool_use.input requires a dict).
+        if message.tool_calls:
+            for tc in message.tool_calls:
+                if not tc.function.arguments:
+                    tc.function.arguments = "{}"
         reasoning_content: str = ""
         content: list[ContentPart] = []
         for part in message.content:
