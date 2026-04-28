@@ -8,6 +8,7 @@ import platform
 import pytest
 from inline_snapshot import snapshot
 from kaos.path import KaosPath
+from kosong.tooling.error import ToolValidateError
 
 from kimi_cli.tools.shell import Params, Shell
 from kimi_cli.tools.utils import DEFAULT_MAX_CHARS
@@ -95,6 +96,41 @@ async def test_command_timeout_expires(shell_tool: Shell):
     assert result.is_error
     assert result.message == snapshot("Command killed by timeout (1s)")
     assert result.brief == snapshot("Killed by timeout (1s)")
+
+
+async def test_timeout_alias_maps_to_timeout_value():
+    params = Params.model_validate({"command": "echo test", "timeout_s": 7})
+    assert params.timeout == 7
+
+
+async def test_timeout_alias_drives_foreground_timeout_message(
+    shell_tool: Shell, monkeypatch: pytest.MonkeyPatch
+):
+    async def fake_run(*_args, **_kwargs) -> int:
+        raise TimeoutError
+
+    monkeypatch.setattr(shell_tool, "_run_shell_command", fake_run)
+    result = await shell_tool(Params.model_validate({"command": "echo test", "timeout_s": 7}))
+
+    assert result.is_error
+    assert result.message == "Command killed by timeout (7s)"
+    assert result.brief == "Killed by timeout (7s)"
+
+
+async def test_timeout_conflict_returns_tool_validate_error(shell_tool: Shell):
+    ret = await shell_tool.call({"command": "echo test", "timeout": 2, "timeout_s": 3})
+    assert isinstance(ret, ToolValidateError)
+
+
+async def test_timeout_unknown_alias_returns_tool_validate_error(shell_tool: Shell):
+    ret = await shell_tool.call({"command": "echo test", "timeout_ms": 1500})
+    assert isinstance(ret, ToolValidateError)
+    assert "timeout_ms" in ret.message
+
+
+async def test_timeout_invalid_type_returns_tool_validate_error(shell_tool: Shell):
+    ret = await shell_tool.call({"command": "echo test", "timeout": "abc"})
+    assert isinstance(ret, ToolValidateError)
 
 
 async def test_environment_variables(shell_tool: Shell):
