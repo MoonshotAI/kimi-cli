@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import override
 
@@ -5,6 +6,7 @@ import aiohttp
 import trafilatura
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
+from trafilatura.settings import Document
 
 from kimi_cli.config import Config
 from kimi_cli.constant import USER_AGENT
@@ -14,9 +16,50 @@ from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
 
+_METADATA_FIELDS = (
+    "title",
+    "author",
+    "url",
+    "hostname",
+    "description",
+    "sitename",
+    "date",
+    "categories",
+    "tags",
+    "fingerprint",
+    "id",
+    "license",
+)
+
 
 class Params(BaseModel):
     url: str = Field(description="The URL to fetch content from.")
+
+
+def _normalize_extracted_text(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text.casefold())
+
+
+def _comments_duplicate_main_text(main_text: str, comments_text: str) -> bool:
+    if not main_text or not comments_text:
+        return False
+    return _normalize_extracted_text(main_text) == _normalize_extracted_text(comments_text)
+
+
+def _render_extracted_document(document: Document) -> str:
+    header_lines = ["---"]
+    for attr in _METADATA_FIELDS:
+        value = getattr(document, attr, None)
+        if value:
+            header_lines.append(f"{attr}: {value}")
+    header_lines.append("---")
+
+    parts = ["\n".join(header_lines)]
+    if main_text := getattr(document, "text", None):
+        parts.append(main_text)
+    if comments_text := getattr(document, "comments", None):
+        parts.append(comments_text)
+    return "\n".join(parts).strip()
 
 
 class FetchURL(CallableTool2[Params]):
@@ -99,16 +142,15 @@ class FetchURL(CallableTool2[Params]):
                 brief="Empty response body",
             )
 
-        extracted_text = trafilatura.extract(
+        document = trafilatura.bare_extraction(
             resp_text,
             include_comments=True,
             include_tables=True,
             include_formatting=False,
-            output_format="txt",
             with_metadata=True,
         )
 
-        if not extracted_text:
+        if not document or isinstance(document, dict):
             return builder.error(
                 (
                     "Failed to extract meaningful content from the page. "
@@ -118,7 +160,23 @@ class FetchURL(CallableTool2[Params]):
                 brief="No content extracted",
             )
 
-        builder.write(extracted_text)
+        main_text = document.text or ""
+        comments_text = document.comments or ""
+        if not (main_text or comments_text):
+            return builder.error(
+                (
+                    "Failed to extract meaningful content from the page. "
+                    "This may indicate the page content is not suitable for text extraction, "
+                    "or the page requires JavaScript to render its content."
+                ),
+                brief="No content extracted",
+            )
+
+        if _comments_duplicate_main_text(main_text, comments_text):
+            document.comments = None
+            document.commentsbody = None
+
+        builder.write(_render_extracted_document(document))
         return builder.ok("The returned content is the main text content extracted from the page.")
 
     async def _fetch_with_service(self, params: Params) -> ToolReturnValue:
