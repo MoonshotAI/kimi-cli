@@ -198,3 +198,46 @@ When YOLO mode is enabled, a yellow YOLO badge appears in the status bar at the 
 ::: warning Note
 YOLO mode skips all confirmations. Make sure you understand the potential risks. It's recommended to only use this in controlled environments.
 :::
+
+## Security boundaries
+
+Kimi Code CLI runs directly in your terminal with no sandbox isolation. Shell commands, file operations, and MCP tool calls executed by the agent take effect in your real operating system environment — no different from running commands manually in your terminal. Understanding these boundaries helps you use Kimi Code CLI safely.
+
+### Workspace scope
+
+The agent's file operations are centered around the working directory. Read-only tools like `ReadFile`, `Glob`, and `Grep` can access files within the working directory using relative paths, or read files outside it using absolute paths. `WriteFile` and `StrReplaceFile` work the same way, but all write and edit operations require user approval.
+
+Using the `--add-dir` startup flag or the `/add-dir` command during a session, you can add extra directories to the workspace. Once added, these directories have equal standing with the main working directory — the agent can freely read and write files in them (writes still require approval). Information about additional directories is passed to the system prompt via the `${KIMI_ADDITIONAL_DIRS_INFO}` variable.
+
+### What operations require approval
+
+In the default mode, the following operations request your confirmation before each execution:
+
+| Operation | Approval granularity |
+|-----------|---------------------|
+| `Shell` command execution | Each command |
+| `WriteFile` file writes | Each write |
+| `StrReplaceFile` file edits | Each edit |
+| MCP tool calls | Each call |
+
+Read-only tools (`ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `SearchWeb`, `FetchURL`) do not require approval.
+
+You can select "Allow for this session" to automatically approve similar operations for the current session. This decision is persisted with the session state and automatically restored when resuming.
+
+### Risks of YOLO mode
+
+When YOLO mode is enabled (`kimi --yolo` or `/yolo`), all approval requests are automatically granted. The agent can execute arbitrary shell commands and file modifications without confirmation. This means:
+
+- The agent can delete files, overwrite code, and perform destructive git operations
+- If the agent misunderstands the task, it may make irreversible changes
+- If the project has MCP tools configured, those tools are also automatically approved
+
+Use YOLO mode only when: the project has solid version control, you are running in a recoverable environment such as a container or VM, or you are performing a well-defined low-risk task.
+
+### MCP tool risk boundaries
+
+MCP tools are provided by external MCP servers, and their behavior is not controlled by Kimi Code CLI. Each MCP tool call requires user approval by default, but is automatically approved in YOLO mode. When using MCP tools, keep in mind:
+
+- MCP servers may access the network, databases, or other external resources
+- MCP tool inputs and outputs pass through the agent, which may take further actions based on the results
+- Make sure you trust the MCP servers you have configured and understand the scope of their tools
