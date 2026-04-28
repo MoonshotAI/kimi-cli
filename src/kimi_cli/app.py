@@ -255,6 +255,8 @@ class KimiCLI:
             yolo,
             skills_dirs=skills_dirs,
         )
+        runtime.ui_mode = ui_mode
+        runtime.resumed = resumed
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
@@ -339,13 +341,15 @@ class KimiCLI:
             )
             attach_sink(sink)
 
-        from kimi_cli.telemetry import track
+        from kimi_cli.telemetry import track, track_session_started_once
         from kimi_cli.telemetry.crash import install_asyncio_handler, set_phase
 
         # App init finished — enter runtime phase and hook asyncio crashes.
         install_asyncio_handler()
         set_phase("runtime")
 
+        if ui_mode != "wire":
+            track_session_started_once(ui_mode=ui_mode, resumed=resumed)
         track("started", resumed=resumed, yolo=yolo)
         track(
             "startup_perf",

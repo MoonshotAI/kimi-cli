@@ -192,6 +192,8 @@ class Runtime:
     subagent_id: str | None = None
     subagent_type: str | None = None
     role: Literal["root", "subagent"] = "root"
+    ui_mode: str = "shell"
+    resumed: bool = False
     hook_engine: Any = None
     """HookEngine instance, set by KimiCLI after soul creation."""
 
