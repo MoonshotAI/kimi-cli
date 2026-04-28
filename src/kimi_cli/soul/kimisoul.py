@@ -1685,57 +1685,70 @@ class FlowRunner:
         base_prompt = self._build_flow_prompt(node, edges)
         prompt = base_prompt
         steps_used = 0
+        max_invalid_retries = 2
+        invalid_retry_count = 0
 
         if self._cancelled:
             logger.info("Agent flow cancelled during node execution.")
             return None, steps_used, None
 
-        # Only inject flow_decision tool for decision nodes so the model
-        # doesn't misuse it during task execution.
-        toolset = soul._agent.toolset  # type: ignore[reportPrivateUsage]
-        added_flow_decision = False
-        if (
-            node.kind == "decision"
-            and isinstance(toolset, KimiToolset)
-            and toolset.find("flow_decision") is None
-        ):
-            toolset.add(FlowDecisionTool())
-            added_flow_decision = True
+        while True:
+            # Only inject flow_decision tool for decision nodes so the model
+            # doesn't misuse it during task execution.
+            toolset = soul._agent.toolset  # type: ignore[reportPrivateUsage]
+            added_flow_decision = False
+            if (
+                node.kind == "decision"
+                and isinstance(toolset, KimiToolset)
+                and toolset.find("flow_decision") is None
+            ):
+                toolset.add(FlowDecisionTool())
+                added_flow_decision = True
 
-        try:
-            history_before_turn = len(soul._context.history)  # type: ignore[reportPrivateUsage]
-            result = await self._flow_turn(soul, prompt)
-        finally:
-            if added_flow_decision and isinstance(toolset, KimiToolset):
-                toolset.remove("flow_decision")
+            try:
+                history_before_turn = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+                result = await self._flow_turn(soul, prompt)
+            finally:
+                if added_flow_decision and isinstance(toolset, KimiToolset):
+                    toolset.remove("flow_decision")
 
-        steps_used += result.step_count
-        if result.stop_reason == "tool_rejected":
-            logger.error("Agent flow stopped after tool rejection.")
-            return None, steps_used, result.final_message
+            steps_used += result.step_count
+            if result.stop_reason == "tool_rejected":
+                logger.error("Agent flow stopped after tool rejection.")
+                return None, steps_used, result.final_message
 
-        if node.kind != "decision":
-            return edges[0].dst, steps_used, result.final_message
+            if node.kind != "decision":
+                return edges[0].dst, steps_used, result.final_message
 
-        choice = self._extract_flow_decision(soul, since_index=history_before_turn)
-        if choice is None and result.final_message:
-            choice = parse_choice(result.final_message.extract_text(" "))
-        if choice == "PAUSE":
-            self._paused = True
-            logger.info("Agent flow paused at node {node_id}", node_id=node.id)
-            return None, steps_used, result.final_message
-        next_id = self._match_flow_edge(edges, choice)
-        if next_id is not None:
-            return next_id, steps_used, result.final_message
+            choice = self._extract_flow_decision(soul, since_index=history_before_turn)
+            if choice is None and result.final_message:
+                choice = parse_choice(result.final_message.extract_text(" "))
+            if choice == "PAUSE":
+                self._paused = True
+                logger.info("Agent flow paused at node {node_id}", node_id=node.id)
+                return None, steps_used, result.final_message
+            next_id = self._match_flow_edge(edges, choice)
+            if next_id is not None:
+                return next_id, steps_used, result.final_message
 
-        # No valid choice — default to STOP rather than retrying and spamming
-        # the user with repeated [Flow control] prompts.
-        logger.warning(
-            "Agent flow invalid choice: {choice}. Available: {options}. Defaulting to STOP.",
-            choice=choice or "<missing>",
-            options=", ".join(edge.label or "" for edge in edges),
-        )
-        return None, steps_used, result.final_message
+            invalid_retry_count += 1
+            if invalid_retry_count > max_invalid_retries:
+                logger.warning(
+                    "Agent flow invalid choice: {choice}. Available: {options}. "
+                    "Max retries ({retries}) exceeded. Defaulting to STOP.",
+                    choice=choice or "<missing>",
+                    options=", ".join(edge.label or "" for edge in edges),
+                    retries=max_invalid_retries,
+                )
+                return None, steps_used, result.final_message
+
+            # Reprompt with a correction hint for the next attempt.
+            valid_choices = ", ".join(edge.label or "" for edge in edges if edge.label)
+            prompt = (
+                f"Your previous response was not a valid choice. "
+                f"Please select one of the following valid options: {valid_choices}. "
+                f"You MUST use the flow_decision tool to make your selection."
+            )
 
     @staticmethod
     def _build_flow_prompt(node: FlowNode, edges: list[FlowEdge]) -> str | list[ContentPart]:
