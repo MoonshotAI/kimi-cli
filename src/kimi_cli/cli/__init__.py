@@ -570,6 +570,25 @@ def kimi(
                 session = await Session.create(work_dir)
                 logger.info("Created new session: {session_id}", session_id=session.id)
 
+            # Make the live session externally observable. A small JSON
+            # status file under the session dir records the
+            # (pid, session_id, work_dir, ...) tuple so terminal
+            # multiplexers and IDE integrations can map a running process
+            # to its session even when it was started without
+            # --session/--resume.
+            import contextlib as _runtime_status_contextlib
+            import os as _runtime_status_os
+
+            from kimi_cli.runtime_status import write_runtime_status
+
+            with _runtime_status_contextlib.suppress(OSError):
+                write_runtime_status(
+                    session.dir,
+                    session_id=session.id,
+                    work_dir=str(work_dir),
+                    pid=_runtime_status_os.getpid(),
+                )
+
             nonlocal _latest_created_session
             _latest_created_session = session
 
@@ -643,22 +662,6 @@ def kimi(
             try:
                 match ui:
                     case "shell":
-                        # Only shell produces a CLI tab worth indexing in
-                        # runtime.json; the other modes (print/acp/wire)
-                        # are deliberately not registered.
-                        import contextlib as _runtime_status_contextlib
-                        import os as _runtime_status_os
-
-                        from kimi_cli.runtime_status import write_runtime_status
-
-                        with _runtime_status_contextlib.suppress(OSError):
-                            write_runtime_status(
-                                session.dir,
-                                session_id=session.id,
-                                work_dir=str(work_dir),
-                                pid=_runtime_status_os.getpid(),
-                            )
-
                         shell_ok = await instance.run_shell(prompt, prefill_text=prefill_text)
                         exit_code = ExitCode.SUCCESS if shell_ok else ExitCode.FAILURE
                     case "print":
