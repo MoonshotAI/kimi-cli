@@ -703,24 +703,19 @@ def kimi(
                 raise
             except SwitchToWeb:
                 preserve_background_tasks = True
-                # The same PID keeps running run_web_server but no longer
-                # serves this shell session, so the runtime.json mapping
-                # would falsely pass an external liveness check. Remove
-                # it so the documented PID->session contract holds.
-                with contextlib.suppress(Exception):
-                    from kimi_cli.runtime_status import clear_runtime_status
-
-                    clear_runtime_status(session.dir)
+                # Do NOT clear runtime.json here. The same PID stays alive
+                # running run_web_server, which can still navigate the user
+                # back into this session through the web UI (and through
+                # the web's per-session worker subprocesses). Hiding the
+                # mapping would make external observers wrongly conclude
+                # the session is gone, when in fact PID 1000 can still
+                # reach it through a different frontend.
                 raise
             except SwitchToVis:
                 preserve_background_tasks = True
-                # Same reasoning as SwitchToWeb above: the same PID
-                # transitions to run_vis_server while runtime.json still
-                # claims this session. Drop the stale mapping.
-                with contextlib.suppress(Exception):
-                    from kimi_cli.runtime_status import clear_runtime_status
-
-                    clear_runtime_status(session.dir)
+                # Same reasoning as SwitchToWeb: PID is alive and the vis
+                # server still serves this session's traces. Keep the
+                # runtime.json so external PID-liveness checks succeed.
                 raise
             finally:
                 # --- SessionEnd hook ---

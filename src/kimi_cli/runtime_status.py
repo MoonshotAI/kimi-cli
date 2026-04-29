@@ -19,10 +19,15 @@ Lifecycle:
 * Not deleted on clean ``/quit`` or on crash. From an external observer's
   standpoint the recorded PID no longer exists in either case, so a
   liveness check is sufficient and an explicit cleanup adds nothing.
-* **Is** deleted on ``/web`` and ``/vis`` mode switches via
-  :func:`clear_runtime_status`, because the same PID keeps running while
-  no longer serving the recorded session — without cleanup the file would
-  pass a naive liveness check and falsely claim the session is live.
+* Not deleted on ``/web`` or ``/vis`` either. The same PID stays alive
+  and can still reach the session through the web UI / vis tracing UI —
+  ``runtime.json`` therefore continues to point at a process that owns
+  the session, just through a different frontend.
+* **Is** deleted by :func:`clear_runtime_status` only when the same PID
+  switches to a *different* session id mid-flight (``/new``, ``/fork``,
+  ``/undo`` raising ``Reload(session_id=B)`` from a session-A process).
+  Without that one cleanup the old session's file would falsely claim
+  the live PID after it has moved on.
 * Removed naturally when the surrounding session directory itself is
   deleted via ``/delete``, which gives a natural bound on accumulation.
 
@@ -111,15 +116,16 @@ def write_runtime_status(
 def clear_runtime_status(session_dir: Path) -> None:
     """Remove ``<session_dir>/runtime.json`` if present.
 
-    Intentionally **not** called on ``/quit`` — when the kimi process
-    exits, an external observer's PID-liveness check already detects
-    the missing process, so a stale record is harmless. This helper
-    exists for the narrow case where the **same PID continues running**
-    but stops serving the recorded session: notably the ``/web`` and
-    ``/vis`` mode switches in ``cli/__init__.py``. Without this call,
-    ``runtime.json`` would still claim a live PID-to-session mapping
-    that the process no longer honours, breaking the documented
-    observability contract.
+    Intentionally **not** called on ``/quit`` (PID exits, naturally
+    stale), on ``/web`` (same PID can still serve the session via the
+    web UI), or on ``/vis`` (same PID can still serve the session's
+    tracing UI). This helper exists for the narrow case where the
+    **same PID switches to a different session id** mid-flight: the
+    ``except Reload as e`` branch in ``cli/__init__.py`` calls it when
+    ``e.session_id != session.id`` (typically ``/new``, ``/fork``,
+    ``/undo``). Without this call the old session's ``runtime.json``
+    would still claim the now-reused PID, leading external observers to
+    map one PID to two different sessions.
 
     Safe to call multiple times and on directories that no longer
     exist; ``OSError`` is swallowed so cleanup cannot disrupt the
