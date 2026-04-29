@@ -17,11 +17,11 @@ from hashlib import md5
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast, override, runtime_checkable
 
+import pyperclip
 from kaos.path import KaosPath
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app_or_none
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.completion import (
     CompleteEvent,
     Completer,
@@ -1484,15 +1484,16 @@ class CustomPromptSession:
                 track("shortcut_paste")
                 if self._try_paste_media(event):
                     return
-                clipboard_data = event.app.clipboard.get_data()
-                if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                try:
+                    text = pyperclip.paste()
+                except Exception:
                     return
-                self._insert_pasted_text(event.current_buffer, clipboard_data.text)
+                if not text:
+                    return
+                self._insert_pasted_text(event.current_buffer, text)
                 event.app.invalidate()
 
-            clipboard = PyperclipClipboard()
-        else:
-            clipboard = None
+        clipboard = None
 
         self._session = PromptSession[str](
             message=self._render_message,
