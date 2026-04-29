@@ -269,10 +269,10 @@ def test_grab_image_linux_xclip_falls_back_to_wlpaste(monkeypatch, tmp_path: Pat
     assert calls == ["xclip", "wl-paste"]
 
 
-def test_grab_image_linux_xclip_silent_error_then_wlpaste_succeeds(
+def test_grab_image_linux_xclip_real_error_then_wlpaste_succeeds(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """When xclip reports a silent error, fallback to wl-paste."""
+    """When xclip fails with a real error, fallback to wl-paste."""
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
@@ -295,7 +295,7 @@ def test_grab_image_linux_xclip_silent_error_then_wlpaste_succeeds(
             r = FakeResult()
             r.returncode = 1
             r.stdout = b""
-            r.stderr = b"xclip: Error: There is no owner for the selection"
+            r.stderr = b"connection refused"
             return r
         r = FakeResult()
         r.returncode = 0
@@ -333,7 +333,7 @@ def test_grab_image_linux_both_tools_silent_error(monkeypatch) -> None:
 
     result = _grab_image_linux()
     assert result is None
-    assert calls == ["xclip", "wl-paste"]
+    assert calls == ["xclip"]
 
 
 def test_grab_image_linux_xclip_missing_wlpaste_succeeds(monkeypatch, tmp_path: Path) -> None:
@@ -507,6 +507,33 @@ def test_grab_image_linux_x11_prefers_xclip(monkeypatch, tmp_path: Path) -> None
     assert result is not None
     assert result.size == (7, 7)
     assert calls == ["xclip"]
+
+
+def test_grab_image_linux_wayland_wlpaste_silent_error_no_fallback(
+    monkeypatch,
+) -> None:
+    """On Wayland, if wl-paste reports silent error, do not fallback to xclip."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-1")
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode = 1
+            stdout = b""
+            stderr = b"No suitable type of content copied"
+
+        return FakeResult()
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is None
+    assert calls == ["wl-paste"]
 
 
 def test_grab_image_linux_timeout(monkeypatch) -> None:

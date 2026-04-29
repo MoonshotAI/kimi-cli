@@ -120,7 +120,7 @@ def _grab_image_linux() -> Image.Image | None:
     else:  # headless — xclip first for common clipboard bridges
         candidates = (xclip_args, wlpaste_args)
 
-    for args in candidates:
+    for idx, args in enumerate(candidates):
         if shutil.which(args[0]) is None:
             continue
         try:
@@ -146,6 +146,11 @@ def _grab_image_linux() -> Image.Image | None:
             b"no owner for the ",
         ]
         if any(se in err for se in silent_errors):
+            # Trust the session-native tool: if it says "no image", don't
+            # fall back to a different clipboard namespace (e.g. XWayland
+            # vs Wayland) which may contain stale unrelated data.
+            if idx == 0:
+                return None
             continue
         # Otherwise, a real error (e.g. tool broken) — try next candidate.
 
