@@ -188,12 +188,14 @@ def test_classify_all_video_suffixes(tmp_path: Path) -> None:
 
 def test_media_clipboard_available_linux_with_xclip(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/xclip" if cmd == "xclip" else None)
     assert is_media_clipboard_available() is True
 
 
 def test_media_clipboard_available_linux_with_wl_paste(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(
         shutil, "which", lambda cmd: "/usr/bin/wl-paste" if cmd == "wl-paste" else None
     )
@@ -202,12 +204,14 @@ def test_media_clipboard_available_linux_with_wl_paste(monkeypatch) -> None:
 
 def test_media_clipboard_available_linux_with_both_tools(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
     assert is_media_clipboard_available() is True
 
 
 def test_media_clipboard_available_linux_without_tools(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda _cmd: None)
     assert is_media_clipboard_available() is False
 
@@ -228,6 +232,7 @@ def test_media_clipboard_available_windows(monkeypatch) -> None:
 def test_grab_image_linux_xclip_falls_back_to_wlpaste(monkeypatch, tmp_path: Path) -> None:
     """When xclip fails with a real error, fallback to wl-paste."""
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
 
     img_path = tmp_path / "clipboard.png"
@@ -269,6 +274,7 @@ def test_grab_image_linux_xclip_silent_error_then_wlpaste_succeeds(
 ) -> None:
     """When xclip reports a silent error, fallback to wl-paste."""
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
 
     img_path = tmp_path / "clipboard.png"
@@ -308,6 +314,7 @@ def test_grab_image_linux_xclip_silent_error_then_wlpaste_succeeds(
 def test_grab_image_linux_both_tools_silent_error(monkeypatch) -> None:
     """When both tools report silent errors, return None."""
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
 
     calls = []
@@ -332,6 +339,7 @@ def test_grab_image_linux_both_tools_silent_error(monkeypatch) -> None:
 def test_grab_image_linux_xclip_missing_wlpaste_succeeds(monkeypatch, tmp_path: Path) -> None:
     """When xclip is not installed, wl-paste is used directly."""
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(
         shutil, "which", lambda cmd: "/usr/bin/wl-paste" if cmd == "wl-paste" else None
     )
@@ -363,6 +371,7 @@ def test_grab_image_linux_xclip_missing_wlpaste_succeeds(monkeypatch, tmp_path: 
 def test_grab_image_linux_both_tools_missing(monkeypatch) -> None:
     """When no clipboard tool is available, return None."""
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda _cmd: None)
 
     result = _grab_image_linux()
@@ -372,6 +381,7 @@ def test_grab_image_linux_both_tools_missing(monkeypatch) -> None:
 def test_grab_image_linux_xclip_succeeds(monkeypatch, tmp_path: Path) -> None:
     """When xclip succeeds immediately, wl-paste is not tried."""
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
 
     img_path = tmp_path / "clipboard.png"
@@ -502,6 +512,7 @@ def test_grab_image_linux_x11_prefers_xclip(monkeypatch, tmp_path: Path) -> None
 def test_grab_image_linux_timeout(monkeypatch) -> None:
     """When subprocess times out, continue to next backend."""
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
 
     calls = []
