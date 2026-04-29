@@ -262,6 +262,71 @@ type PendingQuestionEntry = {
   submitted?: boolean;
 };
 
+function summarizeStreamingToolInput(
+  toolName: string,
+  input: unknown,
+): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return input;
+  }
+
+  const record = input as Record<string, unknown>;
+
+  switch (toolName) {
+    case "WriteFile": {
+      const { content: _content, ...rest } = record;
+      return rest;
+    }
+    case "StrReplaceFile": {
+      const summarizeEdit = (edit: unknown): unknown => {
+        if (!edit || typeof edit !== "object" || Array.isArray(edit)) {
+          return edit;
+        }
+
+        const { old: _old, new: _new, ...rest } = edit as Record<string, unknown>;
+        return rest;
+      };
+
+      const { edit, ...rest } = record;
+      return {
+        ...rest,
+        ...(edit === undefined
+          ? {}
+          : {
+              edit: Array.isArray(edit)
+                ? edit.map((item) => summarizeEdit(item))
+                : summarizeEdit(edit),
+            }),
+      };
+    }
+    default:
+      return input;
+  }
+}
+
+function areStreamingToolInputsEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+
+  if (
+    a &&
+    b &&
+    typeof a === "object" &&
+    typeof b === "object" &&
+    !Array.isArray(a) &&
+    !Array.isArray(b)
+  ) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  return false;
+}
+
 /**
  * Hook for connecting to a session's WebSocket stream
  */
@@ -1203,7 +1268,10 @@ export function useSessionStream(
           let parsedInput: unknown;
           if (initialArgs) {
             try {
-              parsedInput = JSON.parse(initialArgs);
+              parsedInput = summarizeStreamingToolInput(
+                toolCall.function.name,
+                JSON.parse(initialArgs),
+              );
             } catch {
               // Not valid JSON yet, leave as undefined
             }
@@ -1243,27 +1311,49 @@ export function useSessionStream(
 
               const messageId = tc.messageId;
               if (messageId) {
-                let parsedInput: unknown = tc.arguments;
+                let parsedInput: unknown;
+                let hasParsedInput = false;
                 try {
-                  parsedInput = JSON.parse(tc.arguments);
+                  parsedInput = summarizeStreamingToolInput(
+                    tc.name,
+                    JSON.parse(tc.arguments),
+                  );
+                  hasParsedInput = true;
                 } catch {
                   // Not complete JSON yet
                 }
 
-                setMessages((prev) =>
-                  prev.map((msg) =>
+                setMessages((prev) => {
+                  let changed = false;
+
+                  const next = prev.map((msg) =>
                     msg.id === messageId && msg.toolCall
-                      ? {
-                          ...msg,
-                          toolCall: {
-                            ...msg.toolCall,
-                            state: "input-available" as ToolUIPart["state"],
-                            input: parsedInput,
-                          },
-                        }
+                      ? (() => {
+                          const nextState = "input-available" as ToolUIPart["state"];
+                          const stateChanged = msg.toolCall.state !== nextState;
+                          const inputChanged =
+                            hasParsedInput &&
+                            !areStreamingToolInputsEqual(parsedInput, msg.toolCall.input);
+
+                          if (!stateChanged && !inputChanged) {
+                            return msg;
+                          }
+
+                          changed = true;
+                          return {
+                            ...msg,
+                            toolCall: {
+                              ...msg.toolCall,
+                              state: nextState,
+                              ...(hasParsedInput ? { input: parsedInput } : {}),
+                            },
+                          };
+                        })()
                       : msg,
-                  ),
-                );
+                  );
+
+                  return changed ? next : prev;
+                });
               }
             }
           }
