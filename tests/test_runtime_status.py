@@ -240,3 +240,26 @@ def test_clear_runtime_status_is_idempotent(tmp_path: Path):
 def test_clear_runtime_status_on_missing_dir_does_not_raise(tmp_path: Path):
     # Pointing at a directory that does not exist is also safe.
     clear_runtime_status(tmp_path / "does-not-exist")
+
+
+def test_clear_runtime_status_only_for_pid_skips_when_mismatch(tmp_path: Path):
+    """Concurrent-peer guard: A's cross-session Reload must not delete a
+    record that now belongs to a peer process B which overwrote it."""
+    write_runtime_status(tmp_path, session_id="abc", work_dir="/w", pid=2222)
+    # A asks to clear its own (pid=1111) but the file says pid=2222 → leave alone.
+    clear_runtime_status(tmp_path, only_for_pid=1111)
+    assert (tmp_path / RUNTIME_STATUS_FILENAME).exists()
+    survivor = read_runtime_status(tmp_path)
+    assert survivor is not None and survivor.pid == 2222
+
+
+def test_clear_runtime_status_only_for_pid_clears_on_match(tmp_path: Path):
+    write_runtime_status(tmp_path, session_id="abc", work_dir="/w", pid=2222)
+    clear_runtime_status(tmp_path, only_for_pid=2222)
+    assert not (tmp_path / RUNTIME_STATUS_FILENAME).exists()
+
+
+def test_clear_runtime_status_only_for_pid_skips_when_file_missing(tmp_path: Path):
+    # No file at all → nothing to do, still no exception.
+    clear_runtime_status(tmp_path, only_for_pid=1234)
+    assert not (tmp_path / RUNTIME_STATUS_FILENAME).exists()
