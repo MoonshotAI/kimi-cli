@@ -145,13 +145,15 @@ def git_index_mtime(root: Path) -> float | None:
         return None
 
 
-def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[str]:
+def _parse_ls_files_output(stdout: str | None, *, filter_ignored: bool = True) -> list[str]:
     """Parse NUL-delimited ``git ls-files -z`` output into paths with synthesised dirs.
 
     When *filter_ignored* is *True*, paths whose segments match
     ``is_ignored()`` are excluded so that tracked ``node_modules/``,
     ``vendor/``, etc. do not pollute completion candidates.
     """
+    if not stdout:
+        return []
     paths: list[str] = []
     seen_dirs: set[str] = set()
     ignored_prefixes: set[str] = set()
@@ -193,9 +195,11 @@ def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
             cwd=root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_GIT_LS_FILES_TIMEOUT,
         )
-        if result.returncode == 0:
+        if result.returncode == 0 and result.stdout:
             return {e for e in result.stdout.split("\0") if e}
     except Exception:
         pass
@@ -236,6 +240,8 @@ def list_files_git(
             cwd=root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=_GIT_LS_FILES_TIMEOUT,
         )
         if result.returncode != 0:
@@ -265,6 +271,8 @@ def list_files_git(
                 cwd=root,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=_GIT_LS_FILES_TIMEOUT,
             )
             if others.returncode == 0:
