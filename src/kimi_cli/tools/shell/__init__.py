@@ -255,5 +255,8 @@ class Shell(CallableTool2[Params]):
             return (str(self._shell_path), "-command", command)
         return (str(self._shell_path), "-c", command)
 
-    # Backwards-compat alias kept until external callers (if any) migrate.
-    _shell_args = shell_argv
+    def _shell_args(self, command: str) -> tuple[str, ...]:
+        # Back-compat wrapper, kept until external callers (if any) migrate.
+        # A wrapper (rather than a static alias) preserves dynamic dispatch:
+        # a subclass overriding `shell_argv` is honored on `_shell_args` calls.
+        return self.shell_argv(command)

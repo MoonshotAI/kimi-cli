@@ -26,8 +26,10 @@ from tests.conftest import tool_call_context
 
 pytestmark = pytest.mark.skipif(
     platform.system() == "Windows",
-    reason="Argv split mirrors local Shell; on POSIX uses `bash -c`. "
-    "PowerShell branch covered by `test_shell_powershell.py`-style fixtures.",
+    reason="POSIX-only — exercises the `bash -c` branch end-to-end. "
+    "PowerShell argv build is verified separately by "
+    "`test_terminal_wraps_powershell_branch_argv` below, which runs "
+    "on every platform.",
 )
 
 
@@ -158,3 +160,43 @@ async def test_shell_argv_helper_matches_local_run(shell_tool: Shell) -> None:
     else:
         assert argv[1] == "-c"
     assert argv[2] == cmd
+
+
+# ─── PowerShell-branch coverage (runs on every platform) ───────────────────
+#
+# The parametrized POSIX cases above can't reach the `is_powershell` branch
+# even when run on Windows, because the `shell_tool` fixture in
+# `tests/conftest.py` is environment-derived. We flip the flag explicitly so
+# the `-command` argv build is verified end-to-end through the same
+# `Terminal.__call__` path the parametrized cases exercise — without spinning
+# up a real PowerShell process. Lock this; without it, a future regression
+# that sends `params.command` raw on the PowerShell branch would slip
+# through CI.
+
+@pytest.mark.skipif(
+    platform.system() == "Windows",
+    reason=(
+        "`shell_tool` fixture builds a Bash Shell on POSIX; we monkey-patch "
+        "_is_powershell to exercise the `-command` argv branch. On Windows "
+        "the fixture already builds a PowerShell Shell and the parametrized "
+        "POSIX cases don't run, so this test would be redundant."
+    ),
+)
+async def test_terminal_wraps_powershell_branch_argv(
+    shell_tool: Shell,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ACP `Terminal` must use `pwsh -command <line>` (not `bash -c`) when
+    the underlying Shell tool reports a PowerShell host. Same wrap shape as
+    POSIX, different flag — the ACP client still sees a proper
+    program/argv split."""
+    monkeypatch.setattr(shell_tool, "_is_powershell", True)
+    cmd = 'Get-ChildItem | Select-Object -First 3'
+
+    conn, _ = await _invoke_terminal(shell_tool, cmd, monkeypatch=monkeypatch)
+
+    conn.create_terminal.assert_awaited_once()
+    call_kwargs = conn.create_terminal.await_args.kwargs
+    assert call_kwargs["command"] == str(shell_tool._shell_path)
+    # Critical: `-command`, not `-c`.
+    assert call_kwargs["args"] == ["-command", cmd]
