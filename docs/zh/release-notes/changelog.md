@@ -25,6 +25,8 @@
 - Core：新增 `auto_approve_workspace_dirs` 配置项——用于设置自动跳过文件写入 / 编辑审批的工作区目录名称列表（相对于 `work_dir`），适用于 Skills、plans、notes 等 Agent 经常修改的目录
 - Core：首次生成配置文件时，CLI 现在会写入带注释和示例的 TOML 模板，而不是纯序列化配置
 - Approval：自动审批操作现在支持 glob 模式匹配——优先检查精确匹配，再进行模式扩展，因此包含 glob 特殊字符的操作名也能被安全处理
+- Core：新增会话级遥测跟踪——会话在首次交互时现在会发送 `session_started` 事件，并为 Wire 和 ACP 会话记录客户端名称和版本；同时添加用于本地遥测检查的调试服务端脚本
+- Security：强化 `auto_approve_workspace_dirs` 对路径穿越的防护——包含 `..` 且会逸出工作区的条目现在会被拒绝并记录日志
 
 
 ## 1.39.0 (2026-04-24)

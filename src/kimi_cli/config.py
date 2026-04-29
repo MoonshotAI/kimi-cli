@@ -344,7 +344,7 @@ telemetry = true
 skip_yolo_prompt_injection = false
 
 [loop_control]
-max_steps_per_turn = 500
+max_steps_per_turn = 1000
 max_retries_per_step = 3
 max_ralph_iterations = 0
 reserved_context_size = 50000

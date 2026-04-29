@@ -17,6 +17,7 @@ Kimi Code CLI 将所有数据存储在用户主目录下的 `~/.kimi/` 目录中
 ├── mcp.json              # MCP 服务器配置
 ├── credentials/          # OAuth 凭据
 │   └── <provider>.json
+├── telemetry/            # 遥测数据缓存（发送失败时临时落盘）
 ├── sessions/             # 会话数据
 │   └── <work-dir-hash>/
 │       └── <session-id>/
@@ -153,5 +154,6 @@ Plan 模式的方案文件存储在 `~/.kimi/plans/` 目录下。每个 Plan 会
 | 清理 Plan 方案文件 | 删除 `~/.kimi/plans/` 目录，或在 Plan 模式下使用 `/plan clear` |
 | 清理输入历史 | 删除 `~/.kimi/user-history/` 目录 |
 | 清理日志 | 删除 `~/.kimi/logs/` 目录 |
+| 清理遥测缓存 | 删除 `~/.kimi/telemetry/` 目录 |
 | 清理 MCP 配置 | 删除 `~/.kimi/mcp.json` 或使用 `kimi mcp remove` |
 | 清理登录凭据 | 删除 `~/.kimi/credentials/` 目录或使用 `/logout` |
