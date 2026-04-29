@@ -29,6 +29,7 @@ def _reset_state():
     telemetry_mod._device_id = None
     telemetry_mod._session_id = None
     telemetry_mod._client_info = None
+    telemetry_mod._session_started_sessions.clear()
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
     # crash module
@@ -46,6 +47,7 @@ def _reset_state():
     telemetry_mod._device_id = None
     telemetry_mod._session_id = None
     telemetry_mod._client_info = None
+    telemetry_mod._session_started_sessions.clear()
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
 

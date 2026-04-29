@@ -789,6 +789,11 @@ async def generate_session_title(
     # If AI generation failed too many times, use fallback and mark as generated
     if state.title_generate_attempts >= 3:
         fresh = load_session_state(session_dir)
+        # Respect a title finalized by another request/user action while we
+        # were preparing a fallback.
+        if fresh.title_generated:
+            invalidate_sessions_cache()
+            return GenerateTitleResponse(title=fresh.custom_title or "Untitled")
         fresh.custom_title = fallback_title
         fresh.title_generated = True
         save_session_state(fresh, session_dir)
@@ -856,6 +861,11 @@ Title:"""
     # Read-modify-write: reload fresh state to avoid overwriting
     # worker changes made during the LLM call
     fresh = load_session_state(session_dir)
+    # Another request or manual rename may have finalized the title while the
+    # LLM call was in flight. Preserve that newer title instead of clobbering it.
+    if fresh.title_generated:
+        invalidate_sessions_cache()
+        return GenerateTitleResponse(title=fresh.custom_title or "Untitled")
     fresh.custom_title = title
     if ai_generated:
         fresh.title_generated = True

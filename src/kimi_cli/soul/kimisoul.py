@@ -59,8 +59,8 @@ from kimi_cli.soul.dynamic_injection import (
     DynamicInjectionProvider,
     normalize_history,
 )
+from kimi_cli.soul.dynamic_injections.afk_mode import AfkModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
-from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -202,8 +202,8 @@ class KimiSoul:
             PlanModeInjectionProvider(),
             *(
                 []
-                if self._runtime.config.skip_yolo_prompt_injection
-                else [YoloModeInjectionProvider()]
+                if self._runtime.config.skip_afk_prompt_injection
+                else [AfkModeInjectionProvider()]
             ),
         ]
         self._hook_engine: HookEngine = HookEngine()
@@ -233,8 +233,28 @@ class KimiSoul:
 
     @property
     def is_yolo(self) -> bool:
-        """Whether yolo (auto-approve / non-interactive) mode is enabled."""
+        """Whether explicit yolo mode is active."""
         return self._approval.is_yolo()
+
+    @property
+    def is_auto_approve(self) -> bool:
+        """Whether tool approvals are bypassed (explicit yolo, or implied by afk)."""
+        return self._approval.is_auto_approve()
+
+    @property
+    def is_afk(self) -> bool:
+        """Whether no user is present (away-from-keyboard)."""
+        return self._approval.is_afk()
+
+    @property
+    def is_afk_flag(self) -> bool:
+        """Whether persisted afk mode is active."""
+        return self._approval.is_afk_flag()
+
+    @property
+    def is_subagent(self) -> bool:
+        """Whether this soul is running as a subagent rather than the root session."""
+        return self._runtime.role == "subagent"
 
     @property
     def plan_mode(self) -> bool:
@@ -286,6 +306,18 @@ class KimiSoul:
                     exc_info=True,
                 )
 
+    async def notify_afk_changed(self, enabled: bool) -> None:
+        """Notify dynamic injection providers that afk mode changed."""
+        for provider in self._injection_providers:
+            try:
+                await provider.on_afk_changed(enabled)
+            except Exception:
+                logger.warning(
+                    "injection provider %s on_afk_changed failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
+
     def _bind_plan_mode_tools(self) -> None:
         """Bind plan mode state to tools that support it."""
         if not isinstance(self._agent.toolset, KimiToolset):
@@ -315,21 +347,32 @@ class KimiSoul:
 
         exit_tool = self._agent.toolset.find("ExitPlanMode")
         if isinstance(exit_tool, ExitPlanMode):
-            exit_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            exit_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                self._approval.is_afk,
+            )
 
         # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            enter_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                self._approval.is_auto_approve,
+            )
 
-        # AskUserQuestion — bind yolo checker for auto-dismiss
+        # AskUserQuestion — bind afk checker for auto-dismiss.
+        # Yolo alone keeps the tool live; only afk (no user present) dismisses.
         from kimi_cli.tools.ask_user import AskUserQuestion
 
         ask_tool = self._agent.toolset.find("AskUserQuestion")
         if isinstance(ask_tool, AskUserQuestion):
-            ask_tool.bind_approval(self._approval.is_yolo)
+            ask_tool.bind_afk(self._approval.is_afk)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
@@ -438,7 +481,8 @@ class KimiSoul:
         max_size = self._runtime.llm.max_context_size if self._runtime.llm is not None else 0
         return StatusSnapshot(
             context_usage=self._context_usage,
-            yolo_enabled=self._approval.is_yolo(),
+            yolo_enabled=self._approval.is_yolo_flag(),
+            afk_enabled=self._approval.is_afk(),
             plan_mode=self._plan_mode,
             context_tokens=token_count,
             max_context_tokens=max_size,

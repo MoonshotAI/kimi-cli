@@ -26,7 +26,7 @@ kimi term --work-dir /path/to/project --model kimi-k2
 |------|------|
 | `--work-dir PATH` | 指定工作目录 |
 | `--model NAME` | 指定模型 |
-| `--yolo` | 自动批准所有操作 |
+| `--yolo` | 自动批准所有工具调用 |
 
 完整选项请参阅 [`kimi` 命令](./kimi-command.md)。
 

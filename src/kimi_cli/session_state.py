@@ -14,6 +14,7 @@ STATE_FILE_NAME = "state.json"
 
 class ApprovalStateData(BaseModel):
     yolo: bool = False
+    afk: bool = False
     auto_approve_actions: set[str] = Field(default_factory=set)
 
 

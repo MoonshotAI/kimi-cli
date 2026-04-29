@@ -59,7 +59,7 @@ def test_default_config_dump():
             "merge_all_available_skills": True,
             "extra_skill_dirs": [],
             "telemetry": True,
-            "skip_yolo_prompt_injection": False,
+            "skip_afk_prompt_injection": False,
         }
     )
 
@@ -107,6 +107,11 @@ def test_load_config_reserved_context_size():
 def test_load_config_max_steps_per_turn():
     config = load_config_from_string("[loop_control]\nmax_steps_per_turn = 42\n")
     assert config.loop_control.max_steps_per_turn == 42
+
+
+def test_load_config_legacy_skip_yolo_prompt_injection_ignored():
+    config = load_config_from_string("skip_yolo_prompt_injection = true\n")
+    assert config.skip_afk_prompt_injection is False
 
 
 def test_load_config_max_steps_per_run():

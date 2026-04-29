@@ -42,6 +42,8 @@ There are four ways to enter plan mode:
 
 You can also set `default_plan_mode = true` in the config file to start every new session in plan mode by default. See [Configuration files](../configuration/config-files.md).
 
+In YOLO mode, AI-initiated entry into plan mode is auto-approved, but exiting plan mode with `ExitPlanMode` still asks you to approve the plan. In AFK mode, both entering and exiting plan mode are auto-approved because no user is present.
+
 When plan mode is active, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
 
 ### Reviewing plans
@@ -183,7 +185,7 @@ The confirmation prompt will show operation details, including shell command and
 - **Reject**: Do not execute this operation
 - **Reject with feedback**: Decline the operation and provide written feedback telling the agent how to adjust
 
-If you trust the AI's operations, or you're running Kimi Code CLI in a safe isolated environment, you can enable "YOLO mode" to automatically approve all requests:
+If you trust the AI's operations, or you're running Kimi Code CLI in a safe isolated environment, you can enable "YOLO mode" to automatically approve all tool calls:
 
 ```sh
 # Enable at startup
@@ -197,6 +199,28 @@ You can also set `default_yolo = true` in the config file to enable YOLO mode by
 
 When YOLO mode is enabled, a yellow YOLO badge appears in the status bar at the bottom. Enter `/yolo` again to disable it.
 
+YOLO only removes approval friction — the agent still treats you as present and can reach you via `AskUserQuestion` when a decision is genuinely ambiguous. If you're actually stepping away, use AFK mode below.
+
 ::: warning Note
-YOLO mode skips all confirmations. Make sure you understand the potential risks. It's recommended to only use this in controlled environments.
+YOLO mode skips all approval confirmations. Make sure you understand the potential risks. It's recommended to only use this in controlled environments.
+:::
+
+### AFK mode
+
+When you're stepping away from the terminal and want the agent to keep running unattended, enable "AFK mode" (away-from-keyboard):
+
+```sh
+# Enable at startup
+kimi --afk
+
+# Or toggle during runtime
+/afk
+```
+
+AFK also auto-approves all tool calls, and additionally auto-dismisses any `AskUserQuestion` the model tries to send — so the agent makes its own best judgment instead of waiting for an answer that will never come. `--print` implicitly enables `--afk` for the same reason.
+
+When AFK is active, an orange AFK badge appears in the status bar, independent of the YOLO badge. Enter `/afk` again to disable it.
+
+::: warning Note
+AFK skips all approval confirmations and removes the safety net of clarifying questions. Only use when you genuinely cannot be at the terminal and trust the current scope.
 :::

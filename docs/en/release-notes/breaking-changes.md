@@ -4,6 +4,22 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.40.0
+
+### `--print` now uses runtime AFK semantics instead of YOLO semantics
+
+Print mode still runs non-interactively and handles approvals automatically, but it now sets an invocation-only AFK overlay instead of enabling YOLO. This means `--print` treats the user as unavailable and auto-dismisses `AskUserQuestion`, while later interactive resumes do not inherit AFK solely because of a previous print run.
+
+- **Affected**: Scripts, wrappers, or custom integrations that inferred print-mode behavior from the explicit YOLO flag
+- **Migration**: Treat `--print` / `--quiet` as non-interactive AFK runs. Use `--yolo` only when you want to bypass permission approvals while a user remains reachable
+
+### `skip_yolo_prompt_injection` replaced by `skip_afk_prompt_injection`
+
+YOLO no longer injects model guidance, so the old `skip_yolo_prompt_injection` config key is ignored. The remaining non-interactive reminder belongs to AFK mode and can be disabled with `skip_afk_prompt_injection`.
+
+- **Affected**: Config files or embedded applications that set `skip_yolo_prompt_injection`
+- **Migration**: Replace `skip_yolo_prompt_injection = true` with `skip_afk_prompt_injection = true` if you need to suppress AFK mode reminders
+
 ## 1.39.0
 
 ### `merge_all_available_skills` default flipped to `true`
