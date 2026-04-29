@@ -56,6 +56,7 @@ class Terminal(CallableTool2[ShellParams]):
         # Use the `name`, `description`, and `params` from the existing Shell tool,
         # so that when this is added to the toolset, it replaces the original Shell tool.
         super().__init__(shell_tool.name, shell_tool.description, shell_tool.params)
+        self._shell_tool = shell_tool
         self._acp_conn = acp_conn
         self._acp_session_id = acp_session_id
         self._approval = approval
@@ -88,8 +89,15 @@ class Terminal(CallableTool2[ShellParams]):
         timed_out = False
 
         try:
+            # Wrap in `bash -c` (or `pwsh -command`) so the ACP client exec()s
+            # the same way the local Shell tool does. Without this, the client
+            # follows the ACP spec — `Command::new(command).args(args)` — and
+            # tries to spawn a binary literally named `<full shell line>`,
+            # which fails for any multi-token / piped / redirected command.
+            argv = self._shell_tool.shell_argv(params.command)
             resp = await self._acp_conn.create_terminal(
-                command=params.command,
+                command=argv[0],
+                args=list(argv[1:]),
                 session_id=self._acp_session_id,
                 output_byte_limit=builder.max_chars,
             )
