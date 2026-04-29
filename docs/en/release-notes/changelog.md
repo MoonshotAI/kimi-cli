@@ -4,7 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
-- Shell: Enable clipboard image paste on headless Linux over SSH — when pyperclip is unavailable (e.g. DISPLAY is not set), Ctrl-V now falls back to xclip or wl-paste via PIL so remote clipboard bridges can still inject images; also prevents a UI crash from built-in clipboard shortcuts when pyperclip is broken
+- Shell: Enable clipboard image paste on headless Linux over SSH — when pyperclip is unavailable (e.g. DISPLAY is not set), Ctrl-V now falls back to xclip or wl-paste so remote clipboard bridges can still inject images; also prevents a UI crash from built-in clipboard shortcuts when pyperclip is broken
 
 ## 1.40.0 (2026-04-28)
 

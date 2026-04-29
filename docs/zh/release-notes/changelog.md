@@ -4,7 +4,7 @@
 
 ## 未发布
 
-- Shell：在无显示环境的 Linux（如 SSH 远程）上启用剪贴板图片粘贴——当 pyperclip 不可用（例如 DISPLAY 未设置）时，Ctrl-V 现在会通过 xclip 或 wl-paste 回退到 PIL，使远程剪贴板桥接仍能注入图片；同时防止 pyperclip 失效时内置剪贴板快捷键造成 UI 崩溃
+- Shell：在无显示环境的 Linux（如 SSH 远程）上启用剪贴板图片粘贴——当 pyperclip 不可用（例如 DISPLAY 未设置）时，Ctrl-V 现在会回退到 xclip 或 wl-paste，使远程剪贴板桥接仍能注入图片；同时防止 pyperclip 失效时内置剪贴板快捷键造成 UI 崩溃
 
 ## 1.40.0 (2026-04-28)
 

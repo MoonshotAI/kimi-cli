@@ -9,6 +9,7 @@ from PIL import Image
 from kimi_cli.utils.clipboard import (
     _VIDEO_SUFFIXES,
     _classify_file_paths,
+    _grab_image_linux,
     is_media_clipboard_available,
 )
 
@@ -187,9 +188,7 @@ def test_classify_all_video_suffixes(tmp_path: Path) -> None:
 
 def test_media_clipboard_available_linux_with_xclip(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(
-        shutil, "which", lambda cmd: "/usr/bin/xclip" if cmd == "xclip" else None
-    )
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/xclip" if cmd == "xclip" else None)
     assert is_media_clipboard_available() is True
 
 
@@ -203,9 +202,7 @@ def test_media_clipboard_available_linux_with_wl_paste(monkeypatch) -> None:
 
 def test_media_clipboard_available_linux_with_both_tools(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(
-        shutil, "which", lambda cmd: f"/usr/bin/{cmd}"
-    )
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
     assert is_media_clipboard_available() is True
 
 
@@ -223,3 +220,138 @@ def test_media_clipboard_available_macos(monkeypatch) -> None:
 def test_media_clipboard_available_windows(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
     assert is_media_clipboard_available() is True
+
+
+# --- _grab_image_linux tests ---
+
+
+def test_grab_image_linux_xclip_falls_back_to_wlpaste(monkeypatch, tmp_path: Path) -> None:
+    """When xclip fails with a real error, fallback to wl-paste."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+
+    img_path = tmp_path / "clipboard.png"
+    Image.new("RGB", (2, 2)).save(img_path)
+    img_bytes = img_path.read_bytes()
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode: int
+            stdout: bytes
+            stderr: bytes
+
+        if args[0] == "xclip":
+            r = FakeResult()
+            r.returncode = 1
+            r.stdout = b""
+            r.stderr = b"connection refused"
+            return r
+        r = FakeResult()
+        r.returncode = 0
+        r.stdout = img_bytes
+        r.stderr = b""
+        return r
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is not None
+    assert result.size == (2, 2)
+    assert calls == ["xclip", "wl-paste"]
+
+
+def test_grab_image_linux_xclip_silent_error_no_fallback(monkeypatch) -> None:
+    """When xclip reports a silent error (empty clipboard), do not try wl-paste."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode = 1
+            stdout = b""
+            stderr = b"xclip: Error: There is no owner for the selection"
+
+        return FakeResult()
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is None
+    assert calls == ["xclip"]
+
+
+def test_grab_image_linux_xclip_missing_wlpaste_succeeds(monkeypatch, tmp_path: Path) -> None:
+    """When xclip is not installed, wl-paste is used directly."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        shutil, "which", lambda cmd: "/usr/bin/wl-paste" if cmd == "wl-paste" else None
+    )
+
+    img_path = tmp_path / "clipboard.png"
+    Image.new("RGB", (3, 3)).save(img_path)
+    img_bytes = img_path.read_bytes()
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode = 0
+            stdout = img_bytes
+            stderr = b""
+
+        return FakeResult()
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is not None
+    assert result.size == (3, 3)
+    assert calls == ["wl-paste"]
+
+
+def test_grab_image_linux_both_tools_missing(monkeypatch) -> None:
+    """When no clipboard tool is available, return None."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda _cmd: None)
+
+    result = _grab_image_linux()
+    assert result is None
+
+
+def test_grab_image_linux_xclip_succeeds(monkeypatch, tmp_path: Path) -> None:
+    """When xclip succeeds immediately, wl-paste is not tried."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+
+    img_path = tmp_path / "clipboard.png"
+    Image.new("RGB", (4, 4)).save(img_path)
+    img_bytes = img_path.read_bytes()
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode = 0
+            stdout = img_bytes
+            stderr = b""
+
+        return FakeResult()
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is not None
+    assert result.size == (4, 4)
+    assert calls == ["xclip"]
