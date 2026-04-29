@@ -17,6 +17,7 @@ from kimi_cli.soul.toolset import (
     MCPTool,
     _canonical_mcp_tool_name,
     _tool_schema_bytes,
+    _truncate_mcp_description,
 )
 from kimi_cli.wire.types import ToolCall, ToolResult
 
@@ -420,3 +421,14 @@ def test_canonical_mcp_tool_name_avoids_normalization_collisions():
     second = _canonical_mcp_tool_name("server_one", tool_name)
 
     assert first != second
+
+
+def test_truncated_mcp_description_respects_cap_with_marker():
+    desc = _truncate_mcp_description("x" * 2000, 100)
+    assert len(desc) <= 100
+    assert desc.endswith(" [description truncated]")
+
+
+def test_truncated_mcp_description_respects_tiny_cap():
+    assert len(_truncate_mcp_description("x" * 2000, 0)) == 0
+    assert len(_truncate_mcp_description("x" * 2000, 8)) <= 8

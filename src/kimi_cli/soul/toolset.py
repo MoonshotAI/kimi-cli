@@ -86,6 +86,7 @@ def get_current_tool_call_or_none() -> ToolCall | None:
 type ToolType = CallableTool | CallableTool2[Any]
 
 _MAX_MCP_TOOL_NAME_LENGTH = 64
+_TRUNCATION_MARKER = " [description truncated]"
 
 
 if TYPE_CHECKING:
@@ -646,11 +647,10 @@ class MCPTool[T: ClientTransport](CallableTool):
         max_description_chars: int,
         **kwargs: Any,
     ):
-        mcp_description = mcp_tool.description or "No description provided."
-        if len(mcp_description) > max_description_chars:
-            mcp_description = (
-                mcp_description[:max_description_chars].rstrip() + " [description truncated]"
-            )
+        mcp_description = _truncate_mcp_description(
+            mcp_tool.description or "No description provided.",
+            max_description_chars,
+        )
         super().__init__(
             name=exposed_name,
             description=(
@@ -785,6 +785,17 @@ def _tool_schema_bytes(tool: Tool) -> int:
     }
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return len(encoded)
+
+
+def _truncate_mcp_description(description: str, max_chars: int) -> str:
+    """Truncate MCP description to a strict cap, including marker when possible."""
+    if len(description) <= max_chars:
+        return description
+    if max_chars <= 0:
+        return ""
+    if max_chars <= len(_TRUNCATION_MARKER):
+        return description[:max_chars]
+    return description[: max_chars - len(_TRUNCATION_MARKER)].rstrip() + _TRUNCATION_MARKER
 
 
 def _canonical_mcp_tool_name(server_name: str, tool_name: str) -> str:
