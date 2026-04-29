@@ -8,28 +8,17 @@ daemons) can answer the question:
     "Which Kimi session is the running PID X serving?"
 
 The CLI does not embed the session id in ``argv`` for fresh (non-resumed)
-sessions, and the OS process title can be truncated, so a side-channel
-file that records the explicit ``(pid, session_id, work_dir, ...)`` tuple
-is the most reliable cross-platform signal.
+sessions, so a side-channel file recording the ``(pid, session_id,
+work_dir, ...)`` tuple is the most reliable cross-platform signal.
 
-Lifecycle:
-
-* Written on session start (clean launch or ``--resume``); the resume case
-  atomically overwrites whatever the previous PID wrote.
-* Not deleted on clean ``/quit`` or on crash. From an external observer's
-  standpoint the recorded PID no longer exists in either case, so a
-  liveness check is sufficient and an explicit cleanup adds nothing.
-* Not deleted on ``/web`` or ``/vis`` either. The same PID stays alive
-  and can still reach the session through the web UI / vis tracing UI —
-  ``runtime.json`` therefore continues to point at a process that owns
-  the session, just through a different frontend.
-* **Is** deleted by :func:`clear_runtime_status` only when the same PID
-  switches to a *different* session id mid-flight (``/new``, ``/fork``,
-  ``/undo`` raising ``Reload(session_id=B)`` from a session-A process).
-  Without that one cleanup the old session's file would falsely claim
-  the live PID after it has moved on.
-* Removed naturally when the surrounding session directory itself is
-  deleted via ``/delete``, which gives a natural bound on accumulation.
+Lifecycle: written on session start (resume atomically overwrites the
+previous PID), and only cleared by :func:`clear_runtime_status` when the
+same PID switches to a *different* session id mid-flight (``Reload`` from
+``/new``, ``/fork``, ``/undo``). All other exit paths — clean ``/quit``,
+crash, ``/web``, ``/vis`` — leave the file in place and rely on the
+consumer's PID liveness check to distinguish a live session from a stale
+record. The file is removed naturally when the session directory itself
+is deleted via ``/delete``.
 
 The file is written atomically via :func:`atomic_json_write` and contains
 a small, stable schema. External consumers should treat unknown fields as
@@ -116,16 +105,10 @@ def write_runtime_status(
 def clear_runtime_status(session_dir: Path) -> None:
     """Remove ``<session_dir>/runtime.json`` if present.
 
-    Intentionally **not** called on ``/quit`` (PID exits, naturally
-    stale), on ``/web`` (same PID can still serve the session via the
-    web UI), or on ``/vis`` (same PID can still serve the session's
-    tracing UI). This helper exists for the narrow case where the
-    **same PID switches to a different session id** mid-flight: the
-    ``except Reload as e`` branch in ``cli/__init__.py`` calls it when
-    ``e.session_id != session.id`` (typically ``/new``, ``/fork``,
-    ``/undo``). Without this call the old session's ``runtime.json``
-    would still claim the now-reused PID, leading external observers to
-    map one PID to two different sessions.
+    Called only when the same PID switches to a different session id
+    mid-flight (``except Reload as e`` in ``cli/__init__.py`` when
+    ``e.session_id != session.id``). All other exit paths leave the
+    file alone — see the module docstring.
 
     Safe to call multiple times and on directories that no longer
     exist; ``OSError`` is swallowed so cleanup cannot disrupt the

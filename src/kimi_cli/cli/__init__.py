@@ -687,13 +687,10 @@ def kimi(
                     r = Reload(session_id=session.id, prefill_text=e.prefill_text)
                     r.source_session = session
                     raise r from e
-                # If the reload targets a different session (e.g. /new, /fork,
-                # /undo), the same PID is about to start serving that other
-                # session. Drop the current session's runtime.json first so it
-                # does not falsely keep claiming this live PID — the next _run()
-                # iteration will write a fresh runtime.json for the new session.
-                # Same-session reloads are fine because write_runtime_status
-                # atomically overwrites the existing record.
+                # Same-PID switch to a different session id (/new, /fork,
+                # /undo): drop the current session's runtime.json so it does
+                # not keep claiming this PID after the next iteration writes
+                # a fresh record for the new session.
                 if e.session_id != session.id:
                     with contextlib.suppress(Exception):
                         from kimi_cli.runtime_status import clear_runtime_status
@@ -703,19 +700,9 @@ def kimi(
                 raise
             except SwitchToWeb:
                 preserve_background_tasks = True
-                # Do NOT clear runtime.json here. The same PID stays alive
-                # running run_web_server, which can still navigate the user
-                # back into this session through the web UI (and through
-                # the web's per-session worker subprocesses). Hiding the
-                # mapping would make external observers wrongly conclude
-                # the session is gone, when in fact PID 1000 can still
-                # reach it through a different frontend.
                 raise
             except SwitchToVis:
                 preserve_background_tasks = True
-                # Same reasoning as SwitchToWeb: PID is alive and the vis
-                # server still serves this session's traces. Keep the
-                # runtime.json so external PID-liveness checks succeed.
                 raise
             finally:
                 # --- SessionEnd hook ---
