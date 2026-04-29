@@ -690,19 +690,12 @@ def kimi(
                 # Same-PID switch to a different session id (/new, /fork,
                 # /undo): drop the current session's runtime.json so it does
                 # not keep claiming this PID after the next iteration writes
-                # a fresh record for the new session. Guard by pid so a
-                # concurrent peer that has overwritten the record is left
-                # alone.
+                # a fresh record for the new session.
                 if e.session_id != session.id:
-                    import os as _runtime_status_os
-
                     with contextlib.suppress(Exception):
                         from kimi_cli.runtime_status import clear_runtime_status
 
-                        clear_runtime_status(
-                            session.dir,
-                            only_for_pid=_runtime_status_os.getpid(),
-                        )
+                        clear_runtime_status(session.dir)
                 e.source_session = session
                 raise
             except SwitchToWeb:

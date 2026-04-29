@@ -102,7 +102,7 @@ def write_runtime_status(
     return target
 
 
-def clear_runtime_status(session_dir: Path, *, only_for_pid: int | None = None) -> None:
+def clear_runtime_status(session_dir: Path) -> None:
     """Remove ``<session_dir>/runtime.json`` if present.
 
     Called only when the same PID switches to a different session id
@@ -110,22 +110,11 @@ def clear_runtime_status(session_dir: Path, *, only_for_pid: int | None = None) 
     ``e.session_id != session.id``). All other exit paths leave the
     file alone — see the module docstring.
 
-    When ``only_for_pid`` is supplied, the file is removed only if its
-    recorded ``pid`` matches that value. This guards the rare race where
-    two CLI processes resume the same session concurrently: each
-    overwrites the other's record on startup, and the cross-session
-    Reload cleanup must not delete a record that now belongs to the
-    other process. Pass ``os.getpid()`` from the caller.
-
     Safe to call multiple times and on directories that no longer
     exist; ``OSError`` is swallowed so cleanup cannot disrupt the
     surrounding control flow.
     """
     target = _runtime_status_path(session_dir)
-    if only_for_pid is not None:
-        existing = read_runtime_status(session_dir)
-        if existing is None or existing.pid != only_for_pid:
-            return
     try:
         target.unlink(missing_ok=True)
     except OSError:
