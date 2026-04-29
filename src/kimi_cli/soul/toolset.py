@@ -647,17 +647,16 @@ class MCPTool[T: ClientTransport](CallableTool):
         max_description_chars: int,
         **kwargs: Any,
     ):
-        mcp_description = _truncate_mcp_description(
-            mcp_tool.description or "No description provided.",
-            max_description_chars,
+        raw_description = mcp_tool.description or "No description provided."
+        full_description = (
+            "This is an MCP (Model Context Protocol) tool from "
+            f"MCP server `{server_name}`. Original tool name: `{mcp_tool.name}`.\n\n"
+            f"{raw_description}"
         )
+        mcp_description = _truncate_mcp_description(full_description, max_description_chars)
         super().__init__(
             name=exposed_name,
-            description=(
-                "This is an MCP (Model Context Protocol) tool from "
-                f"MCP server `{server_name}`. Original tool name: `{mcp_tool.name}`.\n\n"
-                f"{mcp_description}"
-            ),
+            description=mcp_description,
             parameters=mcp_tool.inputSchema,
             **kwargs,
         )

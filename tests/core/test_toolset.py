@@ -233,6 +233,24 @@ async def test_mcp_tool_description_is_truncated_without_schema_changes(runtime)
     assert tool.base.parameters == raw.inputSchema
 
 
+async def test_mcp_tool_full_description_respects_cap(runtime):
+    raw = MCPRawTool(
+        name="VeryLongToolName" * 20,
+        description="x" * 2000,
+        inputSchema={"type": "object", "properties": {}},
+    )
+    tool = MCPTool(
+        "VeryLongServerName" * 20,
+        raw,
+        cast(Any, _FakeMCPClient([raw])),
+        runtime=runtime,
+        exposed_name=_canonical_mcp_tool_name("server", raw.name),
+        max_description_chars=100,
+    )
+
+    assert len(tool.base.description) <= 100
+
+
 async def test_load_mcp_tools_hides_tools_when_schema_budget_exceeded(runtime, monkeypatch):
     server_name = "server-a"
     small = MCPRawTool(
