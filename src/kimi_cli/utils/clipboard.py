@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import shutil
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -30,12 +31,26 @@ class ClipboardResult:
 
 
 def is_clipboard_available() -> bool:
-    """Check if the Pyperclip clipboard is available."""
+    """Check if the Pyperclip text clipboard is available."""
     try:
         pyperclip.paste()
         return True
     except Exception:
         return False
+
+
+def is_media_clipboard_available() -> bool:
+    """Check if the media clipboard (PIL -> xclip/wl-paste) is available.
+
+    On headless Linux (e.g. SSH remote), pyperclip may fail because
+    DISPLAY is not set, but PIL's ImageGrab.grabclipboard() can still
+    read images through xclip or wl-paste (e.g. via clipboard bridging
+    tools like cc-clip that shim xclip over an SSH tunnel).
+    """
+    if sys.platform == "linux":
+        return shutil.which("xclip") is not None or shutil.which("wl-paste") is not None
+    # macOS and Windows use native APIs that do not require external tools.
+    return True
 
 
 def grab_media_from_clipboard() -> ClipboardResult | None:

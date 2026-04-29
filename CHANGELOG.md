@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Enable clipboard image paste on headless Linux over SSH — when pyperclip is unavailable (e.g. DISPLAY is not set), Ctrl-V now falls back to xclip or wl-paste via PIL so remote clipboard bridges can still inject images; also prevents a UI crash from built-in clipboard shortcuts when pyperclip is broken
+
 ## 1.40.0 (2026-04-28)
 
 - Core: Fix `--yolo` mode unintentionally preventing the model from calling `AskUserQuestion` — yolo used to inject a system reminder telling the model it was in "non-interactive mode" and must not ask, and the ask-user tool auto-dismissed in yolo. Both were wrong: yolo only bypasses permission approvals; it does not mean "the user is gone". Yolo no longer injects model guidance, and the user remains reachable through `AskUserQuestion`

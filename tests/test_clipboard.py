@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import shutil
+import sys
 from pathlib import Path
 
 from PIL import Image
 
-from kimi_cli.utils.clipboard import _VIDEO_SUFFIXES, _classify_file_paths
+from kimi_cli.utils.clipboard import (
+    _VIDEO_SUFFIXES,
+    _classify_file_paths,
+    is_media_clipboard_available,
+)
 
 
 def test_classify_video_file(tmp_path: Path) -> None:
@@ -174,3 +180,46 @@ def test_classify_all_video_suffixes(tmp_path: Path) -> None:
         images, file_paths = _classify_file_paths([str(f)])
         assert images == [], f"Failed for {suffix}"
         assert file_paths == [f], f"Failed for {suffix}"
+
+
+# --- is_media_clipboard_available tests ---
+
+
+def test_media_clipboard_available_linux_with_xclip(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        shutil, "which", lambda cmd: "/usr/bin/xclip" if cmd == "xclip" else None
+    )
+    assert is_media_clipboard_available() is True
+
+
+def test_media_clipboard_available_linux_with_wl_paste(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        shutil, "which", lambda cmd: "/usr/bin/wl-paste" if cmd == "wl-paste" else None
+    )
+    assert is_media_clipboard_available() is True
+
+
+def test_media_clipboard_available_linux_with_both_tools(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        shutil, "which", lambda cmd: f"/usr/bin/{cmd}"
+    )
+    assert is_media_clipboard_available() is True
+
+
+def test_media_clipboard_available_linux_without_tools(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda _cmd: None)
+    assert is_media_clipboard_available() is False
+
+
+def test_media_clipboard_available_macos(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert is_media_clipboard_available() is True
+
+
+def test_media_clipboard_available_windows(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert is_media_clipboard_available() is True
