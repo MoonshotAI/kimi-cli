@@ -1,0 +1,21 @@
+fix(runtime-status): write only from shell mode
+
+runtime.json's purpose is to identify the kimi CLI tab serving a session.
+Only the shell mode produces such a tab. The print mode is short-lived
+(one prompt, then exit), and the acp / wire modes are stdio servers
+driven by IDEs / web workers; none of them have a CLI tab for an external
+observer to find.
+
+Moving the write into the case "shell" branch fixes the concurrent-print
+scenario flagged by Codex P1 (r3158754463): a kimi --print --resume <id>
+invocation while a shell is alive on the same session would no longer
+overwrite the shell's PID with its own and then exit, leaving a dead PID
+record. Print mode now never touches runtime.json.
+
+The cross-session Reload clear in the except Reload branch continues to
+fire unconditionally. This is correct because Reload is only raised from
+shell-mode slash commands (/new, /fork, /undo). For non-shell modes
+there is no record to clear in the first place, so the call is a safe
+no-op.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
