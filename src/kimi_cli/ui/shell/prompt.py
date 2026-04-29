@@ -2100,11 +2100,14 @@ class CustomPromptSession:
             self._tip_rotation_index += 1
             self._last_tip_rotate_time = now
 
-        # Status flags: yolo / plan
+        # Status flags: yolo / afk / plan
         status = self._status_provider()
         if status.yolo_enabled:
             fragments.extend([(tc.yolo_label, "yolo"), ("", "  ")])
             remaining -= 6  # "yolo" = 4, "  " = 2
+        if status.afk_enabled:
+            fragments.extend([(tc.afk_label, "afk"), ("", "  ")])
+            remaining -= 5  # "afk" = 3, "  " = 2
         if status.plan_mode:
             fragments.extend([(tc.plan_label, "plan"), ("", "  ")])
             remaining -= 6

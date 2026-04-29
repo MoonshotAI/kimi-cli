@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.53.0 (2026-04-28)
+
 - Kimi: Fix stale API key after OAuth token refresh — `on_retryable_error` now reads the current `api_key` from the live client instead of the cached `_api_key`, so that OAuth token refreshes applied via `client.api_key` are preserved when the client is rebuilt after a retryable error
 
 ## 0.52.0 (2026-04-24)

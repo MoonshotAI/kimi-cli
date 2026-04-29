@@ -61,6 +61,11 @@ def test_initialize_handshake(tmp_path) -> None:
                             "aliases": [],
                         },
                         {
+                            "name": "afk",
+                            "description": "Toggle afk mode (auto-dismiss AskUserQuestion, auto-approve tool calls)",
+                            "aliases": [],
+                        },
+                        {
                             "name": "plan",
                             "description": "Toggle plan mode. Usage: /plan [on|off|view|clear]",
                             "aliases": [],
@@ -163,6 +168,11 @@ def test_initialize_external_tool_conflict(tmp_path) -> None:
                         {
                             "name": "yolo",
                             "description": "Toggle YOLO mode (auto-approve all actions)",
+                            "aliases": [],
+                        },
+                        {
+                            "name": "afk",
+                            "description": "Toggle afk mode (auto-dismiss AskUserQuestion, auto-approve tool calls)",
                             "aliases": [],
                         },
                         {

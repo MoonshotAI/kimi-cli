@@ -94,7 +94,7 @@ The ephemeral context is **merged back** into the main conversation history when
 
 | Option | Description |
 |--------|-------------|
-| `--print` | Run in print mode (non-interactive), implicitly enables `--yolo` |
+| `--print` | Run in print mode (non-interactive), implicitly enables `--afk` |
 | `--quiet` | Shortcut for `--print --output-format text --final-message-only` |
 | `--acp` | Run in ACP server mode (deprecated, use `kimi acp` instead) |
 | `--wire` | Run in Wire server mode (experimental) |
@@ -126,12 +126,13 @@ Default loads `~/.kimi/mcp.json` (if exists). See [Model Context Protocol](../cu
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--yolo` | `-y` | Auto-approve all operations |
+| `--yolo` | `-y` | Auto-approve all tool calls (user still reachable for `AskUserQuestion`) |
 | `--yes` | | Alias for `--yolo` |
 | `--auto-approve` | | Alias for `--yolo` |
+| `--afk` | | Away-from-keyboard: auto-approve tool calls and auto-dismiss `AskUserQuestion`. Use when no user will be at the terminal |
 
 ::: warning Note
-In YOLO mode, all file modifications and shell commands are automatically executed. Use with caution.
+In YOLO or AFK mode, all file modifications and shell commands are automatically executed. Use with caution.
 :::
 
 ## Plan mode
