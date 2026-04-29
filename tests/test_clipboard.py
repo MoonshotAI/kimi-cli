@@ -264,8 +264,49 @@ def test_grab_image_linux_xclip_falls_back_to_wlpaste(monkeypatch, tmp_path: Pat
     assert calls == ["xclip", "wl-paste"]
 
 
-def test_grab_image_linux_xclip_silent_error_no_fallback(monkeypatch) -> None:
-    """When xclip reports a silent error (empty clipboard), do not try wl-paste."""
+def test_grab_image_linux_xclip_silent_error_then_wlpaste_succeeds(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """When xclip reports a silent error, fallback to wl-paste."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+
+    img_path = tmp_path / "clipboard.png"
+    Image.new("RGB", (2, 2)).save(img_path)
+    img_bytes = img_path.read_bytes()
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode: int
+            stdout: bytes
+            stderr: bytes
+
+        if args[0] == "xclip":
+            r = FakeResult()
+            r.returncode = 1
+            r.stdout = b""
+            r.stderr = b"xclip: Error: There is no owner for the selection"
+            return r
+        r = FakeResult()
+        r.returncode = 0
+        r.stdout = img_bytes
+        r.stderr = b""
+        return r
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is not None
+    assert result.size == (2, 2)
+    assert calls == ["xclip", "wl-paste"]
+
+
+def test_grab_image_linux_both_tools_silent_error(monkeypatch) -> None:
+    """When both tools report silent errors, return None."""
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
 
@@ -277,7 +318,7 @@ def test_grab_image_linux_xclip_silent_error_no_fallback(monkeypatch) -> None:
         class FakeResult:
             returncode = 1
             stdout = b""
-            stderr = b"xclip: Error: There is no owner for the selection"
+            stderr = b"No selection"
 
         return FakeResult()
 
@@ -285,7 +326,7 @@ def test_grab_image_linux_xclip_silent_error_no_fallback(monkeypatch) -> None:
 
     result = _grab_image_linux()
     assert result is None
-    assert calls == ["xclip"]
+    assert calls == ["xclip", "wl-paste"]
 
 
 def test_grab_image_linux_xclip_missing_wlpaste_succeeds(monkeypatch, tmp_path: Path) -> None:

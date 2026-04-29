@@ -130,7 +130,7 @@ def _grab_image_linux() -> Image.Image | None:
             b"no owner for the ",
         ]
         if any(se in err for se in silent_errors):
-            return None
+            continue
         # Otherwise, a real error (e.g. tool broken) — try next candidate.
 
     return None
