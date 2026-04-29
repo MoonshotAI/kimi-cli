@@ -448,13 +448,57 @@ class KimiToolset:
             server_info.status = "connecting"
             try:
                 async with server_info.client as client:
+                    mcp_client_config = runtime.config.mcp.client
                     for tool in await client.list_tools():
                         server_info.tools.append(
-                            MCPTool(server_name, tool, client, runtime=runtime)
+                            MCPTool(
+                                server_name,
+                                tool,
+                                client,
+                                runtime=runtime,
+                                max_description_chars=mcp_client_config.max_tool_description_chars,
+                            )
                         )
 
+                total_schema_bytes = 0
+                visible_tools = 0
+                hidden_by_count = 0
+                hidden_by_budget = 0
                 for tool in server_info.tools:
                     self.add(tool)
+                    schema_bytes = _tool_schema_bytes(tool.base)
+                    if visible_tools >= mcp_client_config.max_visible_tools_per_server:
+                        self.hide(tool.name)
+                        hidden_by_count += 1
+                        continue
+                    if (
+                        total_schema_bytes + schema_bytes
+                        > mcp_client_config.max_total_tool_schema_bytes
+                    ):
+                        self.hide(tool.name)
+                        hidden_by_budget += 1
+                        continue
+                    visible_tools += 1
+                    total_schema_bytes += schema_bytes
+
+                hidden_tools = hidden_by_count + hidden_by_budget
+                if hidden_tools > 0:
+                    logger.warning(
+                        "MCP server '{server_name}' exposes {total} tools; "
+                        "{visible} visible, {hidden} hidden "
+                        "(over_count={over_count}, over_budget={over_budget}).",
+                        server_name=server_name,
+                        total=len(server_info.tools),
+                        visible=visible_tools,
+                        hidden=hidden_tools,
+                        over_count=hidden_by_count,
+                        over_budget=hidden_by_budget,
+                    )
+                    _toast_mcp(
+                        "MCP server "
+                        f"`{server_name}` exposes {len(server_info.tools)} tools; "
+                        f"{visible_tools} visible, {hidden_tools} hidden due to tool budget."
+                    )
 
                 server_info.status = "connected"
                 logger.info("Connected MCP server: {server_name}", server_name=server_name)
@@ -566,13 +610,19 @@ class MCPTool[T: ClientTransport](CallableTool):
         client: fastmcp.Client[T],
         *,
         runtime: Runtime,
+        max_description_chars: int,
         **kwargs: Any,
     ):
+        mcp_description = mcp_tool.description or "No description provided."
+        if len(mcp_description) > max_description_chars:
+            mcp_description = (
+                mcp_description[:max_description_chars].rstrip() + " [description truncated]"
+            )
         super().__init__(
             name=mcp_tool.name,
             description=(
                 f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
-                f"{mcp_tool.description or 'No description provided.'}"
+                f"{mcp_description}"
             ),
             parameters=mcp_tool.inputSchema,
             **kwargs,
@@ -686,6 +736,20 @@ def _media_part_size(part: ContentPart) -> int | None:
     if isinstance(part, VideoURLPart):
         return len(part.video_url.url)
     return None
+
+
+def _tool_schema_bytes(tool: Tool) -> int:
+    """Estimate the JSON-serialized byte size of a tool definition."""
+    payload = {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
+        },
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return len(encoded)
 
 
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
