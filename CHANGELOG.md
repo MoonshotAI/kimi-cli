@@ -32,6 +32,8 @@ Only write entries that are worth mentioning to users.
 - Core: Add `auto_approve_workspace_dirs` config option — list of workspace directory names (relative to `work_dir`) where `WriteFile` and `StrReplaceFile` approvals are skipped automatically; useful for skills, plans, notes, or other directories the agent routinely modifies
 - Core: New config files are now created from a commented TOML template with inline documentation and examples instead of a plain serialized dump
 - Approval: Auto-approve actions now support glob pattern matching via `fnmatch` — exact match is checked first, then pattern expansion, so action names containing glob-special characters are handled safely
+- Core: Add session-level telemetry tracking — sessions now emit a `session_started` event on first interaction, attributing Wire and ACP sessions to their client name and version; adds a debug server script for local telemetry inspection
+- Security: Harden `auto_approve_workspace_dirs` against path traversal — entries containing `..` that would escape the workspace are now rejected and logged
 
 
 ## 1.39.0 (2026-04-24)

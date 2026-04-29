@@ -78,7 +78,7 @@ class ApprovalState:
         # only applied to entries that actually contain glob-special characters.
         self._auto_approve_exact: set[str] = set()
         self._auto_approve_patterns: list[str] = []
-        for entry in (auto_approve_actions or set()):
+        for entry in auto_approve_actions or set():
             if _GLOB_SPECIAL_RE.search(entry):
                 self._auto_approve_patterns.append(entry)
             else:

@@ -340,11 +340,11 @@ extra_skill_dirs = []
 # Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.
 telemetry = true
 
-# Suppress the YOLO mode hint injected into the system prompt.
-skip_yolo_prompt_injection = false
+# Suppress the AFK mode system reminder injected into the system prompt.
+skip_afk_prompt_injection = false
 
 [loop_control]
-max_steps_per_turn = 500
+max_steps_per_turn = 1000
 max_retries_per_step = 3
 max_ralph_iterations = 0
 reserved_context_size = 50000
