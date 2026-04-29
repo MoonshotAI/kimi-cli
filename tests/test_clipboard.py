@@ -396,3 +396,124 @@ def test_grab_image_linux_xclip_succeeds(monkeypatch, tmp_path: Path) -> None:
     assert result is not None
     assert result.size == (4, 4)
     assert calls == ["xclip"]
+
+
+def test_grab_image_linux_wayland_prefers_wlpaste(monkeypatch, tmp_path: Path) -> None:
+    """On Wayland, wl-paste is tried first."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-1")
+
+    img_path = tmp_path / "clipboard.png"
+    Image.new("RGB", (5, 5)).save(img_path)
+    img_bytes = img_path.read_bytes()
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode = 0
+            stdout = img_bytes
+            stderr = b""
+
+        return FakeResult()
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is not None
+    assert result.size == (5, 5)
+    assert calls == ["wl-paste"]
+
+
+def test_grab_image_linux_wayland_wlpaste_falls_back_to_xclip(monkeypatch, tmp_path: Path) -> None:
+    """On Wayland, if wl-paste fails with real error, fallback to xclip."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-1")
+
+    img_path = tmp_path / "clipboard.png"
+    Image.new("RGB", (6, 6)).save(img_path)
+    img_bytes = img_path.read_bytes()
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode: int
+            stdout: bytes
+            stderr: bytes
+
+        if args[0] == "wl-paste":
+            r = FakeResult()
+            r.returncode = 1
+            r.stdout = b""
+            r.stderr = b"connection refused"
+            return r
+        r = FakeResult()
+        r.returncode = 0
+        r.stdout = img_bytes
+        r.stderr = b""
+        return r
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is not None
+    assert result.size == (6, 6)
+    assert calls == ["wl-paste", "xclip"]
+
+
+def test_grab_image_linux_x11_prefers_xclip(monkeypatch, tmp_path: Path) -> None:
+    """On X11, xclip is tried first."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+
+    img_path = tmp_path / "clipboard.png"
+    Image.new("RGB", (7, 7)).save(img_path)
+    img_bytes = img_path.read_bytes()
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+
+        class FakeResult:
+            returncode = 0
+            stdout = img_bytes
+            stderr = b""
+
+        return FakeResult()
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is not None
+    assert result.size == (7, 7)
+    assert calls == ["xclip"]
+
+
+def test_grab_image_linux_timeout(monkeypatch) -> None:
+    """When subprocess times out, continue to next backend."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+
+    calls = []
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+        import subprocess
+
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=3)
+
+    monkeypatch.setattr("kimi_cli.utils.clipboard.subprocess.run", fake_run)
+
+    result = _grab_image_linux()
+    assert result is None
+    assert calls == ["xclip", "wl-paste"]

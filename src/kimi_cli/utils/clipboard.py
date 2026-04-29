@@ -103,14 +103,30 @@ def grab_media_from_clipboard() -> ClipboardResult | None:
 
 
 def _grab_image_linux() -> Image.Image | None:
-    """Read image from Linux clipboard, trying xclip then wl-paste."""
-    for args in (
-        ["xclip", "-selection", "clipboard", "-t", "image/png", "-o"],
-        ["wl-paste", "-t", "image"],
-    ):
+    """Read image from Linux clipboard with session-aware tool fallback.
+
+    Tries the backend matching the current session type first to avoid
+    reading stale data from the wrong clipboard (e.g. XWayland vs
+    Wayland). On headless systems with no session type, xclip is tried
+    first since clipboard bridges (e.g. cc-clip) typically shim xclip.
+    """
+    xclip_args = ["xclip", "-selection", "clipboard", "-t", "image/png", "-o"]
+    wlpaste_args = ["wl-paste", "-t", "image"]
+
+    if os.getenv("WAYLAND_DISPLAY"):
+        candidates = (wlpaste_args, xclip_args)
+    elif os.getenv("DISPLAY"):
+        candidates = (xclip_args, wlpaste_args)
+    else:  # headless — xclip first for common clipboard bridges
+        candidates = (xclip_args, wlpaste_args)
+
+    for args in candidates:
         if shutil.which(args[0]) is None:
             continue
-        p = subprocess.run(args, capture_output=True)
+        try:
+            p = subprocess.run(args, capture_output=True, timeout=3)
+        except subprocess.TimeoutExpired:
+            continue
         if p.returncode == 0 and p.stdout:
             data = io.BytesIO(p.stdout)
             try:
