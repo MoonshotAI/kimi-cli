@@ -177,6 +177,8 @@ class MCPClientConfig(BaseModel):
     """Maximum characters exposed for a single MCP tool description."""
     max_total_tool_schema_bytes: int = Field(default=200_000, ge=1)
     """Per-server byte budget for MCP tool schemas exposed to the model."""
+    max_total_mcp_tool_schema_bytes: int = Field(default=300_000, ge=1)
+    """Approximate global byte budget for all visible MCP tool schemas per request."""
     max_visible_tools_per_server: int = Field(default=64, ge=1)
     """Maximum number of MCP tools exposed to the model per server."""
 

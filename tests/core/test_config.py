@@ -59,6 +59,7 @@ def test_default_config_dump():
                     "tool_call_timeout_ms": 60000,
                     "max_tool_description_chars": 1000,
                     "max_total_tool_schema_bytes": 200000,
+                    "max_total_mcp_tool_schema_bytes": 300000,
                     "max_visible_tools_per_server": 64,
                 }
             },

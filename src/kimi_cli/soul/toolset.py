@@ -5,6 +5,7 @@ import contextlib
 import importlib
 import inspect
 import json
+import re
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -449,13 +450,20 @@ class KimiToolset:
             try:
                 async with server_info.client as client:
                     mcp_client_config = runtime.config.mcp.client
+                    used_names = {tool.name for tool in server_info.tools}
                     for tool in await client.list_tools():
+                        exposed_name = _dedupe_tool_name(
+                            _canonical_mcp_tool_name(server_name, tool.name),
+                            used_names,
+                        )
+                        used_names.add(exposed_name)
                         server_info.tools.append(
                             MCPTool(
                                 server_name,
                                 tool,
                                 client,
                                 runtime=runtime,
+                                exposed_name=exposed_name,
                                 max_description_chars=mcp_client_config.max_tool_description_chars,
                             )
                         )
@@ -535,6 +543,27 @@ class KimiToolset:
             ]
             results = await asyncio.gather(*tasks) if tasks else []
             failed_servers = {name: error for name, error in results if error is not None}
+            if not failed_servers:
+                hidden_globally = _apply_global_mcp_schema_budget(
+                    runtime, self._mcp_servers, self, self._hidden_tools
+                )
+                if hidden_globally > 0:
+                    visible_globally = sum(
+                        1
+                        for info in self._mcp_servers.values()
+                        for tool in info.tools
+                        if tool.name not in self._hidden_tools
+                    )
+                    logger.warning(
+                        "Hidden {hidden} MCP tools due to global schema budget across servers; "
+                        "{visible} remain visible.",
+                        hidden=hidden_globally,
+                        visible=visible_globally,
+                    )
+                    _toast_mcp(
+                        f"MCP global tool budget applied: {visible_globally} visible, "
+                        f"{hidden_globally} hidden across servers."
+                    )
 
             for mcp_config in mcp_configs:
                 # Skip empty MCP configs (no servers defined)
@@ -610,6 +639,7 @@ class MCPTool[T: ClientTransport](CallableTool):
         client: fastmcp.Client[T],
         *,
         runtime: Runtime,
+        exposed_name: str,
         max_description_chars: int,
         **kwargs: Any,
     ):
@@ -619,19 +649,21 @@ class MCPTool[T: ClientTransport](CallableTool):
                 mcp_description[:max_description_chars].rstrip() + " [description truncated]"
             )
         super().__init__(
-            name=mcp_tool.name,
+            name=exposed_name,
             description=(
-                f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
+                "This is an MCP (Model Context Protocol) tool from "
+                f"MCP server `{server_name}`. Original tool name: `{mcp_tool.name}`.\n\n"
                 f"{mcp_description}"
             ),
             parameters=mcp_tool.inputSchema,
             **kwargs,
         )
+        self._server_name = server_name
         self._mcp_tool = mcp_tool
         self._client = client
         self._runtime = runtime
         self._timeout = timedelta(milliseconds=runtime.config.mcp.client.tool_call_timeout_ms)
-        self._action_name = f"mcp:{mcp_tool.name}"
+        self._action_name = f"mcp:{server_name}:{mcp_tool.name}"
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
         description = f"Call MCP tool `{self._mcp_tool.name}`."
@@ -739,7 +771,7 @@ def _media_part_size(part: ContentPart) -> int | None:
 
 
 def _tool_schema_bytes(tool: Tool) -> int:
-    """Estimate the JSON-serialized byte size of a tool definition."""
+    """Estimate tool-definition bytes before provider normalization."""
     payload = {
         "type": "function",
         "function": {
@@ -750,6 +782,52 @@ def _tool_schema_bytes(tool: Tool) -> int:
     }
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return len(encoded)
+
+
+def _canonical_mcp_tool_name(server_name: str, tool_name: str) -> str:
+    """Build a namespaced MCP tool name that avoids cross-server collisions."""
+    server_fragment = _normalize_tool_name_fragment(server_name)
+    tool_fragment = _normalize_tool_name_fragment(tool_name)
+    return f"mcp__{server_fragment}__{tool_fragment}"
+
+
+def _normalize_tool_name_fragment(value: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9_-]", "_", value)
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    return normalized or "tool"
+
+
+def _dedupe_tool_name(name: str, used_names: set[str]) -> str:
+    if name not in used_names:
+        return name
+    suffix = 2
+    while True:
+        candidate = f"{name}__{suffix}"
+        if candidate not in used_names:
+            return candidate
+        suffix += 1
+
+
+def _apply_global_mcp_schema_budget(
+    runtime: Runtime,
+    mcp_servers: dict[str, MCPServerInfo],
+    toolset: KimiToolset,
+    hidden_tools: set[str],
+) -> int:
+    max_total = runtime.config.mcp.client.max_total_mcp_tool_schema_bytes
+    total_schema_bytes = 0
+    hidden_count = 0
+    for server_info in mcp_servers.values():
+        for tool in server_info.tools:
+            if tool.name in hidden_tools:
+                continue
+            schema_bytes = _tool_schema_bytes(tool.base)
+            if total_schema_bytes + schema_bytes > max_total:
+                toolset.hide(tool.name)
+                hidden_count += 1
+                continue
+            total_schema_bytes += schema_bytes
+    return hidden_count
 
 
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:

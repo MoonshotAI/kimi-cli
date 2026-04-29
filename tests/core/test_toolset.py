@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
 from kosong.tooling.error import ToolNotFoundError as KosongToolNotFoundError
+from mcp.types import Tool as MCPRawTool
 from pydantic import BaseModel
 
 from kimi_cli.soul.toolset import KimiToolset, MCPTool, _tool_schema_bytes
@@ -184,15 +184,8 @@ def test_hide_unhide_cycle():
     assert "ToolA" in _tool_names(ts)
 
 
-@dataclass
-class _FakeMCPRawTool:
-    name: str
-    description: str
-    inputSchema: dict[str, Any]
-
-
 class _FakeMCPClient:
-    def __init__(self, tools: list[_FakeMCPRawTool]):
+    def __init__(self, tools: list[MCPRawTool]):
         self._tools = tools
 
     async def __aenter__(self):
@@ -216,7 +209,7 @@ def _fake_mcp_config(server_name: str):
 
 async def test_mcp_tool_description_is_truncated_without_schema_changes(runtime):
     long_desc = "x" * 2000
-    raw = _FakeMCPRawTool(
+    raw = MCPRawTool(
         name="LongTool",
         description=long_desc,
         inputSchema={"type": "object", "properties": {"value": {"type": "string"}}},
@@ -224,8 +217,9 @@ async def test_mcp_tool_description_is_truncated_without_schema_changes(runtime)
     tool = MCPTool(
         "server-a",
         raw,
-        _FakeMCPClient([raw]),
+        cast(Any, _FakeMCPClient([raw])),
         runtime=runtime,
+        exposed_name="mcp__server_a__LongTool",
         max_description_chars=100,
     )
 
@@ -235,12 +229,12 @@ async def test_mcp_tool_description_is_truncated_without_schema_changes(runtime)
 
 async def test_load_mcp_tools_hides_tools_when_schema_budget_exceeded(runtime, monkeypatch):
     server_name = "server-a"
-    small = _FakeMCPRawTool(
+    small = MCPRawTool(
         name="SmallTool",
         description="small",
         inputSchema={"type": "object", "properties": {"value": {"type": "string"}}},
     )
-    large = _FakeMCPRawTool(
+    large = MCPRawTool(
         name="LargeTool",
         description="large",
         inputSchema={
@@ -259,8 +253,9 @@ async def test_load_mcp_tools_hides_tools_when_schema_budget_exceeded(runtime, m
     preview_small = MCPTool(
         server_name,
         small,
-        _FakeMCPClient([small]),
+        cast(Any, _FakeMCPClient([small])),
         runtime=runtime,
+        exposed_name="mcp__server_a__SmallTool",
         max_description_chars=runtime.config.mcp.client.max_tool_description_chars,
     )
     small_bytes = _tool_schema_bytes(preview_small.base)
@@ -278,14 +273,17 @@ async def test_load_mcp_tools_hides_tools_when_schema_budget_exceeded(runtime, m
     ts = KimiToolset()
     await ts.load_mcp_tools([_fake_mcp_config(server_name)], runtime, in_background=False)
 
-    assert [t.name for t in ts.mcp_servers[server_name].tools] == ["SmallTool", "LargeTool"]
-    assert {t.name for t in ts.tools} == {"SmallTool"}
+    assert [t.name for t in ts.mcp_servers[server_name].tools] == [
+        "mcp__server-a__SmallTool",
+        "mcp__server-a__LargeTool",
+    ]
+    assert {t.name for t in ts.tools} == {"mcp__server-a__SmallTool"}
 
 
 async def test_load_mcp_tools_shows_budget_toast_for_hidden_tools(runtime, monkeypatch):
     server_name = "server-b"
     tools = [
-        _FakeMCPRawTool(
+        MCPRawTool(
             name=f"Tool{i}",
             description="small",
             inputSchema={"type": "object", "properties": {"value": {"type": "string"}}},
@@ -312,5 +310,86 @@ async def test_load_mcp_tools_shows_budget_toast_for_hidden_tools(runtime, monke
     await ts.load_mcp_tools([_fake_mcp_config(server_name)], runtime, in_background=True)
     await ts.wait_for_mcp_tools()
 
-    assert {t.name for t in ts.tools} == {"Tool0"}
+    assert {t.name for t in ts.tools} == {"mcp__server-b__Tool0"}
     assert any("hidden due to tool budget" in message for message in toasts)
+
+
+async def test_load_mcp_tools_applies_global_schema_budget(runtime, monkeypatch):
+    runtime.config.mcp.client.max_visible_tools_per_server = 10
+    runtime.config.mcp.client.max_total_tool_schema_bytes = 1_000_000
+    runtime.config.mcp.client.max_total_mcp_tool_schema_bytes = 500
+
+    server_a = "server-a"
+    server_b = "server-b"
+    tools_a = [
+        MCPRawTool(
+            name=f"ToolA{i}",
+            description="x" * 80,
+            inputSchema={"type": "object", "properties": {"value": {"type": "string"}}},
+        )
+        for i in range(2)
+    ]
+    tools_b = [
+        MCPRawTool(
+            name=f"ToolB{i}",
+            description="x" * 80,
+            inputSchema={"type": "object", "properties": {"value": {"type": "string"}}},
+        )
+        for i in range(2)
+    ]
+
+    def fake_client_factory(mcp_config):
+        name = next(iter(mcp_config.mcpServers.keys()))
+        if name == server_a:
+            return _FakeMCPClient(tools_a)
+        if name == server_b:
+            return _FakeMCPClient(tools_b)
+        raise AssertionError(f"unexpected server name: {name}")
+
+    monkeypatch.setattr("fastmcp.Client", fake_client_factory)
+
+    ts = KimiToolset()
+    await ts.load_mcp_tools(
+        [_fake_mcp_config(server_a), _fake_mcp_config(server_b)],
+        runtime,
+        in_background=False,
+    )
+    visible = [t.name for t in ts.tools]
+    assert len(visible) < 4
+    assert len(visible) >= 1
+
+
+async def test_load_mcp_tools_namespaced_tool_names_avoid_name_collisions(runtime, monkeypatch):
+    tool_name = "search"
+    server_a = "s1"
+    server_b = "s2"
+    runtime.config.mcp.client.max_visible_tools_per_server = 10
+    runtime.config.mcp.client.max_total_tool_schema_bytes = 1_000_000
+    runtime.config.mcp.client.max_total_mcp_tool_schema_bytes = 1_000_000
+
+    def make_tool():
+        return MCPRawTool(
+            name=tool_name,
+            description="desc",
+            inputSchema={"type": "object", "properties": {"query": {"type": "string"}}},
+        )
+
+    def fake_client_factory(mcp_config):
+        name = next(iter(mcp_config.mcpServers.keys()))
+        if name == server_a:
+            return _FakeMCPClient([make_tool()])
+        if name == server_b:
+            return _FakeMCPClient([make_tool()])
+        raise AssertionError(f"unexpected server name: {name}")
+
+    monkeypatch.setattr("fastmcp.Client", fake_client_factory)
+
+    ts = KimiToolset()
+    await ts.load_mcp_tools(
+        [_fake_mcp_config(server_a), _fake_mcp_config(server_b)],
+        runtime,
+        in_background=False,
+    )
+
+    visible = {t.name for t in ts.tools}
+    assert visible == {"mcp__s1__search", "mcp__s2__search"}
