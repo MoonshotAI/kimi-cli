@@ -12,7 +12,12 @@ from kosong.tooling.error import ToolNotFoundError as KosongToolNotFoundError
 from mcp.types import Tool as MCPRawTool
 from pydantic import BaseModel
 
-from kimi_cli.soul.toolset import KimiToolset, MCPTool, _tool_schema_bytes
+from kimi_cli.soul.toolset import (
+    KimiToolset,
+    MCPTool,
+    _canonical_mcp_tool_name,
+    _tool_schema_bytes,
+)
 from kimi_cli.wire.types import ToolCall, ToolResult
 
 
@@ -219,7 +224,7 @@ async def test_mcp_tool_description_is_truncated_without_schema_changes(runtime)
         raw,
         cast(Any, _FakeMCPClient([raw])),
         runtime=runtime,
-        exposed_name="mcp__server_a__LongTool",
+        exposed_name=_canonical_mcp_tool_name("server-a", raw.name),
         max_description_chars=100,
     )
 
@@ -255,7 +260,7 @@ async def test_load_mcp_tools_hides_tools_when_schema_budget_exceeded(runtime, m
         small,
         cast(Any, _FakeMCPClient([small])),
         runtime=runtime,
-        exposed_name="mcp__server_a__SmallTool",
+        exposed_name=_canonical_mcp_tool_name(server_name, small.name),
         max_description_chars=runtime.config.mcp.client.max_tool_description_chars,
     )
     small_bytes = _tool_schema_bytes(preview_small.base)
@@ -274,10 +279,10 @@ async def test_load_mcp_tools_hides_tools_when_schema_budget_exceeded(runtime, m
     await ts.load_mcp_tools([_fake_mcp_config(server_name)], runtime, in_background=False)
 
     assert [t.name for t in ts.mcp_servers[server_name].tools] == [
-        "mcp__server-a__SmallTool",
-        "mcp__server-a__LargeTool",
+        _canonical_mcp_tool_name(server_name, "SmallTool"),
+        _canonical_mcp_tool_name(server_name, "LargeTool"),
     ]
-    assert {t.name for t in ts.tools} == {"mcp__server-a__SmallTool"}
+    assert {t.name for t in ts.tools} == {_canonical_mcp_tool_name(server_name, "SmallTool")}
 
 
 async def test_load_mcp_tools_shows_budget_toast_for_hidden_tools(runtime, monkeypatch):
@@ -310,7 +315,7 @@ async def test_load_mcp_tools_shows_budget_toast_for_hidden_tools(runtime, monke
     await ts.load_mcp_tools([_fake_mcp_config(server_name)], runtime, in_background=True)
     await ts.wait_for_mcp_tools()
 
-    assert {t.name for t in ts.tools} == {"mcp__server-b__Tool0"}
+    assert {t.name for t in ts.tools} == {_canonical_mcp_tool_name(server_name, "Tool0")}
     assert any("hidden due to tool budget" in message for message in toasts)
 
 
@@ -392,4 +397,26 @@ async def test_load_mcp_tools_namespaced_tool_names_avoid_name_collisions(runtim
     )
 
     visible = {t.name for t in ts.tools}
-    assert visible == {"mcp__s1__search", "mcp__s2__search"}
+    assert visible == {
+        _canonical_mcp_tool_name(server_a, tool_name),
+        _canonical_mcp_tool_name(server_b, tool_name),
+    }
+
+
+def test_canonical_mcp_tool_name_is_bounded_and_stable():
+    server_name = "very.long/server-name with spaces and punctuation"
+    tool_name = "extremely-long-tool-name with spaces and punctuation and a trailing suffix"
+
+    canonical = _canonical_mcp_tool_name(server_name, tool_name)
+
+    assert canonical.startswith("mcp__")
+    assert len(canonical) <= 64
+    assert canonical == _canonical_mcp_tool_name(server_name, tool_name)
+
+
+def test_canonical_mcp_tool_name_avoids_normalization_collisions():
+    tool_name = "search"
+    first = _canonical_mcp_tool_name("server.one", tool_name)
+    second = _canonical_mcp_tool_name("server_one", tool_name)
+
+    assert first != second

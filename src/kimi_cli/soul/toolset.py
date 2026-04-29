@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import importlib
 import inspect
 import json
@@ -83,6 +84,8 @@ def get_current_tool_call_or_none() -> ToolCall | None:
 
 
 type ToolType = CallableTool | CallableTool2[Any]
+
+_MAX_MCP_TOOL_NAME_LENGTH = 64
 
 
 if TYPE_CHECKING:
@@ -788,7 +791,18 @@ def _canonical_mcp_tool_name(server_name: str, tool_name: str) -> str:
     """Build a namespaced MCP tool name that avoids cross-server collisions."""
     server_fragment = _normalize_tool_name_fragment(server_name)
     tool_fragment = _normalize_tool_name_fragment(tool_name)
-    return f"mcp__{server_fragment}__{tool_fragment}"
+    digest = hashlib.sha1(f"{server_name}\0{tool_name}".encode()).hexdigest()[:8]
+    prefix = "mcp__"
+    separator = "__"
+    suffix = f"{separator}{digest}"
+    available = _MAX_MCP_TOOL_NAME_LENGTH - len(prefix) - len(separator) - len(suffix)
+    if available <= 1:
+        return f"{prefix}{digest}"
+    server_budget = max(1, available // 3)
+    tool_budget = max(1, available - server_budget)
+    server_fragment = server_fragment[:server_budget].rstrip("_-") or "s"
+    tool_fragment = tool_fragment[:tool_budget].rstrip("_-") or "tool"
+    return f"{prefix}{server_fragment}{separator}{tool_fragment}{suffix}"
 
 
 def _normalize_tool_name_fragment(value: str) -> str:
@@ -802,7 +816,8 @@ def _dedupe_tool_name(name: str, used_names: set[str]) -> str:
         return name
     suffix = 2
     while True:
-        candidate = f"{name}__{suffix}"
+        suffix_text = f"__{suffix}"
+        candidate = f"{name[: _MAX_MCP_TOOL_NAME_LENGTH - len(suffix_text)]}{suffix_text}"
         if candidate not in used_names:
             return candidate
         suffix += 1
