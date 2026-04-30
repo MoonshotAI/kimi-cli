@@ -39,6 +39,7 @@ class Params(BaseModel):
 
 class WriteFile(CallableTool2[Params]):
     name: str = "WriteFile"
+    strict: bool = True
     description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 

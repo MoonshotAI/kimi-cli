@@ -62,6 +62,7 @@ class Params(BaseModel):
 
 class ReadFile(CallableTool2[Params]):
     name: str = "ReadFile"
+    strict: bool = True
     params: type[Params] = Params
 
     def __init__(self, runtime: Runtime) -> None:

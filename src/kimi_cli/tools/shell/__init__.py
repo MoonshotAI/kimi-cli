@@ -58,6 +58,7 @@ class Params(BaseModel):
 
 class Shell(CallableTool2[Params]):
     name: str = "Shell"
+    strict: bool = True
     params: type[Params] = Params
 
     def __init__(self, approval: Approval, environment: Environment, runtime: Runtime):
