@@ -597,9 +597,7 @@ def test_resolve_source_zip_url_downloads_and_extracts(
     assert tmp_dir is not None
 
 
-def test_resolve_source_zip_url_with_query_string(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_resolve_source_zip_url_with_query_string(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """URL path ending in .zip is detected even with a query string."""
     monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
     (tmp_path / "tmp").mkdir()
@@ -618,16 +616,12 @@ def test_resolve_source_github_archive_zip_takes_zip_path(
     _patch_httpx_stream(monkeypatch, _build_plugin_zip("repo-main"))
 
     with patch("subprocess.run") as mock_run:
-        source, _ = _resolve_source(
-            "https://github.com/org/repo/archive/refs/heads/main.zip"
-        )
+        source, _ = _resolve_source("https://github.com/org/repo/archive/refs/heads/main.zip")
     mock_run.assert_not_called()
     assert (source / "plugin.json").exists()
 
 
-def test_resolve_source_zip_url_download_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_resolve_source_zip_url_download_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """HTTP error during download should exit cleanly and clean up tmp."""
     import httpx
 

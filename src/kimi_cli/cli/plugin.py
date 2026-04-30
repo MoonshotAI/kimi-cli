@@ -108,9 +108,7 @@ def _resolve_source(target: str) -> tuple[Path, Path | None]:
         zip_path = tmp / "_download.zip"
         typer.echo(f"Downloading {target}...")
         try:
-            with httpx.stream(
-                "GET", target, follow_redirects=True, timeout=60.0
-            ) as resp:
+            with httpx.stream("GET", target, follow_redirects=True, timeout=60.0) as resp:
                 resp.raise_for_status()
                 with zip_path.open("wb") as f:
                     for chunk in resp.iter_bytes():
