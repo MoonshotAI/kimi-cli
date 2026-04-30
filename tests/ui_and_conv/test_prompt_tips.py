@@ -13,6 +13,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell import prompt as shell_prompt
 from kimi_cli.ui.shell.prompt import (
     _GIT_STATUS_TTL,
+    _TOOLBAR_GIT_REFRESH_INTERVAL,
     PROMPT_SYMBOL,
     BgTaskCounts,
     CustomPromptSession,
@@ -578,6 +579,77 @@ def test_git_status_not_called_when_branch_is_none(monkeypatch: Any) -> None:
     prompt_session._render_bottom_toolbar()
 
     assert status_call_count == 0, "_get_git_status must not be called when branch is None"
+
+
+def test_bottom_toolbar_throttles_git_metadata_between_renders(monkeypatch: Any) -> None:
+    branch_call_count = 0
+    status_call_count = 0
+
+    def _fake_branch() -> str:
+        nonlocal branch_call_count
+        branch_call_count += 1
+        return "main"
+
+    def _fake_status() -> tuple[bool, int, int]:
+        nonlocal status_call_count
+        status_call_count += 1
+        return (False, 0, 0)
+
+    class _DummyOutput:
+        @staticmethod
+        def get_size() -> Any:
+            return SimpleNamespace(columns=80)
+
+    monkeypatch.setattr(
+        shell_prompt, "get_app_or_none", lambda: SimpleNamespace(output=_DummyOutput())
+    )
+    monkeypatch.setattr(shell_prompt, "_get_git_branch", _fake_branch)
+    monkeypatch.setattr(shell_prompt, "_get_git_status", _fake_status)
+    monkeypatch.setattr(shell_prompt, "_shorten_cwd", lambda _: "~/proj")
+    monkeypatch.setattr(shell_prompt.time, "monotonic", lambda: 100.0)
+    _toast_queues["left"].clear()
+    _toast_queues["right"].clear()
+
+    prompt_session = _make_toolbar_session()
+
+    prompt_session._render_bottom_toolbar()
+    prompt_session._render_bottom_toolbar()
+
+    assert branch_call_count == 1
+    assert status_call_count == 1
+
+
+def test_bottom_toolbar_refreshes_git_metadata_after_throttle(monkeypatch: Any) -> None:
+    branch_call_count = 0
+    now = 100.0
+
+    def _fake_branch() -> str:
+        nonlocal branch_call_count
+        branch_call_count += 1
+        return "main"
+
+    class _DummyOutput:
+        @staticmethod
+        def get_size() -> Any:
+            return SimpleNamespace(columns=80)
+
+    monkeypatch.setattr(
+        shell_prompt, "get_app_or_none", lambda: SimpleNamespace(output=_DummyOutput())
+    )
+    monkeypatch.setattr(shell_prompt, "_get_git_branch", _fake_branch)
+    monkeypatch.setattr(shell_prompt, "_get_git_status", lambda: (False, 0, 0))
+    monkeypatch.setattr(shell_prompt, "_shorten_cwd", lambda _: "~/proj")
+    monkeypatch.setattr(shell_prompt.time, "monotonic", lambda: now)
+    _toast_queues["left"].clear()
+    _toast_queues["right"].clear()
+
+    prompt_session = _make_toolbar_session()
+
+    prompt_session._render_bottom_toolbar()
+    now += _TOOLBAR_GIT_REFRESH_INTERVAL + 0.1
+    prompt_session._render_bottom_toolbar()
+
+    assert branch_call_count == 2
 
 
 # ── Prompt layout (separator, running/idle message) ───────────────────────────
