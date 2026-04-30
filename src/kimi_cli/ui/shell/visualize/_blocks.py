@@ -8,6 +8,7 @@ They have no knowledge of the event loop or prompt_toolkit.
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections import deque
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
@@ -21,7 +22,7 @@ from rich.spinner import Spinner
 from rich.style import Style
 from rich.text import Text
 
-from kimi_cli.soul import format_context_status, format_token_count
+from kimi_cli.soul import format_token_count
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.ui.shell.console import console
 from kimi_cli.utils.datetime import format_elapsed
@@ -622,8 +623,21 @@ class _StatusBlock:
         if status.max_context_tokens is not None:
             self._max_context_tokens = status.max_context_tokens
         if status.context_usage is not None:
-            self.text.plain = format_context_status(
-                self._context_usage,
-                self._context_tokens,
-                self._max_context_tokens,
-            )
+            bounded = max(0.0, min(self._context_usage, 1.0))
+            bar_width = 10
+            filled = math.ceil(bounded * bar_width) if bounded > 0 else 0
+            pct = int(bounded * 100)
+            if bounded >= 0.85:
+                color = "red"
+            elif bounded >= 0.70:
+                color = "yellow"
+            else:
+                color = "green"
+            self.text = Text("Context ", justify="right")
+            self.text.append("█" * filled, style=color)
+            self.text.append("░" * (bar_width - filled), style=f"dim {color}")
+            self.text.append(f" {pct}%", style=color)
+            if self._max_context_tokens > 0:
+                used = format_token_count(self._context_tokens)
+                total = format_token_count(self._max_context_tokens)
+                self.text.append(f" ({used}/{total})")

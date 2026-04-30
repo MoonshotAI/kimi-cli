@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Replace context usage percentage with a visual progress bar — the status bar and live area now display a 10-block bar (`████████░░`) with color-coded fill levels (green under 70%, yellow 70–84%, red 85%+) and dimmed empty blocks for a cleaner, more glanceable indicator; token counts remain shown when available
 - Shell: Enable clipboard image paste on headless Linux over SSH — when pyperclip is unavailable (e.g. DISPLAY is not set), Ctrl-V now falls back to xclip or wl-paste so remote clipboard bridges can still inject images; also prevents a UI crash from built-in clipboard shortcuts when pyperclip is broken
 
 ## 1.40.0 (2026-04-28)
