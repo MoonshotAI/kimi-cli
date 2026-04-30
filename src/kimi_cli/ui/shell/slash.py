@@ -519,7 +519,7 @@ async def new(app: Shell, args: str):
     # /new commands (or switching away before the first message) does not
     # leave orphan empty session directories on disk.
     if current_session.is_empty():
-        await current_session.delete()
+        await current_session.delete(remove_worktree=False)
     session = await Session.create(work_dir)
     from kimi_cli.telemetry import track
 
