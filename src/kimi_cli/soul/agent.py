@@ -186,6 +186,10 @@ class Runtime:
     skills: dict[str, Skill]
     additional_dirs: list[KaosPath]
     skills_dirs: list[KaosPath]
+    # Skills roots outside the workspace; exposed to Glob access.
+    override_skills_dirs: list[KaosPath] | None = None
+    # Optional --skills-dir CLI override; used by reload_skills to preserve
+    # the original command-line intent.
     subagent_store: SubagentStore | None = None
     approval_runtime: ApprovalRuntime | None = None
     root_wire_hub: RootWireHub | None = None
@@ -207,6 +211,30 @@ class Runtime:
         self.approval_runtime.bind_root_wire_hub(self.root_wire_hub)
         self.approval.set_runtime(self.approval_runtime)
         self.background_tasks.bind_runtime(self)
+
+    async def reload_skills(self) -> list[Skill]:
+        """Rescan skill directories and update the runtime's skill registry."""
+        scoped_roots = await resolve_skills_roots(
+            self.session.work_dir,
+            skills_dirs=self.override_skills_dirs or None,
+            merge_brands=self.config.merge_all_available_skills,
+            extra_skill_dirs=self.config.extra_skill_dirs or None,
+        )
+        skills_roots_canonical = [s.root.canonical() for s in scoped_roots]
+        skills = await discover_skills_from_roots(scoped_roots)
+        self.skills = index_skills(skills)
+        skills_formatted = format_skills_for_prompt(skills)
+        import dataclasses
+        self.builtin_args = dataclasses.replace(
+            self.builtin_args,
+            KIMI_SKILLS=skills_formatted or "No skills found.",
+        )
+        new_skills_dirs = [
+            r for r in skills_roots_canonical if not is_within_directory(r, self.session.work_dir)
+        ]
+        self.skills_dirs.clear()
+        self.skills_dirs.extend(new_skills_dirs)
+        return list(self.skills.values())
 
     @staticmethod
     async def create(
@@ -330,6 +358,7 @@ class Runtime:
             skills_dirs=[
                 r for r in skills_roots_canonical if not is_within_directory(r, session.work_dir)
             ],
+            override_skills_dirs=skills_dirs,
             subagent_store=SubagentStore(session),
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
@@ -360,6 +389,7 @@ class Runtime:
             # Share the same list reference so /add-dir mutations propagate to all agents
             additional_dirs=self.additional_dirs,
             skills_dirs=self.skills_dirs,
+            override_skills_dirs=self.override_skills_dirs,
             subagent_store=self.subagent_store,
             approval_runtime=self.approval_runtime,
             root_wire_hub=self.root_wire_hub,
@@ -378,6 +408,10 @@ class Agent:
     toolset: Toolset
     runtime: Runtime
     """Each agent has its own runtime, which should be derived from its main agent."""
+    system_prompt_path: Path | None = None
+    """Path to the system prompt template; used to re-render after runtime changes."""
+    system_prompt_args: dict[str, str] | None = None
+    """Agent-spec-level args for the system prompt template."""
 
 
 async def load_agent(
@@ -402,7 +436,7 @@ async def load_agent(
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
 
-    system_prompt = _load_system_prompt(
+    system_prompt = load_system_prompt(
         agent_spec.system_prompt_path,
         agent_spec.system_prompt_args,
         runtime.builtin_args,
@@ -488,10 +522,12 @@ async def load_agent(
         system_prompt=system_prompt,
         toolset=toolset,
         runtime=runtime,
+        system_prompt_path=agent_spec.system_prompt_path,
+        system_prompt_args=agent_spec.system_prompt_args,
     )
 
 
-def _load_system_prompt(
+def load_system_prompt(
     path: Path, args: dict[str, str], builtin_args: BuiltinSystemPromptArgs
 ) -> str:
     logger.info("Loading system prompt: {path}", path=path)

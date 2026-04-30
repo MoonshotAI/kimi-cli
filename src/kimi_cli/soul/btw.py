@@ -82,7 +82,7 @@ def _build_btw_context(soul: KimiSoul, question: str) -> tuple[str, list[Message
     Uses the same system_prompt, normalize_history(), and tool definitions
     as ``KimiSoul._step`` so the LLM provider can reuse the prompt cache.
     """
-    system_prompt = soul._agent.system_prompt  # pyright: ignore[reportPrivateUsage]
+    system_prompt = soul.system_prompt
     effective_history = normalize_history(soul.context.history)
 
     wrapped = f"{system_reminder(SIDE_QUESTION_SYSTEM_REMINDER).text}\n\n{question}"

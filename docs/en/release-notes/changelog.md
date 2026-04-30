@@ -22,6 +22,7 @@ This page documents the changes in each Kimi Code CLI release.
 - Auth: Fix managed model list refresh silently failing for OAuth users with expired tokens — the background `/models` sync now detects 401 responses, forces an OAuth token refresh, and retries with the refreshed token; if the refresh fails or the refreshed token is still rejected, it falls back to the originally configured static API key instead of skipping the provider
 - Core: Fix connection recovery not triggering OAuth refresh when the retry returns 401 — after recreating the HTTP client on `APIConnectionError` or `APITimeoutError`, the retry now re-enters the full recovery path so a subsequent 401 correctly refreshes the OAuth token instead of bubbling to the user as an unrecoverable error
 - Shell: Echo `/skill:*` and `/flow:*` inputs in the transcript so workflow commands stay visible after enter; operational slash commands like `/usage` and `/model` remain hidden
+- Core: Add `/reload-skills` slash command to rescan skill directories and discover new skills without restarting the session — the runtime skill registry, slash command list, shell prompt completers, and the LLM's system prompt are all updated immediately, and the user receives a summary of newly available skills
 - Core: Raise default `max_steps_per_turn` from 500 to 1000 so long-running agents are less likely to hit the per-turn limit
 
 ## 1.39.0 (2026-04-24)
