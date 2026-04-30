@@ -211,7 +211,9 @@ class KimiToolset:
                         )
                     )
                     _hook_task.add_done_callback(
-                        lambda t: t.exception() if not t.cancelled() else None
+                        lambda t: logger.error("Hook failed: {}", t.exception())
+                        if not t.cancelled() and t.exception()
+                        else None
                     )
                     from kimi_cli.telemetry import track
 
@@ -264,7 +266,11 @@ class KimiToolset:
                         ),
                     )
                 )
-                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                _hook_task.add_done_callback(
+                    lambda t: logger.error("Hook failed: {}", t.exception())
+                    if not t.cancelled() and t.exception()
+                    else None
+                )
 
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 

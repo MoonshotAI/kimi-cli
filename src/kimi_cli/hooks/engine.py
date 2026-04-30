@@ -358,7 +358,11 @@ class HookEngine:
         # Run the callback in background so timeout applies to the
         # full client round-trip, not just handle.wait().
         hook_task: asyncio.Task[None] = asyncio.ensure_future(self._on_wire_hook(handle))
-        hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        hook_task.add_done_callback(
+            lambda t: logger.error("Hook failed: {}", t.exception())
+            if not t.cancelled() and t.exception()
+            else None
+        )
         try:
             return await asyncio.wait_for(handle.wait(), timeout=timeout)
         except TimeoutError:
