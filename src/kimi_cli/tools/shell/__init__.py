@@ -245,7 +245,18 @@ class Shell(CallableTool2[Params]):
             await process.kill()
             raise
 
-    def _shell_args(self, command: str) -> tuple[str, ...]:
+    def shell_argv(self, command: str) -> tuple[str, ...]:
+        """Return the argv (program + flag + script) needed to run `command`
+        through this Shell tool's host shell. Public so the ACP `Terminal`
+        wrapper can build a spec-compliant `terminal/create` payload that
+        exec()s the same way as the local Shell tool.
+        """
         if self._is_powershell:
             return (str(self._shell_path), "-command", command)
         return (str(self._shell_path), "-c", command)
+
+    def _shell_args(self, command: str) -> tuple[str, ...]:
+        # Back-compat wrapper, kept until external callers (if any) migrate.
+        # A wrapper (rather than a static alias) preserves dynamic dispatch:
+        # a subclass overriding `shell_argv` is honored on `_shell_args` calls.
+        return self.shell_argv(command)
