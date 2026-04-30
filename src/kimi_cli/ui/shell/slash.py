@@ -658,6 +658,57 @@ def theme(app: Shell, args: str):
     raise Reload(session_id=soul.runtime.session.id)
 
 
+@registry.command(name="prompt-color")
+@shell_mode_registry.command(name="prompt-color")
+def prompt_color(app: Shell, args: str):
+    """Set custom color for user prompt text. Usage: /prompt-color [<style>|reset]"""
+    from rich.style import Style
+
+    from kimi_cli.ui.theme import get_user_prompt_color, set_user_prompt_color
+
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    raw = args.strip()
+    if not raw:
+        txt = get_user_prompt_color()
+        console.print(f"Text color: [bold]{txt or 'default'}[/bold]")
+        console.print("[grey50]Usage: /prompt-color <style> | /prompt-color reset[/grey50]")
+        return
+
+    if raw.lower() == "reset":
+        new_color = ""
+    else:
+        try:
+            Style.parse(raw)
+        except Exception:
+            console.print(f"[red]Invalid style: {raw}[/red]")
+            return
+        new_color = raw
+
+    config = soul.runtime.config
+    config_file = config.source_file
+    if config_file is None:
+        console.print(
+            "[yellow]Prompt color switching requires a config file; "
+            "restart without --config to persist this setting.[/yellow]"
+        )
+        return
+
+    try:
+        config_for_save = load_config(config_file)
+        config_for_save.prompt_text_color = new_color
+        save_config(config_for_save, config_file)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return
+
+    config.prompt_text_color = new_color
+    set_user_prompt_color(config.prompt_text_color or None)
+    console.print("[green]Prompt color updated.[/green]")
+
+
 @registry.command
 def web(app: Shell, args: str):
     """Open Kimi Code Web UI in browser"""
