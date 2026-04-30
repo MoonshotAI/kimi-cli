@@ -512,8 +512,39 @@ def _load_system_prompt(
     )
     try:
         template = env.from_string(system_prompt)
-        return template.render(asdict(builtin_args), **args)
+        rendered = template.render(asdict(builtin_args), **args)
+        return _ensure_agents_md_in_system_prompt(rendered, builtin_args)
     except UndefinedError as exc:
         raise SystemPromptTemplateError(f"Missing system prompt arg in {path}: {exc}") from exc
     except TemplateError as exc:
         raise SystemPromptTemplateError(f"Invalid system prompt template: {path}: {exc}") from exc
+
+
+def _ensure_agents_md_in_system_prompt(
+    system_prompt: str, builtin_args: BuiltinSystemPromptArgs
+) -> str:
+    agents_md = builtin_args.KIMI_AGENTS_MD.strip()
+    if not agents_md or agents_md in system_prompt:
+        return system_prompt
+
+    agents_guidance = (
+        "`AGENTS.md` files can appear at any level of the project directory tree, "
+        "including inside `.kimi/` directories. Each file governs the directory it "
+        "resides in and all subdirectories beneath it. When multiple `AGENTS.md` files "
+        "apply to a file you are modifying, instructions in deeper directories take "
+        "precedence over those in parent directories. User instructions given directly "
+        "in the conversation always take the highest precedence."
+    )
+
+    return f"""{system_prompt}
+
+# Project Information
+
+The `AGENTS.md` instructions (merged from all applicable directories):
+
+`````````
+{agents_md}
+`````````
+
+{agents_guidance}
+"""

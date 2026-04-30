@@ -48,6 +48,7 @@ def test_system_prompt_contains_platform_info(builtin_args: BuiltinSystemPromptA
     # System prompt must include OS kind and shell info
     assert builtin_args.KIMI_OS in prompt
     assert builtin_args.KIMI_SHELL in prompt
+    assert prompt.count(builtin_args.KIMI_AGENTS_MD) == 1
 
 
 @pytest.mark.parametrize(
@@ -85,6 +86,21 @@ def test_system_prompt_platform_warning(temp_work_dir, os_kind, shell, expect_wi
         assert "Many common Unix commands are not available" in prompt
     else:
         assert "Many common Unix commands are not available" not in prompt
+
+
+def test_load_system_prompt_appends_agents_md_for_custom_prompt(
+    builtin_args: BuiltinSystemPromptArgs,
+):
+    """Custom prompts should still receive project instructions from AGENTS.md."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        system_md = tmpdir / "system.md"
+        system_md.write_text("You are a custom agent.")
+        prompt = _load_system_prompt(system_md, {}, builtin_args)
+
+    assert "You are a custom agent." in prompt
+    assert "The `AGENTS.md` instructions" in prompt
+    assert builtin_args.KIMI_AGENTS_MD in prompt
 
 
 def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPromptArgs):
