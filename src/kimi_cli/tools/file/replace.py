@@ -72,6 +72,13 @@ class StrReplaceFile(CallableTool2[Params]):
                 logger.warning("Ignoring absolute auto_approve_workspace_dir: {dir}", dir=dir_name)
                 continue
             resolved = (self._work_dir / dir_name).canonical()
+            # Reject entries that resolve to the workspace root itself.
+            if resolved == self._work_dir:
+                logger.warning(
+                    "Ignoring auto_approve_workspace_dir that resolves to workspace root: {dir}",
+                    dir=dir_name,
+                )
+                continue
             # Reject entries that escape work_dir via ".." traversal.
             if not is_within_directory(resolved, self._work_dir):
                 logger.warning(
