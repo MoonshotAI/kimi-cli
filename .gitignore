@@ -48,3 +48,14 @@ static/
 .memo/
 .entire
 .claude
+
+# TypeScript / Bun
+out
+*.tgz
+coverage
+*.lcov
+logs
+*.log
+*.tsbuildinfo
+.eslintcache
+.cache
