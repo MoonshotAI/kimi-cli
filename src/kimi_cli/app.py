@@ -23,7 +23,7 @@ from kimi_cli.constant import VERSION
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
-from kimi_cli.soul import run_soul
+from kimi_cli.soul import RunCancelled, run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -127,6 +127,8 @@ class KimiCLI:
         thinking: bool | None = None,
         # Run mode
         yolo: bool = False,
+        afk: bool = False,
+        runtime_afk: bool = False,
         plan_mode: bool = False,
         resumed: bool = False,
         ui_mode: str = "shell",
@@ -151,6 +153,11 @@ class KimiCLI:
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
+            afk (bool, optional): Invocation-level away-from-keyboard mode (no user is present
+                to answer questions or approve actions). Implies auto-approve. Defaults to False.
+            runtime_afk (bool, optional): Internal invocation-only afk overlay, used by print mode
+                so it stays non-interactive without changing persisted session afk. Defaults to
+                False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
                 MCP tools from. Defaults to None.
@@ -253,8 +260,12 @@ class KimiCLI:
             llm,
             session,
             yolo,
+            afk=afk,
+            runtime_afk=runtime_afk,
             skills_dirs=skills_dirs,
         )
+        runtime.ui_mode = ui_mode
+        runtime.resumed = resumed
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
@@ -339,14 +350,21 @@ class KimiCLI:
             )
             attach_sink(sink)
 
-        from kimi_cli.telemetry import track
+        from kimi_cli.telemetry import track, track_session_started_once
         from kimi_cli.telemetry.crash import install_asyncio_handler, set_phase
 
         # App init finished — enter runtime phase and hook asyncio crashes.
         install_asyncio_handler()
         set_phase("runtime")
 
-        track("started", resumed=resumed, yolo=yolo)
+        if ui_mode != "wire":
+            track_session_started_once(ui_mode=ui_mode, resumed=resumed)
+        track(
+            "started",
+            resumed=resumed,
+            yolo=runtime.approval.is_yolo(),
+            afk=runtime.approval.is_afk(),
+        )
         track(
             "startup_perf",
             duration_ms=int((time.monotonic() - _create_t0) * 1000),
@@ -618,28 +636,52 @@ class KimiCLI:
                     assert self._runtime.root_wire_hub is not None
                     self._runtime.root_wire_hub.unsubscribe(root_hub_queue)
 
+            run_cancel_event = asyncio.Event()
+
+            async def _mirror_external_cancel() -> None:
+                await cancel_event.wait()
+                run_cancel_event.set()
+
+            external_cancel_task = asyncio.create_task(
+                _mirror_external_cancel(),
+                name="cancel-event-mirror",
+            )
             soul_task = asyncio.create_task(
                 run_soul(
                     self.soul,
                     user_input,
                     _ui_loop_fn,
-                    cancel_event,
+                    run_cancel_event,
                     runtime=self._runtime,
                 )
             )
 
+            wire_shut_down = False
             try:
                 wire_ui = await wire_future
                 while True:
                     msg = await wire_ui.receive()
                     yield msg
             except QueueShutDown:
+                wire_shut_down = True
                 pass
             finally:
                 # stop consuming Wire messages
                 stop_ui_loop.set()
+                cleanup_cancelled_run = False
+                if not wire_shut_down and not soul_task.done() and not cancel_event.is_set():
+                    cleanup_cancelled_run = True
+                    run_cancel_event.set()
                 # wait for the soul task to finish, or raise
-                await soul_task
+                try:
+                    await soul_task
+                except RunCancelled:
+                    if not cleanup_cancelled_run:
+                        raise
+                finally:
+                    external_cancel_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await external_cancel_task
 
     async def run_shell(
         self, command: str | None = None, *, prefill_text: str | None = None

@@ -139,6 +139,7 @@ _PROMPT_STYLE_LIGHT = {
 class ToolbarColors:
     separator: str
     yolo_label: str
+    afk_label: str
     plan_label: str
     plan_prompt: str
     cwd: str
@@ -155,6 +156,7 @@ class ToolbarColors:
 _TOOLBAR_DARK = ToolbarColors(
     separator="fg:#4d4d4d",
     yolo_label="bold fg:#ffff00",
+    afk_label="bold fg:#ff8800",
     plan_label="bold fg:#00aaff",
     plan_prompt="fg:#00aaff",
     cwd="fg:#666666",
@@ -171,6 +173,7 @@ _TOOLBAR_DARK = ToolbarColors(
 _TOOLBAR_LIGHT = ToolbarColors(
     separator="fg:#d1d5db",
     yolo_label="bold fg:#b45309",
+    afk_label="bold fg:#c2410c",
     plan_label="bold fg:#2563eb",
     plan_prompt="fg:#2563eb",
     cwd="fg:#6b7280",

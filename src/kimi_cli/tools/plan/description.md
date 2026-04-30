@@ -18,8 +18,12 @@ If your plan contains multiple alternative approaches:
 - Do NOT use "Reject", "Revise", or "Approve" as option labels — these are reserved by the system.
 
 ## Before Using
-- If you have unresolved questions, use AskUserQuestion first.
-- If you have multiple approaches and haven't narrowed down yet, consider using AskUserQuestion first to let the user choose, then write a plan for the chosen approach only.
+- Yolo mode does not auto-approve this tool. In yolo mode, this tool still presents
+  the plan to the user for approval.
+- If afk mode is active, do NOT use AskUserQuestion; make the best decision from available context.
+- If afk mode is active, this tool is auto-approved because no user is present.
+- If afk mode is not active and you have unresolved questions, use AskUserQuestion first.
+- If afk mode is not active and you have multiple approaches and haven't narrowed down yet, consider using AskUserQuestion first to let the user choose, then write a plan for the chosen approach only.
 - Once your plan is finalized, use THIS tool to request approval.
 - Do NOT use AskUserQuestion to ask "Is this plan OK?" or "Should I proceed?" — that is exactly what ExitPlanMode does.
 - If rejected, revise based on feedback and call ExitPlanMode again.

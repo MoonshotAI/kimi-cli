@@ -297,7 +297,25 @@ class Anthropic:
         )
         messages: list[MessageParam] = []
         for message in history:
-            messages.append(self._convert_message(message))
+            converted = self._convert_message(message)
+            # Per Anthropic spec, tool_result blocks for the same assistant turn
+            # must live in a single user message. Internal Messages model one
+            # tool call per entry, so merge consecutive tool-result-only user
+            # messages here. Strict-compat backends (e.g. DeepSeek /anthropic)
+            # 400 on the split form, and the official backend silently teaches
+            # the model to stop calling tools in parallel.
+            if (
+                messages
+                and converted["role"] == "user"
+                and messages[-1]["role"] == "user"
+                and _is_tool_result_only(messages[-1]["content"])
+                and _is_tool_result_only(converted["content"])
+            ):
+                prev_content = cast(list[ContentBlockParam], messages[-1]["content"])
+                new_content = cast(list[ContentBlockParam], converted["content"])
+                messages[-1]["content"] = [*prev_content, *new_content]
+            else:
+                messages.append(converted)
         if messages:
             last_message = messages[-1]
             last_content = last_message["content"]
@@ -610,6 +628,19 @@ def _convert_tool(tool: Tool) -> ToolParam:
         "description": tool.description,
         "input_schema": tool.parameters,
     }
+
+
+def _is_tool_result_only(content: object) -> bool:
+    """True iff ``content`` is a non-empty list of only tool_result blocks.
+
+    Guards the parallel-tool-result merge in ``generate()``: we only collapse
+    consecutive user messages when both sides carry pure tool results, never
+    when a user message mixes in text, images, or anything else.
+    """
+    if not isinstance(content, list) or not content:
+        return False
+    blocks = cast(list[ContentBlockParam], content)
+    return all(b["type"] == "tool_result" for b in blocks)
 
 
 def _tool_result_message_to_block(

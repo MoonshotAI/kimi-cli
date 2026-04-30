@@ -18,6 +18,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import time
 import uuid
@@ -42,6 +43,8 @@ _device_id: str | None = None
 _session_id: str | None = None
 _client_info: tuple[str, str | None] | None = None
 """(name, version) tuple, set atomically via set_client_info."""
+_session_started_sessions: set[str] = set()
+"""Session ids that already emitted the session_started event in this process."""
 _sink: EventSink | None = None
 _disabled: bool = False
 
@@ -69,9 +72,45 @@ def set_client_info(*, name: str, version: str | None = None) -> None:
 def get_client_info() -> tuple[str, str | None] | None:
     """Return the current (name, version) tuple, or None if unset.
 
-    Exposed for the sink to enrich events with the latest client info.
+    Used by session-level telemetry to attribute wire/acp sessions.
     """
     return _client_info
+
+
+def track_session_started_once(
+    *,
+    ui_mode: str,
+    resumed: bool,
+    client_name: str | None = None,
+    client_version: str | None = None,
+) -> None:
+    """Emit one session_started event for the current session in this process."""
+    session_id = _session_id
+    if not session_id or session_id in _session_started_sessions:
+        return
+
+    ui = (ui_mode or "unknown").strip().lower()
+    name = client_name
+    version = client_version
+    if name is None and ui in {"wire", "acp"}:
+        client_info = get_client_info()
+        if client_info is not None:
+            name, version = client_info
+    if not name:
+        name = ui or "unknown"
+
+    _session_started_sessions.add(session_id)
+    track(
+        "session_started",
+        client_name=name,
+        client_version=version,
+        ui_mode=ui,
+        resumed=resumed,
+    )
+
+    if _sink is not None:
+        with suppress(Exception):
+            asyncio.get_running_loop().create_task(_sink.flush())
 
 
 def disable() -> None:

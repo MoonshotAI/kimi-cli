@@ -543,3 +543,111 @@ def test_resolve_source_git_no_branch_omits_flag(tmp_path: Path, monkeypatch: py
         _resolve_source("https://github.com/org/repo.git/my-plugin")
     cmd = mock_run.call_args[0][0]
     assert "--branch" not in cmd
+
+
+# --- _resolve_source zip URL tests ---
+
+
+def _build_plugin_zip(plugin_name: str = "my-plugin") -> bytes:
+    """Build an in-memory zip containing a single plugin directory."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(
+            f"{plugin_name}/plugin.json",
+            json.dumps({"name": plugin_name, "version": "1.0.0"}),
+        )
+    return buf.getvalue()
+
+
+def _patch_httpx_stream(monkeypatch: pytest.MonkeyPatch, payload: bytes) -> None:
+    """Replace httpx.stream so it yields ``payload`` from a fake response."""
+    import httpx
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_bytes(self):
+            yield payload
+
+    class _FakeStream:
+        def __enter__(self):
+            return _FakeResponse()
+
+        def __exit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _FakeStream())
+
+
+def test_resolve_source_zip_url_downloads_and_extracts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """HTTP URL ending with .zip should download and extract."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    _patch_httpx_stream(monkeypatch, _build_plugin_zip("my-plugin"))
+
+    source, tmp_dir = _resolve_source("https://example.com/my-plugin.zip")
+    assert source.name == "my-plugin"
+    assert (source / "plugin.json").exists()
+    assert tmp_dir is not None
+
+
+def test_resolve_source_zip_url_with_query_string(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """URL path ending in .zip is detected even with a query string."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    _patch_httpx_stream(monkeypatch, _build_plugin_zip("plug"))
+
+    source, _ = _resolve_source("https://example.com/plug.zip?token=abc")
+    assert source.name == "plug"
+
+
+def test_resolve_source_github_archive_zip_takes_zip_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """GitHub archive .zip URLs should download, not be treated as git clone."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    _patch_httpx_stream(monkeypatch, _build_plugin_zip("repo-main"))
+
+    with patch("subprocess.run") as mock_run:
+        source, _ = _resolve_source("https://github.com/org/repo/archive/refs/heads/main.zip")
+    mock_run.assert_not_called()
+    assert (source / "plugin.json").exists()
+
+
+def test_resolve_source_zip_url_download_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """HTTP error during download should exit cleanly and clean up tmp."""
+    import httpx
+
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+
+    class _FailingStream:
+        def __enter__(self):
+            raise httpx.ConnectError("boom")
+
+        def __exit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(httpx, "stream", lambda *a, **kw: _FailingStream())
+
+    with pytest.raises(typer.Exit):
+        _resolve_source("https://example.com/missing.zip")
+    assert not (tmp_path / "tmp").exists()
+
+
+def test_resolve_source_zip_url_invalid_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Non-ZIP body (e.g. HTML 200) should exit cleanly and clean up tmp."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    _patch_httpx_stream(monkeypatch, b"<html>not a zip</html>")
+
+    with pytest.raises(typer.Exit):
+        _resolve_source("https://example.com/broken.zip")
+    assert not (tmp_path / "tmp").exists()

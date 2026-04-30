@@ -27,11 +27,12 @@ The configuration file contains the following top-level configuration items:
 | `default_model` | `string` | Default model name, must be a model defined in `models` |
 | `default_thinking` | `boolean` | Whether to enable thinking mode by default (defaults to `false`) |
 | `default_yolo` | `boolean` | Whether to enable YOLO (auto-approve) mode by default (defaults to `false`) |
+| `skip_afk_prompt_injection` | `boolean` | Whether to suppress the AFK mode system reminder (defaults to `false`) |
 | `default_plan_mode` | `boolean` | Whether to start new sessions in plan mode by default (defaults to `false`); resumed sessions preserve their existing state |
 | `default_editor` | `string` | Default external editor command (e.g. `"vim"`, `"code --wait"`), auto-detects when empty |
 | `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |
 | `show_thinking_stream` | `boolean` | Whether to stream the raw reasoning text in the live area as a 6-line scrolling preview and commit the full reasoning markdown to history when the block ends (defaults to `true`; set to `false` to show only the compact `Thinking ...` indicator and a one-line trace summary) |
-| `merge_all_available_skills` | `boolean` | Whether to merge skills from all brand directories (defaults to `false`); see [Skills configuration](../customization/skills.md) |
+| `merge_all_available_skills` | `boolean` | Whether to merge skills from all brand directories (defaults to `true`); see [Skills configuration](../customization/skills.md) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -45,11 +46,12 @@ The configuration file contains the following top-level configuration items:
 default_model = "kimi-for-coding"
 default_thinking = false
 default_yolo = false
+skip_afk_prompt_injection = false
 default_plan_mode = false
 default_editor = ""
 theme = "dark"
 show_thinking_stream = true
-merge_all_available_skills = false
+merge_all_available_skills = true
 
 [providers.kimi-for-coding]
 type = "kimi"
@@ -62,7 +64,7 @@ model = "kimi-for-coding"
 max_context_size = 262144
 
 [loop_control]
-max_steps_per_turn = 500
+max_steps_per_turn = 1000
 max_retries_per_step = 3
 max_ralph_iterations = 0
 reserved_context_size = 50000
@@ -149,7 +151,7 @@ capabilities = ["thinking"]
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `max_steps_per_turn` | `integer` | `500` | Maximum steps per turn (alias: `max_steps_per_run`) |
+| `max_steps_per_turn` | `integer` | `1000` | Maximum steps per turn (alias: `max_steps_per_run`) |
 | `max_retries_per_step` | `integer` | `3` | Maximum retries per step |
 | `max_ralph_iterations` | `integer` | `0` | Extra iterations after each user message; `0` disables; `-1` is unlimited |
 | `reserved_context_size` | `integer` | `50000` | Reserved token count for LLM response generation; auto-compaction triggers when `context_tokens + reserved_context_size >= max_context_size` |

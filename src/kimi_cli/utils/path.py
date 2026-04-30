@@ -180,3 +180,20 @@ def is_within_workspace(
     if is_within_directory(path, work_dir):
         return True
     return any(is_within_directory(path, d) for d in additional_dirs)
+
+
+async def find_project_root(work_dir: KaosPath) -> KaosPath:
+    """Walk up from *work_dir* to find the nearest directory containing ``.git``.
+
+    Returns *work_dir* itself if no ``.git`` marker is found before reaching the
+    filesystem root. Used by AGENTS.md discovery and by resolving relative
+    ``extra_skill_dirs`` entries to the project root (not the CWD).
+    """
+    current = work_dir
+    while True:
+        if await (current / ".git").exists():
+            return current
+        parent = current.parent
+        if parent == current:  # filesystem root
+            return work_dir
+        current = parent

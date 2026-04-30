@@ -86,7 +86,7 @@ kimi [OPTIONS] COMMAND [ARGS]
 
 | 选项 | 说明 |
 |------|------|
-| `--print` | 以 Print 模式运行（非交互式），隐式启用 `--yolo` |
+| `--print` | 以 Print 模式运行（非交互式），隐式启用 `--afk` |
 | `--quiet` | `--print --output-format text --final-message-only` 的快捷方式 |
 | `--acp` | 以 ACP 服务器模式运行（已弃用，请使用 `kimi acp`） |
 | `--wire` | 以 Wire 服务器模式运行（实验性） |
@@ -118,12 +118,13 @@ kimi [OPTIONS] COMMAND [ARGS]
 
 | 选项 | 简写 | 说明 |
 |------|------|------|
-| `--yolo` | `-y` | 自动批准所有操作 |
+| `--yolo` | `-y` | 自动批准所有工具调用（用户仍可回应 `AskUserQuestion`） |
 | `--yes` | | `--yolo` 的别名 |
 | `--auto-approve` | | `--yolo` 的别名 |
+| `--afk` | | Away-from-keyboard 模式：自动批准所有工具调用，并自动 dismiss `AskUserQuestion`，适用于无人值守场景 |
 
 ::: warning 注意
-YOLO 模式下，所有文件修改和 Shell 命令都会自动执行，请谨慎使用。
+YOLO 或 AFK 模式下，所有文件修改和 Shell 命令都会自动执行，请谨慎使用。
 :::
 
 ## 计划模式

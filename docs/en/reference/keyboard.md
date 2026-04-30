@@ -156,6 +156,7 @@ The bottom status bar displays:
 - Current time
 - Current mode (agent/shell) and model name (in agent mode)
 - YOLO badge (yellow, when enabled)
+- AFK badge (orange, when enabled)
 - Plan badge (blue, when enabled)
 - Shortcut hints
 - Context usage progress bar (10 color-coded blocks: green under 70%, yellow 70–84%, red 85%+; token counts shown when available)

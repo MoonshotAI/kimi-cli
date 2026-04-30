@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import importlib
+import io
 import os
+import shutil
+import subprocess
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -30,12 +33,26 @@ class ClipboardResult:
 
 
 def is_clipboard_available() -> bool:
-    """Check if the Pyperclip clipboard is available."""
+    """Check if the Pyperclip text clipboard is available."""
     try:
         pyperclip.paste()
         return True
     except Exception:
         return False
+
+
+def is_media_clipboard_available() -> bool:
+    """Check if the media clipboard (xclip/wl-paste) is available.
+
+    On headless Linux (e.g. SSH remote), pyperclip may fail because
+    DISPLAY is not set, but images can still be read through xclip or
+    wl-paste (e.g. via clipboard bridging tools like cc-clip that shim
+    xclip over an SSH tunnel).
+    """
+    if sys.platform == "linux":
+        return shutil.which("xclip") is not None or shutil.which("wl-paste") is not None
+    # macOS and Windows use native APIs that do not require external tools.
+    return True
 
 
 def grab_media_from_clipboard() -> ClipboardResult | None:
@@ -58,10 +75,15 @@ def grab_media_from_clipboard() -> ClipboardResult | None:
                 file_paths=tuple(non_image_paths),
             )
 
-    # 2. Try PIL ImageGrab as fallback.
-    #    - On macOS this uses AppleScript «class furl» for file paths,
-    #      or reads raw image data (TIFF/PNG) from the pasteboard.
-    #    - On other platforms this is the primary clipboard access method.
+    # 2. On Linux, use explicit xclip/wl-paste fallback instead of Pillow's
+    #    opaque internal selection, which may pick a broken tool first.
+    if sys.platform == "linux":
+        image = _grab_image_linux()
+        if image is not None:
+            return ClipboardResult(images=(image,), file_paths=())
+        return None
+
+    # 3. On Windows and other platforms, use Pillow's default implementation.
     payload = ImageGrab.grabclipboard()
     if payload is None:
         return None
@@ -77,6 +99,61 @@ def grab_media_from_clipboard() -> ClipboardResult | None:
             images=tuple(images),
             file_paths=tuple(non_image_paths),
         )
+    return None
+
+
+def _grab_image_linux() -> Image.Image | None:
+    """Read image from Linux clipboard with session-aware tool fallback.
+
+    Tries the backend matching the current session type first to avoid
+    reading stale data from the wrong clipboard (e.g. XWayland vs
+    Wayland). On headless systems with no session type, xclip is tried
+    first since clipboard bridges (e.g. cc-clip) typically shim xclip.
+    """
+    xclip_args = ["xclip", "-selection", "clipboard", "-t", "image/png", "-o"]
+    wlpaste_args = ["wl-paste", "-t", "image"]
+
+    if os.getenv("WAYLAND_DISPLAY"):
+        candidates = (wlpaste_args, xclip_args)
+    elif os.getenv("DISPLAY"):
+        candidates = (xclip_args, wlpaste_args)
+    else:  # headless — xclip first for common clipboard bridges
+        candidates = (xclip_args, wlpaste_args)
+
+    for idx, args in enumerate(candidates):
+        if shutil.which(args[0]) is None:
+            continue
+        try:
+            p = subprocess.run(args, capture_output=True, timeout=3)
+        except subprocess.TimeoutExpired:
+            continue
+        if p.returncode == 0 and p.stdout:
+            data = io.BytesIO(p.stdout)
+            try:
+                im = Image.open(data)
+                im.load()
+                return im
+            except Exception:
+                continue
+        # Silent errors mean clipboard is empty or has no image.
+        err = p.stderr
+        silent_errors = [
+            b"Nothing is copied",
+            b"No selection",
+            b"No suitable type of content copied",
+            b" not available",
+            b"cannot convert ",
+            b"no owner for the ",
+        ]
+        if any(se in err for se in silent_errors):
+            # Trust the session-native tool: if it says "no image", don't
+            # fall back to a different clipboard namespace (e.g. XWayland
+            # vs Wayland) which may contain stale unrelated data.
+            if idx == 0:
+                return None
+            continue
+        # Otherwise, a real error (e.g. tool broken) — try next candidate.
+
     return None
 
 
