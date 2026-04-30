@@ -16,6 +16,7 @@
 import * as runtime from '../runtime';
 import type {
   CreateSessionRequest,
+  ForkSessionRequest,
   GenerateTitleRequest,
   GenerateTitleResponse,
   GitDiffStats,
@@ -27,6 +28,8 @@ import type {
 import {
     CreateSessionRequestFromJSON,
     CreateSessionRequestToJSON,
+    ForkSessionRequestFromJSON,
+    ForkSessionRequestToJSON,
     GenerateTitleRequestFromJSON,
     GenerateTitleRequestToJSON,
     GenerateTitleResponseFromJSON,
@@ -49,6 +52,11 @@ export interface CreateSessionApiSessionsPostRequest {
 
 export interface DeleteSessionApiSessionsSessionIdDeleteRequest {
     sessionId: string;
+}
+
+export interface ForkSessionEndpointApiSessionsSessionIdForkPostRequest {
+    sessionId: string;
+    forkSessionRequest: ForkSessionRequest;
 }
 
 export interface GenerateSessionTitleApiSessionsSessionIdGenerateTitlePostRequest {
@@ -170,6 +178,55 @@ export class SessionsApi extends runtime.BaseAPI {
      */
     async deleteSessionApiSessionsSessionIdDelete(requestParameters: DeleteSessionApiSessionsSessionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
         const response = await this.deleteSessionApiSessionsSessionIdDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Fork a session, creating a new session with history up to the specified turn.  The new session shares the same work_dir as the original session.
+     * Fork a session at a specific turn
+     */
+    async forkSessionEndpointApiSessionsSessionIdForkPostRaw(requestParameters: ForkSessionEndpointApiSessionsSessionIdForkPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Session>> {
+        if (requestParameters['sessionId'] == null) {
+            throw new runtime.RequiredError(
+                'sessionId',
+                'Required parameter "sessionId" was null or undefined when calling forkSessionEndpointApiSessionsSessionIdForkPost().'
+            );
+        }
+
+        if (requestParameters['forkSessionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'forkSessionRequest',
+                'Required parameter "forkSessionRequest" was null or undefined when calling forkSessionEndpointApiSessionsSessionIdForkPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/sessions/{session_id}/fork`;
+        urlPath = urlPath.replace(`{${"session_id"}}`, encodeURIComponent(String(requestParameters['sessionId'])));
+
+        const response = await this.request({
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: ForkSessionRequestToJSON(requestParameters['forkSessionRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SessionFromJSON(jsonValue));
+    }
+
+    /**
+     * Fork a session, creating a new session with history up to the specified turn.  The new session shares the same work_dir as the original session.
+     * Fork a session at a specific turn
+     */
+    async forkSessionEndpointApiSessionsSessionIdForkPost(requestParameters: ForkSessionEndpointApiSessionsSessionIdForkPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Session> {
+        const response = await this.forkSessionEndpointApiSessionsSessionIdForkPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -1,31 +1,31 @@
 
-# CreateSessionRequest
+# GitInfo
 
-Create session request.
+Lightweight git probe response for the web UI.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`workDir` | string
-`createDir` | boolean
-`worktree` | boolean
-`worktreeBranch` | string
-`worktreeName` | string
+`isGitRepo` | boolean
+`gitRoot` | string
+`currentBranch` | string
+`branches` | Array&lt;string&gt;
+`headSha` | string
 
 ## Example
 
 ```typescript
-import type { CreateSessionRequest } from ''
+import type { GitInfo } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "workDir": null,
-  "createDir": null,
-  "worktree": null,
-  "worktreeBranch": null,
-  "worktreeName": null,
-} satisfies CreateSessionRequest
+  "isGitRepo": null,
+  "gitRoot": null,
+  "currentBranch": null,
+  "branches": null,
+  "headSha": null,
+} satisfies GitInfo
 
 console.log(example)
 
@@ -34,7 +34,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as CreateSessionRequest
+const exampleParsed = JSON.parse(exampleJSON) as GitInfo
 console.log(exampleParsed)
 ```
 

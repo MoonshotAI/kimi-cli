@@ -9,6 +9,7 @@ import { SessionFromJSON } from "../lib/api/models/Session";
 import { apiClient } from "../lib/apiClient";
 import { getAuthHeader, getAuthToken } from "../lib/auth";
 import { formatRelativeTime, getApiBaseUrl } from "./utils";
+import type { WorktreeOptions } from "../features/sessions/worktree-config-step";
 
 // Regex patterns for path normalization
 const LEADING_DOT_SLASH_REGEX = /^\.\/+/;
@@ -57,7 +58,10 @@ type UseSessionsReturn = {
   /** Refresh a single session's data from API */
   refreshSession: (sessionId: string) => Promise<Session | null>;
   /** Create a new session */
-  createSession: (workDir?: string, createDir?: boolean) => Promise<Session>;
+  createSession: (
+    workDir?: string,
+    options?: { createDir?: boolean; worktree?: WorktreeOptions },
+  ) => Promise<Session>;
   /** Delete a session by ID */
   deleteSession: (sessionId: string) => Promise<boolean>;
   /** Select a session */
@@ -252,6 +256,8 @@ export function useSessions(): UseSessionsReturn {
           workDir: item.work_dir,
           sessionDir: item.session_dir,
           archived: item.archived,
+          worktreePath: item.worktree_path ?? null,
+          parentRepoPath: item.parent_repo_path ?? null,
         }),
       );
       setArchivedSessions(archivedList);
@@ -294,6 +300,8 @@ export function useSessions(): UseSessionsReturn {
           workDir: item.work_dir,
           sessionDir: item.session_dir,
           archived: item.archived,
+          worktreePath: item.worktree_path ?? null,
+          parentRepoPath: item.parent_repo_path ?? null,
         }),
       );
       setArchivedSessions((current) => [...current, ...moreArchived]);
@@ -412,21 +420,35 @@ export function useSessions(): UseSessionsReturn {
    * Create a new session
    * Returns: Session (API type)
    * @param workDir - Optional working directory for the session
-   * @param createDir - Whether to auto-create directory if it doesn't exist
+   * @param options - Optional configuration including createDir and worktree settings
    */
   const createSession = useCallback(
-    async (workDir?: string, createDir?: boolean): Promise<Session> => {
+    async (
+      workDir?: string,
+      options?: { createDir?: boolean; worktree?: WorktreeOptions },
+    ): Promise<Session> => {
       setIsLoading(true);
       setError(null);
       try {
         // Use fetch directly to support the work_dir parameter
         const basePath = getApiBaseUrl();
-        const body: { work_dir?: string; create_dir?: boolean } = {};
+        const body: {
+          work_dir?: string;
+          create_dir?: boolean;
+          worktree?: boolean;
+          worktree_branch?: string | null;
+          worktree_name?: string | null;
+        } = {};
         if (workDir) {
           body.work_dir = workDir;
         }
-        if (createDir) {
-          body.create_dir = createDir;
+        if (options?.createDir) {
+          body.create_dir = options.createDir;
+        }
+        if (options?.worktree?.enabled) {
+          body.worktree = true;
+          body.worktree_branch = options.worktree.branch;
+          body.worktree_name = options.worktree.name;
         }
         const response = await fetch(`${basePath}/api/sessions/`, {
           method: "POST",

@@ -6,7 +6,7 @@ import asyncio
 import json
 import mimetypes
 import os
-import shutil
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -59,6 +59,11 @@ work_dirs_router = APIRouter(prefix="/api/work-dirs", tags=["work-dirs"])
 # Constants
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
 DEFAULT_MAX_PUBLIC_PATH_DEPTH = 6
+
+# Worktree directory name must be a single safe path segment. Matches the
+# frontend regex in worktree-config-step.tsx so the server is the source of
+# truth for anything not going through the UI.
+_WORKTREE_NAME_REGEX = re.compile(r"^[a-zA-Z0-9._-]+$")
 SENSITIVE_PATH_PARTS = {
     "id_rsa",
     "id_ed25519",
@@ -298,13 +303,10 @@ async def get_session(
 @router.post("/", summary="Create a new session")
 async def create_session(request: CreateSessionRequest | None = None) -> Session:
     """Create a new session."""
-    # Use provided work_dir or default to user's home directory
     if request and request.work_dir:
         work_dir_path = Path(request.work_dir).expanduser().resolve()
-        # Validate the directory exists
         if not work_dir_path.exists():
             if request.create_dir:
-                # Auto-create the directory
                 try:
                     work_dir_path.mkdir(parents=True, exist_ok=True)
                 except PermissionError as e:
@@ -318,7 +320,6 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
                         detail=f"Failed to create directory: {e}",
                     ) from e
             else:
-                # Return 404 to indicate directory does not exist
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Directory does not exist: {request.work_dir}",
@@ -331,7 +332,60 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
         work_dir = KaosPath.unsafe_from_local_path(work_dir_path)
     else:
         work_dir = KaosPath.unsafe_from_local_path(Path.home())
-    kimi_cli_session = await KimiCLISession.create(work_dir=work_dir)
+
+    parent_repo_path: KaosPath | None = None
+    worktree_path: KaosPath | None = None
+    if request and request.worktree:
+        from kimi_cli.worktree import WorktreeError, create_worktree, find_git_root
+
+        if request.worktree_name is not None and not _WORKTREE_NAME_REGEX.fullmatch(
+            request.worktree_name
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "worktree_name must contain only letters, digits, dot, underscore, "
+                    "and dash (no path separators)"
+                ),
+            )
+        parent_repo_path = await find_git_root(work_dir)
+        if parent_repo_path is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected directory is not inside a git repository",
+            )
+        try:
+            worktree_path = await create_worktree(
+                parent_repo_path,
+                name=request.worktree_name,
+                branch=request.worktree_branch,
+            )
+        except WorktreeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+        work_dir = worktree_path
+
+    try:
+        kimi_cli_session = await KimiCLISession.create(work_dir=work_dir)
+        if worktree_path is not None and parent_repo_path is not None:
+            kimi_cli_session.state.worktree_path = str(worktree_path)
+            kimi_cli_session.state.parent_repo_path = str(parent_repo_path)
+            kimi_cli_session.save_state()
+    except Exception:
+        if worktree_path is not None and parent_repo_path is not None:
+            from kimi_cli.worktree import remove_worktree
+
+            try:
+                await remove_worktree(parent_repo_path, worktree_path)
+            except Exception:
+                logger.exception(
+                    "Failed to clean up worktree {p} after session-create error",
+                    p=worktree_path,
+                )
+        raise
+
     context_file = kimi_cli_session.dir / "context.jsonl"
     invalidate_sessions_cache()
     invalidate_work_dirs_cache()
@@ -351,6 +405,8 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
         ),
         work_dir=str(work_dir),
         session_dir=str(kimi_cli_session.dir),
+        worktree_path=str(worktree_path) if worktree_path is not None else None,
+        parent_repo_path=str(parent_repo_path) if parent_repo_path is not None else None,
     )
 
 
@@ -359,6 +415,9 @@ class CreateSessionRequest(BaseModel):
 
     work_dir: str | None = None
     create_dir: bool = False  # Whether to auto-create directory if it doesn't exist
+    worktree: bool = False
+    worktree_branch: str | None = None
+    worktree_name: str | None = None
 
 
 class ForkSessionRequest(BaseModel):
@@ -576,9 +635,7 @@ async def delete_session(session_id: UUID, runner: KimiCLIRunner = Depends(get_r
                 wd.last_session_id = None
                 break
         save_metadata(metadata)
-    session_dir = session.kimi_cli_session.dir
-    if session_dir.exists():
-        shutil.rmtree(session_dir)
+    await session.kimi_cli_session.delete()
     invalidate_sessions_cache()
 
 

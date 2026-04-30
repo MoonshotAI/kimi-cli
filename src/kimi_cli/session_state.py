@@ -42,6 +42,11 @@ class SessionState(BaseModel):
     auto_archive_exempt: bool = False
     # Todo list state
     todos: list[TodoItemState] = Field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
+    # Worktree state
+    worktree_path: str | None = None
+    """Absolute path to the git worktree directory, if this session runs in one."""
+    parent_repo_path: str | None = None
+    """Absolute path to the parent git repository root, if this session runs in a worktree."""
 
 
 _LEGACY_METADATA_FILENAME = "metadata.json"
