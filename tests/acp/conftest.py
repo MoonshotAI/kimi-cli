@@ -19,7 +19,9 @@ def _repo_root() -> Path:
 
 def _kimi_bin() -> str:
     """Return the path to the kimi entry-point script inside the venv."""
-    return str(_repo_root() / ".venv" / "bin" / "kimi")
+    script_dir = "Scripts" if os.name == "nt" else "bin"
+    executable = "kimi.exe" if os.name == "nt" else "kimi"
+    return str(_repo_root() / ".venv" / script_dir / executable)
 
 
 class ACPTestClient:
