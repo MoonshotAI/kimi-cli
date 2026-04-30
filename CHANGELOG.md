@@ -33,6 +33,13 @@ Only write entries that are worth mentioning to users.
 - Core: Fix connection recovery not triggering OAuth refresh when the retry returns 401 — after recreating the HTTP client on `APIConnectionError` or `APITimeoutError`, the retry now re-enters the full recovery path so a subsequent 401 correctly refreshes the OAuth token instead of bubbling to the user as an unrecoverable error
 - Shell: Echo `/skill:*` and `/flow:*` inputs in the transcript so workflow commands stay visible after enter; operational slash commands like `/usage` and `/model` remain hidden
 - Core: Raise default `max_steps_per_turn` from 500 to 1000 so long-running agents are less likely to hit the per-turn limit
+- Core: Add `default_auto_approve_actions` config option — list of glob patterns for actions to auto-approve by default in every session; merged with any session-specific interactive approvals and supports wildcards such as `mcp:obsidian_*`
+- Core: Add `auto_approve_workspace_dirs` config option — list of workspace directory names (relative to `work_dir`) where `WriteFile` and `StrReplaceFile` approvals are skipped automatically; useful for skills, plans, notes, or other directories the agent routinely modifies
+- Core: New config files are now created from a commented TOML template with inline documentation and examples instead of a plain serialized dump
+- Approval: Auto-approve actions now support glob pattern matching via `fnmatch` — exact match is checked first, then pattern expansion, so action names containing glob-special characters are handled safely
+- Core: Add session-level telemetry tracking — sessions now emit a `session_started` event on first interaction, attributing Wire and ACP sessions to their client name and version; adds a debug server script for local telemetry inspection
+- Security: Harden `auto_approve_workspace_dirs` against path traversal — entries containing `..` that would escape the workspace are now rejected and logged
+
 
 ## 1.39.0 (2026-04-24)
 

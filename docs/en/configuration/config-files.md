@@ -33,6 +33,9 @@ The configuration file contains the following top-level configuration items:
 | `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |
 | `show_thinking_stream` | `boolean` | Whether to stream the raw reasoning text in the live area as a 6-line scrolling preview and commit the full reasoning markdown to history when the block ends (defaults to `true`; set to `false` to show only the compact `Thinking ...` indicator and a one-line trace summary) |
 | `merge_all_available_skills` | `boolean` | Whether to merge skills from all brand directories (defaults to `true`); see [Skills configuration](../customization/skills.md) |
+| `telemetry` | `boolean` | Enable anonymous telemetry to help improve the product (defaults to `true`); set to `false` to completely disable |
+| `default_auto_approve_actions` | `array` | List of action name patterns to auto-approve by default in every session. Supports glob patterns (`*`, `?`). Examples: `["mcp:obsidian_*"]`. Defaults to `[]` |
+| `auto_approve_workspace_dirs` | `array` | List of workspace directory names (relative to `work_dir`) for which file write/edit approvals should be skipped automatically. Example: `["skills", "plans"]`. Defaults to `[]` |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -52,6 +55,15 @@ default_editor = ""
 theme = "dark"
 show_thinking_stream = true
 merge_all_available_skills = true
+
+# Enable anonymous telemetry to help improve the product. Set to false to disable.
+# telemetry = true
+
+# Auto-approve all obsidian MCP tools by default
+# default_auto_approve_actions = ["mcp:obsidian_*"]
+
+# Skip approval for file edits inside these workspace directories
+# auto_approve_workspace_dirs = ["skills", "plans"]
 
 [providers.kimi-for-coding]
 type = "kimi"

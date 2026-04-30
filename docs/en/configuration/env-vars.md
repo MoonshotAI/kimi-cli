@@ -131,6 +131,7 @@ export OPENAI_API_KEY="sk-xxx"
 | --- | --- |
 | `KIMI_SHARE_DIR` | Customize the share directory path (default: `~/.kimi`) |
 | `KIMI_CLI_NO_AUTO_UPDATE` | Disable all update-related features |
+| `KIMI_DISABLE_TELEMETRY` | Disable anonymous telemetry data collection |
 | `KIMI_CLI_PASTE_CHAR_THRESHOLD` | Character threshold for folding pasted text (default: `1000`) |
 | `KIMI_CLI_PASTE_LINE_THRESHOLD` | Line threshold for folding pasted text (default: `15`) |
 
@@ -147,6 +148,16 @@ See [Data Locations](./data-locations.md) for details.
 ::: warning Note
 `KIMI_SHARE_DIR` does not affect [Agent Skills](../customization/skills.md) search paths. Skills are cross-tool shared capability extensions (compatible with Claude, Codex, etc.), which is a different type of data from application runtime data. To override Skills paths, use the `--skills-dir` flag.
 :::
+
+### `KIMI_DISABLE_TELEMETRY`
+
+When set to `1`, `true`, `t`, `yes`, or `y` (case-insensitive), disables anonymous telemetry data collection. Telemetry is enabled by default and collects events such as session starts and tool calls to improve the product. Sensitive content such as user input, file paths, or code snippets is never collected.
+
+```sh
+export KIMI_DISABLE_TELEMETRY="1"
+```
+
+You can also disable telemetry by setting `telemetry = false` in the configuration file.
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 

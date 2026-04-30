@@ -131,6 +131,7 @@ export OPENAI_API_KEY="sk-xxx"
 | --- | --- |
 | `KIMI_SHARE_DIR` | 自定义共享目录路径（默认 `~/.kimi`） |
 | `KIMI_CLI_NO_AUTO_UPDATE` | 禁用所有更新相关功能 |
+| `KIMI_DISABLE_TELEMETRY` | 禁用匿名遥测数据收集 |
 | `KIMI_CLI_PASTE_CHAR_THRESHOLD` | 粘贴文本折叠的字符数阈值（默认 `1000`） |
 | `KIMI_CLI_PASTE_LINE_THRESHOLD` | 粘贴文本折叠的行数阈值（默认 `15`） |
 
@@ -147,6 +148,16 @@ export KIMI_SHARE_DIR="/path/to/custom/kimi"
 ::: warning 注意
 `KIMI_SHARE_DIR` 不影响 [Agent Skills](../customization/skills.md) 的搜索路径。Skills 是跨工具共享的能力扩展（与 Claude、Codex 等兼容），与应用运行时数据是不同类型的数据。如需覆盖 Skills 路径，请使用 `--skills-dir` 参数。
 :::
+
+### `KIMI_DISABLE_TELEMETRY`
+
+设置为 `1`、`true`、`t`、`yes` 或 `y`（不区分大小写）时，禁用匿名遥测数据收集。遥测默认启用，用于收集会话启动、工具调用等事件以改进产品。不会收集用户输入、文件路径或代码片段等敏感内容。
+
+```sh
+export KIMI_DISABLE_TELEMETRY="1"
+```
+
+也可以通过在配置文件中设置 `telemetry = false` 来禁用。
 
 ### `KIMI_CLI_NO_AUTO_UPDATE`
 

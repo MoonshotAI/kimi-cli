@@ -17,6 +17,7 @@ Note: `KIMI_SHARE_DIR` only affects the storage location of the runtime data lis
 ├── mcp.json              # MCP server configuration
 ├── credentials/          # OAuth credentials
 │   └── <provider>.json
+├── telemetry/            # Telemetry data cache (temporary disk fallback when sending fails)
 ├── sessions/             # Session data
 │   └── <work-dir-hash>/
 │       └── <session-id>/
@@ -153,5 +154,6 @@ To clean only specific data:
 | Clear plan files | Delete `~/.kimi/plans/` directory, or use `/plan clear` in plan mode |
 | Clear input history | Delete `~/.kimi/user-history/` directory |
 | Clear logs | Delete `~/.kimi/logs/` directory |
+| Clear telemetry cache | Delete `~/.kimi/telemetry/` directory |
 | Clear MCP configuration | Delete `~/.kimi/mcp.json` or use `kimi mcp remove` |
 | Clear login credentials | Delete `~/.kimi/credentials/` directory or use `/logout` |
