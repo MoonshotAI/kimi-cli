@@ -85,6 +85,14 @@ class _DummyReadOnlyModal:
         raise AssertionError("Should not be called in this test")
 
 
+class _DummyBuffer:
+    def __init__(self, *, complete_while_typing: bool = True) -> None:
+        self._complete_while_typing = complete_while_typing
+
+    def complete_while_typing(self) -> bool:
+        return self._complete_while_typing
+
+
 def _make_toolbar_session(*, model_name: str | None = None, tips: list[str] | None = None) -> Any:
     """Build a minimal CustomPromptSession for toolbar rendering tests."""
     prompt_session = object.__new__(CustomPromptSession)
@@ -733,6 +741,51 @@ def test_modal_prompt_suspends_and_restores_existing_draft_when_input_is_hidden(
 
     assert prompt_session._session.default_buffer.text == "keep this draft"
     assert prompt_session._suspended_buffer_document is None
+
+
+def test_hidden_modal_text_change_skips_completion() -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._suppress_auto_completion = False
+    prompt_session._running_prompt_delegate = None
+    prompt_session._modal_delegates = [_DummyReadOnlyModal()]
+
+    assert not prompt_session._should_start_completion_on_text_change(cast(Any, _DummyBuffer()))
+
+
+def test_visible_prompt_text_change_allows_completion() -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._suppress_auto_completion = False
+    prompt_session._running_prompt_delegate = _DummyRunningPrompt()
+    prompt_session._modal_delegates = []
+
+    assert prompt_session._should_start_completion_on_text_change(cast(Any, _DummyBuffer()))
+
+
+def test_hidden_modal_uses_idle_refresh_interval() -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._running_prompt_delegate = None
+    prompt_session._modal_delegates = [_DummyReadOnlyModal()]
+    prompt_session._fast_refresh_provider = lambda: False
+
+    assert not prompt_session._should_use_running_refresh_interval()
+
+
+def test_hidden_modal_keeps_fast_refresh_provider_override() -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._running_prompt_delegate = None
+    prompt_session._modal_delegates = [_DummyReadOnlyModal()]
+    prompt_session._fast_refresh_provider = lambda: True
+
+    assert prompt_session._should_use_running_refresh_interval()
+
+
+def test_visible_running_prompt_uses_running_refresh_interval() -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._running_prompt_delegate = _DummyRunningPrompt()
+    prompt_session._modal_delegates = []
+    prompt_session._fast_refresh_provider = lambda: False
+
+    assert prompt_session._should_use_running_refresh_interval()
 
 
 def test_idle_agent_prompt_uses_same_separator_layout(monkeypatch: Any) -> None:

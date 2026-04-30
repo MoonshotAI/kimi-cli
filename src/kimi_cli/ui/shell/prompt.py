@@ -1530,7 +1530,7 @@ class CustomPromptSession:
         def _(buffer: Buffer) -> None:
             self._last_input_activity_time = time.monotonic()
             self._input_activity_event.set()
-            if buffer.complete_while_typing() and not self._suppress_auto_completion:
+            if self._should_start_completion_on_text_change(buffer):
                 buffer.start_completion()
 
         self._status_refresh_task: asyncio.Task[None] | None = None
@@ -1836,6 +1836,18 @@ class CustomPromptSession:
             return FormattedText([])
         return to_formatted_text(block)
 
+    def _should_start_completion_on_text_change(self, buffer: Buffer) -> bool:
+        if self._suppress_auto_completion or not buffer.complete_while_typing():
+            return False
+        delegate = self._active_prompt_delegate()
+        return delegate is None or not delegate.running_prompt_hides_input_buffer()
+
+    def _should_use_running_refresh_interval(self) -> bool:
+        delegate = self._active_prompt_delegate()
+        if delegate is not None and not delegate.running_prompt_hides_input_buffer():
+            return True
+        return self._fast_refresh_provider is not None and self._fast_refresh_provider()
+
     def _render_agent_prompt_label(self) -> FormattedText:
         """Render the prompt label (empty — cursor starts at column 0)."""
         return FormattedText([("", "  ")])
@@ -1860,11 +1872,7 @@ class CustomPromptSession:
 
                     interval = (
                         _RUNNING_REFRESH_INTERVAL
-                        if self._active_prompt_delegate() is not None
-                        or (
-                            self._fast_refresh_provider is not None
-                            and self._fast_refresh_provider()
-                        )
+                        if self._should_use_running_refresh_interval()
                         else _IDLE_REFRESH_INTERVAL
                     )
                     await asyncio.sleep(interval)
