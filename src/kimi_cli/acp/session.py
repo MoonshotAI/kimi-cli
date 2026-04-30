@@ -19,6 +19,7 @@ from kimi_cli.app import KimiCLI
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
+from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
@@ -243,12 +244,95 @@ class ACPSession:
             _current_turn_id.reset(token)
         return acp.PromptResponse(stop_reason="end_turn")
 
+    async def replay_history(self, wire_file: WireFile) -> None:
+        """Replay persisted wire history to an ACP client during session/load."""
+        token = _current_turn_id.set(None)
+        terminal_tool_calls_token = _terminal_tool_call_ids.set(set())
+        try:
+            async for record in wire_file.iter_records():
+                wire_msg = record.to_wire_message()
+                match wire_msg:
+                    case TurnBegin(user_input=user_input) | SteerInput(user_input=user_input):
+                        self._turn_state = _TurnState()
+                        _current_turn_id.set(self._turn_state.id)
+                        await self._send_user_input(user_input)
+                    case TurnEnd() | StepInterrupted():
+                        self._turn_state = None
+                        _current_turn_id.set(None)
+                    case StepBegin():
+                        pass
+                    case CompactionBegin() | CompactionEnd():
+                        pass
+                    case MCPLoadingBegin() | MCPLoadingEnd():
+                        pass
+                    case StatusUpdate():
+                        pass
+                    case Notification():
+                        await self._send_notification(wire_msg)
+                    case ThinkPart(think=think):
+                        await self._send_thinking(think)
+                    case TextPart(text=text):
+                        await self._send_text(text)
+                    case ContentPart():
+                        await self._send_text(f"[{wire_msg.__class__.__name__}]")
+                    case ToolCall():
+                        self._ensure_turn_state()
+                        await self._send_tool_call(wire_msg)
+                    case ToolCallPart():
+                        if self._turn_state is not None:
+                            await self._send_tool_call_part(wire_msg)
+                    case ToolResult():
+                        if self._turn_state is not None:
+                            await self._send_tool_result(wire_msg)
+                    case PlanDisplay():
+                        pass
+                    case ApprovalResponse() | SubagentEvent():
+                        pass
+                    case ApprovalRequest() | ToolCallRequest() | QuestionRequest():
+                        pass
+                    case _:
+                        pass
+        except Exception:
+            logger.exception(
+                "Failed to replay ACP session history from {file}:", file=wire_file.path
+            )
+        finally:
+            self._turn_state = None
+            _terminal_tool_call_ids.reset(terminal_tool_calls_token)
+            _current_turn_id.reset(token)
+
     async def cancel(self) -> None:
         if self._turn_state is None:
             logger.warning("Cancel requested but no prompt is running")
             return
 
         self._turn_state.cancel_event.set()
+
+    def _ensure_turn_state(self) -> None:
+        if self._turn_state is None:
+            self._turn_state = _TurnState()
+            _current_turn_id.set(self._turn_state.id)
+
+    async def _send_user_input(self, user_input: str | list[ContentPart]) -> None:
+        if not self._id or not self._conn:
+            return
+
+        parts = [TextPart(text=user_input)] if isinstance(user_input, str) else user_input
+        for part in parts:
+            if isinstance(part, TextPart):
+                content: ACPContentBlock = acp.schema.TextContentBlock(type="text", text=part.text)
+            else:
+                logger.warning("Unsupported replay user input part: {part}", part=part)
+                content = acp.schema.TextContentBlock(
+                    type="text", text=f"[{part.__class__.__name__}]"
+                )
+            await self._conn.session_update(
+                session_id=self._id,
+                update=acp.schema.UserMessageChunk(
+                    content=content,
+                    session_update="user_message_chunk",
+                ),
+            )
 
     async def _send_thinking(self, think: str):
         """Send thinking content to client."""

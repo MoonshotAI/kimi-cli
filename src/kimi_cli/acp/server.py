@@ -265,8 +265,8 @@ class ACPServer:
         # Check authentication before loading session
         self._check_auth()
 
-        await self._setup_session(cwd, session_id, mcp_servers)
-        # TODO: replay session history?
+        acp_session, _ = await self._setup_session(cwd, session_id, mcp_servers)
+        await acp_session.replay_history(acp_session.cli.soul.runtime.session.wire_file)
 
     async def resume_session(
         self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
