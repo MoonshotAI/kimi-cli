@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.41.0 (2026-04-30)
+
+- Plugin: Support installing plugins directly from a `.zip` URL — `kimi plugin install` now accepts HTTP(S) URLs ending in `.zip` (e.g. GitHub/GitLab archive links like `.../archive/refs/heads/main.zip`) and downloads + extracts them before resolving `plugin.json`, in addition to the existing git URL, local directory, and local zip-file sources
 - Shell: Enable clipboard image paste on headless Linux over SSH — when pyperclip is unavailable (e.g. DISPLAY is not set), Ctrl-V now falls back to xclip or wl-paste so remote clipboard bridges can still inject images; also prevents a UI crash from built-in clipboard shortcuts when pyperclip is broken
 
 ## 1.40.0 (2026-04-28)
