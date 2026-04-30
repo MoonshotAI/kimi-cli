@@ -1250,7 +1250,7 @@ class KimiSoul:
         *,
         chat_provider: object | None = None,
         _auth_retried: bool = False,
-        _connection_retried: bool = False,
+        _connection_attempt: int = 0,
     ) -> Any:
         try:
             return await operation()
@@ -1283,10 +1283,11 @@ class KimiSoul:
                 operation,
                 chat_provider=chat_provider,
                 _auth_retried=True,
-                _connection_retried=_connection_retried,
+                _connection_attempt=_connection_attempt,
             )
         except (APIConnectionError, APITimeoutError) as error:
-            if _connection_retried:
+            MAX_CONNECTION_RETRIES = 3
+            if _connection_attempt >= MAX_CONNECTION_RETRIES:
                 logger.warning(
                     "Chat provider recovery exhausted for {name}: {error_type}: {error}",
                     name=name,
@@ -1314,10 +1315,16 @@ class KimiSoul:
                 )
                 raise
             logger.info(
-                "Recovered chat provider during {name} after {error_type}; retrying once.",
+                "Recovered chat provider during {name} after {error_type}; retrying ({attempt}/{max_attempts}).",
                 name=name,
                 error_type=type(error).__name__,
+                attempt=_connection_attempt + 1,
+                max_attempts=MAX_CONNECTION_RETRIES,
             )
+            # Exponential backoff before retry to let transient network
+            # issues (e.g., Windows TCP stack, gateway resets) settle.
+            backoff_seconds = 2**_connection_attempt
+            await asyncio.sleep(backoff_seconds)
             # Re-enter the full recovery path so a 401 on the retry can still
             # trigger OAuth refresh instead of bubbling straight to the user.
             return await self._run_with_connection_recovery(
@@ -1325,7 +1332,7 @@ class KimiSoul:
                 operation,
                 chat_provider=chat_provider,
                 _auth_retried=_auth_retried,
-                _connection_retried=True,
+                _connection_attempt=_connection_attempt + 1,
             )
 
     @staticmethod
