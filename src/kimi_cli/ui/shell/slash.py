@@ -550,6 +550,19 @@ async def title(app: Shell, args: str):
     session.state.custom_title = new_title
     session.state.title_generated = True
     session.title = new_title
+    # Update the terminal tab/window title to reflect the user's choice.
+    try:
+        from kimi_cli.utils.proctitle import update_terminal_title_for_session
+
+        update_terminal_title_for_session(
+            work_dir=str(session.work_dir),
+            topic=new_title,
+        )
+    except OSError:
+        logger.opt(exception=True).debug(
+            "Failed to refresh terminal title for session {session_id}",
+            session_id=session.id,
+        )
     console.print(f"[green]Session title set to: {new_title}[/green]")
 
 
