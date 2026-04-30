@@ -56,6 +56,37 @@ def _parse_git_url(target: str) -> tuple[str, str | None, str | None]:
     return clone_url, subpath, branch
 
 
+def _extract_zip_to_plugin(zip_path: Path, tmp: Path) -> tuple[Path, Path]:
+    """Extract zip_path into tmp and locate the plugin directory.
+
+    Returns ``(plugin_dir, tmp)`` for cleanup by the caller. Rejects zip
+    members whose paths escape ``tmp``. Searches the extraction root and
+    one level deep for ``plugin.json``.
+    """
+    import shutil
+    import zipfile
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        for member in zf.namelist():
+            member_path = (tmp / member).resolve()
+            if not member_path.is_relative_to(tmp.resolve()):
+                shutil.rmtree(tmp, ignore_errors=True)
+                typer.echo(f"Error: zip contains unsafe path: {member}", err=True)
+                raise typer.Exit(1)
+        zf.extractall(tmp)
+
+    for candidate in [tmp] + sorted(tmp.iterdir()):
+        if candidate.is_dir() and (candidate / "plugin.json").exists():
+            return candidate, tmp
+    dirs = [d for d in tmp.iterdir() if d.is_dir() and not d.name.startswith("_")]
+    if len(dirs) == 1 and (dirs[0] / "plugin.json").exists():
+        return dirs[0], tmp
+
+    shutil.rmtree(tmp, ignore_errors=True)
+    typer.echo("Error: No plugin.json found in zip", err=True)
+    raise typer.Exit(1)
+
+
 def _resolve_source(target: str) -> tuple[Path, Path | None]:
     """Resolve plugin source to (local_dir, tmp_to_cleanup).
 
@@ -64,6 +95,32 @@ def _resolve_source(target: str) -> tuple[Path, Path | None]:
     """
     import shutil
     import tempfile
+    from urllib.parse import urlparse
+
+    # HTTP(S) URL pointing to a .zip — download then extract.
+    # Checked before the git-URL branch so GitHub/GitLab archive links
+    # like .../archive/refs/heads/main.zip take this path.
+    parsed = urlparse(target)
+    if parsed.scheme in ("http", "https") and parsed.path.lower().endswith(".zip"):
+        import httpx
+
+        tmp = Path(tempfile.mkdtemp(prefix="kimi-plugin-"))
+        zip_path = tmp / "_download.zip"
+        typer.echo(f"Downloading {target}...")
+        try:
+            with httpx.stream(
+                "GET", target, follow_redirects=True, timeout=60.0
+            ) as resp:
+                resp.raise_for_status()
+                with zip_path.open("wb") as f:
+                    for chunk in resp.iter_bytes():
+                        f.write(chunk)
+        except httpx.HTTPError as exc:
+            shutil.rmtree(tmp, ignore_errors=True)
+            typer.echo(f"Error: download failed: {exc}", err=True)
+            raise typer.Exit(1) from exc
+
+        return _extract_zip_to_plugin(zip_path, tmp)
 
     # Git URL
     if target.startswith(("https://", "git@", "http://")) and (
@@ -150,42 +207,27 @@ def _resolve_source(target: str) -> tuple[Path, Path | None]:
 
     # Zip file
     if p.is_file() and p.suffix == ".zip":
-        import zipfile
-
         tmp = Path(tempfile.mkdtemp(prefix="kimi-plugin-"))
         typer.echo(f"Extracting {p.name}...")
-        with zipfile.ZipFile(p, "r") as zf:
-            # Reject zip members that escape the extraction directory
-            for member in zf.namelist():
-                member_path = (tmp / member).resolve()
-                if not member_path.is_relative_to(tmp.resolve()):
-                    shutil.rmtree(tmp, ignore_errors=True)
-                    typer.echo(f"Error: zip contains unsafe path: {member}", err=True)
-                    raise typer.Exit(1)
-            zf.extractall(tmp)
-        # Find the directory containing plugin.json (may be nested one level)
-        for candidate in [tmp] + sorted(tmp.iterdir()):
-            if candidate.is_dir() and (candidate / "plugin.json").exists():
-                return candidate, tmp
-        # Check for __MACOSX and similar artifacts
-        dirs = [d for d in tmp.iterdir() if d.is_dir() and not d.name.startswith("_")]
-        if len(dirs) == 1 and (dirs[0] / "plugin.json").exists():
-            return dirs[0], tmp
-        shutil.rmtree(tmp, ignore_errors=True)
-        typer.echo("Error: No plugin.json found in zip", err=True)
-        raise typer.Exit(1)
+        return _extract_zip_to_plugin(p, tmp)
 
     # Local directory
     if p.is_dir():
         return p, None
 
-    typer.echo(f"Error: {target} is not a directory, zip file, or git URL", err=True)
+    typer.echo(
+        f"Error: {target} is not a directory, zip file, zip URL, or git URL",
+        err=True,
+    )
     raise typer.Exit(1)
 
 
 @cli.command("install")
 def install_cmd(
-    target: Annotated[str, typer.Argument(help="Plugin source: directory, .zip, or git URL")],
+    target: Annotated[
+        str,
+        typer.Argument(help="Plugin source: directory, .zip file, .zip URL, or git URL"),
+    ],
 ) -> None:
     """Install a plugin and inject host configuration."""
     import shutil
