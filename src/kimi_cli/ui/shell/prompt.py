@@ -35,6 +35,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, has_focus, is_done
 from prompt_toolkit.formatted_text import AnyFormattedText, FormattedText, to_formatted_text
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout.containers import (
@@ -1168,6 +1169,13 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
 
 
 _TIP_SEPARATOR = " | "
+_XTERM_FOCUS_EVENT_SEQUENCES = ("\x1b[I", "\x1b[O")
+
+
+def _register_xterm_focus_event_sequences() -> None:
+    """Consume xterm focus in/out reports instead of inserting "[I"/"[O"."""
+    for sequence in _XTERM_FOCUS_EVENT_SEQUENCES:
+        ANSI_SEQUENCES.setdefault(sequence, Keys.Ignore)
 
 
 class CustomPromptSession:
@@ -1217,6 +1225,7 @@ class CustomPromptSession:
         self._suspended_buffer_document: Document | None = None
         clipboard_available = is_clipboard_available()
         media_clipboard_available = is_media_clipboard_available()
+        _register_xterm_focus_event_sequences()
         self._tips = _build_toolbar_tips(clipboard_available or media_clipboard_available)
         self._tip_rotation_index: int = random.randrange(len(self._tips)) if self._tips else 0
 
