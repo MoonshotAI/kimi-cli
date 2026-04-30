@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Shell：在无显示环境的 Linux（如 SSH 远程）上启用剪贴板图片粘贴——当 pyperclip 不可用（例如 DISPLAY 未设置）时，Ctrl-V 现在会回退到 xclip 或 wl-paste，使远程剪贴板桥接仍能注入图片；同时防止 pyperclip 失效时内置剪贴板快捷键造成 UI 崩溃
+
 ## 1.40.0 (2026-04-28)
 
 - Core：修复 `--yolo` 模式意外阻止模型调用 `AskUserQuestion` 的问题——以前 yolo 会注入一段 system reminder，告诉模型当前处于“非交互模式”，不能向用户提问；同时 ask-user 工具在 yolo 下也会自动 dismiss。这两处都是错的：yolo 只绕过权限审批，并不意味着“用户已离开”。现在 yolo 不再向模型注入指导；用户仍可通过 `AskUserQuestion` 触达

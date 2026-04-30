@@ -66,6 +66,7 @@ from kimi_cli.ui.theme import get_prompt_style, get_toolbar_colors
 from kimi_cli.utils.clipboard import (
     grab_media_from_clipboard,
     is_clipboard_available,
+    is_media_clipboard_available,
 )
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand
@@ -1215,7 +1216,8 @@ class CustomPromptSession:
         self._last_ui_state: PromptUIState = PromptUIState.NORMAL_INPUT
         self._suspended_buffer_document: Document | None = None
         clipboard_available = is_clipboard_available()
-        self._tips = _build_toolbar_tips(clipboard_available)
+        media_clipboard_available = is_media_clipboard_available()
+        self._tips = _build_toolbar_tips(clipboard_available or media_clipboard_available)
         self._tip_rotation_index: int = random.randrange(len(self._tips)) if self._tips else 0
 
         history_entries = _load_history_entries(self._history_file)
@@ -1475,7 +1477,7 @@ class CustomPromptSession:
         def _(event: KeyPressEvent) -> None:
             self._handle_bracketed_paste(event)
 
-        if clipboard_available:
+        if clipboard_available or media_clipboard_available:
 
             @_kb.add("c-v", eager=True)
             def _(event: KeyPressEvent) -> None:
@@ -1484,15 +1486,21 @@ class CustomPromptSession:
                 track("shortcut_paste")
                 if self._try_paste_media(event):
                     return
-                clipboard_data = event.app.clipboard.get_data()
-                if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
-                    return
-                self._insert_pasted_text(event.current_buffer, clipboard_data.text)
-                event.app.invalidate()
+                if clipboard_available:
+                    try:
+                        clipboard_data = event.app.clipboard.get_data()
+                    except Exception:
+                        return
+                    if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                        return
+                    self._insert_pasted_text(event.current_buffer, clipboard_data.text)
+                    event.app.invalidate()
 
-            clipboard = PyperclipClipboard()
-        else:
-            clipboard = None
+        # Only use PyperclipClipboard when pyperclip actually works.
+        # PromptSession built-in keybindings (ctrl-k, ctrl-w, ctrl-y)
+        # use clipboard without error handling, so a broken clipboard
+        # object would crash the UI.
+        clipboard = PyperclipClipboard() if clipboard_available else None
 
         self._session = PromptSession[str](
             message=self._render_message,
@@ -1901,7 +1909,13 @@ class CustomPromptSession:
         image files are cached and inserted as placeholders.
         Returns True if any media content was inserted.
         """
-        result = grab_media_from_clipboard()
+        try:
+            result = grab_media_from_clipboard()
+        except Exception:
+            # ImageGrab.grabclipboard() may fail on headless Linux if the
+            # real xclip cannot connect to an X server. Silently ignore so
+            # that the text-paste fallback can still be attempted.
+            return False
         if result is None:
             return False
 
