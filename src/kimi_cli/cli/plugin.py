@@ -66,14 +66,19 @@ def _extract_zip_to_plugin(zip_path: Path, tmp: Path) -> tuple[Path, Path]:
     import shutil
     import zipfile
 
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        for member in zf.namelist():
-            member_path = (tmp / member).resolve()
-            if not member_path.is_relative_to(tmp.resolve()):
-                shutil.rmtree(tmp, ignore_errors=True)
-                typer.echo(f"Error: zip contains unsafe path: {member}", err=True)
-                raise typer.Exit(1)
-        zf.extractall(tmp)
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for member in zf.namelist():
+                member_path = (tmp / member).resolve()
+                if not member_path.is_relative_to(tmp.resolve()):
+                    shutil.rmtree(tmp, ignore_errors=True)
+                    typer.echo(f"Error: zip contains unsafe path: {member}", err=True)
+                    raise typer.Exit(1)
+            zf.extractall(tmp)
+    except zipfile.BadZipFile as exc:
+        shutil.rmtree(tmp, ignore_errors=True)
+        typer.echo(f"Error: invalid zip archive: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
     for candidate in [tmp] + sorted(tmp.iterdir()):
         if candidate.is_dir() and (candidate / "plugin.json").exists():

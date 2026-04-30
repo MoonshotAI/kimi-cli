@@ -640,3 +640,14 @@ def test_resolve_source_zip_url_download_failure(tmp_path: Path, monkeypatch: py
     with pytest.raises(typer.Exit):
         _resolve_source("https://example.com/missing.zip")
     assert not (tmp_path / "tmp").exists()
+
+
+def test_resolve_source_zip_url_invalid_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Non-ZIP body (e.g. HTML 200) should exit cleanly and clean up tmp."""
+    monkeypatch.setattr("tempfile.mkdtemp", lambda **kw: str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    _patch_httpx_stream(monkeypatch, b"<html>not a zip</html>")
+
+    with pytest.raises(typer.Exit):
+        _resolve_source("https://example.com/broken.zip")
+    assert not (tmp_path / "tmp").exists()
