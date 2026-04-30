@@ -876,6 +876,7 @@ _RUNNING_REFRESH_INTERVAL = 0.1
 
 _GIT_BRANCH_TTL = 5.0
 _GIT_STATUS_TTL = 15.0
+_TOOLBAR_GIT_REFRESH_INTERVAL = 1.0
 _TIP_ROTATE_INTERVAL = 30.0
 _MAX_CWD_COLS = 30
 _MAX_BRANCH_COLS = 22
@@ -895,6 +896,14 @@ class _GitStatusState:
     ahead: int = 0
     behind: int = 0
     proc: subprocess.Popen[str] | None = None
+
+
+@dataclass
+class _ToolbarGitState:
+    timestamp: float = 0.0
+    cwd: str | None = None
+    branch: str | None = None
+    status: tuple[bool, int, int] = (False, 0, 0)
 
 
 _git_branch_state = _GitBranchState()
@@ -1215,6 +1224,7 @@ class CustomPromptSession:
         self._prompt_buffer_container: ConditionalContainer | None = None
         self._last_ui_state: PromptUIState = PromptUIState.NORMAL_INPUT
         self._suspended_buffer_document: Document | None = None
+        self._toolbar_git_state = _ToolbarGitState()
         clipboard_available = is_clipboard_available()
         media_clipboard_available = is_media_clipboard_available()
         self._tips = _build_toolbar_tips(clipboard_available or media_clipboard_available)
@@ -1836,6 +1846,24 @@ class CustomPromptSession:
             return FormattedText([])
         return to_formatted_text(block)
 
+    def _get_toolbar_git_metadata(self, cwd: str) -> tuple[str | None, tuple[bool, int, int]]:
+        state = getattr(self, "_toolbar_git_state", None)
+        if state is None:
+            state = _ToolbarGitState()
+            self._toolbar_git_state = state
+
+        now = time.monotonic()
+        if state.cwd == cwd and now - state.timestamp < _TOOLBAR_GIT_REFRESH_INTERVAL:
+            return state.branch, state.status
+
+        branch = _get_git_branch()
+        status = _get_git_status() if branch else (False, 0, 0)
+        state.cwd = cwd
+        state.timestamp = now
+        state.branch = branch
+        state.status = status
+        return branch, status
+
     def _render_agent_prompt_label(self) -> FormattedText:
         """Render the prompt label (empty — cursor starts at column 0)."""
         return FormattedText([("", "  ")])
@@ -2145,7 +2173,8 @@ class CustomPromptSession:
         # CWD (truncated from left) + git branch with status badge
         # Degrade gracefully on narrow terminals: full → cwd-only → truncated cwd → skip
         try:
-            cwd = _truncate_left(_shorten_cwd(str(KaosPath.cwd())), _MAX_CWD_COLS)
+            cwd_path = str(KaosPath.cwd())
+            cwd = _truncate_left(_shorten_cwd(cwd_path), _MAX_CWD_COLS)
         except OSError:
             # CWD no longer exists (e.g. external drive unplugged).  Ask
             # prompt_toolkit to exit; the raised exception will propagate out
@@ -2153,9 +2182,9 @@ class CustomPromptSession:
             # crash report with session info and exits cleanly.
             app.exit(exception=CwdLostError())
             return FormattedText([])
-        branch = _get_git_branch()
+        branch, git_status = self._get_toolbar_git_metadata(cwd_path)
         if branch:
-            dirty, ahead, behind = _get_git_status()
+            dirty, ahead, behind = git_status
             branch = _truncate_right(branch, _MAX_BRANCH_COLS)
             badge = _format_git_badge(branch, dirty, ahead, behind)
             cwd_text = f"{cwd}  {badge}"
