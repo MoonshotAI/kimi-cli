@@ -63,6 +63,10 @@ class WriteFile(CallableTool2[Params]):
         if not self._auto_approve_dirs:
             return False
         for dir_name in self._auto_approve_dirs:
+            # Reject empty or current-directory entries that would match the entire workspace.
+            if not dir_name or dir_name == ".":
+                logger.warning("Ignoring empty auto_approve_workspace_dir entry")
+                continue
             # Reject absolute paths to prevent bypassing workspace boundaries;
             # auto-approve dirs must be relative to work_dir.
             if KaosPath(dir_name).is_absolute():
