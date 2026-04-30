@@ -11,6 +11,8 @@ import acp
 from kaos.path import KaosPath
 
 from kimi_cli.acp.kaos import ACPKaos
+import json as _json
+
 from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
 from kimi_cli.acp.session import ACPSession
 from kimi_cli.acp.tools import replace_tools
@@ -18,6 +20,7 @@ from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.acp.version import ACPVersionSpec, negotiate_version
 from kimi_cli.app import KimiCLI
 from kimi_cli.auth.oauth import KIMI_CODE_OAUTH_KEY, load_tokens
+from kimi_cli.cli.mcp import get_global_mcp_config_file
 from kimi_cli.config import LLMModel, OAuthRef, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.llm import create_llm, derive_model_capabilities
@@ -160,9 +163,16 @@ class ACPServer:
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
+        _default_mcp_file = get_global_mcp_config_file()
+        _default_mcp_configs: list[object] = []
+        if _default_mcp_file.exists():
+            try:
+                _default_mcp_configs = [_json.loads(_default_mcp_file.read_text(encoding="utf-8"))]
+            except _json.JSONDecodeError:
+                logger.warning("Skipping malformed global MCP config file: {path}", path=_default_mcp_file)
         cli_instance = await KimiCLI.create(
             session,
-            mcp_configs=[mcp_config],
+            mcp_configs=_default_mcp_configs + [mcp_config],
             ui_mode="acp",
         )
         config = cli_instance.soul.runtime.config
@@ -200,7 +210,17 @@ class ACPServer:
                     acp.schema.SessionMode(
                         id="default",
                         name="Default",
-                        description="The default mode.",
+                        description="Ask for approval before running commands.",
+                    ),
+                    acp.schema.SessionMode(
+                        id="edit",
+                        name="Accept Edits",
+                        description="Auto-approve all actions (yolo mode).",
+                    ),
+                    acp.schema.SessionMode(
+                        id="plan",
+                        name="Plan Mode",
+                        description="Plan only — no code execution.",
                     ),
                 ],
                 current_mode_id="default",
@@ -230,9 +250,16 @@ class ACPServer:
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
         mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
+        _default_mcp_file = get_global_mcp_config_file()
+        _default_mcp_configs: list[object] = []
+        if _default_mcp_file.exists():
+            try:
+                _default_mcp_configs = [_json.loads(_default_mcp_file.read_text(encoding="utf-8"))]
+            except _json.JSONDecodeError:
+                logger.warning("Skipping malformed global MCP config file: {path}", path=_default_mcp_file)
         cli_instance = await KimiCLI.create(
             session,
-            mcp_configs=[mcp_config],
+            mcp_configs=_default_mcp_configs + [mcp_config],
             resumed=True,  # _setup_session loads existing sessions
             ui_mode="acp",
         )
@@ -278,16 +305,33 @@ class ACPServer:
 
         acp_session, model_id_conv = self.sessions[session_id]
         config = acp_session.cli.soul.runtime.config
+        soul = acp_session.cli.soul
+        if soul.plan_mode:
+            current_mode_id = "plan"
+        elif getattr(soul.runtime.approval, "yolo", False):
+            current_mode_id = "edit"
+        else:
+            current_mode_id = "default"
         return acp.schema.ResumeSessionResponse(
             modes=acp.schema.SessionModeState(
                 available_modes=[
                     acp.schema.SessionMode(
                         id="default",
                         name="Default",
-                        description="The default mode.",
+                        description="Ask for approval before running commands.",
+                    ),
+                    acp.schema.SessionMode(
+                        id="edit",
+                        name="Accept Edits",
+                        description="Auto-approve all actions (yolo mode).",
+                    ),
+                    acp.schema.SessionMode(
+                        id="plan",
+                        name="Plan Mode",
+                        description="Plan only — no code execution.",
                     ),
                 ],
-                current_mode_id="default",
+                current_mode_id=current_mode_id,
             ),
             models=acp.schema.SessionModelState(
                 available_models=_expand_llm_models(config.models),
@@ -322,7 +366,25 @@ class ACPServer:
         )
 
     async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
-        assert mode_id == "default", "Only default mode is supported"
+        if session_id not in self.sessions:
+            logger.error("Session not found: {id}", id=session_id)
+            raise acp.RequestError.invalid_params({"session_id": "Session not found"})
+        acp_session, _ = self.sessions[session_id]
+        soul = acp_session.cli.soul
+        if mode_id == "default":
+            soul.runtime.approval.set_yolo(False)
+            if soul.plan_mode:
+                await soul.toggle_plan_mode_from_manual()
+        elif mode_id == "edit":
+            soul.runtime.approval.set_yolo(True)
+            if soul.plan_mode:
+                await soul.toggle_plan_mode_from_manual()
+        elif mode_id == "plan":
+            soul.runtime.approval.set_yolo(False)
+            if not soul.plan_mode:
+                await soul.toggle_plan_mode_from_manual()
+        else:
+            raise acp.RequestError.invalid_params({"mode_id": f"Unknown mode: {mode_id}"})
 
     async def set_session_model(self, model_id: str, session_id: str, **kwargs: Any) -> None:
         logger.info(
