@@ -46,6 +46,10 @@ def ensure_tty_sane() -> None:
         return
 
     attrs[3] |= desired
+    # Reset VMIN/VTIME to canonical defaults so the terminal is not left
+    # in cbreak mode after a hang or crash in _cursor_position_unix().
+    attrs[6][termios.VMIN] = 1
+    attrs[6][termios.VTIME] = 0
     with contextlib.suppress(OSError):
         termios.tcsetattr(fd, termios.TCSADRAIN, attrs)
 
@@ -63,9 +67,15 @@ def _cursor_position_unix() -> tuple[int, int] | None:
 
     fd = sys.stdin.fileno()
     oldterm = termios.tcgetattr(fd)
+    was_blocking = True
 
     try:
         tty.setcbreak(fd)
+        # Make reads non-blocking so that asyncio cancellation (or a race
+        # with prompt_toolkit's own stdin reader) cannot leave us stuck in
+        # an uninterruptible os.read() syscall.
+        was_blocking = os.get_blocking(fd)
+        os.set_blocking(fd, False)
         sys.stdout.write(_CURSOR_QUERY)
         sys.stdout.flush()
 
@@ -78,6 +88,8 @@ def _cursor_position_unix() -> tuple[int, int] | None:
                 continue
             try:
                 chunk = os.read(fd, 32)
+            except BlockingIOError:
+                continue
             except OSError:
                 break
             if not chunk:
@@ -87,6 +99,8 @@ def _cursor_position_unix() -> tuple[int, int] | None:
             if match:
                 return int(match.group(1)), int(match.group(2))
     finally:
+        with contextlib.suppress(OSError):
+            os.set_blocking(fd, was_blocking)
         termios.tcsetattr(fd, termios.TCSADRAIN, oldterm)
 
     return None
