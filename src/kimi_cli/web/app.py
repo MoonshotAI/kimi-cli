@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
-from starlette.responses import HTMLResponse
+from starlette.responses import HTMLResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from kimi_cli import logger
@@ -98,6 +98,22 @@ class _StaticCacheHeadersMiddleware:
             await send(message)
 
         await self.app(scope, receive, _send_with_cache_headers)
+
+
+class _WebStaticFiles(StaticFiles):
+    """Serve JavaScript assets with a browser-safe MIME type."""
+
+    def file_response(
+        self,
+        full_path: str | os.PathLike[str],
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        if Path(full_path).suffix.lower() == ".js":
+            response.headers["content-type"] = "text/javascript; charset=utf-8"
+        return response
 
 
 def _get_private_addresses(addresses: list[str]) -> list[str]:
@@ -220,7 +236,7 @@ def create_app(
 
     # Mount static files as fallback (must be last)
     if STATIC_DIR.exists():
-        application.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+        application.mount("/", _WebStaticFiles(directory=STATIC_DIR, html=True), name="static")
 
     return application
 
