@@ -31,8 +31,10 @@ async def test_copy_for_subagent_with_work_dir_override(runtime, temp_work_dir):
         work_dir_override=override_dir,
     )
     assert override_dir == sub.builtin_args.KIMI_WORK_DIR
+    assert override_dir == sub.session.work_dir
     # Original runtime unchanged
     assert temp_work_dir == runtime.builtin_args.KIMI_WORK_DIR
+    assert temp_work_dir == runtime.session.work_dir
 
 
 def test_copy_for_subagent_without_work_dir_override_inherits_original(runtime):
@@ -41,3 +43,4 @@ def test_copy_for_subagent_without_work_dir_override_inherits_original(runtime):
         subagent_type="coder",
     )
     assert sub.builtin_args.KIMI_WORK_DIR == runtime.builtin_args.KIMI_WORK_DIR
+    assert sub.session.work_dir == runtime.session.work_dir

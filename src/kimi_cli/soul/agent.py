@@ -356,13 +356,15 @@ class Runtime:
     ) -> Runtime:
         """Clone runtime for a subagent."""
         builtin_args = self.builtin_args
+        session = self.session
         if work_dir_override is not None:
             builtin_args = replace(builtin_args, KIMI_WORK_DIR=work_dir_override)
+            session = replace(session, work_dir=work_dir_override)
         return Runtime(
             config=self.config,
             oauth=self.oauth,
             llm=llm_override if llm_override is not None else self.llm,
-            session=self.session,
+            session=session,
             builtin_args=builtin_args,
             denwa_renji=DenwaRenji(),  # subagent must have its own DenwaRenji
             approval=self.approval.share(),
