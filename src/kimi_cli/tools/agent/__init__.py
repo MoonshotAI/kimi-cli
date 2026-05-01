@@ -142,6 +142,11 @@ class AgentTool(CallableTool2[Params]):
                 message=f"work_dir must be an absolute path, got: {params.work_dir}",
                 brief="Invalid work_dir",
             )
+        if params.resume and params.work_dir is not None:
+            return ToolError(
+                message="work_dir cannot be set when resuming an existing agent. The agent retains its original working directory.",
+                brief="work_dir not allowed on resume",
+            )
         if params.run_in_background:
             return await self._run_in_background(params)
         timeout = params.effective_timeout

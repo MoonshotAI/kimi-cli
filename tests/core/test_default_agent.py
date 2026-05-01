@@ -364,6 +364,11 @@ When calling explore, specify the desired thoroughness in the prompt:
                     "default": None,
                     "description": "Timeout in seconds for the agent task. Foreground: no default timeout (runs until completion), max 3600s (1hr). Background: default from config (15min), max 3600s (1hr). The agent is stopped if it exceeds this limit.",
                 },
+                "work_dir": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Optional working directory for the subagent. When set, the subagent's file tools and system prompt will use this directory instead of the parent agent's working directory. Must be an absolute path.",
+                },
             },
             "required": ["description", "prompt"],
             "type": "object",
