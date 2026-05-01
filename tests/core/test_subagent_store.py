@@ -196,3 +196,21 @@ def test_list_instances_skips_meta_with_invalid_field_types(session) -> None:
     records = store.list_instances()
 
     assert [record.agent_id for record in records] == ["a7777777"]
+
+
+def test_work_dir_survives_serialization_round_trip(session, temp_work_dir) -> None:
+    spec = AgentLaunchSpec(
+        agent_id="art",
+        subagent_type="coder",
+        model_override=None,
+        effective_model=None,
+        work_dir=str(temp_work_dir),
+    )
+    store = SubagentStore(session)
+    store.create_instance(
+        agent_id="art",
+        description="round-trip test",
+        launch_spec=spec,
+    )
+    loaded = store.require_instance("art")
+    assert loaded.launch_spec.work_dir == str(temp_work_dir)
