@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import replace
 
 from kaos.path import KaosPath

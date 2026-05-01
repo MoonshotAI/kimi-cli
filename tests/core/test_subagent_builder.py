@@ -151,8 +151,6 @@ async def test_builder_model_priority_prefers_override_then_type_default_then_in
 
 
 def test_launch_spec_accepts_work_dir():
-    from kaos.path import KaosPath
-
     spec = AgentLaunchSpec(
         agent_id="awd",
         subagent_type="coder",
@@ -194,7 +192,7 @@ async def test_builder_passes_work_dir_override_to_subagent(runtime, temp_work_d
         ),
     )
     # The subagent's runtime should use the overridden work_dir
-    assert agent.runtime.builtin_args.KIMI_WORK_DIR == override_dir
+    assert override_dir == agent.runtime.builtin_args.KIMI_WORK_DIR
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
