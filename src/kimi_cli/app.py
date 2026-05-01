@@ -263,6 +263,7 @@ class KimiCLI:
             afk=afk,
             runtime_afk=runtime_afk,
             skills_dirs=skills_dirs,
+            mcp_configs=mcp_configs,
         )
         runtime.ui_mode = ui_mode
         runtime.resumed = resumed
@@ -287,6 +288,12 @@ class KimiCLI:
 
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
+        if resumed:
+            # When resuming a session, MCP tools must be loaded immediately so the
+            # agent can use them from the very first turn. Otherwise deferred loading
+            # may complete after the system prompt / context has already been fixed.
+            defer_mcp_loading = False
+
         if startup_progress is not None:
             startup_progress("Loading agent...")
 
