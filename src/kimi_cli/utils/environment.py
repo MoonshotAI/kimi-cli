@@ -8,12 +8,16 @@ from typing import Literal
 from kaos.path import KaosPath
 
 
+def _shell_name_from_path(path: str) -> str:
+    return os.path.basename(path.rstrip(os.sep)) or "sh"
+
+
 @dataclass(slots=True, frozen=True, kw_only=True)
 class Environment:
     os_kind: Literal["Windows", "Linux", "macOS"] | str
     os_arch: str
     os_version: str
-    shell_name: Literal["bash", "sh", "Windows PowerShell"]
+    shell_name: str
     shell_path: KaosPath
 
     @staticmethod
@@ -49,15 +53,21 @@ class Environment:
             else:
                 shell_path = fallback_path
         else:
-            possible_paths = [
-                KaosPath("/bin/bash"),
-                KaosPath("/usr/bin/bash"),
-                KaosPath("/usr/local/bin/bash"),
-            ]
+            env_shell = os.environ.get("SHELL")
+            possible_paths: list[KaosPath] = []
+            if env_shell:
+                possible_paths.append(KaosPath(env_shell))
+            possible_paths.extend(
+                [
+                    KaosPath("/bin/bash"),
+                    KaosPath("/usr/bin/bash"),
+                    KaosPath("/usr/local/bin/bash"),
+                ]
+            )
             fallback_path = KaosPath("/bin/sh")
             for path in possible_paths:
                 if await path.is_file():
-                    shell_name = "bash"
+                    shell_name = _shell_name_from_path(str(path))
                     shell_path = path
                     break
             else:
