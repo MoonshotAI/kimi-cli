@@ -1504,7 +1504,7 @@ class CustomPromptSession:
 
         self._session = PromptSession[str](
             message=self._render_message,
-            # prompt_continuation=FormattedText([("fg:#4d4d4d", "... ")]),
+            prompt_continuation=self._render_prompt_continuation,
             completer=self._agent_mode_completer,
             complete_while_typing=True,
             reserve_space_for_menu=6,
@@ -1602,6 +1602,19 @@ class CustomPromptSession:
             return max(1, get_cwidth(f"{PROMPT_SYMBOL_SHELL} ") - 2)
         # Agent mode: prompt prefix is "│  " (3 chars inside input panel)
         return 1
+
+    def _render_prompt_continuation(self, width: int, line_number: int, wrap_count: int) -> AnyFormattedText | None:
+        """Render the prefix for continuation lines in multiline input.
+
+        Matches the width of the prompt symbol so that text on all lines
+        is left-aligned.
+        """
+        if self._mode == PromptMode.SHELL:
+            # Shell prompt is "$ " (2 chars). Pad continuation lines to match.
+            return " " * get_cwidth(f"{PROMPT_SYMBOL_SHELL} ")
+        # Agent mode: return None to preserve prompt_toolkit's default
+        # behavior (pad to prompt width), keeping continuation lines aligned.
+        return None
 
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
