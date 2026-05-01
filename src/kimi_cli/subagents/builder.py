@@ -5,7 +5,7 @@ from dataclasses import replace
 from kaos.path import KaosPath
 
 from kimi_cli.llm import clone_llm_with_model_alias
-from kimi_cli.soul.agent import Agent, Runtime, load_agent
+from kimi_cli.soul.agent import Agent, Runtime, load_agent, load_agents_md
 from kimi_cli.subagents.models import AgentLaunchSpec, AgentTypeDefinition
 from kimi_cli.utils.logging import logger
 
@@ -45,8 +45,8 @@ class SubagentBuilder:
             llm_override=llm_override,
             work_dir_override=work_dir_override,
         )
-        # Refresh directory listing for the overridden work_dir so the system
-        # prompt reflects the correct project structure.
+        # Refresh directory listing and AGENTS.md for the overridden work_dir so the
+        # system prompt reflects the correct project structure and guidelines.
         if work_dir_override is not None:
             from kimi_cli.utils.path import list_directory
 
@@ -54,9 +54,14 @@ class SubagentBuilder:
                 ls_output = await list_directory(work_dir_override)
             except OSError:
                 ls_output = "[directory not readable]"
+            agents_md = await load_agents_md(work_dir_override)
             runtime = replace(
                 runtime,
-                builtin_args=replace(runtime.builtin_args, KIMI_WORK_DIR_LS=ls_output),
+                builtin_args=replace(
+                    runtime.builtin_args,
+                    KIMI_WORK_DIR_LS=ls_output,
+                    KIMI_AGENTS_MD=agents_md or "",
+                ),
             )
         return await load_agent(
             type_def.agent_file,
