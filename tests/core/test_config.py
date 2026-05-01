@@ -54,7 +54,15 @@ def test_default_config_dump():
                 "claim_stale_after_ms": 15000,
             },
             "services": {"moonshot_search": None, "moonshot_fetch": None},
-            "mcp": {"client": {"tool_call_timeout_ms": 60000}},
+            "mcp": {
+                "client": {
+                    "tool_call_timeout_ms": 60000,
+                    "max_tool_description_chars": 1000,
+                    "max_total_tool_schema_bytes": 200000,
+                    "max_total_mcp_tool_schema_bytes": 300000,
+                    "max_visible_tools_per_server": 64,
+                }
+            },
             "hooks": [],
             "merge_all_available_skills": True,
             "extra_skill_dirs": [],
