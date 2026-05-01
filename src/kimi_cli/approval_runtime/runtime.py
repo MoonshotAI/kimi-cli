@@ -19,6 +19,7 @@ from .models import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from kimi_cli.notifications import NotificationManager
     from kimi_cli.wire.root_hub import RootWireHub
     from kimi_cli.wire.types import DisplayBlock
 
@@ -52,11 +53,17 @@ class ApprovalRuntime:
         self._waiter_counts: dict[str, int] = {}
         self._subscribers: dict[str, Callable[[ApprovalRuntimeEvent], None]] = {}
         self._root_wire_hub: RootWireHub | None = None
+        self._notification_manager: NotificationManager | None = None
 
     def bind_root_wire_hub(self, root_wire_hub: RootWireHub) -> None:
         if self._root_wire_hub is root_wire_hub:
             return
         self._root_wire_hub = root_wire_hub
+
+    def bind_notification_manager(self, notification_manager: NotificationManager) -> None:
+        if self._notification_manager is notification_manager:
+            return
+        self._notification_manager = notification_manager
 
     def create_request(
         self,
@@ -81,6 +88,7 @@ class ApprovalRuntime:
         self._requests[request.id] = request
         self._publish_event(ApprovalRuntimeEvent(kind="request_created", request=request))
         self._publish_wire_request(request)
+        self._publish_notification_request(request)
         return request
 
     async def wait_for_response(
@@ -218,6 +226,36 @@ class ApprovalRuntime:
                 source_id=request.source.id,
                 agent_id=request.source.agent_id,
                 subagent_type=request.source.subagent_type,
+            )
+        )
+
+    def _publish_notification_request(self, request: ApprovalRequestRecord) -> None:
+        if self._notification_manager is None:
+            return
+        from kimi_cli.notifications import NotificationEvent
+
+        self._notification_manager.publish(
+            NotificationEvent(
+                id=self._notification_manager.new_id(),
+                category="system",
+                type="permission_prompt",
+                source_kind="approval",
+                source_id=request.id,
+                title=f"Permission requested: {request.sender}",
+                body=request.description,
+                severity="warning",
+                payload={
+                    "request_id": request.id,
+                    "tool_call_id": request.tool_call_id,
+                    "sender": request.sender,
+                    "action": request.action,
+                    "source_kind": request.source.kind,
+                    "source_id": request.source.id,
+                    "agent_id": request.source.agent_id,
+                    "subagent_type": request.source.subagent_type,
+                },
+                targets=["llm", "wire", "shell"],
+                dedupe_key=f"approval:{request.id}:permission_prompt",
             )
         )
 
