@@ -10,6 +10,7 @@ async def test_environment_detection(monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(platform, "version", lambda: "5.15.0-123-generic")
+    monkeypatch.delenv("SHELL", raising=False)
 
     async def _mock_is_file(self: KaosPath) -> bool:
         return str(self) == "/usr/bin/bash"
@@ -24,6 +25,25 @@ async def test_environment_detection(monkeypatch):
     assert env.os_version == "5.15.0-123-generic"
     assert env.shell_name == "bash"
     assert str(env.shell_path) == "/usr/bin/bash"
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
+async def test_environment_detection_prefers_shell_env(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(platform, "version", lambda: "5.15.0-123-generic")
+    monkeypatch.setenv("SHELL", "/opt/homebrew/bin/fish")
+
+    async def _mock_is_file(self: KaosPath) -> bool:
+        return str(self) in {"/opt/homebrew/bin/fish", "/usr/bin/bash"}
+
+    monkeypatch.setattr(KaosPath, "is_file", _mock_is_file)
+
+    from kimi_cli.utils.environment import Environment
+
+    env = await Environment.detect()
+    assert env.shell_name == "fish"
+    assert str(env.shell_path) == "/opt/homebrew/bin/fish"
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
