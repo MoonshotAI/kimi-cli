@@ -289,6 +289,36 @@ def test_approval_runtime_publishes_to_root_wire_hub() -> None:
     assert msg.response == "reject"
 
 
+def test_runtime_approval_request_publishes_permission_prompt_notification(runtime) -> None:
+    assert runtime.approval_runtime is not None
+
+    request = runtime.approval_runtime.create_request(
+        request_id="req-notify",
+        tool_call_id="call-notify",
+        sender="Shell",
+        action="run command",
+        description="pwd",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-notify"),
+    )
+
+    views = runtime.notifications.store.list_views()
+    assert len(views) == 1
+    event = views[0].event
+    assert event.type == "permission_prompt"
+    assert event.category == "system"
+    assert event.source_kind == "approval"
+    assert event.source_id == request.id
+    assert event.title == "Permission requested: Shell"
+    assert event.body == "pwd"
+    assert event.severity == "warning"
+    assert event.payload["request_id"] == request.id
+    assert event.payload["tool_call_id"] == "call-notify"
+    assert event.payload["sender"] == "Shell"
+    assert event.payload["action"] == "run command"
+    assert event.targets == ["llm", "wire", "shell"]
+
+
 async def _drain_ui_messages(wire: Wire) -> None:
     wire_ui = wire.ui_side(merge=True)
     while True:
