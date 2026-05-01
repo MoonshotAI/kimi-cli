@@ -111,6 +111,8 @@ This page documents the changes in each Kimi Code CLI release.
 - Todo: Refactor SetTodoList to persist state and prevent tool call storms — todos are now persisted to session state (root agent) and independent state files (sub-agents); adds query mode (omit `todos` to read current state) and clear mode (pass `[]`); includes anti-storm guidance in tool description to prevent repeated calls without progress (fixes #1710)
 - ReadFile: Add total line count to every read response and support negative `line_offset` for tail mode — the tool now reports `Total lines in file: N.` in its message so the model can plan subsequent reads; negative `line_offset` (e.g. `-100`) reads the last N lines using a sliding window, useful for viewing recent log output without shell commands; the absolute value is capped at 1000 (MAX_LINES)
 - Shell: Fix black background on inline code and code blocks in Markdown rendering — `NEUTRAL_MARKDOWN_THEME` now overrides all Rich default `markdown.*` styles to `"none"`, preventing Rich's built-in `"cyan on black"` from leaking through on non-black terminals
+- Core: Add three-tier rules system for development guidelines — introduces builtin, user (`~/.config/agents/rules/`), and project (`.agents/rules/`) level rules with YAML frontmatter support (name, description, paths, priority, extends); active rules are automatically injected into the system prompt with size (32 KiB default) and count (10 default) limits; rules can be enabled/disabled per path pattern
+- Shell: Add `/rules` command to manage development rules — supports `list [level] [--all]`, `show <rule-id>`, `on/off <rule-id>`, and `reset [--hard]` subcommands; rules status is persisted per project
 
 ## 1.30.0 (2026-04-02)
 

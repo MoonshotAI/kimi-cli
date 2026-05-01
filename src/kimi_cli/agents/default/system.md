@@ -126,6 +126,16 @@ When working on files in subdirectories, always check whether those directories 
 
 If you modified any files/styles/structures/configurations/workflows/... mentioned in `AGENTS.md` files, you MUST update the corresponding `AGENTS.md` files to keep them up-to-date.
 
+# Active Rules
+
+The following development rules are currently enabled. You MUST follow these standards when writing or modifying code. Use `/rules list` to see all available rules and `/rules on|off <rule-id>` to toggle them.
+
+{% if KIMI_ACTIVE_RULES %}
+${KIMI_ACTIVE_RULES}
+{% else %}
+_No rules are currently active. Add rules to `~/.config/agents/rules/` or `.agents/rules/` to enable development guidelines._
+{% endif %}
+
 # Skills
 
 Skills are reusable, composable capabilities that enhance your abilities. Each skill is a self-contained directory with a `SKILL.md` file that contains instructions, examples, and/or reference material.

@@ -183,6 +183,34 @@ class MCPConfig(BaseModel):
     )
 
 
+class RulesConfig(BaseModel):
+    """Rules system configuration for development guidelines."""
+
+    enabled: bool = Field(
+        default=True,
+        description="Enable the rules system for development guidelines",
+    )
+    auto_enable_by_path: bool = Field(
+        default=True,
+        description="Automatically enable rules matching current project file paths",
+    )
+    max_active_rules: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of active rules to inject into system prompt",
+    )
+    max_total_size: int = Field(
+        default=32 * 1024,
+        ge=0,
+        description="Maximum total size of rules content in bytes (0 = unlimited)",
+    )
+    include_source: bool = Field(
+        default=False,
+        description="Include rule source (level/id) in system prompt output",
+    )
+
+
 class Config(BaseModel):
     """Main configuration structure."""
 
@@ -239,6 +267,9 @@ class Config(BaseModel):
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
     hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")  # pyright: ignore[reportUnknownVariableType]
+    rules: RulesConfig = Field(
+        default_factory=RulesConfig, description="Rules system configuration"
+    )
     merge_all_available_skills: bool = Field(
         default=True,
         description=(

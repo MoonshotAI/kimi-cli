@@ -338,3 +338,248 @@ async def import_context(soul: KimiSoul, args: str):
                 "The content is now part of your session context."
             )
         )
+
+
+# =============================================================================
+# Rules System Commands
+# =============================================================================
+
+
+@registry.command
+async def rules(soul: KimiSoul, args: str):
+    """
+    Manage development rules. Usage: /rules [list|show|on|off|reset] [args]
+    
+    Commands:
+      list [level] [--all]     List all rules with status
+      show <rule-id>           Show rule content
+      on <rule-id>             Enable a rule
+      off <rule-id>            Disable a rule  
+      reset [--hard]           Reset rules to defaults
+    """
+    args_str = args.strip()
+    parts = args_str.split(maxsplit=1) if args_str else []
+    subcmd = parts[0].lower() if parts else "list"
+    subargs = parts[1] if len(parts) > 1 else ""
+
+    # Ensure rules registry is loaded
+    if soul.runtime.rules_registry is None:
+        wire_send(TextPart(text="Rules system is not initialized."))
+        return
+
+    registry = soul.runtime.rules_registry
+    await registry.load()
+
+    match subcmd:
+        case "list":
+            await _rules_list(registry, subargs)
+        case "show":
+            await _rules_show(registry, subargs)
+        case "on" | "enable":
+            await _rules_toggle(registry, subargs, enabled=True)
+        case "off" | "disable":
+            await _rules_toggle(registry, subargs, enabled=False)
+        case "reset":
+            await _rules_reset(registry, subargs)
+        case _:
+            wire_send(TextPart(
+                text=f"Unknown /rules subcommand: {subcmd}\n"
+                     f"Usage: /rules [list|show|on|off|reset]"
+            ))
+
+
+async def _rules_list(registry, args: str) -> None:
+    """List all rules with their status."""
+    show_disabled = "--all" in args or "--show-disabled" in args
+    level_filter = args.replace("--all", "").replace("--show-disabled", "").strip() or None
+
+    rules = registry.get_all_rules()
+    if not rules:
+        wire_send(TextPart(
+            text="No rules found. Rules are loaded from:\n"
+                 "  - ~/.config/agents/rules/\n"
+                 "  - .agents/rules/ (project)\n"
+                 "  - Built-in defaults"
+        ))
+        return
+
+    # Group by level
+    by_level: dict[str, list] = {"builtin": [], "user": [], "project": []}
+    for rule in rules:
+        if level_filter and rule.level != level_filter:
+            continue
+        by_level[rule.level].append(rule)
+
+    lines = []
+    stats = registry.get_stats()
+    lines.append(f"Rules: {stats.enabled}/{stats.total} enabled\n")
+
+    for level_name, level_rules in by_level.items():
+        if not level_rules:
+            continue
+
+        # Determine display path
+        match level_name:
+            case "builtin":
+                header = "Built-in Rules"
+            case "user":
+                header = "User Rules (~/.config/agents/rules/)"
+            case "project":
+                header = "Project Rules (.agents/rules/)"
+            case _:
+                header = f"{level_name.title()} Rules"
+
+        lines.append("")
+        lines.append(f"{header}:")
+
+        first_rule = True
+        for rule in level_rules:
+            enabled = registry.is_enabled(rule.id)
+            # Always show enabled rules, only show disabled with --all
+            if not enabled and not show_disabled:
+                continue
+
+            # Add blank line between rules for visual separation
+            if not first_rule:
+                lines.append("")
+            first_rule = False
+
+            state = registry._state.get(rule.id)
+            is_pinned = state is not None and state.pinned
+
+            # Vertical format: each rule on its own line
+            status_icon = "✅" if enabled else "❌"
+            lines.append(f"  {status_icon} {rule.id}")
+            if rule.description:
+                desc = rule.description[:60]
+                if len(rule.description) > 60:
+                    desc += "..."
+                # Add pinned emoji at start of description if pinned
+                prefix = "📌 " if is_pinned else ""
+                lines.append(f"      {prefix}{desc}")
+
+    lines.append("")
+    lines.append(
+        "Tip: Use `/rules show <id>` to view rule content, `/rules on|off <id>` to toggle."
+    )
+    if not show_disabled:
+        lines.append("      Use `/rules list --all` to show disabled rules.")
+    wire_send(TextPart(text="\n".join(lines)))
+
+
+async def _rules_show(registry, rule_id: str) -> None:
+    """Show rule content."""
+    if not rule_id:
+        wire_send(TextPart(
+            text="Usage: /rules show <rule-id>\nExample: /rules show common/coding-style"
+        ))
+        return
+
+    # Try to find rule with various ID formats
+    rule = registry.get_rule(rule_id)
+
+    # Try without level prefix
+    if not rule and "/" in rule_id:
+        for r in registry.get_all_rules():
+            if r.id == rule_id or r.id.endswith(rule_id):
+                rule = r
+                break
+
+    if not rule:
+        wire_send(TextPart(
+            text=f"Rule not found: {rule_id}\nUse `/rules list` to see available rules."
+        ))
+        return
+
+    status = "enabled" if registry.is_enabled(rule.id) else "disabled"
+
+    lines = [
+        f"Rule: {rule.name}",
+        f"ID: {rule.id}",
+        f"Level: {rule.level}",
+        f"Category: {rule.category}",
+        f"Status: {status}",
+        f"Priority: {rule.metadata.priority}",
+    ]
+
+    if rule.metadata.paths:
+        lines.append(f"Applies to: {', '.join(rule.metadata.paths)}")
+
+    lines.extend([
+        "",
+        "-" * 40,
+        rule.content,
+    ])
+
+    wire_send(TextPart(text="\n".join(lines)))
+
+
+async def _rules_toggle(registry, rule_id: str, enabled: bool) -> None:
+    """Enable or disable a rule."""
+    if not rule_id:
+        action = "enable" if enabled else "disable"
+        cmd = "on" if enabled else "off"
+        wire_send(TextPart(
+            text=f"Usage: /rules {cmd} <rule-id>\nExample: /rules {cmd} common/coding-style"
+        ))
+        return
+
+    # Support wildcards
+    if "*" in rule_id:
+        matched = 0
+        for rule in registry.get_all_rules():
+            import fnmatch
+            if fnmatch.fnmatch(rule.id, rule_id) or fnmatch.fnmatch(
+                f"{rule.level}/{rule.id}", rule_id
+            ):
+                registry.toggle(rule.id, enabled)
+                matched += 1
+
+        if matched > 0:
+            await registry.save_states()
+            action = "Enabled" if enabled else "Disabled"
+            wire_send(TextPart(text=f"{action} {matched} rules matching '{rule_id}'"))
+        else:
+            wire_send(TextPart(text=f"No rules match pattern: {rule_id}"))
+        return
+
+    # Single rule toggle
+    success = registry.toggle(rule_id, enabled)
+
+    if not success:
+        # Try to find with partial match
+        for rule in registry.get_all_rules():
+            if rule.id.endswith(rule_id) or rule.name.lower() == rule_id.lower():
+                success = registry.toggle(rule.id, enabled)
+                rule_id = rule.id
+                break
+
+    if success:
+        await registry.save_states()
+        action = "enabled" if enabled else "disabled"
+        wire_send(TextPart(text=f"Rule '{rule_id}' is now {action}."))
+
+        # Refresh system prompt to reflect changes
+        wire_send(TextPart(text="Rules will take effect on the next turn."))
+    else:
+        wire_send(TextPart(
+            text=f"Rule not found: {rule_id}\nUse `/rules list` to see available rules."
+        ))
+
+
+async def _rules_reset(registry, args: str) -> None:
+    """Reset rules to defaults."""
+    hard = "--hard" in args
+
+    registry.reset_to_defaults()
+    
+    if hard:
+        # Hard reset: delete state files entirely
+        await registry.delete_state_files()
+        msg = "Rules reset to defaults. All custom states cleared and state files deleted."
+    else:
+        # Soft reset: save empty states (rules revert to defaults on next load)
+        await registry.save_states()
+        msg = "Rules reset to defaults."
+
+    wire_send(TextPart(text=msg))

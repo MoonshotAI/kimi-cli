@@ -276,6 +276,22 @@ Usage:
 
 When plan mode is enabled, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
 
+### `/rules`
+
+Manage development rules. Rules are development guidelines and coding standards defined for projects, supported at three levels: builtin, user (`~/.config/agents/rules/`), and project (`.agents/rules/`). Active rules are automatically injected into the system prompt.
+
+Usage:
+
+- `/rules list [level] [--all]`: List all rules and their status
+  - `level`: Optional filter, specify `builtin`, `user`, or `project`
+  - `--all`: Also show disabled rules
+- `/rules show <rule-id>`: View the full content of a specified rule
+- `/rules on <rule-id>`: Enable a specified rule
+- `/rules off <rule-id>`: Disable a specified rule
+- `/rules reset [--hard]`: Reset rule status to defaults, `--hard` also deletes the state file
+
+Rule status is persisted per project in `.agents/rules.state.toml`.
+
 ### `/task`
 
 Open the interactive task browser to view, monitor, and manage background tasks.
