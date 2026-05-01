@@ -7,10 +7,11 @@ import inspect
 import json
 import time
 from contextvars import ContextVar
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 from kosong.tooling import (
     CallableTool,
@@ -574,7 +575,7 @@ class MCPTool[T: ClientTransport](CallableTool):
                 f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
                 f"{mcp_tool.description or 'No description provided.'}"
             ),
-            parameters=mcp_tool.inputSchema,
+            parameters=sanitize_mcp_input_schema(mcp_tool.inputSchema),
             **kwargs,
         )
         self._mcp_tool = mcp_tool
@@ -677,6 +678,29 @@ class WireExternalTool(CallableTool):
 MCP_MAX_OUTPUT_CHARS = 100_000
 
 
+def sanitize_mcp_input_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Return a provider-compatible copy of an MCP tool input schema."""
+
+    def _sanitize(value: Any) -> Any:
+        if isinstance(value, dict):
+            mapping = cast(dict[str, Any], value)
+            if "$ref" in mapping:
+                # Moonshot's schema validator rejects metadata siblings after
+                # expanding $ref nodes, even though newer JSON Schema drafts
+                # allow them. Keep only the reference and definition tables.
+                sanitized_ref: dict[str, Any] = {"$ref": mapping["$ref"]}
+                for definitions_key in ("$defs", "definitions"):
+                    if definitions_key in mapping:
+                        sanitized_ref[definitions_key] = _sanitize(mapping[definitions_key])
+                return sanitized_ref
+            return {key: _sanitize(item) for key, item in mapping.items()}
+        if isinstance(value, list):
+            return [_sanitize(item) for item in cast(list[Any], value)]
+        return value
+
+    return _sanitize(deepcopy(schema))
+
+
 def _media_part_size(part: ContentPart) -> int | None:
     """Return the payload size of a media part, or ``None`` for non-media parts."""
     if isinstance(part, ImageURLPart):
@@ -686,6 +710,33 @@ def _media_part_size(part: ContentPart) -> int | None:
     if isinstance(part, VideoURLPart):
         return len(part.video_url.url)
     return None
+
+
+def _append_text_with_budget(
+    content: list[ContentPart],
+    text: str,
+    char_budget: int,
+) -> tuple[int, bool]:
+    if char_budget <= 0:
+        return char_budget, True
+    truncated = False
+    if len(text) > char_budget:
+        text = text[:char_budget]
+        truncated = True
+    content.append(TextPart(text=text))
+    return char_budget - len(text), truncated
+
+
+def _structured_content_part(result: CallToolResult) -> str | None:
+    structured_content = getattr(result, "structured_content", None)
+    if not isinstance(structured_content, dict):
+        return None
+    return "Structured content:\n" + json.dumps(
+        structured_content,
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
 
 
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
@@ -715,14 +766,12 @@ def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
 
         # --- budget enforcement (text) ---
         if isinstance(converted, TextPart):
-            if char_budget <= 0:
-                truncated = True
-                continue
-            if len(converted.text) > char_budget:
-                converted = TextPart(text=converted.text[:char_budget])
-                truncated = True
-            char_budget -= len(converted.text)
-            content.append(converted)
+            char_budget, text_truncated = _append_text_with_budget(
+                content,
+                converted.text,
+                char_budget,
+            )
+            truncated = truncated or text_truncated
             continue
 
         # --- budget enforcement (media: image / audio / video) ---
@@ -737,6 +786,15 @@ def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
 
         # Unknown ContentPart subclass — pass through without budget impact
         content.append(converted)
+
+    structured_text = _structured_content_part(result)
+    if structured_text is not None:
+        char_budget, structured_truncated = _append_text_with_budget(
+            content,
+            structured_text,
+            char_budget,
+        )
+        truncated = truncated or structured_truncated
 
     if truncated:
         content.append(
