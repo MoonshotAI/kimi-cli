@@ -16,6 +16,7 @@ datas = (
         includes=[
             "agents/**/*.yaml",
             "agents/**/*.md",
+            "assets/sounds/**",
             "deps/bin/**",
             "prompts/**/*.md",
             "skills/**",

@@ -43,6 +43,7 @@ from kimi_cli.ui.shell.visualize._question_panel import (
 )
 from kimi_cli.utils.aioqueue import Queue, QueueShutDown
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.sound import play_permission_sound
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     ApprovalRequest,
@@ -716,6 +717,7 @@ class _LiveView:
 
         if self._current_approval_request_panel is None:
             console.bell()
+            play_permission_sound()
             self.show_next_approval_request()
 
     def _reconcile_approval_requests(self) -> None:
