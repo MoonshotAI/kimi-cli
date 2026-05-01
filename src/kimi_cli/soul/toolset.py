@@ -515,7 +515,25 @@ class KimiToolset:
                 if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
                     oauth_servers[server_name] = server_config.url
 
-                client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+                    from fastmcp.client.transports import SSETransport, StreamableHttpTransport
+
+                    from kimi_cli.oauth import create_oauth
+
+                    scopes = getattr(server_config, "scopes", None)
+                    transport_cls = (
+                        SSETransport
+                        if server_config.transport == "sse"
+                        else StreamableHttpTransport
+                    )
+                    transport = transport_cls(
+                        server_config.url,
+                        headers=server_config.headers,
+                        auth=create_oauth(server_config.url, scopes=scopes),
+                    )
+                    client = fastmcp.Client(transport)
+                else:
+                    client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+
                 self._mcp_servers[server_name] = MCPServerInfo(
                     status="pending", client=client, tools=[]
                 )
