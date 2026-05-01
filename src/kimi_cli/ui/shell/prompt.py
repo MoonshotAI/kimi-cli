@@ -1603,7 +1603,7 @@ class CustomPromptSession:
         # Agent mode: prompt prefix is "│  " (3 chars inside input panel)
         return 1
 
-    def _render_prompt_continuation(self, width: int, line_number: int, wrap_count: int) -> AnyFormattedText:
+    def _render_prompt_continuation(self, width: int, line_number: int, wrap_count: int) -> AnyFormattedText | None:
         """Render the prefix for continuation lines in multiline input.
 
         Matches the width of the prompt symbol so that text on all lines
@@ -1612,8 +1612,9 @@ class CustomPromptSession:
         if self._mode == PromptMode.SHELL:
             # Shell prompt is "$ " (2 chars). Pad continuation lines to match.
             return " " * get_cwidth(f"{PROMPT_SYMBOL_SHELL} ")
-        # Agent mode uses a panel border; continuation is handled by the panel.
-        return ""
+        # Agent mode: return None to preserve prompt_toolkit's default
+        # behavior (pad to prompt width), keeping continuation lines aligned.
+        return None
 
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
