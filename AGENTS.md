@@ -16,6 +16,70 @@ If running tools directly, use `uv run ...`.
 Kimi Code CLI is a Python CLI agent for software engineering workflows. It supports an interactive
 shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 
+## LLM Provider Configuration
+
+### Default model
+
+The default model is `kimi-for-coding` (beta preview), served through the **agent gateway**.
+
+### Agent Gateway
+
+When the provider `base_url` contains `agent-gw.kimi.com`, the CLI automatically switches from
+OpenAI Chat Completions format to **Anthropic Messages API** format. This is handled transparently
+in `src/kimi_cli/llm.py`.
+
+```toml
+[models."kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+model = "kimi-for-coding"
+max_context_size = 2000000
+capabilities = ["video_in", "image_in", "thinking"]
+
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://agent-gw.kimi.com/coding/v1"
+api_key = "sk-kimi-..."
+```
+
+### API format details
+
+| Endpoint | Method | Format |
+|----------|--------|--------|
+| `/coding/v1/messages` | POST | Anthropic Messages API |
+| `/coding/v1/models` | GET | OpenAI-compatible list |
+| `/coding/v1/usages` | GET | Platform quota info |
+| `/coding/v1/feedback` | POST | Feedback submission |
+
+The Anthropic SDK appends `/v1/messages` to the base URL. The CLI strips the trailing `/v1`
+from `base_url` before passing it to the Anthropic client when `agent-gw` is detected.
+
+### Environment overrides
+
+| Variable | Effect |
+|----------|--------|
+| `KIMI_BASE_URL` | Overrides provider `base_url` |
+| `KIMI_API_KEY` | Overrides provider `api_key` |
+| `KIMI_MODEL_NAME` | Overrides model name |
+| `KIMI_MODEL_MAX_CONTEXT_SIZE` | Overrides `max_context_size` |
+| `KIMI_MODEL_TEMPERATURE` | Sets generation temperature |
+| `KIMI_MODEL_TOP_P` | Sets top-p sampling |
+| `KIMI_MODEL_MAX_TOKENS` | Sets max output tokens |
+
+### Model capabilities (kimi-for-coding)
+
+- **Architecture**: MoE, 1T params (32B active)
+- **Context**: 262,144 tokens (reported by API) / up to 2M (configurable)
+- **Input**: text, image, video
+- **Reasoning**: thinking/reasoning content supported
+- **Embeddings**: `bge_m3_embed`, 1024-dim via `/coding/v1/embeddings`
+- **Training cutoff**: January 2025
+
+### Preserving custom base URLs on login
+
+When running `/login`, the OAuth flow normally overwrites the provider config with the platform's
+hardcoded `api.kimi.com` URL. The CLI now preserves an existing custom `base_url` (e.g.
+`agent-gw.kimi.com`) during login, so the agent gateway setting is not lost.
+
 ## Tech stack
 
 - Python 3.12+ (tooling configured for 3.14)
@@ -87,6 +151,8 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 - `src/kimi_cli/tools/`: built-in tools
 - `src/kimi_cli/ui/`: UI frontends (shell/print/acp/wire)
 - `src/kimi_cli/acp/`: ACP server components
+- `src/kimi_cli/auth/`: OAuth, platform definitions, and API key resolution
+- `src/kimi_cli/mcp.py`: MCP server management and configuration
 - `packages/kosong/`, `packages/kaos/`: workspace deps
   + Kosong is an LLM abstraction layer designed for modern AI agent applications.
     It unifies message structures, asynchronous tool orchestration, and pluggable
@@ -104,6 +170,8 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
 - Tests use pytest + pytest-asyncio; files are `tests/test_*.py`.
 - CLI entry points: `kimi` / `kimi-cli` -> `src/kimi_cli/__main__.py` (routes to `src/kimi_cli/cli/__init__.py`).
 - User config: `~/.kimi/config.toml`; logs, sessions, and MCP config live in `~/.kimi/`.
+- OpenClaw config: `~/.openclaw/openclaw.json` (separate agent gateway bridge)
+- Kimi Claw config: `~/.kimi/kimi-claw/kimi-claw-config.json` (WebSocket bridge to agent gateway)
 
 ## Git commit messages
 
@@ -143,3 +211,15 @@ and skill workflows.
    - `git tag 0.68` or `git tag pykaos-0.5.3`
    - `git push --tags`
 9. GitHub Actions handles the release after tags are pushed.
+
+## Agent behavior — flow control
+
+When a `[Flow control]` system-reminder appears, **you MUST use the `flow_decision` tool** to
+choose CONTINUE, STOP, or PAUSE. Do not reply with plain text. Do not reason your way around
+the instruction. The tool is real, it works, and you have used it before.
+
+**Hard rules:**
+- If the system says "You MUST use the flow_decision tool," call it immediately.
+- Never claim the tool does not exist, is a pseudo-tool, or is unavailable.
+- Never substitute a text response when the system demands a flow_decision call.
+- If you are confused about whether the tool exists, trust the system instruction and call it anyway.

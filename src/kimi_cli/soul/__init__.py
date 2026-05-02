@@ -272,7 +272,9 @@ def wire_send(msg: WireMessage) -> None:
     Souls should always use this function to send wire messages.
     """
     wire = get_wire_or_none()
-    assert wire is not None, "Wire is expected to be set when soul is running"
+    if wire is None:
+        logger.warning("Wire is not set; dropping message: {msg}", msg=type(msg).__name__)
+        return
     wire.soul_side.send(msg)
 
 

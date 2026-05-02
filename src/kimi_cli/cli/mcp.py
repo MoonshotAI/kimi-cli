@@ -80,6 +80,14 @@ def _parse_key_value_pairs(
 Transport = Literal["stdio", "http"]
 
 
+@cli.command("serve")
+def mcp_serve() -> None:
+    """Run Kimi Code CLI as an MCP server (stdio transport)."""
+    from kimi_cli.mcp_serve import run_mcp_server
+
+    run_mcp_server()
+
+
 @cli.command(
     "add",
     epilog="""

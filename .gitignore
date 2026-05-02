@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.claude/
 
 # Virtual environments
 .venv
@@ -40,6 +41,14 @@ result-*
 # macOS files
 .DS_Store
 
+# Development artifacts
+build.sh
+cleanup.sh
+handoffs/
+kimi.log
+.codex
+PYEOF
+
 # Rust files
 target/
 
@@ -47,4 +56,6 @@ node_modules/
 static/
 .memo/
 .entire
-.claude
+.watch_merge.sh
+.watch_merge.log
+docs/AGENT-SPEC-REFERENCE.md

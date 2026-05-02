@@ -15,6 +15,7 @@ from kimi_cli.utils.logging import logger
 
 
 def get_metadata_file() -> Path:
+    """Return the path to the metadata JSON file."""
     return get_share_dir() / "kimi.json"
 
 
@@ -63,6 +64,10 @@ class Metadata(BaseModel):
 
 
 def load_metadata() -> Metadata:
+    """Load metadata from the metadata file.
+
+    Returns an empty Metadata object if the file does not exist.
+    """
     metadata_file = get_metadata_file()
     logger.debug("Loading metadata from file: {file}", file=metadata_file)
     if not metadata_file.exists():
@@ -73,7 +78,8 @@ def load_metadata() -> Metadata:
         return Metadata(**data)
 
 
-def save_metadata(metadata: Metadata):
+def save_metadata(metadata: Metadata) -> None:
+    """Save metadata to the metadata file atomically."""
     metadata_file = get_metadata_file()
     logger.debug("Saving metadata to file: {file}", file=metadata_file)
     atomic_json_write(metadata.model_dump(), metadata_file)

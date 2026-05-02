@@ -178,7 +178,7 @@ async def refresh_managed_models(config: Config) -> bool:
             )
             continue
         try:
-            models = await list_models(platform, api_key)
+            models = await list_models(platform, api_key, provider_base_url=provider.base_url)
         except aiohttp.ClientResponseError as exc:
             if exc.status != 401 or provider.oauth is None or oauth_manager is None:
                 logger.error(
@@ -217,7 +217,9 @@ async def refresh_managed_models(config: Config) -> bool:
             retry_exc: Exception | None = None
             for retry_api_key in retry_api_keys:
                 try:
-                    models = await list_models(platform, retry_api_key)
+                    models = await list_models(
+                        platform, retry_api_key, provider_base_url=provider.base_url
+                    )
                     break
                 except Exception as exc3:
                     retry_exc = exc3
@@ -251,11 +253,13 @@ async def refresh_managed_models(config: Config) -> bool:
     return changed
 
 
-async def list_models(platform: Platform, api_key: str) -> list[ModelInfo]:
+async def list_models(
+    platform: Platform, api_key: str, *, provider_base_url: str | None = None
+) -> list[ModelInfo]:
     async with new_client_session() as session:
         models = await _list_models(
             session,
-            base_url=platform.base_url,
+            base_url=provider_base_url or platform.base_url,
             api_key=api_key,
         )
     if platform.allowed_prefixes is None:
@@ -332,15 +336,22 @@ def _apply_models(
             changed = True
             continue
 
+        # Preserve user-configured max_context_size when larger than API-reported value.
+        # The API may under-report context length (e.g., 262144 vs actual 2M support).
+        if existing.max_context_size > model.context_length:
+            # Keep user's larger value; do not mark changed since we're preserving
+            pass
+        elif existing.max_context_size < model.context_length:
+            existing.max_context_size = model.context_length
+            changed = True
+
         if existing.provider != provider_key:
             existing.provider = provider_key
             changed = True
         if existing.model != model.id:
             existing.model = model.id
             changed = True
-        if existing.max_context_size != model.context_length:
-            existing.max_context_size = model.context_length
-            changed = True
+
         if existing.capabilities != capabilities:
             existing.capabilities = capabilities
             changed = True

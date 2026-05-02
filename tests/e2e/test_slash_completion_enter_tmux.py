@@ -29,7 +29,7 @@ def _tmux(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def _capture_pane(session: str) -> str:
-    return _tmux("capture-pane", "-pt", f"{session}:0.0").stdout
+    return _tmux("capture-pane", "-pS", "-", "-t", f"{session}:0.0").stdout
 
 
 def _wait_for_pane_text(session: str, text: str, *, timeout: float = 15.0) -> str:

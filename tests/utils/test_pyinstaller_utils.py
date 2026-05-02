@@ -82,6 +82,10 @@ def test_pyinstaller_datas():
             "kimi_cli/skills/skill-creator",
         ),
         ("src/kimi_cli/tools/agent/description.md", "kimi_cli/tools/agent"),
+        (
+            "src/kimi_cli/tools/archive_search/archive_search.md",
+            "kimi_cli/tools/archive_search",
+        ),
         ("src/kimi_cli/tools/ask_user/description.md", "kimi_cli/tools/ask_user"),
         (
             "src/kimi_cli/tools/dmail/dmail.md",
@@ -154,6 +158,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.cli.web",
             "kimi_cli.tools",
             "kimi_cli.tools.agent",
+            "kimi_cli.tools.archive_search",
             "kimi_cli.tools.ask_user",
             "kimi_cli.tools.background",
             "kimi_cli.tools.display",
@@ -167,6 +172,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.utils",
             "kimi_cli.tools.file.write",
+            "kimi_cli.tools.flow_decision",
             "kimi_cli.tools.plan",
             "kimi_cli.tools.plan.enter",
             "kimi_cli.tools.plan.heroes",

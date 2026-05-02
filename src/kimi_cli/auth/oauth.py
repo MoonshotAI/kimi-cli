@@ -568,23 +568,37 @@ def _apply_kimi_code_config(
         raise OAuthError("Kimi Code platform not found.")
 
     provider_key = managed_provider_key(platform.id)
+    existing_provider = config.providers.get(provider_key)
+    # Preserve custom base_url (e.g. agent gateway) during login
+    base_url = platform.base_url
+    if existing_provider and existing_provider.base_url:
+        base_url = existing_provider.base_url
     config.providers[provider_key] = LLMProvider(
         type="kimi",
-        base_url=platform.base_url,
+        base_url=base_url,
         api_key=SecretStr(""),
         oauth=oauth_ref,
     )
 
+    # Snapshot existing max_context_size values before deleting models,
+    # so the preservation logic below can actually find them.
+    existing_max_context: dict[str, int] = {}
     for key, model in list(config.models.items()):
         if model.provider == provider_key:
+            existing_max_context[key] = model.max_context_size
             del config.models[key]
 
     for model_info in models:
         capabilities = model_info.capabilities or None
-        config.models[managed_model_key(platform.id, model_info.id)] = LLMModel(
+        model_key = managed_model_key(platform.id, model_info.id)
+        # Preserve user-configured max_context_size when larger than API-reported value.
+        max_context_size = model_info.context_length
+        if model_key in existing_max_context and existing_max_context[model_key] > max_context_size:
+            max_context_size = existing_max_context[model_key]
+        config.models[model_key] = LLMModel(
             provider=provider_key,
             model=model_info.id,
-            max_context_size=model_info.context_length,
+            max_context_size=max_context_size,
             capabilities=capabilities,
             display_name=model_info.display_name,
         )
@@ -1079,11 +1093,26 @@ class OAuthManager:
         if runtime.llm.model_config.provider != provider_key:
             return
         from kosong.chat_provider.kimi import Kimi
+        from kosong.contrib.chat_provider.anthropic import Anthropic
 
-        assert isinstance(runtime.llm.chat_provider, Kimi), "Expected Kimi chat provider"
+        chat_provider = runtime.llm.chat_provider
         provider = runtime.config.providers.get(provider_key)
         fallback_api_key = provider.api_key.get_secret_value() if provider else ""
-        runtime.llm.chat_provider.client.api_key = access_token or fallback_api_key
+        effective_token = access_token or fallback_api_key
+
+        if isinstance(chat_provider, Kimi):
+            chat_provider.client.api_key = effective_token
+        elif isinstance(chat_provider, Anthropic):
+            chat_provider._client.api_key = effective_token  # pyright: ignore[reportPrivateUsage]
+            # default_headers is a property that returns a new dict each call,
+            # so we must mutate the underlying _custom_headers dict for the
+            # updated Authorization header to persist on subsequent requests.
+            chat_provider._client._custom_headers["Authorization"] = f"Bearer {effective_token}"  # pyright: ignore[reportPrivateUsage, reportIndexIssue]
+        else:
+            logger.warning(
+                "Cannot apply access token: unknown chat provider type {type}",
+                type=type(chat_provider).__name__,
+            )
 
 
 if __name__ == "__main__":

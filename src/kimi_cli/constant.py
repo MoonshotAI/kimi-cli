@@ -5,6 +5,13 @@ from typing import TYPE_CHECKING
 
 NAME = "Kimi Code CLI"
 
+# UI formatting constants
+DESCRIPTION_MAX_LEN = 60
+DESCRIPTION_TRUNCATE_LEN = 57
+
+# Default timeouts (seconds)
+BG_TASK_SHUTDOWN_TIMEOUT = 2.0
+
 if TYPE_CHECKING:
     VERSION: str
     USER_AGENT: str
@@ -12,6 +19,7 @@ if TYPE_CHECKING:
 
 @cache
 def get_version() -> str:
+    """Return the installed version of kimi-cli."""
     from importlib import metadata
 
     return metadata.version("kimi-cli")
@@ -19,6 +27,7 @@ def get_version() -> str:
 
 @cache
 def get_user_agent() -> str:
+    """Return the User-Agent string for outbound HTTP requests."""
     return f"KimiCLI/{get_version()}"
 
 

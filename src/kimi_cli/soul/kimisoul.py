@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
@@ -54,6 +55,7 @@ from kimi_cli.soul.compaction import (
     should_auto_compact,
 )
 from kimi_cli.soul.context import Context
+from kimi_cli.soul.convergence import ConvergenceDetector
 from kimi_cli.soul.dynamic_injection import (
     DynamicInjection,
     DynamicInjectionProvider,
@@ -65,6 +67,7 @@ from kimi_cli.soul.message import check_message, system, system_reminder, tool_r
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
+from kimi_cli.tools.flow_decision import FlowDecisionTool
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
@@ -194,6 +197,7 @@ class KimiSoul:
             from kimi_cli.tools.plan.heroes import seed_slug_cache
 
             seed_slug_cache(self._plan_session_id, self._runtime.session.state.plan_slug)
+        self._in_flow_turn: bool = False
         self._pending_plan_activation_injection: bool = False
         if self._plan_mode:
             self._ensure_plan_session_id()
@@ -1086,8 +1090,25 @@ class KimiSoul:
             )
 
         if result.tool_calls:
+            if self._in_flow_turn:
+                # When the only tool calls are flow_decision inside a flow turn,
+                # stop the agent loop immediately to prevent the model from
+                # generating extra content after the flow decision has already
+                # been made. We gate this to flow turns so normal sessions that
+                # happen to register a flow_decision tool are not affected.
+                non_flow_decision_calls = [
+                    tc for tc in result.tool_calls if tc.function.name != "flow_decision"
+                ]
+                if not non_flow_decision_calls:
+                    return StepOutcome(
+                        stop_reason="no_tool_calls",
+                        assistant_message=result.message,
+                    )
             return None
-        return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
+        return StepOutcome(
+            stop_reason="no_tool_calls",
+            assistant_message=result.message,
+        )
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
@@ -1362,10 +1383,21 @@ class FlowRunner:
         *,
         name: str | None = None,
         max_moves: int = DEFAULT_MAX_FLOW_MOVES,
+        commit_mode: str = "discard",
     ) -> None:
         self._flow = flow
         self._name = name
         self._max_moves = max_moves
+        self._commit_mode = commit_mode
+        self._cancelled = False
+        self._paused = False
+        self._ephemeral_context: Context | None = None
+        self._tmp_file: Path | None = None
+        self._parent_history_len: int = 0
+        self._parent_prefix_hash: str | None = None
+
+    def cancel(self) -> None:
+        self._cancelled = True
 
     @staticmethod
     def ralph_loop(
@@ -1388,10 +1420,12 @@ class FlowRunner:
         nodes["R2"] = FlowNode(
             id="R2",
             label=(
-                f"{prompt_text}. (You are running in an automated loop where the same "
-                "prompt is fed repeatedly. Only choose STOP when the task is fully complete. "
-                "Including it will stop further iterations. If you are not 100% sure, "
-                "choose CONTINUE.)"
+                f"{prompt_text}\n\n"
+                "[Flow control] This task is running in an automated iteration loop. "
+                "You have three options:\n"
+                "- CONTINUE: Keep working and refining.\n"
+                "- STOP: Finish and return results to the user.\n"
+                "- PAUSE: Suspend the loop and allow the user to interject."
             ).strip(),
             kind="decision",
         )
@@ -1402,25 +1436,184 @@ class FlowRunner:
         outgoing["R1"].append(FlowEdge(src="R1", dst="R2", label=None))
         outgoing["R2"].append(FlowEdge(src="R2", dst="R2", label="CONTINUE"))
         outgoing["R2"].append(FlowEdge(src="R2", dst="END", label="STOP"))
+        outgoing["R2"].append(FlowEdge(src="R2", dst="END", label="PAUSE"))
 
         flow = Flow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
         max_moves = total_runs
-        return FlowRunner(flow, max_moves=max_moves)
+        return FlowRunner(flow, max_moves=max_moves, commit_mode="merge")
 
     async def run(self, soul: KimiSoul, args: str) -> None:
         if args.strip():
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
-            return
         if self._name:
             from kimi_cli.telemetry import track
 
             track("flow_invoked", flow_name=self._name)
 
+        self._paused = False
+        # Only reset _cancelled if it was not set before run() started,
+        # so a pre-run cancel() call remains effective.
+        if not self._cancelled:
+            self._cancelled = False
+        await self._setup_ephemeral_context(soul)
+        assert self._ephemeral_context is not None
+        old_context = soul._context  # type: ignore[reportPrivateUsage]
+        soul._context = self._ephemeral_context  # type: ignore[reportPrivateUsage]
+
+        try:
+            await self._run_nodes(soul)
+        finally:
+            soul._context = old_context  # type: ignore[reportPrivateUsage]
+            try:
+                if self._commit_mode == "merge" and not self._paused:
+                    await self._merge_ephemeral_to_main(soul)
+            finally:
+                await self._cleanup_ephemeral_context()
+
+    async def _setup_ephemeral_context(self, soul: KimiSoul) -> None:
+        import hashlib
+
+        session_dir = Path(soul._runtime.session.dir)  # type: ignore[reportPrivateUsage]
+        safe_name = (self._name or "anonymous").replace("/", "_").replace("\\", "_")
+        # Use a unique suffix so concurrent or repeated flows don't collide.
+        unique_suffix = uuid.uuid4().hex[:8]
+        # Clean up any stale temp file from a previous run before creating a new one.
+        if self._tmp_file is not None and self._tmp_file.exists():
+            self._tmp_file.unlink(missing_ok=True)
+        self._tmp_file = session_dir / f"flow_{safe_name}_{unique_suffix}_context.jsonl"
+
+        main_file = soul._context.file_backend  # type: ignore[reportPrivateUsage]
+        if main_file.exists() and main_file.stat().st_size > 0:
+            import shutil
+
+            shutil.copy(main_file, self._tmp_file)
+        else:
+            self._tmp_file.touch()
+
+        self._ephemeral_context = Context(self._tmp_file, default_source="flow")
+        await self._ephemeral_context.restore()
+        self._parent_history_len = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+        # Store a hash of the parent prefix so we can detect compaction during
+        # the flow (which rebuilds the ephemeral context and invalidates indices).
+        main_history = soul._context.history  # type: ignore[reportPrivateUsage]
+        if main_history:
+            prefix = "".join(m.model_dump_json() for m in main_history)
+            self._parent_prefix_hash = hashlib.sha256(prefix.encode()).hexdigest()
+        else:
+            self._parent_prefix_hash = None
+
+    async def _merge_ephemeral_to_main(self, soul: KimiSoul) -> None:
+        if self._ephemeral_context is None:
+            return
+        import hashlib
+
+        start = self._parent_history_len
+        # Detect compaction by comparing the ephemeral prefix with the original
+        # main-context prefix. Compaction rebuilds the ephemeral history, so
+        # indices become invalid even when the final length exceeds start.
+        compacted = False
+        if self._parent_prefix_hash is not None and self._ephemeral_context.history:
+            ephemeral_prefix = "".join(
+                m.model_dump_json()
+                for m in self._ephemeral_context.history[: self._parent_history_len]
+            )
+            compacted = (
+                hashlib.sha256(ephemeral_prefix.encode()).hexdigest() != self._parent_prefix_hash
+            )
+        elif self._parent_prefix_hash is not None:
+            compacted = True
+
+        if start > len(self._ephemeral_context.history) or compacted:
+            # Compaction occurred: replace main's file and in-memory state
+            # entirely to avoid duplicating or mis-aligning messages.
+            import shutil
+
+            assert self._tmp_file is not None
+            main_file = soul._context.file_backend  # type: ignore[reportPrivateUsage]
+            # Atomic replace to avoid corrupting the main context on crash
+            tmp_target = main_file.with_suffix(".tmp")
+            shutil.copy(self._tmp_file, tmp_target)
+            tmp_target.replace(main_file)
+            soul._context._history = list(self._ephemeral_context._history)  # type: ignore[reportPrivateUsage]
+            soul._context._provenance = dict(self._ephemeral_context._provenance)  # type: ignore[reportPrivateUsage]
+            soul._context._token_count = self._ephemeral_context._token_count  # type: ignore[reportPrivateUsage]
+            soul._context._pending_token_estimate = self._ephemeral_context._pending_token_estimate  # type: ignore[reportPrivateUsage]
+            soul._context._next_checkpoint_id = self._ephemeral_context._next_checkpoint_id  # type: ignore[reportPrivateUsage]
+            soul._context._system_prompt = self._ephemeral_context._system_prompt  # type: ignore[reportPrivateUsage]
+            return
+        # Replay new messages and sync in-memory state so token counts,
+        # checkpoints, and system prompt reflect the merged context.
+        for i in range(start, len(self._ephemeral_context.history)):
+            message = self._ephemeral_context.history[i]
+            prov = self._ephemeral_context.get_provenance(i)
+            source = prov.source if prov else "flow"
+            ts = prov.timestamp if prov else None
+            await soul._context.append_message(  # type: ignore[reportPrivateUsage]
+                message, source=source, timestamp=ts
+            )
+        soul._context._token_count = self._ephemeral_context._token_count  # type: ignore[reportPrivateUsage]
+        soul._context._pending_token_estimate = self._ephemeral_context._pending_token_estimate  # type: ignore[reportPrivateUsage]
+        soul._context._next_checkpoint_id = self._ephemeral_context._next_checkpoint_id  # type: ignore[reportPrivateUsage]
+        soul._context._system_prompt = self._ephemeral_context._system_prompt  # type: ignore[reportPrivateUsage]
+        soul._context._provenance = dict(self._ephemeral_context._provenance)  # type: ignore[reportPrivateUsage]
+
+    async def _cleanup_ephemeral_context(self) -> None:
+        if self._paused:
+            # Keep temp file around for resume
+            return
+        if self._tmp_file and self._tmp_file.exists():
+            self._tmp_file.unlink(missing_ok=True)
+        self._ephemeral_context = None
+        self._tmp_file = None
+
+    @staticmethod
+    def _last_assistant_message(soul: KimiSoul, since_index: int) -> Message | None:
+        """Return the most recent assistant message in context at or after since_index."""
+        history = soul._context.history  # type: ignore[reportPrivateUsage]
+        for msg in reversed(history[since_index:]):
+            if msg.role == "assistant":
+                return msg
+        return None
+
+    @staticmethod
+    def _tool_results_since(soul: KimiSoul, since_index: int) -> list[ToolResult]:
+        """Build synthetic ToolResult objects from tool messages appended after since_index.
+
+        The convergence detector hashes tool outputs; we reconstruct ToolResult
+        objects from the context history so those hashes participate in similarity.
+        """
+        from kosong.tooling import ToolReturnValue
+
+        history = soul._context.history  # type: ignore[reportPrivateUsage]
+        tool_results: list[ToolResult] = []
+        for msg in history[since_index:]:
+            if msg.role == "tool" and msg.tool_call_id is not None:
+                output = msg.extract_text(" ") or ""
+                tool_results.append(
+                    ToolResult(
+                        tool_call_id=msg.tool_call_id,
+                        return_value=ToolReturnValue(
+                            output=output,
+                            is_error=False,
+                            message="",
+                            display=[],
+                        ),
+                    )
+                )
+        return tool_results
+
+    async def _run_nodes(self, soul: KimiSoul) -> None:
+        detector = ConvergenceDetector()
         current_id = self._flow.begin_id
         moves = 0
         total_steps = 0
+        last_task_message: Message | None = None
         while True:
+            if self._cancelled:
+                logger.info("Agent flow cancelled.")
+                return
+
             node = self._flow.nodes[current_id]
             edges = self._flow.outgoing.get(current_id, [])
 
@@ -1440,58 +1633,172 @@ class FlowRunner:
 
             if moves >= self._max_moves:
                 raise MaxStepsReached(total_steps)
-            next_id, steps_used = await self._execute_flow_node(soul, node, edges)
+
+            history_before_node = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+            next_id, steps_used, _final_message = await self._execute_flow_node(soul, node, edges)
             total_steps += steps_used
+
+            last_assistant = self._last_assistant_message(soul, since_index=history_before_node)
+            if last_assistant is not None:
+                # Capture assistant output from every node so that decision-only
+                # self-loops (e.g. ralph_loop) still have fresh convergence input
+                # on each iteration.
+                last_task_message = last_assistant
+
+            # Gather tool results from this iteration for convergence detection
+            tool_results = self._tool_results_since(soul, since_index=history_before_node)
+
+            # Detect convergence on self-loop (CONTINUE)
+            if node.kind == "decision" and next_id == current_id:
+                # Only ignore text when there are non-flow_decision tool calls
+                # to compare. If the decision turn has no real tools, compare
+                # text so empty fingerprints don't produce false convergence.
+                has_real_tools = False
+                if last_task_message and last_task_message.tool_calls:
+                    has_real_tools = any(
+                        tc.function.name != "flow_decision" for tc in last_task_message.tool_calls
+                    )
+                report = detector.record_iteration(
+                    last_task_message,
+                    tool_results,
+                    exclude_tool_names=["flow_decision"],
+                    ignore_text=has_real_tools,
+                )
+                if report.is_converged:
+                    logger.warning(
+                        "Auto-stopping flow after {moves} moves due to convergence detection. "
+                        "Similarity: {similarity:.2f}",
+                        moves=moves + 1,
+                        similarity=report.similarity_score,
+                    )
+                    return
+
             if next_id is None:
                 return
             moves += 1
             current_id = next_id
+
+    def _extract_flow_decision(self, soul: KimiSoul, *, since_index: int) -> str | None:
+        """Scan ephemeral context history for a flow_decision tool call.
+
+        We read directly from context history instead of using a ContextVar because
+        KimiToolset.handle() wraps tool execution in asyncio.create_task(), and
+        ContextVar changes in a child task do not propagate back to the parent.
+
+        Args:
+            since_index: Only scan messages appended after this history index.
+                This avoids picking up stale decisions from pre-flow context.
+        """
+        history = soul._context.history  # type: ignore[reportPrivateUsage]
+        history_slice = history[since_index:]
+        # Build a set of failed flow_decision tool call ids so we ignore
+        # decisions whose tool execution errored.
+        failed_tool_call_ids: set[str] = set()
+        for msg in history_slice:
+            if msg.role == "tool" and msg.tool_call_id:
+                text = msg.extract_text(" ")
+                if text.strip().startswith("<system>ERROR:"):
+                    failed_tool_call_ids.add(msg.tool_call_id)
+
+        for msg in reversed(history_slice):
+            if msg.role == "assistant" and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    if tc.function.name == "flow_decision" and tc.id not in failed_tool_call_ids:
+                        try:
+                            parsed = json.loads(tc.function.arguments or "{}")
+                            if isinstance(parsed, dict):
+                                d = cast("dict[str, Any]", parsed)
+                                return d.get("choice")
+                        except (json.JSONDecodeError, AttributeError):
+                            pass
+        return None
 
     async def _execute_flow_node(
         self,
         soul: KimiSoul,
         node: FlowNode,
         edges: list[FlowEdge],
-    ) -> tuple[str | None, int]:
+    ) -> tuple[str | None, int, Message | None]:
         if not edges:
             logger.error(
                 'Agent flow node "{node_id}" has no outgoing edges; stopping.',
                 node_id=node.id,
             )
-            return None, 0
+            return None, 0, None
 
         base_prompt = self._build_flow_prompt(node, edges)
         prompt = base_prompt
         steps_used = 0
+        max_invalid_retries = 2
+        invalid_retry_count = 0
+
+        if self._cancelled:
+            logger.info("Agent flow cancelled during node execution.")
+            return None, steps_used, None
+
         while True:
-            result = await self._flow_turn(soul, prompt)
+            # Only inject flow_decision tool for decision nodes so the model
+            # doesn't misuse it during task execution. Hide all other tools
+            # to force the model to use flow_decision.
+            toolset = soul._agent.toolset  # type: ignore[reportPrivateUsage]
+            added_flow_decision = False
+            hidden_tools: list[str] = []
+            if node.kind == "decision" and isinstance(toolset, KimiToolset):
+                if toolset.find("flow_decision") is None:
+                    toolset.add(FlowDecisionTool())
+                    added_flow_decision = True
+                # Hide all non-flow_decision tools to prevent the model from
+                # calling shell/file/etc. instead of making a flow decision.
+                for tool_name in list(toolset._tool_dict.keys()):
+                    if tool_name != "flow_decision" and toolset.hide(tool_name):
+                        hidden_tools.append(tool_name)
+
+            try:
+                history_before_turn = len(soul._context.history)  # type: ignore[reportPrivateUsage]
+                result = await self._flow_turn(soul, prompt)
+            finally:
+                if isinstance(toolset, KimiToolset):
+                    for tool_name in hidden_tools:
+                        toolset.unhide(tool_name)
+                    if added_flow_decision:
+                        toolset.remove("flow_decision")
+
             steps_used += result.step_count
             if result.stop_reason == "tool_rejected":
                 logger.error("Agent flow stopped after tool rejection.")
-                return None, steps_used
+                return None, steps_used, result.final_message
 
             if node.kind != "decision":
-                return edges[0].dst, steps_used
+                return edges[0].dst, steps_used, result.final_message
 
-            choice = (
-                parse_choice(result.final_message.extract_text(" "))
-                if result.final_message
-                else None
-            )
+            choice = self._extract_flow_decision(soul, since_index=history_before_turn)
+            if choice is None and result.final_message:
+                choice = parse_choice(result.final_message.extract_text(" "))
+            if choice == "PAUSE":
+                self._paused = True
+                logger.info("Agent flow paused at node {node_id}", node_id=node.id)
+                return None, steps_used, result.final_message
             next_id = self._match_flow_edge(edges, choice)
             if next_id is not None:
-                return next_id, steps_used
+                return next_id, steps_used, result.final_message
 
-            options = ", ".join(edge.label or "" for edge in edges)
-            logger.warning(
-                "Agent flow invalid choice. Got: {choice}. Available: {options}.",
-                choice=choice or "<missing>",
-                options=options,
-            )
+            invalid_retry_count += 1
+            if invalid_retry_count > max_invalid_retries:
+                logger.warning(
+                    "Agent flow invalid choice: {choice}. Available: {options}. "
+                    "Max retries ({retries}) exceeded. Defaulting to STOP.",
+                    choice=choice or "<missing>",
+                    options=", ".join(edge.label or "" for edge in edges),
+                    retries=max_invalid_retries,
+                )
+                return None, steps_used, result.final_message
+
+            # Reprompt with a correction hint for the next attempt.
+            valid_choices = ", ".join(edge.label or "" for edge in edges if edge.label)
             prompt = (
-                f"{base_prompt}\n\n"
-                "Your last response did not include a valid choice. "
-                "Reply with one of the choices using <choice>...</choice>."
+                f"Your previous response was not a valid choice. "
+                f"Please select one of the following valid options: {valid_choices}. "
+                f"You MUST use the flow_decision tool to make your selection."
             )
 
     @staticmethod
@@ -1510,7 +1817,10 @@ class FlowRunner:
             "Available branches:",
             *(f"- {choice}" for choice in choices),
             "",
-            "Reply with a choice using <choice>...</choice>.",
+            "CRITICAL: You MUST use the flow_decision tool to choose your next branch. "
+            "You have NO other tools available. Do NOT call shell, file, web, or any other tool. "
+            "Call flow_decision with your chosen branch and a brief reasoning. "
+            "Do not reply with plain text — use the flow_decision tool ONLY.",
         ]
         return "\n".join(lines)
 
@@ -1528,7 +1838,13 @@ class FlowRunner:
         soul: KimiSoul,
         prompt: str | list[ContentPart],
     ) -> TurnOutcome:
-        wire_send(TurnBegin(user_input=prompt))
-        res = await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
-        wire_send(TurnEnd())
-        return res
+        """Execute a single flow step without emitting TurnBegin/TurnEnd.
+
+        The flow's iterations are internal to a single user turn. The outer
+        soul.run() already sends TurnBegin/TurnEnd for the overall turn.
+        """
+        soul._in_flow_turn = True  # type: ignore[reportPrivateUsage]
+        try:
+            return await soul._turn(Message(role="user", content=prompt))  # type: ignore[reportPrivateUsage]
+        finally:
+            soul._in_flow_turn = False  # type: ignore[reportPrivateUsage]
