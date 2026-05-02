@@ -150,6 +150,7 @@ git clone https://github.com/MoonshotAI/kimi-cli.git
 cd kimi-cli
 
 make prepare  # prepare the development environment
+uv run kimi  # run Kimi Code CLI
 ```
 
 Then you can start working on Kimi Code CLI.
