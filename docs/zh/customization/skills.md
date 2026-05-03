@@ -90,6 +90,27 @@ extra_skill_dirs = [
 
 发现的 Skills 按作用域分组注入系统提示（`Project` / `User` / `Extra` / `Built-in`）；空分组不渲染。这样 AI 就能区分"项目里的 skill"和"用户级的 skill"，避免推理时把两者混为一谈。
 
+**嵌套子目录中的 Skill**
+
+Skill 目录（包含 `SKILL.md` 的文件夹）现在可以位于 Skills 根目录下的任意深度，不再仅限于直接子目录。发现过程会递归扫描所有子目录，但**包含 `SKILL.md` 的目录会被视为叶子节点，不再继续向其内部递归**。这意味着你可以在 Skills 根目录下按主题或项目组织深层目录结构：
+
+```
+~/.config/agents/skills/
+├── frontend/
+│   ├── react/
+│   │   └── SKILL.md      # name = "react"（叶子节点，不再递归内部）
+│   └── vue/
+│       └── SKILL.md
+├── backend/
+│   └── django/
+│       └── SKILL.md
+└── devops/
+    └── docker/
+        └── SKILL.md
+```
+
+扁平的 `.md` Skill 仍仅在顶层扫描，不会进入子目录查找。
+
 **扁平 `.md` 形式的 Skill**
 
 除了标准的 `<name>/SKILL.md` 子目录结构，Skills 目录下单个 `.md` 文件也会被识别为一个 Skill。`name` 默认取文件名去掉 `.md`。

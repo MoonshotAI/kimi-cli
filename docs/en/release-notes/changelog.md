@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Skill: Recursively discover skills in nested subdirectories — skill directories (folders containing `SKILL.md`) can now live at any depth under a skills root instead of only as immediate children. A directory that contains `SKILL.md` is treated as a leaf and is not recursed into further; flat `.md` skills remain top-level-only
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin: Support installing plugins directly from a `.zip` URL — `kimi plugin install` now accepts HTTP(S) URLs ending in `.zip` (e.g. GitHub/GitLab archive links like `.../archive/refs/heads/main.zip`) and downloads + extracts them before resolving `plugin.json`, in addition to the existing git URL, local directory, and local zip-file sources

@@ -90,6 +90,27 @@ Each entry can be an absolute path, a `~`-prefixed path, or a path relative to t
 
 Discovered skills are injected into the system prompt grouped by origin scope (`Project` / `User` / `Extra` / `Built-in`). Empty groups are omitted. This lets the AI distinguish project-specific skills from user-level ones when you refer to "the skill in this project" vs. "the user-scope skill".
 
+**Skills in nested subdirectories**
+
+Skill directories (folders containing `SKILL.md`) can now live at any depth under a skills root, not only as immediate children. Discovery scans subdirectories recursively, but **a directory that contains `SKILL.md` is treated as a leaf and is not recursed into further**. This means you can organise deep directory structures by topic or project under the skills root:
+
+```
+~/.config/agents/skills/
+├── frontend/
+│   ├── react/
+│   │   └── SKILL.md      # name = "react" (leaf, no further recursion)
+│   └── vue/
+│       └── SKILL.md
+├── backend/
+│   └── django/
+│       └── SKILL.md
+└── devops/
+    └── docker/
+        └── SKILL.md
+```
+
+Flat `.md` skills are still scanned only at the top level; they are not searched for inside subdirectories.
+
 **Flat `.md` skills**
 
 In addition to the canonical `<name>/SKILL.md` subdirectory layout, a single `.md` file placed directly in a skills directory is also recognised as a skill. Its `name` defaults to the filename without the `.md` extension.
