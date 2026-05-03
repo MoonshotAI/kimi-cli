@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Skill：支持在嵌套子目录中递归发现 Skill——Skills 根目录下的 Skill 子目录（包含 `SKILL.md` 的文件夹）现在可以位于任意深度，不再仅限于直接子目录。包含 `SKILL.md` 的目录会被视为叶子节点，不再继续向其内部递归；扁平的 `.md` Skill 仍仅在顶层扫描
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin：支持直接从 `.zip` URL 安装插件——`kimi plugin install` 现在可以接受以 `.zip` 结尾的 HTTP(S) URL（例如 GitHub/GitLab 的 archive 链接 `.../archive/refs/heads/main.zip`），下载后解压再解析 `plugin.json`，与原有的 git URL、本地目录、本地 zip 文件三种来源并列

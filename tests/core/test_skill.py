@@ -1839,3 +1839,292 @@ async def test_discover_subdir_skill_malformed_frontmatter_opener_not_used_as_de
     assert len(skills) == 1
     assert skills[0].description != "---"
     assert skills[0].description == "# Heading"
+
+
+# ---------------------------------------------------------------------------
+# Recursive nested skill discovery
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_subdirectory(tmp_path):
+    """Skills nested inside subdirectories are discovered recursively."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    # Top-level skill
+    _write_skill(root / "top", "---\nname: top\ndescription: Top-level skill\n---\n")
+
+    # Nested skill: .agents/skills/cloudlive/skills/cloudlive-project-layout/SKILL.md
+    nested = root / "cloudlive" / "skills" / "cloudlive-project-layout"
+    nested.mkdir(parents=True)
+    (nested / "SKILL.md").write_text(
+        "---\nname: cloudlive-project-layout\ndescription: Nested layout skill\n---\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="project")
+    names = sorted(s.name for s in skills)
+    assert names == ["cloudlive-project-layout", "top"]
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_deep(tmp_path):
+    """Skills may be nested arbitrarily deep."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    deep = root / "a" / "b" / "c" / "deep-skill"
+    deep.mkdir(parents=True)
+    (deep / "SKILL.md").write_text(
+        "---\nname: deep-skill\ndescription: Very deep\n---\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].name == "deep-skill"
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_no_recurse_into_skill_dir(tmp_path):
+    """A directory containing SKILL.md is a leaf; subdirectories inside it are
+    NOT scanned for additional skills."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    skill_dir = root / "parent-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: parent-skill\ndescription: Parent\n---\n",
+        encoding="utf-8",
+    )
+
+    # This subdir should be ignored because parent-skill is already a skill
+    inner = skill_dir / "child-skill"
+    inner.mkdir()
+    (inner / "SKILL.md").write_text(
+        "---\nname: child-skill\ndescription: Child\n---\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    names = [s.name for s in skills]
+    assert "parent-skill" in names
+    assert "child-skill" not in names
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_and_flat_mixed(tmp_path):
+    """Nested subdir skills and flat .md skills coexist correctly."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    # Nested skill
+    nested = root / "group" / "nested-skill"
+    nested.mkdir(parents=True)
+    (nested / "SKILL.md").write_text(
+        "---\nname: nested-skill\ndescription: Nested\n---\n",
+        encoding="utf-8",
+    )
+
+    # Flat skill
+    (root / "flat-skill.md").write_text(
+        "---\nname: flat-skill\ndescription: Flat\n---\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    names = sorted(s.name for s in skills)
+    assert names == ["flat-skill", "nested-skill"]
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_name_from_directory(tmp_path):
+    """A nested skill without frontmatter ``name:`` uses its directory name."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    nested = root / "some-group" / "directory-named-skill"
+    nested.mkdir(parents=True)
+    (nested / "SKILL.md").write_text(
+        "No frontmatter at all.\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].name == "directory-named-skill"
+    assert skills[0].description == "No frontmatter at all."
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_subdir_wins_over_flat_same_name(tmp_path, caplog):
+    """A nested skill and a flat skill with the same name: subdir wins."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    nested = root / "containers" / "greet"
+    nested.mkdir(parents=True)
+    (nested / "SKILL.md").write_text(
+        "---\nname: greet\ndescription: Nested greet\n---\n",
+        encoding="utf-8",
+    )
+
+    (root / "greet.md").write_text(
+        "---\nname: greet\ndescription: Flat greet\n---\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].description == "Nested greet"
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_skips_empty_intermediate_dirs(tmp_path):
+    """Empty intermediate directories are silently skipped."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    # Empty dir
+    (root / "empty").mkdir()
+
+    # Skill inside another path
+    skill = root / "has" / "nested-skill"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: nested-skill\ndescription: Found me\n---\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].name == "nested-skill"
+
+
+# ---------------------------------------------------------------------------
+# Symlink cycle safety
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_skips_symlink_cycle_to_parent(tmp_path):
+    """A symlink pointing back to the skills root must not cause infinite recursion."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    # Create a real skill
+    _write_skill(root / "real", "---\nname: real\ndescription: Real skill\n---\n")
+
+    # Symlink cycle: skills/cycle -> .. (points back to parent, which is skills root)
+    (root / "cycle").symlink_to(root)
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    names = [s.name for s in skills]
+    assert "real" in names
+    # Should not crash with RecursionError
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_skips_mutual_symlink_cycle(tmp_path):
+    """Mutual symlinks (a -> b, b -> a) must not cause infinite recursion."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    a = root / "a"
+    b = root / "b"
+    a.symlink_to(b)
+    b.symlink_to(a)
+
+    # Should not crash
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert skills == []
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_follows_symlinked_skill_dir(tmp_path):
+    """A symlinked skill directory is still discovered correctly."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    real_skill = tmp_path / "real_skill"
+    real_skill.mkdir()
+    (real_skill / "SKILL.md").write_text(
+        "---\nname: linked-skill\ndescription: Via symlink\n---\n",
+        encoding="utf-8",
+    )
+
+    (root / "linked-skill").symlink_to(real_skill)
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].name == "linked-skill"
+    assert skills[0].description == "Via symlink"
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_follows_symlinked_intermediate_dir(tmp_path):
+    """A symlinked intermediate directory containing skills is traversed correctly."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    real_group = tmp_path / "real_group"
+    real_group.mkdir()
+    _write_skill(
+        real_group / "nested-skill",
+        "---\nname: nested-skill\ndescription: Inside symlinked group\n---\n",
+    )
+
+    (root / "group").symlink_to(real_group)
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].name == "nested-skill"
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_visited_dedups_symlinked_intermediate_dirs(
+    tmp_path,
+):
+    """Two symlinked intermediate dirs pointing to the same real directory are
+    only traversed once — the second visit is short-circuited by ``visited``."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    real_group = tmp_path / "real_group"
+    real_group.mkdir()
+    _write_skill(
+        real_group / "nested-skill",
+        "---\nname: nested-skill\ndescription: Once\n---\n",
+    )
+
+    # Two symlinks to the same real directory
+    (root / "link-a").symlink_to(real_group)
+    (root / "link-b").symlink_to(real_group)
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].name == "nested-skill"
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_nested_deep_chain_found(tmp_path):
+    """Skills buried in a chain deeper than the old _MAX_SKILL_DEPTH are still
+    discovered now that the arbitrary depth limit has been removed."""
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    # Build a chain deeper than the old 32-level limit
+    deep = root
+    for i in range(40):
+        deep = deep / f"level-{i}"
+    deep.mkdir(parents=True)
+    (deep / "SKILL.md").write_text(
+        "---\nname: very-deep-skill\ndescription: Found despite depth\n---\n",
+        encoding="utf-8",
+    )
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="user")
+    assert len(skills) == 1
+    assert skills[0].name == "very-deep-skill"

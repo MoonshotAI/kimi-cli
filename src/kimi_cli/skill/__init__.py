@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -424,6 +425,101 @@ class Skill(BaseModel):
     model can tell user-scope from project-scope skills."""
 
 
+async def _discover_subdir_skills(
+    current_dir: KaosPath,
+    scope: SkillScope,
+    skills_by_name: dict[str, Skill],
+    visited: set[str] | None = None,
+) -> None:
+    """Recursively walk *current_dir* looking for ``SKILL.md``.
+
+    When a subdirectory contains ``SKILL.md`` it is parsed as a skill and that
+    directory is treated as a leaf (no further recursion inside it).  When a
+    subdirectory does **not** contain ``SKILL.md``, the walk continues into it.
+
+    A shared *visited* set tracks resolved canonical paths so symlink cycles
+    (e.g. ``skills/a -> ..``) cannot cause infinite recursion on local
+    backends.
+    """
+    if visited is None:
+        visited = set()
+
+    # Cycle detection: resolve symlinks on local backends, canonicalize on all.
+    # This matches the dedup logic in ``resolve_skills_roots``.
+    resolved = current_dir
+    if get_current_kaos().name == local_kaos.name:
+        try:
+            local_resolved = Path(str(current_dir)).resolve()
+        except OSError:
+            pass
+        else:
+            resolved = KaosPath.unsafe_from_local_path(local_resolved)
+    try:
+        path_key = str(resolved.canonical())
+    except OSError:
+        path_key = str(resolved)
+
+    if path_key in visited:
+        return
+    visited.add(path_key)
+
+    try:
+        async for entry in current_dir.iterdir():
+            try:
+                if not await entry.is_dir():
+                    continue
+            except OSError as exc:
+                logger.info(
+                    "Skipping unreadable skill entry {path}: {error}",
+                    path=entry,
+                    error=exc,
+                )
+                continue
+
+            skill_md = entry / "SKILL.md"
+            try:
+                is_skill_dir = await skill_md.is_file()
+            except OSError as exc:
+                logger.info(
+                    "Cannot stat SKILL.md in {path}: {error}",
+                    path=entry,
+                    error=exc,
+                )
+                # Recurse anyway — the directory itself may be readable even if
+                # the specific SKILL.md path is not.
+                is_skill_dir = False
+
+            if is_skill_dir:
+                try:
+                    content = await skill_md.read_text(encoding="utf-8")
+                except OSError as exc:
+                    logger.info(
+                        "Skipping unreadable skill file {path}: {error}",
+                        path=skill_md,
+                        error=exc,
+                    )
+                    continue
+                try:
+                    skill = parse_skill_text(
+                        content, dir_path=entry, skill_md_file=skill_md, scope=scope
+                    )
+                except Exception as exc:
+                    logger.info("Skipping invalid skill at {}: {}", skill_md, exc)
+                    continue
+                name_key = normalize_skill_name(skill.name)
+                if name_key not in skills_by_name:
+                    skills_by_name[name_key] = skill
+                # Do NOT recurse into a skill directory — it is a leaf.
+            else:
+                await _discover_subdir_skills(entry, scope, skills_by_name, visited)
+    except OSError as exc:
+        logger.warning(
+            "Failed to iterate skills directory {path}: {error}",
+            path=current_dir,
+            error=exc,
+        )
+
+
 async def discover_skills(
     skills_dir: KaosPath,
     *,
@@ -433,10 +529,13 @@ async def discover_skills(
 
     Two layouts are supported side by side:
 
-    1. **Subdirectory**: ``<skills_dir>/<name>/SKILL.md`` — the canonical layout.
+    1. **Subdirectory**: ``<skills_dir>/.../<name>/SKILL.md`` — the canonical
+       layout.  Subdirectories are scanned recursively, so skills may live at
+       any depth.  A directory that contains ``SKILL.md`` is treated as a skill
+       leaf and is not recursed into further.
     2. **Flat**: ``<skills_dir>/<name>.md`` — a single-file skill. Handy for
        users migrating from agent tooling that stores skills as flat markdown
-       files.
+       files.  Flat skills are only looked for at the top level of *skills_dir*.
 
     When both forms share the same normalized name in one directory, the
     subdirectory form wins and a warning is emitted.
@@ -459,38 +558,17 @@ async def discover_skills(
 
     skills_by_name: dict[str, Skill] = {}
 
-    # Pass 1: subdirectory form (canonical).
-    try:
-        async for entry in skills_dir.iterdir():
-            try:
-                if not await entry.is_dir():
-                    continue
-                skill_md = entry / "SKILL.md"
-                if not await skill_md.is_file():
-                    continue
-                content = await skill_md.read_text(encoding="utf-8")
-            except OSError as exc:
-                logger.info(
-                    "Skipping unreadable skill entry {path}: {error}",
-                    path=entry,
-                    error=exc,
-                )
-                continue
-            try:
-                skill = parse_skill_text(
-                    content, dir_path=entry, skill_md_file=skill_md, scope=scope
-                )
-            except Exception as exc:
-                logger.info("Skipping invalid skill at {}: {}", skill_md, exc)
-                continue
-            skills_by_name[normalize_skill_name(skill.name)] = skill
-    except OSError as exc:
+    # Pass 1: subdirectory form (canonical) — recursive.
+    start = time.perf_counter()
+    await _discover_subdir_skills(skills_dir, scope, skills_by_name)
+    elapsed = time.perf_counter() - start
+    if elapsed > 3.0:
         logger.warning(
-            "Failed to iterate skills directory {path}: {error}",
+            "Skill discovery in {path} took {elapsed:.1f}s. "
+            "Please check symlink loops, unrelated directories, or slow network mounts in your skills paths.",
             path=skills_dir,
-            error=exc,
+            elapsed=elapsed,
         )
-        return sorted(skills_by_name.values(), key=lambda s: s.name)
 
     # Pass 2: flat ``.md`` form, skipping names already claimed by a subdir.
     try:
