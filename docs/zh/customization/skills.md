@@ -111,6 +111,26 @@ extra_skill_dirs = [
 2. 正文第一个非空行（回退；超过 240 字符会被截断）
 3. `"No description provided."`（兜底）
 
+**嵌套子目录与符号链接安全**
+
+Kimi Code CLI 会在 Skills 根目录下递归遍历嵌套子目录以发现 Skill，因此你可以按主题或团队组织 Skill 的存放结构。当某个子目录包含 `SKILL.md` 时，它会被识别为一个 Skill，且该目录被视为叶子节点，不再继续深入遍历；如果子目录不包含 `SKILL.md`，则遍历会继续向更深层展开。
+
+```
+~/.config/agents/skills/
+├── frontend/
+│   ├── react.md          # 扁平 Skill：name = "react"
+│   └── vue/
+│       └── SKILL.md      # 子目录 Skill：name = "vue"
+└── backend/
+    └── api-design/
+        └── SKILL.md      # 子目录 Skill：name = "api-design"
+```
+
+发现过程会自动处理以下安全边界：
+
+- **符号链接中间目录被跳过**：为防止符号链接循环（例如 `skills/a -> ..`）导致无限遍历，符号链接的**中间目录**不会被深入遍历；但如果符号链接目录本身直接包含 `SKILL.md`，它仍会被识别为一个 Skill。
+- **耗时警告**：如果某个 Skills 路径的递归扫描耗时超过 3 秒，Kimi Code CLI 会记录一条警告日志，帮助你排查可能的符号链接循环或路径中包含了过大的无关目录。
+
 ::: tip 提示
 Skills 路径独立于 [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir)。`KIMI_SHARE_DIR` 用于自定义配置、会话、日志等运行时数据的存储位置，不影响 Skills 的搜索路径。Skills 是跨工具共享的能力扩展（支持 Kimi CLI、Claude、Codex 等多个工具共用），与应用运行时数据是不同类型的数据。如需自定义 Skills 路径，请使用 `--skills-dir` 参数或 `extra_skill_dirs` 配置。
 :::

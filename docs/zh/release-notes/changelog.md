@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Skill：支持在嵌套子目录中发现 Skill，并跳过符号链接中间目录以提升安全性——`_discover_subdir_skills` 现在使用显式栈代替递归，任意深度的目录树都能安全处理；`visited` 集合跟踪解析后的规范路径，防止符号链接循环（例如 `skills/a -> ..`）在本地后端导致无限循环。在非本地后端，符号链接的中间目录不会被遍历（符号链接的 Skill 目录仍会被发现）。当 Skill 发现耗时超过 3 秒时会记录警告，帮助排查符号链接循环或 Skill 路径中的无关目录
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin：支持直接从 `.zip` URL 安装插件——`kimi plugin install` 现在可以接受以 `.zip` 结尾的 HTTP(S) URL（例如 GitHub/GitLab 的 archive 链接 `.../archive/refs/heads/main.zip`），下载后解压再解析 `plugin.json`，与原有的 git URL、本地目录、本地 zip 文件三种来源并列

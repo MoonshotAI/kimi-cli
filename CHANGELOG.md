@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Skill: Discover nested skills and skip symlinked intermediate directories for safety — `_discover_subdir_skills` now uses an explicit stack instead of recursion so arbitrarily deep trees are safe, and a `visited` set tracks resolved canonical paths to prevent symlink cycles (e.g. `skills/a -> ..`) from causing infinite loops on local backends. On non-local backends, symlinked intermediate directories are not traversed into (symlinked skill directories are still discovered). A warning is logged when skill discovery takes longer than 3 seconds to help detect symlink loops or unrelated directories in skill paths
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin: Support installing plugins directly from a `.zip` URL — `kimi plugin install` now accepts HTTP(S) URLs ending in `.zip` (e.g. GitHub/GitLab archive links like `.../archive/refs/heads/main.zip`) and downloads + extracts them before resolving `plugin.json`, in addition to the existing git URL, local directory, and local zip-file sources

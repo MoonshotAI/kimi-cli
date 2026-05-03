@@ -111,6 +111,26 @@ Regardless of form (subdirectory or flat), each skill's `description` is resolve
 2. First non-empty line of the body (fallback; truncated at 240 characters)
 3. `"No description provided."` (last resort)
 
+**Nested subdirectories and symlink safety**
+
+Kimi Code CLI recursively walks nested subdirectories under skills roots to discover skills, so you can organise skills by topic or team. When a subdirectory contains `SKILL.md`, it is recognised as a skill and treated as a leaf — no further traversal happens inside it. When a subdirectory does **not** contain `SKILL.md`, the walk continues deeper.
+
+```
+~/.config/agents/skills/
+├── frontend/
+│   ├── react.md          # flat skill: name = "react"
+│   └── vue/
+│       └── SKILL.md      # subdirectory skill: name = "vue"
+└── backend/
+    └── api-design/
+        └── SKILL.md      # subdirectory skill: name = "api-design"
+```
+
+The discovery process handles the following safety boundaries automatically:
+
+- **Symlinked intermediate directories are skipped**: to prevent symlink cycles (e.g. `skills/a -> ..`) from causing infinite traversal, symlinked **intermediate** directories are not entered. However, if a symlinked directory itself directly contains `SKILL.md`, it is still recognised as a skill.
+- **Slow-scan warning**: if recursive scanning under a skills path takes longer than 3 seconds, Kimi Code CLI logs a warning to help you detect symlink loops or oversized unrelated directories in the path.
+
 ::: tip
 Skills paths are independent of [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir). `KIMI_SHARE_DIR` customizes the storage location for configuration, sessions, logs, and other runtime data, but does not affect Skills search paths. Skills are cross-tool shared capability extensions (compatible with Kimi CLI, Claude, Codex, and others), which is a different type of data from application runtime data. To specify custom skills paths, use the `--skills-dir` flag or `extra_skill_dirs` config.
 :::
