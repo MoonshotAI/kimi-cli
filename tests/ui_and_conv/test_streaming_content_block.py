@@ -374,7 +374,7 @@ class TestShowThinkingStream:
     def test_stream_mode_compose_final_empty_returns_empty_text(self):
         from rich.text import Text
 
-        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block = _ContentBlock(is_think=True, show_thinking_stream=True, show_thinking=True)
         result = block.compose_final()
         assert isinstance(result, Text)
         assert result.plain == ""

@@ -236,7 +236,8 @@ class _ContentBlock:
         """
         if self.is_think:
             if not self._show_thinking:
-                return Text("")
+                self._spinner.text = Text("Thinking...", style="grey50 italic")
+                return self._spinner
             if self._show_thinking_stream:
                 return self._compose_thinking_stream()
             return self._compose_thinking()
@@ -246,7 +247,12 @@ class _ContentBlock:
         """Render the remaining uncommitted content when the block ends."""
         if self.is_think:
             if not self._show_thinking:
-                return Text("")
+                elapsed_str = format_elapsed(time.monotonic() - self._start_time)
+                count_str = format_token_count(int(self._token_count))
+                return Text(
+                    f"Thought for {elapsed_str} · {count_str} tokens",
+                    style="grey50 italic",
+                )
             if self._show_thinking_stream:
                 remaining = self._pending_text()
                 if not remaining:
@@ -271,7 +277,7 @@ class _ContentBlock:
         # Thinking blocks always commit a final trace line if any content
         # was received, so gate on raw_text rather than uncommitted length.
         if self.is_think:
-            return bool(self.raw_text) and self._show_thinking
+            return bool(self.raw_text)
         return bool(self._pending_text())
 
     # -- Private -------------------------------------------------------------
