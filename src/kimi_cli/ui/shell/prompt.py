@@ -1094,6 +1094,8 @@ class RunningPromptDelegate(Protocol):
 
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None: ...
 
+    def set_show_thinking(self, visible: bool) -> None: ...
+
 
 @dataclass(frozen=True, slots=True)
 class BgTaskCounts:
@@ -1158,6 +1160,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "shift-tab: plan mode",
         "ctrl-o: editor",
         "ctrl-j: newline",
+        "ctrl-t: toggle thinking",
         "/feedback: send feedback",
         "/theme: switch dark/light",
     ]
@@ -1201,6 +1204,7 @@ class CustomPromptSession:
         self._last_history_content: str | None = None
         self._mode: PromptMode = PromptMode.AGENT
         self._thinking = thinking
+        self._show_thinking: bool = False
         self._placeholder_manager = PromptPlaceholderManager()
         # Keep the old attribute for test compatibility and for any external imports.
         self._attachment_cache = self._placeholder_manager.attachment_cache
@@ -1310,6 +1314,23 @@ class CustomPromptSession:
                     event.app.invalidate()
 
                 event.app.create_background_task(_toggle())
+            event.app.invalidate()
+
+        @_kb.add("c-t", eager=True)
+        def _(event: KeyPressEvent) -> None:
+            if self._active_modal_delegate() is not None:
+                return
+            self._show_thinking = not self._show_thinking
+            from kimi_cli.telemetry import track
+
+            track("shortcut_thinking_toggle", visible=self._show_thinking)
+            if self._show_thinking:
+                toast("thinking ON", topic="thinking_toggle", duration=3.0, immediate=True)
+            else:
+                toast("thinking OFF", topic="thinking_toggle", duration=3.0, immediate=True)
+            delegate = self._running_prompt_delegate
+            if delegate is not None:
+                delegate.set_show_thinking(self._show_thinking)
             event.app.invalidate()
 
         @_kb.add("escape", "enter", eager=True)
@@ -1964,6 +1985,10 @@ class CustomPromptSession:
 
     async def prompt_next(self) -> UserInput:
         return await self._prompt_once(append_history=None)
+
+    @property
+    def show_thinking(self) -> bool:
+        return self._show_thinking
 
     @property
     def last_submission_was_running(self) -> bool:

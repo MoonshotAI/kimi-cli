@@ -53,7 +53,7 @@ def _make_tool_result(call_id: str = "call_1") -> ToolResult:
 
 def test_empty_think_part_creates_thinking_indicator():
     """After StepBegin + empty ThinkPart, the thinking indicator must be visible."""
-    view = _LiveView(StatusUpdate())
+    view = _LiveView(StatusUpdate(), show_thinking=True)
     view.dispatch_wire_message(TurnBegin(user_input="test"))
     view.dispatch_wire_message(StepBegin(n=1))
 

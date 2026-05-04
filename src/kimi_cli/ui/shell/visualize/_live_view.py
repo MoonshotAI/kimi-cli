@@ -106,9 +106,11 @@ class _LiveView:
         cancel_event: asyncio.Event | None = None,
         *,
         show_thinking_stream: bool = False,
+        show_thinking: bool = False,
     ):
         self._cancel_event = cancel_event
         self._show_thinking_stream = show_thinking_stream
+        self._show_thinking = show_thinking
 
         self._mooning_spinner = Spinner("moon", "")
         self._active_turn_depth = 0
@@ -164,6 +166,12 @@ class _LiveView:
         ) as live:
 
             async def keyboard_handler(listener: KeyboardListener, event: KeyEvent) -> None:
+                # Handle Ctrl+T - toggle thinking visibility
+                if event == KeyEvent.CTRL_T:
+                    self.set_show_thinking(not self._show_thinking)
+                    live.update(self.compose(), refresh=True)
+                    return
+
                 # Handle Ctrl+E specially - pause Live while the pager is active
                 if event == KeyEvent.CTRL_E:
                     if self.has_expandable_panel():
@@ -489,6 +497,10 @@ class _LiveView:
             self.show_next_question_request()
 
     def dispatch_keyboard_event(self, event: KeyEvent) -> None:
+        if event == KeyEvent.CTRL_T:
+            self.set_show_thinking(not self._show_thinking)
+            return
+
         # Handle question panel keyboard events
         if self._current_question_panel is not None:
             match event:
@@ -658,6 +670,12 @@ class _LiveView:
             console.print(self._notification_blocks.popleft().compose())
             self.refresh_soon()
 
+    def set_show_thinking(self, visible: bool) -> None:
+        self._show_thinking = visible
+        if self._current_content_block is not None and self._current_content_block.is_think:
+            self._current_content_block.set_show_thinking(visible)
+        self.refresh_soon()
+
     def append_content(self, part: ContentPart) -> None:
         match part:
             case ThinkPart(think=text) | TextPart(text=text):
@@ -669,13 +687,17 @@ class _LiveView:
                     return
                 if self._current_content_block is None:
                     self._current_content_block = _ContentBlock(
-                        is_think, show_thinking_stream=self._show_thinking_stream
+                        is_think,
+                        show_thinking_stream=self._show_thinking_stream,
+                        show_thinking=self._show_thinking,
                     )
                     self.refresh_soon()
                 elif self._current_content_block.is_think != is_think:
                     self.flush_content()
                     self._current_content_block = _ContentBlock(
-                        is_think, show_thinking_stream=self._show_thinking_stream
+                        is_think,
+                        show_thinking_stream=self._show_thinking_stream,
+                        show_thinking=self._show_thinking,
                     )
                     self.refresh_soon()
                 if text:

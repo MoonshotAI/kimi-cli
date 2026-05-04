@@ -14,6 +14,7 @@ Kimi Code CLI shell mode supports the following keyboard shortcuts.
 | `Ctrl-S` | Steer: inject input immediately into the running turn (during streaming) |
 | `Ctrl-V` | Paste (supports images and video files) |
 | `Ctrl-E` | Expand full approval request content |
+| `Ctrl-T` | Toggle thinking content visibility (hidden by default) |
 | `1`–`4` | Quick select approval option (`4` for decline with feedback) |
 | `1`–`5` | Select question option by number |
 | `Ctrl-D` | Exit Kimi Code CLI |
@@ -94,6 +95,14 @@ If the input box is empty and there are queued messages, `Ctrl-S` pops the oldes
 ### `Enter`: Queue
 
 During streaming, pressing `Enter` queues your message for delivery after the current turn completes. The queued message count is shown in the input header (e.g., `── input · 2 queued ──`). Press `↑` on an empty input to recall the last queued message for editing.
+
+## Thinking content toggle
+
+### `Ctrl-T`: Toggle thinking visibility
+
+Press `Ctrl-T` to show or hide thinking content from the model. Thinking output is hidden by default; press `Ctrl-T` once to reveal it and again to hide it. When visible, thinking renders according to the `show_thinking_stream` configuration (compact indicator or full stream preview). When hidden, no thinking output is shown at all — no indicator, no preview, and no summary line.
+
+The toggle state persists across turns for the entire shell session.
 
 ## Approval request operations
 

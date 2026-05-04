@@ -194,9 +194,16 @@ class _ContentBlock:
     to history when the block ends.
     """
 
-    def __init__(self, is_think: bool, *, show_thinking_stream: bool = False):
+    def __init__(
+        self,
+        is_think: bool,
+        *,
+        show_thinking_stream: bool = False,
+        show_thinking: bool = False,
+    ):
         self.is_think = is_think
         self._show_thinking_stream = show_thinking_stream
+        self._show_thinking = show_thinking
         self._spinner = Spinner("dots", "")
         self.raw_text = ""
         # Accumulated float estimate — avoids per-chunk int truncation.
@@ -207,6 +214,9 @@ class _ContentBlock:
         self._has_printed_bullet = False
 
     # -- Public API ----------------------------------------------------------
+
+    def set_show_thinking(self, visible: bool) -> None:
+        self._show_thinking = visible
 
     def append(self, content: str) -> None:
         self.raw_text += content
@@ -225,6 +235,8 @@ class _ContentBlock:
         above a 6-line scrolling preview of the raw reasoning text.
         """
         if self.is_think:
+            if not self._show_thinking:
+                return Text("")
             if self._show_thinking_stream:
                 return self._compose_thinking_stream()
             return self._compose_thinking()
@@ -233,6 +245,8 @@ class _ContentBlock:
     def compose_final(self) -> RenderableType:
         """Render the remaining uncommitted content when the block ends."""
         if self.is_think:
+            if not self._show_thinking:
+                return Text("")
             if self._show_thinking_stream:
                 remaining = self._pending_text()
                 if not remaining:
@@ -257,7 +271,7 @@ class _ContentBlock:
         # Thinking blocks always commit a final trace line if any content
         # was received, so gate on raw_text rather than uncommitted length.
         if self.is_think:
-            return bool(self.raw_text)
+            return bool(self.raw_text) and self._show_thinking
         return bool(self._pending_text())
 
     # -- Private -------------------------------------------------------------
