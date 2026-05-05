@@ -76,6 +76,8 @@ class SequenceChatProvider:
     def __init__(self, sequences: Sequence[Sequence[StreamedMessagePart]]) -> None:
         self._sequences = [list(sequence) for sequence in sequences]
         self._index = 0
+        self.user_prompts: list[str] = []
+        self.tool_names_seen: list[set[str]] = []
 
     @property
     def model_name(self) -> str:
@@ -91,6 +93,9 @@ class SequenceChatProvider:
         tools: Sequence[Tool],
         history: Sequence[Message],
     ) -> SequenceStreamedMessage:
+        last_user = next((msg for msg in reversed(history) if msg.role == "user"), None)
+        self.user_prompts.append(last_user.extract_text(" ") if last_user else "")
+        self.tool_names_seen.append({tool.name for tool in tools})
         index = min(self._index, len(self._sequences) - 1)
         self._index += 1
         return SequenceStreamedMessage(self._sequences[index])
@@ -175,6 +180,19 @@ class RejectTool(CallableTool2[RejectParams]):
         return ToolRejectedError()
 
 
+class NoopParams(BaseModel):
+    pass
+
+
+class NoopTool(CallableTool2[NoopParams]):
+    name = "noop_tool"
+    description = "No-op test tool."
+    params = NoopParams
+
+    async def __call__(self, params: NoopParams) -> ToolReturnValue:
+        return ToolReturnValue(output="ok", is_error=False, message="ok", display=[])
+
+
 class RejectToolset:
     def __init__(self) -> None:
         self._tool = RejectTool()
@@ -208,6 +226,59 @@ async def test_auto_ralph_uses_ephemeral_context(runtime: Runtime, tmp_path: Pat
     # Only one TurnBegin from the outer soul.run(); _flow_turn no longer emits its own
     assert len(turns) == 1
     # Auto-ralph merges ephemeral context back so the LLM retains cross-turn memory
+    assert len(context.history) > 0
+
+
+@pytest.mark.asyncio
+async def test_auto_ralph_continue_returns_to_task_with_tools_enabled(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    runtime.config.loop_control.max_ralph_iterations = 1
+
+    llm = _make_llm(
+        [
+            [TextPart(text="first pass")],
+            [
+                ToolCall(
+                    id="continue-call",
+                    function=ToolCall.FunctionBody(
+                        name="flow_decision",
+                        arguments=(
+                            '{"choice": "CONTINUE", "confidence": 0.9, '
+                            '"reasoning": "Need another pass"}'
+                        ),
+                    ),
+                )
+            ],
+            [TextPart(text="second pass")],
+            [
+                ToolCall(
+                    id="stop-call",
+                    function=ToolCall.FunctionBody(
+                        name="flow_decision",
+                        arguments=('{"choice": "STOP", "confidence": 0.9, "reasoning": "Done"}'),
+                    ),
+                )
+            ],
+        ],
+        set(),
+    )
+    assert isinstance(llm.chat_provider, SequenceChatProvider)
+
+    toolset = KimiToolset()
+    toolset.add(NoopTool())
+    soul, context = _make_soul(runtime, llm, toolset, tmp_path)
+
+    await _run_and_collect_turns(soul, "Improve this")
+
+    assert llm.chat_provider.user_prompts[0] == "Improve this"
+    assert "[Flow control]" in llm.chat_provider.user_prompts[1]
+    assert llm.chat_provider.user_prompts[2] == "Improve this"
+    assert "[Flow control]" in llm.chat_provider.user_prompts[3]
+    assert "noop_tool" in llm.chat_provider.tool_names_seen[0]
+    assert llm.chat_provider.tool_names_seen[1] == {"flow_decision"}
+    assert "noop_tool" in llm.chat_provider.tool_names_seen[2]
+    assert llm.chat_provider.tool_names_seen[3] == {"flow_decision"}
     assert len(context.history) > 0
 
 

@@ -1434,12 +1434,12 @@ class FlowRunner:
 
         outgoing["BEGIN"].append(FlowEdge(src="BEGIN", dst="R1", label=None))
         outgoing["R1"].append(FlowEdge(src="R1", dst="R2", label=None))
-        outgoing["R2"].append(FlowEdge(src="R2", dst="R2", label="CONTINUE"))
+        outgoing["R2"].append(FlowEdge(src="R2", dst="R1", label="CONTINUE"))
         outgoing["R2"].append(FlowEdge(src="R2", dst="END", label="STOP"))
         outgoing["R2"].append(FlowEdge(src="R2", dst="END", label="PAUSE"))
 
         flow = Flow(nodes=nodes, outgoing=outgoing, begin_id="BEGIN", end_id="END")
-        max_moves = total_runs
+        max_moves = total_runs * 2
         return FlowRunner(flow, max_moves=max_moves, commit_mode="merge")
 
     async def run(self, soul: KimiSoul, args: str) -> None:
@@ -1609,6 +1609,7 @@ class FlowRunner:
         moves = 0
         total_steps = 0
         last_task_message: Message | None = None
+        last_task_tool_results: list[ToolResult] = []
         while True:
             if self._cancelled:
                 logger.info("Agent flow cancelled.")
@@ -1639,17 +1640,24 @@ class FlowRunner:
             total_steps += steps_used
 
             last_assistant = self._last_assistant_message(soul, since_index=history_before_node)
-            if last_assistant is not None:
-                # Capture assistant output from every node so that decision-only
-                # self-loops (e.g. ralph_loop) still have fresh convergence input
-                # on each iteration.
+            if node.kind != "decision" and last_assistant is not None:
                 last_task_message = last_assistant
 
             # Gather tool results from this iteration for convergence detection
             tool_results = self._tool_results_since(soul, since_index=history_before_node)
+            if node.kind != "decision":
+                last_task_tool_results = tool_results
 
-            # Detect convergence on self-loop (CONTINUE)
-            if node.kind == "decision" and next_id == current_id:
+            continue_selected = (
+                node.kind == "decision"
+                and next_id is not None
+                and any(edge.label == "CONTINUE" and edge.dst == next_id for edge in edges)
+            )
+            # Detect convergence when a flow chooses CONTINUE. For RalphLoop,
+            # CONTINUE routes back to the task node so real tools are available
+            # on the next iteration; convergence still compares the last task's
+            # assistant output and tool results, not the decision-only turn.
+            if continue_selected:
                 # Only ignore text when there are non-flow_decision tool calls
                 # to compare. If the decision turn has no real tools, compare
                 # text so empty fingerprints don't produce false convergence.
@@ -1660,7 +1668,7 @@ class FlowRunner:
                     )
                 report = detector.record_iteration(
                     last_task_message,
-                    tool_results,
+                    last_task_tool_results,
                     exclude_tool_names=["flow_decision"],
                     ignore_text=has_real_tools,
                 )
@@ -1749,7 +1757,7 @@ class FlowRunner:
                     added_flow_decision = True
                 # Hide all non-flow_decision tools to prevent the model from
                 # calling shell/file/etc. instead of making a flow decision.
-                for tool_name in list(toolset._tool_dict.keys()):
+                for tool_name in list(toolset._tool_dict.keys()):  # pyright: ignore[reportPrivateUsage]
                     if tool_name != "flow_decision" and toolset.hide(tool_name):
                         hidden_tools.append(tool_name)
 
