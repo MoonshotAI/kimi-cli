@@ -70,8 +70,9 @@ class TestResultCollector:
 
 
 class TestMCPServer:
-    def test_server_has_kimi_agent_tool(self) -> None:
-        tools = [t.name for t in server._tool_manager._tools.values()]
+    @pytest.mark.asyncio
+    async def test_server_has_kimi_agent_tool(self) -> None:
+        tools = [t.name for t in await server.list_tools()]
         assert "kimi_agent" in tools
 
 
