@@ -14,8 +14,7 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.wire.ipc_server import IpcWireServer
 
 
-@pytest.mark.asyncio
-async def test_ipc_server_accepts_initialize(runtime: Runtime, tmp_path: Path) -> None:
+async def _start_ipc_server(runtime: Runtime, tmp_path: Path) -> tuple[asyncio.Task[None], Path]:
     context = Context(file_backend=tmp_path / "history.jsonl")
     await context.write_system_prompt("Base system prompt.")
     soul = KimiSoul(
@@ -31,13 +30,18 @@ async def test_ipc_server_accepts_initialize(runtime: Runtime, tmp_path: Path) -
     server = IpcWireServer(soul, socket_path=str(socket_path))
 
     server_task = asyncio.create_task(server.serve())
-    try:
-        for _ in range(100):
-            if socket_path.exists():
-                break
-            await asyncio.sleep(0.01)
-        assert socket_path.exists()
+    for _ in range(100):
+        if socket_path.exists():
+            break
+        await asyncio.sleep(0.01)
+    assert socket_path.exists()
+    return server_task, socket_path
 
+
+@pytest.mark.asyncio
+async def test_ipc_server_accepts_initialize(runtime: Runtime, tmp_path: Path) -> None:
+    server_task, socket_path = await _start_ipc_server(runtime, tmp_path)
+    try:
         reader, writer = await asyncio.open_unix_connection(str(socket_path))
         writer.write(
             json.dumps(
@@ -64,6 +68,63 @@ async def test_ipc_server_accepts_initialize(runtime: Runtime, tmp_path: Path) -
         assert response["id"] == "init"
         assert response["result"]["protocol_version"] == "1.9"
         assert response["result"]["session"]["id"] == runtime.session.id
+
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        server_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await server_task
+
+    assert not socket_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_ipc_server_returns_jsonrpc_errors(runtime: Runtime, tmp_path: Path) -> None:
+    server_task, socket_path = await _start_ipc_server(runtime, tmp_path)
+    try:
+        reader, writer = await asyncio.open_unix_connection(str(socket_path))
+
+        writer.write(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "bad-method",
+                    "method": "event",
+                    "params": {},
+                }
+            ).encode()
+            + b"\n"
+        )
+        await writer.drain()
+        raw_response = await asyncio.wait_for(reader.readline(), timeout=2)
+        response = json.loads(raw_response)
+        assert response["id"] == "bad-method"
+        assert response["error"]["code"] == -32601
+
+        writer.write(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "bad-params",
+                    "method": "set_afk",
+                    "params": {},
+                }
+            ).encode()
+            + b"\n"
+        )
+        await writer.drain()
+        raw_response = await asyncio.wait_for(reader.readline(), timeout=2)
+        response = json.loads(raw_response)
+        assert response["id"] == "bad-params"
+        assert response["error"]["code"] == -32602
+
+        writer.write(b"{broken json\n")
+        await writer.drain()
+        raw_response = await asyncio.wait_for(reader.readline(), timeout=2)
+        response = json.loads(raw_response)
+        assert response["id"] is None
+        assert response["error"]["code"] == -32700
 
         writer.close()
         await writer.wait_closed()

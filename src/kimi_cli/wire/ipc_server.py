@@ -17,9 +17,20 @@ import os
 import tempfile
 from pathlib import Path
 
+import pydantic
+
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.jsonrpc import JSONRPCInMessageAdapter, JSONRPCMessage, JSONRPCOutMessage
+from kimi_cli.wire.jsonrpc import (
+    ErrorCodes,
+    JSONRPCErrorObject,
+    JSONRPCErrorResponse,
+    JSONRPCErrorResponseNullableID,
+    JSONRPCInMessageAdapter,
+    JSONRPCMessage,
+    JSONRPCOutMessage,
+    JSONRPCSuccessResponse,
+)
 from kimi_cli.wire.server import WireServer
 
 
@@ -112,7 +123,7 @@ class IpcWireServer(WireServer):
                 if not raw_line:
                     logger.info("IPC client disconnected: %s", peer)
                     break
-                await self._dispatch_client_message(raw_line)
+                await self._dispatch_client_message(raw_line, writer)
 
         except asyncio.CancelledError:
             raise
@@ -127,7 +138,11 @@ class IpcWireServer(WireServer):
             except Exception:
                 pass
 
-    async def _dispatch_client_message(self, raw_line: bytes) -> None:
+    async def _dispatch_client_message(
+        self,
+        raw_line: bytes,
+        writer: asyncio.StreamWriter,
+    ) -> None:
         """Dispatch an incoming message from a client."""
         try:
             line = raw_line.decode("utf-8", errors="replace").strip()
@@ -142,17 +157,110 @@ class IpcWireServer(WireServer):
             msg_json = json.loads(line)
         except json.JSONDecodeError:
             logger.warning("IPC client sent invalid JSON: %s", raw_line[:200])
+            await self._send_direct(
+                writer,
+                JSONRPCErrorResponseNullableID(
+                    id=None,
+                    error=JSONRPCErrorObject(
+                        code=ErrorCodes.PARSE_ERROR,
+                        message="Invalid JSON format",
+                    ),
+                ),
+            )
             return
 
-        # Parse and dispatch using the WireServer's dispatch logic
         try:
-            JSONRPCMessage.model_validate(msg_json)
-            msg = JSONRPCInMessageAdapter.validate_python(msg_json)
+            generic_msg = JSONRPCMessage.model_validate(msg_json)
+        except pydantic.ValidationError as e:
+            logger.error("Invalid JSON-RPC message from IPC client: {error}", error=e)
+            await self._send_direct(
+                writer,
+                JSONRPCErrorResponseNullableID(
+                    id=None,
+                    error=JSONRPCErrorObject(
+                        code=ErrorCodes.INVALID_REQUEST,
+                        message="Invalid request",
+                    ),
+                ),
+            )
+            return
+
+        if generic_msg.is_response():
+            try:
+                msg = JSONRPCInMessageAdapter.validate_python(msg_json)
+            except pydantic.ValidationError as e:
+                logger.error("Invalid JSON-RPC response from IPC client: {error}", error=e)
+                await self._send_direct(
+                    writer,
+                    JSONRPCErrorResponseNullableID(
+                        id=None,
+                        error=JSONRPCErrorObject(
+                            code=ErrorCodes.INVALID_REQUEST,
+                            message="Invalid response",
+                        ),
+                    ),
+                )
+                return
+
+            if not isinstance(msg, (JSONRPCSuccessResponse, JSONRPCErrorResponse)):
+                logger.error(
+                    "Invalid JSON-RPC response message from IPC client: {msg}",
+                    msg=msg_json,
+                )
+                return
+
             task = asyncio.create_task(self._dispatch_msg(msg))
             task.add_done_callback(self._dispatch_tasks.discard)
             self._dispatch_tasks.add(task)
-        except Exception:
-            logger.exception("IPC client message dispatch error")
+            return
+
+        if not generic_msg.method_is_inbound():
+            logger.error(
+                "Unexpected JSON-RPC method received from IPC client: {method}",
+                method=generic_msg.method,
+            )
+            if generic_msg.id is not None:
+                await self._send_direct(
+                    writer,
+                    JSONRPCErrorResponse(
+                        id=generic_msg.id,
+                        error=JSONRPCErrorObject(
+                            code=ErrorCodes.METHOD_NOT_FOUND,
+                            message=f"Unexpected method received: {generic_msg.method}",
+                        ),
+                    ),
+                )
+            return
+
+        try:
+            msg = JSONRPCInMessageAdapter.validate_python(msg_json)
+        except pydantic.ValidationError as e:
+            logger.error("Invalid JSON-RPC inbound message from IPC client: {error}", error=e)
+            if generic_msg.id is not None:
+                await self._send_direct(
+                    writer,
+                    JSONRPCErrorResponse(
+                        id=generic_msg.id,
+                        error=JSONRPCErrorObject(
+                            code=ErrorCodes.INVALID_PARAMS,
+                            message=f"Invalid parameters for method `{generic_msg.method}`",
+                        ),
+                    ),
+                )
+            return
+
+        task = asyncio.create_task(self._dispatch_msg(msg))
+        task.add_done_callback(self._dispatch_tasks.discard)
+        self._dispatch_tasks.add(task)
+
+    @staticmethod
+    async def _send_direct(
+        writer: asyncio.StreamWriter,
+        msg: JSONRPCOutMessage,
+    ) -> None:
+        """Send a protocol-level error directly to the client that caused it."""
+        writer.write(msg.model_dump_json().encode("utf-8") + b"\n")
+        await writer.drain()
 
     async def _broadcast(self, msg: JSONRPCOutMessage) -> None:
         """Broadcast a message to all connected clients."""
