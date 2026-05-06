@@ -2,10 +2,51 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 from dataclasses import dataclass
 from typing import Literal
 
 from kaos.path import KaosPath
+
+
+def _windows_shell_candidates() -> list[KaosPath]:
+    """PowerShell executables to probe, in order.
+
+    Prefer PowerShell 7+ (`pwsh`) when present, then fall back to Windows PowerShell 5.1
+    (`powershell.exe`), matching common developer installs while remaining usable on systems
+    that only ship the inbox shell.
+    """
+    candidates: list[KaosPath] = []
+    seen: set[str] = set()
+
+    def add(path: str) -> None:
+        normalized = os.path.normcase(os.path.normpath(path))
+        if normalized not in seen:
+            seen.add(normalized)
+            candidates.append(KaosPath(path))
+
+    pwsh = shutil.which("pwsh")
+    if pwsh:
+        add(pwsh)
+
+    program_files = os.environ.get("ProgramW6432") or os.environ.get(
+        "ProgramFiles", r"C:\Program Files"
+    )
+    add(os.path.join(program_files, "PowerShell", "7", "pwsh.exe"))
+
+    system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
+    add(
+        os.path.join(
+            system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
+        )
+    )
+
+    powershell = shutil.which("powershell")
+    if powershell:
+        add(powershell)
+
+    add("powershell.exe")
+    return candidates
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -33,16 +74,8 @@ class Environment:
 
         if os_kind == "Windows":
             shell_name = "Windows PowerShell"
-            system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
-            possible_paths = [
-                KaosPath(
-                    os.path.join(
-                        system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
-                    )
-                ),
-            ]
             fallback_path = KaosPath("powershell.exe")
-            for path in possible_paths:
+            for path in _windows_shell_candidates():
                 if await path.is_file():
                     shell_path = path
                     break
