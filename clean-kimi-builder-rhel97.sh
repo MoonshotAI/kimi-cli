@@ -2,10 +2,8 @@
 set -Eeuo pipefail
 shopt -s nullglob
 
-REPO_URL="${REPO_URL:-https://github.com/Open-Research-Development-Laboratories/kimi-cli-dev.git}"
 SRC="${SRC:-$HOME/src/kimi-cli-dev}"
 NODE_STREAM="${NODE_STREAM:-nodejs:24}"
-RECLONE="${RECLONE:-0}"
 
 # Default is conservative. Strict mode only prepares/removes user-installed RPMs if explicitly confirmed.
 STRICT_PACKAGE_PURGE="${STRICT_PACKAGE_PURGE:-0}"
@@ -121,22 +119,19 @@ console.log(`Node ${process.version} OK`);
 NODE
 npm --version
 
-log "Clean project tree or reclone"
-if [[ "$RECLONE" == "1" ]]; then
-  rm -rf -- "$SRC"
-fi
-
 if [[ ! -d "$SRC/.git" ]]; then
-  mkdir -p "$(dirname "$SRC")"
-  git clone "$REPO_URL" "$SRC"
-else
-  git -C "$SRC" status --short > "$SNAP/git-status.before.txt" || true
-  git -C "$SRC" clean -ndX > "$SNAP/git-clean-ignored-preview.txt" || true
-
-  # Removes ignored build artifacts only: .venv, dist, build, node_modules, caches, generated static assets, etc.
-  # It does not remove untracked source files unless they are ignored by .gitignore.
-  git -C "$SRC" clean -fdX
+  echo "ERROR: SRC must point to an existing kimi-cli-dev git checkout: $SRC" >&2
+  echo "This clean/build script no longer reclones or deletes the checkout." >&2
+  exit 1
 fi
+
+log "Clean existing project tree"
+git -C "$SRC" status --short > "$SNAP/git-status.before.txt" || true
+git -C "$SRC" clean -ndX > "$SNAP/git-clean-ignored-preview.txt" || true
+
+# Removes ignored build artifacts only: .venv, dist, build, node_modules, caches, generated static assets, etc.
+# It does not remove untracked source files unless they are ignored by .gitignore.
+git -C "$SRC" clean -fdX
 
 log "Clean Python/Node/global build caches"
 uv cache clean || true
