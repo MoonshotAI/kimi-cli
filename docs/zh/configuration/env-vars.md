@@ -18,6 +18,7 @@ Kimi Code CLI 支持通过环境变量覆盖配置或控制运行行为。本页
 | `KIMI_MODEL_TEMPERATURE` | 生成参数 `temperature` |
 | `KIMI_MODEL_TOP_P` | 生成参数 `top_p` |
 | `KIMI_MODEL_MAX_TOKENS` | 生成参数 `max_tokens` |
+| `KIMI_MODEL_THINKING_KEEP` | Moonshot `thinking.keep` 开关（Preserved Thinking），仅在 Thinking 模式下生效 |
 
 ### `KIMI_BASE_URL`
 
@@ -82,6 +83,22 @@ export KIMI_MODEL_TOP_P="0.9"
 ```sh
 export KIMI_MODEL_MAX_TOKENS="4096"
 ```
+
+### `KIMI_MODEL_THINKING_KEEP`
+
+将 env 值原样作为 `thinking.keep` 字段发送给 Moonshot API，用于开启 Preserved Thinking（参考 [Moonshot 官方文档](https://platform.kimi.com/docs/guide/use-kimi-k2-thinking-model#preserved-thinking)）。设为 `all` 可让模型在多轮之间保留历史 reasoning_content。值不做任何校验、不做大小写归一化，透传给 API 自己判断。
+
+```sh
+export KIMI_MODEL_THINKING_KEEP="all"
+```
+
+未设置或设为空字符串时，请求体不携带此字段（等同当前默认行为）。该覆盖仅在当前模型真正处于 Thinking 模式时生效；对非 Thinking 模式的调用会被忽略，以避免发出只有 `thinking.keep` 而缺少 `thinking.type` 的无效请求体。
+
+此参数仅在支持 Preserved Thinking 的 Moonshot 模型（例如 `kimi-k2.6` / `kimi-k2-thinking`）上生效。传给其它模型时，Moonshot API 会忽略或拒绝该字段，CLI 本身不做校验。
+
+::: warning 注意成本
+`thinking.keep=all` 会让 API 在多轮之间保留历史 reasoning_content，input tokens 与 API 费用都会显著增加。请在确实需要 Preserved Thinking 时再开启。
+:::
 
 ## OpenAI 兼容环境变量
 

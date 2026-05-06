@@ -67,6 +67,7 @@ from kimi_cli.ui.theme import get_prompt_style, get_toolbar_colors
 from kimi_cli.utils.clipboard import (
     grab_media_from_clipboard,
     is_clipboard_available,
+    is_media_clipboard_available,
 )
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand
@@ -1095,6 +1096,12 @@ class RunningPromptDelegate(Protocol):
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class BgTaskCounts:
+    bash: int = 0
+    agent: int = 0
+
+
 @runtime_checkable
 class AgentStatusProvider(Protocol):
     """Optional protocol for delegates that render always-visible agent status.
@@ -1171,7 +1178,7 @@ class CustomPromptSession:
         status_provider: Callable[[], StatusSnapshot],
         status_block_provider: Callable[[int], AnyFormattedText | None] | None = None,
         fast_refresh_provider: Callable[[], bool] | None = None,
-        background_task_count_provider: Callable[[], int] | None = None,
+        background_task_count_provider: Callable[[], BgTaskCounts] | None = None,
         model_capabilities: set[ModelCapability],
         model_name: str | None,
         thinking: bool,
@@ -1210,7 +1217,8 @@ class CustomPromptSession:
         self._last_ui_state: PromptUIState = PromptUIState.NORMAL_INPUT
         self._suspended_buffer_document: Document | None = None
         clipboard_available = is_clipboard_available()
-        self._tips = _build_toolbar_tips(clipboard_available)
+        media_clipboard_available = is_media_clipboard_available()
+        self._tips = _build_toolbar_tips(clipboard_available or media_clipboard_available)
         self._tip_rotation_index: int = random.randrange(len(self._tips)) if self._tips else 0
 
         history_entries = _load_history_entries(self._history_file)
@@ -1275,6 +1283,9 @@ class CustomPromptSession:
             if self._active_prompt_delegate() is not None:
                 return
             self._mode = self._mode.toggle()
+            from kimi_cli.telemetry import track
+
+            track("shortcut_mode_switch", to_mode=self._mode.value)
             # Apply mode-specific settings
             self._apply_mode(event)
             # Redraw UI
@@ -1290,6 +1301,9 @@ class CustomPromptSession:
                 async def _toggle() -> None:
                     assert self._plan_mode_toggle_callback is not None
                     new_state = await self._plan_mode_toggle_callback()
+                    from kimi_cli.telemetry import track
+
+                    track("shortcut_plan_toggle", enabled=new_state)
                     if new_state:
                         toast("plan mode ON", topic="plan_mode", duration=3.0, immediate=True)
                     else:
@@ -1303,11 +1317,17 @@ class CustomPromptSession:
         @_kb.add("c-j", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
+            from kimi_cli.telemetry import track
+
+            track("shortcut_newline")
             event.current_buffer.insert_text("\n")
 
         @_kb.add("c-o", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Open current buffer in external editor."""
+            from kimi_cli.telemetry import track
+
+            track("shortcut_editor")
             self._open_in_external_editor(event)
 
         @_kb.add(
@@ -1490,21 +1510,30 @@ class CustomPromptSession:
         def _(event: KeyPressEvent) -> None:
             self._handle_bracketed_paste(event)
 
-        if clipboard_available:
+        if clipboard_available or media_clipboard_available:
 
             @_kb.add("c-v", eager=True)
             def _(event: KeyPressEvent) -> None:
+                from kimi_cli.telemetry import track
+
+                track("shortcut_paste")
                 if self._try_paste_media(event):
                     return
-                clipboard_data = event.app.clipboard.get_data()
-                if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
-                    return
-                self._insert_pasted_text(event.current_buffer, clipboard_data.text)
-                event.app.invalidate()
+                if clipboard_available:
+                    try:
+                        clipboard_data = event.app.clipboard.get_data()
+                    except Exception:
+                        return
+                    if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                        return
+                    self._insert_pasted_text(event.current_buffer, clipboard_data.text)
+                    event.app.invalidate()
 
-            clipboard = PyperclipClipboard()
-        else:
-            clipboard = None
+        # Only use PyperclipClipboard when pyperclip actually works.
+        # PromptSession built-in keybindings (ctrl-k, ctrl-w, ctrl-y)
+        # use clipboard without error handling, so a broken clipboard
+        # object would crash the UI.
+        clipboard = PyperclipClipboard() if clipboard_available else None
 
         self._session = PromptSession[str](
             message=self._render_message,
@@ -1972,7 +2001,13 @@ class CustomPromptSession:
         image files are cached and inserted as placeholders.
         Returns True if any media content was inserted.
         """
-        result = grab_media_from_clipboard()
+        try:
+            result = grab_media_from_clipboard()
+        except Exception:
+            # ImageGrab.grabclipboard() may fail on headless Linux if the
+            # real xclip cannot connect to an X server. Silently ignore so
+            # that the text-paste fallback can still be attempted.
+            return False
         if result is None:
             return False
 
@@ -2171,11 +2206,14 @@ class CustomPromptSession:
             self._tip_rotation_index += 1
             self._last_tip_rotate_time = now
 
-        # Status flags: yolo / plan
+        # Status flags: yolo / afk / plan
         status = self._status_provider()
         if status.yolo_enabled:
             fragments.extend([(tc.yolo_label, "yolo"), ("", "  ")])
             remaining -= 6  # "yolo" = 4, "  " = 2
+        if status.afk_enabled:
+            fragments.extend([(tc.afk_label, "afk"), ("", "  ")])
+            remaining -= 5  # "afk" = 3, "  " = 2
         if status.plan_mode:
             fragments.extend([(tc.plan_label, "plan"), ("", "  ")])
             remaining -= 6
@@ -2226,16 +2264,23 @@ class CustomPromptSession:
             fragments.extend([(tc.cwd, cwd_text), ("", "  ")])
             remaining -= cwd_w + 2
 
-        # Active background bash task count
-        bg_count = (
-            self._background_task_count_provider() if self._background_task_count_provider else 0
+        # Active background task counts (bash + agent, each rendered as its own
+        # badge). Order matters: bash renders first; if there isn't room for the
+        # agent badge too, drop agent and keep bash.
+        bg_counts = (
+            self._background_task_count_provider()
+            if self._background_task_count_provider
+            else BgTaskCounts()
         )
-        if bg_count > 0:
-            bg_text = f"⚙ bash: {bg_count}"
+        for kind_label, kind_count in (("bash", bg_counts.bash), ("agent", bg_counts.agent)):
+            if kind_count <= 0:
+                continue
+            bg_text = f"⚙ {kind_label}: {kind_count}"
             bg_width = _display_width(bg_text)
-            if remaining >= bg_width + 2:
-                fragments.extend([(tc.bg_tasks, bg_text), ("", "  ")])
-                remaining -= bg_width + 2
+            if remaining < bg_width + 2:
+                break
+            fragments.extend([(tc.bg_tasks, bg_text), ("", "  ")])
+            remaining -= bg_width + 2
 
         # Tips fill remaining space on line 1
         tip_text = self._get_two_rotating_tips()

@@ -59,8 +59,8 @@ from kimi_cli.soul.dynamic_injection import (
     DynamicInjectionProvider,
     normalize_history,
 )
+from kimi_cli.soul.dynamic_injections.afk_mode import AfkModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
-from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -94,6 +94,46 @@ if TYPE_CHECKING:
 SKILL_COMMAND_PREFIX = "skill:"
 FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
+
+
+def classify_api_error(e: Exception) -> tuple[str, int | None]:
+    """Classify an LLM API exception into (error_type, status_code).
+
+    Exposed at module level so telemetry tests can import the real function
+    instead of duplicating the classification table.
+
+    Returns:
+        (error_type, status_code) where status_code is None for non-HTTP errors.
+    """
+    status_code: int | None = None
+    if isinstance(e, APIStatusError):
+        status = getattr(e, "status_code", getattr(e, "status", 0))
+        status_code = int(status) if status else None
+        if status == 429:
+            return "rate_limit", status_code
+        if status in (401, 403):
+            return "auth", status_code
+        if status >= 500:
+            return "5xx_server", status_code
+        if 400 <= status < 500:
+            msg_lower = str(e).lower()
+            if (
+                "context length" in msg_lower
+                or "context_length" in msg_lower
+                or "max tokens" in msg_lower
+                or "maximum context" in msg_lower
+                or "too many tokens" in msg_lower
+            ):
+                return "context_overflow", status_code
+            return "4xx_client", status_code
+        return "api", status_code
+    if isinstance(e, APIConnectionError):
+        return "network", None
+    if isinstance(e, (APITimeoutError, TimeoutError)):
+        return "timeout", None
+    if isinstance(e, APIEmptyResponseError):
+        return "empty_response", None
+    return "other", None
 
 
 type StepStopReason = Literal["no_tool_calls", "tool_rejected"]
@@ -159,7 +199,11 @@ class KimiSoul:
             self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
-            YoloModeInjectionProvider(),
+            *(
+                []
+                if self._runtime.config.skip_afk_prompt_injection
+                else [AfkModeInjectionProvider()]
+            ),
         ]
         self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False
@@ -188,8 +232,28 @@ class KimiSoul:
 
     @property
     def is_yolo(self) -> bool:
-        """Whether yolo (auto-approve / non-interactive) mode is enabled."""
+        """Whether explicit yolo mode is active."""
         return self._approval.is_yolo()
+
+    @property
+    def is_auto_approve(self) -> bool:
+        """Whether tool approvals are bypassed (explicit yolo, or implied by afk)."""
+        return self._approval.is_auto_approve()
+
+    @property
+    def is_afk(self) -> bool:
+        """Whether no user is present (away-from-keyboard)."""
+        return self._approval.is_afk()
+
+    @property
+    def is_afk_flag(self) -> bool:
+        """Whether persisted afk mode is active."""
+        return self._approval.is_afk_flag()
+
+    @property
+    def is_subagent(self) -> bool:
+        """Whether this soul is running as a subagent rather than the root session."""
+        return self._runtime.role == "subagent"
 
     @property
     def plan_mode(self) -> bool:
@@ -224,6 +288,35 @@ class KimiSoul:
                 )
         return injections
 
+    async def _notify_injection_providers_compacted(self) -> None:
+        """Notify all injection providers that the context has been compacted.
+
+        Failures are isolated per-provider so a buggy third-party provider
+        cannot abort compaction (which would skip CompactionEnd wire events
+        and PostCompact telemetry).
+        """
+        for provider in self._injection_providers:
+            try:
+                await provider.on_context_compacted()
+            except Exception:
+                logger.warning(
+                    "injection provider %s on_context_compacted failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
+
+    async def notify_afk_changed(self, enabled: bool) -> None:
+        """Notify dynamic injection providers that afk mode changed."""
+        for provider in self._injection_providers:
+            try:
+                await provider.on_afk_changed(enabled)
+            except Exception:
+                logger.warning(
+                    "injection provider %s on_afk_changed failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
+
     def _bind_plan_mode_tools(self) -> None:
         """Bind plan mode state to tools that support it."""
         if not isinstance(self._agent.toolset, KimiToolset):
@@ -253,21 +346,32 @@ class KimiSoul:
 
         exit_tool = self._agent.toolset.find("ExitPlanMode")
         if isinstance(exit_tool, ExitPlanMode):
-            exit_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            exit_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                self._approval.is_afk,
+            )
 
         # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            enter_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                self._approval.is_auto_approve,
+            )
 
-        # AskUserQuestion — bind yolo checker for auto-dismiss
+        # AskUserQuestion — bind afk checker for auto-dismiss.
+        # Yolo alone keeps the tool live; only afk (no user present) dismisses.
         from kimi_cli.tools.ask_user import AskUserQuestion
 
         ask_tool = self._agent.toolset.find("AskUserQuestion")
         if isinstance(ask_tool, AskUserQuestion):
-            ask_tool.bind_approval(self._approval.is_yolo)
+            ask_tool.bind_afk(self._approval.is_afk)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
@@ -376,7 +480,8 @@ class KimiSoul:
         max_size = self._runtime.llm.max_context_size if self._runtime.llm is not None else 0
         return StatusSnapshot(
             context_usage=self._context_usage,
-            yolo_enabled=self._approval.is_yolo(),
+            yolo_enabled=self._approval.is_yolo_flag(),
+            afk_enabled=self._approval.is_afk(),
             plan_mode=self._plan_mode,
             context_tokens=token_count,
             max_context_tokens=max_size,
@@ -462,14 +567,19 @@ class KimiSoul:
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
         return self._slash_commands
 
-    async def run(self, user_input: str | list[ContentPart]):
+    async def run(
+        self,
+        user_input: str | list[ContentPart],
+        *,
+        skip_user_prompt_hook: bool = False,
+    ):
         approval_source_token = None
+        created_approval_source: ApprovalSource | None = None
         turn_started = False
         turn_finished = False
         if get_current_approval_source_or_none() is None:
-            approval_source_token = set_current_approval_source(
-                ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
-            )
+            created_approval_source = ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
+            approval_source_token = set_current_approval_source(created_approval_source)
         try:
             # Refresh OAuth tokens on each turn to avoid idle-time expirations.
             await self._runtime.oauth.ensure_fresh(self._runtime)
@@ -479,27 +589,34 @@ class KimiSoul:
 
             set_session_id(self._runtime.session.id)
 
-            # --- UserPromptSubmit hook ---
-            text_input_for_hook = user_input if isinstance(user_input, str) else ""
             from kimi_cli.hooks import events
 
-            hook_results = await self._hook_engine.trigger(
-                "UserPromptSubmit",
-                matcher_value=text_input_for_hook,
-                input_data=events.user_prompt_submit(
-                    session_id=self._runtime.session.id,
-                    cwd=str(Path.cwd()),
-                    prompt=text_input_for_hook,
-                ),
-            )
-            for result in hook_results:
-                if result.action == "block":
-                    wire_send(TurnBegin(user_input=user_input))
-                    turn_started = True
-                    wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
-                    wire_send(TurnEnd())
-                    turn_finished = True
-                    return
+            # --- UserPromptSubmit hook ---
+            # Synthetic internal prompts (e.g. background-task notification
+            # follow-ups injected by ``Print`` after a bg task finishes or
+            # the wait ceiling is hit) must bypass ``UserPromptSubmit``:
+            # they are not user input, and a user-configured prompt-blocking
+            # hook would drop the notification and hang the wait loop.
+            if not skip_user_prompt_hook:
+                text_input_for_hook = user_input if isinstance(user_input, str) else ""
+
+                hook_results = await self._hook_engine.trigger(
+                    "UserPromptSubmit",
+                    matcher_value=text_input_for_hook,
+                    input_data=events.user_prompt_submit(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        prompt=text_input_for_hook,
+                    ),
+                )
+                for result in hook_results:
+                    if result.action == "block":
+                        wire_send(TurnBegin(user_input=user_input))
+                        turn_started = True
+                        wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
+                        wire_send(TurnEnd())
+                        turn_finished = True
+                        return
 
             wire_send(TurnBegin(user_input=user_input))
             turn_started = True
@@ -572,6 +689,11 @@ class KimiSoul:
         finally:
             if turn_started and not turn_finished:
                 wire_send(TurnEnd())
+            if created_approval_source is not None and self._runtime.approval_runtime is not None:
+                self._runtime.approval_runtime.cancel_by_source(
+                    created_approval_source.kind,
+                    created_approval_source.id,
+                )
             if approval_source_token is not None:
                 reset_current_approval_source(approval_source_token)
 
@@ -653,6 +775,9 @@ class KimiSoul:
 
     def _make_skill_runner(self, skill: Skill) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
+            from kimi_cli.telemetry import track
+
+            track("skill_invoked", skill_name=_skill.name)
             skill_text = await read_skill_text(_skill)
             if skill_text is None:
                 wire_send(
@@ -683,17 +808,38 @@ class KimiSoul:
                 wire_send(MCPLoadingBegin())
             try:
                 await self.wait_for_background_mcp_loading()
+                # Track MCP connection result
+                if loading:
+                    from kimi_cli.telemetry import track as _track_mcp
+
+                    mcp_snap = self._mcp_status_snapshot()
+                    if mcp_snap:
+                        if mcp_snap.connected > 0:
+                            _track_mcp(
+                                "mcp_connected",
+                                server_count=mcp_snap.connected,
+                                total_count=mcp_snap.total,
+                            )
+                        _failed = mcp_snap.total - mcp_snap.connected
+                        if _failed > 0:
+                            _track_mcp(
+                                "mcp_failed",
+                                failed_count=_failed,
+                                total_count=mcp_snap.total,
+                            )
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
         step_no = 0
+        self._current_step_no = 0
         while True:
             step_no += 1
             if step_no > self._loop_control.max_steps_per_turn:
                 raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
+            self._current_step_no = step_no
             wire_send(StepBegin(n=step_no))
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
@@ -735,6 +881,14 @@ class KimiSoul:
                     request_id=req_id,
                 )
                 wire_send(StepInterrupted())
+                # Track API/step errors
+                from kimi_cli.telemetry import track
+
+                error_type, status_code = classify_api_error(e)
+                if status_code is not None:
+                    track("api_error", error_type=error_type, status_code=status_code)
+                else:
+                    track("api_error", error_type=error_type)
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
@@ -758,6 +912,7 @@ class KimiSoul:
                 has_steers = await self._consume_pending_steers()
                 if has_steers:
                     continue  # steers injected, force another LLM step
+
                 final_message = (
                     step_outcome.assistant_message
                     if step_outcome.stop_reason == "no_tool_calls"
@@ -990,6 +1145,7 @@ class KimiSoul:
             )
 
         trigger_reason = "manual" if custom_instruction else "auto"
+        before_tokens = self._context.token_count
         from kimi_cli.hooks import events
 
         await self._hook_engine.trigger(
@@ -999,12 +1155,23 @@ class KimiSoul:
                 session_id=self._runtime.session.id,
                 cwd=str(Path.cwd()),
                 trigger=trigger_reason,
-                token_count=self._context.token_count,
+                token_count=before_tokens,
             ),
         )
 
         wire_send(CompactionBegin())
-        compaction_result = await _compact_with_retry()
+        try:
+            compaction_result = await _compact_with_retry()
+        except Exception:
+            from kimi_cli.telemetry import track
+
+            track(
+                "compaction_triggered",
+                trigger_type=trigger_reason,
+                before_tokens=before_tokens,
+                success=False,
+            )
+            raise
         await self._context.clear()
         await self._context.write_system_prompt(self._agent.system_prompt)
         await self._checkpoint()
@@ -1030,7 +1197,23 @@ class KimiSoul:
         # Estimate token count so context_usage is not reported as 0%
         await self._context.update_token_count(estimated_token_count)
 
+        # Notify dynamic injection providers that history has been rebuilt so
+        # they can reset any one-shot throttling state. Failures are isolated
+        # per-provider so compaction completion (wire event + telemetry) is
+        # not affected by a buggy provider.
+        await self._notify_injection_providers_compacted()
+
         wire_send(CompactionEnd())
+
+        from kimi_cli.telemetry import track
+
+        track(
+            "compaction_triggered",
+            trigger_type=trigger_reason,
+            before_tokens=before_tokens,
+            after_tokens=estimated_token_count,
+            success=True,
+        )
 
         _hook_task = asyncio.create_task(
             self._hook_engine.trigger(
@@ -1067,6 +1250,7 @@ class KimiSoul:
         *,
         chat_provider: object | None = None,
         _auth_retried: bool = False,
+        _connection_retried: bool = False,
     ) -> Any:
         try:
             return await operation()
@@ -1095,9 +1279,22 @@ class KimiSoul:
             # Re-enter full recovery so that transient connection errors
             # on the retry are still handled by on_retryable_error.
             return await self._run_with_connection_recovery(
-                name, operation, chat_provider=chat_provider, _auth_retried=True
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=True,
+                _connection_retried=_connection_retried,
             )
         except (APIConnectionError, APITimeoutError) as error:
+            if _connection_retried:
+                logger.warning(
+                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
+                    name=name,
+                    error_type=type(error).__name__,
+                    error=error,
+                )
+                error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
+                raise
             if not isinstance(chat_provider, RetryableChatProvider):
                 raise
             try:
@@ -1121,17 +1318,15 @@ class KimiSoul:
                 name=name,
                 error_type=type(error).__name__,
             )
-            try:
-                return await operation()
-            except (APIConnectionError, APITimeoutError) as second_error:
-                logger.warning(
-                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
-                    name=name,
-                    error_type=type(second_error).__name__,
-                    error=second_error,
-                )
-                second_error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
-                raise
+            # Re-enter the full recovery path so a 401 on the retry can still
+            # trigger OAuth refresh instead of bubbling straight to the user.
+            return await self._run_with_connection_recovery(
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=_auth_retried,
+                _connection_retried=True,
+            )
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):
@@ -1217,6 +1412,10 @@ class FlowRunner:
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
+        if self._name:
+            from kimi_cli.telemetry import track
+
+            track("flow_invoked", flow_name=self._name)
 
         current_id = self._flow.begin_id
         moves = 0

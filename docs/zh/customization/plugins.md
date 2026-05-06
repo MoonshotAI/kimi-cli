@@ -34,7 +34,12 @@ kimi plugin install /path/to/my-plugin
 **从 ZIP 文件安装**
 
 ```sh
+# 本地 ZIP 文件
 kimi plugin install my-plugin.zip
+
+# 远程 ZIP 链接（含 GitHub/GitLab 归档下载链接）
+kimi plugin install https://example.com/my-plugin.zip
+kimi plugin install https://github.com/user/repo/archive/refs/heads/main.zip
 ```
 
 **从 Git 仓库安装**

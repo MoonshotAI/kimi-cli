@@ -141,6 +141,8 @@ Skills are modular extensions that provide:
 
 ## Available skills
 
+Skills are grouped by scope (`Project`, `User`, `Extra`, `Built-in`) so you can tell where each came from. When the user refers to "the skill in this project" or "the user-scope skill", use the scope heading to disambiguate. When multiple scopes define a skill with the same name, the more specific scope takes precedence: **Project overrides User overrides Extra overrides Built-in**.
+
 ${KIMI_SKILLS}
 
 ## How to use skills

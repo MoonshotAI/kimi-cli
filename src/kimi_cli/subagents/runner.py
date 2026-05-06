@@ -381,6 +381,9 @@ class ForegroundSubagentRunner:
                 effective_model=req.model or type_def.default_model,
             ),
         )
+        from kimi_cli.telemetry import track
+
+        track("subagent_created")
         return PreparedInstance(
             record=record,
             actual_type=actual_type,

@@ -14,6 +14,7 @@ STATE_FILE_NAME = "state.json"
 
 class ApprovalStateData(BaseModel):
     yolo: bool = False
+    afk: bool = False
     auto_approve_actions: set[str] = Field(default_factory=set)
 
 
@@ -103,8 +104,11 @@ def load_session_state(session_dir: Path) -> SessionState:
         try:
             with open(state_file, encoding="utf-8") as f:
                 state = SessionState.model_validate(json.load(f))
-        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError):
+        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as e:
             logger.warning("Corrupted state file, using defaults: {path}", path=state_file)
+            from kimi_cli.telemetry import track
+
+            track("session_load_failed", reason=type(e).__name__)
             state = SessionState()
 
     # One-time migration from legacy metadata.json (best-effort)

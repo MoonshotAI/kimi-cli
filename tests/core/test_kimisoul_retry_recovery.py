@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Self
+from unittest.mock import AsyncMock
 
 import pytest
 from kosong.chat_provider import (
@@ -16,7 +17,9 @@ from kosong.chat_provider import (
 from kosong.message import Message, TextPart
 from kosong.tooling import Tool
 from kosong.tooling.simple import SimpleToolset
+from pydantic import SecretStr
 
+from kimi_cli.config import LLMModel, LLMProvider, OAuthRef
 from kimi_cli.llm import LLM
 from kimi_cli.soul import run_soul
 from kimi_cli.soul.agent import Agent, Runtime
@@ -181,6 +184,42 @@ class NonRetryableConnectionProvider:
         return self
 
 
+class ConnectionThen401ThenSuccessProvider:
+    name = "connection-then-401-then-success"
+
+    def __init__(self) -> None:
+        self.generate_attempts = 0
+        self.recovery_calls = 0
+
+    @property
+    def model_name(self) -> str:
+        return "connection-then-401-then-success"
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> StaticStreamedMessage:
+        self.generate_attempts += 1
+        if self.generate_attempts == 1:
+            raise APIConnectionError("Connection error.")
+        if self.generate_attempts == 2:
+            raise APIStatusError(401, "expired token")
+        return StaticStreamedMessage([TextPart(text="auth recovered")])
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        self.recovery_calls += 1
+        return True
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return self
+
+
 def _runtime_with_llm(runtime: Runtime, llm: LLM) -> Runtime:
     return Runtime(
         config=runtime.config,
@@ -299,3 +338,43 @@ async def test_step_non_retryable_provider_keeps_tenacity_connection_retries(
 
     assert provider.generate_attempts == 2
     assert context.history[-1].extract_text(" ").strip() == "non-retryable recovered"
+
+
+@pytest.mark.asyncio
+async def test_step_connection_recovery_then_401_triggers_oauth_refresh(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    oauth_provider = LLMProvider(
+        type="kimi",
+        base_url="https://api.test/v1",
+        api_key=SecretStr(""),
+        oauth=OAuthRef(storage="file", key="oauth/kimi-code"),
+    )
+    oauth_model = LLMModel(
+        provider="managed:kimi-code",
+        model="kimi-for-coding",
+        max_context_size=100_000,
+    )
+    runtime.config.providers[oauth_model.provider] = oauth_provider
+    runtime.config.models["kimi-code/kimi-for-coding"] = oauth_model
+
+    provider = ConnectionThen401ThenSuccessProvider()
+    llm = LLM(
+        chat_provider=provider,
+        max_context_size=100_000,
+        capabilities=set(),
+        model_config=oauth_model,
+        provider_config=oauth_provider,
+    )
+    soul, context = _make_soul(runtime, llm, tmp_path)
+
+    refresh_mock = AsyncMock()
+    runtime.oauth.ensure_fresh = refresh_mock
+
+    await run_soul(soul, "trigger mixed recovery", _drain_ui_messages, asyncio.Event())
+
+    assert provider.generate_attempts == 3
+    assert provider.recovery_calls == 1
+    assert context.history[-1].extract_text(" ").strip() == "auth recovered"
+    assert len(refresh_mock.await_args_list) == 2
+    assert any(call.kwargs.get("force") is True for call in refresh_mock.await_args_list)

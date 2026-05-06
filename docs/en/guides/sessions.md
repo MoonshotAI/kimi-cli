@@ -64,7 +64,7 @@ When you continue an existing session, Kimi Code CLI will replay the previous co
 
 In addition to conversation history, Kimi Code CLI also automatically saves and restores the session's runtime state. When you resume a session, the following states are automatically restored:
 
-- **Approval decisions**: YOLO mode on/off status, operation types approved via "allow for this session"
+- **Approval decisions**: YOLO and AFK mode on/off status, operation types approved via "allow for this session"
 - **Plan mode**: Plan mode on/off status
 - **Subagent instances**: Subagent instance state and context history created via the `Agent` tool during the session
 - **Additional directories**: Workspace directories added via `--add-dir` or `/add-dir`

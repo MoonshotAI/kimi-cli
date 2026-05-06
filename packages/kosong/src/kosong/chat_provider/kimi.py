@@ -42,6 +42,7 @@ from kosong.message import (
     VideoURLPart,
 )
 from kosong.tooling import Tool
+from kosong.utils.jsonschema import JsonDict, ensure_property_types
 
 if TYPE_CHECKING:
 
@@ -50,8 +51,12 @@ if TYPE_CHECKING:
         _: RetryableChatProvider = kimi
 
 
-class ThinkingConfig(TypedDict, total=True):
+class ThinkingConfig(TypedDict, total=False):
     type: Literal["enabled", "disabled"]
+    keep: Any
+    """Moonshot-specific ``thinking.keep`` switch for preserved thinking.
+    Forwarded verbatim to the API; callers are responsible for choosing a value
+    the server accepts (e.g. ``"all"``)."""
 
 
 class ExtraBody(TypedDict, total=False, extra_items=Any):
@@ -176,11 +181,15 @@ class Kimi:
 
     def on_retryable_error(self, error: BaseException) -> bool:
         old_client = self.client
+        # Read api_key from the live client (not self._api_key) so that
+        # OAuth token refreshes applied via client.api_key are preserved.
+        current_api_key = old_client.api_key
         self.client = create_openai_client(
-            api_key=self._api_key,
+            api_key=current_api_key,
             base_url=self._base_url,
             client_kwargs=self._client_kwargs,
         )
+        self._api_key = current_api_key
         close_replaced_openai_client(old_client, client_kwargs=self._client_kwargs)
         return True
 
@@ -219,6 +228,11 @@ class Kimi:
         """
         Copy the chat provider, updating the extra_body in generation kwargs.
 
+        Top-level keys follow last-writer-wins semantics, except for the
+        ``thinking`` key: its sub-dict is merged field-by-field so that a
+        later call adding ``thinking.keep`` does not erase a ``thinking.type``
+        installed by an earlier ``with_thinking`` call.
+
         Returns:
             Self: A new instance of the chat provider with updated extra_body.
         """
@@ -226,6 +240,10 @@ class Kimi:
         new_self._generation_kwargs = copy.deepcopy(self._generation_kwargs)
         old_extra_body = new_self._generation_kwargs.get("extra_body") or {}
         new_extra_body: ExtraBody = {**old_extra_body, **extra_body}
+        old_thinking = old_extra_body.get("thinking")
+        new_thinking = extra_body.get("thinking")
+        if old_thinking is not None and new_thinking is not None:
+            new_extra_body["thinking"] = {**old_thinking, **new_thinking}
         new_self._generation_kwargs["extra_body"] = new_extra_body
         return new_self
 
@@ -297,9 +315,30 @@ def _convert_message(message: Message) -> ChatCompletionMessageParam:
             content.append(part)
     message.content = content
     dumped_message = message.model_dump(exclude_none=True)
+    if (
+        message.role == "assistant"
+        and message.tool_calls
+        and _is_effectively_empty_content_parts(content)
+    ):
+        # OpenAI-compatible APIs allow assistant tool-call messages to omit
+        # `content`, but the Kimi-for-Coding compat layer rejects a content
+        # list that contains an empty text part (observed: `content:
+        # [{"type": "text", "text": ""}]` -> 400 "text content is empty").
+        # Dropping `content` entirely is always accepted, so do that whenever
+        # the visible content is effectively empty alongside a tool call.
+        dumped_message.pop("content", None)
     if reasoning_content:
         dumped_message["reasoning_content"] = reasoning_content
     return cast(ChatCompletionMessageParam, dumped_message)
+
+
+def _is_effectively_empty_content_parts(content: Sequence[ContentPart]) -> bool:
+    for part in content:
+        if not isinstance(part, TextPart):
+            return False
+        if part.text.strip():
+            return False
+    return True
 
 
 def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
@@ -315,8 +354,17 @@ def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
                 },
             },
         )
-    else:
-        return tool_to_openai(tool)
+    converted = tool_to_openai(tool)
+    # Moonshot's API rejects parameter schemas whose nested properties omit
+    # `type` (e.g. enum-only properties exposed by some MCP servers). Patch
+    # the schema locally so such tools keep working against Kimi without
+    # requiring every MCP server author to tighten their schemas.
+    function = converted["function"]
+    parameters = function.get("parameters")
+    if isinstance(parameters, dict):
+        normalized = ensure_property_types(cast(JsonDict, parameters))
+        function["parameters"] = cast(dict[str, object], normalized)
+    return converted
 
 
 class KimiStreamedMessage:

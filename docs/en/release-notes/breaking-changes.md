@@ -4,6 +4,31 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.40.0
+
+### `--print` now uses runtime AFK semantics instead of YOLO semantics
+
+Print mode still runs non-interactively and handles approvals automatically, but it now sets an invocation-only AFK overlay instead of enabling YOLO. This means `--print` treats the user as unavailable and auto-dismisses `AskUserQuestion`, while later interactive resumes do not inherit AFK solely because of a previous print run.
+
+- **Affected**: Scripts, wrappers, or custom integrations that inferred print-mode behavior from the explicit YOLO flag
+- **Migration**: Treat `--print` / `--quiet` as non-interactive AFK runs. Use `--yolo` only when you want to bypass permission approvals while a user remains reachable
+
+### `skip_yolo_prompt_injection` replaced by `skip_afk_prompt_injection`
+
+YOLO no longer injects model guidance, so the old `skip_yolo_prompt_injection` config key is ignored. The remaining non-interactive reminder belongs to AFK mode and can be disabled with `skip_afk_prompt_injection`.
+
+- **Affected**: Config files or embedded applications that set `skip_yolo_prompt_injection`
+- **Migration**: Replace `skip_yolo_prompt_injection = true` with `skip_afk_prompt_injection = true` if you need to suppress AFK mode reminders
+
+## 1.39.0
+
+### `merge_all_available_skills` default flipped to `true`
+
+The `merge_all_available_skills` config option default has changed from `false` to `true`. kimi-cli now merges all existing user- and project-level brand skill directories (`.kimi/skills`, `.claude/skills`, `.codex/skills`) by default instead of only using the first one found. Users who keep skills in multiple brand directories — for example both `~/.kimi/skills` and `~/.claude/skills` — will see every skill out of the box after upgrading.
+
+- **Affected**: Users who maintain multiple brand skill directories and relied on the first-match behavior to hide duplicates
+- **Migration**: Set `merge_all_available_skills = false` in your config to restore the previous first-match behavior
+
 ## 1.25.0
 
 ### Wire protocol 1.6 — subagent and approval field changes

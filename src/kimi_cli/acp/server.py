@@ -58,6 +58,14 @@ class ACPServer:
         )
         self.client_capabilities = client_capabilities
 
+        if client_info is not None:
+            from kimi_cli.telemetry import set_client_info
+
+            set_client_info(
+                name=client_info.name,
+                version=getattr(client_info, "version", None),
+            )
+
         # get command and args of current process for terminal-auth
         command = sys.argv[0]
         args: list[str] = []
@@ -155,6 +163,7 @@ class ACPServer:
         cli_instance = await KimiCLI.create(
             session,
             mcp_configs=[mcp_config],
+            ui_mode="acp",
         )
         config = cli_instance.soul.runtime.config
         acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
@@ -225,6 +234,7 @@ class ACPServer:
             session,
             mcp_configs=[mcp_config],
             resumed=True,  # _setup_session loads existing sessions
+            ui_mode="acp",
         )
         config = cli_instance.soul.runtime.config
         acp_kaos = ACPKaos(self.conn, session.id, self.client_capabilities)
