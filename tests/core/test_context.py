@@ -79,6 +79,31 @@ async def test_write_system_prompt_prepends_to_existing(tmp_path: Path) -> None:
     assert lines[1] == msg
 
 
+@pytest.mark.asyncio
+async def test_replace_system_prompt_removes_existing_records(tmp_path: Path) -> None:
+    path = tmp_path / "context.jsonl"
+    msg = _message_dict("user", "Hello")
+    _write_lines(
+        path,
+        [
+            {"role": "_system_prompt", "content": "Old prompt"},
+            msg,
+            {"role": "_system_prompt", "content": "Older duplicate"},
+        ],
+    )
+
+    ctx = Context(file_backend=path)
+    await ctx.replace_system_prompt("Replacement prompt")
+
+    lines = _read_lines(path)
+    assert lines == [{"role": "_system_prompt", "content": "Replacement prompt"}, msg]
+
+    restored = Context(file_backend=path)
+    await restored.restore()
+    assert restored.system_prompt == "Replacement prompt"
+    assert len(restored.history) == 1
+
+
 # --- restore tests ---
 
 

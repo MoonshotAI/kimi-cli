@@ -95,7 +95,7 @@ class WireHookSubscription(BaseModel):
     """Hook event subscription from the wire client."""
 
     id: str
-    """Unique subscription ID — referenced in HookRequest."""
+    """Unique subscription ID - referenced in HookRequest."""
     event: str
     """Which event to subscribe to."""
     matcher: str = ""
@@ -108,6 +108,8 @@ class JSONRPCInitializeMessage(_MessageBase):
     class Params(BaseModel):
         protocol_version: str
         client: ClientInfo | None = None
+        session_title: str | None = None
+        runtime_instructions: str | None = None
         external_tools: list[ExternalTool] | None = None
         hooks: list[WireHookSubscription] | None = None
         capabilities: ClientCapabilities | None = None
@@ -161,6 +163,18 @@ class JSONRPCSetPlanModeMessage(_MessageBase):
     params: _SetPlanModeParams
 
 
+class _SetAfkParams(BaseModel):
+    enabled: bool
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class JSONRPCSetAfkMessage(_MessageBase):
+    method: Literal["set_afk"] = "set_afk"
+    id: str
+    params: _SetAfkParams
+
+
 class JSONRPCCancelMessage(_MessageBase):
     method: Literal["cancel"] = "cancel"
     id: str
@@ -212,10 +226,19 @@ type JSONRPCInMessage = (
     | JSONRPCSteerMessage
     | JSONRPCReplayMessage
     | JSONRPCSetPlanModeMessage
+    | JSONRPCSetAfkMessage
     | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "set_plan_mode", "cancel"}
+JSONRPC_IN_METHODS = {
+    "initialize",
+    "prompt",
+    "steer",
+    "replay",
+    "set_plan_mode",
+    "set_afk",
+    "cancel",
+}
 
 type JSONRPCOutMessage = (
     JSONRPCSuccessResponse

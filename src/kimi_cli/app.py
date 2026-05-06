@@ -810,3 +810,11 @@ class KimiCLI:
         async with self._env():
             server = WireServer(self._soul)
             await server.serve()
+
+    async def run_wire_ipc(self) -> None:
+        """Run the Kimi Code CLI instance as Wire server over Unix domain socket."""
+        from kimi_cli.wire.ipc_server import IpcWireServer
+
+        async with self._env():
+            server = IpcWireServer(self._soul)
+            await server.serve()

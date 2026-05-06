@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import time
 import uuid
@@ -97,6 +98,8 @@ if TYPE_CHECKING:
 SKILL_COMMAND_PREFIX = "skill:"
 FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
+WIRE_RUNTIME_INSTRUCTIONS_BEGIN = "[Wire runtime instructions - highest priority]"
+WIRE_RUNTIME_INSTRUCTIONS_END = "[End wire runtime instructions]"
 
 
 def classify_api_error(e: Exception) -> tuple[str, int | None]:
@@ -137,6 +140,15 @@ def classify_api_error(e: Exception) -> tuple[str, int | None]:
     if isinstance(e, APIEmptyResponseError):
         return "empty_response", None
     return "other", None
+
+
+def _strip_wire_runtime_instructions(prompt: str) -> str:
+    if not prompt.startswith(WIRE_RUNTIME_INSTRUCTIONS_BEGIN):
+        return prompt
+    end = prompt.find(WIRE_RUNTIME_INSTRUCTIONS_END)
+    if end == -1:
+        return prompt
+    return prompt[end + len(WIRE_RUNTIME_INSTRUCTIONS_END) :].lstrip()
 
 
 type StepStopReason = Literal["no_tool_calls", "tool_rejected"]
@@ -272,6 +284,27 @@ class KimiSoul:
         self._hook_engine = engine
         if isinstance(self._agent.toolset, KimiToolset):
             self._agent.toolset.set_hook_engine(engine)
+
+    async def apply_runtime_instructions(self, instructions: str | None) -> bool:
+        runtime_instructions = instructions.strip() if isinstance(instructions, str) else ""
+        if not runtime_instructions:
+            return False
+
+        base_prompt = _strip_wire_runtime_instructions(self._agent.system_prompt).strip()
+        merged_prompt = (
+            f"{WIRE_RUNTIME_INSTRUCTIONS_BEGIN}\n"
+            f"{runtime_instructions}\n"
+            f"{WIRE_RUNTIME_INSTRUCTIONS_END}"
+        )
+        if base_prompt:
+            merged_prompt = f"{merged_prompt}\n\n{base_prompt}"
+
+        if merged_prompt == self._agent.system_prompt:
+            return False
+
+        self._agent = dataclasses.replace(self._agent, system_prompt=merged_prompt)
+        await self._context.replace_system_prompt(merged_prompt)
+        return True
 
     def add_injection_provider(self, provider: DynamicInjectionProvider) -> None:
         """Register an additional dynamic injection provider."""

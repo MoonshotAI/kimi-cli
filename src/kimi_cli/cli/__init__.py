@@ -47,7 +47,7 @@ LLM friendly version: https://moonshotai.github.io/kimi-cli/llms.txt""",
     help="Kimi, your next CLI agent.",
 )
 
-UIMode = Literal["shell", "print", "acp", "wire"]
+UIMode = Literal["shell", "print", "acp", "wire", "wire_ipc"]
 
 
 class ExitCode:
@@ -245,7 +245,14 @@ def kimi(
         bool,
         typer.Option(
             "--wire",
-            help="Run as Wire server (experimental).",
+            help="Run as Wire server over stdio (experimental).",
+        ),
+    ] = False,
+    wire_ipc_mode: Annotated[
+        bool,
+        typer.Option(
+            "--wire-ipc",
+            help="Run as Wire server over Unix domain socket (experimental).",
         ),
     ] = False,
     input_format: Annotated[
@@ -418,7 +425,7 @@ def kimi(
             _picker_mode = True
 
     if quiet:
-        if acp_mode or wire_mode:
+        if acp_mode or wire_mode or wire_ipc_mode:
             raise typer.BadParameter(
                 "Quiet mode cannot be combined with ACP or Wire UI",
                 param_hint="--quiet",
@@ -437,6 +444,7 @@ def kimi(
             "--print": print_mode,
             "--acp": acp_mode,
             "--wire": wire_mode,
+            "--wire-ipc": wire_ipc_mode,
         },
         {
             "--agent": agent is not None,
@@ -473,6 +481,8 @@ def kimi(
         ui = "acp"
     elif wire_mode:
         ui = "wire"
+    elif wire_ipc_mode:
+        ui = "wire_ipc"
 
     if prompt is not None:
         prompt = prompt.strip()
@@ -675,6 +685,11 @@ def kimi(
                         if prompt is not None:
                             logger.warning("Wire server ignores prompt argument")
                         await instance.run_wire_stdio()
+                        exit_code = ExitCode.SUCCESS
+                    case "wire_ipc":
+                        if prompt is not None:
+                            logger.warning("Wire IPC server ignores prompt argument")
+                        await instance.run_wire_ipc()
                         exit_code = ExitCode.SUCCESS
             except Reload as e:
                 preserve_background_tasks = True

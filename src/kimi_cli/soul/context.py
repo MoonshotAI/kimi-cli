@@ -135,6 +135,34 @@ class Context:
 
         self._system_prompt = prompt
 
+    async def replace_system_prompt(self, prompt: str) -> None:
+        """Replace all persisted system prompt records with a single first record."""
+        prompt_line = json.dumps({"role": "_system_prompt", "content": prompt}) + "\n"
+
+        def _replace_system_prompt_sync() -> None:
+            self._file_backend.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self._file_backend.with_suffix(".tmp")
+            with tmp_path.open("w", encoding="utf-8") as tmp_f:
+                tmp_f.write(prompt_line)
+                if self._file_backend.exists():
+                    with self._file_backend.open(encoding="utf-8") as src_f:
+                        for line in src_f:
+                            try:
+                                decoded: object = json.loads(line)
+                            except json.JSONDecodeError:
+                                tmp_f.write(line)
+                                continue
+                            if isinstance(decoded, dict):
+                                line_json = cast(dict[str, object], decoded)
+                                if line_json.get("role") == "_system_prompt":
+                                    continue
+                            tmp_f.write(line)
+            tmp_path.replace(self._file_backend)
+
+        await asyncio.to_thread(_replace_system_prompt_sync)
+
+        self._system_prompt = prompt
+
     async def checkpoint(self, add_user_message: bool):
         checkpoint_id = self._next_checkpoint_id
         self._next_checkpoint_id += 1

@@ -501,8 +501,10 @@ def _load_system_prompt(
         builtin_args=builtin_args,
         spec_args=args,
     )
+    # Allow agent prompt suites to keep shared snippets one directory above
+    # individual agent folders while preserving the agent-local lookup first.
     env = JinjaEnvironment(
-        loader=FileSystemLoader(path.parent),
+        loader=FileSystemLoader([path.parent, path.parent.parent]),
         keep_trailing_newline=True,
         lstrip_blocks=True,
         trim_blocks=True,
