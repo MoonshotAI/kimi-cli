@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add user-customizable color skins — describe a complete color palette in `~/.kimi/skins/<name>.yaml` and activate it with `/skin <name>` at runtime or `skin = "<name>"` in your config file; all color tokens (diff highlights, task browser, prompt completion menu, bottom toolbar, MCP status indicators) can be overridden per-skin with hex values, and missing tokens fall back to the dark defaults; the built-in `dark` and `light` themes are unchanged and the legacy `/theme` command continues to work
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin: Support installing plugins directly from a `.zip` URL — `kimi plugin install` now accepts HTTP(S) URLs ending in `.zip` (e.g. GitHub/GitLab archive links like `.../archive/refs/heads/main.zip`) and downloads + extracts them before resolving `plugin.json`, in addition to the existing git URL, local directory, and local zip-file sources

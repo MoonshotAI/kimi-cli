@@ -3,7 +3,7 @@
 斜杠命令是 Kimi Code CLI 的内置命令，用于控制会话、配置和调试。在输入框中输入 `/` 开头的命令即可触发。
 
 ::: tip Shell 模式
-部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/editor`、`/theme`、`/changelog`、`/feedback`、`/export`、`/import` 和 `/task`。
+部分斜杠命令在 Shell 模式下也可以使用，包括 `/help`、`/exit`、`/version`、`/editor`、`/theme`、`/skin`、`/changelog`、`/feedback`、`/export`、`/import` 和 `/task`。
 :::
 
 ## 帮助与信息
@@ -76,6 +76,39 @@
 - `/theme light`：切换到浅色主题
 
 切换后配置会保存到 `config.toml` 并自动重新加载。浅色主题会调整 Diff 高亮、任务浏览器、提示符补全菜单、底部工具栏和 MCP 状态等所有 UI 组件的颜色，以适配浅色终端背景。也可以直接在配置文件中设置 `theme = "light"`，详见 [配置文件](../configuration/config-files.md)。
+
+### `/skin`
+
+切换到自定义配色皮肤。皮肤为存放在 `~/.kimi/skins/<name>.yaml` 中的 YAML 文件，可覆盖 UI 中所有颜色 token。
+
+用法：
+
+- `/skin`：显示当前皮肤并列出所有可用皮肤
+- `/skin <name>`：切换到指定名称的皮肤
+
+皮肤文件格式如下：
+
+```yaml
+name: my-skin
+description: 我的自定义深色皮肤
+colors:
+  diff_add_bg: "#12261e"
+  diff_del_bg: "#2d1214"
+  mcp_connected: "#56d364"
+  # ... 约 50 个颜色 token 中的任意子集
+branding:
+  prompt_symbol: "❯"   # 可选；替换默认提示符字符
+  welcome: "你好"       # 可选；启动时显示
+  goodbye: "再见"       # 可选；退出时显示
+font:
+  primary: "Fira Code"  # 可选提示；显示在 /skin 输出中
+```
+
+文件中省略的颜色 token 会回退到深色主题默认值。内置的 `dark` 和 `light` 皮肤始终可用。切换后皮肤名会以 `skin = "<name>"` 的形式保存到 `config.toml` 并自动重新加载。也可以直接在配置文件中设置 `skin = "<name>"`，详见 [配置文件](../configuration/config-files.md)。
+
+::: tip 提示
+`/skin` 与 `/theme` 相互独立。当自定义皮肤激活时，`/theme` 的输出仍会显示 `dark` 或 `light`（向后兼容），但实际生效的是当前皮肤的颜色。
+:::
 
 ### `/reload`
 
