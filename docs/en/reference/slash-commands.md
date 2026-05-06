@@ -3,7 +3,7 @@
 Slash commands are built-in commands for Kimi Code CLI, used to control sessions, configuration, and debugging. Enter a command starting with `/` in the input box to trigger.
 
 ::: tip Shell mode
-Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/theme`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
+Some slash commands are also available in shell mode, including `/help`, `/exit`, `/version`, `/editor`, `/theme`, `/skin`, `/changelog`, `/feedback`, `/export`, `/import`, and `/task`.
 :::
 
 ## Help and info
@@ -76,6 +76,39 @@ Usage:
 - `/theme light`: Switch to light theme
 
 After switching, the configuration is saved to `config.toml` and the shell reloads automatically. The light theme adjusts colors for diff highlights, the task browser, the prompt completion menu, the bottom toolbar, and MCP status indicators to work well on light terminal backgrounds. You can also set `theme = "light"` directly in your config file — see [Config files](../configuration/config-files.md).
+
+### `/skin`
+
+Switch to a custom color skin. Skins are YAML files stored in `~/.kimi/skins/<name>.yaml` and can override every color token used by the UI.
+
+Usage:
+
+- `/skin`: Show the current skin and list all available skins
+- `/skin <name>`: Switch to the named skin
+
+A skin file uses the following structure:
+
+```yaml
+name: my-skin
+description: My custom dark skin
+colors:
+  diff_add_bg: "#12261e"
+  diff_del_bg: "#2d1214"
+  mcp_connected: "#56d364"
+  # ... any subset of the ~50 color tokens
+branding:
+  prompt_symbol: "❯"   # optional; stored and accessible via the skin API
+font:
+  primary: "Fira Code"  # optional; stored and accessible via the skin API
+```
+
+Any color token omitted from the file falls back to the dark-theme default. The built-in `dark` and `light` skins are always available and cannot be overridden by a YAML file with the same name. After switching, the skin name is saved to `config.toml` as `skin = "<name>"` and the shell reloads automatically. You can also set `skin = "<name>"` directly in your config file. See [Config files](../configuration/config-files.md) for details.
+
+If `skin` is set in your config but the skin file cannot be found or parsed, the shell silently falls back to the `theme` setting.
+
+::: tip
+`/skin` and `/theme` are independent. When a custom skin is active, `/theme` output still reflects `dark` or `light` for backwards compatibility, but the active skin's colors take effect.
+:::
 
 ### `/reload`
 

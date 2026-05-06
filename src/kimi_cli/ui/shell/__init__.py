@@ -358,11 +358,15 @@ class Shell:
     async def run(self, command: str | None = None) -> bool:
         _run_start_time = time.monotonic()
 
-        # Initialize theme from config
+        # Initialize theme/skin from config
         if isinstance(self.soul, KimiSoul):
-            from kimi_cli.ui.theme import set_active_theme
+            from kimi_cli.ui.theme import set_active_skin, set_active_theme
 
-            set_active_theme(self.soul.runtime.config.theme)
+            config = self.soul.runtime.config
+            if getattr(config, "skin", "") and set_active_skin(config.skin):
+                pass  # custom skin applied
+            else:
+                set_active_theme(config.theme)
 
         if command is not None:
             # run single command and exit
