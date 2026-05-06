@@ -215,6 +215,10 @@ class Config(BaseModel):
         default="dark",
         description="Terminal color theme. Use 'light' for light terminal backgrounds.",
     )
+    skin: str = Field(
+        default="",
+        description="Custom terminal skin name. Loads from ~/.kimi/skins/<skin>.yaml. Overrides theme when set.",
+    )
     show_thinking_stream: bool = Field(
         default=True,
         description=(

@@ -1160,6 +1160,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-j: newline",
         "/feedback: send feedback",
         "/theme: switch dark/light",
+        "/skin: switch terminal skin",
     ]
     if clipboard_available:
         tips.append("ctrl-v: paste clipboard")

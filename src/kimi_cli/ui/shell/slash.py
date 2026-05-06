@@ -659,6 +659,67 @@ def theme(app: Shell, args: str):
 
 
 @registry.command
+@shell_mode_registry.command
+def skin(app: Shell, args: str):
+    """Switch terminal skin (built-in or from ~/.kimi/skins/*.yaml)"""
+    from kimi_cli.ui.theme import get_active_skin_name, list_skins, set_active_skin
+
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+
+    current = get_active_skin_name()
+    arg = args.strip()
+
+    if not arg:
+        console.print(f"Current skin: [bold]{current}[/bold]")
+        available = list_skins()
+        console.print("[grey50]Available skins:[/grey50]")
+        for name, desc in available:
+            marker = " → " if name == current else "   "
+            console.print(f"{marker}[cyan]{name}[/cyan]  {desc}")
+        console.print("[grey50]Usage: /skin <name>[/grey50]")
+        return
+
+    arg_lower = arg.lower()
+    if not set_active_skin(arg_lower):
+        console.print(f"[red]Unknown skin: {arg}.[/red]")
+        available = [name for name, _ in list_skins()]
+        if available:
+            console.print(f"[grey50]Available: {', '.join(available)}[/grey50]")
+        return
+
+    if arg_lower == current:
+        console.print(f"[yellow]Already using {arg} skin.[/yellow]")
+        return
+
+    config_file = soul.runtime.config.source_file
+    if config_file is None:
+        console.print(
+            "[yellow]Skin switching requires a config file; "
+            "restart without --config to persist this setting.[/yellow]"
+        )
+        return
+
+    try:
+        config_for_save = load_config(config_file)
+        config_for_save.skin = arg_lower
+        # Also clear theme so skin takes precedence
+        if hasattr(config_for_save, "theme"):
+            config_for_save.theme = "dark"
+        save_config(config_for_save, config_file)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return
+
+    from kimi_cli.telemetry import track
+
+    track("skin_switch", skin=arg_lower)
+    console.print(f"[green]Switched to {arg_lower} skin. Reloading...[/green]")
+    raise Reload(session_id=soul.runtime.session.id)
+
+
+@registry.command
 def web(app: Shell, args: str):
     """Open Kimi Code Web UI in browser"""
     from kimi_cli.telemetry import track
