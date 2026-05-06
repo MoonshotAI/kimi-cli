@@ -97,14 +97,14 @@ colors:
   mcp_connected: "#56d364"
   # ... any subset of the ~50 color tokens
 branding:
-  prompt_symbol: "❯"   # optional; replaces the default prompt character
-  welcome: "Hello"      # optional; shown at startup
-  goodbye: "Goodbye"    # optional; shown at exit
+  prompt_symbol: "❯"   # optional; stored and accessible via the skin API
 font:
-  primary: "Fira Code"  # optional hint; displayed in /skin output
+  primary: "Fira Code"  # optional; stored and accessible via the skin API
 ```
 
-Any color token omitted from the file falls back to the dark-theme default. The built-in `dark` and `light` skins are always available. After switching, the skin name is saved to `config.toml` as `skin = "<name>"` and the shell reloads automatically. You can also set `skin = "<name>"` directly in your config file. See [Config files](../configuration/config-files.md) for details.
+Any color token omitted from the file falls back to the dark-theme default. The built-in `dark` and `light` skins are always available and cannot be overridden by a YAML file with the same name. After switching, the skin name is saved to `config.toml` as `skin = "<name>"` and the shell reloads automatically. You can also set `skin = "<name>"` directly in your config file. See [Config files](../configuration/config-files.md) for details.
+
+If `skin` is set in your config but the skin file cannot be found or parsed, the shell silently falls back to the `theme` setting.
 
 ::: tip
 `/skin` and `/theme` are independent. When a custom skin is active, `/theme` output still reflects `dark` or `light` for backwards compatibility, but the active skin's colors take effect.

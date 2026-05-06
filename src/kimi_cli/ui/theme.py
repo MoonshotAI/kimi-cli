@@ -6,7 +6,6 @@ Custom skins: load from ~/.kimi/skins/<name>.yaml (Hermes-compatible format).
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -278,14 +277,14 @@ def _load_yaml_skin(path: Path) -> Skin | None:
 
 
 def _discover_custom_skins() -> dict[str, Skin]:
-    """Discover skins in ~/.kimi/skins/*.yaml."""
+    """Discover skins in ~/.kimi/skins/*.yaml, skipping reserved built-in names."""
     skins: dict[str, Skin] = {}
     skins_dir = Path.home() / ".kimi" / "skins"
     if not skins_dir.exists():
         return skins
     for path in skins_dir.glob("*.yaml"):
         skin = _load_yaml_skin(path)
-        if skin:
+        if skin and skin.name not in _BUILTIN_SKINS:
             skins[skin.name] = skin
     return skins
 
@@ -298,19 +297,22 @@ _active_skin_name: str = "dark"
 _custom_skins: dict[str, Skin] = {}
 
 
-def _all_skins() -> dict[str, Skin]:
-    """Return built-in + discovered custom skins."""
+def _refresh_custom_skins() -> None:
+    """Re-scan ~/.kimi/skins and update the cache."""
     global _custom_skins
-    # Re-discover on each call so new files are picked up without restart
     _custom_skins = _discover_custom_skins()
-    return {**_BUILTIN_SKINS, **_custom_skins}
+
+
+def _all_skins() -> dict[str, Skin]:
+    """Return built-in + cached custom skins. Built-ins always take precedence."""
+    return {**_custom_skins, **_BUILTIN_SKINS}
 
 
 def set_active_skin(name: str) -> bool:
-    """Activate a skin by name. Returns True if found."""
+    """Activate a skin by name. Returns True if found. Refreshes custom skin cache first."""
     global _active_skin_name
-    all_skins = _all_skins()
-    if name not in all_skins:
+    _refresh_custom_skins()
+    if name not in _all_skins():
         return False
     _active_skin_name = name
     return True
@@ -318,8 +320,7 @@ def set_active_skin(name: str) -> bool:
 
 def get_active_skin() -> Skin:
     """Return the currently active skin."""
-    all_skins = _all_skins()
-    return all_skins.get(_active_skin_name, _BUILTIN_SKINS["dark"])
+    return _all_skins().get(_active_skin_name, _BUILTIN_SKINS["dark"])
 
 
 def get_active_skin_name() -> str:
@@ -328,7 +329,8 @@ def get_active_skin_name() -> str:
 
 
 def list_skins() -> list[tuple[str, str]]:
-    """List all available skins as (name, description) tuples."""
+    """List all available skins as (name, description) tuples. Refreshes custom skin cache."""
+    _refresh_custom_skins()
     return [(s.name, s.description) for s in _all_skins().values()]
 
 

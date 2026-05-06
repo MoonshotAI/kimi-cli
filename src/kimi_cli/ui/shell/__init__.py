@@ -363,8 +363,8 @@ class Shell:
             from kimi_cli.ui.theme import set_active_skin, set_active_theme
 
             config = self.soul.runtime.config
-            if getattr(config, "skin", ""):
-                set_active_skin(config.skin)
+            if getattr(config, "skin", "") and set_active_skin(config.skin):
+                pass  # custom skin applied
             else:
                 set_active_theme(config.theme)
 

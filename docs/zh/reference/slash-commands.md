@@ -97,14 +97,14 @@ colors:
   mcp_connected: "#56d364"
   # ... 约 50 个颜色 token 中的任意子集
 branding:
-  prompt_symbol: "❯"   # 可选；替换默认提示符字符
-  welcome: "你好"       # 可选；启动时显示
-  goodbye: "再见"       # 可选；退出时显示
+  prompt_symbol: "❯"   # 可选；通过皮肤 API 存储和访问
 font:
-  primary: "Fira Code"  # 可选提示；显示在 /skin 输出中
+  primary: "Fira Code"  # 可选；通过皮肤 API 存储和访问
 ```
 
-文件中省略的颜色 token 会回退到深色主题默认值。内置的 `dark` 和 `light` 皮肤始终可用。切换后皮肤名会以 `skin = "<name>"` 的形式保存到 `config.toml` 并自动重新加载。也可以直接在配置文件中设置 `skin = "<name>"`，详见 [配置文件](../configuration/config-files.md)。
+文件中省略的颜色 token 会回退到深色主题默认值。内置的 `dark` 和 `light` 皮肤始终可用，同名的 YAML 文件无法覆盖它们。切换后皮肤名会以 `skin = "<name>"` 的形式保存到 `config.toml` 并自动重新加载。也可以直接在配置文件中设置 `skin = "<name>"`，详见 [配置文件](../configuration/config-files.md)。
+
+如果配置中设置了 `skin` 但对应皮肤文件不存在或解析失败，Shell 会静默回退到 `theme` 设置。
 
 ::: tip 提示
 `/skin` 与 `/theme` 相互独立。当自定义皮肤激活时，`/theme` 的输出仍会显示 `dark` 或 `light`（向后兼容），但实际生效的是当前皮肤的颜色。

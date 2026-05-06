@@ -682,11 +682,13 @@ def skin(app: Shell, args: str):
         return
 
     arg_lower = arg.lower()
-    if not set_active_skin(arg_lower):
+
+    # Validate existence without mutating active-skin state
+    available_names = {name for name, _ in list_skins()}
+    if arg_lower not in available_names:
         console.print(f"[red]Unknown skin: {arg}.[/red]")
-        available = [name for name, _ in list_skins()]
-        if available:
-            console.print(f"[grey50]Available: {', '.join(available)}[/grey50]")
+        if available_names:
+            console.print(f"[grey50]Available: {', '.join(sorted(available_names))}[/grey50]")
         return
 
     if arg_lower == current:
@@ -701,16 +703,16 @@ def skin(app: Shell, args: str):
         )
         return
 
+    # Persist to disk first — only update in-memory state after success
     try:
         config_for_save = load_config(config_file)
         config_for_save.skin = arg_lower
-        # Also clear theme so skin takes precedence
-        if hasattr(config_for_save, "theme"):
-            config_for_save.theme = "dark"
         save_config(config_for_save, config_file)
     except (ConfigError, OSError) as exc:
         console.print(f"[red]Failed to save config: {exc}[/red]")
         return
+
+    set_active_skin(arg_lower)
 
     from kimi_cli.telemetry import track
 
