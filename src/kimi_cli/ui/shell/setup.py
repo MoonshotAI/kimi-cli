@@ -148,18 +148,28 @@ def _apply_setup_result(result: _SetupResult) -> None:
         base_url=result.platform.base_url,
         api_key=result.api_key,
     )
+    # Snapshot existing max_context_size values before deleting models,
+    # so the preservation logic below can actually find them.
+    existing_max_context: dict[str, int] = {}
     for key, model in list(config.models.items()):
         if model.provider == provider_key:
+            existing_max_context[key] = model.max_context_size
             del config.models[key]
+    selected_model_key = model_key
     for model_info in result.models:
         capabilities = model_info.capabilities or None
-        config.models[managed_model_key(result.platform.id, model_info.id)] = LLMModel(
+        model_key = managed_model_key(result.platform.id, model_info.id)
+        # Preserve user-configured max_context_size when larger than API-reported value.
+        max_context_size = model_info.context_length
+        if model_key in existing_max_context and existing_max_context[model_key] > max_context_size:
+            max_context_size = existing_max_context[model_key]
+        config.models[model_key] = LLMModel(
             provider=provider_key,
             model=model_info.id,
-            max_context_size=model_info.context_length,
+            max_context_size=max_context_size,
             capabilities=capabilities,
         )
-    config.default_model = model_key
+    config.default_model = selected_model_key
     config.default_thinking = result.thinking
 
     if result.platform.search_url:

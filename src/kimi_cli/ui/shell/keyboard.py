@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import sys
 import threading
 import time
@@ -114,7 +115,10 @@ def _listen_for_keyboard_unix(
 
     import termios
 
-    fd = sys.stdin.fileno()
+    try:
+        fd = sys.stdin.fileno()
+    except (OSError, io.UnsupportedOperation):
+        return
     oldterm = termios.tcgetattr(fd)
     rawattr = termios.tcgetattr(fd)
     rawattr[3] = rawattr[3] & ~termios.ICANON & ~termios.ECHO

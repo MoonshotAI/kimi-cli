@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import platform
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 from inline_snapshot import snapshot
@@ -13,6 +14,7 @@ def test_pyinstaller_datas():
     project_root = Path(__file__).parent.parent.parent
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     site_packages = f".venv/lib/python{python_version}/site-packages"
+    fastmcp_dist_info = f"fastmcp-{version('fastmcp')}.dist-info"
     rg_binary = "rg.exe" if platform.system() == "Windows" else "rg"
     has_rg_binary = (project_root / "src/kimi_cli/deps/bin" / rg_binary).exists()
     datas = [
@@ -34,32 +36,32 @@ def test_pyinstaller_datas():
             "dateparser/data",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/INSTALLER",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../{fastmcp_dist_info}/INSTALLER",
+            f"fastmcp/../{fastmcp_dist_info}",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/METADATA",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../{fastmcp_dist_info}/METADATA",
+            f"fastmcp/../{fastmcp_dist_info}",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/RECORD",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../{fastmcp_dist_info}/RECORD",
+            f"fastmcp/../{fastmcp_dist_info}",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/REQUESTED",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../{fastmcp_dist_info}/REQUESTED",
+            f"fastmcp/../{fastmcp_dist_info}",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/WHEEL",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../{fastmcp_dist_info}/WHEEL",
+            f"fastmcp/../{fastmcp_dist_info}",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/entry_points.txt",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../{fastmcp_dist_info}/entry_points.txt",
+            f"fastmcp/../{fastmcp_dist_info}",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/licenses/LICENSE",
-            "fastmcp/../fastmcp-2.12.5.dist-info/licenses",
+            f"{site_packages}/fastmcp/../{fastmcp_dist_info}/licenses/LICENSE",
+            f"fastmcp/../{fastmcp_dist_info}/licenses",
         ),
         (
             "src/kimi_cli/CHANGELOG.md",
@@ -82,6 +84,10 @@ def test_pyinstaller_datas():
             "kimi_cli/skills/skill-creator",
         ),
         ("src/kimi_cli/tools/agent/description.md", "kimi_cli/tools/agent"),
+        (
+            "src/kimi_cli/tools/archive_search/archive_search.md",
+            "kimi_cli/tools/archive_search",
+        ),
         ("src/kimi_cli/tools/ask_user/description.md", "kimi_cli/tools/ask_user"),
         (
             "src/kimi_cli/tools/dmail/dmail.md",
@@ -154,6 +160,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.cli.web",
             "kimi_cli.tools",
             "kimi_cli.tools.agent",
+            "kimi_cli.tools.archive_search",
             "kimi_cli.tools.ask_user",
             "kimi_cli.tools.background",
             "kimi_cli.tools.display",
@@ -167,6 +174,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.utils",
             "kimi_cli.tools.file.write",
+            "kimi_cli.tools.flow_decision",
             "kimi_cli.tools.plan",
             "kimi_cli.tools.plan.enter",
             "kimi_cli.tools.plan.heroes",

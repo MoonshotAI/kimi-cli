@@ -51,6 +51,7 @@ from .jsonrpc import (
     JSONRPCPromptMessage,
     JSONRPCReplayMessage,
     JSONRPCRequestMessage,
+    JSONRPCSetAfkMessage,
     JSONRPCSetPlanModeMessage,
     JSONRPCSteerMessage,
     JSONRPCSuccessResponse,
@@ -365,6 +366,8 @@ class WireServer:
                     resp = await self._handle_steer(msg)
                 case JSONRPCSetPlanModeMessage():
                     resp = await self._handle_set_plan_mode(msg)
+                case JSONRPCSetAfkMessage():
+                    resp = await self._handle_set_afk(msg)
                 case JSONRPCCancelMessage():
                     resp = await self._handle_cancel(msg)
                 case JSONRPCSuccessResponse() | JSONRPCErrorResponse():
@@ -420,6 +423,22 @@ class WireServer:
                 else:
                     rejected.append({"name": tool.name, "reason": reason or "invalid schema"})
 
+        if isinstance(self._soul, KimiSoul):
+            await self._soul.apply_runtime_instructions(msg.params.runtime_instructions)
+            if msg.params.session_title:
+                from kimi_cli.session_state import load_session_state, save_session_state
+
+                session = self._soul.runtime.session
+                title = msg.params.session_title.strip()[:200]
+                if title:
+                    fresh = load_session_state(session.dir)
+                    fresh.custom_title = title
+                    fresh.title_generated = True
+                    save_session_state(fresh, session.dir)
+                    session.state.custom_title = title
+                    session.state.title_generated = True
+                    session.title = title
+
         slash_commands: list[JsonType] = []
         for cmd in self._soul.available_slash_commands:
             slash_commands.append(
@@ -436,7 +455,7 @@ class WireServer:
         from kimi_cli.wire.protocol import WIRE_PROTOCOL_VERSION
         from kimi_cli.wire.types import HookResolved, HookTriggered
 
-        # Hook engine setup — register wire subscriptions and callbacks
+        # Hook engine setup - register wire subscriptions and callbacks
 
         hook_engine = self._soul.hook_engine
 
@@ -523,6 +542,14 @@ class WireServer:
 
         if hooks_info:
             result["hooks"] = cast(JsonType, hooks_info)
+        if isinstance(self._soul, KimiSoul):
+            result["session"] = cast(
+                JsonType,
+                {
+                    "id": self._soul.runtime.session.id,
+                    "title": self._soul.runtime.session.title,
+                },
+            )
 
         self._apply_wire_client_info(msg.params.client)
         self._track_session_started(msg.params.client)
@@ -621,12 +648,18 @@ class WireServer:
             ua_suffix = f" ({ua_suffix.strip()})"
 
         from kosong.chat_provider.kimi import Kimi
+        from kosong.contrib.chat_provider.anthropic import Anthropic
 
         if isinstance(llm.chat_provider, Kimi):
             kimi_client = llm.chat_provider.client
             headers = dict(kimi_client._custom_headers)  # pyright: ignore[reportPrivateUsage]
             headers["User-Agent"] = f"{USER_AGENT}{ua_suffix}"
             kimi_client._custom_headers = headers  # pyright: ignore[reportPrivateUsage]
+        elif isinstance(llm.chat_provider, Anthropic):
+            anthropic_client = llm.chat_provider._client  # pyright: ignore[reportPrivateUsage]
+            headers = dict(anthropic_client._custom_headers)  # pyright: ignore[reportPrivateUsage]
+            headers["User-Agent"] = f"{USER_AGENT}{ua_suffix}"
+            anthropic_client._custom_headers = headers  # pyright: ignore[reportPrivateUsage]
 
     def _track_session_started(self, client: ClientInfo | None) -> None:
         if not isinstance(self._soul, KimiSoul):
@@ -792,6 +825,29 @@ class WireServer:
         return JSONRPCSuccessResponse(
             id=msg.id,
             result={"status": "ok", "plan_mode": new_state},
+        )
+
+    async def _handle_set_afk(
+        self, msg: JSONRPCSetAfkMessage
+    ) -> JSONRPCSuccessResponse | JSONRPCErrorResponse:
+        if not isinstance(self._soul, KimiSoul):
+            return JSONRPCErrorResponse(
+                id=msg.id,
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.INVALID_STATE,
+                    message="AFK mode is not supported",
+                ),
+            )
+
+        self._soul.runtime.approval.set_afk(msg.params.enabled)
+        await self._soul.notify_afk_changed(msg.params.enabled)
+
+        status = StatusUpdate(afk_enabled=msg.params.enabled)
+        await self._send_msg(JSONRPCEventMessage(params=status))
+        await self._soul.wire_file.append_message(status)
+        return JSONRPCSuccessResponse(
+            id=msg.id,
+            result={"status": "ok", "afk_enabled": msg.params.enabled},
         )
 
     async def _handle_replay(
@@ -1038,8 +1094,8 @@ class WireServer:
         await self._send_msg(JSONRPCRequestMessage(id=msg_id, params=request))
         # Do NOT await request.wait() here.  The approval future is awaited by
         # the tool that created the request (inside the soul task).  Blocking the
-        # UI loop would prevent ALL subsequent Wire messages — from every
-        # concurrent subagent — from reaching stdout, causing a cascade deadlock
+        # UI loop would prevent ALL subsequent Wire messages - from every
+        # concurrent subagent - from reaching stdout, causing a cascade deadlock
         # when the approval response is lost (e.g. no WebSocket connected).
 
     async def _request_external_tool(self, request: ToolCallRequest) -> None:

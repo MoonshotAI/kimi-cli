@@ -4,7 +4,6 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 const PYPROJECT_VERSION_REGEX = /^\s*version\s*=\s*"([^"]+)"/m;
 
@@ -33,9 +32,6 @@ export default defineConfig({
   // Use relative paths so assets work under any base path.
   base: "./",
   plugins: [
-    nodePolyfills({
-      include: ["path", "url"],
-    }),
     react(),
     tailwindcss(),
     ...(shouldAnalyze

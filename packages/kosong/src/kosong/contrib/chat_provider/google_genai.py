@@ -484,8 +484,15 @@ def _tool_message_to_function_response_part(
 ) -> Part:
     if message.role != "tool":  # pragma: no cover - defensive guard
         raise ChatProviderError("Expected a tool message.")
-    if message.tool_call_id is None:
-        raise ChatProviderError("Tool response is missing `tool_call_id`.")
+    if not message.tool_call_id:
+        # Return a text Part with retry instructions instead of hard-failing.
+        retry_text = (
+            "[SYSTEM NOTICE] You attempted to return a tool result, but the "
+            "`tool_call_id` is missing or empty. Every tool result must reference "
+            "the exact `id` from the assistant's `tool_use` block. "
+            "Please retry the tool call with the correct `tool_call_id`."
+        )
+        return Part(text=retry_text)
 
     response_data, tool_result_parts = _tool_result_to_response_and_parts(message.content)
     return Part(
@@ -529,8 +536,13 @@ def _tool_messages_to_google_genai_content(
     parts: list[Part] = []
     actual_tool_call_ids: list[str] = []
     for _, message in indexed_messages:
-        if message.tool_call_id is None:
-            raise ChatProviderError("Tool response is missing `tool_call_id`.")
+        if not message.tool_call_id:
+            # Malformed tool result: _tool_message_to_function_response_part will
+            # return a text Part with retry instructions. Skip deduplication/tracking.
+            parts.append(
+                _tool_message_to_function_response_part(message, tool_name_by_id=tool_name_by_id)
+            )
+            continue
         if message.tool_call_id in seen_tool_call_ids:
             raise ChatProviderError(f"Duplicate tool response for id: {message.tool_call_id}")
         seen_tool_call_ids.add(message.tool_call_id)

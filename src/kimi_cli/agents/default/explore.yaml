@@ -41,6 +41,7 @@ agent:
     - "kimi_cli.tools.todo:SetTodoList"
     - "kimi_cli.tools.plan:ExitPlanMode"
     - "kimi_cli.tools.plan.enter:EnterPlanMode"
+    - "kimi_cli.tools.archive_search:ArchiveSearch"
     - "kimi_cli.tools.file:WriteFile"
     - "kimi_cli.tools.file:StrReplaceFile"
   subagents:

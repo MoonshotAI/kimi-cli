@@ -74,13 +74,21 @@ When using `--prompt` (or `--command`), Kimi Code CLI exits after processing the
 |--------|-------------|
 | `--max-steps-per-turn N` | Maximum steps per turn, overrides `loop_control.max_steps_per_turn` in config file |
 | `--max-retries-per-step N` | Maximum retries per step, overrides `loop_control.max_retries_per_step` in config file |
-| `--max-ralph-iterations N` | Number of iterations for Ralph Loop mode; `0` disables; `-1` is unlimited |
+| `--max-ralph-iterations N` | Number of iterations for RalphFlow mode; `0` disables; `-1` is unlimited |
 
-### Ralph Loop
+### RalphFlow
 
-[Ralph](https://ghuntley.com/ralph/) is a technique that puts an agent in a loop: the same prompt is fed again and again so the agent can keep iterating one big task.
+RalphFlow is an automated iteration architecture built on Prompt Flow. When `--max-ralph-iterations` is not `0`, Kimi Code CLI enters RalphFlow mode and automatically loops through task execution.
 
-When `--max-ralph-iterations` is not `0`, Kimi Code CLI enters Ralph Loop mode and automatically loops through task execution until the agent outputs `<choice>STOP</choice>` or the iteration limit is reached.
+Each iteration runs in an **ephemeral context** that is isolated from the main conversation history. The model uses the `flow_decision` tool to choose the next step:
+
+- **`CONTINUE`** — Run another iteration to keep refining the task.
+- **`STOP`** — Finish the loop and return results to the user.
+- **`PAUSE`** — Suspend the loop, preserving ephemeral state for a later resume.
+
+**Convergence detection** automatically stops the loop when the model repeats the same work across iterations (same tool calls and outputs), preventing infinite loops even if the model never calls `STOP`.
+
+The ephemeral context is **merged back** into the main conversation history when the loop finishes, so cross-turn memory is preserved. Set `max_ralph_iterations = 0` in your config to disable RalphFlow.
 
 ## UI modes
 

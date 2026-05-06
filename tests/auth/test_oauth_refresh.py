@@ -2,12 +2,15 @@
 
 import json
 import time
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
 from pydantic import SecretStr
 
+from kimi_cli.auth import KIMI_CODE_PLATFORM_ID
 from kimi_cli.auth.oauth import (
     _REJECTED_REFRESH_TOKENS,
     OAuthError,
@@ -18,7 +21,10 @@ from kimi_cli.auth.oauth import (
     _save_to_file,
     refresh_token,
 )
+from kimi_cli.auth.platforms import managed_model_key, managed_provider_key
 from kimi_cli.config import Config, LLMModel, LLMProvider, OAuthRef, Services
+from kimi_cli.llm import create_llm
+from kimi_cli.soul.agent import Runtime
 
 # ── helpers ──────────────────────────────────────────────────────
 
@@ -65,6 +71,41 @@ def _make_config() -> Config:
 def _make_manager(token: OAuthToken | None = None) -> OAuthManager:
     with patch("kimi_cli.auth.oauth.load_tokens", return_value=token):
         return OAuthManager(_make_config())
+
+
+def test_apply_access_token_updates_agent_gateway_anthropic_headers():
+    from kosong.contrib.chat_provider.anthropic import Anthropic
+
+    provider_key = managed_provider_key(KIMI_CODE_PLATFORM_ID)
+    model_key = managed_model_key(KIMI_CODE_PLATFORM_ID, "kimi-for-coding")
+    provider = LLMProvider(
+        type="kimi",
+        base_url="https://agent-gw.kimi.com/coding/v1",
+        api_key=SecretStr("fallback-token"),
+        oauth=OAuthRef(storage="file", key="oauth/kimi-code"),
+    )
+    model = LLMModel(
+        provider=provider_key,
+        model="kimi-for-coding",
+        max_context_size=262_144,
+    )
+    config = Config(
+        default_model=model_key,
+        providers={provider_key: provider},
+        models={model_key: model},
+        services=Services(),
+    )
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Anthropic)
+
+    runtime = cast(Runtime, SimpleNamespace(llm=llm, config=config))
+    OAuthManager(config)._apply_access_token(runtime, "refreshed-token")
+
+    assert llm.chat_provider._client.api_key == "refreshed-token"
+    assert (
+        llm.chat_provider._client._custom_headers.get("Authorization") == "Bearer refreshed-token"
+    )
 
 
 # ── refresh_token retry on network errors ──────────────────────

@@ -55,6 +55,16 @@ def _get_mcp_server(name: str, *, require_remote: bool = False) -> dict[str, Any
     return server
 
 
+def _mcp_server_for_runtime(server: dict[str, Any]) -> dict[str, Any]:
+    """Return a runtime-only MCP server config with persistent OAuth enabled."""
+    if server.get("auth") != "oauth" or "url" not in server:
+        return server
+
+    from kimi_cli.mcp_oauth import build_mcp_oauth
+
+    return {**server, "auth": build_mcp_oauth(str(server["url"]))}
+
+
 def _parse_key_value_pairs(
     items: list[str], option_name: str, *, separator: str = "=", strip_whitespace: bool = False
 ) -> dict[str, str]:
@@ -78,6 +88,14 @@ def _parse_key_value_pairs(
 
 
 Transport = Literal["stdio", "http"]
+
+
+@cli.command("serve")
+def mcp_serve() -> None:
+    """Run Kimi Code CLI as an MCP server (stdio transport)."""
+    from kimi_cli.mcp_serve import run_mcp_server
+
+    run_mcp_server()
 
 
 @cli.command(
@@ -213,14 +231,9 @@ def _has_oauth_tokens(server_url: str) -> bool:
     import asyncio
 
     async def _check() -> bool:
-        try:
-            from fastmcp.client.auth.oauth import FileTokenStorage
+        from kimi_cli.mcp_oauth import has_mcp_oauth_tokens
 
-            storage = FileTokenStorage(server_url=server_url)
-            tokens = await storage.get_tokens()
-            return tokens is not None
-        except Exception:
-            return False
+        return await has_mcp_oauth_tokens(server_url)
 
     return asyncio.run(_check())
 
@@ -275,7 +288,7 @@ def mcp_auth(
         typer.echo(f"Authorizing with '{name}'...")
         typer.echo("A browser window will open for authorization.")
 
-        client = fastmcp.Client({"mcpServers": {name: server}})
+        client = fastmcp.Client({"mcpServers": {name: _mcp_server_for_runtime(server)}})
         try:
             async with client:
                 tools = await client.list_tools()
@@ -299,14 +312,12 @@ def mcp_reset_auth(
     server = _get_mcp_server(name, require_remote=True)
 
     try:
-        from fastmcp.client.auth.oauth import FileTokenStorage
+        import asyncio
 
-        storage = FileTokenStorage(server_url=server["url"])
-        storage.clear()
+        from kimi_cli.mcp_oauth import clear_mcp_oauth_tokens
+
+        asyncio.run(clear_mcp_oauth_tokens(str(server["url"])))
         typer.echo(f"OAuth tokens cleared for '{name}'.")
-    except ImportError:
-        typer.echo("OAuth support not available.", err=True)
-        raise typer.Exit(code=1) from None
     except Exception as e:
         typer.echo(f"Failed to clear tokens: {type(e).__name__}: {e}", err=True)
         raise typer.Exit(code=1) from None
@@ -328,7 +339,7 @@ def mcp_test(
         import fastmcp
 
         typer.echo(f"Testing connection to '{name}'...")
-        client = fastmcp.Client({"mcpServers": {name: server}})
+        client = fastmcp.Client({"mcpServers": {name: _mcp_server_for_runtime(server)}})
 
         try:
             async with client:

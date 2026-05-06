@@ -87,6 +87,7 @@ from kosong.message import (
     ThinkPart,
     ToolCall,
     ToolCallPart,
+    VideoURLPart,
 )
 from kosong.tooling import Tool
 
@@ -247,6 +248,7 @@ class Anthropic:
         self._client = AsyncAnthropic(api_key=api_key, base_url=base_url, **client_kwargs)
         self._tool_message_conversion: ToolMessageConversion | None = tool_message_conversion
         self._metadata = metadata
+        self._agent_gw = base_url is not None and "agent-gw" in base_url
         self._generation_kwargs: Anthropic.GenerationKwargs = {
             "max_tokens": default_max_tokens,
             "beta_features": ["interleaved-thinking-2025-05-14"],
@@ -456,13 +458,26 @@ class Anthropic:
                 ],
             )
         elif role == "tool":
-            if message.tool_call_id is None:
-                raise ChatProviderError("Tool message missing `tool_call_id`.")
+            if not message.tool_call_id:
+                # Convert malformed tool result into a user-visible retry prompt
+                # instead of hard-failing the request.
+                retry_text = (
+                    "[SYSTEM NOTICE] You attempted to return a tool result, but the "
+                    "`tool_call_id` is missing or empty. Every tool result must reference "
+                    "the exact `id` from the assistant's `tool_use` block. "
+                    "Please retry the tool call with the correct `tool_call_id`."
+                )
+                return MessageParam(
+                    role="user",
+                    content=[TextBlockParam(type="text", text=retry_text)],
+                )
             if self._tool_message_conversion == "extract_text":
                 content = message.extract_text(sep="\n")
             else:
                 content = message.content
-            block = _tool_result_message_to_block(message.tool_call_id, content)
+            block = _tool_result_message_to_block(
+                message.tool_call_id, content, agent_gw=self._agent_gw
+            )
             return MessageParam(role="user", content=[block])
 
         assert role in ("user", "assistant")
@@ -472,6 +487,26 @@ class Anthropic:
                 blocks.append(TextBlockParam(type="text", text=part.text))
             elif isinstance(part, ImageURLPart):
                 blocks.append(_image_url_part_to_anthropic(part))
+            elif isinstance(part, VideoURLPart):
+                if self._agent_gw:
+                    # Agent gateway (agent-gw.kimi.com) accepts video_url blocks
+                    # even through the Anthropic Messages API format.
+                    blocks.append(
+                        cast(
+                            ContentBlockParam,
+                            {
+                                "type": "video_url",
+                                "video_url": {
+                                    "url": part.video_url.url,
+                                    "id": part.video_url.id,
+                                },
+                            },
+                        )
+                    )
+                else:
+                    # Standard Anthropic API does not support video_url blocks;
+                    # skip them to avoid request validation errors.
+                    continue
             elif isinstance(part, ThinkPart):
                 if part.encrypted is None:
                     # missing signature, strip this thinking block.
@@ -644,7 +679,9 @@ def _is_tool_result_only(content: object) -> bool:
 
 
 def _tool_result_message_to_block(
-    tool_call_id: str, content: str | list[ContentPart]
+    tool_call_id: str,
+    content: str | list[ContentPart],
+    agent_gw: bool = False,
 ) -> ToolResultBlockParam:
     block_content: str | list[ToolResultContent]
     # If tool_result_process is `extract_text`, we join all text parts into one string
@@ -659,6 +696,26 @@ def _tool_result_message_to_block(
                     blocks.append(TextBlockParam(type="text", text=part.text))
             elif isinstance(part, ImageURLPart):
                 blocks.append(_image_url_part_to_anthropic(part))
+            elif isinstance(part, VideoURLPart):
+                if agent_gw:
+                    # Agent gateway (agent-gw.kimi.com) accepts video_url blocks
+                    # even through the Anthropic Messages API format.
+                    blocks.append(
+                        cast(
+                            ToolResultContent,
+                            {
+                                "type": "video_url",
+                                "video_url": {
+                                    "url": part.video_url.url,
+                                    "id": part.video_url.id,
+                                },
+                            },
+                        )
+                    )
+                else:
+                    # Standard Anthropic API does not support video_url blocks;
+                    # skip them to avoid request validation errors.
+                    continue
             else:
                 # https://docs.claude.com/en/docs/build-with-claude/files#file-types-and-content-blocks
                 # Anthropic API supports very limited file types

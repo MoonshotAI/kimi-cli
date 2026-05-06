@@ -137,6 +137,17 @@ Run `kimi` with `--mcp-config-file` option to connect to the specified MCP serve
 kimi --mcp-config-file /path/to/mcp.json
 ```
 
+### RalphFlow automated iteration
+
+Kimi Code CLI supports RalphFlow, an automated iteration architecture that lets the agent loop through a task until it decides to stop. Each iteration runs in an isolated ephemeral context that merges back into the main conversation history when the loop finishes. Convergence detection automatically stops repeating work to prevent infinite loops.
+
+Enable RalphFlow by setting `max_ralph_iterations` in your config:
+
+```toml
+[loop_control]
+max_ralph_iterations = 10  # 0 disables, -1 is unlimited
+```
+
 ### More
 
 See more features in the [Documentation](https://moonshotai.github.io/kimi-cli/en/).

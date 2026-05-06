@@ -187,11 +187,6 @@ def test_flow_skill(tmp_path) -> None:
                     "type": "TurnBegin",
                     "payload": {"user_input": "/flow:test-flow"},
                 },
-                {
-                    "method": "event",
-                    "type": "TurnBegin",
-                    "payload": {"user_input": "Say hello"},
-                },
                 {"method": "event", "type": "StepBegin", "payload": {"n": 1}},
                 {
                     "method": "event",
@@ -211,7 +206,6 @@ def test_flow_skill(tmp_path) -> None:
                         "mcp_status": None,
                     },
                 },
-                {"method": "event", "type": "TurnEnd", "payload": {}},
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
