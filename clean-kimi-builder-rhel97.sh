@@ -4,6 +4,11 @@ shopt -s nullglob
 
 SRC="${SRC:-$HOME/src/kimi-cli-dev}"
 NODE_STREAM="${NODE_STREAM:-nodejs:24}"
+BUILD_JOBS="${BUILD_JOBS:-}"
+RUN_PREPARE="${RUN_PREPARE:-0}"
+RUN_BUILD="${RUN_BUILD:-0}"
+RUN_BUILD_BIN="${RUN_BUILD_BIN:-0}"
+RUN_INSTALL="${RUN_INSTALL:-0}"
 
 # Default is conservative. Strict mode only prepares/removes user-installed RPMs if explicitly confirmed.
 STRICT_PACKAGE_PURGE="${STRICT_PACKAGE_PURGE:-0}"
@@ -14,10 +19,35 @@ PATH="$HOME/.local/bin:$PATH"
 
 log() { printf '\n==> %s\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1; }
+detect_build_jobs() {
+  local jobs
+  jobs="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || printf '4')"
+  if [[ ! "$jobs" =~ ^[0-9]+$ ]] || (( jobs < 1 )); then
+    jobs=4
+  fi
+  printf '%s\n' "$jobs"
+}
+
+if [[ -z "$BUILD_JOBS" ]]; then
+  BUILD_JOBS="$(detect_build_jobs)"
+fi
+if [[ ! "$BUILD_JOBS" =~ ^[0-9]+$ ]] || (( BUILD_JOBS < 1 )); then
+  echo "ERROR: BUILD_JOBS must be a positive integer, got: $BUILD_JOBS" >&2
+  exit 1
+fi
+
+export MAKEFLAGS="${MAKEFLAGS:--j${BUILD_JOBS}}"
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$BUILD_JOBS}"
 
 mkdir -p "$SNAP"
 
 log "Snapshot package state: $SNAP"
+{
+  printf 'BUILD_JOBS=%s\n' "$BUILD_JOBS"
+  printf 'MAKEFLAGS=%s\n' "$MAKEFLAGS"
+  printf 'CARGO_BUILD_JOBS=%s\n' "$CARGO_BUILD_JOBS"
+} > "$SNAP/build-parallelism.env"
+log "Build parallelism: $BUILD_JOBS jobs"
 rpm -qa | sort > "$SNAP/rpm-qa.before.txt" || true
 dnf repoquery --userinstalled --qf '%{name}' | sort -u > "$SNAP/dnf-userinstalled.before.txt" || true
 dnf history list > "$SNAP/dnf-history.before.txt" || true
@@ -189,10 +219,40 @@ if [[ "$STRICT_PACKAGE_PURGE" == "1" ]]; then
   fi
 fi
 
-log "Done. Rebuild with:"
-cat <<EOF
+if [[ "$RUN_PREPARE" == "1" ]]; then
+  log "Prepare project with $BUILD_JOBS jobs"
+  make -C "$SRC" -j "$BUILD_JOBS" prepare
+fi
+
+if [[ "$RUN_BUILD" == "1" ]]; then
+  log "Build release packages with $BUILD_JOBS jobs"
+  make -C "$SRC" -j "$BUILD_JOBS" build
+fi
+
+if [[ "$RUN_BUILD_BIN" == "1" ]]; then
+  log "Build standalone binary with $BUILD_JOBS jobs"
+  make -C "$SRC" -j "$BUILD_JOBS" build-bin
+fi
+
+if [[ "$RUN_INSTALL" == "1" ]]; then
+  log "Install locally built kimi-cli wheel"
+  mapfile -t kimi_wheels < <(find "$SRC/dist" -maxdepth 1 -type f -name 'kimi_cli-*-py3-none-any.whl' | sort -V)
+  if (( ${#kimi_wheels[@]} == 0 )); then
+    echo "ERROR: no kimi-cli wheel found under $SRC/dist; run with RUN_BUILD=1 first." >&2
+    exit 1
+  fi
+  uv tool install --force --python 3.14 --compile-bytecode "${kimi_wheels[-1]}"
+fi
+
+if [[ "$RUN_PREPARE$RUN_BUILD$RUN_BUILD_BIN$RUN_INSTALL" == "0000" ]]; then
+  log "Done. Rebuild with:"
+  cat <<EOF
 cd "$SRC"
-make prepare
-make build
-make build-bin
+BUILD_JOBS=$BUILD_JOBS make -j $BUILD_JOBS prepare
+BUILD_JOBS=$BUILD_JOBS make -j $BUILD_JOBS build
+BUILD_JOBS=$BUILD_JOBS make -j $BUILD_JOBS build-bin
+
+Or run the full clean/build/install path:
+SRC="$SRC" RUN_PREPARE=1 RUN_BUILD=1 RUN_BUILD_BIN=1 RUN_INSTALL=1 BUILD_JOBS=$BUILD_JOBS $0
 EOF
+fi
