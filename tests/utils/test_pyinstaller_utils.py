@@ -117,7 +117,6 @@ def test_pyinstaller_datas():
         ("src/kimi_cli/tools/plan/description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/plan/enter_description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
-        ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
         (
             "src/kimi_cli/tools/think/think.md",
             "kimi_cli/tools/think",

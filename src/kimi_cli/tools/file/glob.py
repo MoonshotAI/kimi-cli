@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_directory, is_within_workspace, list_directory
+from kimi_cli.utils.path import (
+    is_within_directory,
+    is_within_workspace,
+    list_directory,
+    normalize_user_path,
+)
 
 MAX_MATCHES = 1000
 
@@ -92,7 +97,9 @@ class Glob(CallableTool2[Params]):
                 return pattern_error
 
             dir_path = (
-                KaosPath(params.directory).expanduser() if params.directory else self._work_dir
+                KaosPath(normalize_user_path(params.directory)).expanduser()
+                if params.directory
+                else self._work_dir
             )
 
             if not dir_path.is_absolute():
