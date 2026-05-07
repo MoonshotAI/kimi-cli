@@ -37,7 +37,6 @@ from kimi_cli.subagents.store import SubagentStore
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import find_project_root, is_within_directory, list_directory
-from kimi_cli.utils.windows_paths import windows_path_to_posix
 from kimi_cli.wire.root_hub import RootWireHub
 
 if TYPE_CHECKING:
@@ -52,13 +51,6 @@ class BuiltinSystemPromptArgs:
     """The current datetime."""
     KIMI_WORK_DIR: KaosPath
     """The absolute path of current working directory."""
-    KIMI_WORK_DIR_POSIX: str
-    """``KIMI_WORK_DIR`` in POSIX form for use in Shell commands.
-
-    On Windows this is the git-bash path (``/c/Users/foo``); on other platforms
-    it equals ``str(KIMI_WORK_DIR)``. Templates can reference this directly
-    without conditional branches when they need a shell-safe path.
-    """
     KIMI_WORK_DIR_LS: str
     """The directory listing of current working directory."""
     KIMI_AGENTS_MD: str  # TODO: move to first message from system prompt
@@ -266,10 +258,7 @@ class Runtime:
             session.state.additional_dirs = valid_dir_strs
             session.save_state()
 
-        # Format additional dirs info for system prompt. On Windows we render
-        # the path in POSIX form (`/c/Users/foo`) so the model can copy it
-        # straight into Shell commands; file tools accept either form.
-        on_windows = environment.os_kind == "Windows"
+        # Format additional dirs info for system prompt
         additional_dirs_info = ""
         if additional_dirs:
             parts: list[str] = []
@@ -281,8 +270,7 @@ class Runtime:
                         "Cannot list additional directory, skipping listing: {dir}", dir=d
                     )
                     dir_ls = "[directory not readable]"
-                title = windows_path_to_posix(str(d)) if on_windows else str(d)
-                parts.append(f"### `{title}`\n\n```\n{dir_ls}\n```")
+                parts.append(f"### `{d}`\n\n```\n{dir_ls}\n```")
             additional_dirs_info = "\n\n".join(parts)
 
         # Merge invocation flags with persisted session state.
@@ -318,11 +306,6 @@ class Runtime:
             builtin_args=BuiltinSystemPromptArgs(
                 KIMI_NOW=datetime.now().astimezone().isoformat(),
                 KIMI_WORK_DIR=session.work_dir,
-                KIMI_WORK_DIR_POSIX=(
-                    windows_path_to_posix(str(session.work_dir))
-                    if on_windows
-                    else str(session.work_dir)
-                ),
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
                 KIMI_SKILLS=skills_formatted or "No skills found.",

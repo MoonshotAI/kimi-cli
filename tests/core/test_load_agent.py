@@ -51,30 +51,24 @@ def test_system_prompt_contains_platform_info(builtin_args: BuiltinSystemPromptA
 
 
 @pytest.mark.parametrize(
-    "os_kind, shell, work_dir_posix, expect_windows_warning",
+    "os_kind, shell",
     [
-        (
-            "Windows",
-            r"bash (`C:\Program Files\Git\bin\bash.exe`)",
-            "/c/test/work",
-            True,
-        ),
-        ("macOS", "bash (`/bin/bash`)", "/tmp/work", False),
-        ("Linux", "bash (`/usr/bin/bash`)", "/tmp/work", False),
+        ("Windows", r"bash (`C:\Program Files\Git\bin\bash.exe`)"),
+        ("macOS", "bash (`/bin/bash`)"),
+        ("Linux", "bash (`/usr/bin/bash`)"),
     ],
     ids=["windows", "macos", "linux"],
 )
-def test_system_prompt_platform_warning(
-    temp_work_dir, os_kind, shell, work_dir_posix, expect_windows_warning
-):
-    """System prompt should include Windows-specific guidance only on Windows,
-    and surface KIMI_WORK_DIR_POSIX in the Windows block."""
+def test_system_prompt_renders_os_and_shell(temp_work_dir, os_kind, shell):
+    """The system prompt must surface the OS name and shell binary for every
+    platform so the model can infer how to construct shell commands. We
+    deliberately do NOT add platform-specific guidance blocks — the model is
+    expected to infer Unix-vs-Windows shell syntax from these two facts alone."""
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 
     args = BuiltinSystemPromptArgs(
         KIMI_NOW="1970-01-01T00:00:00+00:00",
         KIMI_WORK_DIR=temp_work_dir,
-        KIMI_WORK_DIR_POSIX=work_dir_posix,
         KIMI_WORK_DIR_LS="Test ls content",
         KIMI_AGENTS_MD="Test agents content",
         KIMI_SKILLS="No skills found.",
@@ -90,13 +84,6 @@ def test_system_prompt_platform_warning(
 
     assert os_kind in prompt
     assert shell in prompt
-    if expect_windows_warning:
-        assert "Use Unix shell syntax" in prompt
-        # The Windows block must surface the POSIX-form work dir so the model
-        # uses it inside Shell commands instead of the backslash-bearing native form.
-        assert work_dir_posix in prompt
-    else:
-        assert "Use Unix shell syntax" not in prompt
 
 
 def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPromptArgs):

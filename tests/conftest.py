@@ -100,7 +100,6 @@ def builtin_args(temp_work_dir: KaosPath) -> BuiltinSystemPromptArgs:
     return BuiltinSystemPromptArgs(
         KIMI_NOW="1970-01-01T00:00:00+00:00",
         KIMI_WORK_DIR=temp_work_dir,
-        KIMI_WORK_DIR_POSIX=str(temp_work_dir),
         KIMI_WORK_DIR_LS="Test ls content",
         KIMI_AGENTS_MD="Test agents content",
         KIMI_SKILLS="No skills found.",

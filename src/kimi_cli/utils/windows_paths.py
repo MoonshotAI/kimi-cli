@@ -1,39 +1,16 @@
-"""Pure-Python conversions between Windows-native and POSIX (MSYS/git-bash) paths.
+"""POSIX→Windows path conversion for user-supplied paths.
 
-These helpers exist for the same reason claude-code's `windowsPaths.ts` does:
-on Windows, kimi-cli runs the Shell tool through Git for Windows' bash, which
-needs POSIX paths like `/c/Users/foo`, while Python's `os`/`pathlib` APIs need
-native paths like `C:\\Users\\foo`. The two forms cross constantly between the
-agent (which may emit either), the shell command string, and the Python file
-operations that read/write the result.
+On Windows, kimi-cli runs the Shell tool through Git for Windows' bash. The
+model may pass POSIX-form paths (``/c/Users/foo``) to the file tools, but
+Python's ``os``/``pathlib`` APIs need native form (``C:\\Users\\foo``). This
+helper does the conversion at the file-tool entry boundary
+(:func:`kimi_cli.utils.path.normalize_user_path`).
 
-Implemented as plain regex (no `cygpath` shell-out) for predictability and to
-avoid runtime dependency on git-bash being present at conversion time.
+Implemented as plain regex (no ``cygpath`` shell-out) for predictability and
+to avoid a runtime dependency on git-bash being present at conversion time.
 """
 
 from __future__ import annotations
-
-
-def windows_path_to_posix(path: str) -> str:
-    """Convert a Windows-native path to a POSIX (MSYS/git-bash) path.
-
-    Examples:
-        ``C:\\Users\\foo`` -> ``/c/Users/foo`` (drive letter lowercased)
-        ``\\\\server\\share`` -> ``//server/share``
-        ``relative\\path`` -> ``relative/path``
-    """
-    # UNC: \\server\share -> //server/share
-    if path.startswith("\\\\"):
-        return path.replace("\\", "/")
-
-    # Drive letter: C:\... or C:/... -> /c/...
-    if len(path) >= 3 and path[1] == ":" and path[2] in ("\\", "/"):
-        drive = path[0].lower()
-        rest = path[2:].replace("\\", "/")
-        return "/" + drive + rest
-
-    # Already POSIX or relative — flip slashes
-    return path.replace("\\", "/")
 
 
 def posix_path_to_windows(path: str) -> str:
