@@ -51,21 +51,30 @@ def test_system_prompt_contains_platform_info(builtin_args: BuiltinSystemPromptA
 
 
 @pytest.mark.parametrize(
-    "os_kind, shell, expect_windows_warning",
+    "os_kind, shell, work_dir_posix, expect_windows_warning",
     [
-        ("Windows", r"bash (`C:\Program Files\Git\bin\bash.exe`)", True),
-        ("macOS", "bash (`/bin/bash`)", False),
-        ("Linux", "bash (`/usr/bin/bash`)", False),
+        (
+            "Windows",
+            r"bash (`C:\Program Files\Git\bin\bash.exe`)",
+            "/c/test/work",
+            True,
+        ),
+        ("macOS", "bash (`/bin/bash`)", "/tmp/work", False),
+        ("Linux", "bash (`/usr/bin/bash`)", "/tmp/work", False),
     ],
     ids=["windows", "macos", "linux"],
 )
-def test_system_prompt_platform_warning(temp_work_dir, os_kind, shell, expect_windows_warning):
-    """System prompt should include Windows-specific guidance only on Windows."""
+def test_system_prompt_platform_warning(
+    temp_work_dir, os_kind, shell, work_dir_posix, expect_windows_warning
+):
+    """System prompt should include Windows-specific guidance only on Windows,
+    and surface KIMI_WORK_DIR_POSIX in the Windows block."""
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 
     args = BuiltinSystemPromptArgs(
         KIMI_NOW="1970-01-01T00:00:00+00:00",
         KIMI_WORK_DIR=temp_work_dir,
+        KIMI_WORK_DIR_POSIX=work_dir_posix,
         KIMI_WORK_DIR_LS="Test ls content",
         KIMI_AGENTS_MD="Test agents content",
         KIMI_SKILLS="No skills found.",
@@ -83,6 +92,9 @@ def test_system_prompt_platform_warning(temp_work_dir, os_kind, shell, expect_wi
     assert shell in prompt
     if expect_windows_warning:
         assert "Use Unix shell syntax" in prompt
+        # The Windows block must surface the POSIX-form work dir so the model
+        # uses it inside Shell commands instead of the backslash-bearing native form.
+        assert work_dir_posix in prompt
     else:
         assert "Use Unix shell syntax" not in prompt
 

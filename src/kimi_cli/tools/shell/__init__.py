@@ -70,7 +70,12 @@ class Shell(CallableTool2[Params]):
         )
         self._approval = approval
         self._shell_path = environment.shell_path
+        self._on_windows = environment.os_kind == "Windows"
         self._runtime = runtime
+
+    def _preprocess_command(self, command: str) -> str:
+        """Apply platform-specific defensive rewrites before execution."""
+        return rewrite_windows_null_redirect(command, on_windows=self._on_windows)
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -82,7 +87,7 @@ class Shell(CallableTool2[Params]):
         if params.run_in_background:
             return await self._run_in_background(params)
 
-        command = rewrite_windows_null_redirect(params.command)
+        command = self._preprocess_command(params.command)
 
         result = await self._approval.request(
             self.name,
@@ -140,7 +145,7 @@ class Shell(CallableTool2[Params]):
                 brief="No tool call context",
             )
 
-        command = rewrite_windows_null_redirect(params.command)
+        command = self._preprocess_command(params.command)
 
         result = await self._approval.request(
             self.name,

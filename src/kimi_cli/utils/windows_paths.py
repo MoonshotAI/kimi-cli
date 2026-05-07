@@ -13,10 +13,7 @@ avoid runtime dependency on git-bash being present at conversion time.
 
 from __future__ import annotations
 
-from functools import lru_cache
 
-
-@lru_cache(maxsize=512)
 def windows_path_to_posix(path: str) -> str:
     """Convert a Windows-native path to a POSIX (MSYS/git-bash) path.
 
@@ -39,7 +36,6 @@ def windows_path_to_posix(path: str) -> str:
     return path.replace("\\", "/")
 
 
-@lru_cache(maxsize=512)
 def posix_path_to_windows(path: str) -> str:
     """Convert a POSIX (MSYS/git-bash/Cygwin) path to a Windows-native path.
 

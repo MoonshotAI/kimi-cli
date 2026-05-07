@@ -235,32 +235,31 @@ def test_shell_args_always_use_dash_c(shell_tool: Shell):
     assert args[2] == "echo hello"
 
 
-async def test_command_with_nul_redirect_is_rewritten(
-    shell_tool: Shell, monkeypatch: pytest.MonkeyPatch
-):
-    """Hallucinated `2>nul` must be rewritten to `2>/dev/null` before reaching bash;
-    otherwise bash would create a real file named ``nul`` which breaks git on Windows."""
+class _NullStdin:
+    def close(self) -> None:
+        pass
 
+
+class _EmptyStream:
+    async def readline(self) -> bytes:
+        return b""
+
+
+class _FakeProc:
+    stdin = _NullStdin()
+    stdout = _EmptyStream()
+    stderr = _EmptyStream()
+
+    async def wait(self) -> int:
+        return 0
+
+    async def kill(self) -> None:
+        pass
+
+
+def _capture_exec(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Patch kaos.exec to record the command string and return a no-op process."""
     captured: list[str] = []
-
-    class _Stdin:
-        def close(self) -> None:
-            pass
-
-    class _Empty:
-        async def readline(self) -> bytes:
-            return b""
-
-    class _FakeProc:
-        stdin = _Stdin()
-        stdout = _Empty()
-        stderr = _Empty()
-
-        async def wait(self) -> int:
-            return 0
-
-        async def kill(self) -> None:
-            pass
 
     async def fake_exec(*args, **_kwargs):
         # args[-1] is the command string when invoked as (shell, -c, command)
@@ -268,10 +267,53 @@ async def test_command_with_nul_redirect_is_rewritten(
         return _FakeProc()
 
     monkeypatch.setattr("kimi_cli.tools.shell.kaos.exec", fake_exec)
+    return captured
 
-    result = await shell_tool(Params(command="ls 2>nul"))
+
+def _make_shell(approval, runtime, *, os_kind: str) -> Shell:
+    from kimi_cli.utils.environment import Environment
+
+    env = Environment(
+        os_kind=os_kind,
+        os_arch="x86_64",
+        os_version="1.0",
+        shell_name="bash",
+        shell_path=KaosPath("/bin/bash"),
+    )
+    return Shell(approval, env, runtime)
+
+
+async def test_command_with_nul_redirect_is_rewritten_on_windows(
+    approval, runtime, monkeypatch: pytest.MonkeyPatch
+):
+    """On Windows, hallucinated `2>nul` must be rewritten to `2>/dev/null` before
+    reaching bash; otherwise git-bash would create a real file named ``nul`` which
+    breaks ``git add .`` and ``git clone``."""
+    from tests.conftest import tool_call_context
+
+    shell = _make_shell(approval, runtime, os_kind="Windows")
+    captured = _capture_exec(monkeypatch)
+
+    with tool_call_context("Shell"):
+        result = await shell(Params(command="ls 2>nul"))
     assert not result.is_error
     assert captured == ["ls 2>/dev/null"]
+
+
+async def test_command_with_nul_redirect_passes_through_on_non_windows(
+    approval, runtime, monkeypatch: pytest.MonkeyPatch
+):
+    """On Linux/macOS, ``>nul`` is a legitimate redirect to a file named ``nul``.
+    The Shell tool must NOT rewrite it — doing so would silently swallow output."""
+    from tests.conftest import tool_call_context
+
+    shell = _make_shell(approval, runtime, os_kind="Linux")
+    captured = _capture_exec(monkeypatch)
+
+    with tool_call_context("Shell"):
+        result = await shell(Params(command="ls 2>nul"))
+    assert not result.is_error
+    assert captured == ["ls 2>nul"]
 
 
 async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: pytest.MonkeyPatch):

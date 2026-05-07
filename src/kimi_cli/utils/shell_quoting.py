@@ -22,12 +22,17 @@ import re
 _NUL_REDIRECT = re.compile(r"(\d?&?>+\s*)[Nn][Uu][Ll](?=\s|$|[|&;)\n])")
 
 
-def rewrite_windows_null_redirect(command: str) -> str:
+def rewrite_windows_null_redirect(command: str, *, on_windows: bool) -> str:
     """Rewrite Windows-style ``>nul`` redirects to POSIX ``/dev/null``.
 
-    Limitation: the regex does not parse shell quoting, so ``echo ">nul"``
-    will also be rewritten. This is acceptable collateral — the case is
-    extremely rare and rewriting to ``/dev/null`` inside a string literal is
-    harmless.
+    Only active when ``on_windows`` is True. On Linux/macOS, ``>nul`` is a
+    legitimate redirect to a file named ``nul`` and must not be rewritten.
+
+    The regex's lookahead requires a shell-meaningful character after ``nul``
+    (whitespace, end-of-string, or one of ``|&;)\\n``), so quoted forms like
+    ``echo ">nul"`` slip through unmolested — a useful happy accident, since
+    rewriting inside string literals would corrupt user data.
     """
+    if not on_windows:
+        return command
     return _NUL_REDIRECT.sub(r"\1/dev/null", command)

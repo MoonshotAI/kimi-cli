@@ -13,8 +13,8 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import (
     is_within_directory,
     is_within_workspace,
+    kaos_path_from_user_input,
     list_directory,
-    normalize_user_path,
 )
 
 MAX_MATCHES = 1000
@@ -97,9 +97,7 @@ class Glob(CallableTool2[Params]):
                 return pattern_error
 
             dir_path = (
-                KaosPath(normalize_user_path(params.directory)).expanduser()
-                if params.directory
-                else self._work_dir
+                kaos_path_from_user_input(params.directory) if params.directory else self._work_dir
             )
 
             if not dir_path.is_absolute():

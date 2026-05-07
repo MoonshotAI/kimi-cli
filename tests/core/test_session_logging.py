@@ -244,9 +244,9 @@ class TestFileToolLogging:
 
         with (
             patch("kimi_cli.tools.file.read.logger") as mock_logger,
-            patch("kimi_cli.tools.file.read.KaosPath") as mock_path,
+            patch("kimi_cli.tools.file.read.kaos_path_from_user_input") as mock_path,
         ):
-            mock_path.return_value.expanduser.side_effect = RuntimeError("Unexpected")
+            mock_path.side_effect = RuntimeError("Unexpected")
             result = await read_file_tool(Params(path="/some/file"))
             assert result.is_error
             mock_logger.warning.assert_called_once()
@@ -256,9 +256,9 @@ class TestFileToolLogging:
 
         with (
             patch("kimi_cli.tools.file.write.logger") as mock_logger,
-            patch("kimi_cli.tools.file.write.KaosPath") as mock_path,
+            patch("kimi_cli.tools.file.write.kaos_path_from_user_input") as mock_path,
         ):
-            mock_path.return_value.expanduser.side_effect = RuntimeError("Unexpected")
+            mock_path.side_effect = RuntimeError("Unexpected")
             result = await write_file_tool(Params(path="/some/file", content="test"))
             assert result.is_error
             mock_logger.warning.assert_called_once()
@@ -268,9 +268,9 @@ class TestFileToolLogging:
 
         with (
             patch("kimi_cli.tools.file.glob.logger") as mock_logger,
-            patch("kimi_cli.tools.file.glob.KaosPath") as mock_path,
+            patch("kimi_cli.tools.file.glob.kaos_path_from_user_input") as mock_path,
         ):
-            mock_path.return_value.expanduser.side_effect = RuntimeError("Unexpected")
+            mock_path.side_effect = RuntimeError("Unexpected")
             result = await glob_tool(Params(pattern="*.py", directory="/some/dir"))
             assert result.is_error
             mock_logger.warning.assert_called_once()
@@ -280,9 +280,9 @@ class TestFileToolLogging:
 
         with (
             patch("kimi_cli.tools.file.replace.logger") as mock_logger,
-            patch("kimi_cli.tools.file.replace.KaosPath") as mock_path,
+            patch("kimi_cli.tools.file.replace.kaos_path_from_user_input") as mock_path,
         ):
-            mock_path.return_value.expanduser.side_effect = RuntimeError("Unexpected")
+            mock_path.side_effect = RuntimeError("Unexpected")
             result = await str_replace_file_tool(
                 Params(path="/some/file", edit=Edit(old="a", new="b"))
             )
