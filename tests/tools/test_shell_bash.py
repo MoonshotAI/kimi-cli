@@ -228,6 +228,52 @@ async def test_shell_works_in_plan_mode(shell_tool: Shell, runtime):
     assert "plan_ok" in result.output
 
 
+def test_shell_args_always_use_dash_c(shell_tool: Shell):
+    """After dropping PowerShell, the shell exec form is always (path, -c, command)."""
+    args = shell_tool._shell_args("echo hello")
+    assert args[1] == "-c"
+    assert args[2] == "echo hello"
+
+
+async def test_command_with_nul_redirect_is_rewritten(
+    shell_tool: Shell, monkeypatch: pytest.MonkeyPatch
+):
+    """Hallucinated `2>nul` must be rewritten to `2>/dev/null` before reaching bash;
+    otherwise bash would create a real file named ``nul`` which breaks git on Windows."""
+
+    captured: list[str] = []
+
+    class _Stdin:
+        def close(self) -> None:
+            pass
+
+    class _Empty:
+        async def readline(self) -> bytes:
+            return b""
+
+    class _FakeProc:
+        stdin = _Stdin()
+        stdout = _Empty()
+        stderr = _Empty()
+
+        async def wait(self) -> int:
+            return 0
+
+        async def kill(self) -> None:
+            pass
+
+    async def fake_exec(*args, **_kwargs):
+        # args[-1] is the command string when invoked as (shell, -c, command)
+        captured.append(args[-1])
+        return _FakeProc()
+
+    monkeypatch.setattr("kimi_cli.tools.shell.kaos.exec", fake_exec)
+
+    result = await shell_tool(Params(command="ls 2>nul"))
+    assert not result.is_error
+    assert captured == ["ls 2>/dev/null"]
+
+
 async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: pytest.MonkeyPatch):
     """Test that cancelling a shell run kills the underlying process."""
 

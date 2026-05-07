@@ -133,11 +133,7 @@ async def run_background_task_worker(
             else:
                 spawn_kwargs["start_new_session"] = True
 
-            args = (
-                (spec.shell_path, "-command", spec.command)
-                if spec.shell_name == "Windows PowerShell"
-                else (spec.shell_path, "-c", spec.command)
-            )
+            args = (spec.shell_path, "-c", spec.command)
             process = await asyncio.create_subprocess_exec(*args, **spawn_kwargs)
 
             runtime = store.read_runtime(task_id)
