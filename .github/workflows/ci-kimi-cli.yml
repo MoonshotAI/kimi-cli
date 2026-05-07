@@ -165,6 +165,21 @@ jobs:
         env:
           BINARY_PATH: ${{ matrix.binary_path }}
 
+      - name: Check Windows file version metadata
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = (Resolve-Path $env:BINARY_PATH).Path
+          $info = (Get-Item $binary).VersionInfo
+          if (-not $info.FileVersion -or -not $info.ProductVersion) {
+            throw "Missing Windows FileVersionInfo on $binary"
+          }
+          if ($info.FileDescription -ne "Kimi Code CLI") {
+            throw "Unexpected FileDescription: $($info.FileDescription)"
+          }
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+
       - name: Upload binary artifact
         if: success()
         uses: actions/upload-artifact@v4

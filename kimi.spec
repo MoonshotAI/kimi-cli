@@ -1,7 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+import sys
+from pathlib import Path
 
+spec_root = Path(globals().get("SPECPATH", os.getcwd())).resolve()
+if str(spec_root) not in sys.path:
+    sys.path.insert(0, str(spec_root))
+
+from scripts.pyinstaller_version_info import write_version_info
 from kimi_cli.utils.pyinstaller import datas, hiddenimports
 
 # Read codesign identity from environment variable (for macOS signing in CI)
@@ -9,6 +16,15 @@ codesign_identity = os.environ.get("APPLE_SIGNING_IDENTITY", None)
 
 # Read build mode from environment variable (onedir mode for directory-based distribution)
 onedir_mode = os.environ.get("PYINSTALLER_ONEDIR", "0") == "1"
+
+version_info_file = None
+if os.name == "nt":
+    version_info_file = str(
+        write_version_info(
+            spec_root / "pyproject.toml",
+            spec_root / "dist" / "kimi_version_info.txt",
+        )
+    )
 
 a = Analysis(
     ["src/kimi_cli/cli/__main__.py"],
@@ -45,6 +61,7 @@ if onedir_mode:
         target_arch=None,
         codesign_identity=codesign_identity,
         entitlements_file=None,
+        version=version_info_file,
     )
     coll = COLLECT(
         exe,
@@ -76,4 +93,5 @@ else:
         target_arch=None,
         codesign_identity=codesign_identity,
         entitlements_file=None,
+        version=version_info_file,
     )
