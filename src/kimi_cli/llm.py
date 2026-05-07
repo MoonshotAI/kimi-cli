@@ -51,8 +51,6 @@ def model_display_name(model_name: str | None, model: LLMModel | None = None) ->
         return model.display_name
     if not model_name:
         return ""
-    if model_name in ("kimi-for-coding", "kimi-code"):
-        return "kimi-for-coding"
     return model_name
 
 
