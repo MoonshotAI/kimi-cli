@@ -64,6 +64,20 @@ class TestMCPTruncation:
         assert '"items"' in structured
         assert '"hasMore": true' in structured
 
+    def test_oversized_structured_content_is_omitted_instead_of_truncated(self):
+        result = _make_result(
+            [mcp.types.TextContent(type="text", text="x" * (MCP_MAX_OUTPUT_CHARS - 10))],
+            structured_content={"items": ["y" * 100]},
+        )
+
+        out = convert_mcp_tool_result(result)
+
+        assert isinstance(out, ToolOk)
+        texts = [_text(part) for part in out.output if isinstance(part, TextPart)]
+        assert not any(text.startswith("Structured content:\n") for text in texts[1:])
+        assert any("structured content omitted" in text.lower() for text in texts)
+        assert any("truncated" in text.lower() for text in texts)
+
     def test_text_truncated_at_budget(self):
         big_text = "x" * (MCP_MAX_OUTPUT_CHARS + 5000)
         result = _make_result([mcp.types.TextContent(type="text", text=big_text)])
@@ -240,6 +254,46 @@ class TestMCPSchemaSanitizer:
 
         assert sanitized["properties"]["assetRef"] == {"$ref": "#/$defs/AssetRef"}
         assert "description" in schema["properties"]["assetRef"]
+
+    def test_ref_validation_siblings_are_preserved_via_all_of(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "assetRef": {
+                    "$ref": "#/$defs/AssetRef",
+                    "description": "Unity asset reference",
+                    "enum": ["a", "b"],
+                    "const": "a",
+                }
+            },
+        }
+
+        sanitized = sanitize_mcp_input_schema(schema)
+
+        assert sanitized["properties"]["assetRef"] == {
+            "enum": ["a", "b"],
+            "const": "a",
+            "allOf": [{"$ref": "#/$defs/AssetRef"}],
+        }
+
+    def test_ref_existing_all_of_is_combined_with_reference(self):
+        schema = {
+            "properties": {
+                "assetRef": {
+                    "$ref": "#/$defs/AssetRef",
+                    "allOf": [{"type": "object", "required": ["id"]}],
+                }
+            }
+        }
+
+        sanitized = sanitize_mcp_input_schema(schema)
+
+        assert sanitized["properties"]["assetRef"] == {
+            "allOf": [
+                {"$ref": "#/$defs/AssetRef"},
+                {"type": "object", "required": ["id"]},
+            ]
+        }
 
     def test_nested_ref_siblings_are_sanitized_in_arrays(self):
         schema = {

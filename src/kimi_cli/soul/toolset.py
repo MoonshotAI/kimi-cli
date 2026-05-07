@@ -677,6 +677,17 @@ class WireExternalTool(CallableTool):
 # prevent context overflow from tools like Playwright that return full DOMs.
 MCP_MAX_OUTPUT_CHARS = 100_000
 
+_REF_ANNOTATION_SIBLING_KEYS = {
+    "$comment",
+    "default",
+    "deprecated",
+    "description",
+    "examples",
+    "readOnly",
+    "title",
+    "writeOnly",
+}
+
 
 def sanitize_mcp_input_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Return a provider-compatible copy of an MCP tool input schema."""
@@ -687,12 +698,28 @@ def sanitize_mcp_input_schema(schema: dict[str, Any]) -> dict[str, Any]:
             if "$ref" in mapping:
                 # Moonshot's schema validator rejects metadata siblings after
                 # expanding $ref nodes, even though newer JSON Schema drafts
-                # allow them. Keep only the reference and definition tables.
+                # allow them. Drop annotations, but preserve validation
+                # siblings by applying them alongside the referenced schema.
                 sanitized_ref: dict[str, Any] = {"$ref": mapping["$ref"]}
+                sanitized_defs: dict[str, Any] = {}
+                validation_siblings: dict[str, Any] = {}
                 for definitions_key in ("$defs", "definitions"):
                     if definitions_key in mapping:
-                        sanitized_ref[definitions_key] = _sanitize(mapping[definitions_key])
-                return sanitized_ref
+                        sanitized_defs[definitions_key] = _sanitize(mapping[definitions_key])
+                for key, item in mapping.items():
+                    if (
+                        key == "$ref"
+                        or key in sanitized_defs
+                        or key in _REF_ANNOTATION_SIBLING_KEYS
+                    ):
+                        continue
+                    validation_siblings[key] = _sanitize(item)
+                if not validation_siblings:
+                    return sanitized_ref | sanitized_defs
+                all_of = validation_siblings.pop("allOf", [])
+                if not isinstance(all_of, list):
+                    all_of = [all_of]
+                return sanitized_defs | validation_siblings | {"allOf": [sanitized_ref, *all_of]}
             return {key: _sanitize(item) for key, item in mapping.items()}
         if isinstance(value, list):
             return [_sanitize(item) for item in cast(list[Any], value)]
@@ -725,6 +752,25 @@ def _append_text_with_budget(
         truncated = True
     content.append(TextPart(text=text))
     return char_budget - len(text), truncated
+
+
+def _append_structured_text_with_budget(
+    content: list[ContentPart],
+    text: str,
+    char_budget: int,
+) -> tuple[int, bool]:
+    if len(text) <= char_budget:
+        content.append(TextPart(text=text))
+        return char_budget - len(text), False
+    content.append(
+        TextPart(
+            text=(
+                "[Structured content omitted: exceeded remaining MCP output budget. "
+                "Use pagination or a narrower query to retrieve it.]"
+            )
+        )
+    )
+    return 0, True
 
 
 def _structured_content_part(result: CallToolResult) -> str | None:
@@ -789,7 +835,7 @@ def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
 
     structured_text = _structured_content_part(result)
     if structured_text is not None:
-        char_budget, structured_truncated = _append_text_with_budget(
+        char_budget, structured_truncated = _append_structured_text_with_budget(
             content,
             structured_text,
             char_budget,
