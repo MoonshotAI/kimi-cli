@@ -53,14 +53,14 @@ def test_system_prompt_contains_platform_info(builtin_args: BuiltinSystemPromptA
 @pytest.mark.parametrize(
     "os_kind, shell, expect_windows_warning",
     [
-        ("Windows", "Windows PowerShell (`powershell.exe`)", True),
+        ("Windows", r"bash (`C:\Program Files\Git\bin\bash.exe`)", True),
         ("macOS", "bash (`/bin/bash`)", False),
         ("Linux", "bash (`/usr/bin/bash`)", False),
     ],
     ids=["windows", "macos", "linux"],
 )
 def test_system_prompt_platform_warning(temp_work_dir, os_kind, shell, expect_windows_warning):
-    """System prompt should include Windows command warning only on Windows."""
+    """System prompt should include Windows-specific guidance only on Windows."""
     from kimi_cli.agentspec import DEFAULT_AGENT_FILE
 
     args = BuiltinSystemPromptArgs(
@@ -82,9 +82,9 @@ def test_system_prompt_platform_warning(temp_work_dir, os_kind, shell, expect_wi
     assert os_kind in prompt
     assert shell in prompt
     if expect_windows_warning:
-        assert "Many common Unix commands are not available" in prompt
+        assert "Use Unix shell syntax" in prompt
     else:
-        assert "Many common Unix commands are not available" not in prompt
+        assert "Use Unix shell syntax" not in prompt
 
 
 def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPromptArgs):
