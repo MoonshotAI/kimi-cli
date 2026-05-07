@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -11,6 +12,7 @@ import pytest
 
 from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell import prompt as shell_prompt
+from kimi_cli.ui.shell.placeholders import ImagePathResolutionError
 from kimi_cli.ui.shell.prompt import (
     _GIT_STATUS_TTL,
     PROMPT_SYMBOL,
@@ -873,6 +875,62 @@ async def test_prompt_once_uses_prompt_delegate_placeholder_contract(running_pro
 
     assert result.command == "hello"
     assert captured == [None]
+
+
+@pytest.mark.asyncio
+async def test_prompt_once_appends_history_after_command_resolves(monkeypatch) -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._running_prompt_delegate = None
+    prompt_session._tip_rotation_index = 0
+    history: list[str] = []
+    monkeypatch.setattr(shell_prompt, "patch_stdout", lambda **_kwargs: nullcontext())
+
+    class _DummySession:
+        async def prompt_async(self, **kwargs: Any) -> str:
+            return "look /tmp/missing.png"
+
+    def build_user_input(command: str) -> UserInput:
+        assert history == []
+        return UserInput(
+            mode=PromptMode.AGENT,
+            command=command,
+            resolved_command=command,
+            content=[],
+        )
+
+    prompt_session._session = cast(Any, _DummySession())
+    prompt_session._build_user_input = build_user_input
+    prompt_session._append_history_entry = history.append  # type: ignore[assignment]
+
+    result = await prompt_session._prompt_once(append_history=True)
+
+    assert result.command == "look /tmp/missing.png"
+    assert history == ["look /tmp/missing.png"]
+
+
+@pytest.mark.asyncio
+async def test_prompt_once_skips_history_when_command_resolution_fails(monkeypatch) -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._running_prompt_delegate = None
+    prompt_session._tip_rotation_index = 0
+    history: list[str] = []
+    monkeypatch.setattr(shell_prompt, "patch_stdout", lambda **_kwargs: nullcontext())
+
+    class _DummySession:
+        async def prompt_async(self, **kwargs: Any) -> str:
+            return "look /tmp/missing.png"
+
+    def build_user_input(command: str) -> UserInput:
+        raise ImagePathResolutionError("image disappeared")
+
+    prompt_session._session = cast(Any, _DummySession())
+    prompt_session._build_user_input = build_user_input
+    prompt_session._append_history_entry = history.append  # type: ignore[assignment]
+
+    with pytest.raises(ImagePathResolutionError, match="image disappeared"):
+        await prompt_session._prompt_once(append_history=True)
+
+    assert history == []
 
 
 @pytest.mark.asyncio
