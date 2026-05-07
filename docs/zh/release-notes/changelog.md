@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：修复 `UserPromptSubmit` hook 在用户输入为 `ContentPart` 列表时收到空字符串的问题——hook 现在会正确提取并拼接文本内容，而非将非字符串输入视为空值
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin：支持直接从 `.zip` URL 安装插件——`kimi plugin install` 现在可以接受以 `.zip` 结尾的 HTTP(S) URL（例如 GitHub/GitLab 的 archive 链接 `.../archive/refs/heads/main.zip`），下载后解压再解析 `plugin.json`，与原有的 git URL、本地目录、本地 zip 文件三种来源并列
