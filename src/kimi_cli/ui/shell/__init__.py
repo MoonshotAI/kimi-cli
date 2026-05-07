@@ -68,7 +68,12 @@ from kimi_cli.wire.types import (
 def _interactive_shell_executable() -> str | None:
     if os.name == "nt":
         return None
-    return os.environ.get("SHELL") or None
+    shell = os.environ.get("SHELL")
+    if not shell:
+        return None
+    if os.path.isfile(shell) and os.access(shell, os.X_OK):
+        return shell
+    return None
 
 
 def _shell_mode_subprocess_kwargs(stderr: Any | None) -> dict[str, Any]:
