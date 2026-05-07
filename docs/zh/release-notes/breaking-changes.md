@@ -4,6 +4,18 @@
 
 ## 未发布
 
+### Windows Shell 后端从 PowerShell 切换为 Git Bash
+
+Windows 上的 Shell 工具现在通过 `bash.exe`（POSIX 语义）执行命令，不再使用 `powershell.exe`。Windows 用户获得与 Linux/macOS 一致的 Unix 风格命令语法，但需要先安装 Git for Windows。
+
+- **受影响**：所有 Windows 用户；依赖 PowerShell 专属语法（`Get-ChildItem`、`Where-Object`、`cmdlet -Foo Bar` 参数风格、仅 `;` 链式命令、`NUL` 重定向等）经由 Shell 工具执行的集成、agent 规格或保存的代码片段
+- **迁移**：
+  1. 如果尚未安装，先安装 [Git for Windows](https://git-scm.com/downloads/win)；其自带的 `bash.exe`（通常位于 `C:\Program Files\Git\bin\bash.exe`）会通过 `where.exe git` 或标准安装位置自动发现
+  2. 如果 `bash.exe` 在非标准位置，启动 kimi-cli 前把 `KIMI_CLI_GIT_BASH_PATH` 环境变量设为它的绝对路径
+  3. 把任何硬编码 PowerShell 语法的自定义提示词、agent 规格或代码片段改为 Unix shell 语法（Shell 命令内用正斜杠路径，`/dev/null` 代替 `NUL`，控制流用 `&&` 和 `||`，文本工具用 `grep`/`sed`/`awk` 而非 PowerShell cmdlet）
+  4. 注意：从 bash 中调用 `python.exe`、`node.exe` 等原生 Windows 程序时仍需要传入原生 Windows 路径（例如 `python C:\path\to\script.py`）；只有 POSIX-aware 工具（cat、ls、grep 等）才能识别 `/c/path/...` 形式
+  5. 如果 kimi-cli 找不到 `bash.exe`，现在会在启动时打印安装提示并退出，而不是回退到 PowerShell
+
 ## 1.40.0
 
 ### `--print` 现在使用 runtime AFK 语义而不是 YOLO 语义

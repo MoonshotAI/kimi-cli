@@ -4,6 +4,10 @@
 
 ## 未发布
 
+- Shell：把 Windows 上的 Shell 后端从 PowerShell 切换到 Git Bash——Shell 工具现在通过 `bash.exe`（POSIX 语义）执行命令，而不再使用 `powershell.exe`。Windows 用户能使用与 Linux/macOS 一致的 Unix 风格语法（`&&`、`||`、`|`、`/dev/null`、`grep`、`sed` 等）。**需要先安装 Git for Windows**：kimi-cli 按以下顺序查找 `bash.exe`：环境变量 `KIMI_CLI_GIT_BASH_PATH` → `where.exe git` → 标准安装路径（`C:\Program Files\Git\bin\bash.exe`）；如果都找不到，启动时打印安装提示并退出
+- Shell：防御 Windows 上模型偶尔幻觉出的 CMD 风格 `2>nul` 重定向——在命令进入 git-bash 前自动改写为 `2>/dev/null`；如果不防御，git-bash 会真的创建一个名为 `nul` 的文件（Windows 保留设备名），破坏 `git add .` 和 `git clone`。该改写仅在 Windows 上生效；Linux/macOS 上 `>nul` 是合法的写入到名为 `nul` 文件的重定向，保持原样
+- File：`ReadFile`、`WriteFile`、`StrReplaceFile`、`Glob`、`Grep` 在 Windows 上接受 POSIX 形式的路径——除原生 Windows 路径外，这些工具现在能识别 `/c/Users/foo`（Git Bash 形式）、`/cygdrive/c/Users/foo`（Cygwin 形式）和 `\\server\share`（UNC 形式），并在文件系统操作前自动转换为原生形式
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin：支持直接从 `.zip` URL 安装插件——`kimi plugin install` 现在可以接受以 `.zip` 结尾的 HTTP(S) URL（例如 GitHub/GitLab 的 archive 链接 `.../archive/refs/heads/main.zip`），下载后解压再解析 `plugin.json`，与原有的 git URL、本地目录、本地 zip 文件三种来源并列

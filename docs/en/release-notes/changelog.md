@@ -4,6 +4,10 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Shell: Switch the Windows shell backend from PowerShell to Git Bash, so the Shell tool now runs commands through `bash.exe` (POSIX semantics) instead of `powershell.exe`. Windows users get the same Unix-style command syntax (`&&`, `||`, `|`, `/dev/null`, `grep`, `sed`, etc.) as Linux/macOS. **Requires Git for Windows installed**: kimi-cli locates `bash.exe` via the `KIMI_CLI_GIT_BASH_PATH` env override → `where.exe git` → standard install paths (`C:\Program Files\Git\bin\bash.exe`); if none resolve, kimi-cli prints an install hint and exits at startup
+- Shell: Defend against hallucinated CMD-style `2>nul` redirects on Windows by rewriting them to `2>/dev/null` before reaching git-bash — without this defense git-bash would create a file literally named `nul` (a Windows reserved device name) that breaks `git add .` and `git clone`; on Linux/macOS, `>nul` is a legitimate redirect to a file named `nul` and is left untouched
+- File: Accept POSIX-form paths on Windows in `ReadFile`, `WriteFile`, `StrReplaceFile`, `Glob`, and `Grep` — these tools now recognize `/c/Users/foo` (Git Bash style), `/cygdrive/c/Users/foo` (Cygwin style), and `\\server\share` (UNC) in addition to native Windows paths, automatically converting to native form for filesystem operations
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin: Support installing plugins directly from a `.zip` URL — `kimi plugin install` now accepts HTTP(S) URLs ending in `.zip` (e.g. GitHub/GitLab archive links like `.../archive/refs/heads/main.zip`) and downloads + extracts them before resolving `plugin.json`, in addition to the existing git URL, local directory, and local zip-file sources
