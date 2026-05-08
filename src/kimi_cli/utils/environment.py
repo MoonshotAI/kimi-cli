@@ -5,6 +5,7 @@ import ntpath
 import os
 import platform
 import shutil
+import subprocess
 from dataclasses import dataclass
 from typing import Literal
 
@@ -104,8 +105,7 @@ async def _find_git_bash_path() -> KaosPath:
             + _GIT_BASH_INSTALL_HINT
         )
 
-    git_path = await _find_git_executable()
-    if git_path is not None:
+    for git_path in await _find_git_executables():
         # git.exe usually lives at <git>/cmd/git.exe; bash.exe is at <git>/bin/bash.exe.
         # Use ntpath explicitly so this works regardless of the host OS that imports
         # this module (tests on macOS pass Windows-style paths through this code).
@@ -124,8 +124,44 @@ async def _find_git_bash_path() -> KaosPath:
     raise GitBashNotFoundError(_GIT_BASH_INSTALL_HINT)
 
 
-async def _find_git_executable() -> str | None:
-    """Find git.exe on Windows via ``where.exe``. Returns absolute path or None."""
-    # Defer to where.exe in a thread to keep this async-friendly.
-    git_path = await asyncio.to_thread(shutil.which, "git")
-    return git_path
+async def _find_git_executables() -> list[str]:
+    """Find candidate git.exe paths on Windows, preserving PATH order."""
+    candidates = await asyncio.to_thread(_where_git_executables)
+
+    # Non-Windows test hosts do not have where.exe. Keep the helper directly
+    # unit-testable there while the real Windows path still uses all where.exe hits.
+    if not candidates:
+        git_path = await asyncio.to_thread(shutil.which, "git")
+        if isinstance(git_path, str):
+            candidates.append(git_path)
+
+    return _dedupe_paths(candidates)
+
+
+def _where_git_executables() -> list[str]:
+    try:
+        result = subprocess.run(
+            ["where.exe", "git"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _dedupe_paths(paths: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for path in paths:
+        key = path.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return deduped

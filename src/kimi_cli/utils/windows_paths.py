@@ -6,8 +6,9 @@ Python's ``os``/``pathlib`` APIs need native form (``C:\\Users\\foo``). This
 helper does the conversion at the file-tool entry boundary
 (:func:`kimi_cli.utils.path.normalize_user_path`).
 
-Implemented as plain regex (no ``cygpath`` shell-out) for predictability and
-to avoid a runtime dependency on git-bash being present at conversion time.
+Implemented with prefix checks and string replacement (no ``cygpath`` shell-out)
+for predictability and to avoid a runtime dependency on git-bash being present
+at conversion time.
 """
 
 from __future__ import annotations

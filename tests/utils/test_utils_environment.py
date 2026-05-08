@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import platform
+import subprocess
 
 import pytest
 from kaos.path import KaosPath
@@ -100,6 +101,44 @@ async def test_environment_detection_windows_via_where_git(monkeypatch):
     monkeypatch.setattr(
         shutil, "which", lambda exe: r"C:\Program Files\Git\cmd\git.exe" if exe == "git" else None
     )
+
+    expected_bash = r"C:\Program Files\Git\cmd\..\bin\bash.exe"
+
+    async def _mock_is_file(self: KaosPath) -> bool:
+        return str(self) == expected_bash
+
+    monkeypatch.setattr(KaosPath, "is_file", _mock_is_file)
+
+    env = await Environment.detect()
+    assert env.shell_name == "bash"
+    assert str(env.shell_path) == expected_bash
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
+async def test_environment_detection_windows_checks_all_where_git_matches(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(platform, "version", lambda: "10.0.19044")
+    monkeypatch.delenv("KIMI_CLI_GIT_BASH_PATH", raising=False)
+
+    def fake_run(args, **kwargs):
+        assert args == ["where.exe", "git"]
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        assert kwargs["check"] is False
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=(
+                r"C:\Users\me\scoop\shims\git.exe"
+                + "\n"
+                + r"C:\Program Files\Git\cmd\git.exe"
+                + "\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     expected_bash = r"C:\Program Files\Git\cmd\..\bin\bash.exe"
 
