@@ -34,6 +34,7 @@ class ACPServer:
         self.sessions: dict[str, tuple[ACPSession, _ModelIDConv]] = {}
         self.negotiated_version: ACPVersionSpec | None = None
         self._auth_methods: list[acp.schema.AuthMethod] = []
+        self._pending_tasks: set[asyncio.Task[Any]] = set()
 
     def on_connect(self, conn: acp.Client) -> None:
         logger.info("ACP client connected")
@@ -147,6 +148,14 @@ class ACPServer:
             logger.warning("Authentication required, {reason}", reason=reason)
             raise acp.RequestError.auth_required({"authMethods": auth_methods_data})
 
+    @staticmethod
+    def _log_available_commands_failure(task: asyncio.Task[Any]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.opt(exception=exc).warning("Failed to send available commands update")
+
     async def new_session(
         self, cwd: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
     ) -> acp.NewSessionResponse:
@@ -184,15 +193,25 @@ class ACPServer:
             acp.schema.AvailableCommand(name=cmd.name, description=cmd.description)
             for cmd in soul_slash_registry.list_commands()
         ]
-        asyncio.create_task(
-            self.conn.session_update(
+
+        conn = self.conn
+
+        async def _send_available_commands_later() -> None:
+            # Defer until after new_session() returns so the client has
+            # created its thread view before we advertise commands.
+            await asyncio.sleep(0)
+            await conn.session_update(
                 session_id=session.id,
                 update=acp.schema.AvailableCommandsUpdate(
                     session_update="available_commands_update",
                     available_commands=available_commands,
                 ),
             )
-        )
+
+        task = asyncio.create_task(_send_available_commands_later())
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        task.add_done_callback(self._log_available_commands_failure)
         return acp.NewSessionResponse(
             session_id=session.id,
             modes=acp.schema.SessionModeState(

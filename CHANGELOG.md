@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- ACP: Fix slash commands not appearing in the CLI due to a race condition during session initialization — the available commands update is now deferred until after `new_session()` returns
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin: Support installing plugins directly from a `.zip` URL — `kimi plugin install` now accepts HTTP(S) URLs ending in `.zip` (e.g. GitHub/GitLab archive links like `.../archive/refs/heads/main.zip`) and downloads + extracts them before resolving `plugin.json`, in addition to the existing git URL, local directory, and local zip-file sources

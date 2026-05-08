@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import acp
 import pytest
 
@@ -162,3 +164,27 @@ async def test_cancel_session(
 
     # cancel should not raise
     await conn.cancel(session_id=session_resp.session_id)
+
+
+async def test_new_session_sends_available_commands_update(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """new_session defers available_commands_update so the client thread view is ready."""
+    conn, test_client = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    await conn.new_session(cwd=str(work_dir))
+
+    # The update is deferred via asyncio.sleep(0) in a background task;
+    # give the event loop a chance to process it.
+    await asyncio.sleep(0.1)
+
+    available_commands_updates = [
+        u
+        for u in test_client.updates
+        if getattr(u, "session_update", None) == "available_commands_update"
+    ]
+    assert len(available_commands_updates) > 0
