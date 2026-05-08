@@ -1112,9 +1112,20 @@ class KimiSoul:
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
 
-    async def compact_context(self, custom_instruction: str = "") -> None:
+    async def compact_context(
+        self,
+        *,
+        manual: bool = False,
+        custom_instruction: str = "",
+    ) -> None:
         """
         Compact the context.
+
+        Args:
+            manual: Whether the compaction was explicitly requested by the user
+                (e.g. via the ``/compact`` slash command). When ``False``, the
+                compaction is treated as auto-triggered by the system.
+            custom_instruction: Optional user instruction to guide compaction focus.
 
         Raises:
             LLMNotSet: When the LLM is not set.
@@ -1144,7 +1155,12 @@ class KimiSoul:
                 chat_provider=chat_provider,
             )
 
-        trigger_reason = "manual" if custom_instruction else "auto"
+        if not manual:
+            trigger_reason = "auto"
+        elif custom_instruction:
+            trigger_reason = "manual-with-prompt"
+        else:
+            trigger_reason = "manual"
         before_tokens = self._context.token_count
         from kimi_cli.hooks import events
 

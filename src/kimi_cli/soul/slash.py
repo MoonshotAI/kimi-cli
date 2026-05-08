@@ -64,7 +64,8 @@ async def compact(soul: KimiSoul, args: str):
         return
 
     logger.info("Running `/compact`")
-    await soul.compact_context(custom_instruction=args.strip())
+    instruction = args.strip()
+    await soul.compact_context(manual=True, custom_instruction=instruction)
     wire_send(TextPart(text="The context has been compacted."))
     snap = soul.status
     wire_send(

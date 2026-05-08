@@ -944,19 +944,35 @@ class TestCompactionTracking:
         assert kwargs["success"] is True
 
     @pytest.mark.asyncio
-    async def test_manual_compaction_success_emits_event(self):
-        """/compact with instruction yields trigger_type=manual."""
+    async def test_manual_compaction_without_prompt_emits_event(self):
+        """/compact without instruction yields trigger_type=manual."""
         soul = self._make_soul(before_tokens=8000, estimated_after=2000)
 
         with (
             patch("kimi_cli.soul.kimisoul.wire_send"),
             patch("kimi_cli.telemetry.track") as mock_track,
         ):
-            await soul.compact_context(custom_instruction="focus on auth")
+            await soul.compact_context(manual=True)
 
         calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
         assert len(calls) == 1
         assert calls[0][1]["trigger_type"] == "manual"
+        assert calls[0][1]["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_manual_compaction_with_prompt_emits_event(self):
+        """/compact with instruction yields trigger_type=manual-with-prompt."""
+        soul = self._make_soul(before_tokens=8000, estimated_after=2000)
+
+        with (
+            patch("kimi_cli.soul.kimisoul.wire_send"),
+            patch("kimi_cli.telemetry.track") as mock_track,
+        ):
+            await soul.compact_context(manual=True, custom_instruction="focus on auth")
+
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
+        assert len(calls) == 1
+        assert calls[0][1]["trigger_type"] == "manual-with-prompt"
         assert calls[0][1]["success"] is True
 
     @pytest.mark.asyncio
