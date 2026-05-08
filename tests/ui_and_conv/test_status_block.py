@@ -13,7 +13,7 @@ def test_full_initial_status():
             max_context_tokens=10000,
         )
     )
-    assert "42.0%" in block.text.plain
+    assert "42%" in block.text.plain
     assert "4.2k" in block.text.plain
     assert "10k" in block.text.plain
 
@@ -29,7 +29,7 @@ def test_partial_update_preserves_tokens():
     )
     # Partial update: only context_usage changes
     block.update(StatusUpdate(context_usage=0.50))
-    assert "50.0%" in block.text.plain
+    assert "50%" in block.text.plain
     # Token values should be preserved, not reset to 0
     assert "3k" in block.text.plain
     assert "10k" in block.text.plain

@@ -2249,7 +2249,7 @@ class CustomPromptSession:
             return [("", current_toast.message)]
         bounded = max(0.0, min(status.context_usage, 1.0))
         bar_width = 10
-        filled = math.ceil(bounded * bar_width) if bounded > 0 else 0
+        filled = max(1, round(bounded * bar_width)) if bounded > 0 else 0
         pct = int(bounded * 100)
         tc = get_toolbar_colors()
         if bounded >= 0.85:

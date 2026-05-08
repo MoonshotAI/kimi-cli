@@ -77,7 +77,7 @@ def format_context_status(
     """Format context status string for display in status bar."""
     bounded = max(0.0, min(context_usage, 1.0))
     bar_width = 10
-    filled = math.ceil(bounded * bar_width) if bounded > 0 else 0
+    filled = max(1, round(bounded * bar_width)) if bounded > 0 else 0
     bar = "█" * filled + "░" * (bar_width - filled)
     pct = int(bounded * 100)
     if max_context_tokens > 0:

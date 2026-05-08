@@ -14,5 +14,5 @@ def test_format_token_count_keeps_decimal_when_needed():
 
 def test_format_context_status_uses_compact_token_counts():
     assert format_context_status(0.42, context_tokens=3_000, max_context_tokens=10_000) == (
-        "context: 42.0% (3k/10k)"
+        "Context ████░░░░░░ 42% (3k/10k)"
     )
