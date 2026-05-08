@@ -166,12 +166,19 @@ class LocalKaos:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
 
+        spawn_kwargs: dict[str, object] = {}
+        if os.name == "nt":
+            import subprocess
+
+            spawn_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
         process = await asyncio.create_subprocess_exec(
             *args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            **spawn_kwargs,
         )
         return self.Process(process)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import sys
 from collections.abc import Generator
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -196,3 +197,61 @@ async def test_exec_wait_timeout(local_kaos: LocalKaos):
         if process.returncode is None:
             await process.kill()
         await process.wait()
+
+
+async def test_exec_uses_create_no_window_on_windows(monkeypatch):
+    calls: list[dict[str, object]] = []
+    create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+    class FakeProcess:
+        stdin = object()
+        stdout = object()
+        stderr = object()
+        pid = 123
+        returncode = 0
+
+        async def wait(self) -> int:
+            return 0
+
+        def kill(self) -> None:
+            pass
+
+    async def fake_create_subprocess_exec(*args: str, **kwargs: object) -> FakeProcess:
+        calls.append(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr("kaos.local.asyncio.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("kaos.local.os.name", "nt")
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", create_no_window, raising=False)
+
+    await LocalKaos().exec("cmd.exe", "/c", "echo ok")
+
+    assert calls[0]["creationflags"] == create_no_window
+
+
+async def test_exec_does_not_pass_creationflags_off_windows(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    class FakeProcess:
+        stdin = object()
+        stdout = object()
+        stderr = object()
+        pid = 123
+        returncode = 0
+
+        async def wait(self) -> int:
+            return 0
+
+        def kill(self) -> None:
+            pass
+
+    async def fake_create_subprocess_exec(*args: str, **kwargs: object) -> FakeProcess:
+        calls.append(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr("kaos.local.asyncio.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("kaos.local.os.name", "posix")
+
+    await LocalKaos().exec("sh", "-c", "echo ok")
+
+    assert "creationflags" not in calls[0]
