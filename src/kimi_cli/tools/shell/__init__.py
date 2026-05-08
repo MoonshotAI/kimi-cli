@@ -229,7 +229,12 @@ class Shell(CallableTool2[Params]):
                 else:
                     break
 
-        process = await kaos.exec(*self._shell_args(command), env=get_noninteractive_env())
+        env = get_noninteractive_env()
+        # Override SHELL so commands that read $SHELL see the bash we're actually
+        # running, not an empty/stale value inherited from the parent (most visible
+        # on Windows, where the parent's SHELL is typically empty or PowerShell).
+        env["SHELL"] = str(self._shell_path)
+        process = await kaos.exec(*self._shell_args(command), env=env)
 
         # Close stdin immediately so interactive prompts (e.g. git password) get
         # EOF instead of hanging forever waiting for input that will never come.

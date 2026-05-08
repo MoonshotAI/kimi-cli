@@ -270,6 +270,18 @@ def _capture_exec(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return captured
 
 
+def _capture_exec_kwargs(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """Patch kaos.exec to record kwargs (e.g., env) and return a no-op process."""
+    captured: list[dict] = []
+
+    async def fake_exec(*_args, **kwargs):
+        captured.append(kwargs)
+        return _FakeProc()
+
+    monkeypatch.setattr("kimi_cli.tools.shell.kaos.exec", fake_exec)
+    return captured
+
+
 def _make_shell(approval, runtime, *, os_kind: str) -> Shell:
     from kimi_cli.utils.environment import Environment
 
@@ -281,6 +293,32 @@ def _make_shell(approval, runtime, *, os_kind: str) -> Shell:
         shell_path=KaosPath("/bin/bash"),
     )
     return Shell(approval, env, runtime)
+
+
+async def test_shell_overrides_shell_env_to_bash_path(
+    approval, runtime, monkeypatch: pytest.MonkeyPatch
+):
+    """The Shell tool must set $SHELL to the bash binary it is executing, so
+    commands that read $SHELL see the actual shell — not whatever the parent
+    process inherited (often empty or PowerShell on Windows)."""
+    from kimi_cli.utils.environment import Environment
+    from tests.conftest import tool_call_context
+
+    env_spec = Environment(
+        os_kind="Windows",
+        os_arch="x86_64",
+        os_version="1.0",
+        shell_name="bash",
+        shell_path=KaosPath(r"C:\Program Files\Git\bin\bash.exe"),
+    )
+    shell = Shell(approval, env_spec, runtime)
+    captured = _capture_exec_kwargs(monkeypatch)
+
+    with tool_call_context("Shell"):
+        result = await shell(Params(command="echo hi"))
+    assert not result.is_error
+    assert len(captured) == 1
+    assert captured[0]["env"]["SHELL"] == r"C:\Program Files\Git\bin\bash.exe"
 
 
 async def test_command_with_nul_redirect_is_rewritten_on_windows(

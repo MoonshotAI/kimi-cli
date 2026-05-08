@@ -121,12 +121,16 @@ async def run_background_task_worker(
     try:
         output_path = store.output_path(task_id)
         with output_path.open("ab") as output_file:
+            env = get_clean_env()
+            # Override SHELL so commands that read $SHELL see the bash we're
+            # actually running, mirroring the foreground Shell tool's behavior.
+            env["SHELL"] = spec.shell_path
             spawn_kwargs: dict[str, Any] = {
                 "stdin": subprocess.DEVNULL,
                 "stdout": output_file,
                 "stderr": output_file,
                 "cwd": spec.cwd,
-                "env": get_clean_env(),
+                "env": env,
             }
             if os.name == "nt":
                 spawn_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
