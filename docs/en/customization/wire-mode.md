@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.9`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.10`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -489,6 +489,7 @@ type Event =
   | TurnEnd
   | StepBegin
   | StepInterrupted
+  | StepRetry
   | CompactionBegin
   | CompactionEnd
   | StatusUpdate
@@ -548,6 +549,31 @@ interface StepBegin {
 ### `StepInterrupted`
 
 Step interrupted, no additional fields.
+
+### `StepRetry`
+
+::: info Added
+Added in Wire 1.10.
+:::
+
+The current step attempt failed and will be retried. This event is emitted when a step fails due to a recoverable error (such as rate limiting, connection timeout, or server error) and enters retry wait. Clients can use this to show retry status to the user, or clear incomplete state when the previous attempt already streamed partial output.
+
+```typescript
+interface StepRetry {
+  /** Step number */
+  n: number
+  /** Next attempt number, 1-based */
+  next_attempt: number
+  /** Maximum number of attempts for this step */
+  max_attempts: number
+  /** Seconds to wait before retrying */
+  wait_s: number
+  /** Exception class name that triggered the retry */
+  error_type: string
+  /** HTTP status code (if available), may be absent in JSON */
+  status_code?: number | null
+}
+```
 
 ### `CompactionBegin`
 
