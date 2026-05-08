@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.3`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.9`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -87,6 +87,28 @@ interface InitializeParams {
   client?: ClientInfo
   /** 外部工具定义列表，可选 */
   external_tools?: ExternalTool[]
+  /** Client 能力声明，可选 */
+  capabilities?: ClientCapabilities
+  /** Hook 订阅列表，可选。声明客户端希望自行处理的 hook 事件 */
+  hooks?: WireHookSubscription[]
+}
+
+interface ClientCapabilities {
+  /** 是否支持处理 QuestionRequest 消息 */
+  supports_question?: boolean
+  /** 是否支持 Plan 模式 */
+  supports_plan_mode?: boolean
+}
+
+interface WireHookSubscription {
+  /** 订阅 ID，在 HookRequest 中引用 */
+  id: string
+  /** 订阅的事件类型，如 'PreToolUse'、'Stop' */
+  event: string
+  /** 正则过滤条件，空字符串匹配所有 */
+  matcher?: string
+  /** 等待客户端响应的超时时间（秒），默认 30 */
+  timeout?: number
 }
 
 interface ClientInfo {
@@ -113,6 +135,22 @@ interface InitializeResult {
   slash_commands: SlashCommandInfo[]
   /** 外部工具注册结果，仅当请求中包含 external_tools 时返回 */
   external_tools?: ExternalToolsResult
+  /** Server 能力声明 */
+  capabilities?: ServerCapabilities
+  /** Hook 系统信息，可选 */
+  hooks?: HooksInfo
+}
+
+interface HooksInfo {
+  /** Server 支持的所有 hook 事件类型列表 */
+  supported_events: string[]
+  /** 当前已配置的 hook 统计，键为事件类型，值为数量 */
+  configured: Record<string, number>
+}
+
+interface ServerCapabilities {
+  /** 是否支持发送 QuestionRequest 消息 */
+  supports_question?: boolean
 }
 
 interface ServerInfo {
@@ -137,13 +175,13 @@ interface ExternalToolsResult {
 **请求示例**
 
 ```json
-{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.3", "client": {"name": "my-ui", "version": "1.0.0"}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
+{"jsonrpc": "2.0", "method": "initialize", "id": "550e8400-e29b-41d4-a716-446655440000", "params": {"protocol_version": "1.7", "client": {"name": "my-ui", "version": "1.0.0"}, "capabilities": {"supports_question": true}, "external_tools": [{"name": "open_in_ide", "description": "Open file in IDE", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}]}}
 ```
 
 **成功响应示例**
 
 ```json
-{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.3", "server": {"name": "Kimi Code CLI", "version": "0.69.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
+{"jsonrpc": "2.0", "id": "550e8400-e29b-41d4-a716-446655440000", "result": {"protocol_version": "1.7", "server": {"name": "Kimi Code CLI", "version": "1.14.0"}, "slash_commands": [{"name": "init", "description": "Analyze the codebase ...", "aliases": []}], "capabilities": {"supports_question": true}, "external_tools": {"accepted": ["open_in_ide"], "rejected": []}}}
 ```
 
 若 Server 不支持 `initialize` 方法，Client 会收到 `-32601 method not found` 错误，应自动降级到无握手模式。
@@ -234,6 +272,102 @@ interface ReplayResult {
 {"jsonrpc": "2.0", "id": "6ba7b812-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "finished", "events": 42, "requests": 3}}
 ```
 
+### `steer`
+
+::: info 新增
+新增于 Wire 1.4。
+:::
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+在 Agent 轮次进行中注入用户消息。与 `prompt` 不同，`steer` 不会开始新的轮次，而是将消息注入到当前正在进行的轮次中。注入的消息会在当前步骤完成后作为标准用户消息追加到上下文中，从而在下一步骤开始前”引导” AI 的行为。消息被消费时会发出 `SteerInput` 事件。
+
+```typescript
+/** steer 请求参数 */
+interface SteerParams {
+  /** 用户输入，可以是纯文本或内容片段数组 */
+  user_input: string | ContentPart[]
+}
+
+/** steer 响应结果 */
+interface SteerResult {
+  /** 固定为 "steered" */
+  status: "steered"
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "steer", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "params": {"user_input": "用 Python 实现"}}
+```
+
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "steered"}}
+```
+
+**错误响应示例**
+
+如果当前没有轮次在进行：
+
+```json
+{"jsonrpc": "2.0", "id": "7ca7c810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "No agent turn is in progress"}}
+```
+
+### `set_plan_mode`
+
+::: info 新增
+新增于 Wire 1.4。
+:::
+
+- **方向**：Client → Agent
+- **类型**：Request（需要响应）
+
+将 Plan 模式设置为指定状态。调用后 Agent 会更新 Plan 模式并通过 `StatusUpdate` 事件通知新的状态。
+
+此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_plan_mode: true` 声明支持后，Agent 才会启用 Plan 模式相关工具（`EnterPlanMode`、`ExitPlanMode`）。如果 Client 未声明支持，这些工具会从 LLM 的工具列表中自动隐藏。
+
+Plan 模式状态会持久化到会话中，因此在进程重启后可以恢复。
+
+```typescript
+/** set_plan_mode 请求参数 */
+interface SetPlanModeParams {
+  /** 是否启用 Plan 模式 */
+  enabled: boolean
+}
+
+/** set_plan_mode 响应结果 */
+interface SetPlanModeResult {
+  /** 固定为 "ok" */
+  status: "ok"
+  /** 调用后的 Plan 模式状态 */
+  plan_mode: boolean
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "set_plan_mode", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "params": {"enabled": true}}
+```
+
+**成功响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "result": {"status": "ok", "plan_mode": true}}
+```
+
+**错误响应示例**
+
+如果当前环境不支持 Plan 模式：
+
+```json
+{"jsonrpc": "2.0", "id": "8da7d810-9dad-11d1-80b4-00c04fd430c8", "error": {"code": -32000, "message": "Plan mode is not supported"}}
+```
+
 ### `cancel`
 
 - **方向**：Client → Agent
@@ -300,8 +434,8 @@ Agent 向 Client 发出的请求，用于审批确认或外部工具调用。Cli
 ```typescript
 /** request 请求参数，包含序列化后的 Wire 消息 */
 interface RequestParams {
-  type: "ApprovalRequest" | "ToolCallRequest"
-  payload: ApprovalRequest | ToolCallRequest
+  type: "ApprovalRequest" | "ToolCallRequest" | "QuestionRequest"
+  payload: ApprovalRequest | ToolCallRequest | QuestionRequest
 }
 ```
 
@@ -364,9 +498,15 @@ type Event =
   | ToolResult
   | ApprovalResponse
   | SubagentEvent
+  | BtwBegin
+  | BtwEnd
+  | SteerInput
+  | PlanDisplay
+  | HookTriggered
+  | HookResolved
 
 /** 请求：通过 request 方法发送，需要响应 */
-type Request = ApprovalRequest | ToolCallRequest
+type Request = ApprovalRequest | ToolCallRequest | QuestionRequest | HookRequest
 ```
 
 ### `TurnBegin`
@@ -425,10 +565,16 @@ interface StepBegin {
 interface StatusUpdate {
   /** 上下文使用率，0-1 之间的浮点数，JSON 中可能不存在 */
   context_usage?: number | null
+  /** 当前上下文中的 token 数量，JSON 中可能不存在 */
+  context_tokens?: number | null
+  /** 上下文可容纳的最大 token 数量，JSON 中可能不存在 */
+  max_context_tokens?: number | null
   /** 当前步骤的 token 用量统计，JSON 中可能不存在 */
   token_usage?: TokenUsage | null
   /** 当前步骤的消息 ID，JSON 中可能不存在 */
   message_id?: string | null
+  /** Plan 模式是否激活，null 表示状态未变更，JSON 中可能不存在 */
+  plan_mode?: boolean | null
 }
 
 interface TokenUsage {
@@ -571,23 +717,147 @@ interface ApprovalResponse {
   request_id: string
   /** 审批结果 */
   response: "approve" | "approve_for_session" | "reject"
+  /** 拒绝时的可选反馈文本，JSON 中可能不存在 */
+  feedback?: string
+}
+```
+
+### `BtwBegin`
+
+::: info 新增
+新增于 Wire 1.9。
+:::
+
+侧问（`/btw`）开始处理。
+
+```typescript
+interface BtwBegin {
+  /** 唯一 ID，用于与对应的 BtwEnd 配对 */
+  id: string
+  /** 用户的侧问文本 */
+  question: string
+}
+```
+
+### `BtwEnd`
+
+::: info 新增
+新增于 Wire 1.9。
+:::
+
+侧问（`/btw`）处理完成。
+
+```typescript
+interface BtwEnd {
+  /** 唯一 ID，与对应的 BtwBegin 匹配 */
+  id: string
+  /** LLM 的回复文本，失败时为 null */
+  response?: string | null
+  /** 失败时的错误信息 */
+  error?: string | null
 }
 ```
 
 ### `SubagentEvent`
 
+::: info 变更
+变更于 Wire 1.6。`task_tool_call_id` 重命名为 `parent_tool_call_id`；新增 `agent_id` 和 `subagent_type` 字段。
+:::
+
 子 Agent 事件。
 
 ```typescript
 interface SubagentEvent {
-  /** 关联的 Task 工具调用 ID */
-  task_tool_call_id: string
+  /** 关联的父 Agent 工具调用 ID，JSON 中可能不存在 */
+  parent_tool_call_id?: string | null
+  /** 子 Agent 实例 ID，JSON 中可能不存在 */
+  agent_id?: string | null
+  /** 此实例使用的内置子 Agent 类型，JSON 中可能不存在 */
+  subagent_type?: string | null
   /** 子 Agent 产生的事件，嵌套的 Wire 消息格式 */
   event: { type: string; payload: object }
 }
 ```
 
+### `SteerInput`
+
+::: info 新增
+新增于 Wire 1.5。
+:::
+
+表示用户在当前运行中的轮次追加了后续输入。此事件在当前步骤完成且输入被追加到上下文之后、下一步骤开始之前发出。
+
+```typescript
+interface SteerInput {
+  /** 用户输入，可以是纯文本或内容片段数组 */
+  user_input: string | ContentPart[]
+}
+```
+
+### `PlanDisplay`
+
+::: info 新增
+新增于 Wire 1.7。
+:::
+
+Plan 内容展示事件。当 Agent 在 Plan 模式下调用 `ExitPlanMode` 提交计划供用户审批时，会先发送此事件，将计划内容以内联方式展示在聊天记录中。Client 应将其渲染为带边框的面板或类似的视觉区分样式，并展示文件路径供用户参考。
+
+```typescript
+interface PlanDisplay {
+  /** 计划的完整 Markdown 内容 */
+  content: string
+  /** 计划文件的路径 */
+  file_path: string
+}
+```
+
+### `HookTriggered`
+
+::: info 新增
+新增于 Wire 1.7。
+:::
+
+Hook 开始执行事件。当配置的 hook 被触发并开始执行时发送，用于通知客户端 hook 正在运行。
+
+```typescript
+interface HookTriggered {
+  /** Hook 事件类型，如 'PreToolUse'、'Stop' */
+  event: string
+  /** Hook 的目标：工具名称（工具 hook）、Agent 名称（子 Agent hook）等 */
+  target: string
+  /** 匹配的 hook 数量（并行执行） */
+  hook_count: number
+}
+```
+
+### `HookResolved`
+
+::: info 新增
+新增于 Wire 1.7。
+:::
+
+Hook 执行完成事件。当 hook 执行完成时发送，包含执行结果和耗时信息。
+
+```typescript
+interface HookResolved {
+  /** Hook 事件类型，如 'PreToolUse'、'Stop' */
+  event: string
+  /** 与 HookTriggered.target 相同 */
+  target: string
+  /** 聚合决策：如有任一 hook 阻塞则为 'block'，否则为 'allow' */
+  action: "allow" | "block"
+  /** 阻塞原因，允许时为空 */
+  reason: string
+  /** 整个批次的执行耗时（毫秒） */
+  duration_ms: number
+}
+```
+
 ### `ApprovalRequest`
+
+::: info 变更
+变更于 Wire 1.6。新增 `source_kind`、`source_id`、`agent_id`、`subagent_type`、`source_description` 字段。
+:::
 
 审批请求，通过 `request` 方法发送，Client 必须响应后 Agent 才能继续。
 
@@ -605,10 +875,24 @@ interface ApprovalRequest {
   description: string
   /** 显示给用户的内容块，JSON 中可能不存在，默认为 [] */
   display?: DisplayBlock[]
+  /** 请求来源：前台轮次或后台 Agent，JSON 中可能不存在 */
+  source_kind?: "foreground_turn" | "background_agent" | null
+  /** 来源标识符（如后台 Agent ID），JSON 中可能不存在 */
+  source_id?: string | null
+  /** 子 Agent 实例 ID（如来自子 Agent），JSON 中可能不存在 */
+  agent_id?: string | null
+  /** 子 Agent 类型（如来自子 Agent），JSON 中可能不存在 */
+  subagent_type?: string | null
+  /** 可读的来源描述，JSON 中可能不存在 */
+  source_description?: string | null
 }
 ```
 
 **响应格式**
+
+::: info 变更
+变更于 Wire 1.6。新增可选的 `feedback` 字段。
+:::
 
 Client 需要返回 `ApprovalResponse` 作为响应结果：
 
@@ -616,6 +900,8 @@ Client 需要返回 `ApprovalResponse` 作为响应结果：
 interface ApprovalResponse {
   request_id: string
   response: "approve" | "approve_for_session" | "reject"
+  /** 拒绝时的可选反馈文本，JSON 中可能不存在 */
+  feedback?: string
 }
 ```
 
@@ -623,7 +909,7 @@ interface ApprovalResponse {
 |----------|------|
 | `approve` | 批准本次操作 |
 | `approve_for_session` | 批准本会话中的同类操作 |
-| `reject` | 拒绝操作 |
+| `reject` | 拒绝操作；可通过 `feedback` 指示模型应如何调整 |
 
 ### `ToolCallRequest`
 
@@ -648,6 +934,116 @@ Client 需要返回 `ToolResult` 作为响应结果：
 interface ToolResult {
   tool_call_id: string
   return_value: ToolReturnValue
+}
+```
+
+### `QuestionRequest`
+
+::: info 新增
+新增于 Wire 1.4。
+:::
+
+结构化问答请求，通过 `request` 方法发送。当 Agent 使用 `AskUserQuestion` 工具时，会发送此请求。Client 必须响应后 Agent 才能继续执行。
+
+此功能需要能力协商：Client 在 `initialize` 时通过 `capabilities.supports_question: true` 声明支持后，Agent 才会发送 `QuestionRequest`。如果 Client 未声明支持，`AskUserQuestion` 工具会从 LLM 的工具列表中自动隐藏，避免 LLM 调用不受支持的交互。
+
+```typescript
+interface QuestionRequest {
+  /** 请求 ID，用于响应时引用 */
+  id: string
+  /** 关联的工具调用 ID */
+  tool_call_id: string
+  /** 问题列表（1–4 个问题） */
+  questions: QuestionItem[]
+}
+
+interface QuestionItem {
+  /** 问题文本 */
+  question: string
+  /** 短标签，最多 12 个字符 */
+  header?: string
+  /** 可选项（2–4 个） */
+  options: QuestionOption[]
+  /** 是否允许多选 */
+  multi_select?: boolean
+}
+
+interface QuestionOption {
+  /** 选项标签 */
+  label: string
+  /** 选项说明 */
+  description?: string
+}
+```
+
+**请求示例**
+
+```json
+{"jsonrpc": "2.0", "method": "request", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "params": {"type": "QuestionRequest", "payload": {"id": "q-1", "tool_call_id": "tc-1", "questions": [{"question": "Which language should I use?", "header": "Lang", "options": [{"label": "Python", "description": "Widely used, large ecosystem"}, {"label": "Rust", "description": "High performance, memory safe"}], "multi_select": false}]}}}
+```
+
+**响应格式**
+
+Client 需要返回 `QuestionResponse` 作为响应结果：
+
+```typescript
+interface QuestionResponse {
+  /** 对应的请求 ID */
+  request_id: string
+  /** 答案映射，键为问题文本，值为选中的选项标签（多选时用逗号分隔） */
+  answers: Record<string, string>
+}
+```
+
+**响应示例**
+
+```json
+{"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {"Which language should I use?": "Python"}}}
+```
+
+如果 Client 不支持结构化问答或用户关闭了问题面板，可以返回空的 `answers`：
+
+```json
+{"jsonrpc": "2.0", "id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890", "result": {"request_id": "q-1", "answers": {}}}
+```
+
+### `HookRequest`
+
+::: info 新增
+新增于 Wire 1.7。
+:::
+
+Hook 处理请求，通过 `request` 方法发送。当 Wire 客户端订阅了 hook 事件时，Server 会发送此请求让客户端自行处理 hook 逻辑并返回允许/阻塞决策。
+
+此功能需要能力协商：Client 在 `initialize` 时通过 `hooks` 参数声明订阅的 hook 事件类型后，Server 才会发送对应的 `HookRequest`。
+
+```typescript
+interface HookRequest {
+  /** 请求 ID，用于响应时引用 */
+  id: string
+  /** 订阅 ID，标识哪个订阅触发了此请求 */
+  subscription_id: string
+  /** Hook 事件类型，如 'PreToolUse'、'Stop' */
+  event: string
+  /** 触发 hook 的目标：工具名称、Agent 名称等 */
+  target: string
+  /** 完整的事件负载（与 shell hook 从 stdin 接收的内容相同） */
+  input_data: object
+}
+```
+
+**响应格式**
+
+Client 需要返回 `HookResponse` 作为响应结果：
+
+```typescript
+interface HookResponse {
+  /** 对应的请求 ID */
+  request_id: string
+  /** 决策：允许或阻塞 */
+  action: "allow" | "block"
+  /** 阻塞时的原因说明 */
+  reason: string
 }
 ```
 
@@ -685,6 +1081,8 @@ interface DiffDisplayBlock {
   old_text: string
   /** 新内容 */
   new_text: string
+  /** 是否为摘要块（文件过大时显示行数摘要而非实际 diff），JSON 中可能不存在。新增于 Wire 1.8 */
+  is_summary?: boolean
 }
 
 interface TodoDisplayBlock {

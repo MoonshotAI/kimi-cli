@@ -17,12 +17,12 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from kosong.message import ContentPart, ImageURLPart, TextPart
-from loguru import logger
 from PIL import Image
 from PIL.Image import Image as PILImage
 from pydantic import TypeAdapter
 from starlette.websockets import WebSocket, WebSocketState
 
+from kimi_cli import logger
 from kimi_cli.config import load_config
 from kimi_cli.llm import ModelCapability
 from kimi_cli.utils.subprocess_env import get_clean_env
@@ -115,6 +115,10 @@ class SessionProcess:
     def is_busy(self) -> bool:
         """Whether the session is currently processing a prompt."""
         return len(self._in_flight_prompt_ids) > 0
+
+    def clear_in_flight(self) -> None:
+        """Clear stale in-flight prompt IDs (e.g. after an error)."""
+        self._in_flight_prompt_ids.clear()
 
     @property
     def status(self) -> SessionStatus:
@@ -302,6 +306,10 @@ class SessionProcess:
                         stderr = await self._process.stderr.read()
                         if not stderr:
                             stderr = b"No stderr"
+                        # Clear in-flight IDs before broadcasting so that
+                        # is_busy is already False when the frontend reacts
+                        # to the error and sends a new prompt.
+                        self._in_flight_prompt_ids.clear()
                         await self._broadcast(
                             JSONRPCErrorResponse(
                                 id=str(uuid4()),
@@ -315,7 +323,6 @@ class SessionProcess:
                             f"Process exited with {self._process.returncode}: "
                             f"{stderr.decode('utf-8')}"
                         )
-                        self._in_flight_prompt_ids.clear()
                         await self._emit_status(
                             "error",
                             reason="process_exit",
@@ -355,6 +362,8 @@ class SessionProcess:
             raise
         except Exception as e:
             logger.warning(f"Unexpected error in read loop: {e.__class__.__name__} {e}")
+            self._in_flight_prompt_ids.clear()
+            await self._emit_status("error", reason="read_loop_error", detail=str(e))
 
     async def _handle_out_message(self, message: JSONRPCOutMessage) -> None:
         """Handle outbound message from worker."""

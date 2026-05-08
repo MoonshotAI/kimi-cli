@@ -49,6 +49,8 @@ export default withMermaid(defineConfig({
               text: '定制化',
               items: [
                 { text: 'Model Context Protocol', link: '/zh/customization/mcp' },
+                { text: '插件 (Beta)', link: '/zh/customization/plugins' },
+                { text: 'Hooks (Beta)', link: '/zh/customization/hooks' },
                 { text: 'Agent Skills', link: '/zh/customization/skills' },
                 { text: 'Agent 与子 Agent', link: '/zh/customization/agents' },
                 { text: 'Print 模式', link: '/zh/customization/print-mode' },
@@ -77,6 +79,7 @@ export default withMermaid(defineConfig({
                 { text: 'kimi acp 子命令', link: '/zh/reference/kimi-acp' },
                 { text: 'kimi mcp 子命令', link: '/zh/reference/kimi-mcp' },
                 { text: 'kimi term 子命令', link: '/zh/reference/kimi-term' },
+                { text: 'kimi vis 子命令', link: '/zh/reference/kimi-vis' },
                 { text: 'kimi web 子命令', link: '/zh/reference/kimi-web' },
                 { text: '斜杠命令', link: '/zh/reference/slash-commands' },
                 { text: '键盘快捷键', link: '/zh/reference/keyboard' },
@@ -129,6 +132,8 @@ export default withMermaid(defineConfig({
               text: 'Customization',
               items: [
                 { text: 'Model Context Protocol', link: '/en/customization/mcp' },
+                { text: 'Plugins (Beta)', link: '/en/customization/plugins' },
+                { text: 'Hooks (Beta)', link: '/en/customization/hooks' },
                 { text: 'Agent Skills', link: '/en/customization/skills' },
                 { text: 'Agents and Subagents', link: '/en/customization/agents' },
                 { text: 'Print Mode', link: '/en/customization/print-mode' },
@@ -157,6 +162,7 @@ export default withMermaid(defineConfig({
                 { text: 'kimi acp Subcommand', link: '/en/reference/kimi-acp' },
                 { text: 'kimi mcp Subcommand', link: '/en/reference/kimi-mcp' },
                 { text: 'kimi term Subcommand', link: '/en/reference/kimi-term' },
+                { text: 'kimi vis Subcommand', link: '/en/reference/kimi-vis' },
                 { text: 'kimi web Subcommand', link: '/en/reference/kimi-web' },
                 { text: 'Slash Commands', link: '/en/reference/slash-commands' },
                 { text: 'Keyboard Shortcuts', link: '/en/reference/keyboard' },

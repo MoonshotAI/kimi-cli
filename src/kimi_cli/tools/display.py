@@ -11,6 +11,9 @@ class DiffDisplayBlock(DisplayBlock):
     path: str
     old_text: str
     new_text: str
+    old_start: int = 1
+    new_start: int = 1
+    is_summary: bool = False
 
 
 class TodoDisplayItem(BaseModel):
@@ -31,3 +34,13 @@ class ShellDisplayBlock(DisplayBlock):
     type: str = "shell"
     language: str
     command: str
+
+
+class BackgroundTaskDisplayBlock(DisplayBlock):
+    """Display block describing a background task."""
+
+    type: str = "background_task"
+    task_id: str
+    kind: str
+    status: str
+    description: str

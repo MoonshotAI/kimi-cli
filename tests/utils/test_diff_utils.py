@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
-from kimi_cli.utils.diff import build_diff_blocks, format_unified_diff
+from kimi_cli.utils.diff import (
+    _build_diff_blocks_sync as build_diff_blocks,
+)
+from kimi_cli.utils.diff import (
+    format_unified_diff,
+)
 from kimi_cli.wire.types import DiffDisplayBlock
 
 
@@ -298,6 +303,8 @@ Line 14 updated
 Line 15
 Line 16\
 """,
+                old_start=11,
+                new_start=11,
             ),
         ]
     )
@@ -373,7 +380,14 @@ def test_format_unified_diff_with_path() -> None:
     diff_text = format_unified_diff(old_text, new_text, "demo.txt")
 
     assert diff_text == snapshot(
-        "--- a/demo.txt\n+++ b/demo.txt\n@@ -1,2 +1,2 @@\n alpha\n-beta\n+bravo\n"
+        """\
+--- a/demo.txt
++++ b/demo.txt
+@@ -1,2 +1,2 @@
+ alpha
+-beta
++bravo
+"""
     )
 
 
@@ -383,7 +397,14 @@ def test_format_unified_diff_without_path() -> None:
 
     diff_text = format_unified_diff(old_text, new_text)
 
-    assert diff_text == snapshot("--- a/file\n+++ b/file\n@@ -1,2 +1,2 @@\n alpha\n-beta\n+bravo\n")
+    assert diff_text == snapshot("""\
+--- a/file
++++ b/file
+@@ -1,2 +1,2 @@
+ alpha
+-beta
++bravo
+""")
 
 
 def test_format_unified_diff_without_header() -> None:
@@ -397,4 +418,9 @@ def test_format_unified_diff_without_header() -> None:
         include_file_header=False,
     )
 
-    assert diff_text == snapshot("@@ -1,2 +1,2 @@\n alpha\n-beta\n+bravo\n")
+    assert diff_text == snapshot("""\
+@@ -1,2 +1,2 @@
+ alpha
+-beta
++bravo
+""")

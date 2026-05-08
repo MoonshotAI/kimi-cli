@@ -45,6 +45,7 @@ import { Streamdown } from "streamdown";
 import {
   escapeHtmlOutsideCodeBlocks,
   safeRehypePlugins,
+  safeRemarkPlugins,
   streamdownComponents,
   streamdownRootClass,
 } from "./streamdown";
@@ -431,6 +432,7 @@ export const MessageResponse = memo(
       )}
       components={streamdownComponents}
       rehypePlugins={safeRehypePlugins}
+      remarkPlugins={safeRemarkPlugins}
       {...props}
     >
       {typeof children === "string"

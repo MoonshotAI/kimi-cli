@@ -1,0 +1,42 @@
+{
+  "name": "sample-plugin",
+  "version": "1.0.0",
+  "description": "Sample plugin demonstrating Skills + Tools with both Python and TypeScript tools",
+  "tools": [
+    {
+      "name": "py_greet",
+      "description": "Generate a greeting message (Python tool)",
+      "command": ["python3", "scripts/greet.py"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name to greet"
+          },
+          "lang": {
+            "type": "string",
+            "enum": ["en", "zh", "ja"],
+            "description": "Language: en=English, zh=Chinese, ja=Japanese"
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "ts_calc",
+      "description": "Evaluate a math expression and return the result (TypeScript tool)",
+      "command": ["npx", "tsx", "scripts/calc.ts"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "description": "Math expression to evaluate, e.g. '2 + 3 * 4'"
+          }
+        },
+        "required": ["expression"]
+      }
+    }
+  ]
+}

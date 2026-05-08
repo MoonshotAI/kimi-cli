@@ -37,6 +37,7 @@ type DeriveActivityStatusParams = {
   isReplayingHistory: boolean;
   isUploadingFiles: boolean;
   messages: LiveMessage[];
+  errorMessage?: string | null;
 };
 
 /**
@@ -48,6 +49,7 @@ export function deriveActivityStatus({
   isReplayingHistory,
   isUploadingFiles,
   messages,
+  errorMessage,
 }: DeriveActivityStatusParams): ActivityDetail {
   // Check for pending approval requests (search from end for efficiency)
   if (findPendingApproval(messages)) {
@@ -69,7 +71,7 @@ export function deriveActivityStatus({
   if (chatStatus === "error") {
     return {
       status: "error",
-      description: "An error occurred",
+      description: errorMessage || "An error occurred",
     };
   }
 
@@ -270,7 +272,6 @@ export const ToolbarActivityIndicator = memo(function ToolbarActivityIndicatorCo
 }): ReactElement {
   const { status, description } = activity;
   const isActive = status !== "idle" && status !== "error";
-  const showSpinner = status === "processing";
   const isError = status === "error";
 
   return (
@@ -312,10 +313,6 @@ export const ToolbarActivityIndicator = memo(function ToolbarActivityIndicatorCo
         />
       </div>
 
-      {/* Spinner for processing */}
-      {showSpinner && (
-        <Loader size={12} className="text-muted-foreground" />
-      )}
 
       {/* Description text with animated transitions */}
       <AnimatePresence mode="wait">

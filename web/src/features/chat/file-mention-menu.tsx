@@ -26,6 +26,8 @@ const formatFileSize = (size?: number): string | null => {
   return `${value.toFixed(precision)} ${units[idx]}`;
 };
 
+const MAX_WORKSPACE_FILES = 500;
+
 type FileMentionMenuProps = {
   open: boolean;
   query: string;
@@ -38,6 +40,7 @@ type FileMentionMenuProps = {
   workspaceError: string | null;
   onRetryWorkspace: () => void;
   isWorkspaceAvailable: boolean;
+  workspaceFileCount?: number;
 };
 
 const SectionLabel: Record<MentionOption["type"], string> = {
@@ -136,6 +139,7 @@ export const FileMentionMenu = ({
   workspaceError,
   onRetryWorkspace,
   isWorkspaceAvailable,
+  workspaceFileCount = 0,
 }: FileMentionMenuProps) => {
   const activeItemRef = useRef<HTMLButtonElement>(null);
 
@@ -218,6 +222,9 @@ export const FileMentionMenu = ({
                         flatOptions.length === 1 ? "" : "s"
                       } ready to mention.`
                     : "Workspace files indexed."}
+                  {workspaceFileCount >= MAX_WORKSPACE_FILES
+                    ? " Type a path to search deeper."
+                    : ""}
                 </span>
               </div>
             ) : (

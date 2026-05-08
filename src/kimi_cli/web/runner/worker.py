@@ -15,8 +15,7 @@ import sys
 from typing import Any
 from uuid import UUID
 
-from loguru import logger
-
+from kimi_cli import logger
 from kimi_cli.app import KimiCLI, enable_logging
 from kimi_cli.cli.mcp import get_global_mcp_config_file
 from kimi_cli.exception import MCPConfigError
@@ -46,16 +45,22 @@ async def run_worker(session_id: UUID) -> None:
                 path=default_mcp_file,
             )
 
+    # Detect whether this is a resumed session (has prior state on disk)
+    # vs a brand-new session that should honor config.default_plan_mode.
+    resumed = (session.dir / "state.json").exists()
+
     # Create KimiCLI instance with MCP configuration
     try:
-        kimi_cli = await KimiCLI.create(session, mcp_configs=mcp_configs or None)
+        kimi_cli = await KimiCLI.create(
+            session, mcp_configs=mcp_configs or None, resumed=resumed, ui_mode="wire"
+        )
     except MCPConfigError as exc:
         logger.warning(
             "Invalid MCP config in {path}: {error}. Starting without MCP.",
             path=default_mcp_file,
             error=exc,
         )
-        kimi_cli = await KimiCLI.create(session, mcp_configs=None)
+        kimi_cli = await KimiCLI.create(session, mcp_configs=None, resumed=resumed, ui_mode="wire")
 
     # Run in wire stdio mode
     await kimi_cli.run_wire_stdio()
@@ -63,6 +68,12 @@ async def run_worker(session_id: UUID) -> None:
 
 def main() -> None:
     """Entry point for the worker subprocess."""
+    from kimi_cli.utils.proctitle import set_process_title
+    from kimi_cli.utils.proxy import normalize_proxy_env
+
+    normalize_proxy_env()
+    set_process_title("kimi-code-worker")
+
     if len(sys.argv) < 2:
         print("Usage: python -m kimi_cli.web.runner.worker <session_id>", file=sys.stderr)
         sys.exit(1)

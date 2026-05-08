@@ -10,6 +10,7 @@ from kaos.path import KaosPath
 from pydantic import BaseModel, ConfigDict, Field
 
 from kimi_cli.share import get_share_dir
+from kimi_cli.utils.io import atomic_json_write
 from kimi_cli.utils.logging import logger
 
 
@@ -75,5 +76,4 @@ def load_metadata() -> Metadata:
 def save_metadata(metadata: Metadata):
     metadata_file = get_metadata_file()
     logger.debug("Saving metadata to file: {file}", file=metadata_file)
-    with open(metadata_file, "w", encoding="utf-8") as f:
-        json.dump(metadata.model_dump(), f, indent=2, ensure_ascii=False)
+    atomic_json_write(metadata.model_dump(), metadata_file)

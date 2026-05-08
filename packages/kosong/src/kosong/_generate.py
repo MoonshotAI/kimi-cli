@@ -9,7 +9,7 @@ from kosong.chat_provider import (
     StreamedMessagePart,
     TokenUsage,
 )
-from kosong.message import ContentPart, Message, ToolCall
+from kosong.message import ContentPart, Message, TextPart, ThinkPart, ToolCall
 from kosong.tooling import Tool
 from kosong.utils.aio import Callback, callback
 
@@ -73,6 +73,20 @@ async def generate(
 
     if not message.content and not message.tool_calls:
         raise APIEmptyResponseError("The API returned an empty response.")
+
+    # A response with only ThinkPart (no TextPart, no tool calls) indicates an
+    # abnormal termination — typically a stream interruption or max_tokens
+    # exhaustion during reasoning.  The model should always produce visible
+    # output after thinking; a think-only response is never intentional.
+    has_think = any(isinstance(p, ThinkPart) for p in message.content)
+    has_text = any(isinstance(p, TextPart) and p.text.strip() for p in message.content)
+    if has_think and not has_text and not message.tool_calls:
+        raise APIEmptyResponseError(
+            "The API returned a response containing only thinking content "
+            "without any text or tool calls. This usually indicates the "
+            "stream was interrupted or the output token budget was exhausted "
+            "during reasoning."
+        )
 
     return GenerateResult(
         id=stream.id,

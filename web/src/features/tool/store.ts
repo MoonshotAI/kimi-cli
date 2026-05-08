@@ -1,5 +1,10 @@
 import { create } from "zustand";
 
+export type TodoItem = {
+  title: string;
+  status: "pending" | "in_progress" | "done";
+};
+
 type ToolEventsState = {
   /** Files written during the current session/turn */
   newFiles: string[];
@@ -8,6 +13,11 @@ type ToolEventsState = {
   addNewFile: (path: string) => void;
   /** Clear all new files (e.g., when opening files panel or starting new turn) */
   clearNewFiles: () => void;
+
+  /** Current todo list from SetTodoList tool */
+  todoItems: TodoItem[];
+  setTodoItems: (items: TodoItem[]) => void;
+  clearTodoItems: () => void;
 };
 
 export const useToolEventsStore = create<ToolEventsState>((set) => ({
@@ -17,6 +27,10 @@ export const useToolEventsStore = create<ToolEventsState>((set) => ({
       newFiles: [...state.newFiles, path],
     })),
   clearNewFiles: () => set({ newFiles: [] }),
+
+  todoItems: [],
+  setTodoItems: (items) => set({ todoItems: items }),
+  clearTodoItems: () => set({ todoItems: [] }),
 }));
 
 /**

@@ -53,10 +53,15 @@ class HakimiSoul(KimiSoul):
         return "Hakimi"
 
     @override
-    async def run(self, user_input: str | list[ContentPart]) -> None:
+    async def run(
+        self,
+        user_input: str | list[ContentPart],
+        *,
+        skip_user_prompt_hook: bool = False,
+    ) -> None:
         if not self._context.history:
             await self._context.restore()
-        await super().run(user_input)
+        await super().run(user_input, skip_user_prompt_hook=skip_user_prompt_hook)
 
 
 class MyBashParams(BaseModel):

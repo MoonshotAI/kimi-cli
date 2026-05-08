@@ -9,7 +9,7 @@ import threading
 from collections.abc import Iterator
 from typing import IO
 
-from loguru import logger
+from kimi_cli import logger
 
 
 class StderrRedirector:

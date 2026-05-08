@@ -17,6 +17,7 @@ from pydantic import (
 from tomlkit.exceptions import TOMLKitError
 
 from kimi_cli.exception import ConfigError
+from kimi_cli.hooks.config import HookDef
 from kimi_cli.llm import ModelCapability, ProviderType
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
@@ -44,6 +45,10 @@ class LLMProvider(BaseModel):
     """Environment variables to set before creating the provider instance"""
     custom_headers: dict[str, str] | None = None
     """Custom headers to include in API requests"""
+    reasoning_key: str | None = None
+    """Message field name carrying reasoning content for OpenAI-compatible APIs.
+    Applies to provider type ``openai_legacy``. Defaults to ``reasoning_content``
+    when unset. Use an empty string to disable reasoning round-tripping."""
     oauth: OAuthRef | None = None
     """OAuth credential reference (do not store tokens here)."""
 
@@ -63,13 +68,15 @@ class LLMModel(BaseModel):
     """Maximum context size (unit: tokens)"""
     capabilities: set[ModelCapability] | None = None
     """Model capabilities"""
+    display_name: str | None = None
+    """Human-readable model name (sourced from the provider's models API when available)"""
 
 
 class LoopControl(BaseModel):
     """Agent loop control configuration."""
 
     max_steps_per_turn: int = Field(
-        default=100,
+        default=1000,
         ge=1,
         validation_alias=AliasChoices("max_steps_per_turn", "max_steps_per_run"),
     )
@@ -80,7 +87,42 @@ class LoopControl(BaseModel):
     """Extra iterations after the first turn in Ralph mode. Use -1 for unlimited."""
     reserved_context_size: int = Field(default=50_000, ge=1000)
     """Reserved token count for LLM response generation. Auto-compaction triggers when
-    context_tokens + reserved_context_size >= max_context_size. Default is 50000."""
+    either context_tokens + reserved_context_size >= max_context_size or
+    context_tokens >= max_context_size * compaction_trigger_ratio. Default is 50000."""
+    compaction_trigger_ratio: float = Field(default=0.85, ge=0.5, le=0.99)
+    """Context usage ratio threshold for auto-compaction. Default is 0.85 (85%).
+    Auto-compaction triggers when context_tokens >= max_context_size * compaction_trigger_ratio
+    or when context_tokens + reserved_context_size >= max_context_size."""
+
+
+class BackgroundConfig(BaseModel):
+    """Background task runtime configuration."""
+
+    max_running_tasks: int = Field(default=4, ge=1)
+    read_max_bytes: int = Field(default=30_000, ge=1024)
+    notification_tail_lines: int = Field(default=20, ge=1)
+    notification_tail_chars: int = Field(default=3_000, ge=256)
+    wait_poll_interval_ms: int = Field(default=500, ge=50)
+    worker_heartbeat_interval_ms: int = Field(default=5_000, ge=100)
+    worker_stale_after_ms: int = Field(default=15_000, ge=1000)
+    kill_grace_period_ms: int = Field(default=2_000, ge=100)
+    keep_alive_on_exit: bool = Field(
+        default=False,
+        description="Keep background tasks alive when CLI exits. Default: kill on exit.",
+    )
+    agent_task_timeout_s: int = Field(default=900, ge=60)
+    """Maximum runtime in seconds for a background agent task. Default: 900 (15 min)."""
+    print_wait_ceiling_s: int = Field(default=3600, ge=1)
+    """Hard ceiling for how long ``--print`` mode waits for background tasks before
+    killing them and exiting. The effective wait is
+    ``min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)``.
+    Default: 3600 (1 hour)."""
+
+
+class NotificationConfig(BaseModel):
+    """Notification runtime configuration."""
+
+    claim_stale_after_ms: int = Field(default=15_000, ge=1000)
 
 
 class MoonshotSearchConfig(BaseModel):
@@ -149,16 +191,77 @@ class Config(BaseModel):
         description="Whether the config was loaded from the default location",
         exclude=True,
     )
+    source_file: Path | None = Field(
+        default=None,
+        description="Path to the loaded config file. None when loaded from --config text.",
+        exclude=True,
+    )
     default_model: str = Field(default="", description="Default model to use")
     default_thinking: bool = Field(default=False, description="Default thinking mode")
     default_yolo: bool = Field(default=False, description="Default yolo (auto-approve) mode")
+    skip_afk_prompt_injection: bool = Field(
+        default=False,
+        description=(
+            "If true, suppress the afk-mode system reminder. "
+            "Yolo mode does not inject a system reminder."
+        ),
+    )
+    default_plan_mode: bool = Field(default=False, description="Default plan mode for new sessions")
+    default_editor: str = Field(
+        default="",
+        description="Default external editor command (e.g. 'vim', 'code --wait')",
+    )
+    theme: Literal["dark", "light"] = Field(
+        default="dark",
+        description="Terminal color theme. Use 'light' for light terminal backgrounds.",
+    )
+    show_thinking_stream: bool = Field(
+        default=True,
+        description=(
+            "If true, stream the raw reasoning text in the live area as a "
+            "6-line scrolling preview and commit the full reasoning markdown "
+            "to history when the block ends. Default true. Set to false to "
+            "show only the compact 'Thinking ...' indicator and a one-line "
+            "trace summary."
+        ),
+    )
     models: dict[str, LLMModel] = Field(default_factory=dict, description="List of LLM models")
     providers: dict[str, LLMProvider] = Field(
         default_factory=dict, description="List of LLM providers"
     )
     loop_control: LoopControl = Field(default_factory=LoopControl, description="Agent loop control")
+    background: BackgroundConfig = Field(
+        default_factory=BackgroundConfig, description="Background task configuration"
+    )
+    notifications: NotificationConfig = Field(
+        default_factory=NotificationConfig, description="Notification configuration"
+    )
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
+    hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")  # pyright: ignore[reportUnknownVariableType]
+    merge_all_available_skills: bool = Field(
+        default=True,
+        description=(
+            "Merge skills from all existing brand directories (kimi/claude/codex) "
+            "instead of using only the first one found. Defaults to true so users "
+            "who keep skills in multiple brand directories see everything out of "
+            "the box; set to false to restore the first-match-only behaviour."
+        ),
+    )
+    extra_skill_dirs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra directories to discover skills from, added on top of the "
+            "built-in / user / project locations. Each entry may be an absolute "
+            "path, ``~``-prefixed (expanded against $HOME), or relative to the "
+            "project root (the nearest ``.git`` directory above the work dir). "
+            "Missing paths are silently skipped."
+        ),
+    )
+    telemetry: bool = Field(
+        default=True,
+        description="Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.",
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
@@ -199,12 +302,11 @@ def load_config(config_file: Path | None = None) -> Config:
     Raises:
         ConfigError: If the configuration file is invalid.
     """
-    default_config_file = get_config_file()
+    default_config_file = get_config_file().expanduser().resolve(strict=False)
     if config_file is None:
         config_file = default_config_file
-    is_default_config_file = config_file.expanduser().resolve(
-        strict=False
-    ) == default_config_file.expanduser().resolve(strict=False)
+    config_file = config_file.expanduser().resolve(strict=False)
+    is_default_config_file = config_file == default_config_file
     logger.debug("Loading config from file: {file}", file=config_file)
 
     # If the user hasn't provided an explicit config path, migrate legacy JSON config once.
@@ -216,6 +318,7 @@ def load_config(config_file: Path | None = None) -> Config:
         logger.debug("No config file found, creating default config: {config}", config=config)
         save_config(config, config_file)
         config.is_from_default_location = is_default_config_file
+        config.source_file = config_file
         return config
 
     try:
@@ -232,6 +335,7 @@ def load_config(config_file: Path | None = None) -> Config:
     except ValidationError as e:
         raise ConfigError(f"Invalid configuration file {config_file}: {e}") from e
     config.is_from_default_location = is_default_config_file
+    config.source_file = config_file
     return config
 
 
@@ -271,6 +375,7 @@ def load_config_from_string(config_string: str) -> Config:
     except ValidationError as e:
         raise ConfigError(f"Invalid configuration text: {e}") from e
     config.is_from_default_location = False
+    config.source_file = None
     return config
 
 

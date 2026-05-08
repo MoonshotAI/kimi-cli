@@ -45,6 +45,7 @@ For example, to use Kimi Code CLI with [Zed](https://zed.dev/) or [JetBrains](ht
 {
   "agent_servers": {
     "Kimi Code CLI": {
+      "type": "custom",
       "command": "kimi",
       "args": ["acp"],
       "env": {}

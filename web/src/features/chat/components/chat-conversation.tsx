@@ -17,7 +17,7 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isMacOS } from "@/hooks/utils";
+import { hasPlatformModifier, isMacOS } from "@/hooks/utils";
 import {
   VirtualizedMessageList,
   type VirtualizedMessageListHandle,
@@ -61,7 +61,7 @@ export function ChatConversation({
   // Handle Cmd+F / Ctrl+F
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+      if (hasPlatformModifier(e) && e.key === "f") {
         e.preventDefault();
         onSearchOpenChange(true);
       }
@@ -137,21 +137,34 @@ export function ChatConversation({
                   <Button
                     className="mt-1"
                     type="button"
-                    onClick={() => onCreateSession()}
+                    onClick={(e) => {
+                      if (hasPlatformModifier(e)) {
+                        const url = new URL(window.location.origin + window.location.pathname);
+                        url.searchParams.set("action", "create");
+                        window.open(url.toString(), "_blank");
+                      } else {
+                        onCreateSession();
+                      }
+                    }}
                   >
                     <PlusIcon className="size-4" />
                     <span>Create new session</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-2" side="top">
-                  <span>Create new session</span>
-                  <KbdGroup>
-                    <Kbd>Shift</Kbd>
-                    <span className="text-muted-foreground">+</span>
-                    <Kbd>{newSessionShortcutModifier}</Kbd>
-                    <span className="text-muted-foreground">+</span>
-                    <Kbd>O</Kbd>
-                  </KbdGroup>
+                <TooltipContent className="flex flex-col items-center gap-1" side="top">
+                  <div className="flex items-center gap-2">
+                    <span>Create new session</span>
+                    <KbdGroup>
+                      <Kbd>Shift</Kbd>
+                      <span className="text-muted-foreground">+</span>
+                      <Kbd>{newSessionShortcutModifier}</Kbd>
+                      <span className="text-muted-foreground">+</span>
+                      <Kbd>O</Kbd>
+                    </KbdGroup>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{newSessionShortcutModifier}+Click to open in new tab</span>
+                  </div>
                 </TooltipContent>
               </Tooltip>
             ) : null}

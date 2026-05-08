@@ -44,10 +44,14 @@ function getThinkingState(model: ConfigModel | null): ThinkingState {
 
 export type GlobalConfigControlsProps = {
   className?: string;
+  planMode?: boolean;
+  onPlanModeChange?: (enabled: boolean) => void;
 };
 
 export function GlobalConfigControls({
   className,
+  planMode = false,
+  onPlanModeChange,
 }: GlobalConfigControlsProps): ReactElement {
   const { config, isLoading, isUpdating, error, refresh, update } =
     useGlobalConfig();
@@ -203,6 +207,7 @@ export function GlobalConfigControls({
         size="icon"
         className="size-9 border-0"
         aria-label="Attach files"
+        type="button"
         onClick={() => attachments.openFileDialog()}
       >
         <Paperclip className="size-4" />
@@ -217,6 +222,7 @@ export function GlobalConfigControls({
             size="sm"
             className="h-9 max-w-[160px] justify-start gap-2 border-0"
             aria-label="Change global model"
+            type="button"
             disabled={isLoading || isUpdating || !config}
           >
             <Cpu className="size-4 shrink-0" />
@@ -273,6 +279,31 @@ export function GlobalConfigControls({
         thinkingToggle
       )}
 
+      {onPlanModeChange && (
+        <>
+          <div className="mx-0 h-4 w-px bg-border/70" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex h-9 items-center gap-2 rounded-md px-2">
+                <span className="text-xs text-muted-foreground">
+                  Plan
+                </span>
+                <Switch
+                  aria-label="Toggle plan mode"
+                  checked={planMode}
+                  onCheckedChange={onPlanModeChange}
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent sideOffset={8}>
+              {planMode
+                ? "Plan mode is active. The model will only read and plan, not modify files."
+                : "Enable plan mode for read-only research and planning."}
+            </TooltipContent>
+          </Tooltip>
+        </>
+      )}
+
       {(lastBusySkip && lastBusySkip.length > 0) || error ? (
         <div className="mx-1.5 h-4 w-px bg-border/70" />
       ) : null}
@@ -284,6 +315,7 @@ export function GlobalConfigControls({
           className="size-9"
           aria-label="Force restart busy sessions"
           title="Force restart busy sessions"
+          type="button"
           onClick={handleForceRestartBusy}
           disabled={isUpdating}
         >
@@ -298,6 +330,7 @@ export function GlobalConfigControls({
           className="size-9"
           aria-label="Reload global config"
           title="Reload global config"
+          type="button"
           onClick={() => {
             refresh();
           }}

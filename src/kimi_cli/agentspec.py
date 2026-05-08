@@ -39,7 +39,10 @@ class AgentSpec(BaseModel):
     system_prompt_args: dict[str, str] = Field(
         default_factory=dict, description="System prompt arguments"
     )
+    model: str | None = Field(default=None, description="Default model alias")
+    when_to_use: str | None = Field(default=None, description="Usage guidance")
     tools: list[str] | None | Inherit = Field(default=inherit, description="Tools")  # required
+    allowed_tools: list[str] | None | Inherit = Field(default=inherit, description="Allowed tools")
     exclude_tools: list[str] | None | Inherit = Field(
         default=inherit, description="Tools to exclude"
     )
@@ -62,7 +65,10 @@ class ResolvedAgentSpec:
     name: str
     system_prompt_path: Path
     system_prompt_args: dict[str, str]
+    model: str | None
+    when_to_use: str
     tools: list[str]
+    allowed_tools: list[str] | None
     exclude_tools: list[str]
     subagents: dict[str, SubagentSpec]
 
@@ -83,6 +89,8 @@ def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:
         raise AgentSpecError("System prompt path is required")
     if isinstance(agent_spec.tools, Inherit):
         raise AgentSpecError("Tools are required")
+    if isinstance(agent_spec.allowed_tools, Inherit):
+        agent_spec.allowed_tools = None
     if isinstance(agent_spec.exclude_tools, Inherit):
         agent_spec.exclude_tools = []
     if isinstance(agent_spec.subagents, Inherit):
@@ -91,7 +99,10 @@ def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:
         name=agent_spec.name,
         system_prompt_path=agent_spec.system_prompt_path,
         system_prompt_args=agent_spec.system_prompt_args,
+        model=agent_spec.model,
+        when_to_use=agent_spec.when_to_use or "",
         tools=agent_spec.tools or [],
+        allowed_tools=agent_spec.allowed_tools,
         exclude_tools=agent_spec.exclude_tools or [],
         subagents=agent_spec.subagents or {},
     )
@@ -133,8 +144,14 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
         for k, v in agent_spec.system_prompt_args.items():
             # system prompt args should be merged instead of overwritten
             base_agent_spec.system_prompt_args[k] = v
+        if agent_spec.model is not None:
+            base_agent_spec.model = agent_spec.model
+        if agent_spec.when_to_use is not None:
+            base_agent_spec.when_to_use = agent_spec.when_to_use
         if not isinstance(agent_spec.tools, Inherit):
             base_agent_spec.tools = agent_spec.tools
+        if not isinstance(agent_spec.allowed_tools, Inherit):
+            base_agent_spec.allowed_tools = agent_spec.allowed_tools
         if not isinstance(agent_spec.exclude_tools, Inherit):
             base_agent_spec.exclude_tools = agent_spec.exclude_tools
         if not isinstance(agent_spec.subagents, Inherit):

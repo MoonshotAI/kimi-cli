@@ -20,12 +20,19 @@ def test_load_default_agent_spec():
     assert spec.name == snapshot("")
     assert spec.system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
     assert spec.system_prompt_args == snapshot({"ROLE_ADDITIONAL": ""})
+    assert spec.when_to_use == snapshot("")
+    assert spec.model == snapshot(None)
+    assert spec.allowed_tools == snapshot(None)
     assert spec.exclude_tools == snapshot([])
     assert spec.tools == snapshot(
         [
-            "kimi_cli.tools.multiagent:Task",
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
             "kimi_cli.tools.todo:SetTodoList",
             "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.background:TaskList",
+            "kimi_cli.tools.background:TaskOutput",
+            "kimi_cli.tools.background:TaskStop",
             "kimi_cli.tools.file:ReadFile",
             "kimi_cli.tools.file:ReadMediaFile",
             "kimi_cli.tools.file:Glob",
@@ -34,6 +41,8 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.file:StrReplaceFile",
             "kimi_cli.tools.web:SearchWeb",
             "kimi_cli.tools.web:FetchURL",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
         ]
     )
     subagents = {
@@ -41,29 +50,31 @@ def test_load_default_agent_spec():
         for name, spec in spec.subagents.items()
     }
     assert subagents == snapshot(
-        {"coder": ("sub.yaml", "Good at general software engineering tasks.")}
+        {
+            "coder": ("coder.yaml", "Good at general software engineering tasks."),
+            "explore": (
+                "explore.yaml",
+                "Fast codebase exploration with prompt-enforced read-only behavior.",
+            ),
+            "plan": ("plan.yaml", "Read-only implementation planning and architecture design."),
+        }
     )
 
     subagent_specs = {name: load_agent_spec(spec.path) for name, spec in spec.subagents.items()}
+
     assert subagent_specs["coder"].name == snapshot("")
     assert subagent_specs["coder"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
     assert subagent_specs["coder"].system_prompt_args == snapshot(
         {
-            "ROLE_ADDITIONAL": "You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You need to provide a comprehensive summary on what you have done and learned in your final message. If you wrote or modified any files, you must mention them in the summary.\n"  # noqa: E501
+            "ROLE_ADDITIONAL": "You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You must treat the parent agent as your caller. Do not directly ask the end user questions. If something is unclear, explain the ambiguity in your final summary to the parent agent.\n"  # noqa: E501
         }
     )
-    assert subagent_specs["coder"].exclude_tools == snapshot(
-        [
-            "kimi_cli.tools.multiagent:Task",
-            "kimi_cli.tools.multiagent:CreateSubagent",
-            "kimi_cli.tools.dmail:SendDMail",
-            "kimi_cli.tools.todo:SetTodoList",
-        ]
+    assert subagent_specs["coder"].when_to_use == snapshot(
+        "Use this agent for non-trivial software engineering work that may require reading files, editing code, running commands, and returning a compact but technically complete summary to the parent agent.\n"
     )
-    assert subagent_specs["coder"].tools == snapshot(
+    assert subagent_specs["coder"].model == snapshot(None)
+    assert subagent_specs["coder"].allowed_tools == snapshot(
         [
-            "kimi_cli.tools.multiagent:Task",
-            "kimi_cli.tools.todo:SetTodoList",
             "kimi_cli.tools.shell:Shell",
             "kimi_cli.tools.file:ReadFile",
             "kimi_cli.tools.file:ReadMediaFile",
@@ -75,9 +86,189 @@ def test_load_default_agent_spec():
             "kimi_cli.tools.web:FetchURL",
         ]
     )
+    assert subagent_specs["coder"].exclude_tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+        ]
+    )
+    assert subagent_specs["coder"].tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.background:TaskList",
+            "kimi_cli.tools.background:TaskOutput",
+            "kimi_cli.tools.background:TaskStop",
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+        ]
+    )
     sub_subagents = {
         name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
         for name, spec in subagent_specs["coder"].subagents.items()
+    }
+    assert sub_subagents == snapshot({})
+
+    assert subagent_specs["explore"].name == snapshot("")
+    assert subagent_specs["explore"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
+    assert subagent_specs["explore"].system_prompt_args == snapshot(
+        {
+            "ROLE_ADDITIONAL": """\
+You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You must treat the parent agent as your caller. Do not directly ask the end user questions. If something is unclear, explain the ambiguity in your final summary to the parent agent.
+
+You are a codebase exploration specialist. Your role is EXCLUSIVELY to search, read, and analyze existing code and resources. You do NOT have access to file editing tools.
+
+Your strengths:
+- Rapidly finding files using glob patterns
+- Searching code and text with powerful regex patterns
+- Reading and analyzing file contents
+- Running read-only shell commands (git log, git diff, ls, find, etc.)
+
+Guidelines:
+- Use Glob for broad file pattern matching
+- Use Grep for searching file contents with regex
+- Use ReadFile when you know the specific file path
+- Use Shell ONLY for read-only operations (ls, git status, git log, git diff, find)
+- NEVER use Shell for any file creation or modification commands
+- Adapt your search depth based on the thoroughness level specified by the caller
+- Wherever possible, spawn multiple parallel tool calls for grepping and reading files to maximize speed
+
+If the prompt includes a <git-context> block, use it to orient yourself about the repository state before starting your investigation.
+
+You are meant to be a fast agent. Complete the search request efficiently and report your findings clearly in a structured format.
+"""  # noqa: E501
+        }
+    )
+    assert subagent_specs["explore"].when_to_use == snapshot(
+        'Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (e.g. "src/**/*.yaml"), search code for keywords (e.g. "database connection"), or answer questions about the codebase (e.g. "how does the auth module work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "thorough" for comprehensive analysis across multiple locations and naming conventions. Use this agent for any read-only exploration that will clearly require more than 3 tool calls. Prefer launching multiple explore agents concurrently when investigating independent questions.\n'
+    )
+    assert subagent_specs["explore"].model == snapshot(None)
+    assert subagent_specs["explore"].allowed_tools == snapshot(
+        [
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+        ]
+    )
+    assert subagent_specs["explore"].exclude_tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+        ]
+    )
+    assert subagent_specs["explore"].tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.background:TaskList",
+            "kimi_cli.tools.background:TaskOutput",
+            "kimi_cli.tools.background:TaskStop",
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+        ]
+    )
+    sub_subagents = {
+        name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
+        for name, spec in subagent_specs["explore"].subagents.items()
+    }
+    assert sub_subagents == snapshot({})
+
+    assert subagent_specs["plan"].name == snapshot("")
+    assert subagent_specs["plan"].system_prompt_path == DEFAULT_AGENT_FILE.parent / "system.md"
+    assert subagent_specs["plan"].system_prompt_args == snapshot(
+        {
+            "ROLE_ADDITIONAL": """\
+You are now running as a subagent. All the `user` messages are sent by the main agent. The main agent cannot see your context, it can only see your last message when you finish the task. You must treat the parent agent as your caller. Do not directly ask the end user questions. If something is unclear, explain the ambiguity in your final summary to the parent agent.
+
+Before designing your implementation plan, consider whether you fully understand the codebase areas relevant to the task. If not, recommend the parent agent to use the explore agent (subagent_type="explore") to investigate key questions first. In your response, clearly state:
+1. What you already know from the information provided
+2. What questions remain unanswered that would benefit from explore agent investigation
+3. Your implementation plan (either preliminary if questions remain, or final if sufficient context exists)
+"""  # noqa: E501
+        }
+    )
+    assert subagent_specs["plan"].when_to_use == snapshot(
+        "Use this agent when the parent agent needs a step-by-step implementation plan, key file identification, and architectural trade-off analysis before code changes are made.\n"
+    )
+    assert subagent_specs["plan"].model == snapshot(None)
+    assert subagent_specs["plan"].allowed_tools == snapshot(
+        [
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+        ]
+    )
+    assert subagent_specs["plan"].exclude_tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+        ]
+    )
+    assert subagent_specs["plan"].tools == snapshot(
+        [
+            "kimi_cli.tools.agent:Agent",
+            "kimi_cli.tools.ask_user:AskUserQuestion",
+            "kimi_cli.tools.todo:SetTodoList",
+            "kimi_cli.tools.shell:Shell",
+            "kimi_cli.tools.background:TaskList",
+            "kimi_cli.tools.background:TaskOutput",
+            "kimi_cli.tools.background:TaskStop",
+            "kimi_cli.tools.file:ReadFile",
+            "kimi_cli.tools.file:ReadMediaFile",
+            "kimi_cli.tools.file:Glob",
+            "kimi_cli.tools.file:Grep",
+            "kimi_cli.tools.file:WriteFile",
+            "kimi_cli.tools.file:StrReplaceFile",
+            "kimi_cli.tools.web:SearchWeb",
+            "kimi_cli.tools.web:FetchURL",
+            "kimi_cli.tools.plan:ExitPlanMode",
+            "kimi_cli.tools.plan.enter:EnterPlanMode",
+        ]
+    )
+    sub_subagents = {
+        name: (spec.path.relative_to(DEFAULT_AGENT_FILE.parent).as_posix(), spec.description)
+        for name, spec in subagent_specs["plan"].subagents.items()
     }
     assert sub_subagents == snapshot({})
 
@@ -152,9 +343,13 @@ agent:
         )
         assert spec.tools == snapshot(
             [
-                "kimi_cli.tools.multiagent:Task",
+                "kimi_cli.tools.agent:Agent",
+                "kimi_cli.tools.ask_user:AskUserQuestion",
                 "kimi_cli.tools.todo:SetTodoList",
                 "kimi_cli.tools.shell:Shell",
+                "kimi_cli.tools.background:TaskList",
+                "kimi_cli.tools.background:TaskOutput",
+                "kimi_cli.tools.background:TaskStop",
                 "kimi_cli.tools.file:ReadFile",
                 "kimi_cli.tools.file:ReadMediaFile",
                 "kimi_cli.tools.file:Glob",
@@ -163,6 +358,8 @@ agent:
                 "kimi_cli.tools.file:StrReplaceFile",
                 "kimi_cli.tools.web:SearchWeb",
                 "kimi_cli.tools.web:FetchURL",
+                "kimi_cli.tools.plan:ExitPlanMode",
+                "kimi_cli.tools.plan.enter:EnterPlanMode",
             ]
         )
         assert spec.exclude_tools == snapshot(

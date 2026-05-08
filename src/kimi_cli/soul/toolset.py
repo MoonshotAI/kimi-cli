@@ -5,9 +5,11 @@ import contextlib
 import importlib
 import inspect
 import json
+import time
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from kosong.tooling import (
@@ -26,17 +28,23 @@ from kosong.tooling.error import (
 )
 from kosong.tooling.mcp import convert_mcp_content
 from kosong.utils.typing import JsonType
-from loguru import logger
 
+from kimi_cli import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
+from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.tools import SkipThisTool
-from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.wire.types import (
+    AudioURLPart,
     ContentPart,
+    ImageURLPart,
+    MCPServerSnapshot,
+    MCPStatusSnapshot,
+    TextPart,
     ToolCall,
     ToolCallRequest,
     ToolResult,
     ToolReturnValue,
+    VideoURLPart,
 )
 
 if TYPE_CHECKING:
@@ -49,6 +57,20 @@ if TYPE_CHECKING:
     from kimi_cli.soul.agent import Runtime
 
 current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=None)
+
+_current_session_id: ContextVar[str] = ContextVar("_current_session_id", default="")
+
+
+def set_session_id(sid: str) -> None:
+    _current_session_id.set(sid)
+
+
+def get_session_id() -> str:
+    return _current_session_id.get()
+
+
+def _get_session_id() -> str:
+    return _current_session_id.get()
 
 
 def get_current_tool_call_or_none() -> ToolCall | None:
@@ -71,11 +93,28 @@ if TYPE_CHECKING:
 class KimiToolset:
     def __init__(self) -> None:
         self._tool_dict: dict[str, ToolType] = {}
+        self._hidden_tools: set[str] = set()
         self._mcp_servers: dict[str, MCPServerInfo] = {}
         self._mcp_loading_task: asyncio.Task[None] | None = None
+        self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
+        self._hook_engine: HookEngine = HookEngine()
+
+    def set_hook_engine(self, engine: HookEngine) -> None:
+        self._hook_engine = engine
 
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
+
+    def hide(self, tool_name: str) -> bool:
+        """Hide a tool from the LLM tool list. Returns True if the tool exists."""
+        if tool_name in self._tool_dict:
+            self._hidden_tools.add(tool_name)
+            return True
+        return False
+
+    def unhide(self, tool_name: str) -> None:
+        """Restore a hidden tool to the LLM tool list."""
+        self._hidden_tools.discard(tool_name)
 
     @overload
     def find(self, tool_name_or_type: str) -> ToolType | None: ...
@@ -92,7 +131,9 @@ class KimiToolset:
 
     @property
     def tools(self) -> list[Tool]:
-        return [tool.base for tool in self._tool_dict.values()]
+        return [
+            tool.base for tool in self._tool_dict.values() if tool.name not in self._hidden_tools
+        ]
 
     def handle(self, tool_call: ToolCall) -> HandleResult:
         token = current_tool_call.set(tool_call)
@@ -106,18 +147,126 @@ class KimiToolset:
             tool = self._tool_dict[tool_call.function.name]
 
             try:
-                arguments: JsonType = json.loads(tool_call.function.arguments or "{}")
+                arguments: JsonType = json.loads(tool_call.function.arguments or "{}", strict=False)
             except json.JSONDecodeError as e:
+                logger.warning(
+                    "Tool call JSON parse error: {tool_name} (call_id={call_id}): {error}",
+                    tool_name=tool_call.function.name,
+                    call_id=tool_call.id,
+                    error=e,
+                )
                 return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
             async def _call():
+                tool_input_dict = arguments if isinstance(arguments, dict) else {}
+
+                # --- PreToolUse ---
+                from kimi_cli.hooks import events
+
+                results = await self._hook_engine.trigger(
+                    "PreToolUse",
+                    matcher_value=tool_call.function.name,
+                    input_data=events.pre_tool_use(
+                        session_id=_get_session_id(),
+                        cwd=str(Path.cwd()),
+                        tool_name=tool_call.function.name,
+                        tool_input=tool_input_dict,
+                        tool_call_id=tool_call.id,
+                    ),
+                )
+                for result in results:
+                    if result.action == "block":
+                        return ToolResult(
+                            tool_call_id=tool_call.id,
+                            return_value=ToolError(
+                                message=result.reason or "Blocked by PreToolUse hook",
+                                brief="Hook blocked",
+                            ),
+                        )
+
+                # --- Execute tool ---
+                t0 = time.monotonic()
                 try:
                     ret = await tool.call(arguments)
-                    return ToolResult(tool_call_id=tool_call.id, return_value=ret)
                 except Exception as e:
-                    return ToolResult(
-                        tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e))
+                    tool_elapsed = time.monotonic() - t0
+                    logger.exception(
+                        "Tool execution failed: {tool_name} (call_id={call_id})",
+                        tool_name=tool_call.function.name,
+                        call_id=tool_call.id,
                     )
+                    # --- PostToolUseFailure (fire-and-forget) ---
+                    _hook_task = asyncio.create_task(
+                        self._hook_engine.trigger(
+                            "PostToolUseFailure",
+                            matcher_value=tool_call.function.name,
+                            input_data=events.post_tool_use_failure(
+                                session_id=_get_session_id(),
+                                cwd=str(Path.cwd()),
+                                tool_name=tool_call.function.name,
+                                tool_input=tool_input_dict,
+                                error=str(e),
+                                tool_call_id=tool_call.id,
+                            ),
+                        )
+                    )
+                    _hook_task.add_done_callback(
+                        lambda t: t.exception() if not t.cancelled() else None
+                    )
+                    from kimi_cli.telemetry import track
+
+                    _error_type = type(e).__name__
+                    track(
+                        "tool_error",
+                        tool_name=tool_call.function.name,
+                        error_type=_error_type,
+                    )
+                    track(
+                        "tool_call",
+                        tool_name=tool_call.function.name,
+                        success=False,
+                        duration_ms=int(tool_elapsed * 1000),
+                        error_type=_error_type,
+                    )
+                    return ToolResult(
+                        tool_call_id=tool_call.id,
+                        return_value=ToolRuntimeError(str(e)),
+                    )
+
+                tool_elapsed = time.monotonic() - t0
+                logger.info(
+                    "Tool {tool_name} completed in {elapsed:.1f}s (call_id={call_id})",
+                    tool_name=tool_call.function.name,
+                    elapsed=tool_elapsed,
+                    call_id=tool_call.id,
+                )
+                from kimi_cli.telemetry import track as _track_tool_call
+
+                _track_tool_call(
+                    "tool_call",
+                    tool_name=tool_call.function.name,
+                    success=not isinstance(ret, ToolError),
+                    duration_ms=int(tool_elapsed * 1000),
+                )
+
+                # --- PostToolUse (fire-and-forget) ---
+                _hook_task = asyncio.create_task(
+                    self._hook_engine.trigger(
+                        "PostToolUse",
+                        matcher_value=tool_call.function.name,
+                        input_data=events.post_tool_use(
+                            session_id=_get_session_id(),
+                            cwd=str(Path.cwd()),
+                            tool_name=tool_call.function.name,
+                            tool_input=tool_input_dict,
+                            tool_output=str(ret)[:2000],
+                            tool_call_id=tool_call.id,
+                        ),
+                    )
+                )
+                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+                return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 
             return asyncio.create_task(_call())
         finally:
@@ -148,6 +297,48 @@ class KimiToolset:
     def mcp_servers(self) -> dict[str, MCPServerInfo]:
         """Get MCP servers info."""
         return self._mcp_servers
+
+    def mcp_status_snapshot(self) -> MCPStatusSnapshot | None:
+        """Return a read-only snapshot of current MCP startup state."""
+        if not self._mcp_servers:
+            return None
+
+        servers = tuple(
+            MCPServerSnapshot(
+                name=name,
+                status=info.status,
+                tools=tuple(tool.name for tool in info.tools),
+            )
+            for name, info in self._mcp_servers.items()
+        )
+        return MCPStatusSnapshot(
+            loading=self.has_pending_mcp_tools(),
+            connected=sum(1 for server in servers if server.status == "connected"),
+            total=len(servers),
+            tools=sum(len(server.tools) for server in servers),
+            servers=servers,
+        )
+
+    def defer_mcp_tool_loading(self, mcp_configs: list[MCPConfig], runtime: Runtime) -> None:
+        """Store MCP configs for a later background startup."""
+        self._deferred_mcp_load = (list(mcp_configs), runtime)
+
+    def has_deferred_mcp_tools(self) -> bool:
+        """Return True when MCP loading is configured but has not started yet."""
+        return self._deferred_mcp_load is not None
+
+    async def start_deferred_mcp_tool_loading(self) -> bool:
+        """Start any deferred MCP loading in the background."""
+        if self._deferred_mcp_load is None:
+            return False
+        if self._mcp_loading_task is not None or self._mcp_servers:
+            self._deferred_mcp_load = None
+            return False
+
+        mcp_configs, runtime = self._deferred_mcp_load
+        self._deferred_mcp_load = None
+        await self.load_mcp_tools(mcp_configs, runtime, in_background=True)
+        return True
 
     def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> None:
         """
@@ -181,10 +372,20 @@ class KimiToolset:
         module_name, class_name = tool_path.rsplit(":", 1)
         try:
             module = importlib.import_module(module_name)
-        except ImportError:
+        except ImportError as e:
+            logger.warning(
+                "Tool module import failed: {module_name}: {error}",
+                module_name=module_name,
+                error=e,
+            )
             return None
         tool_cls = getattr(module, class_name, None)
         if tool_cls is None:
+            logger.warning(
+                "Tool class not found: {class_name} in {module_name}",
+                class_name=class_name,
+                module_name=module_name,
+            )
             return None
         args: list[Any] = []
         if "__init__" in tool_cls.__dict__:
@@ -324,6 +525,10 @@ class KimiToolset:
         else:
             await _connect()
 
+    def has_pending_mcp_tools(self) -> bool:
+        """Return True if the background MCP tool-loading task is still running."""
+        return self._mcp_loading_task is not None and not self._mcp_loading_task.done()
+
     async def wait_for_mcp_tools(self) -> None:
         """Wait for background MCP tool loading to finish."""
         task = self._mcp_loading_task
@@ -337,6 +542,7 @@ class KimiToolset:
 
     async def cleanup(self) -> None:
         """Cleanup any resources held by the toolset."""
+        self._deferred_mcp_load = None
         if self._mcp_loading_task:
             self._mcp_loading_task.cancel()
             with contextlib.suppress(Exception):
@@ -379,8 +585,9 @@ class MCPTool[T: ClientTransport](CallableTool):
 
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
         description = f"Call MCP tool `{self._mcp_tool.name}`."
-        if not await self._runtime.approval.request(self.name, self._action_name, description):
-            return ToolRejectedError()
+        result = await self._runtime.approval.request(self.name, self._action_name, description)
+        if not result:
+            return result.rejection_error()
 
         try:
             async with self._client as client:
@@ -390,11 +597,22 @@ class MCPTool[T: ClientTransport](CallableTool):
                     timeout=self._timeout,
                     raise_on_error=False,
                 )
+                if result.is_error:
+                    logger.warning(
+                        "MCP tool returned error: {tool_name}: {content}",
+                        tool_name=self._mcp_tool.name,
+                        content=[str(p) for p in result.content][:3],
+                    )
                 return convert_mcp_tool_result(result)
         except Exception as e:
             # fastmcp raises `RuntimeError` on timeout and we cannot tell it from other errors
             exc_msg = str(e).lower()
             if "timeout" in exc_msg or "timed out" in exc_msg:
+                logger.warning(
+                    "MCP tool call timed out: {tool_name}: {error}",
+                    tool_name=self._mcp_tool.name,
+                    error=e,
+                )
                 return ToolError(
                     message=(
                         f"Timeout while calling MCP tool `{self._mcp_tool.name}`. "
@@ -402,6 +620,11 @@ class MCPTool[T: ClientTransport](CallableTool):
                     ),
                     brief="Timeout",
                 )
+            logger.error(
+                "MCP tool call failed: {tool_name}: {error}",
+                tool_name=self._mcp_tool.name,
+                error=e,
+            )
             raise
 
 
@@ -447,15 +670,84 @@ class WireExternalTool(CallableTool):
             )
 
 
+# Maximum characters allowed in MCP tool output before truncation.
+# Built-in tools use 50K via ToolResultBuilder; MCP gets a wider budget because
+# multi-part results (e.g. text + image) are common, but still needs a cap to
+# prevent context overflow from tools like Playwright that return full DOMs.
+MCP_MAX_OUTPUT_CHARS = 100_000
+
+
+def _media_part_size(part: ContentPart) -> int | None:
+    """Return the payload size of a media part, or ``None`` for non-media parts."""
+    if isinstance(part, ImageURLPart):
+        return len(part.image_url.url)
+    if isinstance(part, AudioURLPart):
+        return len(part.audio_url.url)
+    if isinstance(part, VideoURLPart):
+        return len(part.video_url.url)
+    return None
+
+
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
     """Convert MCP tool result to kosong tool return value.
 
-    Raises:
-        ValueError: If any content part has unsupported type or mime type.
+    All content — text *and* inline media (``data:`` URLs) — is subject to
+    a shared *MCP_MAX_OUTPUT_CHARS* character budget.  Text parts are
+    truncated in-place; media parts that exceed the remaining budget are
+    dropped and replaced with a descriptive placeholder.
+
+    Unsupported content types are caught and replaced with a ``TextPart``
+    placeholder instead of crashing the turn.
     """
     content: list[ContentPart] = []
+    char_budget = MCP_MAX_OUTPUT_CHARS
+    truncated = False
+
     for part in result.content:
-        content.append(convert_mcp_content(part))
+        try:
+            converted = convert_mcp_content(part)
+        except ValueError as exc:
+            logger.warning(
+                "Skipping unsupported MCP content part: {error}",
+                error=exc,
+            )
+            converted = TextPart(text=f"[Unsupported content: {exc}]")
+
+        # --- budget enforcement (text) ---
+        if isinstance(converted, TextPart):
+            if char_budget <= 0:
+                truncated = True
+                continue
+            if len(converted.text) > char_budget:
+                converted = TextPart(text=converted.text[:char_budget])
+                truncated = True
+            char_budget -= len(converted.text)
+            content.append(converted)
+            continue
+
+        # --- budget enforcement (media: image / audio / video) ---
+        media_size = _media_part_size(converted)
+        if media_size is not None:
+            if media_size > char_budget:
+                truncated = True
+                continue  # drop the oversized media part silently
+            char_budget -= media_size
+            content.append(converted)
+            continue
+
+        # Unknown ContentPart subclass — pass through without budget impact
+        content.append(converted)
+
+    if truncated:
+        content.append(
+            TextPart(
+                text=(
+                    f"\n\n[Output truncated: exceeded {MCP_MAX_OUTPUT_CHARS} character limit. "
+                    "Use pagination or more specific queries to get remaining content.]"
+                )
+            )
+        )
+
     if result.is_error:
         return ToolError(
             output=content,

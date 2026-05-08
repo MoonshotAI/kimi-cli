@@ -35,6 +35,7 @@ import {
 import { FolderOpen, Home, Loader2 } from "lucide-react";
 
 const HOME_DIR_REGEX = /^(\/Users\/[^/]+|\/home\/[^/]+)/;
+const TRAILING_SLASH_REGEX = /\/$/;
 
 type CreateSessionDialogProps = {
   open: boolean;
@@ -114,7 +115,9 @@ export function CreateSessionDialog({
           setCommandValue(startup);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        // Startup dir is optional for this dialog; ignore failures.
+      });
 
     // Work dirs may take longer — update cache when done
     fetchWorkDirs()
@@ -225,7 +228,9 @@ export function CreateSessionDialog({
   const inputMatchesExisting =
     trimmedInput !== "" &&
     workDirs.some(
-      (dir) => dir === trimmedInput || dir === trimmedInput.replace(/\/$/, ""),
+      (dir) =>
+        dir === trimmedInput ||
+        dir === trimmedInput.replace(TRAILING_SLASH_REGEX, ""),
     );
 
   const showCustomPathOption = trimmedInput !== "" && !inputMatchesExisting;

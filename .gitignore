@@ -24,8 +24,14 @@ src/kimi_cli/deps/tmp
 # Web build artifacts
 src/kimi_cli/web/static/assets/
 
+# Vis build artifacts
+src/kimi_cli/vis/static/
+
 # Generated reports
 tests_ai/report.json
+tests_ai/terminal_bench_2_cache/
+jobs/
+tests_ai/accuracy_smoke/*.tsv
 
 # nix build result
 result
@@ -40,3 +46,5 @@ target/
 node_modules/
 static/
 .memo/
+.entire
+.claude

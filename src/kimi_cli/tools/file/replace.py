@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import override
 
@@ -5,13 +6,17 @@ from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
-from kimi_cli.soul.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DisplayBlock
 from kimi_cli.tools.file import FileActions
-from kimi_cli.tools.utils import ToolRejectedError, load_desc
+from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
+from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.diff import build_diff_blocks
-from kimi_cli.utils.path import is_within_directory
+from kimi_cli.utils.logging import logger
+from kimi_cli.utils.path import is_within_workspace
+
+_BASE_DESCRIPTION = load_desc(Path(__file__).parent / "replace.md")
 
 
 class Edit(BaseModel):
@@ -37,19 +42,32 @@ class Params(BaseModel):
 
 class StrReplaceFile(CallableTool2[Params]):
     name: str = "StrReplaceFile"
-    description: str = load_desc(Path(__file__).parent / "replace.md")
+    description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs, approval: Approval):
+    def __init__(self, runtime: Runtime, approval: Approval):
         super().__init__()
-        self._work_dir = builtin_args.KIMI_WORK_DIR
+        self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._additional_dirs = runtime.additional_dirs
         self._approval = approval
+        self._plan_mode_checker: Callable[[], bool] | None = None
+        self._plan_file_path_getter: Callable[[], Path | None] | None = None
+
+    def bind_plan_mode(
+        self, checker: Callable[[], bool], path_getter: Callable[[], Path | None]
+    ) -> None:
+        """Bind plan mode state checker and plan file path getter."""
+        self._plan_mode_checker = checker
+        self._plan_file_path_getter = path_getter
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to edit."""
         resolved_path = path.canonical()
 
-        if not is_within_directory(resolved_path, self._work_dir) and not path.is_absolute():
+        if (
+            not is_within_workspace(resolved_path, self._work_dir, self._additional_dirs)
+            and not path.is_absolute()
+        ):
             return ToolError(
                 message=(
                     f"`{path}` is not an absolute path. "
@@ -81,7 +99,25 @@ class StrReplaceFile(CallableTool2[Params]):
                 return err
             p = p.canonical()
 
+            plan_target = inspect_plan_edit_target(
+                p,
+                plan_mode_checker=self._plan_mode_checker,
+                plan_file_path_getter=self._plan_file_path_getter,
+            )
+            if isinstance(plan_target, ToolError):
+                return plan_target
+
+            is_plan_file_edit = plan_target.is_plan_target
+
             if not await p.exists():
+                if is_plan_file_edit:
+                    return ToolError(
+                        message=(
+                            "The current plan file does not exist yet. "
+                            "Use WriteFile to create it before calling StrReplaceFile."
+                        ),
+                        brief="Plan file not created",
+                    )
                 return ToolError(
                     message=f"`{params.path}` does not exist.",
                     brief="File not found",
@@ -109,24 +145,26 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="No replacements made",
                 )
 
-            diff_blocks: list[DisplayBlock] = list(
-                build_diff_blocks(str(p), original_content, content)
+            diff_blocks: list[DisplayBlock] = await build_diff_blocks(
+                str(p), original_content, content
             )
 
             action = (
                 FileActions.EDIT
-                if is_within_directory(p, self._work_dir)
+                if is_within_workspace(p, self._work_dir, self._additional_dirs)
                 else FileActions.EDIT_OUTSIDE
             )
 
-            # Request approval
-            if not await self._approval.request(
-                self.name,
-                action,
-                f"Edit file `{p}`",
-                display=diff_blocks,
-            ):
-                return ToolRejectedError()
+            # Plan file edits are auto-approved; all other edits need approval.
+            if not is_plan_file_edit:
+                result = await self._approval.request(
+                    self.name,
+                    action,
+                    f"Edit file `{p}`",
+                    display=diff_blocks,
+                )
+                if not result:
+                    return result.rejection_error()
 
             # Write the modified content back to the file
             await p.write_text(content, errors="replace")
@@ -150,6 +188,7 @@ class StrReplaceFile(CallableTool2[Params]):
             )
 
         except Exception as e:
+            logger.warning("StrReplaceFile failed: {path}: {error}", path=params.path, error=e)
             return ToolError(
                 message=f"Failed to edit. Error: {e}",
                 brief="Failed to edit file",

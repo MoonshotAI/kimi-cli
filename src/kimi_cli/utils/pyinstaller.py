@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-hiddenimports = collect_submodules("kimi_cli.tools")
+from kimi_cli.cli._lazy_group import LazySubcommandGroup
+
+lazy_cli_hiddenimports = [
+    module_name
+    for module_name, _attribute_name, _help_text in (LazySubcommandGroup.lazy_subcommands.values())
+]
+
+hiddenimports = collect_submodules("kimi_cli.tools") + lazy_cli_hiddenimports + ["setproctitle"]
 datas = (
     collect_data_files(
         "kimi_cli",
@@ -14,6 +21,7 @@ datas = (
             "skills/**",
             "tools/**/*.md",
             "web/static/**",
+            "vis/static/**",
             "CHANGELOG.md",
         ],
         excludes=[

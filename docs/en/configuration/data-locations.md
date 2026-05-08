@@ -21,7 +21,15 @@ Note: `KIMI_SHARE_DIR` only affects the storage location of the runtime data lis
 │   └── <work-dir-hash>/
 │       └── <session-id>/
 │           ├── context.jsonl
-│           └── wire.jsonl
+│           ├── wire.jsonl
+│           └── state.json
+├── imported_sessions/    # Imported session data (via kimi vis)
+│   └── <session-id>/
+│       ├── context.jsonl
+│       ├── wire.jsonl
+│       └── state.json
+├── plans/                # Plan mode plan files
+│   └── <slug>.md
 ├── user-history/         # Input history
 │   └── <work-dir-hash>.jsonl
 └── logs/                 # Logs
@@ -77,13 +85,47 @@ Session data is grouped by working directory and stored under `~/.kimi/sessions/
 
 ### `context.jsonl`
 
-Context history file, stores the session's message history in JSON Lines (JSONL) format. Each line is a message (user input, model response, tool calls, etc.).
+Context history file, stores the session's full context in JSON Lines (JSONL) format. The first line is a system prompt record (`_system_prompt`), followed by messages (user input, model response, tool calls, etc.) and internal records (checkpoints, token usage, etc.).
+
+The system prompt is generated and frozen at session creation time, and reused on session restore instead of being regenerated.
 
 Kimi Code CLI uses this file to restore session context when using `--continue` or `--session`.
 
 ### `wire.jsonl`
 
 Wire message log file, stores Wire events during the session in JSON Lines (JSONL) format. Used for session replay and extracting session titles.
+
+### `state.json`
+
+Session state file, stores the session's runtime state, including:
+
+- `title`: User-set session title
+- `approval`: Approval decision state (YOLO and AFK mode on/off, auto-approved operation types)
+- `plan_mode`: Plan mode on/off status
+- `plan_session_id`: Unique identifier for the current plan session, used to associate the plan file
+- `plan_slug`: The file path identifier for the plan (the slug in `~/.kimi/plans/<slug>.md`), preserved so restarts resume the same file
+- `subagent_instances`: Subagent instance state and metadata
+- `additional_dirs`: Additional workspace directories added via `--add-dir` or `/add-dir`
+
+When resuming a session, Kimi Code CLI reads this file to restore the session state. This file uses atomic writes to prevent data corruption on crash.
+
+### `subagents/<agent_id>/`
+
+Each subagent instance created via the `Agent` tool has its own storage directory under the session directory, containing:
+
+- `context.jsonl`: Subagent conversation history
+- `wire.jsonl`: Subagent Wire event log
+- `meta.json`: Instance metadata (status, type, creation time, etc.)
+- `prompt.txt`: Last executed prompt
+- `output`: Execution output
+
+When resuming a session, subagent instance context and state are automatically restored, allowing continuation via the `resume` parameter.
+
+## Plan files
+
+Plan mode plan files are stored in the `~/.kimi/plans/` directory. Each plan session corresponds to a randomly named Markdown file (e.g. `<slug>.md`).
+
+The `plan_slug` is saved in `state.json`, so the same plan file is resumed after a process restart. Use `/plan clear` to delete the current plan session's file.
 
 ## Input history
 
@@ -108,6 +150,7 @@ To clean only specific data:
 | Reset configuration | Delete `~/.kimi/config.toml` |
 | Clear all sessions | Delete `~/.kimi/sessions/` directory |
 | Clear sessions for specific working directory | Use `/sessions` in shell mode to view and delete |
+| Clear plan files | Delete `~/.kimi/plans/` directory, or use `/plan clear` in plan mode |
 | Clear input history | Delete `~/.kimi/user-history/` directory |
 | Clear logs | Delete `~/.kimi/logs/` directory |
 | Clear MCP configuration | Delete `~/.kimi/mcp.json` or use `kimi mcp remove` |

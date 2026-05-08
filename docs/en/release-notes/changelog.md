@@ -4,6 +4,351 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.41.0 (2026-04-30)
+
+- Plugin: Support installing plugins directly from a `.zip` URL — `kimi plugin install` now accepts HTTP(S) URLs ending in `.zip` (e.g. GitHub/GitLab archive links like `.../archive/refs/heads/main.zip`) and downloads + extracts them before resolving `plugin.json`, in addition to the existing git URL, local directory, and local zip-file sources
+- Shell: Enable clipboard image paste on headless Linux over SSH — when pyperclip is unavailable (e.g. DISPLAY is not set), Ctrl-V now falls back to xclip or wl-paste so remote clipboard bridges can still inject images; also prevents a UI crash from built-in clipboard shortcuts when pyperclip is broken
+
+## 1.40.0 (2026-04-28)
+
+- Core: Fix `--yolo` mode unintentionally preventing the model from calling `AskUserQuestion` — yolo used to inject a system reminder telling the model it was in "non-interactive mode" and must not ask, and the ask-user tool auto-dismissed in yolo. Both were wrong: yolo only bypasses permission approvals; it does not mean "the user is gone". Yolo no longer injects model guidance, and the user remains reachable through `AskUserQuestion`
+- CLI: Split permission bypass from unattended execution — `--yolo` bypasses permission approvals while the user is still at the terminal, while `--afk` / `/afk` means away-from-keyboard: `AskUserQuestion` is auto-dismissed and approvals are handled automatically. `--print` now uses runtime AFK behavior instead of yolo, matching its non-interactive execution model. The status bar shows `yolo` and `afk` independently, and `/yolo` and `/afk` toggle their own flag without disturbing the other
+- Config: Replace `skip_yolo_prompt_injection` with `skip_afk_prompt_injection` now that yolo no longer injects model guidance. The old config key is ignored if present
+- Shell: Fix `/yolo` toggling producing misleading UI messages when afk is also active — `/yolo` used to read the combined auto-approval state, so pressing it under afk would claim approval was now required even though afk still handled approvals automatically. `/yolo` now reads and writes only the yolo flag, leaving afk alone
+- Web: Fix AI title generation overwriting a manually-set title when the LLM call finishes after the user has already renamed the session — the final write now reloads state and yields to a `title_generated` flag set by another request
+- Web: Surface session rename, archive, unarchive, and title generation failures as toast notifications instead of only logging to the console
+- Web: Keep tool media previews visible when tool details are collapsed — images and videos returned by tools now render below the tool card instead of inside the collapsible detail area, so preview thumbnails remain accessible after collapsing a tool
+- Kosong: Fix stale API key after OAuth token refresh in Kimi provider — `on_retryable_error` now reads the current `api_key` from the live client instead of the cached `_api_key`, so that OAuth token refreshes applied via `client.api_key` are preserved when the client is rebuilt after a retryable error
+- Core: Approval requests no longer auto-timeout after 5 minutes, which previously surfaced as `Rejected by user`; active foreground and subagent approvals now wait indefinitely for user response
+- Shell: Fix `/usage` remaining quota rendering — the progress bar, warning colors, and `% left` label now all use the remaining quota ratio consistently, so high remaining quota shows as green/full and near-exhausted quota shows as yellow or red
+- Shell: Show active background agent task count in the prompt status bar — the existing `⚙ bash: N` badge only counted background Shell tasks and filtered out background Agent subagents, so when many subagents were running the prompt looked idle and users could not tell work was in progress; the toolbar now renders `⚙ bash: N` and `⚙ agent: N` as two independent badges (each hidden when its count is 0) and drops the agent badge first when the terminal is too narrow to fit both
+- Auth: Fix managed model list refresh silently failing for OAuth users with expired tokens — the background `/models` sync now detects 401 responses, forces an OAuth token refresh, and retries with the refreshed token; if the refresh fails or the refreshed token is still rejected, it falls back to the originally configured static API key instead of skipping the provider
+- Core: Fix connection recovery not triggering OAuth refresh when the retry returns 401 — after recreating the HTTP client on `APIConnectionError` or `APITimeoutError`, the retry now re-enters the full recovery path so a subsequent 401 correctly refreshes the OAuth token instead of bubbling to the user as an unrecoverable error
+- Shell: Echo `/skill:*` and `/flow:*` inputs in the transcript so workflow commands stay visible after enter; operational slash commands like `/usage` and `/model` remain hidden
+- Core: Raise default `max_steps_per_turn` from 500 to 1000 so long-running agents are less likely to hit the per-turn limit
+
+## 1.39.0 (2026-04-24)
+
+- Skill: Fix project-scope skills being ignored and user-scope skills silently winning name conflicts — the system prompt now groups discovered skills under `### Project` / `### User` / `### Extra` / `### Built-in` headings so the model can tell where each skill came from, and when the same name exists in multiple scopes the more specific scope wins (Project > User > Extra > Built-in) so a project's own `.kimi/skills/foo` or `.claude/skills/foo` correctly overrides a user-level or bundled `foo` instead of the other way around
+- Skill: Accept single-file `<name>.md` skills alongside the canonical `<name>/SKILL.md` subdirectory layout — useful when migrating a flat markdown collection into a skills directory; `name` defaults to the filename stem (frontmatter `name:` still wins if set), description follows the same three-step chain as subdirectory skills (frontmatter `description:` → first non-empty body line, capped at 240 characters → `"No description provided."` placeholder), and if a flat and a subdirectory skill share a name in the same directory the subdirectory wins with a warning
+- Skill: Add `extra_skill_dirs` config field for pulling in custom skill directories on top of the built-in / user / project auto-discovery — each entry may be an absolute path, a `~`-prefixed path (expanded against `$HOME`), or a path relative to the project root (the nearest `.git` ancestor of the work directory, not the current working directory); non-existent entries are silently skipped and symlink/trailing-slash duplicates canonicalize to a single root so a path listed twice or aliased to an already-discovered directory does not render twice in the system prompt
+- Skill: Harden discovery against `OSError` from `is_dir` / `iterdir` (for example when an `extra_skill_dirs` entry points at a directory with restricted permissions) — affected entries are logged and skipped instead of aborting the whole skill-discovery pass
+- Core: Fix DeepSeek V4 (and other OpenAI-compatible thinking-mode backends) returning 400 `The reasoning_content in the thinking mode must be passed back to the API` when a tool call follows a reasoning turn — `openai_legacy` providers now default `reasoning_key` to `"reasoning_content"` so the response's reasoning is stored in history and round-tripped automatically on subsequent turns. An optional `reasoning_key` field is also added to `LLMProvider` to override the field name (e.g. `"reasoning"` for non-standard gateways) or disable round-tripping entirely by setting it to `""`
+- Core: Add `skip_yolo_prompt_injection` config option to suppress the system reminder normally injected when yolo mode is active — useful when building custom applications on top of `KimiSoul` that do not need the non-interactive mode hint
+- Kimi: Add `KIMI_MODEL_THINKING_KEEP` environment variable that forwards its value verbatim to the Moonshot API as `thinking.keep`, enabling Preserved Thinking (e.g. `export KIMI_MODEL_THINKING_KEEP=all` to retain historical `reasoning_content` across turns); effective only for Moonshot models supporting Preserved Thinking (e.g. `kimi-k2.6` / `kimi-k2-thinking`), unset or empty string preserves the previous behavior and omits the field, and the override only applies when the current model is actually in thinking mode so the API never receives a `thinking.keep` without the companion `thinking.type`. Note that `keep=all` increases input tokens and API cost because history reasoning is resent
+- Kosong: Fix `Kimi.with_extra_body` silently dropping previously set `thinking.type` when a later call added another `thinking.*` field — the `thinking` sub-dict is now merged field-by-field instead of shallow-replaced, so composing `with_thinking(...)` with `with_extra_body({"thinking": {...}})` preserves both contributions
+- Kosong: Fix Kimi provider sending empty `content` alongside `tool_calls`, which caused 400 "text content is empty" errors from the Moonshot API. When an assistant message has tool calls and its visible content is effectively empty (no text or only whitespace/think parts), the `content` field is now omitted entirely
+- Shell: Fix approval request feedback text cursor rendering — the block cursor now correctly renders at the actual cursor position instead of always being pinned to the end of the line; when the cursor is in the middle of the text, the character under the cursor is drawn with reverse video (mimicking a terminal's native block cursor)
+- Kosong: Fix Moonshot 400 `At path 'properties.X': type is not defined` when an MCP server exposes tools whose parameter schemas have enum-only or otherwise type-less properties (seen with the JetBrains Rider MCP's `truncateMode`) — the Kimi provider now patches each tool's schema in-flight to fill in a JSON Schema `type` (inferred from `enum`/`const` values when possible, else defaulted to `"string"`), so the whole session no longer fails every request with a schema validation error; OpenAI and Anthropic paths are unaffected
+- Skill: Project-scope skill discovery now walks up to the nearest `.git` ancestor before looking for `.kimi/skills` / `.claude/skills` / `.codex/skills` / `.agents/skills`, so skills defined at the repository root are picked up even when kimi-cli is launched from a subdirectory (for example inside a monorepo package). Falls back to the work directory itself when no `.git` marker is found, so we never walk up into an unrelated parent tree.
+- Skill: Change the default of `merge_all_available_skills` from `false` to `true`. kimi-cli now merges all existing user- and project-level brand skill directories (`.kimi/skills`, `.claude/skills`, `.codex/skills`) by default instead of only using the first one found, so users who keep skills in multiple brand directories — for example both `~/.kimi/skills` and `~/.claude/skills` — see every skill out of the box. **Behavior change**: users who previously relied on the first-match default can restore it by setting `merge_all_available_skills = false` in their config.
+
+## 1.38.0 (2026-04-22)
+- Shell: Fix `Rejected by user` misleading message when an approval modal times out — after the 300s safety timeout, the tool call now rejects with `Rejected: approval timed out`, so users returning to their session after stepping away can tell the rejection was a timeout rather than a manual rejection. Pass `--yolo`/`-y` to auto-approve tool calls if you regularly leave sessions unattended
+- Auth: Fix OAuth users being forced to `/login` again after an unrelated refresh-token rotation race — when a concurrently-running kimi-cli instance (terminal, VS Code extension, or `kimi -p` one-shot) legitimately rotated the refresh token, the current instance's now-stale refresh request would come back with a 401, and a TOCTOU window between the "did another instance rotate?" disk check and the `delete_tokens` call could wipe the credentials file even though a valid rotated token was about to be written to it; the in-memory cache is still cleared so truly revoked tokens surface on the next request, but the file is preserved so a concurrent instance's freshly-rotated token can be recovered, and an eventual `/login` still overwrites it atomically
+- Kosong: Fix parallel tool results being split into multiple user messages in Anthropic provider — consecutive tool-result-only user messages are now merged into a single message, complying with the Anthropic Messages API spec that all `tool_use` blocks in an assistant turn must be answered within one user message; this fixes 400 errors on strict Anthropic-compatible backends (e.g. DeepSeek `/anthropic` endpoint) and prevents the official backend from silently teaching the model to avoid parallel tool calls
+
+## 1.37.0 (2026-04-20)
+
+- Print: Wait for background tasks before exiting — in one-shot `--print` mode, the process now waits for running background agents to finish and lets the model process their results, instead of exiting and killing them. The wait is capped at `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)` (default ceiling 1h); on timeout the tasks are killed and the model gets one more turn via a `<system-reminder>` to summarise before exit
+- Shell/Print: On exit the CLI now lists each background task being killed (id + description) on stderr and waits out the configured grace period before reporting any tasks that have not reached terminal state (split into "still terminating" for workers mid-shutdown vs "stop request failed" for genuinely leaking tasks); `keep_alive_on_exit=true` still skips the entire path
+- Auth: Auto-refresh the managed model list at startup for OAuth-logged-in users — the CLI now fetches the latest models from the provider's `/models` endpoint as a background task when the shell launches, so newly released models become available without needing to log out and log back in; failures are silent and never block startup, and custom `--config` sessions keep their previous behavior
+- Shell: Show the provider-supplied `display_name` (e.g. `k2.6-code-preview`) for managed models across the welcome panel, prompt status bar, `/model` picker, and `/model` switch confirmation messages; when the backend does not return one, the CLI falls back to the internal model ID as before
+
+## 1.36.0 (2026-04-17)
+
+- Anthropic: Fix Claude Opus 4.7 returning `invalid_request_error` — Opus 4.7 (which rejects the legacy `{type: "enabled", budget_tokens: N}` thinking config) now correctly uses adaptive thinking, and the client explicitly sets `display: "summarized"` so thinking content still streams back (Opus 4.7 silently changed the default to `"omitted"`); Bedrock/Vertex name variants (e.g., `aws/claude-opus-4-7`, `anthropic.claude-opus-4-7-v1:0`) and `claude-mythos-preview` are also recognised, and future Claude versions ≥ 4.6 are detected automatically via version extrapolation instead of hard-coded substring matching
+- Web: Fix markdown rendering spacing in the web UI — restore proper vertical spacing between paragraphs, lists, code blocks, blockquotes, and headings instead of collapsing all margins to zero
+- Shell: Fix missing loading indicator during active turns — the moon spinner now shows as a fallback whenever the model is working but no other indicator is visible, covering gaps after tool calls finish, between turn start and first step, and when an empty thinking block arrives from the provider
+- Core: Increase default `max_steps_per_turn` from 100 to 500 to allow longer uninterrupted agent runs out of the box
+- Web: Fix unresponsive copy, download, and preview buttons on rendered code blocks
+
+## 1.35.0 (2026-04-15)
+
+- Shell: Flip `show_thinking_stream` default to `true` so fresh installs see the streaming reasoning preview out of the box; set it to `false` in your config to keep the compact 1.32 indicator
+- Web: Prevent stream watchdog from reconnecting during pending approval or question — the 45-second inactivity watchdog no longer triggers a reconnect while the user is actively handling an approval request or answering a question, preventing interrupted interactions
+- Web: Fix session recovery after stream errors — when a session process exits or hits a read-loop error, stale in-flight prompt IDs are now cleared before broadcasting the error, allowing the frontend to send new messages instead of getting "Session is busy"; the activity status indicator also surfaces the actual error message from the stream
+- Core: Fix Wire server prompt handler leaving sessions stuck busy on uncaught exceptions — SSL errors, connection errors, and other unexpected failures are now caught by a fallback handler and returned as `INTERNAL_ERROR`, allowing the session to recover instead of hanging indefinitely
+
+## 1.34.0 (2026-04-14)
+
+- Core: Fix CLI crash on `TaskStop` — stopping a stuck background agent no longer prints `Unhandled exception in event loop / Exception None` and freezes the terminal; the cancelled task is now kept in the manager's live-tasks dict until its runner finishes cleaning up, preventing Python's GC from reaping the still-pending task
+- Shell: Fix inline diff highlights misaligned on lines containing tabs — raw-code diff offsets are now mapped to rendered positions via expandtabs column tracking so highlight spans land correctly after tab expansion
+- Shell: Add `show_thinking_stream` config option to opt back into the legacy streaming reasoning preview — when set to `true`, the live area shows the classic `Thinking...` spinner above a 6-line scrolling preview of the raw reasoning text and the full reasoning markdown is committed to history when the block ends; defaults to `false` to keep the compact 1.32 indicator
+
+## 1.33.0 (2026-04-13)
+
+- Shell: Unify managed model display as "Kimi for Code" and drop hardcoded `kimi-k2.5` version references from the welcome screen and `/login` tip
+
+## 1.32.0 (2026-04-13)
+
+- Core: Truncate MCP tool output to 100K characters to prevent context overflow — all content types (text and inline media such as image/audio/video data URLs) share a single character budget; tools like Playwright that return full DOMs (500KB+) or large base64 screenshots are now capped with a truncation notice; oversized media parts are dropped; unsupported MCP content types are gracefully handled instead of crashing the turn
+- CLI: Fix PyInstaller binary missing lazy CLI subcommands — `kimi info`, `kimi export`, `kimi mcp`, `kimi plugin`, `kimi vis`, and `kimi web` now work correctly in the standalone binary distribution
+- Shell: Streamline the thinking indicator into a compact single-line layout — shows a `Thinking` label with animated dots, elapsed time, token count, and a live tokens/second pulse; finalises with a `Thought for Xs · N tokens` trace in history
+
+## 1.31.0 (2026-04-10)
+
+- Core: Cap `list_directory` output as a depth-limited tree to prevent token-limit blowup in large directories — replaces the unbounded flat listing with a 2-level tree (root: 30 entries, child: 10 per subdirectory), dirs-first alphabetical sorting, and `"... and N more"` truncation hints so the model knows to explore further (fixes #1809)
+- Shell: Add blocking update gate on interactive shell startup — when a newer version is detected (from the existing background check cache), a blocking prompt appears before the shell loads, offering `[Enter]` to upgrade immediately, `[q]` to continue and be reminded next time, or `[s]` to skip reminders for that version; respects the `KIMI_CLI_NO_AUTO_UPDATE` environment variable; replaces the previous repeating toast notification for available updates
+- Auth: Harden OAuth token refresh to prevent unnecessary re-login — 401 errors now trigger automatic token refresh and retry instead of forcing `/login`; multiple simultaneous CLI instances coordinate refresh via a cross-process file lock to avoid race conditions; token persistence uses atomic writes with `fsync` to prevent corruption; adds dynamic refresh threshold, 5xx retry during token refresh, and proper token revocation cleanup
+- Core: Fix agent loop silently stopping when model response contains only thinking content — detect think-only responses (reasoning content with no text or tool calls) as an incomplete response error and retry automatically
+- Core: Fix crash on streaming mid-flight network disconnection — when the OpenAI SDK raises a base `APIError` (instead of `APIConnectionError`) during long-running streams, the error is now correctly classified as retryable, enabling automatic retry and connection recovery instead of an unrecoverable crash
+- Shell: Exclude empty current session from `/sessions` picker — completely empty sessions (no conversation history and no custom title) are no longer shown in the session list; sessions with a custom title are still displayed
+- Shell: Fix slash command completion Enter key behavior — accepting a completion now submits in a single Enter press; auto-submit is limited to slash command completions only; file mention completions (`@`) accept without submitting so the user can continue editing; re-completion after accepting is suppressed to prevent stale completion state
+- Shell: Add directory scope toggle to `/sessions` picker — press `Ctrl+A` to switch between showing sessions for the current working directory only or across all known directories; uses a new full-screen session picker UI with header scope indicator and footer hint bar
+- Shell: Add `/btw` side question command — ask a quick question during streaming without interrupting the main conversation; uses the same system prompt and tool definitions for prompt cache alignment; responses display in a scrollable modal panel with streaming support
+- Shell: Redesign bottom dynamic area — split the monolithic `visualize.py` (1865 lines) into a modular package (`visualize/`) with dedicated modules for input routing, interactive prompts, approval/question panels, and btw modal; unify input semantics with `classify_input()` for consistent command routing
+- Shell: Add queue and steer dual-channel input during streaming — Enter queues messages for delivery after the current turn; Ctrl+S injects messages immediately into the running turn's context; queued messages display in the prompt area with count indicator and can be recalled with ↑
+- Shell: Add `BtwBegin`/`BtwEnd` wire events for cross-client side question support
+- Shell: Improve elapsed time formatting in spinners — durations over 60 seconds now display as `"1m 23s"` instead of `"83s"`; sub-second durations show `"<1s"`
+- Shell: Fix Rich markup injection in btw panel — user questions containing `[`/`]` characters are now escaped to prevent broken rendering or style injection in spinner text and panel titles
+- Core: Improve error diagnostics — enrich internal logging coverage, include relevant log files and system manifest in `kimi export` archives, and surface actionable error messages for common failures (auth, network, timeout, quota)
+- Shell: Gracefully exit with crash report when working directory becomes inaccessible during session — detects CWD loss (external drive unplugged, directory deleted, or filesystem unmounted) and prints a session recovery panel with session ID and work directory before exiting cleanly
+- Shell: Use `git ls-files` for `@` file mention discovery — file completer now queries `git ls-files --recurse-submodules` with a 5-second timeout as the primary discovery mechanism, falling back to `os.walk` for non-git repositories; this fixes large repositories (e.g., apache/superset with 65k+ files) where the 1000-file limit caused late-alphabetical directories to be unreachable (fixes #1375)
+- Core: Add shared `file_filter` module — unifies file mention logic between shell and web UIs via `src/kimi_cli/utils/file_filter.py`, providing consistent path filtering, ignored directory exclusion, and git-aware file discovery
+- Shell: Prevent path traversal in file mention scope parameter — the `scope` parameter in file completer requests is now validated to prevent directory traversal attacks
+- Web: Restore unfiltered directory listing in file browser API — file browser endpoint no longer applies git-aware filtering, ensuring all files are visible in the web UI file picker
+- Todo: Refactor SetTodoList to persist state and prevent tool call storms — todos are now persisted to session state (root agent) and independent state files (sub-agents); adds query mode (omit `todos` to read current state) and clear mode (pass `[]`); includes anti-storm guidance in tool description to prevent repeated calls without progress (fixes #1710)
+- ReadFile: Add total line count to every read response and support negative `line_offset` for tail mode — the tool now reports `Total lines in file: N.` in its message so the model can plan subsequent reads; negative `line_offset` (e.g. `-100`) reads the last N lines using a sliding window, useful for viewing recent log output without shell commands; the absolute value is capped at 1000 (MAX_LINES)
+- Shell: Fix black background on inline code and code blocks in Markdown rendering — `NEUTRAL_MARKDOWN_THEME` now overrides all Rich default `markdown.*` styles to `"none"`, preventing Rich's built-in `"cyan on black"` from leaking through on non-black terminals
+
+## 1.30.0 (2026-04-02)
+
+- Shell: Refine idle background completion auto-trigger — resumed shell sessions no longer auto-start a foreground turn from stale pending background notifications before the user sends a message, and fresh background completions now wait briefly while the user is actively typing to avoid stealing the prompt or breaking CJK IME composition
+- Core: Fix interrupted foreground turns leaving unbalanced wire events — `TurnEnd` is now emitted even when a turn exits via cancellation or step interruption, preventing dirty session wire logs from accumulating across resume cycles
+- Core: Improve session startup resilience — `--continue`/`--resume` now tolerate malformed `context.jsonl` records and corrupted subagent, background-task, or notification artifacts; the CLI skips invalid persisted state where possible instead of failing to restore the session
+- CLI: Improve `kimi export` session export UX — `kimi export` now previews the previous session for the current working directory and asks for confirmation, showing the session ID, title, and last user-message time; adds `--yes` to skip confirmation; also fixes explicit session-ID invocations where `--output` after the argument was incorrectly parsed as a subcommand
+- Grep: Add `include_ignored` parameter to search files excluded by `.gitignore` — when set to `true`, ripgrep's `--no-ignore` flag is enabled, allowing searches in gitignored artifacts such as build outputs or `node_modules`; sensitive files (like `.env`) remain filtered by the sensitive-file protection layer; defaults to `false` to preserve existing behavior
+- Core: Add sensitive file protection to Grep and Read tools — `.env`, SSH private keys (`id_rsa`, `id_ed25519`, `id_ecdsa`), and cloud credentials (`.aws/credentials`, `.gcp/credentials`) are now detected and blocked; Grep filters them from results with a warning, Read rejects them outright; `.env.example`/`.env.sample`/`.env.template` are exempted
+- Core: Fix parallel foreground subagent approval requests hanging the session — in interactive shell mode, `_set_active_approval_sink` no longer flushes pending approval requests to the live view sink (which cannot render approval modals); requests stay in the pending queue for the prompt modal path; also adds a 300-second timeout to `wait_for_response` so that any unresolved approval request eventually raises `ApprovalCancelledError` instead of hanging forever
+- CLI: Add `--session`/`--resume` (`-S`/`-r`) flag to resume sessions — without an argument opens an interactive session picker (shell UI only); with a session ID resumes that specific session; replaces the reverted `--pick-session`/`--list-sessions` design with a unified optional-value flag
+- CLI: Add CJK-safe `shorten()` utility — replaces all `textwrap.shorten` calls so that CJK text without spaces is truncated gracefully instead of collapsing to just the placeholder
+- Core: Fix skills in brand directories (e.g. `~/.kimi/skills/`) silently disappearing when a generic directory (`~/.config/agents/skills/`) exists but is empty — skill directory discovery now searches brand and generic directory groups independently and merges both results, instead of stopping at the first existing directory across all candidates
+- Core: Add `merge_all_available_skills` config option — when enabled, skills from all existing brand directories (`~/.kimi/skills/`, `~/.claude/skills/`, `~/.codex/skills/`) are loaded and merged instead of using only the first one found; same-name skills follow priority order kimi > claude > codex; disabled by default
+- CLI: Add `--plan` flag and `default_plan_mode` config option — start new sessions in plan mode via `kimi --plan` or by setting `default_plan_mode = true` in `~/.kimi/config.toml`; resumed sessions preserve their existing plan mode state
+- Shell: Add `/undo` and `/fork` commands for session forking — `/undo` lets you pick a previous turn and fork a new session with the selected message pre-filled for re-editing; `/fork` duplicates the entire session history into a new session; the original session is always preserved
+- CLI: Add `-r` as a short alias for `--session` and print a resume hint (`kimi -r <session-id>`) whenever a session exits — covers normal exit, Ctrl-C, `/undo`, `/fork`, and `/sessions` switch so users can always find their way back
+- Core: Fix `custom_headers` not being passed to non-Kimi providers — OpenAI, Anthropic, Google GenAI, and Vertex AI providers now correctly forward custom headers configured in `providers.*.custom_headers`
+
+## 1.29.0 (2026-04-01)
+
+- Core: Support hierarchical `AGENTS.md` loading — the CLI now discovers and merges `AGENTS.md` files from the git project root down to the working directory, including `.kimi/AGENTS.md` at each level; deeper files take priority under a 32 KiB budget cap, ensuring the most specific instructions are never truncated
+- Core: Fix empty sessions lingering on disk after exit — sessions created but never used are now cleaned up on all exit paths (failure exit, session switch, unexpected errors), not just on successful exit
+- Shell: Add `KIMI_CLI_PASTE_CHAR_THRESHOLD` and `KIMI_CLI_PASTE_LINE_THRESHOLD` environment variables to control when pasted text is folded into a placeholder — lowering these thresholds works around CJK input method breakage after multiline paste on some terminals (e.g., XShell over SSH)
+- Shell: Fix diff panel rendering corruption on terminals without truecolor support (e.g. Xshell) — `render_to_ansi` no longer hardcodes 24-bit color; Rich now auto-detects terminal capability via `COLORTERM`/`TERM` environment variables
+- Web: Fix white screen after CLI upgrade caused by browser caching stale `index.html` — the server now returns `Cache-Control: no-cache` for HTML and `immutable` for hashed assets, preventing 404s on renamed chunks
+- Core: Fix file write converting LF to CRLF on Windows — `writetext` now opens files with `newline=""` to prevent Python's universal newline translation from silently converting `\n` to `\r\n`
+- Core: Support `socks://` proxy scheme — proxy tools like V2RayN set `ALL_PROXY=socks://...` which httpx/aiohttp don't recognise; the CLI now normalises `socks://` to `socks5://` at startup so all HTTP clients and subprocesses work correctly behind a SOCKS proxy
+- Shell: Add `/title` (alias `/rename`) command to manually set session titles — titles are now stored in `state.json` alongside other session state; legacy `metadata.json` is automatically migrated on first load
+- Shell: Fix garbled pager output when `MANPAGER` is set (e.g. `bat`) — the console pager now ignores `MANPAGER` and delegates to `pydoc.pager()`, preserving `PAGER` and all platform-specific fallbacks
+- Explore: Enhance explore agent with specialist role, thoroughness levels, and automatic environment context — explore agents now gather repository environment information at launch to improve investigation quality; the main agent is guided to prefer explore for codebase research and plan mode encourages explore-first investigation
+- Shell: Fix tool call display showing raw OSC 8 escape bytes (e.g. `8;id=391551;https://…`) instead of clean text — hyperlink sequences are now wrapped as zero-width escapes for prompt_toolkit compatibility, preserving clickable links in supported terminals
+- Core: Add OS and shell information to the system prompt — the model now knows which platform it is running on and receives a Windows-specific instruction to prefer built-in tools over Shell commands, preventing Linux command errors in PowerShell
+- Shell: Fix `command` parameter description saying "bash command" regardless of platform — the description is now platform-neutral
+- Web: Fix auto-title overwriting manual session rename — when a user renames a session through the web UI, the new title is now preserved and no longer replaced by the auto-generated title
+## 1.28.0 (2026-03-30)
+
+- Core: Fix file write/replace tools freezing the event loop — diff computation (`build_diff_blocks`) is now offloaded to a thread via `asyncio.to_thread`, preventing the UI from hanging when editing large files
+- Shell: Fix `_watch_root_wire_hub` silently dying on handler exceptions — the watcher now catches and logs exceptions (matching the pattern in `wire/server.py`) and handles `QueueShutDown` gracefully, preventing approval flow from silently breaking mid-session
+- Core: Skip O(n²) diff computation for huge files (>10 000 lines) — files above the threshold now show a summary block instead of computing a full diff, and unchanged files short-circuit immediately
+- Wire: Add `is_summary` field to `DiffDisplayBlock` (Wire 1.8) — marks diff blocks that contain a line-count summary instead of actual diff content, allowing clients to render them appropriately
+- Web: Render large-file diff summaries — when a diff block is marked `is_summary`, the web UI shows a compact "File too large for inline diff" notice with line counts instead of attempting to compute a diff
+- Auth: Fix OAuth users getting "incorrect API KEY" when running skills or after idle — 401 errors now show a clear "please /login" message instead of the raw API error; the ACP layer correctly triggers re-login flow for VS Code extension users
+- Web: Fix session title generation always failing for OAuth users — the title generator now uses OAuth tokens and refreshes them before calling the model
+- Core: Add timeout protection for Agent tool and HTTP requests — all `aiohttp` sessions now default to 120 s total / 60 s read timeout; the Agent tool gains an optional `timeout` parameter (foreground default 10 min, background default 15 min); background agent tasks are marked `timed_out` on expiry with proper notification semantics
+- Grep: Fix tool hanging and becoming uninterruptible — replaced blocking `ripgrepy.run()` with async subprocess execution; the tool now responds to Ctrl-C immediately and has a 20-second timeout with partial result return
+- Grep: Add token efficiency improvements — default `head_limit` of 250 with `offset` pagination, `--hidden` search with VCS directory exclusion, `files_with_matches` sorted by modification time, relative path output, and `--max-columns 500` for non-content modes
+- Grep: `line_number` (`-n`) now defaults to `true` in content mode — line numbers are included by default so the model can reference precise code locations
+- Grep: `count_matches` mode now includes a summary in the message — e.g. "Found 30 total occurrences across 10 files."
+- ACP: Fix `ValueError: list.index(x): x not in list` crash when ACP is launched via `kimi-code` or `kimi-cli` entry-points (e.g. JetBrains AI Assistant)
+- Core: Fix OpenAI-compatible APIs (e.g. One API) returning 400 errors in multi-turn conversations when the server returns `reasoning_content` by default — `reasoning_effort` is now auto-set to `"medium"` when history contains thinking content and `reasoning_key` is configured
+- Shell: Add `/theme` command and dark/light theme support — users with light terminal backgrounds can now switch to a light color palette via `/theme light` or `theme = "light"` in `config.toml`; diff highlights, task browser, prompt UI, and MCP status colors all adapt to the selected theme
+- Core: Fix context overflow before compaction — tool result tokens are now estimated and included in the auto-compaction trigger check, preventing "exceeded model token limit" errors when large tool outputs push the context beyond the model limit between API calls
+- Core: Add hooks system (Beta) — configure `[[hooks]]` in `config.toml` to run custom shell commands at 13 lifecycle events including `PreToolUse`, `PostToolUse`, `SessionStart`, `Stop`, etc.; supports regex matching, timeout handling, and blocking operations via exit code 2
+- Shell: Add `/hooks` command — list all configured hooks with event counts
+- Wire: Add `HookTriggered` and `HookResolved` event types (Wire 1.7) — notify clients when hooks start and finish executing, including event type, target, action (allow/block), and duration
+- Wire: Add `HookRequest` and `HookResponse` message types — allow wire clients to subscribe to hook events and provide their own handling logic with allow/block decisions
+- CLI: `--skills-dir` now supports multiple directories and overrides default discovery — when specified, the directories replace user/project skills discovery (repeatable flag)
+- Shell: Fix notification messages leaking into session replay and export — background task notification tags (`<notification>`, `<task-notification>`) are now filtered out when resuming a session (`/sessions`) and when exporting (`/export`) or importing (`/import`) conversation history
+- Web: The "Open" button in the workspace header now remembers the last-used application — clicking "Open" directly opens with the previous choice, while the dropdown arrow lets you pick a different app
+- Web: Fix archived sessions count badge showing only the loaded page size — the badge now displays "100+" when more archived sessions exist beyond the first page
+- Shell: Fix pasted text placeholders not expanded in modal answers — clipboard content pasted into approval or question panels is now correctly interpolated before being sent to the model
+- Vis: Add `--network / -n` flag — launch the visualizer on all network interfaces with auto-detected LAN IP display, matching `kimi web` behavior
+- Vis: Add `/vis` slash command — switch from the interactive shell to the tracing visualizer in one step, mirroring the existing `/web` command
+- Vis: Improve session list performance — async backend scanning, request concurrency limiting, and infinite-scroll pagination prevent browser freezes on large session stores
+- Vis: Add 7 missing wire event types — `SteerInput`, `MCPLoadingBegin/End`, `Notification`, `PlanDisplay`, `ToolCallRequest`, and `QuestionRequest` now display with proper colors and summaries
+- Vis: Show token and cache details in StatusUpdate — each status update now displays context token count, max tokens, input token breakdown with cache hit rate, and MCP connection status
+- Vis: Show structured tool call summaries — `ReadFile`, `Shell`, `Glob`, `Grep`, `Agent`, and other tool calls display file paths, commands, or patterns inline instead of just the function name
+- Vis: Add System Prompt card in Context Messages — the `_system_prompt` entry is rendered as a dedicated blue card showing estimated token count and expandable full content
+- Vis: Show cache hit rate in session header — the stats bar now displays overall cache efficiency (e.g., `89% cache`) alongside token counts
+- Vis: Highlight slow operations — time deltas exceeding 10 s appear in amber and those exceeding 60 s in red, making performance bottlenecks immediately visible
+- Vis: Prefer human-readable `message` field in ToolResult summaries — results now show descriptive text like "Command executed successfully" instead of raw output
+- Vis: Show approval rejection feedback — `ApprovalResponse` summaries include the user's correction text when a tool call is rejected
+
+## 1.27.0 (2026-03-28)
+
+- Shell: Add `/feedback` command — submit feedback directly from the CLI session; the command falls back to opening GitHub Issues on network errors or timeouts
+- Shell: Redesign diff rendering for tool results — file diffs now display with line numbers, background colors (green/red), syntax highlighting, and inline word-level change markers; approval previews show only changed lines for a compact view; Ctrl-E pager uses the same unified style
+- Shell: Update syntax highlighting theme — replace the magenta-heavy color scheme with a more balanced palette mapped to ANSI colors for terminal compatibility; improved color diversity and readability across dark and light terminal backgrounds
+- Shell: Fix approval panel not visible when multiple subagents are running — approval and question panels are now rendered at the top of the live view, ensuring they remain visible even when tool-call output exceeds the terminal height
+- CLI: Fix `--print` mode returning exit code 0 on errors — print mode now exits with code 1 for permanent failures (auth errors, invalid config, etc.) and code 75 for retryable failures (429 rate limit, 5xx server errors, connection timeouts), enabling CI/eval runners to detect failures and decide whether to retry
+- Plan: Display plan content inline in the chat instead of hiding behind a pager — plans are now rendered as a bordered panel directly in the conversation history, with the plan file path shown for reference
+- Plan: Add "Reject and Exit" option to plan approval — users can now reject a plan and exit plan mode in one step, in addition to the existing Approve, Revise, and Reject options
+- Wire: Add `PlanDisplay` event type (Wire 1.7) — carries plan content and file path for inline rendering by clients
+- Shell: Stream markdown output incrementally — completed markdown blocks (paragraphs, lists, code fences, tables) are now rendered and printed to the terminal as they arrive during streaming, instead of being buffered until the turn ends
+- Shell: Show elapsed time and estimated token count on thinking/composing spinners — the spinner now displays `Thinking... 5s · 312 tokens` with a live-updating counter during generation
+- Shell: Add scrolling preview for thinking content — the last 6 lines of the model's thinking process are shown in real time as a grey italic preview beneath the spinner
+- Shell: Reduce prompt input area reserved space from 10 to 6 lines
+- Glob: Allow `Glob` tool to access skills directories — the tool can now search within discovered skill roots in addition to the workspace
+- Glob: Expand `~` in directory path before validation — the Glob tool now resolves the tilde to the user's home directory before checking path validity
+
+## 1.26.0 (2026-03-25)
+
+- Kosong: Fix Google GenAI provider sending `id` in `FunctionCall`/`FunctionResponse` parts — Gemini API returns HTTP 400 when `id` is included; remove the field from wire format while keeping internal `tool_call_id` tracking unchanged
+- Core: Fix MCP server stderr pollution — stderr redirection is now installed before MCP servers start, so subprocess logs (e.g., OAuth debug output from `mcp-remote`) are captured into the log file instead of being printed to the terminal
+- Shell: Fix subprocess hang on interactive prompts — the `Shell` tool now closes stdin immediately and sets `GIT_TERMINAL_PROMPT=0` so commands that require credentials (e.g. `git push` over HTTPS) fail fast instead of blocking until timeout
+- Core: Fix JSON parsing error when LLM tool call arguments contain unescaped control characters — use `json.loads(strict=False)` across all LLM output parsing paths to prevent tool execution failure and session corruption
+- Shell: Auto-trigger agent when background tasks complete while idle — the shell now detects when a background bash command or agent task finishes and automatically starts a new agent turn to process the results, instead of waiting for the user to type something
+- Core: Fix `QuestionRequest` hanging in print mode — `AskUserQuestion`, `EnterPlanMode`, and `ExitPlanMode` now auto-resolve when running in non-interactive (yolo) mode, preventing indefinite tool call hangs in `--print` sessions
+- Core: Fix background agent task output not visible until completion — `/task` browser and `TaskOutput` tool now show real-time output while background agent tasks are running, by tee-writing to the task log during execution instead of copying on completion
+- Core: Strengthen system prompt to encourage tool use for coding tasks — the agent now defaults to taking action with tools instead of outputting code as plain text
+- Core: Retry `httpx.ProtocolError` and `504 Gateway Timeout` during generation — streaming protocol disconnects and transient 504 responses now follow the existing retry path instead of aborting the turn immediately on unstable networks
+- Kosong: Fix `httpx.ReadTimeout` leaking through Anthropic provider during streaming — the exception now correctly converts to `APITimeoutError`, enabling retry logic that was previously bypassed
+
+## 1.25.0 (2026-03-23)
+
+- Core: Add plugin system (Skills + Tools) — plugins extend Kimi Code CLI with custom tools packaged as `plugin.json`; tools are commands that run in isolated subprocesses and return their stdout to the agent; plugins support automatic credential injection via `inject` configuration
+- Core: Support multi-plugin repositories — `kimi plugin install` accepts git URLs with subpath to install a specific plugin from a monorepo (e.g., `https://github.com/org/repo.git/plugins/my-plugin`); when no subpath is provided and no root `plugin.json` exists, the CLI lists available plugins in immediate subdirectories
+- Core: Unify plugin credential injection — plugins can declare `inject` fields in `plugin.json` to receive `api_key` and `base_url` from the host's configured LLM provider; works with both OAuth-managed tokens and static API keys
+- Core: Add `Agent` tool for subagent delegation — the agent can now spawn persistent subagent instances with three built-in types (`coder`, `explore`, `plan`) to handle focused subtasks; each instance maintains its own context history within the session and can run in foreground or background with automatic result summarization
+- Core: Unified approval runtime — approval requests from both foreground tool calls and background subagents are now coordinated through a single runtime and surfaced through the root UI channel; rejection responses can include feedback text to guide the model's next attempt
+- Shell: Add interactive approval request panel — a new inline panel displays tool call details (diffs, shell commands) with options to approve once, approve for session, reject, or reject with written feedback to instruct the model on what to do instead
+- Wire: Bump protocol version to 1.6 — `SubagentEvent` now includes `agent_id`, `subagent_type`, and `parent_tool_call_id` fields; `ApprovalRequest` includes source metadata (`source_kind`, `source_id`); `ApprovalResponse` supports a `feedback` field
+- Vis: Add agents panel — new "Agents" tab in `kimi vis` to inspect subagent instances, view their events, and filter the wire timeline by agent scope
+- Core: Change `TaskOutput` `block` parameter default from `true` to `false` — `TaskOutput` now returns a non-blocking status/output snapshot by default; set `block=true` only when you intentionally want to wait for task completion
+- Shell: Show the current working directory, git branch, dirty state, and ahead/behind sync status directly in the prompt toolbar
+- Shell: Surface active background bash task counts in the toolbar, rotate shortcut tips on a timer, and gracefully truncate the toolbar on narrow terminals to avoid overflow
+- Web: Fix tool execution status synchronization on cancel and approval — tools now correctly transition to `output-denied` state when generation is stopped, and show the loading spinner (instead of checkmark) while executing after approval
+- Web: Dismiss stale approval and question dialogs on session replay — when replaying a session or when the backend reports idle/stopped/error status, any pending approval/question dialogs are now properly dismissed to prevent orphaned interactive elements
+- Web: Enable inline math formula rendering — single-dollar inline math (`$...$`) is now supported in addition to block math (`$$...$$`)
+- Web: Improve Switch toggle proportions and alignment — the toggle track is now larger (36×20) with a consistent 16px thumb and smoother 16px travel animation
+- Web: Show subagent type labels in activity panels — subagent activities now display their type (e.g. "Coder agent working") instead of the generic "Agent" label
+- Web: Add feedback mode to approval dialog — press `4` to reject with written feedback text that guides the model's next attempt; approval requests from subagents show a source label and preview content (diffs, commands)
+- Web: Visually distinguish sub-agent origin tool calls — tool messages originating from a subagent are rendered with a left border and a source type label for clearer attribution
+
+## 1.24.0 (2026-03-18)
+
+- Shell: Increase pasted text placeholder thresholds to 1000 characters or 15 lines (previously 300 characters or 3 lines), making voice/typeless workflows less disruptive
+- Core: Plan mode now supports multiple selectable approach options — when the agent's plan contains distinct alternative paths, `ExitPlanMode` can present 2–3 labeled choices for the user to pick which approach to execute; the chosen option is returned to the agent as the selected approach
+- Core: Persist plan session ID and file path across process restarts — the plan session identifier and file slug are saved to `SessionState`, so restarting Kimi Code mid-plan resumes the same plan file in `~/.kimi/plans/` instead of creating a new one
+- Core: Plan mode now supports incremental plan edits — the agent can use `StrReplaceFile` to surgically update sections of the plan file instead of rewriting the entire file with `WriteFile`, and non-plan file edits are now hard-blocked rather than requiring approval
+- Core: Defer MCP startup and surface loading progress — MCP servers now initialize asynchronously after the shell UI starts, with live progress indicators showing connection status; Shell displays connecting and ready states in the status area, Web shows server connection status
+- Core: Optimize lightweight startup paths — implement lazy-loading for CLI subcommands and version metadata, significantly reducing startup time for common commands like `--version` and `--help`
+- Build: Fix Nix `FileCollisionError` for `bin/kimi` — remove duplicate entry point from `kimi-code` package so `kimi-cli` owns `bin/kimi` exclusively
+- Shell: Preserve unsubmitted input across agent turns — text typed in the prompt while the agent is running is no longer lost when the turn ends; the user can press Enter to submit the draft as the next message
+- Shell: Fix Ctrl-C and Ctrl-D not working correctly after an agent run completes — keyboard interrupts and EOF were silently swallowed instead of showing the tip or exiting the shell
+
+## 1.23.0 (2026-03-17)
+
+- Shell: Add background bash — the `Shell` tool now accepts `run_in_background=true` to launch long-running commands (builds, tests, servers) as background tasks, freeing the agent to continue working; new `TaskList`, `TaskOutput`, and `TaskStop` tools manage task lifecycle, and the system automatically notifies the agent when tasks reach a terminal state
+- Shell: Add `/task` slash command with interactive task browser — a three-column TUI to view, monitor, and manage background tasks with real-time refresh, output preview, and keyboard-driven stopping
+- Web: Fix global config not refreshing on other tabs when model is changed — when the model is changed in one tab, other tabs now detect the config update and automatically refresh their global config
+
+## 1.22.0 (2026-03-13)
+
+- Shell: Collapse long pasted text into `[Pasted text #n]` placeholders — text pasted via `Ctrl-V` or bracketed paste that exceeds 300 characters or 3 lines is displayed as a compact placeholder token in the prompt buffer while the full content is sent to the model; the external editor (`Ctrl-O`) expands placeholders for editing and re-folds them on save
+- Shell: Cache pasted images as attachment placeholders — images pasted from the clipboard are stored on disk and shown as `[image:…]` tokens in the prompt, keeping the input buffer readable
+- Shell: Fix UTF-16 surrogate characters in pasted text causing serialization errors — lone surrogates from Windows clipboard data are now sanitized before storage, preventing `UnicodeEncodeError` in history writes and JSON serialization
+- Shell: Redesign slash command completion menu — replace the default completion popup with a full-width custom menu that shows command names and multi-line descriptions, with highlight and scroll support
+- Shell: Fix cancelled shell commands not properly terminating child processes — when a running command is cancelled, the subprocess is now explicitly killed to prevent orphaned processes
+
+## 1.21.0 (2026-03-12)
+
+- Shell: Add inline running prompt with steer input — agent output is now rendered inside the prompt area while the model is running, and users can type and send follow-up messages (steers) without waiting for the turn to finish; approval requests and question panels are handled inline with keyboard navigation
+- Core: Change steer injection from synthetic tool calls to regular user messages — steer content is now appended as a standard user message instead of a fake `_steer` tool-call/tool-result pair, improving compatibility with context serialization and visualization
+- Wire: Add `SteerInput` event — a new Wire protocol event emitted when the user sends a follow-up steer message during a running turn
+- Shell: Echo user input after submission in agent mode — the prompt symbol and entered text are printed back to the terminal for a clearer conversation transcript
+- Shell: Improve session replay with steer inputs — replay now correctly reconstructs and displays steer messages alongside regular turns, and filters out internal system-reminder messages
+- Shell: Fix upgrade command in toast notifications — the upgrade command text is now sourced from a single `UPGRADE_COMMAND` constant for consistency
+- Core: Persist system prompt in `context.jsonl` — the system prompt is now written as the first record of the context file and frozen per session, so visualization tools can read the full conversation context and session restores reuse the original prompt instead of regenerating it
+- Vis: Add session directory shortcuts in `kimi vis` — open the current session folder directly from the session page, copy the raw session directory path with `Copy DIR`, and support opening directories on both macOS and Windows
+- Shell: Improve API key login UX — show a spinner during key verification, display a helpful hint when a 401 error suggests the wrong platform was selected, show a setup summary on success, and default thinking mode to "on"
+
+## 1.20.0 (2026-03-11)
+
+- Web: Add plan mode toggle in web UI — switch control in the input toolbar with a dashed blue border on the composer when plan mode is active, and support setting plan mode via the `set_plan_mode` Wire protocol method
+- Core: Persist plan mode state across session restarts — `plan_mode` is saved to `SessionState` and restored when a session resumes
+- Core: Fix StatusUpdate not reflecting plan mode changes triggered by tools — send a corrected `StatusUpdate` after `EnterPlanMode`/`ExitPlanMode` tool execution so the client sees the up-to-date state
+- Core: Fix HTTP header values containing trailing whitespace/newlines on certain Linux systems (e.g. kernel 6.8.0-101) causing connection errors — strip whitespace from ASCII header values before sending
+- Core: Fix OpenAI Responses provider sending implicit `reasoning.effort=null` which breaks Responses-compatible endpoints that require reasoning — reasoning parameters are now omitted unless explicitly set
+- Vis: Add session download, import, export and delete — one-click ZIP download from session explorer and detail page, ZIP import into a dedicated `~/.kimi/imported_sessions/` directory with "Imported" filter toggle, `kimi export <session_id>` CLI command, and delete support for imported sessions with AlertDialog confirmation
+- Core: Fix context compaction failing when conversation contains media parts (images, audio, video) — switch from blacklist filtering (exclude `ThinkPart`) to whitelist filtering (only keep `TextPart`) to prevent unsupported content types from being sent to the compaction API
+- Web: Fix `@` file mention index not refreshing after switching sessions or when workspace files change — reset index on session switch, auto-refresh after 30s staleness, and support path-prefix search beyond the 500-file limit
+
+## 1.19.0 (2026-03-10)
+
+- Core: Add plan mode — the agent can enter a planning phase (`EnterPlanMode`) where only read-only tools (Glob, Grep, ReadFile) are available, write a structured plan to a file, and present it for user approval (`ExitPlanMode`) before executing; toggle manually via `/plan` slash command or `Shift-Tab` keyboard shortcut
+- Vis: Add `kimi vis` command for launching an interactive visualization dashboard to inspect session traces — includes wire event timeline, context viewer, session explorer, and usage statistics
+- Web: Fix session stream state management — guard against null reference errors during state resets and preserve slash commands across session switches to avoid a brief empty gap
+
+## 1.18.0 (2026-03-09)
+
+- ACP: Support embedded resource content in ACP mode so that Zed's `@` file references correctly include file contents
+- Core: Use `parameters_json_schema` instead of `parameters` in Google GenAI provider to bypass Pydantic validation that rejects standard JSON Schema metadata fields in MCP tools
+- Shell: Enhance `Ctrl-V` clipboard paste to support video files in addition to images — video file paths are inserted as text, and a crash when clipboard data is `None` is fixed
+- Core: Pass session ID as `user_id` metadata to Anthropic API
+- Web: Preserve slash commands on WebSocket reconnect and add automatic retry logic for session initialization
+
+## 1.17.0 (2026-03-03)
+
+- Core: Add `/export` command to export current session context (messages, metadata) to a Markdown file, and `/import` command to import context from a file or another session ID into the current session
+- Shell: Show token counts (used/total) alongside context usage percentage in the status bar (e.g., `context: 42.0% (4.2k/10.0k)`)
+- Shell: Rotate keyboard shortcut tips in the toolbar — tips cycle through available shortcuts on each prompt submission to save horizontal space
+- MCP: Add loading indicators for MCP server connections — Shell displays a "Connecting to MCP servers..." spinner and Web shows a status message while MCP tools are being loaded
+- Web: Fix scrollable file list overflow in the toolbar changes panel
+- Core: Add `compaction_trigger_ratio` config option (default `0.85`) to control when auto-compaction triggers — compaction now fires when context usage reaches the configured ratio or when remaining space falls below `reserved_context_size`, whichever comes first
+- Core: Support custom instructions in `/compact` command (e.g., `/compact keep database discussions`) to guide what the compaction preserves
+- Web: Add URL action parameters (`?action=create` to open create-session dialog, `?action=create-in-dir&workDir=xxx` to create a session directly) for external integrations, and support Cmd/Ctrl+Click on new-session buttons to open session creation in a new browser tab
+- Web: Add todo list display in prompt toolbar — shows task progress with expandable panel when the `SetTodoList` tool is active
+- ACP: Add authentication check for session operations with `AUTH_REQUIRED` error responses for terminal-based login flow
+
+## 1.16.0 (2026-02-27)
+
+- Web: Update ASCII logo banner to a new styled design
+- Core: Add `--add-dir` CLI option and `/add-dir` slash command to expand the workspace scope with additional directories — added directories are accessible to all file tools (read, write, glob, replace), persisted across sessions, and shown in the system prompt
+- Shell: Add `Ctrl-O` keyboard shortcut to open the current input in an external editor (`$VISUAL`/`$EDITOR`), with auto-detection fallback to VS Code, Vim, Vi, or Nano
+- Shell: Add `/editor` slash command to configure and switch the default external editor, with interactive selection and persistent config storage
+- Shell: Add `/new` slash command to create and switch to a new session without restarting Kimi Code CLI
+- Wire: Auto-hide `AskUserQuestion` tool when the client does not support the `supports_question` capability, preventing the LLM from invoking unsupported interactions
+- Core: Estimate context token count after compaction so context usage percentage is not reported as 0%
+- Web: Show context usage percentage with one decimal place for better precision
+
+## 1.15.0 (2026-02-27)
+
+- Shell: Simplify input prompt by removing username prefix for a cleaner appearance
+- Shell: Add horizontal separator line and expanded keyboard shortcut hints to the toolbar
+- Shell: Add number key shortcuts (1–5) for quick option selection in question and approval panels, with redesigned bordered panel UI and keyboard hints
+- Shell: Add tab-style navigation for multi-question panels — use Left/Right arrows or Tab to switch between questions, with visual indicators for answered, current, and pending states, and automatic state restoration when revisiting a question
+- Shell: Allow Space key to submit single-select questions in the question panel
+- Web: Add tab-style navigation for multi-question dialogs with clickable tab bar, keyboard navigation, and state restoration when revisiting a question
+- Core: Set process title to "Kimi Code" (visible in `ps` / Activity Monitor / terminal tab title) and label web worker subprocesses as "kimi-code-worker"
+
+## 1.14.0 (2026-02-26)
+
+- Shell: Make FetchURL tool's URL parameter a clickable hyperlink in the terminal
+- Tool: Add `AskUserQuestion` tool for presenting structured questions with predefined options during execution, supporting single-select, multi-select, and custom text input
+- Wire: Add `QuestionRequest` / `QuestionResponse` message types and capability negotiation for structured question interactions
+- Shell: Add interactive question panel for `AskUserQuestion` with keyboard-driven option selection
+- Web: Add `QuestionDialog` component for answering structured questions inline, replacing the prompt composer when a question is pending
+- Core: Persist session state across sessions — approval decisions (YOLO mode, auto-approved actions) and dynamic subagents are now saved and restored when resuming a session
+- Core: Use atomic JSON writes for metadata and session state files to prevent data corruption on crash
+- Wire: Add `steer` request to inject user messages into an active agent turn (protocol version 1.4)
+- Web: Allow Cmd/Ctrl+Click on FetchURL tool's URL parameter to open the link in a new browser tab, with platform-appropriate tooltip hint
+
+## 1.13.0 (2026-02-24)
+
+- Core: Add automatic connection recovery that recreates the HTTP client on connection and timeout errors before retrying, improving resilience against transient network failures
+
 ## 1.12.0 (2026-02-11)
 
 - Web: Add subagent activity rendering to display subagent steps (thinking, tool calls, text) inside Task tool messages
@@ -20,6 +365,8 @@ This page documents the changes in each Kimi Code CLI release.
 - Web: Show placeholder text in prompt input with hints for slash commands and file mentions
 - Web: Fix Ctrl+C not working in uvicorn web server by restoring default SIGINT handler and terminal state after shell mode exits
 - Web: Improve session stop handling with proper async cleanup and timeout
+- ACP: Add protocol version negotiation framework for client-server compatibility
+- ACP: Add session resume method to restore session state (experimental)
 
 ## 1.11.0 (2026-02-10)
 

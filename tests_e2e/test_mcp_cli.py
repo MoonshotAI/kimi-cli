@@ -113,13 +113,22 @@ def test_mcp_stdio_management(tmp_path: Path) -> None:
     listed = _run_cli(["mcp", "list"], env)
     assert listed.returncode == 0, _normalize_cli_output(listed.stderr, replace=replacements)
     assert _normalize_cli_output(listed.stdout, replace=replacements) == snapshot(
-        "MCP config file: <home_dir>/.kimi/mcp.json\n  test (stdio): <python> <server>\n"
+        """\
+MCP config file: <home_dir>/.kimi/mcp.json
+  test (stdio): <python> <server>
+"""
     )
 
     tested = _run_cli(["mcp", "test", "test"], env)
     assert tested.returncode == 0, _normalize_cli_output(tested.stderr, replace=replacements)
     assert _normalize_cli_output(tested.stdout, replace=replacements) == snapshot(
-        "Testing connection to 'test'...\n✓ Connected to 'test'\n  Available tools: 1\n  Tools:\n    - ping: pong the input text\n"
+        """\
+Testing connection to 'test'...
+✓ Connected to 'test'
+  Available tools: 1
+  Tools:
+    - ping: pong the input text
+"""
     )
 
     removed = _run_cli(["mcp", "remove", "test"], env)
@@ -134,7 +143,10 @@ def test_mcp_stdio_management(tmp_path: Path) -> None:
         listed_empty.stderr, replace=replacements
     )
     assert _normalize_cli_output(listed_empty.stdout, replace=replacements) == snapshot(
-        "MCP config file: <home_dir>/.kimi/mcp.json\nNo MCP servers configured.\n"
+        """\
+MCP config file: <home_dir>/.kimi/mcp.json
+No MCP servers configured.
+"""
     )
 
 
@@ -209,7 +221,11 @@ def test_mcp_http_management_and_auth_errors(tmp_path: Path) -> None:
     list_http = _run_cli(["mcp", "list"], env)
     assert list_http.returncode == 0, _normalize_cli_output(list_http.stderr)
     assert _normalize_cli_output(list_http.stdout) == snapshot(
-        "MCP config file: <home_dir>/.kimi/mcp.json\n  remote (http): https://example.com/mcp\n  oauth (http): https://example.com/oauth [authorization required - run: <cmd> mcp auth oauth]\n"
+        """\
+MCP config file: <home_dir>/.kimi/mcp.json
+  remote (http): https://example.com/mcp
+  oauth (http): https://example.com/oauth [authorization required - run: <cmd> mcp auth oauth]
+"""
     )
 
     auth_http = _run_cli(["mcp", "auth", "remote"], env)

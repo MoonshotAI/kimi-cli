@@ -115,13 +115,17 @@ export function ChatWorkspaceContainer({
     isAwaitingFirstResponse,
     sendMessage,
     respondToApproval,
+    respondToQuestion,
     cancel: cancelStream,
     contextUsage,
     tokenUsage,
     currentStep,
     isConnected: isStreamConnected,
     isReplayingHistory,
+    planMode,
+    sendSetPlanMode,
     slashCommands,
+    error: streamError,
   } = sessionStream;
 
   const clearNewFiles = useToolEventsStore((state) => state.clearNewFiles);
@@ -309,6 +313,10 @@ export function ChatWorkspaceContainer({
     [status, isUploadingFiles, selectedSessionId, uploadFilesToSession, sendMessage, enqueue],
   );
 
+  const handlePlanModeChange = useCallback((enabled: boolean) => {
+    sendSetPlanMode(enabled);
+  }, [sendSetPlanMode]);
+
   const handleForkSession = useCallback(
     async (turnIndex: number) => {
       if (!(selectedSessionId && onForkSession)) {
@@ -362,6 +370,7 @@ export function ChatWorkspaceContainer({
       onCreateSession={onOpenCreateDialog}
       onCancel={cancelStream}
       onApprovalResponse={respondToApproval}
+      onQuestionResponse={respondToQuestion}
       sessionDescription={sessionDescription}
       contextUsage={contextUsage}
       maxContextSize={maxContextSize}
@@ -376,6 +385,9 @@ export function ChatWorkspaceContainer({
       onOpenSidebar={onOpenSidebar}
       onRenameSession={onRenameSession}
       slashCommands={slashCommands}
+      planMode={planMode}
+      onPlanModeChange={handlePlanModeChange}
+      errorMessage={streamError?.message}
       onForkSession={onForkSession ? handleForkSession : undefined}
     />
   );

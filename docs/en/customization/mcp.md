@@ -106,6 +106,12 @@ Use the `--mcp-config` flag to pass JSON configuration directly:
 kimi --mcp-config '{"mcpServers": {"test": {"url": "https://..."}}}'
 ```
 
+## Loading status
+
+MCP servers initialize asynchronously after the shell UI starts, so the interface is usable immediately. The shell status bar shows live connection progress, automatically switching to a ready state once all servers are connected. The web interface also reflects each server's connection status in real time.
+
+If multiple MCP servers are configured, loading may take a moment. The status bar progress indicator keeps you informed while connections are being established.
+
 ## Security
 
 MCP tools may access and operate external systems. Be aware of security risks.
@@ -123,5 +129,5 @@ Content returned by MCP tools may contain malicious instructions attempting to t
 - Keep manual approval for high-risk operations
 
 ::: warning Note
-In YOLO mode, MCP tool operations will also be automatically approved. It's recommended to only use YOLO mode when you fully trust the MCP servers.
+In YOLO or AFK mode, MCP tool calls will also be automatically approved. Use these modes only when you fully trust the MCP servers.
 :::

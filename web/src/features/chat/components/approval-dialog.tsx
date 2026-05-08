@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,10 @@ export function ApprovalDialog({
   pendingApprovalMap,
   canRespondToApproval,
 }: ApprovalDialogProps) {
+  const [feedbackMode, setFeedbackMode] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const feedbackInputRef = useRef<HTMLTextAreaElement>(null);
+
   // from messages, extract the pending approval request
   const pendingApproval = useMemo(() => {
     for (const message of messages) {
@@ -41,21 +45,42 @@ export function ApprovalDialog({
     return null;
   }, [messages]);
 
+  // Reset feedback state when the pending approval changes
+  const currentApprovalId = pendingApproval?.approval?.id;
+  const prevApprovalIdRef = useRef(currentApprovalId);
+  if (prevApprovalIdRef.current !== currentApprovalId) {
+    prevApprovalIdRef.current = currentApprovalId;
+    // Always clear stale feedback text, not just when feedbackMode is active.
+    // Otherwise old text leaks into the next approval's feedback input.
+    if (feedbackMode || feedbackText) {
+      setFeedbackMode(false);
+      setFeedbackText("");
+    }
+  }
+
   const handleResponse = useCallback(
-    async (decision: ApprovalResponseDecision) => {
+    async (decision: ApprovalResponseDecision, reason?: string) => {
       if (!(pendingApproval && onApprovalResponse)) return;
 
       const { approval } = pendingApproval;
       if (!approval.id) return;
 
       try {
-        await onApprovalResponse(approval.id, decision);
+        await onApprovalResponse(approval.id, decision, reason);
       } catch (error) {
         console.error("[ApprovalDialog] Failed to respond", error);
       }
     },
     [pendingApproval, onApprovalResponse],
   );
+
+  const handleFeedbackSubmit = useCallback(() => {
+    const trimmed = feedbackText.trim();
+    if (!trimmed) return;
+    setFeedbackMode(false);
+    setFeedbackText("");
+    handleResponse("reject", trimmed);
+  }, [feedbackText, handleResponse]);
 
   // Compute disable state before early return (hooks must run unconditionally)
   const approvalId = pendingApproval?.approval?.id;
@@ -65,9 +90,21 @@ export function ApprovalDialog({
   const disableActions =
     !(canRespondToApproval && onApprovalResponse) || approvalPending;
 
-  // Keyboard shortcuts: 1=Approve, 2=Approve for session, 3=Decline
+  // Focus the feedback input when feedback mode is activated
+  useEffect(() => {
+    if (feedbackMode) {
+      // Use rAF to wait for the DOM to be ready after state update
+      requestAnimationFrame(() => {
+        feedbackInputRef.current?.focus();
+      });
+    }
+  }, [feedbackMode]);
+
+  // Keyboard shortcuts: 1=Approve, 2=Approve for session, 3=Decline, 4=Decline with feedback
   useEffect(() => {
     if (!pendingApproval || disableActions) return;
+    // When in feedback mode, don't handle number shortcuts
+    if (feedbackMode) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -81,6 +118,12 @@ export function ApprovalDialog({
         const tag = el.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         if ((el as HTMLElement).isContentEditable) return;
+      }
+
+      if (event.key === "4") {
+        event.preventDefault();
+        setFeedbackMode(true);
+        return;
       }
 
       const keyMap: Record<string, ApprovalResponseDecision> = {
@@ -97,23 +140,31 @@ export function ApprovalDialog({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pendingApproval, disableActions, handleResponse]);
+  }, [pendingApproval, disableActions, handleResponse, feedbackMode]);
 
   // if no pending approval request, do not render anything
   if (!pendingApproval) return null;
 
   const { approval, toolCall } = pendingApproval;
 
-  const options = [
-    { key: "approve", label: "Approve", pendingLabel: "Approving...", index: 1 },
-    {
-      key: "approve_for_session",
-      label: "Approve for session",
-      pendingLabel: "Approving...",
-      index: 2,
-    },
-    { key: "reject", label: "Decline", pendingLabel: "Declining...", index: 3 },
-  ] as const;
+  const sourceLabel = (() => {
+    if (approval.sourceDescription) return approval.sourceDescription;
+    const agentType = toolCall.subagentType;
+    const agentId = toolCall.subagentAgentId;
+    const idSuffix = agentId ? ` (${agentId})` : "";
+    if (approval.sourceKind === "background_agent") {
+      return agentType
+        ? `Background · ${agentType}${idSuffix}`
+        : `Background agent${idSuffix}`;
+    }
+    // Foreground sub-agent approvals (isSubagentOrigin)
+    if (toolCall.isSubagentOrigin) {
+      return agentType
+        ? `${agentType}${idSuffix}`
+        : `Sub-agent${idSuffix}`;
+    }
+    return null;
+  })();
 
   return (
     <div className="px-3 pb-2 w-full">
@@ -138,6 +189,11 @@ export function ApprovalDialog({
             {approval.sender && (
               <span className="text-xs text-muted-foreground">
                 · {approval.sender}
+              </span>
+            )}
+            {sourceLabel && (
+              <span className="text-xs text-muted-foreground/70 bg-muted/50 px-1.5 py-0.5 rounded">
+                {sourceLabel}
               </span>
             )}
           </div>
@@ -182,28 +238,104 @@ export function ApprovalDialog({
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            {options.map((option) => (
-              <Button
-                key={option.key}
-                size="sm"
-                variant={option.key === "reject" ? "ghost" : "outline"}
-                disabled={disableActions}
-                onClick={() => handleResponse(option.key)}
-                className={cn(
-                  "transition-all",
-                  option.key === "reject" &&
-                    "text-muted-foreground hover:text-destructive hover:bg-destructive/10",
-                )}
-              >
-                {approvalPending
-                  ? option.pendingLabel
-                  : option.label}
-                {!approvalPending && (
-                  <Kbd className="ml-1.5">{option.index}</Kbd>
-                )}
-              </Button>
-            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disableActions}
+              onClick={() => handleResponse("approve")}
+              className="transition-all"
+            >
+              {approvalPending ? "Approving..." : "Approve"}
+              {!approvalPending && <Kbd className="ml-1.5">1</Kbd>}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disableActions}
+              onClick={() => handleResponse("approve_for_session")}
+              className="transition-all"
+            >
+              {approvalPending ? "Approving..." : "Approve for session"}
+              {!approvalPending && <Kbd className="ml-1.5">2</Kbd>}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={disableActions}
+              onClick={() => handleResponse("reject")}
+              className={cn(
+                "transition-all",
+                "text-muted-foreground hover:text-destructive hover:bg-destructive/10",
+              )}
+            >
+              {approvalPending ? "Declining..." : "Decline"}
+              {!approvalPending && <Kbd className="ml-1.5">3</Kbd>}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={disableActions}
+              onClick={() => setFeedbackMode(!feedbackMode)}
+              className={cn(
+                "transition-all",
+                feedbackMode
+                  ? "text-foreground bg-muted"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {feedbackMode ? "Cancel feedback" : "Decline with feedback"}
+              {!feedbackMode && !approvalPending && (
+                <Kbd className="ml-1.5">4</Kbd>
+              )}
+            </Button>
           </div>
+
+          {/* Feedback input */}
+          {feedbackMode && (
+            <div className="flex flex-col gap-1.5">
+              <textarea
+                ref={feedbackInputRef}
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                onKeyDown={(e) => {
+                  // Guard against IME composition (e.g. Chinese input)
+                  if (e.nativeEvent.isComposing) return;
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleFeedbackSubmit();
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setFeedbackMode(false);
+                    setFeedbackText("");
+                  }
+                }}
+                placeholder="Tell the model what to do instead..."
+                className={cn(
+                  "w-full rounded-md border border-border/60 bg-muted/30",
+                  "px-3 py-2 text-sm text-foreground",
+                  "placeholder:text-muted-foreground/50",
+                  "focus:outline-none focus:ring-1 focus:ring-ring",
+                  "resize-none",
+                )}
+                rows={2}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  Enter to submit · Shift+Enter for newline · Esc to cancel
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!feedbackText.trim()}
+                  onClick={handleFeedbackSubmit}
+                  className="text-xs"
+                >
+                  Submit feedback
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

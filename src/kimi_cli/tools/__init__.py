@@ -20,21 +20,17 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
     else:
         json_str = json_content
     try:
-        curr_args: JsonType = json.loads(json_str)
+        curr_args: JsonType = json.loads(json_str, strict=False)
     except json.JSONDecodeError:
         return None
     if not curr_args:
         return None
     key_argument: str = ""
     match tool_name:
-        case "Task":
+        case "Agent":
             if not isinstance(curr_args, dict) or not curr_args.get("description"):
                 return None
             key_argument = str(curr_args["description"])
-        case "CreateSubagent":
-            if not isinstance(curr_args, dict) or not curr_args.get("name"):
-                return None
-            key_argument = str(curr_args["name"])
         case "SendDMail":
             return None
         case "Think":
@@ -47,6 +43,18 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
             if not isinstance(curr_args, dict) or not curr_args.get("command"):
                 return None
             key_argument = str(curr_args["command"])
+        case "TaskOutput":
+            if not isinstance(curr_args, dict) or not curr_args.get("task_id"):
+                return None
+            key_argument = str(curr_args["task_id"])
+        case "TaskList":
+            if not isinstance(curr_args, dict):
+                return None
+            key_argument = "active" if curr_args.get("active_only", True) else "all"
+        case "TaskStop":
+            if not isinstance(curr_args, dict) or not curr_args.get("task_id"):
+                return None
+            key_argument = str(curr_args["task_id"])
         case "ReadFile":
             if not isinstance(curr_args, dict) or not curr_args.get("path"):
                 return None

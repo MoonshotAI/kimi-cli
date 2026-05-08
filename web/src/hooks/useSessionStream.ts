@@ -126,14 +126,17 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
   type ApprovalRequestEvent,
+  type ApprovalRequestResolvedEvent,
   type ApprovalResponseDecision,
+  type QuestionRequestEvent,
   type SessionStatusPayload,
   type SubagentEventWire,
+  type PlanDisplayEvent,
   extractEvent,
 } from "./wireTypes";
 import { createMessageId, getApiBaseUrl } from "./utils";
 import { kimiCliVersion } from "@/lib/version";
-import { handleToolResult } from "@/features/tool/store";
+import { handleToolResult, useToolEventsStore, type TodoItem } from "@/features/tool/store";
 import { v4 as uuidV4 } from "uuid";
 
 // Regex patterns moved to top level for performance
@@ -216,6 +219,11 @@ type UseSessionStreamReturn = {
     response: ApprovalResponseDecision,
     reason?: string,
   ) => Promise<void>;
+  /** Respond to a question request */
+  respondToQuestion: (
+    requestId: string,
+    answers: Record<string, string>,
+  ) => Promise<void>;
   /** Send a cancel request for the current turn */
   cancel: () => void;
   /** Disconnect from the stream */
@@ -230,11 +238,23 @@ type UseSessionStreamReturn = {
   clearMessages: () => void;
   /** Connection error if any */
   error: Error | null;
+  /** Whether plan mode is active */
+  planMode: boolean;
+  /** Set plan mode via silent RPC (no context message) */
+  sendSetPlanMode: (enabled: boolean) => void;
   /** Available slash commands from the server */
   slashCommands: SlashCommandDef[];
 };
 
 type PendingApprovalEntry = {
+  requestId: string;
+  toolCallId: string;
+  messageId?: string;
+  rpcId?: string | number;
+  submitted?: boolean;
+};
+
+type PendingQuestionEntry = {
   requestId: string;
   toolCallId: string;
   messageId?: string;
@@ -265,6 +285,7 @@ export function useSessionStream(
   );
   const [contextUsage, setContextUsage] = useState(0);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
+  const [planMode, setPlanMode] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -294,6 +315,7 @@ export function useSessionStream(
   const connectRef = useRef<() => void>(() => undefined);
   const disconnectRef = useRef<() => void>(() => undefined);
   const reconnectRef = useRef<() => void>(() => undefined);
+  const resetStateRef = useRef<(preserveSlashCommands?: boolean) => void>(() => undefined);
   const historyCompleteTimeoutRef = useRef<number | null>(null);
   const isReplayingRef = useRef(true); // Track if we're still replaying history
   const pendingMessageRef = useRef<string | null>(null); // Message to send after connection
@@ -310,6 +332,10 @@ export function useSessionStream(
 
   // Initialize message tracking
   const initializeIdRef = useRef<string | null>(null);
+  const initializeRetryCountRef = useRef(0); // Track retry attempts for initialize
+  const MAX_INITIALIZE_RETRIES = 5; // Maximum retry attempts
+  const usingCachedCommandsRef = useRef(false); // Track if using cached slash commands
+  const slashCommandsLenRef = useRef(0); // Track slashCommands length without state dependency
 
   // Current state accumulators
   const currentThinkingRef = useRef("");
@@ -321,6 +347,9 @@ export function useSessionStream(
   const pendingApprovalRequestsRef = useRef<Map<string, PendingApprovalEntry>>(
     new Map(),
   );
+  const pendingQuestionRequestsRef = useRef<Map<string, PendingQuestionEntry>>(
+    new Map(),
+  );
 
   // Track if current turn is a /clear command (needs UI clear on turn end)
   const pendingClearRef = useRef(false);
@@ -330,6 +359,9 @@ export function useSessionStream(
 
   // Track compaction indicator message so we can remove it on CompactionEnd
   const compactionMessageIdRef = useRef<string | null>(null);
+
+  // Track MCP loading indicator message so we can remove it on MCPLoadingEnd
+  const mcpLoadingMessageIdRef = useRef<string | null>(null);
 
   // Wrapped setMessages
   const setMessages: typeof setMessagesInternal = useCallback((action) => {
@@ -378,6 +410,57 @@ export function useSessionStream(
     );
   }, [setMessages]);
 
+  // Mark all non-terminal tool calls as interrupted and dismiss stale
+  // approval/question dialogs.  Called only when the backend confirms no
+  // active turn (idle / stopped / error), so it won't dismiss legitimate
+  // pending approvals on a busy session (e.g. after a tab switch).
+  const interruptStaleToolCalls = useCallback(() => {
+    pendingApprovalRequestsRef.current.clear();
+    pendingQuestionRequestsRef.current.clear();
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.variant !== "tool" || !msg.toolCall) return msg;
+        const state = msg.toolCall.state;
+        if (
+          state === "approval-requested" ||
+          state === "question-requested" ||
+          state === "input-streaming" ||
+          state === "input-available"
+        ) {
+          return {
+            ...msg,
+            isStreaming: false,
+            toolCall: {
+              ...msg.toolCall,
+              state: "output-denied",
+              ...(state === "approval-requested" && msg.toolCall.approval
+                ? {
+                    approval: {
+                      ...msg.toolCall.approval,
+                      submitted: true,
+                      resolved: true,
+                      approved: false,
+                      response: "reject",
+                    },
+                  }
+                : {}),
+              ...(state === "question-requested" && msg.toolCall.question
+                ? {
+                    question: {
+                      ...msg.toolCall.question,
+                      submitted: true,
+                      resolved: true,
+                    },
+                  }
+                : {}),
+            },
+          };
+        }
+        return msg;
+      }),
+    );
+  }, [setMessages]);
+
   const applySessionStatus = useCallback(
     (payload: SessionStatusPayload) => {
       const normalized = normalizeSessionStatus(payload);
@@ -407,6 +490,7 @@ export function useSessionStream(
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
           completeStreamingMessages();
+          interruptStaleToolCalls();
           break;
         }
         case "stopped":
@@ -415,6 +499,7 @@ export function useSessionStream(
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
           completeStreamingMessages();
+          interruptStaleToolCalls();
 
           // Trigger onFirstTurnComplete only after at least one turn has completed
           if (hasTurnStartedRef.current && !firstTurnCompleteCalledRef.current) {
@@ -427,6 +512,7 @@ export function useSessionStream(
     },
     [
       completeStreamingMessages,
+      interruptStaleToolCalls,
       normalizeSessionStatus,
       onSessionStatus,
       setAwaitingFirstResponse,
@@ -756,22 +842,23 @@ export function useSessionStream(
   }, []);
 
   // Reset all state
-  const resetState = useCallback(() => {
+  const resetState = useCallback((preserveSlashCommands = false) => {
     resetStepState();
-    currentToolCallsRef.current.clear();
+    currentToolCallsRef.current?.clear();
     currentToolCallIdRef.current = null;
-    pendingApprovalRequestsRef.current.clear();
+    pendingApprovalRequestsRef.current?.clear();
+    pendingQuestionRequestsRef.current?.clear();
     pendingClearRef.current = false;
     setCurrentStep(0);
     setContextUsage(0);
     setTokenUsage(null);
+    setPlanMode(false);
     setError(null);
     setSessionStatus(null);
     lastStatusSeqRef.current = null;
     isReplayingRef.current = true;
     setIsReplayingHistory(true);
     setAwaitingFirstResponse(false);
-    setSlashCommands([]);
     // Reset first turn tracking
     hasTurnStartedRef.current = false;
     firstTurnCompleteCalledRef.current = false;
@@ -782,15 +869,29 @@ export function useSessionStream(
       window.clearTimeout(historyCompleteTimeoutRef.current);
       historyCompleteTimeoutRef.current = null;
     }
+    // Handle slashCommands: preserve or clear
+    if (!preserveSlashCommands) {
+      setSlashCommands([]);
+      slashCommandsLenRef.current = 0;
+      usingCachedCommandsRef.current = false;
+    } else if (slashCommandsLenRef.current > 0) {
+      usingCachedCommandsRef.current = true;
+    }
   }, [resetStepState, setAwaitingFirstResponse]);
 
-  // Process a SubagentEvent: accumulate inner events into parent Task tool's subagentSteps
+  // Process a SubagentEvent: accumulate inner events into parent Agent tool's subagentSteps
   const processSubagentEvent = useCallback(
-    (taskToolCallId: string, innerType: string, innerPayload: unknown) => {
+    (
+      parentToolCallId: string,
+      innerType: string,
+      innerPayload: unknown,
+      agentId?: string,
+      subagentType?: string,
+    ) => {
       setMessages((prev) => {
-        // Find the parent Task tool message by toolCallId
+        // Find the parent Agent tool message by toolCallId
         const parentIdx = prev.findIndex(
-          (msg) => msg.toolCall?.toolCallId === taskToolCallId,
+          (msg) => msg.toolCall?.toolCallId === parentToolCallId,
         );
         if (parentIdx === -1) return prev;
 
@@ -932,6 +1033,11 @@ export function useSessionStream(
             ...parentMsg.toolCall!,
             subagentSteps: steps,
             subagentRunning: true,
+            // Preserve existing values; only set if provided and not yet set
+            subagentType:
+              parentMsg.toolCall?.subagentType ?? subagentType,
+            subagentAgentId:
+              parentMsg.toolCall?.subagentAgentId ?? agentId,
           },
         };
         return next;
@@ -1250,7 +1356,7 @@ export function useSessionStream(
                     ? messageStr || undefined
                     : undefined,
                   mediaParts: mediaParts.length > 0 ? mediaParts : undefined,
-                  // Mark subagent as complete when its parent Task tool receives result
+                  // Mark subagent as complete when its parent Agent tool receives result
                   subagentRunning: msg.toolCall.subagentSteps
                     ? false
                     : msg.toolCall.subagentRunning,
@@ -1273,6 +1379,18 @@ export function useSessionStream(
               isReplay,
             );
           }
+
+          // Extract todo list from display blocks
+          if (!isReplay && Array.isArray(return_value.display)) {
+            const todoBlock = return_value.display.find(
+              (d: { type: string }) => d.type === "todo",
+            );
+            if (todoBlock) {
+              useToolEventsStore.getState().setTodoItems(
+                (todoBlock as unknown as { type: string; items: TodoItem[] }).items,
+              );
+            }
+          }
           break;
         }
 
@@ -1280,7 +1398,7 @@ export function useSessionStream(
           if (!isReplay) {
             clearAwaitingFirstResponse();
           }
-          const payload = event.payload;
+          const payload = (event as ApprovalRequestEvent).payload;
           const tc = currentToolCallsRef.current.get(payload.tool_call_id);
 
           const approvalState = {
@@ -1292,6 +1410,8 @@ export function useSessionStream(
             rpcMessageId,
             submitted: false,
             resolved: false,
+            sourceKind: payload.source_kind ?? null,
+            sourceDescription: payload.source_description ?? null,
           };
 
           if (tc) {
@@ -1313,6 +1433,10 @@ export function useSessionStream(
 
           let messageId = tc?.messageId;
 
+          const approvalDisplay = payload.display?.length
+            ? payload.display
+            : undefined;
+
           if (messageId) {
             updateMessageById(messageId, (message) => {
               if (!message.toolCall) {
@@ -1325,10 +1449,13 @@ export function useSessionStream(
                   ...message.toolCall,
                   state: "approval-requested",
                   approval: approvalState,
+                  // Show approval preview (diff/command) if tool has no display yet
+                  display: message.toolCall.display ?? approvalDisplay,
                 },
               };
             });
           } else {
+            const isSubagentOrigin = Boolean(payload.agent_id);
             const fallbackMessageId = getNextMessageId("assistant");
             const approvalMessage: LiveMessage = {
               id: fallbackMessageId,
@@ -1340,6 +1467,12 @@ export function useSessionStream(
                 type: "tool-call" as ToolUIPart["type"],
                 state: "approval-requested",
                 approval: approvalState,
+                display: approvalDisplay,
+                ...(isSubagentOrigin && {
+                  isSubagentOrigin: true,
+                  subagentType: payload.subagent_type ?? undefined,
+                  subagentAgentId: payload.agent_id ?? undefined,
+                }),
               },
             };
 
@@ -1369,7 +1502,8 @@ export function useSessionStream(
         }
 
         case "ApprovalRequestResolved": {
-          const { request_id, response } = event.payload;
+          const { request_id, response, feedback } =
+            event.payload as ApprovalRequestResolvedEvent["payload"];
           const pending = pendingApprovalRequestsRef.current.get(request_id);
 
           let tc: ToolCallState | undefined;
@@ -1427,13 +1561,14 @@ export function useSessionStream(
             }
           }
 
+          const effectiveReason = reason ?? feedback ?? approval.reason;
           const updatedApproval = {
             ...approval,
             response,
             resolved: true,
             submitted: true,
             approved,
-            reason: reason ?? approval.reason,
+            reason: effectiveReason,
           };
 
           if (tc) {
@@ -1442,13 +1577,30 @@ export function useSessionStream(
 
           const messageId = tc?.messageId ?? pending?.messageId;
           const nextState =
-            approved === false ? "output-denied" : "approval-responded";
+            approved === false ? "output-denied" : "input-available";
           const nextStreaming = approved !== false;
 
           if (messageId) {
             updateMessageById(messageId, (message) => {
               if (!message.toolCall) {
                 return message;
+              }
+
+              // Don't overwrite terminal states — a late ApprovalRequestResolved
+              // arriving after cancel() must not flip a denied tool back to active.
+              const currentState = message.toolCall.state;
+              if (
+                currentState === "output-denied" ||
+                currentState === "output-available" ||
+                currentState === "output-error"
+              ) {
+                return {
+                  ...message,
+                  toolCall: {
+                    ...message.toolCall,
+                    approval: updatedApproval,
+                  },
+                };
               }
 
               return {
@@ -1476,13 +1628,94 @@ export function useSessionStream(
           break;
         }
 
+        case "QuestionRequest": {
+          if (!isReplay) {
+            clearAwaitingFirstResponse();
+          }
+          const qPayload = (event as QuestionRequestEvent).payload;
+          const qtc = currentToolCallsRef.current.get(qPayload.tool_call_id);
+
+          const questionState = {
+            id: qPayload.id,
+            toolCallId: qPayload.tool_call_id,
+            questions: qPayload.questions,
+            rpcMessageId,
+            submitted: false,
+            resolved: false,
+          };
+
+          let qMessageId = qtc?.messageId;
+
+          if (qMessageId) {
+            updateMessageById(qMessageId, (message) => {
+              if (!message.toolCall) {
+                return message;
+              }
+              return {
+                ...message,
+                isStreaming: false,
+                toolCall: {
+                  ...message.toolCall,
+                  state: "question-requested",
+                  question: questionState,
+                },
+              };
+            });
+          } else {
+            const fallbackMessageId = getNextMessageId("assistant");
+            const questionMessage: LiveMessage = {
+              id: fallbackMessageId,
+              role: "assistant",
+              variant: "tool",
+              isStreaming: false,
+              toolCall: {
+                title: "AskUserQuestion",
+                type: "tool-call" as ToolUIPart["type"],
+                state: "question-requested",
+                question: questionState,
+              },
+            };
+
+            currentToolCallsRef.current.set(qPayload.tool_call_id, {
+              ...(currentToolCallsRef.current.get(qPayload.tool_call_id) ?? {
+                id: qPayload.tool_call_id,
+                name: "AskUserQuestion",
+                arguments: "",
+                argumentsComplete: false,
+              }),
+              messageId: fallbackMessageId,
+            });
+
+            setMessages((prev) => [...prev, questionMessage]);
+            qMessageId = fallbackMessageId;
+          }
+
+          pendingQuestionRequestsRef.current.set(qPayload.id, {
+            requestId: qPayload.id,
+            toolCallId: qPayload.tool_call_id,
+            messageId: qMessageId,
+            rpcId: rpcMessageId,
+            submitted: false,
+          });
+
+          break;
+        }
+
         case "SubagentEvent": {
           const subPayload = (event as SubagentEventWire).payload;
-          processSubagentEvent(
-            subPayload.task_tool_call_id,
-            subPayload.event.type,
-            subPayload.event.payload,
-          );
+          // Wire 1.6 uses parent_tool_call_id; fall back to legacy task_tool_call_id
+          const parentToolCallId =
+            subPayload.parent_tool_call_id ??
+            (subPayload as Record<string, unknown>).task_tool_call_id as string | undefined;
+          if (parentToolCallId) {
+            processSubagentEvent(
+              parentToolCallId,
+              subPayload.event.type,
+              subPayload.event.payload,
+              subPayload.agent_id ?? undefined,
+              subPayload.subagent_type ?? undefined,
+            );
+          }
           break;
         }
 
@@ -1495,6 +1728,11 @@ export function useSessionStream(
           const nextTokenUsage = event.payload.token_usage;
           if (nextTokenUsage) {
             setTokenUsage(nextTokenUsage);
+          }
+
+          const nextPlanMode = event.payload.plan_mode;
+          if (typeof nextPlanMode === "boolean") {
+            setPlanMode(nextPlanMode);
           }
 
           // If we have a message_id, create a special message to display it
@@ -1545,8 +1783,9 @@ export function useSessionStream(
         }
 
         case "StepInterrupted": {
-          // Clear pending approval requests
+          // Clear pending approval and question requests
           pendingApprovalRequestsRef.current.clear();
+          pendingQuestionRequestsRef.current.clear();
 
           setMessages((prev) =>
             prev.map((msg) => {
@@ -1584,6 +1823,41 @@ export function useSessionStream(
                           response: "reject",
                         }
                       : undefined,
+                  },
+                };
+              }
+              // Update pending question tool states to responded
+              if (
+                msg.variant === "tool" &&
+                msg.toolCall?.state === "question-requested"
+              ) {
+                return {
+                  ...updated,
+                  toolCall: {
+                    ...msg.toolCall,
+                    ...updated.toolCall,
+                    state: "question-responded",
+                    question: msg.toolCall.question
+                      ? {
+                          ...msg.toolCall.question,
+                          submitted: true,
+                          resolved: true,
+                        }
+                      : undefined,
+                  },
+                };
+              }
+              // Mark still-running tool calls as interrupted
+              if (
+                msg.variant === "tool" &&
+                (updated.toolCall?.state === "input-streaming" ||
+                  updated.toolCall?.state === "input-available")
+              ) {
+                return {
+                  ...updated,
+                  toolCall: {
+                    ...updated.toolCall,
+                    state: "output-denied",
                   },
                 };
               }
@@ -1634,6 +1908,48 @@ export function useSessionStream(
           break;
         }
 
+        case "MCPLoadingBegin": {
+          const mcpMsgId = getNextMessageId("assistant");
+          mcpLoadingMessageIdRef.current = mcpMsgId;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: mcpMsgId,
+              role: "assistant",
+              variant: "status",
+              content: "Connecting to MCP servers…",
+              isStreaming: true,
+            },
+          ]);
+          break;
+        }
+
+        case "MCPLoadingEnd": {
+          const mcpMsgId = mcpLoadingMessageIdRef.current;
+          mcpLoadingMessageIdRef.current = null;
+          if (mcpMsgId) {
+            setMessages((prev) => prev.filter((m) => m.id !== mcpMsgId));
+          }
+          break;
+        }
+
+        case "PlanDisplay": {
+          const planPayload = (event as PlanDisplayEvent).payload;
+          const planMessageId = getNextMessageId("assistant");
+          upsertMessage({
+            id: planMessageId,
+            role: "assistant",
+            variant: "text",
+            turnIndex:
+              turnCounterRef.current > 0
+                ? turnCounterRef.current - 1
+                : undefined,
+            content: planPayload.content,
+            isStreaming: false,
+          });
+          break;
+        }
+
         default:
           break;
       }
@@ -1652,20 +1968,57 @@ export function useSessionStream(
     ],
   );
 
+  // Helper to send initialize message
+  const sendInitialize = useCallback((ws: WebSocket) => {
+    const id = uuidV4();
+    initializeIdRef.current = id;
+    const message = {
+      jsonrpc: "2.0",
+      method: "initialize",
+      id,
+      params: {
+        protocol_version: "1.9",
+        client: {
+          name: "kiwi",
+          version: kimiCliVersion,
+        },
+        capabilities: {
+          supports_question: true,
+          supports_plan_mode: true,
+        },
+      },
+    };
+    ws.send(JSON.stringify(message));
+    console.log("[SessionStream] Sent initialize message");
+  }, []);
+
   // Handle incoming WebSocket message
   const handleMessage = useCallback(
     (data: string) => {
       try {
-        console.log("[SessionStream] Received raw message:", data);
         const message: WireMessage = JSON.parse(data);
-        console.log("[SessionStream] Parsed message:", message);
 
         // Check for JSON-RPC error response
         if (message.error) {
-          // Initialize failure during busy session is non-fatal - just skip
+          // Initialize failure during busy session is non-fatal - retry after delay
           if (message.id === initializeIdRef.current) {
-            console.warn("[SessionStream] Initialize rejected (session busy), continuing...");
+            initializeRetryCountRef.current += 1;
+
+            if (initializeRetryCountRef.current > MAX_INITIALIZE_RETRIES) {
+              initializeIdRef.current = null;
+              initializeRetryCountRef.current = 0;
+              return;
+            }
+
             initializeIdRef.current = null;
+
+            // Auto-retry initialize after 2 seconds
+            setTimeout(() => {
+              if (wsRef.current?.readyState === WebSocket.OPEN) {
+                sendInitialize(wsRef.current);
+              }
+            }, 2000);
+
             return;
           }
 
@@ -1691,9 +2044,14 @@ export function useSessionStream(
           return;
         }
 
-        // Check for finished status
-        if (message.result?.status === "finished") {
-          console.log("[SessionStream] Stream finished");
+        // Check for finished or cancelled status
+        if (
+          message.result?.status === "finished" ||
+          message.result?.status === "cancelled"
+        ) {
+          console.log(
+            `[SessionStream] Stream ${message.result.status}`,
+          );
           setStatus("ready");
           setAwaitingFirstResponse(false);
           awaitingIdleRef.current = false;
@@ -1744,18 +2102,20 @@ export function useSessionStream(
 
         // Handle initialize response
         if (message.id && message.id === initializeIdRef.current && message.result) {
-          console.log("[SessionStream] Initialize response received:", message.result);
           initializeIdRef.current = null;
+          initializeRetryCountRef.current = 0;
 
-          // Extract slash commands
           const { slash_commands } = message.result;
-          if (slash_commands) {
+
+          if (slash_commands && slash_commands.length > 0) {
             setSlashCommands(slash_commands);
+            slashCommandsLenRef.current = slash_commands.length;
+            usingCachedCommandsRef.current = false;
           }
           return;
         }
 
-        // Handle approval requests sent as JSON-RPC requests
+        // Handle approval/question requests sent as JSON-RPC requests
         if (message.method === "request") {
           const params = message.params as {
             type?: string;
@@ -1774,11 +2134,23 @@ export function useSessionStream(
             );
             return;
           }
+
+          if (params?.type === "QuestionRequest") {
+            const questionEvent: QuestionRequestEvent = {
+              type: "QuestionRequest",
+              payload: params.payload as QuestionRequestEvent["payload"],
+            };
+            processEvent(
+              questionEvent,
+              isReplayingRef.current,
+              message.id ?? (questionEvent.payload.id as string | number),
+            );
+            return;
+          }
         }
 
         // Process event
         const event = extractEvent(message);
-        console.log("[SessionStream] Extracted event:", event);
         if (event) {
           processEvent(event, isReplayingRef.current);
         }
@@ -1796,6 +2168,7 @@ export function useSessionStream(
       setAwaitingFirstResponse,
       applySessionStatus,
       completeStreamingMessages,
+      sendInitialize,
     ],
   );
 
@@ -1845,26 +2218,6 @@ export function useSessionStream(
     [setAwaitingFirstResponse],
   );
 
-  // Helper to send initialize message
-  const sendInitialize = useCallback((ws: WebSocket) => {
-    const id = uuidV4();
-    initializeIdRef.current = id;
-    const message = {
-      jsonrpc: "2.0",
-      method: "initialize",
-      id,
-      params: {
-        protocol_version: "1.3",
-        client: {
-          name: "kiwi",
-          version: kimiCliVersion,
-        },
-      },
-    };
-    ws.send(JSON.stringify(message));
-    console.log("[SessionStream] Sent initialize message");
-  }, []);
-
   const respondToApproval = useCallback(
     async (
       requestId: string,
@@ -1898,6 +2251,9 @@ export function useSessionStream(
         result: {
           request_id: pending.requestId ?? requestId,
           response,
+          ...(response === "reject" && trimmedReason
+            ? { feedback: trimmedReason }
+            : {}),
         },
       };
 
@@ -1911,7 +2267,7 @@ export function useSessionStream(
       pendingApprovalRequestsRef.current.set(requestId, pending);
 
       const tc = currentToolCallsRef.current.get(pending.toolCallId);
-      const nextState = isApproved ? "approval-responded" : "output-denied";
+      const nextState = isApproved ? "input-available" : "output-denied";
       const nextStreaming = isApproved;
 
       if (tc) {
@@ -1961,12 +2317,78 @@ export function useSessionStream(
     [updateMessageById],
   );
 
+  const respondToQuestion = useCallback(
+    async (requestId: string, answers: Record<string, string>) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error("Not connected to session stream");
+      }
+
+      const pending = pendingQuestionRequestsRef.current.get(requestId);
+      if (!pending) {
+        throw new Error("Question request not found");
+      }
+
+      if (pending.submitted) {
+        return;
+      }
+
+      const responseMessage: JsonRpcResponse = {
+        jsonrpc: "2.0",
+        id: pending.rpcId ?? requestId,
+        result: {
+          request_id: pending.requestId ?? requestId,
+          answers,
+        },
+      };
+
+      try {
+        ws.send(JSON.stringify(responseMessage));
+      } catch (err) {
+        throw err instanceof Error ? err : new Error(String(err));
+      }
+
+      pending.submitted = true;
+      pendingQuestionRequestsRef.current.set(requestId, pending);
+
+      const tc = currentToolCallsRef.current.get(pending.toolCallId);
+
+      if (tc?.messageId) {
+        updateMessageById(tc.messageId, (message) => {
+          if (!message.toolCall) {
+            return message;
+          }
+
+          return {
+            ...message,
+            isStreaming: true,
+            toolCall: {
+              ...message.toolCall,
+              state: "question-responded",
+              question: message.toolCall.question
+                ? {
+                    ...message.toolCall.question,
+                    submitted: true,
+                    answers,
+                  }
+                : undefined,
+            },
+          };
+        });
+      }
+    },
+    [updateMessageById],
+  );
+
   // Connect to WebSocket
   const connect = useCallback(() => {
     if (!sessionId) return;
 
+    initializeRetryCountRef.current = 0; // Reset retry count for new connection
+
     // Close existing connection
     if (wsRef.current) {
+      console.log("[SessionStream] Closing existing WebSocket");
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -1976,7 +2398,7 @@ export function useSessionStream(
     }
 
     awaitingIdleRef.current = false;
-    resetState();
+    resetState(true);  // preserve slashCommands on reconnect
     setMessages([]);
     setStatus("submitted");
     setAwaitingFirstResponse(Boolean(pendingMessageRef.current));
@@ -2019,7 +2441,19 @@ export function useSessionStream(
           }
           if (wsRef.current.readyState !== WebSocket.OPEN) return;
           const elapsed = Date.now() - lastWsMessageTimeRef.current;
-          if (elapsed > 45_000 && statusRef.current === "streaming") {
+          const hasUnsubmittedApproval = Array.from(
+            pendingApprovalRequestsRef.current.values(),
+          ).some((e) => !e.submitted);
+          const hasUnsubmittedQuestion = Array.from(
+            pendingQuestionRequestsRef.current.values(),
+          ).some((e) => !e.submitted);
+          const hasPendingInteraction =
+            hasUnsubmittedApproval || hasUnsubmittedQuestion;
+          if (
+            elapsed > 45_000 &&
+            statusRef.current === "streaming" &&
+            !hasPendingInteraction
+          ) {
             console.warn(
               `[SessionStream] Watchdog: no messages for ${Math.round(elapsed / 1000)}s while streaming, reconnecting...`,
             );
@@ -2142,10 +2576,18 @@ export function useSessionStream(
     setSessionStatus(null);
     lastStatusSeqRef.current = null;
     pendingApprovalRequestsRef.current.clear();
+    pendingQuestionRequestsRef.current.clear();
+
+    // Remove lingering MCP loading indicator (e.g. MCPLoadingEnd was never received)
+    const mcpMsgId = mcpLoadingMessageIdRef.current;
+    if (mcpMsgId) {
+      mcpLoadingMessageIdRef.current = null;
+      setMessages((prev) => prev.filter((m) => m.id !== mcpMsgId));
+    }
 
     // Mark all streaming/subagent messages as complete
     completeStreamingMessages();
-  }, [completeStreamingMessages, setAwaitingFirstResponse]);
+  }, [completeStreamingMessages, setAwaitingFirstResponse, setMessages]);
 
   // Send cancel request or disconnect if stream not ready
   const cancel = useCallback(() => {
@@ -2156,8 +2598,9 @@ export function useSessionStream(
       );
       awaitingIdleRef.current = false;
       pendingMessageRef.current = null;
-      // Clear pending approval requests and update message states
+      // Clear pending approval/question requests and update message states
       pendingApprovalRequestsRef.current.clear();
+      pendingQuestionRequestsRef.current.clear();
       setMessages((prev) =>
         prev.map((msg) => {
           if (
@@ -2182,6 +2625,41 @@ export function useSessionStream(
               },
             };
           }
+          if (
+            msg.variant === "tool" &&
+            msg.toolCall?.state === "question-requested"
+          ) {
+            return {
+              ...msg,
+              isStreaming: false,
+              toolCall: {
+                ...msg.toolCall,
+                state: "question-responded",
+                question: msg.toolCall.question
+                  ? {
+                      ...msg.toolCall.question,
+                      submitted: true,
+                      resolved: true,
+                    }
+                  : undefined,
+              },
+            };
+          }
+          // Mark still-running tool calls as interrupted
+          if (
+            msg.variant === "tool" &&
+            (msg.toolCall?.state === "input-streaming" ||
+              msg.toolCall?.state === "input-available")
+          ) {
+            return {
+              ...msg,
+              isStreaming: false,
+              toolCall: {
+                ...msg.toolCall,
+                state: "output-denied",
+              },
+            };
+          }
           return msg;
         }),
       );
@@ -2189,8 +2667,9 @@ export function useSessionStream(
       return;
     }
 
-    // Clear all pending approval requests and update message states
+    // Clear all pending approval/question requests and update message states
     pendingApprovalRequestsRef.current.clear();
+    pendingQuestionRequestsRef.current.clear();
 
     // Always update messages (consistent with StepInterrupted handler)
     setMessages((prev) =>
@@ -2214,6 +2693,41 @@ export function useSessionStream(
                     response: "reject",
                   }
                 : undefined,
+            },
+          };
+        }
+        if (
+          msg.variant === "tool" &&
+          msg.toolCall?.state === "question-requested"
+        ) {
+          return {
+            ...msg,
+            isStreaming: false,
+            toolCall: {
+              ...msg.toolCall,
+              state: "question-responded",
+              question: msg.toolCall.question
+                ? {
+                    ...msg.toolCall.question,
+                    submitted: true,
+                    resolved: true,
+                  }
+                : undefined,
+            },
+          };
+        }
+        // Mark still-running tool calls as interrupted
+        if (
+          msg.variant === "tool" &&
+          (msg.toolCall?.state === "input-streaming" ||
+            msg.toolCall?.state === "input-available")
+        ) {
+          return {
+            ...msg,
+            isStreaming: false,
+            toolCall: {
+              ...msg.toolCall,
+              state: "output-denied",
             },
           };
         }
@@ -2254,6 +2768,7 @@ export function useSessionStream(
   connectRef.current = connect;
   disconnectRef.current = disconnect;
   reconnectRef.current = reconnect;
+  resetStateRef.current = resetState;
   statusRef.current = status;
 
   // Send message to session (auto-connects if not connected)
@@ -2295,8 +2810,22 @@ export function useSessionStream(
   // Clear messages
   const clearMessages = useCallback(() => {
     setMessages([]);
-    resetState();
-  }, [setMessages, resetState]);
+    resetStateRef.current(true);
+  }, [setMessages]);
+
+  // Set plan mode via silent RPC (no context message)
+  const sendSetPlanMode = useCallback((enabled: boolean) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const message: JsonRpcRequest = {
+      jsonrpc: "2.0",
+      method: "set_plan_mode",
+      id: uuidV4(),
+      params: { enabled },
+    };
+    wsRef.current.send(JSON.stringify(message));
+  }, []);
 
   // Auto-connect when sessionId changes
   useLayoutEffect(() => {
@@ -2321,9 +2850,10 @@ export function useSessionStream(
       disconnectRef.current();
     }
 
-    // Reset state for new session
-    resetState();
+    // Reset state for new session (preserve slash commands to avoid empty gap before initialize response)
+    resetStateRef.current(true);
     setMessages([]);
+    useToolEventsStore.getState().clearTodoItems();
 
     // Auto-connect if we have a valid sessionId
     if (sessionId) {
@@ -2341,7 +2871,7 @@ export function useSessionStream(
     return () => {
       disconnectRef.current();
     };
-  }, [sessionId, resetState, setMessages]);
+  }, [sessionId, setMessages]);
 
   // Cleanup on unmount
   useEffect(
@@ -2371,6 +2901,7 @@ export function useSessionStream(
     isReplayingHistory,
     sendMessage,
     respondToApproval,
+    respondToQuestion,
     cancel,
     disconnect,
     reconnect,
@@ -2378,6 +2909,8 @@ export function useSessionStream(
     setMessages,
     clearMessages,
     error,
+    planMode,
+    sendSetPlanMode,
     slashCommands,
   };
 }

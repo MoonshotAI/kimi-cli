@@ -25,6 +25,8 @@ export type SubagentActivityProps = ComponentProps<"div"> & {
   steps: SubagentStep[];
   isRunning?: boolean;
   defaultOpen?: boolean;
+  /** Built-in subagent type (coder / explore / plan) */
+  subagentType?: string;
 };
 
 export const SubagentActivity = memo(
@@ -33,8 +35,12 @@ export const SubagentActivity = memo(
     steps,
     isRunning = false,
     defaultOpen = false,
+    subagentType,
     ...props
   }: SubagentActivityProps) => {
+    const agentLabel = subagentType
+      ? `${subagentType.charAt(0).toUpperCase() + subagentType.slice(1)} agent`
+      : "Agent";
     const [isOpen, setIsOpen] = useState(defaultOpen);
 
     const toolCallCount = steps.filter((s) => s.kind === "tool-call").length;
@@ -63,7 +69,7 @@ export const SubagentActivity = memo(
           <span>
             {isRunning ? (
               <>
-                Agent working
+                {agentLabel} working
                 <Shimmer
                   as="span"
                   duration={1}
@@ -73,9 +79,9 @@ export const SubagentActivity = memo(
                 </Shimmer>
               </>
             ) : toolCallCount > 0 ? (
-              `Agent completed · ${toolCallCount} tool call${toolCallCount !== 1 ? "s" : ""}`
+              `${agentLabel} completed · ${toolCallCount} tool call${toolCallCount !== 1 ? "s" : ""}`
             ) : (
-              "Agent completed"
+              `${agentLabel} completed`
             )}
           </span>
           <ChevronRightIcon

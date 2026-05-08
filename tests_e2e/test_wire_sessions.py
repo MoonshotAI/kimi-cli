@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from inline_snapshot import snapshot
@@ -28,6 +29,17 @@ def _count_lines(path: Path) -> int:
     if not path.exists():
         return 0
     return len(path.read_text(encoding="utf-8").splitlines())
+
+
+def _read_roles(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    roles: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        roles.append(json.loads(line)["role"])
+    return roles
 
 
 def test_session_files_created(tmp_path) -> None:
@@ -67,7 +79,7 @@ def test_session_files_created(tmp_path) -> None:
     assert context_file.stat().st_size > 0
     assert wire_file.stat().st_size > 0
     assert sorted(p.name for p in session_dir.iterdir()) == snapshot(
-        ["context.jsonl", "wire.jsonl"]
+        ["context.jsonl", "state.json", "wire.jsonl"]
     )
 
 
@@ -140,7 +152,20 @@ def test_continue_session_appends(tmp_path) -> None:
         "context_after": context_after,
         "wire_before": wire_before,
         "wire_after": wire_after,
-    } == snapshot({"context_before": 4, "context_after": 8, "wire_before": 6, "wire_after": 11})
+    } == snapshot({"context_before": 5, "context_after": 9, "wire_before": 6, "wire_after": 11})
+    assert _read_roles(context_file) == snapshot(
+        [
+            "_system_prompt",
+            "_checkpoint",
+            "user",
+            "_checkpoint",
+            "assistant",
+            "_checkpoint",
+            "user",
+            "_checkpoint",
+            "assistant",
+        ]
+    )
 
 
 def test_clear_context_rotates(tmp_path) -> None:
@@ -189,7 +214,15 @@ def test_clear_context_rotates(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": 0.0, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": 0.0,
+                        "context_tokens": 0,
+                        "max_context_tokens": 100000,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": None,
+                        "mcp_status": None,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
@@ -202,9 +235,16 @@ def test_clear_context_rotates(tmp_path) -> None:
     assert len(session_ids) == 1
     session_dir = session_root / session_ids[0]
     context_file = session_dir / "context.jsonl"
-    assert context_file.stat().st_size == 0
-    rotated = sorted(p.name for p in session_dir.iterdir() if p.name.startswith("context.jsonl."))
-    assert rotated == snapshot([])
+    assert _read_roles(context_file) == snapshot(["_system_prompt"])
+    rotated = sorted(
+        p.name
+        for p in session_dir.iterdir()
+        if p.is_file() and p.name.startswith("context_") and p.suffix == ".jsonl"
+    )
+    assert rotated == snapshot(["context_1.jsonl"])
+    assert _read_roles(session_dir / rotated[0]) == snapshot(
+        ["_system_prompt", "_checkpoint", "user", "_checkpoint", "assistant"]
+    )
 
 
 def test_manual_compact(tmp_path) -> None:
@@ -259,11 +299,84 @@ def test_manual_compact(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": 0.0, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": 1e-05,
+                        "context_tokens": 1,
+                        "max_context_tokens": 100000,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": None,
+                        "mcp_status": None,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]
         )
+    finally:
+        wire.close()
+
+
+def test_manual_compact_with_usage(tmp_path) -> None:
+    """Compaction with enough messages to trigger an actual LLM call that returns usage."""
+    scripts = [
+        "text: hello\nusage: input_other=10 output=5",
+        "text: I'm good\nusage: input_other=30 output=8",
+        "text: compacted summary\nusage: input_other=50 output=20",
+    ]
+    config_path = write_scripted_config(tmp_path, scripts)
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+
+    wire = start_wire(
+        config_path=config_path,
+        config_text=None,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+    try:
+        send_initialize(wire)
+
+        # Two rounds of conversation to build up context beyond max_preserved_messages=2
+        wire.send_json(
+            {
+                "jsonrpc": "2.0",
+                "id": "prompt-1",
+                "method": "prompt",
+                "params": {"user_input": "hi"},
+            }
+        )
+        resp, _ = collect_until_response(wire, "prompt-1")
+        assert resp.get("result", {}).get("status") == "finished"
+
+        wire.send_json(
+            {
+                "jsonrpc": "2.0",
+                "id": "prompt-2",
+                "method": "prompt",
+                "params": {"user_input": "how are you"},
+            }
+        )
+        resp, _ = collect_until_response(wire, "prompt-2")
+        assert resp.get("result", {}).get("status") == "finished"
+
+        # Now compact — this triggers a real compaction LLM call (script 3)
+        wire.send_json(
+            {
+                "jsonrpc": "2.0",
+                "id": "prompt-3",
+                "method": "prompt",
+                "params": {"user_input": "/compact"},
+            }
+        )
+        resp, messages = collect_until_response(wire, "prompt-3")
+        assert resp.get("result", {}).get("status") == "finished"
+
+        # Verify context_usage is non-zero (usage.output=20 + preserved text estimate)
+        status_msg = [m for m in messages if m.get("params", {}).get("type") == "StatusUpdate"]
+        assert len(status_msg) == 1
+        context_usage = status_msg[0]["params"]["payload"]["context_usage"]
+        assert context_usage > 0, "context_usage should be non-zero after compaction with usage"
     finally:
         wire.close()
 
@@ -312,8 +425,8 @@ def test_replay_streams_wire_history(tmp_path) -> None:
         assert resp.get("result") == snapshot(
             {
                 "status": "finished",
-                "events": 11,
-                "requests": 1,
+                "events": 10,
+                "requests": 0,
             }
         )
         assert summarize_messages(messages) == snapshot(
@@ -342,24 +455,15 @@ def test_replay_streams_wire_history(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
-                },
-                {
-                    "method": "request",
-                    "type": "ApprovalRequest",
                     "payload": {
-                        "id": "<uuid>",
-                        "tool_call_id": "tc-1",
-                        "sender": "Shell",
-                        "action": "run command",
-                        "description": "Run command `echo ok`",
-                        "display": [{"type": "shell", "language": "bash", "command": "echo ok"}],
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                        "mcp_status": None,
                     },
-                },
-                {
-                    "method": "event",
-                    "type": "ApprovalResponse",
-                    "payload": {"request_id": "<uuid>", "response": "approve"},
                 },
                 {
                     "method": "event",
@@ -384,7 +488,15 @@ def test_replay_streams_wire_history(tmp_path) -> None:
                 {
                     "method": "event",
                     "type": "StatusUpdate",
-                    "payload": {"context_usage": None, "token_usage": None, "message_id": None},
+                    "payload": {
+                        "context_usage": None,
+                        "context_tokens": None,
+                        "max_context_tokens": None,
+                        "token_usage": None,
+                        "message_id": None,
+                        "plan_mode": False,
+                        "mcp_status": None,
+                    },
                 },
                 {"method": "event", "type": "TurnEnd", "payload": {}},
             ]

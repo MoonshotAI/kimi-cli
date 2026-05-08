@@ -10,6 +10,19 @@ export function isMacOS(): boolean {
   return navigator.platform.toLowerCase().includes("mac");
 }
 
+const _isMac =
+  typeof navigator !== "undefined" &&
+  navigator.platform.toLowerCase().includes("mac");
+
+/**
+ * Check if the platform-specific modifier key is pressed (Cmd on macOS, Ctrl elsewhere).
+ */
+export function hasPlatformModifier(
+  e: Pick<KeyboardEvent | MouseEvent, "metaKey" | "ctrlKey">,
+): boolean {
+  return _isMac ? e.metaKey : e.ctrlKey;
+}
+
 /**
  * Get the API base URL for connecting to the Kimi backend.
  * - Vite dev: uses Vite proxy, so empty string (relative URLs like /api/...)

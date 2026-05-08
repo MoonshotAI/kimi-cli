@@ -204,8 +204,14 @@ const renderToolMessage = ({
     isApprovalRequested
   );
 
-  return (
-    <>
+  const subagentOriginLabel = toolCall.isSubagentOrigin
+    ? toolCall.subagentType
+      ? `${toolCall.subagentType} agent`
+      : "sub-agent"
+    : null;
+
+  const toolBlock = (
+    <div className="space-y-1">
       <Tool
         key={`${message.id}-${blocksExpanded}`}
         defaultOpen={blocksExpanded}
@@ -219,12 +225,12 @@ const renderToolMessage = ({
         <ToolContent>
           {toolCall.input ? <ToolInput input={toolCall.input} /> : null}
           <ToolDisplay display={toolCall.display} isError={toolCall.isError} />
-          {toolCall.mediaParts ? <ToolMediaPreview mediaParts={toolCall.mediaParts} /> : null}
           {toolCall.subagentSteps && toolCall.subagentSteps.length > 0 ? (
             <SubagentActivity
               steps={toolCall.subagentSteps}
               isRunning={toolCall.subagentRunning}
               defaultOpen={blocksExpanded}
+              subagentType={toolCall.subagentType}
             />
           ) : null}
           {shouldShowOutput ? (
@@ -305,13 +311,30 @@ const renderToolMessage = ({
           ) : null}
         </ToolContent>
       </Tool>
+      {toolCall.mediaParts ? (
+        <ToolMediaPreview mediaParts={toolCall.mediaParts} />
+      ) : null}
       {isApprovalRequested ? (
         <div className={assistantMetaTextClass}>Waiting for your approval…</div>
       ) : isApprovalDenied ? (
         <div className={assistantMetaTextClass}>Tool execution cancelled.</div>
       ) : null}
-    </>
+    </div>
   );
+
+  // Sub-agent origin: wrap in a visually demoted container with source label
+  if (subagentOriginLabel) {
+    return (
+      <div className="border-l-2 border-muted-foreground/20 pl-3 opacity-80">
+        <div className="text-[11px] text-muted-foreground/60 mb-0.5">
+          {subagentOriginLabel}
+        </div>
+        {toolBlock}
+      </div>
+    );
+  }
+
+  return toolBlock;
 };
 
 const ThinkToolBlock = ({

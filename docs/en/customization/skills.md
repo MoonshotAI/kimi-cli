@@ -8,41 +8,111 @@ A skill is a directory containing a `SKILL.md` file. When Kimi Code CLI starts, 
 
 For example, you can create a "code style" skill to tell the AI your project's naming conventions, comment styles, etc.; or create a "security audit" skill to have the AI focus on specific security issues when reviewing code.
 
+**Skills vs plugins**
+
+Kimi Code CLI supports two extension mechanisms:
+
+- **Skills**: Provide knowledge-based guidance through `SKILL.md`; the AI reads and follows the specifications. Suitable for defining code styles, workflows, and best practices.
+- **Plugins**: Declare executable tools through `plugin.json`; the AI can directly invoke tools to get results. Suitable for wrapping scripts, API calls, and database queries.
+
+For details about plugins, see the [Plugins](./plugins.md) documentation.
+
 ## Skill discovery
 
-Kimi Code CLI uses a layered loading mechanism to discover skills, loading in the following priority order (later ones override skills with the same name):
+Kimi Code CLI uses a layered loading mechanism to discover skills. Roots are scanned in priority order — when a skill name is defined in more than one scope, the more specific scope wins:
+
+**Project > User > Extra > Built-in**
 
 **Built-in skills**
 
-Skills shipped with the package, providing basic capabilities.
+Skills shipped with the package, providing basic capabilities. Lowest priority.
 
 **User-level skills**
 
-Stored in the user's home directory, effective across all projects. Kimi Code CLI checks the following directories in priority order and uses the first one that exists:
+Stored in the user's home directory, effective across all projects. Candidate directories are split into two groups; within each group, the first existing directory is selected, and results from both groups are merged independently (brand group has higher specificity and priority):
 
-1. `~/.config/agents/skills/` (recommended)
-2. `~/.agents/skills/`
-3. `~/.kimi/skills/`
-4. `~/.claude/skills/`
-5. `~/.codex/skills/`
+- **Brand group** (mutually exclusive):
+  1. `~/.kimi/skills/`
+  2. `~/.claude/skills/`
+  3. `~/.codex/skills/`
+- **Generic group** (mutually exclusive):
+  1. `~/.config/agents/skills/` (recommended)
+  2. `~/.agents/skills/`
+
+Both groups are searched independently and results are merged. When a skill with the same name exists in both groups, the brand group version takes priority.
+
+By default, **all existing brand directories are loaded and merged**, with same-name skills resolved by priority: kimi > claude > codex. The generic group is not affected. This "merge everything" behaviour is controlled by `merge_all_available_skills`, which defaults to `true`:
+
+```toml
+# Default; merges every brand directory that exists.
+merge_all_available_skills = true
+```
+
+Set it to `false` to restore the older first-match-only behaviour, where only the highest-priority existing brand directory is used (kimi, or claude if kimi is absent, and so on):
+
+```toml
+merge_all_available_skills = false
+```
 
 **Project-level skills**
 
-Stored in the project directory, only effective within that project's working directory. Kimi Code CLI checks the following directories in priority order and uses the first one that exists:
+Stored in the project directory, effective within that project. Candidate paths are resolved relative to the **project root** (the nearest `.git` ancestor of the work directory, falling back to the work directory itself when there is no `.git` marker), so launching kimi-cli from a subdirectory of a monorepo still surfaces skills defined at the repository root. The same two-group split as user-level skills applies:
 
-1. `.agents/skills/` (recommended)
-2. `.kimi/skills/`
-3. `.claude/skills/`
-4. `.codex/skills/`
+- **Brand group** (mutually exclusive):
+  1. `.kimi/skills/`
+  2. `.claude/skills/`
+  3. `.codex/skills/`
+- **Generic group**: `.agents/skills/`
 
-You can also specify other directories with the `--skills-dir` flag, which skips user-level and project-level skill discovery:
+The `merge_all_available_skills` config applies to project-level skills as well.
+
+You can also specify additional skills directories with the `--skills-dir` flag. This flag can be specified multiple times, and the directories override the auto-discovered user/project directories:
 
 ```sh
-kimi --skills-dir /path/to/my-skills
+kimi --skills-dir /path/to/my-skills --skills-dir /path/to/more-skills
 ```
 
+**Extra skills directories (additive)**
+
+To add custom skills directories **on top of** the built-in / user / project discovery (not instead of them), set `extra_skill_dirs` in your config:
+
+```toml
+extra_skill_dirs = [
+    "~/my-skills-collection",   # `~` is expanded to $HOME
+    ".claude/plugins/my-skills", # relative entries resolve against the project root
+    "/opt/team-shared/skills",  # absolute paths are used as-is
+]
+```
+
+Each entry can be an absolute path, a `~`-prefixed path, or a path relative to the project root (the nearest `.git` directory above the work directory). Non-existent entries are silently skipped. Skills discovered from these directories are grouped under the `Extra` scope in the system prompt.
+
+**How skills are presented to the AI**
+
+Discovered skills are injected into the system prompt grouped by origin scope (`Project` / `User` / `Extra` / `Built-in`). Empty groups are omitted. This lets the AI distinguish project-specific skills from user-level ones when you refer to "the skill in this project" vs. "the user-scope skill".
+
+**Flat `.md` skills**
+
+In addition to the canonical `<name>/SKILL.md` subdirectory layout, a single `.md` file placed directly in a skills directory is also recognised as a skill. Its `name` defaults to the filename without the `.md` extension.
+
+```
+~/my-skills-collection/
+├── demo-ui-components.md    # flat: name = "demo-ui-components"
+└── deploy/                   # subdirectory: name = "deploy"
+    └── SKILL.md
+```
+
+If a flat `.md` and a subdirectory share the same name in the same directory, the subdirectory wins and a warning is logged.
+
+**Description resolution**
+
+Regardless of form (subdirectory or flat), each skill's `description` is resolved by the same chain:
+
+1. Frontmatter `description:` field (preferred — follow the [SKILL.md spec](https://agentskills.io/specification))
+2. First non-empty line of the body (fallback; truncated at 240 characters)
+3. `"No description provided."` (last resort)
+
 ::: tip
-Skills paths are independent of [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir). `KIMI_SHARE_DIR` customizes the storage location for configuration, sessions, logs, and other runtime data, but does not affect Skills search paths. Skills are cross-tool shared capability extensions (compatible with Kimi CLI, Claude, Codex, and others), which is a different type of data from application runtime data. To override Skills paths, use the `--skills-dir` flag.
+Skills paths are independent of [`KIMI_SHARE_DIR`](../configuration/env-vars.md#kimi-share-dir). `KIMI_SHARE_DIR` customizes the storage location for configuration, sessions, logs, and other runtime data, but does not affect Skills search paths. Skills are cross-tool shared capability extensions (compatible with Kimi CLI, Claude, Codex, and others), which is a different type of data from application runtime data. To specify custom skills paths, use the `--skills-dir` flag or `extra_skill_dirs` config.
 :::
 
 ## Built-in skills

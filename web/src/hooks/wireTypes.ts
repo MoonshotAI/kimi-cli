@@ -130,6 +130,7 @@ export type StatusUpdateEvent = {
     context_usage: number | null;
     token_usage?: TokenUsage | null;
     message_id?: string;
+    plan_mode?: boolean | null;
   };
 };
 
@@ -153,6 +154,16 @@ export type CompactionEndEvent = {
   payload?: Record<string, never>;
 };
 
+export type MCPLoadingBeginEvent = {
+  type: "MCPLoadingBegin";
+  payload?: Record<string, never>;
+};
+
+export type MCPLoadingEndEvent = {
+  type: "MCPLoadingEnd";
+  payload?: Record<string, never>;
+};
+
 export type ApprovalRequestEvent = {
   type: "ApprovalRequest";
   payload: {
@@ -161,6 +172,13 @@ export type ApprovalRequestEvent = {
     description: string;
     sender: string;
     tool_call_id: string;
+    /** Display blocks with preview content (diffs, shell commands) */
+    display?: Array<{ type: string; data: unknown }>;
+    source_kind?: "foreground_turn" | "background_agent" | null;
+    source_id?: string | null;
+    agent_id?: string | null;
+    subagent_type?: string | null;
+    source_description?: string | null;
   };
 };
 
@@ -169,6 +187,8 @@ export type ApprovalRequestResolvedEvent = {
   payload: {
     request_id: string;
     response: unknown;
+    /** Feedback text provided with a rejection (Wire 1.6+) */
+    feedback?: string;
   };
 };
 
@@ -177,16 +197,57 @@ export type ApprovalResponseDecision =
   | "approve_for_session"
   | "reject";
 
+export type QuestionOption = {
+  label: string;
+  description: string;
+};
+
+export type QuestionItem = {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multi_select: boolean;
+  body?: string;
+  other_label?: string;
+  other_description?: string;
+};
+
+export type QuestionRequestEvent = {
+  type: "QuestionRequest";
+  payload: {
+    id: string;
+    tool_call_id: string;
+    questions: QuestionItem[];
+  };
+};
+
 /**
- * A SubagentEvent wraps an inner event produced by a subagent (Task tool).
+ * A SubagentEvent wraps an inner event produced by a subagent (Agent tool).
  * The inner `event` field is a {type, payload} envelope that may itself be
  * a SubagentEvent (for nested subagents).
  */
 export type SubagentEventWire = {
   type: "SubagentEvent";
   payload: {
-    task_tool_call_id: string;
+    parent_tool_call_id?: string | null;
+    agent_id?: string | null;
+    subagent_type?: string | null;
     event: { type: string; payload: unknown };
+  };
+};
+
+export type SteerInputEvent = {
+  type: "SteerInput";
+  payload: {
+    user_input: string | ContentPart[];
+  };
+};
+
+export type PlanDisplayEvent = {
+  type: "PlanDisplay";
+  payload: {
+    content: string;
+    file_path: string;
   };
 };
 
@@ -203,9 +264,14 @@ export type WireEvent =
   | SessionNoticeEvent
   | CompactionBeginEvent
   | CompactionEndEvent
+  | MCPLoadingBeginEvent
+  | MCPLoadingEndEvent
   | ApprovalRequestEvent
   | ApprovalRequestResolvedEvent
-  | SubagentEventWire;
+  | QuestionRequestEvent
+  | SubagentEventWire
+  | SteerInputEvent
+  | PlanDisplayEvent;
 
 // Parsed wire message
 export type WireMessage = {
@@ -268,6 +334,9 @@ export type ToolApprovalState = {
   approved?: boolean;
   reason?: string;
   response?: unknown;
+  feedback?: string;
+  sourceKind?: "foreground_turn" | "background_agent" | null;
+  sourceDescription?: string | null;
 };
 
 // Content part for accumulated content

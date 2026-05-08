@@ -107,15 +107,12 @@ async def test_google_genai_message_conversion():
                                 {
                                     "name": "add",
                                     "description": "Add two integers.",
-                                    "parameters": {
-                                        "type": "OBJECT",
+                                    "parameters_json_schema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {
-                                                "type": "INTEGER",
-                                                "description": "First number",
-                                            },
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
-                                                "type": "INTEGER",
+                                                "type": "integer",
                                                 "description": "Second number",
                                             },
                                         },
@@ -125,16 +122,16 @@ async def test_google_genai_message_conversion():
                                 {
                                     "description": "Multiply two integers.",
                                     "name": "multiply",
-                                    "parameters": {
+                                    "parameters_json_schema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                             ]
@@ -149,7 +146,6 @@ async def test_google_genai_message_conversion():
                                 {"text": "I'll add those numbers for you."},
                                 {
                                     "functionCall": {
-                                        "id": "call_abc123",
                                         "args": {"a": 2, "b": 3},
                                         "name": "add",
                                     }
@@ -162,7 +158,6 @@ async def test_google_genai_message_conversion():
                                 {
                                     "functionResponse": {
                                         "parts": [],
-                                        "id": "call_abc123",
                                         "name": "add",
                                         "response": {"output": "5"},
                                     }
@@ -181,14 +176,12 @@ async def test_google_genai_message_conversion():
                                 {"text": "I'll calculate both."},
                                 {
                                     "functionCall": {
-                                        "id": "call_add",
                                         "name": "add",
                                         "args": {"a": 2, "b": 3},
                                     }
                                 },
                                 {
                                     "functionCall": {
-                                        "id": "call_mul",
                                         "name": "multiply",
                                         "args": {"a": 4, "b": 5},
                                     }
@@ -201,7 +194,6 @@ async def test_google_genai_message_conversion():
                                 {
                                     "functionResponse": {
                                         "parts": [],
-                                        "id": "call_add",
                                         "name": "add",
                                         "response": {
                                             "output": "<system-reminder>This is a system reminder"
@@ -212,7 +204,6 @@ async def test_google_genai_message_conversion():
                                 {
                                     "functionResponse": {
                                         "parts": [],
-                                        "id": "call_mul",
                                         "name": "multiply",
                                         "response": {
                                             "output": "<system-reminder>This is a system reminder"
@@ -231,31 +222,31 @@ async def test_google_genai_message_conversion():
                                 {
                                     "description": "Add two integers.",
                                     "name": "add",
-                                    "parameters": {
+                                    "parameters_json_schema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                                 {
                                     "description": "Multiply two integers.",
                                     "name": "multiply",
-                                    "parameters": {
+                                    "parameters_json_schema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                             ]
@@ -270,7 +261,6 @@ async def test_google_genai_message_conversion():
                                 {"text": "I'll add those."},
                                 {
                                     "functionCall": {
-                                        "id": "add_call_sig",
                                         "name": "add",
                                         "args": {"a": 2, "b": 3},
                                     },
@@ -335,31 +325,31 @@ async def test_google_genai_vertexai_message_conversion():
                                 {
                                     "description": "Add two integers.",
                                     "name": "add",
-                                    "parameters": {
+                                    "parametersJsonSchema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                                 {
                                     "description": "Multiply two integers.",
                                     "name": "multiply",
-                                    "parameters": {
+                                    "parametersJsonSchema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                             ]
@@ -374,7 +364,6 @@ async def test_google_genai_vertexai_message_conversion():
                                 {"text": "I'll add those numbers for you."},
                                 {
                                     "function_call": {
-                                        "id": "call_abc123",
                                         "args": {"a": 2, "b": 3},
                                         "name": "add",
                                     }
@@ -387,7 +376,6 @@ async def test_google_genai_vertexai_message_conversion():
                                 {
                                     "function_response": {
                                         "parts": [],
-                                        "id": "call_abc123",
                                         "name": "add",
                                         "response": {"output": "5"},
                                     }
@@ -406,14 +394,12 @@ async def test_google_genai_vertexai_message_conversion():
                                 {"text": "I'll calculate both."},
                                 {
                                     "function_call": {
-                                        "id": "call_add",
                                         "args": {"a": 2, "b": 3},
                                         "name": "add",
                                     }
                                 },
                                 {
                                     "function_call": {
-                                        "id": "call_mul",
                                         "args": {"a": 4, "b": 5},
                                         "name": "multiply",
                                     }
@@ -426,7 +412,6 @@ async def test_google_genai_vertexai_message_conversion():
                                 {
                                     "function_response": {
                                         "parts": [],
-                                        "id": "call_add",
                                         "name": "add",
                                         "response": {
                                             "output": "<system-reminder>This is a system reminder</system-reminder>5"  # noqa: E501
@@ -436,7 +421,6 @@ async def test_google_genai_vertexai_message_conversion():
                                 {
                                     "function_response": {
                                         "parts": [],
-                                        "id": "call_mul",
                                         "name": "multiply",
                                         "response": {
                                             "output": "<system-reminder>This is a system reminder</system-reminder>20"  # noqa: E501
@@ -454,31 +438,31 @@ async def test_google_genai_vertexai_message_conversion():
                                 {
                                     "description": "Add two integers.",
                                     "name": "add",
-                                    "parameters": {
+                                    "parametersJsonSchema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                                 {
                                     "description": "Multiply two integers.",
                                     "name": "multiply",
-                                    "parameters": {
+                                    "parametersJsonSchema": {
+                                        "type": "object",
                                         "properties": {
-                                            "a": {"description": "First number", "type": "INTEGER"},
+                                            "a": {"type": "integer", "description": "First number"},
                                             "b": {
+                                                "type": "integer",
                                                 "description": "Second number",
-                                                "type": "INTEGER",
                                             },
                                         },
                                         "required": ["a", "b"],
-                                        "type": "OBJECT",
                                     },
                                 },
                             ]
@@ -493,7 +477,6 @@ async def test_google_genai_vertexai_message_conversion():
                                 {"text": "I'll add those."},
                                 {
                                     "function_call": {
-                                        "id": "add_call_sig",
                                         "args": {"a": 2, "b": 3},
                                         "name": "add",
                                     },
@@ -523,6 +506,49 @@ async def test_google_genai_generation_kwargs():
         body = json.loads(mock.calls.last.request.content.decode())
         config = body.get("generationConfig", {})
         assert (config.get("temperature"), config.get("maxOutputTokens")) == snapshot((0.7, 2048))
+
+
+async def test_google_genai_no_id_in_function_call_or_response():
+    """Gemini API rejects 'id' in function_call/function_response parts.
+
+    The google-genai SDK may accept ``id`` as a keyword argument for
+    ``FunctionCall`` / ``FunctionResponse``, but the Gemini REST API returns
+    HTTP 400 when `id` is present in the wire JSON.  Verify that our
+    conversion never emits it.
+    """
+    history = [
+        Message(role="user", content="Add 2 and 3"),
+        Message(
+            role="assistant",
+            content=[TextPart(text="Sure.")],
+            tool_calls=[
+                ToolCall(
+                    id="call_xyz",
+                    function=ToolCall.FunctionBody(name="add", arguments='{"a": 2, "b": 3}'),
+                ),
+            ],
+        ),
+        Message(role="tool", content="5", tool_call_id="call_xyz"),
+    ]
+
+    with respx.mock(base_url="https://generativelanguage.googleapis.com") as mock:
+        mock.route(method="POST", path__regex=r"/v1beta/models/.+:generateContent").mock(
+            return_value=Response(200, json=make_response())
+        )
+        provider = GoogleGenAI(model="gemini-2.5-flash", api_key="test-key", stream=False)
+        stream = await provider.generate("", [], history)
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+
+    for content in body.get("contents", []):
+        for part in content.get("parts", []):
+            fc = part.get("functionCall") or part.get("function_call")
+            if fc is not None:
+                assert "id" not in fc, f"FunctionCall must not contain 'id', got: {fc}"
+            fr = part.get("functionResponse") or part.get("function_response")
+            if fr is not None:
+                assert "id" not in fr, f"FunctionResponse must not contain 'id', got: {fr}"
 
 
 async def test_google_genai_with_thinking():

@@ -82,11 +82,35 @@ class ExternalTool(BaseModel):
     parameters: dict[str, JsonType]
 
 
+class ClientCapabilities(BaseModel):
+    """Capabilities declared by the Wire client during initialization."""
+
+    supports_question: bool = False
+    """Whether the client can handle QuestionRequest messages."""
+    supports_plan_mode: bool = False
+    """Whether the client supports plan mode (EnterPlanMode / ExitPlanMode)."""
+
+
+class WireHookSubscription(BaseModel):
+    """Hook event subscription from the wire client."""
+
+    id: str
+    """Unique subscription ID — referenced in HookRequest."""
+    event: str
+    """Which event to subscribe to."""
+    matcher: str = ""
+    """Regex filter. Empty matches everything."""
+    timeout: int = 30
+    """Seconds to wait for client response."""
+
+
 class JSONRPCInitializeMessage(_MessageBase):
     class Params(BaseModel):
         protocol_version: str
         client: ClientInfo | None = None
         external_tools: list[ExternalTool] | None = None
+        hooks: list[WireHookSubscription] | None = None
+        capabilities: ClientCapabilities | None = None
 
     method: Literal["initialize"] = "initialize"
     id: str
@@ -110,6 +134,31 @@ class JSONRPCReplayMessage(_MessageBase):
     method: Literal["replay"] = "replay"
     id: str
     params: JsonType | None = None
+
+
+class JSONRPCSteerMessage(_MessageBase):
+    class Params(BaseModel):
+        user_input: str | list[ContentPart]
+
+    method: Literal["steer"] = "steer"
+    id: str
+    params: Params
+
+    @model_serializer()
+    def _serialize(self) -> dict[str, Any]:
+        raise NotImplementedError("Steer message serialization is not implemented.")
+
+
+class _SetPlanModeParams(BaseModel):
+    enabled: bool
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class JSONRPCSetPlanModeMessage(_MessageBase):
+    method: Literal["set_plan_mode"] = "set_plan_mode"
+    id: str
+    params: _SetPlanModeParams
 
 
 class JSONRPCCancelMessage(_MessageBase):
@@ -160,11 +209,13 @@ type JSONRPCInMessage = (
     | JSONRPCErrorResponse
     | JSONRPCInitializeMessage
     | JSONRPCPromptMessage
+    | JSONRPCSteerMessage
     | JSONRPCReplayMessage
+    | JSONRPCSetPlanModeMessage
     | JSONRPCCancelMessage
 )
 JSONRPCInMessageAdapter = TypeAdapter[JSONRPCInMessage](JSONRPCInMessage)
-JSONRPC_IN_METHODS = {"initialize", "prompt", "replay", "cancel"}
+JSONRPC_IN_METHODS = {"initialize", "prompt", "steer", "replay", "set_plan_mode", "cancel"}
 
 type JSONRPCOutMessage = (
     JSONRPCSuccessResponse
@@ -197,6 +248,8 @@ class ErrorCodes:
     """The specified LLM is not supported."""
     CHAT_PROVIDER_ERROR = -32003
     """There was an error from the chat provider."""
+    AUTH_EXPIRED = -32004
+    """Authentication has expired; user should re-login."""
 
 
 class Statuses:
@@ -206,3 +259,5 @@ class Statuses:
     """The agent run was cancelled by the user."""
     MAX_STEPS_REACHED = "max_steps_reached"
     """The agent run reached the maximum number of steps."""
+    STEERED = "steered"
+    """A steer message was queued for injection into the active turn."""

@@ -1,4 +1,4 @@
-import { type ReactElement, useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 import {
   CopyIcon,
   ExternalLinkIcon,
@@ -15,52 +15,72 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { getAuthHeader } from "@/lib/auth";
 import { isMacOS } from "@/hooks/utils";
+import {
+  type OpenTargetDef,
+  ALL_OPEN_TARGETS,
+  openViaBackend,
+  setLastOpenTargetId,
+} from "@/features/chat/open-in-shared";
 
-type OpenTarget = {
-  id: string;
-  label: string;
-  icon: ReactElement;
-  backendApp: "finder" | "cursor" | "vscode";
+type OpenTarget = OpenTargetDef & {
+  icon: ReactNode;
 };
 
-const OPEN_TARGETS: OpenTarget[] = [
-  { id: "finder", label: "Finder", icon: <FolderOpenIcon className="size-3.5" />, backendApp: "finder" },
-  { id: "cursor", label: "Cursor", icon: <AppWindowIcon className="size-3.5" />, backendApp: "cursor" },
-  { id: "vscode", label: "VS Code", icon: <CodeIcon className="size-3.5" />, backendApp: "vscode" },
-];
+/** IDs of targets shown in the lightweight file-level button. */
+const BUTTON_TARGET_IDS = new Set(["finder", "cursor", "vscode"]);
 
-async function openViaBackend(app: OpenTarget["backendApp"], path: string) {
-  const response = await fetch("/api/open-in", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeader() },
-    body: JSON.stringify({ app, path }),
-  });
-  if (!response.ok) {
-    let detail = "Failed to open application.";
-    try {
-      const data = await response.json();
-      if (data?.detail) detail = String(data.detail);
-    } catch { /* ignore */ }
-    throw new Error(detail);
-  }
-}
+const ICON_MAP: Record<string, ReactNode> = {
+  finder: <FolderOpenIcon className="size-3.5" />,
+  cursor: <AppWindowIcon className="size-3.5" />,
+  vscode: <CodeIcon className="size-3.5" />,
+};
 
-export function OpenInButton({ path, className }: { path: string; className?: string }) {
-  const targets = useMemo(() => (isMacOS() ? OPEN_TARGETS : OPEN_TARGETS.filter((t) => t.id !== "finder")), []);
+export function OpenInButton({
+  path,
+  className,
+}: {
+  path: string;
+  className?: string;
+}) {
+  const isMac = isMacOS();
 
-  const handleOpen = useCallback(async (target: OpenTarget, e: Event) => {
-    e.stopPropagation();
-    try { await openViaBackend(target.backendApp, path); }
-    catch (error) { toast.error("Failed to open", { description: error instanceof Error ? error.message : "Unexpected error" }); }
-  }, [path]);
+  const targets = useMemo<OpenTarget[]>(
+    () =>
+      ALL_OPEN_TARGETS.filter(
+        (t) => BUTTON_TARGET_IDS.has(t.id) && (!t.macOnly || isMac),
+      ).map((t) => ({ ...t, icon: ICON_MAP[t.id] })),
+    [isMac],
+  );
 
-  const handleCopyPath = useCallback(async (e: Event) => {
-    e.stopPropagation();
-    try { await navigator.clipboard.writeText(path); toast.success("Path copied", { description: path }); }
-    catch { toast.error("Failed to copy path"); }
-  }, [path]);
+  const handleOpen = useCallback(
+    async (target: OpenTarget, e: Event) => {
+      e.stopPropagation();
+      try {
+        await openViaBackend(target.backendApp, path);
+        setLastOpenTargetId(target.id);
+      } catch (error) {
+        toast.error("Failed to open", {
+          description:
+            error instanceof Error ? error.message : "Unexpected error",
+        });
+      }
+    },
+    [path],
+  );
+
+  const handleCopyPath = useCallback(
+    async (e: Event) => {
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(path);
+        toast.success("Path copied", { description: path });
+      } catch {
+        toast.error("Failed to copy path");
+      }
+    },
+    [path],
+  );
 
   return (
     <DropdownMenu>
@@ -80,9 +100,17 @@ export function OpenInButton({ path, className }: { path: string; className?: st
           <span>Open</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[120px]" onClick={(e) => e.stopPropagation()}>
+      <DropdownMenuContent
+        align="end"
+        className="min-w-[120px]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {targets.map((target) => (
-          <DropdownMenuItem key={target.id} onSelect={(e) => handleOpen(target, e)} className="text-xs">
+          <DropdownMenuItem
+            key={target.id}
+            onSelect={(e) => handleOpen(target, e)}
+            className="text-xs"
+          >
             {target.icon}
             <span>{target.label}</span>
           </DropdownMenuItem>

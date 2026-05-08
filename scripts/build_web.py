@@ -15,6 +15,11 @@ STATIC_DIR = ROOT / "src" / "kimi_cli" / "web" / "static"
 
 STRICT_VERSION = os.environ.get("KIMI_WEB_STRICT_VERSION", "").lower() in {"1", "true", "yes"}
 
+REQUIRED_WEB_TYPE_FILES = (
+    NODE_MODULES / "vite" / "client.d.ts",
+    NODE_MODULES / "@types" / "node" / "index.d.ts",
+)
+
 
 def read_pyproject_version() -> str:
     with (ROOT / "pyproject.toml").open("rb") as handle:
@@ -65,6 +70,10 @@ def run_npm(npm: str, args: list[str]) -> int:
     return result.returncode
 
 
+def has_required_web_type_files() -> bool:
+    return all(path.is_file() for path in REQUIRED_WEB_TYPE_FILES)
+
+
 def main() -> int:
     npm = resolve_npm()
     if npm is None:
@@ -80,8 +89,11 @@ def main() -> int:
         )
         return 1
 
-    if not NODE_MODULES.exists():
-        returncode = run_npm(npm, ["--prefix", str(WEB_DIR), "ci"])
+    needs_install = (not NODE_MODULES.exists()) or (not has_required_web_type_files())
+    if needs_install:
+        if NODE_MODULES.exists():
+            print("web dependencies are incomplete; reinstalling with devDependencies...")
+        returncode = run_npm(npm, ["--prefix", str(WEB_DIR), "ci", "--include=dev"])
         if returncode != 0:
             return returncode
 

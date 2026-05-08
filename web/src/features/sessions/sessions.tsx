@@ -3,6 +3,7 @@ import {
   memo,
   useCallback,
   useMemo,
+  useRef,
   type ReactElement,
   useEffect,
   useState,
@@ -52,7 +53,7 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
-import { isMacOS } from "@/hooks/utils";
+import { hasPlatformModifier, isMacOS } from "@/hooks/utils";
 import { cn, } from "@/lib/utils";
 
 // Top-level regex constants for performance
@@ -200,6 +201,9 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  // Guard against re-entry: pressing Enter and the resulting blur (e.g. when
+  // the user clicks the toast to dismiss it) both call handleSaveEdit.
+  const isSavingRenameRef = useRef(false);
 
   // Session search state
   const [sessionSearch, setSessionSearch] = useState(searchQuery);
@@ -437,6 +441,9 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
   };
 
   const handleSaveEdit = async () => {
+    if (isSavingRenameRef.current) {
+      return;
+    }
     if (!(editingSessionId && onRenameSession)) {
       handleCancelEdit();
       return;
@@ -448,9 +455,14 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
       return;
     }
 
-    const success = await onRenameSession(editingSessionId, trimmedTitle);
-    if (success) {
-      handleCancelEdit();
+    isSavingRenameRef.current = true;
+    try {
+      const success = await onRenameSession(editingSessionId, trimmedTitle);
+      if (success) {
+        handleCancelEdit();
+      }
+    } finally {
+      isSavingRenameRef.current = false;
     }
   };
 
@@ -646,21 +658,34 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                   <button
                     aria-label="New Session"
                     className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={onOpenCreateDialog}
+                    onClick={(e) => {
+                      if (hasPlatformModifier(e)) {
+                        const url = new URL(window.location.origin + window.location.pathname);
+                        url.searchParams.set("action", "create");
+                        window.open(url.toString(), "_blank");
+                      } else {
+                        onOpenCreateDialog?.();
+                      }
+                    }}
                     type="button"
                   >
                     <Plus className="size-4" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-2" side="bottom">
-                  <span>New session</span>
-                  <KbdGroup>
-                    <Kbd>Shift</Kbd>
-                    <span className="text-muted-foreground">+</span>
-                    <Kbd>{newSessionShortcutModifier}</Kbd>
-                    <span className="text-muted-foreground">+</span>
-                    <Kbd>O</Kbd>
-                  </KbdGroup>
+                <TooltipContent className="flex flex-col items-center gap-1" side="bottom">
+                  <div className="flex items-center gap-2">
+                    <span>New session</span>
+                    <KbdGroup>
+                      <Kbd>Shift</Kbd>
+                      <span className="text-muted-foreground">+</span>
+                      <Kbd>{newSessionShortcutModifier}</Kbd>
+                      <span className="text-muted-foreground">+</span>
+                      <Kbd>O</Kbd>
+                    </KbdGroup>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{newSessionShortcutModifier}+Click to open in new tab</span>
+                  </div>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -851,13 +876,23 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                                     className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground opacity-0 group-hover/dir:opacity-100 hover:bg-accent hover:text-foreground transition-all"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      onCreateSessionInDir(group.workDir);
+                                      if (hasPlatformModifier(e)) {
+                                        const url = new URL(window.location.origin + window.location.pathname);
+                                        url.searchParams.set("action", "create-in-dir");
+                                        url.searchParams.set("workDir", group.workDir);
+                                        window.open(url.toString(), "_blank");
+                                      } else {
+                                        onCreateSessionInDir(group.workDir);
+                                      }
                                     }}
                                   >
                                     <Plus className="size-3.5" />
                                   </button>
                                 </TooltipTrigger>
-                                <TooltipContent side="right">New session here</TooltipContent>
+                                <TooltipContent className="flex flex-col items-center gap-1" side="right">
+                                  <span>New session here</span>
+                                  <span className="text-xs text-muted-foreground">{newSessionShortcutModifier}+Click to open in new tab</span>
+                                </TooltipContent>
                               </Tooltip>
                             )}
                           </div>
@@ -1081,7 +1116,7 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
                     <Archive className="size-3.5" />
                     <span className="flex-1 text-left font-medium">Archived</span>
                     <span className="text-[10px] text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded">
-                      {archivedSessions.length}
+                      {archivedSessions.length}{hasMoreArchivedSessions ? '+' : ''}
                     </span>
                   </CollapsibleTrigger>
                   <CollapsibleContent>

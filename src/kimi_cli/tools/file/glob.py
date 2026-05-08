@@ -7,9 +7,10 @@ from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
-from kimi_cli.soul.agent import BuiltinSystemPromptArgs
+from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.utils import load_desc
-from kimi_cli.utils.path import is_within_directory, list_directory
+from kimi_cli.utils.logging import logger
+from kimi_cli.utils.path import is_within_directory, is_within_workspace, list_directory
 
 MAX_MATCHES = 1000
 
@@ -38,9 +39,11 @@ class Glob(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, builtin_args: BuiltinSystemPromptArgs) -> None:
+    def __init__(self, runtime: Runtime) -> None:
         super().__init__()
-        self._work_dir = builtin_args.KIMI_WORK_DIR
+        self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._additional_dirs = runtime.additional_dirs
+        self._skills_dirs = runtime.skills_dirs
 
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
@@ -63,16 +66,22 @@ class Glob(CallableTool2[Params]):
         """Validate that the directory is safe to search."""
         resolved_dir = directory.canonical()
 
-        # Ensure the directory is within work directory
-        if not is_within_directory(resolved_dir, self._work_dir):
-            return ToolError(
-                message=(
-                    f"`{directory}` is outside the working directory. "
-                    "You can only search within the working directory."
-                ),
-                brief="Directory outside working directory",
-            )
-        return None
+        # Allow directories within the workspace (work_dir or additional dirs)
+        if is_within_workspace(resolved_dir, self._work_dir, self._additional_dirs):
+            return None
+
+        # Allow directories within any discovered skills root
+        if any(is_within_directory(resolved_dir, d) for d in self._skills_dirs):
+            return None
+
+        return ToolError(
+            message=(
+                f"`{directory}` is outside the workspace. "
+                "You can only search within the working directory, "
+                "additional directories, and skills directories."
+            ),
+            brief="Directory outside workspace",
+        )
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -82,7 +91,9 @@ class Glob(CallableTool2[Params]):
             if pattern_error:
                 return pattern_error
 
-            dir_path = KaosPath(params.directory) if params.directory else self._work_dir
+            dir_path = (
+                KaosPath(params.directory).expanduser() if params.directory else self._work_dir
+            )
 
             if not dir_path.is_absolute():
                 return ToolError(
@@ -140,6 +151,9 @@ class Glob(CallableTool2[Params]):
             )
 
         except Exception as e:
+            logger.warning(
+                "Glob failed: pattern={pattern}: {error}", pattern=params.pattern, error=e
+            )
             return ToolError(
                 message=f"Failed to search for pattern {params.pattern}. Error: {e}",
                 brief="Glob failed",

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from inline_snapshot import snapshot
 
-from kimi_cli.tools.multiagent.create import CreateSubagent
-from kimi_cli.tools.shell import Shell
+from kimi_cli.tools.agent import Agent as AgentTool
+from kimi_cli.tools.background import TaskList, TaskOutput, TaskStop
 from kimi_cli.tools.dmail import SendDMail
 from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
@@ -13,52 +13,56 @@ from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.read_media import ReadMediaFile
 from kimi_cli.tools.file.replace import StrReplaceFile
 from kimi_cli.tools.file.write import WriteFile
-from kimi_cli.tools.multiagent.task import Task
+from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
 from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.tools.web.fetch import FetchURL
 from kimi_cli.tools.web.search import SearchWeb
 
 
-def test_task_params_schema(task_tool: Task):
-    """Test the schema of Task tool parameters."""
-    assert task_tool.base.parameters == snapshot(
+def test_agent_params_schema(agent_tool: AgentTool):
+    """Test the schema of Agent tool parameters."""
+    assert agent_tool.base.parameters == snapshot(
         {
             "properties": {
                 "description": {
                     "description": "A short (3-5 word) description of the task",
                     "type": "string",
                 },
-                "subagent_name": {
-                    "description": "The name of the specialized subagent to use for this task",
-                    "type": "string",
-                },
                 "prompt": {
-                    "description": "The task for the subagent to perform. You must provide a detailed prompt with all necessary background information because the subagent cannot see anything in your context.",
+                    "description": "The task for the agent to perform",
                     "type": "string",
+                },
+                "subagent_type": {
+                    "default": "coder",
+                    "description": "The built-in agent type to use. Defaults to `coder`.",
+                    "type": "string",
+                },
+                "model": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Optional model override. Selection priority is: this parameter, then the built-in type default model, then the parent agent's current model.",
+                },
+                "resume": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Optional agent ID to resume instead of creating a new instance.",
+                },
+                "run_in_background": {
+                    "default": False,
+                    "description": "Whether to run the agent in the background. Prefer false unless the task can continue independently and there is a clear benefit to returning control before the result is needed.",
+                    "type": "boolean",
+                },
+                "timeout": {
+                    "anyOf": [
+                        {"maximum": 3600, "minimum": 30, "type": "integer"},
+                        {"type": "null"},
+                    ],
+                    "default": None,
+                    "description": "Timeout in seconds for the agent task. Foreground: no default timeout (runs until completion), max 3600s (1hr). Background: default from config (15min), max 3600s (1hr). The agent is stopped if it exceeds this limit.",
                 },
             },
-            "required": ["description", "subagent_name", "prompt"],
-            "type": "object",
-        }
-    )
-
-
-def test_create_subagent_params_schema(create_subagent_tool: CreateSubagent):
-    """Test the schema of CreateSubagent tool parameters."""
-    assert create_subagent_tool.base.parameters == snapshot(
-        {
-            "properties": {
-                "name": {
-                    "description": "Unique name for this agent configuration (e.g., 'summarizer', 'code_reviewer'). This name will be used to reference the agent in the Task tool.",
-                    "type": "string",
-                },
-                "system_prompt": {
-                    "description": "System prompt defining the agent's role, capabilities, and boundaries.",
-                    "type": "string",
-                },
-            },
-            "required": ["name", "system_prompt"],
+            "required": ["description", "prompt"],
             "type": "object",
         }
     )
@@ -104,27 +108,32 @@ def test_set_todo_list_params_schema(set_todo_list_tool: SetTodoList):
         {
             "properties": {
                 "todos": {
-                    "description": "The updated todo list",
-                    "items": {
-                        "properties": {
-                            "title": {
-                                "description": "The title of the todo",
-                                "minLength": 1,
-                                "type": "string",
+                    "anyOf": [
+                        {
+                            "items": {
+                                "properties": {
+                                    "title": {
+                                        "description": "The title of the todo",
+                                        "minLength": 1,
+                                        "type": "string",
+                                    },
+                                    "status": {
+                                        "description": "The status of the todo",
+                                        "enum": ["pending", "in_progress", "done"],
+                                        "type": "string",
+                                    },
+                                },
+                                "required": ["title", "status"],
+                                "type": "object",
                             },
-                            "status": {
-                                "description": "The status of the todo",
-                                "enum": ["pending", "in_progress", "done"],
-                                "type": "string",
-                            },
+                            "type": "array",
                         },
-                        "required": ["title", "status"],
-                        "type": "object",
-                    },
-                    "type": "array",
+                        {"type": "null"},
+                    ],
+                    "default": None,
+                    "description": "The updated todo list. If not provided, returns the current todo list without making changes.",
                 }
             },
-            "required": ["todos"],
             "type": "object",
         }
     )
@@ -136,18 +145,97 @@ def test_shell_params_schema(shell_tool: Shell):
         {
             "properties": {
                 "command": {
-                    "description": "The bash command to execute.",
+                    "description": "The command to execute.",
                     "type": "string",
                 },
                 "timeout": {
                     "default": 60,
                     "description": "The timeout in seconds for the command to execute. If the command takes longer than this, it will be killed.",
-                    "maximum": 300,
+                    "maximum": 86400,
+                    "minimum": 1,
+                    "type": "integer",
+                },
+                "run_in_background": {
+                    "default": False,
+                    "description": "Whether to run the command as a background task.",
+                    "type": "boolean",
+                },
+                "description": {
+                    "default": "",
+                    "description": "A short description for the background task. Required when run_in_background=true.",
+                    "type": "string",
+                },
+            },
+            "required": ["command"],
+            "type": "object",
+        }
+    )
+
+
+def test_task_output_params_schema(task_output_tool: TaskOutput):
+    assert task_output_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "task_id": {
+                    "description": "The background task ID to inspect.",
+                    "type": "string",
+                },
+                "block": {
+                    "default": False,
+                    "description": "Whether to wait for the task to finish before returning.",
+                    "type": "boolean",
+                },
+                "timeout": {
+                    "default": 30,
+                    "description": "Maximum number of seconds to wait when block=true.",
+                    "maximum": 3600,
+                    "minimum": 0,
+                    "type": "integer",
+                },
+            },
+            "required": ["task_id"],
+            "type": "object",
+        }
+    )
+
+
+def test_task_list_params_schema(task_list_tool: TaskList):
+    assert task_list_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "active_only": {
+                    "default": True,
+                    "description": "Whether to list only non-terminal background tasks.",
+                    "type": "boolean",
+                },
+                "limit": {
+                    "default": 20,
+                    "description": "Maximum number of tasks to return.",
+                    "maximum": 100,
                     "minimum": 1,
                     "type": "integer",
                 },
             },
-            "required": ["command"],
+            "type": "object",
+        }
+    )
+
+
+def test_task_stop_params_schema(task_stop_tool: TaskStop):
+    assert task_stop_tool.base.parameters == snapshot(
+        {
+            "properties": {
+                "task_id": {
+                    "description": "The background task ID to stop.",
+                    "type": "string",
+                },
+                "reason": {
+                    "default": "Stopped by TaskStop",
+                    "description": "Short reason recorded when the task is stopped.",
+                    "type": "string",
+                },
+            },
+            "required": ["task_id"],
             "type": "object",
         }
     )
@@ -164,8 +252,7 @@ def test_read_file_params_schema(read_file_tool: ReadFile):
                 },
                 "line_offset": {
                     "default": 1,
-                    "description": "The line number to start reading from. By default read from the beginning of the file. Set this when the file is too large to read at once.",
-                    "minimum": 1,
+                    "description": "The line number to start reading from. By default read from the beginning of the file. Set this when the file is too large to read at once. Negative values read from the end of the file (e.g. -100 reads the last 100 lines). The absolute value of negative offset cannot exceed 1000.",
                     "type": "integer",
                 },
                 "n_lines": {
@@ -263,8 +350,8 @@ def test_grep_params_schema(grep_tool: Grep):
                     "description": "Number of lines to show before and after each match (the `-C` option). Requires `output_mode` to be `content`.",
                 },
                 "-n": {
-                    "default": False,
-                    "description": "Show line numbers in output (the `-n` option). Requires `output_mode` to be `content`.",
+                    "default": True,
+                    "description": "Show line numbers in output (the `-n` option). Requires `output_mode` to be `content`. Defaults to true.",
                     "type": "boolean",
                 },
                 "-i": {
@@ -278,13 +365,24 @@ def test_grep_params_schema(grep_tool: Grep):
                     "description": "File type to search. Examples: py, rust, js, ts, go, java, etc. More efficient than `glob` for standard file types.",
                 },
                 "head_limit": {
-                    "anyOf": [{"type": "integer"}, {"type": "null"}],
-                    "default": None,
-                    "description": "Limit output to first N lines, equivalent to `| head -N`. Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count_matches (limits count entries). By default, no limit is applied.",
+                    "anyOf": [{"minimum": 0, "type": "integer"}, {"type": "null"}],
+                    "default": 250,
+                    "description": "Limit output to first N lines/entries, equivalent to `| head -N`. Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count_matches (limits count entries). Defaults to 250. Pass 0 for unlimited (use sparingly — large result sets waste context).",
+                },
+                "offset": {
+                    "default": 0,
+                    "description": "Skip first N lines/entries before applying head_limit, equivalent to `| tail -n +N | head -N`. Works across all output modes. Defaults to 0.",
+                    "minimum": 0,
+                    "type": "integer",
                 },
                 "multiline": {
                     "default": False,
                     "description": "Enable multiline mode where `.` matches newlines and patterns can span lines (the `-U` and `--multiline-dotall` options). By default, multiline mode is disabled.",
+                    "type": "boolean",
+                },
+                "include_ignored": {
+                    "default": False,
+                    "description": "Include files that are ignored by `.gitignore`, `.ignore`, and other ignore rules. Useful for searching gitignored artifacts such as build outputs (e.g. `dist/`, `build/`) or `node_modules`. Sensitive files (like `.env`) remain filtered by the sensitive-file protection layer. Defaults to false.",
                     "type": "boolean",
                 },
             },

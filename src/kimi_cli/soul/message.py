@@ -20,6 +20,18 @@ def system(message: str) -> ContentPart:
     return TextPart(text=f"<system>{message}</system>")
 
 
+def system_reminder(message: str) -> TextPart:
+    return TextPart(text=f"<system-reminder>\n{message}\n</system-reminder>")
+
+
+def is_system_reminder_message(message: Message) -> bool:
+    """Check whether a message is an internal system-reminder user message."""
+    if message.role != "user" or len(message.content) != 1:
+        return False
+    part = message.content[0]
+    return isinstance(part, TextPart) and part.text.strip().startswith("<system-reminder>")
+
+
 def tool_result_to_message(tool_result: ToolResult) -> Message:
     """Convert a tool result to a message."""
     if tool_result.return_value.is_error:
@@ -38,6 +50,10 @@ def tool_result_to_message(tool_result: ToolResult) -> Message:
             content.extend(_output_to_content_parts(tool_result.return_value.output))
         if not content:
             content.append(system("Tool output is empty."))
+        elif not any(isinstance(part, TextPart) for part in content):
+            # Ensure at least one TextPart exists so the LLM API won't reject
+            # the message with "text content is empty" (see #1663).
+            content.insert(0, system("Tool returned non-text content."))
 
     return Message(
         role="tool",

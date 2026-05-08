@@ -52,7 +52,7 @@ def _collect_until_response(
         if msg.get("method") == "event":
             params = msg.get("params")
             if isinstance(params, dict):
-                events.append(params)
+                events.append(cast(dict[str, object], params))
     raise AssertionError(f"Missing response for id {response_id!r}")
 
 
@@ -60,14 +60,15 @@ def _turn_has_part_type(events: list[dict[str, object]], part_type: str) -> bool
     for event in events:
         if event.get("type") != "TurnBegin":
             continue
-        payload = event.get("payload", {})
-        if not isinstance(payload, dict):
+        payload_obj = event.get("payload")
+        if not isinstance(payload_obj, dict):
             continue
+        payload = cast(dict[str, object], payload_obj)
         user_input = payload.get("user_input")
         if not isinstance(user_input, list):
             continue
         for part in user_input:
-            if isinstance(part, dict) and part.get("type") == part_type:
+            if isinstance(part, dict) and cast(dict[str, object], part).get("type") == part_type:
                 return True
     return False
 
@@ -76,8 +77,11 @@ def _has_content_part(events: list[dict[str, object]], part_type: str) -> bool:
     for event in events:
         if event.get("type") != "ContentPart":
             continue
-        payload = event.get("payload", {})
-        if isinstance(payload, dict) and payload.get("type") == part_type:
+        payload_obj = event.get("payload")
+        if (
+            isinstance(payload_obj, dict)
+            and cast(dict[str, object], payload_obj).get("type") == part_type
+        ):
             return True
     return False
 
@@ -86,9 +90,10 @@ def _has_text_content(events: list[dict[str, object]], text: str) -> bool:
     for event in events:
         if event.get("type") != "ContentPart":
             continue
-        payload = event.get("payload", {})
-        if not isinstance(payload, dict):
+        payload_obj = event.get("payload")
+        if not isinstance(payload_obj, dict):
             continue
+        payload = cast(dict[str, object], payload_obj)
         if payload.get("type") == "text" and text in str(payload.get("text", "")):
             return True
     return False
@@ -287,8 +292,9 @@ def test_scripted_echo_media_e2e(temp_work_dir: KaosPath, tmp_path: Path, mode: 
             },
         )
         resp1, events1 = _collect_until_response(process, "prompt-1")
-        result1 = resp1.get("result")
-        assert isinstance(result1, dict)
+        result1_obj = resp1.get("result")
+        assert isinstance(result1_obj, dict)
+        result1 = cast(dict[str, object], result1_obj)
         assert result1.get("status") == "finished"
         assert _turn_has_part_type(events1, "image_url")
         assert _has_content_part(events1, "think")
@@ -309,8 +315,9 @@ def test_scripted_echo_media_e2e(temp_work_dir: KaosPath, tmp_path: Path, mode: 
             },
         )
         resp2, events2 = _collect_until_response(process, "prompt-2")
-        result2 = resp2.get("result")
-        assert isinstance(result2, dict)
+        result2_obj = resp2.get("result")
+        assert isinstance(result2_obj, dict)
+        result2 = cast(dict[str, object], result2_obj)
         assert result2.get("status") == "finished"
         assert _turn_has_part_type(events2, "video_url")
         assert _has_content_part(events2, "think")

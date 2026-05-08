@@ -13,17 +13,10 @@ from kimi_cli.config import save_config
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.setup import select_platform, setup_platform
-from kimi_cli.ui.shell.slash import registry
+from kimi_cli.ui.shell.slash import ensure_kimi_soul, registry
 
 if TYPE_CHECKING:
     from kimi_cli.ui.shell import Shell
-
-
-def _ensure_kimi_soul(app: Shell) -> KimiSoul | None:
-    if not isinstance(app.soul, KimiSoul):
-        console.print("[red]KimiSoul required[/red]")
-        return None
-    return app.soul
 
 
 async def _login_kimi_code(soul: KimiSoul) -> bool:
@@ -55,7 +48,7 @@ async def _login_kimi_code(soul: KimiSoul) -> bool:
     return ok
 
 
-def _current_model_key(soul: KimiSoul) -> str | None:
+def current_model_key(soul: KimiSoul) -> str | None:
     config = soul.runtime.config
     curr_model_cfg = soul.runtime.llm.model_config if soul.runtime.llm else None
     if curr_model_cfg is not None:
@@ -68,7 +61,7 @@ def _current_model_key(soul: KimiSoul) -> str | None:
 @registry.command(aliases=["setup"])
 async def login(app: Shell, args: str) -> None:
     """Login or setup a platform."""
-    soul = _ensure_kimi_soul(app)
+    soul = ensure_kimi_soul(app)
     if soul is None:
         return
     platform = await select_platform()
@@ -80,6 +73,9 @@ async def login(app: Shell, args: str) -> None:
         ok = await setup_platform(platform)
     if not ok:
         return
+    from kimi_cli.telemetry import track
+
+    track("login", provider=platform.id)
     await asyncio.sleep(1)
     console.clear()
     raise Reload
@@ -88,7 +84,7 @@ async def login(app: Shell, args: str) -> None:
 @registry.command
 async def logout(app: Shell, args: str) -> None:
     """Logout from the current platform."""
-    soul = _ensure_kimi_soul(app)
+    soul = ensure_kimi_soul(app)
     if soul is None:
         return
     config = soul.runtime.config
@@ -98,7 +94,7 @@ async def logout(app: Shell, args: str) -> None:
             "restart without --config/--config-file.[/red]"
         )
         return
-    model_key = _current_model_key(soul)
+    model_key = current_model_key(soul)
     if not model_key:
         console.print("[yellow]No model selected; nothing to logout.[/yellow]")
         return
@@ -145,6 +141,9 @@ async def logout(app: Shell, args: str) -> None:
         save_config(config)
         console.print("[green]✓[/green] Logged out successfully.")
 
+    from kimi_cli.telemetry import track
+
+    track("logout")
     await asyncio.sleep(1)
     console.clear()
     raise Reload

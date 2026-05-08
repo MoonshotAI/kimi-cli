@@ -22,9 +22,10 @@ from kosong.tooling import (
     UnknownDisplayBlock,
 )
 from kosong.utils.typing import JsonType
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
 from kimi_cli.tools.display import (
+    BackgroundTaskDisplayBlock,
     DiffDisplayBlock,
     ShellDisplayBlock,
     TodoDisplayBlock,
@@ -37,6 +38,16 @@ class TurnBegin(BaseModel):
     """
     Indicates the beginning of a new agent turn.
     This event must be sent before any other event in the turn.
+    """
+
+    user_input: str | list[ContentPart]
+
+
+class SteerInput(BaseModel):
+    """
+    Indicates that the user appended follow-up input to the current running turn.
+    This event is emitted after the current step finishes and the input is appended
+    to context, before the next step begins.
     """
 
     user_input: str | list[ContentPart]
@@ -88,6 +99,63 @@ class CompactionEnd(BaseModel):
     pass
 
 
+class HookTriggered(BaseModel):
+    """A batch of hooks has been triggered and is now executing."""
+
+    event: str
+    """The hook event type, e.g. 'PreToolUse', 'Stop'."""
+    target: str = ""
+    """What the hooks are targeting: tool name for tool hooks,
+    agent name for subagent hooks, etc."""
+    hook_count: int = 1
+    """Number of matched hooks running in parallel."""
+
+
+class HookResolved(BaseModel):
+    """A batch of hooks has finished executing."""
+
+    event: str
+    """The hook event type, e.g. 'PreToolUse', 'Stop'."""
+    target: str = ""
+    """Same as HookTriggered.target."""
+    action: Literal["allow", "block"] = "allow"
+    """Aggregate decision: 'block' if any hook blocked, 'allow' otherwise."""
+    reason: str = ""
+    """Reason for blocking. Empty if allowed."""
+    duration_ms: int = 0
+    """Wall-clock time for the entire batch, in milliseconds."""
+
+
+class MCPLoadingBegin(BaseModel):
+    """Indicates that MCP tool loading is in progress."""
+
+    pass
+
+
+class MCPLoadingEnd(BaseModel):
+    """Indicates that MCP tool loading has finished."""
+
+    pass
+
+
+class MCPServerSnapshot(BaseModel):
+    """A snapshot of one MCP server during startup."""
+
+    name: str
+    status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
+    tools: tuple[str, ...] = ()
+
+
+class MCPStatusSnapshot(BaseModel):
+    """A snapshot of MCP startup progress."""
+
+    loading: bool
+    connected: int
+    total: int
+    tools: int
+    servers: tuple[MCPServerSnapshot, ...] = ()
+
+
 class StatusUpdate(BaseModel):
     """
     An update on the current status of the soul.
@@ -96,10 +164,62 @@ class StatusUpdate(BaseModel):
 
     context_usage: float | None = None
     """The usage of the context, in percentage."""
+    context_tokens: int | None = None
+    """The number of tokens currently in the context."""
+    max_context_tokens: int | None = None
+    """The maximum number of tokens the context can hold."""
     token_usage: TokenUsage | None = None
     """The token usage statistics of the current step."""
     message_id: str | None = None
     """The message ID of the current step."""
+    plan_mode: bool | None = None
+    """Whether plan mode (read-only) is active. None means no change."""
+    mcp_status: MCPStatusSnapshot | None = None
+    """The current MCP startup snapshot. None means no change."""
+
+
+class Notification(BaseModel):
+    """A generic system notification for UI and client consumption."""
+
+    id: str
+    category: str
+    type: str
+    source_kind: str
+    source_id: str
+    title: str
+    body: str
+    severity: str
+    created_at: float
+    payload: dict[str, JsonType] = Field(default_factory=dict)
+
+
+class PlanDisplay(BaseModel):
+    """Displays a plan's content inline in the chat with special formatting."""
+
+    content: str
+    """The full markdown content of the plan."""
+    file_path: str
+    """The path to the plan file for reference."""
+
+
+class BtwBegin(BaseModel):
+    """Indicates that a side question (/btw) has started processing."""
+
+    id: str
+    """Unique ID to pair with the corresponding BtwEnd."""
+    question: str
+    """The user's original side question text."""
+
+
+class BtwEnd(BaseModel):
+    """Indicates that a side question (/btw) has finished."""
+
+    id: str
+    """Unique ID matching the BtwBegin."""
+    response: str | None = None
+    """The LLM's response text, or None if it failed."""
+    error: str | None = None
+    """Error message if the side question failed."""
 
 
 class SubagentEvent(BaseModel):
@@ -107,11 +227,25 @@ class SubagentEvent(BaseModel):
     An event from a subagent.
     """
 
-    task_tool_call_id: str
-    """The ID of the task tool call associated with this subagent."""
+    parent_tool_call_id: str | None = None
+    """The ID of the parent Agent tool call associated with this subagent."""
+    agent_id: str | None = None
+    """The subagent instance ID."""
+    subagent_type: str | None = None
+    """The built-in subagent type used by this instance."""
     event: Event
     """The event from the subagent."""
     # TODO: maybe restrict the event types? to exclude approval request, etc.
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compat_legacy_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(cast(dict[str, Any], value))
+        if "parent_tool_call_id" not in data and "task_tool_call_id" in data:
+            data["parent_tool_call_id"] = data["task_tool_call_id"]
+        return data
 
     @field_serializer("event", when_used="json")
     def _serialize_event(self, event: Event) -> dict[str, Any]:
@@ -150,6 +284,8 @@ class ApprovalResponse(BaseModel):
     """The ID of the resolved approval request."""
     response: Kind
     """The response to the approval request."""
+    feedback: str = ""
+    """Optional user feedback when rejecting (e.g. instructions for the model)."""
 
 
 class ApprovalRequest(BaseModel):
@@ -162,6 +298,11 @@ class ApprovalRequest(BaseModel):
     sender: str
     action: str
     description: str
+    source_kind: Literal["foreground_turn", "background_agent"] | None = None
+    source_id: str | None = None
+    agent_id: str | None = None
+    subagent_type: str | None = None
+    source_description: str | None = None
     display: list[DisplayBlock] = Field(default_factory=list[DisplayBlock])
     """Defaults to an empty list for backwards-compatible wire.jsonl loading."""
 
@@ -172,6 +313,7 @@ class ApprovalRequest(BaseModel):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._future: asyncio.Future[ApprovalResponse.Kind] | None = None
+        self._feedback: str = ""
 
     def _get_future(self) -> asyncio.Future[ApprovalResponse.Kind]:
         if self._future is None:
@@ -187,18 +329,117 @@ class ApprovalRequest(BaseModel):
         """
         return await self._get_future()
 
-    def resolve(self, response: ApprovalResponse.Kind) -> None:
+    def resolve(self, response: ApprovalResponse.Kind, feedback: str = "") -> None:
         """
         Resolve the approval request with the given response.
         This will cause the `wait()` method to return the response.
         """
+        self._feedback = feedback
         future = self._get_future()
         if not future.done():
             future.set_result(response)
 
     @property
+    def feedback(self) -> str:
+        """User feedback text provided with a rejection, if any."""
+        return self._feedback
+
+    @property
     def resolved(self) -> bool:
         """Whether the request is resolved."""
+        return self._future is not None and self._future.done()
+
+
+class QuestionOption(BaseModel):
+    """A single option for a question."""
+
+    label: str
+    """The display text for this option."""
+    description: str = ""
+    """Explanation of what this option means."""
+
+
+class QuestionItem(BaseModel):
+    """A single question to ask the user."""
+
+    question: str
+    """The complete question text."""
+    header: str = ""
+    """Short label displayed as a tag (max 12 chars)."""
+    options: list[QuestionOption]
+    """The available choices for this question (2-4 options)."""
+    multi_select: bool = False
+    """Whether multiple options can be selected."""
+    body: str = ""
+    """Optional body content (markdown) displayed above options."""
+    other_label: str = ""
+    """Custom label for the synthetic 'Other' free-text option. Empty uses default."""
+    other_description: str = ""
+    """Custom description for the synthetic 'Other' option. Empty uses default."""
+
+
+class QuestionResponse(BaseModel):
+    """Response to a question request."""
+
+    request_id: str
+    """The ID of the resolved question request."""
+    answers: dict[str, str]
+    """Mapping from question text to selected option label(s). Multi-select answers are
+    comma-separated."""
+
+
+class QuestionNotSupported(Exception):
+    """Raised when the connected client does not support interactive questions."""
+
+
+class QuestionRequest(BaseModel):
+    """
+    A request to ask the user structured questions during execution.
+    """
+
+    id: str
+    """The unique request ID."""
+    tool_call_id: str
+    """The ID of the tool call that initiated this question."""
+    questions: list[QuestionItem]
+    """The questions to ask the user (1-4 questions)."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._future: asyncio.Future[dict[str, str]] | None = None
+
+    def _get_future(self) -> asyncio.Future[dict[str, str]]:
+        if self._future is None:
+            self._future = asyncio.get_event_loop().create_future()
+        return self._future
+
+    async def wait(self) -> dict[str, str]:
+        """
+        Wait for the question to be answered.
+
+        Returns:
+            dict[str, str]: Mapping from question text to answer.
+        """
+        return await self._get_future()
+
+    def resolve(self, answers: dict[str, str]) -> None:
+        """
+        Resolve the question request with the given answers.
+        This will cause the `wait()` method to return the answers.
+        """
+        future = self._get_future()
+        if not future.done():
+            future.set_result(answers)
+
+    def set_exception(self, exc: BaseException) -> None:
+        """Resolve the question request with an exception."""
+        future = self._get_future()
+        if not future.done():
+            future.set_exception(exc)
+
+    @property
+    def resolved(self) -> bool:
+        """Whether the question request is resolved."""
         return self._future is not None and self._future.done()
 
 
@@ -257,23 +498,88 @@ class ToolCallRequest(BaseModel):
 
 type Event = (
     TurnBegin
+    | SteerInput
     | TurnEnd
     | StepBegin
     | StepInterrupted
+    | HookTriggered
+    | HookResolved
     | CompactionBegin
     | CompactionEnd
+    | MCPLoadingBegin
+    | MCPLoadingEnd
     | StatusUpdate
+    | Notification
     | ContentPart
     | ToolCall
     | ToolCallPart
     | ToolResult
     | ApprovalResponse
     | SubagentEvent
+    | PlanDisplay
+    | BtwBegin
+    | BtwEnd
 )
 """Any event, including control flow and content/tooling events."""
 
 
-type Request = ApprovalRequest | ToolCallRequest
+class HookResponse(BaseModel):
+    """
+    Client response to a HookRequest.
+    """
+
+    request_id: str
+    """The ID of the HookRequest being responded to."""
+    action: Literal["allow", "block"] = "allow"
+    """The decision: allow the action or block it."""
+    reason: str = ""
+    """Reason for blocking. Empty if allowed."""
+
+
+class HookRequest(BaseModel):
+    """
+    A request for the wire client to handle a hook event.
+    The client runs its own logic and responds with allow/block.
+    """
+
+    type Action = Literal["allow", "block"]
+
+    id: str
+    """Unique request ID."""
+    subscription_id: str = ""
+    """Which subscription triggered this request."""
+    event: str
+    """The hook event type, e.g. 'PreToolUse', 'Stop'."""
+    target: str = ""
+    """What triggered the hook: tool name, agent name, etc."""
+    input_data: dict[str, Any] = Field(default_factory=dict)
+    """Full event payload (same as what shell hooks get on stdin)."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._future: asyncio.Future[tuple[HookRequest.Action, str]] | None = None
+
+    def _get_future(self) -> asyncio.Future[tuple[HookRequest.Action, str]]:
+        if self._future is None:
+            self._future = asyncio.get_event_loop().create_future()
+        return self._future
+
+    async def wait(self) -> tuple[Action, str]:
+        """Wait for client response. Returns (action, reason)."""
+        return await self._get_future()
+
+    def resolve(self, action: Action, reason: str = "") -> None:
+        """Resolve with client's decision."""
+        future = self._get_future()
+        if not future.done():
+            future.set_result((action, reason))
+
+    @property
+    def resolved(self) -> bool:
+        return self._future is not None and self._future.done()
+
+
+type Request = ApprovalRequest | ToolCallRequest | QuestionRequest | HookRequest
 """Any request. Request is a message that expects a response."""
 
 type WireMessage = Event | Request
@@ -340,19 +646,34 @@ class WireMessageEnvelope(BaseModel):
 __all__ = [
     # `WireMessage` variants
     "TurnBegin",
+    "SteerInput",
+    "TurnEnd",
     "StepBegin",
     "StepInterrupted",
     "CompactionBegin",
     "CompactionEnd",
+    "MCPLoadingBegin",
+    "MCPLoadingEnd",
     "StatusUpdate",
+    "MCPServerSnapshot",
+    "MCPStatusSnapshot",
+    "Notification",
     "ContentPart",
     "ToolCall",
     "ToolCallPart",
     "ToolResult",
     "ApprovalResponse",
     "SubagentEvent",
+    "PlanDisplay",
+    "BtwBegin",
+    "BtwEnd",
     "ApprovalRequest",
     "ToolCallRequest",
+    "QuestionOption",
+    "QuestionItem",
+    "QuestionResponse",
+    "QuestionRequest",
+    "QuestionNotSupported",
     # helpers
     "WireMessageEnvelope",
     # `StatusUpdate`-related
@@ -373,4 +694,5 @@ __all__ = [
     "TodoDisplayBlock",
     "TodoDisplayItem",
     "ShellDisplayBlock",
+    "BackgroundTaskDisplayBlock",
 ]
