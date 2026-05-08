@@ -44,6 +44,7 @@ from kosong.chat_provider import (
     TokenUsage,
     convert_httpx_error,
 )
+from kosong.contrib.chat_provider.common import parse_tool_call_arguments
 from kosong.message import (
     AudioURLPart,
     ContentPart,
@@ -652,20 +653,9 @@ def message_to_google_genai(message: Message) -> Content:
 
     # Handle tool calls for assistant messages
     for tool_call in message.tool_calls or []:
-        if tool_call.function.arguments:
-            try:
-                parsed_arguments = json.loads(tool_call.function.arguments, strict=False)
-            except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
-                raise ChatProviderError("Tool call arguments must be valid JSON.") from exc
-            if not isinstance(parsed_arguments, dict):
-                raise ChatProviderError("Tool call arguments must be a JSON object.")
-            args = cast(dict[str, object], parsed_arguments)
-        else:
-            args = {}
-
         function_call = FunctionCall(
             name=tool_call.function.name,
-            args=args,
+            args=parse_tool_call_arguments(tool_call.function.arguments),
         )
         function_call_part = Part(function_call=function_call)
         # Add thought_signature back to function_call

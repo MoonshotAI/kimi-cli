@@ -29,7 +29,7 @@ from kosong.chat_provider.openai_common import (
     thinking_effort_to_reasoning_effort,
     tool_to_openai,
 )
-from kosong.contrib.chat_provider.common import ToolMessageConversion
+from kosong.contrib.chat_provider.common import ToolMessageConversion, sanitize_tool_call_arguments
 from kosong.message import ContentPart, Message, TextPart, ThinkPart, ToolCall, ToolCallPart
 from kosong.tooling import Tool
 
@@ -212,6 +212,10 @@ class OpenAILegacy:
             message.content = [TextPart(text=message.extract_text(sep="\n"))]
         else:
             message.content = content
+        for tool_call in message.tool_calls or []:
+            tool_call.function.arguments = sanitize_tool_call_arguments(
+                tool_call.function.arguments
+            )
         dumped_message = message.model_dump(exclude_none=True)
         if reasoning_content and self._reasoning_key:
             dumped_message[self._reasoning_key] = reasoning_content

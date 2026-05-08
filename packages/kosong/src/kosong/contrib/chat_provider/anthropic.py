@@ -78,7 +78,7 @@ from kosong.chat_provider import (
     TokenUsage,
     convert_httpx_error,
 )
-from kosong.contrib.chat_provider.common import ToolMessageConversion
+from kosong.contrib.chat_provider.common import ToolMessageConversion, parse_tool_call_arguments
 from kosong.message import (
     ContentPart,
     ImageURLPart,
@@ -485,22 +485,12 @@ class Anthropic:
             else:
                 continue
         for tool_call in message.tool_calls or []:
-            if tool_call.function.arguments:
-                try:
-                    parsed_arguments = json.loads(tool_call.function.arguments, strict=False)
-                except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
-                    raise ChatProviderError("Tool call arguments must be valid JSON.") from exc
-                if not isinstance(parsed_arguments, dict):
-                    raise ChatProviderError("Tool call arguments must be a JSON object.")
-                tool_input = cast(dict[str, object], parsed_arguments)
-            else:
-                tool_input = {}
             blocks.append(
                 ToolUseBlockParam(
                     type="tool_use",
                     id=tool_call.id,
                     name=tool_call.function.name,
-                    input=tool_input,
+                    input=parse_tool_call_arguments(tool_call.function.arguments),
                 )
             )
         return MessageParam(role=role, content=blocks)

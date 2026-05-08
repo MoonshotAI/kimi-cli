@@ -44,7 +44,10 @@ from kosong.chat_provider.openai_common import (
     reasoning_effort_to_thinking_effort,
     thinking_effort_to_reasoning_effort,
 )
-from kosong.contrib.chat_provider.common import ToolMessageConversion
+from kosong.contrib.chat_provider.common import (
+    ToolMessageConversion,
+    sanitize_tool_call_arguments,
+)
 from kosong.message import (
     AudioURLPart,
     ContentPart,
@@ -330,7 +333,7 @@ class OpenAIResponses:
         for tool_call in message.tool_calls or []:
             result.append(
                 {
-                    "arguments": tool_call.function.arguments or "{}",
+                    "arguments": sanitize_tool_call_arguments(tool_call.function.arguments),
                     "call_id": tool_call.id,
                     "name": tool_call.function.name,
                     "type": "function_call",
