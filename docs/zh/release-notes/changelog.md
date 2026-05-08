@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Shell：将上下文使用率百分比替换为可视化进度条——状态栏和实时区域现在展示 10 格进度条（`████████░░`），根据占用比例自动着色（低于 70% 为绿色，70%–84% 为黄色，85% 及以上为红色），未填充的方块以暗色显示，使指示器更加直观易读；可用时仍保留 token 计数
+
 ## 1.41.0 (2026-04-30)
 
 - Plugin：支持直接从 `.zip` URL 安装插件——`kimi plugin install` 现在可以接受以 `.zip` 结尾的 HTTP(S) URL（例如 GitHub/GitLab 的 archive 链接 `.../archive/refs/heads/main.zip`），下载后解压再解析 `plugin.json`，与原有的 git URL、本地目录、本地 zip 文件三种来源并列
