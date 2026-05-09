@@ -583,7 +583,9 @@ class PromptPlaceholderManager:
     def create_image_placeholder(self, image: Image.Image) -> str | None:
         return self._image_handler.create_placeholder(image)
 
-    def resolve_command(self, command: str) -> ResolvedPromptCommand:
+    def resolve_command(
+        self, command: str, *, attach_literal_images: bool = True
+    ) -> ResolvedPromptCommand:
         content: list[ContentPart] = []
         resolved_chunks: list[str] = []
         cursor = 0
@@ -592,12 +594,22 @@ class PromptPlaceholderManager:
         while match := self._find_next_match(command, cursor):
             if match.start > cursor:
                 literal = command[cursor : match.start]
-                self._append_literal_content(literal, content, attached_image_paths)
+                self._append_literal_content(
+                    literal,
+                    content,
+                    attached_image_paths,
+                    attach_images=attach_literal_images,
+                )
                 resolved_chunks.append(literal)
 
             resolved_content = match.handler.resolve_content(match)
             if resolved_content is None:
-                self._append_literal_content(match.raw, content, attached_image_paths)
+                self._append_literal_content(
+                    match.raw,
+                    content,
+                    attached_image_paths,
+                    attach_images=attach_literal_images,
+                )
                 resolved_chunks.append(match.raw)
             else:
                 content.extend(resolved_content)
@@ -608,7 +620,12 @@ class PromptPlaceholderManager:
 
         if cursor < len(command):
             literal = command[cursor:]
-            self._append_literal_content(literal, content, attached_image_paths)
+            self._append_literal_content(
+                literal,
+                content,
+                attached_image_paths,
+                attach_images=attach_literal_images,
+            )
             resolved_chunks.append(literal)
 
         return ResolvedPromptCommand(
@@ -670,10 +687,12 @@ class PromptPlaceholderManager:
         literal: str,
         content: list[ContentPart],
         attached_image_paths: set[Path],
+        *,
+        attach_images: bool,
     ) -> None:
         if not literal:
             return
-        if not self._supports_image_input():
+        if not attach_images or not self._supports_image_input():
             content.append(TextPart(text=literal))
             return
 

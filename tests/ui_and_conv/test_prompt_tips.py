@@ -933,6 +933,22 @@ async def test_prompt_once_skips_history_when_command_resolution_fails(monkeypat
     assert history == []
 
 
+def test_build_user_input_keeps_shell_image_paths_literal(tmp_path) -> None:
+    prompt_session = object.__new__(CustomPromptSession)
+    prompt_session._mode = PromptMode.SHELL
+    prompt_session._model_capabilities = {"image_in"}
+
+    command = f"cat {tmp_path / 'missing.png'}"
+
+    user_input = prompt_session._build_user_input(command)
+
+    assert user_input.mode == PromptMode.SHELL
+    assert user_input.command == command
+    assert user_input.resolved_command == command
+    assert len(user_input.content) == 1
+    assert user_input.content[0].text == command
+
+
 @pytest.mark.asyncio
 async def test_prompt_next_skips_history_for_running_submission() -> None:
     prompt_session = object.__new__(CustomPromptSession)

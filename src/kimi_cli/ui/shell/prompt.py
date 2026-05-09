@@ -2073,7 +2073,10 @@ class CustomPromptSession:
     def _build_user_input(self, command: str) -> UserInput:
         manager = self._get_placeholder_manager()
         manager.update_model_capabilities(set(self._model_capabilities))
-        resolved = manager.resolve_command(command)
+        resolved = manager.resolve_command(
+            command,
+            attach_literal_images=self._mode == PromptMode.AGENT,
+        )
 
         return UserInput(
             mode=self._mode,
