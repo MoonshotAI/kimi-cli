@@ -27,6 +27,14 @@ def _default_toad_command() -> list[str]:
     if sys.version_info < (3, 14):
         typer.echo("`kimi term` requires Python 3.14+ because Toad requires it.", err=True)
         raise typer.Exit(code=1)
+    if sys.platform == "win32":
+        typer.echo(
+            "`kimi term` is not supported on Windows yet because Toad's terminal "
+            "backend requires POSIX-only modules such as fcntl. Use `kimi` or "
+            "`kimi acp` on Windows.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     if importlib.util.find_spec("toad") is None:
         typer.echo(
             "Toad dependency is missing. Install kimi-cli with Python 3.14+ to use `kimi term`.",
