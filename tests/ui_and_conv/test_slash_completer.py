@@ -17,6 +17,7 @@ from kimi_cli.ui.shell.prompt import (
     _find_prompt_float_container,
     _wrap_to_width,
 )
+from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.utils.slashcmd import SlashCommand
 
 
@@ -122,6 +123,12 @@ def test_flow_completion_path_still_returns_registered_flow_command():
 
     assert _completion_texts(completer, "/flow:de") == ["/flow:demo"]
     assert _completion_texts(completer, "/flow:demo") == []
+
+
+def test_btw_is_available_in_agent_slash_completion_menu():
+    completer = SlashCommandCompleter(shell_slash_registry.list_commands())
+
+    assert "/btw" in _completion_texts(completer, "/bt")
 
 
 def test_wrap_to_width_respects_width():

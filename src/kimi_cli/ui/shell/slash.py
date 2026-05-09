@@ -133,6 +133,21 @@ def help(app: Shell, args: str):
 
 
 @registry.command
+async def btw(app: Shell, args: str):
+    """Ask a side question without interrupting the main conversation"""
+    question = args.strip()
+    if not question:
+        console.print('[yellow]Usage: "/btw <question>"[/yellow]')
+        return
+    if ensure_kimi_soul(app) is None:
+        return
+    if app._prompt_session is None:  # pyright: ignore[reportPrivateUsage]
+        console.print("[yellow]/btw is only available in interactive shell mode.[/yellow]")
+        return
+    await app._run_btw_modal(question, app._prompt_session)  # pyright: ignore[reportPrivateUsage]
+
+
+@registry.command
 @shell_mode_registry.command
 def version(app: Shell, args: str):
     """Show version information"""
