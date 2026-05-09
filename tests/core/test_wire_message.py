@@ -28,6 +28,7 @@ from kimi_cli.wire.types import (
     SteerInput,
     StepBegin,
     StepInterrupted,
+    StepRetry,
     SubagentEvent,
     TextPart,
     ToolCall,
@@ -112,6 +113,29 @@ async def test_wire_message_serde():
 
     msg = StepInterrupted()
     assert serialize_wire_message(msg) == snapshot({"type": "StepInterrupted", "payload": {}})
+    _test_serde(msg)
+
+    msg = StepRetry(
+        n=1,
+        next_attempt=2,
+        max_attempts=3,
+        wait_s=1.25,
+        error_type="APIStatusError",
+        status_code=429,
+    )
+    assert serialize_wire_message(msg) == snapshot(
+        {
+            "type": "StepRetry",
+            "payload": {
+                "n": 1,
+                "next_attempt": 2,
+                "max_attempts": 3,
+                "wait_s": 1.25,
+                "error_type": "APIStatusError",
+                "status_code": 429,
+            },
+        }
+    )
     _test_serde(msg)
 
     msg = CompactionBegin()

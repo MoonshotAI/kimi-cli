@@ -26,7 +26,7 @@ Wire 模式主要用于：
 
 ## Wire 协议
 
-Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.9`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
+Wire 使用基于 JSON-RPC 2.0 的协议，通过 stdin/stdout 进行双向通信。当前协议版本为 `1.10`。每条消息是一行 JSON，符合 JSON-RPC 2.0 规范。
 
 ### 协议类型定义
 
@@ -489,6 +489,7 @@ type Event =
   | TurnEnd
   | StepBegin
   | StepInterrupted
+  | StepRetry
   | CompactionBegin
   | CompactionEnd
   | StatusUpdate
@@ -548,6 +549,31 @@ interface StepBegin {
 ### `StepInterrupted`
 
 步骤被中断，无额外字段。
+
+### `StepRetry`
+
+::: info 新增
+新增于 Wire 1.10。
+:::
+
+当前步骤尝试失败，即将重试。此事件在步骤因可恢复错误（如速率限制、连接超时、服务端错误）失败并进入重试等待时发出。Client 可以据此向用户展示重试状态，或在上一次尝试已输出部分流式内容时清除不完整状态。
+
+```typescript
+interface StepRetry {
+  /** 步骤编号 */
+  n: number
+  /** 下一次尝试的序号，从 1 开始 */
+  next_attempt: number
+  /** 此步骤的最大尝试次数 */
+  max_attempts: number
+  /** 等待多少秒后重试 */
+  wait_s: number
+  /** 触发重试的异常类名 */
+  error_type: string
+  /** HTTP 状态码（如有），JSON 中可能不存在 */
+  status_code?: number | null
+}
+```
 
 ### `CompactionBegin`
 

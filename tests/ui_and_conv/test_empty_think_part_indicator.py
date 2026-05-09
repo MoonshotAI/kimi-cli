@@ -19,6 +19,7 @@ from kimi_cli.wire.types import (
     CompactionBegin,
     StatusUpdate,
     StepBegin,
+    StepRetry,
     TextPart,
     ThinkPart,
     TurnBegin,
@@ -116,6 +117,70 @@ def test_empty_think_then_text_no_spurious_thought_line(monkeypatch):
     for item in printed:
         rendered = _render(item)
         assert "Thought for" not in rendered
+
+
+def test_step_retry_clears_partial_content_and_updates_live_status(monkeypatch):
+    import importlib
+
+    live_view_mod = importlib.import_module("kimi_cli.ui.shell.visualize._live_view")
+    view = _LiveView(StatusUpdate())
+    printed = []
+    monkeypatch.setattr(
+        live_view_mod.console,
+        "print",
+        lambda *args, **kwargs: printed.extend(args),
+    )
+
+    view.dispatch_wire_message(TurnBegin(user_input="test"))
+    view.dispatch_wire_message(StepBegin(n=1))
+    view.dispatch_wire_message(ThinkPart(think="old attempt"))
+
+    assert view._current_content_block is not None
+    assert view._current_content_block.raw_text == "old attempt"
+
+    view.dispatch_wire_message(
+        StepRetry(
+            n=1,
+            next_attempt=2,
+            max_attempts=3,
+            wait_s=1.0,
+            error_type="APIStatusError",
+            status_code=429,
+        )
+    )
+
+    assert view._current_content_block is None
+    assert not view._tool_call_blocks
+    assert view._last_tool_call_block is None
+
+    assert printed == []
+    rendered = _render(view.compose_agent_output())
+    assert "old attempt" not in rendered
+    assert "Retrying after rate limit" in rendered
+    assert "attempt 2/3" in rendered
+
+    view.dispatch_wire_message(
+        StepRetry(
+            n=1,
+            next_attempt=3,
+            max_attempts=3,
+            wait_s=2.0,
+            error_type="APIStatusError",
+            status_code=503,
+        )
+    )
+    rendered = _render(view.compose_agent_output())
+    assert rendered.count("Retrying after") == 1
+    assert "server error" in rendered
+    assert "attempt 3/3" in rendered
+    assert "attempt 2/3" not in rendered
+
+    view.dispatch_wire_message(ThinkPart(think="new attempt"))
+    assert view._current_content_block is not None
+    assert view._current_content_block.raw_text == "new attempt"
+    rendered = _render(view.compose_agent_output())
+    assert "Retrying after" not in rendered
+    assert "new attempt" not in rendered
 
 
 # ---------------------------------------------------------------------------
