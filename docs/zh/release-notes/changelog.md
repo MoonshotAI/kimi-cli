@@ -7,6 +7,8 @@
 - Shell：把 Windows 上的 Shell 后端从 PowerShell 切换到 Git Bash——Shell 工具现在通过 `bash.exe`（POSIX 语义）执行命令，而不再使用 `powershell.exe`。Windows 用户能使用与 Linux/macOS 一致的 Unix 风格语法（`&&`、`||`、`|`、`/dev/null`、`grep`、`sed` 等）。**需要先安装 Git for Windows**：kimi-cli 按以下顺序查找 `bash.exe`：环境变量 `KIMI_CLI_GIT_BASH_PATH` → `where.exe git` → 标准安装路径（`C:\Program Files\Git\bin\bash.exe`）；如果都找不到，启动时打印安装提示并退出
 - Shell：防御 Windows 上模型偶尔幻觉出的 CMD 风格 `2>nul` 重定向——在命令进入 git-bash 前自动改写为 `2>/dev/null`；如果不防御，git-bash 会真的创建一个名为 `nul` 的文件（Windows 保留设备名），破坏 `git add .` 和 `git clone`。该改写仅在 Windows 上生效；Linux/macOS 上 `>nul` 是合法的写入到名为 `nul` 文件的重定向，保持原样
 - File：`ReadFile`、`WriteFile`、`StrReplaceFile`、`Glob`、`Grep` 在 Windows 上接受 POSIX 形式的路径——除原生 Windows 路径外，这些工具现在能识别 `/c/Users/foo`（Git Bash 形式）、`/cygdrive/c/Users/foo`（Cygwin 形式）和 `\\server\share`（UNC 形式），并在文件系统操作前自动转换为原生形式
+- Shell：在 LLM 步骤重试时清除已流式输出的不完整内容——以前，如果某个步骤在流式输出中途失败（例如触发速率限制或服务器错误），被中断尝试所产生的未完成文本和未结束的工具调用块会留在屏幕上，并与新尝试的输出混在一起。现在 Shell 界面会丢弃这部分不完整状态，并打印一条重试横幅，显示失败原因、尝试次数和等待时间；Print 模式也会在重试时丢弃已缓冲的 Assistant 消息
+- Wire：协议版本升级到 1.10——新增 `StepRetry` 事件，在步骤尝试失败并即将重试时发出，携带尝试次数、等待时间和错误详情
 
 ## 1.41.0 (2026-04-30)
 
