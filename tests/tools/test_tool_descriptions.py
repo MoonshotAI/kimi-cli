@@ -3,6 +3,8 @@ from __future__ import annotations
 # ruff: noqa
 
 import platform
+from pathlib import Path
+
 import pytest
 from inline_snapshot import snapshot
 
@@ -176,6 +178,18 @@ If `run_in_background=true`, the command will be started as a background task an
 - Other: Other commands available in the shell environment. Check the existence of a command by running `which <command>` before using it.
 """
     )
+
+
+def test_powershell_description_mentions_51_compatibility():
+    description = (
+        Path(__file__).parents[2] / "src/kimi_cli/tools/shell/powershell.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Windows PowerShell 5.1" in description
+    assert "Select-Object -First" in description
+    assert "PowerShell 7-only pipeline chain operators" in description
+    assert "utf8NoBOM" in description
+    assert "Join-Path" in description
 
 
 def test_task_output_description(task_output_tool: TaskOutput):

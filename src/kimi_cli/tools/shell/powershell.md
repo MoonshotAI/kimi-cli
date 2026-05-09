@@ -2,6 +2,12 @@ Execute a ${SHELL} command. Use this tool to explore the filesystem, inspect or 
 
 Note that you are running on Windows, so make sure to use Windows commands, paths, and conventions.
 
+Assume Windows PowerShell 5.1 compatibility unless you have already checked that the selected shell is PowerShell 7+ (`pwsh`). In particular:
+- Do not use Unix-only commands such as `head`, `tail`, `grep`, `sed`, or `awk`; prefer `Select-Object -First`, `Select-Object -Last`, `Select-String`, `findstr`, or small Python snippets.
+- Do not use PowerShell 7-only pipeline chain operators (`&&`, `||`); use `; if ($?) { ... }` or `; if (-not $?) { ... }`.
+- Do not use `Out-File -Encoding utf8NoBOM` in Windows PowerShell 5.1. Use `Out-File -Encoding utf8` when a BOM is acceptable, or `[System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))` when it is not.
+- `Join-Path` accepts two path parts at a time in Windows PowerShell 5.1. For three or more segments, nest calls, for example `Join-Path (Join-Path $PWD ".git") "tmp-file"`.
+
 **Output:**
 The stdout and stderr streams are combined and returned as a single string. Extremely long output may be truncated. When a command fails, the exit code is provided in a system tag.
 
