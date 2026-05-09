@@ -946,7 +946,14 @@ export function useSessionStream(
     if (textMessageIdRef.current) {
       messageIds.add(textMessageIdRef.current);
     }
+    // Only discard tool calls that haven't produced a result yet — i.e. the
+    // ones still in-flight when the retry fires. Tool calls from earlier
+    // successful steps in the same turn already have `tc.result` set by
+    // ToolResult and must be preserved.
     for (const toolCall of currentToolCallsRef.current.values()) {
+      if (toolCall.result !== undefined) {
+        continue;
+      }
       discardedToolCallIds.add(toolCall.id);
       if (toolCall.messageId) {
         messageIds.add(toolCall.messageId);
@@ -954,8 +961,15 @@ export function useSessionStream(
     }
 
     resetStepState();
-    currentToolCallsRef.current.clear();
-    currentToolCallIdRef.current = null;
+    for (const id of discardedToolCallIds) {
+      currentToolCallsRef.current.delete(id);
+    }
+    if (
+      currentToolCallIdRef.current !== null &&
+      discardedToolCallIds.has(currentToolCallIdRef.current)
+    ) {
+      currentToolCallIdRef.current = null;
+    }
     for (const [requestId, request] of pendingApprovalRequestsRef.current) {
       if (discardedToolCallIds.has(request.toolCallId)) {
         pendingApprovalRequestsRef.current.delete(requestId);
