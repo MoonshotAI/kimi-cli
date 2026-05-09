@@ -79,6 +79,23 @@ class StepInterrupted(BaseModel):
     pass
 
 
+class StepRetry(BaseModel):
+    """Indicates that the current step attempt failed and will be retried."""
+
+    n: int
+    """The step number."""
+    next_attempt: int
+    """The next attempt number, 1-based."""
+    max_attempts: int
+    """The maximum number of attempts for this step."""
+    wait_s: float
+    """Seconds to wait before retrying."""
+    error_type: str
+    """The exception class name that triggered the retry."""
+    status_code: int | None = None
+    """HTTP status code when available."""
+
+
 class CompactionBegin(BaseModel):
     """
     Indicates that a compaction just began.
@@ -502,6 +519,7 @@ type Event = (
     | TurnEnd
     | StepBegin
     | StepInterrupted
+    | StepRetry
     | HookTriggered
     | HookResolved
     | CompactionBegin
@@ -650,6 +668,7 @@ __all__ = [
     "TurnEnd",
     "StepBegin",
     "StepInterrupted",
+    "StepRetry",
     "CompactionBegin",
     "CompactionEnd",
     "MCPLoadingBegin",
