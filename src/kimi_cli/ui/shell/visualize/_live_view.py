@@ -145,6 +145,7 @@ class _LiveView:
         self._current_content_block: _ContentBlock | None = None
         self._tool_call_blocks: dict[str, _ToolCallBlock] = {}
         self._last_tool_call_block: _ToolCallBlock | None = None
+        self._current_step_retry: StepRetry | None = None
         self._approval_request_queue = deque[ApprovalRequest]()
         """
         It is possible that multiple subagents request approvals at the same time,
@@ -356,12 +357,16 @@ class _LiveView:
         Pure agent streaming status — no interactive overlays.
         Always safe to render regardless of modal state.
 
-        Display priority (highest → lowest):
-          1. MCP loading spinner (connecting to servers)
-          2. Compaction spinner (context compaction in progress)
-          3. Content blocks + tool call blocks (streaming output)
-          4. Moon spinner fallback (turn active but nothing else visible)
-        The btw spinner is always shown (side-channel, not mutually exclusive).
+        Layout:
+          - Modal (one of): MCP spinner | Compaction spinner | main group
+          - Main group (additive): retry banner, content block, tool calls;
+            falls back to the mooning spinner when all three are empty
+            and a turn is active
+          - btw spinner (prepended) and live notifications (appended) always show
+
+        The retry banner never coexists with content/tool blocks at runtime;
+        that is enforced upstream (discard_retry_attempt, append_content,
+        append_tool_call), not by this function.
         """
         blocks: list[RenderableType] = []
         if self._btw_spinner is not None:
@@ -372,6 +377,9 @@ class _LiveView:
             blocks.append(self._compacting_spinner)
         else:
             has_main_content = False
+            if self._current_step_retry is not None:
+                blocks.append(_format_step_retry(self._current_step_retry))
+                has_main_content = True
             if self._current_content_block is not None:
                 blocks.append(self._current_content_block.compose())
                 has_main_content = True
@@ -522,13 +530,16 @@ class _LiveView:
 
         Note: content already flushed to terminal history (e.g. an earlier
         ``ThinkPart`` whose printing was triggered when the stream switched
-        to a ``TextPart``) cannot be unprinted. The retry banner serves as
-        a visible boundary between the partial attempt and the new one.
+        to a ``TextPart``) cannot be unprinted. The retry banner is shown
+        as a live status line while the retry is pending and is replaced
+        once the new attempt produces output, so it marks the boundary
+        only transiently — flushed history from the failed attempt remains
+        directly adjacent to the new attempt's output in scrollback.
         """
         self._current_content_block = None
         self._tool_call_blocks.clear()
         self._last_tool_call_block = None
-        console.print(_format_step_retry(retry))
+        self._current_step_retry = retry
 
     def _try_submit_question(self, method: str = "enter") -> None:
         """Submit the current question answer; if all done, resolve and advance."""
@@ -671,6 +682,7 @@ class _LiveView:
         self._compacting_spinner = None
         self._mcp_loading_spinner = None
         self._btw_spinner = None
+        self._current_step_retry = None
 
         if is_interrupt:
             self._active_turn_depth = 0
@@ -722,6 +734,7 @@ class _LiveView:
                 # (e.g. Anthropic/OpenAI block-start events yield think="").
                 if not text and not is_think:
                     return
+                self._current_step_retry = None
                 if self._current_content_block is None:
                     self._current_content_block = _ContentBlock(
                         is_think, show_thinking_stream=self._show_thinking_stream
@@ -741,6 +754,7 @@ class _LiveView:
                 pass
 
     def append_tool_call(self, tool_call: ToolCall) -> None:
+        self._current_step_retry = None
         self.flush_content()
         self._tool_call_blocks[tool_call.id] = _ToolCallBlock(tool_call)
         self._last_tool_call_block = self._tool_call_blocks[tool_call.id]
