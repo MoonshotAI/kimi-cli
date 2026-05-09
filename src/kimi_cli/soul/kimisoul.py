@@ -1165,9 +1165,17 @@ class KimiSoul:
                 self._context.history, self._runtime.llm, custom_instruction=custom_instruction
             )
 
+        start_time = time.monotonic()
+        retry_count = 0
+
+        def _retry_log_compaction(retry_state: RetryCallState) -> None:
+            nonlocal retry_count
+            retry_count = retry_state.attempt_number
+            self._retry_log("compaction", retry_state)
+
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
-            before_sleep=partial(self._retry_log, "compaction"),
+            before_sleep=_retry_log_compaction,
             wait=wait_exponential_jitter(initial=0.3, max=5, jitter=0.5),
             stop=stop_after_attempt(self._loop_control.max_retries_per_step),
             reraise=True,
@@ -1202,13 +1210,16 @@ class KimiSoul:
         wire_send(CompactionBegin())
         try:
             compaction_result = await _compact_with_retry()
-        except Exception:
+        except Exception as _compact_exc:
             from kimi_cli.telemetry import track
 
             track(
                 "compaction_failed",
                 trigger_type=trigger_reason,
                 before_tokens=before_tokens,
+                duration_ms=int((time.monotonic() - start_time) * 1000),
+                retry_count=retry_count,
+                error_type=type(_compact_exc).__name__,
             )
             raise
         await self._context.clear()
@@ -1246,12 +1257,18 @@ class KimiSoul:
 
         from kimi_cli.telemetry import track
 
-        track(
-            "compaction_finished",
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        track_kwargs = dict(
             trigger_type=trigger_reason,
             before_tokens=before_tokens,
             after_tokens=estimated_token_count,
+            duration_ms=duration_ms,
+            retry_count=retry_count,
         )
+        if compaction_result.usage is not None:
+            track_kwargs["llm_input_tokens"] = compaction_result.usage.input
+            track_kwargs["llm_output_tokens"] = compaction_result.usage.output
+        track("compaction_finished", **track_kwargs)
 
         _hook_task = asyncio.create_task(
             self._hook_engine.trigger(

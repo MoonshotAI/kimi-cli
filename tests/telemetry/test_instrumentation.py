@@ -915,6 +915,7 @@ class TestCompactionTracking:
         fake_result = MagicMock()
         fake_result.messages = []
         fake_result.estimated_token_count = estimated_after
+        fake_result.usage = None
         soul._run_with_connection_recovery = AsyncMock(return_value=fake_result)
 
         soul._injection_providers = []
@@ -940,6 +941,10 @@ class TestCompactionTracking:
         assert kwargs["trigger_type"] == "auto"
         assert kwargs["before_tokens"] == 12000
         assert kwargs["after_tokens"] == 3000
+        assert kwargs["duration_ms"] >= 0
+        assert kwargs["retry_count"] == 0
+        assert "llm_input_tokens" not in kwargs
+        assert "llm_output_tokens" not in kwargs
 
     @pytest.mark.asyncio
     async def test_manual_compaction_without_prompt_emits_event(self):
@@ -955,6 +960,8 @@ class TestCompactionTracking:
         calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
         assert calls[0][1]["trigger_type"] == "manual"
+        assert calls[0][1]["duration_ms"] >= 0
+        assert calls[0][1]["retry_count"] == 0
 
     @pytest.mark.asyncio
     async def test_manual_compaction_with_prompt_emits_event(self):
@@ -970,6 +977,8 @@ class TestCompactionTracking:
         calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
         assert calls[0][1]["trigger_type"] == "manual-with-prompt"
+        assert calls[0][1]["duration_ms"] >= 0
+        assert calls[0][1]["retry_count"] == 0
 
     @pytest.mark.asyncio
     async def test_compaction_failure_emits_event_then_reraises(self):
@@ -991,3 +1000,6 @@ class TestCompactionTracking:
         assert kwargs["trigger_type"] == "auto"
         assert kwargs["before_tokens"] == 50000
         assert "after_tokens" not in kwargs
+        assert kwargs["duration_ms"] >= 0
+        assert kwargs["retry_count"] == 0
+        assert kwargs["error_type"] == "RuntimeError"
