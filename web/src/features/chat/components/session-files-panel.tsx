@@ -230,7 +230,7 @@ export function SessionFilesPanel({
             <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm">
               <div className="flex items-start gap-2">
                 <AlertTriangleIcon className="mt-0.5 size-4 text-destructive" />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="font-medium text-foreground">
                     Failed to load this directory
                   </div>
@@ -267,7 +267,7 @@ export function SessionFilesPanel({
                 return (
                   <div
                     key={`${entry.type}:${itemPath}`}
-                    className="flex items-center gap-2 rounded-xl border bg-card/60 px-2.5 py-2"
+                    className="flex items-center gap-2 rounded-xl border bg-card/60 px-2.5 py-2 overflow-hidden"
                   >
                     {isDirectory ? (
                       <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -275,9 +275,9 @@ export function SessionFilesPanel({
                       <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
                     )}
 
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 overflow-hidden">
                       <div
-                        className="truncate text-sm font-medium"
+                        className="truncate text-sm font-medium w-full"
                         title={entry.name}
                       >
                         {entry.name}
