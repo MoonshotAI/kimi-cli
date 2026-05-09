@@ -60,6 +60,7 @@ def get_build_sha() -> str:
 
     try:
         from kimi_cli._build_info import BUILD_SHA  # type: ignore[reportMissingImports]
+
         return cast(str, BUILD_SHA)
     except ImportError:
         pass
