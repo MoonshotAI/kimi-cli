@@ -9,6 +9,7 @@ import re
 import shlex
 import subprocess
 import time
+import types
 from collections import deque
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -1522,6 +1523,7 @@ class CustomPromptSession:
         )
         self._install_slash_completion_menu()
         self._install_prompt_buffer_visibility()
+        self._install_display_line_navigation()
         self._apply_mode()
 
         # Allow completion to be triggered when the text is changed,
@@ -1592,6 +1594,119 @@ class CustomPromptSession:
             self._should_render_input_buffer
         )
         self._prompt_buffer_container = buffer_container
+
+    def _install_display_line_navigation(self) -> None:
+        """Patch buffer cursor methods to move by wrapped display lines."""
+        buf = self._session.default_buffer
+
+        def _get_render_info():
+            container = self._prompt_buffer_container
+            if container is None:
+                return None
+            window = container.content
+            if not isinstance(window, Window):
+                return None
+            return window.render_info
+
+        def _is_first_display_line(buffer: Buffer) -> bool:
+            ri = _get_render_info()
+            if ri is None or not ri.wrap_lines:
+                return buffer.document.cursor_position_row == 0
+            return ri.cursor_position.y <= 0
+
+        def _is_last_display_line(buffer: Buffer) -> bool:
+            ri = _get_render_info()
+            if ri is None or not ri.wrap_lines:
+                return buffer.document.cursor_position_row >= buffer.document.line_count - 1
+            if not ri.visible_line_to_row_col:
+                return True
+            max_y = max(ri.visible_line_to_row_col.keys())
+            return ri.cursor_position.y >= max_y
+
+        def _move_cursor_by_display_line(
+            buffer: Buffer, direction: int, count: int
+        ) -> bool:
+            """Move cursor up/down by display line. Return True if moved."""
+            ri = _get_render_info()
+            if ri is None or not ri.wrap_lines:
+                return False
+
+            current_yx = ri.cursor_position
+            target_y = current_yx.y + direction * count
+
+            if not ri.visible_line_to_row_col:
+                return False
+            max_visible_y = max(ri.visible_line_to_row_col.keys())
+            if target_y < 0 or target_y > max_visible_y:
+                return False
+
+            target_rowcol = ri.visible_line_to_row_col.get(target_y)
+            if target_rowcol is None:
+                return False
+
+            target_row = target_rowcol[0]
+            target_abs_y = target_y + getattr(ri, "_y_offset", 0)
+            target_abs_x = current_yx.x + getattr(ri, "_x_offset", 0)
+
+            best_col: int | None = None
+            best_diff = float("inf")
+            for (_row, col), (y, x) in getattr(ri, "_rowcol_to_yx", {}).items():
+                if y == target_abs_y:
+                    diff = abs(x - target_abs_x)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_col = col
+
+            if best_col is None:
+                return False
+
+            line_text = buffer.document.lines[target_row]
+            best_col = min(best_col, len(line_text))
+
+            new_pos = buffer.document.translate_row_col_to_index(target_row, best_col)
+            buffer.cursor_position = new_pos
+            buffer.preferred_column = best_col
+            return True
+
+        original_cursor_up = Buffer.cursor_up
+        original_cursor_down = Buffer.cursor_down
+
+        def _display_cursor_up(self: Buffer, count: int = 1) -> None:
+            if not _move_cursor_by_display_line(self, -1, count):
+                original_cursor_up(self, count)
+
+        def _display_cursor_down(self: Buffer, count: int = 1) -> None:
+            if not _move_cursor_by_display_line(self, 1, count):
+                original_cursor_down(self, count)
+
+        def _display_auto_up(
+            self: Buffer, count: int = 1, go_to_start_of_line_if_history_changes: bool = False
+        ) -> None:
+            if self.complete_state:
+                self.complete_previous(count=count)
+            elif not _is_first_display_line(self):
+                _display_cursor_up(self, count)
+            elif not self.selection_state:
+                self.history_backward(count=count)
+                if go_to_start_of_line_if_history_changes:
+                    self.cursor_position += self.document.get_start_of_line_position()
+
+        def _display_auto_down(
+            self: Buffer, count: int = 1, go_to_start_of_line_if_history_changes: bool = False
+        ) -> None:
+            if self.complete_state:
+                self.complete_next(count=count)
+            elif not _is_last_display_line(self):
+                _display_cursor_down(self, count)
+            elif not self.selection_state:
+                self.history_forward(count=count)
+                if go_to_start_of_line_if_history_changes:
+                    self.cursor_position += self.document.get_start_of_line_position()
+
+        buf.cursor_up = types.MethodType(_display_cursor_up, buf)
+        buf.cursor_down = types.MethodType(_display_cursor_down, buf)
+        buf.auto_up = types.MethodType(_display_auto_up, buf)
+        buf.auto_down = types.MethodType(_display_auto_down, buf)
 
     def _should_show_slash_completion_menu(self) -> bool:
         document = self._session.default_buffer.document

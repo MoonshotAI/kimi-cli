@@ -89,13 +89,14 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
 
     For each directory on the path, the following candidates are checked in order:
 
-    1. ``.kimi/AGENTS.md``  — project-local kimi config (highest priority)
-    2. ``AGENTS.md``        — standard location
-    3. ``agents.md``        — lowercase variant (mutually exclusive with 2)
+    1. ``.kimi/AGENTS.md``       — project-local kimi config
+    2. ``AGENTS.md``             — standard location
+    3. ``agents.md``             — lowercase variant (mutually exclusive with 2)
+    4. ``.kimi/AGENTS.local.md`` — project-local local override
+    5. ``AGENTS.local.md``       — local override (highest priority, loaded last)
 
-    Within a single directory, ``.kimi/AGENTS.md`` and ``AGENTS.md``/``agents.md``
-    are **both** loaded (with ``.kimi/`` first), but ``AGENTS.md`` and ``agents.md``
-    are mutually exclusive (uppercase wins).
+    Within a single directory, all of the above are **all** loaded (in that order),
+    but ``AGENTS.md`` and ``agents.md`` are mutually exclusive (uppercase wins).
 
     All discovered files are concatenated root→leaf, separated by ``\\n\\n``, with
     source annotations.  Total size is capped at :data:`_AGENTS_MD_MAX_BYTES`.
@@ -112,6 +113,9 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
         kimi_path = d / ".kimi" / "AGENTS.md"
         # AGENTS.md and agents.md are mutually exclusive (uppercase wins)
         root_candidates = [d / "AGENTS.md", d / "agents.md"]
+        # .kimi/AGENTS.local.md is always checked independently
+        kimi_local_path = d / ".kimi" / "AGENTS.local.md"
+        local_path = d / "AGENTS.local.md"
 
         candidates: list[KaosPath] = []
         if await kimi_path.is_file():
@@ -120,6 +124,10 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
             if await rc.is_file():
                 candidates.append(rc)
                 break
+        if await kimi_local_path.is_file():
+            candidates.append(kimi_local_path)
+        if await local_path.is_file():
+            candidates.append(local_path)
 
         for path in candidates:
             content = (await path.read_text()).strip()

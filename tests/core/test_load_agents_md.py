@@ -72,6 +72,74 @@ async def test_kimi_dir_and_root_both_loaded(temp_work_dir: KaosPath):
     assert content.count("<!-- From:") == 2
 
 
+async def test_local_md_loaded(temp_work_dir: KaosPath):
+    """AGENTS.local.md is loaded alongside AGENTS.md; .local is last (highest override)."""
+    await (temp_work_dir / "AGENTS.md").write_text("root agents")
+    await (temp_work_dir / "AGENTS.local.md").write_text("local agents")
+
+    content = await load_agents_md(temp_work_dir)
+
+    assert content is not None
+    assert content.index("root agents") < content.index("local agents")
+    assert content.count("<!-- From:") == 2
+
+
+async def test_local_md_overrides_kimi_and_root(temp_work_dir: KaosPath):
+    """AGENTS.local.md is loaded after .kimi/AGENTS.md and AGENTS.md."""
+    kimi_dir = temp_work_dir / ".kimi"
+    await kimi_dir.mkdir()
+    await (kimi_dir / "AGENTS.md").write_text("kimi agents")
+    await (temp_work_dir / "AGENTS.md").write_text("root agents")
+    await (temp_work_dir / "AGENTS.local.md").write_text("local agents")
+
+    content = await load_agents_md(temp_work_dir)
+
+    assert content is not None
+    assert content.index("kimi agents") < content.index("root agents") < content.index("local agents")
+    assert content.count("<!-- From:") == 3
+
+
+async def test_local_md_alone(temp_work_dir: KaosPath):
+    """Only AGENTS.local.md exists."""
+    await (temp_work_dir / "AGENTS.local.md").write_text("local only")
+
+    content = await load_agents_md(temp_work_dir)
+
+    assert content is not None
+    assert "local only" in content
+    assert content.count("<!-- From:") == 1
+
+
+async def test_kimi_local_md_loaded(temp_work_dir: KaosPath):
+    """.kimi/AGENTS.local.md is loaded alongside .kimi/AGENTS.md; .local is last."""
+    kimi_dir = temp_work_dir / ".kimi"
+    await kimi_dir.mkdir()
+    await (kimi_dir / "AGENTS.md").write_text("kimi agents")
+    await (kimi_dir / "AGENTS.local.md").write_text("kimi local agents")
+
+    content = await load_agents_md(temp_work_dir)
+
+    assert content is not None
+    assert content.index("kimi agents") < content.index("kimi local agents")
+    assert content.count("<!-- From:") == 2
+
+
+async def test_kimi_local_md_and_root_local_md(temp_work_dir: KaosPath):
+    """.kimi/AGENTS.local.md loads before root AGENTS.local.md."""
+    kimi_dir = temp_work_dir / ".kimi"
+    await kimi_dir.mkdir()
+    await (kimi_dir / "AGENTS.local.md").write_text("kimi local agents")
+    await (temp_work_dir / "AGENTS.local.md").write_text("root local agents")
+
+    content = await load_agents_md(temp_work_dir)
+
+    assert content is not None
+    assert (
+        content.index("kimi local agents") < content.index("root local agents")
+    )
+    assert content.count("<!-- From:") == 2
+
+
 async def test_kimi_dir_in_parent(temp_work_dir: KaosPath):
     """.kimi/AGENTS.md in a parent directory is discovered via hierarchy."""
     await (temp_work_dir / ".git").mkdir()

@@ -112,9 +112,7 @@ Markdown files named `AGENTS.md` usually contain the background, structure, codi
 
 The `AGENTS.md` instructions (merged from all applicable directories):
 
-`````````
 ${KIMI_AGENTS_MD}
-`````````
 
 `AGENTS.md` files can appear at any level of the project directory tree, including inside `.kimi/` directories. Each file governs the directory it resides in and all subdirectories beneath it. When multiple `AGENTS.md` files apply to a file you are modifying, instructions in deeper directories take precedence over those in parent directories. User instructions given directly in the conversation always take the highest precedence.
 
@@ -144,6 +142,8 @@ ${KIMI_SKILLS}
 ## How to use skills
 
 Identify the skills that are likely to be useful for the tasks you are currently working on, read the `SKILL.md` file for detailed instructions, guidelines, scripts and more.
+
+When a skill is triggered — by the user invoking `/skill:xxx` or `/flow:xxx`, or when the task clearly matches a skill's description — you must use that skill for the current turn. Follow its instructions directly; if the skill does not explicitly ask you to confirm with the user, proceed without asking.
 
 Only read skill details when needed to conserve the context window.
 

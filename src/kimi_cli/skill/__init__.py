@@ -27,7 +27,7 @@ SkillScope = Literal["builtin", "user", "project", "extra"]
 - ``builtin``: bundled with kimi-cli
 - ``user``: from the user's home (``~/.kimi/skills``, ``~/.agents/skills``, ...)
 - ``project``: from the current project's working directory
-  (``<work_dir>/.kimi/skills``, ``<work_dir>/.agents/skills``, ...)
+  (``<work_dir>/.piebox/skills``, ``<work_dir>/.kimi/skills``, ``<work_dir>/.agents/skills``, ...)
 - ``extra``: from ``extra_skill_dirs`` config or ``--skills-dir`` override
 """
 
@@ -90,9 +90,10 @@ def _get_project_brand_skills_dir_candidates(work_dir: KaosPath) -> tuple[KaosPa
     """
     Get project-level brand skills directory candidates in priority order.
 
-    Brand group: ``.kimi/skills`` > ``.claude/skills`` > ``.codex/skills``
+    Brand group: ``.piebox/skills`` > ``.kimi/skills`` > ``.claude/skills`` > ``.codex/skills``
     """
     return (
+        work_dir / ".piebox" / "skills",
         work_dir / ".kimi" / "skills",
         work_dir / ".claude" / "skills",
         work_dir / ".codex" / "skills",

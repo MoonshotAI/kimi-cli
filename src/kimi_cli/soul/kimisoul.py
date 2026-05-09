@@ -786,8 +786,11 @@ class KimiSoul:
                 )
                 return
             extra = args.strip()
+            header = f"The user has triggered the skill '{_skill.name}'. Follow the instructions below and execute accordingly. If the skill does not explicitly require user confirmation, proceed directly."
             if extra:
-                skill_text = f"{skill_text}\n\nUser request:\n{extra}"
+                skill_text = f"{header}\n\n{skill_text}\n\nUser request:\n{extra}"
+            else:
+                skill_text = f"{header}\n\n{skill_text}"
             await soul._turn(Message(role="user", content=skill_text))
 
         _run_skill.__doc__ = skill.description

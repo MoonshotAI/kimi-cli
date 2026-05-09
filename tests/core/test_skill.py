@@ -460,6 +460,63 @@ async def test_find_project_skills_dirs_brand_prefers_kimi(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_find_project_skills_dirs_piebox_highest_priority(tmp_path):
+    """.piebox/skills takes priority over all other project brand dirs."""
+    work_dir = tmp_path / "project"
+    piebox_dir = work_dir / ".piebox" / "skills"
+    piebox_dir.mkdir(parents=True)
+    kimi_dir = work_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+
+    dirs = await find_project_skills_dirs(KaosPath.unsafe_from_local_path(work_dir))
+    assert len(dirs) == 1
+    assert dirs[0] == KaosPath.unsafe_from_local_path(piebox_dir)
+
+
+@pytest.mark.asyncio
+async def test_find_project_skills_dirs_piebox_alone(tmp_path):
+    """Only .piebox/skills exists → returned alone."""
+    work_dir = tmp_path / "project"
+    piebox_dir = work_dir / ".piebox" / "skills"
+    piebox_dir.mkdir(parents=True)
+
+    dirs = await find_project_skills_dirs(KaosPath.unsafe_from_local_path(work_dir))
+    assert dirs == [KaosPath.unsafe_from_local_path(piebox_dir)]
+
+
+@pytest.mark.asyncio
+async def test_resolve_skills_roots_piebox_wins_over_brand(monkeypatch, tmp_path):
+    """.piebox/skills skills win over .kimi/skills skills via discover."""
+    work_dir = tmp_path / "project"
+    piebox_dir = work_dir / ".piebox" / "skills"
+    piebox_dir.mkdir(parents=True)
+    _write_skill(
+        piebox_dir / "deploy",
+        "---\nname: deploy\ndescription: piebox deploy\n---\n",
+    )
+
+    kimi_dir = work_dir / ".kimi" / "skills"
+    kimi_dir.mkdir(parents=True)
+    _write_skill(
+        kimi_dir / "deploy",
+        "---\nname: deploy\ndescription: kimi deploy\n---\n",
+    )
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty_home")
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path / "share"))
+
+    roots = _roots_of(await resolve_skills_roots(KaosPath.unsafe_from_local_path(work_dir)))
+    assert roots[0] == KaosPath.unsafe_from_local_path(piebox_dir)
+
+    skills = await discover_skills_from_roots(
+        [ScopedSkillsRoot(root=KaosPath.unsafe_from_local_path(r), scope="project") for r in roots]
+    )
+    deploy_skills = [s for s in skills if s.name == "deploy"]
+    assert len(deploy_skills) == 1
+    assert deploy_skills[0].description == "piebox deploy"
+
+
+@pytest.mark.asyncio
 async def test_resolve_skills_roots_merges_user_and_project(monkeypatch, tmp_path):
     """Exact ordering (Fix 7): proj_brand → proj_generic → user_brand → user_generic → builtin.
 
