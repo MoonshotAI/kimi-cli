@@ -858,6 +858,7 @@ async def test_render_agent_status_excludes_panels_in_interactive() -> None:
     view._compacting_spinner = None
     view._current_content_block = None
     view._tool_call_blocks = {}
+    view._current_step_retry = None
     view._live_notification_blocks = cast(
         Any, type("deque", (), {"__iter__": lambda self: iter([])})()
     )
