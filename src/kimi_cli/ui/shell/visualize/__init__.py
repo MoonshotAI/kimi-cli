@@ -66,6 +66,14 @@ from kimi_cli.ui.shell.visualize._btw_panel import (
     _BtwModalDelegate as _BtwModalDelegate,
 )
 
+# Input routing
+from kimi_cli.ui.shell.visualize._input_router import (
+    InputAction as InputAction,
+)
+from kimi_cli.ui.shell.visualize._input_router import (
+    classify_input as classify_input,
+)
+
 # Interactive view
 from kimi_cli.ui.shell.visualize._interactive import (
     BtwRunner,

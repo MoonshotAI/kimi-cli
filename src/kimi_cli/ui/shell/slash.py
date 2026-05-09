@@ -34,13 +34,6 @@ Raises:
 registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 shell_mode_registry = SlashCommandRegistry[ShellSlashCmdFunc]()
 
-BTW_USAGE = "Usage: /btw <question>"
-
-
-def normalize_btw_question(args: str) -> str | None:
-    question = args.strip()
-    return question or None
-
 
 def ensure_kimi_soul(app: Shell) -> KimiSoul | None:
     if not isinstance(app.soul, KimiSoul):
@@ -142,20 +135,16 @@ def help(app: Shell, args: str):
 @registry.command
 async def btw(app: Shell, args: str):
     """Ask a side question without interrupting the main conversation"""
-    from kimi_cli.telemetry import track
-
-    question = normalize_btw_question(args)
-    if question is None:
-        console.print(f"[yellow]{BTW_USAGE}[/yellow]")
+    question = args.strip()
+    if not question:
+        console.print('[yellow]Usage: "/btw <question>"[/yellow]')
         return
     if ensure_kimi_soul(app) is None:
         return
-    prompt_session = app._prompt_session  # pyright: ignore[reportPrivateUsage]
-    if prompt_session is None:
+    if app._prompt_session is None:  # pyright: ignore[reportPrivateUsage]
         console.print("[yellow]/btw is only available in interactive shell mode.[/yellow]")
         return
-    track("input_btw")
-    await app.run_btw_modal(question, prompt_session)
+    await app._run_btw_modal(question, app._prompt_session)  # pyright: ignore[reportPrivateUsage]
 
 
 @registry.command

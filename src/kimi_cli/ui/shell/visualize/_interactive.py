@@ -28,13 +28,13 @@ from kimi_cli.ui.shell.prompt import (
     UserInput,
 )
 from kimi_cli.ui.shell.visualize._btw_panel import _BtwModalDelegate
+from kimi_cli.ui.shell.visualize._input_router import InputAction, classify_input
 from kimi_cli.ui.shell.visualize._live_view import _LiveView
 from kimi_cli.ui.shell.visualize._question_panel import (
     QuestionPromptDelegate,
     QuestionRequestPanel,
 )
 from kimi_cli.utils.aioqueue import QueueShutDown
-from kimi_cli.utils.slashcmd import SlashCommandCall
 from kimi_cli.wire import WireUISide
 from kimi_cli.wire.types import (
     BtwBegin,
@@ -266,68 +266,75 @@ class _PromptLiveView(_LiveView):
 
     # -- Input handling ------------------------------------------------------
 
-    def _handle_btw_command(self, cmd: SlashCommandCall) -> bool:
-        """Try to handle ``cmd`` as ``/btw``. Return True if recognized."""
-        if cmd.name != "btw":
-            return False
-        from kimi_cli.ui.shell.slash import BTW_USAGE, normalize_btw_question
-
-        question = normalize_btw_question(cmd.args)
-        if question is None:
-            from kimi_cli.ui.shell.prompt import toast
-
-            toast(BTW_USAGE, topic="input-ignored", duration=3.0)
-            return True
-        if self._btw_runner is not None and not self._btw_active:
-            self._start_btw(question)
-        return True
-
-    def _block_shell_only_command(self, cmd: SlashCommandCall) -> bool:
-        """Toast and return True if ``cmd`` is a shell-only slash command."""
-        from kimi_cli.ui.shell.slash import registry as shell_registry
-
-        if shell_registry.find_command(cmd.name) is None:
-            return False
-        from kimi_cli.ui.shell.prompt import toast
-
-        toast(
-            f"/{cmd.name} is not available during streaming",
-            topic="input-ignored",
-            duration=3.0,
-        )
-        return True
-
     def handle_local_input(self, user_input: UserInput) -> None:
-        """Route user input typed during streaming: /btw → modal, else → queue."""
+        """Route user input through the unified classifier."""
         if not user_input or self._turn_ended:
             return
-        from kimi_cli.utils.slashcmd import parse_slash_command_call
+        action = classify_input(user_input.resolved_command, is_streaming=True)
+        match action.kind:
+            case InputAction.BTW:
+                if self._btw_runner is not None and not self._btw_active:
+                    self._start_btw(action.args)
+            case InputAction.QUEUE:
+                # Block shell-only commands from being queued — they would
+                # be misrouted through run_soul() instead of the shell dispatcher.
+                from kimi_cli.utils.slashcmd import parse_slash_command_call
 
-        cmd = parse_slash_command_call(user_input.resolved_command.strip())
-        if cmd is not None:
-            if self._handle_btw_command(cmd):
-                return
-            if self._block_shell_only_command(cmd):
-                return
-        self._queued_messages.append(user_input)
-        from kimi_cli.telemetry import track
+                if cmd := parse_slash_command_call(user_input.resolved_command.strip()):
+                    from kimi_cli.ui.shell.slash import registry as shell_registry
 
-        track("input_queue")
-        # Invalidate directly — _flush_prompt_refresh() is gated by
-        # _need_recompose which may be False between wire events.
-        self._prompt_session.invalidate()
+                    if shell_registry.find_command(cmd.name) is not None:
+                        from kimi_cli.ui.shell.prompt import toast
+
+                        toast(
+                            f"/{cmd.name} is not available during streaming",
+                            topic="input-ignored",
+                            duration=3.0,
+                        )
+                        return
+                self._queued_messages.append(user_input)
+                from kimi_cli.telemetry import track
+
+                track("input_queue")
+                # Invalidate directly — _flush_prompt_refresh() is gated by
+                # _need_recompose which may be False between wire events.
+                self._prompt_session.invalidate()
+            case InputAction.IGNORED:
+                from kimi_cli.ui.shell.prompt import toast
+
+                toast(action.args, topic="input-ignored", duration=3.0)
+            case _:
+                pass  # SEND and unknown actions are no-ops during streaming
 
     def handle_immediate_steer(self, user_input: UserInput) -> None:
         """Ctrl+S: inject immediately into the running turn's context."""
         if not user_input or self._turn_ended:
             return
+        # Intercept /btw and IGNORED (e.g. /btw without args) on Ctrl+S
+        action = classify_input(user_input.resolved_command, is_streaming=True)
+        if action.kind == InputAction.BTW:
+            if self._btw_runner is not None and not self._btw_active:
+                self._start_btw(action.args)
+            return
+        if action.kind == InputAction.IGNORED:
+            from kimi_cli.ui.shell.prompt import toast
+
+            toast(action.args, topic="input-ignored", duration=3.0)
+            return
+        # Block shell-only commands — same check as the Enter/queue path
         from kimi_cli.utils.slashcmd import parse_slash_command_call
 
-        cmd = parse_slash_command_call(user_input.resolved_command.strip())
-        if cmd is not None:
-            if self._handle_btw_command(cmd):
-                return
-            if self._block_shell_only_command(cmd):
+        if cmd := parse_slash_command_call(user_input.resolved_command.strip()):
+            from kimi_cli.ui.shell.slash import registry as shell_registry
+
+            if shell_registry.find_command(cmd.name) is not None:
+                from kimi_cli.ui.shell.prompt import toast
+
+                toast(
+                    f"/{cmd.name} is not available during streaming",
+                    topic="input-ignored",
+                    duration=3.0,
+                )
                 return
         # Print permanently in conversation flow (shows placeholder for pasted text)
         console.print(render_user_echo_text(user_input.command))

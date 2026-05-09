@@ -539,9 +539,8 @@ class KimiSoul:
 
         Returns True if any steers were consumed.
 
-        Note: /btw is intercepted at the UI layer (slash dispatch in idle,
-        ``handle_local_input`` / ``handle_immediate_steer`` during streaming)
-        before reaching the steer queue, so it never appears here.
+        Note: /btw is intercepted at the UI layer (``classify_input``) before
+        reaching the steer queue, so it never appears here.
         """
         consumed = False
         while not self._steer_queue.empty():
