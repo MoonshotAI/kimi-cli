@@ -26,6 +26,7 @@ _GIT_BASH_INSTALL_HINT = (
     "KIMI_CLI_GIT_BASH_PATH environment variable to your bash.exe, e.g.:\n"
     "    KIMI_CLI_GIT_BASH_PATH=C:\\Program Files\\Git\\bin\\bash.exe"
 )
+_GIT_EXEC_PATH_TIMEOUT_SECONDS = 5
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -90,7 +91,8 @@ async def _find_git_bash_path() -> KaosPath:
     Resolution order:
       1. ``KIMI_CLI_GIT_BASH_PATH`` environment variable (validated to exist).
       2. ``where.exe git`` -> ``<gitDir>/../bin/bash.exe``.
-      3. Common install locations (``C:\\Program Files\\Git\\bin\\bash.exe``).
+      3. ``git --exec-path`` -> Git for Windows install root -> ``bin\\bash.exe``.
+      4. Common install locations (``C:\\Program Files\\Git\\bin\\bash.exe``).
 
     Raises:
         GitBashNotFoundError: if no candidate path resolves to an existing file.
@@ -106,12 +108,17 @@ async def _find_git_bash_path() -> KaosPath:
         )
 
     for git_path in await _find_git_executables():
-        # git.exe usually lives at <git>/cmd/git.exe; bash.exe is at <git>/bin/bash.exe.
-        # Use ntpath explicitly so this works regardless of the host OS that imports
-        # this module (tests on macOS pass Windows-style paths through this code).
-        bash_candidate = KaosPath(ntpath.join(ntpath.dirname(git_path), "..", "bin", "bash.exe"))
+        bash_candidate = _git_bash_candidate_from_git_path(git_path)
         if await bash_candidate.is_file():
             return bash_candidate
+
+        git_exec_path = await asyncio.to_thread(_git_exec_path, git_path)
+        if git_exec_path is None:
+            continue
+
+        for bash_candidate in _git_bash_candidates_from_exec_path(git_exec_path):
+            if await bash_candidate.is_file():
+                return bash_candidate
 
     fallback_candidates = [
         KaosPath(r"C:\Program Files\Git\bin\bash.exe"),
@@ -122,6 +129,57 @@ async def _find_git_bash_path() -> KaosPath:
             return candidate
 
     raise GitBashNotFoundError(_GIT_BASH_INSTALL_HINT)
+
+
+def _git_bash_candidate_from_git_path(git_path: str) -> KaosPath:
+    # git.exe usually lives at <git>/cmd/git.exe; bash.exe is at <git>/bin/bash.exe.
+    # Use ntpath explicitly so this works regardless of the host OS that imports
+    # this module (tests on macOS pass Windows-style paths through this code).
+    return KaosPath(ntpath.join(ntpath.dirname(git_path), "..", "bin", "bash.exe"))
+
+
+def _git_exec_path(git_path: str) -> str | None:
+    try:
+        result = subprocess.run(
+            [git_path, "--exec-path"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_GIT_EXEC_PATH_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    for line in result.stdout.splitlines():
+        exec_path = line.strip()
+        if exec_path:
+            return exec_path
+    return None
+
+
+def _git_bash_candidates_from_exec_path(exec_path: str) -> list[KaosPath]:
+    normalized_exec_path = ntpath.normpath(exec_path)
+    install_root = _git_install_root_from_exec_path(normalized_exec_path)
+    if install_root is not None:
+        return [KaosPath(ntpath.join(install_root, "bin", "bash.exe"))]
+
+    return [
+        KaosPath(ntpath.normpath(ntpath.join(normalized_exec_path, "..", "..", "bin", "bash.exe")))
+    ]
+
+
+def _git_install_root_from_exec_path(exec_path: str) -> str | None:
+    current = ntpath.normpath(exec_path)
+    while True:
+        parent, name = ntpath.split(current)
+        if name.casefold() in {"mingw32", "mingw64"}:
+            return parent
+        if parent == current:
+            return None
+        current = parent
 
 
 async def _find_git_executables() -> list[str]:

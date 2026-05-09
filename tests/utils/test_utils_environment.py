@@ -121,26 +121,63 @@ async def test_environment_detection_windows_checks_all_where_git_matches(monkey
     monkeypatch.setattr(platform, "version", lambda: "10.0.19044")
     monkeypatch.delenv("KIMI_CLI_GIT_BASH_PATH", raising=False)
 
+    shim_git = r"C:\Users\me\scoop\shims\git.exe"
+
     def fake_run(args, **kwargs):
-        assert args == ["where.exe", "git"]
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
         assert kwargs["check"] is False
+        if args == [shim_git, "--exec-path"]:
+            return subprocess.CompletedProcess(args, 1, stdout="", stderr="shim failed")
+        assert args == ["where.exe", "git"]
         return subprocess.CompletedProcess(
             args,
             0,
-            stdout=(
-                r"C:\Users\me\scoop\shims\git.exe"
-                + "\n"
-                + r"C:\Program Files\Git\cmd\git.exe"
-                + "\n"
-            ),
+            stdout=shim_git + "\n" + r"C:\Program Files\Git\cmd\git.exe" + "\n",
             stderr="",
         )
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     expected_bash = r"C:\Program Files\Git\cmd\..\bin\bash.exe"
+
+    async def _mock_is_file(self: KaosPath) -> bool:
+        return str(self) == expected_bash
+
+    monkeypatch.setattr(KaosPath, "is_file", _mock_is_file)
+
+    env = await Environment.detect()
+    assert env.shell_name == "bash"
+    assert str(env.shell_path) == expected_bash
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
+async def test_environment_detection_windows_resolves_shim_only_git(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(platform, "version", lambda: "10.0.19044")
+    monkeypatch.delenv("KIMI_CLI_GIT_BASH_PATH", raising=False)
+
+    shim_git = r"C:\Users\me\scoop\shims\git.exe"
+
+    def fake_run(args, **kwargs):
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        assert kwargs["check"] is False
+        if args == ["where.exe", "git"]:
+            return subprocess.CompletedProcess(args, 0, stdout=shim_git + "\n", stderr="")
+        if args == [shim_git, "--exec-path"]:
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout="C:/Users/me/scoop/apps/git/current/mingw64/libexec/git-core\n",
+                stderr="",
+            )
+        raise AssertionError(f"Unexpected subprocess args: {args!r}")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    expected_bash = r"C:\Users\me\scoop\apps\git\current\bin\bash.exe"
 
     async def _mock_is_file(self: KaosPath) -> bool:
         return str(self) == expected_bash
