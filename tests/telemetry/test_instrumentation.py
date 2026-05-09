@@ -484,21 +484,13 @@ class TestEventPropertyCorrectness:
             event = _collect_events()[-1]
             assert event["properties"]["method"] == method
 
-    def test_tool_error_has_tool_name_and_error_type(self):
-        """tool_error includes tool_name and error_type (Python exception class name)."""
-        track("tool_error", tool_name="Bash", error_type="RuntimeError")
-        event = _collect_events()[-1]
-        assert event["event"] == "tool_error"
-        assert event["properties"]["tool_name"] == "Bash"
-        assert event["properties"]["error_type"] == "RuntimeError"
-
     def test_tool_call_success_has_no_error_type(self):
-        """tool_call success path: tool_name + success=True + duration_ms, no error_type."""
-        track("tool_call", tool_name="ReadFile", success=True, duration_ms=123)
+        """tool_call success path: tool_name + outcome=success + duration_ms, no error_type."""
+        track("tool_call", tool_name="ReadFile", outcome="success", duration_ms=123)
         event = _collect_events()[-1]
         assert event["event"] == "tool_call"
         assert event["properties"]["tool_name"] == "ReadFile"
-        assert event["properties"]["success"] is True
+        assert event["properties"]["outcome"] == "success"
         assert event["properties"]["duration_ms"] == 123
         assert isinstance(event["properties"]["duration_ms"], int)
         assert "error_type" not in event["properties"]
@@ -508,13 +500,20 @@ class TestEventPropertyCorrectness:
         track(
             "tool_call",
             tool_name="Bash",
-            success=False,
+            outcome="error",
             duration_ms=42,
             error_type="TimeoutError",
         )
         event = _collect_events()[-1]
-        assert event["properties"]["success"] is False
+        assert event["properties"]["outcome"] == "error"
         assert event["properties"]["error_type"] == "TimeoutError"
+
+    def test_tool_call_cancelled_has_no_error_type(self):
+        """tool_call cancelled path: outcome=cancelled + duration_ms, no error_type."""
+        track("tool_call", tool_name="Bash", outcome="cancelled", duration_ms=10)
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "cancelled"
+        assert "error_type" not in event["properties"]
 
     def test_oauth_refresh_success_has_no_reason(self):
         """oauth_refresh success: only success=True, no reason field."""

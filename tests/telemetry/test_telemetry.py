@@ -337,7 +337,7 @@ class TestAsyncTransport:
 
         events_in = [
             {"event": "started", "timestamp": 1.0, "properties": {}},
-            {"event": "tool_call", "timestamp": 2.0, "properties": {"success": True}},
+            {"event": "tool_call", "timestamp": 2.0, "properties": {"outcome": "success"}},
         ]
         with patch.object(transport, "_send_http", new=capture):
             await transport.send(events_in)
@@ -349,9 +349,9 @@ class TestAsyncTransport:
         assert [e["event"] for e in outbound] == ["kfc_started", "kfc_tool_call"]
         # Original events list untouched (save_to_disk would keep bare + nested shape)
         assert [e["event"] for e in events_in] == ["started", "tool_call"]
-        assert events_in[1]["properties"] == {"success": True}
+        assert events_in[1]["properties"] == {"outcome": "success"}
         # Properties flattened; timestamp preserved
-        assert outbound[1]["property_success"] is True
+        assert outbound[1]["property_outcome"] == "success"
         assert outbound[1]["timestamp"] == 2.0
         # Outbound events should not carry the nested sub-dicts anymore
         assert "properties" not in outbound[1]
