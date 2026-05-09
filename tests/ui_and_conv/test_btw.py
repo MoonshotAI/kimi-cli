@@ -1,10 +1,12 @@
-"""Tests for /btw side question: btw.py, classify_input, DenyAllToolset, wire types."""
+"""Tests for /btw side question: btw.py, input routing, DenyAllToolset, wire types."""
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 from dataclasses import dataclass
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from kosong.message import Message, ToolCall
@@ -17,11 +19,10 @@ from kimi_cli.soul.btw import (
     execute_side_question,
 )
 from kimi_cli.ui.shell.prompt import PromptMode, UserInput
+from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.ui.shell.visualize import (
-    InputAction,
     _BtwModalDelegate,
     _PromptLiveView,
-    classify_input,
 )
 from kimi_cli.wire.types import (
     BtwBegin,
@@ -35,6 +36,24 @@ from kimi_cli.wire.types import (
 # ---------------------------------------------------------------------------
 # Helpers for mocking kosong.step
 # ---------------------------------------------------------------------------
+
+
+async def _invoke_shell_slash_command(name: str, shell: Any, args: str) -> None:
+    cmd = shell_slash_registry.find_command(name)
+    assert cmd is not None
+    ret = cmd.func(shell, args)
+    if isinstance(ret, Awaitable):
+        await ret
+
+
+def _mock_shell_for_btw(prompt_session: object | None) -> MagicMock:
+    from kimi_cli.soul.kimisoul import KimiSoul
+
+    shell = MagicMock()
+    shell.soul = MagicMock(spec=KimiSoul)
+    shell._prompt_session = prompt_session
+    shell.run_btw_modal = AsyncMock()
+    return shell
 
 
 @dataclass
@@ -91,46 +110,44 @@ def _mixed_text_and_tool_result(text: str, tool_name: str = "Read") -> _FakeStep
 
 
 # ---------------------------------------------------------------------------
-# classify_input
+# /btw shell slash command
 # ---------------------------------------------------------------------------
 
 
-class TestClassifyInput:
-    def test_btw_with_question_streaming(self):
-        action = classify_input("/btw what is this?", is_streaming=True)
-        assert action.kind == InputAction.BTW
-        assert action.args == "what is this?"
+class TestBtwShellSlashCommand:
+    async def test_invokes_btw_modal_with_normalized_question(self, monkeypatch):
+        prompt_session = object()
+        shell = _mock_shell_for_btw(prompt_session)
+        monkeypatch.setattr("kimi_cli.telemetry.track", lambda *args, **kwargs: None)
 
-    def test_btw_with_question_idle(self):
-        action = classify_input("/btw what is this?", is_streaming=False)
-        assert action.kind == InputAction.BTW
-        assert action.args == "what is this?"
+        await _invoke_shell_slash_command("btw", shell, "  what is this?  ")
 
-    def test_btw_no_args_returns_ignored(self):
-        for streaming in (True, False):
-            action = classify_input("/btw", is_streaming=streaming)
-            assert action.kind == InputAction.IGNORED
-            assert "Usage" in action.args
+        shell.run_btw_modal.assert_awaited_once_with("what is this?", prompt_session)
 
-    def test_btw_whitespace_only_args_returns_ignored(self):
-        action = classify_input("/btw   ", is_streaming=True)
-        assert action.kind == InputAction.IGNORED
+    async def test_without_question_prints_usage_and_skips_modal(self, monkeypatch):
+        prompt_session = object()
+        shell = _mock_shell_for_btw(prompt_session)
+        printed: list[str] = []
+        monkeypatch.setattr(
+            "kimi_cli.ui.shell.slash.console.print", lambda msg: printed.append(msg)
+        )
 
-    def test_normal_text_streaming_returns_queue(self):
-        action = classify_input("fix the bug", is_streaming=True)
-        assert action.kind == InputAction.QUEUE
+        await _invoke_shell_slash_command("btw", shell, "   ")
 
-    def test_normal_text_idle_returns_send(self):
-        action = classify_input("fix the bug", is_streaming=False)
-        assert action.kind == InputAction.SEND
+        shell.run_btw_modal.assert_not_awaited()
+        assert any("Usage: /btw <question>" in msg for msg in printed)
 
-    def test_other_slash_command_streaming_returns_queue(self):
-        action = classify_input("/compact", is_streaming=True)
-        assert action.kind == InputAction.QUEUE
+    async def test_without_prompt_session_prints_warning_and_skips_modal(self, monkeypatch):
+        shell = _mock_shell_for_btw(None)
+        printed: list[str] = []
+        monkeypatch.setattr(
+            "kimi_cli.ui.shell.slash.console.print", lambda msg: printed.append(msg)
+        )
 
-    def test_other_slash_command_idle_returns_send(self):
-        action = classify_input("/compact", is_streaming=False)
-        assert action.kind == InputAction.SEND
+        await _invoke_shell_slash_command("btw", shell, "what is this?")
+
+        shell.run_btw_modal.assert_not_awaited()
+        assert any("interactive shell mode" in msg for msg in printed)
 
 
 # ---------------------------------------------------------------------------
@@ -739,6 +756,36 @@ class TestHandleLocalInput:
         )
         assert started == []
 
+    def test_btw_without_args_toasts_usage(self, monkeypatch):
+        """`/btw` with no question should toast a usage hint, not queue."""
+        view = object.__new__(_PromptLiveView)
+        view._turn_ended = False
+        view._queued_messages = []
+        view._btw_modal = None
+        view._btw_runner = lambda q, cb=None: None  # pyright: ignore[reportAttributeAccessIssue]
+        view._flush_prompt_refresh = lambda: None
+
+        started = []
+        view._start_btw = lambda q: started.append(q)  # pyright: ignore[reportAttributeAccessIssue]
+
+        toasted = []
+        monkeypatch.setattr(
+            "kimi_cli.ui.shell.prompt.toast",
+            lambda msg, **kw: toasted.append(msg),
+        )
+
+        view.handle_local_input(
+            UserInput(
+                mode=PromptMode.AGENT,
+                command="/btw",
+                resolved_command="/btw   ",
+                content=[TextPart(text="/btw")],
+            )
+        )
+        assert started == []
+        assert view._queued_messages == []
+        assert any("Usage" in t for t in toasted)
+
     def test_shell_command_blocked_from_queue(self, monkeypatch):
         """Shell-only commands like /help should be rejected, not queued."""
         view = object.__new__(_PromptLiveView)
@@ -1014,25 +1061,13 @@ class TestCtrlSFromQueue:
 
 
 # ---------------------------------------------------------------------------
-# classify_input uses resolved_command (placeholder expanded)
+# /btw routing uses resolved_command (placeholder expanded)
 # ---------------------------------------------------------------------------
 
 
-class TestClassifyInputResolved:
-    def test_btw_with_placeholder_uses_resolved(self):
-        """classify_input should receive resolved text, not placeholder."""
-        # Simulate: user types /btw then pastes multi-line text
-        # command = "/btw [Pasted text #1 +3 lines]"
-        # resolved_command = "/btw line1\nline2\nline3"
-        from kimi_cli.ui.shell.visualize._input_router import InputAction, classify_input
-
-        # With resolved text → BTW action has actual content
-        action = classify_input("/btw line1\nline2\nline3", is_streaming=False)
-        assert action.kind == InputAction.BTW
-        assert "line1" in action.args
-
+class TestBtwRoutingResolved:
     def test_handle_local_input_routes_btw_with_resolved(self):
-        """handle_local_input should use resolved_command for classify_input."""
+        """handle_local_input should parse /btw from resolved_command."""
         view = object.__new__(_PromptLiveView)
         view._turn_ended = False
         view._queued_messages = []

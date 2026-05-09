@@ -608,30 +608,6 @@ class Shell:
                         resume_prompt.set()
                         continue
 
-                    # Unified input routing — intercept local commands
-                    # before they reach the soul/wire.
-                    from kimi_cli.ui.shell.visualize import InputAction, classify_input
-
-                    # Use resolved_command (placeholder-expanded) so /btw
-                    # receives the actual pasted content, not "[Pasted text #1]".
-                    input_text = (
-                        user_input.resolved_command
-                        if hasattr(user_input, "resolved_command")
-                        else str(user_input)
-                    )
-                    action = classify_input(input_text, is_streaming=False)
-                    if action.kind == InputAction.BTW and isinstance(self.soul, KimiSoul):
-                        from kimi_cli.telemetry import track
-
-                        track("input_btw")
-                        await self._run_btw_modal(action.args, prompt_session)
-                        resume_prompt.set()
-                        continue
-                    if action.kind == InputAction.IGNORED:
-                        console.print(f"[dim]{action.args}[/dim]")
-                        resume_prompt.set()
-                        continue
-
                     if slash_cmd_call := self._agent_slash_command_call(user_input):
                         is_soul_slash = (
                             slash_cmd_call.name in self._available_slash_commands
@@ -1136,7 +1112,7 @@ class Shell:
             return request
         return request.model_copy(update={"source_description": record.description})
 
-    async def _run_btw_modal(
+    async def run_btw_modal(
         self,
         question: str,
         prompt_session: CustomPromptSession,
