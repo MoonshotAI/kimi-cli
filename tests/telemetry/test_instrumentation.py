@@ -871,7 +871,7 @@ class TestSessionStarted:
 
 
 class TestCompactionTracking:
-    """compaction_triggered must fire on both success and failure paths."""
+    """compaction_finished / compaction_failed must fire on success / failure paths."""
 
     def _make_soul(self, *, before_tokens: int, estimated_after: int) -> Any:
         """Construct a minimal KimiSoul stub bypassing __init__."""
@@ -922,7 +922,7 @@ class TestCompactionTracking:
 
     @pytest.mark.asyncio
     async def test_auto_compaction_success_emits_event(self):
-        """Auto-triggered success: track has trigger_type=auto + after_tokens + success=True."""
+        """Auto-triggered success: track has trigger_type=auto + after_tokens."""
         soul = self._make_soul(before_tokens=12000, estimated_after=3000)
 
         with (
@@ -933,14 +933,13 @@ class TestCompactionTracking:
 
         # Filter to the compaction event — other events (hook triggers etc.)
         # shouldn't go through telemetry.track.
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
         args, kwargs = calls[0]
-        assert args[0] == "compaction_triggered"
+        assert args[0] == "compaction_finished"
         assert kwargs["trigger_type"] == "auto"
         assert kwargs["before_tokens"] == 12000
         assert kwargs["after_tokens"] == 3000
-        assert kwargs["success"] is True
 
     @pytest.mark.asyncio
     async def test_manual_compaction_without_prompt_emits_event(self):
@@ -953,10 +952,9 @@ class TestCompactionTracking:
         ):
             await soul.compact_context(manual=True)
 
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
         assert calls[0][1]["trigger_type"] == "manual"
-        assert calls[0][1]["success"] is True
 
     @pytest.mark.asyncio
     async def test_manual_compaction_with_prompt_emits_event(self):
@@ -969,14 +967,13 @@ class TestCompactionTracking:
         ):
             await soul.compact_context(manual=True, custom_instruction="focus on auth")
 
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
         assert calls[0][1]["trigger_type"] == "manual-with-prompt"
-        assert calls[0][1]["success"] is True
 
     @pytest.mark.asyncio
     async def test_compaction_failure_emits_event_then_reraises(self):
-        """On compaction failure: track success=False (no after_tokens), then re-raise."""
+        """On compaction failure: track compaction_failed (no after_tokens), then re-raise."""
         soul = self._make_soul(before_tokens=50000, estimated_after=0)
         # Force the compaction to fail with a non-retryable error
         soul._run_with_connection_recovery = AsyncMock(side_effect=RuntimeError("compaction boom"))
@@ -988,10 +985,9 @@ class TestCompactionTracking:
         ):
             await soul.compact_context()
 
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_failed"]
         assert len(calls) == 1
         kwargs = calls[0][1]
         assert kwargs["trigger_type"] == "auto"
         assert kwargs["before_tokens"] == 50000
-        assert kwargs["success"] is False
         assert "after_tokens" not in kwargs

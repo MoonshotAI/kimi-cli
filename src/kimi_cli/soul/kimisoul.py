@@ -886,10 +886,16 @@ class KimiSoul:
                 from kimi_cli.telemetry import track
 
                 error_type, status_code = classify_api_error(e)
+                track_kwargs: dict[str, Any] = {"error_type": error_type}
                 if status_code is not None:
-                    track("api_error", error_type=error_type, status_code=status_code)
-                else:
-                    track("api_error", error_type=error_type)
+                    track_kwargs["status_code"] = status_code
+                # Enrich with context attached by _step() (model, duration, input_tokens)
+                _kimi_ctx = getattr(e, "_kimi_api_error_context", None)
+                if _kimi_ctx is not None:
+                    for key in ("model", "duration_ms", "input_tokens"):
+                        if key in _kimi_ctx:
+                            track_kwargs[key] = _kimi_ctx[key]
+                track("api_error", **track_kwargs)
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
@@ -1016,7 +1022,18 @@ class KimiSoul:
             )
 
         t0 = time.monotonic()
-        result = await _kosong_step_with_retry()
+        try:
+            result = await _kosong_step_with_retry()
+        except Exception as _step_exc:
+            # Attach known context so the outer loop can enrich api_error telemetry
+            _ctx: dict[str, Any] = {
+                "model": self._runtime.llm.model_name,
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+            }
+            if self._context.token_count > 0:
+                _ctx["input_tokens"] = self._context.token_count
+            _step_exc._kimi_api_error_context = _ctx  # type: ignore[attr-defined]
+            raise
         llm_elapsed = time.monotonic() - t0
         usage = result.usage
         logger.info(
@@ -1189,10 +1206,9 @@ class KimiSoul:
             from kimi_cli.telemetry import track
 
             track(
-                "compaction_triggered",
+                "compaction_failed",
                 trigger_type=trigger_reason,
                 before_tokens=before_tokens,
-                success=False,
             )
             raise
         await self._context.clear()
@@ -1231,11 +1247,10 @@ class KimiSoul:
         from kimi_cli.telemetry import track
 
         track(
-            "compaction_triggered",
+            "compaction_finished",
             trigger_type=trigger_reason,
             before_tokens=before_tokens,
             after_tokens=estimated_token_count,
-            success=True,
         )
 
         _hook_task = asyncio.create_task(
