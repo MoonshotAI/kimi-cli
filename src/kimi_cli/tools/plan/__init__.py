@@ -133,6 +133,9 @@ class ExitPlanMode(CallableTool2[Params]):
 
         # Auto-approve plan approval only when no user is present (afk).
         if self._should_auto_approve_exit and self._should_auto_approve_exit():
+            from kimi_cli.telemetry import track
+
+            track("plan_resolved", outcome="auto_approved")
             await self._toggle_callback()
             return ToolReturnValue(
                 is_error=False,
@@ -193,6 +196,10 @@ class ExitPlanMode(CallableTool2[Params]):
         # Display plan content inline in the chat
         wire_send(PlanDisplay(content=plan_content, file_path=str(plan_path)))
 
+        from kimi_cli.telemetry import track as _track_telemetry
+
+        _track_telemetry("plan_submitted", has_options=has_options)
+
         request = QuestionRequest(
             id=str(uuid4()),
             tool_call_id=tool_call.id,
@@ -225,6 +232,7 @@ class ExitPlanMode(CallableTool2[Params]):
             )
 
         if not answers:
+            _track_telemetry("plan_resolved", outcome="dismissed")
             return ToolReturnValue(
                 is_error=False,
                 output="User dismissed without choosing. Plan mode remains active. "
@@ -237,6 +245,7 @@ class ExitPlanMode(CallableTool2[Params]):
         chose_reject_and_exit = any(v == "Reject and Exit" for v in answers.values())
 
         if chose_reject_and_exit:
+            _track_telemetry("plan_resolved", outcome="rejected_and_exited")
             await self._toggle_callback()
             return ToolRejectedError(
                 message=(
@@ -250,6 +259,7 @@ class ExitPlanMode(CallableTool2[Params]):
         chose_reject = any(v == "Reject" for v in answers.values())
 
         if chose_reject:
+            _track_telemetry("plan_resolved", outcome="rejected")
             return ToolRejectedError(
                 message=(
                     "Plan rejected by user. Stay in plan mode. "
@@ -270,6 +280,7 @@ class ExitPlanMode(CallableTool2[Params]):
                     break
 
             if chosen_option:
+                _track_telemetry("plan_resolved", outcome="approved", chosen_option=chosen_option)
                 await self._toggle_callback()
                 return ToolReturnValue(
                     is_error=False,
@@ -288,6 +299,7 @@ class ExitPlanMode(CallableTool2[Params]):
         # Approve — single-approach only (has_options uses option labels, not "Approve")
         chose_approve = not has_options and any(v == "Approve" for v in answers.values())
         if chose_approve:
+            _track_telemetry("plan_resolved", outcome="approved")
             await self._toggle_callback()
             return ToolReturnValue(
                 is_error=False,
@@ -306,6 +318,8 @@ class ExitPlanMode(CallableTool2[Params]):
         for v in answers.values():
             if v not in ("Approve", "Reject", "Reject and Exit"):
                 feedback = v
+        has_feedback = bool(feedback)
+        _track_telemetry("plan_resolved", outcome="revise", has_feedback=has_feedback)
         if feedback:
             msg = (
                 "User wants to revise the plan. Stay in plan mode. "

@@ -351,6 +351,19 @@ class TestCancelInterrupt:
         event = _collect_events()[-1]
         assert isinstance(event["properties"]["at_step"], int)
 
+    def test_turn_interrupted_includes_mode(self):
+        """turn_interrupted must include mode property (agent or plan)."""
+        track("turn_interrupted", at_step=1, mode="agent")
+        event = _collect_events()[-1]
+        assert event["properties"]["mode"] == "agent"
+
+    def test_turn_started_includes_mode(self):
+        """turn_started must include mode property."""
+        track("turn_started", mode="plan")
+        event = _collect_events()[-1]
+        assert event["event"] == "turn_started"
+        assert event["properties"]["mode"] == "plan"
+
     def test_cancel_and_dismissed_are_distinct(self):
         """cancel and question_dismissed are different events."""
         track("cancel")
@@ -1003,3 +1016,98 @@ class TestCompactionTracking:
         assert kwargs["duration_ms"] >= 0
         assert kwargs["retry_count"] == 0
         assert kwargs["error_type"] == "RuntimeError"
+
+
+# ---------------------------------------------------------------------------
+# 8. Plan lifecycle events
+# ---------------------------------------------------------------------------
+
+
+class TestPlanLifecycleEvents:
+    """Verify plan mode telemetry events and their properties."""
+
+    def test_plan_submitted_with_has_options(self):
+        """ExitPlanMode emits plan_submitted with has_options flag."""
+        track("plan_submitted", has_options=True)
+        event = _collect_events()[-1]
+        assert event["event"] == "plan_submitted"
+        assert event["properties"]["has_options"] is True
+
+    def test_plan_submitted_without_options(self):
+        """plan_submitted can have has_options=False."""
+        track("plan_submitted", has_options=False)
+        event = _collect_events()[-1]
+        assert event["properties"]["has_options"] is False
+
+    def test_plan_resolved_approved(self):
+        """Plan approval emits plan_resolved with outcome=approved."""
+        track("plan_resolved", outcome="approved")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "approved"
+
+    def test_plan_resolved_approved_with_chosen_option(self):
+        """Multi-approach plan approval includes chosen_option."""
+        track("plan_resolved", outcome="approved", chosen_option="Refactor (Recommended)")
+        event = _collect_events()[-1]
+        assert event["properties"]["chosen_option"] == "Refactor (Recommended)"
+
+    def test_plan_resolved_rejected(self):
+        """Plan rejection emits plan_resolved with outcome=rejected."""
+        track("plan_resolved", outcome="rejected")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "rejected"
+
+    def test_plan_resolved_rejected_and_exited(self):
+        """Plan reject-and-exit emits plan_resolved with outcome=rejected_and_exited."""
+        track("plan_resolved", outcome="rejected_and_exited")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "rejected_and_exited"
+
+    def test_plan_resolved_auto_approved(self):
+        """AFK auto-approval emits plan_resolved with outcome=auto_approved."""
+        track("plan_resolved", outcome="auto_approved")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "auto_approved"
+
+    def test_plan_resolved_dismissed(self):
+        """Plan dismissal emits plan_resolved with outcome=dismissed."""
+        track("plan_resolved", outcome="dismissed")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "dismissed"
+
+    def test_plan_resolved_revise_with_feedback(self):
+        """Plan revision emits plan_resolved with outcome=revise and has_feedback."""
+        track("plan_resolved", outcome="revise", has_feedback=True)
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "revise"
+        assert event["properties"]["has_feedback"] is True
+
+    def test_plan_resolved_revise_without_feedback(self):
+        """Plan revision without text emits plan_resolved with has_feedback=False."""
+        track("plan_resolved", outcome="revise", has_feedback=False)
+        event = _collect_events()[-1]
+        assert event["properties"]["has_feedback"] is False
+
+    def test_plan_enter_resolved_accepted(self):
+        """User accepting plan mode emits plan_enter_resolved with outcome=accepted."""
+        track("plan_enter_resolved", outcome="accepted")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "accepted"
+
+    def test_plan_enter_resolved_declined(self):
+        """User declining plan mode emits plan_enter_resolved with outcome=declined."""
+        track("plan_enter_resolved", outcome="declined")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "declined"
+
+    def test_plan_enter_resolved_dismissed(self):
+        """User dismissing plan mode dialog emits plan_enter_resolved with outcome=dismissed."""
+        track("plan_enter_resolved", outcome="dismissed")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "dismissed"
+
+    def test_plan_enter_resolved_auto_approved(self):
+        """AFK auto-approving plan mode entry emits plan_enter_resolved with outcome=auto_approved."""
+        track("plan_enter_resolved", outcome="auto_approved")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "auto_approved"

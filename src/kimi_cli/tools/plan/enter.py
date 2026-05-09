@@ -71,6 +71,9 @@ class EnterPlanMode(CallableTool2[Params]):
 
         # Auto-approve entering plan mode when approvals are bypassed.
         if self._is_auto_approve and self._is_auto_approve():
+            from kimi_cli.telemetry import track
+
+            track("plan_enter_resolved", outcome="auto_approved")
             await self._toggle_callback()
             plan_path = self._plan_file_path_getter()
             return ToolReturnValue(
@@ -143,6 +146,9 @@ class EnterPlanMode(CallableTool2[Params]):
             )
 
         if not answers:
+            from kimi_cli.telemetry import track
+
+            track("plan_enter_resolved", outcome="dismissed")
             return ToolReturnValue(
                 is_error=False,
                 output="User dismissed without choosing. Proceed with implementation directly.",
@@ -153,6 +159,9 @@ class EnterPlanMode(CallableTool2[Params]):
         # Parse user choice — exact match on option label
         chose_yes = any(v == "Yes" for v in answers.values())
         if chose_yes:
+            from kimi_cli.telemetry import track
+
+            track("plan_enter_resolved", outcome="accepted")
             await self._toggle_callback()
             plan_path = self._plan_file_path_getter()
             return ToolReturnValue(
@@ -174,6 +183,9 @@ class EnterPlanMode(CallableTool2[Params]):
                 display=[BriefDisplayBlock(text="Plan mode on")],
             )
         else:
+            from kimi_cli.telemetry import track
+
+            track("plan_enter_resolved", outcome="declined")
             return ToolReturnValue(
                 is_error=False,
                 output=(

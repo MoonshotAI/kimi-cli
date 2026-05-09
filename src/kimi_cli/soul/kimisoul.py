@@ -5,7 +5,6 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -621,6 +620,9 @@ class KimiSoul:
 
             wire_send(TurnBegin(user_input=user_input))
             turn_started = True
+            from kimi_cli.telemetry import track as _track_telemetry
+
+            _track_telemetry("turn_started", mode="plan" if self._plan_mode else "agent")
             user_message = Message(role="user", content=user_input)
             text_input = user_message.extract_text(" ").strip()
 
@@ -690,6 +692,13 @@ class KimiSoul:
         finally:
             if turn_started and not turn_finished:
                 wire_send(TurnEnd())
+                from kimi_cli.telemetry import track as _track_telemetry
+
+                _track_telemetry(
+                    "turn_interrupted",
+                    mode="plan" if self._plan_mode else "agent",
+                    at_step=getattr(self, "_current_step_no", 0),
+                )
             if created_approval_source is not None and self._runtime.approval_runtime is not None:
                 self._runtime.approval_runtime.cancel_by_source(
                     created_approval_source.kind,
