@@ -338,6 +338,7 @@ class TestWebWorkerResumedDetection:
             await run_worker(uuid4())
 
         assert create_calls[0]["resumed"] is False
+        assert create_calls[0]["afk"] is False
 
     @pytest.mark.asyncio
     async def test_existing_session_with_state_file_is_resumed(self, tmp_path):
@@ -372,3 +373,38 @@ class TestWebWorkerResumedDetection:
             await run_worker(uuid4())
 
         assert create_calls[0]["resumed"] is True
+
+    @pytest.mark.asyncio
+    async def test_web_default_afk_env_is_passed_to_worker(self, tmp_path, monkeypatch):
+        """`kimi --afk web` marks web worker sessions as afk."""
+        from kimi_cli.web.runner.worker import ENV_DEFAULT_AFK, run_worker
+
+        monkeypatch.setenv(ENV_DEFAULT_AFK, "1")
+
+        session_dir = tmp_path / "session-dir"
+        session_dir.mkdir()
+
+        create_calls: list[dict] = []
+
+        class _StopWorker(Exception):
+            pass
+
+        async def spy_create(session, **kwargs):
+            create_calls.append(kwargs)
+            raise _StopWorker
+
+        fake_session = SimpleNamespace(dir=session_dir)
+        fake_joint = SimpleNamespace(kimi_cli_session=fake_session)
+
+        with (
+            patch("kimi_cli.web.runner.worker.load_session_by_id", return_value=fake_joint),
+            patch(
+                "kimi_cli.web.runner.worker.get_global_mcp_config_file",
+                return_value=tmp_path / "no-mcp.json",
+            ),
+            patch.object(KimiCLI, "create", side_effect=spy_create),
+            pytest.raises(_StopWorker),
+        ):
+            await run_worker(uuid4())
+
+        assert create_calls[0]["afk"] is True

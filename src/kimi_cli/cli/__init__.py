@@ -373,6 +373,12 @@ def kimi(
     init_process_name("Kimi Code")
 
     if ctx.invoked_subcommand is not None:
+        if ctx.invoked_subcommand == "web" and afk:
+            import os
+
+            from kimi_cli.web.app import ENV_DEFAULT_AFK
+
+            os.environ[ENV_DEFAULT_AFK] = "1"
         return  # skip rest if a subcommand is invoked
 
     del version  # handled in the callback

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from typing import Any
 from uuid import UUID
@@ -20,6 +21,8 @@ from kimi_cli.app import KimiCLI, enable_logging
 from kimi_cli.cli.mcp import get_global_mcp_config_file
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.web.store.sessions import load_session_by_id
+
+ENV_DEFAULT_AFK = "KIMI_WEB_DEFAULT_AFK"
 
 
 async def run_worker(session_id: UUID) -> None:
@@ -52,7 +55,11 @@ async def run_worker(session_id: UUID) -> None:
     # Create KimiCLI instance with MCP configuration
     try:
         kimi_cli = await KimiCLI.create(
-            session, mcp_configs=mcp_configs or None, resumed=resumed, ui_mode="wire"
+            session,
+            mcp_configs=mcp_configs or None,
+            resumed=resumed,
+            ui_mode="wire",
+            afk=os.environ.get(ENV_DEFAULT_AFK) == "1",
         )
     except MCPConfigError as exc:
         logger.warning(
@@ -60,7 +67,13 @@ async def run_worker(session_id: UUID) -> None:
             path=default_mcp_file,
             error=exc,
         )
-        kimi_cli = await KimiCLI.create(session, mcp_configs=None, resumed=resumed, ui_mode="wire")
+        kimi_cli = await KimiCLI.create(
+            session,
+            mcp_configs=None,
+            resumed=resumed,
+            ui_mode="wire",
+            afk=os.environ.get(ENV_DEFAULT_AFK) == "1",
+        )
 
     # Run in wire stdio mode
     await kimi_cli.run_wire_stdio()
