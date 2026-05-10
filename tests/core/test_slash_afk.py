@@ -173,7 +173,7 @@ async def test_clear_slash_reports_rotated_backup_and_undo_note(
     await soul.context.write_system_prompt(soul.agent.system_prompt)
     await soul.context.append_message(Message(role="user", content=[MessageTextPart(text="hello")]))
 
-    sent: list[TextPart] = []
+    sent: list[object] = []
     monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
 
     await _run(clear_slash, soul)
