@@ -73,6 +73,9 @@ class _PromptEvent:
 _MAX_BG_AUTO_TRIGGER_FAILURES = 3
 """Stop auto-triggering after this many consecutive failures."""
 
+_BG_AUTO_TRIGGER_FAILURE_COOLDOWN_S = 600.0
+"""Temporarily pause background auto-trigger after repeated failures."""
+
 _BG_AUTO_TRIGGER_INPUT_GRACE_S = 0.75
 """Delay background auto-trigger briefly after local prompt activity."""
 
@@ -510,6 +513,7 @@ class Shell:
 
             shell_ok = True
             bg_auto_failures = 0
+            bg_auto_disabled_until: float | None = None
             deferred_bg_trigger = False
             try:
                 while True:
@@ -526,7 +530,19 @@ class Shell:
                     else:
                         bg_watcher.clear()
                         if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
-                            result = await idle_events.get()
+                            if bg_auto_disabled_until is None:
+                                bg_auto_disabled_until = (
+                                    time.monotonic() + _BG_AUTO_TRIGGER_FAILURE_COOLDOWN_S
+                                )
+                            cooldown_remaining = bg_auto_disabled_until - time.monotonic()
+                            if cooldown_remaining <= 0:
+                                bg_auto_failures = 0
+                                bg_auto_disabled_until = None
+                                continue
+                            result = await self._wait_for_background_auto_trigger_cooldown(
+                                idle_events,
+                                timeout_s=cooldown_remaining,
+                            )
                         else:
                             result = await bg_watcher.wait_for_next(idle_events)
 
@@ -547,6 +563,10 @@ class Shell:
                         console.print()
                         if not ok:
                             bg_auto_failures += 1
+                            if bg_auto_failures >= _MAX_BG_AUTO_TRIGGER_FAILURES:
+                                bg_auto_disabled_until = (
+                                    time.monotonic() + _BG_AUTO_TRIGGER_FAILURE_COOLDOWN_S
+                                )
                             logger.warning(
                                 "Background auto-trigger failed ({n}/{max})",
                                 n=bg_auto_failures,
@@ -554,6 +574,7 @@ class Shell:
                             )
                         else:
                             bg_auto_failures = 0
+                            bg_auto_disabled_until = None
                         if self._exit_after_run:
                             console.print("Bye!")
                             break
@@ -562,6 +583,11 @@ class Shell:
                     event = result
 
                     if event.kind == "input_activity":
+                        continue
+
+                    if event.kind == "bg_retry":
+                        bg_auto_failures = 0
+                        bg_auto_disabled_until = None
                         continue
 
                     if event.kind == "bg_noop":
@@ -588,6 +614,7 @@ class Shell:
                     user_input = event.user_input
                     assert user_input is not None
                     bg_auto_failures = 0
+                    bg_auto_disabled_until = None
                     deferred_bg_trigger = False
                     if not user_input:
                         logger.debug("Got empty input, skipping")
@@ -1033,6 +1060,17 @@ class Shell:
             within_s=_BG_AUTO_TRIGGER_INPUT_GRACE_S
         )
         return remaining if remaining > 0 else None
+
+    @staticmethod
+    async def _wait_for_background_auto_trigger_cooldown(
+        idle_events: asyncio.Queue[_PromptEvent],
+        *,
+        timeout_s: float,
+    ) -> _PromptEvent:
+        try:
+            return await asyncio.wait_for(idle_events.get(), timeout=timeout_s)
+        except TimeoutError:
+            return _PromptEvent(kind="bg_retry")
 
     async def _wait_for_input_or_activity(
         self,

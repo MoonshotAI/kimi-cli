@@ -265,3 +265,32 @@ async def test_shell_wait_for_input_or_activity_times_out_for_recent_activity_on
 
     assert result.kind == "input_activity"
     assert elapsed >= 0.04
+
+
+@pytest.mark.asyncio
+async def test_shell_background_auto_trigger_cooldown_returns_idle_event() -> None:
+    queue: asyncio.Queue[_PromptEvent] = asyncio.Queue()
+    expected = _PromptEvent(kind="input")
+    await queue.put(expected)
+
+    result = await Shell._wait_for_background_auto_trigger_cooldown(
+        queue,
+        timeout_s=1.0,
+    )
+
+    assert result is expected
+
+
+@pytest.mark.asyncio
+async def test_shell_background_auto_trigger_cooldown_expires_to_retry() -> None:
+    queue: asyncio.Queue[_PromptEvent] = asyncio.Queue()
+
+    started = asyncio.get_running_loop().time()
+    result = await Shell._wait_for_background_auto_trigger_cooldown(
+        queue,
+        timeout_s=0.05,
+    )
+    elapsed = asyncio.get_running_loop().time() - started
+
+    assert result.kind == "bg_retry"
+    assert elapsed >= 0.04
