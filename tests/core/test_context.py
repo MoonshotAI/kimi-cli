@@ -215,10 +215,12 @@ async def test_clear_resets_system_prompt(tmp_path: Path) -> None:
     await ctx.restore()
     assert ctx.system_prompt == "Will be cleared"
 
-    await ctx.clear()
+    rotated = await ctx.clear()
 
     assert ctx.system_prompt is None
     assert len(ctx.history) == 0
+    assert rotated.name == "context_1.jsonl"
+    assert rotated.exists()
 
 
 # --- revert_to tests ---
