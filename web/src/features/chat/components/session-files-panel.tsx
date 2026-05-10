@@ -80,6 +80,21 @@ export function SessionFilesPanel({
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
 
+  // Inject CSS override for Radix UI ScrollArea (build-safe: inlined to avoid
+  // Vite/Tailwind CSS tree-shaking dropping the global rule).
+  useEffect(() => {
+    const id = "session-files-scrollarea-fix";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent =
+      '[data-radix-scroll-area-viewport] > div[style*="display:table"] { display: block !important; }';
+    document.head.appendChild(style);
+    return () => {
+      document.getElementById(id)?.remove();
+    };
+  }, []);
+
   const loadDirectory = useCallback(
     async (path: string, refresh = false) => {
       if (!onListSessionDirectory) {
@@ -268,6 +283,7 @@ export function SessionFilesPanel({
                   <div
                     key={`${entry.type}:${itemPath}`}
                     className="flex items-center gap-2 rounded-xl border bg-card/60 px-2.5 py-2 overflow-hidden"
+                    style={{ overflow: "hidden" }}
                   >
                     {isDirectory ? (
                       <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -275,9 +291,13 @@ export function SessionFilesPanel({
                       <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
                     )}
 
-                    <div className="min-w-0 flex-1 overflow-hidden">
+                    <div
+                      className="min-w-0 flex-1 overflow-hidden"
+                      style={{ overflow: "hidden" }}
+                    >
                       <div
                         className="truncate text-sm font-medium w-full"
+                        style={{ width: "100%" }}
                         title={entry.name}
                       >
                         {entry.name}
