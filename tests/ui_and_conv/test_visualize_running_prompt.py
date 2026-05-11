@@ -217,6 +217,39 @@ def test_live_view_flushes_current_output_before_printing_steer_input(monkeypatc
     assert order[-1] == ("print", "")
 
 
+def test_prompt_live_view_handle_immediate_steer_prints_blank_line(monkeypatch) -> None:
+    class _PromptSession:
+        def invalidate(self) -> None:
+            pass
+
+    view = _PromptLiveView(
+        StatusUpdate(),
+        prompt_session=cast(Any, _PromptSession()),
+        steer=lambda _content: None,
+    )
+    printed: list[str] = []
+
+    def _capture_print(*args, **_kwargs):
+        printed.append(getattr(args[0], "plain", str(args[0])) if args else "")
+
+    monkeypatch.setattr(
+        shell_visualize.console,
+        "print",
+        _capture_print,
+    )
+
+    view.handle_immediate_steer(
+        UserInput(
+            mode=PromptMode.AGENT,
+            command="A steer follow-up",
+            resolved_command="A steer follow-up",
+            content=[TextPart(text="A steer follow-up")],
+        )
+    )
+
+    assert printed == ["✨ A steer follow-up", ""]
+
+
 @pytest.mark.asyncio
 async def test_live_view_processes_external_approval_messages(monkeypatch) -> None:
     updates: list[object] = []

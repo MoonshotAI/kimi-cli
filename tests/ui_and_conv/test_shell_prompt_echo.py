@@ -2,7 +2,6 @@ from types import SimpleNamespace
 from typing import cast
 
 from kosong.message import Message
-from rich.text import Text
 
 import kimi_cli.ui.shell as shell_module
 from kimi_cli.soul import Soul
@@ -40,17 +39,17 @@ def _make_shell(*command_names: str) -> Shell:
 
 
 def test_echo_agent_input_prints_stringified_user_message(monkeypatch) -> None:
-    printed: list[Text] = []
-    monkeypatch.setattr(shell_module.console, "print", lambda text: printed.append(text))
+    printed: list[object] = []
+    monkeypatch.setattr(shell_module.console, "print", lambda *args, **_kw: printed.extend(args))
 
     Shell._echo_agent_input(_make_user_input("hi"))
 
-    assert [text.plain for text in printed] == ["✨ hi"]
+    assert [getattr(t, "plain", t) for t in printed] == ["✨ hi"]
 
 
 def test_echo_agent_input_uses_display_command_for_placeholders(monkeypatch) -> None:
-    printed: list[Text] = []
-    monkeypatch.setattr(shell_module.console, "print", lambda text: printed.append(text))
+    printed: list[object] = []
+    monkeypatch.setattr(shell_module.console, "print", lambda *args, **_kw: printed.extend(args))
 
     user_input = UserInput(
         mode=PromptMode.AGENT,
@@ -61,7 +60,7 @@ def test_echo_agent_input_uses_display_command_for_placeholders(monkeypatch) -> 
 
     Shell._echo_agent_input(user_input)
 
-    assert [text.plain for text in printed] == ["✨ [Pasted text #1 +3 lines]"]
+    assert [getattr(t, "plain", t) for t in printed] == ["✨ [Pasted text #1 +3 lines]"]
 
 
 def test_render_user_echo_preserves_literal_brackets() -> None:

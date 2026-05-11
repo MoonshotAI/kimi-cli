@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
+from datetime import datetime
 
 import pytest
 from kosong.message import Message
@@ -841,10 +842,16 @@ def test_publish_terminal_notifications_creates_notification(runtime):
         timeout_s=60,
     )
     store.create_task(spec)
+    started_at = 1_700_000_000.0
+    finished_at = started_at + 5.0
     store.write_runtime(
         spec.id,
         TaskRuntime(
-            status="completed", exit_code=0, finished_at=time.time(), updated_at=time.time()
+            status="completed",
+            exit_code=0,
+            started_at=started_at,
+            finished_at=finished_at,
+            updated_at=finished_at,
         ),
     )
 
@@ -854,6 +861,17 @@ def test_publish_terminal_notifications_creates_notification(runtime):
     assert notification.event.source_id == spec.id
     assert notification.event.type == "task.completed"
     assert notification.event.payload["task_id"] == spec.id
+    finished_text = datetime.fromtimestamp(finished_at).strftime("%Y-%m-%d %H:%M:%S")
+    assert notification.event.body == "\n".join(
+        [
+            "Task ID: b2222222",
+            f"Status: completed (Completed at: {finished_text}, Duration: 5s)",
+            "Description: completed task",
+            "Exit code: 0",
+        ]
+    )
+    assert notification.event.payload["finished_at"] == finished_at
+    assert notification.event.payload["duration_s"] == 5.0
 
 
 def test_publish_terminal_notifications_marks_timeout_distinctly(runtime):
