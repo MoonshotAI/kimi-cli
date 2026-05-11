@@ -115,6 +115,48 @@ async def test_continue_without_last_returns_none(isolated_share_dir: Path, work
     assert result is None
 
 
+async def test_continue_falls_back_to_latest_session_when_last_missing(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    first = await Session.create(work_dir)
+    second = await Session.create(work_dir)
+
+    _write_context_message(first.context_file, "old context message")
+    _write_context_message(second.context_file, "new context message")
+    _write_wire_turn(first.dir, "old session")
+    _write_wire_turn(second.dir, "new session")
+
+    now = time.time()
+    os.utime(first.context_file, (now - 10, now - 10))
+    os.utime(second.context_file, (now, now))
+
+    result = await Session.continue_(work_dir)
+
+    assert result is not None
+    assert result.id == second.id
+
+
+async def test_continue_falls_back_to_latest_session_when_last_is_stale(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    from kimi_cli.metadata import load_metadata, save_metadata
+
+    session = await Session.create(work_dir)
+    _write_context_message(session.context_file, "persisted user message")
+    _write_wire_turn(session.dir, "persisted session")
+
+    metadata = load_metadata()
+    work_dir_meta = metadata.get_work_dir_meta(work_dir)
+    assert work_dir_meta is not None
+    work_dir_meta.last_session_id = "missing-session"
+    save_metadata(metadata)
+
+    result = await Session.continue_(work_dir)
+
+    assert result is not None
+    assert result.id == session.id
+
+
 async def test_list_ignores_empty_sessions(isolated_share_dir: Path, work_dir: KaosPath):
     empty = await Session.create(work_dir)
     populated = await Session.create(work_dir)

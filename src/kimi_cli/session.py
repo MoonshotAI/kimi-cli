@@ -297,13 +297,24 @@ class Session:
             return None
         if work_dir_meta.last_session_id is None:
             logger.debug("Work directory never had a session")
-            return None
+            sessions = await Session.list(work_dir)
+            return sessions[0] if sessions else None
 
         logger.debug(
             "Found last session for work directory: {session_id}",
             session_id=work_dir_meta.last_session_id,
         )
-        return await Session.find(work_dir, work_dir_meta.last_session_id)
+        session = await Session.find(work_dir, work_dir_meta.last_session_id)
+        if session is not None:
+            return session
+
+        logger.debug(
+            "Last session not found, falling back to newest session for work directory: "
+            "{session_id}",
+            session_id=work_dir_meta.last_session_id,
+        )
+        sessions = await Session.list(work_dir)
+        return sessions[0] if sessions else None
 
 
 def _migrate_session_context_file(work_dir_meta: WorkDirMeta, session_id: str) -> None:
