@@ -4,6 +4,8 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.42.0
+
 ### Windows shell backend changed from PowerShell to Git Bash
 
 The Shell tool on Windows now runs commands through `bash.exe` (POSIX semantics) instead of `powershell.exe`. Windows users gain the same Unix-style command syntax as Linux/macOS, but must have Git for Windows installed.
