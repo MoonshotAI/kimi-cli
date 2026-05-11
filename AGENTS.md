@@ -132,14 +132,16 @@ and skill workflows.
 
 ## Release workflow
 
+For the full procedure, follow the `release` skill (`.agents/skills/release/SKILL.md`). The summary:
+
 1. Ensure `main` is up to date (pull latest).
-2. Create a release branch, e.g. `bump-0.68` or `bump-pykaos-0.5.3`.
-3. Update `CHANGELOG.md`: rename `[Unreleased]` to `[0.68] - YYYY-MM-DD`.
-4. Update `pyproject.toml` version.
+2. Create a release branch, e.g. `bump-1.43.0` or `bump-pykaos-0.10.0`.
+3. Update `CHANGELOG.md`: insert a new `## <version> (YYYY-MM-DD)` section below the `## Unreleased` header (do **not** rename Unreleased).
+4. Update the relevant `pyproject.toml` version.
 5. Run `uv sync` to align `uv.lock`.
 6. Commit the branch and open a PR.
 7. Merge the PR, then switch back to `main` and pull latest.
-8. Tag and push:
-   - `git tag 0.68` or `git tag pykaos-0.5.3`
+8. Tag and push (no `v` prefix; see the skill for the tag pattern per package):
+   - `git tag 1.43.0`
    - `git push --tags`
 9. GitHub Actions handles the release after tags are pushed.
