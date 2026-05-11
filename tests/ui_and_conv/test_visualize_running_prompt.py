@@ -178,16 +178,20 @@ def test_live_view_renders_steer_input_as_user_echo(monkeypatch) -> None:
     printed: list[str] = []
 
     monkeypatch.setattr(view, "cleanup", lambda *, is_interrupt: cleaned.append(is_interrupt))
+
+    def _capture_print(*args, **_kwargs):
+        printed.append(getattr(args[0], "plain", str(args[0])) if args else "")
+
     monkeypatch.setattr(
         shell_visualize.console,
         "print",
-        lambda text: printed.append(getattr(text, "plain", str(text))),
+        _capture_print,
     )
 
     view.dispatch_wire_message(SteerInput(user_input=[TextPart(text="A steer follow-up")]))
 
     assert cleaned == [False]
-    assert printed == ["✨ A steer follow-up"]
+    assert printed == ["✨ A steer follow-up", ""]
 
 
 def test_live_view_flushes_current_output_before_printing_steer_input(monkeypatch) -> None:
@@ -196,16 +200,54 @@ def test_live_view_flushes_current_output_before_printing_steer_input(monkeypatc
 
     monkeypatch.setattr(view, "flush_content", lambda: order.append("flush_content"))
     monkeypatch.setattr(view, "flush_finished_tool_calls", lambda: order.append("flush_tools"))
+
+    def _capture_print(*args, **_kwargs):
+        order.append(("print", getattr(args[0], "plain", str(args[0])) if args else ""))
+
     monkeypatch.setattr(
         shell_visualize.console,
         "print",
-        lambda text: order.append(("print", getattr(text, "plain", str(text)))),
+        _capture_print,
     )
 
     view.dispatch_wire_message(SteerInput(user_input=[TextPart(text="A steer follow-up")]))
 
     assert order[:2] == ["flush_content", "flush_tools"]
-    assert order[-1] == ("print", "✨ A steer follow-up")
+    assert order[-2] == ("print", "✨ A steer follow-up")
+    assert order[-1] == ("print", "")
+
+
+def test_prompt_live_view_handle_immediate_steer_prints_blank_line(monkeypatch) -> None:
+    class _PromptSession:
+        def invalidate(self) -> None:
+            pass
+
+    view = _PromptLiveView(
+        StatusUpdate(),
+        prompt_session=cast(Any, _PromptSession()),
+        steer=lambda _content: None,
+    )
+    printed: list[str] = []
+
+    def _capture_print(*args, **_kwargs):
+        printed.append(getattr(args[0], "plain", str(args[0])) if args else "")
+
+    monkeypatch.setattr(
+        shell_visualize.console,
+        "print",
+        _capture_print,
+    )
+
+    view.handle_immediate_steer(
+        UserInput(
+            mode=PromptMode.AGENT,
+            command="A steer follow-up",
+            resolved_command="A steer follow-up",
+            content=[TextPart(text="A steer follow-up")],
+        )
+    )
+
+    assert printed == ["✨ A steer follow-up", ""]
 
 
 @pytest.mark.asyncio

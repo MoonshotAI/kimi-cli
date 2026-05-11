@@ -338,6 +338,7 @@ class _PromptLiveView(_LiveView):
                 return
         # Print permanently in conversation flow (shows placeholder for pasted text)
         console.print(render_user_echo_text(user_input.command))
+        console.print()
         from kimi_cli.telemetry import track
 
         track("input_steer")

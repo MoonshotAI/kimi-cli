@@ -33,6 +33,7 @@ The configuration file contains the following top-level configuration items:
 | `theme` | `string` | Terminal color theme, either `"dark"` or `"light"` (defaults to `"dark"`) |
 | `show_thinking_stream` | `boolean` | Whether to stream the raw reasoning text in the live area as a 6-line scrolling preview and commit the full reasoning markdown to history when the block ends (defaults to `true`; set to `false` to show only the compact `Thinking ...` indicator and a one-line trace summary) |
 | `merge_all_available_skills` | `boolean` | Whether to merge skills from all brand directories (defaults to `true`); see [Skills configuration](../customization/skills.md) |
+| `telemetry` | `boolean` | Whether to enable anonymous telemetry to help improve kimi-cli (defaults to `true`; set to `false` to disable) |
 | `providers` | `table` | API provider configuration |
 | `models` | `table` | Model configuration |
 | `loop_control` | `table` | Agent loop control parameters |
@@ -52,6 +53,7 @@ default_editor = ""
 theme = "dark"
 show_thinking_stream = true
 merge_all_available_skills = true
+telemetry = true
 
 [providers.kimi-for-coding]
 type = "kimi"

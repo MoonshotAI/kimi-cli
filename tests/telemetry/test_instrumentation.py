@@ -351,6 +351,19 @@ class TestCancelInterrupt:
         event = _collect_events()[-1]
         assert isinstance(event["properties"]["at_step"], int)
 
+    def test_turn_interrupted_includes_mode(self):
+        """turn_interrupted must include mode property (agent or plan)."""
+        track("turn_interrupted", at_step=1, mode="agent")
+        event = _collect_events()[-1]
+        assert event["properties"]["mode"] == "agent"
+
+    def test_turn_started_includes_mode(self):
+        """turn_started must include mode property."""
+        track("turn_started", mode="plan")
+        event = _collect_events()[-1]
+        assert event["event"] == "turn_started"
+        assert event["properties"]["mode"] == "plan"
+
     def test_cancel_and_dismissed_are_distinct(self):
         """cancel and question_dismissed are different events."""
         track("cancel")
@@ -484,21 +497,13 @@ class TestEventPropertyCorrectness:
             event = _collect_events()[-1]
             assert event["properties"]["method"] == method
 
-    def test_tool_error_has_tool_name_and_error_type(self):
-        """tool_error includes tool_name and error_type (Python exception class name)."""
-        track("tool_error", tool_name="Bash", error_type="RuntimeError")
-        event = _collect_events()[-1]
-        assert event["event"] == "tool_error"
-        assert event["properties"]["tool_name"] == "Bash"
-        assert event["properties"]["error_type"] == "RuntimeError"
-
     def test_tool_call_success_has_no_error_type(self):
-        """tool_call success path: tool_name + success=True + duration_ms, no error_type."""
-        track("tool_call", tool_name="ReadFile", success=True, duration_ms=123)
+        """tool_call success path: tool_name + outcome=success + duration_ms, no error_type."""
+        track("tool_call", tool_name="ReadFile", outcome="success", duration_ms=123)
         event = _collect_events()[-1]
         assert event["event"] == "tool_call"
         assert event["properties"]["tool_name"] == "ReadFile"
-        assert event["properties"]["success"] is True
+        assert event["properties"]["outcome"] == "success"
         assert event["properties"]["duration_ms"] == 123
         assert isinstance(event["properties"]["duration_ms"], int)
         assert "error_type" not in event["properties"]
@@ -508,13 +513,20 @@ class TestEventPropertyCorrectness:
         track(
             "tool_call",
             tool_name="Bash",
-            success=False,
+            outcome="error",
             duration_ms=42,
             error_type="TimeoutError",
         )
         event = _collect_events()[-1]
-        assert event["properties"]["success"] is False
+        assert event["properties"]["outcome"] == "error"
         assert event["properties"]["error_type"] == "TimeoutError"
+
+    def test_tool_call_cancelled_has_no_error_type(self):
+        """tool_call cancelled path: outcome=cancelled + duration_ms, no error_type."""
+        track("tool_call", tool_name="Bash", outcome="cancelled", duration_ms=10)
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "cancelled"
+        assert "error_type" not in event["properties"]
 
     def test_oauth_refresh_success_has_no_reason(self):
         """oauth_refresh success: only success=True, no reason field."""
@@ -872,7 +884,7 @@ class TestSessionStarted:
 
 
 class TestCompactionTracking:
-    """compaction_triggered must fire on both success and failure paths."""
+    """compaction_finished / compaction_failed must fire on success / failure paths."""
 
     def _make_soul(self, *, before_tokens: int, estimated_after: int) -> Any:
         """Construct a minimal KimiSoul stub bypassing __init__."""
@@ -916,6 +928,7 @@ class TestCompactionTracking:
         fake_result = MagicMock()
         fake_result.messages = []
         fake_result.estimated_token_count = estimated_after
+        fake_result.usage = None
         soul._run_with_connection_recovery = AsyncMock(return_value=fake_result)
 
         soul._injection_providers = []
@@ -923,7 +936,7 @@ class TestCompactionTracking:
 
     @pytest.mark.asyncio
     async def test_auto_compaction_success_emits_event(self):
-        """Auto-triggered success: track has trigger_type=auto + after_tokens + success=True."""
+        """Auto-triggered success: track has trigger_type=auto + after_tokens."""
         soul = self._make_soul(before_tokens=12000, estimated_after=3000)
 
         with (
@@ -934,34 +947,55 @@ class TestCompactionTracking:
 
         # Filter to the compaction event — other events (hook triggers etc.)
         # shouldn't go through telemetry.track.
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
         args, kwargs = calls[0]
-        assert args[0] == "compaction_triggered"
+        assert args[0] == "compaction_finished"
         assert kwargs["trigger_type"] == "auto"
         assert kwargs["before_tokens"] == 12000
         assert kwargs["after_tokens"] == 3000
-        assert kwargs["success"] is True
+        assert kwargs["duration_ms"] >= 0
+        assert kwargs["retry_count"] == 0
+        assert "llm_input_tokens" not in kwargs
+        assert "llm_output_tokens" not in kwargs
 
     @pytest.mark.asyncio
-    async def test_manual_compaction_success_emits_event(self):
-        """/compact with instruction yields trigger_type=manual."""
+    async def test_manual_compaction_without_prompt_emits_event(self):
+        """/compact without instruction yields trigger_type=manual."""
         soul = self._make_soul(before_tokens=8000, estimated_after=2000)
 
         with (
             patch("kimi_cli.soul.kimisoul.wire_send"),
             patch("kimi_cli.telemetry.track") as mock_track,
         ):
-            await soul.compact_context(custom_instruction="focus on auth")
+            await soul.compact_context(manual=True)
 
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
         assert calls[0][1]["trigger_type"] == "manual"
-        assert calls[0][1]["success"] is True
+        assert calls[0][1]["duration_ms"] >= 0
+        assert calls[0][1]["retry_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_manual_compaction_with_prompt_emits_event(self):
+        """/compact with instruction yields trigger_type=manual-with-prompt."""
+        soul = self._make_soul(before_tokens=8000, estimated_after=2000)
+
+        with (
+            patch("kimi_cli.soul.kimisoul.wire_send"),
+            patch("kimi_cli.telemetry.track") as mock_track,
+        ):
+            await soul.compact_context(manual=True, custom_instruction="focus on auth")
+
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
+        assert len(calls) == 1
+        assert calls[0][1]["trigger_type"] == "manual-with-prompt"
+        assert calls[0][1]["duration_ms"] >= 0
+        assert calls[0][1]["retry_count"] == 0
 
     @pytest.mark.asyncio
     async def test_compaction_failure_emits_event_then_reraises(self):
-        """On compaction failure: track success=False (no after_tokens), then re-raise."""
+        """On compaction failure: track compaction_failed (no after_tokens), then re-raise."""
         soul = self._make_soul(before_tokens=50000, estimated_after=0)
         # Force the compaction to fail with a non-retryable error
         soul._run_with_connection_recovery = AsyncMock(side_effect=RuntimeError("compaction boom"))
@@ -973,10 +1007,107 @@ class TestCompactionTracking:
         ):
             await soul.compact_context()
 
-        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_triggered"]
+        calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_failed"]
         assert len(calls) == 1
         kwargs = calls[0][1]
         assert kwargs["trigger_type"] == "auto"
         assert kwargs["before_tokens"] == 50000
-        assert kwargs["success"] is False
         assert "after_tokens" not in kwargs
+        assert kwargs["duration_ms"] >= 0
+        assert kwargs["retry_count"] == 0
+        assert kwargs["error_type"] == "RuntimeError"
+
+
+# ---------------------------------------------------------------------------
+# 8. Plan lifecycle events
+# ---------------------------------------------------------------------------
+
+
+class TestPlanLifecycleEvents:
+    """Verify plan mode telemetry events and their properties."""
+
+    def test_plan_submitted_with_has_options(self):
+        """ExitPlanMode emits plan_submitted with has_options flag."""
+        track("plan_submitted", has_options=True)
+        event = _collect_events()[-1]
+        assert event["event"] == "plan_submitted"
+        assert event["properties"]["has_options"] is True
+
+    def test_plan_submitted_without_options(self):
+        """plan_submitted can have has_options=False."""
+        track("plan_submitted", has_options=False)
+        event = _collect_events()[-1]
+        assert event["properties"]["has_options"] is False
+
+    def test_plan_resolved_approved(self):
+        """Plan approval emits plan_resolved with outcome=approved."""
+        track("plan_resolved", outcome="approved")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "approved"
+
+    def test_plan_resolved_approved_with_chosen_option(self):
+        """Multi-approach plan approval includes chosen_option."""
+        track("plan_resolved", outcome="approved", chosen_option="Refactor (Recommended)")
+        event = _collect_events()[-1]
+        assert event["properties"]["chosen_option"] == "Refactor (Recommended)"
+
+    def test_plan_resolved_rejected(self):
+        """Plan rejection emits plan_resolved with outcome=rejected."""
+        track("plan_resolved", outcome="rejected")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "rejected"
+
+    def test_plan_resolved_rejected_and_exited(self):
+        """Plan reject-and-exit emits plan_resolved with outcome=rejected_and_exited."""
+        track("plan_resolved", outcome="rejected_and_exited")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "rejected_and_exited"
+
+    def test_plan_resolved_auto_approved(self):
+        """AFK auto-approval emits plan_resolved with outcome=auto_approved."""
+        track("plan_resolved", outcome="auto_approved")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "auto_approved"
+
+    def test_plan_resolved_dismissed(self):
+        """Plan dismissal emits plan_resolved with outcome=dismissed."""
+        track("plan_resolved", outcome="dismissed")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "dismissed"
+
+    def test_plan_resolved_revise_with_feedback(self):
+        """Plan revision emits plan_resolved with outcome=revise and has_feedback."""
+        track("plan_resolved", outcome="revise", has_feedback=True)
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "revise"
+        assert event["properties"]["has_feedback"] is True
+
+    def test_plan_resolved_revise_without_feedback(self):
+        """Plan revision without text emits plan_resolved with has_feedback=False."""
+        track("plan_resolved", outcome="revise", has_feedback=False)
+        event = _collect_events()[-1]
+        assert event["properties"]["has_feedback"] is False
+
+    def test_plan_enter_resolved_accepted(self):
+        """User accepting plan mode emits plan_enter_resolved with outcome=accepted."""
+        track("plan_enter_resolved", outcome="accepted")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "accepted"
+
+    def test_plan_enter_resolved_declined(self):
+        """User declining plan mode emits plan_enter_resolved with outcome=declined."""
+        track("plan_enter_resolved", outcome="declined")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "declined"
+
+    def test_plan_enter_resolved_dismissed(self):
+        """User dismissing plan mode dialog emits plan_enter_resolved with outcome=dismissed."""
+        track("plan_enter_resolved", outcome="dismissed")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "dismissed"
+
+    def test_plan_enter_resolved_auto_approved(self):
+        """AFK auto-approving plan mode entry emits plan_enter_resolved with outcome=auto_approved."""
+        track("plan_enter_resolved", outcome="auto_approved")
+        event = _collect_events()[-1]
+        assert event["properties"]["outcome"] == "auto_approved"

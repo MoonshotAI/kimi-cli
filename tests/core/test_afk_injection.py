@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from kimi_cli.soul.dynamic_injections.afk_mode import (
     _AFK_INJECTION_TYPE,
-    _AFK_PROMPT,
+    _AFK_PROMPT_ROOT,
     AfkModeInjectionProvider,
 )
 
@@ -32,7 +32,7 @@ async def test_injects_when_afk_enabled() -> None:
     result = await provider.get_injections([], _mock_soul(is_afk=True))
     assert len(result) == 1
     assert result[0].type == _AFK_INJECTION_TYPE
-    assert result[0].content == _AFK_PROMPT
+    assert result[0].content == _AFK_PROMPT_ROOT
     assert "afk" in result[0].content.lower()
     assert "Do NOT call AskUserQuestion" in result[0].content
 
@@ -83,15 +83,14 @@ async def test_injects_even_when_ask_user_unavailable() -> None:
     soul.has_tool.assert_not_called()
 
 
-async def test_injects_in_subagent() -> None:
-    """Subagents still need to know afk is non-interactive and auto-approved."""
+async def test_does_not_inject_in_subagent() -> None:
+    """Subagents should not receive root afk prompt injections."""
     provider = AfkModeInjectionProvider()
     result = await provider.get_injections(
         [],
         _mock_soul(is_afk=True, is_subagent=True),
     )
-    assert len(result) == 1
-    assert result[0].type == _AFK_INJECTION_TYPE
+    assert result == []
 
 
 async def test_rearms_after_afk_toggle_cycle() -> None:

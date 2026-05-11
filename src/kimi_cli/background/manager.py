@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -14,6 +15,7 @@ from kaos.local import local_kaos
 from kimi_cli.config import BackgroundConfig
 from kimi_cli.notifications import NotificationEvent, NotificationManager
 from kimi_cli.session import Session
+from kimi_cli.utils.datetime import format_elapsed
 from kimi_cli.utils.logging import logger
 
 if TYPE_CHECKING:
@@ -510,11 +512,42 @@ class BackgroundTaskManager:
                     severity = "info"
                     title = f"Background task updated: {view.spec.description}"
 
+            finished_at = view.runtime.finished_at
+            started_at = view.runtime.started_at
+            duration_s = (
+                max(0.0, finished_at - started_at)
+                if finished_at is not None and started_at is not None
+                else None
+            )
+            finished_label = "Completed at" if terminal_reason == "completed" else "Finished at"
+
+            status_details: list[str] = []
+            if finished_at is not None:
+                finished_text = datetime.fromtimestamp(finished_at).strftime("%Y-%m-%d %H:%M:%S")
+                status_details.append(f"{finished_label}: {finished_text}")
+            if duration_s is not None:
+                status_details.append(f"Duration: {format_elapsed(duration_s)}")
+            status_line = f"Status: {status}"
+            if status_details:
+                status_line = f"{status_line} ({', '.join(status_details)})"
+
+            logger.debug(
+                "publish_terminal_notifications: task={task_id} status={status} "
+                "started_at={started_at} finished_at={finished_at} "
+                "duration_s={duration_s} status_line={status_line}",
+                task_id=view.spec.id,
+                status=status,
+                started_at=started_at,
+                finished_at=finished_at,
+                duration_s=duration_s,
+                status_line=status_line,
+            )
+
             body_lines = [
                 f"Task ID: {view.spec.id}",
-                f"Status: {status}",
-                f"Description: {view.spec.description}",
+                status_line,
             ]
+            body_lines.append(f"Description: {view.spec.description}")
             if terminal_reason != status:
                 body_lines.append(f"Terminal reason: {terminal_reason}")
             if view.runtime.exit_code is not None:
@@ -541,13 +574,33 @@ class BackgroundTaskManager:
                     "timed_out": view.runtime.timed_out,
                     "terminal_reason": terminal_reason,
                     "failure_reason": view.runtime.failure_reason,
+                    "finished_at": finished_at,
+                    "duration_s": duration_s,
                 },
                 dedupe_key=f"background_task:{view.spec.id}:{terminal_reason}",
+            )
+            logger.debug(
+                "publish_terminal_notifications: "
+                "publishing event id={event_id} dedupe_key={dedupe_key} body={body}",
+                event_id=event.id,
+                dedupe_key=event.dedupe_key,
+                body=event.body,
             )
             notification = self._notifications.publish(event)
             if notification.event.id == event.id:
                 published.append(notification.event.id)
                 self._completion_event.set()
+                logger.debug(
+                    "publish_terminal_notifications: event id={event_id} published successfully",
+                    event_id=event.id,
+                )
+            else:
+                logger.debug(
+                    "publish_terminal_notifications: "
+                    "event id={event_id} deduplicated to existing id={existing_id}",
+                    event_id=event.id,
+                    existing_id=notification.event.id,
+                )
             if limit is not None and len(published) >= limit:
                 break
         return published
@@ -555,12 +608,22 @@ class BackgroundTaskManager:
     def _mark_task_running(self, task_id: str) -> None:
         runtime = self._store.read_runtime(task_id)
         if is_terminal_status(runtime.status):
+            logger.debug(
+                "_mark_task_running: task {task_id} already terminal ({status}), skipping",
+                task_id=task_id,
+                status=runtime.status,
+            )
             return
         runtime.status = "running"
         runtime.updated_at = time.time()
         runtime.heartbeat_at = runtime.updated_at
         runtime.failure_reason = None
         self._store.write_runtime(task_id, runtime)
+        logger.debug(
+            "_mark_task_running: task {task_id} marked running at {ts}",
+            task_id=task_id,
+            ts=runtime.updated_at,
+        )
 
     def _mark_task_awaiting_approval(self, task_id: str, reason: str) -> None:
         runtime = self._store.read_runtime(task_id)
@@ -574,12 +637,24 @@ class BackgroundTaskManager:
     def _mark_task_completed(self, task_id: str) -> None:
         runtime = self._store.read_runtime(task_id)
         if is_terminal_status(runtime.status):
+            logger.debug(
+                "_mark_task_completed: task {task_id} already terminal ({status}), skipping",
+                task_id=task_id,
+                status=runtime.status,
+            )
             return
         runtime.status = "completed"
         runtime.updated_at = time.time()
         runtime.finished_at = runtime.updated_at
         runtime.failure_reason = None
         self._store.write_runtime(task_id, runtime)
+        logger.debug(
+            "_mark_task_completed: task {task_id} marked completed "
+            "at {finished_at} (started_at={started_at})",
+            task_id=task_id,
+            finished_at=runtime.finished_at,
+            started_at=runtime.started_at,
+        )
         from kimi_cli.telemetry import track
 
         if runtime.started_at and runtime.finished_at:

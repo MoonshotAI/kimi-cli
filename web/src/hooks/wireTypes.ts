@@ -54,6 +54,18 @@ export type StepInterruptedEvent = {
   payload?: Record<string, never>;
 };
 
+export type StepRetryEvent = {
+  type: "StepRetry";
+  payload: {
+    n: number;
+    next_attempt: number;
+    max_attempts: number;
+    wait_s: number;
+    error_type: string;
+    status_code?: number | null;
+  };
+};
+
 export type ContentPartEvent = {
   type: "ContentPart";
   payload: {
@@ -256,6 +268,7 @@ export type WireEvent =
   | TurnBeginEvent
   | StepBeginEvent
   | StepInterruptedEvent
+  | StepRetryEvent
   | ContentPartEvent
   | ToolCallEvent
   | ToolCallPartEvent

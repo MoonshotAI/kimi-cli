@@ -150,8 +150,8 @@ def environment() -> Environment:
             os_kind="Windows",
             os_arch="x86_64",
             os_version="1.0",
-            shell_name="Windows PowerShell",
-            shell_path=KaosPath("powershell.exe"),
+            shell_name="bash",
+            shell_path=KaosPath(r"C:\Program Files\Git\bin\bash.exe"),
         )
     else:
         return Environment(

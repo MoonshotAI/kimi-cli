@@ -10,7 +10,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, detect_file_type
 from kimi_cli.tools.utils import load_desc, truncate_line
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
 from kimi_cli.utils.sensitive import is_sensitive_file
 
 MAX_LINES = 1000
@@ -106,7 +106,7 @@ class ReadFile(CallableTool2[Params]):
             )
 
         try:
-            p = KaosPath(params.path).expanduser()
+            p = kaos_path_from_user_input(params.path)
             if err := await self._validate_path(p):
                 return err
             p = p.canonical()

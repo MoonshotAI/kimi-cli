@@ -12,6 +12,18 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Core: Fix `UserPromptSubmit` hook receiving an empty string when user input is a list of `ContentPart` objects — the hook now correctly extracts concatenated text content instead of treating non-string input as empty
+- Shell: Fix missing visual spacing in the shell UI — add blank lines after user input echoes, content blocks, tool call results, notifications, error panels, and steer inputs so consecutive elements no longer collapse together
+- Shell: Restore markdown link highlighting (bright blue underlined text and cyan underlined URLs) and add underline separators to h2-h6 headings; adjust table rendering to use square box borders with visible edges
+- Core: Include completion timestamp and elapsed duration in background task terminal notifications, and add `finished_at` and `duration_s` to the notification payload for easier tracking
+
+## 1.42.0 (2026-05-11)
+
+- Shell: Switch the Windows shell backend from PowerShell to Git Bash, so the Shell tool now runs commands through `bash.exe` (POSIX semantics) instead of `powershell.exe`. Windows users get the same Unix-style command syntax (`&&`, `||`, `|`, `/dev/null`, `grep`, `sed`, etc.) as Linux/macOS. **Requires Git for Windows installed**: kimi-cli locates `bash.exe` via the `KIMI_CLI_GIT_BASH_PATH` env override → `where.exe git` → standard install paths (`C:\Program Files\Git\bin\bash.exe`); if none resolve, kimi-cli prints an install hint and exits at startup
+- Shell: Defend against hallucinated CMD-style `2>nul` redirects on Windows by rewriting them to `2>/dev/null` before reaching git-bash — without this defense git-bash would create a file literally named `nul` (a Windows reserved device name) that breaks `git add .` and `git clone`; on Linux/macOS, `>nul` is a legitimate redirect to a file named `nul` and is left untouched
+- File: Accept POSIX-form paths on Windows in `ReadFile`, `WriteFile`, `StrReplaceFile`, `Glob`, and `Grep` — these tools now recognize `/c/Users/foo` (Git Bash style), `/cygdrive/c/Users/foo` (Cygwin style), and `\\server\share` (UNC) in addition to native Windows paths, automatically converting to native form for filesystem operations
+- Shell: Clear partial streamed output when an LLM step is retried — previously, if a step failed mid-stream (e.g. rate limit or server error), the incomplete text and unfinished tool-call blocks from the aborted attempt would remain on screen and be mixed with the new attempt's output. The shell UI now discards the partial state and prints a retry banner showing the reason, attempt count, and wait time; print mode also discards buffered assistant messages on retry
+- Wire: Bump protocol version to 1.10 — add `StepRetry` event emitted when a step attempt fails and will be retried, carrying attempt count, wait time, and error details
+- Core: Stop plan-mode and afk-mode workflow prompts from being injected into subagents — subagents share session-level mode state for persistence, but their YAMLs typically exclude root workflow tools such as `EnterPlanMode`, `ExitPlanMode`, and `AskUserQuestion`. These prompt injections are now root-only. Tool-level read-only checks under plan mode are unchanged, so behavior compatibility is preserved
 
 ## 1.41.0 (2026-04-30)
 

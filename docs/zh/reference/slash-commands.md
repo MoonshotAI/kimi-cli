@@ -216,8 +216,8 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 
 例如：
 
+- `/flow:pull-request`：执行创建 Pull Request 的工作流
 - `/flow:code-review`：执行代码审查工作流
-- `/flow:release`：执行发布工作流
 
 ::: tip 提示
 Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加载内容，不会自动执行流程。

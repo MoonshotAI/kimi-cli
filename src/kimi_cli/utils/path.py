@@ -10,6 +10,9 @@ from stat import S_ISDIR
 import aiofiles.os
 from kaos.path import KaosPath
 
+from kimi_cli.utils.environment import is_windows
+from kimi_cli.utils.windows_paths import posix_path_to_windows
+
 _ROTATION_OPEN_FLAGS = os.O_CREAT | os.O_EXCL | os.O_WRONLY
 _ROTATION_FILE_MODE = 0o600
 
@@ -140,6 +143,49 @@ def shorten_home(path: KaosPath) -> KaosPath:
         return KaosPath("~") / p
     except Exception:
         return path
+
+
+def normalize_user_path(raw: str) -> str:
+    """Normalize a user-provided path string to a native form.
+
+    On Windows, recognize MSYS/git-bash POSIX-style paths and convert them to
+    native Windows form. The model running through git-bash sometimes emits
+    ``/c/Users/foo`` when the file tool needs ``C:\\Users\\foo`` for Python's
+    ``os``/``pathlib`` APIs.
+
+    On non-Windows hosts this is a passthrough — POSIX-style paths are already
+    native, and we don't want to corrupt names like ``/cygdrive/`` if the user
+    has such a path on Linux.
+    """
+    if not is_windows():
+        return raw
+
+    # Match POSIX MSYS forms: /c/..., /C/..., /cygdrive/c/..., //server/share
+    # Avoid touching pure relative paths or already-Windows paths.
+    if raw.startswith("//"):
+        return posix_path_to_windows(raw)
+    if raw.startswith("/cygdrive/"):
+        return posix_path_to_windows(raw)
+    if len(raw) >= 2 and raw[0] == "/" and raw[1].isalpha() and (len(raw) == 2 or raw[2] == "/"):
+        return posix_path_to_windows(raw)
+
+    return raw
+
+
+def kaos_path_from_user_input(raw: str) -> KaosPath:
+    """Convert a model-supplied path string into a usable :class:`KaosPath`.
+
+    Performs the two normalizations every file tool needs:
+
+    1. :func:`normalize_user_path` — convert MSYS/Cygwin POSIX paths to native
+       Windows form when running on Windows; passthrough elsewhere.
+    2. ``KaosPath.expanduser()`` — expand a leading ``~`` to the user's home.
+
+    Centralizing this in one place ensures every file-tool entry point is
+    consistent and means future path-shape conversions only need to be added
+    once.
+    """
+    return KaosPath(normalize_user_path(raw)).expanduser()
 
 
 def sanitize_cli_path(raw: str) -> str:

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 _AFK_INJECTION_TYPE = "afk_mode"
 
-_AFK_PROMPT = (
+_AFK_PROMPT_ROOT = (
     "You are running in afk mode. No user is present to answer "
     "questions or approve actions. All tool calls are auto-approved by "
     "the harness.\n"
@@ -54,10 +54,13 @@ class AfkModeInjectionProvider(DynamicInjectionProvider):
         if not soul.is_afk_flag:
             return []
 
+        if soul.is_subagent:
+            return []
+
         if self._injected:
             return []
         self._injected = True
-        return [DynamicInjection(type=_AFK_INJECTION_TYPE, content=_AFK_PROMPT)]
+        return [DynamicInjection(type=_AFK_INJECTION_TYPE, content=_AFK_PROMPT_ROOT)]
 
     async def on_context_compacted(self) -> None:
         # Compaction rewrites history; the prior afk reminder may have been

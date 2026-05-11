@@ -202,7 +202,7 @@ The following are all built-in tools in Kimi Code CLI.
 ### `Shell`
 
 - **Path**: `kimi_cli.tools.shell:Shell`
-- **Description**: Execute shell commands. Requires user approval. Uses the appropriate shell for the OS (bash/zsh on Unix, PowerShell on Windows).
+- **Description**: Execute shell commands. Requires user approval. Uses the configured shell for the OS (bash/sh on Unix-like platforms, Git Bash `bash.exe` on Windows).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

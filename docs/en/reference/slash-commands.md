@@ -216,8 +216,8 @@ Execute a specific flow skill. Flow skills embed an Agent Flow diagram in `SKILL
 
 For example:
 
-- `/flow:code-review`: Execute code review workflow
-- `/flow:release`: Execute release workflow
+- `/flow:pull-request`: Execute the pull-request creation workflow
+- `/flow:code-review`: Execute a code review workflow
 
 ::: tip
 Flow skills can also be invoked via `/skill:<name>`, which loads the content as a standard skill without automatically executing the flow.

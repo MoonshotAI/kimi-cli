@@ -117,7 +117,6 @@ def test_pyinstaller_datas():
         ("src/kimi_cli/tools/plan/description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/plan/enter_description.md", "kimi_cli/tools/plan"),
         ("src/kimi_cli/tools/shell/bash.md", "kimi_cli/tools/shell"),
-        ("src/kimi_cli/tools/shell/powershell.md", "kimi_cli/tools/shell"),
         (
             "src/kimi_cli/tools/think/think.md",
             "kimi_cli/tools/think",
@@ -146,6 +145,7 @@ def test_pyinstaller_hiddenimports():
 
     assert sorted(hiddenimports) == snapshot(
         [
+            "kimi_cli._build_info",
             "kimi_cli.cli.export",
             "kimi_cli.cli.info",
             "kimi_cli.cli.mcp",

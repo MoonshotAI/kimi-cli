@@ -281,6 +281,7 @@ class Shell:
     @staticmethod
     def _echo_agent_input(user_input: UserInput) -> None:
         console.print(render_user_echo_text(user_input.command))
+        console.print()
 
     def _bind_running_input(
         self,
@@ -885,6 +886,7 @@ class Shell:
                     break
                 queued = pending.pop(0)
                 console.print(render_user_echo_text(queued.command))
+                console.print()
                 await run_soul(
                     self.soul,
                     queued.content,
@@ -982,12 +984,6 @@ class Shell:
             )
         except RunCancelled:
             logger.info("Cancelled by user")
-            from kimi_cli.telemetry import track
-
-            _at_step = (
-                getattr(self.soul, "_current_step_no", 0) if isinstance(self.soul, KimiSoul) else 0
-            )
-            track("turn_interrupted", at_step=_at_step)
             console.print("[red]Interrupted by user[/red]")
         except Exception as e:
             logger.exception("Unexpected error:")

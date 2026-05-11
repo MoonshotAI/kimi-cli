@@ -132,9 +132,11 @@ and skill workflows.
 
 ## Release workflow
 
+For the full procedure, follow the `release` skill (`.agents/skills/release/SKILL.md`). The summary:
+
 1. Ensure `main` is up to date (pull latest).
 2. Create a release branch, e.g. `bump-0.68` or `bump-pykaos-0.5.3`.
-3. Update `CHANGELOG.md`: rename `[Unreleased]` to `[0.68] - YYYY-MM-DD`.
+3. Update `CHANGELOG.md`: add a new `## 0.68 (YYYY-MM-DD)` section below `## Unreleased` (do not rename `## Unreleased`).
 4. Update `pyproject.toml` version.
 5. Run `uv sync` to align `uv.lock`.
 6. Commit the branch and open a PR.

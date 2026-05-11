@@ -10,9 +10,32 @@ from pydantic import BaseModel, Field
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_directory, is_within_workspace, list_directory
+from kimi_cli.utils.path import (
+    is_within_directory,
+    is_within_workspace,
+    kaos_path_from_user_input,
+    list_directory,
+)
 
 MAX_MATCHES = 1000
+GLOB_DESC_PATH = Path(__file__).parent / "glob.md"
+WINDOWS_PATH_HINT = (
+    "On Windows, the `directory` parameter accepts both Windows native paths "
+    "(`C:\\Users\\foo`) and POSIX-style paths (`/c/Users/foo`, "
+    "`/cygdrive/c/Users/foo`). Returned paths are in Windows native form with "
+    "backslashes (NOT POSIX) — convert to forward slashes before using them "
+    "in Shell commands."
+)
+
+
+def _description_for_os(os_kind: str) -> str:
+    return load_desc(
+        GLOB_DESC_PATH,
+        {
+            "MAX_MATCHES": str(MAX_MATCHES),
+            "WINDOWS_PATH_HINT": WINDOWS_PATH_HINT if os_kind == "Windows" else "",
+        },
+    )
 
 
 class Params(BaseModel):
@@ -31,16 +54,11 @@ class Params(BaseModel):
 
 class Glob(CallableTool2[Params]):
     name: str = "Glob"
-    description: str = load_desc(
-        Path(__file__).parent / "glob.md",
-        {
-            "MAX_MATCHES": str(MAX_MATCHES),
-        },
-    )
+    description: str = _description_for_os("")
     params: type[Params] = Params
 
     def __init__(self, runtime: Runtime) -> None:
-        super().__init__()
+        super().__init__(description=_description_for_os(runtime.environment.os_kind))
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
         self._additional_dirs = runtime.additional_dirs
         self._skills_dirs = runtime.skills_dirs
@@ -92,7 +110,7 @@ class Glob(CallableTool2[Params]):
                 return pattern_error
 
             dir_path = (
-                KaosPath(params.directory).expanduser() if params.directory else self._work_dir
+                kaos_path_from_user_input(params.directory) if params.directory else self._work_dir
             )
 
             if not dir_path.is_absolute():

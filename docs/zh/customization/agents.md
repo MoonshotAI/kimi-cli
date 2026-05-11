@@ -202,7 +202,7 @@ agent:
 ### `Shell`
 
 - **路径**：`kimi_cli.tools.shell:Shell`
-- **描述**：执行 Shell 命令。需要用户审批。根据操作系统使用对应的 Shell（Unix 使用 bash/zsh，Windows 使用 PowerShell）。
+- **描述**：执行 Shell 命令。需要用户审批。根据操作系统使用配置的 Shell（类 Unix 平台使用 bash/sh，Windows 使用 Git Bash `bash.exe`）。
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
