@@ -28,7 +28,8 @@ class Wire:
 
         if file_backend is not None:
             # record all complete Wire messages to the file backend
-            self._recorder = _WireRecorder(file_backend, self._merged_queue.subscribe())
+            # use an unbounded queue so the recorder never drops events
+            self._recorder = _WireRecorder(file_backend, self._merged_queue.subscribe(maxsize=0))
         else:
             self._recorder = None
 

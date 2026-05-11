@@ -34,6 +34,7 @@ from kimi_cli.wire.file import WireFile
 
 # Cache configuration
 CACHE_TTL = 5.0  # seconds - balance between freshness and performance
+MAX_CACHED_SESSIONS = 100  # hard limit to prevent unbounded memory growth
 
 # Auto-archive configuration
 AUTO_ARCHIVE_DAYS = 15  # Sessions older than this will be auto-archived
@@ -316,7 +317,11 @@ def load_all_sessions_cached() -> list[JointSession]:
     if _sessions_cache is not None and (now - _cache_timestamp) < CACHE_TTL:
         return _sessions_cache
 
-    _sessions_cache = load_all_sessions()
+    sessions = load_all_sessions()
+    if len(sessions) > MAX_CACHED_SESSIONS:
+        sessions = sessions[:MAX_CACHED_SESSIONS]
+
+    _sessions_cache = sessions
     _cache_timestamp = now
     return _sessions_cache
 

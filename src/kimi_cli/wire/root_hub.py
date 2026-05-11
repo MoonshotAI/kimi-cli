@@ -11,8 +11,8 @@ class RootWireHub:
     def __init__(self) -> None:
         self._queue = BroadcastQueue[WireMessage]()
 
-    def subscribe(self) -> Queue[WireMessage]:
-        return self._queue.subscribe()
+    def subscribe(self, *, maxsize: int | None = None) -> Queue[WireMessage]:
+        return self._queue.subscribe(maxsize=maxsize)
 
     def unsubscribe(self, queue: Queue[WireMessage]) -> None:
         self._queue.unsubscribe(queue)

@@ -75,3 +75,101 @@ async def test_publish_to_empty_queue():
     # Should not raise any exception
     await broadcast.publish("no_subscribers")
     broadcast.publish_nowait("no_subscribers")
+
+
+async def test_bounded_queue_drops_oldest():
+    """When a subscriber queue is full, the oldest item is dropped."""
+    broadcast = BroadcastQueue(maxsize=3)
+    queue = broadcast.subscribe()
+
+    # Fill the queue to capacity without consuming.
+    broadcast.publish_nowait("msg_1")
+    broadcast.publish_nowait("msg_2")
+    broadcast.publish_nowait("msg_3")
+    assert queue.qsize() == 3
+
+    # Publishing a 4th message should drop the oldest (msg_1).
+    broadcast.publish_nowait("msg_4")
+    assert queue.qsize() == 3
+    assert await queue.get() == "msg_2"
+    assert await queue.get() == "msg_3"
+    assert await queue.get() == "msg_4"
+
+
+async def test_default_maxsize_is_1000():
+    """Default BroadcastQueue should have maxsize=1000."""
+    broadcast = BroadcastQueue()
+    queue = broadcast.subscribe()
+    assert queue.maxsize == 1000
+
+
+async def test_graceful_shutdown_preserves_items():
+    """shutdown(immediate=False) must not drop pending items from a full queue."""
+    broadcast = BroadcastQueue(maxsize=3)
+    queue = broadcast.subscribe()
+
+    # Fill the queue.
+    broadcast.publish_nowait("keep_1")
+    broadcast.publish_nowait("keep_2")
+    broadcast.publish_nowait("keep_3")
+    assert queue.qsize() == 3
+
+    # Graceful shutdown should preserve the three items.
+    broadcast.shutdown(immediate=False)
+
+    assert await queue.get() == "keep_1"
+    assert await queue.get() == "keep_2"
+    assert await queue.get() == "keep_3"
+
+    with pytest.raises(QueueShutDown):
+        queue.get_nowait()
+
+
+async def test_immediate_shutdown_clears_items():
+    """shutdown(immediate=True) may drop pending items to unblock immediately."""
+    broadcast = BroadcastQueue(maxsize=3)
+    queue = broadcast.subscribe()
+
+    broadcast.publish_nowait("drop_1")
+    broadcast.publish_nowait("drop_2")
+    broadcast.publish_nowait("drop_3")
+
+    broadcast.shutdown(immediate=True)
+
+    with pytest.raises(QueueShutDown):
+        queue.get_nowait()
+
+
+async def test_publish_drops_oldest_when_full():
+    """async publish() must not block forever on a full queue."""
+    broadcast = BroadcastQueue(maxsize=3)
+    queue = broadcast.subscribe()
+
+    broadcast.publish_nowait("old_1")
+    broadcast.publish_nowait("old_2")
+    broadcast.publish_nowait("old_3")
+    assert queue.qsize() == 3
+
+    # publish() should evict the oldest item rather than hanging.
+    await broadcast.publish("new_msg")
+    assert queue.qsize() == 3
+    assert await queue.get() == "old_2"
+    assert await queue.get() == "old_3"
+    assert await queue.get() == "new_msg"
+
+
+async def test_subscribe_with_custom_maxsize():
+    """subscribe() accepts a per-subscriber maxsize."""
+    broadcast = BroadcastQueue(maxsize=10)
+    bounded = broadcast.subscribe()
+    unbounded = broadcast.subscribe(maxsize=0)
+
+    assert bounded.maxsize == 10
+    assert unbounded.maxsize == 0
+
+
+async def test_subscribe_defaults_to_broadcast_maxsize():
+    """subscribe() without args uses the broadcast queue's maxsize."""
+    broadcast = BroadcastQueue(maxsize=42)
+    queue = broadcast.subscribe()
+    assert queue.maxsize == 42
