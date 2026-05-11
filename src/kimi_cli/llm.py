@@ -167,6 +167,10 @@ def create_llm(
                 reasoning_key=reasoning_key,
                 default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
             )
+            if provider.extra_generation_kwargs:
+                chat_provider = chat_provider.with_generation_kwargs(
+                    **provider.extra_generation_kwargs
+                )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
 
