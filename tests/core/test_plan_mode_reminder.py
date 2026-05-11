@@ -9,7 +9,6 @@ from kimi_cli.soul.dynamic_injections.plan_mode import (
     _has_plan_reminder,
     _reentry_reminder,
     _sparse_reminder,
-    _subagent_reminder,
 )
 
 
@@ -48,13 +47,6 @@ def test_detects_full_reminder_with_existing_plan() -> None:
     assert _has_plan_reminder(msg)
 
 
-def test_detects_subagent_reminder() -> None:
-    msg = _user_msg(
-        f"<system-reminder>\n{_subagent_reminder('/tmp/plan.md', False)}\n</system-reminder>"
-    )
-    assert _has_plan_reminder(msg)
-
-
 def test_does_not_match_unrelated_text() -> None:
     msg = _user_msg("Please review the plan and let me know.")
     assert not _has_plan_reminder(msg)
@@ -71,9 +63,8 @@ def test_detection_stays_in_sync_with_reminder_text() -> None:
     """Ensure that the detection keys are derived from the actual reminder functions.
 
     If someone changes the reminder wording, the detection must still work.
-    This test verifies the contract: any text produced by _full_reminder,
-    _sparse_reminder, or _subagent_reminder must be detectable by
-    _has_plan_reminder.
+    This test verifies the contract: any text produced by _full_reminder
+    or _sparse_reminder must be detectable by _has_plan_reminder.
     """
     for path in [None, "/tmp/plan.md", "/home/user/.kimi/plans/batman.md"]:
         for exists in [False, True]:
@@ -87,13 +78,6 @@ def test_detection_stays_in_sync_with_reminder_text() -> None:
         assert _has_plan_reminder(_user_msg(sparse)), (
             f"Failed to detect _sparse_reminder(path={path!r})"
         )
-
-    for path in [None, "/tmp/plan.md"]:
-        for exists in [False, True]:
-            subagent = _subagent_reminder(path, plan_exists=exists)
-            assert _has_plan_reminder(_user_msg(subagent)), (
-                f"Failed to detect _subagent_reminder(path={path!r}, plan_exists={exists})"
-            )
 
 
 # --- Full Reminder content checks ---
@@ -141,21 +125,6 @@ def test_sparse_reminder_back_references_full() -> None:
     """Sparse reminder should reference the full instructions."""
     text = _sparse_reminder()
     assert "see full instructions earlier" in text
-
-
-# --- Subagent Reminder content checks ---
-
-
-def test_subagent_reminder_keeps_readonly_invariant_without_root_tools() -> None:
-    text = _subagent_reminder("/tmp/plan.md")
-    assert "Plan mode is active" in text
-    assert "MUST NOT make edits" in text
-    assert "mutating shell commands" in text
-    assert "only allowed write target" in text
-    assert "parent agent" in text
-    assert "ExitPlanMode" not in text
-    assert "EnterPlanMode" not in text
-    assert "AskUserQuestion" not in text
 
 
 # --- Reentry Reminder ---

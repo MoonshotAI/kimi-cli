@@ -11,7 +11,7 @@
 - File：`ReadFile`、`WriteFile`、`StrReplaceFile`、`Glob`、`Grep` 在 Windows 上接受 POSIX 形式的路径——除原生 Windows 路径外，这些工具现在能识别 `/c/Users/foo`（Git Bash 形式）、`/cygdrive/c/Users/foo`（Cygwin 形式）和 `\\server\share`（UNC 形式），并在文件系统操作前自动转换为原生形式
 - Shell：在 LLM 步骤重试时清除已流式输出的不完整内容——以前，如果某个步骤在流式输出中途失败（例如触发速率限制或服务器错误），被中断尝试所产生的未完成文本和未结束的工具调用块会留在屏幕上，并与新尝试的输出混在一起。现在 Shell 界面会丢弃这部分不完整状态，并打印一条重试横幅，显示失败原因、尝试次数和等待时间；Print 模式也会在重试时丢弃已缓冲的 Assistant 消息
 - Wire：协议版本升级到 1.10——新增 `StepRetry` 事件，在步骤尝试失败并即将重试时发出，携带尝试次数、等待时间和错误详情
-- Core：不再让子代理调用它工具集里没有的工具——以前 plan 模式和 afk 模式的提醒会指示子代理使用 `EnterPlanMode`/`ExitPlanMode` 和 `AskUserQuestion`，但子代理 YAML 通常不包含这些工具，既浪费 token 也容易诱发幻觉工具调用。现在子代理会收到为其定制的提醒：plan 模式只强制只读约束，不引用元工具；afk 模式以“无用户输入”为契约，把决策回路指向父代理。Plan 模式下工具层的只读检查保持不变，行为兼容性不受影响
+- Core：不再向子代理注入 plan 模式工作流提醒——子代理会共享会话级 plan 模式状态以支持持久化和恢复，但其 YAML 通常不包含 `EnterPlanMode`/`ExitPlanMode`。现在 plan 模式 reminder 只注入给 root agent；afk 模式提醒仍会避免向子代理提及不可用的 root/meta 工具。Plan 模式下工具层的只读检查保持不变，行为兼容性不受影响
 
 ## 1.41.0 (2026-04-30)
 

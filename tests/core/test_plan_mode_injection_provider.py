@@ -7,11 +7,7 @@ from unittest.mock import MagicMock, PropertyMock
 
 from kosong.message import Message, TextPart
 
-from kimi_cli.soul.dynamic_injections.plan_mode import (
-    PlanModeInjectionProvider,
-    _full_reminder,
-    _subagent_reminder,
-)
+from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider, _full_reminder
 
 
 def _make_soul_mock(
@@ -39,14 +35,6 @@ def _reminder_msg() -> Message:
     )
 
 
-def _subagent_reminder_msg() -> Message:
-    """Create a user message that looks like a subagent plan mode reminder."""
-    return Message(
-        role="user",
-        content=[TextPart(text=_subagent_reminder("/tmp/plan.md", False))],
-    )
-
-
 def _assistant_msg() -> Message:
     return Message(role="assistant", content=[TextPart(text="step")])
 
@@ -62,7 +50,7 @@ class TestPlanModeInjectionProvider:
         assert result == []
         assert provider._inject_count == 0
 
-    async def test_subagent_gets_readonly_reminder_without_consuming_pending(self) -> None:
+    async def test_returns_empty_for_subagent_even_when_plan_mode_active(self) -> None:
         provider = PlanModeInjectionProvider()
         soul = _make_soul_mock(
             plan_mode=True,
@@ -73,42 +61,7 @@ class TestPlanModeInjectionProvider:
 
         result = await provider.get_injections([], soul)
 
-        assert len(result) == 1
-        assert result[0].type == "plan_mode"
-        assert "MUST NOT make edits" in result[0].content
-        assert "parent agent" in result[0].content
-        assert "ExitPlanMode" not in result[0].content
-        assert "EnterPlanMode" not in result[0].content
-        assert "AskUserQuestion" not in result[0].content
-        soul.consume_pending_plan_activation_injection.assert_not_called()
-
-    async def test_subagent_reminder_is_throttled_before_interval(self) -> None:
-        provider = PlanModeInjectionProvider()
-        soul = _make_soul_mock(
-            plan_mode=True,
-            plan_path=Path("/tmp/plan.md"),
-            is_subagent=True,
-        )
-        history = [_subagent_reminder_msg()] + [_assistant_msg() for _ in range(3)]
-
-        result = await provider.get_injections(history, soul)
-
         assert result == []
-        soul.consume_pending_plan_activation_injection.assert_not_called()
-
-    async def test_subagent_reminder_repeats_after_interval(self) -> None:
-        provider = PlanModeInjectionProvider()
-        soul = _make_soul_mock(
-            plan_mode=True,
-            plan_path=Path("/tmp/plan.md"),
-            is_subagent=True,
-        )
-        history = [_subagent_reminder_msg()] + [_assistant_msg() for _ in range(5)]
-
-        result = await provider.get_injections(history, soul)
-
-        assert len(result) == 1
-        assert "MUST NOT make edits" in result[0].content
         soul.consume_pending_plan_activation_injection.assert_not_called()
 
     async def test_first_call_injects_full_reminder(self) -> None:

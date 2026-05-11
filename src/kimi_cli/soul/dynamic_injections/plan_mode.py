@@ -32,6 +32,12 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
         history: Sequence[Message],
         soul: KimiSoul,
     ) -> list[DynamicInjection]:
+        # Plan-mode workflow reminders are root-only. Subagents share the
+        # session's plan_mode flag for persistence/resume, but their YAMLs
+        # usually exclude EnterPlanMode/ExitPlanMode, so do not inject this
+        # workflow guidance into subagent contexts.
+        if soul.is_subagent:
+            return []
         if not soul.plan_mode:
             self._inject_count = 0
             return []
@@ -39,12 +45,6 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
         plan_path = soul.get_plan_file_path()
         plan_path_str = str(plan_path) if plan_path else None
         plan_exists = plan_path is not None and plan_path.exists()
-
-        # Subagents share the session's plan_mode flag but do not necessarily
-        # have root-only workflow tools. Keep the read-only invariant visible
-        # without telling them to call tools that their YAML excludes.
-        if soul.is_subagent:
-            return self._subagent_injections(history, plan_path_str, plan_exists)
 
         # Manual toggles schedule a one-shot activation reminder for the next LLM step.
         if soul.consume_pending_plan_activation_injection():
@@ -97,32 +97,6 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
             content = _sparse_reminder(plan_path_str)
         return [DynamicInjection(type="plan_mode", content=content)]
 
-    def _subagent_injections(
-        self,
-        history: Sequence[Message],
-        plan_path_str: str | None,
-        plan_exists: bool,
-    ) -> list[DynamicInjection]:
-        turns_since_last = 0
-        found_previous = False
-        for msg in reversed(history):
-            if msg.role == "user" and _has_plan_reminder(msg):
-                found_previous = True
-                break
-            if msg.role == "assistant":
-                turns_since_last += 1
-
-        if found_previous and turns_since_last < _TURN_INTERVAL:
-            return []
-
-        self._inject_count = self._inject_count + 1 if found_previous else 1
-        return [
-            DynamicInjection(
-                type="plan_mode",
-                content=_subagent_reminder(plan_path_str, plan_exists),
-            )
-        ]
-
 
 def _has_plan_reminder(msg: Message) -> bool:
     """Check whether a message contains a plan mode reminder.
@@ -133,7 +107,6 @@ def _has_plan_reminder(msg: Message) -> bool:
     keys = (
         _sparse_reminder().split(".")[0],  # "Plan mode still active ..."
         _full_reminder().split("\n")[0],  # "Plan mode is active. ..."
-        _subagent_reminder().split("\n")[0],  # "Plan mode is active for the parent ..."
     )
     for part in msg.content:
         if isinstance(part, TextPart) and any(key in part.text for key in keys):
@@ -235,46 +208,6 @@ def _sparse_reminder(plan_file_path: str | None = None) -> str:
         ]
     )
     return " ".join(parts)
-
-
-def _subagent_reminder(
-    plan_file_path: str | None = None,
-    plan_exists: bool = False,
-) -> str:
-    lines = [
-        "Plan mode is active for the parent session. You MUST NOT make edits, "
-        "run mutating shell commands, start background tasks that change files, "
-        "or otherwise change the system.",
-        "Use read-only investigation only.",
-    ]
-    if plan_file_path:
-        suffix = "exists" if plan_exists else "does not exist yet"
-        lines.extend(
-            [
-                "",
-                f"Plan file: {plan_file_path} ({suffix}).",
-                "If you have file-editing tools and the parent explicitly asked you "
-                "to update the plan artifact, this path is the only allowed write target. "
-                "Do not use shell commands to modify files.",
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                "",
-                "No current plan file path is available, so treat the entire environment "
-                "as read-only.",
-            ]
-        )
-    lines.extend(
-        [
-            "",
-            "As a subagent, do not request plan approval or ask the end user questions.",
-            "Return your findings, risks, and suggested plan changes to the parent agent "
-            "in your final summary.",
-        ]
-    )
-    return "\n".join(lines)
 
 
 def _reentry_reminder(plan_file_path: str | None = None) -> str:
