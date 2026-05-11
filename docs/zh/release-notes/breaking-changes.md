@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.42.0
+
 ### Windows Shell 后端从 PowerShell 切换为 Git Bash
 
 Windows 上的 Shell 工具现在通过 `bash.exe`（POSIX 语义）执行命令，不再使用 `powershell.exe`。Windows 用户获得与 Linux/macOS 一致的 Unix 风格命令语法，但需要先安装 Git for Windows。
