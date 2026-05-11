@@ -442,6 +442,7 @@ class _LiveView:
                 else:
                     content = [TextPart(text=user_input)]
                 console.print(render_user_echo(Message(role="user", content=content)))
+                console.print()
             case TurnEnd():
                 self._active_turn_depth = max(0, self._active_turn_depth - 1)
             case CompactionBegin():
@@ -475,6 +476,7 @@ class _LiveView:
                             padding=(0, 1),
                         )
                     )
+                    console.print()
                 elif error:
                     console.print(
                         Panel(
@@ -484,6 +486,7 @@ class _LiveView:
                             padding=(0, 1),
                         )
                     )
+                    console.print()
                 self.refresh_soon()
             case StatusUpdate():
                 self._status_block.update(msg)
@@ -701,6 +704,7 @@ class _LiveView:
         if self._current_content_block is not None:
             if self._current_content_block.has_pending():
                 console.print(self._current_content_block.compose_final())
+                console.print()
             self._current_content_block = None
             self.refresh_soon()
 
@@ -714,6 +718,7 @@ class _LiveView:
 
             self._tool_call_blocks.pop(tool_call_id)
             console.print(block.compose())
+            console.print()
             if self._last_tool_call_block == block:
                 self._last_tool_call_block = None
             self.refresh_soon()
@@ -723,6 +728,7 @@ class _LiveView:
         self._live_notification_blocks.clear()
         while self._notification_blocks:
             console.print(self._notification_blocks.popleft().compose())
+            console.print()
             self.refresh_soon()
 
     def append_content(self, part: ContentPart) -> None:
@@ -841,6 +847,7 @@ class _LiveView:
             padding=(1, 2),
         )
         console.print(panel)
+        console.print()
 
     def request_question(self, request: QuestionRequest) -> None:
         self._question_request_queue.append(request)

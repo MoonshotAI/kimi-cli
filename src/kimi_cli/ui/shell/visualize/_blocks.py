@@ -284,6 +284,17 @@ class _ContentBlock:
         console.print(self._wrap_bullet(Markdown(committed_text)))
         self._committed_len += boundary
 
+        # If the remaining text starts with a newline, that blank line represents
+        # paragraph separation between the committed block and the next one.
+        # Because the next block will be rendered as a separate Markdown instance,
+        # the empty line would be lost (Markdown ignores leading newlines and
+        # resets its internal new_line state).  Preserve the visual break by
+        # printing an explicit blank line and consuming the leading newline.
+        remaining = self._pending_text()
+        if remaining.startswith("\n"):
+            console.print()
+            self._committed_len += 1
+
     def _compose_spinner(self) -> Spinner:
         elapsed = time.monotonic() - self._start_time
         elapsed_str = format_elapsed(elapsed)
