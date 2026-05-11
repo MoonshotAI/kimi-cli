@@ -39,9 +39,14 @@ The Rust implementation (`kagent`) lives in a separate repository and is **not**
 
 8. **Update docs.** Follow the `gen-docs` skill to make sure docs reflect the release.
 
-9. **Open the PR.** Commit all changes, push, and open a PR with `gh` describing the version bumps.
+9. **Confirm with the user before opening the PR.** Summarize the staged changes and ask the user to explicitly confirm:
+   - **Version numbers** — every updated `pyproject.toml` (changed package + `packages/kimi-code` if the root moved) reflects the version agreed in step 3.
+   - **Dependency pins** — the root `pyproject.toml` pins (`kosong[contrib]==<version>`, `pykaos==<version>`) and `packages/kimi-code`'s `kimi-cli==<version>` match the bumped versions.
+   - **Documentation** — CHANGELOG entries are added below `## Unreleased` (Unreleased still present and empty), `breaking-changes.md` is updated in both languages if applicable, and `gen-docs` left no inconsistencies.
 
-10. **Monitor the PR** until it is merged.
+   Wait for explicit user approval before proceeding. If the user flags anything, fix it and re-confirm — do not push.
+
+10. **Open the PR.** Commit all changes, push, and open a PR with `gh` describing the version bumps.
 
 11. **Hand off the tag step.** After merge, switch to `main`, pull latest, and tell the user the exact `git tag` command for the final release tag (pick the right tag pattern from the table above — e.g. `git tag 1.43.0` for a root release, `git tag kosong-0.54.0` for a kosong release). The user will run the tag and push tags themselves.
 
