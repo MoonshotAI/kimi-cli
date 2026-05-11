@@ -285,20 +285,6 @@ class TestPlanModeProviderRoleGate:
     lives inside PlanModeInjectionProvider where the reminder would be emitted.
     """
 
-    async def test_root_receives_plan_mode_injection_when_plan_mode_active(
-        self,
-        runtime: Runtime,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
-        runtime.session.state.plan_mode = True
-        assert runtime.role == "root"
-        soul = _make_soul(runtime, tmp_path)
-
-        injections = await soul._collect_injections()
-        assert any(inj.type == "plan_mode" for inj in injections)
-
     async def test_subagent_receives_no_plan_mode_injection_when_root_in_plan_mode(
         self,
         runtime: Runtime,

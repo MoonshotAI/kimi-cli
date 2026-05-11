@@ -63,8 +63,8 @@ def test_detection_stays_in_sync_with_reminder_text() -> None:
     """Ensure that the detection keys are derived from the actual reminder functions.
 
     If someone changes the reminder wording, the detection must still work.
-    This test verifies the contract: any text produced by _full_reminder
-    or _sparse_reminder must be detectable by _has_plan_reminder.
+    This test verifies the contract: any text produced by _full_reminder or
+    _sparse_reminder must be detectable by _has_plan_reminder.
     """
     for path in [None, "/tmp/plan.md", "/home/user/.kimi/plans/batman.md"]:
         for exists in [False, True]:

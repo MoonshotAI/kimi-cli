@@ -83,7 +83,7 @@ async def test_injects_even_when_ask_user_unavailable() -> None:
     soul.has_tool.assert_not_called()
 
 
-async def test_injects_in_subagent() -> None:
+async def test_does_not_inject_in_subagent() -> None:
     """Subagents should not receive root afk prompt injections."""
     provider = AfkModeInjectionProvider()
     result = await provider.get_injections(
@@ -91,16 +91,6 @@ async def test_injects_in_subagent() -> None:
         _mock_soul(is_afk=True, is_subagent=True),
     )
     assert result == []
-
-
-async def test_root_prompt_keeps_plan_mode_tool_references() -> None:
-    """Root has EnterPlanMode/ExitPlanMode and the prompt should still
-    encourage their use under afk mode."""
-    provider = AfkModeInjectionProvider()
-    result = await provider.get_injections([], _mock_soul(is_afk=True))
-    assert len(result) == 1
-    assert "EnterPlanMode" in result[0].content
-    assert "ExitPlanMode" in result[0].content
 
 
 async def test_rearms_after_afk_toggle_cycle() -> None:

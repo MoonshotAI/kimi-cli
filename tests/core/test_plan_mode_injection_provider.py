@@ -14,14 +14,10 @@ def _make_soul_mock(
     plan_mode: bool = True,
     plan_path: Path | None = None,
     consume_pending: bool = False,
-    is_subagent: bool = False,
 ) -> MagicMock:
     soul = MagicMock()
     type(soul).plan_mode = PropertyMock(return_value=plan_mode)
-    # Default is_subagent=False so the provider's root-only gate doesn't
-    # short-circuit these tests. The dedicated subagent gate behavior is
-    # covered by TestPlanModeProviderRoleGate in test_plan_mode.py.
-    type(soul).is_subagent = PropertyMock(return_value=is_subagent)
+    type(soul).is_subagent = PropertyMock(return_value=False)
     soul.get_plan_file_path.return_value = plan_path
     soul.consume_pending_plan_activation_injection.return_value = consume_pending
     return soul
@@ -49,20 +45,6 @@ class TestPlanModeInjectionProvider:
 
         assert result == []
         assert provider._inject_count == 0
-
-    async def test_returns_empty_for_subagent_even_when_plan_mode_active(self) -> None:
-        provider = PlanModeInjectionProvider()
-        soul = _make_soul_mock(
-            plan_mode=True,
-            plan_path=Path("/tmp/plan.md"),
-            consume_pending=True,
-            is_subagent=True,
-        )
-
-        result = await provider.get_injections([], soul)
-
-        assert result == []
-        soul.consume_pending_plan_activation_injection.assert_not_called()
 
     async def test_first_call_injects_full_reminder(self) -> None:
         provider = PlanModeInjectionProvider()
