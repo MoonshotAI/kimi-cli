@@ -277,14 +277,11 @@ class TestManualPlanModeInjections:
 
 
 class TestPlanModeProviderRoleGate:
-    """Plan-mode workflow reminders are root-only.
+    """Plan-mode workflow reminders are role-aware.
 
     Subagents share ``session.state.plan_mode`` (so persistence/resume work),
-    but they have ExitPlanMode/EnterPlanMode excluded by YAML. Injecting the
-    workflow reminder — which directs the LLM to call those tools — would
-    only invite hallucinated tool calls. The gate lives inside
-    PlanModeInjectionProvider so the suppression is co-located with the
-    text that would otherwise be emitted.
+    but they have ExitPlanMode/EnterPlanMode excluded by YAML. They still need
+    the plan-mode read-only invariant, just without root-only workflow tools.
     """
 
     async def test_root_receives_plan_mode_injection_when_plan_mode_active(
@@ -301,7 +298,7 @@ class TestPlanModeProviderRoleGate:
         injections = await soul._collect_injections()
         assert any(inj.type == "plan_mode" for inj in injections)
 
-    async def test_subagent_receives_no_plan_mode_injection_when_root_in_plan_mode(
+    async def test_subagent_receives_readonly_reminder_when_root_in_plan_mode(
         self,
         runtime: Runtime,
         tmp_path: Path,
@@ -322,7 +319,15 @@ class TestPlanModeProviderRoleGate:
         assert soul.plan_mode is True
 
         injections = await soul._collect_injections()
-        assert all(inj.type != "plan_mode" for inj in injections)
+        assert len(injections) == 1
+        assert injections[0].type == "plan_mode"
+        assert "Plan mode is active" in injections[0].content
+        assert "MUST NOT make edits" in injections[0].content
+        assert "mutating shell commands" in injections[0].content
+        assert "parent agent" in injections[0].content
+        assert "ExitPlanMode" not in injections[0].content
+        assert "EnterPlanMode" not in injections[0].content
+        assert "AskUserQuestion" not in injections[0].content
 
 
 # ---------------------------------------------------------------------------
