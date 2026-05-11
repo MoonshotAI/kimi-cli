@@ -138,11 +138,13 @@ class OpenAILegacy:
             if has_think_part:
                 reasoning_effort = "medium"
 
+        openai_tools = [tool_to_openai(tool) for tool in tools] if tools else omit
+
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                tools=(tool_to_openai(tool) for tool in tools),
+                tools=openai_tools,
                 stream=self.stream,
                 stream_options={"include_usage": True} if self.stream else omit,
                 reasoning_effort=reasoning_effort,

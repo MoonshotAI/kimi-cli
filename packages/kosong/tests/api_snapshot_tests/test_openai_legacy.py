@@ -27,16 +27,14 @@ async def test_openai_legacy_message_conversion():
                     "messages": [
                         {"role": "system", "content": "You are helpful."},
                         {"role": "user", "content": "Hello!"},
-                    ],
-                    "tools": [],
+                    ]
                 },
                 "multi_turn_conversation": {
                     "messages": [
                         {"role": "user", "content": "What is 2+2?"},
                         {"role": "assistant", "content": "2+2 equals 4."},
                         {"role": "user", "content": "And 3+3?"},
-                    ],
-                    "tools": [],
+                    ]
                 },
                 "multi_turn_with_system": {
                     "messages": [
@@ -44,8 +42,7 @@ async def test_openai_legacy_message_conversion():
                         {"role": "user", "content": "What is 2+2?"},
                         {"role": "assistant", "content": "2+2 equals 4."},
                         {"role": "user", "content": "And 3+3?"},
-                    ],
-                    "tools": [],
+                    ]
                 },
                 "image_url": {
                     "messages": [
@@ -62,8 +59,7 @@ async def test_openai_legacy_message_conversion():
                                 },
                             ],
                         }
-                    ],
-                    "tools": [],
+                    ]
                 },
                 "tool_definition": {
                     "messages": [{"role": "user", "content": "Add 2 and 3"}],
@@ -134,8 +130,7 @@ async def test_openai_legacy_message_conversion():
                             ],
                             "tool_call_id": "call_abc123",
                         },
-                    ],
-                    "tools": [],
+                    ]
                 },
                 "tool_call": {
                     "messages": [
@@ -152,8 +147,7 @@ async def test_openai_legacy_message_conversion():
                             ],
                         },
                         {"role": "tool", "content": "5", "tool_call_id": "call_abc123"},
-                    ],
-                    "tools": [],
+                    ]
                 },
                 "parallel_tool_calls": {
                     "messages": [
@@ -240,6 +234,20 @@ async def test_openai_legacy_message_conversion():
                 },
             }
         )
+
+
+async def test_openai_legacy_omits_empty_tools():
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response("gpt-4.1"))
+        )
+        provider = OpenAILegacy(model="gpt-4.1", api_key="test-key", stream=False)
+        stream = await provider.generate("", [], [Message(role="user", content="Compact this")])
+        async for _ in stream:
+            pass
+
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "tools" not in body
 
 
 async def test_openai_legacy_reasoning_content():
