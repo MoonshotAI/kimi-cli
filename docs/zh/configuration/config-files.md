@@ -33,6 +33,7 @@ kimi --config '{"default_model": "kimi-for-coding", "providers": {...}, "models"
 | `theme` | `string` | 终端配色主题，可选 `"dark"` 或 `"light"`（默认为 `"dark"`） |
 | `show_thinking_stream` | `boolean` | 是否在 Live 区域以 6 行滚动预览方式实时展示模型的原始思考文本，并在 thinking 块结束时把完整思考内容（Markdown）写入历史记录（默认为 `true`；设为 `false` 则仅显示紧凑的 `Thinking ...` 指示器和一行 trace 总结） |
 | `merge_all_available_skills` | `boolean` | 是否合并所有品牌目录中的 Skills（默认为 `true`）；详见 [Skills 配置](../customization/skills.md) |
+| `telemetry` | `boolean` | 是否启用匿名遥测以帮助改进 kimi-cli（默认为 `true`；设为 `false` 可关闭） |
 | `providers` | `table` | API 供应商配置 |
 | `models` | `table` | 模型配置 |
 | `loop_control` | `table` | Agent 循环控制参数 |
@@ -52,6 +53,7 @@ default_editor = ""
 theme = "dark"
 show_thinking_stream = true
 merge_all_available_skills = true
+telemetry = true
 
 [providers.kimi-for-coding]
 type = "kimi"
