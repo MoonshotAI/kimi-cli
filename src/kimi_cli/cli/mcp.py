@@ -1,4 +1,5 @@
 import json
+import warnings
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -16,7 +17,8 @@ def get_global_mcp_config_file() -> Path:
 
 def _load_mcp_config() -> dict[str, Any]:
     """Load MCP config from global mcp config file."""
-    from fastmcp.mcp_config import MCPConfig
+    with warnings.catch_warnings(record=True):
+        from fastmcp.mcp_config import MCPConfig
     from pydantic import ValidationError
 
     mcp_file = get_global_mcp_config_file()
@@ -270,7 +272,8 @@ def mcp_auth(
         raise typer.Exit(code=1)
 
     async def _auth() -> None:
-        import fastmcp
+        with warnings.catch_warnings(record=True):
+            import fastmcp
 
         typer.echo(f"Authorizing with '{name}'...")
         typer.echo("A browser window will open for authorization.")
@@ -325,7 +328,8 @@ def mcp_test(
     server = _get_mcp_server(name)
 
     async def _test() -> None:
-        import fastmcp
+        with warnings.catch_warnings(record=True):
+            import fastmcp
 
         typer.echo(f"Testing connection to '{name}'...")
         client = fastmcp.Client({"mcpServers": {name: server}})
