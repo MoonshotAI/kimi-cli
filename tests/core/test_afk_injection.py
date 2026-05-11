@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 
 from kimi_cli.soul.dynamic_injections.afk_mode import (
     _AFK_INJECTION_TYPE,
-    _AFK_PROMPT,
+    _AFK_PROMPT_ROOT,
+    _AFK_PROMPT_SUBAGENT,
     AfkModeInjectionProvider,
 )
 
@@ -23,6 +24,8 @@ def _mock_soul(
     soul.is_afk_flag = is_afk_flag
     soul.is_yolo = is_yolo
     soul.is_subagent = is_subagent
+    # is_root and is_subagent are mutually exclusive by Runtime.role's type.
+    soul.is_root = not is_subagent
     soul.has_tool.return_value = has_ask_user
     return soul
 
@@ -32,7 +35,7 @@ async def test_injects_when_afk_enabled() -> None:
     result = await provider.get_injections([], _mock_soul(is_afk=True))
     assert len(result) == 1
     assert result[0].type == _AFK_INJECTION_TYPE
-    assert result[0].content == _AFK_PROMPT
+    assert result[0].content == _AFK_PROMPT_ROOT
     assert "afk" in result[0].content.lower()
     assert "Do NOT call AskUserQuestion" in result[0].content
 
@@ -92,6 +95,32 @@ async def test_injects_in_subagent() -> None:
     )
     assert len(result) == 1
     assert result[0].type == _AFK_INJECTION_TYPE
+    assert result[0].content == _AFK_PROMPT_SUBAGENT
+
+
+async def test_subagent_prompt_omits_plan_mode_tool_references() -> None:
+    """Subagent YAML excludes EnterPlanMode/ExitPlanMode, so the prompt must
+    not advertise them — mentioning unavailable tools invites hallucinated
+    calls. This is the same class of bug fixed for PlanModeInjectionProvider.
+    """
+    provider = AfkModeInjectionProvider()
+    result = await provider.get_injections(
+        [],
+        _mock_soul(is_afk=True, is_subagent=True),
+    )
+    assert len(result) == 1
+    assert "EnterPlanMode" not in result[0].content
+    assert "ExitPlanMode" not in result[0].content
+
+
+async def test_root_prompt_keeps_plan_mode_tool_references() -> None:
+    """Root has EnterPlanMode/ExitPlanMode and the prompt should still
+    encourage their use under afk mode."""
+    provider = AfkModeInjectionProvider()
+    result = await provider.get_injections([], _mock_soul(is_afk=True))
+    assert len(result) == 1
+    assert "EnterPlanMode" in result[0].content
+    assert "ExitPlanMode" in result[0].content
 
 
 async def test_rearms_after_afk_toggle_cycle() -> None:

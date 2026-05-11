@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 _AFK_INJECTION_TYPE = "afk_mode"
 
-_AFK_PROMPT = (
+_AFK_PROMPT_ROOT = (
     "You are running in afk mode. No user is present to answer "
     "questions or approve actions. All tool calls are auto-approved by "
     "the harness.\n"
@@ -23,6 +23,23 @@ _AFK_PROMPT = (
     "it for non-trivial tasks, then exit and execute.\n"
     "- Finish the user's request end-to-end in this run. Do not defer "
     "decisions to a human."
+)
+
+# Subagents have their own role-defined toolset and typically lack both
+# plan-mode meta-tools and AskUserQuestion, so the prompt avoids
+# tool-specific instructions — mentioning tools that aren't in the toolset
+# just invites hallucinated calls. The opening line frames the "no user
+# input" contract generically, and the bullets route the "finish
+# end-to-end" guidance to the parent agent rather than to a human.
+_AFK_PROMPT_SUBAGENT = (
+    "You are running in afk mode. No user is present to answer "
+    "questions or approve actions. All tool calls are auto-approved by "
+    "the harness.\n"
+    "- Do NOT defer to a human for input — they are not present. Make "
+    "your best judgment and proceed.\n"
+    "- Finish the task assigned by the parent agent end-to-end in this "
+    "run. Do not defer decisions back to the parent unless the ambiguity "
+    "is genuinely blocking, in which case explain it in your final summary."
 )
 
 AFK_DISABLED_REMINDER = (
@@ -57,7 +74,8 @@ class AfkModeInjectionProvider(DynamicInjectionProvider):
         if self._injected:
             return []
         self._injected = True
-        return [DynamicInjection(type=_AFK_INJECTION_TYPE, content=_AFK_PROMPT)]
+        content = _AFK_PROMPT_ROOT if soul.is_root else _AFK_PROMPT_SUBAGENT
+        return [DynamicInjection(type=_AFK_INJECTION_TYPE, content=content)]
 
     async def on_context_compacted(self) -> None:
         # Compaction rewrites history; the prior afk reminder may have been

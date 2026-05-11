@@ -276,6 +276,55 @@ class TestManualPlanModeInjections:
         assert soul._pending_plan_activation_injection is False
 
 
+class TestPlanModeProviderRoleGate:
+    """Plan-mode workflow reminders are root-only.
+
+    Subagents share ``session.state.plan_mode`` (so persistence/resume work),
+    but they have ExitPlanMode/EnterPlanMode excluded by YAML. Injecting the
+    workflow reminder — which directs the LLM to call those tools — would
+    only invite hallucinated tool calls. The gate lives inside
+    PlanModeInjectionProvider so the suppression is co-located with the
+    text that would otherwise be emitted.
+    """
+
+    async def test_root_receives_plan_mode_injection_when_plan_mode_active(
+        self,
+        runtime: Runtime,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        runtime.session.state.plan_mode = True
+        assert runtime.role == "root"
+        soul = _make_soul(runtime, tmp_path)
+
+        injections = await soul._collect_injections()
+        assert any(inj.type == "plan_mode" for inj in injections)
+
+    async def test_subagent_receives_no_plan_mode_injection_when_root_in_plan_mode(
+        self,
+        runtime: Runtime,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        # Simulate root having toggled plan_mode on before the subagent spawned.
+        runtime.session.state.plan_mode = True
+        subagent_runtime = runtime.copy_for_subagent(
+            agent_id="test-agent",
+            subagent_type="test",
+        )
+        assert subagent_runtime.role == "subagent"
+        soul = _make_soul(subagent_runtime, tmp_path)
+        # Subagent still observes the shared plan_mode flag (state is
+        # session-scoped) — the suppression is the provider's job, not the
+        # soul's job.
+        assert soul.plan_mode is True
+
+        injections = await soul._collect_injections()
+        assert all(inj.type != "plan_mode" for inj in injections)
+
+
 # ---------------------------------------------------------------------------
 # ExitPlanMode — happy paths
 # ---------------------------------------------------------------------------

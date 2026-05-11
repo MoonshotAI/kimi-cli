@@ -208,7 +208,7 @@ class KimiSoul:
         ]
         self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False
-        if self._runtime.role == "root":
+        if self.is_root:
             self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
 
         # Bind plan mode state to tools that support it
@@ -250,6 +250,11 @@ class KimiSoul:
     def is_afk_flag(self) -> bool:
         """Whether persisted afk mode is active."""
         return self._approval.is_afk_flag()
+
+    @property
+    def is_root(self) -> bool:
+        """Whether this soul is the root session rather than a subagent."""
+        return self._runtime.role == "root"
 
     @property
     def is_subagent(self) -> bool:
@@ -939,7 +944,7 @@ class KimiSoul:
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
 
-        if self._runtime.role == "root":
+        if self.is_root:
 
             async def _append_notification(view: NotificationView) -> None:
                 await self._context.append_message(build_notification_message(view, self._runtime))
@@ -1055,11 +1060,7 @@ class KimiSoul:
             for result in results
             if isinstance(result.return_value, ToolRejectedError)
         ]
-        if (
-            rejected_errors
-            and not any(e.has_feedback for e in rejected_errors)
-            and self._runtime.role != "subagent"
-        ):
+        if rejected_errors and not any(e.has_feedback for e in rejected_errors) and self.is_root:
             # Pure rejection (no user feedback) — stop the turn.
             # Subagents skip this so the LLM can see the rejection and try
             # an alternative approach instead of terminating immediately.
@@ -1201,7 +1202,7 @@ class KimiSoul:
         await self._context.append_message(compaction_result.messages)
         estimated_token_count = compaction_result.estimated_token_count
 
-        if self._runtime.role == "root":
+        if self.is_root:
             active_task_snapshot = build_active_task_snapshot(self._runtime.background_tasks)
             if active_task_snapshot is not None:
                 active_task_message = Message(

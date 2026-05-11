@@ -32,6 +32,13 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
         history: Sequence[Message],
         soul: KimiSoul,
     ) -> list[DynamicInjection]:
+        # Plan-mode workflow reminders are root-only. Subagents share the
+        # session's plan_mode flag (for resume persistence) but have
+        # ExitPlanMode/EnterPlanMode excluded by YAML, so emitting the
+        # workflow guidance — which directs the LLM to call those tools —
+        # would only invite hallucinated tool calls.
+        if soul.is_subagent:
+            return []
         if not soul.plan_mode:
             self._inject_count = 0
             return []
