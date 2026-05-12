@@ -65,7 +65,7 @@ kimi mcp remove NAME
 kimi mcp auth NAME
 ```
 
-执行后会打开浏览器进行 OAuth 授权流程。授权成功后，token 会被缓存以供后续使用。
+执行后会打开浏览器进行 OAuth 授权流程。授权成功后，token 会缓存在 `~/.kimi/mcp-oauth/` 以供后续使用。
 
 **参数**
 
@@ -92,6 +92,8 @@ kimi mcp reset-auth NAME
 | `NAME` | 要重置授权的服务器名称 |
 
 清除后需要重新执行 `kimi mcp auth` 进行授权。
+
+从使用 FastMCP 2.x 的旧版本升级后，已有 OAuth MCP token 不会自动迁移；如果 `kimi mcp list` 显示需要授权，请重新运行 `kimi mcp auth NAME`。
 
 ## `test`
 

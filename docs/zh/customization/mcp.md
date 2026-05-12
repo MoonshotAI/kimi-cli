@@ -62,6 +62,8 @@ kimi mcp auth linear
 
 这会打开浏览器完成 OAuth 流程。授权成功后，Kimi Code CLI 会保存 token 供后续使用。
 
+MCP OAuth token 存储在 `~/.kimi/mcp-oauth/`。从使用 FastMCP 2.x 的旧版本升级后，旧的 token 缓存不会自动迁移；如果 `kimi mcp list` 显示某个 OAuth 服务器需要授权，重新运行 `kimi mcp auth <name>` 即可。
+
 **测试服务器**
 
 ```sh

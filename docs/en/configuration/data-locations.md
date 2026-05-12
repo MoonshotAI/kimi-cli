@@ -17,6 +17,7 @@ Note: `KIMI_SHARE_DIR` only affects the storage location of the runtime data lis
 ├── mcp.json              # MCP server configuration
 ├── credentials/          # OAuth credentials
 │   └── <provider>.json
+├── mcp-oauth/            # MCP OAuth tokens
 ├── sessions/             # Session data
 │   └── <work-dir-hash>/
 │       └── <session-id>/
@@ -77,7 +78,9 @@ Example structure:
 
 OAuth credentials are stored in the `~/.kimi/credentials/` directory. After logging in to your Kimi account via `/login`, OAuth tokens are saved in this directory.
 
-Files in this directory have permissions set to read/write for the current user only (600) to protect sensitive information.
+OAuth tokens for MCP servers are stored separately in `~/.kimi/mcp-oauth/`. After authorizing an MCP server added with `--auth oauth` via `kimi mcp auth <name>`, later sessions reuse the tokens from this directory. Use `kimi mcp reset-auth <name>` to clear the MCP OAuth token for one server.
+
+Files in the `credentials/` directory have permissions set to read/write for the current user only (600) to protect sensitive information.
 
 ## Session data
 

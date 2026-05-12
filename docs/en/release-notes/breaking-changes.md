@@ -4,6 +4,13 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+### MCP OAuth token cache moved to `~/.kimi/mcp-oauth/`
+
+Kimi Code CLI now uses FastMCP 3's persistent OAuth storage API for MCP servers and stores MCP OAuth tokens under `~/.kimi/mcp-oauth/`. Tokens from the old FastMCP 2.x cache location are not migrated automatically.
+
+- **Affected**: Users who authorized OAuth MCP servers before upgrading
+- **Migration**: If `kimi mcp list` shows an OAuth server as requiring authorization, run `kimi mcp auth <name>` once to create a new token in `~/.kimi/mcp-oauth/`. Use `kimi mcp reset-auth <name>` before re-authorizing if the stored token becomes invalid or corrupted
+
 ## 1.42.0
 
 ### Windows shell backend changed from PowerShell to Git Bash
