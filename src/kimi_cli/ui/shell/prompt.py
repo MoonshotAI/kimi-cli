@@ -877,6 +877,14 @@ _RUNNING_REFRESH_INTERVAL = 0.1
 _GIT_BRANCH_TTL = 5.0
 _GIT_STATUS_TTL = 15.0
 _TIP_ROTATE_INTERVAL = 30.0
+
+_MODE_TOAST_MESSAGES: dict[str, str] = {
+    "manual": "manual mode — agent asks before each action",
+    "edits": "edits mode — agent can edit files without asking",
+    "auto": "auto mode — agent will auto-approve all actions without asking",
+    "plan": "plan mode — read-only planning, no actions executed",
+}
+
 _MAX_CWD_COLS = 30
 _MAX_BRANCH_COLS = 22
 
@@ -1155,7 +1163,7 @@ def _current_toast(position: Literal["left", "right"] = "left") -> _ToastEntry |
 def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
     tips = [
         "ctrl-x: toggle mode",
-        "shift-tab: plan mode",
+        "shift-tab: cycle modes",
         "ctrl-o: editor",
         "ctrl-j: newline",
         "/feedback: send feedback",
@@ -1184,7 +1192,7 @@ class CustomPromptSession:
         agent_mode_slash_commands: Sequence[SlashCommand[Any]],
         shell_mode_slash_commands: Sequence[SlashCommand[Any]],
         editor_command_provider: Callable[[], str] = lambda: "",
-        plan_mode_toggle_callback: Callable[[], Awaitable[bool]] | None = None,
+        mode_cycle_callback: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -1195,7 +1203,7 @@ class CustomPromptSession:
         self._fast_refresh_provider = fast_refresh_provider
         self._background_task_count_provider = background_task_count_provider
         self._editor_command_provider = editor_command_provider
-        self._plan_mode_toggle_callback = plan_mode_toggle_callback
+        self._mode_cycle_callback = mode_cycle_callback
         self._model_capabilities = model_capabilities
         self._model_name = model_name
         self._last_history_content: str | None = None
@@ -1292,21 +1300,23 @@ class CustomPromptSession:
 
         @_kb.add("s-tab", eager=True)
         def _(event: KeyPressEvent) -> None:
-            """Toggle plan mode with Shift+Tab."""
+            """Cycle unified modes with Shift+Tab: manual → edits → auto → plan → manual."""
             if self._active_prompt_delegate() is not None:
                 return
-            if self._plan_mode_toggle_callback is not None:
+            if self._mode_cycle_callback is not None:
 
                 async def _toggle() -> None:
-                    assert self._plan_mode_toggle_callback is not None
-                    new_state = await self._plan_mode_toggle_callback()
+                    assert self._mode_cycle_callback is not None
+                    new_mode = await self._mode_cycle_callback()
                     from kimi_cli.telemetry import track
 
-                    track("shortcut_plan_toggle", enabled=new_state)
-                    if new_state:
-                        toast("plan mode ON", topic="plan_mode", duration=3.0, immediate=True)
-                    else:
-                        toast("plan mode OFF", topic="plan_mode", duration=3.0, immediate=True)
+                    track("shortcut_mode_cycle", mode=new_mode)
+                    toast(
+                        _MODE_TOAST_MESSAGES.get(new_mode, f"{new_mode} mode"),
+                        topic="mode_cycle",
+                        duration=5.0,
+                        immediate=True,
+                    )
                     event.app.invalidate()
 
                 event.app.create_background_task(_toggle())
@@ -1786,13 +1796,19 @@ class CustomPromptSession:
             return fragments
 
         # 4. Input section header — style varies by mode:
-        #    normal:  ── input ─────────────────  (grey, solid)
+        #    manual:  ── input ─────────────────  (grey, solid)
+        #    edits:   ╌╌ input · edits ╌╌╌╌╌╌╌╌  (green, dashed)
+        #    auto:    ╌╌ input · auto ╌╌╌╌╌╌╌╌╌╌  (amber, dashed)
         #    plan:    ╌╌ input · plan ╌╌╌╌╌╌╌╌╌  (blue, dashed)
         status = self._status_provider()
         # Build title parts
         title_parts = ["input"]
         if status.plan_mode:
             title_parts.append("plan")
+        elif status.approval_mode == "edits":
+            title_parts.append("edits")
+        elif status.approval_mode == "auto":
+            title_parts.append("auto")
         # Queue count from running prompt delegate
         running = self._running_prompt_delegate
         queue_count = len(getattr(running, "_queued_messages", []))
@@ -1802,6 +1818,12 @@ class CustomPromptSession:
         if status.plan_mode:
             dash = "╌"
             style = "fg:#60a5fa"  # blue
+        elif status.approval_mode == "edits":
+            dash = "╌"
+            style = "fg:#4ade80"  # green
+        elif status.approval_mode == "auto":
+            dash = "╌"
+            style = "fg:#fbbf24"  # amber
         else:
             dash = "─"
             style = "class:running-prompt-separator"
@@ -2114,14 +2136,17 @@ class CustomPromptSession:
             self._tip_rotation_index += 1
             self._last_tip_rotate_time = now
 
-        # Status flags: yolo / afk / plan
+        # Approval mode badge: manual / edits / auto
         status = self._status_provider()
-        if status.yolo_enabled:
-            fragments.extend([(tc.yolo_label, "yolo"), ("", "  ")])
-            remaining -= 6  # "yolo" = 4, "  " = 2
-        if status.afk_enabled:
-            fragments.extend([(tc.afk_label, "afk"), ("", "  ")])
-            remaining -= 5  # "afk" = 3, "  " = 2
+        match status.approval_mode:
+            case "manual":
+                pass  # no badge in manual mode (default)
+            case "edits":
+                fragments.extend([(tc.edits_label, "◐ edits"), ("", "  ")])
+                remaining -= 9  # "◐ edits" = 7, "  " = 2
+            case "auto":
+                fragments.extend([(tc.auto_label, "● auto"), ("", "  ")])
+                remaining -= 8  # "● auto" = 6, "  " = 2
         if status.plan_mode:
             fragments.extend([(tc.plan_label, "plan"), ("", "  ")])
             remaining -= 6

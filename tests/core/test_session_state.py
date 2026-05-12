@@ -412,7 +412,7 @@ class TestApprovalStateCallback:
             current_tool_call.reset(token)
 
         assert result.approved is True
-        assert "shell_exec" in state.auto_approve_actions
+        assert state.approval_mode == "auto"
         assert len(changes) == 1
 
     @pytest.mark.asyncio
@@ -447,7 +447,7 @@ class TestApprovalStateCallback:
         finally:
             current_tool_call.reset(token)
 
-        assert "write_file" in state.auto_approve_actions
+        assert state.approval_mode == "auto"
         assert approval.runtime.list_pending() == []
 
     def test_no_callback_does_not_raise(self):

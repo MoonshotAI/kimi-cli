@@ -411,10 +411,27 @@ class Shell:
             )
             await self.soul.start_background_mcp_loading()
 
-        async def _plan_mode_toggle() -> bool:
-            if isinstance(self.soul, KimiSoul):
-                return await self.soul.toggle_plan_mode_from_manual()
-            return False
+        async def _mode_cycle() -> str:
+            """Cycle through unified modes: manual → edits → auto → plan → manual."""
+            if not isinstance(self.soul, KimiSoul):
+                return "manual"
+            status = self.soul.status
+            if status.plan_mode:
+                await self.soul.toggle_plan_mode_from_manual()
+                self.soul.runtime.approval.set_approval_mode("manual")
+                return "manual"
+            match status.approval_mode:
+                case "manual":
+                    self.soul.runtime.approval.set_approval_mode("edits")
+                    return "edits"
+                case "edits":
+                    self.soul.runtime.approval.set_approval_mode("auto")
+                    return "auto"
+                case "auto":
+                    await self.soul.toggle_plan_mode_from_manual()
+                    self.soul.runtime.approval.set_approval_mode("manual")
+                    return "plan"
+            return "manual"
 
         def _mcp_status_block(columns: int):
             if not isinstance(self.soul, KimiSoul):
@@ -468,7 +485,7 @@ class Shell:
             editor_command_provider=lambda: (
                 self.soul.runtime.config.default_editor if isinstance(self.soul, KimiSoul) else ""
             ),
-            plan_mode_toggle_callback=_plan_mode_toggle,
+            mode_cycle_callback=_mode_cycle,
         ) as prompt_session:
             self._prompt_session = prompt_session
             if self._prefill_text:

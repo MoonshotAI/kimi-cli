@@ -13,6 +13,7 @@ from kimi_cli.soul import StatusSnapshot
 from kimi_cli.ui.shell import prompt as shell_prompt
 from kimi_cli.ui.shell.prompt import (
     _GIT_STATUS_TTL,
+    _MODE_TOAST_MESSAGES,
     PROMPT_SYMBOL,
     BgTaskCounts,
     CustomPromptSession,
@@ -138,7 +139,7 @@ def _render_toolbar_lines(
 def test_build_toolbar_tips_without_clipboard() -> None:
     assert _build_toolbar_tips(clipboard_available=False) == [
         "ctrl-x: toggle mode",
-        "shift-tab: plan mode",
+        "shift-tab: cycle modes",
         "ctrl-o: editor",
         "ctrl-j: newline",
         "/feedback: send feedback",
@@ -150,7 +151,7 @@ def test_build_toolbar_tips_without_clipboard() -> None:
 def test_build_toolbar_tips_with_clipboard() -> None:
     assert _build_toolbar_tips(clipboard_available=True) == [
         "ctrl-x: toggle mode",
-        "shift-tab: plan mode",
+        "shift-tab: cycle modes",
         "ctrl-o: editor",
         "ctrl-j: newline",
         "/feedback: send feedback",
@@ -391,6 +392,50 @@ def test_bottom_toolbar_drops_agent_badge_before_bash_when_narrow(monkeypatch: A
         assert "⚙ bash" in lines[1], (
             f"agent badge appeared without bash badge at narrow width: {lines[1]!r}"
         )
+
+
+def test_bottom_toolbar_shows_edits_approval_badge(monkeypatch: Any) -> None:
+    prompt_session = _make_toolbar_session(tips=[])
+    prompt_session._status_provider = lambda: StatusSnapshot(
+        context_usage=0.0,
+        approval_mode="edits",
+    )
+
+    lines = _render_toolbar_lines(prompt_session, 120, monkeypatch)
+
+    assert "◐ edits" in lines[1], f"edits badge missing: {lines[1]!r}"
+
+
+def test_bottom_toolbar_shows_auto_approval_badge(monkeypatch: Any) -> None:
+    prompt_session = _make_toolbar_session(tips=[])
+    prompt_session._status_provider = lambda: StatusSnapshot(
+        context_usage=0.0,
+        approval_mode="auto",
+    )
+
+    lines = _render_toolbar_lines(prompt_session, 120, monkeypatch)
+
+    assert "● auto" in lines[1], f"auto badge missing: {lines[1]!r}"
+
+
+def test_bottom_toolbar_no_badge_in_manual_mode(monkeypatch: Any) -> None:
+    prompt_session = _make_toolbar_session(tips=[])
+    prompt_session._status_provider = lambda: StatusSnapshot(
+        context_usage=0.0,
+        approval_mode="manual",
+    )
+
+    lines = _render_toolbar_lines(prompt_session, 120, monkeypatch)
+
+    assert "◐ edits" not in lines[1], f"edits badge should not appear in manual mode: {lines[1]!r}"
+    assert "● auto" not in lines[1], f"auto badge should not appear in manual mode: {lines[1]!r}"
+
+
+def test_mode_toast_messages_use_friendly_names() -> None:
+    assert _MODE_TOAST_MESSAGES["manual"] == "manual mode — agent asks before each action"
+    assert _MODE_TOAST_MESSAGES["edits"] == "edits mode — agent can edit files without asking"
+    assert _MODE_TOAST_MESSAGES["auto"] == "auto mode — agent will auto-approve all actions without asking"
+    assert _MODE_TOAST_MESSAGES["plan"] == "plan mode — read-only planning, no actions executed"
 
 
 def test_mode_shows_full_with_model_name_on_wide_terminal(monkeypatch: Any) -> None:
