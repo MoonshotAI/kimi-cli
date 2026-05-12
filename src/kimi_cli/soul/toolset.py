@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import importlib
 import inspect
 import json
@@ -90,6 +91,37 @@ if TYPE_CHECKING:
         _: Toolset = kimi_toolset
 
 
+_REMINDER_TEXT = (
+    "\n\n<system-reminder>\n"
+    "You are repeating the exact same tool call with identical parameters."
+    " Please carefully analyze the previous result. If the task is not yet complete,"
+    " try a different method or parameters instead of repeating the same call."
+    "\n</system-reminder>"
+)
+
+
+def _append_reminder_to_return_value(return_value: Any) -> Any:
+    """Append dedup reminder text to a ToolReturnValue output."""
+    from kosong.tooling import ToolReturnValue
+
+    if not isinstance(return_value, ToolReturnValue):
+        return return_value
+
+    output = return_value.output
+    reminder = _REMINDER_TEXT
+
+    if isinstance(output, str):
+        new_output = output + reminder
+    else:
+        new_output = list(output)
+        if new_output and isinstance(new_output[-1], TextPart):
+            new_output[-1] = TextPart(text=new_output[-1].text + reminder)
+        else:
+            new_output.append(TextPart(text=reminder))
+
+    return return_value.model_copy(update={"output": new_output})
+
+
 class KimiToolset:
     def __init__(self) -> None:
         self._tool_dict: dict[str, ToolType] = {}
@@ -98,6 +130,14 @@ class KimiToolset:
         self._mcp_loading_task: asyncio.Task[None] | None = None
         self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
         self._hook_engine: HookEngine = HookEngine()
+
+        # Deduplication state
+        self._previous_step_calls: list[tuple[str, str]] = []
+        self._current_step_calls: list[tuple[str, str]] = []
+        self._current_step_tasks: dict[tuple[str, str], asyncio.Task[ToolResult]] = {}
+        self._dedup_triggered: bool = False
+        self._step_no: int = 0
+        self._turn_id: str = ""
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -135,9 +175,74 @@ class KimiToolset:
             tool.base for tool in self._tool_dict.values() if tool.name not in self._hidden_tools
         ]
 
+    def begin_step(
+        self,
+        previous_calls: list[tuple[str, str]],
+        *,
+        step_no: int = 0,
+        turn_id: str = "",
+    ) -> None:
+        """Called before each step to set up deduplication state."""
+        self._previous_step_calls = previous_calls
+        self._current_step_calls = []
+        self._current_step_tasks = {}
+        self._dedup_triggered = False
+        self._step_no = step_no
+        self._turn_id = turn_id
+
+    def end_step(self) -> list[tuple[str, str]]:
+        """Called after each step to capture the calls made in this step."""
+        return list(self._current_step_calls)
+
+    @property
+    def dedup_triggered(self) -> bool:
+        """Whether a cross-step duplicate was blocked in the current step."""
+        return self._dedup_triggered
+
     def handle(self, tool_call: ToolCall) -> HandleResult:
         token = current_tool_call.set(tool_call)
         try:
+            call_key = (tool_call.function.name, tool_call.function.arguments or "{}")
+
+            # Same-step dedup: wait for the original task and copy its result
+            if call_key in self._current_step_tasks:
+                from kimi_cli.telemetry import track
+
+                track(
+                    "tool_call_dedup_detected",
+                    session_id=_get_session_id(),
+                    turn_id=self._turn_id,
+                    step_no=self._step_no,
+                    tool_name=tool_call.function.name,
+                    dup_type="same_step",
+                    args_hash=hashlib.sha256(call_key[1].encode()).hexdigest()[:8],
+                )
+                original_task = self._current_step_tasks[call_key]
+
+                async def _await_dup() -> ToolResult:
+                    original_result = await original_task
+                    return ToolResult(
+                        tool_call_id=tool_call.id,
+                        return_value=original_result.return_value,
+                    )
+
+                return asyncio.create_task(_await_dup())
+
+            is_cross_step_dup = call_key in self._previous_step_calls
+            if is_cross_step_dup:
+                from kimi_cli.telemetry import track
+
+                track(
+                    "tool_call_dedup_detected",
+                    session_id=_get_session_id(),
+                    turn_id=self._turn_id,
+                    step_no=self._step_no,
+                    tool_name=tool_call.function.name,
+                    dup_type="cross_step",
+                    args_hash=hashlib.sha256(call_key[1].encode()).hexdigest()[:8],
+                )
+                self._dedup_triggered = True
+
             if tool_call.function.name not in self._tool_dict:
                 return ToolResult(
                     tool_call_id=tool_call.id,
@@ -244,6 +349,7 @@ class KimiToolset:
                         outcome="error",
                         duration_ms=int(tool_elapsed * 1000),
                         error_type=type(ret).__name__,
+                        dup_type="cross_step" if is_cross_step_dup else "normal",
                     )
                 else:
                     _track_tool_call(
@@ -251,6 +357,7 @@ class KimiToolset:
                         tool_name=tool_call.function.name,
                         outcome="success",
                         duration_ms=int(tool_elapsed * 1000),
+                        dup_type="cross_step" if is_cross_step_dup else "normal",
                     )
 
                 # --- PostToolUse (fire-and-forget) ---
@@ -272,7 +379,23 @@ class KimiToolset:
 
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 
-            return asyncio.create_task(_call())
+            task = asyncio.create_task(_call())
+            if is_cross_step_dup:
+
+                async def _wrap_with_reminder(
+                    inner_task: asyncio.Task[ToolResult],
+                ) -> ToolResult:
+                    tr = await inner_task
+                    return ToolResult(
+                        tool_call_id=tr.tool_call_id,
+                        return_value=_append_reminder_to_return_value(tr.return_value),
+                    )
+
+                task = asyncio.create_task(_wrap_with_reminder(task))
+
+            self._current_step_tasks[call_key] = task
+            self._current_step_calls.append(call_key)
+            return task
         finally:
             current_tool_call.reset(token)
 

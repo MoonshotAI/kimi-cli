@@ -187,8 +187,10 @@ class KimiSoul:
             self._checkpoint_with_user_message = False
 
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
+        self._last_tool_calls: list[tuple[str, str]] = []
         self._plan_mode: bool = self._runtime.session.state.plan_mode
         self._plan_session_id: str | None = self._runtime.session.state.plan_session_id
+        self._current_turn_id: str = ""
         # Pre-warm slug cache so the persisted slug survives process restarts
         if self._plan_session_id is not None and self._runtime.session.state.plan_slug is not None:
             from kimi_cli.tools.plan.heroes import seed_slug_cache
@@ -719,6 +721,8 @@ class KimiSoul:
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
+        self._current_turn_id = uuid.uuid4().hex
+        self._last_tool_calls = []
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
@@ -808,13 +812,31 @@ class KimiSoul:
         return _run_skill
 
     async def _agent_loop(self) -> TurnOutcome:
-        """The main agent loop for one run."""
+        """The main agent loop for one run.
+
+        Lifecycle:
+            1. Turn Initialization   - clean up stale steers, load MCP tools.
+            2. Step Loop             - iterate until the turn stops or fails.
+               a. Step Guard         - enforce max-steps-per-turn limit.
+               b. Step Begin         - emit StepBegin wire event.
+               c. Context Compaction - auto-compact if context exceeds trigger ratio.
+               d. Checkpoint         - persist current state before calling LLM.
+               e. Step Execution     - run _step() (LLM call + tool execution).
+               f. Error Handling     - BackToTheFuture (revert) or fatal exception.
+               g. Outcome Resolution - steers / stop / continue.
+            3. Turn Resolution       - return TurnOutcome to the caller.
+        """
         assert self._runtime.llm is not None
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 1. TURN INITIALIZATION
+        # ═══════════════════════════════════════════════════════════════════════
 
         # Discard any stale steers from a previous turn.
         while not self._steer_queue.empty():
             self._steer_queue.get_nowait()
 
+        # ── 1a. MCP deferred loading ──────────────────────────────────────────
         if isinstance(self._agent.toolset, KimiToolset):
             await self.start_background_mcp_loading()
             loading = bool((snapshot := self._mcp_status_snapshot()) and snapshot.loading)
@@ -847,19 +869,27 @@ class KimiSoul:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2. STEP LOOP
+        # ═══════════════════════════════════════════════════════════════════════
         step_no = 0
         self._current_step_no = 0
         while True:
             step_no += 1
+
+            # ── 2a. Step Guard ──────────────────────────────────────────────────
             if step_no > self._loop_control.max_steps_per_turn:
                 raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
             self._current_step_no = step_no
+
+            # ── 2b. Step Begin ──────────────────────────────────────────────────
             wire_send(StepBegin(n=step_no))
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
+
             try:
-                # compact the context if needed
+                # ── 2c. Context Compaction ──────────────────────────────────────
                 if should_auto_compact(
                     self._context.token_count_with_pending,
                     self._runtime.llm.max_context_size,
@@ -878,14 +908,20 @@ class KimiSoul:
                         )
                         raise
 
+                # ── 2d. Checkpoint ──────────────────────────────────────────────
                 logger.debug("Beginning step {step_no}", step_no=step_no)
                 await self._checkpoint()
                 self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
+
+                # ── 2e. Step Execution ──────────────────────────────────────────
                 step_outcome = await self._step()
+
             except BackToTheFuture as e:
+                # ── 2f-i. D-Mail revert signal ────────────────────────────────
                 back_to_the_future = e
+
             except Exception as e:
-                # any other exception should interrupt the step
+                # ── 2f-ii. Fatal step error ───────────────────────────────────
                 req_id = getattr(e, "request_id", None)
                 logger.error(
                     "Agent step {step_no} failed: {error_type}: {error}"
@@ -896,6 +932,7 @@ class KimiSoul:
                     request_id=req_id,
                 )
                 wire_send(StepInterrupted())
+
                 # Track API/step errors
                 from kimi_cli.telemetry import track
 
@@ -910,6 +947,7 @@ class KimiSoul:
                         if key in _kimi_ctx:
                             track_kwargs[key] = _kimi_ctx[key]
                 track("api_error", **track_kwargs)
+
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
@@ -929,11 +967,16 @@ class KimiSoul:
                 # break the agent loop
                 raise
 
+            # ── 2g. Outcome Resolution ──────────────────────────────────────────
             if step_outcome is not None:
+                # Step returned a stop reason -- check for steers before finishing.
                 has_steers = await self._consume_pending_steers()
                 if has_steers:
                     continue  # steers injected, force another LLM step
 
+                # ═══════════════════════════════════════════════════════════════
+                # 3. TURN RESOLUTION
+                # ═══════════════════════════════════════════════════════════════
                 final_message = (
                     step_outcome.assistant_message
                     if step_outcome.stop_reason == "no_tool_calls"
@@ -946,19 +989,39 @@ class KimiSoul:
                 )
 
             if back_to_the_future is not None:
+                # Revert context to the checkpoint and inject D-Mail message.
                 await self._context.revert_to(back_to_the_future.checkpoint_id)
+                self._last_tool_calls = []
                 await self._checkpoint()
                 await self._context.append_message(back_to_the_future.messages)
 
-            # Consume any pending steers between steps
+            # Consume any pending steers between steps before next iteration.
             await self._consume_pending_steers()
 
     async def _step(self) -> StepOutcome | None:
-        """Run a single step and return a stop outcome, or None to continue."""
+        """Run a single step and return a stop outcome, or None to continue.
+
+        This is the implementation of ``2e. Step Execution`` in ``_agent_loop``.
+
+        Sub-lifecycle (2e.x):
+            2e.1. Notification delivery  - push pending notifications (root only).
+            2e.2. Dynamic injection      - collect and append provider injections.
+            2e.3. History normalization  - merge adjacent user messages.
+            2e.4. LLM call with retry    - kosong.step + tenacity retry + recovery.
+               2e.4.1. Toolset begin_step- reset per-step dedup state.
+               2e.4.2. kosong.step       - actual LLM call (may be interrupted).
+            2e.5. Usage & status update  - track tokens, emit StatusUpdate.
+            2e.6. Tool execution         - wait for all tool results.
+            2e.7. Context growth         - append assistant + tool messages.
+            2e.8. Outcome resolution     - rejection / D-Mail / stop / continue.
+        """
         # already checked in `run`
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.1. NOTIFICATION DELIVERY (root role only)
+        # ═══════════════════════════════════════════════════════════════════════
         if self.is_root:
 
             async def _append_notification(view: NotificationView) -> None:
@@ -990,7 +1053,9 @@ class KimiSoul:
                 on_notification=_append_notification,
             )
 
-        # Dynamic injection
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.2. DYNAMIC INJECTION
+        # ═══════════════════════════════════════════════════════════════════════
         injections = await self._collect_injections()
         if injections:
             combined_reminders = "\n".join(system_reminder(inj.content).text for inj in injections)
@@ -1001,10 +1066,24 @@ class KimiSoul:
                 )
             )
 
-        # Normalize: merge adjacent user messages for clean API input
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.3. HISTORY NORMALIZATION
+        # ═══════════════════════════════════════════════════════════════════════
         effective_history = normalize_history(self._context.history)
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.4. LLM CALL WITH RETRY
+        # ═══════════════════════════════════════════════════════════════════════
         async def _run_step_once() -> StepResult:
+            """Single LLM invocation (wrapped by retry + connection recovery)."""
+            # ── 2e.4.1. Toolset begin_step ────────────────────────────────────
+            if isinstance(self._agent.toolset, KimiToolset):
+                self._agent.toolset.begin_step(
+                    self._last_tool_calls,
+                    step_no=self._current_step_no,
+                    turn_id=self._current_turn_id,
+                )
+            # ── 2e.4.2. kosong.step ───────────────────────────────────────────
             # run an LLM step (may be interrupted)
             return await kosong.step(
                 chat_provider,
@@ -1048,6 +1127,10 @@ class KimiSoul:
                 _ctx["input_tokens"] = self._context.token_count
             _step_exc._kimi_api_error_context = _ctx  # type: ignore[attr-defined]
             raise
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.5. USAGE & STATUS UPDATE
+        # ═══════════════════════════════════════════════════════════════════════
         llm_elapsed = time.monotonic() - t0
         usage = result.usage
         logger.info(
@@ -1068,19 +1151,32 @@ class KimiSoul:
             status_update.max_context_tokens = snap.max_context_tokens
         wire_send(status_update)
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.6. TOOL EXECUTION
+        # ═══════════════════════════════════════════════════════════════════════
         # wait for all tool results (may be interrupted)
         plan_mode_before_tools = self._plan_mode
         results = await result.tool_results()
         logger.debug("Got tool results: {results}", results=results)
+
+        # Update dedup tracking for the next step
+        if isinstance(self._agent.toolset, KimiToolset):
+            self._last_tool_calls = self._agent.toolset.end_step()
 
         # If a tool (EnterPlanMode/ExitPlanMode) changed plan mode during execution,
         # send a corrected StatusUpdate so the client sees the up-to-date state.
         if self._plan_mode != plan_mode_before_tools:
             wire_send(StatusUpdate(plan_mode=self._plan_mode))
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.7. CONTEXT GROWTH
+        # ═══════════════════════════════════════════════════════════════════════
         # shield the context manipulation from interruption
         await asyncio.shield(self._grow_context(result, results))
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.8. OUTCOME RESOLUTION
+        # ═══════════════════════════════════════════════════════════════════════
         rejected_errors = [
             result.return_value
             for result in results
