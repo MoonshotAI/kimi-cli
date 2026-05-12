@@ -265,6 +265,8 @@ description: Git 提交信息规范，使用 Conventional Commits 格式
 如果只是普通对话，Agent 会根据上下文自动判断是否需要读取 Skill 内容，不需要手动调用。
 :::
 
+在会话运行过程中，如果你新增或修改了 Skill 文件，可以使用 `/reload-skills` 斜杠命令重新扫描 Skill 目录，无需重启会话即可使新技能生效。详见 [斜杠命令参考](../reference/slash-commands.md#reload-skills)。
+
 Skills 让你可以将团队的最佳实践和项目规范固化下来，确保 AI 始终遵循一致的标准。
 
 ## Flow Skills

@@ -265,6 +265,8 @@ You can append additional text after the slash command, which will be added to t
 For regular conversations, the Agent will automatically decide whether to read skill content based on context, so you don't need to invoke it manually.
 :::
 
+During a session, if you add or modify skill files, you can use the `/reload-skills` slash command to rescan skill directories without restarting the session, making new skills available immediately. See [Slash commands reference](../reference/slash-commands.md#reload-skills) for details.
+
 Skills allow you to codify your team's best practices and project standards, ensuring the AI always follows consistent standards.
 
 ## Flow skills

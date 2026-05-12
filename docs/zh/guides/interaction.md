@@ -118,6 +118,8 @@ Thinking 模式需要当前模型支持。部分模型（如 `kimi-k2-thinking-t
 
 你可以使用 `/task` 斜杠命令打开交互式任务浏览器，实时查看所有后台任务的状态和输出（包括正在运行中的任务）。详见 [斜杠命令参考](../reference/slash-commands.md#task)。
 
+底部状态栏会显示当前活跃的后台任务数量，分为 `⚙ bash: N`（后台 Shell 任务）和 `⚙ agent: N`（后台 Agent 子任务）两个独立的标识，各自在数量为 0 时隐藏。当终端宽度不足以容纳两者时，会优先保留 `bash` 标识。
+
 ::: tip 提示
 默认最多同时运行 4 个后台任务，可在配置文件的 `[background]` 节中调整。CLI 退出时默认会终止所有后台任务。详见 [配置文件](../configuration/config-files.md#background)。
 :::

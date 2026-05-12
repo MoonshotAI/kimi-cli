@@ -225,6 +225,12 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 
 详见 [Agent Skills](../customization/skills.md#flow-skills)。
 
+### `/reload-skills`
+
+重新扫描 Skill 目录并发现新技能，无需重启当前会话。
+
+执行后，运行时技能注册表、斜杠命令列表、Shell 提示框自动补全以及 LLM 系统提示词都会立即更新，新添加的 `/skill:*` 和 `/flow:*` 命令即刻可用。命令执行结果会显示当前可用的 Skill 数量及列表，同时系统会将更新后的 Skill 列表注入对话上下文，让模型知晓最新可用的技能。
+
 ## 工作区
 
 ### `/add-dir`

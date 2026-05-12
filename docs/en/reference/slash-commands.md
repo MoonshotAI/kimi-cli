@@ -225,6 +225,12 @@ Flow skills can also be invoked via `/skill:<name>`, which loads the content as 
 
 See [Agent Skills](../customization/skills.md#flow-skills) for details.
 
+### `/reload-skills`
+
+Rescan skill directories and discover new skills without restarting the current session.
+
+After execution, the runtime skill registry, slash command list, shell prompt completers, and LLM system prompt are all updated immediately, so newly added `/skill:*` and `/flow:*` commands become available right away. The command output shows the number and list of currently available skills, and the system injects the updated skill list into the conversation context so the model is aware of the latest capabilities.
+
 ## Workspace
 
 ### `/add-dir`

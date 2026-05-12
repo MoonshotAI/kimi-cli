@@ -1681,6 +1681,22 @@ class CustomPromptSession:
                 buff.completer = self._agent_mode_completer
         self._sync_erase_when_done()
 
+    def refresh_slash_completers(self, agent_commands: Sequence[SlashCommand[Any]]) -> None:
+        """Rebuild the agent-mode slash command completer with the latest commands.
+
+        Shell-mode completer is static (sourced from shell_mode_registry) and
+        does not need refreshing because shell-level commands never change
+        dynamically during a session.
+        """
+        self._agent_mode_completer = merge_completers(
+            [
+                SlashCommandCompleter(agent_commands),
+                LocalFileMentionCompleter(KaosPath.cwd().unsafe_to_local_path()),
+            ],
+            deduplicate=True,
+        )
+        self._apply_mode()
+
     def _sync_erase_when_done(self) -> None:
         app = getattr(self._session, "app", None)
         if app is not None:
