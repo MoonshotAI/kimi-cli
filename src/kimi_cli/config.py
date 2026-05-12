@@ -19,6 +19,7 @@ from tomlkit.exceptions import TOMLKitError
 from kimi_cli.exception import ConfigError
 from kimi_cli.hooks.config import HookDef
 from kimi_cli.llm import ModelCapability, ProviderType
+from kimi_cli.loop.models import LoopConfig
 from kimi_cli.share import get_share_dir
 from kimi_cli.utils.logging import logger
 
@@ -236,6 +237,7 @@ class Config(BaseModel):
     notifications: NotificationConfig = Field(
         default_factory=NotificationConfig, description="Notification configuration"
     )
+    loop: LoopConfig = Field(default_factory=LoopConfig, description="Loop scheduler configuration")
     services: Services = Field(default_factory=Services, description="Services configuration")
     mcp: MCPConfig = Field(default_factory=MCPConfig, description="MCP configuration")
     hooks: list[HookDef] = Field(default_factory=list, description="Hook definitions")  # pyright: ignore[reportUnknownVariableType]

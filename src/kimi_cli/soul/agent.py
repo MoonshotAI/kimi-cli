@@ -196,6 +196,8 @@ class Runtime:
     resumed: bool = False
     hook_engine: Any = None
     """HookEngine instance, set by KimiCLI after soul creation."""
+    loop_scheduler: Any = None
+    """LoopScheduler instance, initialized in __post_init__."""
 
     def __post_init__(self) -> None:
         if self.subagent_store is None:
@@ -207,6 +209,13 @@ class Runtime:
         self.approval_runtime.bind_root_wire_hub(self.root_wire_hub)
         self.approval.set_runtime(self.approval_runtime)
         self.background_tasks.bind_runtime(self)
+        if self.loop_scheduler is None:
+            from kimi_cli.loop.scheduler import LoopScheduler
+
+            self.loop_scheduler = LoopScheduler(
+                session_dir=self.session.dir,
+                config=self.config.loop,
+            )
 
     @staticmethod
     async def create(
@@ -334,6 +343,7 @@ class Runtime:
             approval_runtime=ApprovalRuntime(),
             root_wire_hub=RootWireHub(),
             role="root",
+            loop_scheduler=None,
         )
 
     def copy_for_subagent(
@@ -366,6 +376,7 @@ class Runtime:
             subagent_id=agent_id,
             subagent_type=subagent_type,
             role="subagent",
+            loop_scheduler=self.loop_scheduler,
         )
 
 

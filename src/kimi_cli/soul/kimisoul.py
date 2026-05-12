@@ -215,6 +215,11 @@ class KimiSoul:
         # Bind plan mode state to tools that support it
         self._bind_plan_mode_tools()
 
+        # Bind and start loop scheduler (root only)
+        if self.is_root and self._runtime.loop_scheduler is not None:
+            self._runtime.loop_scheduler.bind_soul(self)
+            self._runtime.loop_scheduler.start()
+
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
 

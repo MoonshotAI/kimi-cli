@@ -415,6 +415,10 @@ class KimiCLI:
         if self._bg_refresh_task is not None and not self._bg_refresh_task.done():
             self._bg_refresh_task.cancel()
 
+        # Stop the loop scheduler
+        if self._runtime.loop_scheduler is not None:
+            self._runtime.loop_scheduler.stop()
+
         bg_config = self._runtime.config.background
         if bg_config.keep_alive_on_exit:
             return
