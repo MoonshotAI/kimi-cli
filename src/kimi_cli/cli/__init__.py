@@ -224,6 +224,17 @@ def kimi(
             help="User prompt to the agent. Default: prompt interactively.",
         ),
     ] = None,
+    prompt_interactive: Annotated[
+        str | None,
+        typer.Option(
+            "--prompt-interactive",
+            "-P",
+            help=(
+                "User prompt to the agent, then keep the interactive session open. "
+                "Default: prompt interactively."
+            ),
+        ),
+    ] = None,
     print_mode: Annotated[
         bool,
         typer.Option(
@@ -447,6 +458,10 @@ def kimi(
             "--session": session_id is not None or _picker_mode,
         },
         {
+            "--prompt": prompt is not None,
+            "--prompt-interactive": prompt_interactive is not None,
+        },
+        {
             "--config": config_string is not None,
             "--config-file": config_file is not None,
         },
@@ -478,6 +493,15 @@ def kimi(
         prompt = prompt.strip()
         if not prompt:
             raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt")
+    if prompt_interactive is not None:
+        prompt_interactive = prompt_interactive.strip()
+        if not prompt_interactive:
+            raise typer.BadParameter("Prompt cannot be empty", param_hint="--prompt-interactive")
+        if ui != "shell":
+            raise typer.BadParameter(
+                "--prompt-interactive is only supported for shell UI",
+                param_hint="--prompt-interactive",
+            )
 
     if input_format is not None and ui != "print":
         raise typer.BadParameter(
@@ -657,7 +681,12 @@ def kimi(
             try:
                 match ui:
                     case "shell":
-                        shell_ok = await instance.run_shell(prompt, prefill_text=prefill_text)
+                        initial_cmd = prompt_interactive if prompt_interactive is not None else None
+                        shell_ok = await instance.run_shell(
+                            prompt,
+                            prefill_text=prefill_text,
+                            initial_command=initial_cmd,
+                        )
                         exit_code = ExitCode.SUCCESS if shell_ok else ExitCode.FAILURE
                     case "print":
                         exit_code = await instance.run_print(

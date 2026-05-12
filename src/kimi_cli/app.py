@@ -684,7 +684,11 @@ class KimiCLI:
                         await external_cancel_task
 
     async def run_shell(
-        self, command: str | None = None, *, prefill_text: str | None = None
+        self,
+        command: str | None = None,
+        *,
+        prefill_text: str | None = None,
+        initial_command: str | None = None,
     ) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
@@ -767,7 +771,7 @@ class KimiCLI:
         )
         async with self._env():
             shell = Shell(self._soul, welcome_info=welcome_info, prefill_text=prefill_text)
-            return await shell.run(command)
+            return await shell.run(command, initial_command=initial_command)
 
     async def run_print(
         self,

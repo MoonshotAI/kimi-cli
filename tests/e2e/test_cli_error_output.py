@@ -157,6 +157,60 @@ Invalid value for --continue: Cannot combine --continue, --session.
     )
 
 
+def test_prompt_and_prompt_interactive_conflict_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(
+        ["--prompt", "hello", "--prompt-interactive", "world"],
+        share_dir=share_dir,
+    )
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --prompt: Cannot combine --prompt, --prompt-interactive.
+"""
+    )
+
+
+def test_prompt_interactive_with_print_mode_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(
+        ["--print", "--prompt-interactive", "hello"],
+        share_dir=share_dir,
+    )
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --prompt-interactive: --prompt-interactive is only supported for shell UI
+"""
+    )
+
+
+def test_prompt_interactive_empty_is_reported(tmp_path: Path) -> None:
+    share_dir = tmp_path / "share"
+    result = _run_kimi(
+        ["--prompt-interactive", ""],
+        share_dir=share_dir,
+    )
+    assert result.returncode == snapshot(2)
+    assert result.stdout == snapshot("")
+    assert _normalize_cli_error_output(result.stderr) == snapshot(
+        """\
+Usage: python -m kimi_cli.cli [OPTIONS] COMMAND [ARGS]...
+Try 'python -m kimi_cli.cli -h' for help.
+Error:
+Invalid value for --prompt-interactive: Prompt cannot be empty
+"""
+    )
+
+
 def test_continue_without_previous_session_is_reported(tmp_path: Path) -> None:
     share_dir = tmp_path / "share"
     work_dir = tmp_path / "work"

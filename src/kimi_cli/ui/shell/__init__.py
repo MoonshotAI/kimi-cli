@@ -378,7 +378,7 @@ class Shell:
             resume_prompt.clear()
             await idle_events.put(_PromptEvent(kind="input", user_input=user_input))
 
-    async def run(self, command: str | None = None) -> bool:
+    async def run(self, command: str | None = None, *, initial_command: str | None = None) -> bool:
         _run_start_time = time.monotonic()
 
         # Initialize theme from config
@@ -535,6 +535,16 @@ class Shell:
             bg_auto_failures = 0
             deferred_bg_trigger = False
             try:
+                if initial_command is not None:
+                    resume_prompt.clear()
+                    background_autotrigger_armed = True
+                    try:
+                        await self.run_soul_command(initial_command)
+                        console.print()
+                        if self._exit_after_run:
+                            return shell_ok
+                    finally:
+                        resume_prompt.set()
                 while True:
                     if deferred_bg_trigger and not self._should_defer_background_auto_trigger(
                         prompt_session
