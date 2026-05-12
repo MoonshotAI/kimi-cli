@@ -606,7 +606,7 @@ def kimi(
                 session = await Session.create(work_dir)
                 logger.info("Created new session: {session_id}", session_id=session.id)
 
-            nonlocal _latest_created_session
+            nonlocal _latest_created_session, prompt_interactive
             _latest_created_session = session
 
             # Add CLI-provided additional directories to session state
@@ -682,6 +682,8 @@ def kimi(
                 match ui:
                     case "shell":
                         initial_cmd = prompt_interactive if prompt_interactive is not None else None
+                        # Consume prompt_interactive immediately so Reload does not replay it
+                        prompt_interactive = None
                         shell_ok = await instance.run_shell(
                             prompt,
                             prefill_text=prefill_text,
