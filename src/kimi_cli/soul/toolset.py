@@ -435,7 +435,15 @@ class KimiToolset:
                     position="right",
                 )
 
-        oauth_servers: dict[str, str] = {}
+        def _mark_oauth_unauthorized(server_name: str) -> None:
+            logger.warning(
+                "Skipping OAuth MCP server '{server_name}': not authorized. "
+                "Run 'kimi mcp auth {server_name}' first.",
+                server_name=server_name,
+            )
+            self._mcp_servers[server_name] = MCPServerInfo(
+                status="unauthorized", client=None, tools=[]
+            )
 
         async def _connect_server(
             server_name: str, server_info: MCPServerInfo
@@ -445,6 +453,7 @@ class KimiToolset:
 
             server_info.status = "connecting"
             try:
+                assert server_info.client is not None
                 async with server_info.client as client:
                     for tool in await client.list_tools():
                         server_info.tools.append(
@@ -468,20 +477,6 @@ class KimiToolset:
 
         async def _connect():
             _toast_mcp("connecting to mcp servers...")
-            unauthorized_servers: dict[str, str] = {}
-            for server_name, server_info in self._mcp_servers.items():
-                server_url = oauth_servers.get(server_name)
-                if not server_url:
-                    continue
-                if not await _check_oauth_tokens(server_url):
-                    logger.warning(
-                        "Skipping OAuth MCP server '{server_name}': not authorized. "
-                        "Run 'kimi mcp auth {server_name}' first.",
-                        server_name=server_name,
-                    )
-                    server_info.status = "unauthorized"
-                    unauthorized_servers[server_name] = server_url
-
             tasks = [
                 asyncio.create_task(_connect_server(server_name, server_info))
                 for server_name, server_info in self._mcp_servers.items()
@@ -499,7 +494,7 @@ class KimiToolset:
             if failed_servers:
                 _toast_mcp("mcp connection failed")
                 raise MCPRuntimeError(f"Failed to connect MCP servers: {failed_servers}")
-            if unauthorized_servers:
+            if any(info.status == "unauthorized" for info in self._mcp_servers.values()):
                 _toast_mcp("mcp authorization needed")
             else:
                 _toast_mcp("mcp servers connected")
@@ -511,10 +506,20 @@ class KimiToolset:
 
             for server_name, server_config in mcp_config.mcpServers.items():
                 if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
-                    oauth_servers[server_name] = server_config.url
-                    server_config = server_config.model_copy(
-                        update={"auth": create_mcp_oauth(server_config.url)}
-                    )
+                    if not await _check_oauth_tokens(server_config.url):
+                        _mark_oauth_unauthorized(server_name)
+                        continue
+                    try:
+                        auth = create_mcp_oauth(server_config.url)
+                    except Exception as e:
+                        logger.debug(
+                            "Failed to create MCP OAuth storage for {server_name}: {error}",
+                            server_name=server_name,
+                            error=e,
+                        )
+                        _mark_oauth_unauthorized(server_name)
+                        continue
+                    server_config = server_config.model_copy(update={"auth": auth})
 
                 client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
                 self._mcp_servers[server_name] = MCPServerInfo(
@@ -549,13 +554,14 @@ class KimiToolset:
             with contextlib.suppress(Exception):
                 await self._mcp_loading_task
         for server_info in self._mcp_servers.values():
-            await server_info.client.close()
+            if server_info.client is not None:
+                await server_info.client.close()
 
 
 @dataclass(slots=True)
 class MCPServerInfo:
     status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
-    client: fastmcp.Client[Any]
+    client: fastmcp.Client[Any] | None
     tools: list[MCPTool[Any]]
 
 

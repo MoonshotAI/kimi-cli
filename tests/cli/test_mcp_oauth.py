@@ -79,3 +79,39 @@ def test_prepare_mcp_server_config_replaces_oauth_literal_without_mutating(tmp_p
     assert server["auth"] == "oauth"
     assert prepared["headers"] == {"x-test": "yes"}
     assert isinstance(prepared["auth"], OAuth)
+
+
+@pytest.mark.asyncio
+async def test_load_mcp_tools_treats_unreadable_oauth_storage_as_unauthorized(
+    tmp_path, monkeypatch, runtime
+):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+    (tmp_path / "mcp-oauth").write_text("not a directory", encoding="utf-8")
+
+    from fastmcp.mcp_config import MCPConfig
+
+    from kimi_cli.soul.toolset import KimiToolset
+
+    toolset = KimiToolset()
+    mcp_config = MCPConfig.model_validate(
+        {
+            "mcpServers": {
+                "linear": {
+                    "url": "https://mcp.example.test/mcp",
+                    "transport": "http",
+                    "auth": "oauth",
+                }
+            }
+        }
+    )
+
+    await toolset.load_mcp_tools([mcp_config], runtime, in_background=False)
+
+    snapshot = toolset.mcp_status_snapshot()
+    assert snapshot is not None
+    assert snapshot.connected == 0
+    assert snapshot.total == 1
+    assert snapshot.tools == 0
+    assert [(server.name, server.status) for server in snapshot.servers] == [
+        ("linear", "unauthorized")
+    ]
