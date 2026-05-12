@@ -34,6 +34,16 @@ async def test_mcp_oauth_storage_persists_tokens_in_share_dir(tmp_path, monkeypa
     assert not await has_mcp_oauth_tokens(server_url)
 
 
+@pytest.mark.asyncio
+async def test_has_mcp_oauth_tokens_treats_unreadable_storage_as_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+    (tmp_path / "mcp-oauth").write_text("not a directory", encoding="utf-8")
+
+    from kimi_cli.mcp_oauth import has_mcp_oauth_tokens
+
+    assert not await has_mcp_oauth_tokens("https://mcp.example.test/mcp")
+
+
 def test_create_mcp_oauth_uses_persistent_storage_without_warning(tmp_path, monkeypatch):
     monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
 

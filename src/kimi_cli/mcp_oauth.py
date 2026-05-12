@@ -41,8 +41,18 @@ def create_mcp_oauth_token_storage(server_url: str) -> TokenStorageAdapter:
 
 
 async def has_mcp_oauth_tokens(server_url: str) -> bool:
-    storage = create_mcp_oauth_token_storage(server_url)
-    return await storage.get_tokens() is not None
+    try:
+        storage = create_mcp_oauth_token_storage(server_url)
+        return await storage.get_tokens() is not None
+    except Exception as exc:
+        from kimi_cli import logger
+
+        logger.debug(
+            "Failed to read MCP OAuth tokens for {server_url}: {error}",
+            server_url=server_url,
+            error=exc,
+        )
+        return False
 
 
 def create_mcp_oauth(server_url: str) -> OAuth:
