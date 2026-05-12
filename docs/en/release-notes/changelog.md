@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.43.0 (2026-05-12)
+
 - Security: Bump pillow to 12.2.0 to address CVE-2026-25990 (out-of-bounds write when loading PSD images); unblocks installs in environments that gate on the older pinned version
 - Shell: Fix missing visual spacing in the shell UI — add blank lines after user input echoes, content blocks, tool call results, notifications, error panels, and steer inputs so consecutive elements no longer collapse together
 - Shell: Restore markdown link highlighting (bright blue underlined text and cyan underlined URLs) and add underline separators to h2-h6 headings; adjust table rendering to use square box borders with visible edges
