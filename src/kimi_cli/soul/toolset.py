@@ -418,18 +418,12 @@ class KimiToolset:
         import fastmcp
         from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
 
+        from kimi_cli.mcp_oauth import create_mcp_oauth, has_mcp_oauth_tokens
         from kimi_cli.ui.shell.prompt import toast
 
         async def _check_oauth_tokens(server_url: str) -> bool:
             """Check if OAuth tokens exist for the server."""
-            try:
-                from fastmcp.client.auth.oauth import FileTokenStorage
-
-                storage = FileTokenStorage(server_url=server_url)
-                tokens = await storage.get_tokens()
-                return tokens is not None
-            except Exception:
-                return False
+            return await has_mcp_oauth_tokens(server_url)
 
         def _toast_mcp(message: str) -> None:
             if in_background:
@@ -518,6 +512,9 @@ class KimiToolset:
             for server_name, server_config in mcp_config.mcpServers.items():
                 if isinstance(server_config, RemoteMCPServer) and server_config.auth == "oauth":
                     oauth_servers[server_name] = server_config.url
+                    server_config = server_config.model_copy(
+                        update={"auth": create_mcp_oauth(server_config.url)}
+                    )
 
                 client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
                 self._mcp_servers[server_name] = MCPServerInfo(
