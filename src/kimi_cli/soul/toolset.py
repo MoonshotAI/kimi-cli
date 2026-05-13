@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import inspect
 import json
+import re
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ from kosong.utils.typing import JsonType
 from kimi_cli import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
+from kimi_cli.share import get_share_dir
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
     AudioURLPart,
@@ -61,6 +63,8 @@ current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=Non
 
 _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default="")
 
+_MCP_LOG_FILENAME_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
+
 
 def set_session_id(sid: str) -> None:
     _current_session_id.set(sid)
@@ -80,6 +84,32 @@ def get_current_tool_call_or_none() -> ToolCall | None:
     Expect to be not None when called from a `__call__` method of a tool.
     """
     return current_tool_call.get()
+
+
+def _mcp_stdio_log_path(server_name: str) -> Path:
+    safe_name = _MCP_LOG_FILENAME_PATTERN.sub("_", server_name).strip("._") or "server"
+    return get_share_dir() / "logs" / "mcp" / f"{safe_name}.log"
+
+
+def _build_mcp_client(server_name: str, server_config: Any) -> fastmcp.Client[Any]:
+    import fastmcp
+    from fastmcp.client.transports import StdioTransport
+    from fastmcp.mcp_config import MCPConfig, StdioMCPServer
+
+    if isinstance(server_config, StdioMCPServer):
+        log_path = _mcp_stdio_log_path(server_name)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        transport = StdioTransport(
+            command=server_config.command,
+            args=server_config.args,
+            env=server_config.env,
+            cwd=server_config.cwd,
+            keep_alive=server_config.keep_alive,
+            log_file=log_path,
+        )
+        return fastmcp.Client(transport)
+
+    return fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
 
 
 type ToolType = CallableTool | CallableTool2[Any]
@@ -538,8 +568,7 @@ class KimiToolset:
             MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
                 connected.
         """
-        import fastmcp
-        from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
+        from fastmcp.mcp_config import RemoteMCPServer
 
         from kimi_cli.mcp_oauth import create_mcp_oauth, has_mcp_oauth_tokens
         from kimi_cli.ui.shell.prompt import toast
@@ -644,7 +673,7 @@ class KimiToolset:
                         continue
                     server_config = server_config.model_copy(update={"auth": auth})
 
-                client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+                client = _build_mcp_client(server_name, server_config)
                 self._mcp_servers[server_name] = MCPServerInfo(
                     status="pending", client=client, tools=[]
                 )
