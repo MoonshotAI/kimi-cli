@@ -35,6 +35,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, has_focus, is_done
 from prompt_toolkit.formatted_text import AnyFormattedText, FormattedText, to_formatted_text
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout.containers import (
@@ -71,6 +72,20 @@ from kimi_cli.utils.clipboard import (
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.wire.types import ContentPart
+
+# Register the xterm modifyOtherKeys ANSI sequences for modified Enter keys.
+# This is safer than the kitty keyboard protocol because it only affects
+# a narrow set of modified keys and does not change how other shortcuts
+# (Ctrl-X, Ctrl-O, Ctrl-V, etc.) are encoded.
+_SHIFT_ENTER_SEQ = "\x1b[27;2;13~"  # Shift+Enter
+_ALT_ENTER_SEQ = "\x1b[27;3;13~"  # Alt+Enter
+# Map modified Enter sequences to private-use characters so we can bind
+# them independently of the plain Enter key. Using Keys.ControlM would
+# force them through the same handler that is gated by ~has_completions,
+# breaking newline insertion when the completion menu is open.
+for _seq, _key in ((_SHIFT_ENTER_SEQ, "\ue001"), (_ALT_ENTER_SEQ, "\ue000")):
+    if ANSI_SEQUENCES.get(_seq) != _key:
+        ANSI_SEQUENCES[_seq] = _key  # type: ignore[assignment]
 
 AttachmentCache = prompt_placeholders.AttachmentCache
 CachedAttachment = prompt_placeholders.CachedAttachment
@@ -1157,7 +1172,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-x: toggle mode",
         "shift-tab: plan mode",
         "ctrl-o: editor",
-        "ctrl-j: newline",
+        "shift-enter / ctrl-j: newline",
         "/feedback: send feedback",
         "/theme: switch dark/light",
     ]
@@ -1312,10 +1327,24 @@ class CustomPromptSession:
                 event.app.create_background_task(_toggle())
             event.app.invalidate()
 
+        @_kb.add("enter", eager=True, filter=~has_completions)
+        def _(event: KeyPressEvent) -> None:
+            """Submit when plain Enter is pressed and no completion menu is open."""
+            event.current_buffer.validate_and_handle()
+
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
+        @_kb.add("\ue000", eager=True)
+        @_kb.add("\ue001", eager=True)
         def _(event: KeyPressEvent) -> None:
-            """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
+            """Insert a newline when Alt-Enter, Shift+Enter, or Ctrl-J is pressed.
+
+            The \ue000 binding catches Alt+Enter from terminals that emit the
+            xterm modifyOtherKeys sequence \x1b[27;3;13~ instead of escape+enter.
+            The \ue001 binding catches Shift+Enter from terminals that emit
+            \x1b[27;2;13~. Both are unfiltered so they work even when the
+            completion menu is open.
+            """
             from kimi_cli.telemetry import track
 
             track("shortcut_newline")
@@ -1514,6 +1543,14 @@ class CustomPromptSession:
             bottom_toolbar=self._render_bottom_toolbar,
             style=get_prompt_style(),
         )
+
+        # Enable xterm modifyOtherKeys so terminals that support it can
+        # distinguish Shift+Enter from plain Enter.
+        try:
+            self._session.app.output.write_raw("\x1b[>4;1m")
+            self._session.app.output.flush()
+        except Exception:
+            pass
         self._session.default_buffer.read_only = Condition(
             lambda: (
                 (delegate := self._active_prompt_delegate()) is not None
@@ -1879,6 +1916,15 @@ class CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
             self._status_refresh_task.cancel()
         self._status_refresh_task = None
+
+        # Disable xterm modifyOtherKeys on exit.
+        try:
+            session = getattr(self, "_session", None)
+            if session is not None:
+                session.app.output.write_raw("\x1b[>4;0m")
+                session.app.output.flush()
+        except Exception:
+            pass
 
     def _get_placeholder_manager(self) -> PromptPlaceholderManager:
         manager = getattr(self, "_placeholder_manager", None)
