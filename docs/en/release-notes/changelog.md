@@ -5,9 +5,19 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Core: Fix `UserPromptSubmit` hook receiving an empty string when user input is a list of `ContentPart` objects — the hook now correctly extracts concatenated text content instead of treating non-string input as empty
+## 1.44.0 (2026-05-13)
+
+- Shell: Add slash command alias resolution — aliases such as `/h`, `?`, and `status` now resolve to their canonical commands (`/help`, `/usage`); the completer and help output display alias matches as `/name (alias)` for clarity
+- Shell: Fix `/usage` alias registration — the alias was incorrectly stored as `"/status"` instead of `"status"`, causing alias lookup to fail
+
+## 1.43.0 (2026-05-12)
+
+- Security: Bump pillow to 12.2.0 to address CVE-2026-25990 (out-of-bounds write when loading PSD images); unblocks installs in environments that gate on the older pinned version
 - Shell: Fix missing visual spacing in the shell UI — add blank lines after user input echoes, content blocks, tool call results, notifications, error panels, and steer inputs so consecutive elements no longer collapse together
 - Shell: Restore markdown link highlighting (bright blue underlined text and cyan underlined URLs) and add underline separators to h2-h6 headings; adjust table rendering to use square box borders with visible edges
 - Core: Include completion timestamp and elapsed duration in background task terminal notifications, and add `finished_at` and `duration_s` to the notification payload for easier tracking
+- MCP: Stop FastMCP OAuth startup from printing Authlib deprecation warnings by upgrading the MCP client stack to FastMCP 3.2.4
+- MCP: Store OAuth MCP tokens in `~/.kimi/mcp-oauth/` using FastMCP 3's persistent storage API; users with existing OAuth MCP authorizations may need to run `kimi mcp auth <name>` once after upgrading
 
 ## 1.42.0 (2026-05-11)
 

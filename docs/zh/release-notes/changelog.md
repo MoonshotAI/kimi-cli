@@ -5,9 +5,19 @@
 ## 未发布
 
 - Core：修复 `UserPromptSubmit` hook 在用户输入为 `ContentPart` 列表时收到空字符串的问题——hook 现在会正确提取并拼接文本内容，而非将非字符串输入视为空值
+## 1.44.0 (2026-05-13)
+
+- Shell：新增斜杠命令别名解析——别名（如 `/h`、`?`、`status`）现在能正确解析到对应的正式命令（`/help`、`/usage`）；补全器和帮助输出会将别名匹配项显示为 `/name (alias)`，方便识别
+- Shell：修复 `/usage` 的别名注册——别名原先被错误地登记为 `"/status"` 而非 `"status"`，导致别名查找失败
+
+## 1.43.0 (2026-05-12)
+
+- Security：将 pillow 升级到 12.2.0 以修复 CVE-2026-25990（加载 PSD 图像时存在越界写入）；解除在依赖审查严格的环境下因旧版本被阻断而无法安装的限制
 - Shell：修复终端界面中多处视觉间距丢失的问题——在用户输入回显、内容块、工具调用结果、通知、错误面板和 steer 输入等场景后补充空行，避免相邻元素挤在一起
 - Shell：恢复 Markdown 链接高亮样式（链接文本为亮蓝色下划线，URL 为青色下划线），并为 h2-h6 标题添加下划线分隔符；调整表格渲染为带可见边框的方形样式
 - Core：后台任务完成时的系统通知现在包含完成时间戳和运行时长，通知 payload 中新增 `finished_at` 和 `duration_s` 字段，方便追踪
+- MCP：将 MCP 客户端栈升级到 FastMCP 3.2.4，避免 FastMCP OAuth 启动路径打印 Authlib 弃用警告
+- MCP：使用 FastMCP 3 的持久化存储 API，将 OAuth MCP token 存储在 `~/.kimi/mcp-oauth/`；已有 OAuth MCP 授权的用户升级后可能需要重新运行一次 `kimi mcp auth <name>`
 
 ## 1.42.0 (2026-05-11)
 
