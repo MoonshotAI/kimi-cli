@@ -34,7 +34,7 @@ class UsageRow:
     reset_hint: str | None = None
 
 
-@registry.command(aliases=["/status"])
+@registry.command(aliases=["status"])
 async def usage(app: Shell, args: str):
     """Display API usage and quota information"""
     assert isinstance(app.soul, KimiSoul)

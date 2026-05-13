@@ -200,16 +200,38 @@ class Shell:
         self._current_prompt_approval_request: ApprovalRequest | None = None
         self._approval_modal: ApprovalPromptDelegate | None = None
         self._exit_after_run = False
+        soul_slash_commands = list(soul.available_slash_commands)
+        shell_slash_commands = shell_slash_registry.list_commands()
         self._available_slash_commands: dict[str, SlashCommand[Any]] = {
-            **{cmd.name: cmd for cmd in soul.available_slash_commands},
-            **{cmd.name: cmd for cmd in shell_slash_registry.list_commands()},
+            **{cmd.name: cmd for cmd in soul_slash_commands},
+            **{cmd.name: cmd for cmd in shell_slash_commands},
         }
-        """Shell-level slash commands + soul-level slash commands. Name to command mapping."""
+        """Shell-level slash commands + soul-level slash commands. Primary name mapping."""
+        self._available_slash_command_index = self._index_slash_commands(
+            [*soul_slash_commands, *shell_slash_commands]
+        )
+        """Shell-level slash commands + soul-level slash commands.
+        Primary name and alias mapping.
+        """
 
     @property
     def available_slash_commands(self) -> dict[str, SlashCommand[Any]]:
         """Get all available slash commands, including shell-level and soul-level commands."""
         return self._available_slash_commands
+
+    @staticmethod
+    def _index_slash_commands(commands: list[SlashCommand[Any]]) -> dict[str, SlashCommand[Any]]:
+        indexed: dict[str, SlashCommand[Any]] = {}
+        for command in commands:
+            indexed[command.name] = command
+            for alias in command.aliases:
+                indexed[alias] = command
+        return indexed
+
+    def _find_available_slash_command(self, name: str) -> SlashCommand[Any] | None:
+        return self._available_slash_command_index.get(name) or self._available_slash_commands.get(
+            name
+        )
 
     def _print_cwd_lost_crash(self) -> None:
         """Print a crash report when the working directory is no longer accessible."""
@@ -631,14 +653,16 @@ class Shell:
                         continue
 
                     if slash_cmd_call := self._agent_slash_command_call(user_input):
+                        available_command = self._find_available_slash_command(slash_cmd_call.name)
                         is_soul_slash = (
-                            slash_cmd_call.name in self._available_slash_commands
+                            available_command is not None
                             and shell_slash_registry.find_command(slash_cmd_call.name) is None
                         )
                         if is_soul_slash:
                             from kimi_cli.telemetry import track
 
-                            track("input_command", command=slash_cmd_call.name)
+                            assert available_command is not None
+                            track("input_command", command=available_command.name)
                             background_autotrigger_armed = True
                             resume_prompt.set()
                             await self.run_soul_command(slash_cmd_call.raw_input)
@@ -752,7 +776,8 @@ class Shell:
         from kimi_cli.cli import Reload, SwitchToVis, SwitchToWeb
         from kimi_cli.telemetry import track
 
-        if command_call.name not in self._available_slash_commands:
+        available_command = self._find_available_slash_command(command_call.name)
+        if available_command is None:
             logger.info("Unknown slash command /{command}", command=command_call.name)
             track("input_command_invalid")
             console.print(
@@ -761,7 +786,7 @@ class Shell:
             )
             return
 
-        track("input_command", command=command_call.name)
+        track("input_command", command=available_command.name)
 
         command = shell_slash_registry.find_command(command_call.name)
         if command is None:

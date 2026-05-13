@@ -46,7 +46,29 @@ The Rust implementation (`kagent`) lives in a separate repository and is **not**
 
    Wait for explicit user approval before proceeding. If the user flags anything, fix it and re-confirm — do not push.
 
-10. **Open the PR.** Commit all changes, push, and open a PR with `gh` describing the version bumps.
+10. **Open the PR.** Commit all changes, push, and open a PR with `gh`. The PR description must follow this structure (see https://github.com/MoonshotAI/kimi-cli/pull/2225 for reference):
+
+    ```markdown
+    ## Summary
+    - Bump <package> to <version>
+    - Move the current release notes under <version>
+    - (If applicable) Move breaking-change entries under <version>
+    - (If applicable) Any additional noteworthy changes (dependency pin updates, etc.)
+
+    ## Validation
+    - uv run python scripts/check_version_tag.py --pyproject <pyproject> --expected-version <version>
+    - (For root releases) uv run python scripts/check_version_tag.py --pyproject packages/kimi-code/pyproject.toml --expected-version <version>
+    - uv run python scripts/check_kimi_dependency_versions.py --root-pyproject pyproject.toml --kosong-pyproject packages/kosong/pyproject.toml --pykaos-pyproject packages/kaos/pyproject.toml
+    - make check
+
+    ## Post-merge
+    After this PR lands, create and push the release tag:
+
+    ```sh
+    git tag <tag>
+    git push origin <tag>
+    ```
+    ```
 
 11. **Hand off the tag step.** After merge, switch to `main`, pull latest, and tell the user the exact `git tag` command for the final release tag (pick the right tag pattern from the table above — e.g. `git tag 1.43.0` for a root release, `git tag kosong-0.54.0` for a kosong release). The user will run the tag and push tags themselves.
 

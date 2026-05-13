@@ -10,7 +10,7 @@ import pytest
 import kimi_cli.ui.shell as shell_module
 from kimi_cli.soul import Soul
 from kimi_cli.ui.shell.prompt import PromptMode, UserInput
-from kimi_cli.utils.slashcmd import SlashCommand
+from kimi_cli.utils.slashcmd import SlashCommand, SlashCommandCall
 from kimi_cli.wire.types import TextPart
 
 
@@ -70,6 +70,33 @@ def _make_fake_soul():
 
 def _noop(app: object, args: str) -> None:
     pass
+
+
+@pytest.mark.asyncio
+async def test_shell_slash_alias_tracks_canonical_command(monkeypatch) -> None:
+    tracked: list[tuple[str, dict[str, object]]] = []
+    fake_command = SlashCommand(
+        name="help",
+        description="help command",
+        func=_noop,
+        aliases=["h"],
+    )
+
+    monkeypatch.setattr(
+        "kimi_cli.telemetry.track",
+        lambda event, **properties: tracked.append((event, properties)),
+    )
+    monkeypatch.setattr(
+        shell_module.shell_slash_registry,
+        "find_command",
+        lambda name: fake_command if name == "h" else None,
+    )
+
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+
+    await shell._run_slash_command(SlashCommandCall(name="h", args="", raw_input="/h"))
+
+    assert ("input_command", {"command": "help"}) in tracked
 
 
 @pytest.fixture

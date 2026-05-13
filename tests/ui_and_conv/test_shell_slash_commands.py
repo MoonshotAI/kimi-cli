@@ -13,7 +13,11 @@ from kosong.message import Message
 
 from kimi_cli.cli import Reload
 from kimi_cli.session import Session
-from kimi_cli.ui.shell.slash import ShellSlashCmdFunc, shell_mode_registry
+from kimi_cli.ui.shell.slash import (
+    ShellSlashCmdFunc,
+    _expanded_command_items,
+    shell_mode_registry,
+)
 from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 from kimi_cli.utils.slashcmd import SlashCommand
 from kimi_cli.wire.types import TextPart
@@ -94,6 +98,44 @@ class TestNewCommandRegistration:
         from kimi_cli.soul.slash import registry as soul_slash_registry
 
         assert soul_slash_registry.find_command("new") is None
+
+
+class TestAliasRegistration:
+    """Verify shell aliases resolve to their canonical commands."""
+
+    def test_agent_mode_aliases_resolve_to_canonical_commands(self) -> None:
+        help_cmd = shell_slash_registry.find_command("h")
+        quit_cmd = shell_slash_registry.find_command("quit")
+        status_cmd = shell_slash_registry.find_command("status")
+
+        assert help_cmd is not None
+        assert quit_cmd is not None
+        assert status_cmd is not None
+        assert help_cmd.name == "help"
+        assert quit_cmd.name == "exit"
+        assert status_cmd.name == "usage"
+
+    def test_help_items_expand_aliases_as_separate_rows(self) -> None:
+        command = SlashCommand(
+            name="clear",
+            description="Clear the context",
+            func=lambda _shell, _args: None,
+            aliases=["reset", "reset"],
+        )
+
+        assert _expanded_command_items([command]) == [
+            ("/clear", "Clear the context"),
+            ("/clear (reset)", "Clear the context"),
+        ]
+
+    def test_shell_mode_aliases_resolve_to_canonical_commands(self) -> None:
+        help_cmd = shell_mode_registry.find_command("h")
+        quit_cmd = shell_mode_registry.find_command("quit")
+
+        assert help_cmd is not None
+        assert quit_cmd is not None
+        assert help_cmd.name == "help"
+        assert quit_cmd.name == "exit"
 
 
 # ---------------------------------------------------------------------------
