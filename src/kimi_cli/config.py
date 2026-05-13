@@ -262,6 +262,16 @@ class Config(BaseModel):
         default=True,
         description="Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.",
     )
+    kill_ring_system_clipboard: bool = Field(
+        default=True,
+        description=(
+            "When true (default), emacs-style kill commands (Ctrl-W, Ctrl-K, etc.) "
+            "write deleted text to the system clipboard. When false, deleted text "
+            "is discarded and does not pollute the system clipboard. "
+            "Intentional cut/copy/paste (Ctrl-W with selection, Alt-W, Ctrl-Y, Ctrl-V) "
+            "continue to use the system clipboard regardless of this setting."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

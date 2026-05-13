@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Config：新增 `kill_ring_system_clipboard` 配置项——设为 `false` 时，Emacs 风格的删除命令（`Ctrl-W`、`Ctrl-K`、`Ctrl-U` 等）将使用内存 kill ring，不再覆盖系统剪贴板
+
 ## 1.43.0 (2026-05-12)
 
 - Security：将 pillow 升级到 12.2.0 以修复 CVE-2026-25990（加载 PSD 图像时存在越界写入）；解除在依赖审查严格的环境下因旧版本被阻断而无法安装的限制

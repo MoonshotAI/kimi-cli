@@ -32,7 +32,7 @@ from prompt_toolkit.completion import (
 )
 from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
-from prompt_toolkit.filters import Condition, has_completions, has_focus, is_done
+from prompt_toolkit.filters import Condition, has_completions, has_focus, has_selection, is_done
 from prompt_toolkit.formatted_text import AnyFormattedText, FormattedText, to_formatted_text
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
@@ -1185,6 +1185,7 @@ class CustomPromptSession:
         shell_mode_slash_commands: Sequence[SlashCommand[Any]],
         editor_command_provider: Callable[[], str] = lambda: "",
         plan_mode_toggle_callback: Callable[[], Awaitable[bool]] | None = None,
+        kill_ring_system_clipboard: bool = True,
     ) -> None:
         history_dir = get_share_dir() / "user-history"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -1215,6 +1216,7 @@ class CustomPromptSession:
         self._prompt_buffer_container: ConditionalContainer | None = None
         self._last_ui_state: PromptUIState = PromptUIState.NORMAL_INPUT
         self._suspended_buffer_document: Document | None = None
+        self._kill_ring_system_clipboard = kill_ring_system_clipboard
         clipboard_available = is_clipboard_available()
         media_clipboard_available = is_media_clipboard_available()
         self._tips = _build_toolbar_tips(clipboard_available or media_clipboard_available)
@@ -1495,6 +1497,71 @@ class CustomPromptSession:
                         return
                     self._insert_pasted_text(event.current_buffer, clipboard_data.text)
                     event.app.invalidate()
+
+        # Override built-in kill bindings so they don't pollute the system
+        # clipboard when the user has disabled kill-ring-to-system-clipboard.
+        if not self._kill_ring_system_clipboard:
+
+            @_kb.add("c-w", eager=True, filter=~has_selection)
+            def _(event: KeyPressEvent) -> None:
+                """Unix-word-rubout without system clipboard."""
+                buffer = event.current_buffer
+                pos = buffer.document.find_start_of_previous_word(count=event.arg, WORD=True)
+                if pos is None:
+                    pos = -buffer.cursor_position
+                if pos:
+                    buffer.delete_before_cursor(count=-pos)
+                else:
+                    event.app.output.bell()
+
+            @_kb.add("c-k", eager=True)
+            def _(event: KeyPressEvent) -> None:
+                """Kill-line without system clipboard."""
+                buff = event.current_buffer
+                if event.arg < 0:
+                    buff.delete_before_cursor(count=-buff.document.get_start_of_line_position())
+                else:
+                    if buff.document.current_char == "\n":
+                        buff.delete(1)
+                    else:
+                        buff.delete(count=buff.document.get_end_of_line_position())
+
+            @_kb.add("c-u", eager=True)
+            def _(event: KeyPressEvent) -> None:
+                """Unix-line-discard without system clipboard."""
+                buff = event.current_buffer
+                if buff.document.cursor_position_col == 0 and buff.document.cursor_position > 0:
+                    buff.delete_before_cursor(count=1)
+                else:
+                    buff.delete_before_cursor(count=-buff.document.get_start_of_line_position())
+
+            @_kb.add("c-delete", eager=True)
+            def _(event: KeyPressEvent) -> None:
+                """Kill-word (forward) without system clipboard."""
+                buff = event.current_buffer
+                pos = buff.document.find_next_word_ending(count=event.arg)
+                if pos:
+                    buff.delete(count=pos)
+
+            @_kb.add("escape", "d", eager=True)
+            def _(event: KeyPressEvent) -> None:
+                """Meta-D: kill-word (forward) without system clipboard."""
+                buff = event.current_buffer
+                pos = buff.document.find_next_word_ending(count=event.arg)
+                if pos:
+                    buff.delete(count=pos)
+
+            @_kb.add("escape", "backspace", eager=True)
+            def _(event: KeyPressEvent) -> None:
+                """Meta-Backspace: backward-kill-word without system clipboard."""
+                buffer = event.current_buffer
+                pos = buffer.document.find_start_of_previous_word(count=event.arg)
+                if pos is None:
+                    pos = -buffer.cursor_position
+                if pos:
+                    buffer.delete_before_cursor(count=-pos)
+                else:
+                    event.app.output.bell()
 
         # Only use PyperclipClipboard when pyperclip actually works.
         # PromptSession built-in keybindings (ctrl-k, ctrl-w, ctrl-y)

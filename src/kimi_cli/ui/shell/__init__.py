@@ -469,6 +469,11 @@ class Shell:
                 self.soul.runtime.config.default_editor if isinstance(self.soul, KimiSoul) else ""
             ),
             plan_mode_toggle_callback=_plan_mode_toggle,
+            kill_ring_system_clipboard=(
+                self.soul.runtime.config.kill_ring_system_clipboard
+                if isinstance(self.soul, KimiSoul)
+                else True
+            ),
         ) as prompt_session:
             self._prompt_session = prompt_session
             if self._prefill_text:

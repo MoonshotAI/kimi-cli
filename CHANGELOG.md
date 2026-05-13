@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Config: Add `kill_ring_system_clipboard` option — set to `false` to keep emacs-style kill commands (`Ctrl-W`, `Ctrl-K`, `Ctrl-U`, etc.) in an in-memory kill ring instead of overwriting the system clipboard
+
 ## 1.43.0 (2026-05-12)
 
 - Security: Bump pillow to 12.2.0 to address CVE-2026-25990 (out-of-bounds write when loading PSD images); unblocks installs in environments that gate on the older pinned version
