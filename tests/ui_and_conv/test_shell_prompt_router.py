@@ -118,8 +118,11 @@ async def test_route_prompt_events_converts_running_keyboard_interrupt_to_cancel
 
 @pytest.mark.asyncio
 async def test_route_prompt_events_marks_eof_during_run_and_stops_router(
-    _patched_prompt_router,
+    _patched_prompt_router, monkeypatch
 ) -> None:
+    """EOF in a TTY during an active run cancels the run and sets exit flag."""
+    monkeypatch.setattr("sys.stdin", type("obj", (object,), {"isatty": lambda self: True})())
+
     shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
     prompt_session = _FakePromptSession([(False, EOFError())])
     idle_events: asyncio.Queue[shell_module._PromptEvent] = asyncio.Queue()
@@ -132,6 +135,29 @@ async def test_route_prompt_events_marks_eof_during_run_and_stops_router(
     await shell._route_prompt_events(cast(Any, prompt_session), idle_events, resume_prompt)
 
     assert cancelled == [True]
+    assert shell._exit_after_run is True
+    assert idle_events.empty()
+
+
+@pytest.mark.asyncio
+async def test_route_prompt_events_eof_in_non_tty_does_not_cancel_run(
+    _patched_prompt_router, monkeypatch
+) -> None:
+    """EOF in a non-TTY during an active run sets exit flag but does not cancel."""
+    monkeypatch.setattr("sys.stdin", type("obj", (object,), {"isatty": lambda self: False})())
+
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    prompt_session = _FakePromptSession([(False, EOFError())])
+    idle_events: asyncio.Queue[shell_module._PromptEvent] = asyncio.Queue()
+    resume_prompt = asyncio.Event()
+    resume_prompt.set()
+
+    cancelled: list[bool] = []
+    shell._bind_running_input(lambda _user_input: None, lambda: cancelled.append(True))
+
+    await shell._route_prompt_events(cast(Any, prompt_session), idle_events, resume_prompt)
+
+    assert cancelled == []
     assert shell._exit_after_run is True
     assert idle_events.empty()
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import shlex
+import sys
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
@@ -322,6 +323,7 @@ class Shell:
         prompt_session: CustomPromptSession,
         idle_events: asyncio.Queue[_PromptEvent],
         resume_prompt: asyncio.Event,
+        on_prompt_waiting: Callable[[], None] | None = None,
     ) -> None:
         while True:
             # Keep exactly one active prompt read. Idle submissions pause the
@@ -331,6 +333,9 @@ class Shell:
             ensure_tty_sane()
             try:
                 ensure_new_line()
+                if on_prompt_waiting is not None:
+                    on_prompt_waiting()
+                    on_prompt_waiting = None
                 user_input = await prompt_session.prompt_next()
             except KeyboardInterrupt:
                 logger.debug("Prompt router got KeyboardInterrupt")
@@ -351,7 +356,10 @@ class Shell:
                     and prompt_session.running_prompt_accepts_submission()
                 ):
                     self._exit_after_run = True
-                    if self._running_interrupt_handler is not None:
+                    # In a real TTY, Ctrl+D (EOF) during a run means "cancel and
+                    # exit". In non-TTY mode (piped/redirected stdin), EOF simply
+                    # means there is no more input; let the current run finish.
+                    if sys.stdin.isatty() and self._running_interrupt_handler is not None:
                         self._running_interrupt_handler()
                     return
                 resume_prompt.clear()
@@ -512,6 +520,7 @@ class Shell:
                     self._start_background_task(_invalidate_after_mcp_loading())
             self._exit_after_run = False
             idle_events: asyncio.Queue[_PromptEvent] = asyncio.Queue()
+            prompt_waiting = asyncio.Event()
             # resume_prompt controls whether the prompt router reads input.
             # Set BEFORE an await = prompt stays live during the operation
             # (agent runs that accept steer input); set AFTER = prompt is
@@ -519,9 +528,21 @@ class Shell:
             resume_prompt = asyncio.Event()
             resume_prompt.set()
             prompt_task = asyncio.create_task(
-                self._route_prompt_events(prompt_session, idle_events, resume_prompt)
+                self._route_prompt_events(
+                    prompt_session,
+                    idle_events,
+                    resume_prompt,
+                    on_prompt_waiting=prompt_waiting.set,
+                )
             )
             background_autotrigger_armed = False
+
+            # Let the prompt router enter prompt_async() before consuming
+            # initial_command so running-prompt rendering can show spinners
+            # exactly like a normal Enter-submitted turn.
+            _EXIT_COMMANDS = {"exit", "quit", "/exit", "/quit"}
+            if initial_command is not None and initial_command.strip() not in _EXIT_COMMANDS:
+                await prompt_waiting.wait()
 
             def _can_auto_trigger_pending() -> bool:
                 return background_autotrigger_armed
@@ -539,6 +560,8 @@ class Shell:
                     resume_prompt.clear()
                     background_autotrigger_armed = True
                     try:
+                        console.print(render_user_echo_text(initial_command))
+                        console.print()
                         await self.run_soul_command(initial_command)
                         console.print()
                         if self._exit_after_run:

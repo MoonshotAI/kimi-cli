@@ -109,6 +109,20 @@ async def test_initial_command_executes_then_enters_interactive_loop(
 
 
 @pytest.mark.asyncio
+async def test_initial_command_is_rendered_in_transcript(monkeypatch, _patched_shell_run) -> None:
+    """Initial prompt-interactive command is echoed to the shell transcript."""
+    _FakePromptSession.responses = deque([EOFError()])
+
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    shell.run_soul_command = AsyncMock(return_value=True)
+
+    result = await shell.run(initial_command="hello")
+
+    assert result is True
+    assert "✨ hello" in _patched_shell_run
+
+
+@pytest.mark.asyncio
 async def test_initial_command_failure_still_enters_interactive_loop(
     monkeypatch, _patched_shell_run
 ) -> None:
