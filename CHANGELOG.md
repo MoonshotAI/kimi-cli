@@ -11,6 +11,11 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.44.0 (2026-05-13)
+
+- Shell: Add slash command alias resolution — aliases such as `/h`, `?`, and `status` now resolve to their canonical commands (`/help`, `/usage`); the completer and help output display alias matches as `/name (alias)` for clarity
+- Shell: Fix `/usage` alias registration — the alias was incorrectly stored as `"/status"` instead of `"status"`, causing alias lookup to fail
+
 ## 1.43.0 (2026-05-12)
 
 - Security: Bump pillow to 12.2.0 to address CVE-2026-25990 (out-of-bounds write when loading PSD images); unblocks installs in environments that gate on the older pinned version
