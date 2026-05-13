@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Fix `UserPromptSubmit` hook receiving an empty string when user input is a list of `ContentPart` objects — the hook now correctly extracts concatenated text content instead of treating non-string input as empty
 ## 1.44.0 (2026-05-13)
 
 - Shell: Add slash command alias resolution — aliases such as `/h`, `?`, and `status` now resolve to their canonical commands (`/help`, `/usage`); the completer and help output display alias matches as `/name (alias)` for clarity
