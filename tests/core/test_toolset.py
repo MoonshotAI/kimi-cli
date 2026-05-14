@@ -230,14 +230,32 @@ async def test_same_step_dedup():
     assert ts.end_step() == [("ToolA", args)]
 
 
-async def test_cross_step_duplicate_appends_reminder():
-    """A tool call identical to one in the previous step should execute and append reminder in output."""
+async def test_cross_step_duplicate_appends_reminder_on_seventh_occurrence():
+    """A repeated tool call should execute normally six times and append reminder on the seventh."""
     ts = _make_toolset()
     args = json.dumps({"value": "x"})
-    ts.begin_step([("ToolA", args)])
 
+    last_calls: list[tuple[str, str]] = []
+    for occurrence in range(1, 7):
+        ts.begin_step(last_calls)
+        tool_call = ToolCall(
+            id=f"tc-repeat-{occurrence}",
+            function=ToolCall.FunctionBody(
+                name="ToolA",
+                arguments=args,
+            ),
+        )
+        result = ts.handle(tool_call)
+        assert isinstance(result, asyncio.Task)
+        tr = await result
+        output = tr.return_value.output
+        assert output == "a"
+        assert ts.dedup_triggered is False
+        last_calls = ts.end_step()
+
+    ts.begin_step(last_calls)
     tool_call = ToolCall(
-        id="tc-dedup-reminder",
+        id="tc-repeat-7",
         function=ToolCall.FunctionBody(
             name="ToolA",
             arguments=args,
@@ -253,6 +271,111 @@ async def test_cross_step_duplicate_appends_reminder():
     assert "You are repeating the exact same tool call" in output
     assert ts.dedup_triggered is True
     assert ts.end_step() == [("ToolA", args)]
+
+
+async def test_cross_step_repeat_counter_resets_after_other_tool_call():
+    """Only continuous repeats count; an intervening tool call resets the repeat counter."""
+    ts = _make_toolset()
+    repeated_args = json.dumps({"value": "x"})
+    other_args = json.dumps({"value": "y"})
+
+    last_calls: list[tuple[str, str]] = []
+    for occurrence in range(1, 7):
+        ts.begin_step(last_calls)
+        tool_call = ToolCall(
+            id=f"tc-repeat-before-reset-{occurrence}",
+            function=ToolCall.FunctionBody(
+                name="ToolA",
+                arguments=repeated_args,
+            ),
+        )
+        result = ts.handle(tool_call)
+        assert isinstance(result, asyncio.Task)
+        tr = await result
+        assert tr.return_value.output == "a"
+        assert ts.dedup_triggered is False
+        last_calls = ts.end_step()
+
+    ts.begin_step(last_calls)
+    other_call = ToolCall(
+        id="tc-resetting-call",
+        function=ToolCall.FunctionBody(
+            name="ToolB",
+            arguments=other_args,
+        ),
+    )
+    result = ts.handle(other_call)
+    assert isinstance(result, asyncio.Task)
+    tr = await result
+    assert tr.return_value.output == "b"
+    assert ts.dedup_triggered is False
+    last_calls = ts.end_step()
+
+    ts.begin_step(last_calls)
+    tool_call = ToolCall(
+        id="tc-repeat-after-reset",
+        function=ToolCall.FunctionBody(
+            name="ToolA",
+            arguments=repeated_args,
+        ),
+    )
+    result = ts.handle(tool_call)
+    assert isinstance(result, asyncio.Task)
+    tr = await result
+    assert tr.return_value.output == "a"
+    assert ts.dedup_triggered is False
+    assert ts.end_step() == [("ToolA", repeated_args)]
+
+
+async def test_cross_step_repeat_counter_resets_with_intervening_call_in_same_step():
+    """A different call earlier in the current step should reset the projected repeat count."""
+    ts = _make_toolset()
+    repeated_args = json.dumps({"value": "x"})
+    other_args = json.dumps({"value": "y"})
+
+    last_calls: list[tuple[str, str]] = []
+    for occurrence in range(1, 7):
+        ts.begin_step(last_calls)
+        tool_call = ToolCall(
+            id=f"tc-repeat-before-same-step-reset-{occurrence}",
+            function=ToolCall.FunctionBody(
+                name="ToolA",
+                arguments=repeated_args,
+            ),
+        )
+        result = ts.handle(tool_call)
+        assert isinstance(result, asyncio.Task)
+        tr = await result
+        assert tr.return_value.output == "a"
+        last_calls = ts.end_step()
+
+    ts.begin_step(last_calls)
+    other_call = ToolCall(
+        id="tc-same-step-resetting-call",
+        function=ToolCall.FunctionBody(
+            name="ToolB",
+            arguments=other_args,
+        ),
+    )
+    repeated_call = ToolCall(
+        id="tc-same-step-repeat-after-reset",
+        function=ToolCall.FunctionBody(
+            name="ToolA",
+            arguments=repeated_args,
+        ),
+    )
+
+    other_result = ts.handle(other_call)
+    repeated_result = ts.handle(repeated_call)
+    assert isinstance(other_result, asyncio.Task)
+    assert isinstance(repeated_result, asyncio.Task)
+
+    other_tr = await other_result
+    repeated_tr = await repeated_result
+    assert other_tr.return_value.output == "b"
+    assert repeated_tr.return_value.output == "a"
+    assert ts.dedup_triggered is False
+    assert ts.end_step() == [("ToolB", other_args), ("ToolA", repeated_args)]
 
 
 async def test_non_duplicate_allowed():
