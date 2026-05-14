@@ -503,6 +503,11 @@ class SessionProcess:
         # Mark files as sent
         for file in files:
             self._sent_files.add(file.name)
+        with contextlib.suppress(Exception):
+            sent_marker.write_text(
+                json.dumps(sorted(self._sent_files), ensure_ascii=False),
+                encoding="utf-8",
+            )
 
     async def _handle_in_message(self, message: JSONRPCInMessage) -> str | None:
         """Handle inbound message to worker, encoding uploaded files."""
