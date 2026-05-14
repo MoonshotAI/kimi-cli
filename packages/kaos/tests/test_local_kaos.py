@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import sys
 from collections.abc import Generator
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -183,6 +184,37 @@ async def test_exec_non_zero_exit(local_kaos: LocalKaos):
 
     exit_code = await process.wait()
     assert exit_code == 7
+
+
+async def test_exec_uses_create_no_window_on_windows(
+    local_kaos: LocalKaos, monkeypatch: pytest.MonkeyPatch
+):
+    captured_kwargs: dict[str, object] = {}
+
+    class DummyProcess:
+        stdin = object()
+        stdout = object()
+        stderr = object()
+        pid = 123
+        returncode = 0
+
+        async def wait(self) -> int:
+            return 0
+
+        def kill(self) -> None:
+            pass
+
+    async def fake_create_subprocess_exec(*args: str, **kwargs: object) -> DummyProcess:
+        captured_kwargs.update(kwargs)
+        return DummyProcess()
+
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    await local_kaos.exec("cmd.exe", "/c", "echo ok")
+
+    assert captured_kwargs["creationflags"] == subprocess.CREATE_NO_WINDOW
 
 
 async def test_exec_wait_timeout(local_kaos: LocalKaos):

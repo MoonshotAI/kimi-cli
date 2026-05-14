@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 from asyncio.subprocess import Process as AsyncioProcess
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePath
@@ -166,13 +167,23 @@ class LocalKaos:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
 
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
+        if os.name == "nt":
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        else:
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
         return self.Process(process)
 
 
