@@ -682,6 +682,10 @@ class Shell:
                     if self._exit_after_run:
                         console.print("Bye!")
                         break
+                    # Goal auto-continuation: if an active goal exists and no
+                    # user input is pending, trigger a continuation turn.
+                    if isinstance(self.soul, KimiSoul):
+                        await self._maybe_continue_goal()
             finally:
                 prompt_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -1459,6 +1463,33 @@ class Shell:
         for task in self._background_tasks:
             task.cancel()
         self._background_tasks.clear()
+
+    async def _maybe_continue_goal(self) -> None:
+        """Auto-continue an active goal if the session is idle.
+
+        Called after a successful soul run completes. If a goal is active and
+        no user input is pending, triggers a continuation turn via run_soul_command
+        so the wire context is properly set up.
+        """
+        if not isinstance(self.soul, KimiSoul):
+            return
+        goal = self.soul.runtime.session.state.goal
+        if goal is None or goal.status != "active":
+            return
+        # Check for pending user input or background tasks
+        if self.soul.runtime.background_tasks.has_active_tasks():
+            return
+        # Check for pending notifications
+        if self.soul.runtime.notifications.has_pending_for_sink("llm"):
+            return
+
+        logger.info("Auto-continuing active goal: {objective}", objective=goal.objective[:50])
+        # Build the continuation prompt and send it as a normal turn through
+        # run_soul_command so the wire context is properly established.
+        from kimi_cli.soul.slash import _build_goal_continuation_prompt
+
+        prompt = _build_goal_continuation_prompt(goal)
+        await self.run_soul_command(prompt)
 
 
 _KIMI_BLUE = "dodger_blue1"

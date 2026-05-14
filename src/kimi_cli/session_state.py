@@ -25,6 +25,18 @@ class TodoItemState(BaseModel):
     status: Literal["pending", "in_progress", "done"]
 
 
+class GoalState(BaseModel):
+    """An active goal for long-running automated tasks."""
+
+    objective: str = ""
+    status: Literal["active", "paused", "complete", "budget_limited"] = "active"
+    token_budget: int | None = None
+    tokens_used: int = 0
+    time_used_seconds: float = 0.0
+    created_at: float = 0.0
+    updated_at: float = 0.0
+
+
 class SessionState(BaseModel):
     version: int = 1
     approval: ApprovalStateData = Field(default_factory=ApprovalStateData)
@@ -42,6 +54,8 @@ class SessionState(BaseModel):
     auto_archive_exempt: bool = False
     # Todo list state
     todos: list[TodoItemState] = Field(default_factory=list)  # pyright: ignore[reportUnknownVariableType]
+    # Goal state for long-running tasks
+    goal: GoalState | None = None
 
 
 _LEGACY_METADATA_FILENAME = "metadata.json"

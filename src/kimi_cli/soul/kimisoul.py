@@ -218,6 +218,27 @@ class KimiSoul:
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
 
+    def _update_goal_tokens(self, tokens: int) -> None:
+        """Add token usage to the active goal, if any."""
+        goal = self._runtime.session.state.goal
+        if goal is None or goal.status != "active":
+            return
+        goal.tokens_used += tokens
+        goal.updated_at = time.time()
+        # Budget check
+        if goal.token_budget is not None and goal.tokens_used >= goal.token_budget:
+            goal.status = "budget_limited"
+            from kimi_cli.telemetry import track
+
+            track("goal_budget_limited", tokens_used=goal.tokens_used, token_budget=goal.token_budget)
+
+    def _goal_time_elapsed(self) -> float:
+        """Return elapsed seconds since goal creation."""
+        goal = self._runtime.session.state.goal
+        if goal is None or not goal.created_at:
+            return 0.0
+        return time.time() - goal.created_at
+
     @property
     def name(self) -> str:
         return self._agent.name
@@ -726,7 +747,15 @@ class KimiSoul:
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
-        return await self._agent_loop()
+        outcome = await self._agent_loop()
+        # Save goal state after turn completes.
+        # Always persist so terminal transitions (e.g. budget_limited) are written.
+        goal = self._runtime.session.state.goal
+        if goal is not None:
+            if goal.status == "active":
+                goal.time_used_seconds = self._goal_time_elapsed()
+            self._runtime.session.save_state()
+        return outcome
 
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
         commands: list[SlashCommand[Any]] = list(soul_slash_registry.list_commands())
@@ -1149,6 +1178,8 @@ class KimiSoul:
             status_update.context_usage = snap.context_usage
             status_update.context_tokens = snap.context_tokens
             status_update.max_context_tokens = snap.max_context_tokens
+            # Track goal token usage
+            self._update_goal_tokens(usage.total)
         wire_send(status_update)
 
         # ═══════════════════════════════════════════════════════════════════════
@@ -1619,6 +1650,15 @@ class FlowRunner:
             next_id, steps_used = await self._execute_flow_node(soul, node, edges)
             total_steps += steps_used
             if next_id is None:
+                return
+            # Check if goal has reached a terminal state during the turn
+            # (e.g. budget_limited via token tracking or complete via UpdateGoal)
+            goal = soul.runtime.session.state.goal
+            if goal is not None and goal.status in ("complete", "budget_limited"):
+                logger.info(
+                    "Goal reached terminal state {status}, stopping ralph loop.",
+                    status=goal.status,
+                )
                 return
             moves += 1
             current_id = next_id

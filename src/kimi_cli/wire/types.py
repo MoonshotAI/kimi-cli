@@ -239,6 +239,41 @@ class BtwEnd(BaseModel):
     """Error message if the side question failed."""
 
 
+class GoalBegin(BaseModel):
+    """Indicates that a goal has been created or activated."""
+
+    objective: str
+    """The goal objective text."""
+    token_budget: int | None = None
+    """Optional token budget for the goal."""
+
+
+class GoalEnd(BaseModel):
+    """Indicates that a goal has been completed or cleared."""
+
+    objective: str
+    """The goal objective text."""
+    status: Literal["complete", "cleared"]
+    """Why the goal ended."""
+    tokens_used: int = 0
+    """Total tokens consumed by the goal."""
+    time_used_seconds: float = 0.0
+    """Total time spent on the goal."""
+
+
+class GoalStatusUpdate(BaseModel):
+    """Indicates a goal status change (pause, resume, budget_limited)."""
+
+    objective: str
+    """The goal objective text."""
+    status: Literal["active", "paused", "complete", "budget_limited"]
+    """The new goal status."""
+    tokens_used: int = 0
+    """Total tokens consumed so far."""
+    token_budget: int | None = None
+    """Optional token budget."""
+
+
 class SubagentEvent(BaseModel):
     """
     An event from a subagent.
@@ -537,6 +572,9 @@ type Event = (
     | PlanDisplay
     | BtwBegin
     | BtwEnd
+    | GoalBegin
+    | GoalEnd
+    | GoalStatusUpdate
 )
 """Any event, including control flow and content/tooling events."""
 
