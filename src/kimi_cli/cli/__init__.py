@@ -657,7 +657,7 @@ def kimi(
                 max_retries_per_step=max_retries_per_step,
                 max_ralph_iterations=max_ralph_iterations,
                 startup_progress=startup_progress.update if ui == "shell" else None,
-                defer_mcp_loading=ui == "shell" and prompt is None,
+                defer_mcp_loading=ui == "shell" and prompt is None and prompt_interactive is None,
                 ui_mode=ui,
             )
             startup_progress.stop()
