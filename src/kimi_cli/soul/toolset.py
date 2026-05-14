@@ -435,6 +435,7 @@ class KimiToolset:
                 name=name,
                 status=info.status,
                 tools=tuple(tool.name for tool in info.tools),
+                error=info.error,
             )
             for name, info in self._mcp_servers.items()
         )
@@ -539,9 +540,11 @@ class KimiToolset:
                 connected.
         """
         import fastmcp
-        from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
+        from fastmcp.client.transports import StdioTransport
+        from fastmcp.mcp_config import MCPConfig, RemoteMCPServer, StdioMCPServer
 
         from kimi_cli.mcp_oauth import create_mcp_oauth, has_mcp_oauth_tokens
+        from kimi_cli.share import get_share_dir
         from kimi_cli.ui.shell.prompt import toast
 
         async def _check_oauth_tokens(server_url: str) -> bool:
@@ -587,6 +590,7 @@ class KimiToolset:
                     self.add(tool)
 
                 server_info.status = "connected"
+                server_info.error = None
                 logger.info("Connected MCP server: {server_name}", server_name=server_name)
                 return server_name, None
             except Exception as e:
@@ -596,6 +600,7 @@ class KimiToolset:
                     error=e,
                 )
                 server_info.status = "failed"
+                server_info.error = str(e)
                 return server_name, e
 
         async def _connect():
@@ -644,7 +649,20 @@ class KimiToolset:
                         continue
                     server_config = server_config.model_copy(update={"auth": auth})
 
-                client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+                if isinstance(server_config, StdioMCPServer):
+                    log_dir = get_share_dir() / "mcp-logs"
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                    transport = StdioTransport(
+                        command=server_config.command,
+                        args=server_config.args,
+                        env=server_config.env,
+                        cwd=server_config.cwd,
+                        keep_alive=server_config.keep_alive,
+                        log_file=log_dir / f"{server_name}.log",
+                    )
+                    client = fastmcp.Client(transport)
+                else:
+                    client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
                 self._mcp_servers[server_name] = MCPServerInfo(
                     status="pending", client=client, tools=[]
                 )
@@ -686,6 +704,7 @@ class MCPServerInfo:
     status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
     client: fastmcp.Client[Any] | None
     tools: list[MCPTool[Any]]
+    error: str | None = None
 
 
 class MCPTool[T: ClientTransport](CallableTool):

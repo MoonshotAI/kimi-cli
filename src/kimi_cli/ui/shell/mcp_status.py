@@ -31,6 +31,13 @@ def render_mcp_console(snapshot: MCPStatusSnapshot) -> RenderableType:
             server_text += f" [grey50]({server.status})[/grey50]"
 
         lines: list[RenderableType] = [Text.from_markup(server_text)]
+        if server.error:
+            lines.append(
+                BulletColumns(
+                    Text.from_markup(f"[red]Error: {server.error}[/red]"),
+                    bullet_style="red",
+                )
+            )
         for tool_name in server.tools:
             lines.append(
                 BulletColumns(
@@ -66,6 +73,8 @@ def render_mcp_prompt(snapshot: MCPStatusSnapshot, *, now: float | None = None) 
         detail = _prompt_server_detail(server)
         if detail:
             fragments.append((colors.detail, detail))
+        if server.error:
+            fragments.append((colors.failed, f" Error: {server.error}"))
         fragments.append(("", "\n"))
 
     return FormattedText(fragments)
