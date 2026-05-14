@@ -698,8 +698,9 @@ class MCPTool[T: ClientTransport](CallableTool):
         runtime: Runtime,
         **kwargs: Any,
     ):
+        tool_name = f"{server_name}_{mcp_tool.name}"
         super().__init__(
-            name=mcp_tool.name,
+            name=tool_name,
             description=(
                 f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
                 f"{mcp_tool.description or 'No description provided.'}"
