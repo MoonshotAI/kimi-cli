@@ -19,6 +19,8 @@ from kosong.chat_provider import (
     RetryableChatProvider,
 )
 from kosong.message import Message
+from kosong.tooling import ToolError
+from kosong.tooling.error import ToolRuntimeError
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.approval_runtime import (
@@ -94,6 +96,7 @@ if TYPE_CHECKING:
 SKILL_COMMAND_PREFIX = "skill:"
 FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
+INTERRUPTED_TOOL_MESSAGE = "[Interrupted By User]"
 
 
 def classify_api_error(e: Exception) -> tuple[str, int | None]:
@@ -1117,6 +1120,12 @@ class KimiSoul:
         t0 = time.monotonic()
         try:
             result = await _kosong_step_with_retry()
+        except kosong.StepCancelled as cancelled:
+            # Streaming was interrupted by user.  The partial StepResult
+            # carries the tool_calls that were already visible in the TUI;
+            # we owe each of them a paired tool_result in history.
+            await self._finalize_interrupted_step(cancelled.partial)
+            raise asyncio.CancelledError() from None
         except Exception as _step_exc:
             # Attach known context so the outer loop can enrich api_error telemetry
             _ctx: dict[str, Any] = {
@@ -1156,7 +1165,11 @@ class KimiSoul:
         # ═══════════════════════════════════════════════════════════════════════
         # wait for all tool results (may be interrupted)
         plan_mode_before_tools = self._plan_mode
-        results = await result.tool_results()
+        try:
+            results = await result.tool_results()
+        except asyncio.CancelledError:
+            await self._finalize_interrupted_step(result)
+            raise
         logger.debug("Got tool results: {results}", results=results)
 
         # Update dedup tracking for the next step
@@ -1218,6 +1231,111 @@ class KimiSoul:
         if result.tool_calls:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
+
+    async def _finalize_interrupted_step(self, step_result: StepResult) -> None:
+        """Unified cleanup when a step is interrupted by user cancel.
+
+        Used by both interruption paths:
+
+        - **Phase B (streaming)**: ``kosong.StepCancelled`` raised before
+          ``kosong.step()`` could return a complete StepResult.  Any tools
+          whose ``on_tool_call`` already fired may still be running.
+        - **Phase C (tool wait)**: ``CancelledError`` from
+          ``result.tool_results()``.  ``kosong``'s ``finally`` has already
+          cancelled the futures, so the work below is mostly a no-op for
+          this path.
+
+        Invariant: any tool_call that became visible in the TUI (= present in
+        ``step_result.message.tool_calls``) ends up with a paired tool_result
+        in history — either the real one (if the tool actually completed) or
+        a synthetic ``[Interrupted]`` error.
+
+        Persistence is shielded so the cancel signal can't tear it down
+        mid-write.
+        """
+        futures: dict[str, Any] = getattr(step_result, "_tool_result_futures", {})
+
+        # Cancel any in-flight futures and wait for them to settle.  After
+        # this point every future is either done-with-result or cancelled.
+        for future in futures.values():
+            if not future.done():
+                future.cancel()
+        if futures:
+            await asyncio.gather(*futures.values(), return_exceptions=True)
+
+        message = step_result.message
+        tool_calls = list(message.tool_calls or [])
+        if not tool_calls and not message.content:
+            # Nothing observed — skip persisting an empty assistant message.
+            return
+
+        results, interrupted_results = self._build_interrupted_tool_results(tool_calls, futures)
+        for tool_result in interrupted_results:
+            wire_send(tool_result)
+
+        try:
+            await asyncio.shield(self._grow_context(step_result, results))
+        except Exception:
+            logger.exception("Failed to record interrupted step in context.")
+
+    @staticmethod
+    def _build_interrupted_tool_results(
+        tool_calls: list[Any],
+        futures: dict[str, Any],
+    ) -> tuple[list[ToolResult], list[ToolResult]]:
+        """Build model-facing tool results for an interrupted step.
+
+        Returns ``(all_results, synthesized_interrupted)``: ``all_results``
+        has one entry per tool_call in order; ``synthesized_interrupted`` is
+        the subset that we fabricated because the tool never completed.  The
+        caller wire-sends only the synthesized subset (real completions were
+        already emitted via ``on_tool_result``).
+        """
+        results: list[ToolResult] = []
+        interrupted_results: list[ToolResult] = []
+
+        for tool_call in tool_calls:
+            tool_result = KimiSoul._completed_tool_result_or_none(tool_call.id, futures)
+            if tool_result is None:
+                # Leave brief empty so the TUI doesn't render a second line
+                # under "Used <Tool> (...)" — the red bullet from is_error
+                # already communicates the interruption.  The model still sees
+                # the [Interrupted By User] marker via `message`.
+                tool_result = ToolResult(
+                    tool_call_id=tool_call.id,
+                    return_value=ToolError(
+                        message=INTERRUPTED_TOOL_MESSAGE,
+                        brief="",
+                    ),
+                )
+                interrupted_results.append(tool_result)
+            results.append(tool_result)
+
+        return results, interrupted_results
+
+    @staticmethod
+    def _completed_tool_result_or_none(
+        tool_call_id: str,
+        futures: dict[str, Any],
+    ) -> ToolResult | None:
+        future = futures.get(tool_call_id)
+        if future is None or not future.done() or future.cancelled():
+            return None
+        try:
+            tool_result = future.result()
+        except asyncio.CancelledError:
+            return None
+        except Exception as exc:
+            return ToolResult(
+                tool_call_id=tool_call_id,
+                return_value=ToolRuntimeError(str(exc)),
+            )
+        if isinstance(tool_result, ToolResult):
+            return tool_result
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            return_value=ToolRuntimeError(f"Invalid tool result: {type(tool_result).__name__}"),
+        )
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)

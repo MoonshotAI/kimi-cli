@@ -75,7 +75,7 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-from kosong._generate import GenerateResult, generate
+from kosong._generate import GenerateCancelled, GenerateResult, generate
 from kosong.chat_provider import ChatProvider, ChatProviderError, StreamedMessagePart, TokenUsage
 from kosong.message import Message, ToolCall
 from kosong.tooling import ToolResult, ToolResultFuture, Toolset
@@ -98,7 +98,32 @@ __all__ = [
     "GenerateResult",
     "step",
     "StepResult",
+    "StepCancelled",
 ]
+
+
+class StepCancelled(asyncio.CancelledError):
+    """CancelledError carrying a partial :class:`StepResult`.
+
+    Raised by :func:`step` when the underlying generation is cancelled.  The
+    partial result records:
+
+    - ``message``: everything streamed so far (including a best-effort flush
+      of the pending part, so its ``tool_calls`` mirrors what the UI saw).
+    - ``tool_calls``: aligned with ``message.tool_calls`` so callers can
+      iterate them as the canonical "what UI saw" list.
+    - ``_tool_result_futures``: only the tools whose ``on_tool_call`` had
+      already fired before cancellation — these may still be running.  The
+      caller decides whether to await or cancel them.
+
+    Subclassing :class:`asyncio.CancelledError` keeps the cancellation
+    contract intact: callers that don't care about the partial result still
+    see a plain cancel.
+    """
+
+    def __init__(self, partial: "StepResult"):
+        super().__init__()
+        self.partial = partial
 
 
 async def step(
@@ -127,7 +152,9 @@ async def step(
         APIStatusError: If the API returns a status code of 4xx or 5xx.
         APIEmptyResponseError: If the API returns an empty response.
         ChatProviderError: If any other recognized chat provider error occurs.
-        asyncio.CancelledError: If the step is cancelled.
+        StepCancelled: When the step is cancelled by the caller.  Carries a
+            partial :class:`StepResult` so callers can persist a well-formed
+            history (every TUI-visible tool_call paired with a tool_result).
     """
 
     tool_calls: list[ToolCall] = []
@@ -163,7 +190,22 @@ async def step(
             on_message_part=on_message_part,
             on_tool_call=on_tool_call,
         )
-    except (ChatProviderError, asyncio.CancelledError):
+    except GenerateCancelled as cancelled:
+        # Streaming was interrupted.  The partial message reflects everything
+        # the UI saw.  Align tool_calls with message.tool_calls so callers
+        # have a single canonical iteration list — message.tool_calls may
+        # include a flushed pending ToolCall that never fired on_tool_call
+        # (and hence has no future in tool_result_futures).
+        merged_tool_calls = list(cancelled.message.tool_calls or [])
+        partial = StepResult(
+            id=None,
+            message=cancelled.message,
+            usage=None,
+            tool_calls=merged_tool_calls,
+            _tool_result_futures=tool_result_futures,
+        )
+        raise StepCancelled(partial) from None
+    except ChatProviderError:
         # cancel all the futures to avoid hanging tasks
         for future in tool_result_futures.values():
             future.remove_done_callback(future_done_callback)

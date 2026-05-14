@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import textwrap
@@ -86,6 +87,17 @@ def _exit_shell(shell) -> None:
     raise last_error
 
 
+def _write_user_history(home_dir: Path, work_dir: Path, entries: list[str]) -> None:
+    work_dir_id = hashlib.md5(str(work_dir.resolve()).encode("utf-8")).hexdigest()
+    history_dir = home_dir / ".kimi" / "user-history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    history_file = (history_dir / work_dir_id).with_suffix(".jsonl")
+    history_file.write_text(
+        "".join(json.dumps({"content": entry}, ensure_ascii=False) + "\n" for entry in entries),
+        encoding="utf-8",
+    )
+
+
 def test_shell_smoke_multiturn_scripted_echo(tmp_path: Path) -> None:
     config_path = write_scripted_config(
         tmp_path,
@@ -133,6 +145,33 @@ def test_shell_smoke_multiturn_scripted_echo(tmp_path: Path) -> None:
         _read_until_prompt(shell, after=second_prompt_mark)
 
         assert count_wire_messages(home_dir, work_dir, "TurnEnd") == 2
+    finally:
+        shell.close()
+
+
+def test_shell_up_from_slash_history_continues_history_navigation(tmp_path: Path) -> None:
+    config_path = write_scripted_config(tmp_path, [])
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    _write_user_history(home_dir, work_dir, ["older-history-sentinel", "/help"])
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        first_up_mark = shell.mark()
+        shell.send_key("up")
+        shell.read_until_contains("/help", after=first_up_mark, timeout=5.0)
+
+        second_up_mark = shell.mark()
+        shell.send_key("up")
+        shell.read_until_contains("older-history-sentinel", after=second_up_mark, timeout=5.0)
     finally:
         shell.close()
 
@@ -927,6 +966,12 @@ def test_shell_cancel_running_command_kills_process_and_recovers(tmp_path: Path)
         shell.read_until_contains("Interrupted by user", after=cancel_mark)
         cancel_prompt_mark = shell.mark()
         _read_until_prompt(shell, after=cancel_prompt_mark)
+
+        session_dir = find_session_dir(home_dir, work_dir)
+        context_text = (session_dir / "context.jsonl").read_text(encoding="utf-8")
+        assert '"role":"assistant"' in context_text
+        assert '"tool_call_id":"tc-c1"' in context_text
+        assert "[Interrupted By User]" in context_text
 
         time.sleep(2.3)
         assert not (work_dir / "cancel_output.txt").exists()

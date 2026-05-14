@@ -845,6 +845,13 @@ def _load_history_entries(history_file: Path) -> list[_HistoryEntry]:
     return entries
 
 
+def _is_browsing_history_entry(buffer: Buffer) -> bool:
+    working_lines = getattr(buffer, "_working_lines", None)
+    if working_lines is None:
+        return False
+    return buffer.working_index < len(working_lines) - 1
+
+
 class PromptMode(Enum):
     AGENT = "agent"
     SHELL = "shell"
@@ -1537,7 +1544,11 @@ class CustomPromptSession:
         def _(buffer: Buffer) -> None:
             self._last_input_activity_time = time.monotonic()
             self._input_activity_event.set()
-            if buffer.complete_while_typing() and not self._suppress_auto_completion:
+            if (
+                buffer.complete_while_typing()
+                and not self._suppress_auto_completion
+                and not _is_browsing_history_entry(buffer)
+            ):
                 buffer.start_completion()
 
         self._status_refresh_task: asyncio.Task[None] | None = None

@@ -99,6 +99,8 @@ _REMINDER_TEXT = (
     "\n</system-reminder>"
 )
 
+_CROSS_STEP_DEDUP_TRIGGER_COUNT = 7
+
 
 def _append_reminder_to_return_value(return_value: Any) -> Any:
     """Append dedup reminder text to a ToolReturnValue output."""
@@ -133,6 +135,8 @@ class KimiToolset:
 
         # Deduplication state
         self._previous_step_calls: list[tuple[str, str]] = []
+        self._consecutive_call_key: tuple[str, str] | None = None
+        self._consecutive_call_count: int = 0
         self._current_step_calls: list[tuple[str, str]] = []
         self._current_step_tasks: dict[tuple[str, str], asyncio.Task[ToolResult]] = {}
         self._dedup_triggered: bool = False
@@ -184,6 +188,11 @@ class KimiToolset:
     ) -> None:
         """Called before each step to set up deduplication state."""
         self._previous_step_calls = previous_calls
+        if previous_calls:
+            self._sync_consecutive_state_from_previous_calls(previous_calls)
+        else:
+            self._consecutive_call_key = None
+            self._consecutive_call_count = 0
         self._current_step_calls = []
         self._current_step_tasks = {}
         self._dedup_triggered = False
@@ -192,11 +201,44 @@ class KimiToolset:
 
     def end_step(self) -> list[tuple[str, str]]:
         """Called after each step to capture the calls made in this step."""
-        return list(self._current_step_calls)
+        current_calls = list(self._current_step_calls)
+        for call_key in current_calls:
+            if call_key == self._consecutive_call_key:
+                self._consecutive_call_count += 1
+            else:
+                self._consecutive_call_key = call_key
+                self._consecutive_call_count = 1
+        return current_calls
+
+    def _sync_consecutive_state_from_previous_calls(
+        self, previous_calls: list[tuple[str, str]]
+    ) -> None:
+        last_call = previous_calls[-1]
+        if self._consecutive_call_key == last_call and self._consecutive_call_count > 0:
+            return
+
+        trailing_count = 0
+        for call_key in reversed(previous_calls):
+            if call_key != last_call:
+                break
+            trailing_count += 1
+        self._consecutive_call_key = last_call
+        self._consecutive_call_count = trailing_count
+
+    def _projected_consecutive_state(self) -> tuple[tuple[str, str] | None, int]:
+        call_key = self._consecutive_call_key
+        count = self._consecutive_call_count
+        for current_call in self._current_step_calls:
+            if current_call == call_key:
+                count += 1
+            else:
+                call_key = current_call
+                count = 1
+        return call_key, count
 
     @property
     def dedup_triggered(self) -> bool:
-        """Whether a cross-step duplicate was blocked in the current step."""
+        """Whether a cross-step repeat reminder was triggered in the current step."""
         return self._dedup_triggered
 
     def handle(self, tool_call: ToolCall) -> HandleResult:
@@ -228,7 +270,11 @@ class KimiToolset:
 
                 return asyncio.create_task(_await_dup())
 
-            is_cross_step_dup = call_key in self._previous_step_calls
+            previous_call_key, previous_occurrences = self._projected_consecutive_state()
+            is_cross_step_dup = (
+                call_key == previous_call_key
+                and previous_occurrences >= _CROSS_STEP_DEDUP_TRIGGER_COUNT - 1
+            )
             if is_cross_step_dup:
                 from kimi_cli.telemetry import track
 

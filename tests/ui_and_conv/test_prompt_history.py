@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+from collections import deque
+from types import SimpleNamespace
+from typing import cast
 
 from PIL import Image
+from prompt_toolkit.buffer import Buffer
 
 from kimi_cli.ui.shell import prompt as shell_prompt
 from kimi_cli.ui.shell.placeholders import AttachmentCache, PromptPlaceholderManager
@@ -21,6 +25,16 @@ def _make_prompt_session(
 
 def _read_history_lines(path) -> list[dict[str, str]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _fake_history_buffer(*, working_index: int) -> Buffer:
+    return cast(
+        Buffer,
+        SimpleNamespace(
+            working_index=working_index,
+            _working_lines=deque(["previous prompt", "/help", ""]),
+        ),
+    )
 
 
 def test_append_history_entry_expands_text_placeholders_but_preserves_images(tmp_path) -> None:
@@ -66,3 +80,11 @@ def test_append_history_entry_writes_sanitized_surrogate_text(tmp_path) -> None:
     assert "\ud83d" not in lines[0]["content"]
     assert "\ufffd" in lines[0]["content"]
     assert lines[0]["content"].startswith("A" * 1000)
+
+
+def test_current_history_working_line_allows_auto_completion() -> None:
+    assert not shell_prompt._is_browsing_history_entry(_fake_history_buffer(working_index=2))
+
+
+def test_recalled_history_entry_suppresses_auto_completion() -> None:
+    assert shell_prompt._is_browsing_history_entry(_fake_history_buffer(working_index=1))
