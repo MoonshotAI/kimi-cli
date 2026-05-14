@@ -299,6 +299,95 @@ async def _drain_ui_messages(wire: Wire) -> None:
 
 
 @pytest.mark.asyncio
+async def test_kimisoul_triggers_notification_hook_for_approval_requests(
+    runtime, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert runtime.approval_runtime is not None
+
+    soul = KimiSoul(
+        SoulAgent(
+            name="test",
+            system_prompt="test prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        ),
+        context=Context(file_backend=tmp_path / "history.jsonl"),
+    )
+
+    calls: list[tuple[str, str, dict]] = []
+
+    async def _done() -> list:
+        return []
+
+    def fake_fire_and_forget(event: str, *, matcher_value: str, input_data: dict):
+        calls.append((event, matcher_value, input_data))
+        return asyncio.create_task(_done())
+
+    monkeypatch.setattr(soul.hook_engine, "fire_and_forget_trigger", fake_fire_and_forget)
+
+    runtime.approval_runtime.create_request(
+        request_id="req-notification-hook",
+        tool_call_id="call-notification-hook",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/test.txt",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-notification-hook"),
+    )
+
+    assert len(calls) == 1
+    event, matcher_value, payload = calls[0]
+    assert event == "Notification"
+    assert matcher_value == "permission_prompt"
+    assert payload["notification_type"] == "permission_prompt"
+    assert payload["sender"] == "WriteFile"
+    assert payload["description"] == "Write file /tmp/test.txt"
+
+
+@pytest.mark.asyncio
+async def test_kimisoul_close_unsubscribes_approval_hook(
+    runtime, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert runtime.approval_runtime is not None
+
+    soul = KimiSoul(
+        SoulAgent(
+            name="test",
+            system_prompt="test prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        ),
+        context=Context(file_backend=tmp_path / "history.jsonl"),
+    )
+
+    calls: list[tuple[str, str, dict]] = []
+
+    async def _done() -> list:
+        return []
+
+    def fake_fire_and_forget(event: str, *, matcher_value: str, input_data: dict):
+        calls.append((event, matcher_value, input_data))
+        return asyncio.create_task(_done())
+
+    monkeypatch.setattr(soul.hook_engine, "fire_and_forget_trigger", fake_fire_and_forget)
+
+    soul.close()
+    soul.close()
+
+    runtime.approval_runtime.create_request(
+        request_id="req-closed-notification-hook",
+        tool_call_id="call-closed-notification-hook",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/test.txt",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-closed-notification-hook"),
+    )
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_kimisoul_run_preserves_existing_approval_source(
     runtime, tmp_path, monkeypatch
 ) -> None:

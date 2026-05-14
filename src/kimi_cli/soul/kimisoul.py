@@ -22,6 +22,7 @@ from kosong.message import Message
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.approval_runtime import (
+    ApprovalRuntimeEvent,
     ApprovalSource,
     get_current_approval_source_or_none,
     reset_current_approval_source,
@@ -209,8 +210,13 @@ class KimiSoul:
         ]
         self._hook_engine: HookEngine = HookEngine()
         self._stop_hook_active: bool = False
+        self._approval_hook_subscription: str | None = None
         if self.is_root:
             self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
+            if self._runtime.approval_runtime is not None:
+                self._approval_hook_subscription = self._runtime.approval_runtime.subscribe(
+                    self._on_approval_runtime_event
+                )
 
         # Bind plan mode state to tools that support it
         self._bind_plan_mode_tools()
@@ -275,6 +281,40 @@ class KimiSoul:
         self._hook_engine = engine
         if isinstance(self._agent.toolset, KimiToolset):
             self._agent.toolset.set_hook_engine(engine)
+
+    def _on_approval_runtime_event(self, event: ApprovalRuntimeEvent) -> None:
+        if event.kind != "request_created":
+            return
+
+        from kimi_cli.hooks import events
+
+        request = event.request
+        input_data = {
+            **events.notification(
+                session_id=self._runtime.session.id,
+                cwd=str(Path.cwd()),
+                sink="user",
+                notification_type="permission_prompt",
+                title=f"Approval required: {request.sender}",
+                body=request.description,
+                severity="warning",
+            ),
+            "request_id": request.id,
+            "tool_call_id": request.tool_call_id,
+            "sender": request.sender,
+            "action": request.action,
+            "description": request.description,
+            "source_kind": request.source.kind,
+            "source_id": request.source.id,
+        }
+        try:
+            self._hook_engine.fire_and_forget_trigger(
+                "Notification",
+                matcher_value="permission_prompt",
+                input_data=input_data,
+            )
+        except Exception:
+            logger.exception("Failed to trigger approval notification hook")
 
     def add_injection_provider(self, provider: DynamicInjectionProvider) -> None:
         """Register an additional dynamic injection provider."""
@@ -506,6 +546,13 @@ class KimiSoul:
     @property
     def context(self) -> Context:
         return self._context
+
+    def close(self) -> None:
+        if self._approval_hook_subscription is None:
+            return
+        if self._runtime.approval_runtime is not None:
+            self._runtime.approval_runtime.unsubscribe(self._approval_hook_subscription)
+        self._approval_hook_subscription = None
 
     @property
     def _context_usage(self) -> float:
