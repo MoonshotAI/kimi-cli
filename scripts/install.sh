@@ -4,16 +4,28 @@ set -euo pipefail
 install_uv() {
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL https://astral.sh/uv/install.sh | sh
+    refresh_uv_env
     return
   fi
 
   if command -v wget >/dev/null 2>&1; then
     wget -qO- https://astral.sh/uv/install.sh | sh
+    refresh_uv_env
     return
   fi
 
   echo "Error: curl or wget is required to install uv." >&2
   exit 1
+}
+
+refresh_uv_env() {
+  local uv_env="${XDG_BIN_HOME:-$HOME/.local/bin}/env"
+  if [ -f "$uv_env" ]; then
+    # shellcheck disable=SC1090
+    . "$uv_env"
+  else
+    export PATH="${XDG_BIN_HOME:-$HOME/.local/bin}:$PATH"
+  fi
 }
 
 if command -v uv >/dev/null 2>&1; then
