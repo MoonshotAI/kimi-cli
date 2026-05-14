@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -12,6 +13,23 @@ from kosong.chat_provider import (
 from kosong.message import ContentPart, Message, TextPart, ThinkPart, ToolCall
 from kosong.tooling import Tool
 from kosong.utils.aio import Callback, callback
+
+
+class GenerateCancelled(asyncio.CancelledError):
+    """CancelledError carrying the partial message accumulated up to the cancel point.
+
+    Raised by :func:`generate` when its streaming loop is cancelled.  The
+    ``message`` field reflects everything observed via the stream so far, with
+    any pending part flushed in best-effort fashion — including incomplete
+    ToolCall arguments.  No ``on_tool_call`` callback is fired for the flushed
+    pending part (we don't want to start a tool the user just cancelled), so
+    callers must treat any tool_call in ``message`` without a paired result
+    future as "interrupted".
+    """
+
+    def __init__(self, message: Message):
+        super().__init__()
+        self.message = message
 
 
 async def generate(
@@ -45,31 +63,58 @@ async def generate(
         APIStatusError: If the API returns a status code of 4xx or 5xx.
         APIEmptyResponseError: If the API returns an empty response.
         ChatProviderError: If any other recognized chat provider error occurs.
+        GenerateCancelled: When the streaming loop is cancelled.  Carries the
+            partial message observed so far so callers can decide whether to
+            persist it.
     """
     message = Message(role="assistant", content=[])
     pending_part: StreamedMessagePart | None = None  # message part that is currently incomplete
 
     logger.trace("Generating with history: {history}", history=history)
     stream = await chat_provider.generate(system_prompt, tools, history)
-    async for part in stream:
-        logger.trace("Received part: {part}", part=part)
-        if on_message_part:
-            await callback(on_message_part, part.model_copy(deep=True))
+    try:
+        async for part in stream:
+            logger.trace("Received part: {part}", part=part)
+            if on_message_part:
+                await callback(on_message_part, part.model_copy(deep=True))
 
-        if pending_part is None:
-            pending_part = part
-        elif not pending_part.merge_in_place(part):  # try merge into the pending part
-            # unmergeable part must push the pending part to the buffer
+            if pending_part is None:
+                pending_part = part
+            elif not pending_part.merge_in_place(part):  # try merge into the pending part
+                # Unmergeable part: flush the previously pending one.
+                #
+                # Invariant: ``pending_part`` is non-None iff that part has
+                # NOT yet been appended to ``message``.  Clearing it BEFORE
+                # the await means a CancelledError raised inside
+                # ``on_tool_call`` can't trick the except-handler below into
+                # re-appending the same part — a duplicate tool_call.id
+                # would propagate into the partial StepResult and produce
+                # duplicate paired tool_results downstream.
+                flushing = pending_part
+                pending_part = part
+                _message_append(message, flushing)
+                if isinstance(flushing, ToolCall) and on_tool_call:
+                    await callback(on_tool_call, flushing)
+
+        # end of message
+        if pending_part is not None:
+            # Same race protection as the mid-loop flush: drop the reference
+            # before awaiting on_tool_call so a cancel during the callback
+            # leaves ``pending_part`` as None in the except handler.
+            flushing = pending_part
+            pending_part = None
+            _message_append(message, flushing)
+            if isinstance(flushing, ToolCall) and on_tool_call:
+                await callback(on_tool_call, flushing)
+    except asyncio.CancelledError:
+        # Best-effort flush of the pending part so the caller sees everything
+        # the UI has seen.  Crucially do NOT fire on_tool_call here — that
+        # callback starts the tool, and the user just asked us to stop.
+        # Thanks to the "clear before await" pattern above, pending_part is
+        # non-None here only if it was never appended.
+        if pending_part is not None:
             _message_append(message, pending_part)
-            if isinstance(pending_part, ToolCall) and on_tool_call:
-                await callback(on_tool_call, pending_part)
-            pending_part = part
-
-    # end of message
-    if pending_part is not None:
-        _message_append(message, pending_part)
-        if isinstance(pending_part, ToolCall) and on_tool_call:
-            await callback(on_tool_call, pending_part)
+        raise GenerateCancelled(message) from None
 
     if not message.content and not message.tool_calls:
         raise APIEmptyResponseError("The API returned an empty response.")
