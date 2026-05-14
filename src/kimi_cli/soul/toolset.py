@@ -96,7 +96,7 @@ def _build_mcp_client(server_name: str, server_config: Any) -> fastmcp.Client[An
     from fastmcp.client.transports import StdioTransport
     from fastmcp.mcp_config import MCPConfig, StdioMCPServer
 
-    if isinstance(server_config, StdioMCPServer):
+    if type(server_config) is StdioMCPServer:
         log_path = _mcp_stdio_log_path(server_name)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         transport = StdioTransport(
