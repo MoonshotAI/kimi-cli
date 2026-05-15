@@ -632,6 +632,7 @@ class KimiSoul:
             _track_telemetry("turn_started", mode="plan" if self._plan_mode else "agent")
             user_message = Message(role="user", content=user_input)
             text_input = user_message.extract_text(" ").strip()
+            turn_outcome: TurnOutcome | None = None
 
             if command_call := parse_slash_command_call(text_input):
                 command = self._find_slash_command(command_call.name)
@@ -649,16 +650,25 @@ class KimiSoul:
                 )
                 await runner.run(self, "")
             else:
-                await self._turn(user_message)
+                turn_outcome = await self._turn(user_message)
 
             # --- Stop hook (max 1 re-trigger to prevent infinite loop) ---
             if not self._stop_hook_active:
+                stop_response = ""
+                stop_reason = ""
+                if turn_outcome is not None:
+                    stop_reason = turn_outcome.stop_reason
+                    if turn_outcome.final_message is not None:
+                        stop_response = turn_outcome.final_message.extract_text(" ").strip()
+
                 stop_results = await self._hook_engine.trigger(
                     "Stop",
                     input_data=events.stop(
                         session_id=self._runtime.session.id,
                         cwd=str(Path.cwd()),
                         stop_hook_active=False,
+                        response=stop_response,
+                        stop_reason=stop_reason,
                     ),
                 )
                 for result in stop_results:
