@@ -28,7 +28,7 @@ Kimi Code CLI 支持 13 种生命周期事件：
 | `PostToolUse` | 工具成功执行后 | 工具名称 | `tool_name`, `tool_input`, `tool_output` |
 | `PostToolUseFailure` | 工具执行失败后 | 工具名称 | `tool_name`, `tool_input`, `error` |
 | `UserPromptSubmit` | 用户提交输入前 | 无 | `prompt` |
-| `Stop` | Agent 轮次结束时 | 无 | `stop_hook_active` |
+| `Stop` | Agent 轮次结束时 | 无 | `stop_hook_active`, `response`, `stop_reason` |
 | `StopFailure` | 轮次因错误结束时 | 错误类型 | `error_type`, `error_message` |
 | `SessionStart` | 会话创建/恢复时 | 来源 (`startup`/`resume`) | `source` |
 | `SessionEnd` | 会话关闭时 | 原因 | `reason` |

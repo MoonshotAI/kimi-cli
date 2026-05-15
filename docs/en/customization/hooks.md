@@ -28,7 +28,7 @@ Kimi Code CLI supports 13 lifecycle events:
 | `PostToolUse` | After successful tool execution | Tool name | `tool_name`, `tool_input`, `tool_output` |
 | `PostToolUseFailure` | After tool execution fails | Tool name | `tool_name`, `tool_input`, `error` |
 | `UserPromptSubmit` | Before user input is processed | None | `prompt` |
-| `Stop` | When Agent turn ends | None | `stop_hook_active` |
+| `Stop` | When Agent turn ends | None | `stop_hook_active`, `response`, `stop_reason` |
 | `StopFailure` | When turn ends due to error | Error type | `error_type`, `error_message` |
 | `SessionStart` | When session is created/resumed | Source (`startup`/`resume`) | `source` |
 | `SessionEnd` | When session closes | Reason | `reason` |
