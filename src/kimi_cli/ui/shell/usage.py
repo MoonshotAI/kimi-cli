@@ -47,7 +47,7 @@ async def usage(app: Shell, args: str):
         console.print("[red]LLM provider configuration not found.[/red]")
         return
 
-    usage_url = _usage_url(app.soul.runtime.llm.model_config)
+    usage_url = get_usage_url(app.soul.runtime.llm.model_config)
     if usage_url is None:
         console.print("[yellow]Usage is available on Kimi Code platform only.[/yellow]")
         return
@@ -55,7 +55,7 @@ async def usage(app: Shell, args: str):
     with console.status("[cyan]Fetching usage...[/cyan]"):
         api_key = app.soul.runtime.oauth.resolve_api_key(provider.api_key, provider.oauth)
         try:
-            payload = await _fetch_usage(usage_url, api_key)
+            payload = await fetch_usage(usage_url, api_key)
         except aiohttp.ClientResponseError as e:
             message = "Failed to fetch usage."
             if e.status == 401:
@@ -71,15 +71,15 @@ async def usage(app: Shell, args: str):
             console.print(f"[red]Failed to fetch usage: {e}[/red]")
             return
 
-    summary, limits = _parse_usage_payload(payload)
+    summary, limits = parse_usage_payload(payload)
     if summary is None and not limits:
         console.print("[yellow]No usage data available.[/yellow]")
         return
 
-    console.print(_build_usage_panel(summary, limits))
+    console.print(build_usage_panel(summary, limits))
 
 
-def _usage_url(model: LLMModel | None) -> str | None:
+def get_usage_url(model: LLMModel | None) -> str | None:
     if model is None:
         return None
     platform_id = parse_managed_provider_key(model.provider)
@@ -92,7 +92,7 @@ def _usage_url(model: LLMModel | None) -> str | None:
     return f"{base_url}/usages"
 
 
-async def _fetch_usage(url: str, api_key: str) -> Mapping[str, Any]:
+async def fetch_usage(url: str, api_key: str) -> Mapping[str, Any]:
     async with (
         new_client_session() as session,
         session.get(
@@ -104,7 +104,7 @@ async def _fetch_usage(url: str, api_key: str) -> Mapping[str, Any]:
         return await resp.json()
 
 
-def _parse_usage_payload(
+def parse_usage_payload(
     payload: Mapping[str, Any],
 ) -> tuple[UsageRow | None, list[UsageRow]]:
     summary: UsageRow | None = None
@@ -228,7 +228,7 @@ def _to_int(value: Any) -> int | None:
         return None
 
 
-def _build_usage_panel(summary: UsageRow | None, limits: list[UsageRow]) -> Panel:
+def build_usage_panel(summary: UsageRow | None, limits: list[UsageRow]) -> Panel:
     rows = ([summary] if summary else []) + limits
     if not rows:
         return Panel(

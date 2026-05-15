@@ -76,6 +76,7 @@ lazy_modules = [
     "kimi_cli.cli.info",
     "kimi_cli.cli.export",
     "kimi_cli.cli.mcp",
+    "kimi_cli.cli.usage",
     "kimi_cli.cli.vis",
     "kimi_cli.cli.web",
 ]
@@ -88,7 +89,7 @@ assert all(name not in sys.modules for name in lazy_modules)
 
 result = CliRunner().invoke(cli, ["--help"])
 assert result.exit_code == 0, result.output
-for name in ("info", "export", "mcp", "vis", "web"):
+for name in ("info", "export", "mcp", "usage", "vis", "web"):
     assert name in result.output
 assert all(name not in sys.modules for name in lazy_modules)
 print("ok")
@@ -107,6 +108,7 @@ lazy_modules = [
     "kimi_cli.cli.info",
     "kimi_cli.cli.export",
     "kimi_cli.cli.mcp",
+    "kimi_cli.cli.usage",
     "kimi_cli.cli.vis",
     "kimi_cli.cli.web",
 ]
@@ -121,6 +123,7 @@ assert '"kimi_cli_version"' in result.output
 assert "kimi_cli.cli.info" in sys.modules
 assert "kimi_cli.cli.export" not in sys.modules
 assert "kimi_cli.cli.mcp" not in sys.modules
+assert "kimi_cli.cli.usage" not in sys.modules
 assert "kimi_cli.cli.vis" not in sys.modules
 assert "kimi_cli.cli.web" not in sys.modules
 print("ok")
