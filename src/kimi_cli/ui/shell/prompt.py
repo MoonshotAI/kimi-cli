@@ -1164,7 +1164,7 @@ def _build_toolbar_tips(clipboard_available: bool) -> list[str]:
         "ctrl-x: toggle mode",
         "shift-tab: plan mode",
         "ctrl-o: editor",
-        "ctrl-j: newline",
+        "shift-enter / ctrl-j: newline",
         "/feedback: send feedback",
         "/theme: switch dark/light",
     ]
@@ -1321,8 +1321,9 @@ class CustomPromptSession:
 
         @_kb.add("escape", "enter", eager=True)
         @_kb.add("c-j", eager=True)
+        @_kb.add("s-enter", eager=True)
         def _(event: KeyPressEvent) -> None:
-            """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
+            """Insert a newline when Alt-Enter, Ctrl-J, or Shift-Enter is pressed."""
             from kimi_cli.telemetry import track
 
             track("shortcut_newline")

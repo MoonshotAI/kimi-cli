@@ -9,8 +9,9 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 | `Ctrl-X` | 切换 Agent/Shell 模式 |
 | `Shift-Tab` | 切换 Plan 模式（只读研究与规划） |
 | `Ctrl-O` | 在外部编辑器中编辑（`$VISUAL`/`$EDITOR`） |
-| `Ctrl-J` | 插入换行 |
-| `Alt-Enter` | 插入换行（同 `Ctrl-J`） |
+| `Shift-Enter` | 插入换行 |
+| `Ctrl-J` | 插入换行（同 `Shift-Enter`） |
+| `Alt-Enter` | 插入换行（同 `Shift-Enter`） |
 | `Ctrl-S` | Steer：在 streaming 期间将输入立即注入到正在运行的轮次 |
 | `Ctrl-V` | 粘贴（支持图片和视频文件） |
 | `Ctrl-E` | 展开审批请求完整内容 |
@@ -60,10 +61,11 @@ Kimi Code CLI Shell 模式支持以下键盘快捷键。
 
 ## 多行输入
 
-### `Ctrl-J` / `Alt-Enter`：插入换行
+### `Shift-Enter` / `Ctrl-J` / `Alt-Enter`：插入换行
 
 默认情况下，按 `Enter` 会提交输入。如需输入多行内容，可使用：
 
+- `Shift-Enter`：在任意位置插入换行
 - `Ctrl-J`：在任意位置插入换行
 - `Alt-Enter`：在任意位置插入换行
 
