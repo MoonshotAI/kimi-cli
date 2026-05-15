@@ -301,7 +301,7 @@ async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:
             _print("[grey50]Extracting...[/grey50]")
             try:
                 with tarfile.open(tar_path, "r:gz") as tar:
-                    tar.extractall(tmpdir)
+                    tar.extractall(tmpdir, filter="data")  # PEP 706
                 binary_path = None
                 for root, _, files in os.walk(tmpdir):
                     if "kimi" in files:
