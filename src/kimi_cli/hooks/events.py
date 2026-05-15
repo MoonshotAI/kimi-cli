@@ -75,10 +75,14 @@ def stop(
     session_id: str,
     cwd: str,
     stop_hook_active: bool = False,
+    response: str = "",
+    stop_reason: str = "",
 ) -> dict[str, Any]:
     return {
         **_base("Stop", session_id, cwd),
         "stop_hook_active": stop_hook_active,
+        "response": response,
+        "stop_reason": stop_reason,
     }
 
 

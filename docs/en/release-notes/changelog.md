@@ -4,6 +4,8 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Include the assistant's final response text and stop reason in the Stop hook payload — hook scripts can now inspect turn outcomes
+
 ## 1.44.0 (2026-05-13)
 
 - Shell: Add slash command alias resolution — aliases such as `/h`, `?`, and `status` now resolve to their canonical commands (`/help`, `/usage`); the completer and help output display alias matches as `/name (alias)` for clarity
