@@ -659,7 +659,7 @@ class KimiSoul:
                 if turn_outcome is not None:
                     stop_reason = turn_outcome.stop_reason
                     if turn_outcome.final_message is not None:
-                        stop_response = turn_outcome.final_message.extract_text(" ").strip()
+                        stop_response = turn_outcome.final_message.extract_text(" ").strip()[:500]
 
                 stop_results = await self._hook_engine.trigger(
                     "Stop",
