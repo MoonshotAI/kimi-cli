@@ -48,4 +48,4 @@ node_modules/
 static/
 .memo/
 .entire
-.claude
+.claude.worktrees/
