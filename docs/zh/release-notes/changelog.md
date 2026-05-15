@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：修复 `UserPromptSubmit` hook 在用户输入为非字符串内容时收到空 prompt 文本的问题——包含图片、附件等 ContentPart 列表的输入现在通过 `Message.extract_text` 提取可读文本，而非被替换为空字符串
+
 ## 1.44.0 (2026-05-13)
 
 - Shell：新增斜杠命令别名解析——别名（如 `/h`、`?`、`status`）现在能正确解析到对应的正式命令（`/help`、`/usage`）；补全器和帮助输出会将别名匹配项显示为 `/name (alias)`，方便识别

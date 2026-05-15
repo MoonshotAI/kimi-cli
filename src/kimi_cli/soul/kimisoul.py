@@ -605,7 +605,11 @@ class KimiSoul:
             # they are not user input, and a user-configured prompt-blocking
             # hook would drop the notification and hang the wait loop.
             if not skip_user_prompt_hook:
-                text_input_for_hook = user_input if isinstance(user_input, str) else ""
+                if isinstance(user_input, str):
+                    text_input_for_hook = user_input
+                else:
+                    user_message = Message(role="user", content=user_input)
+                    text_input_for_hook = user_message.extract_text(" ").strip()
 
                 hook_results = await self._hook_engine.trigger(
                     "UserPromptSubmit",
