@@ -434,12 +434,30 @@ def test_mode_drops_model_name_and_dot_on_very_narrow_terminal(monkeypatch: Any)
 # ── Line 2 structural correctness ─────────────────────────────────────────────
 
 
-def test_toolbar_line2_context_appears_on_line2_not_line1(monkeypatch: Any) -> None:
+def test_toolbar_line2_hides_context_below_warning_threshold(monkeypatch: Any) -> None:
     prompt_session = _make_toolbar_session(tips=[])
+    prompt_session._status_provider = lambda: StatusSnapshot(
+        context_usage=0.42,
+        context_tokens=3_000,
+        max_context_tokens=10_000,
+    )
     lines = _render_toolbar_lines(prompt_session, 80, monkeypatch)
 
-    assert "context: 0.0%" in lines[2]
-    assert "context: 0.0%" not in lines[1]
+    assert "context:" not in lines[2]
+    assert "context:" not in lines[1]
+
+
+def test_toolbar_line2_context_appears_at_warning_threshold(monkeypatch: Any) -> None:
+    prompt_session = _make_toolbar_session(tips=[])
+    prompt_session._status_provider = lambda: StatusSnapshot(
+        context_usage=0.80,
+        context_tokens=8_000,
+        max_context_tokens=10_000,
+    )
+    lines = _render_toolbar_lines(prompt_session, 80, monkeypatch)
+
+    assert "context: 80.0% (8k/10k)" in lines[2]
+    assert "context: 80.0% (8k/10k)" not in lines[1]
 
 
 def test_toolbar_line2_left_toast_appears_on_line2_not_line1(monkeypatch: Any) -> None:
@@ -619,7 +637,7 @@ def test_running_prompt_uses_shared_toolbar_and_separator_layout(monkeypatch: An
     rendered_toolbar = prompt_session._render_bottom_toolbar()
     plain_toolbar = "".join(fragment[1] for fragment in rendered_toolbar)
     assert "tip" in plain_toolbar
-    assert "context: 0.0%" in plain_toolbar
+    assert "context:" not in plain_toolbar
 
 
 def test_modal_prompt_hides_normal_separator_and_prompt_label(monkeypatch) -> None:
