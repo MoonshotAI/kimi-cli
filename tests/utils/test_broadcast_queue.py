@@ -77,27 +77,25 @@ async def test_publish_to_empty_queue():
     broadcast.publish_nowait("no_subscribers")
 
 
-async def test_bounded_queue_drops_oldest():
-    """When a subscriber queue is full, the oldest item is dropped."""
-    broadcast = BroadcastQueue(maxsize=3)
-    queue = broadcast.subscribe()
+async def test_publish_nowait_skips_full_subscriber():
+    """publish_nowait skips a full subscriber but continues to others."""
+    broadcast = BroadcastQueue(maxsize=2)
+    bounded = broadcast.subscribe()
+    unbounded = broadcast.subscribe(maxsize=0)
 
-    # Fill the queue to capacity without consuming.
     broadcast.publish_nowait("msg_1")
     broadcast.publish_nowait("msg_2")
+    assert bounded.qsize() == 2
+    assert unbounded.qsize() == 2
+
+    # bounded is full, but unbounded should still receive msg_3.
     broadcast.publish_nowait("msg_3")
-    assert queue.qsize() == 3
-
-    # Publishing a 4th message should drop the oldest (msg_1).
-    broadcast.publish_nowait("msg_4")
-    assert queue.qsize() == 3
-    assert await queue.get() == "msg_2"
-    assert await queue.get() == "msg_3"
-    assert await queue.get() == "msg_4"
+    assert bounded.qsize() == 2
+    assert unbounded.qsize() == 3
 
 
-async def test_default_maxsize_is_1000():
-    """Default BroadcastQueue should have maxsize=1000."""
+async def test_default_maxsize_is_bounded():
+    """Default BroadcastQueue is bounded (maxsize=1000) for production safety."""
     broadcast = BroadcastQueue()
     queue = broadcast.subscribe()
     assert queue.maxsize == 1000
@@ -108,10 +106,10 @@ async def test_graceful_shutdown_preserves_items():
     broadcast = BroadcastQueue(maxsize=3)
     queue = broadcast.subscribe()
 
-    # Fill the queue.
-    broadcast.publish_nowait("keep_1")
-    broadcast.publish_nowait("keep_2")
-    broadcast.publish_nowait("keep_3")
+    # Fill the queue via async publish (put) since put_nowait would skip.
+    await broadcast.publish("keep_1")
+    await broadcast.publish("keep_2")
+    await broadcast.publish("keep_3")
     assert queue.qsize() == 3
 
     # Graceful shutdown should preserve the three items.
@@ -130,9 +128,9 @@ async def test_immediate_shutdown_clears_items():
     broadcast = BroadcastQueue(maxsize=3)
     queue = broadcast.subscribe()
 
-    broadcast.publish_nowait("drop_1")
-    broadcast.publish_nowait("drop_2")
-    broadcast.publish_nowait("drop_3")
+    await broadcast.publish("drop_1")
+    await broadcast.publish("drop_2")
+    await broadcast.publish("drop_3")
 
     broadcast.shutdown(immediate=True)
 
@@ -140,21 +138,26 @@ async def test_immediate_shutdown_clears_items():
         queue.get_nowait()
 
 
-async def test_publish_drops_oldest_when_full():
-    """async publish() must not block forever on a full queue."""
-    broadcast = BroadcastQueue(maxsize=3)
+async def test_publish_blocks_until_space():
+    """async publish() blocks on a full queue until space is available."""
+    broadcast = BroadcastQueue(maxsize=2)
     queue = broadcast.subscribe()
 
     broadcast.publish_nowait("old_1")
     broadcast.publish_nowait("old_2")
-    broadcast.publish_nowait("old_3")
-    assert queue.qsize() == 3
+    assert queue.qsize() == 2
 
-    # publish() should evict the oldest item rather than hanging.
-    await broadcast.publish("new_msg")
-    assert queue.qsize() == 3
+    # publish() should block until a consumer frees space.
+    task = asyncio.create_task(broadcast.publish("new_msg"))
+    await asyncio.sleep(0)  # let the task start and block
+
+    assert queue.qsize() == 2  # still full
+    assert await queue.get() == "old_1"
+
+    # Now the blocked publish can proceed.
+    await asyncio.wait_for(task, timeout=1.0)
+    assert queue.qsize() == 2
     assert await queue.get() == "old_2"
-    assert await queue.get() == "old_3"
     assert await queue.get() == "new_msg"
 
 

@@ -3,19 +3,18 @@ import contextlib
 
 from kimi_cli.utils.aioqueue import Queue
 
-_DEFAULT_MAXSIZE = 1000
-
 
 class BroadcastQueue[T]:
     """A broadcast queue that allows multiple subscribers to receive published items.
 
-    Each subscriber gets its own bounded queue (default maxsize=1000) to
-    prevent unbounded memory growth when a consumer is slower than the
-    producer.  When a subscriber's queue is full, the oldest item is
-    dropped to make room for the new one.
+    Each subscriber gets its own queue.  By default queues are bounded
+    (``maxsize=1000``) to prevent unbounded memory growth; an unbounded
+    queue can be requested with ``maxsize=0``.  Critical consumers
+    (e.g. wire recorders and waitable request paths) should use an
+    unbounded queue.
     """
 
-    def __init__(self, *, maxsize: int = _DEFAULT_MAXSIZE) -> None:
+    def __init__(self, *, maxsize: int = 1000) -> None:
         self._queues: set[Queue[T]] = set()
         self._maxsize = maxsize
 
@@ -24,7 +23,9 @@ class BroadcastQueue[T]:
 
         Args:
             maxsize: Maximum queue size.  ``None`` uses the broadcast
-                queue's default (bounded).  ``0`` means unbounded.
+                queue's default (unbounded).  ``0`` means unbounded.
+                Pass a positive value for lossy consumers that may fall
+                behind and can tolerate dropped messages.
         """
         queue: Queue[T] = Queue(maxsize=maxsize if maxsize is not None else self._maxsize)
         self._queues.add(queue)
@@ -35,33 +36,25 @@ class BroadcastQueue[T]:
         self._queues.discard(queue)
 
     async def publish(self, item: T) -> None:
-        """Publish an item to all subscription queues.
+        """Publish an item to all subscription queues, awaiting space.
 
-        If a subscriber's queue is full, the oldest item is dropped so
-        that publication never blocks indefinitely.
+        This blocks until every subscriber has room for the item.
         """
         for queue in self._queues:
-            try:
-                queue.put_nowait(item)
-            except asyncio.QueueFull:
-                with contextlib.suppress(asyncio.QueueEmpty):
-                    queue.get_nowait()
-                with contextlib.suppress(asyncio.QueueFull):
-                    queue.put_nowait(item)
+            await queue.put(item)
 
     def publish_nowait(self, item: T) -> None:
         """Publish an item to all subscription queues without waiting.
 
-        If a subscriber's queue is full, the oldest item is dropped.
+        If a single subscriber's queue is full, that subscriber is
+        skipped so that later subscribers still receive the item.
+        Callers that require guaranteed delivery (e.g. waitable
+        requests) should use an unbounded queue so no subscriber is
+        ever skipped.
         """
         for queue in self._queues:
-            try:
+            with contextlib.suppress(asyncio.QueueFull):
                 queue.put_nowait(item)
-            except asyncio.QueueFull:
-                with contextlib.suppress(asyncio.QueueEmpty):
-                    queue.get_nowait()
-                with contextlib.suppress(asyncio.QueueFull):
-                    queue.put_nowait(item)
 
     def shutdown(self, immediate: bool = False) -> None:
         """Close all subscription queues."""

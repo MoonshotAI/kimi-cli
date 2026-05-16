@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 
 if sys.version_info >= (3, 13):
@@ -36,23 +37,17 @@ else:
             if immediate:
                 self._queue.clear()  # type: ignore[attr-defined]
 
-            getters = list(getattr(self, "_getters", []))
-            count = max(1, len(getters))
-            self._enqueue_shutdown(count, immediate=immediate)
+            # Wake all getters so they can drain remaining items or see
+            # QueueShutDown on the next get() call.
+            while getattr(self, "_getters", []):
+                with contextlib.suppress(IndexError):
+                    self._wakeup_next(self._getters)  # type: ignore[attr-defined]
 
-        def _enqueue_shutdown(self, count: int, *, immediate: bool) -> None:
-            for _ in range(count):
-                try:
-                    super().put_nowait(_SHUTDOWN)
-                except asyncio.QueueFull:
-                    if immediate:
-                        self._queue.clear()  # type: ignore[attr-defined]
-                        super().put_nowait(_SHUTDOWN)
-                    # Graceful shutdown: preserve pending items.  The
-                    # shutdown flag is already set, so new puts are
-                    # rejected and consumers will see QueueShutDown once
-                    # the queue drains.
-                    break
+            # Wake all putters so they re-check shutdown instead of
+            # hanging on a full bounded queue.
+            while getattr(self, "_putters", []):
+                with contextlib.suppress(IndexError):
+                    self._wakeup_next(self._putters)  # type: ignore[attr-defined]
 
         async def get(self) -> T:
             if self._shutdown and self.empty():
@@ -74,6 +69,10 @@ else:
             if self._shutdown:
                 raise QueueShutDown
             await super().put(item)
+            # Re-check shutdown after waking from a full-queue wait;
+            # the queue may have been shut down while we were blocked.
+            if self._shutdown:
+                raise QueueShutDown
 
         def put_nowait(self, item: T) -> None:
             if self._shutdown:
