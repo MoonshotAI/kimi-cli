@@ -55,7 +55,7 @@ else:
                 finally:
                     with contextlib.suppress(ValueError):
                         self._getters.remove(getter)
-                if self._shutdown:
+                if self._shutdown and self.empty():
                     raise QueueShutDown
             return super().get_nowait()
 
