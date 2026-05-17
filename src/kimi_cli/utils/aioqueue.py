@@ -67,11 +67,17 @@ else:
         async def put(self, item: T) -> None:
             if self._shutdown:
                 raise QueueShutDown
-            await super().put(item)
-            # Re-check shutdown after waking from a full-queue wait;
-            # the queue may have been shut down while we were blocked.
-            if self._shutdown:
-                raise QueueShutDown
+            while self.full():
+                putter = asyncio.get_running_loop().create_future()
+                self._putters.append(putter)
+                try:
+                    await putter
+                finally:
+                    with contextlib.suppress(ValueError):
+                        self._putters.remove(putter)
+                if self._shutdown:
+                    raise QueueShutDown
+            super().put_nowait(item)
 
         def put_nowait(self, item: T) -> None:
             if self._shutdown:
