@@ -62,15 +62,9 @@ class _ConnectionPool:
         loop_id = id(loop)
 
         with self._lock:
-            # Fast path: already have a live connector for this loop.
-            entry = self._connectors.get(loop_id)
-            if entry is not None:
-                stored_loop, connector = entry
-                if not connector.closed and not stored_loop.is_closed():
-                    return connector
-
-            # Slow path: reap stale connectors, then create.
-            # Reap connectors whose event loop has been closed.
+            # Opportunistically reap connectors from closed loops first.
+            # If a long-lived loop keeps taking the fast path, stale
+            # connectors from dead loops would otherwise never be cleaned.
             stale_ids = [
                 lid for lid, (sl, c) in self._connectors.items() if c.closed or sl.is_closed()
             ]
@@ -83,6 +77,13 @@ class _ConnectionPool:
                         # dead loop this may raise, in which case GC will
                         # reclaim the object.
                         old._close()  # type: ignore[reportPrivateUsage]
+
+            # Fast path: already have a live connector for this loop.
+            entry = self._connectors.get(loop_id)
+            if entry is not None:
+                stored_loop, connector = entry
+                if not connector.closed and not stored_loop.is_closed():
+                    return connector
 
             with warnings.catch_warnings():
                 warnings.filterwarnings(
