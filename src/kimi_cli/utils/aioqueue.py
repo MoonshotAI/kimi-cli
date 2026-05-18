@@ -34,6 +34,9 @@ else:
 
             # Wake all getters so they can check the shutdown flag and
             # raise QueueShutDown instead of re-blocking forever.
+            # NOTE: _wakeup_next is a private asyncio.Queue method that has
+            # been stable since Python 3.7.  We use it because there is no
+            # public API to wake a specific waiter.
             while getattr(self, "_getters", []):
                 with contextlib.suppress(IndexError):
                     self._wakeup_next(self._getters)  # type: ignore[attr-defined]

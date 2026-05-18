@@ -23,7 +23,7 @@ class BroadcastQueue[T]:
 
         Args:
             maxsize: Maximum queue size.  ``None`` uses the broadcast
-                queue's default (unbounded).  ``0`` means unbounded.
+                queue's default (``1000``).  ``0`` means unbounded.
                 Pass a positive value for lossy consumers that may fall
                 behind and can tolerate dropped messages.
         """
@@ -40,7 +40,7 @@ class BroadcastQueue[T]:
 
         This blocks until every subscriber has room for the item.
         """
-        for queue in self._queues:
+        for queue in list(self._queues):
             await queue.put(item)
 
     def publish_nowait(self, item: T) -> None:
@@ -52,12 +52,12 @@ class BroadcastQueue[T]:
         requests) should use an unbounded queue so no subscriber is
         ever skipped.
         """
-        for queue in self._queues:
+        for queue in list(self._queues):
             with contextlib.suppress(asyncio.QueueFull):
                 queue.put_nowait(item)
 
     def shutdown(self, immediate: bool = False) -> None:
         """Close all subscription queues."""
-        for queue in self._queues:
+        for queue in list(self._queues):
             queue.shutdown(immediate=immediate)
         self._queues.clear()

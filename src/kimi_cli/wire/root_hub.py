@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import asyncio
-
 from kimi_cli.utils.aioqueue import Queue
 from kimi_cli.utils.broadcast import BroadcastQueue
-from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import WireMessage
 
 
@@ -31,10 +28,7 @@ class RootWireHub:
         await self._queue.publish(msg)
 
     def publish_nowait(self, msg: WireMessage) -> None:
-        try:
-            self._queue.publish_nowait(msg)
-        except asyncio.QueueFull:
-            logger.debug("RootWireHub: dropped message for slow subscriber: {msg}", msg=msg)
+        self._queue.publish_nowait(msg)
 
     def shutdown(self) -> None:
         self._queue.shutdown()

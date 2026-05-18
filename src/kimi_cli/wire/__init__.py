@@ -14,7 +14,9 @@ from kimi_cli.wire.types import ContentPart, ToolCallPart, WireMessage, is_wire_
 
 
 def _WireMessageQueue() -> BroadcastQueue[WireMessage]:
-    """Unbounded wire queue for critical paths (recorder, waitable requests)."""
+    """Wire message queue.  Defaults to bounded (1000); callers that need
+    guaranteed delivery (recorder, waitable requests) should pass
+    ``maxsize=0`` when subscribing."""
     return BroadcastQueue[WireMessage]()
 
 
@@ -88,9 +90,9 @@ class WireSoulSide:
         # send raw message
         try:
             self._raw_queue.publish_nowait(msg)
-        except (QueueShutDown, asyncio.QueueFull):
+        except QueueShutDown:
             logger.info(
-                "Failed to send raw wire message, queue is shut down or full: {msg}",
+                "Failed to send raw wire message, queue is shut down: {msg}",
                 msg=msg,
             )
 
@@ -119,9 +121,9 @@ class WireSoulSide:
     def _send_merged(self, msg: WireMessage) -> None:
         try:
             self._merged_queue.publish_nowait(msg)
-        except (QueueShutDown, asyncio.QueueFull):
+        except QueueShutDown:
             logger.info(
-                "Failed to send merged wire message, queue is shut down or full: {msg}",
+                "Failed to send merged wire message, queue is shut down: {msg}",
                 msg=msg,
             )
 
