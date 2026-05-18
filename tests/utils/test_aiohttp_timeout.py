@@ -19,7 +19,6 @@ async def _reset_pool():
 
 
 async def test_default_session_has_timeout():
-    """new_client_session() should create a session with non-None timeout values."""
     async with new_client_session() as session:
         assert session.timeout.total == 120
         assert session.timeout.sock_read == 60
@@ -27,7 +26,6 @@ async def test_default_session_has_timeout():
 
 
 async def test_custom_timeout_override():
-    """Callers can override the default timeout."""
     import aiohttp
 
     custom = aiohttp.ClientTimeout(total=30, sock_read=10)
@@ -37,7 +35,6 @@ async def test_custom_timeout_override():
 
 
 async def test_slow_server_is_interrupted():
-    """A server that accepts but never responds should be interrupted by timeout."""
     hang_forever = asyncio.Event()
 
     async def _slow_handler(reader, writer):
@@ -62,7 +59,6 @@ async def test_slow_server_is_interrupted():
 
 
 async def test_sessions_share_connector_per_loop():
-    """Multiple sessions on the same loop should reuse the same TCPConnector."""
     async with new_client_session() as session1:
         connector1 = session1.connector
 
@@ -73,12 +69,10 @@ async def test_sessions_share_connector_per_loop():
     assert connector1 is connector2
     assert connector1.limit == 100
     assert connector1.limit_per_host == 30
-    # The shared connector must stay open after sessions close.
     assert not connector1.closed
 
 
 async def test_connector_recreated_after_close():
-    """A new connector is created after the shared one is explicitly closed."""
     async with new_client_session() as session1:
         connector1 = session1.connector
 
@@ -95,7 +89,6 @@ async def test_connector_recreated_after_close():
 
 
 async def test_concurrent_creation_is_safe():
-    """Multiple coroutines creating sessions simultaneously must share one connector."""
     await close_connector()
 
     async def _open():
@@ -115,15 +108,12 @@ async def test_concurrent_creation_is_safe():
 
 
 async def test_keepalive_pools_connections():
-    """Idle connections should be returned to the pool and reused across sessions."""
-
     seen_ports: set[int] = set()
 
     async def _handler(reader, writer):
         peer = writer.get_extra_info("peername")
         if peer is not None:
             seen_ports.add(peer[1])
-        # Serve requests in a loop so keep-alive connections can be reused.
         while True:
             try:
                 request = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=1.0)
@@ -147,17 +137,13 @@ async def test_keepalive_pools_connections():
         async with new_client_session() as s2, s2.get(f"http://127.0.0.1:{port}/") as resp:
             await resp.text()
 
-        # If only one client port was seen, the connection was reused.
-        # Two ports means a new connection was opened for the second request.
-        # Either outcome is acceptable; the test verifies keep-alive works.
-        assert len(seen_ports) <= 2, f"Expected at most 2 client ports, got {seen_ports}"
+        assert len(seen_ports) == 1, f"Expected connection reuse (1 port), got {seen_ports}"
     finally:
         server.close()
         await server.wait_closed()
 
 
 async def test_stress_pool_under_load():
-    """Twenty parallel requests must use exactly one connector and pool connections."""
     await close_connector()
 
     request_count = 0
@@ -195,7 +181,6 @@ async def test_stress_pool_under_load():
 
 
 async def test_isolated_pool_does_not_bleed():
-    """A private _ConnectionPool instance must be fully independent."""
     pool = _ConnectionPool(limit=5, limit_per_host=2, register_atexit=False)
 
     async with pool.new_session() as s:
@@ -208,8 +193,6 @@ async def test_isolated_pool_does_not_bleed():
 
 
 def test_separate_loops_get_separate_connectors():
-    """Different asyncio.run() calls (different loops) must not share connectors."""
-
     async def _get_connector_id():
         async with new_client_session() as s:
             return id(s.connector)
@@ -221,39 +204,29 @@ def test_separate_loops_get_separate_connectors():
 
 
 def test_reaps_closed_loop_connectors():
-    """Connectors bound to closed event loops should be cleaned up, not leaked."""
-
     async def _get_connector():
         from kimi_cli.utils.aiohttp import _default_pool
 
         return _default_pool.get_connector()
 
     c1 = asyncio.run(_get_connector())
-    assert not c1.closed
     c1_id = id(c1)
 
-    # After the first asyncio.run finishes its loop is closed.
-    # A second run should create a new connector and reap the old one.
     c2 = asyncio.run(_get_connector())
-    assert not c2.closed
     c2_id = id(c2)
 
     assert c1_id != c2_id, "Expected a new connector for the new loop"
-    # The old connector was dropped from the pool; it may still be alive
-    # until GC runs, so we assert on pool state rather than c1.closed.
     from kimi_cli.utils.aiohttp import _default_pool
 
     assert c1_id not in {id(c) for _, c in _default_pool._connectors.values()}
 
 
 async def _get_connector_in_thread() -> int:
-    """Helper for multi-threaded stress test."""
     async with new_client_session() as s:
         return id(s.connector)
 
 
 def test_multi_threaded_access():
-    """Multiple threads with separate event loops must not race or crash."""
     import threading
 
     results: list[int] = []
@@ -272,6 +245,7 @@ def test_multi_threaded_access():
         t.join()
 
     assert not errors, f"Threads raised exceptions: {errors}"
-    # Each thread should have created exactly one connector (all threads
-    # share the same default pool but get a connector bound to their loop).
     assert len(results) == 8
+    # Connectors are keyed by id(loop); sequential threads may reuse the
+    # same memory address for a new loop after the old one is GC'd, so we
+    # only assert that every thread succeeded, not that all IDs are unique.

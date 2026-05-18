@@ -84,14 +84,10 @@ class _ConnectionPool:
                         # reclaim the object.
                         old._close()  # type: ignore[reportPrivateUsage]
 
-            entry = self._connectors.get(loop_id)
-            if entry is not None:
-                stored_loop, connector = entry
-                if not connector.closed and not stored_loop.is_closed():
-                    return connector
-
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore", DeprecationWarning)
+                warnings.filterwarnings(
+                    "ignore", category=DeprecationWarning, module="aiohttp.connector"
+                )
                 connector = aiohttp.TCPConnector(
                     ssl=_ssl_context,
                     limit=self._limit,
@@ -136,10 +132,10 @@ class _ConnectionPool:
         for loop, c in connectors:
             if c.closed:
                 continue
-            if loop is current_loop:
+            if loop is current_loop and not loop.is_closed():
                 await c.close()
             else:
-                # Close connectors from other loops synchronously to
+                # Close connectors from dead/other loops synchronously to
                 # avoid cross-loop task/future errors.
                 with contextlib.suppress(Exception):
                     c._close()  # type: ignore[reportPrivateUsage]
