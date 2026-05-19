@@ -273,7 +273,12 @@ class SSHKaos:
                 raise FileExistsError(f"{path} already exists")
             await self._sftp.mkdir(str(path))
 
-    async def exec(self, *args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
+    async def exec(
+        self,
+        *args: str,
+        env: Mapping[str, str] | None = None,
+        start_new_session: bool = False,
+    ) -> KaosProcess:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
         command = " ".join(shlex.quote(arg) for arg in args)

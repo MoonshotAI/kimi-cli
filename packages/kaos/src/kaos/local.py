@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 from asyncio.subprocess import Process as AsyncioProcess
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if os.name == "nt":
     import ntpath as pathmodule
@@ -162,16 +163,34 @@ class LocalKaos:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
         await asyncio.to_thread(local_path.mkdir, parents=parents, exist_ok=exist_ok)
 
-    async def exec(self, *args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
+    async def exec(
+        self,
+        *args: str,
+        env: Mapping[str, str] | None = None,
+        start_new_session: bool = False,
+    ) -> KaosProcess:
         if not args:
             raise ValueError("At least one argument (the program to execute) is required.")
 
+        spawn_kwargs: dict[str, Any] = {
+            "stdin": asyncio.subprocess.PIPE,
+            "stdout": asyncio.subprocess.PIPE,
+            "stderr": asyncio.subprocess.PIPE,
+            "env": env,
+        }
+        if start_new_session:
+            if os.name == "nt":
+                spawn_kwargs["creationflags"] = getattr(
+                    subprocess,
+                    "CREATE_NEW_PROCESS_GROUP",
+                    0,
+                )
+            else:
+                spawn_kwargs["start_new_session"] = True
+
         process = await asyncio.create_subprocess_exec(
             *args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
+            **spawn_kwargs,
         )
         return self.Process(process)
 

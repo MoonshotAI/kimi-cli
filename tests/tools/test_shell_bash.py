@@ -358,6 +358,7 @@ async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: p
     """Test that cancelling a shell run kills the underlying process."""
 
     started = asyncio.Event()
+    exec_kwargs: list[dict] = []
 
     class BlockingReadable:
         async def readline(self) -> bytes:
@@ -384,7 +385,8 @@ async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: p
 
     fake_process = FakeProcess()
 
-    async def fake_exec(*_args, **_kwargs) -> FakeProcess:
+    async def fake_exec(*_args, **kwargs) -> FakeProcess:
+        exec_kwargs.append(kwargs)
         return fake_process
 
     monkeypatch.setattr("kimi_cli.tools.shell.kaos.exec", fake_exec)
@@ -399,3 +401,4 @@ async def test_cancelled_command_kills_process(shell_tool: Shell, monkeypatch: p
         await task
 
     assert fake_process.kill_calls == 1
+    assert exec_kwargs[0]["start_new_session"] is True

@@ -216,7 +216,12 @@ class Kaos(Protocol):
         """Create a directory at the given path."""
         ...
 
-    async def exec(self, *args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
+    async def exec(
+        self,
+        *args: str,
+        env: Mapping[str, str] | None = None,
+        start_new_session: bool = False,
+    ) -> KaosProcess:
         """
         Execute a command with arguments and return the running process.
 
@@ -224,6 +229,8 @@ class Kaos(Protocol):
             *args: Command and its arguments.
             env: Environment variables for the subprocess. If None, inherits
                  from the parent process.
+            start_new_session: Run local processes in a separate process group/session
+                 when the backend supports it.
         """
         ...
 
@@ -342,5 +349,13 @@ async def mkdir(path: StrOrKaosPath, parents: bool = False, exist_ok: bool = Fal
     return await get_current_kaos().mkdir(path, parents=parents, exist_ok=exist_ok)
 
 
-async def exec(*args: str, env: Mapping[str, str] | None = None) -> KaosProcess:
-    return await get_current_kaos().exec(*args, env=env)
+async def exec(
+    *args: str,
+    env: Mapping[str, str] | None = None,
+    start_new_session: bool = False,
+) -> KaosProcess:
+    return await get_current_kaos().exec(
+        *args,
+        env=env,
+        start_new_session=start_new_session,
+    )

@@ -1,4 +1,8 @@
 import asyncio
+import contextlib
+import os
+import signal
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Self, override
@@ -234,7 +238,11 @@ class Shell(CallableTool2[Params]):
         # running, not an empty/stale value inherited from the parent (most visible
         # on Windows, where the parent's SHELL is typically empty or PowerShell).
         env["SHELL"] = str(self._shell_path)
-        process = await kaos.exec(*self._shell_args(command), env=env)
+        process = await kaos.exec(
+            *self._shell_args(command),
+            env=env,
+            start_new_session=True,
+        )
 
         # Close stdin immediately so interactive prompts (e.g. git password) get
         # EOF instead of hanging forever waiting for input that will never come.
@@ -250,11 +258,35 @@ class Shell(CallableTool2[Params]):
             )
             return await process.wait()
         except asyncio.CancelledError:
-            await process.kill()
+            await self._terminate_shell_process(process)
             raise
         except TimeoutError:
-            await process.kill()
+            await self._terminate_shell_process(process)
             raise
 
     def _shell_args(self, command: str) -> tuple[str, ...]:
         return (str(self._shell_path), "-c", command)
+
+    async def _terminate_shell_process(self, process: kaos.KaosProcess) -> None:
+        pid = getattr(process, "pid", -1)
+
+        if pid > 0 and self._on_windows:
+            await asyncio.to_thread(
+                subprocess.run,
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        elif pid > 0 and os.name != "nt":
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except OSError:
+                with contextlib.suppress(Exception):
+                    await process.kill()
+        else:
+            await process.kill()
+            return
+
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(process.wait(), timeout=1)
