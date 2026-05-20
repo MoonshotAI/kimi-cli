@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -16,6 +16,7 @@ from kosong.chat_provider import (
     APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
+    ChatProvider,
     RetryableChatProvider,
 )
 from kosong.message import Message
@@ -29,7 +30,7 @@ from kimi_cli.approval_runtime import (
 )
 from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.hooks.engine import HookEngine
-from kimi_cli.llm import ModelCapability
+from kimi_cli.llm import ModelCapability, compute_max_completion_tokens
 from kimi_cli.notifications import (
     NotificationView,
     build_notification_message,
@@ -1003,6 +1004,7 @@ class KimiSoul:
 
         # Normalize: merge adjacent user messages for clean API input
         effective_history = normalize_history(self._context.history)
+        chat_provider = self._with_dynamic_completion_budget(chat_provider)
 
         async def _run_step_once() -> StepResult:
             # run an LLM step (may be interrupted)
@@ -1123,6 +1125,27 @@ class KimiSoul:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
+    def _with_dynamic_completion_budget(self, chat_provider: ChatProvider) -> ChatProvider:
+        from kosong.chat_provider.kimi import Kimi
+
+        if not isinstance(chat_provider, Kimi):
+            return chat_provider
+
+        parameters = chat_provider.model_parameters
+        configured_budget = parameters.get("max_completion_tokens")
+        if configured_budget is None:
+            configured_budget = parameters.get("max_tokens")
+        if type(configured_budget) is not int:
+            configured_budget = self._loop_control.reserved_context_size
+
+        assert self._runtime.llm is not None
+        max_completion_tokens = compute_max_completion_tokens(
+            max_context_size=self._runtime.llm.max_context_size,
+            input_tokens=self._context.token_count_with_pending,
+            response_budget=configured_budget,
+        )
+        return chat_provider.with_generation_kwargs(max_completion_tokens=max_completion_tokens)
+
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
 
@@ -1166,13 +1189,19 @@ class KimiSoul:
             ChatProviderError: When the chat provider returns an error.
         """
 
-        chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
+        compaction_llm = None
+        if self._runtime.llm is not None:
+            compaction_llm = replace(
+                self._runtime.llm,
+                chat_provider=self._with_dynamic_completion_budget(self._runtime.llm.chat_provider),
+            )
+        chat_provider = compaction_llm.chat_provider if compaction_llm is not None else None
 
         async def _run_compaction_once() -> CompactionResult:
-            if self._runtime.llm is None:
+            if compaction_llm is None:
                 raise LLMNotSet()
             return await self._compaction.compact(
-                self._context.history, self._runtime.llm, custom_instruction=custom_instruction
+                self._context.history, compaction_llm, custom_instruction=custom_instruction
             )
 
         start_time = time.monotonic()

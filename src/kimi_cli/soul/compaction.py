@@ -111,8 +111,8 @@ class SimpleCompaction:
         if compact_message is None:
             return CompactionResult(messages=to_preserve, usage=None)
 
-        # Call kosong.step to get the compacted context
-        # TODO: set max completion tokens
+        # Call kosong.step to get the compacted context.
+        # KimiSoul configures provider-specific completion caps before calling this.
         logger.debug("Compacting context...")
         result = await kosong.step(
             chat_provider=llm.chat_provider,

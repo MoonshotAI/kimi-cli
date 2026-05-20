@@ -85,7 +85,9 @@ class Kimi:
         See https://platform.moonshot.ai/docs/api/chat#request-body.
         """
 
+        max_completion_tokens: int | None
         max_tokens: int | None
+        """Deprecated alias. Normalized to ``max_completion_tokens`` before requests."""
         temperature: float | None
         top_p: float | None
         n: int | None
@@ -160,11 +162,7 @@ class Kimi:
             messages.append({"role": "system", "content": system_prompt})
         messages.extend(_convert_message(message) for message in history)
 
-        generation_kwargs: dict[str, Any] = {
-            # default kimi generation kwargs
-            "max_tokens": 32000,
-        }
-        generation_kwargs.update(self._generation_kwargs)
+        generation_kwargs: dict[str, Any] = dict(self._generation_kwargs)
 
         try:
             response = await self.client.chat.completions.create(
@@ -221,7 +219,7 @@ class Kimi:
         """
         new_self = copy.copy(self)
         new_self._generation_kwargs = copy.deepcopy(self._generation_kwargs)
-        new_self._generation_kwargs.update(kwargs)
+        new_self._generation_kwargs.update(_normalize_generation_kwargs(kwargs))
         return new_self
 
     def with_extra_body(self, extra_body: ExtraBody) -> Self:
@@ -302,6 +300,14 @@ type KimiFilePurpose = Literal["video", "image"]
 def _guess_filename(mime_type: str) -> str:
     extension = mimetypes.guess_extension(mime_type) or ".bin"
     return f"upload{extension}"
+
+
+def _normalize_generation_kwargs(kwargs: Kimi.GenerationKwargs) -> Kimi.GenerationKwargs:
+    normalized: dict[str, Any] = dict(kwargs)
+    max_tokens = normalized.pop("max_tokens", None)
+    if max_tokens is not None and "max_completion_tokens" not in normalized:
+        normalized["max_completion_tokens"] = max_tokens
+    return cast(Kimi.GenerationKwargs, normalized)
 
 
 def _convert_message(message: Message) -> ChatCompletionMessageParam:
@@ -507,7 +513,7 @@ if __name__ == "__main__":
         ]
         stream = await chat.with_generation_kwargs(
             temperature=0,
-            max_tokens=1000,
+            max_completion_tokens=1000,
         ).generate(system_prompt, [], history)
         async for part in stream:
             print(part.model_dump(exclude_none=True))

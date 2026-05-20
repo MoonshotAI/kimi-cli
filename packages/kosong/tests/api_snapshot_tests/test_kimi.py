@@ -368,7 +368,21 @@ async def test_kimi_generation_kwargs():
         async for _ in stream:
             pass
         body = json.loads(mock.calls.last.request.content.decode())
-        assert (body["temperature"], body["max_tokens"]) == snapshot((0.7, 2048))
+        assert (body["temperature"], body["max_completion_tokens"]) == snapshot((0.7, 2048))
+
+
+async def test_kimi_default_omits_completion_cap():
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = Kimi(model="kimi-k2-turbo-preview", api_key="test-key", stream=False)
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "max_tokens" not in body
+        assert "max_completion_tokens" not in body
 
 
 async def test_kimi_with_thinking():
