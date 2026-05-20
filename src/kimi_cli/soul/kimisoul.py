@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -1071,7 +1071,7 @@ class KimiSoul:
         # 2e.3. HISTORY NORMALIZATION
         # ═══════════════════════════════════════════════════════════════════════
         effective_history = normalize_history(self._context.history)
-        chat_provider = self._with_dynamic_completion_budget(chat_provider)
+        generation_overrides = self._compute_completion_overrides(chat_provider)
 
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.4. LLM CALL WITH RETRY
@@ -1094,6 +1094,7 @@ class KimiSoul:
                 effective_history,
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
+                generation_overrides=generation_overrides,
             )
 
         max_attempts = self._loop_control.max_retries_per_step
@@ -1221,16 +1222,23 @@ class KimiSoul:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
-    def _with_dynamic_completion_budget(self, chat_provider: ChatProvider) -> ChatProvider:
+    def _compute_completion_overrides(self, chat_provider: ChatProvider) -> dict[str, Any] | None:
+        """Compute per-call generation overrides for the given chat provider.
+
+        Returns a dict of per-call generation overrides forwarded to ``kosong.step``,
+        or ``None`` if no overrides apply for the given provider. The chat provider
+        instance is not modified, so transport-level state (the live OpenAI client and
+        any in-flight OAuth token) stays attached to the single instance owned by
+        ``Runtime.llm`` — retry recovery in ``Kimi.on_retryable_error`` therefore
+        affects subsequent steps as intended.
+        """
         from kosong.chat_provider.kimi import Kimi
 
         if not isinstance(chat_provider, Kimi):
-            return chat_provider
+            return None
 
         parameters = chat_provider.model_parameters
         configured_budget = parameters.get("max_completion_tokens")
-        if configured_budget is None:
-            configured_budget = parameters.get("max_tokens")
         if type(configured_budget) is not int:
             configured_budget = self._loop_control.reserved_context_size
 
@@ -1240,7 +1248,7 @@ class KimiSoul:
             input_tokens=self._context.token_count_with_pending,
             response_budget=configured_budget,
         )
-        return chat_provider.with_generation_kwargs(max_completion_tokens=max_completion_tokens)
+        return {"max_completion_tokens": max_completion_tokens}
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
@@ -1285,19 +1293,19 @@ class KimiSoul:
             ChatProviderError: When the chat provider returns an error.
         """
 
-        compaction_llm = None
-        if self._runtime.llm is not None:
-            compaction_llm = self._runtime.llm
-            chat_provider = self._with_dynamic_completion_budget(compaction_llm.chat_provider)
-            if chat_provider is not compaction_llm.chat_provider:
-                compaction_llm = replace(compaction_llm, chat_provider=chat_provider)
-        chat_provider = compaction_llm.chat_provider if compaction_llm is not None else None
+        chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
+        compaction_overrides = (
+            self._compute_completion_overrides(chat_provider) if chat_provider is not None else None
+        )
 
         async def _run_compaction_once() -> CompactionResult:
-            if compaction_llm is None:
+            if self._runtime.llm is None:
                 raise LLMNotSet()
             return await self._compaction.compact(
-                self._context.history, compaction_llm, custom_instruction=custom_instruction
+                self._context.history,
+                self._runtime.llm,
+                custom_instruction=custom_instruction,
+                generation_overrides=compaction_overrides,
             )
 
         start_time = time.monotonic()

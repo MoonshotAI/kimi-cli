@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 from unittest.mock import AsyncMock, MagicMock
 
 import acp
@@ -93,6 +93,7 @@ class Auth401Provider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        **_kwargs: Any,
     ) -> StaticStreamedMessage:
         raise APIStatusError(401, "incorrect API KEY")
 
@@ -125,6 +126,7 @@ class APIStatusErrorProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        **_kwargs: Any,
     ) -> StaticStreamedMessage:
         raise APIStatusError(self._status_code, self._message)
 
@@ -153,6 +155,7 @@ class GenericErrorProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        **_kwargs: Any,
     ) -> StaticStreamedMessage:
         raise ChatProviderError("something went wrong")
 
@@ -181,6 +184,7 @@ class SuccessProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        **_kwargs: Any,
     ) -> StaticStreamedMessage:
         return StaticStreamedMessage([MessageTextPart(text="hello")])
 
@@ -209,6 +213,7 @@ class SSLErrorProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        **_kwargs: Any,
     ) -> None:
         import ssl
 
@@ -239,6 +244,7 @@ class ConnectionErrorProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        **_kwargs: Any,
     ) -> None:
         raise ConnectionError("Connection reset by peer")
 

@@ -1,7 +1,7 @@
 import json
 import os
 import random
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -115,8 +115,12 @@ class ChaosChatProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "ChaosStreamedMessage":
-        base_stream = await self._provider.generate(system_prompt, tools, history)
+        base_stream = await self._provider.generate(
+            system_prompt, tools, history, generation_overrides=generation_overrides
+        )
         return ChaosStreamedMessage(base_stream, self._chaos_config)
 
     def _monkey_patch_client(self):

@@ -2,7 +2,7 @@ import copy
 import mimetypes
 import os
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, Self, Unpack, cast
 
 import httpx
@@ -156,6 +156,8 @@ class Kimi:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "KimiStreamedMessage":
         messages: list[ChatCompletionMessageParam] = []
         if system_prompt:
@@ -163,6 +165,12 @@ class Kimi:
         messages.extend(_convert_message(message) for message in history)
 
         generation_kwargs: dict[str, Any] = dict(self._generation_kwargs)
+        if generation_overrides:
+            generation_kwargs.update(
+                _normalize_generation_kwargs(
+                    cast(Kimi.GenerationKwargs, dict(generation_overrides))
+                )
+            )
 
         try:
             response = await self.client.chat.completions.create(

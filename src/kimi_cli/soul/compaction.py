@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
 import kosong
 from kosong.chat_provider import TokenUsage
@@ -75,7 +75,12 @@ def should_auto_compact(
 @runtime_checkable
 class Compaction(Protocol):
     async def compact(
-        self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
+        self,
+        messages: Sequence[Message],
+        llm: LLM,
+        *,
+        custom_instruction: str = "",
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> CompactionResult:
         """
         Compact a sequence of messages into a new sequence of messages.
@@ -84,6 +89,9 @@ class Compaction(Protocol):
             messages (Sequence[Message]): The messages to compact.
             llm (LLM): The LLM to use for compaction.
             custom_instruction: Optional user instruction to guide compaction focus.
+            generation_overrides: Optional per-call overrides forwarded to the chat provider via
+                ``kosong.step``. Used by callers that need to cap the compaction response size to
+                fit the remaining context window.
 
         Returns:
             CompactionResult: The compacted messages and token usage from the compaction LLM call.
@@ -105,20 +113,27 @@ class SimpleCompaction:
         self.max_preserved_messages = max_preserved_messages
 
     async def compact(
-        self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
+        self,
+        messages: Sequence[Message],
+        llm: LLM,
+        *,
+        custom_instruction: str = "",
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> CompactionResult:
         compact_message, to_preserve = self.prepare(messages, custom_instruction=custom_instruction)
         if compact_message is None:
             return CompactionResult(messages=to_preserve, usage=None)
 
-        # Call kosong.step to get the compacted context.
-        # KimiSoul configures provider-specific completion caps before calling this.
+        # Call kosong.step to get the compacted context. The caller is responsible for
+        # computing provider-specific generation overrides (e.g. a completion budget
+        # that fits the remaining context window); they are forwarded verbatim.
         logger.debug("Compacting context...")
         result = await kosong.step(
             chat_provider=llm.chat_provider,
             system_prompt="You are a helpful assistant that compacts conversation context.",
             toolset=EmptyToolset(),
             history=[compact_message],
+            generation_overrides=generation_overrides,
         )
         if result.usage:
             logger.debug(
