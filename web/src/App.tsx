@@ -96,8 +96,10 @@ function App() {
   } = sessionsHook;
 
   const currentSession = useMemo(
-    () => sessions.find((session) => session.sessionId === selectedSessionId),
-    [sessions, selectedSessionId],
+    () =>
+      sessions.find((session) => session.sessionId === selectedSessionId) ??
+      archivedSessions.find((session) => session.sessionId === selectedSessionId),
+    [sessions, archivedSessions, selectedSessionId],
   );
 
   const [streamStatus, setStreamStatus] = useState<ChatStatus>("ready");
@@ -226,23 +228,32 @@ function App() {
 
   // Validate session exists once session list loads, clear URL if not found
   useEffect(() => {
-    if (sessions.length === 0 || !selectedSessionId) {
+    if ((sessions.length === 0 && archivedSessions.length === 0) || !selectedSessionId) {
       return;
     }
 
-    if (searchQuery.trim() || hasMoreSessions) {
+    if (searchQuery.trim() || hasMoreSessions || hasMoreArchivedSessions || isLoadingArchived) {
       return;
     }
 
-    const sessionExists = sessions.some(
-      (s) => s.sessionId === selectedSessionId,
-    );
+    const sessionExists =
+      sessions.some((s) => s.sessionId === selectedSessionId) ||
+      archivedSessions.some((s) => s.sessionId === selectedSessionId);
     if (!sessionExists) {
       console.log("[App] Session from URL not found, clearing selection");
       updateUrlWithSession(null);
       selectSession("");
     }
-  }, [sessions, selectedSessionId, selectSession, hasMoreSessions, searchQuery]);
+  }, [
+    sessions,
+    archivedSessions,
+    selectedSessionId,
+    selectSession,
+    hasMoreSessions,
+    hasMoreArchivedSessions,
+    isLoadingArchived,
+    searchQuery,
+  ]);
 
   // Update URL when selected session changes
   useEffect(() => {
