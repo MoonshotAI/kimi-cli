@@ -76,6 +76,7 @@ def test_dynamic_completion_budget_preserves_explicit_kimi_cap(
 
     budgeted = soul._with_dynamic_completion_budget(chat_provider)
 
+    assert isinstance(budgeted, Kimi)
     assert budgeted.model_parameters["max_completion_tokens"] == 1234
 
 
@@ -95,4 +96,5 @@ async def test_dynamic_completion_budget_clamps_explicit_kimi_cap(
 
     budgeted = soul._with_dynamic_completion_budget(chat_provider)
 
+    assert isinstance(budgeted, Kimi)
     assert budgeted.model_parameters["max_completion_tokens"] == 168
