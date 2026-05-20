@@ -109,7 +109,7 @@ command = "echo ok"
 
 [[hooks]]
 event = "Notification"
-matcher = "permission_prompt"
+matcher = "task[.]completed|task[.]failed"
 command = "notify-send Kimi"
 timeout = 5
 """

@@ -36,7 +36,7 @@ Kimi Code CLI 支持 13 种生命周期事件：
 | `SubagentStop` | 子 Agent 结束时 | Agent 名称 | `agent_name`, `response` |
 | `PreCompact` | 上下文压缩前 | 触发原因 | `trigger`, `token_count` |
 | `PostCompact` | 上下文压缩后 | 触发原因 | `trigger`, `estimated_token_count` |
-| `Notification` | 通知发送到 sink 时 | sink 名称 | `sink`, `notification_type`, `title`, `body`, `severity` |
+| `Notification` | 通知发送到 sink 时 | 通知类型 | `sink`, `notification_type`, `title`, `body`, `severity` |
 
 ## 配置 Hooks
 
@@ -56,11 +56,11 @@ matcher = "WriteFile|StrReplaceFile"
 command = ".kimi/hooks/protect-env.sh"
 timeout = 10
 
-# 需要审批时发送桌面通知
+# 后台任务结束时发送桌面通知
 [[hooks]]
 event = "Notification"
-matcher = "permission_prompt"
-command = "osascript -e 'display notification \"Kimi needs attention\" with title \"Kimi CLI\"'"
+matcher = "task[.]completed|task[.]failed"
+command = "osascript -e 'display notification \"Kimi task finished\" with title \"Kimi CLI\"'"
 
 # 会话结束前检查任务完成情况
 [[hooks]]

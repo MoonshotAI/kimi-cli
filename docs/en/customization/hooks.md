@@ -36,7 +36,7 @@ Kimi Code CLI supports 13 lifecycle events:
 | `SubagentStop` | When subagent ends | Agent name | `agent_name`, `response` |
 | `PreCompact` | Before context compaction | Trigger reason | `trigger`, `token_count` |
 | `PostCompact` | After context compaction | Trigger reason | `trigger`, `estimated_token_count` |
-| `Notification` | When notification is delivered | Sink name | `sink`, `notification_type`, `title`, `body`, `severity` |
+| `Notification` | When notification is delivered | Notification type | `sink`, `notification_type`, `title`, `body`, `severity` |
 
 ## Configuring Hooks
 
@@ -56,11 +56,11 @@ matcher = "WriteFile|StrReplaceFile"
 command = ".kimi/hooks/protect-env.sh"
 timeout = 10
 
-# Desktop notification when approval needed
+# Desktop notification when a background task finishes
 [[hooks]]
 event = "Notification"
-matcher = "permission_prompt"
-command = "osascript -e 'display notification \"Kimi needs attention\" with title \"Kimi CLI\"'"
+matcher = "task[.]completed|task[.]failed"
+command = "osascript -e 'display notification \"Kimi task finished\" with title \"Kimi CLI\"'"
 
 # Verify tasks complete before stopping
 [[hooks]]
