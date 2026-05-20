@@ -34,32 +34,32 @@ def test_pyinstaller_datas():
             "dateparser/data",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/INSTALLER",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/INSTALLER",
+            "fastmcp/../fastmcp-3.2.4.dist-info",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/METADATA",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/METADATA",
+            "fastmcp/../fastmcp-3.2.4.dist-info",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/RECORD",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/RECORD",
+            "fastmcp/../fastmcp-3.2.4.dist-info",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/REQUESTED",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/REQUESTED",
+            "fastmcp/../fastmcp-3.2.4.dist-info",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/WHEEL",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/WHEEL",
+            "fastmcp/../fastmcp-3.2.4.dist-info",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/entry_points.txt",
-            "fastmcp/../fastmcp-2.12.5.dist-info",
+            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/entry_points.txt",
+            "fastmcp/../fastmcp-3.2.4.dist-info",
         ),
         (
-            f"{site_packages}/fastmcp/../fastmcp-2.12.5.dist-info/licenses/LICENSE",
-            "fastmcp/../fastmcp-2.12.5.dist-info/licenses",
+            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/licenses/LICENSE",
+            "fastmcp/../fastmcp-3.2.4.dist-info/licenses",
         ),
         (
             "src/kimi_cli/CHANGELOG.md",

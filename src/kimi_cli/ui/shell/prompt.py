@@ -89,7 +89,7 @@ class CwdLostError(OSError):
 class SlashCommandCompleter(Completer):
     """
     A completer that:
-    - Shows one line per slash command using the canonical "/name"
+    - Shows canonical matches as "/name" and alias matches as "/name (alias)"
     - Fuzzy-matches by primary name or any alias while inserting the canonical "/name"
     - Only activates when the current token starts with '/'
     """
@@ -142,25 +142,32 @@ class SlashCommandCompleter(Completer):
         token = text[last_space + 1 :]
 
         typed = token[1:]
-        if typed and typed in self._command_lookup:
-            return
         mention_doc = Document(text=typed, cursor_position=len(typed))
         candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
 
         seen: set[str] = set()
-
+        candidate_triggers: list[str] = []
+        if typed and typed in self._command_lookup:
+            candidate_triggers.append(typed)
         for candidate in candidates:
-            commands = self._command_lookup.get(candidate.text)
+            if candidate.text not in candidate_triggers:
+                candidate_triggers.append(candidate.text)
+
+        for trigger in candidate_triggers:
+            commands = self._command_lookup.get(trigger)
             if not commands:
                 continue
             for cmd in commands:
                 if cmd.name in seen:
                     continue
                 seen.add(cmd.name)
+                completion_text = f"/{cmd.name}"
+                if trigger == cmd.name and typed == cmd.name:
+                    completion_text += " "
                 yield Completion(
-                    text=f"/{cmd.name}",
+                    text=completion_text,
                     start_position=-len(token),
-                    display=f"/{cmd.name}",
+                    display=cmd.display_name(trigger),
                     display_meta=cmd.description,
                 )
 
