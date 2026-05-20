@@ -157,7 +157,9 @@ class Kimi:
     ) -> "KimiStreamedMessage":
         messages: list[ChatCompletionMessageParam] = []
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+            messages.append(
+                {"role": "system", "content": _sanitize_surrogate_strings(system_prompt)}
+            )
         messages.extend(_convert_message(message) for message in history)
 
         generation_kwargs: dict[str, Any] = {
@@ -329,7 +331,20 @@ def _convert_message(message: Message) -> ChatCompletionMessageParam:
         dumped_message.pop("content", None)
     if reasoning_content:
         dumped_message["reasoning_content"] = reasoning_content
-    return cast(ChatCompletionMessageParam, dumped_message)
+    return cast(ChatCompletionMessageParam, _sanitize_surrogate_strings(dumped_message))
+
+
+def _sanitize_surrogate_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.encode("utf-8", errors="surrogatepass").decode("utf-8", errors="replace")
+    if isinstance(value, list):
+        return [_sanitize_surrogate_strings(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            _sanitize_surrogate_strings(key): _sanitize_surrogate_strings(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 def _is_effectively_empty_content_parts(content: Sequence[ContentPart]) -> bool:
