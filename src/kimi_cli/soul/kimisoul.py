@@ -1191,10 +1191,10 @@ class KimiSoul:
 
         compaction_llm = None
         if self._runtime.llm is not None:
-            compaction_llm = replace(
-                self._runtime.llm,
-                chat_provider=self._with_dynamic_completion_budget(self._runtime.llm.chat_provider),
-            )
+            compaction_llm = self._runtime.llm
+            chat_provider = self._with_dynamic_completion_budget(compaction_llm.chat_provider)
+            if chat_provider is not compaction_llm.chat_provider:
+                compaction_llm = replace(compaction_llm, chat_provider=chat_provider)
         chat_provider = compaction_llm.chat_provider if compaction_llm is not None else None
 
         async def _run_compaction_once() -> CompactionResult:
