@@ -112,6 +112,7 @@ export function SessionFilesPanel({
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestRequestIdRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
   // When focused on a complete directory path (e.g. "./projects/foo" without "/"),
@@ -123,6 +124,15 @@ export function SessionFilesPanel({
   useEffect(() => {
     setInputValue(getDisplayPath(currentPath));
   }, [currentPath]);
+
+  // Clear pending suggestion debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (suggestTimerRef.current) {
+        clearTimeout(suggestTimerRef.current);
+      }
+    };
+  }, []);
 
   // Inject CSS override for Radix UI ScrollArea (build-safe: inlined to avoid
   // Vite/Tailwind CSS tree-shaking dropping the global rule).
@@ -190,6 +200,8 @@ export function SessionFilesPanel({
         return;
       }
 
+      const requestId = ++suggestRequestIdRef.current;
+
       // Focus mode: if input looks like a complete directory path
       // (no trailing "/"), try listing it directly first.
       if (isFocus && !input.endsWith("/") && input !== "." && input !== "./") {
@@ -197,21 +209,25 @@ export function SessionFilesPanel({
         if (fullPath) {
           try {
             const entries = await onListSessionDirectory(sessionId, fullPath);
+            if (requestId !== suggestRequestIdRef.current) return;
             // Full path is a directory — show its contents.
             suggestionBasePathRef.current = fullPath;
             setSuggestions(entries.slice(0, 20));
             setActiveSuggestion(-1);
             return;
           } catch {
+            if (requestId !== suggestRequestIdRef.current) return;
             // Not a directory, fall through to normal behavior.
           }
         }
       }
 
+      if (requestId !== suggestRequestIdRef.current) return;
       suggestionBasePathRef.current = null;
       const { parentPath, filter } = parsePathInput(input);
       try {
         const allEntries = await onListSessionDirectory(sessionId, parentPath);
+        if (requestId !== suggestRequestIdRef.current) return;
         const filtered = filter
           ? allEntries.filter((e) =>
               e.name.toLowerCase().startsWith(filter.toLowerCase()),
@@ -220,6 +236,7 @@ export function SessionFilesPanel({
         setSuggestions(filtered.slice(0, 20));
         setActiveSuggestion(-1);
       } catch {
+        if (requestId !== suggestRequestIdRef.current) return;
         setSuggestions([]);
       }
     },
@@ -251,8 +268,8 @@ export function SessionFilesPanel({
       suggestionBasePathRef.current = null;
       return;
     }
-    // Strip leading ./ if present
-    let target = trimmed.replace(/^\.\//, "");
+    // Strip leading ./ and / if present
+    let target = trimmed.replace(/^\.?\//, "");
     if (target === "") {
       target = ".";
     }
@@ -278,18 +295,32 @@ export function SessionFilesPanel({
         display = buildDisplayPath(parentPath, suggestion.name);
       }
 
-      setInputValue(display);
       setShowSuggestions(false);
       setActiveSuggestion(-1);
       suggestionBasePathRef.current = null;
 
       if (suggestion.type === "directory") {
+        setInputValue(display);
         setCurrentPath(fullPath);
       } else {
+        // File selected: trigger download if possible, otherwise reset
+        // the input to the current directory so we don't leave a file
+        // path that would fail on next Enter.
+        if (onGetSessionFileUrl) {
+          const url = onGetSessionFileUrl(sessionId, fullPath);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = suggestion.name;
+          a.style.display = "none";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+        setInputValue(getDisplayPath(currentPath));
         inputRef.current?.focus();
       }
     },
-    [inputValue],
+    [inputValue, currentPath, onGetSessionFileUrl, sessionId],
   );
 
   const handleInputKeyDown = useCallback(
