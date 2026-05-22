@@ -130,7 +130,7 @@ def test_hook_engine_summary():
         HookDef(event="PreToolUse", matcher="WriteFile", command="echo 2"),
         HookDef(event="Stop", command="echo 3"),
     ]
-    engine = HookEngine(hooks)
+    engine = HookEngine(hooks, include_defaults=False)
     summary = engine.summary
     assert summary == {"PreToolUse": 2, "Stop": 1}
 

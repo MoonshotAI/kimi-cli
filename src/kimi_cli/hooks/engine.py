@@ -78,8 +78,13 @@ class HookEngine:
         on_triggered: OnTriggered | None = None,
         on_resolved: OnResolved | None = None,
         on_wire_hook: OnWireHookRequest | None = None,
+        include_defaults: bool = True,
     ):
         self._hooks: list[HookDef] = list(hooks) if hooks else []
+        if include_defaults:
+            from kimi_cli.hooks import get_default_hooks
+
+            self._hooks.extend(get_default_hooks())
         self._wire_subs: list[WireHookSubscription] = []
         self._cwd = cwd
         self._on_triggered = on_triggered
