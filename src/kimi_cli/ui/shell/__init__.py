@@ -971,10 +971,7 @@ class Shell:
                     f"[red]Membership expired, please renew your plan[/red]\n[dim]Server: {e}[/dim]"
                 )
             elif isinstance(e, APIStatusError) and e.status_code == 403:
-                console.print(
-                    "[red]Quota exceeded, please upgrade your plan or retry later[/red]\n"
-                    f"[dim]Server: {e}[/dim]"
-                )
+                console.print(f"[red]Server: {e}[/red]")
             elif isinstance(e, APIConnectionError):
                 console.print(
                     f"[red]Network connection failed: {e}[/red]\n"
