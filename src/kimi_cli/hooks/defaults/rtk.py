@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """PreToolUse hook that rewrites Bash commands via RTK (Rust Token Killer)."""
 
-from __future__ import annotations
-
 import json
 import subprocess
 import sys
