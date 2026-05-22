@@ -279,6 +279,7 @@ class KimiToolset:
                         tool_call_id=tool_call.id,
                     ),
                 )
+                hook_arguments = arguments if isinstance(arguments, dict) else {}
                 for result in results:
                     if result.action == "block":
                         return ToolResult(
@@ -288,11 +289,13 @@ class KimiToolset:
                                 brief="Hook blocked",
                             ),
                         )
-
+                    if result.updated_input:
+                        hook_arguments.update(result.updated_input)
+                tool_input_dict = hook_arguments
                 # --- Execute tool ---
                 t0 = time.monotonic()
                 try:
-                    ret = await tool.call(arguments)
+                    ret = await tool.call(hook_arguments)
                 except Exception as e:
                     tool_elapsed = time.monotonic() - t0
                     logger.exception(

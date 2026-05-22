@@ -308,9 +308,10 @@ class HookEngine:
         results = list(await asyncio.gather(*tasks))
         duration_ms = int((time.monotonic() - t0) * 1000)
 
-        # Aggregate: block if any hook blocked
+        # Aggregate: block if any hook blocked; otherwise collect rewrites
         action = "allow"
         reason = ""
+        updated_input: dict[str, Any] | None = None
         for r in results:
             if r.action == "block":
                 action = "block"
@@ -322,6 +323,10 @@ class HookEngine:
                     reason=reason,
                 )
                 break
+            if r.updated_input is not None:
+                if updated_input is None:
+                    updated_input = {}
+                updated_input.update(r.updated_input)
 
         # --- HookResolved ---
         if self._on_resolved:
@@ -333,6 +338,19 @@ class HookEngine:
                     event=event,
                     error=e,
                 )
+
+        # Attach aggregated updated_input to the first result so callers can read it
+        if results and updated_input is not None:
+            first = results[0]
+            results[0] = HookResult(
+                action=first.action,
+                updated_input=updated_input,
+                reason=first.reason,
+                stdout=first.stdout,
+                stderr=first.stderr,
+                exit_code=first.exit_code,
+                timed_out=first.timed_out,
+            )
 
         return results
 

@@ -13,6 +13,7 @@ class HookResult:
     """Result of a single hook execution."""
 
     action: Literal["allow", "block"] = "allow"
+    updated_input: dict[str, Any] | None = None
     reason: str = ""
     stdout: str = ""
     stderr: str = ""
@@ -69,20 +70,33 @@ async def run_hook(
         )
 
     # Exit 0 + JSON stdout = structured decision
+
+    updated_input = None
     if exit_code == 0 and stdout.strip():
         try:
             raw = json.loads(stdout)
             if isinstance(raw, dict):
                 parsed = cast(dict[str, Any], raw)
                 hook_output = cast(dict[str, Any], parsed.get("hookSpecificOutput", {}))
+
+                _updated_input_raw = hook_output.get("updatedInput")
+                if isinstance(_updated_input_raw, dict):
+                    updated_input = cast(dict[str, Any], _updated_input_raw)
+
+                action = "allow"
+                #
                 if hook_output.get("permissionDecision") == "deny":
-                    return HookResult(
-                        action="block",
-                        reason=str(hook_output.get("permissionDecisionReason", "")),
-                        stdout=stdout,
-                        stderr=stderr,
-                        exit_code=0,
-                    )
+                    action = "block"
+
+                return HookResult(
+                    action=action,
+                    reason=str(hook_output.get("permissionDecisionReason", "")),
+                    updated_input=updated_input,
+                    stdout=stdout,
+                    stderr=stderr,
+                    exit_code=0,
+                )
+
         except (json.JSONDecodeError, TypeError):
             pass
 
