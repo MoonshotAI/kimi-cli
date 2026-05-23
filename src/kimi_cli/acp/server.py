@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import acp
+from fastmcp.mcp_config import MCPConfig
 from kaos.path import KaosPath
 
 from kimi_cli.acp.kaos import ACPKaos
@@ -18,6 +19,7 @@ from kimi_cli.acp.types import ACPContentBlock, MCPServer
 from kimi_cli.acp.version import ACPVersionSpec, negotiate_version
 from kimi_cli.app import KimiCLI
 from kimi_cli.auth.oauth import KIMI_CODE_OAUTH_KEY, load_tokens
+from kimi_cli.cli.mcp import collect_file_mcp_configs
 from kimi_cli.config import LLMModel, OAuthRef, load_config, save_config
 from kimi_cli.constant import NAME, VERSION
 from kimi_cli.llm import create_llm, derive_model_capabilities
@@ -25,6 +27,41 @@ from kimi_cli.session import Session
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.logging import logger
+
+
+def _collect_acp_mcp_configs(
+    cwd: str, mcp_servers: list[MCPServer] | None = None
+) -> list[MCPConfig | dict[str, Any]]:
+    """Collect MCP configs for ACP session, respecting merge_strategy."""
+    from kimi_cli.config import load_config
+
+    strategy = load_config().mcp.merge_strategy
+    configs: list[MCPConfig | dict[str, Any]] = []
+
+    if strategy == "merge":
+        try:
+            file_configs = collect_file_mcp_configs(strategy, work_dir=Path(cwd))
+            configs.extend(file_configs)
+        except Exception as exc:
+            logger.warning(
+                "Failed to load file-based MCP configs for ACP session: {error}",
+                error=exc,
+            )
+        configs.append(acp_mcp_servers_to_mcp_config(mcp_servers or []))
+    else:  # override
+        if mcp_servers:
+            configs.append(acp_mcp_servers_to_mcp_config(mcp_servers))
+        else:
+            try:
+                file_configs = collect_file_mcp_configs(strategy, work_dir=Path(cwd))
+                configs.extend(file_configs)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load file-based MCP configs for ACP session: {error}",
+                    error=exc,
+                )
+
+    return configs
 
 
 class ACPServer:
@@ -159,10 +196,10 @@ class ACPServer:
 
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
+        mcp_configs = _collect_acp_mcp_configs(cwd, mcp_servers)
         cli_instance = await KimiCLI.create(
             session,
-            mcp_configs=[mcp_config],
+            mcp_configs=mcp_configs,
             ui_mode="acp",
         )
         config = cli_instance.soul.runtime.config
@@ -229,10 +266,10 @@ class ACPServer:
             )
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
+        mcp_configs = _collect_acp_mcp_configs(cwd, mcp_servers)
         cli_instance = await KimiCLI.create(
             session,
-            mcp_configs=[mcp_config],
+            mcp_configs=mcp_configs,
             resumed=True,  # _setup_session loads existing sessions
             ui_mode="acp",
         )

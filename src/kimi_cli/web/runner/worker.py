@@ -10,14 +10,12 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
-from typing import Any
 from uuid import UUID
 
 from kimi_cli import logger
 from kimi_cli.app import KimiCLI, enable_logging
-from kimi_cli.cli.mcp import get_global_mcp_config_file
+from kimi_cli.cli.mcp import collect_file_mcp_configs
 from kimi_cli.exception import MCPConfigError
 from kimi_cli.web.store.sessions import load_session_by_id
 
@@ -32,18 +30,20 @@ async def run_worker(session_id: UUID) -> None:
     # Get the kimi-cli session object
     session = joint_session.kimi_cli_session
 
-    # Load default MCP config file if it exists
-    default_mcp_file = get_global_mcp_config_file()
-    mcp_configs: list[dict[str, Any]] = []
-    if default_mcp_file.exists():
-        raw = default_mcp_file.read_text(encoding="utf-8")
-        try:
-            mcp_configs = [json.loads(raw)]
-        except json.JSONDecodeError:
-            logger.warning(
-                "Invalid JSON in MCP config file: {path}",
-                path=default_mcp_file,
-            )
+    # Load MCP config files according to merge_strategy.
+    work_dir = session.dir
+
+    from kimi_cli.config import load_config
+
+    strategy = load_config().mcp.merge_strategy
+    try:
+        mcp_configs = collect_file_mcp_configs(strategy, work_dir=work_dir)
+    except Exception as exc:
+        logger.warning(
+            "Failed to load MCP configs for web worker: {error}",
+            error=exc,
+        )
+        mcp_configs = []
 
     # Detect whether this is a resumed session (has prior state on disk)
     # vs a brand-new session that should honor config.default_plan_mode.
@@ -56,8 +56,7 @@ async def run_worker(session_id: UUID) -> None:
         )
     except MCPConfigError as exc:
         logger.warning(
-            "Invalid MCP config in {path}: {error}. Starting without MCP.",
-            path=default_mcp_file,
+            "Invalid MCP config: {error}. Starting without MCP.",
             error=exc,
         )
         kimi_cli = await KimiCLI.create(session, mcp_configs=None, resumed=resumed, ui_mode="wire")
