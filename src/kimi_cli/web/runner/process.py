@@ -51,6 +51,10 @@ from kimi_cli.wire.serde import deserialize_wire_message
 JSONRPCOutMessageAdapter = TypeAdapter[JSONRPCOutMessage](JSONRPCOutMessage)
 
 
+def _decode_worker_output(data: bytes) -> str:
+    return data.decode("utf-8", errors="replace")
+
+
 class SessionProcess:
     """Manages a single session's KimiCLI subprocess.
 
@@ -306,6 +310,7 @@ class SessionProcess:
                         stderr = await self._process.stderr.read()
                         if not stderr:
                             stderr = b"No stderr"
+                        stderr_text = _decode_worker_output(stderr)
                         # Clear in-flight IDs before broadcasting so that
                         # is_busy is already False when the frontend reacts
                         # to the error and sends a new prompt.
@@ -315,24 +320,23 @@ class SessionProcess:
                                 id=str(uuid4()),
                                 error=JSONRPCErrorObject(
                                     code=self._process.returncode or -1,
-                                    message=stderr.decode("utf-8"),
+                                    message=stderr_text,
                                 ),
                             ).model_dump_json()
                         )
                         logger.warning(
-                            f"Process exited with {self._process.returncode}: "
-                            f"{stderr.decode('utf-8')}"
+                            f"Process exited with {self._process.returncode}: {stderr_text}"
                         )
                         await self._emit_status(
                             "error",
                             reason="process_exit",
-                            detail=stderr.decode("utf-8"),
+                            detail=stderr_text,
                         )
                         break
                     else:
                         continue
 
-                await self._broadcast(line.decode("utf-8").rstrip("\n"))
+                await self._broadcast(_decode_worker_output(line).rstrip("\n"))
 
                 # Handle out message
                 try:
