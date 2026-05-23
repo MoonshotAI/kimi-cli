@@ -146,7 +146,7 @@ function SessionsListComponent(
 ) {
   const { className, ...rest } = props;
   return (
-    <div ref={ref} className={cn("flex flex-col space-y-0.5 w-full px-2 mt-1", className)} {...rest} />
+    <div ref={ref} className={cn("flex flex-col gap-1 w-full px-2 mt-1!", className)} {...rest} />
   );
 }
 
@@ -804,10 +804,10 @@ export const SessionsSidebar = memo(function SessionsSidebarComponent({
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search sessions..."
+                placeholder="Search sessions"
                 value={sessionSearch}
                 onChange={(e) => setSessionSearch(e.target.value)}
-                className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-8 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-8 truncate text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               />
               {sessionSearch && (
                 <button
