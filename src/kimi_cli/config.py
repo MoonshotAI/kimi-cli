@@ -182,12 +182,13 @@ class MCPConfig(BaseModel):
         default_factory=MCPClientConfig, description="MCP client configuration"
     )
     merge_strategy: Literal["merge", "override"] = Field(
-        default="merge",
+        default="override",
         description=(
             "How to combine MCP configs from multiple sources. "
             "'merge' combines global, project-level and explicit configs, "
             "with later sources overriding duplicate server names. "
-            "'override' uses only the highest-priority source that is defined."
+            "'override' uses only the highest-priority source that is defined. "
+            "Default is 'override'."
         ),
     )
 
