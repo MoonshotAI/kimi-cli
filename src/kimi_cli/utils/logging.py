@@ -7,9 +7,18 @@ import os
 import sys
 import threading
 from collections.abc import Iterator
+from pathlib import Path
 from typing import IO
 
 from kimi_cli import logger
+from kimi_cli.share import get_share_dir
+
+
+def get_log_file_path() -> Path:
+    logs_dir = get_share_dir() / "logs"
+    if sys.platform == "win32":
+        return logs_dir / f"kimi.{os.getpid()}.log"
+    return logs_dir / "kimi.log"
 
 
 class StderrRedirector:
