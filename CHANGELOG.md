@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- MCP: Switch MCP tool loading to a background-only flow — `KimiToolset.load_mcp_tools()` no longer accepts `in_background`; await `wait_for_mcp_tools()` to observe connection failures
+
 ## 1.44.0 (2026-05-13)
 
 - Shell: Add slash command alias resolution — aliases such as `/h`, `?`, and `status` now resolve to their canonical commands (`/help`, `/usage`); the completer and help output display alias matches as `/name (alias)` for clarity
