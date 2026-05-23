@@ -464,7 +464,7 @@ class KimiToolset:
 
         mcp_configs, runtime = self._deferred_mcp_load
         self._deferred_mcp_load = None
-        await self.load_mcp_tools(mcp_configs, runtime, in_background=True)
+        await self.load_mcp_tools(mcp_configs, runtime)
         return True
 
     def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> None:
@@ -527,16 +527,11 @@ class KimiToolset:
                 args.append(dependencies[param.annotation])
         return tool_cls(*args)
 
-    # TODO(rc): remove `in_background` parameter and always load in background
-    async def load_mcp_tools(
-        self, mcp_configs: list[MCPConfig], runtime: Runtime, in_background: bool = True
-    ) -> None:
+    async def load_mcp_tools(self, mcp_configs: list[MCPConfig], runtime: Runtime) -> None:
         """
-        Load MCP tools from specified MCP configs.
+        Start MCP tool loading in the background.
 
-        Raises:
-            MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
-                connected.
+        Await wait_for_mcp_tools() to observe connection failures.
         """
         import fastmcp
         from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
@@ -549,14 +544,13 @@ class KimiToolset:
             return await has_mcp_oauth_tokens(server_url)
 
         def _toast_mcp(message: str) -> None:
-            if in_background:
-                toast(
-                    message,
-                    duration=10.0,
-                    topic="mcp",
-                    immediate=True,
-                    position="right",
-                )
+            toast(
+                message,
+                duration=10.0,
+                topic="mcp",
+                immediate=True,
+                position="right",
+            )
 
         def _mark_oauth_unauthorized(server_name: str) -> None:
             logger.warning(
@@ -649,10 +643,7 @@ class KimiToolset:
                     status="pending", client=client, tools=[]
                 )
 
-        if in_background:
-            self._mcp_loading_task = asyncio.create_task(_connect())
-        else:
-            await _connect()
+        self._mcp_loading_task = asyncio.create_task(_connect())
 
     def has_pending_mcp_tools(self) -> bool:
         """Return True if the background MCP tool-loading task is still running."""

@@ -105,7 +105,8 @@ async def test_load_mcp_tools_treats_unreadable_oauth_storage_as_unauthorized(
         }
     )
 
-    await toolset.load_mcp_tools([mcp_config], runtime, in_background=False)
+    await toolset.load_mcp_tools([mcp_config], runtime)
+    await toolset.wait_for_mcp_tools()
 
     snapshot = toolset.mcp_status_snapshot()
     assert snapshot is not None

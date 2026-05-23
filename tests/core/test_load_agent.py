@@ -214,11 +214,12 @@ async def test_load_agent_registers_builtin_subagent_types(runtime: Runtime):
         assert builtin_type.agent_file.samefile(builtin_type_yaml)
 
 
-async def test_load_agent_starts_mcp_in_background(runtime: Runtime, monkeypatch):
-    called: dict[str, bool] = {}
+async def test_load_agent_starts_mcp_loading_by_default(runtime: Runtime, monkeypatch):
+    load_called = False
 
-    async def fake_load_mcp_tools(self, mcp_configs, runtime, in_background: bool = True):
-        called["in_background"] = in_background
+    async def fake_load_mcp_tools(self, mcp_configs, runtime):
+        nonlocal load_called
+        load_called = True
 
     monkeypatch.setattr(KimiToolset, "load_mcp_tools", fake_load_mcp_tools)
 
@@ -234,13 +235,13 @@ async def test_load_agent_starts_mcp_in_background(runtime: Runtime, monkeypatch
 
         await load_agent(agent_yaml, runtime, mcp_configs=[{"mcpServers": {}}])
 
-    assert called == {"in_background": True}
+    assert load_called is True
 
 
 async def test_load_agent_can_defer_mcp_loading(runtime: Runtime, monkeypatch):
     called: dict[str, bool] = {}
 
-    async def fake_load_mcp_tools(self, mcp_configs, runtime, in_background: bool = True):
+    async def fake_load_mcp_tools(self, mcp_configs, runtime):
         called["load_called"] = True
 
     def fake_defer_mcp_tool_loading(self, mcp_configs, runtime):

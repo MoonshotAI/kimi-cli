@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- MCP：将 MCP 工具加载切换为仅后台执行的流程——`KimiToolset.load_mcp_tools()` 不再接受 `in_background`；如需观察连接失败，请等待 `wait_for_mcp_tools()`
+
 ## 1.44.0 (2026-05-13)
 
 - Shell：新增斜杠命令别名解析——别名（如 `/h`、`?`、`status`）现在能正确解析到对应的正式命令（`/help`、`/usage`）；补全器和帮助输出会将别名匹配项显示为 `/name (alias)`，方便识别
