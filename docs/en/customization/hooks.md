@@ -15,7 +15,7 @@ Example use cases:
 - **Code formatting**: Automatically run `prettier` or `black` after file edits
 - **Security checks**: Block dangerous shell commands (like `rm -rf /`)
 - **Sensitive file protection**: Prevent modification of `.env` and similar files
-- **Desktop notifications**: Send alerts when human approval is needed
+- **Desktop notifications**: Send alerts when background tasks complete, fail, or time out
 - **Task verification**: Check for incomplete tasks before session ends
 
 ## Supported Hook Events
@@ -36,7 +36,7 @@ Kimi Code CLI supports 13 lifecycle events:
 | `SubagentStop` | When subagent ends | Agent name | `agent_name`, `response` |
 | `PreCompact` | Before context compaction | Trigger reason | `trigger`, `token_count` |
 | `PostCompact` | After context compaction | Trigger reason | `trigger`, `estimated_token_count` |
-| `Notification` | When notification is delivered | Sink name | `sink`, `notification_type`, `title`, `body`, `severity` |
+| `Notification` | When notification is delivered | Notification type | `sink`, `notification_type`, `title`, `body`, `severity` |
 
 ## Configuring Hooks
 
@@ -56,17 +56,21 @@ matcher = "WriteFile|StrReplaceFile"
 command = ".kimi/hooks/protect-env.sh"
 timeout = 10
 
-# Desktop notification when approval needed
+# Desktop notification when a background task ends
 [[hooks]]
 event = "Notification"
-matcher = "permission_prompt"
-command = "osascript -e 'display notification \"Kimi needs attention\" with title \"Kimi CLI\"'"
+matcher = "task\\.(completed|failed|timed_out|killed|lost)"
+command = "osascript -e 'display notification \"Background task finished\" with title \"Kimi CLI\"'"
 
 # Verify tasks complete before stopping
 [[hooks]]
 event = "Stop"
 command = ".kimi/hooks/check-complete.sh"
 ```
+
+::: warning Note
+Approval requests are not `Notification` events, so `matcher = "permission_prompt"` does not fire. If you only need a coarse alert before selected tool calls, use `PreToolUse`, but it runs before matching tool calls and is not the same as an actual approval request.
+:::
 
 ### Configuration Fields
 

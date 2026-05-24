@@ -15,7 +15,7 @@ Hook 是一种在特定事件发生时触发的机制。你可以配置一个 sh
 - **代码格式化**：在文件编辑后自动运行 `prettier` 或 `black`
 - **安全检查**：阻止危险的 shell 命令（如 `rm -rf /`）
 - **敏感文件保护**：防止修改 `.env` 等配置文件
-- **桌面通知**：在需要人工审批时发送通知
+- **桌面通知**：在后台任务完成、失败或超时时发送通知
 - **任务验证**：在会话结束前检查是否有未完成的任务
 
 ## 支持的 Hook 事件
@@ -36,7 +36,7 @@ Kimi Code CLI 支持 13 种生命周期事件：
 | `SubagentStop` | 子 Agent 结束时 | Agent 名称 | `agent_name`, `response` |
 | `PreCompact` | 上下文压缩前 | 触发原因 | `trigger`, `token_count` |
 | `PostCompact` | 上下文压缩后 | 触发原因 | `trigger`, `estimated_token_count` |
-| `Notification` | 通知发送到 sink 时 | sink 名称 | `sink`, `notification_type`, `title`, `body`, `severity` |
+| `Notification` | 通知发送到 sink 时 | 通知类型 | `sink`, `notification_type`, `title`, `body`, `severity` |
 
 ## 配置 Hooks
 
@@ -56,17 +56,21 @@ matcher = "WriteFile|StrReplaceFile"
 command = ".kimi/hooks/protect-env.sh"
 timeout = 10
 
-# 需要审批时发送桌面通知
+# 后台任务结束时发送桌面通知
 [[hooks]]
 event = "Notification"
-matcher = "permission_prompt"
-command = "osascript -e 'display notification \"Kimi needs attention\" with title \"Kimi CLI\"'"
+matcher = "task\\.(completed|failed|timed_out|killed|lost)"
+command = "osascript -e 'display notification \"Background task finished\" with title \"Kimi CLI\"'"
 
 # 会话结束前检查任务完成情况
 [[hooks]]
 event = "Stop"
 command = ".kimi/hooks/check-complete.sh"
 ```
+
+::: warning 注意
+审批请求不是 `Notification` 事件，`matcher = "permission_prompt"` 不会触发。若只想在某类工具调用前提醒，可以使用 `PreToolUse`，但它会在工具调用前触发，并不等同于实际出现了审批请求。
+:::
 
 ### 配置字段
 
