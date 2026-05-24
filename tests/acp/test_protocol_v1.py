@@ -76,6 +76,10 @@ async def test_prompt_with_scripted_echo(
     assert resp.stop_reason in ("end_turn", "max_tokens", "max_turn_requests")
     # The scripted echo provider should have sent session updates
     assert len(test_client.updates) > 0
+    assert any(
+        update.session_update == "session_info_update" and update.title == "Say hello"
+        for update in test_client.updates
+    )
 
 
 async def test_list_sessions(
@@ -130,6 +134,8 @@ async def test_resume_session(
     assert resume_resp.models is not None
     assert isinstance(resume_resp.models.current_model_id, str)
     assert len(resume_resp.models.available_models) > 0
+    assert resume_resp.field_meta is not None
+    assert resume_resp.field_meta["kimi"]["session"]["title"] == "Hello"
 
 
 async def test_resume_session_not_found(
@@ -151,49 +157,130 @@ async def test_resume_session_not_found(
 
 
 async def test_load_session_replays_history(acp_share_dir, tmp_path):
-    """session/load should replay persisted messages after the ACP server restarts."""
+    """session/load rebinds the session and replays persisted transcript updates."""
+    env = {
+        **os.environ,
+        "KIMI_SHARE_DIR": str(acp_share_dir),
+    }
     work_dir = tmp_path / "workdir"
     work_dir.mkdir(exist_ok=True)
-    env = {**os.environ, "KIMI_SHARE_DIR": str(acp_share_dir)}
 
-    client1 = ACPTestClient()
+    first_client = ACPTestClient()
     async with acp.spawn_agent_process(
-        client1,
+        first_client,
         _kimi_bin(),
         "acp",
         env=env,
         cwd=str(_repo_root()),
         use_unstable_protocol=True,
-    ) as (conn, _):
+    ) as (conn, _process):
         await conn.initialize(protocol_version=1)
         session_resp = await conn.new_session(cwd=str(work_dir))
         await conn.prompt(
-            prompt=[acp.text_block("Hello")],
+            prompt=[acp.text_block("Replay this please")],
             session_id=session_resp.session_id,
         )
+        session_id = session_resp.session_id
 
-    client2 = ACPTestClient()
+    second_client = ACPTestClient()
     async with acp.spawn_agent_process(
-        client2,
+        second_client,
         _kimi_bin(),
         "acp",
         env=env,
         cwd=str(_repo_root()),
         use_unstable_protocol=True,
-    ) as (conn, _):
+    ) as (conn, _process):
         await conn.initialize(protocol_version=1)
-        await conn.load_session(cwd=str(work_dir), session_id=session_resp.session_id)
+        load_resp = await conn.load_session(cwd=str(work_dir), session_id=session_id)
 
-    update_types = [update.session_update for update in client2.updates]
-    update_texts = [
-        update.content.text
-        for update in client2.updates
-        if hasattr(update, "content") and update.content.type == "text"
+    assert load_resp.modes is not None
+    assert load_resp.models is not None
+    assert load_resp.field_meta is not None
+    assert load_resp.field_meta["kimi"]["session"]["title"] == "Replay this please"
+    assert any(
+        update.session_update == "session_info_update" and update.title == "Replay this please"
+        for update in second_client.updates
+    )
+
+    replayed = [
+        (update.session_update, getattr(update.content, "text", None), update.message_id)
+        for update in second_client.updates
+        if hasattr(update, "content")
     ]
-    assert "user_message_chunk" in update_types
-    assert "agent_message_chunk" in update_types
-    assert "Hello" in update_texts
-    assert "Hello from scripted echo!" in update_texts
+    assert any(
+        update_type == "user_message_chunk" and text == "Replay this please" and message_id
+        for update_type, text, message_id in replayed
+    )
+    assert any(
+        update_type == "agent_message_chunk" and text == "Hello from scripted echo!" and message_id
+        for update_type, text, message_id in replayed
+    )
+
+
+async def test_load_session_replays_context_when_wire_history_missing(acp_share_dir, tmp_path):
+    """Older ACP sessions can still replay text history if no wire log was recorded."""
+    env = {
+        **os.environ,
+        "KIMI_SHARE_DIR": str(acp_share_dir),
+    }
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+
+    first_client = ACPTestClient()
+    async with acp.spawn_agent_process(
+        first_client,
+        _kimi_bin(),
+        "acp",
+        env=env,
+        cwd=str(_repo_root()),
+        use_unstable_protocol=True,
+    ) as (conn, _process):
+        await conn.initialize(protocol_version=1)
+        session_resp = await conn.new_session(cwd=str(work_dir))
+        await conn.prompt(
+            prompt=[acp.text_block("Replay from context")],
+            session_id=session_resp.session_id,
+        )
+        session_id = session_resp.session_id
+
+    wire_files = list(acp_share_dir.rglob("wire.jsonl"))
+    assert wire_files
+    for wire_file in wire_files:
+        wire_file.unlink()
+
+    second_client = ACPTestClient()
+    async with acp.spawn_agent_process(
+        second_client,
+        _kimi_bin(),
+        "acp",
+        env=env,
+        cwd=str(_repo_root()),
+        use_unstable_protocol=True,
+    ) as (conn, _process):
+        await conn.initialize(protocol_version=1)
+        load_resp = await conn.load_session(cwd=str(work_dir), session_id=session_id)
+
+    assert load_resp.field_meta is not None
+    assert load_resp.field_meta["kimi"]["session"]["title"] == "Replay from context"
+    assert any(
+        update.session_update == "session_info_update" and update.title == "Replay from context"
+        for update in second_client.updates
+    )
+
+    replayed = [
+        (update.session_update, getattr(update.content, "text", None), update.message_id)
+        for update in second_client.updates
+        if hasattr(update, "content")
+    ]
+    assert any(
+        update_type == "user_message_chunk" and text == "Replay from context" and message_id
+        for update_type, text, message_id in replayed
+    )
+    assert any(
+        update_type == "agent_message_chunk" and text == "Hello from scripted echo!" and message_id
+        for update_type, text, message_id in replayed
+    )
 
 
 async def test_cancel_session(

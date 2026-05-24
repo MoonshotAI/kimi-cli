@@ -91,6 +91,7 @@ class ACPServer:
                 ),
                 mcp_capabilities=acp.schema.McpCapabilities(http=True, sse=False),
                 session_capabilities=acp.schema.SessionCapabilities(
+                    field_meta={"kimi": {"sessionHistoryReplay": True}},
                     list=acp.schema.SessionListCapabilities(),
                     resume=acp.schema.SessionResumeCapabilities(),
                 ),
@@ -231,18 +232,44 @@ class ACPServer:
 
     async def load_session(
         self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
-    ) -> None:
+    ) -> acp.schema.LoadSessionResponse:
         logger.info("Loading session: {id} for working directory: {cwd}", id=session_id, cwd=cwd)
 
         if session_id in self.sessions:
             logger.warning("Session already loaded: {id}", id=session_id)
-            return
+            acp_session, model_id_conv = self.sessions[session_id]
+        else:
+            # Check authentication before loading session
+            self._check_auth()
 
-        # Check authentication before loading session
-        self._check_auth()
+            acp_session, model_id_conv = await self._setup_session(cwd, session_id, mcp_servers)
 
-        acp_session, _ = await self._setup_session(cwd, session_id, mcp_servers)
-        await acp_session.replay_history(acp_session.cli.soul.runtime.session.wire_file)
+        await acp_session.send_session_info_update()
+        replayed_updates = await acp_session.replay_history()
+        logger.info(
+            "Replayed {count} ACP history updates for session: {id}",
+            count=replayed_updates,
+            id=session_id,
+        )
+
+        config = acp_session.cli.soul.runtime.config
+        return acp.schema.LoadSessionResponse(
+            field_meta=_session_response_meta(acp_session),
+            modes=acp.schema.SessionModeState(
+                available_modes=[
+                    acp.schema.SessionMode(
+                        id="default",
+                        name="Default",
+                        description="The default mode.",
+                    ),
+                ],
+                current_mode_id="default",
+            ),
+            models=acp.schema.SessionModelState(
+                available_models=_expand_llm_models(config.models),
+                current_model_id=model_id_conv.to_acp_model_id(),
+            ),
+        )
 
     async def resume_session(
         self, cwd: str, session_id: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
@@ -253,8 +280,10 @@ class ACPServer:
             await self._setup_session(cwd, session_id, mcp_servers)
 
         acp_session, model_id_conv = self.sessions[session_id]
+        await acp_session.send_session_info_update()
         config = acp_session.cli.soul.runtime.config
         return acp.schema.ResumeSessionResponse(
+            field_meta=_session_response_meta(acp_session),
             modes=acp.schema.SessionModeState(
                 available_modes=[
                     acp.schema.SessionMode(
@@ -445,3 +474,19 @@ def _expand_llm_models(models: dict[str, LLMModel]) -> list[acp.schema.ModelInfo
                     )
                 )
     return expanded_models
+
+
+def _session_response_meta(acp_session: ACPSession) -> dict[str, Any]:
+    session = acp_session.cli.soul.runtime.session
+    title = session.state.custom_title or session.title
+    updated_at = (
+        datetime.fromtimestamp(session.context_file.stat().st_mtime).astimezone().isoformat()
+        if session.context_file.exists()
+        else None
+    )
+    meta: dict[str, Any] = {"sessionId": session.id}
+    if title != "Untitled":
+        meta["title"] = title
+    if updated_at is not None:
+        meta["updatedAt"] = updated_at
+    return {"kimi": {"session": meta}}

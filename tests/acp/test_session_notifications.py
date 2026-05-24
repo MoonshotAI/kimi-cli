@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import acp
 import pytest
@@ -15,6 +16,7 @@ from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import Notification, TextPart, ThinkPart, ToolCall, TurnBegin, TurnEnd
 
 
@@ -62,6 +64,28 @@ class _FakeStreamingCLI:
         yield TurnEnd()
 
 
+class _FakeReplayCLI:
+    def __init__(self, wire_file: WireFile) -> None:
+        session = SimpleNamespace(wire_file=wire_file)
+        runtime = SimpleNamespace(session=session)
+        self.soul = SimpleNamespace(runtime=runtime, context=SimpleNamespace(history=[]))
+
+
+def _notification(title: str = "Background task completed: build project") -> Notification:
+    return Notification(
+        id="n1234567",
+        category="task",
+        type="task.completed",
+        source_kind="background_task",
+        source_id="b1234567",
+        title=title,
+        body="Task ID: b1234567\nStatus: completed",
+        severity="success",
+        created_at=123.456,
+        payload={"task_id": "b1234567"},
+    )
+
+
 @pytest.mark.asyncio
 async def test_acp_session_surfaces_notification_as_message_chunk() -> None:
     conn = _FakeConn()
@@ -105,6 +129,63 @@ async def test_acp_session_assigns_message_ids_to_distinct_content_runs() -> Non
     assert chunks[3].message_id
     assert chunks[3].message_id != chunks[1].message_id
     assert chunks[0].message_id not in {chunks[1].message_id, chunks[3].message_id}
+
+
+@pytest.mark.asyncio
+async def test_replay_history_handles_notification_after_turn_end(tmp_path: Path) -> None:
+    wire_file = WireFile(tmp_path / "wire.jsonl")
+    await wire_file.append_message(TurnBegin(user_input=[TextPart(text="hello")]))
+    await wire_file.append_message(TextPart(text="done"))
+    await wire_file.append_message(TurnEnd())
+    await wire_file.append_message(_notification())
+    conn = _FakeConn()
+    session = ACPSession("session-1", _FakeReplayCLI(wire_file), conn)  # type: ignore[arg-type]
+
+    replayed_updates = await session.replay_history()
+
+    assert replayed_updates == 3
+    chunks = [
+        update
+        for _, update in conn.updates
+        if update.session_update in {"agent_message_chunk", "user_message_chunk"}
+    ]
+    assert [chunk.content.text for chunk in chunks] == [
+        "hello",
+        "done",
+        "[Notification] Background task completed: build project\n"
+        "Task ID: b1234567\n"
+        "Status: completed",
+    ]
+    assert all(chunk.message_id for chunk in chunks)
+
+
+@pytest.mark.asyncio
+async def test_replay_history_resets_message_id_around_notification(tmp_path: Path) -> None:
+    wire_file = WireFile(tmp_path / "wire.jsonl")
+    await wire_file.append_message(TurnBegin(user_input=[TextPart(text="hello")]))
+    await wire_file.append_message(TextPart(text="first"))
+    await wire_file.append_message(_notification())
+    await wire_file.append_message(TextPart(text="second"))
+    await wire_file.append_message(TurnEnd())
+    conn = _FakeConn()
+    session = ACPSession("session-1", _FakeReplayCLI(wire_file), conn)  # type: ignore[arg-type]
+
+    replayed_updates = await session.replay_history()
+
+    assert replayed_updates == 4
+    chunks = [
+        update for _, update in conn.updates if update.session_update == "agent_message_chunk"
+    ]
+    assert [chunk.content.text for chunk in chunks] == [
+        "first",
+        "[Notification] Background task completed: build project\n"
+        "Task ID: b1234567\n"
+        "Status: completed",
+        "second",
+    ]
+    assert chunks[0].message_id != chunks[1].message_id
+    assert chunks[1].message_id != chunks[2].message_id
+    assert chunks[0].message_id != chunks[2].message_id
 
 
 class _BlockingApprovalConn(_FakeConn):
