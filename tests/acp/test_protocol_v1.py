@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+from collections.abc import Callable
+from typing import Any
 
 import acp
 import pytest
@@ -12,6 +15,14 @@ from kimi_cli.acp.version import CURRENT_VERSION
 from .conftest import ACPTestClient, _kimi_bin, _repo_root
 
 pytestmark = pytest.mark.asyncio
+
+
+async def _wait_for_update(test_client: ACPTestClient, predicate: Callable[[Any], bool]) -> None:
+    for _ in range(20):
+        if any(predicate(update) for update in test_client.updates):
+            return
+        await asyncio.sleep(0.05)
+    pytest.fail("Expected ACP session update was not received")
 
 
 async def test_initialize_returns_negotiated_version(
@@ -53,6 +64,8 @@ async def test_new_session_response_shape(
     assert isinstance(resp.session_id, str)
     assert len(resp.session_id) > 0
     assert resp.modes is not None
+    assert [mode.id for mode in resp.modes.available_modes] == ["default", "yolo"]
+    assert resp.modes.current_mode_id == "default"
     assert resp.models is not None
 
 
@@ -136,6 +149,72 @@ async def test_resume_session(
     assert len(resume_resp.models.available_models) > 0
     assert resume_resp.field_meta is not None
     assert resume_resp.field_meta["kimi"]["session"]["title"] == "Hello"
+
+
+async def test_set_session_mode_toggles_yolo(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """session/set_mode toggles Kimi's approval mode through ACP."""
+    conn, test_client = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    session_resp = await conn.new_session(cwd=str(work_dir))
+
+    await conn.set_session_mode(
+        mode_id="yolo",
+        session_id=session_resp.session_id,
+    )
+
+    await _wait_for_update(
+        test_client,
+        lambda update: isinstance(update, acp.schema.CurrentModeUpdate)
+        and update.current_mode_id == "yolo",
+    )
+    resume_resp = await conn.resume_session(
+        cwd=str(work_dir),
+        session_id=session_resp.session_id,
+    )
+    assert resume_resp.modes is not None
+    assert resume_resp.modes.current_mode_id == "yolo"
+
+    await conn.set_session_mode(
+        mode_id="default",
+        session_id=session_resp.session_id,
+    )
+
+    await _wait_for_update(
+        test_client,
+        lambda update: isinstance(update, acp.schema.CurrentModeUpdate)
+        and update.current_mode_id == "default",
+    )
+    resume_resp = await conn.resume_session(
+        cwd=str(work_dir),
+        session_id=session_resp.session_id,
+    )
+    assert resume_resp.modes is not None
+    assert resume_resp.modes.current_mode_id == "default"
+
+
+async def test_set_session_mode_rejects_unknown_mode(
+    acp_client: tuple[acp.ClientSideConnection, ACPTestClient],
+    tmp_path,
+):
+    """session/set_mode reports invalid params for unknown modes."""
+    conn, _ = acp_client
+    await conn.initialize(protocol_version=1)
+
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir(exist_ok=True)
+    session_resp = await conn.new_session(cwd=str(work_dir))
+
+    with pytest.raises(acp.RequestError):
+        await conn.set_session_mode(
+            mode_id="unknown",
+            session_id=session_resp.session_id,
+        )
 
 
 async def test_resume_session_not_found(

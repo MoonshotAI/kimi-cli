@@ -81,10 +81,14 @@
     then releases the terminal handle.
 - Approval requests in the core tool system are bridged to ACP
   `session/request_permission` with allow-once/allow-always/reject options.
+- Permission mode switching is exposed through ACP `session/set_mode`.
+  - `default` asks for permissions as needed.
+  - `yolo` toggles Kimi's persisted yolo approval state and resolves pending approvals.
 
 ## Current gaps / not implemented
 - `authenticate` method (not used by current Zed ACP client).
-- `session/set_mode` and `session/set_model` (no multi-mode/model switching in kimi-cli).
+- `session/set_model` currently supports configured Kimi models, but there is no agent/model
+  provider discovery beyond the local config.
 - `ext_method` / `ext_notification` for custom ACP extensions are stubbed.
 - Single-session server does not implement `session/load` or `session/list`.
 

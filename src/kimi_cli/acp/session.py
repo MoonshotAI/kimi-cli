@@ -648,33 +648,60 @@ class ACPSession:
                     )
                 )
 
-            # Send permission request and wait for response
+            # Send permission request and wait for response. Also watch the
+            # local request object so protocol-level mode switches can resolve
+            # a pending approval without waiting for the client dialog.
             logger.debug("Requesting permission for action: {action}", action=request.action)
-            response = await self._conn.request_permission(
-                [
-                    acp.schema.PermissionOption(
-                        option_id="approve",
-                        name="Approve once",
-                        kind="allow_once",
+            permission_task = asyncio.create_task(
+                self._conn.request_permission(
+                    [
+                        acp.schema.PermissionOption(
+                            option_id="approve",
+                            name="Approve once",
+                            kind="allow_once",
+                        ),
+                        acp.schema.PermissionOption(
+                            option_id="approve_for_session",
+                            name="Approve for this session",
+                            kind="allow_always",
+                        ),
+                        acp.schema.PermissionOption(
+                            option_id="reject",
+                            name="Reject",
+                            kind="reject_once",
+                        ),
+                    ],
+                    self._id,
+                    acp.schema.ToolCallUpdate(
+                        tool_call_id=state.acp_tool_call_id,
+                        title=state.get_title(),
+                        content=content,
                     ),
-                    acp.schema.PermissionOption(
-                        option_id="approve_for_session",
-                        name="Approve for this session",
-                        kind="allow_always",
-                    ),
-                    acp.schema.PermissionOption(
-                        option_id="reject",
-                        name="Reject",
-                        kind="reject_once",
-                    ),
-                ],
-                self._id,
-                acp.schema.ToolCallUpdate(
-                    tool_call_id=state.acp_tool_call_id,
-                    title=state.get_title(),
-                    content=content,
-                ),
+                )
             )
+
+            async def wait_for_local_resolution() -> ApprovalResponse.Kind:
+                return await asyncio.shield(request.wait())
+
+            request_task = asyncio.create_task(wait_for_local_resolution())
+            done, pending = await asyncio.wait(
+                {permission_task, request_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+
+            if permission_task not in done:
+                resolved_response = request_task.result()
+                logger.debug(
+                    "Permission request resolved externally: {response}",
+                    response=resolved_response,
+                )
+                return
+
+            response = permission_task.result()
             logger.debug("Received permission response: {response}", response=response)
 
             # Process the outcome

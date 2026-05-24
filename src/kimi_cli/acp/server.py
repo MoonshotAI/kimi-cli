@@ -25,6 +25,21 @@ from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.logging import logger
 
+_DEFAULT_MODE_ID = "default"
+_YOLO_MODE_ID = "yolo"
+_SESSION_MODES = [
+    acp.schema.SessionMode(
+        id=_DEFAULT_MODE_ID,
+        name="Default",
+        description="Ask for permission before running actions that require approval.",
+    ),
+    acp.schema.SessionMode(
+        id=_YOLO_MODE_ID,
+        name="Yolo",
+        description="Automatically approve actions for this session.",
+    ),
+]
+
 
 class ACPServer:
     def __init__(self) -> None:
@@ -172,16 +187,7 @@ class ACPServer:
         )
         return acp.NewSessionResponse(
             session_id=session.id,
-            modes=acp.schema.SessionModeState(
-                available_modes=[
-                    acp.schema.SessionMode(
-                        id="default",
-                        name="Default",
-                        description="The default mode.",
-                    ),
-                ],
-                current_mode_id="default",
-            ),
+            modes=_session_mode_state(acp_session),
             models=acp.schema.SessionModelState(
                 available_models=_expand_llm_models(config.models),
                 current_model_id=model_id_conv.to_acp_model_id(),
@@ -255,16 +261,7 @@ class ACPServer:
         config = acp_session.cli.soul.runtime.config
         return acp.schema.LoadSessionResponse(
             field_meta=_session_response_meta(acp_session),
-            modes=acp.schema.SessionModeState(
-                available_modes=[
-                    acp.schema.SessionMode(
-                        id="default",
-                        name="Default",
-                        description="The default mode.",
-                    ),
-                ],
-                current_mode_id="default",
-            ),
+            modes=_session_mode_state(acp_session),
             models=acp.schema.SessionModelState(
                 available_models=_expand_llm_models(config.models),
                 current_model_id=model_id_conv.to_acp_model_id(),
@@ -284,16 +281,7 @@ class ACPServer:
         config = acp_session.cli.soul.runtime.config
         return acp.schema.ResumeSessionResponse(
             field_meta=_session_response_meta(acp_session),
-            modes=acp.schema.SessionModeState(
-                available_modes=[
-                    acp.schema.SessionMode(
-                        id="default",
-                        name="Default",
-                        description="The default mode.",
-                    ),
-                ],
-                current_mode_id="default",
-            ),
+            modes=_session_mode_state(acp_session),
             models=acp.schema.SessionModelState(
                 available_models=_expand_llm_models(config.models),
                 current_model_id=model_id_conv.to_acp_model_id(),
@@ -326,8 +314,41 @@ class ACPServer:
             next_cursor=None,
         )
 
-    async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
-        assert mode_id == "default", "Only default mode is supported"
+    async def set_session_mode(
+        self, mode_id: str, session_id: str, **kwargs: Any
+    ) -> acp.schema.SetSessionModeResponse:
+        logger.info(
+            "Setting session mode to {mode_id} for session: {id}",
+            mode_id=mode_id,
+            id=session_id,
+        )
+        if session_id not in self.sessions:
+            logger.error("Session not found: {id}", id=session_id)
+            raise acp.RequestError.invalid_params({"session_id": "Session not found"})
+        if mode_id not in {_DEFAULT_MODE_ID, _YOLO_MODE_ID}:
+            logger.error("Mode not found: {mode_id}", mode_id=mode_id)
+            raise acp.RequestError.invalid_params({"mode_id": "Mode not found"})
+
+        acp_session, _ = self.sessions[session_id]
+        runtime = acp_session.cli.soul.runtime
+        enable_yolo = mode_id == _YOLO_MODE_ID
+        if runtime.approval.is_yolo() != enable_yolo:
+            runtime.approval.set_yolo(enable_yolo)
+
+        if enable_yolo and runtime.approval_runtime is not None:
+            for request in runtime.approval_runtime.list_pending():
+                runtime.approval_runtime.resolve(request.id, "approve")
+
+        if self.conn is not None:
+            await self.conn.session_update(
+                session_id=session_id,
+                update=acp.schema.CurrentModeUpdate(
+                    session_update="current_mode_update",
+                    current_mode_id=_current_mode_id(acp_session),
+                ),
+            )
+
+        return acp.schema.SetSessionModeResponse()
 
     async def set_session_model(self, model_id: str, session_id: str, **kwargs: Any) -> None:
         logger.info(
@@ -490,3 +511,16 @@ def _session_response_meta(acp_session: ACPSession) -> dict[str, Any]:
     if updated_at is not None:
         meta["updatedAt"] = updated_at
     return {"kimi": {"session": meta}}
+
+
+def _current_mode_id(acp_session: ACPSession) -> str:
+    if acp_session.cli.soul.runtime.approval.is_yolo():
+        return _YOLO_MODE_ID
+    return _DEFAULT_MODE_ID
+
+
+def _session_mode_state(acp_session: ACPSession) -> acp.schema.SessionModeState:
+    return acp.schema.SessionModeState(
+        available_modes=_SESSION_MODES,
+        current_mode_id=_current_mode_id(acp_session),
+    )

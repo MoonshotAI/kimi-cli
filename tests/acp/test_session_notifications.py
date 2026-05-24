@@ -205,6 +205,87 @@ class _BlockingApprovalConn(_FakeConn):
         return await pending
 
 
+class _ApprovingApprovalConn(_FakeConn):
+    def __init__(self) -> None:
+        super().__init__()
+        self.permission_requested = asyncio.Event()
+
+    async def request_permission(
+        self,
+        options: list[acp.schema.PermissionOption],
+        session_id: str,
+        tool_call: acp.schema.ToolCallUpdate,
+        **kwargs,
+    ) -> acp.schema.RequestPermissionResponse:
+        self.permission_requested.set()
+        return acp.schema.RequestPermissionResponse(
+            outcome=acp.schema.AllowedOutcome(outcome="selected", option_id="approve")
+        )
+
+
+@pytest.mark.asyncio
+async def test_acp_permission_response_resolves_approval_runtime(
+    runtime: Runtime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert runtime.approval_runtime is not None
+
+    async def fake_turn(self, _user_message):
+        assert runtime.approval_runtime is not None
+        source = get_current_approval_source_or_none()
+        assert source is not None
+        tool_call_id = "call-acp-approved"
+        wire_send(
+            ToolCall(
+                id=tool_call_id,
+                function=ToolCall.FunctionBody(name="WriteFile", arguments="{}"),
+            )
+        )
+        request = runtime.approval_runtime.create_request(
+            request_id="req-acp-approved",
+            tool_call_id=tool_call_id,
+            sender="WriteFile",
+            action="edit file",
+            description="write file",
+            display=[],
+            source=source,
+        )
+        response, feedback = await runtime.approval_runtime.wait_for_response(
+            request.id,
+            timeout=1.0,
+        )
+        assert response == "approve"
+        assert feedback == ""
+
+    async def fake_ensure_fresh(_runtime):
+        return None
+
+    monkeypatch.setattr(KimiSoul, "_turn", fake_turn)
+    monkeypatch.setattr(runtime.oauth, "ensure_fresh", fake_ensure_fresh)
+
+    soul = KimiSoul(
+        Agent(
+            name="ACP Approval Agent",
+            system_prompt="System prompt.",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        ),
+        context=Context(file_backend=tmp_path / "history.jsonl"),
+    )
+    conn = _ApprovingApprovalConn()
+    session = ACPSession("session-1", KimiCLI(soul, runtime, {}), conn)  # type: ignore[arg-type]
+
+    response = await asyncio.wait_for(session.prompt([acp.text_block("hello")]), timeout=1.0)
+
+    assert response.stop_reason == "end_turn"
+    record = runtime.approval_runtime.get_request("req-acp-approved")
+    assert record is not None
+    assert record.status == "resolved"
+    assert record.response == "approve"
+    assert runtime.approval_runtime.list_pending() == []
+
+
 @pytest.mark.asyncio
 async def test_acp_prompt_cancel_closes_abandoned_approval_stream(
     runtime: Runtime,
