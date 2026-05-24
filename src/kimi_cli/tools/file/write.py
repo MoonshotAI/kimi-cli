@@ -167,7 +167,8 @@ class WriteFile(CallableTool2[Params]):
             match params.mode:
                 case "overwrite":
                     if eol_style != "\n":
-                        content_to_write = params.content.replace("\n", eol_style)
+                        # Normalize to LF first to avoid double-converting existing CRLF
+                        content_to_write = params.content.replace("\r\n", "\n").replace("\r", "\n").replace("\n", eol_style)
                     else:
                         content_to_write = params.content
                     await p.write_bytes(content_to_write.encode("utf-8", errors="replace"))

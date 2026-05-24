@@ -314,3 +314,25 @@ async def test_replace_multiline_preserves_crlf(
     raw = await file_path.read_bytes()
     expected = b"header\r\nnew1\r\nnew2\r\nfooter\r\n"
     assert raw == expected, f"Expected CRLF preserved, got {raw!r}"
+
+
+async def test_replace_with_crlf_in_new_no_double_conversion(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """StrReplaceFile should not double-convert CRLF that already exists in edit.new."""
+    file_path = temp_work_dir / "crlf_in_new.txt"
+    original_bytes = b"header\r\nline1\r\nfooter\r\n"
+    await file_path.write_bytes(original_bytes)
+
+    # edit.new contains CRLF (model may pass CRLF content)
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="line1", new="new1\r\nnew2"),
+        )
+    )
+
+    assert not result.is_error
+    raw = await file_path.read_bytes()
+    expected = b"header\r\nnew1\r\nnew2\r\nfooter\r\n"
+    assert raw == expected, f"Expected CRLF in new preserved without double conversion, got {raw!r}"

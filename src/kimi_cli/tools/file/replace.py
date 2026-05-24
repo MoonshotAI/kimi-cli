@@ -159,7 +159,8 @@ class StrReplaceFile(CallableTool2[Params]):
 
             # Restore original line ending style before writing
             if eol_style != "\n":
-                content = content.replace("\n", eol_style)
+                # Normalize to LF first to avoid double-converting existing CRLF in edit.new
+                content = content.replace("\r\n", "\n").replace("\r", "\n").replace("\n", eol_style)
 
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
                 str(p), original_content, content

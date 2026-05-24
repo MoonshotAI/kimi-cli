@@ -221,3 +221,21 @@ async def test_new_file_write_uses_lf(
     assert not result.is_error
     raw = await file_path.read_bytes()
     assert raw == b"line1\nline2\n", f"Expected LF for new file, got {raw!r}"
+
+
+async def test_overwrite_crlf_input_no_double_conversion(
+    write_file_tool: WriteFile, temp_work_dir: KaosPath
+):
+    """WriteFile overwrite should not double-convert existing CRLF in params.content."""
+    file_path = temp_work_dir / "crlf_overwrite_input.txt"
+    original_bytes = b"old1\r\nold2\r\n"
+    await file_path.write_bytes(original_bytes)
+
+    # params.content already contains CRLF (e.g., from model)
+    new_content = "new1\r\nnew2\r\n"
+    result = await write_file_tool(Params(path=str(file_path), content=new_content))
+
+    assert not result.is_error
+    raw = await file_path.read_bytes()
+    expected = b"new1\r\nnew2\r\n"
+    assert raw == expected, f"Expected preserved CRLF without double conversion, got {raw!r}"

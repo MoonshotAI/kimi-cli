@@ -259,8 +259,10 @@ class SSHKaos:
     ) -> int:
         # Write raw bytes to avoid any newline translation by the remote SFTP server.
         bytes_mode = "ab" if mode == "a" else "wb"
+        encoded = data.encode(encoding, errors=errors)
         async with self._sftp.open(str(path), bytes_mode) as f:
-            return await f.write(data.encode(encoding, errors=errors))
+            await f.write(encoded)
+            return len(data)
 
     async def mkdir(
         self,
