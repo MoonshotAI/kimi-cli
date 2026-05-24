@@ -184,7 +184,7 @@ class StrReplaceFile(CallableTool2[Params]):
                     return result.rejection_error()
 
             # Write the modified content back to the file preserving original line endings
-            await p.write_bytes(content.encode("utf-8", errors="replace"))
+            await p.write_bytes(content.encode("utf-8"))
 
             # Count changes for success message
             total_replacements = 0

@@ -171,7 +171,7 @@ class WriteFile(CallableTool2[Params]):
                         content_to_write = params.content.replace("\r\n", "\n").replace("\r", "\n").replace("\n", eol_style)
                     else:
                         content_to_write = params.content
-                    await p.write_bytes(content_to_write.encode("utf-8", errors="replace"))
+                    await p.write_bytes(content_to_write.encode("utf-8"))
                 case "append":
                     await p.append_text(params.content)
 
