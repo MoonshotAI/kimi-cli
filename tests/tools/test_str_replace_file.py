@@ -246,3 +246,71 @@ async def test_replace_empty_strings(
     assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello !"
+
+
+async def test_replace_preserves_crlf_line_endings(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """StrReplaceFile should preserve CRLF line endings in the file."""
+    file_path = temp_work_dir / "crlf.txt"
+    original_bytes = b"line1\r\nline2\r\nline3\r\n"
+    await file_path.write_bytes(original_bytes)
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="line2", new="modified_line2"),
+        )
+    )
+
+    assert not result.is_error
+    assert "successfully edited" in result.message
+
+    # Verify bytes on disk are still CRLF
+    raw = await file_path.read_bytes()
+    expected = b"line1\r\nmodified_line2\r\nline3\r\n"
+    assert raw == expected, f"Expected CRLF preserved, got {raw!r}"
+
+
+async def test_replace_preserves_lf_line_endings(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """StrReplaceFile should preserve LF line endings in the file."""
+    file_path = temp_work_dir / "lf.txt"
+    original_bytes = b"line1\nline2\nline3\n"
+    await file_path.write_bytes(original_bytes)
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="line2", new="modified_line2"),
+        )
+    )
+
+    assert not result.is_error
+    assert "successfully edited" in result.message
+
+    raw = await file_path.read_bytes()
+    expected = b"line1\nmodified_line2\nline3\n"
+    assert raw == expected, f"Expected LF preserved, got {raw!r}"
+
+
+async def test_replace_multiline_preserves_crlf(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """StrReplaceFile should preserve CRLF when replacing multi-line blocks."""
+    file_path = temp_work_dir / "crlf_multi.txt"
+    original_bytes = b"header\r\nline1\r\nline2\r\nfooter\r\n"
+    await file_path.write_bytes(original_bytes)
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="line1\nline2", new="new1\nnew2"),
+        )
+    )
+
+    assert not result.is_error
+    raw = await file_path.read_bytes()
+    expected = b"header\r\nnew1\r\nnew2\r\nfooter\r\n"
+    assert raw == expected, f"Expected CRLF preserved, got {raw!r}"

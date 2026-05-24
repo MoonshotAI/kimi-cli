@@ -129,6 +129,41 @@ async def test_writetext_preserves_crlf_line_endings(local_kaos: LocalKaos):
     assert raw == b"hello\r\nworld\r\n", f"Expected CRLF preserved, got {raw!r}"
 
 
+async def test_readtext_preserves_lf_line_endings(local_kaos: LocalKaos):
+    """readtext should not convert LF to CRLF."""
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "lf_read.txt"
+
+    await local_kaos.writebytes(file_path, b"hello\nworld\n")
+
+    text = await local_kaos.readtext(file_path)
+    assert "\r" not in text, f"Expected no \\r in read text, got {text!r}"
+    assert text == "hello\nworld\n", f"Expected LF line endings, got {text!r}"
+
+
+async def test_readtext_preserves_crlf_line_endings(local_kaos: LocalKaos):
+    """readtext should preserve CRLF line endings."""
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "crlf_read.txt"
+
+    await local_kaos.writebytes(file_path, b"hello\r\nworld\r\n")
+
+    text = await local_kaos.readtext(file_path)
+    assert "\r\n" in text, f"Expected CRLF in read text, got {text!r}"
+    assert text == "hello\r\nworld\r\n", f"Expected CRLF preserved, got {text!r}"
+
+
+async def test_readlines_preserves_crlf_line_endings(local_kaos: LocalKaos):
+    """readlines should preserve CRLF line endings in each yielded line."""
+    tmp_path = local_kaos.getcwd()
+    file_path = tmp_path / "crlf_lines.txt"
+
+    await local_kaos.writebytes(file_path, b"line1\r\nline2\r\n")
+
+    lines = [line async for line in local_kaos.readlines(file_path)]
+    assert lines == ["line1\r\n", "line2\r\n"], f"Expected CRLF preserved in lines, got {lines!r}"
+
+
 async def test_mkdir_with_parents(local_kaos: LocalKaos):
     tmp_path = local_kaos.getcwd()
     nested_dir = tmp_path / "a" / "b" / "c"

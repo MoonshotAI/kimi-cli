@@ -228,8 +228,9 @@ class SSHKaos:
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> str:
-        async with self._sftp.open(str(path), "r", encoding=encoding, errors=errors) as f:
-            return await f.read()
+        # Read raw bytes to avoid any newline translation by the remote SFTP server.
+        raw = await self.readbytes(path)
+        return raw.decode(encoding, errors=errors)
 
     async def readlines(
         self,
@@ -240,7 +241,7 @@ class SSHKaos:
     ) -> AsyncGenerator[str]:
         # NOTE: readlines is not supported by SFTPClientFile
         text = await self.readtext(path, encoding=encoding, errors=errors)
-        for line in text.splitlines():
+        for line in text.splitlines(keepends=True):
             yield line
 
     async def writebytes(self, path: StrOrKaosPath, data: bytes) -> int:
@@ -256,8 +257,10 @@ class SSHKaos:
         encoding: str = "utf-8",
         errors: Literal["strict", "ignore", "replace"] = "strict",
     ) -> int:
-        async with self._sftp.open(str(path), mode, encoding=encoding, errors=errors) as f:
-            return await f.write(data)
+        # Write raw bytes to avoid any newline translation by the remote SFTP server.
+        bytes_mode = "ab" if mode == "a" else "wb"
+        async with self._sftp.open(str(path), bytes_mode) as f:
+            return await f.write(data.encode(encoding, errors=errors))
 
     async def mkdir(
         self,

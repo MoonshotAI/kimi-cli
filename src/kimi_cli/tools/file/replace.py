@@ -128,10 +128,22 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="Invalid path",
                 )
 
-            # Read the file content
-            content = await p.read_text(errors="replace")
+            # Read raw bytes to preserve original line endings
+            raw_bytes = await p.read_bytes()
+            original_content = raw_bytes.decode("utf-8", errors="replace")
 
-            original_content = content
+            # Detect dominant line ending style
+            if b"\r\n" in raw_bytes:
+                eol_style = "\r\n"
+            elif b"\r" in raw_bytes:
+                eol_style = "\r"
+            else:
+                eol_style = "\n"
+
+            # Normalize to \n for model matching (model-generated old/new use \n)
+            normalized_content = original_content.replace("\r\n", "\n").replace("\r", "\n")
+
+            content = normalized_content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
             # Apply all edits
@@ -139,11 +151,15 @@ class StrReplaceFile(CallableTool2[Params]):
                 content = self._apply_edit(content, edit)
 
             # Check if any changes were made
-            if content == original_content:
+            if content == normalized_content:
                 return ToolError(
                     message="No replacements were made. The old string was not found in the file.",
                     brief="No replacements made",
                 )
+
+            # Restore original line ending style before writing
+            if eol_style != "\n":
+                content = content.replace("\n", eol_style)
 
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
                 str(p), original_content, content
@@ -166,16 +182,16 @@ class StrReplaceFile(CallableTool2[Params]):
                 if not result:
                     return result.rejection_error()
 
-            # Write the modified content back to the file
-            await p.write_text(content, errors="replace")
+            # Write the modified content back to the file preserving original line endings
+            await p.write_bytes(content.encode("utf-8", errors="replace"))
 
             # Count changes for success message
             total_replacements = 0
             for edit in edits:
                 if edit.replace_all:
-                    total_replacements += original_content.count(edit.old)
+                    total_replacements += normalized_content.count(edit.old)
                 else:
-                    total_replacements += 1 if edit.old in original_content else 0
+                    total_replacements += 1 if edit.old in normalized_content else 0
 
             return ToolReturnValue(
                 is_error=False,
