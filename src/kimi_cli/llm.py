@@ -234,8 +234,7 @@ def create_llm(
         )
     else:
         logger.info(
-            "Creating LLM with overridden API key {prefix}... for provider {provider_type}",
-            prefix=resolved_api_key[:16],
+            "Creating LLM with overridden API key for provider {provider_type}",
             provider_type=provider.type,
         )
 

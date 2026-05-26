@@ -190,20 +190,6 @@ class AgentTool(CallableTool2[Params]):
         if params.run_in_background:
             return await self._run_in_background(params)
 
-        # Enforce foreground concurrency limit (80% of system capacity).
-        provider_type = _resolve_effective_provider_type(self._runtime, params.model)
-        max_concurrent = _max_foreground_concurrency(self._runtime, provider_type)
-        running = _count_running_foreground(self._runtime)
-        if running >= max_concurrent:
-            return ToolError(
-                message=(
-                    f"Too many foreground subagents are already running "
-                    f"({running}/{max_concurrent}). Please wait for one to finish "
-                    f"before starting another."
-                ),
-                brief="Concurrency limit reached",
-            )
-
         timeout = _resolve_foreground_timeout(params.effective_timeout)
         runner = ForegroundSubagentRunner(self._runtime)
         req = ForegroundRunRequest(
@@ -215,6 +201,28 @@ class AgentTool(CallableTool2[Params]):
         )
         store = self._runtime.subagent_store
         assert store is not None
+
+        # Enforce foreground concurrency limit (80% of system capacity).
+        # For resumed instances, derive the provider type from the stored launch spec
+        # so that non-Kimi resumed subagents are not capped by an unrelated key pool.
+        effective_model = params.model
+        if params.resume:
+            record = store.get_instance(params.resume)
+            if record is not None:
+                launch = record.launch_spec
+                effective_model = launch.model_override or launch.effective_model
+        provider_type = _resolve_effective_provider_type(self._runtime, effective_model)
+        max_concurrent = _max_foreground_concurrency(self._runtime, provider_type)
+        running = _count_running_foreground(self._runtime)
+        if running >= max_concurrent:
+            return ToolError(
+                message=(
+                    f"Too many foreground subagents are already running "
+                    f"({running}/{max_concurrent}). Please wait for one to finish "
+                    f"before starting another."
+                ),
+                brief="Concurrency limit reached",
+            )
         agent_id: str | None = None
         try:
             # Prepare the instance and mark it running_foreground *before* the await
