@@ -759,10 +759,10 @@ class KimiCLI:
             WelcomeInfoItem(
                 name="\nTip",
                 value=(
-                    "Spot a bug or have feedback? Type /feedback right in this session"
-                    " — every report makes Kimi better."
+                    "We just released Kimi Code — our new coding agent. "
+                    "Check it out at https://moonshotai.github.io/kimi-code"
                 ),
-                level=WelcomeInfoItem.Level.INFO,
+                level=WelcomeInfoItem.Level.WARN,
             )
         )
         async with self._env():
