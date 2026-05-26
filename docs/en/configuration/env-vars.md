@@ -12,6 +12,7 @@ The following environment variables take effect when using `kimi` type providers
 | --- | --- |
 | `KIMI_BASE_URL` | API base URL |
 | `KIMI_API_KEY` | API key |
+| `KIMI_API_KEY_1` … `KIMI_API_KEY_99` | Additional API keys for parallel subagent execution |
 | `KIMI_MODEL_NAME` | Model identifier |
 | `KIMI_MODEL_MAX_CONTEXT_SIZE` | Maximum context length (in tokens) |
 | `KIMI_MODEL_CAPABILITIES` | Model capabilities, comma-separated (e.g., `thinking,image_in`) |
@@ -35,6 +36,10 @@ Overrides the provider's `api_key` field in the configuration file. Used to inje
 ```sh
 export KIMI_API_KEY="sk-xxx"
 ```
+
+::: tip Multiple keys for parallel subagents
+When running multiple foreground subagents concurrently, you can configure additional API keys (`KIMI_API_KEY_1`, `KIMI_API_KEY_2`, … up to `KIMI_API_KEY_99`). Kimi CLI will create a key pool and assign a different key to each subagent in round-robin order, distributing rate-limit quota across keys instead of concentrating load on a single key.
+:::
 
 ### `KIMI_MODEL_NAME`
 
@@ -132,6 +137,7 @@ export OPENAI_API_KEY="sk-xxx"
 | `KIMI_SHARE_DIR` | Customize the share directory path (default: `~/.kimi`) |
 | `KIMI_CLI_NO_AUTO_UPDATE` | Disable all update-related features |
 | `KIMI_CLI_PASTE_CHAR_THRESHOLD` | Character threshold for folding pasted text (default: `1000`) |
+| `KIMI_FOREGROUND_AGENT_TIMEOUT` | Foreground subagent timeout in seconds. `0` disables the timeout (default: `300`) |
 | `KIMI_CLI_PASTE_LINE_THRESHOLD` | Line threshold for folding pasted text (default: `15`) |
 
 ### `KIMI_SHARE_DIR`

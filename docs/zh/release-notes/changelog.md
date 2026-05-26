@@ -4,6 +4,14 @@
 
 ## 未发布
 
+- Core：新增前台子代理并发限制，上限为可用 API key 数量或后台任务槽数量的 80%——避免并发子代理耗尽单一 key 的速率限制配额
+- Core：将前台子代理默认超时从"无限制"改为 300 秒，支持通过环境变量 `KIMI_FOREGROUND_AGENT_TIMEOUT` 覆盖
+- Tool：当配置多个 key（`KIMI_API_KEY`、`KIMI_API_KEY_1`…）时，Agent 工具会为并发子代理轮询分配不同的 API key
+- LLM：新增 `APIKeyPool`，用于从环境变量收集和轮换多个 API key
+- LLM：新增 `KeyPoolKimi` provider 包装器，在遇到可重试错误（429、500、503）时自动切换到下一个 key
+- Shell：在终端界面中显示子代理的步进计数器、已耗时和实时文本预览
+- Auth：修复 LLM provider 被 `KeyPoolKimi` 包装时 OAuth token 刷新导致的崩溃
+
 ## 1.45.0 (2026-05-26)
 
 - Shell：`/clear` 现在成为 `/new` 的别名——两者都会启动新会话；此前 `/clear` 仅清空上下文而不创建新会话

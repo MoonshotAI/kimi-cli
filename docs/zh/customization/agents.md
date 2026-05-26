@@ -154,6 +154,14 @@ agent:
 - 子 Agent 可以有针对性的系统提示词
 - 持久实例可跨多次调用保留上下文
 
+### 并发限制
+
+前台子 Agent 共享一个并发上限，以避免对 API 造成过大压力。当配置了多个 API 密钥时，上限为 `max(1, floor(密钥池大小 × 0.8))`；否则使用配置中的 `max(1, floor(max_running_tasks × 0.8))`。达到上限后，`Agent` 工具会返回 `ToolError`，简短提示为 `Concurrency limit reached`，主 Agent 可以稍后重试或以其他方式调度任务。
+
+### 多密钥并行执行
+
+当配置了 `KIMI_API_KEY_1`、`KIMI_API_KEY_2` … 时，Kimi CLI 会构建 API 密钥池，并以轮询方式为每个前台子 Agent 分配**不同的密钥**。如果某个子 Agent 触发速率限制或可重试的服务器错误，密钥会自动轮换到池中的下一个。这使你可以并发运行大量子 Agent，而不会将负载集中在单个 API 密钥上。每个子 Agent 请求还会携带可识别的 `User-Agent` 请求头（例如 `KimiCLI/1.44.0 (subagent: coder)`）。
+
 ## 内置工具列表
 
 以下是 Kimi Code CLI 内置的所有工具。
@@ -171,7 +179,7 @@ agent:
 | `model` | string | 可选的模型覆盖 |
 | `resume` | string | 可选的 Agent 实例 ID，用于恢复现有实例 |
 | `run_in_background` | bool | 是否在后台运行，默认 false |
-| `timeout` | int | 超时时间（秒），范围 30–3600。前台默认无超时（运行到完成），后台默认 15 分钟；超时后任务会被停止 |
+| `timeout` | int | 超时时间（秒），范围 30–3600。前台默认 300 秒（或由 `KIMI_FOREGROUND_AGENT_TIMEOUT` 指定），后台默认 15 分钟；超时后任务会被停止。设置为 `0` 可关闭前台超时限制 |
 
 ### `AskUserQuestion`
 

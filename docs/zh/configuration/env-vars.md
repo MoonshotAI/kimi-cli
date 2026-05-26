@@ -12,6 +12,7 @@ Kimi Code CLI 支持通过环境变量覆盖配置或控制运行行为。本页
 | --- | --- |
 | `KIMI_BASE_URL` | API 基础 URL |
 | `KIMI_API_KEY` | API 密钥 |
+| `KIMI_API_KEY_1` … `KIMI_API_KEY_99` | 并行子代理的额外 API 密钥 |
 | `KIMI_MODEL_NAME` | 模型标识符 |
 | `KIMI_MODEL_MAX_CONTEXT_SIZE` | 最大上下文长度（token 数） |
 | `KIMI_MODEL_CAPABILITIES` | 模型能力，逗号分隔（如 `thinking,image_in`） |
@@ -35,6 +36,10 @@ export KIMI_BASE_URL="https://api.moonshot.cn/v1"
 ```sh
 export KIMI_API_KEY="sk-xxx"
 ```
+
+::: tip 多密钥并行子代理
+在同时运行多个前台子代理时，可配置额外的 API 密钥（`KIMI_API_KEY_1`、`KIMI_API_KEY_2`、… 直到 `KIMI_API_KEY_99`）。Kimi CLI 会创建密钥池，并以轮询方式为每个子代理分配不同密钥，将速率限制配额分散到多个密钥上，避免单密钥负载过高。
+:::
 
 ### `KIMI_MODEL_NAME`
 
@@ -132,6 +137,7 @@ export OPENAI_API_KEY="sk-xxx"
 | `KIMI_SHARE_DIR` | 自定义共享目录路径（默认 `~/.kimi`） |
 | `KIMI_CLI_NO_AUTO_UPDATE` | 禁用所有更新相关功能 |
 | `KIMI_CLI_PASTE_CHAR_THRESHOLD` | 粘贴文本折叠的字符数阈值（默认 `1000`） |
+| `KIMI_FOREGROUND_AGENT_TIMEOUT` | 前台子代理超时时间（秒），`0` 表示不限制（默认 `300`） |
 | `KIMI_CLI_PASTE_LINE_THRESHOLD` | 粘贴文本折叠的行数阈值（默认 `15`） |
 
 ### `KIMI_SHARE_DIR`
