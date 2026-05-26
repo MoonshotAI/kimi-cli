@@ -21,6 +21,7 @@ from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.constant import VERSION
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
+from kimi_cli.llm_key_pool import APIKeyPool
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import RunCancelled, run_soul
@@ -254,6 +255,16 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
+        # Initialise an optional API-key pool for parallel subagent execution.
+        # When the user has configured multiple keys (KIMI_API_KEY, KIMI_API_KEY_1,
+        # …) each subagent will be assigned a different key in round-robin order.
+        key_pool = APIKeyPool.from_env("KIMI_API_KEY")
+        if key_pool is not None:
+            logger.info(
+                "Subagent key pool initialised with {n} key(s)",
+                n=key_pool.key_count,
+            )
+
         runtime = await Runtime.create(
             config,
             oauth,
@@ -264,6 +275,7 @@ class KimiCLI:
             runtime_afk=runtime_afk,
             skills_dirs=skills_dirs,
         )
+        runtime.key_pool = key_pool
         runtime.ui_mode = ui_mode
         runtime.resumed = resumed
         runtime.notifications.recover()

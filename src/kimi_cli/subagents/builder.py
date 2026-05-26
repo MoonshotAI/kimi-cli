@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from kimi_cli.constant import USER_AGENT
 from kimi_cli.llm import clone_llm_with_model_alias
 from kimi_cli.soul.agent import Agent, Runtime, load_agent
 from kimi_cli.subagents.models import AgentLaunchSpec, AgentTypeDefinition
@@ -17,12 +18,31 @@ class SubagentBuilder:
         launch_spec: AgentLaunchSpec,
     ) -> Agent:
         effective_model = self.resolve_effective_model(type_def=type_def, launch_spec=launch_spec)
+
+        # If a key pool is configured, rotate keys so concurrent subagents
+        # do not share a single API-key rate-limit quota.
+        api_key_override: str | None = None
+        if self._root_runtime.key_pool is not None:
+            api_key_override = self._root_runtime.key_pool.acquire()
+            from kimi_cli.utils.logging import logger
+
+            logger.info(
+                "Subagent {agent_id} assigned API key {prefix}... (pool size {n})",
+                agent_id=agent_id,
+                prefix=api_key_override[:16],
+                n=self._root_runtime.key_pool.key_count,
+            )
+
+        extra_headers = {"User-Agent": f"{USER_AGENT} (subagent: {type_def.name})"}
         llm_override = clone_llm_with_model_alias(
             self._root_runtime.llm,
             self._root_runtime.config,
             effective_model,
             session_id=self._root_runtime.session.id,
             oauth=self._root_runtime.oauth,
+            api_key_override=api_key_override,
+            key_pool=self._root_runtime.key_pool,
+            extra_headers=extra_headers,
         )
         runtime = self._root_runtime.copy_for_subagent(
             agent_id=agent_id,

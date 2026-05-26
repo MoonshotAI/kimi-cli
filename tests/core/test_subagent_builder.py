@@ -92,7 +92,17 @@ async def test_builder_model_priority_prefers_override_then_type_default_then_in
 ):
     captured_aliases: list[str | None] = []
 
-    def fake_clone_llm_with_model_alias(llm, config, model_alias, *, session_id, oauth):
+    def fake_clone_llm_with_model_alias(
+        llm,
+        config,
+        model_alias,
+        *,
+        session_id,
+        oauth,
+        api_key_override=None,
+        key_pool=None,
+        extra_headers=None,
+    ):
         captured_aliases.append(model_alias)
         return llm
 

@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 from typing import override
 
@@ -16,6 +17,50 @@ NAME = "Agent"
 
 MAX_FOREGROUND_TIMEOUT = 60 * 60  # 1 hour
 MAX_BACKGROUND_TIMEOUT = 60 * 60  # 1 hour
+
+_DEFAULT_FOREGROUND_TIMEOUT_S = 300  # 5 minutes
+
+
+def _resolve_foreground_timeout(params_timeout: int | None) -> int | None:
+    """Return the effective timeout for a foreground subagent.
+
+    Priority:
+    1. Explicit ``timeout`` parameter from the tool call.
+    2. ``KIMI_FOREGROUND_AGENT_TIMEOUT`` environment variable (``0`` disables).
+    3. Built-in default of ``_DEFAULT_FOREGROUND_TIMEOUT_S`` (300s).
+    """
+    if params_timeout is not None:
+        return params_timeout
+    env = os.getenv("KIMI_FOREGROUND_AGENT_TIMEOUT")
+    if env is not None:
+        stripped = env.strip()
+        if stripped == "0":
+            return None
+        try:
+            return int(stripped)
+        except ValueError:
+            logger.warning("Ignoring invalid KIMI_FOREGROUND_AGENT_TIMEOUT: {value}", value=env)
+    return _DEFAULT_FOREGROUND_TIMEOUT_S
+
+
+def _max_foreground_concurrency(runtime: Runtime) -> int:
+    """Calculate the maximum allowed concurrent foreground subagents.
+
+    When a key pool is configured, limit to 80% of the key count so that
+    each subagent has a good chance of getting a fresh key.  Otherwise fall
+    back to 80% of ``background.max_running_tasks``.
+    """
+    if runtime.key_pool is not None:
+        return max(1, int(runtime.key_pool.key_count * 0.8))
+    return max(1, int(runtime.config.background.max_running_tasks * 0.8))
+
+
+def _count_running_foreground(runtime: Runtime) -> int:
+    """Count how many foreground subagents are currently running."""
+    store = runtime.subagent_store
+    if store is None:
+        return 0
+    return sum(1 for r in store.list_instances() if r.status == "running_foreground")
 
 
 class Params(BaseModel):
@@ -48,9 +93,10 @@ class Params(BaseModel):
         default=None,
         description=(
             "Timeout in seconds for the agent task. "
-            "Foreground: no default timeout (runs until completion), max 3600s (1hr). "
-            "Background: default from config (15min), max 3600s (1hr). "
-            "The agent is stopped if it exceeds this limit."
+            "Foreground: defaults to 300s (5min) unless overridden by "
+            "KIMI_FOREGROUND_AGENT_TIMEOUT. Background: default from config "
+            "(15min), max 3600s (1hr). The agent is stopped if it exceeds "
+            "this limit."
         ),
         ge=30,
         le=MAX_BACKGROUND_TIMEOUT,
@@ -130,7 +176,21 @@ class AgentTool(CallableTool2[Params]):
             )
         if params.run_in_background:
             return await self._run_in_background(params)
-        timeout = params.effective_timeout
+
+        # Enforce foreground concurrency limit (80% of system capacity).
+        max_concurrent = _max_foreground_concurrency(self._runtime)
+        running = _count_running_foreground(self._runtime)
+        if running >= max_concurrent:
+            return ToolError(
+                message=(
+                    f"Too many foreground subagents are already running "
+                    f"({running}/{max_concurrent}). Please wait for one to finish "
+                    f"before starting another."
+                ),
+                brief="Concurrency limit reached",
+            )
+
+        timeout = _resolve_foreground_timeout(params.effective_timeout)
         try:
             runner = ForegroundSubagentRunner(self._runtime)
             req = ForegroundRunRequest(

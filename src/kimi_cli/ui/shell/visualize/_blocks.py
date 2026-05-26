@@ -383,6 +383,9 @@ class _ToolCallBlock:
         self._finished_subagent_tool_calls = deque[_ToolCallBlock.FinishedSubCall](
             maxlen=MAX_SUBAGENT_TOOL_CALLS_TO_SHOW
         )
+        self._subagent_text_buffer: str = ""
+        self._subagent_step: int = 0
+        self._subagent_step_time: float = 0.0
 
         self._spinning_dots = Spinner("dots", text="")
         self._renderable: RenderableType = self._compose()
@@ -441,6 +444,22 @@ class _ToolCallBlock:
         self._n_finished_subagent_tool_calls += 1
         self._renderable = self._compose()
 
+    def append_subagent_text(self, text: str) -> None:
+        """Append streamed text from the subagent for live preview."""
+        self._subagent_text_buffer += text
+        # Keep only the tail to avoid unbounded growth.
+        max_chars = 800
+        if len(self._subagent_text_buffer) > max_chars:
+            self._subagent_text_buffer = self._subagent_text_buffer[-max_chars:]
+        self._renderable = self._compose()
+
+    def set_subagent_step(self, step: int) -> None:
+        """Update the current subagent step number."""
+        if step != self._subagent_step:
+            self._subagent_step = step
+            self._subagent_step_time = time.monotonic()
+            self._renderable = self._compose()
+
     def set_subagent_metadata(self, agent_id: str, subagent_type: str) -> None:
         changed = (self._subagent_id, self._subagent_type) != (agent_id, subagent_type)
         self._subagent_id = agent_id
@@ -462,6 +481,32 @@ class _ToolCallBlock:
                     bullet_style="grey50",
                 )
             )
+
+        # Step progress indicator
+        if self._subagent_step > 0 and not self.finished:
+            elapsed = time.monotonic() - self._subagent_step_time
+            elapsed_str = format_elapsed(elapsed)
+            frame = _bullet_frame_for(elapsed)
+            lines.append(
+                BulletColumns(
+                    Text(
+                        f"Step {self._subagent_step} {frame}  {elapsed_str}",
+                        style="grey50",
+                    ),
+                    bullet_style="grey50",
+                )
+            )
+
+        # Live preview of subagent streaming text (last few lines only).
+        if self._subagent_text_buffer and not self.finished:
+            preview = _tail_lines(self._subagent_text_buffer, 3)
+            if preview.strip():
+                lines.append(
+                    BulletColumns(
+                        Text(preview, style="grey50 italic"),
+                        bullet_style="grey50",
+                    )
+                )
 
         if self._n_finished_subagent_tool_calls > MAX_SUBAGENT_TOOL_CALLS_TO_SHOW:
             n_hidden = self._n_finished_subagent_tool_calls - MAX_SUBAGENT_TOOL_CALLS_TO_SHOW

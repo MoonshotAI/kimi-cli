@@ -19,6 +19,7 @@ from kimi_cli.background import BackgroundTaskManager
 from kimi_cli.config import Config
 from kimi_cli.exception import MCPConfigError, SystemPromptTemplateError
 from kimi_cli.llm import LLM
+from kimi_cli.llm_key_pool import APIKeyPool
 from kimi_cli.notifications import NotificationManager
 from kimi_cli.session import Session
 from kimi_cli.skill import (
@@ -196,6 +197,8 @@ class Runtime:
     resumed: bool = False
     hook_engine: Any = None
     """HookEngine instance, set by KimiCLI after soul creation."""
+    key_pool: APIKeyPool | None = None
+    """Optional round-robin API key pool for subagent parallelisation."""
 
     def __post_init__(self) -> None:
         if self.subagent_store is None:
@@ -366,6 +369,7 @@ class Runtime:
             subagent_id=agent_id,
             subagent_type=subagent_type,
             role="subagent",
+            key_pool=self.key_pool,
         )
 
 

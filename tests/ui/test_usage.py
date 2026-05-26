@@ -21,7 +21,13 @@ def _plain_text(segments: list[Segment]) -> str:
 
 
 def _filled_bar_segments(segments: list[Segment]) -> list[Segment]:
-    return [segment for segment in segments if "━" in segment.text]
+    # rich >=14 renders the empty portion of ProgressBar with grey23 "━" characters.
+    # We only care about the coloured (filled) portion.
+    return [
+        segment
+        for segment in segments
+        if "━" in segment.text and "grey23" not in str(segment.style)
+    ]
 
 
 @pytest.mark.parametrize(
