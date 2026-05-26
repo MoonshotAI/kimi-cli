@@ -201,8 +201,11 @@ class ForegroundSubagentRunner:
         self._store: SubagentStore = runtime.subagent_store
         self._builder = SubagentBuilder(runtime)
 
-    async def run(self, req: ForegroundRunRequest) -> ToolReturnValue:
-        prepared = await self._prepare_instance(req)
+    async def run(
+        self, req: ForegroundRunRequest, prepared: PreparedInstance | None = None
+    ) -> ToolReturnValue:
+        if prepared is None:
+            prepared = self.prepare_instance(req)
         agent_id = prepared.record.agent_id
         actual_type = prepared.actual_type
         resumed = prepared.resumed
@@ -354,7 +357,7 @@ class ForegroundSubagentRunner:
         )
         return ToolOk(output="\n".join(lines))
 
-    async def _prepare_instance(self, req: ForegroundRunRequest) -> PreparedInstance:
+    def prepare_instance(self, req: ForegroundRunRequest) -> PreparedInstance:
         if req.resume:
             record = self._store.require_instance(req.resume)
             if record.status in {"running_foreground", "running_background"}:

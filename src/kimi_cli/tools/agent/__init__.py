@@ -191,33 +191,47 @@ class AgentTool(CallableTool2[Params]):
             )
 
         timeout = _resolve_foreground_timeout(params.effective_timeout)
+        runner = ForegroundSubagentRunner(self._runtime)
+        req = ForegroundRunRequest(
+            description=params.description,
+            prompt=params.prompt,
+            requested_type=params.subagent_type or "coder",
+            model=params.model,
+            resume=params.resume,
+        )
+        # Prepare the instance and mark it running_foreground *before* the await
+        # so that concurrent Agent tool calls see the updated count immediately.
+        store = self._runtime.subagent_store
+        assert store is not None
+        prepared = runner.prepare_instance(req)
+        agent_id = prepared.record.agent_id
+        store.update_instance(agent_id, status="running_foreground")
         try:
-            runner = ForegroundSubagentRunner(self._runtime)
-            req = ForegroundRunRequest(
-                description=params.description,
-                prompt=params.prompt,
-                requested_type=params.subagent_type or "coder",
-                model=params.model,
-                resume=params.resume,
-            )
             if timeout is not None:
-                return await asyncio.wait_for(runner.run(req), timeout=timeout)
-            return await runner.run(req)
+                return await asyncio.wait_for(runner.run(req, prepared), timeout=timeout)
+            return await runner.run(req, prepared)
         except TimeoutError as exc:
             # Note: TimeoutError from run_soul internals (e.g. aiohttp) is now caught
             # by run_soul_checked and converted to SoulRunFailure. This handler mainly
             # covers wait_for's task-level timeout and pre-run_soul TimeoutErrors.
             if isinstance(exc.__cause__, asyncio.CancelledError):
                 logger.warning("Foreground agent timed out after {t}s", t=timeout)
+                store.update_instance(agent_id, status="idle")
                 return ToolError(
                     message=f"Agent timed out after {timeout}s.",
                     brief=f"Agent timed out ({timeout}s)",
                 )
             # Internal timeout (e.g. aiohttp request) — treat as generic failure
             logger.exception("Foreground agent run failed")
+            store.update_instance(agent_id, status="failed")
             return ToolError(message=f"Failed to run agent: {exc}", brief="Agent failed")
         except Exception as exc:
             logger.exception("Foreground agent run failed")
+            # If runner.run didn't already update the status (e.g. prepare_soul failed
+            # before entering runner.run's try block), reset from running_foreground.
+            record = store.get_instance(agent_id)
+            if record is not None and record.status == "running_foreground":
+                store.update_instance(agent_id, status="failed")
             return ToolError(message=f"Failed to run agent: {exc}", brief="Agent failed")
 
     async def _run_in_background(self, params: Params) -> ToolReturnValue:

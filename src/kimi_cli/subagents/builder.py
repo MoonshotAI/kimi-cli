@@ -19,11 +19,27 @@ class SubagentBuilder:
     ) -> Agent:
         effective_model = self.resolve_effective_model(type_def=type_def, launch_spec=launch_spec)
 
+        # Determine the effective provider type so we only inject KIMI pool keys
+        # into Kimi-provider subagents.
+        provider_type: str | None = None
+        if effective_model is None:
+            llm = self._root_runtime.llm
+            if llm is not None and llm.provider_config is not None:
+                provider_type = llm.provider_config.type
+        else:
+            model_cfg = self._root_runtime.config.models.get(effective_model)
+            if model_cfg is not None:
+                provider_cfg = self._root_runtime.config.providers.get(model_cfg.provider)
+                if provider_cfg is not None:
+                    provider_type = provider_cfg.type
+
         # If a key pool is configured, rotate keys so concurrent subagents
         # do not share a single API-key rate-limit quota.
         api_key_override: str | None = None
-        if self._root_runtime.key_pool is not None:
+        key_pool_for_clone = None
+        if provider_type == "kimi" and self._root_runtime.key_pool is not None:
             api_key_override = self._root_runtime.key_pool.acquire()
+            key_pool_for_clone = self._root_runtime.key_pool
             from kimi_cli.utils.logging import logger
 
             logger.info(
@@ -41,7 +57,7 @@ class SubagentBuilder:
             session_id=self._root_runtime.session.id,
             oauth=self._root_runtime.oauth,
             api_key_override=api_key_override,
-            key_pool=self._root_runtime.key_pool,
+            key_pool=key_pool_for_clone,
             extra_headers=extra_headers,
         )
         runtime = self._root_runtime.copy_for_subagent(

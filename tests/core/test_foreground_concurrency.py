@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import contextlib
+
+from kosong.tooling import ToolReturnValue
+
 from kimi_cli.llm_key_pool import APIKeyPool
 from kimi_cli.subagents.models import (
     AgentLaunchSpec,
@@ -103,3 +107,88 @@ async def test_agent_tool_rejects_when_concurrency_limit_reached(agent_tool, run
     assert result.is_error
     assert "concurrency limit reached" in result.brief.lower()
     assert "1/1" in result.message
+
+
+async def test_agent_tool_eagerly_sets_running_foreground_before_await(
+    agent_tool, runtime, monkeypatch
+):
+    """After the TOCTOU fix, the instance status must be running_foreground BEFORE runner.run is awaited."""
+
+    from kosong.tooling import ToolOk
+
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    runtime.config.background.max_running_tasks = 10
+    runtime.key_pool = None
+
+    captured_statuses = []
+
+    async def patched_run(self, req, prepared=None):
+        assert prepared is not None
+        store = self._runtime.subagent_store
+        assert store is not None
+        inst = store.get_instance(prepared.record.agent_id)
+        if inst is not None:
+            captured_statuses.append(inst.status)
+        else:
+            captured_statuses.append(None)
+        return ToolOk(output="done")
+
+    monkeypatch.setattr("kimi_cli.subagents.runner.ForegroundSubagentRunner.run", patched_run)
+
+    params = agent_tool.params(description="task", prompt="do something")
+    await agent_tool(params)
+
+    assert captured_statuses == ["running_foreground"]
+
+
+async def test_concurrent_agent_calls_respect_limit_after_toctou_fix(
+    agent_tool, runtime, monkeypatch
+):
+    """Concurrent Agent tool calls should not exceed the limit because status is set eagerly."""
+    import asyncio
+
+    from kimi_cli.subagents.runner import ForegroundSubagentRunner
+
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    runtime.config.background.max_running_tasks = 1
+    runtime.key_pool = None
+
+    class HangingRunner(ForegroundSubagentRunner):
+        async def run(self, req, prepared=None) -> ToolReturnValue:
+            await asyncio.Event().wait()
+            return ToolReturnValue(is_error=False, output="", message="", display=[])
+
+    monkeypatch.setattr("kimi_cli.tools.agent.ForegroundSubagentRunner", HangingRunner)
+
+    params1 = agent_tool.params(description="task1", prompt="do something")
+    params2 = agent_tool.params(description="task2", prompt="do something else")
+
+    task1 = asyncio.create_task(agent_tool(params1))
+    # Yield so task1 gets through prepare_instance + update_instance
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    result2 = await agent_tool(params2)
+
+    task1.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task1
+
+    assert result2.is_error
+    assert "concurrency limit reached" in result2.brief.lower()
