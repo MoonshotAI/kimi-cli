@@ -534,21 +534,8 @@ async def feedback(app: Shell, args: str):
             _fallback_to_issues()
 
 
-@registry.command(aliases=["reset"])
-async def clear(app: Shell, args: str):
-    """Clear the context"""
-    if ensure_kimi_soul(app) is None:
-        return
-    from kimi_cli.telemetry import track
-
-    track("clear")
-    await app.run_soul_command("/clear")
-    raise Reload()
-
-
-@registry.command
-async def new(app: Shell, args: str):
-    """Start a new session"""
+async def _do_new_session(app: Shell, args: str) -> None:
+    """Shared implementation for /new and /clear."""
     soul = ensure_kimi_soul(app)
     if soul is None:
         return
@@ -565,6 +552,18 @@ async def new(app: Shell, args: str):
     track("session_new")
     console.print("[green]New session created. Switching...[/green]")
     raise Reload(session_id=session.id)
+
+
+@registry.command(aliases=["reset"])
+async def clear(app: Shell, args: str) -> None:
+    """Start a new session (alias for /new)"""
+    await _do_new_session(app, args)
+
+
+@registry.command
+async def new(app: Shell, args: str) -> None:
+    """Start a new session"""
+    await _do_new_session(app, args)
 
 
 @registry.command(name="title", aliases=["rename"])
