@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.45.0 (2026-05-26)
+
+- Shell: `/clear` is now an alias for `/new` — both commands start a new session; previously `/clear` only cleared context without creating a new session
 - Shell: Fix misleading "Quota exceeded" prefix shown on every 403 error
 
 ## 1.44.0 (2026-05-13)
