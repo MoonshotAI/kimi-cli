@@ -14,13 +14,23 @@ from kimi_cli.tools.agent import _count_running_foreground, _max_foreground_conc
 
 
 class TestMaxForegroundConcurrency:
-    def test_key_pool_based_limit(self, runtime):
+    def test_key_pool_based_limit_for_kimi(self, runtime):
         runtime.key_pool = APIKeyPool(["k1", "k2", "k3", "k4", "k5"])
-        assert _max_foreground_concurrency(runtime) == 4  # 5 * 0.8 = 4
+        assert _max_foreground_concurrency(runtime, provider_type="kimi") == 4  # 5 * 0.8 = 4
 
-    def test_key_pool_single_key_fallback_to_one(self, runtime):
+    def test_key_pool_single_key_fallback_to_one_for_kimi(self, runtime):
         runtime.key_pool = APIKeyPool(["k1"])
-        assert _max_foreground_concurrency(runtime) == 1  # 1 * 0.8 -> max(1, 0) = 1
+        assert (
+            _max_foreground_concurrency(runtime, provider_type="kimi") == 1
+        )  # 1 * 0.8 -> max(1, 0) = 1
+
+    def test_key_pool_ignored_for_non_kimi(self, runtime):
+        runtime.key_pool = APIKeyPool(["k1", "k2", "k3", "k4", "k5"])
+        runtime.config.background.max_running_tasks = 10
+        # Non-kimi provider should use max_running_tasks, not key pool
+        assert (
+            _max_foreground_concurrency(runtime, provider_type="openai_legacy") == 8
+        )  # 10 * 0.8 = 8
 
     def test_no_key_pool_uses_max_running_tasks(self, runtime):
         runtime.key_pool = None

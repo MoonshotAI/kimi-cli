@@ -119,7 +119,12 @@ class ReadMediaFile(CallableTool2[Params]):
             case "video":
                 data = await path.read_bytes()
                 if (llm := self._runtime.llm) and isinstance(llm.chat_provider, Kimi):
-                    part = await llm.chat_provider.files.upload_video(
+                    chat_provider = llm.chat_provider
+                    from kimi_cli.llm import KeyPoolKimi
+
+                    if isinstance(chat_provider, KeyPoolKimi):
+                        chat_provider = chat_provider.provider
+                    part = await chat_provider.files.upload_video(
                         data=data,
                         mime_type=file_type.mime_type,
                     )

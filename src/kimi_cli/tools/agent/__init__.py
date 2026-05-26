@@ -43,14 +43,27 @@ def _resolve_foreground_timeout(params_timeout: int | None) -> int | None:
     return _DEFAULT_FOREGROUND_TIMEOUT_S
 
 
-def _max_foreground_concurrency(runtime: Runtime) -> int:
+def _resolve_effective_provider_type(runtime: Runtime, model_alias: str | None) -> str | None:
+    """Determine the provider type for a pending subagent run."""
+    if model_alias is not None:
+        model_cfg = runtime.config.models.get(model_alias)
+        if model_cfg is not None:
+            provider_cfg = runtime.config.providers.get(model_cfg.provider)
+            if provider_cfg is not None:
+                return provider_cfg.type
+    if runtime.llm is not None and runtime.llm.provider_config is not None:
+        return runtime.llm.provider_config.type
+    return None
+
+
+def _max_foreground_concurrency(runtime: Runtime, provider_type: str | None = None) -> int:
     """Calculate the maximum allowed concurrent foreground subagents.
 
-    When a key pool is configured, limit to 80% of the key count so that
-    each subagent has a good chance of getting a fresh key.  Otherwise fall
-    back to 80% of ``background.max_running_tasks``.
+    When a key pool is configured and the effective provider is Kimi, limit to
+    80% of the key count so that each subagent has a good chance of getting a
+    fresh key.  Otherwise fall back to 80% of ``background.max_running_tasks``.
     """
-    if runtime.key_pool is not None:
+    if provider_type == "kimi" and runtime.key_pool is not None:
         return max(1, int(runtime.key_pool.key_count * 0.8))
     return max(1, int(runtime.config.background.max_running_tasks * 0.8))
 
@@ -178,7 +191,8 @@ class AgentTool(CallableTool2[Params]):
             return await self._run_in_background(params)
 
         # Enforce foreground concurrency limit (80% of system capacity).
-        max_concurrent = _max_foreground_concurrency(self._runtime)
+        provider_type = _resolve_effective_provider_type(self._runtime, params.model)
+        max_concurrent = _max_foreground_concurrency(self._runtime, provider_type)
         running = _count_running_foreground(self._runtime)
         if running >= max_concurrent:
             return ToolError(
@@ -199,14 +213,15 @@ class AgentTool(CallableTool2[Params]):
             model=params.model,
             resume=params.resume,
         )
-        # Prepare the instance and mark it running_foreground *before* the await
-        # so that concurrent Agent tool calls see the updated count immediately.
         store = self._runtime.subagent_store
         assert store is not None
-        prepared = runner.prepare_instance(req)
-        agent_id = prepared.record.agent_id
-        store.update_instance(agent_id, status="running_foreground")
+        agent_id: str | None = None
         try:
+            # Prepare the instance and mark it running_foreground *before* the await
+            # so that concurrent Agent tool calls see the updated count immediately.
+            prepared = runner.prepare_instance(req)
+            agent_id = prepared.record.agent_id
+            store.update_instance(agent_id, status="running_foreground")
             if timeout is not None:
                 return await asyncio.wait_for(runner.run(req, prepared), timeout=timeout)
             return await runner.run(req, prepared)
@@ -216,22 +231,25 @@ class AgentTool(CallableTool2[Params]):
             # covers wait_for's task-level timeout and pre-run_soul TimeoutErrors.
             if isinstance(exc.__cause__, asyncio.CancelledError):
                 logger.warning("Foreground agent timed out after {t}s", t=timeout)
-                store.update_instance(agent_id, status="idle")
+                if agent_id is not None:
+                    store.update_instance(agent_id, status="idle")
                 return ToolError(
                     message=f"Agent timed out after {timeout}s.",
                     brief=f"Agent timed out ({timeout}s)",
                 )
             # Internal timeout (e.g. aiohttp request) — treat as generic failure
             logger.exception("Foreground agent run failed")
-            store.update_instance(agent_id, status="failed")
+            if agent_id is not None:
+                store.update_instance(agent_id, status="failed")
             return ToolError(message=f"Failed to run agent: {exc}", brief="Agent failed")
         except Exception as exc:
             logger.exception("Foreground agent run failed")
             # If runner.run didn't already update the status (e.g. prepare_soul failed
             # before entering runner.run's try block), reset from running_foreground.
-            record = store.get_instance(agent_id)
-            if record is not None and record.status == "running_foreground":
-                store.update_instance(agent_id, status="failed")
+            if agent_id is not None:
+                record = store.get_instance(agent_id)
+                if record is not None and record.status == "running_foreground":
+                    store.update_instance(agent_id, status="failed")
             return ToolError(message=f"Failed to run agent: {exc}", brief="Agent failed")
 
     async def _run_in_background(self, params: Params) -> ToolReturnValue:
