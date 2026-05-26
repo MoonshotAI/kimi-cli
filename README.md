@@ -12,7 +12,25 @@ Kimi Code CLI is an AI agent that runs in the terminal, helping you complete sof
 
 ## Getting Started
 
-See [Getting Started](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html) for how to install and start using Kimi Code CLI.
+Install Kimi Code CLI:
+
+```sh
+# Linux / macOS
+curl -LsSf https://code.kimi.com/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression
+```
+
+If you already have [uv](https://docs.astral.sh/uv/) installed:
+
+```sh
+uv tool install --python 3.13 kimi-cli
+```
+
+Then run `kimi` in your terminal. For login setup, ACP / VS Code integration, and other installation options, see the [full Getting Started guide](https://moonshotai.github.io/kimi-cli/en/guides/getting-started.html).
 
 ## Key Features
 
