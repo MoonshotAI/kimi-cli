@@ -143,7 +143,16 @@ See more features in the [Documentation](https://moonshotai.github.io/kimi-cli/e
 
 ## Development
 
-To develop Kimi Code CLI, run:
+### Prerequisites
+
+- **uv** ≥ 0.8 — package + venv manager. Install: <https://docs.astral.sh/uv/getting-started/installation/> (`pyproject.toml` requires `uv_build>=0.8.5,<0.10.0`).
+- **Python 3.14** — pinned by `.python-version`; uv will install it for you on first `uv sync` if missing. (`pyproject.toml` accepts `>=3.12`, but 3.14 matches the lockfile / CI environment.)
+- **make** — runs the build/test targets in `Makefile`. Most Linux/macOS already have it; Windows users need WSL or a `make` from MSYS2 / Chocolatey.
+- **Node.js ≥ 20 + npm** — only required if you'll run `make build-web` or `make build` (the latter embeds the web UI).
+- **Git Bash (Windows only)** — kimi-cli's agent requires `bash.exe` from Git for Windows; without it, the Shell tool will not start (see `src/kimi_cli/utils/environment.py`'s `GitBashNotFoundError`). Install via <https://git-scm.com/download/win>.
+- **Nix (optional)** — a `flake.nix` is provided; `nix develop` drops you into a shell with all of the above.
+
+### Setup
 
 ```sh
 git clone https://github.com/MoonshotAI/kimi-cli.git
