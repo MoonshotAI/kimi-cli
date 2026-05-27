@@ -228,17 +228,19 @@ class AgentTool(CallableTool2[Params]):
             record = store.get_instance(params.resume)
             if record is not None:
                 launch = record.launch_spec
-                effective_model = launch.model_override or launch.effective_model
+                # Respect explicit model override from the tool call; fall back
+                # to the stored launch spec only when no override is given.
+                if effective_model is None:
+                    effective_model = launch.model_override or launch.effective_model
         else:
             type_def = self._runtime.labor_market.builtin_types.get(params.subagent_type or "coder")
             if type_def is not None and effective_model is None:
                 effective_model = type_def.default_model
         provider_type = _resolve_effective_provider_type(self._runtime, effective_model)
         max_concurrent = _max_foreground_concurrency(self._runtime, provider_type)
-        # Count only matching-provider runs when the Kimi key-pool cap is in play.
-        running = _count_running_foreground(
-            self._runtime, provider_type if provider_type == "kimi" else None
-        )
+        # Count only matching-provider runs so that a cap for one provider is not
+        # consumed by subagents running on a different provider.
+        running = _count_running_foreground(self._runtime, provider_type)
         if running >= max_concurrent:
             return ToolError(
                 message=(

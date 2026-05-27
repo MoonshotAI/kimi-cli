@@ -422,3 +422,82 @@ async def test_agent_tool_non_kimi_default_model_ignores_kimi_cap(agent_tool, ru
     assert result.is_error
     assert "concurrency limit reached" in result.brief.lower()
     assert "1/1" in result.message
+
+
+async def test_agent_tool_resume_respects_model_override_for_provider_cap(
+    agent_tool, runtime, monkeypatch
+):
+    """When resuming an agent with an explicit model override, the concurrency
+    check must classify the pending run using the override model's provider,
+    not the stored launch spec's old provider."""
+    from kosong.tooling import ToolOk
+
+    runtime.config.providers = {
+        "kimi_p": LLMProvider(
+            type="kimi", base_url="https://kimi.example/v1", api_key=SecretStr("test")
+        ),
+        "oa_p": LLMProvider(
+            type="openai_legacy", base_url="https://oa.example/v1", api_key=SecretStr("test")
+        ),
+    }
+    runtime.config.models = {
+        "kimi-k1": LLMModel(provider="kimi_p", model="k1", max_context_size=128_000),
+        "gpt-4": LLMModel(provider="oa_p", model="gpt-4", max_context_size=128_000),
+    }
+    runtime.key_pool = APIKeyPool(["k1", "k2", "k3", "k4", "k5"])
+    runtime.config.background.max_running_tasks = 2
+    # Kimi cap = 5 * 0.8 = 4; non-kimi cap = 2 * 0.8 = 1
+
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=Path("/tmp/coder.yaml"),
+            default_model="kimi-k1",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    store = runtime.subagent_store
+    # Create a stored instance whose launch spec used a Kimi model
+    store.create_instance(
+        agent_id="resume-me",
+        description="old task",
+        launch_spec=AgentLaunchSpec(
+            agent_id="resume-me",
+            subagent_type="coder",
+            model_override=None,
+            effective_model="kimi-k1",
+        ),
+    )
+    store.update_instance("resume-me", status="idle")
+
+    # Pre-fill 4 running kimi subagents (at the kimi cap)
+    for i in range(4):
+        store.create_instance(
+            agent_id=f"k{i}",
+            description="running",
+            launch_spec=AgentLaunchSpec(
+                agent_id=f"k{i}",
+                subagent_type="coder",
+                model_override=None,
+                effective_model="kimi-k1",
+            ),
+        )
+        store.update_instance(f"k{i}", status="running_foreground")
+
+    async def fake_run(self, req, prepared=None):
+        return ToolOk(output="done")
+
+    monkeypatch.setattr("kimi_cli.subagents.runner.ForegroundSubagentRunner.run", fake_run)
+
+    # Resume with an explicit OpenAI model override — should bypass the kimi cap
+    params = agent_tool.params(
+        description="resume task",
+        prompt="continue",
+        resume="resume-me",
+        model="gpt-4",
+    )
+    result = await agent_tool(params)
+
+    assert not result.is_error
