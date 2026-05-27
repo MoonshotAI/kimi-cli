@@ -43,9 +43,8 @@ class SubagentBuilder:
             from kimi_cli.utils.logging import logger
 
             logger.info(
-                "Subagent {agent_id} assigned API key {prefix}... (pool size {n})",
+                "Subagent {agent_id} assigned API key from pool (pool size {n})",
                 agent_id=agent_id,
-                prefix=api_key_override[:16],
                 n=self._root_runtime.key_pool.key_count,
             )
 
