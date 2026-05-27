@@ -4,17 +4,19 @@
 from __future__ import annotations
 
 import sys
+import textwrap
 from collections.abc import Iterable, Mapping
 from typing import ClassVar, get_args
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from rich import box
-from rich._loop import loop_first
 from rich._stack import Stack
-from rich.console import Console, ConsoleOptions, JustifyMethod, RenderResult
+from rich.cells import cell_len
+from rich.console import Console, ConsoleOptions, Group, JustifyMethod, RenderableType, RenderResult
 from rich.containers import Renderables
 from rich.jupyter import JupyterMixin
+from rich.padding import Padding
 from rich.rule import Rule
 from rich.segment import Segment
 from rich.style import Style, StyleStack
@@ -22,6 +24,7 @@ from rich.syntax import Syntax, SyntaxTheme
 from rich.table import Table
 from rich.text import Text, TextType
 
+from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.syntax import KIMI_ANSI_THEME_NAME, resolve_code_theme
 
 LIST_INDENT_WIDTH = 2
@@ -157,7 +160,11 @@ class TextElement(MarkdownElement):
         self.text = Text(justify="left")
 
     def on_text(self, context: MarkdownContext, text: TextType) -> None:
-        self.text.append(text, context.current_style if isinstance(text, str) else None)
+        if isinstance(text, str):
+            style = context.current_style
+            self.text.append(text, None if style._null else style)
+        else:
+            self.text.append_text(text)
 
     def on_leave(self, context: MarkdownContext) -> None:
         context.leave_style()
@@ -406,22 +413,6 @@ class ListItem(TextElement):
 
     style_name = "markdown.item"
 
-    @staticmethod
-    def _line_starts_with_list_marker(text: str) -> bool:
-        stripped = text.lstrip()
-        if not stripped:
-            return False
-        if stripped.startswith(("• ", "- ", "* ")):
-            return True
-        index = 0
-        while index < len(stripped) and stripped[index].isdigit():
-            index += 1
-        if index == 0 or index >= len(stripped):
-            return False
-        marker = stripped[index]
-        has_space = index + 1 < len(stripped) and stripped[index + 1] == " "
-        return marker in {".", ")"} and has_space
-
     @classmethod
     def create(cls, markdown: Markdown, token: Token) -> MarkdownElement:
         # `list_item_open` levels grow by 2 for each nested list depth.
@@ -430,66 +421,76 @@ class ListItem(TextElement):
 
     def __init__(self, indent: int = 0) -> None:
         self.indent = indent
-        self.elements: Renderables = Renderables()
+        self.elements: list[MarkdownElement] = []
 
     def on_child_close(self, context: MarkdownContext, child: MarkdownElement) -> bool:
         self.elements.append(child)
         return False
 
+    def _render_list_item(self, renderable: Text, padding: int = 1) -> RenderResult:
+        item_body = Group(*self.elements)
+        item: RenderableType = BulletColumns(item_body, bullet=renderable, padding=padding)
+        if self.indent:
+            item = Padding(item, (0, 0, 0, LIST_INDENT_WIDTH * self.indent), expand=False)
+        yield item
+
+    def _render_wrapped_text_item(
+        self,
+        options: ConsoleOptions,
+        text: Text,
+        first_prefix: str,
+        rest_prefix: str,
+    ) -> RenderResult:
+        available_width = max(
+            1,
+            options.max_width - max(cell_len(first_prefix), cell_len(rest_prefix)),
+        )
+        wrapped_plain_lines = textwrap.wrap(
+            text.plain,
+            width=available_width,
+            break_long_words=False,
+            break_on_hyphens=False,
+            drop_whitespace=False,
+        )
+        offsets: list[int] = []
+        offset = 0
+        for line in wrapped_plain_lines[:-1]:
+            offset += len(line)
+            offsets.append(offset)
+        wrapped_lines = text.divide(offsets)
+        if not wrapped_lines:
+            wrapped_lines = [Text("")]
+        for line_index, line in enumerate(wrapped_lines):
+            prefixed = Text(first_prefix if line_index == 0 else rest_prefix, end="")
+            prefixed.append_text(line)
+            yield prefixed
+            yield Segment.line()
+
     def render_bullet(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        lines = console.render_lines(self.elements, options, style=self.style)
-        indent_padding_len = LIST_INDENT_WIDTH * self.indent
-        indent_text = " " * indent_padding_len
-        bullet = Segment("• ")
-        new_line = Segment("\n")
-        bullet_width = len(bullet.text)
-        for first, line in loop_first(lines):
-            if first:
-                if indent_text:
-                    yield Segment(indent_text)
-                yield bullet
-            else:
-                plain = "".join(segment.text for segment in line)
-                if self._line_starts_with_list_marker(plain):
-                    prefix = ""
-                else:
-                    existing = len(plain) - len(plain.lstrip(" "))
-                    target = indent_padding_len + bullet_width
-                    missing = max(0, target - existing)
-                    prefix = " " * missing
-                if prefix:
-                    yield Segment(prefix)
-            yield from line
-            yield new_line
+        elements = list(self.elements)
+        if len(elements) == 1 and isinstance(elements[0], Paragraph):
+            indent = " " * (LIST_INDENT_WIDTH * self.indent)
+            text = elements[0].text.copy()
+            yield from self._render_wrapped_text_item(options, text, f"{indent}• ", f"{indent}  ")
+            return
+        yield from self._render_list_item(Text("•"))
 
     def render_number(
         self, console: Console, options: ConsoleOptions, number: int, last_number: int
     ) -> RenderResult:
-        lines = console.render_lines(self.elements, options, style=self.style)
-        new_line = Segment("\n")
-        indent_padding_len = LIST_INDENT_WIDTH * self.indent
-        indent_text = " " * indent_padding_len
-        numeral_text = f"{number}. "
-        numeral = Segment(numeral_text)
-        numeral_width = len(numeral_text)
-        for first, line in loop_first(lines):
-            if first:
-                if indent_text:
-                    yield Segment(indent_text)
-                yield numeral
-            else:
-                plain = "".join(segment.text for segment in line)
-                if self._line_starts_with_list_marker(plain):
-                    prefix = ""
-                else:
-                    existing = len(plain) - len(plain.lstrip(" "))
-                    target = indent_padding_len + numeral_width
-                    missing = max(0, target - existing)
-                    prefix = " " * missing
-                if prefix:
-                    yield Segment(prefix)
-            yield from line
-            yield new_line
+        elements = list(self.elements)
+        if len(elements) == 1 and isinstance(elements[0], Paragraph):
+            indent = " " * (LIST_INDENT_WIDTH * self.indent)
+            numeral = f"{number}. "
+            text = elements[0].text.copy()
+            yield from self._render_wrapped_text_item(
+                options,
+                text,
+                f"{indent}{numeral}",
+                f"{indent}{' ' * len(numeral)}",
+            )
+            return
+        yield from self._render_list_item(Text(f"{number}."), padding=1)
 
 
 class Link(TextElement):
@@ -777,7 +778,6 @@ class Markdown(JupyterMixin):
                     if should_render:
                         if new_line and render_started:
                             yield _new_line_segment
-
                         rendered = console.render(element, context.options)
                         for segment in rendered:
                             render_started = True
