@@ -57,6 +57,21 @@ def test_markdown_list_wrapping_preserves_inline_styling() -> None:
     assert "\x1b[1mWhat it does:\x1b[0m" in rendered
 
 
+def test_markdown_list_wrapping_preserves_word_boundaries() -> None:
+    console = Console(width=80, record=True)
+    markdown = Markdown(
+        "- **What it does:** Acts as an autonomous agent that can write code, run shell commands, edit files, browse the web, and manage multi-step tasks through an interactive chat interface\n"
+    )
+
+    console.print(markdown)
+
+    assert console.export_text() == (
+        "• What it does: Acts as an autonomous agent that can write code, run shell\n"
+        "  commands, edit files, browse the web, and manage multi-step tasks through an\n"
+        "  interactive chat interface\n"
+    )
+
+
 def test_markdown_list_hard_break_preserves_continuation_line() -> None:
     console = Console(width=60, record=True)
     markdown = Markdown("- first\\\n  second\n")
@@ -73,3 +88,15 @@ def test_markdown_list_soft_break_collapses_to_space() -> None:
     console.print(markdown)
 
     assert console.export_text() == "• first second\n"
+
+
+def test_markdown_list_long_unspaced_content_keeps_continuation_indent() -> None:
+    console = Console(width=30, record=True)
+    markdown = Markdown("- /very/long/path/without/any/spaces/that/should/not/reset/indentation\n")
+
+    console.print(markdown)
+    lines = console.export_text().splitlines()
+
+    assert lines[0].startswith("• ")
+    assert len(lines) > 1
+    assert all(line.startswith("  ") for line in lines[1:])

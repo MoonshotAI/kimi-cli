@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
+import re
 import sys
-import textwrap
 from collections.abc import Iterable, Mapping
 from typing import ClassVar, get_args
 
@@ -12,7 +12,7 @@ from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from rich import box
 from rich._stack import Stack
-from rich.cells import cell_len
+from rich.cells import cell_len, chop_cells
 from rich.console import Console, ConsoleOptions, Group, JustifyMethod, RenderableType, RenderResult
 from rich.containers import Renderables
 from rich.jupyter import JupyterMixin
@@ -28,6 +28,7 @@ from kimi_cli.utils.rich.columns import BulletColumns
 from kimi_cli.utils.rich.syntax import KIMI_ANSI_THEME_NAME, resolve_code_theme
 
 LIST_INDENT_WIDTH = 2
+_WORD_WITH_TRAILING_SPACE = re.compile(r"\S+\s*")
 
 _FALLBACK_STYLES: Mapping[str, Style] = {
     "markdown.paragraph": Style(),
@@ -450,20 +451,34 @@ class ListItem(TextElement):
             if not explicit_line.plain:
                 wrapped_lines.append(Text(""))
                 continue
-            wrapped_plain_lines = textwrap.wrap(
-                explicit_line.plain,
-                width=available_width,
-                break_long_words=False,
-                break_on_hyphens=False,
-                drop_whitespace=False,
-                replace_whitespace=False,
-            )
             offsets: list[int] = []
-            offset = 0
-            for line in wrapped_plain_lines[:-1]:
-                offset += len(line)
-                offsets.append(offset)
+            line_width = 0
+            for match in _WORD_WITH_TRAILING_SPACE.finditer(explicit_line.plain):
+                token = match.group(0)
+                visible = token.rstrip()
+                visible_width = cell_len(visible)
+                token_width = cell_len(token)
+                token_start = match.start()
+                remaining_width = available_width - line_width
+                if visible_width <= remaining_width:
+                    line_width += token_width
+                    continue
+                if visible_width > available_width:
+                    if line_width:
+                        offsets.append(token_start)
+                    char_offset = token_start
+                    for piece in chop_cells(visible, available_width)[:-1]:
+                        char_offset += len(piece)
+                        offsets.append(char_offset)
+                    trailing = token[len(visible) :]
+                    line_width = cell_len(chop_cells(visible, available_width)[-1] + trailing)
+                    continue
+                if line_width:
+                    offsets.append(token_start)
+                line_width = token_width
             pieces = explicit_line.divide(offsets) if offsets else [explicit_line.copy()]
+            for piece in pieces:
+                piece.rstrip()
             wrapped_lines.extend(pieces)
         for line_index, line in enumerate(wrapped_lines):
             prefixed = Text(first_prefix if line_index == 0 else rest_prefix, end="")
