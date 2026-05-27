@@ -77,8 +77,11 @@ class APIKeyPool:
             key = self._keys[self._index]
             self._index = (self._index + 1) % len(self._keys)
             state = self._states[key]
-            if state.cooldown_until is not None and now < state.cooldown_until:
-                continue
+            if state.cooldown_until is not None:
+                if now < state.cooldown_until:
+                    continue
+                # Cooldown expired — reset the key to healthy.
+                self._states[key] = _KeyState()
             return key
         # All keys in cooldown — fall back to the current slot.
         return self._keys[self._index]
