@@ -261,11 +261,18 @@ class AgentTool(CallableTool2[Params]):
             # Note: TimeoutError from run_soul internals (e.g. aiohttp) is now caught
             # by run_soul_checked and converted to SoulRunFailure. This handler mainly
             # covers wait_for's task-level timeout and pre-run_soul TimeoutErrors.
-            # When runner.run is cancelled by wait_for, it already marks the instance
-            # as "killed" inside its except asyncio.CancelledError block; do not
-            # overwrite that to "idle" here.
+            # When runner.run is cancelled by wait_for, it normally marks the instance
+            # as "killed" inside its except asyncio.CancelledError block.  However, if
+            # the timeout fires during pre-execution preparation (e.g. prepare_soul),
+            # the runner's handler may not have run yet, leaving the instance stuck in
+            # "running_foreground".  Clean that up here so it does not consume the
+            # concurrency cap.
             if isinstance(exc.__cause__, asyncio.CancelledError):
                 logger.warning("Foreground agent timed out after {t}s", t=timeout)
+                if agent_id is not None:
+                    record = store.get_instance(agent_id)
+                    if record is not None and record.status == "running_foreground":
+                        store.update_instance(agent_id, status="killed")
                 return ToolError(
                     message=f"Agent timed out after {timeout}s.",
                     brief=f"Agent timed out ({timeout}s)",

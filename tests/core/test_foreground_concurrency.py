@@ -189,6 +189,48 @@ async def test_agent_tool_rejects_when_concurrency_limit_reached(agent_tool, run
     assert "1/1" in result.message
 
 
+async def test_timeout_cleans_running_foreground_status(agent_tool, runtime, monkeypatch):
+    """When wait_for times out before runner.run enters its try block, the instance
+    must not be left as 'running_foreground' consuming the concurrency cap."""
+    import asyncio
+
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=Path("/tmp/coder.yaml"),
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    runtime.config.background.max_running_tasks = 10
+    runtime.key_pool = None
+
+    # Simulate wait_for timing out immediately.  The inner runner.run coroutine
+    # never starts, so its except asyncio.CancelledError block never runs,
+    # leaving the instance stuck in "running_foreground" unless the outer
+    # TimeoutError handler cleans it up.
+    async def fake_wait_for(coro, timeout):
+        # Close the coroutine to avoid "was never awaited" warnings.
+        coro.close()
+        raise TimeoutError() from asyncio.CancelledError()
+
+    monkeypatch.setattr(asyncio, "wait_for", fake_wait_for)
+
+    params = agent_tool.params(description="task", prompt="do something")
+    result = await agent_tool(params)
+
+    assert result.is_error
+    assert "timed out" in result.brief.lower()
+
+    # Find the newly-created instance and verify it was cleaned up
+    store = runtime.subagent_store
+    assert store is not None
+    instances = store.list_instances()
+    assert len(instances) == 1
+    assert instances[0].status == "killed"
+
+
 async def test_agent_tool_eagerly_sets_running_foreground_before_await(
     agent_tool, runtime, monkeypatch
 ):
