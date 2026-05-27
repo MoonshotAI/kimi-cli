@@ -445,21 +445,26 @@ class ListItem(TextElement):
             1,
             options.max_width - max(cell_len(first_prefix), cell_len(rest_prefix)),
         )
-        wrapped_plain_lines = textwrap.wrap(
-            text.plain,
-            width=available_width,
-            break_long_words=False,
-            break_on_hyphens=False,
-            drop_whitespace=False,
-        )
-        offsets: list[int] = []
-        offset = 0
-        for line in wrapped_plain_lines[:-1]:
-            offset += len(line)
-            offsets.append(offset)
-        wrapped_lines = text.divide(offsets)
-        if not wrapped_lines:
-            wrapped_lines = [Text("")]
+        wrapped_lines: list[Text] = []
+        for explicit_line in text.split(allow_blank=True):
+            if not explicit_line.plain:
+                wrapped_lines.append(Text(""))
+                continue
+            wrapped_plain_lines = textwrap.wrap(
+                explicit_line.plain,
+                width=available_width,
+                break_long_words=False,
+                break_on_hyphens=False,
+                drop_whitespace=False,
+                replace_whitespace=False,
+            )
+            offsets: list[int] = []
+            offset = 0
+            for line in wrapped_plain_lines[:-1]:
+                offset += len(line)
+                offsets.append(offset)
+            pieces = explicit_line.divide(offsets) if offsets else [explicit_line.copy()]
+            wrapped_lines.extend(pieces)
         for line_index, line in enumerate(wrapped_lines):
             prefixed = Text(first_prefix if line_index == 0 else rest_prefix, end="")
             prefixed.append_text(line)

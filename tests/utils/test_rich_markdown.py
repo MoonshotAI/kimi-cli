@@ -55,3 +55,21 @@ def test_markdown_list_wrapping_preserves_inline_styling() -> None:
     rendered = console.export_text(styles=True)
 
     assert "\x1b[1mWhat it does:\x1b[0m" in rendered
+
+
+def test_markdown_list_hard_break_preserves_continuation_line() -> None:
+    console = Console(width=60, record=True)
+    markdown = Markdown("- first\\\n  second\n")
+
+    console.print(markdown)
+
+    assert console.export_text() == "• first\n  second\n"
+
+
+def test_markdown_list_soft_break_collapses_to_space() -> None:
+    console = Console(width=60, record=True)
+    markdown = Markdown("- first\n  second\n")
+
+    console.print(markdown)
+
+    assert console.export_text() == "• first second\n"
