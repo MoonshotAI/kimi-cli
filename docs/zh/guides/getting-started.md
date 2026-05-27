@@ -24,6 +24,11 @@ Kimi Code CLI 支持以下几种使用方式：
 
 ## 安装
 
+
+::: tip
+Kimi Code CLI 已升级为 [Kimi Code](https://github.com/MoonshotAI/kimi-code)，安装 Kimi Code 后会**自动迁移**你的配置与会话。新用户建议直接安装 Kimi Code；
+:::
+
 运行安装脚本即可完成安装。脚本会先安装 [uv](https://docs.astral.sh/uv/)（Python 包管理工具），再通过 uv 安装 Kimi Code CLI：
 
 ```sh
