@@ -30,7 +30,8 @@ def _resolve_foreground_timeout(params_timeout: int | None) -> int | None:
     3. Built-in default of ``_DEFAULT_FOREGROUND_TIMEOUT_S`` (300s).
     """
     if params_timeout is not None:
-        return params_timeout
+        # 0 disables the timeout (same semantics as KIMI_FOREGROUND_AGENT_TIMEOUT=0)
+        return params_timeout if params_timeout != 0 else None
     env = os.getenv("KIMI_FOREGROUND_AGENT_TIMEOUT")
     if env is not None:
         stripped = env.strip()
@@ -126,7 +127,7 @@ class Params(BaseModel):
             "(15min), max 3600s (1hr). The agent is stopped if it exceeds "
             "this limit."
         ),
-        ge=30,
+        ge=0,
         le=MAX_BACKGROUND_TIMEOUT,
     )
 

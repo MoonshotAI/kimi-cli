@@ -359,7 +359,7 @@ When calling explore, specify the desired thoroughness in the prompt:
                 },
                 "timeout": {
                     "anyOf": [
-                        {"maximum": 3600, "minimum": 30, "type": "integer"},
+                        {"maximum": 3600, "minimum": 0, "type": "integer"},
                         {"type": "null"},
                     ],
                     "default": None,
