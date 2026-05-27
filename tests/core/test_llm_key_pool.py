@@ -75,3 +75,50 @@ class TestAPIKeyPoolDirect:
     def test_empty_pool_raises(self):
         with pytest.raises(ValueError, match="cannot be empty"):
             APIKeyPool([])
+
+    def test_acquire_skips_key_in_cooldown(self):
+        pool = APIKeyPool(["a", "b", "c"])
+        pool.record_failure("a")
+        # a is in 30s cooldown, should be skipped
+        assert pool.acquire() == "b"
+        assert pool.acquire() == "c"
+        assert pool.acquire() == "b"
+
+    def test_acquire_fallback_when_all_cooldown(self):
+        pool = APIKeyPool(["a", "b"])
+        pool.record_failure("a")
+        pool.record_failure("b")
+        # Both in cooldown — fall back to round-robin
+        assert pool.acquire() in ("a", "b")
+
+    def test_record_failure_exponential_cooldown(self, monkeypatch):
+        import time
+
+        pool = APIKeyPool(["a", "b"])
+        now = 1000.0
+        monkeypatch.setattr(time, "time", lambda: now)
+
+        pool.record_failure("a")
+        state = pool._states["a"]
+        assert state.consecutive_failures == 1
+        assert state.cooldown_until == now + 30.0
+
+        now += 35.0  # cooldown expired
+        pool.record_failure("a")
+        state = pool._states["a"]
+        assert state.consecutive_failures == 2
+        assert state.cooldown_until == now + 300.0
+
+        now += 310.0  # cooldown expired
+        pool.record_failure("a")
+        state = pool._states["a"]
+        assert state.consecutive_failures == 3
+        assert state.cooldown_until == now + 1800.0
+
+    def test_reset_key_clears_cooldown(self):
+        pool = APIKeyPool(["a", "b"])
+        pool.record_failure("a")
+        pool.reset_key("a")
+        state = pool._states["a"]
+        assert state.consecutive_failures == 0
+        assert state.cooldown_until is None

@@ -151,6 +151,10 @@ class KeyPoolKimi:
             create_openai_client,
         )
 
+        old_key = getattr(self._provider, "_api_key", None)
+        if old_key is not None:
+            self._key_pool.record_failure(old_key)
+
         old_client = self._provider.client
         new_key = self._key_pool.acquire()
         self._provider.client = create_openai_client(
