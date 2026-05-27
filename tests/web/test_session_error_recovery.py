@@ -162,6 +162,37 @@ async def test_read_loop_eof_handles_non_utf8_stderr() -> None:
     assert sp.status.detail == "windows dash: �"
 
 
+@pytest.mark.asyncio
+async def test_read_loop_skips_non_utf8_stdout_without_error_state() -> None:
+    sp = SessionProcess(uuid4())
+    messages: list[str] = []
+
+    async def capture_broadcast(msg: str) -> None:
+        messages.append(msg)
+
+    sp._broadcast = capture_broadcast  # type: ignore[assignment]
+
+    mock_stdout = asyncio.StreamReader()
+    mock_stdout.feed_data(b"worker progress: \x97\n")
+    mock_stdout.feed_eof()
+
+    mock_stderr = asyncio.StreamReader()
+    mock_stderr.feed_eof()
+
+    mock_process = MagicMock()
+    mock_process.stdout = mock_stdout
+    mock_process.stderr = mock_stderr
+    mock_process.returncode = 0
+
+    sp._process = mock_process
+    sp._expecting_exit = True
+
+    await sp._read_loop()
+
+    assert messages == ["worker progress: �"]
+    assert sp.status.state == "stopped"
+
+
 # ---------------------------------------------------------------------------
 # Tests: error state allows recovery with new prompt
 # ---------------------------------------------------------------------------

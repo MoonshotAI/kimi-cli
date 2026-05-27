@@ -336,11 +336,12 @@ class SessionProcess:
                     else:
                         continue
 
-                await self._broadcast(_decode_worker_output(line).rstrip("\n"))
+                decoded_line = _decode_worker_output(line)
+                await self._broadcast(decoded_line.rstrip("\n"))
 
                 # Handle out message
                 try:
-                    msg = json.loads(line)
+                    msg = json.loads(decoded_line)
                     match msg.get("method"):
                         case "event":
                             msg["params"] = deserialize_wire_message(msg["params"])
@@ -360,7 +361,7 @@ class SessionProcess:
                                     JSONRPCSuccessResponse.model_validate(msg)
                                 )
                 except json.JSONDecodeError:
-                    logger.error(f"Invalid JSONRPC out message: {line}")
+                    logger.error(f"Invalid JSONRPC out message: {decoded_line}")
 
         except asyncio.CancelledError:
             raise
