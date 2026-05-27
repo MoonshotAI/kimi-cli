@@ -1086,10 +1086,15 @@ class OAuthManager:
 
         assert isinstance(chat_provider, Kimi), "Expected Kimi chat provider"
 
-        # When a key pool is active, the pool (not OAuth) manages the API key.
-        # Overwriting the client key here would silently replace the pooled key
-        # with the OAuth token, breaking rotation.
-        if runtime.key_pool is not None:
+        # When the chat provider is wrapped by KeyPoolKimi, the pool (not OAuth)
+        # manages the API key. Overwriting the client key here would silently
+        # replace the pooled key with the OAuth token, breaking rotation.
+        # We gate on the wrapper type rather than runtime.key_pool existence,
+        # because a user may have a key pool configured for subagents while the
+        # root runtime still uses an unwrapped OAuth-based provider.
+        from kimi_cli.llm import KeyPoolKimi
+
+        if isinstance(runtime.llm.chat_provider, KeyPoolKimi):
             return
 
         provider = runtime.config.providers.get(provider_key)

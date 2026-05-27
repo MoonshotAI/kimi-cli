@@ -213,3 +213,77 @@ async def test_ensure_fresh_with_no_oauth_ref_is_noop():
 
     # Should not raise or do anything
     await oauth.ensure_fresh()
+
+
+# ---------------------------------------------------------------------------
+# _apply_access_token() key-pool gating
+# ---------------------------------------------------------------------------
+
+
+def test_apply_access_token_with_key_pool_but_unwrapped_provider_updates_key():
+    """When key_pool exists but the root chat_provider is NOT wrapped by
+    KeyPoolKimi, _apply_access_token should still update the client's api_key.
+    """
+    from unittest.mock import MagicMock
+
+    from kosong.chat_provider.kimi import Kimi
+
+    from kimi_cli.auth.platforms import KIMI_CODE_PLATFORM_ID, managed_provider_key
+
+    config = _make_config(with_oauth=True)
+    oauth = _make_oauth_manager(config, initial_token=None)
+
+    provider_key = managed_provider_key(KIMI_CODE_PLATFORM_ID)
+
+    # Build a mock Kimi provider with a mutable client api_key.
+    # spec=Kimi is needed so isinstance(chat_provider, Kimi) passes,
+    # but client is an instance attribute so we must attach it explicitly.
+    chat_provider = MagicMock(spec=Kimi)
+    chat_provider.client = MagicMock()
+    chat_provider.client.api_key = "old-token"
+
+    runtime = MagicMock()
+    runtime.llm.model_config.provider = provider_key
+    runtime.llm.chat_provider = chat_provider
+    runtime.config.providers.get.return_value = None
+    runtime.key_pool = MagicMock()  # pool exists but provider is unwrapped
+
+    oauth._apply_access_token(runtime, "new-oauth-token")
+
+    assert chat_provider.client.api_key == "new-oauth-token"
+
+
+def test_apply_access_token_with_key_pool_wrapper_skips_update():
+    """When the chat_provider IS wrapped by KeyPoolKimi, _apply_access_token
+    should skip updating the client's api_key so the pool keeps rotating.
+    """
+    from unittest.mock import MagicMock
+
+    from kosong.chat_provider.kimi import Kimi
+
+    from kimi_cli.auth.platforms import KIMI_CODE_PLATFORM_ID, managed_provider_key
+    from kimi_cli.llm import KeyPoolKimi
+
+    config = _make_config(with_oauth=True)
+    oauth = _make_oauth_manager(config, initial_token=None)
+
+    provider_key = managed_provider_key(KIMI_CODE_PLATFORM_ID)
+
+    inner_provider = MagicMock(spec=Kimi)
+    inner_provider.client = MagicMock()
+    inner_provider.client.api_key = "old-token"
+    inner_provider.name = "kimi"
+    inner_provider.model = "test-model"
+    inner_provider.stream = True
+    wrapped = KeyPoolKimi(inner_provider, MagicMock())
+
+    runtime = MagicMock()
+    runtime.llm.model_config.provider = provider_key
+    runtime.llm.chat_provider = wrapped
+    runtime.config.providers.get.return_value = None
+    runtime.key_pool = MagicMock()
+
+    oauth._apply_access_token(runtime, "new-oauth-token")
+
+    # The inner provider's key must NOT be overwritten
+    assert inner_provider.client.api_key == "old-token"
