@@ -60,6 +60,12 @@ def get_current_tool_call_or_none() -> ToolCall | None:
     return current_tool_call.get()
 
 
+def _mcp_log_text(data: Any) -> str:
+    if isinstance(data, dict):
+        return str(data.get("message") or data.get("msg") or data)
+    return str(data)
+
+
 type ToolType = CallableTool | CallableTool2[Any]
 
 
@@ -276,9 +282,7 @@ class KimiToolset:
 
         async def _mcp_log_handler(message: LogMessage) -> None:
             """Route MCP server log notifications to loguru instead of rich stderr."""
-            data = message.data
-            msg = data.get("message") or data.get("msg") or str(data)
-            logger.debug("MCP server log: {msg}", msg=msg)
+            logger.debug("MCP server log: {msg}", msg=_mcp_log_text(message.data))
 
         async def _check_oauth_tokens(server_url: str) -> bool:
             """Check if OAuth tokens exist for the server."""
