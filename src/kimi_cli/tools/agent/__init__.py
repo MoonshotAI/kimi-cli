@@ -68,12 +68,27 @@ def _max_foreground_concurrency(runtime: Runtime, provider_type: str | None = No
     return max(1, int(runtime.config.background.max_running_tasks * 0.8))
 
 
-def _count_running_foreground(runtime: Runtime) -> int:
-    """Count how many foreground subagents are currently running."""
+def _count_running_foreground(runtime: Runtime, provider_type: str | None = None) -> int:
+    """Count how many foreground subagents are currently running.
+
+    When *provider_type* is given, only count instances whose effective
+    provider matches that type.  This prevents a kimi-key cap from being
+    consumed by unrelated-provider subagents.
+    """
     store = runtime.subagent_store
     if store is None:
         return 0
-    return sum(1 for r in store.list_instances() if r.status == "running_foreground")
+    count = 0
+    for r in store.list_instances():
+        if r.status != "running_foreground":
+            continue
+        if provider_type is None:
+            count += 1
+            continue
+        instance_provider = _resolve_effective_provider_type(runtime, r.launch_spec.effective_model)
+        if instance_provider == provider_type:
+            count += 1
+    return count
 
 
 class Params(BaseModel):
@@ -205,15 +220,24 @@ class AgentTool(CallableTool2[Params]):
         # Enforce foreground concurrency limit (80% of system capacity).
         # For resumed instances, derive the provider type from the stored launch spec
         # so that non-Kimi resumed subagents are not capped by an unrelated key pool.
+        # For new instances, also resolve the subagent type's default model so that
+        # the Kimi cap is applied when the built-in type defaults to a Kimi model.
         effective_model = params.model
         if params.resume:
             record = store.get_instance(params.resume)
             if record is not None:
                 launch = record.launch_spec
                 effective_model = launch.model_override or launch.effective_model
+        else:
+            type_def = self._runtime.labor_market.builtin_types.get(params.subagent_type or "coder")
+            if type_def is not None and effective_model is None:
+                effective_model = type_def.default_model
         provider_type = _resolve_effective_provider_type(self._runtime, effective_model)
         max_concurrent = _max_foreground_concurrency(self._runtime, provider_type)
-        running = _count_running_foreground(self._runtime)
+        # Count only matching-provider runs when the Kimi key-pool cap is in play.
+        running = _count_running_foreground(
+            self._runtime, provider_type if provider_type == "kimi" else None
+        )
         if running >= max_concurrent:
             return ToolError(
                 message=(
