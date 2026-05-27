@@ -295,6 +295,14 @@ class AgentTool(CallableTool2[Params]):
 
     async def _run_in_background(self, params: Params) -> ToolReturnValue:
         assert self._runtime.subagent_store is not None
+        # Zero timeout is only valid for foreground agents (disables the limit).
+        # Background tasks must have a positive timeout.
+        if params.timeout == 0:
+            return ToolError(
+                message="Background agent timeout must be greater than 0. "
+                "Use a positive value or omit the timeout parameter.",
+                brief="Invalid background timeout",
+            )
         try:
             tool_call = get_current_tool_call_or_none()
             if tool_call is None:

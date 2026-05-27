@@ -496,6 +496,32 @@ async def test_agent_tool_starts_background_task(agent_tool, runtime, monkeypatc
     assert "automatic_notification: true" in result.output
 
 
+async def test_agent_tool_background_rejects_zero_timeout(agent_tool, runtime):
+    """Zero timeout is only valid for foreground agents (disables the limit).
+    Background tasks must have a positive timeout."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="investigate bug",
+                prompt="look into parser issue",
+                run_in_background=True,
+                timeout=0,
+            )
+        )
+
+    assert result.is_error
+    assert "Background agent timeout must be greater than 0" in result.message
+
+
 async def test_agent_tool_background_rejects_resume_when_instance_is_already_running(
     agent_tool, runtime, monkeypatch
 ):
