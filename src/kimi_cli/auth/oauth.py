@@ -1080,11 +1080,9 @@ class OAuthManager:
             return
         from kosong.chat_provider.kimi import Kimi
 
-        from kimi_cli.llm import KeyPoolKimi
+        from kimi_cli.llm import unwrap_kimi_provider
 
-        chat_provider = runtime.llm.chat_provider
-        if isinstance(chat_provider, KeyPoolKimi):
-            chat_provider = chat_provider.provider
+        chat_provider = unwrap_kimi_provider(runtime.llm.chat_provider)
 
         assert isinstance(chat_provider, Kimi), "Expected Kimi chat provider"
         provider = runtime.config.providers.get(provider_key)

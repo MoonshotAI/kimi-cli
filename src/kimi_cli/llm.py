@@ -205,6 +205,18 @@ class KeyPoolKimi:
         return self._provider.files
 
 
+def unwrap_kimi_provider(chat_provider: Any) -> Any:
+    """Unwrap a KeyPoolKimi wrapper to get the underlying Kimi provider.
+
+    Returns the original provider unchanged if it is not a KeyPoolKimi.
+    This centralises the unwrap logic so that new ``isinstance(..., Kimi)``
+    checks do not need to be duplicated across the codebase.
+    """
+    if isinstance(chat_provider, KeyPoolKimi):
+        return chat_provider.provider
+    return chat_provider
+
+
 def create_llm(
     provider: LLMProvider,
     model: LLMModel,
@@ -366,9 +378,7 @@ def create_llm(
     if thinking_on and provider.type == "kimi":
         from kosong.chat_provider.kimi import Kimi
 
-        _provider_for_check = chat_provider
-        if isinstance(_provider_for_check, KeyPoolKimi):
-            _provider_for_check = _provider_for_check.provider
+        _provider_for_check = unwrap_kimi_provider(chat_provider)
 
         if isinstance(_provider_for_check, Kimi) and (
             thinking_keep := os.getenv("KIMI_MODEL_THINKING_KEEP")
