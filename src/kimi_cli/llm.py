@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
-from kosong.chat_provider import APIStatusError, ChatProvider
+from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
 
 from kimi_cli.constant import USER_AGENT
@@ -143,14 +143,7 @@ class KeyPoolKimi:
         return self._provider.thinking_effort
 
     async def generate(self, *args: Any, **kwargs: Any) -> Any:
-        try:
-            return await self._provider.generate(*args, **kwargs)
-        except APIStatusError as exc:
-            # Rotate key before tenacity retries so that 429/500/503 retries
-            # do not keep hammering the same exhausted key.
-            if exc.status_code in {429, 500, 502, 503, 504}:
-                self.on_retryable_error(exc)
-            raise
+        return await self._provider.generate(*args, **kwargs)
 
     def on_retryable_error(self, error: BaseException) -> bool:
         from kosong.chat_provider.openai_common import (

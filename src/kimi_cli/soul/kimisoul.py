@@ -1412,40 +1412,73 @@ class KimiSoul:
         chat_provider: object | None = None,
         _auth_retried: bool = False,
         _connection_retried: bool = False,
+        _status_retried: bool = False,
     ) -> Any:
         try:
             return await operation()
         except APIStatusError as error:
-            if error.status_code != 401 or _auth_retried:
-                raise
-            # Only attempt refresh+retry when the active model's provider
-            # uses OAuth.  For plain API-key providers there is nothing
-            # to refresh and retrying would just add latency.
-            active_provider = (
-                self._runtime.config.providers.get(self._runtime.llm.model_config.provider)
-                if self._runtime.llm and self._runtime.llm.model_config
-                else None
-            )
-            if not (active_provider and active_provider.oauth):
-                raise
-            logger.warning(
-                "Received 401 during {name}, attempting token refresh",
-                name=name,
-            )
-            try:
-                await self._runtime.oauth.ensure_fresh(self._runtime, force=True)
-            except Exception as refresh_exc:
-                logger.exception("Token refresh failed after 401.")
-                raise error from refresh_exc
-            # Re-enter full recovery so that transient connection errors
-            # on the retry are still handled by on_retryable_error.
-            return await self._run_with_connection_recovery(
-                name,
-                operation,
-                chat_provider=chat_provider,
-                _auth_retried=True,
-                _connection_retried=_connection_retried,
-            )
+            if error.status_code == 401 and not _auth_retried:
+                # Only attempt refresh+retry when the active model's provider
+                # uses OAuth.  For plain API-key providers there is nothing
+                # to refresh and retrying would just add latency.
+                active_provider = (
+                    self._runtime.config.providers.get(self._runtime.llm.model_config.provider)
+                    if self._runtime.llm and self._runtime.llm.model_config
+                    else None
+                )
+                if active_provider and active_provider.oauth:
+                    logger.warning(
+                        "Received 401 during {name}, attempting token refresh",
+                        name=name,
+                    )
+                    try:
+                        await self._runtime.oauth.ensure_fresh(self._runtime, force=True)
+                    except Exception as refresh_exc:
+                        logger.exception("Token refresh failed after 401.")
+                        raise error from refresh_exc
+                    # Re-enter full recovery so that transient connection errors
+                    # on the retry are still handled by on_retryable_error.
+                    return await self._run_with_connection_recovery(
+                        name,
+                        operation,
+                        chat_provider=chat_provider,
+                        _auth_retried=True,
+                        _connection_retried=_connection_retried,
+                        _status_retried=_status_retried,
+                    )
+
+            # Retryable status errors (429/500/502/503/504) — rotate keys when
+            # the provider supports it, so that pooled subagents do not hammer
+            # the same exhausted key across tenacity retries.
+            if (
+                error.status_code in (429, 500, 502, 503, 504)
+                and not _status_retried
+                and isinstance(chat_provider, RetryableChatProvider)
+            ):
+                try:
+                    recovered = chat_provider.on_retryable_error(error)
+                except Exception:
+                    logger.exception(
+                        "Failed to recover chat provider during {name} after APIStatusError.",
+                        name=name,
+                    )
+                    raise
+                if recovered:
+                    logger.info(
+                        "Recovered chat provider during {name} after "
+                        "APIStatusError; retrying once.",
+                        name=name,
+                    )
+                    return await self._run_with_connection_recovery(
+                        name,
+                        operation,
+                        chat_provider=chat_provider,
+                        _auth_retried=_auth_retried,
+                        _connection_retried=_connection_retried,
+                        _status_retried=True,
+                    )
+
+            raise
         except (APIConnectionError, APITimeoutError) as error:
             if _connection_retried:
                 logger.warning(
@@ -1487,6 +1520,7 @@ class KimiSoul:
                 chat_provider=chat_provider,
                 _auth_retried=_auth_retried,
                 _connection_retried=True,
+                _status_retried=_status_retried,
             )
 
     @staticmethod

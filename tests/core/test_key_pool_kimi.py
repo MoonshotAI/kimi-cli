@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 from kosong.chat_provider import APIStatusError
 
 from kimi_cli.llm import KeyPoolKimi
@@ -116,50 +115,3 @@ class FakeKimiStatusError(FakeKimi):
 
     async def generate(self, *args, **kwargs):
         raise APIStatusError(self._status_code, "test error", request_id="req-1")
-
-
-@pytest.mark.parametrize("status_code", [429, 500, 503])
-def test_key_pool_kimi_generate_rotates_on_retryable_status_error(status_code: int, monkeypatch):
-    """generate() should rotate the key for 429/500/503 before re-raising."""
-    import kosong.chat_provider.openai_common as oaic
-
-    def fake_create_openai_client(*, api_key, base_url, client_kwargs):
-        return FakeClient(api_key)
-
-    monkeypatch.setattr(oaic, "create_openai_client", fake_create_openai_client)
-    monkeypatch.setattr(oaic, "close_replaced_openai_client", lambda *args, **kwargs: None)
-
-    pool = APIKeyPool(["sk-key1", "sk-key2"])
-    first_key = pool.acquire()
-    fake = FakeKimiStatusError(first_key, status_code)
-    wrapped = KeyPoolKimi(fake, pool)
-
-    import asyncio
-
-    with pytest.raises(APIStatusError) as exc_info:
-        asyncio.run(wrapped.generate())
-    assert exc_info.value.status_code == status_code
-    assert wrapped._provider._api_key == "sk-key2"
-
-
-def test_key_pool_kimi_generate_does_not_rotate_on_non_retryable_status_error(monkeypatch):
-    """generate() should NOT rotate the key for non-retryable status codes like 400."""
-    import kosong.chat_provider.openai_common as oaic
-
-    def fake_create_openai_client(*, api_key, base_url, client_kwargs):
-        return FakeClient(api_key)
-
-    monkeypatch.setattr(oaic, "create_openai_client", fake_create_openai_client)
-    monkeypatch.setattr(oaic, "close_replaced_openai_client", lambda *args, **kwargs: None)
-
-    pool = APIKeyPool(["sk-key1", "sk-key2"])
-    first_key = pool.acquire()
-    fake = FakeKimiStatusError(first_key, 400)
-    wrapped = KeyPoolKimi(fake, pool)
-
-    import asyncio
-
-    with pytest.raises(APIStatusError) as exc_info:
-        asyncio.run(wrapped.generate())
-    assert exc_info.value.status_code == 400
-    assert wrapped._provider._api_key == "sk-key1"
