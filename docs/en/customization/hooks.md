@@ -15,7 +15,7 @@ Example use cases:
 - **Code formatting**: Automatically run `prettier` or `black` after file edits
 - **Security checks**: Block dangerous shell commands (like `rm -rf /`)
 - **Sensitive file protection**: Prevent modification of `.env` and similar files
-- **Desktop notifications**: Send alerts when human approval is needed
+- **Desktop notifications**: Send alerts when background tasks finish
 - **Task verification**: Check for incomplete tasks before session ends
 
 ## Supported Hook Events
