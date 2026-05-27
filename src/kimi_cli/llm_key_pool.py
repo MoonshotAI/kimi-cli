@@ -83,8 +83,10 @@ class APIKeyPool:
                 # Cooldown expired — reset the key to healthy.
                 self._states[key] = _KeyState()
             return key
-        # All keys in cooldown — fall back to the current slot.
-        return self._keys[self._index]
+        # All keys in cooldown — fall back to round-robin across the pool.
+        key = self._keys[self._index]
+        self._index = (self._index + 1) % len(self._keys)
+        return key
 
     def record_failure(self, key: str) -> None:
         """Record a retryable failure for *key* and apply exponential cooldown.

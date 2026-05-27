@@ -88,8 +88,14 @@ class TestAPIKeyPoolDirect:
         pool = APIKeyPool(["a", "b"])
         pool.record_failure("a")
         pool.record_failure("b")
-        # Both in cooldown — fall back to round-robin
-        assert pool.acquire() in ("a", "b")
+        # Both in cooldown — fall back to round-robin across the pool
+        first = pool.acquire()
+        assert first in ("a", "b")
+        second = pool.acquire()
+        assert second in ("a", "b")
+        assert second != first
+        third = pool.acquire()
+        assert third == first  # cycles back
 
     def test_record_failure_exponential_cooldown(self, monkeypatch):
         import time
