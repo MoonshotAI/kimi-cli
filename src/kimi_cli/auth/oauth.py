@@ -1085,6 +1085,13 @@ class OAuthManager:
         chat_provider = unwrap_kimi_provider(runtime.llm.chat_provider)
 
         assert isinstance(chat_provider, Kimi), "Expected Kimi chat provider"
+
+        # When a key pool is active, the pool (not OAuth) manages the API key.
+        # Overwriting the client key here would silently replace the pooled key
+        # with the OAuth token, breaking rotation.
+        if runtime.key_pool is not None:
+            return
+
         provider = runtime.config.providers.get(provider_key)
         fallback_api_key = provider.api_key.get_secret_value() if provider else ""
         chat_provider.client.api_key = access_token or fallback_api_key
