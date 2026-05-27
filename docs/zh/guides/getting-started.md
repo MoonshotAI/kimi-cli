@@ -25,7 +25,7 @@ Kimi Code CLI 支持以下几种使用方式：
 ## 安装
 
 
-::: tip 推荐前往新项目
+::: tip
 Kimi Code CLI 已升级为 [Kimi Code](https://github.com/MoonshotAI/kimi-code)，安装 Kimi Code 后会**自动迁移**你的配置与会话。新用户建议直接安装 Kimi Code；
 :::
 
