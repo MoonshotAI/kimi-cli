@@ -207,6 +207,50 @@ def truncate_context_at_turn(context_path: Path, turn_index: int) -> list[str]:
     return lines
 
 
+def _context_turn_index_for_wire_turn(
+    wire_path: Path,
+    context_path: Path,
+    wire_turn_index: int,
+) -> int:
+    """Map a wire TurnBegin index to the corresponding real context user turn."""
+    context_user_texts = _context_user_texts(context_path)
+    if not context_user_texts:
+        return -1
+
+    context_turn_index = -1
+    next_context_turn = 0
+    for turn in enumerate_turns(wire_path):
+        if turn.index > wire_turn_index:
+            break
+        if (
+            next_context_turn < len(context_user_texts)
+            and turn.user_text == context_user_texts[next_context_turn]
+        ):
+            context_turn_index = next_context_turn
+            next_context_turn += 1
+
+    return context_turn_index
+
+
+def _context_user_texts(context_path: Path) -> list[str]:
+    if not context_path.exists():
+        return []
+
+    texts: list[str] = []
+    with open(context_path, encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                record: dict[str, Any] = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if record.get("role") == "user" and not _is_checkpoint_user_message(record):
+                texts.append(_extract_user_text(record.get("content", "")))
+    return texts
+
+
 # ---------------------------------------------------------------------------
 # Full fork operation
 # ---------------------------------------------------------------------------
@@ -241,7 +285,12 @@ async def fork_session(
 
     if turn_index is not None:
         truncated_wire_lines = truncate_wire_at_turn(wire_path, turn_index)
-        truncated_context_lines = truncate_context_at_turn(context_path, turn_index)
+        context_turn_index = _context_turn_index_for_wire_turn(
+            wire_path,
+            context_path,
+            turn_index,
+        )
+        truncated_context_lines = truncate_context_at_turn(context_path, context_turn_index)
     else:
         # Copy all content
         truncated_wire_lines = _read_all_lines(wire_path)

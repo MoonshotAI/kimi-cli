@@ -11,7 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Session: `/undo` and fork now map selected wire turns to real context user turns before truncating history, so local slash-command turns no longer make resumed sessions land several turns too early or show history the agent cannot see
 - Shell: Show trailing output in tool error briefs when commands fail
+
 ## 1.46.0 (2026-05-28)
 
 - Shell: Support styled text in welcome tips

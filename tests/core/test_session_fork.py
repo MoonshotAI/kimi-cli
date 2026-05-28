@@ -309,6 +309,36 @@ class TestForkSession:
         # 2 turns * (user + assistant) = 4
         assert len(ctx_lines) == 4
 
+    async def test_fork_maps_wire_turns_to_real_context_users(
+        self, isolated_share_dir: Path, work_dir: KaosPath
+    ):
+        from kimi_cli.session import Session
+
+        source = await Session.create(work_dir)
+        _write_wire_file(source.dir, ["real 0", "/usage", "/sessions", "real 1", "real 2"])
+        _write_context_file(source.dir, ["real 0", "real 1", "real 2"])
+
+        new_id = await fork_session(
+            source_session_dir=source.dir,
+            work_dir=work_dir,
+            turn_index=3,
+            title_prefix="Undo",
+            source_title="My Session",
+        )
+
+        new_session = await Session.find(work_dir, new_id)
+        assert new_session is not None
+
+        context_lines = (
+            (new_session.dir / "context.jsonl").read_text(encoding="utf-8").strip().split("\n")
+        )
+        user_texts = [
+            _extract_user_text(json.loads(line)["content"])
+            for line in context_lines
+            if json.loads(line)["role"] == "user"
+        ]
+        assert user_texts == ["real 0", "real 1"]
+
     async def test_fork_all_turns(self, isolated_share_dir: Path, work_dir: KaosPath):
         from kimi_cli.session import Session
 
