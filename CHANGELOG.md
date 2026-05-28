@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tools: Shell tool headlines now keep the full command string instead of applying the generic 50-character middle truncation, making long paths and arguments visible when reviewing repeated or failed commands
+
 ## 1.45.0 (2026-05-26)
 
 - Shell: `/clear` is now an alias for `/new` — both commands start a new session; previously `/clear` only cleared context without creating a new session
