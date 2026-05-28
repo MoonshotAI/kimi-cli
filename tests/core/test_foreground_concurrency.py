@@ -502,6 +502,12 @@ async def test_agent_tool_resume_respects_model_override_for_provider_cap(
 
     assert not result.is_error
 
+    # Verify the persisted launch_spec was updated to reflect the override
+    record = store.get_instance("resume-me")
+    assert record is not None
+    assert record.launch_spec.effective_model == "gpt-4"
+    assert record.launch_spec.model_override == "gpt-4"
+
 
 async def test_agent_tool_resume_override_counts_under_executing_provider(
     agent_tool, runtime, monkeypatch
@@ -581,8 +587,9 @@ async def test_agent_tool_resume_override_counts_under_executing_provider(
     assert "concurrency limit reached" in result.brief.lower()
     assert "4/4" in result.message
 
-    # Verify the persisted launch_spec was updated to reflect the override
+    # Because launch was rejected by the concurrency cap, the override must NOT
+    # have been persisted (defer until launch actually succeeds).
     record = store.get_instance("resume-me")
     assert record is not None
-    assert record.launch_spec.effective_model == "kimi-k1"
-    assert record.launch_spec.model_override == "kimi-k1"
+    assert record.launch_spec.effective_model == "gpt-4"
+    assert record.launch_spec.model_override is None

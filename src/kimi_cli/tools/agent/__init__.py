@@ -224,6 +224,7 @@ class AgentTool(CallableTool2[Params]):
         # For new instances, also resolve the subagent type's default model so that
         # the Kimi cap is applied when the built-in type defaults to a Kimi model.
         effective_model = params.model
+        resume_launch_spec: AgentLaunchSpec | None = None
         if params.resume:
             record = store.get_instance(params.resume)
             if record is not None:
@@ -232,18 +233,13 @@ class AgentTool(CallableTool2[Params]):
                 # to the stored launch spec only when no override is given.
                 if effective_model is None:
                     effective_model = launch.model_override or launch.effective_model
-                # Persist the override so that _count_running_foreground classifies
-                # this instance under the executing provider, not the original one.
                 elif effective_model != launch.effective_model:
                     from dataclasses import replace
 
-                    store.update_instance(
-                        params.resume,
-                        launch_spec=replace(
-                            launch,
-                            model_override=effective_model,
-                            effective_model=effective_model,
-                        ),
+                    resume_launch_spec = replace(
+                        launch,
+                        model_override=effective_model,
+                        effective_model=effective_model,
                     )
         else:
             type_def = self._runtime.labor_market.builtin_types.get(params.subagent_type or "coder")
@@ -269,7 +265,11 @@ class AgentTool(CallableTool2[Params]):
             # so that concurrent Agent tool calls see the updated count immediately.
             prepared = runner.prepare_instance(req)
             agent_id = prepared.record.agent_id
-            store.update_instance(agent_id, status="running_foreground")
+            store.update_instance(
+                agent_id,
+                status="running_foreground",
+                launch_spec=resume_launch_spec,
+            )
             if timeout is not None:
                 return await asyncio.wait_for(runner.run(req, prepared), timeout=timeout)
             return await runner.run(req, prepared)
