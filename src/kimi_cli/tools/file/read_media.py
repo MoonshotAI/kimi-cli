@@ -19,6 +19,15 @@ from kimi_cli.wire.types import ImageURLPart, VideoURLPart
 
 MAX_MEDIA_MEGABYTES = 100
 
+# Kimi (and Anthropic/Google) image input only accepts these MIME types.
+# Other formats (e.g. ``image/x-icon`` from ``.ico``, ``image/bmp``,
+# ``image/tiff``) cause the model gateway to reject the entire request with
+# ``400 unsupported image format``, which then poisons the session history
+# and prevents the conversation from continuing on resume.
+_PROVIDER_SUPPORTED_IMAGE_MIME_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/gif", "image/webp"}
+)
+
 
 def _to_data_url(mime_type: str, data: bytes) -> str:
     encoded = base64.b64encode(data).decode("ascii")
@@ -36,6 +45,35 @@ def _extract_image_size(data: bytes) -> tuple[int, int] | None:
             return image.size
     except Exception:
         return None
+
+
+def _normalize_image_for_provider(data: bytes, mime_type: str) -> tuple[bytes, str]:
+    """Re-encode unsupported image formats to PNG before sending to the model.
+
+    Returns the original ``(data, mime_type)`` for already-supported formats.
+    If conversion fails (e.g. corrupt image, missing Pillow plugin), falls
+    back to the original bytes; the provider may still reject the request,
+    but at least the failure mode is unchanged.
+    """
+    if mime_type in _PROVIDER_SUPPORTED_IMAGE_MIME_TYPES:
+        return data, mime_type
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(data)) as image:
+            image.load()
+            if image.mode not in ("RGB", "RGBA"):
+                image = image.convert("RGBA")
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+        return buffer.getvalue(), "image/png"
+    except Exception as exc:
+        logger.warning(
+            "Failed to re-encode {mime} image as PNG; sending original bytes: {error}",
+            mime=mime_type,
+            error=exc,
+        )
+        return data, mime_type
 
 
 class Params(BaseModel):
@@ -112,10 +150,13 @@ class ReadMediaFile(CallableTool2[Params]):
         match file_type.kind:
             case "image":
                 data = await path.read_bytes()
-                data_url = _to_data_url(file_type.mime_type, data)
+                image_size = _extract_image_size(data)
+                normalized_data, normalized_mime = _normalize_image_for_provider(
+                    data, file_type.mime_type
+                )
+                data_url = _to_data_url(normalized_mime, normalized_data)
                 part = ImageURLPart(image_url=ImageURLPart.ImageURL(url=data_url))
                 wrapped = wrap_media_part(part, tag="image", attrs={"path": media_path})
-                image_size = _extract_image_size(data)
             case "video":
                 data = await path.read_bytes()
                 if (llm := self._runtime.llm) and isinstance(llm.chat_provider, Kimi):

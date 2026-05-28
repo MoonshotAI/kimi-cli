@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tools: `ReadMediaFile` now re-encodes images whose MIME type the model gateway does not accept (e.g. `image/x-icon` from `.ico`, `image/bmp`, `image/tiff`) as PNG before they enter session history, so unsupported-format `400`s no longer poison the conversation
+
 ## 1.45.0 (2026-05-26)
 
 - Shell: `/clear` is now an alias for `/new` — both commands start a new session; previously `/clear` only cleared context without creating a new session

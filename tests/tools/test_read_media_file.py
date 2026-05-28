@@ -91,6 +91,30 @@ async def test_read_image_file_with_size(
     )
 
 
+async def test_read_ico_file_converts_to_png(
+    read_media_file_tool: ReadMediaFile, temp_work_dir: KaosPath
+):
+    """``.ico`` files have ``image/x-icon`` MIME, which Kimi rejects as
+    ``unsupported image format`` (regression: #2017). The tool must
+    re-encode them to PNG so the conversation can continue."""
+    Image = pytest.importorskip("PIL.Image")
+    image_file = temp_work_dir / "favicon.ico"
+    image = Image.new("RGBA", (16, 16), (255, 0, 0, 255))
+    buffer = BytesIO()
+    image.save(buffer, format="ICO")
+    await image_file.write_bytes(buffer.getvalue())
+
+    result = await read_media_file_tool(Params(path=str(image_file)))
+
+    assert not result.is_error
+    assert isinstance(result.output, list)
+    part = result.output[1]
+    assert isinstance(part, ImageURLPart)
+    assert part.image_url.url.startswith("data:image/png;base64,"), (
+        f"expected ico to be re-encoded as PNG, got: {part.image_url.url[:64]!r}"
+    )
+
+
 async def test_read_video_file(read_media_file_tool: ReadMediaFile, temp_work_dir: KaosPath):
     """Test reading a video file."""
     video_file = temp_work_dir / "sample.mp4"
