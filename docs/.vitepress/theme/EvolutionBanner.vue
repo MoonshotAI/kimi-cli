@@ -41,8 +41,8 @@ function dismiss() {
 const isZh = computed(() => lang.value.startsWith('zh'))
 const message = computed(() =>
   isZh.value
-    ? 'Kimi Code CLI 已升级为 Kimi Code，了解更多 →'
-    : 'Kimi Code CLI is evolving into Kimi Code. Learn more →',
+    ? 'Kimi Code CLI 重构升级版已发布，迭代更快   了解更多➡️'
+    : 'Kimi Code CLI rebuilt & upgraded version released — faster iterations. Learn more ➡️',
 )
 const closeLabel = computed(() => (isZh.value ? '关闭' : 'Dismiss'))
 </script>
