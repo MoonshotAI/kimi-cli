@@ -232,6 +232,19 @@ class AgentTool(CallableTool2[Params]):
                 # to the stored launch spec only when no override is given.
                 if effective_model is None:
                     effective_model = launch.model_override or launch.effective_model
+                # Persist the override so that _count_running_foreground classifies
+                # this instance under the executing provider, not the original one.
+                elif effective_model != launch.effective_model:
+                    from dataclasses import replace
+
+                    store.update_instance(
+                        params.resume,
+                        launch_spec=replace(
+                            launch,
+                            model_override=effective_model,
+                            effective_model=effective_model,
+                        ),
+                    )
         else:
             type_def = self._runtime.labor_market.builtin_types.get(params.subagent_type or "coder")
             if type_def is not None and effective_model is None:

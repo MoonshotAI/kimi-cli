@@ -141,6 +141,7 @@ class SubagentStore:
         status: SubagentStatus | None = None,
         description: str | None = None,
         last_task_id: str | None | object = ...,
+        launch_spec: AgentLaunchSpec | None = None,
     ) -> AgentInstanceRecord:
         import time
 
@@ -155,7 +156,7 @@ class SubagentStore:
             last_task_id=(
                 current.last_task_id if last_task_id is ... else cast(str | None, last_task_id)
             ),
-            launch_spec=current.launch_spec,
+            launch_spec=current.launch_spec if launch_spec is None else launch_spec,
         )
         self.write_instance(record)
         return record
