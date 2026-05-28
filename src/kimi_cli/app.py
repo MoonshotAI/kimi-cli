@@ -687,6 +687,8 @@ class KimiCLI:
         self, command: str | None = None, *, prefill_text: str | None = None
     ) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
+        from rich.text import Text
+
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
 
         if command is None:
@@ -758,9 +760,12 @@ class KimiCLI:
         welcome_info.append(
             WelcomeInfoItem(
                 name="\nTip",
-                value=(
-                    "We just released Kimi Code — our new coding agent. "
-                    "Check it out at https://moonshotai.github.io/kimi-code"
+                value=Text.assemble(
+                    "We just released Kimi Code — our new coding agent. Check it out at ",
+                    Text(
+                        "https://www.kimi.com/code",
+                        style="link https://www.kimi.com/code underline",
+                    ),
                 ),
                 level=WelcomeInfoItem.Level.WARN,
             )
