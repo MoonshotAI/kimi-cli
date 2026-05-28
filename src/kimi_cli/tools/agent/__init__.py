@@ -72,18 +72,20 @@ def _max_foreground_concurrency(runtime: Runtime, provider_type: str | None = No
 def _count_running_foreground(runtime: Runtime, provider_type: str | None = None) -> int:
     """Count how many foreground subagents are currently running.
 
-    When *provider_type* is given, only count instances whose effective
-    provider matches that type.  This prevents a kimi-key cap from being
-    consumed by unrelated-provider subagents.
+    The Kimi key-pool cap is per-provider (only Kimi instances count against
+    it).  The non-Kimi cap is global: all running foreground subagents share
+    the same pool, regardless of provider.
     """
     store = runtime.subagent_store
     if store is None:
         return 0
     count = 0
+    # Only apply per-provider filtering for the Kimi key-pool cap.
+    filter_by_provider = provider_type == "kimi" and runtime.key_pool is not None
     for r in store.list_instances():
         if r.status != "running_foreground":
             continue
-        if provider_type is None:
+        if not filter_by_provider:
             count += 1
             continue
         instance_provider = _resolve_effective_provider_type(runtime, r.launch_spec.effective_model)

@@ -86,7 +86,9 @@ class TestCountRunningForeground:
         assert _count_running_foreground(runtime) == 1
 
     def test_counts_only_matching_provider_when_given(self, runtime):
-        """Kimi cap should not be consumed by unrelated-provider subagents."""
+        """Kimi cap is per-provider; non-Kimi cap is global."""
+        from kimi_cli.llm_key_pool import APIKeyPool
+
         runtime.config.providers = {
             "kimi_p": LLMProvider(
                 type="kimi", base_url="https://kimi.example/v1", api_key=SecretStr("test")
@@ -99,6 +101,7 @@ class TestCountRunningForeground:
             "kimi-k1": LLMModel(provider="kimi_p", model="k1", max_context_size=128_000),
             "gpt-4": LLMModel(provider="oa_p", model="gpt-4", max_context_size=128_000),
         }
+        runtime.key_pool = APIKeyPool(["k1", "k2"])
         store = runtime.subagent_store
         assert store is not None
 
@@ -140,14 +143,13 @@ class TestCountRunningForeground:
             ),
         )
 
-        # No filter -> count all running
+        # No filter -> count all running (global)
         assert _count_running_foreground(runtime) == 2
-        # Filter by kimi -> count only kimi
+        # Kimi with key pool -> count only kimi
         assert _count_running_foreground(runtime, provider_type="kimi") == 1
-        # Filter by openai -> count only openai
-        assert _count_running_foreground(runtime, provider_type="openai_legacy") == 1
-        # Filter by nonexistent -> count 0
-        assert _count_running_foreground(runtime, provider_type="anthropic") == 0
+        # Non-Kimi caps are global -> count all running
+        assert _count_running_foreground(runtime, provider_type="openai_legacy") == 2
+        assert _count_running_foreground(runtime, provider_type="anthropic") == 2
 
 
 async def test_agent_tool_rejects_when_concurrency_limit_reached(agent_tool, runtime):
@@ -445,8 +447,8 @@ async def test_agent_tool_resume_respects_model_override_for_provider_cap(
         "gpt-4": LLMModel(provider="oa_p", model="gpt-4", max_context_size=128_000),
     }
     runtime.key_pool = APIKeyPool(["k1", "k2", "k3", "k4", "k5"])
-    runtime.config.background.max_running_tasks = 2
-    # Kimi cap = 5 * 0.8 = 4; non-kimi cap = 2 * 0.8 = 1
+    runtime.config.background.max_running_tasks = 10
+    # Kimi cap = 5 * 0.8 = 4; non-kimi cap is global = 10 * 0.8 = 8
 
     runtime.labor_market.add_builtin_type(
         AgentTypeDefinition(
