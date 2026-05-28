@@ -27,6 +27,7 @@ from kimi_cli.soul import RunCancelled, run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
@@ -414,6 +415,15 @@ class KimiCLI:
         # so it does not outlive the CLI process.
         if self._bg_refresh_task is not None and not self._bg_refresh_task.done():
             self._bg_refresh_task.cancel()
+
+        # Close MCP client connections so stdio/WebSocket transports do not
+        # outlive the CLI process and trigger firewall warnings.
+        try:
+            toolset = self.soul.agent.toolset
+            if isinstance(toolset, KimiToolset):
+                await toolset.cleanup()
+        except (Exception, asyncio.CancelledError):
+            logger.warning("Error during toolset cleanup; continuing exit", exc_info=True)
 
         bg_config = self._runtime.config.background
         if bg_config.keep_alive_on_exit:
