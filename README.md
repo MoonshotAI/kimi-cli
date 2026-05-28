@@ -146,6 +146,17 @@ See more features in the [Documentation](https://moonshotai.github.io/kimi-cli/e
 
 ## Development
 
+### Prerequisites
+
+- **[uv](https://docs.astral.sh/uv/getting-started/installation/)** — Python package and venv manager used by `make prepare` and the test/run targets.
+- **Python** — pinned by `.python-version` and installed by `uv sync` if missing. `pyproject.toml` accepts Python 3.12+; CI uses the pinned version.
+- **make** — runs the build/test/check targets in `Makefile`. Pre-installed on most Linux/macOS systems; on Windows, install via WSL, MSYS2, or chocolatey.
+- **Node.js + npm** — required for `make build-web` and `make build` (which embeds the web UI). Not needed for Python-only changes.
+- **Git Bash (Windows only)** — kimi-cli's Shell tool requires `bash.exe` from [Git for Windows](https://git-scm.com/download/win); without it, the agent's Shell tool will not start.
+- **Nix (optional)** — a `flake.nix` is provided. `nix develop` drops you into a shell with the above installed.
+
+### Setup
+
 To develop Kimi Code CLI, run:
 
 ```sh
