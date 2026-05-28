@@ -100,3 +100,29 @@ def test_markdown_list_long_unspaced_content_keeps_continuation_indent() -> None
     assert lines[0].startswith("• ")
     assert len(lines) > 1
     assert all(line.startswith("  ") for line in lines[1:])
+
+
+def test_markdown_nested_list_keeps_expected_indent() -> None:
+    console = Console(width=40, record=True)
+    markdown = Markdown("- a\n  - b\n")
+
+    console.print(markdown)
+
+    assert console.export_text() == "• a\n  • b\n"
+
+
+def test_markdown_wrapped_nested_list_does_not_add_parent_indent() -> None:
+    console = Console(width=30, record=True)
+    markdown = Markdown(
+        "- parent long text that wraps around in width\n"
+        "  - child long text also wraps around width\n"
+    )
+
+    console.print(markdown)
+
+    assert console.export_text() == (
+        "• parent long text that wraps\n"
+        "  around in width\n"
+        "  • child long text also\n"
+        "    wraps around width\n"
+    )
