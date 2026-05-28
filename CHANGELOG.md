@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Soul: Sessions killed mid-turn (e.g. under memory pressure) now resume correctly — `normalize_history` injects placeholder responses for orphan `tool_call_id`s so the next provider request stops failing with `400 ... tool_call_ids did not have response messages`
+
 ## 1.45.0 (2026-05-26)
 
 - Shell: `/clear` is now an alias for `/new` — both commands start a new session; previously `/clear` only cleared context without creating a new session
