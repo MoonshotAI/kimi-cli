@@ -37,9 +37,23 @@ class _DummyApp:
 class _FakeAttachmentCache(shell_prompt.AttachmentCache):
     def __init__(self, store_result: shell_prompt.CachedAttachment | None) -> None:
         self.store_result = store_result
+        self.stored_text: str | None = None
 
     def store_image(self, image: Image.Image) -> shell_prompt.CachedAttachment | None:
         return self.store_result
+
+    def store_pasted_text(self, text: str) -> shell_prompt.CachedAttachment | None:
+        self.stored_text = text
+        return shell_prompt.CachedAttachment(
+            kind="pasted_text",
+            attachment_id="paste123.txt",
+            path=Path("/tmp/paste123.txt"),
+        )
+
+    def load_pasted_text(self, attachment_id: str) -> str | None:
+        if attachment_id == "paste123.txt":
+            return self.stored_text
+        return None
 
 
 def _make_prompt_session(
@@ -279,7 +293,7 @@ def test_insert_pasted_text_placeholderizes_long_text_in_agent_mode() -> None:
 
     assert len(buffer.inserted) == 1
     inserted = buffer.inserted[0]
-    assert inserted == "[Pasted text #1 +15 lines]"
+    assert inserted == "[Pasted text:paste123.txt +15 lines]"
 
     user_input = ps._build_user_input(inserted)
     assert user_input.command == inserted
@@ -321,7 +335,7 @@ def test_handle_bracketed_paste_placeholderizes_long_text_in_agent_mode() -> Non
 
     ps._handle_bracketed_paste(cast(KeyPressEvent, event))
 
-    assert buffer.inserted == ["[Pasted text #1 +15 lines]"]
+    assert buffer.inserted == ["[Pasted text:paste123.txt +15 lines]"]
     assert app.invalidated is True
     resolved_text = "\n".join([f"line{i}" for i in range(1, 16)])
     user_input = ps._build_user_input(buffer.inserted[0])

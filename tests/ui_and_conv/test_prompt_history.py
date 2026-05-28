@@ -23,7 +23,7 @@ def _read_history_lines(path) -> list[dict[str, str]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
-def test_append_history_entry_expands_text_placeholders_but_preserves_images(tmp_path) -> None:
+def test_append_history_entry_preserves_persistent_placeholders(tmp_path) -> None:
     manager = PromptPlaceholderManager(attachment_cache=AttachmentCache(root=tmp_path / "cache"))
     pasted_text = "\n".join([f"line{i}" for i in range(1, 16)])
     text_token = manager.maybe_placeholderize_pasted_text(pasted_text)
@@ -36,7 +36,7 @@ def test_append_history_entry_expands_text_placeholders_but_preserves_images(tmp
     prompt_session._append_history_entry(f"before {text_token} {image_token} after")
 
     assert _read_history_lines(prompt_session._history_file) == [
-        {"content": f"before {pasted_text} {image_token} after"}
+        {"content": f"before {text_token} {image_token} after"}
     ]
 
 
@@ -51,7 +51,7 @@ def test_append_history_entry_deduplicates_consecutive_tokens_with_same_expanded
     prompt_session._append_history_entry(token_one)
     prompt_session._append_history_entry(token_two)
 
-    assert _read_history_lines(prompt_session._history_file) == [{"content": "alpha\nbeta\ngamma"}]
+    assert _read_history_lines(prompt_session._history_file) == [{"content": token_one}]
 
 
 def test_append_history_entry_writes_sanitized_surrogate_text(tmp_path) -> None:
@@ -64,5 +64,5 @@ def test_append_history_entry_writes_sanitized_surrogate_text(tmp_path) -> None:
     lines = _read_history_lines(prompt_session._history_file)
     assert len(lines) == 1
     assert "\ud83d" not in lines[0]["content"]
-    assert "\ufffd" in lines[0]["content"]
-    assert lines[0]["content"].startswith("A" * 1000)
+    assert "\ufffd" not in lines[0]["content"]
+    assert lines[0]["content"] == token
