@@ -142,20 +142,22 @@ class Terminal(CallableTool2[ShellParams]):
                 else ""
             )
 
+            tail = builder.tail()
+            tail_md = f"\n{tail}" if tail else ""
             if timed_out:
                 return builder.error(
                     f"Command killed by timeout ({timeout_label}){truncated_note}",
-                    brief=f"Killed by timeout ({timeout_label})",
+                    brief=f"Killed by timeout ({timeout_label}){tail_md}",
                 )
             if exit_signal:
                 return builder.error(
                     f"Command terminated by signal: {exit_signal}.{truncated_note}",
-                    brief=f"Signal: {exit_signal}",
+                    brief=f"Signal: {exit_signal}{tail_md}",
                 )
             if exit_code not in (None, 0):
                 return builder.error(
                     f"Command failed with exit code: {exit_code}.{truncated_note}",
-                    brief=f"Failed with exit code: {exit_code}",
+                    brief=f"Failed with exit code: {exit_code}{tail_md}",
                 )
             return builder.ok(f"Command executed successfully.{truncated_note}")
         finally:
