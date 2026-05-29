@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import platform
 import sys
+from importlib.metadata import distribution
 from pathlib import Path
 
 from inline_snapshot import snapshot
@@ -13,6 +14,8 @@ def test_pyinstaller_datas():
     project_root = Path(__file__).parent.parent.parent
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     site_packages = f".venv/lib/python{python_version}/site-packages"
+    fastmcp_distribution = distribution("fastmcp")
+    fastmcp_dist_info = f"fastmcp-{fastmcp_distribution.version}.dist-info"
     rg_binary = "rg.exe" if platform.system() == "Windows" else "rg"
     has_rg_binary = (project_root / "src/kimi_cli/deps/bin" / rg_binary).exists()
     datas = [
@@ -28,39 +31,21 @@ def test_pyinstaller_datas():
 
     datas = [(p, d) for p, d in datas if "web/static" not in d and "vis/static" not in d]
 
+    fastmcp_dist_info_datas = [
+        (
+            f"{site_packages}/fastmcp/../{file_path}",
+            f"fastmcp/../{Path(file_path).parent.as_posix()}",
+        )
+        for file_path in sorted(str(file) for file in fastmcp_distribution.files or [])
+        if file_path.startswith(f"{fastmcp_dist_info}/")
+    ]
+
     expected_datas = [
         (
             f"{site_packages}/dateparser/data/dateparser_tz_cache.pkl",
             "dateparser/data",
         ),
-        (
-            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/INSTALLER",
-            "fastmcp/../fastmcp-3.2.4.dist-info",
-        ),
-        (
-            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/METADATA",
-            "fastmcp/../fastmcp-3.2.4.dist-info",
-        ),
-        (
-            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/RECORD",
-            "fastmcp/../fastmcp-3.2.4.dist-info",
-        ),
-        (
-            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/REQUESTED",
-            "fastmcp/../fastmcp-3.2.4.dist-info",
-        ),
-        (
-            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/WHEEL",
-            "fastmcp/../fastmcp-3.2.4.dist-info",
-        ),
-        (
-            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/entry_points.txt",
-            "fastmcp/../fastmcp-3.2.4.dist-info",
-        ),
-        (
-            f"{site_packages}/fastmcp/../fastmcp-3.2.4.dist-info/licenses/LICENSE",
-            "fastmcp/../fastmcp-3.2.4.dist-info/licenses",
-        ),
+        *fastmcp_dist_info_datas,
         (
             "src/kimi_cli/CHANGELOG.md",
             "kimi_cli",
