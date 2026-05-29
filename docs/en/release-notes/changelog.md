@@ -4,6 +4,13 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+## 1.46.0 (2026-05-28)
+
+- Shell: Support styled text in welcome tips
+- ACP: Replay session history on load
+- Core: Prevent TTY hang on exit
+- Core: Close MCP connections during shutdown
+
 ## 1.45.0 (2026-05-26)
 
 - Shell: `/clear` is now an alias for `/new` — both commands start a new session; previously `/clear` only cleared context without creating a new session

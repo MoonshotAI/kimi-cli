@@ -6,6 +6,7 @@ from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from rich.text import Text
 
 import kimi_cli.app as app_module
 import kimi_cli.ui.shell.startup as startup_module
@@ -150,7 +151,13 @@ async def test_run_shell_adds_new_coding_agent_download_tip(runtime, monkeypatch
     tip = welcome_info[-1]
     assert tip == WelcomeInfoItem(
         name="\nTip",
-        value="We just released Kimi Code — our new coding agent. Check it out at https://moonshotai.github.io/kimi-code",
+        value=Text.assemble(
+            "We just released Kimi Code — our new coding agent. Check it out at ",
+            Text(
+                "https://www.kimi.com/code",
+                style="link https://www.kimi.com/code underline",
+            ),
+        ),
         level=WelcomeInfoItem.Level.WARN,
     )
 
