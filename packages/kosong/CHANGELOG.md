@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- OpenAI: Relax the OpenAI SDK dependency to allow current 2.x releases, so downstream apps can keep their provider stack up to date without conflicting with Kosong
+- OpenAI: Relax the OpenAI SDK dependency to allow recent tested 2.x releases, so downstream apps can keep their provider stack up to date without conflicting with Kosong
 
 ## 0.53.0 (2026-04-28)
 
