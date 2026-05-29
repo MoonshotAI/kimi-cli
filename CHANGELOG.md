@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- MCP: Bump FastMCP to 3.3.1, keeping OAuth MCP support on the current upstream client/server stack
+
 ## 1.46.0 (2026-05-28)
 
 - Shell: Support styled text in welcome tips
