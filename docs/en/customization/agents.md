@@ -154,6 +154,14 @@ Subagents launched via the `Agent` tool run in an isolated context and return re
 - Subagents can have targeted system prompts
 - Persistent instances preserve context across multiple calls
 
+### Concurrency limits
+
+Foreground subagents share a concurrency cap to prevent overwhelming the API. The limit is `max(1, floor(key_pool_size × 0.8))` when multiple API keys are configured, otherwise `max(1, floor(max_running_tasks × 0.8))` from your config. If the cap is reached, the `Agent` tool returns a `ToolError` with a brief `Concurrency limit reached` message so the main agent can retry or queue work differently.
+
+### Multi-key parallel execution
+
+When `KIMI_API_KEY_1`, `KIMI_API_KEY_2`, … are configured, Kimi CLI builds an API key pool and assigns a **distinct key** to each foreground subagent in round-robin order. If a subagent hits a rate limit or retryable server error, the key is automatically rotated to the next one in the pool. This lets you run many subagents concurrently without concentrating load on a single API key. Each subagent request also carries an identifiable `User-Agent` header (e.g., `KimiCLI/1.44.0 (subagent: coder)`).
+
 ## Built-in tools list
 
 The following are all built-in tools in Kimi Code CLI.
@@ -171,7 +179,7 @@ The following are all built-in tools in Kimi Code CLI.
 | `model` | string | Optional model override |
 | `resume` | string | Optional agent instance ID to resume an existing instance |
 | `run_in_background` | bool | Whether to run in background, default false |
-| `timeout` | int | Timeout in seconds, range 30–3600. Foreground defaults to no timeout (runs until completion), background defaults to 15 minutes; the task is stopped if the limit is exceeded |
+| `timeout` | int | Timeout in seconds, range 30–3600. Foreground defaults to 300 seconds (or `KIMI_FOREGROUND_AGENT_TIMEOUT`), background defaults to 15 minutes; the task is stopped if the limit is exceeded. Set to `0` to disable the foreground timeout |
 
 ### `AskUserQuestion`
 

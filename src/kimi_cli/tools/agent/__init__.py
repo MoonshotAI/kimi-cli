@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 from typing import override
 
@@ -16,6 +17,81 @@ NAME = "Agent"
 
 MAX_FOREGROUND_TIMEOUT = 60 * 60  # 1 hour
 MAX_BACKGROUND_TIMEOUT = 60 * 60  # 1 hour
+
+_DEFAULT_FOREGROUND_TIMEOUT_S = 300  # 5 minutes
+
+
+def _resolve_foreground_timeout(params_timeout: int | None) -> int | None:
+    """Return the effective timeout for a foreground subagent.
+
+    Priority:
+    1. Explicit ``timeout`` parameter from the tool call.
+    2. ``KIMI_FOREGROUND_AGENT_TIMEOUT`` environment variable (``0`` disables).
+    3. Built-in default of ``_DEFAULT_FOREGROUND_TIMEOUT_S`` (300s).
+    """
+    if params_timeout is not None:
+        # 0 disables the timeout (same semantics as KIMI_FOREGROUND_AGENT_TIMEOUT=0)
+        return params_timeout if params_timeout != 0 else None
+    env = os.getenv("KIMI_FOREGROUND_AGENT_TIMEOUT")
+    if env is not None:
+        stripped = env.strip()
+        if stripped == "0":
+            return None
+        try:
+            return int(stripped)
+        except ValueError:
+            logger.warning("Ignoring invalid KIMI_FOREGROUND_AGENT_TIMEOUT: {value}", value=env)
+    return _DEFAULT_FOREGROUND_TIMEOUT_S
+
+
+def _resolve_effective_provider_type(runtime: Runtime, model_alias: str | None) -> str | None:
+    """Determine the provider type for a pending subagent run."""
+    if model_alias is not None:
+        model_cfg = runtime.config.models.get(model_alias)
+        if model_cfg is not None:
+            provider_cfg = runtime.config.providers.get(model_cfg.provider)
+            if provider_cfg is not None:
+                return provider_cfg.type
+    if runtime.llm is not None and runtime.llm.provider_config is not None:
+        return runtime.llm.provider_config.type
+    return None
+
+
+def _max_foreground_concurrency(runtime: Runtime, provider_type: str | None = None) -> int:
+    """Calculate the maximum allowed concurrent foreground subagents.
+
+    When a key pool is configured and the effective provider is Kimi, limit to
+    80% of the key count so that each subagent has a good chance of getting a
+    fresh key.  Otherwise fall back to 80% of ``background.max_running_tasks``.
+    """
+    if provider_type == "kimi" and runtime.key_pool is not None:
+        return max(1, int(runtime.key_pool.key_count * 0.8))
+    return max(1, int(runtime.config.background.max_running_tasks * 0.8))
+
+
+def _count_running_foreground(runtime: Runtime, provider_type: str | None = None) -> int:
+    """Count how many foreground subagents are currently running.
+
+    The Kimi key-pool cap is per-provider (only Kimi instances count against
+    it).  The non-Kimi cap is global: all running foreground subagents share
+    the same pool, regardless of provider.
+    """
+    store = runtime.subagent_store
+    if store is None:
+        return 0
+    count = 0
+    # Only apply per-provider filtering for the Kimi key-pool cap.
+    filter_by_provider = provider_type == "kimi" and runtime.key_pool is not None
+    for r in store.list_instances():
+        if r.status != "running_foreground":
+            continue
+        if not filter_by_provider:
+            count += 1
+            continue
+        instance_provider = _resolve_effective_provider_type(runtime, r.launch_spec.effective_model)
+        if instance_provider == provider_type:
+            count += 1
+    return count
 
 
 class Params(BaseModel):
@@ -48,11 +124,12 @@ class Params(BaseModel):
         default=None,
         description=(
             "Timeout in seconds for the agent task. "
-            "Foreground: no default timeout (runs until completion), max 3600s (1hr). "
-            "Background: default from config (15min), max 3600s (1hr). "
-            "The agent is stopped if it exceeds this limit."
+            "Foreground: defaults to 300s (5min) unless overridden by "
+            "KIMI_FOREGROUND_AGENT_TIMEOUT. Background: default from config "
+            "(15min), max 3600s (1hr). The agent is stopped if it exceeds "
+            "this limit."
         ),
-        ge=30,
+        ge=0,
         le=MAX_BACKGROUND_TIMEOUT,
     )
 
@@ -130,38 +207,119 @@ class AgentTool(CallableTool2[Params]):
             )
         if params.run_in_background:
             return await self._run_in_background(params)
-        timeout = params.effective_timeout
+
+        timeout = _resolve_foreground_timeout(params.effective_timeout)
+        runner = ForegroundSubagentRunner(self._runtime)
+        req = ForegroundRunRequest(
+            description=params.description,
+            prompt=params.prompt,
+            requested_type=params.subagent_type or "coder",
+            model=params.model,
+            resume=params.resume,
+        )
+        store = self._runtime.subagent_store
+        assert store is not None
+
+        # Enforce foreground concurrency limit (80% of system capacity).
+        # For resumed instances, derive the provider type from the stored launch spec
+        # so that non-Kimi resumed subagents are not capped by an unrelated key pool.
+        # For new instances, also resolve the subagent type's default model so that
+        # the Kimi cap is applied when the built-in type defaults to a Kimi model.
+        effective_model = params.model
+        resume_launch_spec: AgentLaunchSpec | None = None
+        if params.resume:
+            record = store.get_instance(params.resume)
+            if record is not None:
+                launch = record.launch_spec
+                # Respect explicit model override from the tool call; fall back
+                # to the stored launch spec only when no override is given.
+                if effective_model is None:
+                    effective_model = launch.model_override or launch.effective_model
+                elif effective_model != launch.effective_model:
+                    from dataclasses import replace
+
+                    resume_launch_spec = replace(
+                        launch,
+                        model_override=effective_model,
+                        effective_model=effective_model,
+                    )
+        else:
+            type_def = self._runtime.labor_market.builtin_types.get(params.subagent_type or "coder")
+            if type_def is not None and effective_model is None:
+                effective_model = type_def.default_model
+        provider_type = _resolve_effective_provider_type(self._runtime, effective_model)
+        max_concurrent = _max_foreground_concurrency(self._runtime, provider_type)
+        # Count only matching-provider runs so that a cap for one provider is not
+        # consumed by subagents running on a different provider.
+        running = _count_running_foreground(self._runtime, provider_type)
+        if running >= max_concurrent:
+            return ToolError(
+                message=(
+                    f"Too many foreground subagents are already running "
+                    f"({running}/{max_concurrent}). Please wait for one to finish "
+                    f"before starting another."
+                ),
+                brief="Concurrency limit reached",
+            )
+        agent_id: str | None = None
         try:
-            runner = ForegroundSubagentRunner(self._runtime)
-            req = ForegroundRunRequest(
-                description=params.description,
-                prompt=params.prompt,
-                requested_type=params.subagent_type or "coder",
-                model=params.model,
-                resume=params.resume,
+            # Prepare the instance and mark it running_foreground *before* the await
+            # so that concurrent Agent tool calls see the updated count immediately.
+            prepared = runner.prepare_instance(req)
+            agent_id = prepared.record.agent_id
+            store.update_instance(
+                agent_id,
+                status="running_foreground",
+                launch_spec=resume_launch_spec,
             )
             if timeout is not None:
-                return await asyncio.wait_for(runner.run(req), timeout=timeout)
-            return await runner.run(req)
+                return await asyncio.wait_for(runner.run(req, prepared), timeout=timeout)
+            return await runner.run(req, prepared)
         except TimeoutError as exc:
             # Note: TimeoutError from run_soul internals (e.g. aiohttp) is now caught
             # by run_soul_checked and converted to SoulRunFailure. This handler mainly
             # covers wait_for's task-level timeout and pre-run_soul TimeoutErrors.
+            # When runner.run is cancelled by wait_for, it normally marks the instance
+            # as "killed" inside its except asyncio.CancelledError block.  However, if
+            # the timeout fires during pre-execution preparation (e.g. prepare_soul),
+            # the runner's handler may not have run yet, leaving the instance stuck in
+            # "running_foreground".  Clean that up here so it does not consume the
+            # concurrency cap.
             if isinstance(exc.__cause__, asyncio.CancelledError):
                 logger.warning("Foreground agent timed out after {t}s", t=timeout)
+                if agent_id is not None:
+                    record = store.get_instance(agent_id)
+                    if record is not None and record.status == "running_foreground":
+                        store.update_instance(agent_id, status="killed")
                 return ToolError(
                     message=f"Agent timed out after {timeout}s.",
                     brief=f"Agent timed out ({timeout}s)",
                 )
             # Internal timeout (e.g. aiohttp request) — treat as generic failure
             logger.exception("Foreground agent run failed")
+            if agent_id is not None:
+                store.update_instance(agent_id, status="failed")
             return ToolError(message=f"Failed to run agent: {exc}", brief="Agent failed")
         except Exception as exc:
             logger.exception("Foreground agent run failed")
+            # If runner.run didn't already update the status (e.g. prepare_soul failed
+            # before entering runner.run's try block), reset from running_foreground.
+            if agent_id is not None:
+                record = store.get_instance(agent_id)
+                if record is not None and record.status == "running_foreground":
+                    store.update_instance(agent_id, status="failed")
             return ToolError(message=f"Failed to run agent: {exc}", brief="Agent failed")
 
     async def _run_in_background(self, params: Params) -> ToolReturnValue:
         assert self._runtime.subagent_store is not None
+        # Zero timeout is only valid for foreground agents (disables the limit).
+        # Background tasks must have a positive timeout.
+        if params.timeout == 0:
+            return ToolError(
+                message="Background agent timeout must be greater than 0. "
+                "Use a positive value or omit the timeout parameter.",
+                brief="Invalid background timeout",
+            )
         try:
             tool_call = get_current_tool_call_or_none()
             if tool_call is None:

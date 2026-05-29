@@ -27,7 +27,12 @@ def create_openai_client(
     base_url: str | None,
     client_kwargs: Mapping[str, Any],
 ) -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=api_key, base_url=base_url, **dict(client_kwargs))
+    kwargs = dict(client_kwargs)
+    # Apply a sensible default HTTP timeout when the caller has not supplied one.
+    # Prevents indefinite hangs when the API server stops responding mid-request.
+    if "timeout" not in kwargs:
+        kwargs["timeout"] = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=30.0)
+    return AsyncOpenAI(api_key=api_key, base_url=base_url, **kwargs)
 
 
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:

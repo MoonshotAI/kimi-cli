@@ -118,12 +118,21 @@ class ReadMediaFile(CallableTool2[Params]):
                 image_size = _extract_image_size(data)
             case "video":
                 data = await path.read_bytes()
-                if (llm := self._runtime.llm) and isinstance(llm.chat_provider, Kimi):
-                    part = await llm.chat_provider.files.upload_video(
-                        data=data,
-                        mime_type=file_type.mime_type,
-                    )
-                    wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})
+                if llm := self._runtime.llm:
+                    chat_provider = llm.chat_provider
+                    from kimi_cli.llm import unwrap_kimi_provider
+
+                    chat_provider = unwrap_kimi_provider(chat_provider)
+                    if isinstance(chat_provider, Kimi):
+                        part = await chat_provider.files.upload_video(
+                            data=data,
+                            mime_type=file_type.mime_type,
+                        )
+                        wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})
+                    else:
+                        data_url = _to_data_url(file_type.mime_type, data)
+                        part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))
+                        wrapped = wrap_media_part(part, tag="video", attrs={"path": media_path})
                 else:
                     data_url = _to_data_url(file_type.mime_type, data)
                     part = VideoURLPart(video_url=VideoURLPart.VideoURL(url=data_url))

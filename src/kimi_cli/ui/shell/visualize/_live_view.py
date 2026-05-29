@@ -896,6 +896,12 @@ class _LiveView:
             case ToolResult() as tool_result:
                 block.finish_sub_tool_call(tool_result)
                 self.refresh_soon()
+            case TextPart() as text_part:
+                block.append_subagent_text(text_part.text)
+                self.refresh_soon()
+            case StepBegin() as step_begin:
+                block.set_subagent_step(step_begin.n)
+                self.refresh_soon()
             case _:
                 # ignore other events for now
                 # TODO: may need to handle multi-level nested subagents

@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from kosong.chat_provider import ChatProvider
 from pydantic import SecretStr
@@ -15,6 +15,7 @@ from kimi_cli.utils.logging import logger
 if TYPE_CHECKING:
     from kimi_cli.auth.oauth import OAuthManager
     from kimi_cli.config import Config, LLMModel, LLMProvider
+    from kimi_cli.llm_key_pool import APIKeyPool
 
 type ProviderType = Literal[
     "kimi",
@@ -97,13 +98,127 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
     return applied
 
 
-def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> dict[str, str]:
+def _kimi_default_headers(
+    provider: LLMProvider,
+    oauth: OAuthManager | None,
+    extra_headers: dict[str, str] | None = None,
+) -> dict[str, str]:
     headers = {"User-Agent": USER_AGENT}
     if oauth:
         headers.update(oauth.common_headers())
     if provider.custom_headers:
         headers.update(provider.custom_headers)
+    if extra_headers:
+        headers.update(extra_headers)
     return headers
+
+
+class KeyPoolKimi:
+    """Kimi provider wrapper that rotates API keys from a pool on retryable errors.
+
+    This is a thin wrapper applied *after* the normal ``Kimi`` instance is
+    created.  It forwards every attribute/method to the underlying provider
+    except ``on_retryable_error``, where it swaps in the next key from the
+    pool and recreates the HTTP client.
+    """
+
+    def __init__(self, provider: Any, key_pool: APIKeyPool) -> None:
+        self._provider = provider
+        self._key_pool = key_pool
+        # Forward all public attributes to the wrapped provider
+        self.name = provider.name
+        self.model = provider.model
+        self.stream = provider.stream
+
+    @property
+    def provider(self) -> Any:
+        return self._provider
+
+    @property
+    def model_name(self) -> str:
+        return self._provider.model_name
+
+    @property
+    def thinking_effort(self) -> Any:
+        return self._provider.thinking_effort
+
+    async def generate(self, *args: Any, **kwargs: Any) -> Any:
+        return await self._provider.generate(*args, **kwargs)
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        from kosong.chat_provider.openai_common import (
+            close_replaced_openai_client,
+            create_openai_client,
+        )
+
+        old_key = getattr(self._provider, "_api_key", None)
+        if old_key is not None:
+            self._key_pool.record_failure(old_key)
+
+        old_client = self._provider.client
+        new_key = self._key_pool.acquire()
+        self._provider.client = create_openai_client(
+            api_key=new_key,
+            base_url=self._provider._base_url,
+            client_kwargs=self._provider._client_kwargs,
+        )
+        self._provider._api_key = new_key
+        close_replaced_openai_client(old_client, client_kwargs=self._provider._client_kwargs)
+        logger.info(
+            "Rotated to next API key after retryable error: {error}",
+            error=error,
+        )
+        return True
+
+    def with_thinking(self, *args: Any, **kwargs: Any) -> KeyPoolKimi:
+        new_provider = self._provider.with_thinking(*args, **kwargs)
+        wrapped = KeyPoolKimi.__new__(KeyPoolKimi)
+        wrapped._provider = new_provider
+        wrapped._key_pool = self._key_pool
+        wrapped.name = new_provider.name
+        wrapped.model = new_provider.model
+        wrapped.stream = new_provider.stream
+        return wrapped
+
+    def with_generation_kwargs(self, *args: Any, **kwargs: Any) -> KeyPoolKimi:
+        new_provider = self._provider.with_generation_kwargs(*args, **kwargs)
+        wrapped = KeyPoolKimi.__new__(KeyPoolKimi)
+        wrapped._provider = new_provider
+        wrapped._key_pool = self._key_pool
+        wrapped.name = new_provider.name
+        wrapped.model = new_provider.model
+        wrapped.stream = new_provider.stream
+        return wrapped
+
+    def with_extra_body(self, *args: Any, **kwargs: Any) -> KeyPoolKimi:
+        new_provider = self._provider.with_extra_body(*args, **kwargs)
+        wrapped = KeyPoolKimi.__new__(KeyPoolKimi)
+        wrapped._provider = new_provider
+        wrapped._key_pool = self._key_pool
+        wrapped.name = new_provider.name
+        wrapped.model = new_provider.model
+        wrapped.stream = new_provider.stream
+        return wrapped
+
+    @property
+    def model_parameters(self) -> dict[str, Any]:
+        return self._provider.model_parameters
+
+    @property
+    def files(self) -> Any:
+        return self._provider.files
+
+
+def unwrap_kimi_provider(chat_provider: Any) -> Any:
+    """Unwrap a KeyPoolKimi wrapper to get the underlying Kimi provider.
+
+    Returns the original provider unchanged if it is not a KeyPoolKimi.
+    This centralises the unwrap logic so that new ``isinstance(..., Kimi)``
+    checks do not need to be duplicated across the codebase.
+    """
+    if isinstance(chat_provider, KeyPoolKimi):
+        return chat_provider.provider
+    return chat_provider
 
 
 def create_llm(
@@ -113,6 +228,9 @@ def create_llm(
     thinking: bool | None = None,
     session_id: str | None = None,
     oauth: OAuthManager | None = None,
+    api_key_override: str | None = None,
+    key_pool: APIKeyPool | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> LLM | None:
     if provider.type not in {"_echo", "_scripted_echo"} and (
         not provider.base_url or not model.model
@@ -123,11 +241,18 @@ def create_llm(
         )
         return None
 
-    resolved_api_key = (
-        oauth.resolve_api_key(provider.api_key, provider.oauth)
-        if oauth and provider.oauth
-        else provider.api_key.get_secret_value()
-    )
+    resolved_api_key = api_key_override
+    if resolved_api_key is None:
+        resolved_api_key = (
+            oauth.resolve_api_key(provider.api_key, provider.oauth)
+            if oauth and provider.oauth
+            else provider.api_key.get_secret_value()
+        )
+    else:
+        logger.info(
+            "Creating LLM with overridden API key for provider {provider_type}",
+            provider_type=provider.type,
+        )
 
     match provider.type:
         case "kimi":
@@ -137,8 +262,10 @@ def create_llm(
                 model=model.model,
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
-                default_headers=_kimi_default_headers(provider, oauth),
+                default_headers=_kimi_default_headers(provider, oauth, extra_headers),
             )
+            if key_pool is not None:
+                chat_provider = KeyPoolKimi(chat_provider, key_pool)
 
             gen_kwargs: Kimi.GenerationKwargs = {}
             if session_id:
@@ -229,7 +356,7 @@ def create_llm(
                     model=model.model,
                     base_url=provider.base_url,
                     api_key=resolved_api_key,
-                    default_headers=_kimi_default_headers(provider, oauth),
+                    default_headers=_kimi_default_headers(provider, oauth, extra_headers),
                 ),
                 chaos_config=ChaosConfig(
                     error_probability=0.8,
@@ -255,13 +382,21 @@ def create_llm(
     if thinking_on and provider.type == "kimi":
         from kosong.chat_provider.kimi import Kimi
 
-        if isinstance(chat_provider, Kimi) and (
+        _provider_for_check = unwrap_kimi_provider(chat_provider)
+
+        if isinstance(_provider_for_check, Kimi) and (
             thinking_keep := os.getenv("KIMI_MODEL_THINKING_KEEP")
         ):
-            chat_provider = chat_provider.with_extra_body({"thinking": {"keep": thinking_keep}})
+            # Both Kimi and KeyPoolKimi implement with_extra_body;
+            # pyright cannot narrow via _provider_for_check so we ignore.
+            chat_provider = chat_provider.with_extra_body(  # type: ignore[union-attr]
+                {"thinking": {"keep": thinking_keep}}
+            )
+
+    from typing import cast
 
     return LLM(
-        chat_provider=chat_provider,
+        chat_provider=cast(ChatProvider, chat_provider),
         max_context_size=model.max_context_size,
         capabilities=capabilities,
         model_config=model,
@@ -276,9 +411,32 @@ def clone_llm_with_model_alias(
     *,
     session_id: str,
     oauth: OAuthManager | None,
+    api_key_override: str | None = None,
+    key_pool: APIKeyPool | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> LLM | None:
     if model_alias is None:
-        return llm
+        # When a key pool is active we must still re-create the LLM so that
+        # each subagent gets its own API key (or key-pool wrapper).
+        if api_key_override is None and key_pool is None and extra_headers is None:
+            return llm
+        if llm is None or llm.provider_config is None or llm.model_config is None:
+            return llm
+        # Re-use the existing provider/model but swap the API key.
+        thinking: bool | None = None
+        effort = getattr(llm.chat_provider, "thinking_effort", None)
+        if effort is not None:
+            thinking = effort != "off"
+        return create_llm(
+            llm.provider_config,
+            llm.model_config,
+            thinking=thinking,
+            session_id=session_id,
+            oauth=oauth,
+            api_key_override=api_key_override,
+            key_pool=key_pool,
+            extra_headers=extra_headers,
+        )
     if model_alias not in config.models:
         raise KeyError(f"Unknown model alias: {model_alias}")
     model = config.models[model_alias]
@@ -294,6 +452,9 @@ def clone_llm_with_model_alias(
         thinking=thinking,
         session_id=session_id,
         oauth=oauth,
+        api_key_override=api_key_override,
+        key_pool=key_pool,
+        extra_headers=extra_headers,
     )
 
 

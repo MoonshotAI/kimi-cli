@@ -622,8 +622,12 @@ class WireServer:
 
         from kosong.chat_provider.kimi import Kimi
 
-        if isinstance(llm.chat_provider, Kimi):
-            kimi_client = llm.chat_provider.client
+        chat_provider = llm.chat_provider
+        from kimi_cli.llm import unwrap_kimi_provider
+
+        chat_provider = unwrap_kimi_provider(chat_provider)
+        if isinstance(chat_provider, Kimi):
+            kimi_client = chat_provider.client
             headers = dict(kimi_client._custom_headers)  # pyright: ignore[reportPrivateUsage]
             headers["User-Agent"] = f"{USER_AGENT}{ua_suffix}"
             kimi_client._custom_headers = headers  # pyright: ignore[reportPrivateUsage]

@@ -369,9 +369,10 @@ async def test_step_connection_error_recovery_only_retries_once(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status_code", [503, 504], ids=["503", "504"])
-async def test_step_status_error_still_uses_tenacity_retries(
+async def test_step_status_error_triggers_provider_recovery(
     runtime: Runtime, tmp_path: Path, status_code: int
 ) -> None:
+    """Retryable status errors should call on_retryable_error once per tenacity attempt."""
     runtime.config.loop_control.max_retries_per_step = 3
     provider = StatusErrorThenSuccessProvider(status_code=status_code)
     llm = LLM(
@@ -384,7 +385,10 @@ async def test_step_status_error_still_uses_tenacity_retries(
     await run_soul(soul, "trigger status retry", _drain_ui_messages, asyncio.Event())
 
     assert provider.generate_attempts == 3
-    assert provider.recovery_calls == 0
+    # First tenacity attempt: generate() fails → on_retryable_error called →
+    # re-enter with _status_retried=True → generate() fails again → re-raises.
+    # Second tenacity attempt: generate() succeeds.
+    assert provider.recovery_calls == 1
     assert context.history[-1].extract_text(" ").strip() == "status recovered"
 
 
@@ -421,6 +425,79 @@ async def test_step_retry_event_after_partial_stream(runtime: Runtime, tmp_path:
         ThinkPart(think="new attempt"),
         TextPart(text="done"),
     ]
+    assert context.history[-1].extract_text(" ").strip() == "done"
+
+
+class RecoveringPartialStreamProvider:
+    """Yields one part then raises a retryable status error on first generate,
+    then succeeds. Implements RetryableChatProvider so recovery is triggered."""
+
+    name = "recovering-partial-stream"
+
+    def __init__(self, status_code: int = 429) -> None:
+        self.generate_attempts = 0
+        self.recovery_calls = 0
+        self._status_code = status_code
+
+    @property
+    def model_name(self) -> str:
+        return "recovering-partial-stream"
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> StaticStreamedMessage | PartialThenErrorStreamedMessage:
+        self.generate_attempts += 1
+        if self.generate_attempts == 1:
+            return PartialThenErrorStreamedMessage(
+                [ThinkPart(think="old attempt")],
+                APIStatusError(self._status_code, f"Status {self._status_code}"),
+            )
+        return StaticStreamedMessage([ThinkPart(think="new attempt"), TextPart(text="done")])
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        self.recovery_calls += 1
+        return True
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return self
+
+
+@pytest.mark.asyncio
+async def test_step_mid_stream_status_error_triggers_recovery(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    """When a retryable status error occurs mid-stream, on_retryable_error is
+    called so that pooled providers can rotate keys before the tenacity retry."""
+    runtime.config.loop_control.max_retries_per_step = 2
+    provider = RecoveringPartialStreamProvider(status_code=429)
+    llm = LLM(
+        chat_provider=provider,
+        max_context_size=100_000,
+        capabilities=set(),
+    )
+    soul, context = _make_soul(runtime, llm, tmp_path)
+    seen: list[object] = []
+
+    await run_soul(
+        soul,
+        "trigger streamed status recovery",
+        lambda wire: _collect_ui_messages(wire, seen),
+        asyncio.Event(),
+    )
+
+    # First generate() returns a stream that errors mid-way.
+    # _run_with_connection_recovery catches the status error, calls
+    # on_retryable_error, re-enters, and the second generate() succeeds—all
+    # within the first tenacity attempt.  No StepRetry event is emitted.
+    assert provider.generate_attempts == 2
+    assert provider.recovery_calls == 1
     assert context.history[-1].extract_text(" ").strip() == "done"
 
 

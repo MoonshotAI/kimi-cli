@@ -1080,10 +1080,26 @@ class OAuthManager:
             return
         from kosong.chat_provider.kimi import Kimi
 
-        assert isinstance(runtime.llm.chat_provider, Kimi), "Expected Kimi chat provider"
+        from kimi_cli.llm import unwrap_kimi_provider
+
+        chat_provider = unwrap_kimi_provider(runtime.llm.chat_provider)
+
+        assert isinstance(chat_provider, Kimi), "Expected Kimi chat provider"
+
+        # When the chat provider is wrapped by KeyPoolKimi, the pool (not OAuth)
+        # manages the API key. Overwriting the client key here would silently
+        # replace the pooled key with the OAuth token, breaking rotation.
+        # We gate on the wrapper type rather than runtime.key_pool existence,
+        # because a user may have a key pool configured for subagents while the
+        # root runtime still uses an unwrapped OAuth-based provider.
+        from kimi_cli.llm import KeyPoolKimi
+
+        if isinstance(runtime.llm.chat_provider, KeyPoolKimi):
+            return
+
         provider = runtime.config.providers.get(provider_key)
         fallback_api_key = provider.api_key.get_secret_value() if provider else ""
-        runtime.llm.chat_provider.client.api_key = access_token or fallback_api_key
+        chat_provider.client.api_key = access_token or fallback_api_key
 
 
 if __name__ == "__main__":

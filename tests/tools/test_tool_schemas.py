@@ -55,11 +55,11 @@ def test_agent_params_schema(agent_tool: AgentTool):
                 },
                 "timeout": {
                     "anyOf": [
-                        {"maximum": 3600, "minimum": 30, "type": "integer"},
+                        {"maximum": 3600, "minimum": 0, "type": "integer"},
                         {"type": "null"},
                     ],
                     "default": None,
-                    "description": "Timeout in seconds for the agent task. Foreground: no default timeout (runs until completion), max 3600s (1hr). Background: default from config (15min), max 3600s (1hr). The agent is stopped if it exceeds this limit.",
+                    "description": "Timeout in seconds for the agent task. Foreground: defaults to 300s (5min) unless overridden by KIMI_FOREGROUND_AGENT_TIMEOUT. Background: default from config (15min), max 3600s (1hr). The agent is stopped if it exceeds this limit.",
                 },
             },
             "required": ["description", "prompt"],

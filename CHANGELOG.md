@@ -11,6 +11,14 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Add foreground subagent concurrency limit capped at 80% of available API keys or background task slots — prevents concurrent subagents from exhausting a single key's rate-limit quota
+- Core: Change default foreground subagent timeout from unlimited to 300 seconds, with optional override via `KIMI_FOREGROUND_AGENT_TIMEOUT` environment variable
+- Tool: Agent tool now distributes distinct API keys to concurrent subagents via round-robin when multiple keys are configured (`KIMI_API_KEY`, `KIMI_API_KEY_1`, …)
+- LLM: Add `APIKeyPool` for collecting and rotating multiple API keys from environment variables
+- LLM: Add `KeyPoolKimi` provider wrapper that automatically swaps to the next key on retryable errors (429, 500, 503)
+- Shell: Show subagent step counter, elapsed time, and live text preview in the shell UI
+- Auth: Fix OAuth token refresh crash when the LLM provider is wrapped by `KeyPoolKimi`
+
 ## 1.45.0 (2026-05-26)
 
 - Shell: `/clear` is now an alias for `/new` — both commands start a new session; previously `/clear` only cleared context without creating a new session
