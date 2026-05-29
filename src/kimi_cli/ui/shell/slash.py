@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any, cast
 
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
@@ -63,6 +63,30 @@ _KEYBOARD_SHORTCUTS = [
 ]
 
 
+def _unique_commands(commands: Iterable[SlashCommand[Any]]) -> list[SlashCommand[Any]]:
+    unique: list[SlashCommand[Any]] = []
+    seen: set[str] = set()
+    for cmd in commands:
+        if cmd.name in seen:
+            continue
+        unique.append(cmd)
+        seen.add(cmd.name)
+    return unique
+
+
+def _expanded_command_items(commands: Iterable[SlashCommand[Any]]) -> list[tuple[str, str]]:
+    items: list[tuple[str, str]] = []
+    for cmd in sorted(_unique_commands(commands), key=lambda c: c.name):
+        seen = {cmd.name}
+        items.append((cmd.display_name(cmd.name), cmd.description))
+        for alias in cmd.aliases:
+            if alias in seen:
+                continue
+            items.append((cmd.display_name(alias), cmd.description))
+            seen.add(alias)
+    return items
+
+
 @registry.command(aliases=["h", "?"])
 @shell_mode_registry.command(aliases=["h", "?"])
 def help(app: Shell, args: str):
@@ -115,7 +139,7 @@ def help(app: Shell, args: str):
     renderables.append(
         section(
             "Slash commands",
-            [(c.slash_name(), c.description) for c in sorted(commands, key=lambda c: c.name)],
+            _expanded_command_items(commands),
             "blue",
         )
     )
@@ -123,7 +147,7 @@ def help(app: Shell, args: str):
         renderables.append(
             section(
                 "Skills",
-                [(c.slash_name(), c.description) for c in sorted(skills, key=lambda c: c.name)],
+                _expanded_command_items(skills),
                 "cyan",
             )
         )
@@ -510,21 +534,8 @@ async def feedback(app: Shell, args: str):
             _fallback_to_issues()
 
 
-@registry.command(aliases=["reset"])
-async def clear(app: Shell, args: str):
-    """Clear the context"""
-    if ensure_kimi_soul(app) is None:
-        return
-    from kimi_cli.telemetry import track
-
-    track("clear")
-    await app.run_soul_command("/clear")
-    raise Reload()
-
-
-@registry.command
-async def new(app: Shell, args: str):
-    """Start a new session"""
+async def _do_new_session(app: Shell, args: str) -> None:
+    """Shared implementation for /new and /clear."""
     soul = ensure_kimi_soul(app)
     if soul is None:
         return
@@ -541,6 +552,18 @@ async def new(app: Shell, args: str):
     track("session_new")
     console.print("[green]New session created. Switching...[/green]")
     raise Reload(session_id=session.id)
+
+
+@registry.command(aliases=["reset"])
+async def clear(app: Shell, args: str) -> None:
+    """Start a new session (alias for /new)"""
+    await _do_new_session(app, args)
+
+
+@registry.command
+async def new(app: Shell, args: str) -> None:
+    """Start a new session"""
+    await _do_new_session(app, args)
 
 
 @registry.command(name="title", aliases=["rename"])

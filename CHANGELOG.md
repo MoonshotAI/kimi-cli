@@ -11,6 +11,18 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.45.0 (2026-05-26)
+
+- Shell: `/clear` is now an alias for `/new` — both commands start a new session; previously `/clear` only cleared context without creating a new session
+- Shell: Fix misleading "Quota exceeded" prefix shown on every 403 error
+
+## 1.44.0 (2026-05-13)
+
+- Shell: Add slash command alias resolution — aliases such as `/h`, `?`, and `status` now resolve to their canonical commands (`/help`, `/usage`); the completer and help output display alias matches as `/name (alias)` for clarity
+- Shell: Fix `/usage` alias registration — the alias was incorrectly stored as `"/status"` instead of `"status"`, causing alias lookup to fail
+
+## 1.43.0 (2026-05-12)
+
 - Security: Bump pillow to 12.2.0 to address CVE-2026-25990 (out-of-bounds write when loading PSD images); unblocks installs in environments that gate on the older pinned version
 - Shell: Fix missing visual spacing in the shell UI — add blank lines after user input echoes, content blocks, tool call results, notifications, error panels, and steer inputs so consecutive elements no longer collapse together
 - Shell: Restore markdown link highlighting (bright blue underlined text and cyan underlined URLs) and add underline separators to h2-h6 headings; adjust table rendering to use square box borders with visible edges

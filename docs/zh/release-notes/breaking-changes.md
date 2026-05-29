@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.43.0
+
 ### MCP OAuth token 缓存迁移到 `~/.kimi/mcp-oauth/`
 
 Kimi Code CLI 现在为 MCP 服务器使用 FastMCP 3 的持久化 OAuth 存储 API，并将 MCP OAuth token 存储在 `~/.kimi/mcp-oauth/`。旧 FastMCP 2.x 缓存位置中的 token 不会自动迁移。
