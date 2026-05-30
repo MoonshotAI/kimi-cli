@@ -405,3 +405,113 @@ async def test_question_delegate_expands_placeholders_on_submit() -> None:
     assert expand_calls[0] == "prefix [Pasted text #1 +19 lines]"
     assert len(submitted_texts) == 1
     assert full_text in submitted_texts[0]
+
+
+async def test_question_delegate_expands_persisted_pasted_text() -> None:
+    """Cache-backed pasted-text tokens submitted via the question 'Other' field
+    must reach the model as full text.
+
+    The modal wires the manager's ``expand_for_editor`` callback. Using
+    ``serialize_for_history`` would leave persisted tokens folded and send
+    ``[Pasted text:...]`` to the model verbatim."""
+    from unittest.mock import patch
+
+    from kimi_cli.ui.shell.placeholders import (
+        PromptPlaceholderManager,
+        build_persisted_pasted_text_placeholder,
+    )
+    from kimi_cli.ui.shell.visualize import QuestionPromptDelegate, QuestionRequestPanel
+    from kimi_cli.wire.types import QuestionItem, QuestionRequest
+
+    full_text = "\n".join(f"line{i}" for i in range(1, 20))
+    cache = _FakeAttachmentCache(None)
+    cached = cache.store_pasted_text(full_text)
+    assert cached is not None
+    manager = PromptPlaceholderManager(cache)
+    token = build_persisted_pasted_text_placeholder(cached.attachment_id, full_text)
+
+    # Only expand_for_editor restores the payload; serialize_for_history keeps
+    # the compact token (correct for history, wrong for modal submission).
+    assert token == "[Pasted text:paste123.txt +19 lines]"
+    assert manager.serialize_for_history(token) == token
+    assert manager.expand_for_editor(token) == full_text
+
+    question = QuestionItem(question="Review?", options=[], other_label="Revise")
+    request = QuestionRequest(id="q1", tool_call_id="tc1", questions=[question])
+    panel = QuestionRequestPanel(request)
+    delegate = QuestionPromptDelegate(
+        panel,
+        on_advance=lambda: None,
+        on_invalidate=lambda: None,
+        text_expander=manager.expand_for_editor,
+    )
+    panel.select_index(len(panel._options) - 1)
+
+    submitted_texts: list[str] = []
+    original_submit_other = panel.submit_other
+
+    def capture_submit_other(text: str) -> bool:
+        submitted_texts.append(text)
+        return original_submit_other(text)
+
+    buffer = _DummyBuffer()
+    buffer.text = f"prefix {token}"  # type: ignore[attr-defined]
+    buffer.set_document = lambda *a, **kw: None  # type: ignore[attr-defined]
+
+    with patch.object(panel, "submit_other", capture_submit_other):
+        delegate._submit_other_input(cast("Buffer", buffer))
+
+    assert len(submitted_texts) == 1
+    assert full_text in submitted_texts[0]
+    assert token not in submitted_texts[0]
+
+
+async def test_approval_delegate_expands_persisted_pasted_text_feedback() -> None:
+    """Cache-backed pasted-text tokens typed into reject feedback must be
+    expanded to full text before reaching the model."""
+    from prompt_toolkit.buffer import Buffer as PTBuffer
+    from prompt_toolkit.document import Document
+
+    from kimi_cli.ui.shell.placeholders import (
+        PromptPlaceholderManager,
+        build_persisted_pasted_text_placeholder,
+    )
+    from kimi_cli.ui.shell.visualize import ApprovalPromptDelegate
+    from kimi_cli.wire.types import ApprovalRequest
+
+    full_text = "\n".join(f"line{i}" for i in range(1, 20))
+    cache = _FakeAttachmentCache(None)
+    cached = cache.store_pasted_text(full_text)
+    assert cached is not None
+    manager = PromptPlaceholderManager(cache)
+    token = build_persisted_pasted_text_placeholder(cached.attachment_id, full_text)
+    assert token == "[Pasted text:paste123.txt +19 lines]"
+    assert manager.serialize_for_history(token) == token
+    assert manager.expand_for_editor(token) == full_text
+
+    request = ApprovalRequest(
+        id="req-1",
+        tool_call_id="call-1",
+        sender="Shell",
+        action="run command",
+        description="echo hello",
+    )
+    buf = PTBuffer()
+    responses: list[tuple[str, str, str]] = []
+    delegate = ApprovalPromptDelegate(
+        request,
+        on_response=lambda req, resp, feedback="": responses.append((req.id, resp, feedback)),
+        buffer_state_provider=lambda: (buf.text, buf.cursor_position),
+        text_expander=manager.expand_for_editor,
+    )
+    delegate._panel.selected_index = 3  # "Reject + feedback" enables inline input
+
+    feedback = f"please fix {token}"
+    buf.set_document(Document(text=feedback, cursor_position=len(feedback)), bypass_readonly=True)
+    event = type("_Event", (), {"current_buffer": buf})()
+    delegate.handle_running_prompt_key("enter", event)
+
+    assert len(responses) == 1
+    assert responses[0][1] == "reject"
+    assert full_text in responses[0][2]
+    assert token not in responses[0][2]
