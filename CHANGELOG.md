@@ -13,6 +13,13 @@ Only write entries that are worth mentioning to users.
 
 - Shell: Long pasted-text placeholders are now persisted in the prompt cache, so history recall, a restarted prompt session, or pasting into approval/question prompt feedback sends the original pasted content instead of the literal `[Pasted text ...]` token
 
+## 1.46.0 (2026-05-28)
+
+- Shell: Support styled text in welcome tips
+- ACP: Replay session history on load
+- Core: Prevent TTY hang on exit
+- Core: Close MCP connections during shutdown
+
 ## 1.45.0 (2026-05-26)
 
 - Shell: `/clear` is now an alias for `/new` — both commands start a new session; previously `/clear` only cleared context without creating a new session
