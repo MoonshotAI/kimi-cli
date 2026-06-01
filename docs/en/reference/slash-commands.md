@@ -128,7 +128,7 @@ List all sessions in the current working directory, allowing switching to other 
 
 Alias: `/resume`
 
-Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel.
+Use arrow keys to select a session, press `Enter` to confirm switch, press `Ctrl-C` to cancel. Press `Ctrl-A` to toggle between showing sessions for the current directory only or across all directories.
 
 ### `/title`
 
@@ -216,8 +216,8 @@ Execute a specific flow skill. Flow skills embed an Agent Flow diagram in `SKILL
 
 For example:
 
-- `/flow:code-review`: Execute code review workflow
-- `/flow:release`: Execute release workflow
+- `/flow:pull-request`: Execute the pull-request creation workflow
+- `/flow:code-review`: Execute a code review workflow
 
 ::: tip
 Flow skills can also be invoked via `/skill:<name>`, which loads the content as a standard skill without automatically executing the flow.
@@ -241,6 +241,20 @@ Directories already within the working directory do not need to be added, as the
 :::
 
 ## Others
+
+### `/btw`
+
+Ask a quick side question without interrupting the main conversation. Available both when idle and during streaming.
+
+Usage: `/btw <question>`
+
+The side question runs in an isolated context: it sees the conversation history but does not modify it. Tool calls are disabled — the response is text-only, based on the model's existing knowledge of the conversation.
+
+During streaming, the response appears in a scrollable modal panel overlaying the prompt area. Use `↑`/`↓` to scroll, `Escape` to dismiss.
+
+::: tip
+This command is only available in interactive shell mode. Wire and ACP clients can use the `BtwBegin`/`BtwEnd` wire events with the `run_side_question()` API.
+:::
 
 ### `/init`
 
@@ -290,15 +304,27 @@ Background tasks are started by the AI using the `Shell` tool with `run_in_backg
 
 ### `/yolo`
 
-Toggle YOLO mode. When enabled, all operations are automatically approved and a yellow YOLO badge appears in the status bar; enter the command again to disable.
+Toggle YOLO mode. When enabled, all tool calls are automatically approved and a yellow YOLO badge appears in the status bar; enter the command again to disable. YOLO only removes approval friction — the agent can still reach you via `AskUserQuestion`. `/yolo` and `/afk` are independent.
 
 ::: warning Note
-YOLO mode skips all confirmations. Make sure you understand the potential risks.
+YOLO mode skips all approval confirmations. Make sure you understand the potential risks.
+:::
+
+### `/afk`
+
+Toggle AFK (away-from-keyboard) mode. When enabled, AFK auto-approves all tool calls and additionally auto-dismisses any `AskUserQuestion` the agent sends — so the agent makes its own judgment instead of waiting for a reply that will not come. An orange AFK badge appears in the status bar independently of the YOLO badge; enter the command again to disable.
+
+::: warning Note
+AFK skips all approval confirmations and removes the clarifying-question safety net. Only use when you genuinely cannot be at the terminal.
 :::
 
 ### `/web`
 
 Switch to Web UI. Kimi Code CLI will start a Web UI server and open the current session in your browser, allowing you to continue the conversation in the Web UI. See [Web UI](./kimi-web.md) for details.
+
+### `/vis`
+
+Switch to the Agent Tracing Visualizer. Kimi Code CLI will start the visualizer server and open the current session's tracing view in the browser, where you can inspect Wire event timelines, context messages, and usage statistics. See [Agent Tracing Visualizer](./kimi-vis.md) for details.
 
 ## Command completion
 

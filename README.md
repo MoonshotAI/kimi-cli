@@ -8,6 +8,9 @@
 
 [Kimi Code](https://www.kimi.com/code/) | [Documentation](https://moonshotai.github.io/kimi-cli/en/) | [文档](https://moonshotai.github.io/kimi-cli/zh/)
 
+> [!IMPORTANT]
+> **Kimi Code CLI is evolving into [Kimi Code](https://github.com/MoonshotAI/kimi-code)** — the next-generation terminal AI agent from the same team. Installing Kimi Code automatically migrates your configuration and sessions. This project will be gradually wound down; the docs and existing installations remain available.
+
 Kimi Code CLI is an AI agent that runs in the terminal, helping you complete software development tasks and terminal operations. It can read and edit code, execute shell commands, search and fetch web pages, and autonomously plan and adjust actions during execution.
 
 ## Getting Started

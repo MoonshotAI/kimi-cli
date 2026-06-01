@@ -113,15 +113,23 @@ class BackgroundAgentRunner:
             self._manager._mark_task_failed(self._task_id, str(exc))
             output.error(str(exc))
         finally:
-            for task in list(self._approval_update_tasks):
-                task.cancel()
-            for task in list(self._approval_update_tasks):
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
-            self._runtime.approval_runtime.unsubscribe(approval_subscription)
-            self._runtime.approval_runtime.cancel_by_source("background_agent", self._task_id)
-            reset_current_approval_source(token)
-            self._manager._live_agent_tasks.pop(self._task_id, None)
+            # Whatever happens in approval cleanup below, the dict pop must
+            # run — it is the *only* place that removes this task from
+            # _live_agent_tasks, and BackgroundTaskManager.kill() relies on
+            # that strong reference staying valid until cancellation has
+            # finished propagating. If we let an exception in the cleanup
+            # block skip the pop, the entry leaks forever.
+            try:
+                for task in list(self._approval_update_tasks):
+                    task.cancel()
+                for task in list(self._approval_update_tasks):
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+                self._runtime.approval_runtime.unsubscribe(approval_subscription)
+                self._runtime.approval_runtime.cancel_by_source("background_agent", self._task_id)
+                reset_current_approval_source(token)
+            finally:
+                self._manager._live_agent_tasks.pop(self._task_id, None)
 
     async def _run_core(self, output: SubagentOutputWriter) -> None:
         assert self._runtime.subagent_store is not None

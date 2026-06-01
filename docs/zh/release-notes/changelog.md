@@ -4,6 +4,150 @@
 
 ## 未发布
 
+- Shell：工具执行失败时显示完整错误信息
+## 1.46.0 (2026-05-28)
+
+- Shell：欢迎提示支持样式化文本
+- ACP：加载时回放会话历史
+- Core：修复退出时 TTY 挂起的问题
+- Core：在关闭期间断开 MCP 连接
+
+## 1.45.0 (2026-05-26)
+
+- Shell：`/clear` 现在成为 `/new` 的别名——两者都会启动新会话；此前 `/clear` 仅清空上下文而不创建新会话
+- Shell：修复 403 响应一律显示 "Quota exceeded" 前缀的问题
+
+## 1.44.0 (2026-05-13)
+
+- Shell：新增斜杠命令别名解析——别名（如 `/h`、`?`、`status`）现在能正确解析到对应的正式命令（`/help`、`/usage`）；补全器和帮助输出会将别名匹配项显示为 `/name (alias)`，方便识别
+- Shell：修复 `/usage` 的别名注册——别名原先被错误地登记为 `"/status"` 而非 `"status"`，导致别名查找失败
+
+## 1.43.0 (2026-05-12)
+
+- Security：将 pillow 升级到 12.2.0 以修复 CVE-2026-25990（加载 PSD 图像时存在越界写入）；解除在依赖审查严格的环境下因旧版本被阻断而无法安装的限制
+- Shell：修复终端界面中多处视觉间距丢失的问题——在用户输入回显、内容块、工具调用结果、通知、错误面板和 steer 输入等场景后补充空行，避免相邻元素挤在一起
+- Shell：恢复 Markdown 链接高亮样式（链接文本为亮蓝色下划线，URL 为青色下划线），并为 h2-h6 标题添加下划线分隔符；调整表格渲染为带可见边框的方形样式
+- Core：后台任务完成时的系统通知现在包含完成时间戳和运行时长，通知 payload 中新增 `finished_at` 和 `duration_s` 字段，方便追踪
+- MCP：将 MCP 客户端栈升级到 FastMCP 3.2.4，避免 FastMCP OAuth 启动路径打印 Authlib 弃用警告
+- MCP：使用 FastMCP 3 的持久化存储 API，将 OAuth MCP token 存储在 `~/.kimi/mcp-oauth/`；已有 OAuth MCP 授权的用户升级后可能需要重新运行一次 `kimi mcp auth <name>`
+
+## 1.42.0 (2026-05-11)
+
+- Shell：把 Windows 上的 Shell 后端从 PowerShell 切换到 Git Bash——Shell 工具现在通过 `bash.exe`（POSIX 语义）执行命令，而不再使用 `powershell.exe`。Windows 用户能使用与 Linux/macOS 一致的 Unix 风格语法（`&&`、`||`、`|`、`/dev/null`、`grep`、`sed` 等）。**需要先安装 Git for Windows**：kimi-cli 按以下顺序查找 `bash.exe`：环境变量 `KIMI_CLI_GIT_BASH_PATH` → `where.exe git` → 标准安装路径（`C:\Program Files\Git\bin\bash.exe`）；如果都找不到，启动时打印安装提示并退出
+- Shell：防御 Windows 上模型偶尔幻觉出的 CMD 风格 `2>nul` 重定向——在命令进入 git-bash 前自动改写为 `2>/dev/null`；如果不防御，git-bash 会真的创建一个名为 `nul` 的文件（Windows 保留设备名），破坏 `git add .` 和 `git clone`。该改写仅在 Windows 上生效；Linux/macOS 上 `>nul` 是合法的写入到名为 `nul` 文件的重定向，保持原样
+- File：`ReadFile`、`WriteFile`、`StrReplaceFile`、`Glob`、`Grep` 在 Windows 上接受 POSIX 形式的路径——除原生 Windows 路径外，这些工具现在能识别 `/c/Users/foo`（Git Bash 形式）、`/cygdrive/c/Users/foo`（Cygwin 形式）和 `\\server\share`（UNC 形式），并在文件系统操作前自动转换为原生形式
+- Shell：在 LLM 步骤重试时清除已流式输出的不完整内容——以前，如果某个步骤在流式输出中途失败（例如触发速率限制或服务器错误），被中断尝试所产生的未完成文本和未结束的工具调用块会留在屏幕上，并与新尝试的输出混在一起。现在 Shell 界面会丢弃这部分不完整状态，并打印一条重试横幅，显示失败原因、尝试次数和等待时间；Print 模式也会在重试时丢弃已缓冲的 Assistant 消息
+- Wire：协议版本升级到 1.10——新增 `StepRetry` 事件，在步骤尝试失败并即将重试时发出，携带尝试次数、等待时间和错误详情
+- Core：不再向子代理注入 plan 模式和 afk 模式的工作流 prompt——子代理会共享会话级模式状态以支持持久化和恢复，但其 YAML 通常不包含 `EnterPlanMode`、`ExitPlanMode`、`AskUserQuestion` 等 root 工作流工具。现在这些 prompt injection 只注入给 root agent。Plan 模式下工具层的只读检查保持不变，行为兼容性不受影响
+
+## 1.41.0 (2026-04-30)
+
+- Plugin：支持直接从 `.zip` URL 安装插件——`kimi plugin install` 现在可以接受以 `.zip` 结尾的 HTTP(S) URL（例如 GitHub/GitLab 的 archive 链接 `.../archive/refs/heads/main.zip`），下载后解压再解析 `plugin.json`，与原有的 git URL、本地目录、本地 zip 文件三种来源并列
+- Shell：在无显示环境的 Linux（如 SSH 远程）上启用剪贴板图片粘贴——当 pyperclip 不可用（例如 DISPLAY 未设置）时，Ctrl-V 现在会回退到 xclip 或 wl-paste，使远程剪贴板桥接仍能注入图片；同时防止 pyperclip 失效时内置剪贴板快捷键造成 UI 崩溃
+
+## 1.40.0 (2026-04-28)
+
+- Core：修复 `--yolo` 模式意外阻止模型调用 `AskUserQuestion` 的问题——以前 yolo 会注入一段 system reminder，告诉模型当前处于“非交互模式”，不能向用户提问；同时 ask-user 工具在 yolo 下也会自动 dismiss。这两处都是错的：yolo 只绕过权限审批，并不意味着“用户已离开”。现在 yolo 不再向模型注入指导；用户仍可通过 `AskUserQuestion` 触达
+- CLI：把权限审批绕过和无人值守执行拆分为两个正交模式——`--yolo` 表示用户仍在终端前、但绕过权限审批；`--afk` / `/afk` 表示 away-from-keyboard：`AskUserQuestion` 会被自动 dismiss，审批也会自动处理。`--print` 现在使用 runtime AFK 行为而不是 yolo，更符合它的非交互执行模型。状态栏独立显示 `yolo` 和 `afk`，`/yolo` 与 `/afk` 各自切换自身的 flag，互不干扰
+- Config：由于 yolo 不再向模型注入指导，`skip_yolo_prompt_injection` 替换为 `skip_afk_prompt_injection`。旧配置键如果仍存在会被忽略
+- Shell：修复 afk 开启时 `/yolo` 切换产生误导性 UI 文案的问题——以前 `/yolo` 读的是 yolo 和 afk 合并后的自动审批状态，afk 开着时按 `/yolo` 会说“现在需要审批”，但 afk 仍会自动处理审批。现在 `/yolo` 只读写 yolo 自身的 flag，不碰 afk
+- Web：修复 AI 标题生成在用户已手动重命名后才返回时覆盖手动标题的问题——最终写入前会重新读取状态，若另一请求已将 `title_generated` 标记为完成，则尊重新标题不再覆盖
+- Web：会话重命名、归档、取消归档、生成标题失败时弹出 toast 提示，而不仅仅是记录到 console
+- Web：折叠工具详情后仍保留工具媒体预览——工具返回的图片和视频现在渲染在工具卡片下方，而不是折叠详情区域内部，因此折叠工具后预览缩略图仍然可见
+- Kosong：修复 Kimi 供应商在 OAuth 令牌刷新后仍使用过期的 API 密钥的问题——`on_retryable_error` 现在从当前 client 读取 `api_key`，而不是缓存的 `_api_key`，因此在可重试错误后重建 client 时会保留通过 `client.api_key` 应用的 OAuth 令牌刷新
+- Core：修复审批请求 5 分钟自动超时并被误报为 `Rejected by user` 的问题；现在活跃的前台和子 Agent 审批请求都会无限等待用户响应
+- Shell：修复 `/usage` 剩余额度渲染错误——进度条、告警颜色和 `% left` 文案现在都统一基于剩余额度比例计算，剩余额度充足时显示为绿色满格，接近耗尽时显示为黄色或红色
+- Shell：在提示框状态栏显示当前正在运行的后台 Agent 任务数——原有的 `⚙ bash: N` 徽章只统计后台 Shell 任务，把后台 Agent 子代理过滤掉了，所以多个子代理同时在跑时提示框看起来像空闲，用户无法判断工作是否还在进行；现在状态栏会渲染 `⚙ bash: N` 与 `⚙ agent: N` 两个相互独立的徽章（任一计数为 0 时自动隐藏），终端太窄无法同时容纳两者时优先丢弃 agent 徽章
+- Auth：修复 OAuth 用户 access token 过期时托管模型列表刷新静默失败的问题——后台 `/models` 同步任务现在会检测 401 响应，强制进行 OAuth token 刷新并用刷新后的 token 重试；如果刷新本身失败或刷新后的 token 仍被拒绝，则回退到最初配置的静态 API 密钥，而不是跳过该 provider
+- Core：修复连接恢复后重试返回 401 时未能触发 OAuth 刷新的问题——在 `APIConnectionError` 或 `APITimeoutError` 后重建 HTTP 客户端时，重试现在会重新进入完整恢复路径，使得后续的 401 能正确刷新 OAuth token，而不是作为不可恢复的错误直接抛给用户
+- Shell：在 transcript 中回显 `/skill:*` 和 `/flow:*` 输入，工作流命令按下回车后不再消失；`/usage`、`/model` 等操作类斜杠命令仍然保持隐藏
+- Core：将默认 `max_steps_per_turn` 从 500 提升到 1000，长任务更不容易撞到单轮步数上限
+
+## 1.39.0 (2026-04-24)
+
+- Skill：修复项目级 Skill 被忽略、用户级 Skill 在同名冲突时静默获胜的问题——系统提示现在会把发现到的 Skill 按 `### Project` / `### User` / `### Extra` / `### Built-in` 四个分组呈现，让模型能分辨出每个 Skill 来自哪一层；当同一 Skill 名称同时存在于多个作用域时，越具体的作用域优先（Project > User > Extra > Built-in），项目自身的 `.kimi/skills/foo` 或 `.claude/skills/foo` 现在能正确覆盖用户级或内置的同名 `foo`，而不是被它们覆盖
+- Skill：除了标准的 `<name>/SKILL.md` 子目录结构之外，现在也会识别 Skills 目录下的扁平 `<name>.md` 单文件 Skill——便于将扁平 Markdown 集合迁移到 Skills 目录；`name` 默认取文件名去掉 `.md` 后的部分（frontmatter 里显式写了 `name:` 时以 frontmatter 为准），描述解析与子目录形式统一走同一条三级链（frontmatter `description:` → 正文第一个非空行，超过 240 字符会截断 → `"No description provided."` 兜底）；当同目录下扁平 `.md` 和子目录形式同名时，以子目录为准，并记录一条警告日志
+- Skill：新增 `extra_skill_dirs` 配置项，用于在内置 / 用户级 / 项目级自动发现的基础上追加自定义 Skills 目录——每一项可以是绝对路径、`~` 前缀路径（会按 `$HOME` 展开），或相对于项目根的路径（即 `work_dir` 向上第一个包含 `.git` 的目录，不是当前工作目录）；不存在的条目会被静默跳过，同一路径的软链接或带尾部斜杠的写法会被 canonicalize 归并为一条根，避免同一目录在系统提示里重复出现
+- Skill：强化 Skill 发现对 `is_dir` / `iterdir` 抛出 `OSError` 的容错（例如 `extra_skill_dirs` 指向一个权限受限的目录）——受影响的条目会被记录并跳过，不会让整轮 Skill 发现失败中断
+- Core：修复 DeepSeek V4（以及其它走 `openai_legacy` 的 OpenAI 兼容 Thinking 模式后端）在思考轮次后紧跟工具调用时，被 API 以 400 `The reasoning_content in the thinking mode must be passed back to the API` 拒绝的问题——`openai_legacy` 供应商现在默认 `reasoning_key = "reasoning_content"`，模型响应中的推理内容会被正确存入历史，并在后续轮次自动回传给 API。同时给 `LLMProvider` 新增可选字段 `reasoning_key`，便于覆盖字段名（例如非标网关使用的 `"reasoning"`）或设置为 `""` 完全关闭推理内容回传
+- Core：新增 `skip_yolo_prompt_injection` 配置项，用于抑制 yolo 模式下注入的系统提示词——基于 `KimiSoul` 构建自定义应用且不需要该提示时很有用
+- Kimi：新增环境变量 `KIMI_MODEL_THINKING_KEEP`，将其值原样作为 `thinking.keep` 字段发送给 Moonshot API，用于启用 Preserved Thinking（例如 `export KIMI_MODEL_THINKING_KEEP=all` 可让模型在多轮之间保留历史 `reasoning_content`）；仅对支持 Preserved Thinking 的 Moonshot 模型（如 `kimi-k2.6` / `kimi-k2-thinking`）生效，未设置或空字符串时请求体不携带该字段、等同当前默认行为，且仅在当前模型真正处于 Thinking 模式时才注入，以避免 API 收到只有 `thinking.keep` 而缺少 `thinking.type` 的无效请求体。注意 `keep=all` 会因为重新发送历史推理内容而显著增加输入 token 与 API 费用
+- Kosong：修复 `Kimi.with_extra_body` 在后续调用新增其它 `thinking.*` 字段时静默丢掉已有 `thinking.type` 的问题——`thinking` 子对象现在按字段合并，而不是被整体浅覆盖，使得 `with_thinking(...)` 与 `with_extra_body({"thinking": {...}})` 组合使用时两次设置的字段都能保留
+- Kosong：修复 Kimi provider 在 `tool_calls` 旁发送空 `content` 导致 Moonshot API 返回 400 "text content is empty" 错误的问题。当 Assistant 消息带有工具调用且可见内容实际为空（无文本或仅包含空白 / think 部分）时，现在会完全省略 `content` 字段
+- Shell：修复审批请求反馈文本输入的光标渲染问题——光标块现在根据实际光标位置正确渲染，不再始终固定在行尾；当光标位于文本中间时，光标所在字符会以反色显示（模拟终端原生块光标效果）
+- Kosong：修复接入某些 MCP 服务端（如 JetBrains Rider MCP 的 `truncateMode`）时，Moonshot API 以 `400 At path 'properties.X': type is not defined` 拒绝每次请求导致会话完全无法使用的问题——这些 MCP 工具的参数 schema 里有仅声明 `enum`/`const` 或根本没有类型提示的属性，符合 JSON Schema 规范但过不了 Moonshot 的严格校验；现在 Kimi 供应商会在发送前为每个工具 schema 补齐 JSON Schema `type`（尽量从 `enum`/`const` 值推断，否则默认 `"string"`），OpenAI 和 Anthropic 路径不受影响
+- Skill：项目级 Skill 发现现在会先向上查找最近的 `.git` 祖先目录，再查 `.kimi/skills` / `.claude/skills` / `.codex/skills` / `.agents/skills`，这样即使从子目录（例如 monorepo 的某个 package 内部）启动 kimi-cli，也能正确识别仓库根目录下定义的 Skills；找不到 `.git` 标记时，回退到工作目录本身，避免误入无关的上层目录
+- Skill：`merge_all_available_skills` 的默认值从 `false` 改为 `true`。kimi-cli 现在默认会合并用户级和项目级所有已存在的品牌 Skills 目录（`.kimi/skills`、`.claude/skills`、`.codex/skills`），而不是仅使用找到的第一个——让同时拥有多个品牌目录（例如同时保留 `~/.kimi/skills` 和 `~/.claude/skills`）的用户开箱即看到所有 Skills。**行为变更**：依赖旧默认（仅取第一个）的用户可通过在配置中显式设置 `merge_all_available_skills = false` 恢复旧行为。
+
+## 1.38.0 (2026-04-22)
+- Shell：修复 approval 弹窗超时后被误报为 `Rejected by user` 的问题——300 秒安全超时后，工具调用会以 `Rejected: approval timed out` 拒绝，让离开电脑一段时间后回来的用户能分辨出这是超时而非自己的手动拒绝。经常长时间离开的话可以加 `--yolo`/`-y` 自动批准工具调用
+- Auth：修复 OAuth 用户因并发实例的 refresh token 轮换竞态被反复要求 `/login` 的问题——当另一个并发运行的 kimi-cli 实例（终端、VS Code 插件或 `kimi -p` 一次性命令）合法地轮换了 refresh token，当前实例手里过期的 refresh 请求会从服务端拿回 401，“别的实例是否刚轮换过”的磁盘检查与 `delete_tokens` 调用之间存在 TOCTOU 竞态，即使磁盘上马上会被写入一份有效的新 token，凭证文件也会被误删，迫使用户重新登录；现在依旧清理内存缓存（真正失效的 token 会在下一次请求时浮现），但保留文件，让并发实例刚写入的新 token 有机会被恢复，最终的 `/login` 仍会原子覆盖该文件
+- Kosong：修复 Anthropic 供应商将并行工具结果拆分到多个 user message 的问题——现在会将仅包含工具结果的连续 user message 合并为单条消息，以符合 Anthropic Messages API 规范（assistant 一轮中的所有 `tool_use` 必须在同一条 user message 内回答）；修复了严格兼容后端（如 DeepSeek `/anthropic` 接口）返回 400 错误的问题，并避免官方后端静默地引导模型放弃并行工具调用
+
+## 1.37.0 (2026-04-20)
+
+- Print：退出前等待后台任务完成——在单次 `--print` 模式下，进程现在会等待仍在运行的后台 Agent 完成并让模型处理它们的结果，而不是直接退出并杀死它们。等待时长上限为 `min(max(active_task.timeout_s or agent_task_timeout_s), print_wait_ceiling_s)`（默认上限 1 小时）；超时后杀死任务并通过 `<system-reminder>` 给模型最后一轮机会向用户总结后再退出
+- Shell/Print：退出时 CLI 会在 stderr 列出每个即将被 kill 的后台任务（id + 描述），等待配置的 grace period 后再汇报未达到终态的任务（区分为"still terminating"即 worker 正在退出 vs "stop request failed"即真正泄漏的任务）；`keep_alive_on_exit=true` 仍会完全跳过此路径
+- Auth：OAuth 登录用户启动时自动刷新托管模型列表——Shell 启动时会以后台任务形式请求 provider 的 `/models` 接口拉取最新模型，新上线的模型无需重新登录即可使用；失败时静默降级、不会阻塞启动；使用 `--config` 指定自定义配置文件的会话保持原有行为
+- Shell：托管模型现在统一展示 provider 返回的 `display_name`（如 `k2.6-code-preview`），覆盖欢迎界面、提示框状态栏、`/model` 选单和 `/model` 切换确认消息；若后端未返回 `display_name`，则回落到内部模型 ID
+
+## 1.36.0 (2026-04-17)
+
+- Anthropic：修复 Claude Opus 4.7 返回 `invalid_request_error` 的问题——Opus 4.7 拒绝旧的 `{type: "enabled", budget_tokens: N}` 思考配置，现在会正确路由到 adaptive thinking，并显式设置 `display: "summarized"`，使思考内容仍能通过流返回（Opus 4.7 默默将该默认值改为 `"omitted"`）；Bedrock / Vertex 命名变体（如 `aws/claude-opus-4-7`、`anthropic.claude-opus-4-7-v1:0`）以及 `claude-mythos-preview` 也会被正确识别；未来的 Claude ≥ 4.6 版本会通过版本号外推自动识别，无需改代码
+- Web：修复 Web 界面中 Markdown 渲染的间距问题——恢复段落、列表、代码块、引用块和标题之间的合理垂直间距，不再将所有外边距压缩为零
+- Shell：修复活跃 turn 期间加载指示器缺失的问题——月亮 spinner 现在作为兜底指示器，在模型仍在工作但没有其他指示器可见时自动显示，覆盖了工具调用完成后、turn 开始到首个 step 之间、以及 provider 发送空 thinking block 时的空白期
+- Core：将 `max_steps_per_turn` 默认值从 100 提高到 500，开箱即可支持更长的无中断 agent 运行
+- Web：修复代码块右上角复制、下载和预览按钮点击无响应的问题
+
+## 1.35.0 (2026-04-15)
+
+- Shell：将 `show_thinking_stream` 默认值改为 `true`，全新安装开箱即可看到流式思考预览；如需保留 1.32 的紧凑指示器，可在配置中将其设为 `false`
+- Web：修复流式 watchdog 在待处理审批请求或问题时误触发重连的问题——当用户正在处理审批请求或回答问题时，45 秒无消息 watchdog 不再强制重连，避免交互被打断
+- Web：修复会话流错误后的恢复问题——当会话进程退出或 read loop 发生异常时，现在在广播错误前先清除过期的 in-flight prompt ID，使前端能够发送新消息而非收到 "Session is busy"；活动状态指示器现在也会显示来自流的具体错误信息
+- Core：修复 Wire 服务端 prompt 处理未捕获异常导致会话永远卡在忙碌状态的问题——SSL 错误、连接错误及其他意外失败现在会被 fallback 处理器捕获并返回 INTERNAL_ERROR，避免异常逃逸导致会话无限挂起
+
+## 1.34.0 (2026-04-14)
+
+- Core：修复 `TaskStop` 取消卡住的后台 agent 时 CLI 崩溃的问题——终端不再打印 `Unhandled exception in event loop / Exception None` 并冻结；已取消的 task 现在会保留在管理器的 live-tasks 字典中，直到 runner 完成清理，避免 Python GC 在 task 仍处 pending 时回收它
+- Shell：修复包含 tab 的行内 Diff 高亮偏移错位的问题——原始代码的 Diff 偏移量现在通过 expandtabs 列跟踪映射到渲染后的位置，确保 tab 展开后高亮区间落在正确位置
+- Shell：新增 `show_thinking_stream` 配置项，可恢复旧版的流式思考预览体验——设为 `true` 后，Live 区域会显示经典的 `Thinking...` spinner 以及 6 行原始思考文本的滚动预览，思考块结束时把完整的思考 markdown 写入历史记录；默认为 `false`，保持 1.32 版本引入的紧凑指示器
+
+## 1.33.0 (2026-04-13)
+
+- Shell：将托管模型显示统一为 "Kimi for Code"，移除欢迎界面和 `/login` 提示中硬编码的 `kimi-k2.5` 版本号
+
+## 1.32.0 (2026-04-13)
+
+- Core：将 MCP 工具输出截断至 10 万字符以防止上下文溢出——所有内容类型（文本和内联媒体如 image/audio/video data URL）共享同一字符预算；Playwright 等返回完整 DOM（500KB+）或大型 base64 截图的工具现在会被截断并附加提示信息；超出预算的媒体部分会被丢弃；不支持的 MCP 内容类型会被优雅处理而非导致当前轮次崩溃
+- CLI：修复 PyInstaller 二进制包缺少延迟加载 CLI 子命令的问题——`kimi info`、`kimi export`、`kimi mcp`、`kimi plugin`、`kimi vis` 和 `kimi web` 现在在独立二进制分发中可正常使用
+- Shell：将思考指示器精简为紧凑的单行布局——显示 `Thinking` 标签、动画点、耗时、token 数和实时的 tokens/秒脉冲；结束后在历史中留下 `Thought for Xs · N tokens` 痕迹
+
+## 1.31.0 (2026-04-10)
+
+- Core：限制 `list_directory` 输出为深度受限的树形结构，防止大目录导致 token 超限——将无上限的扁平列表替换为 2 级树（根级最多 30 条、每个子目录最多 10 条），按目录优先的字母序排列，截断处显示 `"... and N more"` 提示以引导模型进一步探索（修复 #1809）
+- Shell：新增交互式 Shell 启动时的阻断式更新提醒——当检测到有新版本可用（来自已有的后台检查缓存）时，在 Shell 加载之前显示阻断提示，提供 `[Enter]` 立即升级、`[q]` 暂时跳过下次继续提醒、`[s]` 跳过该版本后续提醒；支持 `KIMI_CLI_NO_AUTO_UPDATE` 环境变量；替代了之前可用更新的重复 toast 通知
+- Auth：加固 OAuth 令牌刷新以防止不必要的重新登录——401 错误现在会自动触发令牌刷新并重试，而非强制 `/login`；多个同时运行的 CLI 实例通过跨进程文件锁协调刷新以避免竞争条件；令牌持久化使用原子写入配合 `fsync` 防止损坏；新增动态刷新阈值、令牌刷新过程中的 5xx 重试，以及正确的令牌吊销清理
+- Core：修复模型响应仅包含思考内容时 agent loop 静默停止的问题——将仅含思考内容（无文本或工具调用）的响应检测为不完整响应错误并自动重试
+- Core：修复长时间 streaming 过程中网络断连导致崩溃的问题——当 OpenAI SDK 在流式传输中途抛出基类 `APIError`（而非 `APIConnectionError`）时，现在能正确识别为可重试错误，自动触发重试和连接恢复，而不再直接崩溃退出
+- Shell：从 `/sessions` 选择器中排除空的当前会话——完全为空的会话（既无对话记录也无自定义标题）不再显示在会话列表中；有自定义标题的会话仍然正常显示
+- Shell：修复斜杠命令补全 Enter 键行为——接受补全后现在通过一次 Enter 即可提交命令；自动提交仅限于斜杠命令补全，文件引用（`@`）补全接受后不提交以便继续编辑；接受补全时抑制重新补全，防止过时的补全状态
+- Shell：为 `/sessions` 会话选择器新增目录范围切换功能——按 `Ctrl+A` 可在"仅当前工作目录"和"所有已知目录"之间切换会话列表；采用全屏会话选择器 UI，顶部显示当前范围，底部显示快捷键提示
+- Shell：新增 `/btw` 侧问命令——在 streaming 期间提出快速问题，不打断主对话；使用相同的系统提示词和工具定义以对齐 Prompt 缓存；响应在可滚动的模态面板中显示，支持流式输出
+- Shell：重新设计底部动态区——将单体 `visualize.py`（1865 行）拆分为模块化包（`visualize/`），包含输入路由、交互式提示、审批/提问面板和 btw 模态面板等独立模块；通过 `classify_input()` 统一输入语义，实现一致的命令路由
+- Shell：新增 streaming 期间的排队和 steer 双通道输入——Enter 将消息排队，在当前轮次结束后发送；Ctrl+S 将消息立即注入到正在运行的轮次上下文中；排队消息在提示区域显示计数指示器，可通过 ↑ 键召回编辑
+- Shell：新增 `BtwBegin`/`BtwEnd` Wire 事件，支持跨客户端侧问
+- Shell：改进 spinner 中的耗时格式——超过 60 秒的时长现在显示为 `"1m 23s"` 而非 `"83s"`；低于 1 秒的显示为 `"<1s"`
+- Shell：修复 btw 面板中的 Rich markup 注入问题——包含 `[`/`]` 字符的用户问题现在会被转义，防止 spinner 文本和面板标题出现渲染错误或样式注入
+- Core：改进错误诊断——丰富内部日志覆盖，在 `kimi export` 导出的归档中包含相关日志文件和系统信息，并为常见错误（认证、网络、超时、配额）提供可操作的提示消息
+- Shell：当工作目录在会话期间不可访问时优雅退出并显示崩溃报告——检测 CWD 丢失场景（外置硬盘拔出、目录被删除或文件系统卸载），打印包含会话 ID 和工作目录的恢复面板后干净退出
+- Shell：使用 `git ls-files` 进行 `@` 文件引用发现——文件补全器现在优先使用 `git ls-files --recurse-submodules` 查询文件列表（5 秒超时），非 Git 仓库则回退到 `os.walk`；此修复解决了大型仓库（如包含 6.5 万+文件的 apache/superset）中 1000 文件限制导致字母顺序靠后的目录无法访问的问题（修复 #1375）
+- Core：新增共享的 `file_filter` 模块——通过 `src/kimi_cli/utils/file_filter.py` 统一 Shell 和 Web 的文件引用逻辑，提供一致的路径过滤、忽略目录排除和 Git 感知文件发现
+- Shell：防止文件引用 scope 参数的路径遍历——文件补全器请求中的 `scope` 参数现在会经过验证，防止目录遍历攻击
+- Web：恢复文件浏览器 API 中的未过滤目录列表——文件浏览器端点不再应用 Git 感知过滤，确保 Web UI 文件选择器中显示所有文件
+- Todo：重构 `SetTodoList` 工具，支持状态持久化并防止工具调用风暴——待办事项现在会持久化到会话状态（主 Agent）和独立状态文件（子 Agent）；新增查询模式（省略 `todos` 参数可读取当前状态）和清空模式（传 `[]` 清空）；工具描述中增加了防风暴指导，防止在没有实际进展的情况下反复调用（修复 #1710）
+- ReadFile：每次读取返回文件总行数，并支持负数 `line_offset` 实现 tail 模式——工具现在会在消息中报告 `Total lines in file: N.`，方便模型规划后续读取；负数 `line_offset`（如 `-100`）通过滑动窗口读取文件末尾 N 行，适用于无需 Shell 命令即可查看最新日志输出的场景；绝对值上限为 1000（MAX_LINES）
+- Shell：修复 Markdown 渲染中行内代码和代码块出现黑色背景的问题——`NEUTRAL_MARKDOWN_THEME` 现在将所有 Rich 默认的 `markdown.*` 样式覆盖为 `"none"`，防止 Rich 内置的 `"cyan on black"` 在非黑色背景终端上泄露
+
 ## 1.30.0 (2026-04-02)
 
 - Shell：细化空闲时后台完成的自动触发行为——恢复的 Shell 会话在用户发送消息前，不会因为历史遗留的后台通知而自动启动新的前景轮次；当用户正在输入时，新的后台完成事件也会短暂延后触发，避免抢占提示符或打断 CJK 输入法组合态

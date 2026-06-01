@@ -197,7 +197,7 @@ async def test_replay_recent_history_prefers_wire_when_turns_match(
     step_counts: list[int] = []
     monkeypatch.setattr(replay_module.console, "print", lambda *_args, **_kwargs: None)
 
-    async def fake_visualize(wire_ui, *, initial_status) -> None:
+    async def fake_visualize(wire_ui, *, initial_status, show_thinking_stream=False) -> None:
         steps = 0
         while True:
             try:

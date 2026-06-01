@@ -32,7 +32,15 @@ class EchoSoul:
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
         return []
 
-    async def run(self, user_input: str | list[ContentPart]) -> None:
+    async def run(
+        self,
+        user_input: str | list[ContentPart],
+        *,
+        skip_user_prompt_hook: bool = False,
+    ) -> None:
+        # ``skip_user_prompt_hook`` is part of the Soul protocol but EchoSoul
+        # has no hooks to skip; accept and ignore it for signature compatibility.
+        del skip_user_prompt_hook
         wire_send(StepBegin(n=1))
         if isinstance(user_input, str):
             wire_send(TextPart(text=user_input))

@@ -54,6 +54,8 @@ jobs:
             target: aarch64-unknown-linux-gnu
           - runner: macos-14
             target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
           - runner: windows-11-arm
@@ -470,7 +472,7 @@ jobs:
 
   publish-python:
     name: Publish Python package
-    needs: validate
+    needs: [validate, release]
     runs-on: ubuntu-latest
     env:
       KIMI_WEB_STRICT_VERSION: "1"

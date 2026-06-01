@@ -86,7 +86,7 @@ When `--max-ralph-iterations` is not `0`, Kimi Code CLI enters Ralph Loop mode a
 
 | Option | Description |
 |--------|-------------|
-| `--print` | Run in print mode (non-interactive), implicitly enables `--yolo` |
+| `--print` | Run in print mode (non-interactive), implicitly enables `--afk` |
 | `--quiet` | Shortcut for `--print --output-format text --final-message-only` |
 | `--acp` | Run in ACP server mode (deprecated, use `kimi acp` instead) |
 | `--wire` | Run in Wire server mode (experimental) |
@@ -118,12 +118,13 @@ Default loads `~/.kimi/mcp.json` (if exists). See [Model Context Protocol](../cu
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--yolo` | `-y` | Auto-approve all operations |
+| `--yolo` | `-y` | Auto-approve all tool calls (user still reachable for `AskUserQuestion`) |
 | `--yes` | | Alias for `--yolo` |
 | `--auto-approve` | | Alias for `--yolo` |
+| `--afk` | | Away-from-keyboard: auto-approve tool calls and auto-dismiss `AskUserQuestion`. Use when no user will be at the terminal |
 
 ::: warning Note
-In YOLO mode, all file modifications and shell commands are automatically executed. Use with caution.
+In YOLO or AFK mode, all file modifications and shell commands are automatically executed. Use with caution.
 :::
 
 ## Plan mode
@@ -162,6 +163,7 @@ When not specified, Kimi Code CLI automatically discovers user-level and project
 | [`kimi info`](./kimi-info.md) | Display version and protocol information |
 | [`kimi acp`](./kimi-acp.md) | Start multi-session ACP server |
 | [`kimi mcp`](./kimi-mcp.md) | Manage MCP server configuration |
+| [`kimi plugin`](../customization/plugins.md) | Manage plugins (Beta) |
 | [`kimi term`](./kimi-term.md) | Launch the Toad terminal UI |
 | [`kimi export`](#kimi-export) | Export a session as a ZIP file |
 | [`kimi vis`](./kimi-vis.md) | Launch the Agent Tracing Visualizer (Technical Preview) |
@@ -185,7 +187,7 @@ kimi logout
 
 ### `kimi export`
 
-Export session data as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.).
+Export session data as a ZIP file. The ZIP contains all files in the session directory (`context.jsonl`, `wire.jsonl`, `state.json`, etc.) and related diagnostic logs.
 
 ```sh
 kimi export [<session_id>] [-o <output_path>] [--yes]
@@ -215,6 +217,8 @@ kimi vis [OPTIONS]
 
 | Option | Short | Description |
 |--------|-------|-------------|
+| `--host TEXT` | `-h` | Host address to bind to (default: `127.0.0.1`) |
+| `--network` | `-n` | Listen on all network interfaces (bind to `0.0.0.0`) with auto-detected LAN IP display |
 | `--port INTEGER` | `-p` | Port number to bind to (default: `5495`) |
 | `--open / --no-open` | | Automatically open browser (default: enabled) |
 | `--reload` | | Enable auto-reload (development mode) |
@@ -234,6 +238,7 @@ If the default port is in use, the server will pick the next available port (by 
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--host TEXT` | `-h` | Host address to bind to (default: `127.0.0.1`) |
+| `--network` | `-n` | Listen on all network interfaces (bind to `0.0.0.0`) with auto-detected LAN IP display |
 | `--port INTEGER` | `-p` | Port number to bind to (default: `5494`) |
 | `--reload` | | Enable auto-reload (development mode) |
 | `--open / --no-open` | | Automatically open browser (default: enabled) |

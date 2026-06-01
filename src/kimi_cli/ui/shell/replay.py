@@ -46,6 +46,7 @@ async def replay_recent_history(
     history: Sequence[Message],
     *,
     wire_file: WireFile | None = None,
+    show_thinking_stream: bool = False,
 ) -> None:
     """
     Replay the most recent user-initiated turns from the provided message history or wire file.
@@ -69,7 +70,11 @@ async def replay_recent_history(
         wire = Wire()
         console.print(render_user_echo(turn.user_message))
         ui_task = asyncio.create_task(
-            visualize(wire.ui_side(merge=False), initial_status=StatusUpdate())
+            visualize(
+                wire.ui_side(merge=False),
+                initial_status=StatusUpdate(),
+                show_thinking_stream=show_thinking_stream,
+            )
         )
         for event in turn.events:
             wire.soul_side.send(event)

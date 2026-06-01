@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from rich.text import Text
 
 import kimi_cli.app as app_module
 import kimi_cli.ui.shell.startup as startup_module
@@ -68,6 +71,7 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
         session=session,
         config=config,
         llm=None,
+        approval=SimpleNamespace(is_yolo=lambda: False, is_afk=lambda: False),
         notifications=SimpleNamespace(recover=lambda: None),
         background_tasks=SimpleNamespace(reconcile=lambda: None),
     )
@@ -116,6 +120,49 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_run_shell_adds_new_coding_agent_download_tip(runtime, monkeypatch) -> None:
+    from kimi_cli.ui.shell import WelcomeInfoItem
+
+    captured: dict[str, object] = {}
+
+    class FakeShell:
+        def __init__(self, soul, *, welcome_info=None, prefill_text=None) -> None:
+            captured["soul"] = soul
+            captured["welcome_info"] = list(welcome_info or [])
+            captured["prefill_text"] = prefill_text
+
+        async def run(self, command: str | None = None) -> bool:
+            captured["command"] = command
+            return True
+
+    @contextlib.asynccontextmanager
+    async def fake_env():
+        yield
+
+    monkeypatch.setattr("kimi_cli.ui.shell.Shell", FakeShell)
+
+    soul = SimpleNamespace(model_name="kimi-code", name="Kimi Code CLI")
+    cli = KimiCLI(soul, runtime, {})  # type: ignore[arg-type]
+    monkeypatch.setattr(cli, "_env", fake_env)
+
+    assert await cli.run_shell(command="status") is True
+
+    welcome_info = cast("list[WelcomeInfoItem]", captured["welcome_info"])
+    tip = welcome_info[-1]
+    assert tip == WelcomeInfoItem(
+        name="\nTip",
+        value=Text.assemble(
+            "We just released Kimi Code — our new coding agent. Check it out at ",
+            Text(
+                "https://www.kimi.com/code",
+                style="link https://www.kimi.com/code underline",
+            ),
+        ),
+        level=WelcomeInfoItem.Level.WARN,
+    )
+
+
+@pytest.mark.asyncio
 async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
     session, config, monkeypatch
 ) -> None:
@@ -124,6 +171,7 @@ async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
         session=session,
         config=config,
         llm=None,
+        approval=SimpleNamespace(is_yolo=lambda: False, is_afk=lambda: False),
         notifications=SimpleNamespace(recover=lambda: None),
         background_tasks=SimpleNamespace(reconcile=lambda: None),
         subagent_store=SimpleNamespace(

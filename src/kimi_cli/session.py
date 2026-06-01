@@ -274,6 +274,16 @@ class Session:
         sessions.sort(key=lambda session: session.updated_at, reverse=True)
         return sessions
 
+    @classmethod
+    async def list_all(cls) -> builtins.list[Session]:
+        """List sessions across all known work directories."""
+        all_sessions: list[Session] = []
+        for wd in load_metadata().work_dirs:
+            sessions = await cls.list(KaosPath.unsafe_from_local_path(Path(wd.path)))
+            all_sessions.extend(sessions)
+        all_sessions.sort(key=lambda s: s.updated_at, reverse=True)
+        return all_sessions
+
     @staticmethod
     async def continue_(work_dir: KaosPath) -> Session | None:
         """Get the last session for a work directory."""

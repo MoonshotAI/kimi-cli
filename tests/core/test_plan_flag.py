@@ -54,11 +54,15 @@ def _patch_create_deps(monkeypatch, *, session_plan_mode: bool = False):
     runtime_create_calls: list[dict] = []
 
     async def fake_runtime_create(config, _oauth, _llm, session, yolo, **kwargs):
-        runtime_create_calls.append({"yolo": yolo})
+        runtime_create_calls.append({"yolo": yolo, **kwargs})
         return SimpleNamespace(
             session=session,
             config=config,
             llm=None,
+            approval=SimpleNamespace(
+                is_yolo=lambda: yolo,
+                is_afk=lambda: kwargs.get("afk", False) or kwargs.get("runtime_afk", False),
+            ),
             notifications=SimpleNamespace(recover=lambda: None),
             background_tasks=SimpleNamespace(reconcile=lambda: None),
         )
@@ -234,6 +238,16 @@ class TestPlanFlagPriority:
         soul = FakeSoul.instances[0]
         assert soul._set_plan_mode_calls == [(True, "manual")]
         assert runtime_create_calls[0]["yolo"] is True
+
+    @pytest.mark.asyncio
+    async def test_runtime_afk_passed_separately_from_afk(self, session, config, monkeypatch):
+        """Print-mode afk overlay should be passed separately from explicit afk."""
+        _, runtime_create_calls = _patch_create_deps(monkeypatch)
+
+        await KimiCLI.create(session, config=config, runtime_afk=True, resumed=False)
+
+        assert runtime_create_calls[0]["afk"] is False
+        assert runtime_create_calls[0]["runtime_afk"] is True
 
 
 class TestSchedulePlanActivationReminder:

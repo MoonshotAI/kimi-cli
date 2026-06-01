@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
+from datetime import datetime
 
 import pytest
 from kosong.message import Message
@@ -129,6 +130,121 @@ def test_create_bash_task_records_failed_runtime_when_worker_launch_fails(runtim
     assert len(views) == 1
     assert views[0].runtime.status == "failed"
     assert views[0].runtime.failure_reason == "Failed to launch worker: launch boom"
+
+
+@pytest.mark.asyncio
+async def test_create_agent_task_persists_timeout_s_on_spec(runtime, monkeypatch):
+    """``TaskSpec.timeout_s`` must carry the effective agent timeout so that
+    downstream consumers (Print mode's ``print_wait_ceiling_s`` calculation)
+    can respect an explicit per-agent timeout instead of always falling back
+    to ``agent_task_timeout_s``.
+    """
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    manager = runtime.background_tasks
+
+    async def _noop(self):
+        return None
+
+    monkeypatch.setattr("kimi_cli.background.agent_runner.BackgroundAgentRunner.run", _noop)
+
+    # Explicit per-task timeout — must land on the persisted spec.
+    view = manager.create_agent_task(
+        agent_id="a7777777",
+        subagent_type="coder",
+        prompt="long task",
+        description="custom timeout",
+        tool_call_id="tool-agent-timeout",
+        model_override=None,
+        timeout_s=1800,
+    )
+
+    assert view.spec.timeout_s == 1800
+    task = manager._live_agent_tasks.pop(view.spec.id)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_create_agent_task_persists_default_timeout_on_spec(runtime, monkeypatch):
+    """When the caller does not supply ``timeout_s``, the effective default
+    (``config.background.agent_task_timeout_s``) must still land on the spec —
+    otherwise Print's wait cap reader hits ``None`` and the explicit config
+    value is silently ignored on the shutdown path."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    manager = runtime.background_tasks
+    expected_default = runtime.config.background.agent_task_timeout_s
+
+    async def _noop(self):
+        return None
+
+    monkeypatch.setattr("kimi_cli.background.agent_runner.BackgroundAgentRunner.run", _noop)
+
+    view = manager.create_agent_task(
+        agent_id="a8888888",
+        subagent_type="coder",
+        prompt="default timeout",
+        description="default",
+        tool_call_id="tool-agent-default",
+        model_override=None,
+    )
+
+    assert view.spec.timeout_s == expected_default
+    task = manager._live_agent_tasks.pop(view.spec.id)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_create_agent_task_zero_timeout_s_stays_zero(runtime, monkeypatch):
+    """``timeout_s=0`` must mean zero, not be silently promoted to
+    ``config.background.agent_task_timeout_s`` via the falsy ``or`` idiom.
+    Matches the analogous ``None`` check used by Print's wait-cap reader."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    manager = runtime.background_tasks
+
+    async def _noop(self):
+        return None
+
+    monkeypatch.setattr("kimi_cli.background.agent_runner.BackgroundAgentRunner.run", _noop)
+
+    view = manager.create_agent_task(
+        agent_id="a9999999",
+        subagent_type="coder",
+        prompt="zero timeout",
+        description="zero",
+        tool_call_id="tool-agent-zero",
+        model_override=None,
+        timeout_s=0,
+    )
+
+    assert view.spec.timeout_s == 0
+    task = manager._live_agent_tasks.pop(view.spec.id)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
 
 
 @pytest.mark.asyncio
@@ -726,10 +842,16 @@ def test_publish_terminal_notifications_creates_notification(runtime):
         timeout_s=60,
     )
     store.create_task(spec)
+    started_at = 1_700_000_000.0
+    finished_at = started_at + 5.0
     store.write_runtime(
         spec.id,
         TaskRuntime(
-            status="completed", exit_code=0, finished_at=time.time(), updated_at=time.time()
+            status="completed",
+            exit_code=0,
+            started_at=started_at,
+            finished_at=finished_at,
+            updated_at=finished_at,
         ),
     )
 
@@ -739,6 +861,17 @@ def test_publish_terminal_notifications_creates_notification(runtime):
     assert notification.event.source_id == spec.id
     assert notification.event.type == "task.completed"
     assert notification.event.payload["task_id"] == spec.id
+    finished_text = datetime.fromtimestamp(finished_at).strftime("%Y-%m-%d %H:%M:%S")
+    assert notification.event.body == "\n".join(
+        [
+            "Task ID: b2222222",
+            f"Status: completed (Completed at: {finished_text}, Duration: 5s)",
+            "Description: completed task",
+            "Exit code: 0",
+        ]
+    )
+    assert notification.event.payload["finished_at"] == finished_at
+    assert notification.event.payload["duration_s"] == 5.0
 
 
 def test_publish_terminal_notifications_marks_timeout_distinctly(runtime):

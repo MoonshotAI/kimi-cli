@@ -9,12 +9,17 @@ Use it when ANY of these conditions apply:
 4. Architectural Decisions — e.g. "Add WebSocket support"
 5. Multi-File Changes — involves more than 2-3 files
 6. Unclear Requirements — need exploration to understand scope
-7. User Preferences Matter — if you'd use AskUserQuestion to clarify approach, use EnterPlanMode instead
+7. User Preferences Matter — if user input would materially change the implementation approach, use EnterPlanMode to structure the decision
 
-Yolo mode note:
-- Yolo mode users chose continuous execution.
-- In yolo mode, use EnterPlanMode only when the user explicitly asks for planning or when
-  there is exceptional architectural ambiguity that requires user input before proceeding.
+Auto-approve mode notes:
+- Yolo mode only bypasses permission approval. It does not make the session non-interactive.
+- In yolo mode, EnterPlanMode is approved automatically, but ExitPlanMode still presents
+  the plan to the user for approval.
+- Afk mode bypasses permission approval and is non-interactive. In afk mode, do not use
+  AskUserQuestion; make the best decision from available context.
+- In afk mode, EnterPlanMode / ExitPlanMode are approved automatically because no user
+  is present.
+- Use EnterPlanMode only when planning itself adds value.
 
 When NOT to use:
 - Single-line or few-line fixes (typos, obvious bugs, small tweaks)

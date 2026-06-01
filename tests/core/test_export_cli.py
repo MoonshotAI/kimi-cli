@@ -108,7 +108,10 @@ def test_export_previous_session_after_confirmation(
     assert output.exists()
 
     with zipfile.ZipFile(output) as zf:
-        assert set(zf.namelist()) == {"context.jsonl", "wire.jsonl"}
+        names = set(zf.namelist())
+        assert "context.jsonl" in names
+        assert "wire.jsonl" in names
+        assert "manifest.json" in names
 
 
 def test_export_previous_session_can_skip_confirmation_with_yes(

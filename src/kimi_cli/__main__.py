@@ -10,8 +10,11 @@ def _prog_name() -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int | str | None:
+    from kimi_cli.telemetry.crash import install_crash_handlers, set_phase
     from kimi_cli.utils.proxy import normalize_proxy_env
 
+    # Install excepthook before anything else so startup-phase crashes are captured.
+    install_crash_handlers()
     normalize_proxy_env()
 
     args = list(sys.argv[1:] if argv is None else argv)
@@ -23,11 +26,17 @@ def main(argv: Sequence[str] | None = None) -> int | str | None:
         return 0
 
     from kimi_cli.cli import cli
+    from kimi_cli.utils.environment import GitBashNotFoundError
 
     try:
         return cli(args=args, prog_name=_prog_name())
     except SystemExit as exc:
         return exc.code
+    except GitBashNotFoundError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        set_phase("shutdown")
 
 
 if __name__ == "__main__":

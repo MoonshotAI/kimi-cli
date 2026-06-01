@@ -62,6 +62,8 @@ kimi mcp auth linear
 
 这会打开浏览器完成 OAuth 流程。授权成功后，Kimi Code CLI 会保存 token 供后续使用。
 
+MCP OAuth token 存储在 `~/.kimi/mcp-oauth/`。从使用 FastMCP 2.x 的旧版本升级后，旧的 token 缓存不会自动迁移；如果 `kimi mcp list` 显示某个 OAuth 服务器需要授权，重新运行 `kimi mcp auth <name>` 即可。
+
 **测试服务器**
 
 ```sh
@@ -129,5 +131,5 @@ MCP 工具返回的内容可能包含恶意指令，试图诱导 AI 执行危险
 - 对于高风险操作保持手动审批
 
 ::: warning 注意
-在 YOLO 模式下，MCP 工具的操作也会被自动批准。建议仅在完全信任 MCP 服务器的情况下使用 YOLO 模式。
+在 YOLO 或 AFK 模式下，MCP 工具调用也会被自动批准。仅在完全信任 MCP 服务器时使用这些模式。
 :::

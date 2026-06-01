@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import Enum
 from hashlib import md5
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast, override
+from typing import Any, Literal, Protocol, cast, override, runtime_checkable
 
 from kaos.path import KaosPath
 from prompt_toolkit import PromptSession
@@ -66,6 +66,7 @@ from kimi_cli.ui.theme import get_prompt_style, get_toolbar_colors
 from kimi_cli.utils.clipboard import (
     grab_media_from_clipboard,
     is_clipboard_available,
+    is_media_clipboard_available,
 )
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.slashcmd import SlashCommand
@@ -81,10 +82,14 @@ PROMPT_SYMBOL_THINKING = "💫"
 PROMPT_SYMBOL_PLAN = "📋"
 
 
+class CwdLostError(OSError):
+    """Raised when the working directory no longer exists (e.g. external drive unplugged)."""
+
+
 class SlashCommandCompleter(Completer):
     """
     A completer that:
-    - Shows one line per slash command using the canonical "/name"
+    - Shows canonical matches as "/name" and alias matches as "/name (alias)"
     - Fuzzy-matches by primary name or any alias while inserting the canonical "/name"
     - Only activates when the current token starts with '/'
     """
@@ -137,25 +142,32 @@ class SlashCommandCompleter(Completer):
         token = text[last_space + 1 :]
 
         typed = token[1:]
-        if typed and typed in self._command_lookup:
-            return
         mention_doc = Document(text=typed, cursor_position=len(typed))
         candidates = list(self._fuzzy.get_completions(mention_doc, complete_event))
 
         seen: set[str] = set()
-
+        candidate_triggers: list[str] = []
+        if typed and typed in self._command_lookup:
+            candidate_triggers.append(typed)
         for candidate in candidates:
-            commands = self._command_lookup.get(candidate.text)
+            if candidate.text not in candidate_triggers:
+                candidate_triggers.append(candidate.text)
+
+        for trigger in candidate_triggers:
+            commands = self._command_lookup.get(trigger)
             if not commands:
                 continue
             for cmd in commands:
                 if cmd.name in seen:
                     continue
                 seen.add(cmd.name)
+                completion_text = f"/{cmd.name}"
+                if trigger == cmd.name and typed == cmd.name:
+                    completion_text += " "
                 yield Completion(
-                    text=f"/{cmd.name}",
+                    text=completion_text,
                     start_position=-len(token),
-                    display=f"/{cmd.name}",
+                    display=cmd.display_name(trigger),
                     display_meta=cmd.description,
                 )
 
@@ -612,82 +624,15 @@ class SlashCommandMenuControl(UIControl):
 
 
 class LocalFileMentionCompleter(Completer):
-    """Offer fuzzy `@` path completion by indexing workspace files."""
+    """Offer fuzzy `@` path completion by indexing workspace files.
+
+    File discovery and ignore rules are delegated to
+    :mod:`kimi_cli.utils.file_filter` so that the web backend can reuse
+    them.
+    """
 
     _FRAGMENT_PATTERN = re.compile(r"[^\s@]+")
     _TRIGGER_GUARDS = frozenset((".", "-", "_", "`", "'", '"', ":", "@", "#", "~"))
-    _IGNORED_NAME_GROUPS: dict[str, tuple[str, ...]] = {
-        "vcs_metadata": (".DS_Store", ".bzr", ".git", ".hg", ".svn"),
-        "tooling_caches": (
-            ".build",
-            ".cache",
-            ".coverage",
-            ".fleet",
-            ".gradle",
-            ".idea",
-            ".ipynb_checkpoints",
-            ".pnpm-store",
-            ".pytest_cache",
-            ".pub-cache",
-            ".ruff_cache",
-            ".swiftpm",
-            ".tox",
-            ".venv",
-            ".vs",
-            ".vscode",
-            ".yarn",
-            ".yarn-cache",
-        ),
-        "js_frontend": (
-            ".next",
-            ".nuxt",
-            ".parcel-cache",
-            ".svelte-kit",
-            ".turbo",
-            ".vercel",
-            "node_modules",
-        ),
-        "python_packaging": (
-            "__pycache__",
-            "build",
-            "coverage",
-            "dist",
-            "htmlcov",
-            "pip-wheel-metadata",
-            "venv",
-        ),
-        "java_jvm": (".mvn", "out", "target"),
-        "dotnet_native": ("bin", "cmake-build-debug", "cmake-build-release", "obj"),
-        "bazel_buck": ("bazel-bin", "bazel-out", "bazel-testlogs", "buck-out"),
-        "misc_artifacts": (
-            ".dart_tool",
-            ".serverless",
-            ".stack-work",
-            ".terraform",
-            ".terragrunt-cache",
-            "DerivedData",
-            "Pods",
-            "deps",
-            "tmp",
-            "vendor",
-        ),
-    }
-    _IGNORED_NAMES = frozenset(name for group in _IGNORED_NAME_GROUPS.values() for name in group)
-    _IGNORED_PATTERN_PARTS: tuple[str, ...] = (
-        r".*_cache$",
-        r".*-cache$",
-        r".*\.egg-info$",
-        r".*\.dist-info$",
-        r".*\.py[co]$",
-        r".*\.class$",
-        r".*\.sw[po]$",
-        r".*~$",
-        r".*\.(?:tmp|bak)$",
-    )
-    _IGNORED_PATTERNS = re.compile(
-        "|".join(f"(?:{part})" for part in _IGNORED_PATTERN_PARTS),
-        re.IGNORECASE,
-    )
 
     def __init__(
         self,
@@ -701,9 +646,12 @@ class LocalFileMentionCompleter(Completer):
         self._limit = limit
         self._cache_time: float = 0.0
         self._cached_paths: list[str] = []
+        self._cache_scope: str | None = None
         self._top_cache_time: float = 0.0
         self._top_cached_paths: list[str] = []
         self._fragment_hint: str | None = None
+        self._is_git: bool | None = None  # lazily detected
+        self._git_index_mtime: float | None = None
 
         self._word_completer = WordCompleter(
             self._get_paths,
@@ -717,14 +665,6 @@ class LocalFileMentionCompleter(Completer):
             pattern=r"^[^\s@]*",
         )
 
-    @classmethod
-    def _is_ignored(cls, name: str) -> bool:
-        if not name:
-            return True
-        if name in cls._IGNORED_NAMES:
-            return True
-        return bool(cls._IGNORED_PATTERNS.fullmatch(name))
-
     def _get_paths(self) -> list[str]:
         fragment = self._fragment_hint or ""
         if "/" not in fragment and len(fragment) < 3:
@@ -732,6 +672,8 @@ class LocalFileMentionCompleter(Completer):
         return self._get_deep_paths()
 
     def _get_top_level_paths(self) -> list[str]:
+        from kimi_cli.utils.file_filter import is_ignored
+
         now = time.monotonic()
         if now - self._top_cache_time <= self._refresh_interval:
             return self._top_cached_paths
@@ -740,7 +682,7 @@ class LocalFileMentionCompleter(Completer):
         try:
             for entry in sorted(self._root.iterdir(), key=lambda p: p.name):
                 name = entry.name
-                if self._is_ignored(name):
+                if is_ignored(name):
                     continue
                 entries.append(f"{name}/" if entry.is_dir() else name)
                 if len(entries) >= self._limit:
@@ -753,45 +695,45 @@ class LocalFileMentionCompleter(Completer):
         return self._top_cached_paths
 
     def _get_deep_paths(self) -> list[str]:
+        from kimi_cli.utils.file_filter import (
+            detect_git,
+            git_index_mtime,
+            list_files_git,
+            list_files_walk,
+        )
+
+        fragment = self._fragment_hint or ""
+
+        scope: str | None = None
+        if "/" in fragment:
+            scope = fragment.rsplit("/", 1)[0]
+
         now = time.monotonic()
-        if now - self._cache_time <= self._refresh_interval:
+        cache_valid = (
+            now - self._cache_time <= self._refresh_interval and self._cache_scope == scope
+        )
+
+        # Invalidate on .git/index mtime change (like Claude Code).
+        if cache_valid and self._is_git:
+            mtime = git_index_mtime(self._root)
+            if mtime != self._git_index_mtime:
+                cache_valid = False
+
+        if cache_valid:
             return self._cached_paths
 
-        paths: list[str] = []
-        try:
-            for current_root, dirs, files in os.walk(self._root):
-                relative_root = Path(current_root).relative_to(self._root)
+        if self._is_git is None:
+            self._is_git = detect_git(self._root)
 
-                # Prevent descending into ignored directories.
-                dirs[:] = sorted(d for d in dirs if not self._is_ignored(d))
-
-                if relative_root.parts and any(
-                    self._is_ignored(part) for part in relative_root.parts
-                ):
-                    dirs[:] = []
-                    continue
-
-                if relative_root.parts:
-                    paths.append(relative_root.as_posix() + "/")
-                    if len(paths) >= self._limit:
-                        break
-
-                for file_name in sorted(files):
-                    if self._is_ignored(file_name):
-                        continue
-                    relative = (relative_root / file_name).as_posix()
-                    if not relative:
-                        continue
-                    paths.append(relative)
-                    if len(paths) >= self._limit:
-                        break
-
-                if len(paths) >= self._limit:
-                    break
-        except OSError:
-            return self._cached_paths
+        paths: list[str] | None = None
+        if self._is_git:
+            paths = list_files_git(self._root, scope)
+            self._git_index_mtime = git_index_mtime(self._root)
+        if paths is None:
+            paths = list_files_walk(self._root, scope, limit=self._limit)
 
         self._cached_paths = paths
+        self._cache_scope = scope
         self._cache_time = now
         return self._cached_paths
 
@@ -1141,6 +1083,8 @@ class _ToastEntry:
 
 
 class RunningPromptDelegate(Protocol):
+    """Protocol for components that can take over the bottom prompt area."""
+
     modal_priority: int
 
     def render_running_prompt_body(self, columns: int) -> AnyFormattedText: ...
@@ -1156,6 +1100,25 @@ class RunningPromptDelegate(Protocol):
     def should_handle_running_prompt_key(self, key: str) -> bool: ...
 
     def handle_running_prompt_key(self, key: str, event: KeyPressEvent) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class BgTaskCounts:
+    bash: int = 0
+    agent: int = 0
+
+
+@runtime_checkable
+class AgentStatusProvider(Protocol):
+    """Optional protocol for delegates that render always-visible agent status.
+
+    When the running prompt delegate implements this, ``_render_agent_status``
+    will call ``render_agent_status`` instead of the fallback status block.
+    This ensures spinners, content blocks, and tool calls remain visible
+    even when a modal (approval/question/btw) is active.
+    """
+
+    def render_agent_status(self, columns: int) -> AnyFormattedText: ...
 
 
 _toast_queues: dict[Literal["left", "right"], deque[_ToastEntry]] = {
@@ -1221,7 +1184,7 @@ class CustomPromptSession:
         status_provider: Callable[[], StatusSnapshot],
         status_block_provider: Callable[[int], AnyFormattedText | None] | None = None,
         fast_refresh_provider: Callable[[], bool] | None = None,
-        background_task_count_provider: Callable[[], int] | None = None,
+        background_task_count_provider: Callable[[], BgTaskCounts] | None = None,
         model_capabilities: set[ModelCapability],
         model_name: str | None,
         thinking: bool,
@@ -1251,6 +1214,7 @@ class CustomPromptSession:
         self._last_tip_rotate_time: float = time.monotonic()
         self._last_submission_was_running = False
         self._last_input_activity_time: float = 0.0
+        self._suppress_auto_completion: bool = False
         self._input_activity_event: asyncio.Event = asyncio.Event()
         self._running_prompt_previous_mode: PromptMode | None = None
         self._running_prompt_delegate: RunningPromptDelegate | None = None
@@ -1259,7 +1223,8 @@ class CustomPromptSession:
         self._last_ui_state: PromptUIState = PromptUIState.NORMAL_INPUT
         self._suspended_buffer_document: Document | None = None
         clipboard_available = is_clipboard_available()
-        self._tips = _build_toolbar_tips(clipboard_available)
+        media_clipboard_available = is_media_clipboard_available()
+        self._tips = _build_toolbar_tips(clipboard_available or media_clipboard_available)
         self._tip_rotation_index: int = random.randrange(len(self._tips)) if self._tips else 0
 
         history_entries = _load_history_entries(self._history_file)
@@ -1285,22 +1250,48 @@ class CustomPromptSession:
         # Build key bindings
         _kb = KeyBindings()
 
-        @_kb.add("enter", filter=has_completions)
-        def _(event: KeyPressEvent) -> None:
-            """Accept the first completion when Enter is pressed and completions are shown."""
-            buff = event.current_buffer
-            if buff.complete_state and buff.complete_state.completions:
-                # Get the current completion, or use the first one if none is selected
-                completion = buff.complete_state.current_completion
-                if not completion:
-                    completion = buff.complete_state.completions[0]
+        def _accept_completion(buff: Buffer) -> None:
+            """Accept the current or first completion, suppressing re-completion."""
+            completion = buff.complete_state.current_completion  # type: ignore[union-attr]
+            if not completion:
+                completion = buff.complete_state.completions[0]  # type: ignore[union-attr]
+            self._suppress_auto_completion = True
+            try:
                 buff.apply_completion(completion)
+            finally:
+                self._suppress_auto_completion = False
+
+        def _is_slash_completion() -> bool:
+            """True when the active completion menu is for a slash command."""
+            buff = self._session.default_buffer
+            return bool(
+                buff.complete_state
+                and buff.complete_state.completions
+                and SlashCommandCompleter.should_complete(buff.document)
+            )
+
+        _slash_completion_filter = has_completions & Condition(_is_slash_completion)
+        _non_slash_completion_filter = has_completions & ~Condition(_is_slash_completion)
+
+        @_kb.add("enter", filter=_slash_completion_filter)
+        def _(event: KeyPressEvent) -> None:
+            """Slash command completion: accept and submit in one step."""
+            _accept_completion(event.current_buffer)
+            event.current_buffer.validate_and_handle()
+
+        @_kb.add("enter", filter=_non_slash_completion_filter)
+        def _(event: KeyPressEvent) -> None:
+            """Non-slash completion (file mentions, etc.): accept only."""
+            _accept_completion(event.current_buffer)
 
         @_kb.add("c-x", eager=True)
         def _(event: KeyPressEvent) -> None:
             if self._active_prompt_delegate() is not None:
                 return
             self._mode = self._mode.toggle()
+            from kimi_cli.telemetry import track
+
+            track("shortcut_mode_switch", to_mode=self._mode.value)
             # Apply mode-specific settings
             self._apply_mode(event)
             # Redraw UI
@@ -1316,6 +1307,9 @@ class CustomPromptSession:
                 async def _toggle() -> None:
                     assert self._plan_mode_toggle_callback is not None
                     new_state = await self._plan_mode_toggle_callback()
+                    from kimi_cli.telemetry import track
+
+                    track("shortcut_plan_toggle", enabled=new_state)
                     if new_state:
                         toast("plan mode ON", topic="plan_mode", duration=3.0, immediate=True)
                     else:
@@ -1329,11 +1323,17 @@ class CustomPromptSession:
         @_kb.add("c-j", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Insert a newline when Alt-Enter or Ctrl-J is pressed."""
+            from kimi_cli.telemetry import track
+
+            track("shortcut_newline")
             event.current_buffer.insert_text("\n")
 
         @_kb.add("c-o", eager=True)
         def _(event: KeyPressEvent) -> None:
             """Open current buffer in external editor."""
+            from kimi_cli.telemetry import track
+
+            track("shortcut_editor")
             self._open_in_external_editor(event)
 
         @_kb.add(
@@ -1391,6 +1391,14 @@ class CustomPromptSession:
         )
         def _(event: KeyPressEvent) -> None:
             self._handle_running_prompt_key("space", event)
+
+        @_kb.add(
+            "c-s",
+            eager=True,
+            filter=Condition(lambda: self._should_handle_running_prompt_key("c-s")),
+        )
+        def _(event: KeyPressEvent) -> None:
+            self._handle_running_prompt_key("c-s", event)
 
         @_kb.add(
             "c-e",
@@ -1476,21 +1484,30 @@ class CustomPromptSession:
         def _(event: KeyPressEvent) -> None:
             self._handle_bracketed_paste(event)
 
-        if clipboard_available:
+        if clipboard_available or media_clipboard_available:
 
             @_kb.add("c-v", eager=True)
             def _(event: KeyPressEvent) -> None:
+                from kimi_cli.telemetry import track
+
+                track("shortcut_paste")
                 if self._try_paste_media(event):
                     return
-                clipboard_data = event.app.clipboard.get_data()
-                if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
-                    return
-                self._insert_pasted_text(event.current_buffer, clipboard_data.text)
-                event.app.invalidate()
+                if clipboard_available:
+                    try:
+                        clipboard_data = event.app.clipboard.get_data()
+                    except Exception:
+                        return
+                    if clipboard_data is None:  # type: ignore[reportUnnecessaryComparison]
+                        return
+                    self._insert_pasted_text(event.current_buffer, clipboard_data.text)
+                    event.app.invalidate()
 
-            clipboard = PyperclipClipboard()
-        else:
-            clipboard = None
+        # Only use PyperclipClipboard when pyperclip actually works.
+        # PromptSession built-in keybindings (ctrl-k, ctrl-w, ctrl-y)
+        # use clipboard without error handling, so a broken clipboard
+        # object would crash the UI.
+        clipboard = PyperclipClipboard() if clipboard_available else None
 
         self._session = PromptSession[str](
             message=self._render_message,
@@ -1520,7 +1537,7 @@ class CustomPromptSession:
         def _(buffer: Buffer) -> None:
             self._last_input_activity_time = time.monotonic()
             self._input_activity_event.set()
-            if buffer.complete_while_typing():
+            if buffer.complete_while_typing() and not self._suppress_auto_completion:
                 buffer.start_completion()
 
         self._status_refresh_task: asyncio.Task[None] | None = None
@@ -1590,10 +1607,8 @@ class CustomPromptSession:
     def _slash_menu_left_padding(self) -> int:
         if self._mode == PromptMode.SHELL:
             return max(1, get_cwidth(f"{PROMPT_SYMBOL_SHELL} ") - 2)
-        if self._status_provider().plan_mode:
-            return max(1, get_cwidth(f"{PROMPT_SYMBOL_PLAN} ") - 2)
-        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
-        return max(1, get_cwidth(f"{symbol} ") - 2)
+        # Agent mode: prompt prefix is "│  " (3 chars inside input panel)
+        return 1
 
     def _render_message(self) -> FormattedText:
         if self._mode == PromptMode.SHELL:
@@ -1604,17 +1619,29 @@ class CustomPromptSession:
         app = get_app_or_none()
         columns = app.output.get_size().columns if app is not None else 80
         fragments: FormattedText = FormattedText()
-        body = self._render_agent_prompt_body(columns)
+
+        # Agent status (always visible)
+        agent_status = self._render_agent_status(columns)
+        if agent_status:
+            fragments.extend(agent_status)
+            if not agent_status[-1][1].endswith("\n"):
+                fragments.append(("", "\n"))
+
+        # Interactive body
+        body = self._render_interactive_body(columns)
         if body:
             fragments.extend(body)
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
+
         if self._active_modal_delegate() is not None:
             return fragments
-        if body:
+        has_content = bool(agent_status or body)
+        if has_content:
             fragments.append(("", "\n"))
-            fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
-            fragments.append(("", "\n"))
+        # Shell mode: simple separator + $ prefix (no panel border)
+        fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
+        fragments.append(("", "\n"))
         fragments.append(("bold", f"{PROMPT_SYMBOL_SHELL} "))
         return fragments
 
@@ -1726,9 +1753,16 @@ class CustomPromptSession:
         elif (
             old_state == PromptUIState.MODAL_HIDDEN_INPUT
             and new_state != PromptUIState.MODAL_HIDDEN_INPUT
+            and self._suspended_buffer_document is not None
         ):
-            if self._suspended_buffer_document is not None and not buffer.text:
+            if not buffer.text:
                 buffer.set_document(self._suspended_buffer_document, bypass_readonly=True)
+            else:
+                # Buffer was externally modified (e.g. approval inline feedback).
+                # Don't overwrite the new content, but log that the old input is lost.
+                logger.debug(
+                    "Dropping suspended buffer document because buffer was modified externally"
+                )
             self._suspended_buffer_document = None
 
         self._last_ui_state = new_state
@@ -1737,23 +1771,67 @@ class CustomPromptSession:
         app = get_app_or_none()
         columns = app.output.get_size().columns if app is not None else 80
         fragments: FormattedText = FormattedText()
-        body = self._render_agent_prompt_body(columns)
+
+        # 1. Agent status — ALWAYS rendered from running prompt delegate.
+        #    This ensures spinners, content blocks, tool calls etc. stay
+        #    visible even when a modal (btw/approval/question) is active.
+        agent_status = self._render_agent_status(columns)
+        if agent_status:
+            fragments.extend(agent_status)
+            if not agent_status[-1][1].endswith("\n"):
+                fragments.append(("", "\n"))
+
+        # 2. Interactive area — from the active delegate (modal overrides).
+        body = self._render_interactive_body(columns)
         if body:
             fragments.extend(body)
             if not body[-1][1].endswith("\n"):
                 fragments.append(("", "\n"))
+
+        # 3. When a modal is active, skip input panel border.
         if self._active_modal_delegate() is not None:
             return fragments
+
+        # 4. Input section header — style varies by mode:
+        #    normal:  ── input ─────────────────  (grey, solid)
+        #    plan:    ╌╌ input · plan ╌╌╌╌╌╌╌╌╌  (blue, dashed)
+        status = self._status_provider()
+        # Build title parts
+        title_parts = ["input"]
+        if status.plan_mode:
+            title_parts.append("plan")
+        # Queue count from running prompt delegate
+        running = self._running_prompt_delegate
+        queue_count = len(getattr(running, "_queued_messages", []))
+        if queue_count > 0:
+            title_parts.append(f"{queue_count} queued")
+        title = f" {' · '.join(title_parts)} "
+        if status.plan_mode:
+            dash = "╌"
+            style = "fg:#60a5fa"  # blue
+        else:
+            dash = "─"
+            style = "class:running-prompt-separator"
+        border_fill = max(0, columns - len(title) - 2)
+        top_border = f"{dash}{dash}{title}{dash * border_fill}"
         fragments.append(("", "\n"))
-        fragments.append(("class:running-prompt-separator", "─" * max(0, columns)))
+        fragments.append((style, top_border))
         fragments.append(("", "\n"))
-        fragments.extend(self._render_agent_prompt_label())
+        fragments.append(("", " "))
         return fragments
 
-    def _render_agent_prompt_body(self, columns: int) -> FormattedText:
+    def _render_agent_status(self, columns: int) -> FormattedText:
+        """Render agent streaming output (always visible, independent of modals)."""
+        running = self._running_prompt_delegate
+        if running is not None and isinstance(running, AgentStatusProvider):
+            return to_formatted_text(running.render_agent_status(columns))
+        return self._render_status_block(columns)
+
+    def _render_interactive_body(self, columns: int) -> FormattedText:
+        """Render the interactive area from the active delegate (modal or running prompt)."""
         delegate = self._active_prompt_delegate()
         if delegate is None:
-            return self._render_status_block(columns)
+            return FormattedText([])
         return to_formatted_text(delegate.render_running_prompt_body(columns))
 
     def _render_status_block(self, columns: int) -> FormattedText:
@@ -1766,11 +1844,8 @@ class CustomPromptSession:
         return to_formatted_text(block)
 
     def _render_agent_prompt_label(self) -> FormattedText:
-        status = self._status_provider()
-        if status.plan_mode:
-            return FormattedText([(get_toolbar_colors().plan_prompt, f"{PROMPT_SYMBOL_PLAN} ")])
-        symbol = PROMPT_SYMBOL_THINKING if self._thinking else PROMPT_SYMBOL
-        return FormattedText([("", f"{symbol} ")])
+        """Render the prompt label (empty — cursor starts at column 0)."""
+        return FormattedText([("", "  ")])
 
     def __enter__(self) -> CustomPromptSession:
         if self._status_refresh_task is not None and not self._status_refresh_task.done():
@@ -1841,7 +1916,13 @@ class CustomPromptSession:
         image files are cached and inserted as placeholders.
         Returns True if any media content was inserted.
         """
-        result = grab_media_from_clipboard()
+        try:
+            result = grab_media_from_clipboard()
+        except Exception:
+            # ImageGrab.grabclipboard() may fail on headless Linux if the
+            # real xclip cannot connect to an X server. Silently ignore so
+            # that the text-paste fallback can still be attempted.
+            return False
         if result is None:
             return False
 
@@ -2040,11 +2121,14 @@ class CustomPromptSession:
             self._tip_rotation_index += 1
             self._last_tip_rotate_time = now
 
-        # Status flags: yolo / plan
+        # Status flags: yolo / afk / plan
         status = self._status_provider()
         if status.yolo_enabled:
             fragments.extend([(tc.yolo_label, "yolo"), ("", "  ")])
             remaining -= 6  # "yolo" = 4, "  " = 2
+        if status.afk_enabled:
+            fragments.extend([(tc.afk_label, "afk"), ("", "  ")])
+            remaining -= 5  # "afk" = 3, "  " = 2
         if status.plan_mode:
             fragments.extend([(tc.plan_label, "plan"), ("", "  ")])
             remaining -= 6
@@ -2067,7 +2151,15 @@ class CustomPromptSession:
 
         # CWD (truncated from left) + git branch with status badge
         # Degrade gracefully on narrow terminals: full → cwd-only → truncated cwd → skip
-        cwd = _truncate_left(_shorten_cwd(str(KaosPath.cwd())), _MAX_CWD_COLS)
+        try:
+            cwd = _truncate_left(_shorten_cwd(str(KaosPath.cwd())), _MAX_CWD_COLS)
+        except OSError:
+            # CWD no longer exists (e.g. external drive unplugged).  Ask
+            # prompt_toolkit to exit; the raised exception will propagate out
+            # of prompt_async() into the Shell's event router which prints a
+            # crash report with session info and exits cleanly.
+            app.exit(exception=CwdLostError())
+            return FormattedText([])
         branch = _get_git_branch()
         if branch:
             dirty, ahead, behind = _get_git_status()
@@ -2087,16 +2179,23 @@ class CustomPromptSession:
             fragments.extend([(tc.cwd, cwd_text), ("", "  ")])
             remaining -= cwd_w + 2
 
-        # Active background bash task count
-        bg_count = (
-            self._background_task_count_provider() if self._background_task_count_provider else 0
+        # Active background task counts (bash + agent, each rendered as its own
+        # badge). Order matters: bash renders first; if there isn't room for the
+        # agent badge too, drop agent and keep bash.
+        bg_counts = (
+            self._background_task_count_provider()
+            if self._background_task_count_provider
+            else BgTaskCounts()
         )
-        if bg_count > 0:
-            bg_text = f"⚙ bash: {bg_count}"
+        for kind_label, kind_count in (("bash", bg_counts.bash), ("agent", bg_counts.agent)):
+            if kind_count <= 0:
+                continue
+            bg_text = f"⚙ {kind_label}: {kind_count}"
             bg_width = _display_width(bg_text)
-            if remaining >= bg_width + 2:
-                fragments.extend([(tc.bg_tasks, bg_text), ("", "  ")])
-                remaining -= bg_width + 2
+            if remaining < bg_width + 2:
+                break
+            fragments.extend([(tc.bg_tasks, bg_text), ("", "  ")])
+            remaining -= bg_width + 2
 
         # Tips fill remaining space on line 1
         tip_text = self._get_two_rotating_tips()

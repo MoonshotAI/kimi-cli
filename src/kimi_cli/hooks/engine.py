@@ -87,7 +87,40 @@ class HookEngine:
         self._on_wire_hook = on_wire_hook
         self._by_event: dict[str, list[HookDef]] = {}
         self._wire_by_event: dict[str, list[WireHookSubscription]] = {}
+        self._pending_fire_and_forget: set[asyncio.Task[Any]] = set()
         self._rebuild_index()
+
+    def fire_and_forget_trigger(
+        self,
+        event: HookEventType,
+        *,
+        matcher_value: str = "",
+        input_data: dict[str, Any],
+    ) -> asyncio.Task[list[HookResult]]:
+        """Trigger a hook in the background and keep a strong reference to the
+        task. asyncio holds tasks in a WeakSet, so naively writing
+        ``asyncio.create_task(engine.trigger(...))`` and discarding the local
+        variable lets Python's GC collect the still-pending task — which fires
+        ``loop.call_exception_handler`` with no exception field and surfaces as
+        ``Unhandled exception in event loop / Exception None`` in the
+        prompt_toolkit terminal. Use this helper any time the caller wants to
+        fire a hook without awaiting its completion.
+        """
+        task: asyncio.Task[list[HookResult]] = asyncio.create_task(
+            self.trigger(event, matcher_value=matcher_value, input_data=input_data)
+        )
+        self._pending_fire_and_forget.add(task)
+        task.add_done_callback(self._pending_fire_and_forget.discard)
+        task.add_done_callback(self._log_fire_and_forget_failure)
+        return task
+
+    @staticmethod
+    def _log_fire_and_forget_failure(task: asyncio.Task[Any]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.opt(exception=exc).warning("Fire-and-forget hook task failed")
 
     def _rebuild_index(self) -> None:
         self._by_event.clear()
@@ -201,12 +234,26 @@ class HookEngine:
             return []
 
         try:
-            return await self._execute_hooks(
+            results = await self._execute_hooks(
                 event, matcher_value, server_matched, wire_matched, input_data
             )
         except Exception:
             logger.warning("Hook engine error for {}, failing open", event)
             return []
+
+        # Telemetry runs outside the fail-open try: a telemetry failure
+        # must NEVER discard hook results. For security-critical hooks
+        # (PreToolUse block), treating a sink failure as fail-open would
+        # silently bypass the block.
+        try:
+            from kimi_cli.telemetry import track
+
+            has_block = any(r.action == "block" for r in results)
+            track("hook_triggered", event_type=event, action="block" if has_block else "allow")
+        except Exception:
+            logger.debug("Telemetry for hook_triggered failed")
+
+        return results
 
     async def _execute_hooks(
         self,
@@ -230,8 +277,12 @@ class HookEngine:
         if self._on_triggered:
             try:
                 self._on_triggered(event, matcher_value, total)
-            except Exception:
-                logger.debug("HookTriggered callback failed, continuing")
+            except Exception as e:
+                logger.warning(
+                    "HookTriggered callback failed for {event}: {error}, continuing",
+                    event=event,
+                    error=e,
+                )
 
         t0 = time.monotonic()
         tasks: list[asyncio.Task[HookResult]] = []
@@ -264,14 +315,24 @@ class HookEngine:
             if r.action == "block":
                 action = "block"
                 reason = r.reason
+                logger.warning(
+                    "Hook blocked {event} (matcher={matcher}): {reason}",
+                    event=event,
+                    matcher=matcher_value,
+                    reason=reason,
+                )
                 break
 
         # --- HookResolved ---
         if self._on_resolved:
             try:
                 self._on_resolved(event, matcher_value, action, reason, duration_ms)
-            except Exception:
-                logger.debug("HookResolved callback failed, continuing")
+            except Exception as e:
+                logger.warning(
+                    "HookResolved callback failed for {event}: {error}, continuing",
+                    event=event,
+                    error=e,
+                )
 
         return results
 

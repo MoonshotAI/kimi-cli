@@ -26,7 +26,7 @@ If you only need simple non-interactive input/output, [print mode](./print-mode.
 
 ## Wire protocol
 
-Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.7`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
+Wire uses a JSON-RPC 2.0 based protocol for bidirectional communication via stdin/stdout. The current protocol version is `1.10`. Each message is a single line of JSON conforming to the JSON-RPC 2.0 specification.
 
 ### Protocol type definitions
 
@@ -489,6 +489,7 @@ type Event =
   | TurnEnd
   | StepBegin
   | StepInterrupted
+  | StepRetry
   | CompactionBegin
   | CompactionEnd
   | StatusUpdate
@@ -498,6 +499,8 @@ type Event =
   | ToolResult
   | ApprovalResponse
   | SubagentEvent
+  | BtwBegin
+  | BtwEnd
   | SteerInput
   | PlanDisplay
   | HookTriggered
@@ -546,6 +549,31 @@ interface StepBegin {
 ### `StepInterrupted`
 
 Step interrupted, no additional fields.
+
+### `StepRetry`
+
+::: info Added
+Added in Wire 1.10.
+:::
+
+The current step attempt failed and will be retried. This event is emitted when a step fails due to a recoverable error (such as rate limiting, connection timeout, or server error) and enters retry wait. Clients can use this to show retry status to the user, or clear incomplete state when the previous attempt already streamed partial output.
+
+```typescript
+interface StepRetry {
+  /** Step number */
+  n: number
+  /** Next attempt number, 1-based */
+  next_attempt: number
+  /** Maximum number of attempts for this step */
+  max_attempts: number
+  /** Seconds to wait before retrying */
+  wait_s: number
+  /** Exception class name that triggered the retry */
+  error_type: string
+  /** HTTP status code (if available), may be absent in JSON */
+  status_code?: number | null
+}
+```
 
 ### `CompactionBegin`
 
@@ -717,6 +745,42 @@ interface ApprovalResponse {
   response: "approve" | "approve_for_session" | "reject"
   /** Optional feedback text when rejecting, may be absent in JSON */
   feedback?: string
+}
+```
+
+### `BtwBegin`
+
+::: info Added
+Added in Wire 1.9.
+:::
+
+A side question (`/btw`) has started processing.
+
+```typescript
+interface BtwBegin {
+  /** Unique ID to pair with the corresponding BtwEnd */
+  id: string
+  /** The user's original side question text */
+  question: string
+}
+```
+
+### `BtwEnd`
+
+::: info Added
+Added in Wire 1.9.
+:::
+
+A side question (`/btw`) has finished processing.
+
+```typescript
+interface BtwEnd {
+  /** Unique ID matching the corresponding BtwBegin */
+  id: string
+  /** The LLM's response text, or null if it failed */
+  response?: string | null
+  /** Error message if the side question failed */
+  error?: string | null
 }
 ```
 
@@ -1043,6 +1107,8 @@ interface DiffDisplayBlock {
   old_text: string
   /** New content */
   new_text: string
+  /** Whether this is a summary block (shows line count summary instead of actual diff for large files). May not be present in JSON. Added in Wire 1.8 */
+  is_summary?: boolean
 }
 
 interface TodoDisplayBlock {
@@ -1089,7 +1155,7 @@ Kimi Agent (Rust) is the Rust implementation of the Kimi Code CLI kernel, design
 - **No Kimi account login**: No `login`/`logout` subcommands or `/login`, `/logout` slash commands; requires manual API key configuration
 - **No `--prompt`/`--command`**: Wire server does not accept initial prompts
 - **Local execution only**: No SSH Kaos support
-- **Different MCP OAuth storage**: Kimi Agent stores credentials in `~/.kimi/credentials/mcp_auth.json`, while Python version uses `~/.fastmcp/oauth-mcp-client-cache/`; they are incompatible
+- **Different MCP OAuth storage**: Kimi Agent stores credentials in `~/.kimi/credentials/mcp_auth.json`, while the Python version uses `~/.kimi/mcp-oauth/`; they are incompatible
 
 ### Installation
 

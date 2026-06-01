@@ -4,6 +4,54 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.43.0
+
+### MCP OAuth token cache moved to `~/.kimi/mcp-oauth/`
+
+Kimi Code CLI now uses FastMCP 3's persistent OAuth storage API for MCP servers and stores MCP OAuth tokens under `~/.kimi/mcp-oauth/`. Tokens from the old FastMCP 2.x cache location are not migrated automatically.
+
+- **Affected**: Users who authorized OAuth MCP servers before upgrading
+- **Migration**: If `kimi mcp list` shows an OAuth server as requiring authorization, run `kimi mcp auth <name>` once to create a new token in `~/.kimi/mcp-oauth/`. Use `kimi mcp reset-auth <name>` before re-authorizing if the stored token becomes invalid or corrupted
+
+## 1.42.0
+
+### Windows shell backend changed from PowerShell to Git Bash
+
+The Shell tool on Windows now runs commands through `bash.exe` (POSIX semantics) instead of `powershell.exe`. Windows users gain the same Unix-style command syntax as Linux/macOS, but must have Git for Windows installed.
+
+- **Affected**: All Windows users; integrations, agent specs, or saved snippets that rely on PowerShell-specific syntax (`Get-ChildItem`, `Where-Object`, `cmdlet -Foo Bar` argument style, `;`-only command chaining, `NUL` redirects, etc.) reaching the Shell tool
+- **Migration**:
+  1. Install [Git for Windows](https://git-scm.com/downloads/win) if not already installed; the bundled `bash.exe` (typically `C:\Program Files\Git\bin\bash.exe`) is auto-discovered via `where.exe git` or the standard install location
+  2. If `bash.exe` lives in a non-standard location, set the `KIMI_CLI_GIT_BASH_PATH` environment variable to its absolute path before launching kimi-cli
+  3. Update any custom prompts, agent specs, or snippets that hard-code PowerShell syntax to use Unix shell syntax instead (forward slashes inside Shell commands, `/dev/null` instead of `NUL`, `&&` and `||` for control flow, `grep`/`sed`/`awk` instead of PowerShell cmdlets)
+  4. Note that `python.exe`, `node.exe`, and other native Windows binaries called from inside bash still need native Windows paths (e.g. `python C:\path\to\script.py`); only POSIX-aware tools (cat, ls, grep, etc.) understand the `/c/path/...` form
+  5. If kimi-cli cannot find `bash.exe`, it now exits with an install hint at startup instead of falling back to PowerShell
+
+## 1.40.0
+
+### `--print` now uses runtime AFK semantics instead of YOLO semantics
+
+Print mode still runs non-interactively and handles approvals automatically, but it now sets an invocation-only AFK overlay instead of enabling YOLO. This means `--print` treats the user as unavailable and auto-dismisses `AskUserQuestion`, while later interactive resumes do not inherit AFK solely because of a previous print run.
+
+- **Affected**: Scripts, wrappers, or custom integrations that inferred print-mode behavior from the explicit YOLO flag
+- **Migration**: Treat `--print` / `--quiet` as non-interactive AFK runs. Use `--yolo` only when you want to bypass permission approvals while a user remains reachable
+
+### `skip_yolo_prompt_injection` replaced by `skip_afk_prompt_injection`
+
+YOLO no longer injects model guidance, so the old `skip_yolo_prompt_injection` config key is ignored. The remaining non-interactive reminder belongs to AFK mode and can be disabled with `skip_afk_prompt_injection`.
+
+- **Affected**: Config files or embedded applications that set `skip_yolo_prompt_injection`
+- **Migration**: Replace `skip_yolo_prompt_injection = true` with `skip_afk_prompt_injection = true` if you need to suppress AFK mode reminders
+
+## 1.39.0
+
+### `merge_all_available_skills` default flipped to `true`
+
+The `merge_all_available_skills` config option default has changed from `false` to `true`. kimi-cli now merges all existing user- and project-level brand skill directories (`.kimi/skills`, `.claude/skills`, `.codex/skills`) by default instead of only using the first one found. Users who keep skills in multiple brand directories — for example both `~/.kimi/skills` and `~/.claude/skills` — will see every skill out of the box after upgrading.
+
+- **Affected**: Users who maintain multiple brand skill directories and relied on the first-match behavior to hide duplicates
+- **Migration**: Set `merge_all_available_skills = false` in your config to restore the previous first-match behavior
+
 ## 1.25.0
 
 ### Wire protocol 1.6 — subagent and approval field changes

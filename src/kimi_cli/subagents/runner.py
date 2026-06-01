@@ -86,6 +86,11 @@ async def run_soul_checked(
             runtime=soul.runtime,
         )
     except MaxStepsReached as exc:
+        logger.warning(
+            "Subagent max steps reached ({n_steps}) when {phase}",
+            n_steps=exc.n_steps,
+            phase=phase,
+        )
         return SoulRunFailure(
             message=(
                 f"Max steps {exc.n_steps} reached when {phase}. "
@@ -98,11 +103,22 @@ async def run_soul_checked(
     except asyncio.CancelledError:
         raise
     except APIStatusError as exc:
+        logger.warning(
+            "Subagent LLM API error (HTTP {status_code}) when {phase}: {error}",
+            status_code=exc.status_code,
+            phase=phase,
+            error=exc,
+        )
         return SoulRunFailure(
             message=f"LLM API error (HTTP {exc.status_code}) when {phase}: {exc}",
             brief=f"API error ({exc.status_code})",
         )
     except ChatProviderError as exc:
+        logger.warning(
+            "Subagent LLM provider error when {phase}: {error}",
+            phase=phase,
+            error=exc,
+        )
         return SoulRunFailure(
             message=f"LLM provider error when {phase}: {exc}",
             brief="LLM provider error",
@@ -277,19 +293,21 @@ class ForegroundSubagentRunner:
             output_writer.stage("run_soul_finished")
 
             # --- SubagentStop hook ---
-            _hook_task = asyncio.create_task(
-                hook_engine.trigger(
-                    "SubagentStop",
-                    matcher_value=actual_type,
-                    input_data=hook_events.subagent_stop(
-                        session_id=self._runtime.session.id,
-                        cwd=str(Path.cwd()),
-                        agent_name=actual_type,
-                        response=(final_response or "")[:500],
-                    ),
-                )
+            # fire_and_forget_trigger keeps a strong reference to the task on
+            # the hook engine so it cannot be garbage-collected before it
+            # finishes. Without that, asyncio's WeakSet bookkeeping would let
+            # GC reap the still-pending task and trigger the broken
+            # "Exception None" loop-handler path.
+            hook_engine.fire_and_forget_trigger(
+                "SubagentStop",
+                matcher_value=actual_type,
+                input_data=hook_events.subagent_stop(
+                    session_id=self._runtime.session.id,
+                    cwd=str(Path.cwd()),
+                    agent_name=actual_type,
+                    response=(final_response or "")[:500],
+                ),
             )
-            _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         except asyncio.CancelledError:
             self._store.update_instance(agent_id, status="killed")
             output_writer.stage("cancelled")
@@ -363,6 +381,9 @@ class ForegroundSubagentRunner:
                 effective_model=req.model or type_def.default_model,
             ),
         )
+        from kimi_cli.telemetry import track
+
+        track("subagent_created")
         return PreparedInstance(
             record=record,
             actual_type=actual_type,

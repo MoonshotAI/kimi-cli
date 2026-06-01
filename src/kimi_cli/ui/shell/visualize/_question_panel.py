@@ -183,8 +183,8 @@ class QuestionRequestPanel:
 
         return Panel(
             Group(*lines),
-            border_style="bold cyan",
-            title="[bold cyan]? QUESTION[/bold cyan]",
+            border_style="grey50",
+            title="[bold]question[/bold]",
             title_align="left",
             padding=(0, 1),
         )

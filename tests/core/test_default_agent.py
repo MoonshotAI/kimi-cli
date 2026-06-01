@@ -106,7 +106,7 @@ The directory listing of current working directory is:
 Test ls content
 ```
 
-Use this as your basic understanding of the project structure.
+Use this as your basic understanding of the project structure. The tree only shows the first two levels; entries marked "... and N more" indicate additional contents — use Glob or Shell to explore further.
 
 # Project Information
 
@@ -148,6 +148,8 @@ Skills are modular extensions that provide:
 - Reference material: Documentation, templates, and examples
 
 ## Available skills
+
+Skills are grouped by scope (`Project`, `User`, `Extra`, `Built-in`) so you can tell where each came from. When the user refers to "the skill in this project" or "the user-scope skill", use the scope heading to disambiguate. When multiple scopes define a skill with the same name, the more specific scope takes precedence: **Project overrides User overrides Extra overrides Built-in**.
 
 No skills found.
 

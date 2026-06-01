@@ -6,15 +6,28 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic import SecretStr
 
-from kimi_cli.auth.oauth import OAuthManager, OAuthToken
+from kimi_cli.auth.oauth import (
+    _REJECTED_REFRESH_TOKENS,
+    OAuthManager,
+    OAuthToken,
+    OAuthUnauthorized,
+    _save_to_file,
+)
 from kimi_cli.config import Config, LLMModel, LLMProvider, OAuthRef, Services
 
 
-def _make_config(*, with_oauth: bool = True) -> Config:
+@pytest.fixture(autouse=True)
+def _clear_rejected_refresh_tokens():
+    _REJECTED_REFRESH_TOKENS.clear()
+    yield
+    _REJECTED_REFRESH_TOKENS.clear()
+
+
+def _make_config(*, with_oauth: bool = True, api_key: str = "") -> Config:
     provider = LLMProvider(
         type="kimi",
         base_url="https://api.test/v1",
-        api_key=SecretStr(""),
+        api_key=SecretStr(api_key),
         oauth=OAuthRef(storage="file", key="oauth/kimi-code") if with_oauth else None,
     )
     model = LLMModel(provider="managed:kimi-code", model="test-model", max_context_size=100_000)
@@ -87,6 +100,40 @@ def test_resolve_api_key_falls_back_when_token_has_empty_access_token():
         result = oauth.resolve_api_key(SecretStr("fallback"), ref)
 
     assert result == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_resolve_api_key_falls_back_after_rejected_refresh_token(tmp_path, monkeypatch):
+    """After a confirmed refresh 401, keep the file but stop preferring the
+    same persisted OAuth token over a configured static API key.
+    """
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+    config = _make_config(with_oauth=True, api_key="fallback-key")
+    token = OAuthToken(
+        access_token="oauth-access-123",
+        refresh_token="refresh-123",
+        expires_at=time.time() + 100,
+        scope="",
+        token_type="Bearer",
+        expires_in=100,
+    )
+    _save_to_file("oauth/kimi-code", token)
+
+    oauth = OAuthManager(config)
+    ref = OAuthRef(storage="file", key="oauth/kimi-code")
+
+    with (
+        patch(
+            "kimi_cli.auth.oauth.refresh_token",
+            AsyncMock(side_effect=OAuthUnauthorized("revoked")),
+        ),
+        patch("kimi_cli.auth.oauth.asyncio.sleep", new=AsyncMock()),
+        pytest.raises(OAuthUnauthorized, match="revoked"),
+    ):
+        await oauth.ensure_fresh(force=True)
+
+    result = oauth.resolve_api_key(config.providers["managed:kimi-code"].api_key, ref)
+    assert result == "fallback-key"
 
 
 # ---------------------------------------------------------------------------

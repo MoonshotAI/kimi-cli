@@ -42,6 +42,8 @@ There are four ways to enter plan mode:
 
 You can also set `default_plan_mode = true` in the config file to start every new session in plan mode by default. See [Configuration files](../configuration/config-files.md).
 
+In YOLO mode, AI-initiated entry into plan mode is auto-approved, but exiting plan mode with `ExitPlanMode` still asks you to approve the plan. In AFK mode, both entering and exiting plan mode are auto-approved because no user is present.
+
 When plan mode is active, the prompt changes to `📋` and a blue `plan` badge appears in the status bar.
 
 ### Reviewing plans
@@ -79,15 +81,30 @@ kimi --thinking
 Thinking mode requires support from the current model. Some models (like `kimi-k2-thinking-turbo`) always use thinking mode and cannot be disabled.
 :::
 
-## Sending messages while running (steer)
+## Sending messages while running
 
-While the AI is executing a task, you can type and send follow-up messages in the input box without waiting for the current turn to finish. This feature is called "steering" and allows you to adjust the AI's direction mid-turn.
+While the AI is executing a task, you can send follow-up messages in two ways without waiting for the current turn to finish:
 
-Steer messages are appended to the context after the current step completes, and the AI will see and respond to your message before the next step begins. Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
+- **Queue (Enter)**: Press `Enter` to queue your message for delivery after the current turn completes. The queued message count is shown in the input area title (e.g. `── input · 2 queued ──`). Press `↑` in an empty input box to recall the last queued message for editing.
+- **Inject immediately (Ctrl+S)**: Press `Ctrl+S` to inject your message directly into the running turn context — the model sees it right away.
+
+Approval requests and question panels are also handled inline with keyboard navigation during agent execution.
 
 ::: tip
-Steer messages do not interrupt the AI's currently executing step — they are processed between steps. To interrupt immediately, use `Ctrl-C`.
+To interrupt the AI's execution immediately, use `Ctrl-C`.
 :::
+
+## Side questions
+
+While the AI is working, you can use the `/btw` command to ask a quick side question without interrupting the main conversation flow.
+
+```
+/btw What is the return type of this function?
+```
+
+Side questions run in an isolated context: they can see the conversation history but do not modify it, and tools are disabled. The response is displayed in a scrollable modal panel — use `↑`/`↓` to scroll, `Escape` to close.
+
+See [Slash commands reference](../reference/slash-commands.md#btw) for details.
 
 ## Background tasks
 
@@ -135,7 +152,7 @@ When you type `@` in a message, Kimi Code CLI will auto-complete file and direct
 Check if there are any issues with @src/components/Button.tsx
 ```
 
-After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion.
+After typing `@`, start entering the filename and matching completions will appear. Press `Tab` or `Enter` to select a completion. In Git repositories, file discovery uses `git ls-files` first, enabling fast lookups even in large repos with tens of thousands of files; non-Git projects fall back to directory scanning.
 
 ## Structured questions
 
@@ -166,7 +183,7 @@ The confirmation prompt will show operation details, including shell command and
 - **Reject**: Do not execute this operation
 - **Reject with feedback**: Decline the operation and provide written feedback telling the agent how to adjust
 
-If you trust the AI's operations, or you're running Kimi Code CLI in a safe isolated environment, you can enable "YOLO mode" to automatically approve all requests:
+If you trust the AI's operations, or you're running Kimi Code CLI in a safe isolated environment, you can enable "YOLO mode" to automatically approve all tool calls:
 
 ```sh
 # Enable at startup
@@ -180,6 +197,28 @@ You can also set `default_yolo = true` in the config file to enable YOLO mode by
 
 When YOLO mode is enabled, a yellow YOLO badge appears in the status bar at the bottom. Enter `/yolo` again to disable it.
 
+YOLO only removes approval friction — the agent still treats you as present and can reach you via `AskUserQuestion` when a decision is genuinely ambiguous. If you're actually stepping away, use AFK mode below.
+
 ::: warning Note
-YOLO mode skips all confirmations. Make sure you understand the potential risks. It's recommended to only use this in controlled environments.
+YOLO mode skips all approval confirmations. Make sure you understand the potential risks. It's recommended to only use this in controlled environments.
+:::
+
+### AFK mode
+
+When you're stepping away from the terminal and want the agent to keep running unattended, enable "AFK mode" (away-from-keyboard):
+
+```sh
+# Enable at startup
+kimi --afk
+
+# Or toggle during runtime
+/afk
+```
+
+AFK also auto-approves all tool calls, and additionally auto-dismisses any `AskUserQuestion` the model tries to send — so the agent makes its own best judgment instead of waiting for an answer that will never come. `--print` implicitly enables `--afk` for the same reason.
+
+When AFK is active, an orange AFK badge appears in the status bar, independent of the YOLO badge. Enter `/afk` again to disable it.
+
+::: warning Note
+AFK skips all approval confirmations and removes the safety net of clarifying questions. Only use when you genuinely cannot be at the terminal and trust the current scope.
 :::

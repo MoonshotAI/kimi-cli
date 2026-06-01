@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import platform
 import re
+import shlex
 import shutil
 import stat
+import subprocess
 import tarfile
 import tempfile
 from enum import Enum, auto
@@ -87,6 +90,135 @@ async def do_update(*, print: bool = True, check_only: bool = False) -> UpdateRe
 
 
 LATEST_VERSION_FILE = get_share_dir() / "latest_version.txt"
+SKIPPED_VERSION_FILE = get_share_dir() / "skipped_version.txt"
+CHANGELOG_URL_ZH = "https://moonshotai.github.io/kimi-cli/zh/release-notes/changelog.html"
+CHANGELOG_URL_EN = "https://moonshotai.github.io/kimi-cli/en/release-notes/changelog.html"
+
+
+def _read_key() -> str:
+    """Read a single character from stdin in raw terminal mode."""
+    import sys
+
+    if sys.platform == "win32":
+        import msvcrt
+
+        return msvcrt.getwch()
+    else:
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            return sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def check_update_gate() -> None:
+    """Block interactive shell startup if a newer version is cached locally."""
+    import sys
+
+    from kimi_cli.constant import VERSION as current_version
+    from kimi_cli.utils.envvar import get_env_bool
+
+    if get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
+        return
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return
+    if not LATEST_VERSION_FILE.exists():
+        return
+
+    try:
+        latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return
+    if semver_tuple(latest_version) <= semver_tuple(current_version):
+        return
+
+    if SKIPPED_VERSION_FILE.exists():
+        try:
+            skipped = SKIPPED_VERSION_FILE.read_text(encoding="utf-8").strip()
+        except OSError:
+            skipped = ""
+        if skipped == latest_version:
+            return
+
+    _run_update_gate(current_version, latest_version)
+
+
+def _run_update_gate(current_version: str, latest_version: str) -> None:
+    """Display the blocking update UI and handle user key input."""
+    import sys
+
+    from rich.panel import Panel
+    from rich.rule import Rule
+    from rich.text import Text
+
+    body = Text.assemble(
+        ("  Current version   ", ""),
+        (current_version + "\n", ""),
+        ("  Latest version    ", ""),
+        (latest_version + "\n\n", "bold green"),
+        ("  What's new:\n", ""),
+        ("    · [中文]    ", ""),
+        (CHANGELOG_URL_ZH + "\n", "dodger_blue1"),
+        ("    · [English] ", ""),
+        (CHANGELOG_URL_EN + "\n", "dodger_blue1"),
+    )
+    console.print()
+    console.print(
+        Panel(
+            body,
+            title="[bold]kimi-cli update available[/bold]",
+            border_style="yellow",
+            expand=False,
+            padding=(1, 2),
+        )
+    )
+    console.print(Rule(style="grey50"))
+    console.print(
+        Text.assemble(
+            "  ",
+            ("[Enter]", "bold"),
+            "  Upgrade now  ",
+            (f"({UPGRADE_COMMAND})", "grey50"),
+        )
+    )
+    console.print(Text.assemble("  ", ("[q]", "bold"), "      Not now, remind me next time"))
+    console.print(
+        Text.assemble("  ", ("[s]", "bold"), f"      Skip reminders for version {latest_version}")
+    )
+    console.print(Rule(style="grey50"))
+    console.print()
+
+    key = _read_key()
+    console.print()
+
+    if key in ("\r", "\n"):
+        console.print(f"[grey50]Running: {UPGRADE_COMMAND}[/grey50]\n")
+        try:
+            result = subprocess.run(shlex.split(UPGRADE_COMMAND))
+        except OSError:
+            console.print()
+            console.print("[red]Upgrade failed. Please try running manually:[/red]")
+            console.print(f"  {UPGRADE_COMMAND}")
+            sys.exit(1)
+        console.print()
+        if result.returncode == 0:
+            console.print("[green]Upgrade complete! Run kimi-cli to start the new version.[/green]")
+        else:
+            console.print("[red]Upgrade failed. Please try running manually:[/red]")
+            console.print(f"  {UPGRADE_COMMAND}")
+        sys.exit(result.returncode)
+    elif key in ("s", "S"):
+        with contextlib.suppress(OSError):
+            SKIPPED_VERSION_FILE.write_text(latest_version, encoding="utf-8")
+        console.print(f"[grey50]Reminders skipped for version {latest_version}.[/grey50]\n")
+    elif key in ("\x03", "\x1b"):
+        sys.exit(0)
+    # q/Q/other: fall through, continue startup
 
 
 async def _do_update(*, print: bool, check_only: bool) -> UpdateResult:

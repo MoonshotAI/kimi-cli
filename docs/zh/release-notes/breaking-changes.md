@@ -4,6 +4,54 @@
 
 ## 未发布
 
+## 1.43.0
+
+### MCP OAuth token 缓存迁移到 `~/.kimi/mcp-oauth/`
+
+Kimi Code CLI 现在为 MCP 服务器使用 FastMCP 3 的持久化 OAuth 存储 API，并将 MCP OAuth token 存储在 `~/.kimi/mcp-oauth/`。旧 FastMCP 2.x 缓存位置中的 token 不会自动迁移。
+
+- **受影响**：升级前已经授权过 OAuth MCP 服务器的用户
+- **迁移**：如果 `kimi mcp list` 显示某个 OAuth 服务器需要授权，请运行一次 `kimi mcp auth <name>`，在 `~/.kimi/mcp-oauth/` 中创建新的 token。如果已存储的 token 失效或损坏，可先运行 `kimi mcp reset-auth <name>` 再重新授权
+
+## 1.42.0
+
+### Windows Shell 后端从 PowerShell 切换为 Git Bash
+
+Windows 上的 Shell 工具现在通过 `bash.exe`（POSIX 语义）执行命令，不再使用 `powershell.exe`。Windows 用户获得与 Linux/macOS 一致的 Unix 风格命令语法，但需要先安装 Git for Windows。
+
+- **受影响**：所有 Windows 用户；依赖 PowerShell 专属语法（`Get-ChildItem`、`Where-Object`、`cmdlet -Foo Bar` 参数风格、仅 `;` 链式命令、`NUL` 重定向等）经由 Shell 工具执行的集成、agent 规格或保存的代码片段
+- **迁移**：
+  1. 如果尚未安装，先安装 [Git for Windows](https://git-scm.com/downloads/win)；其自带的 `bash.exe`（通常位于 `C:\Program Files\Git\bin\bash.exe`）会通过 `where.exe git` 或标准安装位置自动发现
+  2. 如果 `bash.exe` 在非标准位置，启动 kimi-cli 前把 `KIMI_CLI_GIT_BASH_PATH` 环境变量设为它的绝对路径
+  3. 把任何硬编码 PowerShell 语法的自定义提示词、agent 规格或代码片段改为 Unix shell 语法（Shell 命令内用正斜杠路径，`/dev/null` 代替 `NUL`，控制流用 `&&` 和 `||`，文本工具用 `grep`/`sed`/`awk` 而非 PowerShell cmdlet）
+  4. 注意：从 bash 中调用 `python.exe`、`node.exe` 等原生 Windows 程序时仍需要传入原生 Windows 路径（例如 `python C:\path\to\script.py`）；只有 POSIX-aware 工具（cat、ls、grep 等）才能识别 `/c/path/...` 形式
+  5. 如果 kimi-cli 找不到 `bash.exe`，现在会在启动时打印安装提示并退出，而不是回退到 PowerShell
+
+## 1.40.0
+
+### `--print` 现在使用 runtime AFK 语义而不是 YOLO 语义
+
+Print 模式仍然是非交互运行，并且会自动处理审批，但现在设置的是仅本次调用生效的 AFK 覆盖，而不是启用 YOLO。也就是说，`--print` 会把用户视为不在场并自动 dismiss `AskUserQuestion`，但之后以交互方式恢复同一会话时，不会仅仅因为之前运行过 Print 模式而继承 AFK。
+
+- **受影响**：通过显式 YOLO 标志推断 Print 模式行为的脚本、包装器或自定义集成
+- **迁移**：把 `--print` / `--quiet` 视为非交互 AFK 运行。只有在用户仍可回应、但希望绕过权限审批时才使用 `--yolo`
+
+### `skip_yolo_prompt_injection` 替换为 `skip_afk_prompt_injection`
+
+YOLO 不再注入模型指导，因此旧的 `skip_yolo_prompt_injection` 配置键会被忽略。剩余的非交互提示属于 AFK 模式，可以通过 `skip_afk_prompt_injection` 关闭。
+
+- **受影响**：设置了 `skip_yolo_prompt_injection` 的配置文件或嵌入式应用
+- **迁移**：如果需要抑制 AFK 模式提示，请把 `skip_yolo_prompt_injection = true` 替换为 `skip_afk_prompt_injection = true`
+
+## 1.39.0
+
+### `merge_all_available_skills` 默认值翻转为 `true`
+
+`merge_all_available_skills` 配置项的默认值从 `false` 改为 `true`。kimi-cli 现在默认会合并用户级和项目级所有已存在的品牌 Skills 目录（`.kimi/skills`、`.claude/skills`、`.codex/skills`），而不是仅使用找到的第一个。升级后，同时维护多个品牌目录（例如同时保留 `~/.kimi/skills` 和 `~/.claude/skills`）的用户会开箱即看到全部 Skills。
+
+- **受影响**：同时维护多个品牌 Skills 目录，并依赖旧的"仅取第一个"行为来隐藏重复项的用户
+- **迁移**：在配置中显式设置 `merge_all_available_skills = false` 可恢复旧的仅匹配第一个目录的行为
+
 ## 1.25.0
 
 ### Wire 协议 1.6——子 Agent 与审批字段变更

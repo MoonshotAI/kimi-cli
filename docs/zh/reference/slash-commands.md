@@ -128,7 +128,7 @@
 
 别名：`/resume`
 
-使用方向键选择会话，按 `Enter` 确认切换，按 `Ctrl-C` 取消。
+使用方向键选择会话，按 `Enter` 确认切换，按 `Ctrl-C` 取消。按 `Ctrl-A` 可在 「仅当前目录」 和 「所有目录」 之间切换会话范围。
 
 ### `/title`
 
@@ -216,8 +216,8 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 
 例如：
 
+- `/flow:pull-request`：执行创建 Pull Request 的工作流
 - `/flow:code-review`：执行代码审查工作流
-- `/flow:release`：执行发布工作流
 
 ::: tip 提示
 Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加载内容，不会自动执行流程。
@@ -241,6 +241,20 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 :::
 
 ## 其他
+
+### `/btw`
+
+在不打断主对话的情况下提出快速侧问。在空闲和 streaming 期间均可使用。
+
+用法：`/btw <问题>`
+
+侧问在隔离的上下文中运行：能看到对话历史但不会修改它。工具调用被禁用——响应仅基于模型对当前对话的已有了解，以纯文本形式回答。
+
+在 streaming 期间，响应会显示在一个可滚动的模态面板中，覆盖在提示区域上方。使用 `↑`/`↓` 滚动，`Escape` 关闭。
+
+::: tip
+此命令仅在交互式 Shell 模式下可用。Wire 和 ACP 客户端可使用 `BtwBegin`/`BtwEnd` Wire 事件配合 `run_side_question()` API。
+:::
 
 ### `/init`
 
@@ -290,15 +304,27 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 
 ### `/yolo`
 
-切换 YOLO 模式。开启后自动批准所有操作，底部状态栏会显示黄色的 YOLO 标识；再次输入可关闭。
+切换 YOLO 模式。开启后自动批准所有工具调用，底部状态栏会显示黄色的 YOLO 标识；再次输入可关闭。YOLO 只解除审批摩擦——Agent 仍可通过 `AskUserQuestion` 向你提问。`/yolo` 与 `/afk` 相互独立。
 
 ::: warning 注意
-YOLO 模式会跳过所有确认，请确保你了解可能的风险。
+YOLO 模式会跳过所有审批确认，请确保你了解可能的风险。
+:::
+
+### `/afk`
+
+切换 AFK（away-from-keyboard）模式。开启后会自动批准所有工具调用，并进一步自动 dismiss Agent 发出的任何 `AskUserQuestion`——让 Agent 自己做判断，不再等待一个永远不会到来的回答。状态栏会显示独立的橙色 AFK 标识，与 YOLO 标识互不相干；再次输入可关闭。
+
+::: warning 注意
+AFK 会跳过所有审批确认，并且去掉提问澄清的安全网。仅在你确实无法守在终端前时使用。
 :::
 
 ### `/web`
 
 切换到 Web UI。执行后 Kimi Code CLI 会启动 Web UI 服务器并在浏览器中打开当前会话，你可以在 Web UI 中继续对话。详见 [Web UI](./kimi-web.md)。
+
+### `/vis`
+
+切换到 Agent Tracing Visualizer。执行后 Kimi Code CLI 会启动可视化面板服务器并在浏览器中打开当前会话的追踪视图，你可以在其中检查 Wire 事件时间线、上下文消息和用量统计。详见 [Agent Tracing Visualizer](./kimi-vis.md)。
 
 ## 命令补全
 

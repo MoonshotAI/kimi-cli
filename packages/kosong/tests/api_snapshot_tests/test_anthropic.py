@@ -314,12 +314,7 @@ async def test_anthropic_message_conversion():
                                         },
                                         {"type": "text", "text": "5"},
                                     ],
-                                }
-                            ],
-                        },
-                        {
-                            "role": "user",
-                            "content": [
+                                },
                                 {
                                     "type": "tool_result",
                                     "tool_use_id": "call_mul",
@@ -332,7 +327,7 @@ async def test_anthropic_message_conversion():
                                         {"type": "text", "text": "20"},
                                     ],
                                     "cache_control": {"type": "ephemeral"},
-                                }
+                                },
                             ],
                         },
                     ],
@@ -506,7 +501,7 @@ async def test_anthropic_with_thinking():
 
 
 async def test_anthropic_opus_46_adaptive_thinking():
-    """Opus 4.6 models should use adaptive thinking instead of budget-based thinking."""
+    """Opus 4.6 adaptive thinking should opt-in to summarized display and pass effort."""
     with respx.mock(base_url="https://api.anthropic.com") as mock:
         mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
         provider = Anthropic(
@@ -519,14 +514,15 @@ async def test_anthropic_opus_46_adaptive_thinking():
         async for _ in stream:
             pass
         body = json.loads(mock.calls.last.request.content.decode())
-        assert body["thinking"] == snapshot({"type": "adaptive"})
+        assert body["thinking"] == snapshot({"type": "adaptive", "display": "summarized"})
+        assert body["output_config"] == snapshot({"effort": "high"})
         # Adaptive thinking should not include interleaved-thinking beta header
         beta_header = mock.calls.last.request.headers.get("anthropic-beta", "")
         assert "interleaved-thinking-2025-05-14" not in beta_header
 
 
 async def test_anthropic_opus_46_thinking_off():
-    """Opus 4.6 with thinking off should still use disabled."""
+    """Opus 4.6 with thinking off should send disabled and omit output_config."""
     with respx.mock(base_url="https://api.anthropic.com") as mock:
         mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
         provider = Anthropic(
@@ -540,6 +536,246 @@ async def test_anthropic_opus_46_thinking_off():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["thinking"] == snapshot({"type": "disabled"})
+        assert "output_config" not in body
+
+
+async def test_anthropic_opus_47_adaptive_thinking():
+    """Opus 4.7 must use adaptive thinking (legacy rejected by API)."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-7",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("high")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "adaptive", "display": "summarized"})
+        assert body["output_config"] == snapshot({"effort": "high"})
+
+
+async def test_anthropic_opus_47_effort_low_passthrough():
+    """Opus 4.7 with 'low' effort must not silently become 'high'."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-7",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("low")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["output_config"] == snapshot({"effort": "low"})
+
+
+async def test_anthropic_opus_47_effort_medium_passthrough():
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-7",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("medium")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["output_config"] == snapshot({"effort": "medium"})
+
+
+async def test_anthropic_future_opus_48_uses_adaptive():
+    """A future Opus 4.8 model should be recognized as adaptive-capable via regex extrapolation."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-8",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("high")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "adaptive", "display": "summarized"})
+
+
+async def test_anthropic_sonnet_4_legacy_thinking_preserved():
+    """Sonnet 4 (pre-4.6) uses budget_tokens and does NOT send output_config.
+
+    Per Anthropic docs, only Mythos/Opus 4.7/4.6/Sonnet 4.6/Opus 4.5 are
+    explicitly listed as supporting the effort parameter. Sonnet 4 is not
+    on that list, so emitting `output_config.effort` would risk a 400.
+    """
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("low")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 1024})
+        assert "output_config" not in body
+
+
+async def test_anthropic_claude_3_legacy_no_output_config():
+    """Claude 3.x predates the effort parameter — output_config must be absent
+    to avoid 400 validation errors on those models.
+    """
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-3-5-sonnet-20240620",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("high")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 32000})
+        assert "output_config" not in body
+
+
+async def test_anthropic_haiku_45_legacy_no_output_config():
+    """Haiku 4.5 is not in the explicit effort-supporting list — be conservative."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-haiku-4-5-20251001",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("medium")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 4096})
+        assert "output_config" not in body
+
+
+async def test_anthropic_opus_45_legacy_xhigh_clamps_to_high():
+    """Opus 4.5 is explicitly listed as supporting effort alongside legacy
+    budget_tokens thinking. xhigh clamps to high for this model.
+    """
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-5",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("xhigh")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "enabled", "budget_tokens": 32000})
+        assert body["output_config"] == snapshot({"effort": "high"})
+
+
+async def test_anthropic_opus_47_xhigh():
+    """Opus 4.7 + xhigh should pass xhigh through (Opus 4.7-specific level)."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-7",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("xhigh")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "adaptive", "display": "summarized"})
+        assert body["output_config"] == snapshot({"effort": "xhigh"})
+
+
+async def test_anthropic_opus_47_max():
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-7",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("max")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["output_config"] == snapshot({"effort": "max"})
+
+
+async def test_anthropic_opus_46_max():
+    """Opus 4.6 supports max effort."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-6",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("max")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["output_config"] == snapshot({"effort": "max"})
+
+
+async def test_anthropic_opus_46_xhigh_clamps_to_high():
+    """Opus 4.6 doesn't support xhigh (Opus 4.7-only) — must clamp to high."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-opus-4-6",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking("xhigh")
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["output_config"] == snapshot({"effort": "high"})
+
+
+async def test_anthropic_switching_from_adaptive_to_off_clears_output_config():
+    """Switching from adaptive effort to off must not leave a stale output_config."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = (
+            Anthropic(
+                model="claude-opus-4-7",
+                api_key="test-key",
+                default_max_tokens=1024,
+                stream=False,
+            )
+            .with_thinking("high")
+            .with_thinking("off")
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Think")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["thinking"] == snapshot({"type": "disabled"})
+        assert "output_config" not in body
 
 
 async def test_anthropic_metadata():
@@ -578,19 +814,93 @@ async def test_anthropic_metadata_omitted_when_none():
 
 
 async def test_anthropic_opus_46_thinking_effort_property():
-    """thinking_effort should return 'high' for adaptive thinking config."""
+    """thinking_effort roundtrips through output_config.effort in adaptive mode."""
+    for effort in ("low", "medium", "high", "off"):
+        provider = Anthropic(
+            model="claude-opus-4-6-20260205",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking(effort)  # type: ignore[arg-type]
+        assert provider.thinking_effort == effort
+
+
+async def test_anthropic_opus_47_thinking_effort_property():
+    """Opus 4.7 roundtrips all effort levels through output_config."""
+    for effort in ("low", "medium", "high", "xhigh", "max", "off"):
+        provider = Anthropic(
+            model="claude-opus-4-7",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_thinking(effort)  # type: ignore[arg-type]
+        assert provider.thinking_effort == effort
+
+
+async def test_anthropic_opus_46_xhigh_property_reflects_clamped_value():
+    """After clamping, the getter reports the effective (clamped) effort."""
     provider = Anthropic(
-        model="claude-opus-4-6-20260205",
+        model="claude-opus-4-6",
         api_key="test-key",
         default_max_tokens=1024,
         stream=False,
-    ).with_thinking("high")
+    ).with_thinking("xhigh")
+    # xhigh clamped to high for 4.6
     assert provider.thinking_effort == "high"
 
-    provider_off = Anthropic(
-        model="claude-opus-4-6-20260205",
-        api_key="test-key",
-        default_max_tokens=1024,
-        stream=False,
-    ).with_thinking("off")
-    assert provider_off.thinking_effort == "off"
+
+async def test_anthropic_parallel_tool_results_merged_into_single_user_message():
+    """Parallel tool results must be packed into a single user message.
+
+    Per the Anthropic Messages API spec, every tool_use block in an assistant
+    message must be answered by tool_result blocks inside the same (single)
+    user message. Anthropic's official backend leniently merges consecutive
+    same-role turns, but strict Anthropic-compatible backends (e.g. DeepSeek's
+    /anthropic endpoint) reject the split form with 400 — and the docs warn
+    that the split form also silently teaches Claude to avoid parallel calls.
+    """
+    from common import ADD_TOOL, MUL_TOOL, capture_request
+
+    from kosong.message import ToolCall
+
+    history = [
+        Message(role="user", content="Calculate 2+3 and 4*5"),
+        Message(
+            role="assistant",
+            content="I'll calculate both.",
+            tool_calls=[
+                ToolCall(
+                    id="call_add",
+                    function=ToolCall.FunctionBody(name="add", arguments='{"a": 2, "b": 3}'),
+                ),
+                ToolCall(
+                    id="call_mul",
+                    function=ToolCall.FunctionBody(name="multiply", arguments='{"a": 4, "b": 5}'),
+                ),
+            ],
+        ),
+        Message(role="tool", content="5", tool_call_id="call_add"),
+        Message(role="tool", content="20", tool_call_id="call_mul"),
+    ]
+
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        )
+        body = await capture_request(mock, provider, "", [ADD_TOOL, MUL_TOOL], history)
+
+    messages = body["messages"]
+    # Expected wire layout:
+    #   [0] user      — original question
+    #   [1] assistant — text + two tool_use blocks
+    #   [2] user      — *both* tool_result blocks packed together
+    assert [m["role"] for m in messages] == ["user", "assistant", "user"], (
+        f"Parallel tool results should collapse into one trailing user message, "
+        f"got roles: {[m['role'] for m in messages]}"
+    )
+    tool_results = [b for b in messages[-1]["content"] if b["type"] == "tool_result"]
+    assert {b["tool_use_id"] for b in tool_results} == {"call_add", "call_mul"}

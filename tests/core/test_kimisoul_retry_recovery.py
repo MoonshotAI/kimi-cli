@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Self
+from unittest.mock import AsyncMock
 
 import pytest
 from kosong.chat_provider import (
@@ -13,10 +14,12 @@ from kosong.chat_provider import (
     ThinkingEffort,
     TokenUsage,
 )
-from kosong.message import Message, TextPart
+from kosong.message import Message, TextPart, ThinkPart
 from kosong.tooling import Tool
 from kosong.tooling.simple import SimpleToolset
+from pydantic import SecretStr
 
+from kimi_cli.config import LLMModel, LLMProvider, OAuthRef
 from kimi_cli.llm import LLM
 from kimi_cli.soul import run_soul
 from kimi_cli.soul.agent import Agent, Runtime
@@ -24,6 +27,7 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.wire import Wire
+from kimi_cli.wire.types import StepBegin, StepRetry
 
 
 class StaticStreamedMessage:
@@ -71,7 +75,7 @@ class RecoveringSequenceProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-    ) -> StaticStreamedMessage:
+    ) -> StaticStreamedMessage | PartialThenErrorStreamedMessage:
         self.generate_attempts += 1
         if self.generate_attempts == 1:
             raise APIConnectionError("Connection error.")
@@ -152,6 +156,65 @@ class StatusErrorThenSuccessProvider:
         return self
 
 
+class PartialStreamThenStatusErrorProvider:
+    name = "partial-stream-then-status-error"
+
+    def __init__(self, status_code: int = 429) -> None:
+        self.generate_attempts = 0
+        self._status_code = status_code
+
+    @property
+    def model_name(self) -> str:
+        return "partial-stream-then-status-error"
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> StaticStreamedMessage | PartialThenErrorStreamedMessage:
+        self.generate_attempts += 1
+        if self.generate_attempts == 1:
+            return PartialThenErrorStreamedMessage(
+                [ThinkPart(think="old attempt")],
+                APIStatusError(self._status_code, f"Status {self._status_code}"),
+            )
+        return StaticStreamedMessage([ThinkPart(think="new attempt"), TextPart(text="done")])
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return self
+
+
+class PartialThenErrorStreamedMessage:
+    def __init__(self, parts: Sequence[StreamedMessagePart], error: BaseException) -> None:
+        self._iter = self._to_stream(parts, error)
+
+    def __aiter__(self) -> Self:
+        return self
+
+    async def __anext__(self) -> StreamedMessagePart:
+        return await self._iter.__anext__()
+
+    async def _to_stream(
+        self, parts: Sequence[StreamedMessagePart], error: BaseException
+    ) -> AsyncIterator[StreamedMessagePart]:
+        for part in parts:
+            yield part
+        raise error
+
+    @property
+    def id(self) -> str | None:
+        return "partial-error"
+
+    @property
+    def usage(self) -> TokenUsage | None:
+        return None
+
+
 class NonRetryableConnectionProvider:
     name = "non-retryable-connection"
 
@@ -176,6 +239,42 @@ class NonRetryableConnectionProvider:
         if self.generate_attempts == 1:
             raise APIConnectionError("Connection error.")
         return StaticStreamedMessage([TextPart(text="non-retryable recovered")])
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return self
+
+
+class ConnectionThen401ThenSuccessProvider:
+    name = "connection-then-401-then-success"
+
+    def __init__(self) -> None:
+        self.generate_attempts = 0
+        self.recovery_calls = 0
+
+    @property
+    def model_name(self) -> str:
+        return "connection-then-401-then-success"
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return None
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> StaticStreamedMessage:
+        self.generate_attempts += 1
+        if self.generate_attempts == 1:
+            raise APIConnectionError("Connection error.")
+        if self.generate_attempts == 2:
+            raise APIStatusError(401, "expired token")
+        return StaticStreamedMessage([TextPart(text="auth recovered")])
+
+    def on_retryable_error(self, error: BaseException) -> bool:
+        self.recovery_calls += 1
+        return True
 
     def with_thinking(self, effort: ThinkingEffort) -> Self:
         return self
@@ -217,6 +316,15 @@ async def _drain_ui_messages(wire: Wire) -> None:
     while True:
         try:
             await wire_ui.receive()
+        except QueueShutDown:
+            return
+
+
+async def _collect_ui_messages(wire: Wire, seen: list[object]) -> None:
+    wire_ui = wire.ui_side(merge=True)
+    while True:
+        try:
+            seen.append(await wire_ui.receive())
         except QueueShutDown:
             return
 
@@ -281,6 +389,42 @@ async def test_step_status_error_still_uses_tenacity_retries(
 
 
 @pytest.mark.asyncio
+async def test_step_retry_event_after_partial_stream(runtime: Runtime, tmp_path: Path) -> None:
+    runtime.config.loop_control.max_retries_per_step = 2
+    provider = PartialStreamThenStatusErrorProvider(status_code=429)
+    llm = LLM(
+        chat_provider=provider,
+        max_context_size=100_000,
+        capabilities=set(),
+    )
+    soul, context = _make_soul(runtime, llm, tmp_path)
+    seen: list[object] = []
+
+    await run_soul(
+        soul,
+        "trigger streamed status retry",
+        lambda wire: _collect_ui_messages(wire, seen),
+        asyncio.Event(),
+    )
+
+    assert provider.generate_attempts == 2
+    assert [type(msg) for msg in seen if isinstance(msg, StepBegin)] == [StepBegin]
+    retry = next(msg for msg in seen if isinstance(msg, StepRetry))
+    assert retry.n == 1
+    assert retry.next_attempt == 2
+    assert retry.max_attempts == 2
+    assert retry.error_type == "APIStatusError"
+    assert retry.status_code == 429
+    parts = [msg for msg in seen if isinstance(msg, ThinkPart | TextPart)]
+    assert parts == [
+        ThinkPart(think="old attempt"),
+        ThinkPart(think="new attempt"),
+        TextPart(text="done"),
+    ]
+    assert context.history[-1].extract_text(" ").strip() == "done"
+
+
+@pytest.mark.asyncio
 async def test_step_non_retryable_provider_keeps_tenacity_connection_retries(
     runtime: Runtime, tmp_path: Path
 ) -> None:
@@ -299,3 +443,43 @@ async def test_step_non_retryable_provider_keeps_tenacity_connection_retries(
 
     assert provider.generate_attempts == 2
     assert context.history[-1].extract_text(" ").strip() == "non-retryable recovered"
+
+
+@pytest.mark.asyncio
+async def test_step_connection_recovery_then_401_triggers_oauth_refresh(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    oauth_provider = LLMProvider(
+        type="kimi",
+        base_url="https://api.test/v1",
+        api_key=SecretStr(""),
+        oauth=OAuthRef(storage="file", key="oauth/kimi-code"),
+    )
+    oauth_model = LLMModel(
+        provider="managed:kimi-code",
+        model="kimi-for-coding",
+        max_context_size=100_000,
+    )
+    runtime.config.providers[oauth_model.provider] = oauth_provider
+    runtime.config.models["kimi-code/kimi-for-coding"] = oauth_model
+
+    provider = ConnectionThen401ThenSuccessProvider()
+    llm = LLM(
+        chat_provider=provider,
+        max_context_size=100_000,
+        capabilities=set(),
+        model_config=oauth_model,
+        provider_config=oauth_provider,
+    )
+    soul, context = _make_soul(runtime, llm, tmp_path)
+
+    refresh_mock = AsyncMock()
+    runtime.oauth.ensure_fresh = refresh_mock
+
+    await run_soul(soul, "trigger mixed recovery", _drain_ui_messages, asyncio.Event())
+
+    assert provider.generate_attempts == 3
+    assert provider.recovery_calls == 1
+    assert context.history[-1].extract_text(" ").strip() == "auth recovered"
+    assert len(refresh_mock.await_args_list) == 2
+    assert any(call.kwargs.get("force") is True for call in refresh_mock.await_args_list)
