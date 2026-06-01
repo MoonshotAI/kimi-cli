@@ -5,6 +5,12 @@ This page documents the changes in each Kimi Code CLI release.
 ## Unreleased
 
 - Shell: Show trailing output in tool error briefs when commands fail
+## 1.46.0 (2026-05-28)
+
+- Shell: Support styled text in welcome tips
+- ACP: Replay session history on load
+- Core: Prevent TTY hang on exit
+- Core: Close MCP connections during shutdown
 
 ## 1.45.0 (2026-05-26)
 
