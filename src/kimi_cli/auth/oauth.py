@@ -735,14 +735,14 @@ async def login_kimi_code(
         yield OAuthEvent("error", f"Failed to save credentials: {exc}")
         return
 
-    _apply_kimi_code_config(
-        config,
-        models=models,
-        selected_model=selected_model,
-        thinking=thinking,
-        oauth_ref=oauth_ref,
-    )
     try:
+        _apply_kimi_code_config(
+            config,
+            models=models,
+            selected_model=selected_model,
+            thinking=thinking,
+            oauth_ref=oauth_ref,
+        )
         save_config(config)
     except Exception as exc:
         # Roll back the credentials write so we don't leave the user in the

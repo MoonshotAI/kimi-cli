@@ -144,6 +144,41 @@ async def test_save_config_failure_rolls_back_credentials():
 
 
 @pytest.mark.asyncio
+async def test_apply_config_failure_rolls_back_credentials():
+    """If in-memory config application fails after save_tokens, rollback credentials."""
+    config = _empty_config()
+    save_tokens_mock = MagicMock(side_effect=lambda ref, _token: ref)
+    save_config_mock = MagicMock()
+    delete_tokens_mock = MagicMock()
+    platform = MagicMock(id="kimi-code", base_url="https://api.test")
+    model_info = MagicMock(
+        id="kimi-k2",
+        context_length=200_000,
+        capabilities=set(),
+        display_name="Kimi K2",
+    )
+
+    with (
+        patch("kimi_cli.auth.oauth.request_device_authorization", AsyncMock(return_value=_device_auth())),
+        patch("kimi_cli.auth.oauth._request_device_token", AsyncMock(return_value=(200, _token_payload()))),
+        patch("kimi_cli.auth.oauth.get_platform_by_id", return_value=platform),
+        patch("kimi_cli.auth.oauth.list_models", AsyncMock(return_value=[model_info])),
+        patch("kimi_cli.auth.oauth.save_tokens", save_tokens_mock),
+        patch("kimi_cli.auth.oauth.save_config", save_config_mock),
+        patch("kimi_cli.auth.oauth.delete_tokens", delete_tokens_mock),
+        patch("kimi_cli.auth.oauth._apply_kimi_code_config", MagicMock(side_effect=ValueError("bad config"))),
+        patch("kimi_cli.auth.oauth.webbrowser.open", MagicMock()),
+    ):
+        events = [e async for e in login_kimi_code(config, open_browser=False)]
+
+    save_tokens_mock.assert_called_once()
+    delete_tokens_mock.assert_called_once()
+    save_config_mock.assert_not_called()
+    assert any(e.type == "error" for e in events)
+    assert not any(e.type == "success" for e in events)
+
+
+@pytest.mark.asyncio
 async def test_happy_path_persists_token_and_config():
     config = _empty_config()
     save_tokens_mock = MagicMock(side_effect=lambda ref, _token: ref)
