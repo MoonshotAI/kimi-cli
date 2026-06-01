@@ -222,12 +222,19 @@ def _context_turn_index_for_wire_turn(
     for turn in enumerate_turns(wire_path):
         if turn.index > wire_turn_index:
             break
-        if (
-            next_context_turn < len(context_user_texts)
-            and turn.user_text == context_user_texts[next_context_turn]
-        ):
-            context_turn_index = next_context_turn
-            next_context_turn += 1
+        if next_context_turn >= len(context_user_texts):
+            continue
+
+        # A wire turn can be missing from context (local slash commands), and
+        # context can contain user turns without matching TurnBegin text (Stop
+        # hook reasons or expanded skill prompts). Match the next wire turn to
+        # the next same-text context user, preserving any context-only turns in
+        # between.
+        for matched_context_turn in range(next_context_turn, len(context_user_texts)):
+            if turn.user_text == context_user_texts[matched_context_turn]:
+                context_turn_index = matched_context_turn
+                next_context_turn = matched_context_turn + 1
+                break
 
     return context_turn_index
 
