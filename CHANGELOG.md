@@ -12,6 +12,14 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Tools: `ReadMediaFile` now re-encodes images whose MIME type the model gateway does not accept (e.g. `image/x-icon` from `.ico`, `image/bmp`, `image/tiff`) as PNG before they enter session history, so unsupported-format `400`s no longer poison the conversation
+- Shell: Show trailing output in tool error briefs when commands fail
+
+## 1.46.0 (2026-05-28)
+
+- Shell: Support styled text in welcome tips
+- ACP: Replay session history on load
+- Core: Prevent TTY hang on exit
+- Core: Close MCP connections during shutdown
 
 ## 1.45.0 (2026-05-26)
 

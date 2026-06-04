@@ -117,9 +117,13 @@ class Shell(CallableTool2[Params]):
             if exitcode == 0:
                 return builder.ok("Command executed successfully.")
             else:
+                brief = f"Failed with exit code: {exitcode}"
+                tail = builder.tail()
+                if tail:
+                    brief += f"\n{tail}"
                 return builder.error(
                     f"Command failed with exit code: {exitcode}.",
-                    brief=f"Failed with exit code: {exitcode}",
+                    brief=brief,
                 )
         except TimeoutError:
             return builder.error(
