@@ -12,6 +12,7 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Shell: Long pasted-text placeholders are now persisted in the prompt cache, so history recall, a restarted prompt session, or pasting into approval/question prompt feedback sends the original pasted content instead of the literal `[Pasted text ...]` token
+- Shell: Show trailing output in tool error briefs when commands fail
 
 ## 1.46.0 (2026-05-28)
 
