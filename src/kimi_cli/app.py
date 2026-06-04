@@ -27,6 +27,7 @@ from kimi_cli.soul import RunCancelled, run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
@@ -415,6 +416,15 @@ class KimiCLI:
         if self._bg_refresh_task is not None and not self._bg_refresh_task.done():
             self._bg_refresh_task.cancel()
 
+        # Close MCP client connections so stdio/WebSocket transports do not
+        # outlive the CLI process and trigger firewall warnings.
+        try:
+            toolset = self.soul.agent.toolset
+            if isinstance(toolset, KimiToolset):
+                await toolset.cleanup()
+        except (Exception, asyncio.CancelledError):
+            logger.warning("Error during toolset cleanup; continuing exit", exc_info=True)
+
         bg_config = self._runtime.config.background
         if bg_config.keep_alive_on_exit:
             return
@@ -652,6 +662,7 @@ class KimiCLI:
                     user_input,
                     _ui_loop_fn,
                     run_cancel_event,
+                    self._runtime.session.wire_file,
                     runtime=self._runtime,
                 )
             )
@@ -687,6 +698,8 @@ class KimiCLI:
         self, command: str | None = None, *, prefill_text: str | None = None
     ) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
+        from rich.text import Text
+
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
 
         if command is None:
@@ -758,9 +771,12 @@ class KimiCLI:
         welcome_info.append(
             WelcomeInfoItem(
                 name="\nTip",
-                value=(
-                    "We just released Kimi Code — our new coding agent. "
-                    "Check it out at https://moonshotai.github.io/kimi-code"
+                value=Text.assemble(
+                    "We just released Kimi Code — our new coding agent. Check it out at ",
+                    Text(
+                        "https://www.kimi.com/code",
+                        style="link https://www.kimi.com/code underline",
+                    ),
                 ),
                 level=WelcomeInfoItem.Level.WARN,
             )

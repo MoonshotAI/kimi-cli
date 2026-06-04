@@ -12,6 +12,14 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Tools: Shell tool headlines now keep the full command string instead of applying the generic 50-character middle truncation, making long paths and arguments visible when reviewing repeated or failed commands
+- Shell: Show trailing output in tool error briefs when commands fail
+
+## 1.46.0 (2026-05-28)
+
+- Shell: Support styled text in welcome tips
+- ACP: Replay session history on load
+- Core: Prevent TTY hang on exit
+- Core: Close MCP connections during shutdown
 
 ## 1.45.0 (2026-05-26)
 

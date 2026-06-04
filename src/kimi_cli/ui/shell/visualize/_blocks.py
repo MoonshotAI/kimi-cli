@@ -518,7 +518,7 @@ class _ToolCallBlock:
                 elif isinstance(block, BriefDisplayBlock):
                     style = "grey50" if not self._result.is_error else "dark_red"
                     if block.text:
-                        lines.append(Markdown(block.text, style=style))
+                        lines.append(Text(block.text.rstrip("\n"), style=style))
                     idx += 1
                 elif isinstance(block, TodoDisplayBlock):
                     markdown = self._render_todo_markdown(block)
