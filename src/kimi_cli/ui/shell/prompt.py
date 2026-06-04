@@ -1856,7 +1856,22 @@ class CustomPromptSession:
                 while True:
                     app = get_app_or_none()
                     if app is not None:
-                        app.invalidate()
+                        # Only redraw when not idle. Idle redraws cause the
+                        # terminal to scroll to the bottom on every tick in
+                        # some terminal emulators (GNOME Terminal, Konsole).
+                        is_idle = (
+                            self._active_prompt_delegate() is None
+                            and self._active_modal_delegate() is None
+                        )
+                        if not is_idle:
+                            app.invalidate()
+                        else:
+                            # Still clean up expired toasts to avoid leaks.
+                            now = time.monotonic()
+                            for pos in ("left", "right"):
+                                queue = _toast_queues[pos]
+                                while queue and queue[0].expires_at <= now:
+                                    queue.popleft()
 
                     try:
                         asyncio.get_running_loop()
