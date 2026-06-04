@@ -155,3 +155,41 @@ def test_empty_write():
     assert written == 0
     assert builder.n_chars == 0
     assert not builder.is_full
+
+
+def test_tail_empty():
+    builder = ToolResultBuilder()
+    assert builder.tail() == ""
+
+
+def test_tail_basic():
+    builder = ToolResultBuilder()
+    builder.write("first line\nsecond line\nthird line\n")
+    assert builder.tail() == "first line\nsecond line\nthird line"
+
+
+def test_tail_skips_blank_lines():
+    builder = ToolResultBuilder()
+    builder.write("real error\n\n   \n")
+    assert builder.tail() == "real error"
+
+
+def test_tail_respects_max_lines():
+    builder = ToolResultBuilder()
+    builder.write("\n".join(f"line {i}" for i in range(10)) + "\n")
+    assert builder.tail(max_lines=3) == "line 7\nline 8\nline 9"
+
+
+def test_tail_truncates_long_line():
+    builder = ToolResultBuilder()
+    builder.write("x" * 500 + "\n")
+    tail = builder.tail(max_line_len=100)
+    assert tail.endswith("...")
+    assert len(tail) == 103
+
+
+def test_tail_handles_multiple_writes():
+    builder = ToolResultBuilder()
+    builder.write("stdout chunk\n")
+    builder.write("stderr: permission denied\n")
+    assert builder.tail(max_lines=2) == "stdout chunk\nstderr: permission denied"

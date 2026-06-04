@@ -1475,7 +1475,7 @@ class WelcomeInfoItem:
         ERROR = "red"
 
     name: str
-    value: str
+    value: str | Text
     level: Level = Level.INFO
 
 
@@ -1495,7 +1495,10 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
     if info_items:
         rows.append(Text(""))  # empty line
     for item in info_items:
-        rows.append(Text(f"{item.name}: {item.value}", style=item.level.value))
+        if isinstance(item.value, Text):
+            rows.append(Text.assemble(f"{item.name}: ", item.value, style=item.level.value))
+        else:
+            rows.append(Text(f"{item.name}: {item.value}", style=item.level.value))
 
     if LATEST_VERSION_FILE.exists():
         from kimi_cli.constant import VERSION as current_version
