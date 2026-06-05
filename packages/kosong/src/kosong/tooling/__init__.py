@@ -187,6 +187,20 @@ class CallableTool(Tool, ABC):
     async def call(self, arguments: JsonType) -> ToolReturnValue:
         from kosong.tooling.error import ToolValidateError
 
+        # Fix LLM double-serialization: coerce string values that look like
+        # JSON arrays/objects back to their proper types before validation.
+        # LLMs sometimes emit: {"todos": "[{\\"title\\": ...}]"} instead of
+        #                       {"todos": [{"title": ...}]}
+        if isinstance(arguments, dict):
+            for k, v in list(arguments.items()):
+                if isinstance(v, str) and v.startswith(("[", "{")):
+                    try:
+                        parsed = json.loads(v, strict=False)
+                        if isinstance(parsed, (list, dict)):
+                            arguments[k] = parsed
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
         try:
             jsonschema.validate(arguments, self.parameters)
         except jsonschema.ValidationError as e:

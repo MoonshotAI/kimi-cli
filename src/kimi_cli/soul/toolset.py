@@ -308,6 +308,20 @@ class KimiToolset:
                 )
                 return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
+            # Fix LLM double-serialization: coerce string values that look like
+            # JSON arrays/objects back to their proper types before tool validation.
+            # LLMs sometimes emit: {"todos": "[{\\"title\\": ...}]"} instead of
+            #                       {"todos": [{"title": ...}]}
+            if isinstance(arguments, dict):
+                for k, v in list(arguments.items()):
+                    if isinstance(v, str) and v.startswith(("[", "{")):
+                        try:
+                            parsed = json.loads(v, strict=False)
+                            if isinstance(parsed, (list, dict)):
+                                arguments[k] = parsed
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
             canonical_args = _canonical_tool_arguments(arguments)
             call_key = (tool_name, canonical_args)
             call_index = len(self._current_step_calls)
