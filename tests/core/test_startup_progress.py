@@ -6,7 +6,6 @@ from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from rich.text import Text
 
 import kimi_cli.app as app_module
 import kimi_cli.ui.shell.startup as startup_module
@@ -120,8 +119,13 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_run_shell_adds_new_coding_agent_download_tip(runtime, monkeypatch) -> None:
+async def test_run_shell_adds_kimi_code_migration_card(runtime, monkeypatch) -> None:
     from kimi_cli.ui.shell import WelcomeInfoItem
+
+    # Not installed -> the welcome screen shows the upgrade card (deterministic).
+    monkeypatch.setattr(
+        "kimi_cli.ui.shell.migration_nudge.kimi_code_installed", lambda home=None: False
+    )
 
     captured: dict[str, object] = {}
 
@@ -149,17 +153,9 @@ async def test_run_shell_adds_new_coding_agent_download_tip(runtime, monkeypatch
 
     welcome_info = cast("list[WelcomeInfoItem]", captured["welcome_info"])
     tip = welcome_info[-1]
-    assert tip == WelcomeInfoItem(
-        name="\nTip",
-        value=Text.assemble(
-            "We just released Kimi Code — our new coding agent. Check it out at ",
-            Text(
-                "https://www.kimi.com/code",
-                style="link https://www.kimi.com/code underline",
-            ),
-        ),
-        level=WelcomeInfoItem.Level.WARN,
-    )
+    assert tip.name == "\n✨ Update"
+    assert tip.level == WelcomeInfoItem.Level.WARN
+    assert "/upgrade" in str(tip.value)
 
 
 @pytest.mark.asyncio
