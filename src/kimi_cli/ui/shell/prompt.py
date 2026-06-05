@@ -1862,6 +1862,10 @@ class CustomPromptSession:
                         is_idle = (
                             self._active_prompt_delegate() is None
                             and self._active_modal_delegate() is None
+                            and not (
+                                self._fast_refresh_provider is not None
+                                and self._fast_refresh_provider()
+                            )
                         )
                         if not is_idle:
                             app.invalidate()
