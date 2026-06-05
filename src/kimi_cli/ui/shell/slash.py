@@ -723,11 +723,16 @@ def vis(app: Shell, args: str):
 async def upgrade(app: Shell, args: str):
     """Install Kimi Code — the faster successor (migrates your config & sessions)"""
     from kimi_cli.telemetry import track
-    from kimi_cli.ui.shell.migration_nudge import install_command
+    from kimi_cli.ui.shell.migration_nudge import (
+        install_command,
+        install_run_command,
+        verify_command,
+    )
 
     track("upgrade_invoked")
 
     cmd = install_command(sys.platform)
+    run_cmd = install_run_command(sys.platform)
     console.print(
         "[bold]This will install the new Kimi Code by running:[/bold]\n"
         f"  [cyan]{cmd}[/cyan]\n"
@@ -747,12 +752,13 @@ async def upgrade(app: Shell, args: str):
         console.print(f"No problem. To install later, run:\n  [cyan]{cmd}[/cyan]")
         return
 
-    await app._run_shell_command(cmd)  # pyright: ignore[reportPrivateUsage]
+    await app._run_shell_command(run_cmd)  # pyright: ignore[reportPrivateUsage]
     console.print(
         "\n[green]The new Kimi Code is installed ✓[/green]  "
         "Your config & sessions were migrated automatically.\n"
         "Open a [bold]new terminal[/bold] and run [bold]kimi[/bold] to start it.\n"
-        "[grey50](Verify with `which kimi` — it should point inside ~/.kimi-code.)[/grey50]"
+        f"[grey50](Verify with `{verify_command(sys.platform)}` — it should point "
+        "inside ~/.kimi-code.)[/grey50]"
     )
 
 

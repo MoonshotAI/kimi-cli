@@ -15,6 +15,29 @@ def test_install_command_per_platform():
     assert mn.install_command("win32") == ("irm https://code.kimi.com/kimi-code/install.ps1 | iex")
 
 
+def test_install_run_command_wraps_powershell_on_windows():
+    # Non-Windows runs the bash installer directly.
+    assert mn.install_run_command("darwin") == mn.install_command("darwin")
+    assert mn.install_run_command("linux") == mn.install_command("linux")
+    # Windows must wrap the PowerShell one-liner so it doesn't run under cmd.exe.
+    win = mn.install_run_command("win32")
+    assert win.startswith("powershell ")
+    assert "irm https://code.kimi.com/kimi-code/install.ps1 | iex" in win
+
+
+def test_verify_command_per_platform():
+    assert mn.verify_command("darwin") == "which kimi"
+    assert mn.verify_command("linux") == "which kimi"
+    assert mn.verify_command("win32") == "where kimi"
+
+
+def test_exit_nudge_text_uses_platform_install_command():
+    assert "curl -fsSL" in mn.exit_nudge_text("linux").plain
+    assert (
+        "irm https://code.kimi.com/kimi-code/install.ps1 | iex" in mn.exit_nudge_text("win32").plain
+    )
+
+
 def test_kimi_code_installed_detects_dir(tmp_path: Path):
     assert mn.kimi_code_installed(tmp_path) is False
     (tmp_path / ".kimi-code").mkdir()

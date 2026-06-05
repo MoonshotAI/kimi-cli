@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -14,10 +15,27 @@ _INSTALL_PS = "irm https://code.kimi.com/kimi-code/install.ps1 | iex"
 
 
 def install_command(platform: str) -> str:
-    """Return the Kimi Code install command for the given sys.platform value."""
+    """Return the install command to DISPLAY for the given sys.platform value."""
     if platform == "win32":
         return _INSTALL_PS
     return _INSTALL_SH
+
+
+def install_run_command(platform: str) -> str:
+    """Return the install command in a form runnable via the shell.
+
+    On Windows the displayed PowerShell one-liner (`irm … | iex`) must be wrapped so
+    it runs under PowerShell instead of cmd.exe, which is the default shell used to
+    execute commands and does not understand PowerShell cmdlets.
+    """
+    if platform == "win32":
+        return f'powershell -NoProfile -ExecutionPolicy Bypass -Command "{_INSTALL_PS}"'
+    return _INSTALL_SH
+
+
+def verify_command(platform: str) -> str:
+    """Command to check which `kimi` resolves on PATH (Windows: where, else: which)."""
+    return "where kimi" if platform == "win32" else "which kimi"
 
 
 def kimi_code_installed(home: Path | None = None) -> bool:
@@ -57,39 +75,45 @@ def welcome_card_text() -> Text:
     )
 
 
-def already_installed_text() -> Text:
+def already_installed_text(platform: str) -> Text:
     """Welcome-screen note shown when Kimi Code IS already installed on this machine."""
     return Text.assemble(
         "The new Kimi Code is already installed. Start it in a fresh terminal with ",
         ("kimi", "bold"),
         " (verify: ",
-        ("which kimi", "cyan"),
+        (verify_command(platform), "cyan"),
         " → ~/.kimi-code).",
     )
 
 
-def exit_nudge_text() -> Text:
+def exit_nudge_text(platform: str) -> Text:
     """Throttled tip printed on graceful exit."""
     return Text.assemble(
         ("Tip: ", "yellow"),
         "The new Kimi Code is rebuilt to be faster and more powerful.\n",
         "Install: ",
-        (_INSTALL_SH, "cyan"),
+        (install_command(platform), "cyan"),
         ("  (or run /upgrade next time)", "grey50"),
     )
 
 
 def print_migration_goodbye(
-    console: Console, *, home: Path | None = None, today: str | None = None
+    console: Console,
+    *,
+    home: Path | None = None,
+    today: str | None = None,
+    platform: str | None = None,
 ) -> None:
     """Print the farewell ("Bye!") plus, at most once per day, the migration tip.
 
     Skipped entirely (only "Bye!") if Kimi Code is already installed.
-    `home`/`today` are injectable for testing; in production they default to the real values.
+    `home`/`today`/`platform` are injectable for testing; in production they default
+    to the real values.
     """
     console.print("Bye!")
     if kimi_code_installed(home):
         return
     today = today or date.today().isoformat()
+    platform = platform or sys.platform
     if should_show_exit_nudge(exit_nudge_marker(get_share_dir()), today):
-        console.print(exit_nudge_text())
+        console.print(exit_nudge_text(platform))

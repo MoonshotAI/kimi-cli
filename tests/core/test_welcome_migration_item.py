@@ -17,4 +17,8 @@ def test_card_when_not_installed(tmp_path: Path):
 def test_note_when_installed(tmp_path: Path):
     (tmp_path / ".kimi-code").mkdir()
     assert kimi_code_installed(tmp_path) is True
-    assert "already installed" in already_installed_text().plain
+    note = already_installed_text("darwin").plain
+    assert "already installed" in note
+    assert "which kimi" in note
+    # Windows shows the Windows-appropriate verify command
+    assert "where kimi" in already_installed_text("win32").plain

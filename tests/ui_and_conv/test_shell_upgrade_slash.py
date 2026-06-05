@@ -40,6 +40,25 @@ async def test_upgrade_yes_runs_installer(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_upgrade_yes_runs_powershell_wrapped_installer_on_windows(monkeypatch):
+    print_mock = Mock()
+    monkeypatch.setattr(shell_slash.console, "print", print_mock)
+    monkeypatch.setattr(shell_slash, "sys", SimpleNamespace(platform="win32"))
+    _mock_choice(monkeypatch, "yes")
+    app = SimpleNamespace(_run_shell_command=AsyncMock())
+
+    await UPGRADE.func(app, "")
+
+    # On Windows the executed command must be wrapped so it runs under PowerShell,
+    # not cmd.exe; the displayed command stays the bare PowerShell one-liner.
+    run_cmd = app._run_shell_command.await_args.args[0]
+    assert run_cmd.startswith("powershell ")
+    assert "irm https://code.kimi.com/kimi-code/install.ps1 | iex" in run_cmd
+    printed = " ".join(str(c.args[0]) for c in print_mock.call_args_list if c.args)
+    assert "irm https://code.kimi.com/kimi-code/install.ps1 | iex" in printed
+
+
+@pytest.mark.asyncio
 async def test_upgrade_no_does_not_run_installer(monkeypatch):
     print_mock = Mock()
     monkeypatch.setattr(shell_slash.console, "print", print_mock)

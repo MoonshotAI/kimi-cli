@@ -33,3 +33,10 @@ def test_goodbye_skips_nudge_when_installed(tmp_path: Path, monkeypatch):
     # installed -> no nudge, only "Bye!"
     assert console.print.call_count == 1
     assert "Bye!" in _printed(console)
+
+
+def test_goodbye_nudge_uses_platform_install_command(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("kimi_cli.ui.shell.migration_nudge.get_share_dir", lambda: tmp_path)
+    console = Mock()
+    print_migration_goodbye(console, home=tmp_path, today="2026-06-05", platform="win32")
+    assert "install.ps1 | iex" in _printed(console)

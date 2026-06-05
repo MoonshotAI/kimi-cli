@@ -775,7 +775,11 @@ class KimiCLI:
         welcome_info.append(
             WelcomeInfoItem(
                 name="\n✨ Update",
-                value=already_installed_text() if kimi_code_installed() else welcome_card_text(),
+                value=(
+                    already_installed_text(sys.platform)
+                    if kimi_code_installed()
+                    else welcome_card_text()
+                ),
                 level=WelcomeInfoItem.Level.WARN,
             )
         )
