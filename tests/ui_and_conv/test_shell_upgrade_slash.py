@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from kimi_cli.ui.shell import Shell
 from kimi_cli.ui.shell import slash as shell_slash
 from kimi_cli.ui.shell.slash import registry as shell_slash_registry
 
@@ -34,7 +37,9 @@ async def test_upgrade_yes_runs_installer(monkeypatch):
     _mock_choice(monkeypatch, "yes")
     app = SimpleNamespace(_run_shell_command=AsyncMock())
 
-    await UPGRADE.func(app, "")
+    ret = shell_slash.upgrade(cast(Shell, app), "")
+    if isinstance(ret, Awaitable):
+        await ret
 
     app._run_shell_command.assert_awaited_once_with(INSTALL_SH)
 
@@ -47,7 +52,9 @@ async def test_upgrade_yes_runs_powershell_wrapped_installer_on_windows(monkeypa
     _mock_choice(monkeypatch, "yes")
     app = SimpleNamespace(_run_shell_command=AsyncMock())
 
-    await UPGRADE.func(app, "")
+    ret = shell_slash.upgrade(cast(Shell, app), "")
+    if isinstance(ret, Awaitable):
+        await ret
 
     # On Windows the executed command must be wrapped so it runs under PowerShell,
     # not cmd.exe; the displayed command stays the bare PowerShell one-liner.
@@ -66,7 +73,9 @@ async def test_upgrade_no_does_not_run_installer(monkeypatch):
     _mock_choice(monkeypatch, "no")
     app = SimpleNamespace(_run_shell_command=AsyncMock())
 
-    await UPGRADE.func(app, "")
+    ret = shell_slash.upgrade(cast(Shell, app), "")
+    if isinstance(ret, Awaitable):
+        await ret
 
     app._run_shell_command.assert_not_awaited()
     printed = " ".join(str(c.args[0]) for c in print_mock.call_args_list if c.args)

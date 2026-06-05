@@ -155,7 +155,7 @@ async def test_run_shell_adds_kimi_code_migration_card(runtime, monkeypatch) -> 
     tip = welcome_info[-1]
     assert tip.name == "\n✨ Update"
     assert tip.level == WelcomeInfoItem.Level.WARN
-    assert "/upgrade" in tip.value.plain
+    assert "/upgrade" in str(tip.value)
 
 
 @pytest.mark.asyncio
