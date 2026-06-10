@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Literal, cast, override
 
 from kosong.tooling import CallableTool2, ToolReturnValue
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from kimi_cli.session_state import TodoItemState
 from kimi_cli.soul.agent import Runtime
@@ -25,6 +25,28 @@ class Params(BaseModel):
             "If not provided, returns the current todo list without making changes."
         ),
     )
+
+    @field_validator("todos", mode="before")
+    @classmethod
+    def _coerce_string_todos(cls, v: Any) -> Any:
+        """Handle LLM double-serialization: LLMs sometimes emit array values
+        as JSON-encoded strings instead of actual JSON arrays.
+
+        Example of the bug:
+          LLM outputs: {"todos": "[{\"title\": \"Fix bug\", \"status\": \"pending\"}]"}
+          Expected:    {"todos": [{"title": "Fix bug", "status": "pending"}]}
+
+        Context7 verified: Pydantic field_validator(mode='before') runs before
+        the standard validation, allowing type coercion at the boundary.
+        """
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return v
 
 
 class SetTodoList(CallableTool2[Params]):

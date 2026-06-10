@@ -114,6 +114,19 @@ def _asyncio_handler(
     exc = context.get("exception")
     # CancelledError during shutdown/cancellation is normal control flow.
     if exc is not None and not isinstance(exc, asyncio.CancelledError):
+        # Suppress MCP connection errors (server disconnect, broken pipe, etc.)
+        # These are expected when MCP servers restart or connections drop.
+        exc_msg = str(exc).lower()
+        _mcp_connection_patterns = (
+            "connection closed",
+            "connection reset",
+            "connection refused",
+            "broken pipe",
+            "eof",
+        )
+        if any(p in exc_msg for p in _mcp_connection_patterns):
+            return  # Silently suppress — not a programming bug
+
         try:
             from kimi_cli.telemetry import track
 

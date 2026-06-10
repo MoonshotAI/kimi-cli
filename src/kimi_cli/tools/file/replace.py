@@ -1,10 +1,10 @@
 from collections.abc import Callable
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
 from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
@@ -38,6 +38,32 @@ class Params(BaseModel):
             "You can provide a single edit or a list of edits here."
         )
     )
+
+    @field_validator("edit", mode="before")
+    @classmethod
+    def _coerce_string_edit(cls, v: Any) -> Any:
+        """Handle LLM double-serialization: LLMs sometimes emit object/array
+        values as JSON-encoded strings instead of actual JSON structures.
+
+        Example of the bug:
+          LLM outputs: {"edit": "{\"old\": \"foo\", \"new\": \"bar\"}"}
+          Expected:    {"edit": {"old": "foo", "new": "bar"}}
+
+          LLM outputs: {"edit": "[{\"old\": \"foo\", \"new\": \"bar\"}]"}
+          Expected:    {"edit": [{"old": "foo", "new": "bar"}]}
+
+        Context7 verified: Pydantic field_validator(mode='before') runs before
+        the standard validation, allowing type coercion at the boundary.
+        """
+        if isinstance(v, str):
+            try:
+                import json
+                parsed = json.loads(v)
+                if isinstance(parsed, (dict, list)):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return v
 
 
 class StrReplaceFile(CallableTool2[Params]):
