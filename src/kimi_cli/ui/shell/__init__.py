@@ -32,6 +32,7 @@ from kimi_cli.ui.shell import update as _update_mod
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
 from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
+from kimi_cli.ui.shell.migration_nudge import print_migration_goodbye
 from kimi_cli.ui.shell.prompt import (
     BgTaskCounts,
     CustomPromptSession,
@@ -578,7 +579,7 @@ class Shell:
                         else:
                             bg_auto_failures = 0
                         if self._exit_after_run:
-                            console.print("Bye!")
+                            print_migration_goodbye(console)
                             break
                         continue
 
@@ -596,7 +597,7 @@ class Shell:
                         continue
 
                     if event.kind == "eof":
-                        console.print("Bye!")
+                        print_migration_goodbye(console)
                         break
 
                     if event.kind == "cwd_lost":
@@ -623,7 +624,7 @@ class Shell:
 
                     if self._should_exit_input(user_input):
                         logger.debug("Exiting by slash command")
-                        console.print("Bye!")
+                        print_migration_goodbye(console)
                         break
 
                     if user_input.mode == PromptMode.SHELL:
@@ -668,7 +669,7 @@ class Shell:
                             await self.run_soul_command(slash_cmd_call.raw_input)
                             console.print()
                             if self._exit_after_run:
-                                console.print("Bye!")
+                                print_migration_goodbye(console)
                                 break
                         else:
                             await self._run_slash_command(slash_cmd_call)
@@ -680,7 +681,7 @@ class Shell:
                     await self.run_soul_command(user_input.content)
                     console.print()
                     if self._exit_after_run:
-                        console.print("Bye!")
+                        print_migration_goodbye(console)
                         break
             finally:
                 prompt_task.cancel()

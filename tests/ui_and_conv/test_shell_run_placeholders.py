@@ -105,6 +105,11 @@ def _patched_shell_run(monkeypatch):
     _FakePromptSession.responses = deque()
     monkeypatch.setattr(shell_module, "CustomPromptSession", _FakePromptSession)
     monkeypatch.setattr(shell_module, "_print_welcome_info", lambda *args, **kwargs: None)
+    # Neutralize the migration nudge so exit output stays deterministic; these
+    # tests exercise placeholder/exit routing, not the nudge (covered elsewhere).
+    monkeypatch.setattr(
+        shell_module, "print_migration_goodbye", lambda console: console.print("Bye!")
+    )
     monkeypatch.setattr(shell_module, "get_env_bool", lambda name: True)
     monkeypatch.setattr(shell_module, "ensure_tty_sane", lambda: None)
     monkeypatch.setattr(shell_module, "ensure_new_line", lambda: None)
