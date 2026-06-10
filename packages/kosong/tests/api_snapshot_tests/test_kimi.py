@@ -36,6 +36,19 @@ TEST_CASES: dict[str, Case] = {
             Message(role="user", content="Thanks!"),
         ],
     },
+    "assistant_with_empty_reasoning": {
+        "history": [
+            Message(role="user", content="What is 2+2?"),
+            Message(
+                role="assistant",
+                content=[
+                    ThinkPart(think=""),
+                    TextPart(text="The answer is 4."),
+                ],
+            ),
+            Message(role="user", content="Thanks!"),
+        ],
+    },
     "assistant_tool_call_without_text": {
         "history": [
             Message(role="user", content="Call the add tool"),
@@ -312,6 +325,18 @@ async def test_kimi_message_conversion():
                             "role": "assistant",
                             "content": "The answer is 4.",
                             "reasoning_content": "Let me think...",
+                        },
+                        {"role": "user", "content": "Thanks!"},
+                    ],
+                    "tools": [],
+                },
+                "assistant_with_empty_reasoning": {
+                    "messages": [
+                        {"role": "user", "content": "What is 2+2?"},
+                        {
+                            "role": "assistant",
+                            "content": "The answer is 4.",
+                            "reasoning_content": "",
                         },
                         {"role": "user", "content": "Thanks!"},
                     ],
