@@ -298,7 +298,19 @@ class KimiToolset:
                 )
 
             try:
-                arguments: JsonType = json.loads(tool_call.function.arguments or "{}", strict=False)
+                raw = tool_call.function.arguments or "{}"
+                if isinstance(raw, dict):
+                    arguments: JsonType = raw
+                else:
+                    arguments = json.loads(raw, strict=False)
+                    # Moonshot API quirk: double-encoded JSON strings
+                    if isinstance(arguments, dict):
+                        for k, v in list(arguments.items()):
+                            if isinstance(v, str) and v and v[0] in ("[", "{"):
+                                try:
+                                    arguments[k] = json.loads(v, strict=False)
+                                except (json.JSONDecodeError, ValueError):
+                                    pass
             except json.JSONDecodeError as e:
                 logger.warning(
                     "Tool call JSON parse error: {tool_name} (call_id={call_id}): {error}",
