@@ -698,8 +698,6 @@ class KimiCLI:
         self, command: str | None = None, *, prefill_text: str | None = None
     ) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
-        from rich.text import Text
-
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
 
         if command is None:
@@ -768,15 +766,19 @@ class KimiCLI:
                         level=WelcomeInfoItem.Level.WARN,
                     )
                 )
+        from kimi_cli.ui.shell.migration_nudge import (
+            already_installed_text,
+            kimi_code_installed,
+            welcome_card_text,
+        )
+
         welcome_info.append(
             WelcomeInfoItem(
-                name="\nTip",
-                value=Text.assemble(
-                    "We just released Kimi Code — our new coding agent. Check it out at ",
-                    Text(
-                        "https://www.kimi.com/code",
-                        style="link https://www.kimi.com/code underline",
-                    ),
+                name="\n✨ Update",
+                value=(
+                    already_installed_text(sys.platform)
+                    if kimi_code_installed()
+                    else welcome_card_text()
                 ),
                 level=WelcomeInfoItem.Level.WARN,
             )
