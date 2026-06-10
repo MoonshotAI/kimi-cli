@@ -308,8 +308,10 @@ def _convert_message(message: Message) -> ChatCompletionMessageParam:
     message = message.model_copy(deep=True)
     reasoning_content: str = ""
     content: list[ContentPart] = []
+    has_reasoning = False
     for part in message.content:
         if isinstance(part, ThinkPart):
+            has_reasoning = True
             reasoning_content += part.think
         else:
             content.append(part)
@@ -327,7 +329,7 @@ def _convert_message(message: Message) -> ChatCompletionMessageParam:
         # Dropping `content` entirely is always accepted, so do that whenever
         # the visible content is effectively empty alongside a tool call.
         dumped_message.pop("content", None)
-    if reasoning_content:
+    if has_reasoning:
         dumped_message["reasoning_content"] = reasoning_content
     return cast(ChatCompletionMessageParam, dumped_message)
 

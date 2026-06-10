@@ -12,6 +12,10 @@ Only write entries that are worth mentioning to users.
 ## Unreleased
 
 - Shell: Long pasted-text placeholders are now persisted in the prompt cache, so history recall, a restarted prompt session, or pasting into approval/question prompt feedback sends the original pasted content instead of the literal `[Pasted text ...]` token
+
+## 1.47.0 (2026-06-05)
+
+- Shell: Guide users to the new standalone Kimi Code — adds a `/upgrade` command that installs it (migrating your config & sessions automatically), a welcome-screen nudge, and a once-per-day tip shown on exit
 - Shell: Show trailing output in tool error briefs when commands fail
 
 ## 1.46.0 (2026-05-28)
