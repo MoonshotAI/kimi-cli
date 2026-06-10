@@ -27,7 +27,15 @@ def create_openai_client(
     base_url: str | None,
     client_kwargs: Mapping[str, Any],
 ) -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=api_key, base_url=base_url, **dict(client_kwargs))
+    kwargs = dict(client_kwargs)
+    # Inject a sensible default timeout when the caller does not specify one.
+    # Without this, the OpenAI SDK defaults to 600 s which causes the CLI to
+    # appear "stuck" when a proxy or upstream model times out earlier (e.g.
+    # MiMo API proxy at ~300 s).  120 s covers normal large-context requests
+    # while still failing fast enough for the user to notice.
+    if "timeout" not in kwargs:
+        kwargs["timeout"] = httpx.Timeout(120.0, connect=30.0)
+    return AsyncOpenAI(api_key=api_key, base_url=base_url, **kwargs)
 
 
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:

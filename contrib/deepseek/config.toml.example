@@ -1,0 +1,78 @@
+# =============================================================================
+# Kimi CLI config.toml — DeepSeek example
+# =============================================================================
+# Two supported approaches:
+#   1. NATIVE (recommended): OpenAILegacy provider with reasonign_key support
+#      Uses DeepSeek's supported "reasoning_content" field directly.
+#      No proxy needed.
+#
+#   2. PROXY: Local HTTP proxy that injects thinking mode + stores reasonign_content
+#      Useful if you want forced thinking on models that don't advertise it,
+#      or for testing/debugging.
+# =============================================================================
+
+# ── Approach 1: NATIVE (no proxy) ──────────────────────────────────────────
+# The OpenAILegacy provider already supports reasoning_content round-trip
+# out of the box.  The reasonign_key defaults to "reasoning_content",
+# which is exactly what DeepSeek uses.
+#
+# To use, just set:
+#
+# [providers.deepseek]
+# type = "openai_legacy"
+# base_url = "https://api.deepseek.com/v1"
+# api_key = "sk-your-actual-key"
+#
+# [models.deepseek-chat]
+# provider = "deepseek"
+# model = "deepseek-chat"
+# max_context_size = 65536
+# capabilities = ["thinking"]
+#
+# [models.deepseek-reasoner]
+# provider = "deepseek"
+# model = "deepseek-reasoner"
+# max_context_size = 65536
+# capabilities = ["thinking", "always_thinking"]
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Approach 2: PROXY ──────────────────────────────────────────────────────
+# Start the proxy first:
+#   python3 contrib/deepseek/deepseek_proxy.py &
+#
+# Then configure Kimi CLI to point at the proxy:
+
+[providers.deepseek]
+type = "openai_legacy"
+base_url = "http://localhost:18923/v1"
+api_key = "sk-your-actual-key"
+
+[models.deepseek-chat]
+provider = "deepseek"
+model = "deepseek-chat"
+max_context_size = 65536
+capabilities = ["thinking"]
+
+[models.deepseek-reasoner]
+provider = "deepseek"
+model = "deepseek-reasoner"
+max_context_size = 65536
+capabilities = ["thinking", "always_thinking"]
+
+# ── If you have access to DeepSeek V4 models ───────────────────────────────
+
+[models.deepseek-v4-pro]
+provider = "deepseek"
+model = "deepseek-v4-pro"
+max_context_size = 1048576
+capabilities = ["thinking"]
+
+[models.deepseek-v4-flash]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+max_context_size = 1048576
+# V4 Flash does not support thinking; omit capabilities or leave empty
+
+# ── Global defaults ────────────────────────────────────────────────────────
+default_model = "deepseek-chat"
+default_thinking = true
