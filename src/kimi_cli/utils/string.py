@@ -28,10 +28,13 @@ def shorten(text: str, *, width: int, placeholder: str = "…") -> str:
 
 def shorten_middle(text: str, width: int, remove_newline: bool = True) -> str:
     """Shorten the text by inserting ellipsis in the middle."""
-    if len(text) <= width:
-        return text
+    # Strip newlines first: callers rely on this to keep the result on a single
+    # line, and doing it before the length check ensures short multi-line inputs
+    # are flattened too (and that the check sees the post-flattening length).
     if remove_newline:
         text = _NEWLINE_RE.sub(" ", text)
+    if len(text) <= width:
+        return text
     return text[: width // 2] + "..." + text[-width // 2 :]
 
 
