@@ -295,3 +295,41 @@ async def test_replace_sequential_dependent_edits_count(
     assert not result.is_error
     assert await file_path.read_text() == "baz"
     assert "2 total replacement(s)" in result.message
+
+
+async def test_replace_noop_reports_unchanged_not_missing(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """An edit whose old string equals its new string matches but changes
+    nothing. The error must say the file was left unchanged, not the misleading
+    "old string was not found" (which would send the model re-reading the file
+    for a string that is actually present)."""
+    file_path = temp_work_dir / "test.txt"
+    original_content = "Hello world!"
+    await file_path.write_text(original_content)
+
+    result = await str_replace_file_tool(
+        Params(path=str(file_path), edit=Edit(old="world", new="world"))
+    )
+
+    assert result.is_error
+    assert "left the file unchanged" in result.message
+    assert "not found" not in result.message
+    assert await file_path.read_text() == original_content
+
+
+async def test_replace_rejects_empty_old_string(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """An empty old string must be rejected. `str.count('')` is never 0 and
+    `str.replace('', new)` would splice new between every character, so the
+    occurrence check cannot guard it — reject it explicitly instead."""
+    file_path = temp_work_dir / "test.txt"
+    original_content = "Hello world!"
+    await file_path.write_text(original_content)
+
+    result = await str_replace_file_tool(Params(path=str(file_path), edit=Edit(old="", new="X")))
+
+    assert result.is_error
+    assert "must not be empty" in result.message
+    assert await file_path.read_text() == original_content

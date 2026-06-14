@@ -142,6 +142,20 @@ class StrReplaceFile(CallableTool2[Params]):
             # requested changes without the model noticing.
             total_replacements = 0
             for index, edit in enumerate(edits):
+                # Reject an empty old string: `str.count('')` returns
+                # `len(content) + 1` (never 0), so the occurrence check below
+                # cannot catch it, and `str.replace('', new)` would splice
+                # `new` between every character.
+                if edit.old == "":
+                    detail = (
+                        "old string must not be empty."
+                        if len(edits) == 1
+                        else f"Edit #{index + 1}'s old string must not be empty."
+                    )
+                    return ToolError(
+                        message=f"No replacements were made. {detail}",
+                        brief="Empty old string",
+                    )
                 occurrences = content.count(edit.old)
                 if occurrences == 0:
                     detail = (
@@ -163,12 +177,18 @@ class StrReplaceFile(CallableTool2[Params]):
                 content = self._apply_edit(content, edit)
                 total_replacements += occurrences if edit.replace_all else 1
 
-            # Defensive: an edit whose old string equals its new string matches
-            # but changes nothing, so guard the no-op case explicitly.
+            # Every edit matched (validated above) but the result is identical
+            # to the original — e.g. an edit whose old string equals its new
+            # string, or edits that cancel out. Report a no-op rather than the
+            # misleading "old string was not found", which would send the model
+            # re-reading the file for a string that is actually present.
             if content == original_content:
                 return ToolError(
-                    message="No replacements were made. The old string was not found in the file.",
-                    brief="No replacements made",
+                    message=(
+                        "No replacements were made: the edit(s) matched but left the file "
+                        "unchanged (an old string equals its new string, or the edits cancel out)."
+                    ),
+                    brief="No changes made",
                 )
 
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
