@@ -246,3 +246,52 @@ async def test_replace_empty_strings(
     assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello !"
+
+
+async def test_replace_multiple_edits_one_not_found_is_atomic(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """A multi-edit where one edit's old string is missing must fail the whole
+    call, not silently apply the matching edits and report success."""
+    file_path = temp_work_dir / "test.txt"
+    original_content = "Hello world! Goodbye world!"
+    await file_path.write_text(original_content)
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=[
+                Edit(old="Hello", new="Hi"),
+                Edit(old="does-not-exist", new="x"),
+            ],
+        )
+    )
+
+    assert result.is_error
+    assert "No replacements were made" in result.message
+    # The whole batch fails atomically — the file is left untouched even though
+    # the first edit on its own would have matched.
+    assert await file_path.read_text() == original_content
+
+
+async def test_replace_sequential_dependent_edits_count(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """Edits apply in sequence, so a later edit can target text an earlier edit
+    introduced, and the reported replacement count reflects what actually ran."""
+    file_path = temp_work_dir / "test.txt"
+    await file_path.write_text("foo")
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=[
+                Edit(old="foo", new="bar"),
+                Edit(old="bar", new="baz"),
+            ],
+        )
+    )
+
+    assert not result.is_error
+    assert await file_path.read_text() == "baz"
+    assert "2 total replacement(s)" in result.message
