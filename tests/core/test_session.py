@@ -115,6 +115,39 @@ async def test_continue_without_last_returns_none(isolated_share_dir: Path, work
     assert result is None
 
 
+async def test_continue_falls_back_to_latest_when_last_missing(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    # last_session_id is only persisted on a clean exit, so after a Ctrl-C/crash
+    # it can be missing even though the conversation history still exists. In
+    # that case --continue should still resume the most recent session. See #2222.
+    older = await Session.create(work_dir)
+    newer = await Session.create(work_dir)
+    _write_context_message(older.context_file, "older conversation")
+    _write_context_message(newer.context_file, "newer conversation")
+    _write_wire_turn(older.dir, "older session")
+    _write_wire_turn(newer.dir, "newer session")
+
+    now = time.time()
+    os.utime(older.context_file, (now - 10, now - 10))
+    os.utime(newer.context_file, (now, now))
+
+    result = await Session.continue_(work_dir)
+    assert result is not None
+    assert result.id == newer.id
+
+
+async def test_continue_fallback_ignores_empty_sessions(
+    isolated_share_dir: Path, work_dir: KaosPath
+):
+    # An empty session (e.g. created then abandoned) must not be resumable.
+    empty = await Session.create(work_dir)
+    _write_wire_metadata(empty.dir)
+
+    result = await Session.continue_(work_dir)
+    assert result is None
+
+
 async def test_list_ignores_empty_sessions(isolated_share_dir: Path, work_dir: KaosPath):
     empty = await Session.create(work_dir)
     populated = await Session.create(work_dir)
