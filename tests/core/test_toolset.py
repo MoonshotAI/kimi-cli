@@ -6,11 +6,17 @@ import asyncio
 import contextlib
 import json
 
-from kosong.tooling import CallableTool2, ToolOk, ToolReturnValue
+import pytest
+from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from kosong.tooling.error import ToolNotFoundError as KosongToolNotFoundError
 from pydantic import BaseModel
 
-from kimi_cli.soul.toolset import KimiToolset
+from kimi_cli.soul.toolset import (
+    _REMINDER_TEXT_1,
+    _REMINDER_TEXT_3,
+    KimiToolset,
+    _build_repeat_reminder,
+)
 from kimi_cli.wire.types import ToolCall, ToolResult
 
 
@@ -294,7 +300,7 @@ async def test_cross_step_duplicate_appends_reminder_at_three_consecutive():
     previous_calls: list[tuple[str, str]] = []
 
     for i in range(2):
-        ts.begin_step(previous_calls, step_no=i + 1)
+        ts.begin_step(previous_calls)
         result = ts.handle(
             ToolCall(
                 id=f"tc-repeat-prior-{i}",
@@ -306,7 +312,7 @@ async def test_cross_step_duplicate_appends_reminder_at_three_consecutive():
         assert "system-reminder" not in tr.return_value.output
         previous_calls = ts.end_step()
 
-    ts.begin_step(previous_calls, step_no=3)
+    ts.begin_step(previous_calls)
     result = ts.handle(
         ToolCall(
             id="tc-repeat-third",
@@ -329,7 +335,7 @@ async def test_cross_step_duplicate_uses_sparse_stronger_reminders():
     last_output = ""
 
     for i in range(5):
-        ts.begin_step(previous_calls, step_no=i + 1)
+        ts.begin_step(previous_calls)
         result = ts.handle(
             ToolCall(
                 id=f"tc-repeat-{i}",
@@ -393,7 +399,7 @@ async def test_begin_step_resets_cancelled_tasks():
     """begin_step() must clear _current_step_tasks so a retry does not await a cancelled task."""
     ts = _make_toolset()
 
-    ts.begin_step([], step_no=1, turn_id="t1")
+    ts.begin_step([])
     args = json.dumps({"value": "x"})
     tc1 = ToolCall(
         id="c1",
@@ -407,7 +413,7 @@ async def test_begin_step_resets_cancelled_tasks():
     result1.cancel()
 
     # Simulate retry: begin_step again for the same step
-    ts.begin_step([], step_no=1, turn_id="t1")
+    ts.begin_step([])
     tc2 = ToolCall(
         id="c2",
         function=ToolCall.FunctionBody(
@@ -430,7 +436,7 @@ async def test_cross_step_dedup_not_triggered_after_back_to_the_future():
 
     # Step 1: execute a tool
     args = json.dumps({"value": "x"})
-    ts.begin_step([], step_no=1, turn_id="t1")
+    ts.begin_step([])
     tc1 = ToolCall(
         id="c1",
         function=ToolCall.FunctionBody(
@@ -448,7 +454,7 @@ async def test_cross_step_dedup_not_triggered_after_back_to_the_future():
     last_calls = []
 
     # Step 2: same call with empty last_calls should execute normally
-    ts.begin_step(last_calls, step_no=2, turn_id="t1")
+    ts.begin_step(last_calls)
     tc2 = ToolCall(
         id="c2",
         function=ToolCall.FunctionBody(
@@ -463,3 +469,167 @@ async def test_cross_step_dedup_not_triggered_after_back_to_the_future():
     # Should NOT have the cross-step reminder appended
     assert tr.return_value.output == "a"
     assert ts.dedup_triggered is False
+
+
+async def _run_consecutive(
+    ts: KimiToolset,
+    count: int,
+    *,
+    args: str = '{"value":"x"}',
+    tool: str = "ToolA",
+) -> ToolResult:
+    previous_calls: list[tuple[str, str]] = []
+    last: ToolResult | None = None
+    for i in range(count):
+        ts.begin_step(previous_calls)
+        result = ts.handle(
+            ToolCall(
+                id=f"tc-repeat-{i}",
+                function=ToolCall.FunctionBody(name=tool, arguments=args),
+            )
+        )
+        assert isinstance(result, asyncio.Task)
+        last = await result
+        previous_calls = ts.end_step()
+    assert last is not None
+    return last
+
+
+def test_build_repeat_reminder_tiers():
+    assert _build_repeat_reminder(1, "ToolA", "{}") == ("none", None)
+    assert _build_repeat_reminder(2, "ToolA", "{}") == ("none", None)
+
+    action, text = _build_repeat_reminder(3, "ToolA", "{}")
+    assert action == "r1"
+    assert text == _REMINDER_TEXT_1
+
+    action, text = _build_repeat_reminder(4, "ToolA", "{}")
+    assert action == "r1"
+    assert text == _REMINDER_TEXT_1
+
+    action, text = _build_repeat_reminder(5, "ToolA", '{"a":1}')
+    assert action == "r2"
+    assert text is not None
+    assert "repeated_times: 5" in text
+    assert "tool: ToolA" in text
+    assert 'arguments: {"a":1}' in text
+
+    action, text = _build_repeat_reminder(7, "ToolA", "{}")
+    assert action == "r2"
+    assert text is not None
+    assert "repeated_times: 7" in text
+
+    action, text = _build_repeat_reminder(8, "ToolA", "{}")
+    assert action == "r3"
+    assert text == _REMINDER_TEXT_3
+
+    action, text = _build_repeat_reminder(11, "ToolA", "{}")
+    assert action == "r3"
+    assert text == _REMINDER_TEXT_3
+
+    action, text = _build_repeat_reminder(12, "ToolA", "{}")
+    assert action == "stop"
+    assert text == _REMINDER_TEXT_3
+
+    action, text = _build_repeat_reminder(20, "ToolA", "{}")
+    assert action == "stop"
+    assert text == _REMINDER_TEXT_3
+
+
+@pytest.mark.parametrize(
+    ("streak", "expected_fragment"),
+    [
+        (3, "You are repeating the exact same tool call"),
+        (4, "You are repeating the exact same tool call"),
+        (5, "You have repeatedly called the same tool"),
+        (6, "You have repeatedly called the same tool"),
+        (7, "You have repeatedly called the same tool"),
+        (8, "stuck in a dead end"),
+        (9, "stuck in a dead end"),
+        (10, "stuck in a dead end"),
+        (11, "stuck in a dead end"),
+        (12, "stuck in a dead end"),
+    ],
+)
+async def test_cross_step_duplicate_injects_reminder_on_every_repeat(
+    streak: int, expected_fragment: str
+):
+    ts = _make_toolset()
+    tr = await _run_consecutive(ts, streak)
+    output = tr.return_value.output
+    assert isinstance(output, str)
+    assert "system-reminder" in output
+    assert expected_fragment in output
+
+
+async def test_cross_step_duplicate_no_reminder_below_three():
+    for count in (1, 2):
+        ts = _make_toolset()
+        tr = await _run_consecutive(ts, count)
+        output = tr.return_value.output
+        assert isinstance(output, str)
+        assert "system-reminder" not in output
+
+
+async def test_cross_step_duplicate_does_not_force_stop_below_twelve():
+    ts = _make_toolset()
+    await _run_consecutive(ts, 11)
+    assert ts.force_stop_turn is False
+
+
+async def test_cross_step_duplicate_force_stops_turn_at_twelve():
+    ts = _make_toolset()
+    tr = await _run_consecutive(ts, 12)
+    assert ts.force_stop_turn is True
+    output = tr.return_value.output
+    assert isinstance(output, str)
+    assert "stuck in a dead end" in output
+
+
+async def test_force_stop_does_not_mark_result_as_error():
+    ts = _make_toolset()
+    tr = await _run_consecutive(ts, 12)
+    assert ts.force_stop_turn is True
+    assert not isinstance(tr.return_value, ToolError)
+    assert isinstance(tr.return_value.output, str)
+    assert tr.return_value.output.startswith("a")
+
+
+async def test_force_stop_resets_each_step():
+    ts = _make_toolset()
+    await _run_consecutive(ts, 12)
+    assert ts.force_stop_turn is True
+
+    ts.begin_step([("ToolA", '{"value":"x"}')])
+    assert ts.force_stop_turn is False
+
+
+async def test_tool_call_repeat_telemetry_matches_kimi_code(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    events: list[tuple[str, dict[str, object]]] = []
+
+    def fake_track(event: str, **props: object) -> None:
+        events.append((event, props))
+
+    monkeypatch.setattr("kimi_cli.telemetry.track", fake_track)
+
+    ts = _make_toolset()
+    previous_calls: list[tuple[str, str]] = []
+    for i in range(5):
+        ts.begin_step(previous_calls)
+        result = ts.handle(
+            ToolCall(
+                id=f"tc-{i}",
+                function=ToolCall.FunctionBody(name="ToolA", arguments='{"value":"x"}'),
+            )
+        )
+        assert isinstance(result, asyncio.Task)
+        await result
+        previous_calls = ts.end_step()
+
+    repeat_events = [(e, p) for e, p in events if e == "tool_call_repeat"]
+    assert [p["repeat_count"] for _, p in repeat_events] == [2, 3, 4, 5]
+    assert [p["action"] for _, p in repeat_events] == ["none", "r1", "r1", "r2"]
+    assert all(p["tool_name"] == "ToolA" for _, p in repeat_events)
+    assert all(set(p) == {"tool_name", "repeat_count", "action"} for _, p in repeat_events)

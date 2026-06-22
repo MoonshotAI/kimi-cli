@@ -136,7 +136,7 @@ def classify_api_error(e: Exception) -> tuple[str, int | None]:
     return "other", None
 
 
-type StepStopReason = Literal["no_tool_calls", "tool_rejected"]
+type StepStopReason = Literal["no_tool_calls", "tool_rejected", "tool_call_repeat"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1078,11 +1078,7 @@ class KimiSoul:
             """Single LLM invocation (wrapped by retry + connection recovery)."""
             # ── 2e.4.1. Toolset begin_step ────────────────────────────────────
             if isinstance(self._agent.toolset, KimiToolset):
-                self._agent.toolset.begin_step(
-                    self._last_tool_calls,
-                    step_no=self._current_step_no,
-                    turn_id=self._current_turn_id,
-                )
+                self._agent.toolset.begin_step(self._last_tool_calls)
             # ── 2e.4.2. kosong.step ───────────────────────────────────────────
             # run an LLM step (may be interrupted)
             return await kosong.step(
@@ -1214,6 +1210,12 @@ class KimiSoul:
                     )
                 ],
             )
+
+        if isinstance(self._agent.toolset, KimiToolset) and self._agent.toolset.force_stop_turn:
+            from kimi_cli.telemetry import track
+
+            track("turn_force_stopped", reason="tool_call_repeat", step_no=self._current_step_no)
+            return StepOutcome(stop_reason="tool_call_repeat", assistant_message=result.message)
 
         if result.tool_calls:
             return None
