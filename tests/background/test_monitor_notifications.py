@@ -1,6 +1,6 @@
 import pytest
 
-from kimi_cli.background.models import MonitorPayload, monitor_payload
+from kimi_cli.background.models import MonitorPayload
 
 
 @pytest.mark.asyncio
@@ -68,7 +68,9 @@ async def test_emits_one_batched_notification_per_pass(make_manager, write_outpu
 
 
 @pytest.mark.asyncio
-async def test_partial_trailing_line_not_emitted_until_complete(make_manager, write_output, monkeypatch):
+async def test_partial_trailing_line_not_emitted_until_complete(
+    make_manager, write_output, monkeypatch
+):
     mgr = make_manager()
     monkeypatch.setattr(mgr, "_launch_worker", lambda task_dir: 4242)
     view = mgr.create_monitor_task(

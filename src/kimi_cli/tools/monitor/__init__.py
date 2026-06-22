@@ -8,7 +8,6 @@ from kimi_cli.background.models import MonitorPayload
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
-from kimi_cli.tools.background import _ensure_root
 from kimi_cli.tools.display import BackgroundTaskDisplayBlock
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.environment import Environment
@@ -47,8 +46,11 @@ class Monitor(CallableTool2[MonitorParams]):
 
     @override
     async def __call__(self, params: MonitorParams) -> ToolReturnValue:
-        if err := _ensure_root(self._runtime):
-            return err
+        if self._runtime.role != "root":
+            return ToolError(
+                message="Background tasks can only be managed by the root agent.",
+                brief="Background task unavailable",
+            )
         if self._runtime.session.state.plan_mode:
             return ToolError(
                 message="Monitor is not available in plan mode.",

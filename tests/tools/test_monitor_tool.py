@@ -33,9 +33,11 @@ def subagent_monitor_tool(approval, environment, runtime):
 
 
 def test_params_bounds_and_defaults():
+    from pydantic import ValidationError
+
     p = MonitorParams(command="tail -f x | grep --line-buffered ERR", description="errs")
     assert p.timeout_ms == 300000 and p.persistent is False
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         MonitorParams(command="x", description="d", timeout_ms=10)  # below min 1000
 
 

@@ -1,9 +1,14 @@
-from kimi_cli.background.models import TaskKind, MonitorPayload, monitor_payload, TaskSpec
+from kimi_cli.background.models import MonitorPayload, TaskSpec, monitor_payload
 
 
 def test_monitor_payload_defaults():
     p = MonitorPayload()
-    assert (p.batch_ms, p.max_lines_per_window, p.volume_window_s, p.notify_offset) == (200, 200, 5.0, 0)
+    assert (p.batch_ms, p.max_lines_per_window, p.volume_window_s, p.notify_offset) == (
+        200,
+        200,
+        5.0,
+        0,
+    )
 
 
 def test_monitor_payload_from_spec_roundtrip():
@@ -20,5 +25,7 @@ def test_monitor_payload_from_spec_roundtrip():
 
 
 def test_monitor_payload_missing_payload_is_defaults():
-    spec = TaskSpec(id="monitor-y", kind="monitor", session_id="s", description="d", tool_call_id="t")
+    spec = TaskSpec(
+        id="monitor-y", kind="monitor", session_id="s", description="d", tool_call_id="t"
+    )
     assert monitor_payload(spec).notify_offset == 0

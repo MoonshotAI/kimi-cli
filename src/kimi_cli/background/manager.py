@@ -260,7 +260,8 @@ class BackgroundTaskManager:
 
         runtime = self._store.read_runtime(task_id)
         if runtime.finished_at is None and (
-            runtime.status == "created" or (runtime.status == "starting" and runtime.worker_pid is None)
+            runtime.status == "created"
+            or (runtime.status == "starting" and runtime.worker_pid is None)
         ):
             runtime.status = "starting"
             runtime.worker_pid = worker_pid
@@ -679,7 +680,7 @@ class BackgroundTaskManager:
             text = chunk.text
             if "\n" not in text:
                 continue  # only a partial trailing line so far; wait for newline
-            complete, _, partial = text.rpartition("\n")
+            complete, _, _ = text.rpartition("\n")
             lines = complete.split("\n")
             consumed_bytes = len(complete.encode("utf-8")) + 1  # include the final "\n"
 
@@ -705,7 +706,9 @@ class BackgroundTaskManager:
             published.append(event.id)
 
             # advance + persist notify_offset
-            new_payload = payload.model_copy(update={"notify_offset": payload.notify_offset + consumed_bytes})
+            new_payload = payload.model_copy(
+                update={"notify_offset": payload.notify_offset + consumed_bytes}
+            )
             spec = self._store.read_spec(view.spec.id)
             spec.kind_payload = new_payload.model_dump()
             self._store.write_spec(spec)
