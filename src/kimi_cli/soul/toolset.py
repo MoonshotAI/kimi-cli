@@ -474,22 +474,34 @@ class KimiToolset:
                         dup_type="cross_step" if is_cross_step_dup else "normal",
                     )
 
-                # --- PostToolUse (fire-and-forget) ---
-                _hook_task = asyncio.create_task(
-                    self._hook_engine.trigger(
-                        "PostToolUse",
-                        matcher_value=tool_name,
-                        input_data=events.post_tool_use(
-                            session_id=_get_session_id(),
-                            cwd=str(Path.cwd()),
-                            tool_name=tool_name,
-                            tool_input=tool_input_dict,
-                            tool_output=str(ret)[:2000],
-                            tool_call_id=tool_call.id,
-                        ),
-                    )
+                # --- PostToolUse (awaited, not fire-and-forget) ---
+                # Hooks run after the tool completes. Their stderr is appended
+                # to the tool result message so the LLM can see and act on it.
+                hook_results = await self._hook_engine.trigger(
+                    "PostToolUse",
+                    matcher_value=tool_name,
+                    input_data=events.post_tool_use(
+                        session_id=_get_session_id(),
+                        cwd=str(Path.cwd()),
+                        tool_name=tool_name,
+                        tool_input=tool_input_dict,
+                        tool_output=str(ret)[:2000],
+                        tool_call_id=tool_call.id,
+                    ),
                 )
-                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+                # Collect non-empty stderr from hooks for LLM visibility
+                hook_stderr_lines: list[str] = []
+                for hr in hook_results:
+                    if hr.stderr.strip():
+                        hook_stderr_lines.append(hr.stderr.strip())
+
+                if hook_stderr_lines:
+                    hook_output = "\n".join(hook_stderr_lines)
+                    if ret.message:
+                        ret.message = f"{ret.message}\n\n[post-tool-use-hooks]\n{hook_output}"
+                    else:
+                        ret.message = f"[post-tool-use-hooks]\n{hook_output}"
 
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 
