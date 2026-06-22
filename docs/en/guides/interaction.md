@@ -118,6 +118,26 @@ How background tasks work:
 
 You can use the `/task` slash command to open the interactive task browser, where you can view the status and output of all background tasks in real time (including tasks that are still running). See [Slash commands reference](../reference/slash-commands.md#task) for details.
 
+### Monitor tool
+
+In addition to `Shell` background tasks, the AI can also use the `Monitor` tool to start a background monitor that streams each line of a command's stdout to you as a notification. This is great for watching build logs, test output, or server logs for key events.
+
+How the `Monitor` tool works:
+
+1. The AI invokes the `Monitor` tool with the command to run and a short description
+2. The tool runs the command in the background and pushes a notification for every stdout line it produces
+3. You can keep talking to the AI; when a notification arrives, the system automatically triggers a new agent turn to handle the event if the AI is idle
+
+::: tip Usage advice
+`Monitor` commands should self-filter and flush per line. For example, use `grep --line-buffered` to filter key log lines, or `tail -f` to watch a file continuously. A monitor is auto-stopped if it emits more than 200 lines within a 5-second window to prevent notification spam; in that case, ask the AI to restart it with a tighter filter.
+:::
+
+You can stop a running monitor with the `TaskStop` tool, or let it time out according to `timeout_ms`. A monitor with `persistent=true` runs until the session ends or it is stopped manually.
+
+::: warning Note
+The `Monitor` tool is not available in plan mode and can only be used by the root agent.
+:::
+
 ::: tip
 By default, up to 4 background tasks can run simultaneously. This can be adjusted in the `[background]` section of the config file. All background tasks are terminated when the CLI exits by default. See [Configuration files](../configuration/config-files.md#background).
 :::

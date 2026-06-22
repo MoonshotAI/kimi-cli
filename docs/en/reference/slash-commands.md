@@ -299,7 +299,7 @@ Supported keyboard shortcuts:
 The task browser automatically refreshes every second, showing real-time task status changes.
 
 ::: tip
-Background tasks are started by the AI using the `Shell` tool with `run_in_background=true`. The system automatically notifies the AI when background tasks complete.
+Background tasks are started by the AI using the `Shell` tool with `run_in_background=true` or via the `Monitor` tool. The system automatically notifies the AI when background tasks complete or when a monitor emits a new output line. See [Background tasks](../guides/interaction.md#background-tasks) for details.
 :::
 
 ### `/yolo`
