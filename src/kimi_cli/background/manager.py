@@ -30,6 +30,7 @@ from .models import (
     TaskStatus,
     TaskView,
     is_terminal_status,
+    monitor_payload,
 )
 from .store import BackgroundTaskStore
 
@@ -51,6 +52,7 @@ class BackgroundTaskManager:
         self._runtime: Runtime | None = None
         self._live_agent_tasks: dict[str, asyncio.Task[None]] = {}
         self._completion_event: asyncio.Event = asyncio.Event()
+        self._monitor_windows: dict[str, list[float]] = {}
 
     @property
     def completion_event(self) -> asyncio.Event:
@@ -542,7 +544,9 @@ class BackgroundTaskManager:
 
     def reconcile(self, *, limit: int | None = None) -> list[str]:
         self.recover()
-        return self.publish_terminal_notifications(limit=limit)
+        published = self.publish_terminal_notifications(limit=limit)
+        published += self.publish_monitor_notifications(limit=limit)
+        return published
 
     def publish_terminal_notifications(self, *, limit: int | None = None) -> list[str]:
         published: list[str] = []
@@ -661,6 +665,70 @@ class BackgroundTaskManager:
                     event_id=event.id,
                     existing_id=notification.event.id,
                 )
+            if limit is not None and len(published) >= limit:
+                break
+        return published
+
+    def publish_monitor_notifications(self, *, limit: int | None = None) -> list[str]:
+        published: list[str] = []
+        for view in self._store.list_views():
+            if view.spec.kind != "monitor":
+                continue
+            payload = monitor_payload(view.spec)
+            chunk = self.read_output(view.spec.id, offset=payload.notify_offset)
+            text = chunk.text
+            if "\n" not in text:
+                continue  # only a partial trailing line so far; wait for newline
+            complete, _, partial = text.rpartition("\n")
+            lines = complete.split("\n")
+            consumed_bytes = len(complete.encode("utf-8")) + 1  # include the final "\n"
+
+            # volume cap: too many lines since the window started -> auto-stop
+            now = time.time()
+            win = self._monitor_windows.setdefault(view.spec.id, [now, 0])
+            if now - win[0] > payload.volume_window_s:
+                win[0], win[1] = now, 0
+            win[1] += len(lines)
+            over_cap = win[1] > payload.max_lines_per_window
+
+            event = NotificationEvent(
+                id=self._notifications.new_id(),
+                category="task",
+                type="monitor_line",
+                source_kind="monitor",
+                source_id=view.spec.id,
+                title=view.spec.description,
+                body="\n".join(lines),
+                severity="info",
+            )
+            self._notifications.publish(event)
+            published.append(event.id)
+
+            # advance + persist notify_offset
+            new_payload = payload.model_copy(update={"notify_offset": payload.notify_offset + consumed_bytes})
+            spec = self._store.read_spec(view.spec.id)
+            spec.kind_payload = new_payload.model_dump()
+            self._store.write_spec(spec)
+
+            if over_cap and not is_terminal_status(view.runtime.status):
+                self.kill(view.spec.id, reason="Monitor auto-stopped: too noisy")
+                warn = NotificationEvent(
+                    id=self._notifications.new_id(),
+                    category="task",
+                    type="monitor_line",
+                    source_kind="monitor",
+                    source_id=view.spec.id,
+                    title=view.spec.description,
+                    severity="warning",
+                    body=(
+                        f"Monitor auto-stopped: too noisy "
+                        f"(>{payload.max_lines_per_window} lines / {payload.volume_window_s:g}s). "
+                        "Restart with a tighter filter."
+                    ),
+                )
+                self._notifications.publish(warn)
+                published.append(warn.id)
+
             if limit is not None and len(published) >= limit:
                 break
         return published
