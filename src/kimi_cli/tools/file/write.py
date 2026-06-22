@@ -122,12 +122,23 @@ class WriteFile(CallableTool2[Params]):
 
             file_existed = await p.exists()
             old_text = None
+            original_bytes = b""
             if file_existed:
-                old_text = await p.read_text(errors="replace")
+                original_bytes = await p.read_bytes()
+                old_text = original_bytes.decode("utf-8", errors="replace")
 
-            new_text = (
-                params.content if params.mode == "overwrite" else (old_text or "") + params.content
-            )
+            # Detect dominant line ending style from existing file
+            eol_style = "\n"
+            if file_existed:
+                if b"\r\n" in original_bytes:
+                    eol_style = "\r\n"
+                elif b"\r" in original_bytes:
+                    eol_style = "\r"
+
+            new_text = params.content
+            if params.mode == "append":
+                new_text = (old_text or "") + params.content
+
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
                 str(p),
                 old_text or "",
@@ -152,10 +163,15 @@ class WriteFile(CallableTool2[Params]):
                 if not result:
                     return result.rejection_error()
 
-            # Write content to file
+            # Write content to file preserving original line endings when overwriting
             match params.mode:
                 case "overwrite":
-                    await p.write_text(params.content)
+                    if eol_style != "\n":
+                        # Normalize to LF first to avoid double-converting existing CRLF
+                        content_to_write = params.content.replace("\r\n", "\n").replace("\r", "\n").replace("\n", eol_style)
+                    else:
+                        content_to_write = params.content
+                    await p.write_bytes(content_to_write.encode("utf-8"))
                 case "append":
                     await p.append_text(params.content)
 
