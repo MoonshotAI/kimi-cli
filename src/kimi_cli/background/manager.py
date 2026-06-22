@@ -678,11 +678,27 @@ class BackgroundTaskManager:
             payload = monitor_payload(view.spec)
             chunk = self.read_output(view.spec.id, offset=payload.notify_offset)
             text = chunk.text
-            if "\n" not in text:
-                continue  # only a partial trailing line so far; wait for newline
-            complete, _, _ = text.rpartition("\n")
-            lines = complete.split("\n")
-            consumed_bytes = len(complete.encode("utf-8")) + 1  # include the final "\n"
+            if not text:
+                continue
+            terminal = is_terminal_status(view.runtime.status)
+            if "\n" in text:
+                complete, _, partial = text.rpartition("\n")
+                if terminal and partial:
+                    # The task has ended: flush the trailing partial line (output
+                    # with no final newline, e.g. a crash mid-line or `printf` with
+                    # no trailing "\n") as the last line instead of dropping it.
+                    lines = text.split("\n")
+                    consumed_bytes = len(text.encode("utf-8"))
+                else:
+                    lines = complete.split("\n")
+                    consumed_bytes = len(complete.encode("utf-8")) + 1  # include the final "\n"
+            elif terminal:
+                # No newline at all, but the task is terminal — the whole remaining
+                # buffer is the final line; emit it rather than waiting forever.
+                lines = [text]
+                consumed_bytes = len(text.encode("utf-8"))
+            else:
+                continue  # running: only a partial trailing line so far; wait for newline
 
             # volume cap: too many lines since the window started -> auto-stop
             now = time.time()
