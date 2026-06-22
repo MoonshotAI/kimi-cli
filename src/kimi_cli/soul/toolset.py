@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import importlib
 import inspect
 import json
@@ -117,6 +116,40 @@ def _make_reminder_text_2(tool_name: str, repeat_count: int, canonical_args: str
     )
 
 
+_REMINDER_TEXT_3 = (
+    "\n\n<system-reminder>\n"
+    "You are stuck in a dead end and have repeatedly made the same function call without "
+    "progress.\n"
+    "Stop all function calls immediately. Do not call any tool in your next response.\n"
+    "In analysis, review the current execution state and identify why progress is blocked.\n"
+    "Then return a text-only summary to the user that reports the current problem, what has "
+    "already been tried, and what information or decision is needed next."
+    "\n</system-reminder>"
+)
+
+
+_REPEAT_REMINDER_1_START = 3
+_REPEAT_REMINDER_2_START = 5
+_REPEAT_REMINDER_3_START = 8
+_REPEAT_FORCE_STOP_STREAK = 12
+
+type RepeatAction = Literal["none", "r1", "r2", "r3", "stop"]
+
+
+def _build_repeat_reminder(
+    streak: int, tool_name: str, canonical_args: str
+) -> tuple[RepeatAction, str | None]:
+    if streak >= _REPEAT_FORCE_STOP_STREAK:
+        return "stop", _REMINDER_TEXT_3
+    if streak >= _REPEAT_REMINDER_3_START:
+        return "r3", _REMINDER_TEXT_3
+    if streak >= _REPEAT_REMINDER_2_START:
+        return "r2", _make_reminder_text_2(tool_name, streak, canonical_args)
+    if streak >= _REPEAT_REMINDER_1_START:
+        return "r1", _REMINDER_TEXT_1
+    return "none", None
+
+
 def _sort_json_value(value: object) -> object:
     if isinstance(value, list):
         return [_sort_json_value(item) for item in cast("list[object]", value)]
@@ -189,8 +222,7 @@ class KimiToolset:
         self._consecutive_count: int = 0
         self._step_closed: bool = False
         self._dedup_triggered: bool = False
-        self._step_no: int = 0
-        self._turn_id: str = ""
+        self._force_stop_turn: bool = False
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -228,13 +260,7 @@ class KimiToolset:
             tool.base for tool in self._tool_dict.values() if tool.name not in self._hidden_tools
         ]
 
-    def begin_step(
-        self,
-        previous_calls: list[tuple[str, str]],
-        *,
-        step_no: int = 0,
-        turn_id: str = "",
-    ) -> None:
+    def begin_step(self, previous_calls: list[tuple[str, str]]) -> None:
         """Called before each step to set up deduplication state."""
         self._previous_step_calls = [
             _normalize_call_key(tool_name, arguments) for tool_name, arguments in previous_calls
@@ -243,8 +269,7 @@ class KimiToolset:
         self._current_step_tasks = {}
         self._step_closed = False
         self._dedup_triggered = False
-        self._step_no = step_no
-        self._turn_id = turn_id
+        self._force_stop_turn = False
         if not self._previous_step_calls:
             self._seen_call_keys = set()
             self._consecutive_key = None
@@ -286,6 +311,10 @@ class KimiToolset:
         """Whether a cross-step duplicate was blocked in the current step."""
         return self._dedup_triggered
 
+    @property
+    def force_stop_turn(self) -> bool:
+        return self._force_stop_turn
+
     def handle(self, tool_call: ToolCall) -> HandleResult:
         token = current_tool_call.set(tool_call)
         try:
@@ -315,17 +344,6 @@ class KimiToolset:
 
             # Same-step dedup: wait for the original task and copy its result.
             if call_key in self._current_step_tasks:
-                from kimi_cli.telemetry import track
-
-                track(
-                    "tool_call_dedup_detected",
-                    session_id=_get_session_id(),
-                    turn_id=self._turn_id,
-                    step_no=self._step_no,
-                    tool_name=tool_name,
-                    dup_type="same_step",
-                    args_hash=hashlib.sha256(canonical_args.encode()).hexdigest()[:8],
-                )
                 original_task = self._current_step_tasks[call_key]
 
                 async def _await_dup() -> ToolResult:
@@ -342,21 +360,19 @@ class KimiToolset:
             if is_cross_step_dup:
                 from kimi_cli.telemetry import track
 
+                repeat_count = self._projected_streak_for_call(call_index)
+                action, reminder_text = _build_repeat_reminder(
+                    repeat_count, tool_name, canonical_args
+                )
                 track(
-                    "tool_call_dedup_detected",
-                    session_id=_get_session_id(),
-                    turn_id=self._turn_id,
-                    step_no=self._step_no,
+                    "tool_call_repeat",
                     tool_name=tool_name,
-                    dup_type="cross_step",
-                    args_hash=hashlib.sha256(canonical_args.encode()).hexdigest()[:8],
+                    repeat_count=repeat_count,
+                    action=action,
                 )
                 self._dedup_triggered = True
-                repeat_count = self._projected_streak_for_call(call_index)
-                if repeat_count == 3:
-                    reminder_text = _REMINDER_TEXT_1
-                elif repeat_count in (5, 8):
-                    reminder_text = _make_reminder_text_2(tool_name, repeat_count, canonical_args)
+                if action == "stop":
+                    self._force_stop_turn = True
 
             tool = self._tool_dict[tool_name]
 
