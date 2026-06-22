@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tools: `ReadMediaFile` now re-encodes images whose MIME type the model gateway does not accept (e.g. `image/x-icon` from `.ico`, `image/bmp`, `image/tiff`) as PNG before they enter session history, so unsupported-format `400`s no longer poison the conversation
+
 ## 1.47.0 (2026-06-05)
 
 - Shell: Guide users to the new standalone Kimi Code — adds a `/upgrade` command that installs it (migrating your config & sessions automatically), a welcome-screen nudge, and a once-per-day tip shown on exit
