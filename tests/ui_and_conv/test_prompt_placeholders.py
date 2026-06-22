@@ -11,6 +11,11 @@ from kimi_cli.ui.shell.placeholders import (
 from kimi_cli.wire.types import ImageURLPart, TextPart
 
 
+def _assert_pasted_text_token(token: str, line_count: int) -> None:
+    assert token.startswith("[Pasted text:")
+    assert token.endswith(f" +{line_count} lines]")
+
+
 def test_placeholder_manager_serializes_text_tokens_for_history(tmp_path) -> None:
     manager = PromptPlaceholderManager(attachment_cache=AttachmentCache(root=tmp_path))
     text_token = manager.maybe_placeholderize_pasted_text("alpha\nbeta\ngamma")
@@ -21,7 +26,7 @@ def test_placeholder_manager_serializes_text_tokens_for_history(tmp_path) -> Non
 
     history_text = manager.serialize_for_history(f"before {text_token} {image_token} after")
 
-    assert history_text == f"before alpha\nbeta\ngamma {image_token} after"
+    assert history_text == f"before {text_token} {image_token} after"
 
 
 def test_placeholder_manager_refolds_editor_text_for_known_text_tokens() -> None:
@@ -87,13 +92,14 @@ def test_placeholder_manager_only_refolds_unedited_placeholder_when_multiple_exi
     assert refolded == f"{first_token}\n---\none\ntwo changed\nthree"
 
 
-def test_placeholder_manager_leaves_unknown_text_token_literal() -> None:
+def test_placeholder_manager_uses_error_text_for_unknown_legacy_text_token() -> None:
     manager = PromptPlaceholderManager()
 
     resolved = manager.resolve_command("[Pasted text #999 +3 lines]")
 
-    assert resolved.resolved_text == "[Pasted text #999 +3 lines]"
-    assert resolved.content == [TextPart(text="[Pasted text #999 +3 lines]")]
+    assert "[Pasted text #999 +3 lines]" not in resolved.resolved_text
+    assert "Missing pasted text" in resolved.resolved_text
+    assert resolved.content == [TextPart(text=resolved.resolved_text)]
 
 
 def test_placeholder_manager_resolves_mixed_text_and_image_tokens(tmp_path) -> None:
@@ -115,6 +121,31 @@ def test_placeholder_manager_resolves_mixed_text_and_image_tokens(tmp_path) -> N
     assert resolved.content[4].type == "image_url"
     assert isinstance(resolved.content[4], ImageURLPart)
     assert resolved.content[5] == TextPart(text="</image>")
+
+
+def test_placeholder_manager_resolves_pasted_text_with_new_manager(tmp_path) -> None:
+    cache = AttachmentCache(root=tmp_path)
+    manager = PromptPlaceholderManager(attachment_cache=cache)
+    pasted_text = "\n".join([f"line{i}" for i in range(1, 16)])
+    text_token = manager.maybe_placeholderize_pasted_text(pasted_text)
+    _assert_pasted_text_token(text_token, 15)
+
+    new_manager = PromptPlaceholderManager(attachment_cache=AttachmentCache(root=tmp_path))
+    resolved = new_manager.resolve_command(f"review {text_token}")
+
+    assert resolved.resolved_text == f"review {pasted_text}"
+    assert resolved.content == [TextPart(text="review "), TextPart(text=pasted_text)]
+
+
+def test_placeholder_manager_uses_error_text_for_missing_persisted_text(tmp_path) -> None:
+    manager = PromptPlaceholderManager(attachment_cache=AttachmentCache(root=tmp_path))
+    token = "[Pasted text:missing.txt +15 lines]"
+
+    resolved = manager.resolve_command(token)
+
+    assert token not in resolved.resolved_text
+    assert "Missing pasted text" in resolved.resolved_text
+    assert resolved.content == [TextPart(text=resolved.resolved_text)]
 
 
 def test_placeholder_manager_expands_text_but_not_image_for_editor(tmp_path) -> None:
@@ -170,7 +201,7 @@ def test_placeholder_manager_normalizes_crlf_before_threshold_and_resolution() -
     lines = "\r\n".join([f"line{i}" for i in range(1, 16)])
     token = manager.maybe_placeholderize_pasted_text(lines)
 
-    assert token == "[Pasted text #1 +15 lines]"
+    _assert_pasted_text_token(token, 15)
 
     resolved = manager.resolve_command(token)
     assert resolved.resolved_text == "\n".join([f"line{i}" for i in range(1, 16)])

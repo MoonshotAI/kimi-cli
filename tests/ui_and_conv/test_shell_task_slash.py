@@ -21,10 +21,14 @@ from kimi_cli.wire.types import ApprovalRequest
 
 
 class _FakePlaceholderManager:
-    """Minimal placeholder manager stub — serialize_for_history is identity."""
+    """Minimal placeholder manager stub — expansion helpers are identity."""
 
     @staticmethod
     def serialize_for_history(text: str) -> str:
+        return text
+
+    @staticmethod
+    def expand_for_editor(text: str) -> str:
         return text
 
 

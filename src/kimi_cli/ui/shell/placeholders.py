@@ -30,6 +30,10 @@ _IMAGE_PLACEHOLDER_RE = re.compile(
 _PASTED_TEXT_PLACEHOLDER_RE = re.compile(
     r"\[Pasted text #(?P<id>\d+)(?: \+(?P<lines>\d+) lines?)?\]"
 )
+_PERSISTED_PASTED_TEXT_PLACEHOLDER_RE = re.compile(
+    r"\[Pasted text:(?P<id>[a-zA-Z0-9_\-\.]+)(?: \+(?P<lines>\d+) lines?)?\]"
+)
+_MISSING_PASTED_TEXT_MESSAGE = "[Missing pasted text: original placeholder content is unavailable]"
 
 _TEXT_PASTE_CHAR_THRESHOLD = get_env_int("KIMI_CLI_PASTE_CHAR_THRESHOLD", 1000)
 _TEXT_PASTE_LINE_THRESHOLD = get_env_int("KIMI_CLI_PASTE_LINE_THRESHOLD", 15)
@@ -72,6 +76,13 @@ def build_pasted_text_placeholder(paste_id: int, text: str) -> str:
     return f"[Pasted text #{paste_id} +{line_count} lines]"
 
 
+def build_persisted_pasted_text_placeholder(attachment_id: str, text: str) -> str:
+    line_count = count_text_lines(text)
+    if line_count <= 1:
+        return f"[Pasted text:{attachment_id}]"
+    return f"[Pasted text:{attachment_id} +{line_count} lines]"
+
+
 def _guess_image_mime(path: Path) -> str:
     mime, _ = mimetypes.guess_type(path.name)
     if mime:
@@ -88,7 +99,7 @@ def _build_image_part(image_bytes: bytes, mime_type: str) -> ImageURLPart:
     )
 
 
-type CachedAttachmentKind = Literal["image"]
+type CachedAttachmentKind = Literal["image", "pasted_text"]
 
 
 @dataclass(slots=True)
@@ -109,7 +120,10 @@ class AttachmentCache:
     ) -> None:
         self._root = root or _DEFAULT_PROMPT_CACHE_ROOT
         self._legacy_roots = tuple(legacy_roots or (_LEGACY_PROMPT_CACHE_ROOT,))
-        self._dir_map: dict[CachedAttachmentKind, str] = {"image": "images"}
+        self._dir_map: dict[CachedAttachmentKind, str] = {
+            "image": "images",
+            "pasted_text": "pasted-text",
+        }
         self._payload_map: dict[tuple[CachedAttachmentKind, str, str], CachedAttachment] = {}
 
     def _dir_for(self, kind: CachedAttachmentKind, *, root: Path | None = None) -> Path:
@@ -171,6 +185,9 @@ class AttachmentCache:
         image.save(png_bytes, format="PNG")
         return self.store_bytes("image", ".png", png_bytes.getvalue())
 
+    def store_pasted_text(self, text: str) -> CachedAttachment | None:
+        return self.store_bytes("pasted_text", ".txt", text.encode("utf-8"))
+
     def _candidate_paths(self, kind: CachedAttachmentKind, attachment_id: str) -> list[Path]:
         roots = (self._root, *self._legacy_roots)
         return [self._dir_for(kind, root=root) / attachment_id for root in roots]
@@ -204,6 +221,13 @@ class AttachmentCache:
             part = _build_image_part(image_bytes, mime_type)
             return wrap_media_part(part, tag="image", attrs={"path": str(path)})
         return None
+
+    def load_pasted_text(self, attachment_id: str) -> str | None:
+        payload = self.load_bytes("pasted_text", attachment_id)
+        if payload is None:
+            return None
+        _path, text_bytes = payload
+        return text_bytes.decode("utf-8", errors="replace")
 
 
 def parse_attachment_kind(raw_kind: str) -> CachedAttachmentKind | None:
@@ -246,13 +270,24 @@ class PastedTextEntry:
         return build_pasted_text_placeholder(self.paste_id, self.text)
 
 
+@dataclass(slots=True)
+class ResolvedPastedTextEntry:
+    text: str
+    token: str
+
+
 class PastedTextPlaceholderHandler:
-    def __init__(self) -> None:
+    def __init__(self, attachment_cache: AttachmentCache) -> None:
+        self._attachment_cache = attachment_cache
         self._entries: dict[int, PastedTextEntry] = {}
         self._next_id = 1
 
     def create_placeholder(self, text: str) -> str:
         normalized = sanitize_surrogates(normalize_pasted_text(text))
+        cached = self._attachment_cache.store_pasted_text(normalized)
+        if cached is not None:
+            return build_persisted_pasted_text_placeholder(cached.attachment_id, normalized)
+
         entry = PastedTextEntry(paste_id=self._next_id, text=normalized)
         self._entries[entry.paste_id] = entry
         self._next_id += 1
@@ -269,19 +304,18 @@ class PastedTextPlaceholderHandler:
 
     def iter_entries_for_command(
         self, command: str
-    ) -> list[tuple[PlaceholderTokenMatch, PastedTextEntry]]:
-        entries: list[tuple[PlaceholderTokenMatch, PastedTextEntry]] = []
+    ) -> list[tuple[PlaceholderTokenMatch, ResolvedPastedTextEntry]]:
+        entries: list[tuple[PlaceholderTokenMatch, ResolvedPastedTextEntry]] = []
         cursor = 0
         while match := self.find_next(command, cursor):
-            paste_id = int(match.match.group("id"))
-            entry = self.entry_for_id(paste_id)
+            entry = self._resolved_entry_for_match(match)
             if entry is not None:
                 entries.append((match, entry))
             cursor = match.end
         return entries
 
     def find_next(self, text: str, start: int = 0) -> PlaceholderTokenMatch | None:
-        match = _PASTED_TEXT_PLACEHOLDER_RE.search(text, start)
+        match = self._find_earliest_text_match(text, start)
         if match is None:
             return None
         return PlaceholderTokenMatch(
@@ -293,18 +327,30 @@ class PastedTextPlaceholderHandler:
         )
 
     def resolve_content(self, match: PlaceholderTokenMatch) -> list[ContentPart] | None:
-        paste_id = int(match.match.group("id"))
-        entry = self.entry_for_id(paste_id)
-        if entry is None:
-            return None
-        return [TextPart(text=entry.text)]
+        return [TextPart(text=self.expand_text(match))]
 
     def expand_text(self, match: PlaceholderTokenMatch) -> str | None:
+        return self._text_for_match(match) or _MISSING_PASTED_TEXT_MESSAGE
+
+    def _text_for_match(self, match: PlaceholderTokenMatch) -> str | None:
+        if match.match.re is _PERSISTED_PASTED_TEXT_PLACEHOLDER_RE:
+            return self._attachment_cache.load_pasted_text(match.match.group("id"))
+
         paste_id = int(match.match.group("id"))
         entry = self.entry_for_id(paste_id)
         return None if entry is None else entry.text
 
+    def _resolved_entry_for_match(
+        self, match: PlaceholderTokenMatch
+    ) -> ResolvedPastedTextEntry | None:
+        text = self._text_for_match(match)
+        if text is None:
+            return None
+        return ResolvedPastedTextEntry(text=text, token=match.raw)
+
     def serialize_for_history(self, match: PlaceholderTokenMatch) -> str | None:
+        if match.match.re is _PERSISTED_PASTED_TEXT_PLACEHOLDER_RE:
+            return match.raw
         return self.expand_text(match)
 
     def expand_for_editor(self, match: PlaceholderTokenMatch) -> str | None:
@@ -334,6 +380,18 @@ class PastedTextPlaceholderHandler:
         for start, end, token in reversed(replacements):
             result = result[:start] + token + result[end:]
         return result
+
+    @staticmethod
+    def _find_earliest_text_match(text: str, start: int) -> re.Match[str] | None:
+        legacy_match = _PASTED_TEXT_PLACEHOLDER_RE.search(text, start)
+        persisted_match = _PERSISTED_PASTED_TEXT_PLACEHOLDER_RE.search(text, start)
+        if legacy_match is None:
+            return persisted_match
+        if persisted_match is None:
+            return legacy_match
+        if persisted_match.start() < legacy_match.start():
+            return persisted_match
+        return legacy_match
 
     def _expanded_text_and_intervals(
         self, command: str
@@ -435,7 +493,7 @@ class ResolvedPromptCommand:
 class PromptPlaceholderManager:
     def __init__(self, attachment_cache: AttachmentCache | None = None) -> None:
         self._attachment_cache = attachment_cache or AttachmentCache()
-        self._text_handler = PastedTextPlaceholderHandler()
+        self._text_handler = PastedTextPlaceholderHandler(self._attachment_cache)
         self._image_handler = ImagePlaceholderHandler(self._attachment_cache)
         self._handlers: tuple[PlaceholderHandler, ...] = (
             self._text_handler,
