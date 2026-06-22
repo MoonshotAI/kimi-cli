@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 from .ids import generate_task_id
 from .models import (
+    MonitorPayload,
     TaskOutputChunk,
     TaskRuntime,
     TaskSpec,
@@ -199,6 +200,65 @@ class BackgroundTaskManager:
         if runtime.finished_at is None and (
             runtime.status == "created"
             or (runtime.status == "starting" and runtime.worker_pid is None)
+        ):
+            runtime.status = "starting"
+            runtime.worker_pid = worker_pid
+            runtime.updated_at = time.time()
+            self._store.write_runtime(task_id, runtime)
+        return self._store.merged_view(task_id)
+
+    def create_monitor_task(
+        self,
+        *,
+        command: str,
+        description: str,
+        timeout_s: int | None,
+        tool_call_id: str,
+        shell_name: str,
+        shell_path: str,
+        cwd: str,
+        payload: MonitorPayload,
+    ) -> TaskView:
+        self._ensure_root()
+        self._ensure_local_backend()
+        if self._active_task_count() >= self._config.max_running_tasks:
+            raise RuntimeError("Too many background tasks are already running.")
+
+        task_id = generate_task_id("monitor")
+        spec = TaskSpec(
+            id=task_id,
+            kind="monitor",
+            session_id=self._session.id,
+            description=description,
+            tool_call_id=tool_call_id,
+            owner_role="root",
+            command=command,
+            shell_name=shell_name,
+            shell_path=shell_path,
+            cwd=cwd,
+            timeout_s=timeout_s,
+            kind_payload=payload.model_dump(),
+        )
+        self._store.create_task(spec)
+        from kimi_cli.telemetry import track
+
+        track("background_task_created")
+
+        runtime = self._store.read_runtime(task_id)
+        task_dir = self._store.task_dir(task_id)
+        try:
+            worker_pid = self._launch_worker(task_dir)
+        except Exception as exc:
+            runtime.status = "failed"
+            runtime.failure_reason = f"Failed to launch worker: {exc}"
+            runtime.finished_at = time.time()
+            runtime.updated_at = runtime.finished_at
+            self._store.write_runtime(task_id, runtime)
+            raise
+
+        runtime = self._store.read_runtime(task_id)
+        if runtime.finished_at is None and (
+            runtime.status == "created" or (runtime.status == "starting" and runtime.worker_pid is None)
         ):
             runtime.status = "starting"
             runtime.worker_pid = worker_pid
