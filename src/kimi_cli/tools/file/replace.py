@@ -134,15 +134,61 @@ class StrReplaceFile(CallableTool2[Params]):
             original_content = content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
-            # Apply all edits
-            for edit in edits:
+            # Apply edits sequentially. Each edit applies to the result of the
+            # previous one, so a later edit may legitimately target text an
+            # earlier edit introduced. Validate that every edit's old string is
+            # present at its turn and fail the whole call otherwise: silently
+            # skipping a non-matching edit while still reporting success drops
+            # requested changes without the model noticing.
+            total_replacements = 0
+            for index, edit in enumerate(edits):
+                # Reject an empty old string: `str.count('')` returns
+                # `len(content) + 1` (never 0), so the occurrence check below
+                # cannot catch it, and `str.replace('', new)` would splice
+                # `new` between every character.
+                if edit.old == "":
+                    detail = (
+                        "old string must not be empty."
+                        if len(edits) == 1
+                        else f"Edit #{index + 1}'s old string must not be empty."
+                    )
+                    return ToolError(
+                        message=f"No replacements were made. {detail}",
+                        brief="Empty old string",
+                    )
+                occurrences = content.count(edit.old)
+                if occurrences == 0:
+                    detail = (
+                        "The old string was not found in the file."
+                        if len(edits) == 1
+                        else (
+                            f"Edit #{index + 1}'s old string was not found "
+                            "(an earlier edit in this call may have changed that text)."
+                        )
+                    )
+                    return ToolError(
+                        message=(
+                            f"No replacements were made. {detail} "
+                            "The file contents may be out of date; "
+                            "use the Read tool to reload it."
+                        ),
+                        brief="No replacements made",
+                    )
                 content = self._apply_edit(content, edit)
+                total_replacements += occurrences if edit.replace_all else 1
 
-            # Check if any changes were made
+            # Every edit matched (validated above) but the result is identical
+            # to the original — e.g. an edit whose old string equals its new
+            # string, or edits that cancel out. Report a no-op rather than the
+            # misleading "old string was not found", which would send the model
+            # re-reading the file for a string that is actually present.
             if content == original_content:
                 return ToolError(
-                    message="No replacements were made. The old string was not found in the file.",
-                    brief="No replacements made",
+                    message=(
+                        "No replacements were made: the edit(s) matched but left the file "
+                        "unchanged (an old string equals its new string, or the edits cancel out)."
+                    ),
+                    brief="No changes made",
                 )
 
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
@@ -168,14 +214,6 @@ class StrReplaceFile(CallableTool2[Params]):
 
             # Write the modified content back to the file
             await p.write_text(content, errors="replace")
-
-            # Count changes for success message
-            total_replacements = 0
-            for edit in edits:
-                if edit.replace_all:
-                    total_replacements += original_content.count(edit.old)
-                else:
-                    total_replacements += 1 if edit.old in original_content else 0
 
             return ToolReturnValue(
                 is_error=False,
