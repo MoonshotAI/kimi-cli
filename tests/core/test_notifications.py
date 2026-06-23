@@ -4,7 +4,7 @@ import asyncio
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 import pytest
 from kosong.chat_provider import StreamedMessagePart, ThinkingEffort, TokenUsage
@@ -65,6 +65,7 @@ class _SequenceProvider:
         system_prompt: str,
         tools: Sequence[object],
         history: Sequence[Message],
+        **_kwargs: Any,
     ) -> _SequenceStream:
         return _SequenceStream(self._parts)
 

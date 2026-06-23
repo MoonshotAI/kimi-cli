@@ -393,7 +393,87 @@ async def test_kimi_generation_kwargs():
         async for _ in stream:
             pass
         body = json.loads(mock.calls.last.request.content.decode())
-        assert (body["temperature"], body["max_tokens"]) == snapshot((0.7, 2048))
+        assert (body["temperature"], body["max_completion_tokens"]) == snapshot((0.7, 2048))
+
+
+async def test_kimi_default_omits_completion_cap():
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = Kimi(model="kimi-k2-turbo-preview", api_key="test-key", stream=False)
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "max_tokens" not in body
+        assert "max_completion_tokens" not in body
+
+
+async def test_kimi_generation_overrides_per_call():
+    """Per-call ``generation_overrides`` reach the request body without mutating the provider."""
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = Kimi(
+            model="kimi-k2-turbo-preview", api_key="test-key", stream=False
+        ).with_generation_kwargs(temperature=0.7)
+        stream = await provider.generate(
+            "",
+            [],
+            [Message(role="user", content="Hi")],
+            generation_overrides={"max_completion_tokens": 4096},
+        )
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert (body["temperature"], body["max_completion_tokens"]) == snapshot((0.7, 4096))
+        # The override must not have leaked into the provider's persistent kwargs.
+        assert "max_completion_tokens" not in provider.model_parameters
+
+
+async def test_kimi_generation_overrides_normalize_max_tokens_alias():
+    """An override key ``max_tokens`` is normalized to ``max_completion_tokens``."""
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = Kimi(model="kimi-k2-turbo-preview", api_key="test-key", stream=False)
+        stream = await provider.generate(
+            "",
+            [],
+            [Message(role="user", content="Hi")],
+            generation_overrides={"max_tokens": 2048},
+        )
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["max_completion_tokens"] == 2048
+        assert "max_tokens" not in body
+
+
+async def test_kimi_generation_overrides_take_precedence_over_provider_kwargs():
+    """Per-call override beats the provider-level value for the same key."""
+    with respx.mock(base_url="https://api.moonshot.ai") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = Kimi(
+            model="kimi-k2-turbo-preview", api_key="test-key", stream=False
+        ).with_generation_kwargs(max_completion_tokens=8000)
+        stream = await provider.generate(
+            "",
+            [],
+            [Message(role="user", content="Hi")],
+            generation_overrides={"max_completion_tokens": 1024},
+        )
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["max_completion_tokens"] == 1024
+        # Provider-level kwargs are unchanged after the call.
+        assert provider.model_parameters["max_completion_tokens"] == 8000
 
 
 async def test_kimi_with_thinking():

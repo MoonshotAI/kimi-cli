@@ -31,6 +31,7 @@ type ProviderType = Literal[
 
 type ModelCapability = Literal["image_in", "video_in", "thinking", "always_thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
+MAX_COMPLETION_TOKENS_SAFETY_MARGIN = 1024
 
 
 @dataclass(slots=True)
@@ -44,6 +45,28 @@ class LLM:
     @property
     def model_name(self) -> str:
         return self.chat_provider.model_name
+
+
+def compute_max_completion_tokens(
+    *,
+    max_context_size: int,
+    input_tokens: int,
+    response_budget: int,
+    safety_margin: int = MAX_COMPLETION_TOKENS_SAFETY_MARGIN,
+) -> int:
+    """Compute a per-request completion cap that fits inside the context window."""
+    configured_budget = max(1, response_budget)
+    if max_context_size <= 0:
+        return configured_budget
+
+    input_tokens = max(0, input_tokens)
+    remaining = max_context_size - input_tokens
+    if remaining <= 0:
+        return 1
+
+    safe_remaining = remaining - max(0, safety_margin)
+    available = safe_remaining if safe_remaining > 0 else remaining
+    return max(1, min(configured_budget, available))
 
 
 def model_display_name(model_name: str | None, model: LLMModel | None = None) -> str:
@@ -147,8 +170,11 @@ def create_llm(
                 gen_kwargs["temperature"] = float(temperature)
             if top_p := os.getenv("KIMI_MODEL_TOP_P"):
                 gen_kwargs["top_p"] = float(top_p)
-            if max_tokens := os.getenv("KIMI_MODEL_MAX_TOKENS"):
-                gen_kwargs["max_tokens"] = int(max_tokens)
+            max_completion_tokens = os.getenv("KIMI_MODEL_MAX_COMPLETION_TOKENS")
+            if max_completion_tokens is None:
+                max_completion_tokens = os.getenv("KIMI_MODEL_MAX_TOKENS")
+            if max_completion_tokens:
+                gen_kwargs["max_completion_tokens"] = int(max_completion_tokens)
 
             if gen_kwargs:
                 chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)

@@ -16,6 +16,7 @@ from kosong.chat_provider import (
     APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
+    ChatProvider,
     RetryableChatProvider,
 )
 from kosong.message import Message
@@ -29,7 +30,7 @@ from kimi_cli.approval_runtime import (
 )
 from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.hooks.engine import HookEngine
-from kimi_cli.llm import ModelCapability
+from kimi_cli.llm import ModelCapability, compute_max_completion_tokens
 from kimi_cli.notifications import (
     NotificationView,
     build_notification_message,
@@ -1070,6 +1071,7 @@ class KimiSoul:
         # 2e.3. HISTORY NORMALIZATION
         # ═══════════════════════════════════════════════════════════════════════
         effective_history = normalize_history(self._context.history)
+        generation_overrides = self._compute_completion_overrides(chat_provider)
 
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.4. LLM CALL WITH RETRY
@@ -1088,6 +1090,7 @@ class KimiSoul:
                 effective_history,
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
+                generation_overrides=generation_overrides,
             )
 
         max_attempts = self._loop_control.max_retries_per_step
@@ -1221,6 +1224,34 @@ class KimiSoul:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
+    def _compute_completion_overrides(self, chat_provider: ChatProvider) -> dict[str, Any] | None:
+        """Compute per-call generation overrides for the given chat provider.
+
+        Returns a dict of per-call generation overrides forwarded to ``kosong.step``,
+        or ``None`` if no overrides apply for the given provider. The chat provider
+        instance is not modified, so transport-level state (the live OpenAI client and
+        any in-flight OAuth token) stays attached to the single instance owned by
+        ``Runtime.llm`` — retry recovery in ``Kimi.on_retryable_error`` therefore
+        affects subsequent steps as intended.
+        """
+        from kosong.chat_provider.kimi import Kimi
+
+        if not isinstance(chat_provider, Kimi):
+            return None
+
+        parameters = chat_provider.model_parameters
+        configured_budget = parameters.get("max_completion_tokens")
+        if type(configured_budget) is not int:
+            configured_budget = self._loop_control.reserved_context_size
+
+        assert self._runtime.llm is not None
+        max_completion_tokens = compute_max_completion_tokens(
+            max_context_size=self._runtime.llm.max_context_size,
+            input_tokens=self._context.token_count_with_pending,
+            response_budget=configured_budget,
+        )
+        return {"max_completion_tokens": max_completion_tokens}
+
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
 
@@ -1265,12 +1296,18 @@ class KimiSoul:
         """
 
         chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
+        compaction_overrides = (
+            self._compute_completion_overrides(chat_provider) if chat_provider is not None else None
+        )
 
         async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:
                 raise LLMNotSet()
             return await self._compaction.compact(
-                self._context.history, self._runtime.llm, custom_instruction=custom_instruction
+                self._context.history,
+                self._runtime.llm,
+                custom_instruction=custom_instruction,
+                generation_overrides=compaction_overrides,
             )
 
         start_time = time.monotonic()

@@ -443,6 +443,36 @@ class TestExecuteSideQuestion:
         assert chunks == ["chunk1", "chunk2"]
         assert response == "chunk1chunk2"
 
+    def test_forwards_generation_overrides_from_soul(self):
+        """Regression: /btw must forward the per-call completion budget to ``kosong.step``.
+
+        Without this, ``kosong.step`` is called with ``generation_overrides=None`` and the
+        Kimi provider sends an unbounded request because the provider-level default cap
+        was removed in this PR.
+        """
+        soul = MagicMock()
+        soul._runtime.llm.chat_provider = MagicMock()
+        soul._compute_completion_overrides.return_value = {"max_completion_tokens": 4096}
+        soul._agent.system_prompt = "sys"
+        soul._agent.toolset.tools = []
+        soul.context.history = []
+
+        captured_overrides: list[object] = []
+
+        async def fake_step(provider, sys_prompt, toolset, history, **kw):
+            captured_overrides.append(kw.get("generation_overrides"))
+            if kw.get("on_message_part"):
+                kw["on_message_part"](TextPart(text="ok"))
+            return _text_result("ok")
+
+        with patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step):
+            response, error = asyncio.run(execute_side_question(soul, "hi"))
+
+        assert response == "ok"
+        assert error is None
+        assert captured_overrides == [{"max_completion_tokens": 4096}]
+        soul._compute_completion_overrides.assert_called_once_with(soul._runtime.llm.chat_provider)
+
 
 # ---------------------------------------------------------------------------
 # Telemetry tracking for execute_side_question
