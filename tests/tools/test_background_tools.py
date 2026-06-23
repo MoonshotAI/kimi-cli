@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from kimi_cli.background import TaskRuntime, TaskSpec, TaskStatus
+from kimi_cli.background import TaskConsumerState, TaskControl, TaskRuntime, TaskSpec, TaskStatus, TaskView
 from kimi_cli.tools.shell import Params
 
 
@@ -89,6 +89,47 @@ async def test_shell_background_starts_task(shell_tool, runtime, monkeypatch):
     assert "automatic_notification: true" in result.output
     assert "human_shell_hint:" in result.output
     assert "/task list" in result.output
+
+
+@pytest.mark.asyncio
+async def test_shell_background_timeout_alias_propagates(shell_tool, runtime, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_create_bash_task(**kwargs):
+        captured.update(kwargs)
+        return TaskView(
+            spec=TaskSpec(
+                id="b1234567",
+                kind="bash",
+                session_id=runtime.session.id,
+                description="sleep task",
+                tool_call_id="test",
+                command="sleep 1",
+                shell_name="bash",
+                shell_path="/bin/bash",
+                cwd=str(runtime.session.work_dir),
+                timeout_s=kwargs["timeout_s"],
+            ),
+            runtime=TaskRuntime(status="starting"),
+            control=TaskControl(),
+            consumer=TaskConsumerState(),
+        )
+
+    monkeypatch.setattr(runtime.background_tasks, "create_bash_task", fake_create_bash_task)
+
+    result = await shell_tool(
+        Params.model_validate(
+            {
+                "command": "sleep 1",
+                "timeout_s": 123,
+                "run_in_background": True,
+                "description": "sleep task",
+            }
+        )
+    )
+
+    assert not result.is_error
+    assert captured["timeout_s"] == 123
 
 
 @pytest.mark.asyncio
