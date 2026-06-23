@@ -27,7 +27,25 @@ def create_openai_client(
     base_url: str | None,
     client_kwargs: Mapping[str, Any],
 ) -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=api_key, base_url=base_url, **dict(client_kwargs))
+    kwargs = dict(client_kwargs)
+    if "http_client" not in kwargs:
+        # The default httpx keepalive_expiry is 5s, which drops idle
+        # connections during long TTFT (time-to-first-token) for 130k+
+        # context requests. Bump to 60s and explicitly set all timeouts
+        # so gateways/Windows don't kill the stream.
+        kwargs["http_client"] = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                600.0,  # preserve OpenAI SDK default overall timeout
+                connect=10.0,
+            ),
+            limits=httpx.Limits(
+                max_keepalive_connections=20,
+                max_connections=100,
+                keepalive_expiry=60.0,
+            ),
+            follow_redirects=True,
+        )
+    return AsyncOpenAI(api_key=api_key, base_url=base_url, **kwargs)
 
 
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:
