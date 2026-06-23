@@ -47,6 +47,7 @@ async def replay_recent_history(
     *,
     wire_file: WireFile | None = None,
     show_thinking_stream: bool = False,
+    show_thinking: bool = False,
 ) -> None:
     """
     Replay the most recent user-initiated turns from the provided message history or wire file.
@@ -74,6 +75,7 @@ async def replay_recent_history(
                 wire.ui_side(merge=False),
                 initial_status=StatusUpdate(),
                 show_thinking_stream=show_thinking_stream,
+                show_thinking=show_thinking,
             )
         )
         for event in turn.events:

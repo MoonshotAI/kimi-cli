@@ -84,6 +84,9 @@ class _BtwModalDelegate:
     def set_start_time(self, t: float) -> None:
         self._start_time = t
 
+    def set_show_thinking(self, visible: bool) -> None:
+        pass
+
     def append_text(self, chunk: str) -> None:
         """Append a streaming text chunk (called from the btw runner)."""
         self._streaming_text += chunk

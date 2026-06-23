@@ -317,7 +317,7 @@ class TestShowThinkingStream:
     def test_compact_mode_compose_returns_compact_text(self):
         from rich.text import Text
 
-        block = _ContentBlock(is_think=True)
+        block = _ContentBlock(is_think=True, show_thinking=True)
         block.append("Some reasoning content")
         result = block.compose()
         assert isinstance(result, Text)
@@ -328,7 +328,7 @@ class TestShowThinkingStream:
     def test_stream_mode_compose_returns_group_with_preview(self):
         from rich.console import Group
 
-        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block = _ContentBlock(is_think=True, show_thinking_stream=True, show_thinking=True)
         block.append("line 1\nline 2\nline 3")
         result = block.compose()
         assert isinstance(result, Group)
@@ -336,14 +336,14 @@ class TestShowThinkingStream:
     def test_stream_mode_compose_no_pending_returns_spinner_only(self):
         from rich.spinner import Spinner
 
-        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block = _ContentBlock(is_think=True, show_thinking_stream=True, show_thinking=True)
         # No content appended yet — should fall back to the bare spinner.
         result = block.compose()
         assert isinstance(result, Spinner)
 
     def test_stream_mode_spinner_uses_thinking_label(self):
         """Stream mode must restore the legacy 'Thinking...' spinner label."""
-        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block = _ContentBlock(is_think=True, show_thinking_stream=True, show_thinking=True)
         result = block.compose()
         # Spinner.text is a Text — extract its plain string for assertion
         text = result.text  # type: ignore[reportAttributeAccessIssue]
@@ -353,7 +353,7 @@ class TestShowThinkingStream:
     def test_compact_mode_compose_final_returns_trace_line(self):
         from rich.text import Text
 
-        block = _ContentBlock(is_think=True)
+        block = _ContentBlock(is_think=True, show_thinking=True)
         block.append("Some thought content")
         result = block.compose_final()
         assert isinstance(result, Text)
@@ -366,7 +366,7 @@ class TestShowThinkingStream:
         """Stream mode commits the full reasoning to history (legacy behavior)."""
         from kimi_cli.utils.rich.columns import BulletColumns
 
-        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block = _ContentBlock(is_think=True, show_thinking_stream=True, show_thinking=True)
         block.append("Some thought content")
         result = block.compose_final()
         assert isinstance(result, BulletColumns)
@@ -374,13 +374,13 @@ class TestShowThinkingStream:
     def test_stream_mode_compose_final_empty_returns_empty_text(self):
         from rich.text import Text
 
-        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block = _ContentBlock(is_think=True, show_thinking_stream=True, show_thinking=True)
         result = block.compose_final()
         assert isinstance(result, Text)
         assert result.plain == ""
 
     def test_compact_mode_has_pending_with_content(self):
-        block = _ContentBlock(is_think=True)
+        block = _ContentBlock(is_think=True, show_thinking=True)
         block.append("anything")
         assert block.has_pending()
 
@@ -389,7 +389,7 @@ class TestShowThinkingStream:
         assert not block.has_pending()
 
     def test_stream_mode_has_pending_with_content(self):
-        block = _ContentBlock(is_think=True, show_thinking_stream=True)
+        block = _ContentBlock(is_think=True, show_thinking_stream=True, show_thinking=True)
         block.append("anything")
         assert block.has_pending()
 

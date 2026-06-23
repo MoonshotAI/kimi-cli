@@ -346,6 +346,9 @@ class QuestionPromptDelegate:
         self._buffer_text_provider = buffer_text_provider
         self._text_expander = text_expander
 
+    def set_show_thinking(self, visible: bool) -> None:
+        pass
+
     @property
     def panel(self) -> QuestionRequestPanel | None:
         return self._panel

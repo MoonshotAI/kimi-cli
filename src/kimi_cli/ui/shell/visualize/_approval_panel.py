@@ -361,6 +361,9 @@ class ApprovalPromptDelegate:
         self._text_expander = text_expander
         self._feedback_draft: str = ""
 
+    def set_show_thinking(self, visible: bool) -> None:
+        pass
+
     @property
     def request(self) -> ApprovalRequest:
         return self._panel.request
