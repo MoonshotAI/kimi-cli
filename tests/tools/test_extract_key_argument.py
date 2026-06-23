@@ -15,10 +15,27 @@ class TestExtractKeyArgument:
         result = extract_key_argument('{"command": "ls -la"}', "Shell")
         assert result == "ls -la"
 
+    def test_shell_long_command_keeps_path_and_arguments(self):
+        command = (
+            "python scripts/really/deeply/nested/path/for/reproducing/issue_2142.py "
+            "--input /tmp/moonshot/kimi-cli/very/long/source/file.txt "
+            "--output /tmp/moonshot/kimi-cli/very/long/result.json"
+        )
+        result = extract_key_argument(f'{{"command": "{command}"}}', "Shell")
+        assert result == command
+        assert "..." not in result
+
     def test_readfile(self):
         result = extract_key_argument('{"path": "foo/bar.py"}', "ReadFile")
         assert result is not None
         assert "foo/bar.py" in result
+
+    def test_readfile_long_path_still_shortens(self):
+        long_path = "/workspace/" + "/".join(f"directory_{i:02d}" for i in range(12)) + "/target.py"
+        result = extract_key_argument(f'{{"path": "{long_path}"}}', "ReadFile")
+        assert result is not None
+        assert "..." in result
+        assert len(result) <= 53
 
     def test_grep(self):
         result = extract_key_argument('{"pattern": "hello"}', "Grep")

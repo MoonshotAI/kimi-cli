@@ -94,7 +94,8 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
                 key_argument = "".join(content)
             else:
                 key_argument = json_content
-    key_argument = shorten_middle(key_argument, width=50)
+    if tool_name != "Shell":
+        key_argument = shorten_middle(key_argument, width=50)
     return key_argument
 
 
