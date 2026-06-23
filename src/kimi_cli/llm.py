@@ -154,6 +154,34 @@ def create_llm(
                 chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)
         case "openai_legacy":
             from kosong.contrib.chat_provider.openai_legacy import OpenAILegacy
+            from kosong.message import ImageURLPart, TextPart
+
+            # Build supported content types based on config or model capabilities.
+            # TextPart is ALWAYS included to ensure text content is never dropped.
+            # Note: Only ContentPart subclasses (TextPart, ImageURLPart) should be here.
+            # ToolCall and ToolCallPart are handled separately by message serialization.
+
+            # Valid content type names that users can configure
+            VALID_CONTENT_TYPES = {"text", "image_url"}
+
+            if provider.supported_content_types is not None:
+                # Validate configured values
+                unknown_types = set(provider.supported_content_types) - VALID_CONTENT_TYPES
+                if unknown_types:
+                    raise ValueError(
+                        f"Invalid supported_content_types in provider config: {unknown_types}. "
+                        f"Valid values are: {VALID_CONTENT_TYPES}"
+                    )
+                # Build supported types from user config, always including TextPart
+                supported_types: set[type] = {TextPart}
+                if "image_url" in provider.supported_content_types:
+                    supported_types.add(ImageURLPart)
+            else:
+                # Auto-detect from model capabilities
+                model_caps = derive_model_capabilities(model)
+                supported_types = {TextPart}
+                if "image_in" in model_caps:
+                    supported_types.add(ImageURLPart)
 
             reasoning_key = (
                 provider.reasoning_key
@@ -166,6 +194,8 @@ def create_llm(
                 api_key=resolved_api_key,
                 reasoning_key=reasoning_key,
                 default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
+                reasoning_key=provider.reasoning_key,
+                supported_content_types=supported_types,
             )
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
