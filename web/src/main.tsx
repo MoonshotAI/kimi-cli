@@ -1,4 +1,12 @@
+import { initTauriRuntime } from "./lib/tauri";
+
 const bootstrap = async (): Promise<void> => {
+  try {
+    await initTauriRuntime();
+  } catch (error) {
+    console.error("[main] tauri runtime init failed:", error);
+  }
+
   if (import.meta.env.DEV) {
     try {
       const { scan } = await import("react-scan");
