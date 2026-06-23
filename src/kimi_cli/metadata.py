@@ -57,7 +57,12 @@ class Metadata(BaseModel):
 
     def new_work_dir_meta(self, path: KaosPath) -> WorkDirMeta:
         """Create a new work directory metadata."""
-        wd_meta = WorkDirMeta(path=str(path), kaos=get_current_kaos().name)
+        kaos_name = get_current_kaos().name
+        wd_meta = WorkDirMeta(path=str(path), kaos=kaos_name)
+        # Deduplicate: remove existing entry for the same path + kaos
+        self.work_dirs = [
+            wd for wd in self.work_dirs if not (wd.path == str(path) and wd.kaos == kaos_name)
+        ]
         self.work_dirs.append(wd_meta)
         return wd_meta
 

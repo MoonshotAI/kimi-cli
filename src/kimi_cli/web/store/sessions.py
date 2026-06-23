@@ -34,6 +34,7 @@ from kimi_cli.wire.file import WireFile
 
 # Cache configuration
 CACHE_TTL = 5.0  # seconds - balance between freshness and performance
+MAX_CACHED_SESSIONS = 100  # hard limit to prevent unbounded memory growth
 
 # Auto-archive configuration
 AUTO_ARCHIVE_DAYS = 15  # Sessions older than this will be auto-archived
@@ -288,11 +289,23 @@ def _load_sessions_index_cached() -> list[SessionIndexEntry]:
     return _sessions_index_cache
 
 
-def load_all_sessions() -> list[JointSession]:
-    """Load all sessions from all work directories."""
-    entries = _load_sessions_index_cached()
-    sessions: list[JointSession] = []
+def load_all_sessions(limit: int | None = None) -> list[JointSession]:
+    """Load all sessions from all work directories.
 
+    Args:
+        limit: If given, only the most-recently-updated *limit* sessions
+            are fully materialised.  This avoids building expensive
+            :class:`JointSession` objects for sessions that will be
+            discarded anyway.
+    """
+    entries = _load_sessions_index_cached()
+    # Sort by mtime (most recent first) before materialising so we only
+    # build JointSession objects for the sessions we actually need.
+    entries.sort(key=lambda e: e.context_file.stat().st_mtime, reverse=True)
+    if limit is not None:
+        entries = entries[:limit]
+
+    sessions: list[JointSession] = []
     for entry in entries:
         _ensure_title(entry, refresh=False)
         sessions.append(_build_joint_session(entry))
@@ -316,7 +329,9 @@ def load_all_sessions_cached() -> list[JointSession]:
     if _sessions_cache is not None and (now - _cache_timestamp) < CACHE_TTL:
         return _sessions_cache
 
-    _sessions_cache = load_all_sessions()
+    sessions = load_all_sessions(limit=MAX_CACHED_SESSIONS)
+
+    _sessions_cache = sessions
     _cache_timestamp = now
     return _sessions_cache
 

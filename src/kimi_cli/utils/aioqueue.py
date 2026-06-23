@@ -1,29 +1,28 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 
 if sys.version_info >= (3, 13):
     QueueShutDown = asyncio.QueueShutDown  # type: ignore[assignment]
 
     class Queue[T](asyncio.Queue[T]):
-        """Asyncio Queue with shutdown support."""
+        """Asyncio Queue with shutdown support (Python 3.13+ native)."""
+
+        def __init__(self, *, maxsize: int = 0) -> None:
+            super().__init__(maxsize=maxsize)
 
 else:
 
     class QueueShutDown(Exception):
         """Raised when operating on a shut down queue."""
 
-    class _Shutdown:
-        """Sentinel for queue shutdown."""
-
-    _SHUTDOWN = _Shutdown()
-
-    class Queue[T](asyncio.Queue[T | _Shutdown]):
+    class Queue[T](asyncio.Queue[T]):
         """Asyncio Queue with shutdown support for Python < 3.13."""
 
-        def __init__(self) -> None:
-            super().__init__()
+        def __init__(self, *, maxsize: int = 0) -> None:
+            super().__init__(maxsize=maxsize)
             self._shutdown = False
 
         def shutdown(self, immediate: bool = False) -> None:
@@ -31,40 +30,57 @@ else:
                 return
             self._shutdown = True
             if immediate:
-                self._queue.clear()
+                self._queue.clear()  # type: ignore[attr-defined]
 
-            getters = list(getattr(self, "_getters", []))
-            count = max(1, len(getters))
-            self._enqueue_shutdown(count)
+            # Wake all getters so they can check the shutdown flag and
+            # raise QueueShutDown instead of re-blocking forever.
+            # NOTE: _wakeup_next is a private asyncio.Queue method that has
+            # been stable since Python 3.7.  We use it because there is no
+            # public API to wake a specific waiter.
+            while getattr(self, "_getters", []):
+                with contextlib.suppress(IndexError):
+                    self._wakeup_next(self._getters)  # type: ignore[attr-defined]
 
-        def _enqueue_shutdown(self, count: int) -> None:
-            for _ in range(count):
-                try:
-                    super().put_nowait(_SHUTDOWN)
-                except asyncio.QueueFull:
-                    self._queue.clear()
-                    super().put_nowait(_SHUTDOWN)
+            # Wake all putters so they re-check shutdown instead of
+            # hanging on a full bounded queue.
+            while getattr(self, "_putters", []):
+                with contextlib.suppress(IndexError):
+                    self._wakeup_next(self._putters)  # type: ignore[attr-defined]
 
         async def get(self) -> T:
             if self._shutdown and self.empty():
                 raise QueueShutDown
-            item = await super().get()
-            if isinstance(item, _Shutdown):
-                raise QueueShutDown
-            return item
+            while self.empty():
+                getter = asyncio.get_running_loop().create_future()
+                self._getters.append(getter)
+                try:
+                    await getter
+                finally:
+                    with contextlib.suppress(ValueError):
+                        self._getters.remove(getter)
+                if self._shutdown and self.empty():
+                    raise QueueShutDown
+            return super().get_nowait()
 
         def get_nowait(self) -> T:
             if self._shutdown and self.empty():
                 raise QueueShutDown
-            item = super().get_nowait()
-            if isinstance(item, _Shutdown):
-                raise QueueShutDown
-            return item
+            return super().get_nowait()
 
         async def put(self, item: T) -> None:
             if self._shutdown:
                 raise QueueShutDown
-            await super().put(item)
+            while self.full():
+                putter = asyncio.get_running_loop().create_future()
+                self._putters.append(putter)
+                try:
+                    await putter
+                finally:
+                    with contextlib.suppress(ValueError):
+                        self._putters.remove(putter)
+                if self._shutdown:
+                    raise QueueShutDown
+            super().put_nowait(item)
 
         def put_nowait(self, item: T) -> None:
             if self._shutdown:

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from contextvars import ContextVar, Token
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse
@@ -45,6 +46,12 @@ def reset_current_approval_source(token: Token[ApprovalSource | None]) -> None:
     _current_approval_source.reset(token)
 
 
+_MAX_RETAINED_REQUESTS = 100
+_RESOLVED_GRACE_SECONDS = 30.0
+_MAX_RESOLVED_CACHE = 200
+_ResolvedEntry = tuple[Literal["resolved", "cancelled"], ApprovalResponseKind, str]
+
+
 class ApprovalRuntime:
     def __init__(self) -> None:
         self._requests: dict[str, ApprovalRequestRecord] = {}
@@ -52,6 +59,11 @@ class ApprovalRuntime:
         self._waiter_counts: dict[str, int] = {}
         self._subscribers: dict[str, Callable[[ApprovalRuntimeEvent], None]] = {}
         self._root_wire_hub: RootWireHub | None = None
+        # Cache recent resolved/cancelled results so wait_for_response()
+        # can still answer after the request record has been pruned.
+        # Each entry is (status, response, feedback) where status is
+        # "resolved" or "cancelled".
+        self._resolved_cache: dict[str, _ResolvedEntry] = {}
 
     def bind_root_wire_hub(self, root_wire_hub: RootWireHub) -> None:
         if self._root_wire_hub is root_wire_hub:
@@ -89,6 +101,13 @@ class ApprovalRuntime:
         waiter = self._waiters.get(request_id)
         request = self._requests.get(request_id)
         if request is None:
+            # The request may have been pruned; check the resolved cache.
+            cached = self._resolved_cache.get(request_id)
+            if cached is not None:
+                status, response, feedback = cached
+                if status == "cancelled":
+                    raise ApprovalCancelledError(request_id)
+                return response, feedback
             raise KeyError(f"Approval request not found: {request_id}")
         if waiter is None:
             if request.status == "cancelled":
@@ -133,20 +152,21 @@ class ApprovalRuntime:
         request.status = "resolved"
         request.response = response
         request.feedback = feedback
-        import time
-
         request.resolved_at = time.time()
         waiter = self._waiters.pop(request_id, None)
         if waiter is not None and not waiter.done():
             waiter.set_result((response, feedback))
         self._publish_event(ApprovalRuntimeEvent(kind="request_resolved", request=request))
         self._publish_wire_response(request_id, response, feedback)
+        self._resolved_cache[request_id] = ("resolved", response, feedback)
+        self._prune_requests()
+        # Cap resolved cache independently of request dict
+        while len(self._resolved_cache) > _MAX_RESOLVED_CACHE:
+            self._resolved_cache.pop(next(iter(self._resolved_cache)))
         return True
 
     def _cancel_request(self, request_id: str, feedback: str = "") -> None:
         """Cancel a single pending request by ID."""
-        import time
-
         request = self._requests.get(request_id)
         if request is None or request.status != "pending":
             return
@@ -159,11 +179,14 @@ class ApprovalRuntime:
             waiter.set_exception(ApprovalCancelledError(request_id))
         self._publish_event(ApprovalRuntimeEvent(kind="request_resolved", request=request))
         self._publish_wire_response(request_id, "reject", feedback)
+        self._resolved_cache[request_id] = ("cancelled", "reject", feedback)
+        self._prune_requests()
+        while len(self._resolved_cache) > _MAX_RESOLVED_CACHE:
+            self._resolved_cache.pop(next(iter(self._resolved_cache)))
 
     def cancel_by_source(self, source_kind: ApprovalSourceKind, source_id: str) -> int:
         cancelled = 0
-        import time
-
+        to_remove: list[str] = []
         for request_id, request in self._requests.items():
             if request.status != "pending":
                 continue
@@ -177,8 +200,56 @@ class ApprovalRuntime:
                 waiter.set_exception(ApprovalCancelledError(request_id))
             self._publish_event(ApprovalRuntimeEvent(kind="request_resolved", request=request))
             self._publish_wire_response(request_id, "reject")
+            to_remove.append(request_id)
             cancelled += 1
+
+        self._cache_cancelled_requests(to_remove)
+        self._prune_requests()
+        while len(self._resolved_cache) > _MAX_RESOLVED_CACHE:
+            self._resolved_cache.pop(next(iter(self._resolved_cache)))
         return cancelled
+
+    def _cache_cancelled_requests(self, request_ids: list[str]) -> None:
+        """Cache cancelled request IDs so wait_for_response() can raise
+        ApprovalCancelledError even after the original record is pruned."""
+        for request_id in request_ids:
+            self._resolved_cache[request_id] = ("cancelled", "reject", "")
+
+    def _prune_requests(self) -> None:
+        """Remove resolved/cancelled requests to prevent unbounded growth.
+
+        Only removes requests that have been resolved/cancelled for longer
+        than _RESOLVED_GRACE_SECONDS so that recent results remain
+        queryable via wait_for_response().
+        """
+        if len(self._requests) <= _MAX_RETAINED_REQUESTS:
+            return
+        now = time.time()
+        # Collect resolved/cancelled request IDs that are past the grace period
+        to_remove = [
+            req_id
+            for req_id, req in self._requests.items()
+            if req.status in ("resolved", "cancelled")
+            and req.resolved_at is not None
+            and (now - req.resolved_at) > _RESOLVED_GRACE_SECONDS
+        ]
+        # Remove enough to get back under the limit
+        excess = len(self._requests) - _MAX_RETAINED_REQUESTS
+        for req_id in to_remove[:excess]:
+            self._requests.pop(req_id, None)
+        # Fallback: if we are still over the limit (e.g. all resolved very
+        # recently), evict the oldest resolved/cancelled entries regardless
+        # of grace period so the dict cannot grow unbounded.
+        if len(self._requests) > _MAX_RETAINED_REQUESTS:
+            done = [
+                (req_id, req)
+                for req_id, req in self._requests.items()
+                if req.status in ("resolved", "cancelled")
+            ]
+            done.sort(key=lambda item: item[1].resolved_at or 0)
+            still_excess = len(self._requests) - _MAX_RETAINED_REQUESTS
+            for req_id, _ in done[:still_excess]:
+                self._requests.pop(req_id, None)
 
     def list_pending(self) -> list[ApprovalRequestRecord]:
         pending = [request for request in self._requests.values() if request.status == "pending"]

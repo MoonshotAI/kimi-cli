@@ -12,7 +12,12 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import ContentPart, ToolCallPart, WireMessage, is_wire_message
 
-WireMessageQueue = BroadcastQueue[WireMessage]
+
+def _WireMessageQueue() -> BroadcastQueue[WireMessage]:
+    """Wire message queue.  Defaults to bounded (1000); callers that need
+    guaranteed delivery (recorder, waitable requests) should pass
+    ``maxsize=0`` when subscribing."""
+    return BroadcastQueue[WireMessage]()
 
 
 class Wire:
@@ -21,14 +26,15 @@ class Wire:
     """
 
     def __init__(self, *, file_backend: WireFile | None = None):
-        self._raw_queue = WireMessageQueue()
-        self._merged_queue = WireMessageQueue()
+        self._raw_queue = _WireMessageQueue()
+        self._merged_queue = _WireMessageQueue()
 
         self._soul_side = WireSoulSide(self._raw_queue, self._merged_queue)
 
         if file_backend is not None:
             # record all complete Wire messages to the file backend
-            self._recorder = _WireRecorder(file_backend, self._merged_queue.subscribe())
+            # recorder uses an unbounded queue so it never drops events
+            self._recorder = _WireRecorder(file_backend, self._merged_queue.subscribe(maxsize=0))
         else:
             self._recorder = None
 
@@ -68,7 +74,11 @@ class WireSoulSide:
     The soul side of a `Wire`.
     """
 
-    def __init__(self, raw_queue: WireMessageQueue, merged_queue: WireMessageQueue):
+    def __init__(
+        self,
+        raw_queue: BroadcastQueue[WireMessage],
+        merged_queue: BroadcastQueue[WireMessage],
+    ) -> None:
         self._raw_queue = raw_queue
         self._merged_queue = merged_queue
         self._merge_buffer: MergeableMixin | None = None
@@ -81,7 +91,10 @@ class WireSoulSide:
         try:
             self._raw_queue.publish_nowait(msg)
         except QueueShutDown:
-            logger.info("Failed to send raw wire message, queue is shut down: {msg}", msg=msg)
+            logger.info(
+                "Failed to send raw wire message, queue is shut down: {msg}",
+                msg=msg,
+            )
 
         # merge and send merged message
         match msg:
@@ -109,7 +122,10 @@ class WireSoulSide:
         try:
             self._merged_queue.publish_nowait(msg)
         except QueueShutDown:
-            logger.info("Failed to send merged wire message, queue is shut down: {msg}", msg=msg)
+            logger.info(
+                "Failed to send merged wire message, queue is shut down: {msg}",
+                msg=msg,
+            )
 
 
 class WireUISide:

@@ -9,10 +9,17 @@ class RootWireHub:
     """Session-level broadcast hub for out-of-turn wire messages."""
 
     def __init__(self) -> None:
-        self._queue = BroadcastQueue[WireMessage]()
+        # Unbounded so that waitable requests (QuestionRequest,
+        # ToolCallRequest) are never dropped.
+        self._queue = BroadcastQueue[WireMessage](maxsize=0)
 
-    def subscribe(self) -> Queue[WireMessage]:
-        return self._queue.subscribe()
+    def subscribe(self, *, maxsize: int | None = None) -> Queue[WireMessage]:
+        # Default to a bounded queue for UI consumers so slow subscribers
+        # do not cause unbounded memory growth.  Critical paths (e.g.
+        # the wire recorder) should pass maxsize=0 for an unbounded queue.
+        if maxsize is None:
+            maxsize = 1000
+        return self._queue.subscribe(maxsize=maxsize)
 
     def unsubscribe(self, queue: Queue[WireMessage]) -> None:
         self._queue.unsubscribe(queue)

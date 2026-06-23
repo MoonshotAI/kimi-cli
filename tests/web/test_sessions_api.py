@@ -114,3 +114,32 @@ async def test_generate_title_preserves_concurrent_manual_title(
     assert state.custom_title == "Manual Title"
     assert state.title_generated is True
     assert state.title_generate_attempts == 0
+
+
+@pytest.mark.anyio
+async def test_load_all_sessions_cached_respects_max_limit(
+    isolated_share_dir: Path,
+    work_dir: KaosPath,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sessions cache must not grow unbounded; it is truncated to MAX_CACHED_SESSIONS."""
+    from kimi_cli.web.store import sessions as store
+
+    # Create more sessions than MAX_CACHED_SESSIONS.
+    original_limit = store.MAX_CACHED_SESSIONS
+    monkeypatch.setattr(store, "MAX_CACHED_SESSIONS", 5)
+
+    sessions = []
+    for _ in range(10):
+        s = await Session.create(work_dir)
+        sessions.append(s)
+
+    # Force cache refresh.
+    store.invalidate_sessions_cache()
+    cached = store.load_all_sessions_cached()
+
+    assert len(cached) == 5, f"Expected 5 cached sessions, got {len(cached)}"
+
+    # Restore limit.
+    monkeypatch.setattr(store, "MAX_CACHED_SESSIONS", original_limit)
+    store.invalidate_sessions_cache()

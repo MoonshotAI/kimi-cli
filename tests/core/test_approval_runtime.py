@@ -407,3 +407,63 @@ async def test_kimisoul_run_cancels_own_foreground_approvals_on_cancel(
     assert background is not None
     assert background.status == "pending"
     assert runtime.approval_runtime.list_pending() == [background]
+
+
+@pytest.mark.asyncio
+async def test_approval_runtime_prunes_resolved_requests() -> None:
+    """Resolved/cancelled requests are pruned when the dict grows too large."""
+    runtime = ApprovalRuntime()
+    # Create and resolve 150 requests to trigger pruning
+    for i in range(120):
+        req = runtime.create_request(
+            request_id=f"req-{i}",
+            tool_call_id=f"call-{i}",
+            sender="Shell",
+            action="run",
+            description="test",
+            display=[],
+            source=ApprovalSource(kind="foreground_turn", id="turn-1"),
+        )
+        runtime.resolve(req.id, "approve")
+
+    # After pruning, should have <= 100 resolved requests
+    assert len(runtime._requests) <= 100
+    # All remaining should still be resolvable
+    assert all(req.status == "resolved" for req in runtime._requests.values())
+
+
+@pytest.mark.asyncio
+async def test_wait_for_response_still_works_after_prune() -> None:
+    """wait_for_response() returns cached result even after the request is pruned."""
+    runtime = ApprovalRuntime()
+    req = runtime.create_request(
+        request_id="req-target",
+        tool_call_id="call-target",
+        sender="Shell",
+        action="run",
+        description="target",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-1"),
+    )
+    runtime.resolve(req.id, "approve")
+
+    # Flood with 120 more requests to force prune
+    for i in range(120):
+        r = runtime.create_request(
+            request_id=f"req-{i}",
+            tool_call_id=f"call-{i}",
+            sender="Shell",
+            action="run",
+            description="flood",
+            display=[],
+            source=ApprovalSource(kind="foreground_turn", id="turn-1"),
+        )
+        runtime.resolve(r.id, "approve")
+
+    # The target request should have been pruned (oldest resolved)
+    assert req.id not in runtime._requests
+
+    # But wait_for_response should still return the result without error
+    response, feedback = await runtime.wait_for_response(req.id)
+    assert response == "approve"
+    assert feedback == ""

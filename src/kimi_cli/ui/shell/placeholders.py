@@ -111,6 +111,7 @@ class AttachmentCache:
         self._legacy_roots = tuple(legacy_roots or (_LEGACY_PROMPT_CACHE_ROOT,))
         self._dir_map: dict[CachedAttachmentKind, str] = {"image": "images"}
         self._payload_map: dict[tuple[CachedAttachmentKind, str, str], CachedAttachment] = {}
+        self._max_payload_map = 1000
 
     def _dir_for(self, kind: CachedAttachmentKind, *, root: Path | None = None) -> Path:
         return (self._root if root is None else root) / self._dir_map[kind]
@@ -164,6 +165,11 @@ class AttachmentCache:
 
         cached = CachedAttachment(kind=kind, attachment_id=attachment_id, path=path)
         self._payload_map[cache_key] = cached
+        # Prevent unbounded in-memory growth.  We intentionally do NOT
+        # delete files on disk because image tokens in prompt history
+        # may still reference them.
+        while len(self._payload_map) > self._max_payload_map:
+            self._payload_map.pop(next(iter(self._payload_map)))
         return cached
 
     def store_image(self, image: Image.Image) -> CachedAttachment | None:
