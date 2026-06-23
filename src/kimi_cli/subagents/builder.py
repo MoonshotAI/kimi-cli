@@ -32,7 +32,7 @@ class SubagentBuilder:
         return await load_agent(
             type_def.agent_file,
             runtime,
-            mcp_configs=[],
+            mcp_configs=self._root_runtime.mcp_configs,
         )
 
     @staticmethod
