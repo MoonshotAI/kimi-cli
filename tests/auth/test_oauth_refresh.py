@@ -570,3 +570,113 @@ def test_refresh_threshold_uses_minimum_when_small():
 def test_refresh_threshold_zero_expires_in():
     """When expires_in is 0, fall back to the minimum."""
     assert _refresh_threshold(0) == 300.0
+
+
+def test_should_suppress_persisted_token_detects_disk_rotation(tmp_path, monkeypatch):
+    """If the tombstone exists but the on-disk token has a different refresh_token
+    (another process rotated), _should_suppress_persisted_token must return False
+    and clear the tombstone so the fresh token can be loaded.
+
+    This is a regression test for the case where a concurrent manager rotates
+    the token while this process holds the old refresh_token in memory. Without
+    the disk check, the in-memory comparison would never clear the tombstone
+    because the memory token is stale.
+    """
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    # Step 1: write initial token R1 to disk
+    _save_to_file("oauth/kimi-code", _make_token(refresh="R1", expires_in=900))
+    manager = OAuthManager(_make_config())
+
+    # Step 2: simulate a previous 401 that tombstoned R1
+    manager._mark_refresh_token_rejected(
+        OAuthRef(storage="file", key="oauth/kimi-code"), "R1"
+    )
+    assert _REJECTED_REFRESH_TOKENS.get("oauth/kimi-code") is not None
+
+    # Step 3: simulate concurrent instance writing R2 to disk
+    _save_to_file(
+        "oauth/kimi-code",
+        _make_token(access="access-R2", refresh="R2", expires_in=900),
+    )
+
+    # Step 4: create a new manager (triggers _load_initial_tokens) —
+    # this is the startup path where the bug manifests
+    fresh_manager = OAuthManager(_make_config())
+
+    # The tombstone should be cleared and the new token loaded
+    assert _REJECTED_REFRESH_TOKENS.get("oauth/kimi-code") is None, (
+        "tombstone must be cleared when disk token was rotated by another process"
+    )
+    assert fresh_manager._access_tokens.get("oauth/kimi-code") == "access-R2", (
+        "the rotated access token from disk must be cached at startup"
+    )
+
+
+def test_should_suppress_persisted_token_true_when_disk_token_matches_tombstone(
+    tmp_path, monkeypatch
+):
+    """If the on-disk refresh_token is identical to the tombstoned one,
+    suppression must remain True — the token has not been rotated yet.
+    """
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    _save_to_file("oauth/kimi-code", _make_token(refresh="R1", expires_in=900))
+    manager = OAuthManager(_make_config())
+    manager._mark_refresh_token_rejected(
+        OAuthRef(storage="file", key="oauth/kimi-code"), "R1"
+    )
+    assert _REJECTED_REFRESH_TOKENS.get("oauth/kimi-code") is not None
+
+    # Disk still has R1, so suppression should remain True
+    token = _make_token(refresh="R1", expires_in=900)
+    assert manager._should_suppress_persisted_token(
+        OAuthRef(storage="file", key="oauth/kimi-code"), token
+    )
+    assert _REJECTED_REFRESH_TOKENS.get("oauth/kimi-code") is not None, (
+        "tombstone must stay when disk token matches"
+    )
+
+
+def test_should_suppress_persisted_token_true_when_disk_token_missing(
+    tmp_path, monkeypatch
+):
+    """If the credentials file has been deleted but the tombstone remains,
+    suppression should still be True (there is nothing fresh to load).
+    """
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    _save_to_file("oauth/kimi-code", _make_token(refresh="R1", expires_in=900))
+    manager = OAuthManager(_make_config())
+    manager._mark_refresh_token_rejected(
+        OAuthRef(storage="file", key="oauth/kimi-code"), "R1"
+    )
+    assert _REJECTED_REFRESH_TOKENS.get("oauth/kimi-code") is not None
+
+    # Delete the credentials file
+    cred = tmp_path / "credentials" / "kimi-code.json"
+    cred.unlink()
+    assert not cred.exists()
+
+    token = _make_token(refresh="R1", expires_in=900)
+    assert manager._should_suppress_persisted_token(
+        OAuthRef(storage="file", key="oauth/kimi-code"), token
+    )
+    assert _REJECTED_REFRESH_TOKENS.get("oauth/kimi-code") is not None, (
+        "tombstone must stay when disk token is missing"
+    )
+
+
+def test_should_suppress_persisted_token_false_when_no_tombstone(
+    tmp_path, monkeypatch
+):
+    """When there is no rejected-refresh tombstone, suppression must be False."""
+    monkeypatch.setenv("KIMI_SHARE_DIR", str(tmp_path))
+
+    _save_to_file("oauth/kimi-code", _make_token(refresh="R1", expires_in=900))
+    manager = OAuthManager(_make_config())
+
+    token = _make_token(refresh="R1", expires_in=900)
+    assert not manager._should_suppress_persisted_token(
+        OAuthRef(storage="file", key="oauth/kimi-code"), token
+    )
