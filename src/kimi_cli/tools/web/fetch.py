@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import override
 
 import aiohttp
-import trafilatura
 from kosong.tooling import CallableTool2, ToolReturnValue
 from pydantic import BaseModel, Field
 
@@ -13,6 +12,13 @@ from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
+
+try:
+    import trafilatura
+
+    _has_trafilatura = True
+except Exception:
+    _has_trafilatura = False
 
 
 class Params(BaseModel):
@@ -98,6 +104,12 @@ class FetchURL(CallableTool2[Params]):
                 "The response body is empty.",
                 brief="Empty response body",
             )
+
+        if not _has_trafilatura:
+            # trafilatura unavailable (e.g. charset-normalizer binary
+            # incompatible with current Python), return raw HTML trimmed
+            builder.write(resp_text[:50000])
+            return builder.ok("trafilatura is not available; returning raw page content.")
 
         extracted_text = trafilatura.extract(
             resp_text,
