@@ -25,3 +25,10 @@ projects with changed files run their hooks. You can skip them for an intermedia
 
 The hooks execute the relevant `make format-*` and `make check-*` targets, so ensure dependencies
 are installed (`make prepare` or `uv sync`).
+
+## Web UI development
+
+If you want to run Web UI from source, install [Node.js](https://nodejs.org/) (npm is required) and run
+`make build-web` once to build (and sync) the frontend.
+
+For frontend development with hot reload, run `make web-back` and `make web-front` in separate terminals.
