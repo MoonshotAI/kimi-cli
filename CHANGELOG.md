@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Soul: Sessions killed mid-turn (e.g. under memory pressure) now resume correctly — `normalize_history` injects placeholder responses for orphan `tool_call_id`s so the next provider request stops failing with `400 ... tool_call_ids did not have response messages`
+
 ## 1.47.0 (2026-06-05)
 
 - Shell: Guide users to the new standalone Kimi Code — adds a `/upgrade` command that installs it (migrating your config & sessions automatically), a welcome-screen nudge, and a once-per-day tip shown on exit
