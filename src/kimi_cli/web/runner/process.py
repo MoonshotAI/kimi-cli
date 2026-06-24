@@ -201,6 +201,7 @@ class SessionProcess:
             else:
                 worker_cmd = [
                     sys.executable,
+                    "-P",
                     "-m",
                     "kimi_cli.web.runner.worker",
                     str(self.session_id),
