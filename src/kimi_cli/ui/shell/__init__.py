@@ -33,6 +33,7 @@ from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo_text
 from kimi_cli.ui.shell.mcp_status import render_mcp_prompt
 from kimi_cli.ui.shell.migration_nudge import print_migration_goodbye
+from kimi_cli.ui.shell.placeholders import ImagePathResolutionError
 from kimi_cli.ui.shell.prompt import (
     BgTaskCounts,
     CustomPromptSession,
@@ -363,6 +364,9 @@ class Shell:
                 resume_prompt.clear()
                 await idle_events.put(_PromptEvent(kind="cwd_lost"))
                 return
+            except ImagePathResolutionError as exc:
+                console.print(f"[yellow]{exc}[/yellow]")
+                continue
             except Exception:
                 logger.exception("Prompt router crashed")
                 resume_prompt.clear()

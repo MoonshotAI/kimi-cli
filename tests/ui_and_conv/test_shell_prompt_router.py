@@ -9,6 +9,7 @@ import pytest
 
 import kimi_cli.ui.shell as shell_module
 from kimi_cli.soul import Soul
+from kimi_cli.ui.shell.placeholders import ImagePathResolutionError
 from kimi_cli.ui.shell.prompt import CwdLostError, PromptMode, UserInput
 from kimi_cli.wire.types import TextPart
 
@@ -264,3 +265,39 @@ async def test_route_prompt_events_cwd_lost_posts_cwd_lost_event(
     event = idle_events.get_nowait()
     assert event.kind == "cwd_lost"
     assert not resume_prompt.is_set()
+
+
+@pytest.mark.asyncio
+async def test_route_prompt_events_image_path_error_reprompts(
+    _patched_prompt_router,
+    monkeypatch,
+) -> None:
+    shell = shell_module.Shell(cast(Soul, _make_fake_soul()))
+    prompt_session = _FakePromptSession(
+        [
+            (False, ImagePathResolutionError("image disappeared")),
+            (False, _make_user_input("retry")),
+        ],
+    )
+    idle_events: asyncio.Queue[shell_module._PromptEvent] = asyncio.Queue()
+    resume_prompt = asyncio.Event()
+    resume_prompt.set()
+    printed: list[str] = []
+    monkeypatch.setattr(
+        shell_module.console, "print", lambda msg="", *_, **__: printed.append(str(msg))
+    )
+
+    task = asyncio.create_task(
+        shell._route_prompt_events(cast(Any, prompt_session), idle_events, resume_prompt)
+    )
+    try:
+        event = await asyncio.wait_for(idle_events.get(), timeout=2.0)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert "image disappeared" in printed[0]
+    assert event.kind == "input"
+    assert event.user_input is not None
+    assert event.user_input.command == "retry"
