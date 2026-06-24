@@ -123,7 +123,10 @@ class WireFile:
 
     async def append_record(self, record: WireMessageRecord) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        needs_header = not self.path.exists() or self.path.stat().st_size == 0
+        try:
+            needs_header = self.path.stat().st_size == 0
+        except FileNotFoundError:
+            needs_header = True
         async with aiofiles.open(self.path, mode="a", encoding="utf-8") as f:
             if needs_header:
                 metadata = WireFileMetadata(protocol_version=self.protocol_version)
