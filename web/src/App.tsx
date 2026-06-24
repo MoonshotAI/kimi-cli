@@ -343,6 +343,9 @@ function App() {
         updatedAt: formatRelativeTime(session.lastUpdated),
         workDir: session.workDir,
         lastUpdated: session.lastUpdated,
+        isRunning:
+          session.status?.state === "busy" ||
+          session.status?.state === "restarting",
       })),
     [sessions],
   );
