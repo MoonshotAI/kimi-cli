@@ -10,13 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from kosong.chat_provider import (
-    APIConnectionError,
-    APIEmptyResponseError,
-    APIStatusError,
-    APITimeoutError,
-    ChatProviderError,
-)
+from kosong.chat_provider import ChatProviderError
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
@@ -26,6 +20,7 @@ from kimi_cli import logger
 from kimi_cli.background import list_task_views
 from kimi_cli.llm import model_display_name
 from kimi_cli.notifications import NotificationManager, NotificationWatcher
+from kimi_cli.provider_errors import format_chat_provider_error
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import FLOW_COMMAND_PREFIX, KimiSoul
 from kimi_cli.ui.shell import update as _update_mod
@@ -960,37 +955,20 @@ class Shell:
             logger.exception("LLM not supported:")
             console.print(f"[red]{e}[/red]")
         except ChatProviderError as e:
-            logger.exception("LLM provider error:")
-            if isinstance(e, APIStatusError) and e.status_code == 401:
-                console.print(
-                    "[red]Authorization failed. Your session may have expired.[/red]\n"
-                    "[dim]Type [bold]/login[/bold] to re-authenticate.[/dim]\n"
-                    f"[dim]Server: {e}[/dim]"
-                )
-            elif isinstance(e, APIStatusError) and e.status_code == 402:
-                console.print(
-                    f"[red]Membership expired, please renew your plan[/red]\n[dim]Server: {e}[/dim]"
-                )
-            elif isinstance(e, APIStatusError) and e.status_code == 403:
-                console.print(f"[red]Server: {e}[/red]")
-            elif isinstance(e, APIConnectionError):
-                console.print(
-                    f"[red]Network connection failed: {e}[/red]\n"
-                    "[dim]Please check your network and try again.[/dim]"
-                )
-            elif isinstance(e, APITimeoutError):
-                console.print(
-                    f"[red]Request timed out: {e}[/red]\n"
-                    "[dim]The server may be slow or unreachable. Please try again later.[/dim]"
-                )
-            elif isinstance(e, APIEmptyResponseError):
-                console.print(
-                    "[red]The server returned an empty response.[/red]\n"
-                    "[dim]This is usually a temporary issue. Please try again.[/dim]"
-                )
-            else:
-                console.print(f"[red]LLM provider error: {e}[/red]")
-            if not isinstance(e, APIStatusError) or e.status_code not in (401, 402, 403):
+            presentation = format_chat_provider_error(e)
+            logger.warning(
+                "LLM provider error ({kind}): {error}",
+                kind=presentation.kind,
+                error=e,
+            )
+            style = "yellow" if presentation.severity == "warning" else "red"
+            lines = [f"[{style}]{presentation.headline}[/{style}]"]
+            if presentation.guidance:
+                lines.append(f"[dim]{presentation.guidance}[/dim]")
+            if presentation.server_detail:
+                lines.append(f"[dim]Server: {presentation.server_detail}[/dim]")
+            console.print("\n".join(lines))
+            if presentation.show_support_hint:
                 console.print(
                     "[dim]If this persists, run [bold]kimi export[/bold] and send the "
                     "exported data to support for assistance. "

@@ -449,6 +449,35 @@ async def test_wire_server_returns_chat_provider_error_for_generic(
 
 
 @pytest.mark.asyncio
+async def test_wire_server_returns_friendly_rate_limit_message(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    soul = _make_soul(
+        runtime,
+        APIStatusErrorProvider(
+            429,
+            "You've reached your usage limit for this period. "
+            "Your quota will be refreshed in the next period.",
+        ),
+        tmp_path,
+    )
+    server = WireServer(soul)
+
+    response = await server._handle_prompt(
+        JSONRPCPromptMessage(
+            id="1",
+            params=JSONRPCPromptMessage.Params(user_input="hello"),
+        )
+    )
+
+    assert isinstance(response, JSONRPCErrorResponse)
+    assert response.error.code == ErrorCodes.CHAT_PROVIDER_ERROR
+    assert "Usage limit reached for this period." in response.error.message
+    assert "Wait for quota refresh or upgrade your plan." in response.error.message
+    assert "Server: You've reached your usage limit for this period." in response.error.message
+
+
+@pytest.mark.asyncio
 async def test_wire_server_returns_success_for_normal_prompt(
     runtime: Runtime, tmp_path: Path
 ) -> None:
@@ -515,6 +544,29 @@ async def test_acp_session_returns_internal_error_for_401_without_oauth() -> Non
         await session.prompt([acp.schema.TextContentBlock(type="text", text="hello")])
 
     assert exc_info.value.code != -32000  # NOT auth_required
+
+
+@pytest.mark.asyncio
+async def test_acp_session_returns_friendly_rate_limit_message() -> None:
+    session = _make_acp_session_with_error(
+        APIStatusError(
+            429,
+            "You've reached your usage limit for this period. "
+            "Your quota will be refreshed in the next period.",
+        ),
+        oauth=False,
+    )
+
+    with pytest.raises(acp.RequestError) as exc_info:
+        await session.prompt([acp.schema.TextContentBlock(type="text", text="hello")])
+
+    assert exc_info.value.code == -32603
+    assert exc_info.value.data == {
+        "error": "Usage limit reached for this period.\n"
+        "Wait for quota refresh or upgrade your plan.\n"
+        "Server: You've reached your usage limit for this period. "
+        "Your quota will be refreshed in the next period."
+    }
 
 
 # ---------------------------------------------------------------------------

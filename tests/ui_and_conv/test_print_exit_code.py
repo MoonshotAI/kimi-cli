@@ -167,6 +167,40 @@ class TestPrintRunExitCode:
         code = asyncio.run(p.run(command="hello"))
         assert code == ExitCode.RETRYABLE
 
+    def test_rate_limit_period_message_is_friendly_and_no_traceback(
+        self, tmp_path: Path, monkeypatch
+    ):
+        soul = _make_soul()
+        p = _make_print(soul, tmp_path)
+        printed: list[str] = []
+        warning = MagicMock()
+        exception = MagicMock()
+
+        async def _raise(*args, **kwargs):
+            raise APIStatusError(
+                429,
+                "You've reached your usage limit for this period. "
+                "Your quota will be refreshed in the next period.",
+            )
+
+        monkeypatch.setattr("kimi_cli.ui.print.run_soul", _raise)
+        monkeypatch.setattr("kimi_cli.ui.print.print", lambda text="": printed.append(str(text)))
+        monkeypatch.setattr("kimi_cli.ui.print.logger.warning", warning)
+        monkeypatch.setattr("kimi_cli.ui.print.logger.exception", exception)
+
+        code = asyncio.run(p.run(command="hello"))
+
+        assert code == ExitCode.RETRYABLE
+        assert printed == [
+            "hello",
+            "Usage limit reached for this period.\n"
+            "Wait for quota refresh or upgrade your plan.\n"
+            "Server: You've reached your usage limit for this period. "
+            "Your quota will be refreshed in the next period.",
+        ]
+        warning.assert_called_once()
+        exception.assert_not_called()
+
     def test_server_error_500_returns_retryable(self, tmp_path: Path, monkeypatch):
         soul = _make_soul()
         p = _make_print(soul, tmp_path)

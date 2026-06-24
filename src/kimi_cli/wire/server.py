@@ -13,6 +13,7 @@ from kosong.utils.typing import JsonType
 
 from kimi_cli.approval_runtime import ApprovalRuntime
 from kimi_cli.constant import USER_AGENT
+from kimi_cli.provider_errors import format_chat_provider_error
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled, Soul, run_soul
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset, WireExternalTool
@@ -693,14 +694,22 @@ class WireServer:
                         ),
                     ),
                 )
+            presentation = format_chat_provider_error(e)
             return JSONRPCErrorResponse(
                 id=msg.id,
-                error=JSONRPCErrorObject(code=ErrorCodes.CHAT_PROVIDER_ERROR, message=str(e)),
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.CHAT_PROVIDER_ERROR,
+                    message=presentation.as_plain_text(include_server_detail=True),
+                ),
             )
         except ChatProviderError as e:
+            presentation = format_chat_provider_error(e)
             return JSONRPCErrorResponse(
                 id=msg.id,
-                error=JSONRPCErrorObject(code=ErrorCodes.CHAT_PROVIDER_ERROR, message=str(e)),
+                error=JSONRPCErrorObject(
+                    code=ErrorCodes.CHAT_PROVIDER_ERROR,
+                    message=presentation.as_plain_text(include_server_detail=True),
+                ),
             )
         except MaxStepsReached as e:
             return JSONRPCSuccessResponse(
