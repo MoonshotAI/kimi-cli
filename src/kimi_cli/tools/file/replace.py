@@ -42,6 +42,7 @@ class Params(BaseModel):
 
 class StrReplaceFile(CallableTool2[Params]):
     name: str = "StrReplaceFile"
+    strict: bool = True
     description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 

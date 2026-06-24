@@ -29,6 +29,7 @@ class Params(BaseModel):
 
 class SetTodoList(CallableTool2[Params]):
     name: str = "SetTodoList"
+    strict: bool = True
     description: str = load_desc(Path(__file__).parent / "set_todo_list.md")
     params: type[Params] = Params
 
