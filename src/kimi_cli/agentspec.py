@@ -82,7 +82,8 @@ def load_agent_spec(agent_file: Path) -> ResolvedAgentSpec:
         AgentSpecError: If the agent spec is not valid.
     """
     agent_spec = _load_agent_spec(agent_file)
-    assert agent_spec.extend is None, "agent extension should be recursively resolved"
+    if agent_spec.extend is not None:
+        raise AgentSpecError("Agent extension should be recursively resolved")
     if isinstance(agent_spec.name, Inherit):
         raise AgentSpecError("Agent name is required")
     if isinstance(agent_spec.system_prompt_path, Inherit):
