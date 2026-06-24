@@ -652,8 +652,11 @@ class KimiToolset:
             MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
                 connected.
         """
-        import fastmcp
-        from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
+        import warnings
+
+        with warnings.catch_warnings(record=True):
+            import fastmcp
+            from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
 
         from kimi_cli.mcp_oauth import create_mcp_oauth, has_mcp_oauth_tokens
         from kimi_cli.ui.shell.prompt import toast
