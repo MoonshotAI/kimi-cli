@@ -459,6 +459,52 @@
         }
       }
     },
+    "/api/sessions/{session_id}/fork": {
+      "post": {
+        "tags": ["sessions"],
+        "summary": "Fork a session at a specific turn",
+        "description": "Fork a session, creating a new session with history up to the specified turn.\n\nThe new session shares the same work_dir as the original session.",
+        "operationId": "fork_session_endpoint_api_sessions__session_id__fork_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ForkSessionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Session" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{session_id}/generate-title": {
       "post": {
         "tags": ["sessions"],
@@ -536,6 +582,40 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/GitDiffStats" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/git/info": {
+      "get": {
+        "tags": ["git"],
+        "summary": "Probe a directory for git info",
+        "description": "Return git repo info for the given work_dir.",
+        "operationId": "get_git_info_api_git_info_get",
+        "parameters": [
+          {
+            "name": "work_dir",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Work Dir" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GitInfo" }
               }
             }
           },
@@ -677,6 +757,10 @@
             ],
             "title": "Capabilities"
           },
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name"
+          },
           "name": {
             "type": "string",
             "title": "Name",
@@ -726,11 +810,37 @@
             "type": "boolean",
             "title": "Create Dir",
             "default": false
+          },
+          "worktree": {
+            "type": "boolean",
+            "title": "Worktree",
+            "default": false
+          },
+          "worktree_branch": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Worktree Branch"
+          },
+          "worktree_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Worktree Name"
           }
         },
         "type": "object",
         "title": "CreateSessionRequest",
         "description": "Create session request."
+      },
+      "ForkSessionRequest": {
+        "properties": {
+          "turn_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Turn Index"
+          }
+        },
+        "type": "object",
+        "required": ["turn_index"],
+        "title": "ForkSessionRequest",
+        "description": "Fork session request."
       },
       "GenerateTitleRequest": {
         "properties": {
@@ -825,6 +935,40 @@
         "required": ["path", "additions", "deletions", "status"],
         "title": "GitFileDiff",
         "description": "Single file git diff statistics"
+      },
+      "GitInfo": {
+        "properties": {
+          "is_git_repo": {
+            "type": "boolean",
+            "title": "Is Git Repo",
+            "description": "Whether work_dir is inside a git repository"
+          },
+          "git_root": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Git Root",
+            "description": "Canonical git repository root"
+          },
+          "current_branch": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current Branch",
+            "description": "Current branch, None if detached"
+          },
+          "branches": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Branches",
+            "description": "Local branch names"
+          },
+          "head_sha": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Head Sha",
+            "description": "Short SHA of HEAD, None if no commits"
+          }
+        },
+        "type": "object",
+        "required": ["is_git_repo"],
+        "title": "GitInfo",
+        "description": "Lightweight git probe response for the web UI."
       },
       "GlobalConfig": {
         "properties": {
@@ -961,6 +1105,16 @@
             "title": "Archived",
             "description": "Whether the session is archived",
             "default": false
+          },
+          "worktree_path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Worktree Path",
+            "description": "Absolute path to this session's git worktree, if any"
+          },
+          "parent_repo_path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Repo Path",
+            "description": "Absolute path to the parent git repository root, if worktree-backed"
           }
         },
         "type": "object",

@@ -59,6 +59,12 @@ export interface ConfigModel {
      */
     capabilities?: Set<ModelCapability> | null;
     /**
+     * 
+     * @type {string}
+     * @memberof ConfigModel
+     */
+    displayName?: string | null;
+    /**
      * Model key in kimi-cli config (Config.models)
      * @type {string}
      * @memberof ConfigModel
@@ -100,6 +106,7 @@ export function ConfigModelFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'model': json['model'],
         'maxContextSize': json['max_context_size'],
         'capabilities': json['capabilities'] == null ? undefined : (new Set((json['capabilities'] as Array<any>).map(ModelCapabilityFromJSON))),
+        'displayName': json['display_name'] == null ? undefined : json['display_name'],
         'name': json['name'],
         'providerType': ProviderTypeFromJSON(json['provider_type']),
     };
@@ -120,6 +127,7 @@ export function ConfigModelToJSONTyped(value?: ConfigModel | null, ignoreDiscrim
         'model': value['model'],
         'max_context_size': value['maxContextSize'],
         'capabilities': value['capabilities'] == null ? undefined : (Array.from(value['capabilities'] as Set<any>).map(ModelCapabilityToJSON)),
+        'display_name': value['displayName'],
         'name': value['name'],
         'provider_type': ProviderTypeToJSON(value['providerType']),
     };

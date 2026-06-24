@@ -11,6 +11,7 @@ Name | Type
 `model` | string
 `maxContextSize` | number
 `capabilities` | [Set&lt;ModelCapability&gt;](ModelCapability.md)
+`displayName` | string
 `name` | string
 `providerType` | [ProviderType](ProviderType.md)
 
@@ -25,6 +26,7 @@ const example = {
   "model": null,
   "maxContextSize": null,
   "capabilities": null,
+  "displayName": null,
   "name": null,
   "providerType": null,
 } satisfies ConfigModel

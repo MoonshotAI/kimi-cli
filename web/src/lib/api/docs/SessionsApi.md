@@ -6,6 +6,7 @@ All URIs are relative to *http://localhost*
 |------------- | ------------- | -------------|
 | [**createSessionApiSessionsPost**](SessionsApi.md#createsessionapisessionspost) | **POST** /api/sessions/ | Create a new session |
 | [**deleteSessionApiSessionsSessionIdDelete**](SessionsApi.md#deletesessionapisessionssessioniddelete) | **DELETE** /api/sessions/{session_id} | Delete a session |
+| [**forkSessionEndpointApiSessionsSessionIdForkPost**](SessionsApi.md#forksessionendpointapisessionssessionidforkpost) | **POST** /api/sessions/{session_id}/fork | Fork a session at a specific turn |
 | [**generateSessionTitleApiSessionsSessionIdGenerateTitlePost**](SessionsApi.md#generatesessiontitleapisessionssessionidgeneratetitlepost) | **POST** /api/sessions/{session_id}/generate-title | Generate session title using AI |
 | [**getSessionApiSessionsSessionIdGet**](SessionsApi.md#getsessionapisessionssessionidget) | **GET** /api/sessions/{session_id} | Get session |
 | [**getSessionFileApiSessionsSessionIdFilesPathGet**](SessionsApi.md#getsessionfileapisessionssessionidfilespathget) | **GET** /api/sessions/{session_id}/files/{path} | Get file or list directory from session work_dir |
@@ -141,6 +142,77 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## forkSessionEndpointApiSessionsSessionIdForkPost
+
+> Session forkSessionEndpointApiSessionsSessionIdForkPost(sessionId, forkSessionRequest)
+
+Fork a session at a specific turn
+
+Fork a session, creating a new session with history up to the specified turn.  The new session shares the same work_dir as the original session.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  SessionsApi,
+} from '';
+import type { ForkSessionEndpointApiSessionsSessionIdForkPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new SessionsApi();
+
+  const body = {
+    // string
+    sessionId: 38400000-8cf0-11bd-b23e-10b96e4ef00d,
+    // ForkSessionRequest
+    forkSessionRequest: ...,
+  } satisfies ForkSessionEndpointApiSessionsSessionIdForkPostRequest;
+
+  try {
+    const data = await api.forkSessionEndpointApiSessionsSessionIdForkPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **sessionId** | `string` |  | [Defaults to `undefined`] |
+| **forkSessionRequest** | [ForkSessionRequest](ForkSessionRequest.md) |  | |
+
+### Return type
+
+[**Session**](Session.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 

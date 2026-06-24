@@ -31,6 +31,24 @@ export interface CreateSessionRequest {
      * @memberof CreateSessionRequest
      */
     createDir?: boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CreateSessionRequest
+     */
+    worktree?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateSessionRequest
+     */
+    worktreeBranch?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateSessionRequest
+     */
+    worktreeName?: string | null;
 }
 
 /**
@@ -52,6 +70,9 @@ export function CreateSessionRequestFromJSONTyped(json: any, ignoreDiscriminator
         
         'workDir': json['work_dir'] == null ? undefined : json['work_dir'],
         'createDir': json['create_dir'] == null ? undefined : json['create_dir'],
+        'worktree': json['worktree'] == null ? undefined : json['worktree'],
+        'worktreeBranch': json['worktree_branch'] == null ? undefined : json['worktree_branch'],
+        'worktreeName': json['worktree_name'] == null ? undefined : json['worktree_name'],
     };
 }
 
@@ -68,6 +89,9 @@ export function CreateSessionRequestToJSONTyped(value?: CreateSessionRequest | n
         
         'work_dir': value['workDir'],
         'create_dir': value['createDir'],
+        'worktree': value['worktree'],
+        'worktree_branch': value['worktreeBranch'],
+        'worktree_name': value['worktreeName'],
     };
 }
 

@@ -78,6 +78,11 @@
   --code-background: oklch(0.967 0.001 286.375);
   --code-foreground: oklch(0.141 0.005 285.823);
 
+  /* Running session indicator */
+  --session-running: oklch(0.68 0.17 152);
+  --session-running-soft: oklch(0.68 0.17 152 / 0.18);
+  --session-running-glow: oklch(0.68 0.17 152 / 0.55);
+
   /* Safe area insets (iOS) */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
@@ -138,6 +143,11 @@
   /* Inline code - dark */
   --code-background: oklch(0.274 0.006 286.033);
   --code-foreground: oklch(0.985 0 0);
+
+  /* Running session indicator - dark */
+  --session-running: oklch(0.78 0.18 152);
+  --session-running-soft: oklch(0.78 0.18 152 / 0.22);
+  --session-running-glow: oklch(0.78 0.18 152 / 0.6);
 }
 
 * {
@@ -373,6 +383,105 @@ body {
     }
     50% {
       box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+    }
+  }
+
+  /* ===== Running Session Indicator =====
+   * Three layered animations at offset durations so they never re-sync,
+   * giving a subtle "alive" feel rather than a mechanical spinner.
+   */
+  @keyframes session-running-orbit {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes session-running-breathe {
+    0%,
+    100% {
+      transform: scale(0.85);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1.55);
+      opacity: 0;
+    }
+  }
+
+  @keyframes session-running-core {
+    0%,
+    100% {
+      opacity: 1;
+      filter: drop-shadow(0 0 2px var(--session-running-glow));
+    }
+    50% {
+      opacity: 0.75;
+      filter: drop-shadow(0 0 4px var(--session-running-glow));
+    }
+  }
+
+  .session-running-indicator {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.75rem;
+    height: 0.75rem;
+    flex-shrink: 0;
+    color: var(--session-running);
+  }
+
+  .session-running-indicator::before {
+    /* Breathing halo */
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: var(--session-running-soft);
+    animation: session-running-breathe 1.9s cubic-bezier(0.4, 0, 0.2, 1)
+      infinite;
+    will-change: transform, opacity;
+  }
+
+  .session-running-indicator::after {
+    /* Rotating orbital arc */
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      transparent 210deg,
+      var(--session-running) 280deg,
+      var(--session-running-glow) 330deg,
+      transparent 360deg
+    );
+    mask: radial-gradient(circle, transparent 54%, #000 56%, #000 100%);
+    -webkit-mask: radial-gradient(circle, transparent 54%, #000 56%, #000 100%);
+    animation: session-running-orbit 2.4s linear infinite;
+    will-change: transform;
+  }
+
+  .session-running-indicator > .session-running-core {
+    position: relative;
+    width: 0.34rem;
+    height: 0.34rem;
+    border-radius: 9999px;
+    background: var(--session-running);
+    animation: session-running-core 1.4s ease-in-out infinite;
+    will-change: opacity, filter;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .session-running-indicator::before,
+    .session-running-indicator::after,
+    .session-running-indicator > .session-running-core {
+      animation: none;
+    }
+    .session-running-indicator::before {
+      opacity: 0.4;
+      transform: scale(1);
     }
   }
 }

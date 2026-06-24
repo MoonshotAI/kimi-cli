@@ -1,6 +1,7 @@
 .openapi-generator-ignore
 apis/ConfigApi.ts
 apis/DefaultApi.ts
+apis/GitApi.ts
 apis/OpenInApi.ts
 apis/SessionsApi.ts
 apis/WorkDirsApi.ts
@@ -10,10 +11,13 @@ docs/ConfigModel.md
 docs/ConfigToml.md
 docs/CreateSessionRequest.md
 docs/DefaultApi.md
+docs/ForkSessionRequest.md
 docs/GenerateTitleRequest.md
 docs/GenerateTitleResponse.md
+docs/GitApi.md
 docs/GitDiffStats.md
 docs/GitFileDiff.md
+docs/GitInfo.md
 docs/GlobalConfig.md
 docs/HTTPValidationError.md
 docs/ModelCapability.md
@@ -37,10 +41,12 @@ index.ts
 models/ConfigModel.ts
 models/ConfigToml.ts
 models/CreateSessionRequest.ts
+models/ForkSessionRequest.ts
 models/GenerateTitleRequest.ts
 models/GenerateTitleResponse.ts
 models/GitDiffStats.ts
 models/GitFileDiff.ts
+models/GitInfo.ts
 models/GlobalConfig.ts
 models/HTTPValidationError.ts
 models/ModelCapability.ts

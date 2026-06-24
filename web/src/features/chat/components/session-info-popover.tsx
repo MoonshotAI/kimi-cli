@@ -77,6 +77,12 @@ export function SessionInfoSection({
       {session?.workDir && (
         <SessionInfoItem label="Working Directory" value={session.workDir} />
       )}
+      {session?.worktreePath && (
+        <SessionInfoItem label="Worktree" value={session.worktreePath} />
+      )}
+      {session?.parentRepoPath && (
+        <SessionInfoItem label="Parent Repository" value={session.parentRepoPath} />
+      )}
       {session?.sessionDir && (
         <SessionInfoItem label="Session Directory" value={session.sessionDir} />
       )}
@@ -115,6 +121,12 @@ export function SessionInfoPopover({
           <SessionInfoItem label="Session ID" value={sessionId} />
           {session?.workDir && (
             <SessionInfoItem label="Working Directory" value={session.workDir} />
+          )}
+          {session?.worktreePath && (
+            <SessionInfoItem label="Worktree" value={session.worktreePath} />
+          )}
+          {session?.parentRepoPath && (
+            <SessionInfoItem label="Parent Repository" value={session.parentRepoPath} />
           )}
           {session?.sessionDir && (
             <SessionInfoItem label="Session Directory" value={session.sessionDir} />

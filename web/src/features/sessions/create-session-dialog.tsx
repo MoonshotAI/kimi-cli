@@ -32,7 +32,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
 import { FolderOpen, Home, Loader2 } from "lucide-react";
+import { useGitInfo } from "@/hooks/useGitInfo";
+import {
+  WorktreeConfigStep,
+  type WorktreeOptions,
+} from "./worktree-config-step";
 
 const HOME_DIR_REGEX = /^(\/Users\/[^/]+|\/home\/[^/]+)/;
 const TRAILING_SLASH_REGEX = /\/$/;
@@ -40,7 +49,10 @@ const TRAILING_SLASH_REGEX = /\/$/;
 type CreateSessionDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (workDir: string, createDir?: boolean) => Promise<void>;
+  onConfirm: (
+    workDir: string,
+    options?: { createDir?: boolean; worktree?: WorktreeOptions },
+  ) => Promise<void>;
   fetchWorkDirs: () => Promise<string[]>;
   fetchStartupDir: () => Promise<string>;
 };
@@ -94,6 +106,14 @@ export function CreateSessionDialog({
   const isCreatingRef = useRef(false);
   const commandListRef = useRef<HTMLDivElement>(null);
 
+  const [step, setStep] = useState<"pick" | "configure">("pick");
+  const [configuredWorkDir, setConfiguredWorkDir] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const { gitInfo, isLoading: isGitInfoLoading } = useGitInfo(
+    step === "configure" ? configuredWorkDir : null,
+  );
+
   // Fetch startup dir and work dirs independently for progressive loading
   useEffect(() => {
     if (!open) {
@@ -144,32 +164,20 @@ export function CreateSessionDialog({
       setPendingPath("");
       setStartupDir("");
       isCreatingRef.current = false;
+      setStep("pick");
+      setConfiguredWorkDir(null);
+      setSubmitError(null);
     }
   }, [open]);
 
   const handleSelect = useCallback(
     async (dir: string) => {
       if (isCreatingRef.current) return;
-      isCreatingRef.current = true;
-      setIsCreating(true);
-      try {
-        await onConfirm(dir);
-        onOpenChange(false);
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          "isDirectoryNotFound" in err &&
-          (err as Error & { isDirectoryNotFound: boolean }).isDirectoryNotFound
-        ) {
-          setPendingPath(dir);
-          setShowConfirmCreate(true);
-        }
-      } finally {
-        setIsCreating(false);
-        isCreatingRef.current = false;
-      }
+      setConfiguredWorkDir(dir);
+      setStep("configure");
+      setSubmitError(null);
     },
-    [onConfirm, onOpenChange],
+    [],
   );
 
   const handleInputSubmit = useCallback(() => {
@@ -187,7 +195,7 @@ export function CreateSessionDialog({
     setIsCreating(true);
     isCreatingRef.current = true;
     try {
-      await onConfirm(pendingPath, true);
+      await onConfirm(pendingPath, { createDir: true });
       onOpenChange(false);
     } catch (err) {
       console.error("Failed to create directory:", err);
@@ -202,6 +210,64 @@ export function CreateSessionDialog({
     setShowConfirmCreate(false);
     setPendingPath("");
   }, []);
+
+  const handleWorktreeSubmit = useCallback(
+    async (options: WorktreeOptions) => {
+      if (configuredWorkDir == null) return;
+      isCreatingRef.current = true;
+      setIsCreating(true);
+      setSubmitError(null);
+      try {
+        await onConfirm(configuredWorkDir, {
+          worktree: options.enabled ? options : undefined,
+        });
+        onOpenChange(false);
+      } catch (err) {
+        setSubmitError(err instanceof Error ? err.message : "Failed to create session");
+      } finally {
+        setIsCreating(false);
+        isCreatingRef.current = false;
+      }
+    },
+    [configuredWorkDir, onConfirm, onOpenChange],
+  );
+
+  const handleBackToPick = useCallback(() => {
+    setStep("pick");
+    setConfiguredWorkDir(null);
+    setSubmitError(null);
+  }, []);
+
+  // Auto-submit for non-git paths
+  useEffect(() => {
+    if (!open || step !== "configure" || configuredWorkDir == null || isGitInfoLoading || gitInfo == null) {
+      return;
+    }
+    if (!gitInfo.isGitRepo) {
+      if (isCreatingRef.current) return;
+      isCreatingRef.current = true;
+      setIsCreating(true);
+      onConfirm(configuredWorkDir, undefined)
+        .then(() => {
+          onOpenChange(false);
+        })
+        .catch((err) => {
+          if (
+            err instanceof Error &&
+            "isDirectoryNotFound" in err &&
+            (err as Error & { isDirectoryNotFound: boolean }).isDirectoryNotFound
+          ) {
+            setPendingPath(configuredWorkDir);
+            setShowConfirmCreate(true);
+            setStep("pick");
+          }
+        })
+        .finally(() => {
+          setIsCreating(false);
+          isCreatingRef.current = false;
+        });
+    }
+  }, [open, step, configuredWorkDir, gitInfo, isGitInfoLoading, onConfirm, onOpenChange]);
 
   // Tab completion: fill input with first matching item's value
   const handleKeyDown = useCallback(
@@ -243,13 +309,28 @@ export function CreateSessionDialog({
 
   return (
     <>
-      <CommandDialog
-        open={open}
-        onOpenChange={onOpenChange}
-        title="Create New Session"
-        description="Search directories or type a new path"
-        showCloseButton={false}
-      >
+      {step === "configure" && configuredWorkDir != null && gitInfo?.isGitRepo ? (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="p-0 sm:max-w-lg" showCloseButton={false}>
+            <WorktreeConfigStep
+              workDir={configuredWorkDir}
+              gitInfo={gitInfo}
+              isLoading={isGitInfoLoading}
+              submitting={isCreating}
+              submitError={submitError}
+              onBack={handleBackToPick}
+              onSubmit={handleWorktreeSubmit}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <CommandDialog
+          open={open}
+          onOpenChange={onOpenChange}
+          title="Create New Session"
+          description="Search directories or type a new path"
+          showCloseButton={false}
+        >
         <Command value={commandValue} onValueChange={setCommandValue}>
           <CommandInput
             placeholder="Search directories or type a path..."
@@ -356,6 +437,7 @@ export function CreateSessionDialog({
           </CommandList>
         </Command>
       </CommandDialog>
+      )}
 
       <AlertDialog open={showConfirmCreate} onOpenChange={setShowConfirmCreate}>
         <AlertDialogContent>

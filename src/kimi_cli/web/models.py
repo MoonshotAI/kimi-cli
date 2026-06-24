@@ -72,6 +72,14 @@ class Session(BaseModel):
     work_dir: str | None = Field(default=None, description="Working directory for the session")
     session_dir: str | None = Field(default=None, description="Session directory path")
     archived: bool = Field(default=False, description="Whether the session is archived")
+    worktree_path: str | None = Field(
+        default=None,
+        description="Absolute path to this session's git worktree, if any",
+    )
+    parent_repo_path: str | None = Field(
+        default=None,
+        description="Absolute path to the parent git repository root, if worktree-backed",
+    )
 
 
 class UpdateSessionRequest(BaseModel):

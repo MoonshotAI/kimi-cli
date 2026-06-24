@@ -16,6 +16,7 @@ import { ThemeToggle } from "./components/ui/theme-toggle";
 import type { SessionStatus } from "./lib/api/models";
 import type { PanelSize, PanelImperativeHandle } from "react-resizable-panels";
 import { consumeAuthTokenFromUrl, setAuthToken } from "./lib/auth";
+import type { WorktreeOptions } from "./features/sessions/worktree-config-step";
 
 /**
  * Get session ID from URL search params
@@ -295,8 +296,11 @@ function App() {
   );
 
   const handleCreateSession = useCallback(
-    async (workDir: string, createDir?: boolean) => {
-      await createSession(workDir, createDir);
+    async (
+      workDir: string,
+      options?: { createDir?: boolean; worktree?: WorktreeOptions },
+    ) => {
+      await createSession(workDir, options);
     },
     [createSession],
   );
@@ -343,6 +347,10 @@ function App() {
         updatedAt: formatRelativeTime(session.lastUpdated),
         workDir: session.workDir,
         lastUpdated: session.lastUpdated,
+        isRunning:
+          session.status?.state === "busy" ||
+          session.status?.state === "restarting",
+        worktreePath: session.worktreePath,
       })),
     [sessions],
   );
@@ -356,6 +364,7 @@ function App() {
         updatedAt: formatRelativeTime(session.lastUpdated),
         workDir: session.workDir,
         lastUpdated: session.lastUpdated,
+        worktreePath: session.worktreePath,
       })),
     [archivedSessions],
   );
