@@ -308,7 +308,12 @@ def test_build_user_input_expands_text_placeholders_for_slash_parsing() -> None:
     assert user_input.resolved_command == f"/echo {long_text}"
 
 
-def test_handle_bracketed_paste_placeholderizes_long_text_in_agent_mode() -> None:
+def test_handle_bracketed_paste_placeholderizes_long_text_in_agent_mode(monkeypatch) -> None:
+    monkeypatch.setattr(
+        shell_prompt,
+        "grab_media_from_clipboard",
+        lambda: None,
+    )
     ps = _make_prompt_session(PromptMode.AGENT)
     buffer = _DummyBuffer()
     app = _DummyApp()
@@ -328,7 +333,12 @@ def test_handle_bracketed_paste_placeholderizes_long_text_in_agent_mode() -> Non
     assert user_input.resolved_command == resolved_text
 
 
-def test_handle_bracketed_paste_keeps_normalized_text_in_shell_mode() -> None:
+def test_handle_bracketed_paste_keeps_normalized_text_in_shell_mode(monkeypatch) -> None:
+    monkeypatch.setattr(
+        shell_prompt,
+        "grab_media_from_clipboard",
+        lambda: None,
+    )
     ps = _make_prompt_session(PromptMode.SHELL)
     buffer = _DummyBuffer()
     app = _DummyApp()
@@ -341,6 +351,32 @@ def test_handle_bracketed_paste_keeps_normalized_text_in_shell_mode() -> None:
     ps._handle_bracketed_paste(cast(KeyPressEvent, event))
 
     assert buffer.inserted == ["line1\nline2\nline3"]
+    assert app.invalidated is True
+
+
+def test_handle_bracketed_paste_reads_image_from_clipboard(monkeypatch) -> None:
+    """When the terminal turns Ctrl+V into BracketedPaste, image data is not
+    included in event.data, so we must fall back to the system clipboard."""
+    img = Image.new("RGB", (10, 10))
+    monkeypatch.setattr(
+        shell_prompt,
+        "grab_media_from_clipboard",
+        lambda: ClipboardResult(images=(img,), file_paths=()),
+    )
+
+    ps = _make_prompt_session(PromptMode.AGENT, supports_image=True)
+    buffer = _DummyBuffer()
+    app = _DummyApp()
+    event = SimpleNamespace(
+        current_buffer=buffer,
+        app=app,
+        data="",
+    )
+
+    ps._handle_bracketed_paste(cast(KeyPressEvent, event))
+
+    assert len(buffer.inserted) == 1
+    assert buffer.inserted[0].startswith("[image:")
     assert app.invalidated is True
 
 

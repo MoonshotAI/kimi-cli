@@ -1905,6 +1905,13 @@ class CustomPromptSession:
         buffer.insert_text(token_or_text)
 
     def _handle_bracketed_paste(self, event: KeyPressEvent) -> None:
+        # On Windows, terminals such as Windows Terminal and VS Code's
+        # integrated terminal handle Ctrl+V themselves and emit a
+        # BracketedPaste event. Binary content like images cannot be carried
+        # as text in that event, so try reading media directly from the
+        # system clipboard first.
+        if self._try_paste_media(event):
+            return
         self._insert_pasted_text(event.current_buffer, event.data)
         event.app.invalidate()
 
