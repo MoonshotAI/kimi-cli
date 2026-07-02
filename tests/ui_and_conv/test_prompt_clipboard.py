@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -354,9 +355,11 @@ def test_handle_bracketed_paste_keeps_normalized_text_in_shell_mode(monkeypatch)
     assert app.invalidated is True
 
 
-def test_handle_bracketed_paste_reads_image_from_clipboard(monkeypatch) -> None:
-    """When the terminal turns Ctrl+V into BracketedPaste, image data is not
-    included in event.data, so we must fall back to the system clipboard."""
+def test_handle_bracketed_paste_reads_image_from_clipboard_on_windows(monkeypatch) -> None:
+    """When the terminal turns Ctrl+V into BracketedPaste on Windows, image
+    data is not included in event.data, so we must fall back to the system
+    clipboard."""
+    monkeypatch.setattr(sys, "platform", "win32")
     img = Image.new("RGB", (10, 10))
     monkeypatch.setattr(
         shell_prompt,
@@ -378,6 +381,33 @@ def test_handle_bracketed_paste_reads_image_from_clipboard(monkeypatch) -> None:
     assert len(buffer.inserted) == 1
     assert buffer.inserted[0].startswith("[image:")
     assert app.invalidated is True
+
+
+def test_handle_bracketed_paste_skips_media_on_non_windows(monkeypatch) -> None:
+    """On Linux and macOS, BracketedPaste should not trigger a system
+    clipboard media read for every text paste."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    calls: list[None] = []
+    monkeypatch.setattr(
+        shell_prompt,
+        "grab_media_from_clipboard",
+        lambda: calls.append(None) or ClipboardResult(images=(), file_paths=()),
+    )
+
+    ps = _make_prompt_session(PromptMode.SHELL)
+    buffer = _DummyBuffer()
+    app = _DummyApp()
+    event = SimpleNamespace(
+        current_buffer=buffer,
+        app=app,
+        data="plain text",
+    )
+
+    ps._handle_bracketed_paste(cast(KeyPressEvent, event))
+
+    assert buffer.inserted == ["plain text"]
+    assert app.invalidated is True
+    assert calls == []
 
 
 async def test_question_delegate_expands_placeholders_on_submit() -> None:
