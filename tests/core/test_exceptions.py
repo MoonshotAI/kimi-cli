@@ -9,7 +9,10 @@ def test_soul_exceptions(llm: LLM):
     try:
         raise LLMNotSet()
     except LLMNotSet as e:
-        assert str(e) == snapshot("LLM not set")
+        assert str(e) == snapshot(
+            "LLM not set. Run `kimi login` to sign in, "
+            "or set a model in your config file (~/.kimi/config.toml)."
+        )
 
     try:
         raise LLMNotSupported(llm, ["image_in"])
