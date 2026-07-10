@@ -24,7 +24,10 @@ class LLMNotSet(Exception):
     """Raised when the LLM is not set."""
 
     def __init__(self) -> None:
-        super().__init__("LLM not set")
+        super().__init__(
+            "LLM not set. Run `kimi login` to sign in, "
+            "or set a model in your config file (~/.kimi/config.toml)."
+        )
 
 
 class LLMNotSupported(Exception):
