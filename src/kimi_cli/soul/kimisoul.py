@@ -380,6 +380,19 @@ class KimiSoul:
         if isinstance(ask_tool, AskUserQuestion):
             ask_tool.bind_afk(self._approval.is_afk)
 
+    def rebind_plan_mode_tools(self) -> None:
+        """Re-bind plan-mode tool callbacks to this soul.
+
+        Plan-mode tools (``ExitPlanMode``/``EnterPlanMode``/``WriteFile``/
+        ``StrReplaceFile``) live on the shared agent toolset, but their bound
+        callbacks capture a specific soul. If another ``KimiSoul`` that shares
+        this agent is constructed (e.g. the throwaway soul used by ``/init``),
+        its ``__init__`` rebinds those shared instances to itself, leaving them
+        pointed at a dead soul once it is discarded. Call this to restore the
+        bindings to this soul.
+        """
+        self._bind_plan_mode_tools()
+
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
         if self._plan_session_id is None:
