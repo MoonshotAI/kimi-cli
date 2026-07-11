@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import time
 from datetime import datetime
@@ -8,7 +9,9 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import acp
+from fastmcp.mcp_config import MCPConfig
 from kaos.path import KaosPath
+from pydantic import ValidationError
 
 from kimi_cli.acp.kaos import ACPKaos
 from kimi_cli.acp.mcp import acp_mcp_servers_to_mcp_config
@@ -25,6 +28,31 @@ from kimi_cli.session import Session
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.logging import logger
+
+
+def _load_global_mcp_config() -> MCPConfig | None:
+    """Load the globally-configured MCP servers shared with interactive mode.
+
+    These live in ``<share>/mcp.json`` (managed by ``kimi mcp add`` or edited by
+    hand) and are loaded by interactive ``kimi``, but were previously ignored by
+    the ``kimi acp`` server. Returns ``None`` when the file is absent or cannot
+    be parsed — a broken global config must not abort ACP session creation.
+    """
+    from kimi_cli.cli.mcp import get_global_mcp_config_file
+
+    mcp_file = get_global_mcp_config_file()
+    if not mcp_file.exists():
+        return None
+    try:
+        data = json.loads(mcp_file.read_text(encoding="utf-8"))
+        return MCPConfig.model_validate(data)
+    except (OSError, json.JSONDecodeError, ValidationError) as exc:
+        logger.warning(
+            "Ignoring unreadable global MCP config {file}: {error}",
+            file=mcp_file,
+            error=exc,
+        )
+        return None
 
 
 class ACPServer:
@@ -147,6 +175,21 @@ class ACPServer:
             logger.warning("Authentication required, {reason}", reason=reason)
             raise acp.RequestError.auth_required({"authMethods": auth_methods_data})
 
+    def _build_mcp_configs(self, mcp_servers: list[MCPServer] | None) -> list[MCPConfig]:
+        """Assemble the MCP configs for a session.
+
+        Merges the globally-configured MCP servers (shared with interactive
+        ``kimi``) with any servers the ACP client supplied in the request, so
+        ``kimi acp`` exposes the same MCP tools as interactive mode. Servers
+        provided by the client take precedence on name conflicts.
+        """
+        configs: list[MCPConfig] = []
+        global_config = _load_global_mcp_config()
+        if global_config is not None:
+            configs.append(global_config)
+        configs.append(acp_mcp_servers_to_mcp_config(mcp_servers or []))
+        return configs
+
     async def new_session(
         self, cwd: str, mcp_servers: list[MCPServer] | None = None, **kwargs: Any
     ) -> acp.NewSessionResponse:
@@ -159,10 +202,9 @@ class ACPServer:
 
         session = await Session.create(KaosPath.unsafe_from_local_path(Path(cwd)))
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
             session,
-            mcp_configs=[mcp_config],
+            mcp_configs=self._build_mcp_configs(mcp_servers),
             ui_mode="acp",
         )
         config = cli_instance.soul.runtime.config
@@ -229,10 +271,9 @@ class ACPServer:
             )
             raise acp.RequestError.invalid_params({"session_id": "Session not found"})
 
-        mcp_config = acp_mcp_servers_to_mcp_config(mcp_servers or [])
         cli_instance = await KimiCLI.create(
             session,
-            mcp_configs=[mcp_config],
+            mcp_configs=self._build_mcp_configs(mcp_servers),
             resumed=True,  # _setup_session loads existing sessions
             ui_mode="acp",
         )
