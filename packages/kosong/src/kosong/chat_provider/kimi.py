@@ -314,9 +314,10 @@ def _guess_filename(mime_type: str) -> str:
 
 def _normalize_generation_kwargs(kwargs: Kimi.GenerationKwargs) -> Kimi.GenerationKwargs:
     normalized: dict[str, Any] = dict(kwargs)
-    max_tokens = normalized.pop("max_tokens", None)
-    if max_tokens is not None and "max_completion_tokens" not in normalized:
-        normalized["max_completion_tokens"] = max_tokens
+    if "max_tokens" in normalized:
+        max_tokens = normalized.pop("max_tokens")
+        if "max_completion_tokens" not in normalized:
+            normalized["max_completion_tokens"] = max_tokens
     return cast(Kimi.GenerationKwargs, normalized)
 
 

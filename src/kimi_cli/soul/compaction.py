@@ -15,6 +15,7 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import ContentPart, TextPart, ThinkPart
 
 COMPACTION_SYSTEM_PROMPT = "You are a helpful assistant that compacts conversation context."
+COMPACTION_OUTPUT_PREFIX = "Previous context has been compacted. Here is the compaction output:"
 
 
 class CompactionResult(NamedTuple):
@@ -144,9 +145,7 @@ class SimpleCompaction:
                 output=result.usage.output,
             )
 
-        content: list[ContentPart] = [
-            system("Previous context has been compacted. Here is the compaction output:")
-        ]
+        content: list[ContentPart] = [system(COMPACTION_OUTPUT_PREFIX)]
         compacted_msg = result.message
 
         # drop thinking parts if any

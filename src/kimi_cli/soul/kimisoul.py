@@ -36,6 +36,7 @@ from kimi_cli.llm import (
     ModelCapability,
     compute_max_completion_tokens,
     estimate_request_tokens,
+    find_kimi_provider,
 )
 from kimi_cli.notifications import (
     NotificationView,
@@ -54,6 +55,7 @@ from kimi_cli.soul import (
 )
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import (
+    COMPACTION_OUTPUT_PREFIX,
     COMPACTION_SYSTEM_PROMPT,
     Compaction,
     CompactionResult,
@@ -1256,12 +1258,11 @@ class KimiSoul:
         ``Runtime.llm`` — retry recovery in ``Kimi.on_retryable_error`` therefore
         affects subsequent steps as intended.
         """
-        from kosong.chat_provider.kimi import Kimi
-
-        if not isinstance(chat_provider, Kimi):
+        kimi_provider = find_kimi_provider(chat_provider)
+        if kimi_provider is None:
             return None
 
-        parameters = chat_provider.model_parameters
+        parameters = kimi_provider.model_parameters
         configured_budget = parameters.get("max_completion_tokens")
         if "max_completion_tokens" in parameters and configured_budget is None:
             return None
@@ -1327,16 +1328,47 @@ class KimiSoul:
         chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
         compaction_overrides = None
         if chat_provider is not None and isinstance(self._compaction, SimpleCompaction):
-            compact_message, _ = self._compaction.prepare(
+            compact_message, to_preserve = self._compaction.prepare(
                 self._context.history,
                 custom_instruction=custom_instruction,
             )
             if compact_message is not None:
+                post_compaction_history = [
+                    Message(
+                        role="user",
+                        content=[system(COMPACTION_OUTPUT_PREFIX)],
+                    ),
+                    *to_preserve,
+                ]
+                if self.is_root:
+                    active_task_snapshot = build_active_task_snapshot(
+                        self._runtime.background_tasks
+                    )
+                    if active_task_snapshot is not None:
+                        post_compaction_history.append(
+                            Message(
+                                role="user",
+                                content=[
+                                    system(
+                                        "The following background tasks are still active after "
+                                        "compaction. Use TaskList if you need to re-enumerate "
+                                        "them later."
+                                    ),
+                                    TextPart(text=active_task_snapshot),
+                                ],
+                            )
+                        )
+                post_compaction_input_tokens = estimate_request_tokens(
+                    self._agent.system_prompt,
+                    self._agent.toolset.tools,
+                    post_compaction_history,
+                )
                 compaction_overrides = self._compute_completion_overrides(
                     chat_provider,
                     system_prompt=COMPACTION_SYSTEM_PROMPT,
                     tools=(),
                     history=[compact_message],
+                    input_tokens_floor=post_compaction_input_tokens,
                 )
 
         async def _run_compaction_once() -> CompactionResult:

@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from kosong.chat_provider import APIConnectionError
+from kosong.chat_provider import APIConnectionError, ChatProvider
+from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
 from kosong.chat_provider.kimi import Kimi
 from kosong.message import Message
 from kosong.tooling import Tool
@@ -18,21 +19,29 @@ from kimi_cli.llm import (
     estimate_request_tokens,
 )
 from kimi_cli.soul.agent import Agent, Runtime
+from kimi_cli.soul.compaction import (
+    COMPACTION_OUTPUT_PREFIX,
+    COMPACTION_SYSTEM_PROMPT,
+    CompactionResult,
+)
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.message import system
 
 
-def _make_soul(runtime: Runtime, tmp_path: Path) -> KimiSoul:
+def _make_soul(
+    runtime: Runtime, tmp_path: Path, *, system_prompt: str = "Test prompt."
+) -> KimiSoul:
     agent = Agent(
         name="Completion Budget Test Agent",
-        system_prompt="Test prompt.",
+        system_prompt=system_prompt,
         toolset=EmptyToolset(),
         runtime=runtime,
     )
     return KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
 
 
-def _make_kimi_llm(chat_provider: Kimi, *, max_context_size: int = 100_000) -> LLM:
+def _make_kimi_llm(chat_provider: ChatProvider, *, max_context_size: int = 100_000) -> LLM:
     return LLM(
         chat_provider=chat_provider,
         max_context_size=max_context_size,
@@ -220,6 +229,99 @@ def test_compute_completion_overrides_returns_none_for_non_kimi_provider(
     soul = _make_soul(runtime, tmp_path)
 
     assert _compute_overrides(soul, _NotKimi()) is None
+
+
+def test_dynamic_completion_budget_unwraps_chaos_kimi_provider(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    kimi_provider = Kimi(
+        model="kimi-k2",
+        base_url="https://api.test/v1",
+        api_key="test-key",
+        stream=False,
+    )
+    chat_provider = ChaosChatProvider(
+        kimi_provider,
+        chaos_config=ChaosConfig(
+            error_probability=0,
+            corrupt_tool_call_probability=0,
+        ),
+    )
+    runtime.llm = _make_kimi_llm(chat_provider, max_context_size=8_192)
+    soul = _make_soul(runtime, tmp_path)
+
+    overrides = _compute_overrides(soul, chat_provider)
+
+    assert overrides is not None
+    assert overrides["max_completion_tokens"] < 8_192
+    assert chat_provider.wrapped_provider is kimi_provider
+
+
+@pytest.mark.asyncio
+async def test_compaction_budget_reserves_next_main_request_overhead(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chat_provider = Kimi(
+        model="kimi-k2",
+        base_url="https://api.test/v1",
+        api_key="test-key",
+        stream=False,
+    )
+    runtime.llm = _make_kimi_llm(chat_provider, max_context_size=8_192)
+    soul = _make_soul(runtime, tmp_path, system_prompt="large system prompt " * 300)
+    original_messages = [
+        Message(role="user", content="old context " * 500),
+        Message(role="assistant", content="old response " * 500),
+        Message(role="user", content="preserved question " * 300),
+        Message(role="assistant", content="preserved answer " * 300),
+    ]
+    await soul.context.append_message(original_messages)
+    captured_overrides: dict[str, Any] | None = None
+
+    async def fake_compact(
+        messages: Any,
+        llm: LLM,
+        *,
+        custom_instruction: str = "",
+        generation_overrides: Any = None,
+    ) -> Any:
+        del messages, llm, custom_instruction
+        nonlocal captured_overrides
+        captured_overrides = generation_overrides
+
+        return CompactionResult(
+            messages=[Message(role="user", content="summary")],
+            usage=None,
+        )
+
+    monkeypatch.setattr(soul._compaction, "compact", fake_compact)
+    monkeypatch.setattr("kimi_cli.soul.kimisoul.wire_send", lambda _message: None)
+
+    await soul.compact_context(manual=True)
+
+    assert captured_overrides is not None
+    prepared = soul._compaction.prepare(original_messages)
+    assert prepared.compact_message is not None
+    compaction_request_tokens = estimate_request_tokens(
+        COMPACTION_SYSTEM_PROMPT,
+        [],
+        [prepared.compact_message],
+    )
+    next_request_tokens = estimate_request_tokens(
+        soul._agent.system_prompt,
+        soul._agent.toolset.tools,
+        [
+            Message(role="user", content=[system(COMPACTION_OUTPUT_PREFIX)]),
+            *prepared.to_preserve,
+        ],
+    )
+    assert next_request_tokens > compaction_request_tokens
+    assert (
+        next_request_tokens
+        + DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN
+        + captured_overrides["max_completion_tokens"]
+        <= runtime.llm.max_context_size
+    )
 
 
 @pytest.mark.asyncio

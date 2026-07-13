@@ -23,6 +23,8 @@ from kimi_cli.constant import USER_AGENT
 from kimi_cli.utils.logging import logger
 
 if TYPE_CHECKING:
+    from kosong.chat_provider.kimi import Kimi
+
     from kimi_cli.auth.oauth import OAuthManager
     from kimi_cli.config import Config, LLMModel, LLMProvider
 
@@ -57,6 +59,17 @@ class LLM:
     @property
     def model_name(self) -> str:
         return self.chat_provider.model_name
+
+
+def find_kimi_provider(chat_provider: ChatProvider) -> Kimi | None:
+    """Return the Kimi provider backing a supported provider wrapper."""
+    from kosong.chat_provider.chaos import ChaosChatProvider
+    from kosong.chat_provider.kimi import Kimi
+
+    provider = chat_provider
+    while isinstance(provider, ChaosChatProvider):
+        provider = provider.wrapped_provider
+    return provider if isinstance(provider, Kimi) else None
 
 
 def compute_max_completion_tokens(

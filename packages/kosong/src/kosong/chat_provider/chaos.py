@@ -110,6 +110,11 @@ class ChaosChatProvider:
         self.name: str = provider.name
         self._monkey_patch_client()
 
+    @property
+    def wrapped_provider(self) -> ChatProvider:
+        """Return the provider whose calls are wrapped by this chaos provider."""
+        return self._provider
+
     async def generate(
         self,
         system_prompt: str,
