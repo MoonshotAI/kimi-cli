@@ -70,8 +70,9 @@ asyncio.run(main())
 """
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from loguru import logger
 
@@ -109,6 +110,7 @@ async def step(
     *,
     on_message_part: Callback[[StreamedMessagePart], None] | None = None,
     on_tool_result: Callable[[ToolResult], None] | None = None,
+    generation_overrides: Mapping[str, Any] | None = None,
 ) -> "StepResult":
     """
     Run one agent "step". In one step, the function generates LLM response based on the given
@@ -120,6 +122,15 @@ async def step(
     The message history will NOT be modified in this function.
 
     The token usage will be returned in the `StepResult` if available.
+
+    Args:
+        chat_provider: The chat provider to use for generation.
+        system_prompt: The system prompt forwarded to the chat provider.
+        toolset: The toolset that handles tool calls and exposes available tools.
+        history: The message history forwarded to the chat provider.
+        on_message_part: Optional callback fired for each streamed message part.
+        on_tool_result: Optional callback fired when an individual tool result resolves.
+        generation_overrides: Optional per-call overrides forwarded to ``chat_provider.generate``.
 
     Raises:
         APIConnectionError: If the API connection fails.
@@ -162,6 +173,7 @@ async def step(
             history,
             on_message_part=on_message_part,
             on_tool_call=on_tool_call,
+            generation_overrides=generation_overrides,
         )
     except (ChatProviderError, asyncio.CancelledError):
         # cancel all the futures to avoid hanging tasks

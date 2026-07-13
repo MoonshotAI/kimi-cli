@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
-from typing import Self, TypeVar
+from typing import Any, Self, TypeVar
 
 import pytest
 from inline_snapshot import Snapshot, snapshot
@@ -89,6 +89,7 @@ class SequenceChatProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        **_kwargs: Any,
     ) -> SequenceStreamedMessage:
         index = min(self._index, len(self._sequences) - 1)
         self._index += 1

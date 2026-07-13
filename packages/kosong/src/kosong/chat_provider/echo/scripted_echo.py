@@ -3,8 +3,8 @@ from __future__ import annotations
 import copy
 import json
 from collections import deque
-from collections.abc import AsyncIterator, Iterable, Sequence
-from typing import TYPE_CHECKING, Self
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Self
 
 from kosong.chat_provider import (
     ChatProvider,
@@ -49,7 +49,10 @@ class ScriptedEchoChatProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> ScriptedEchoStreamedMessage:
+        del generation_overrides  # scripted echo replays canned scripts; overrides not applicable
         if not self._scripts:
             raise ChatProviderError(f"ScriptedEchoChatProvider exhausted at turn {self._turn + 1}.")
         script_text = self._scripts.popleft()

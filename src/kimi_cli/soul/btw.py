@@ -131,6 +131,12 @@ async def execute_side_question(
             return None, "LLM is not set."
 
         chat_provider = soul._runtime.llm.chat_provider  # pyright: ignore[reportPrivateUsage]
+        # Compute per-call completion overrides up front so /btw is subject to the same
+        # context-aware completion budget as KimiSoul's main step path. Without this the
+        # bare ``kosong.step`` call below would send a request with no completion cap on
+        # Kimi providers (the provider-level default was removed), so a side-question
+        # could run for hundreds of seconds and burn a large completion budget.
+        generation_overrides = soul._compute_completion_overrides(chat_provider)  # pyright: ignore[reportPrivateUsage]
         system_prompt, history, toolset = _build_btw_context(soul, question)
 
         text_chunks: list[str] = []
@@ -149,6 +155,7 @@ async def execute_side_question(
                 toolset,
                 history,
                 on_message_part=_on_part,
+                generation_overrides=generation_overrides,
             )
 
             # Check for text response — but only accept it if the LLM

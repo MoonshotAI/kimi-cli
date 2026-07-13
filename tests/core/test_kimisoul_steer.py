@@ -400,7 +400,7 @@ class _SequenceChatProvider:
     def thinking_effort(self):
         return None
 
-    async def generate(self, system_prompt, tools, history):
+    async def generate(self, system_prompt, tools, history, **_kwargs):
         index = min(self._calls, len(self._sequences) - 1)
         self._calls += 1
         return _SequenceStreamedMessage(self._sequences[index])

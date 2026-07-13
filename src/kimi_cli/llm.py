@@ -31,6 +31,7 @@ type ProviderType = Literal[
 
 type ModelCapability = Literal["image_in", "video_in", "thinking", "always_thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
+DEFAULT_UNKNOWN_CONTEXT_COMPLETION_TOKENS = 32_000
 
 
 @dataclass(slots=True)
@@ -44,6 +45,23 @@ class LLM:
     @property
     def model_name(self) -> str:
         return self.chat_provider.model_name
+
+
+def compute_max_completion_tokens(
+    *,
+    max_context_size: int,
+    input_tokens: int,
+    response_budget: int | None,
+    fallback_budget: int = DEFAULT_UNKNOWN_CONTEXT_COMPLETION_TOKENS,
+) -> int:
+    """Compute the Kimi completion cap from the hard cap and remaining context."""
+    if max_context_size <= 0:
+        return max(1, response_budget if response_budget is not None else fallback_budget)
+
+    input_tokens = max(0, input_tokens)
+    remaining = max(1, max_context_size - input_tokens)
+    requested = response_budget if response_budget is not None else max_context_size
+    return max(1, min(requested, remaining))
 
 
 def model_display_name(model_name: str | None, model: LLMModel | None = None) -> str:
@@ -147,8 +165,23 @@ def create_llm(
                 gen_kwargs["temperature"] = float(temperature)
             if top_p := os.getenv("KIMI_MODEL_TOP_P"):
                 gen_kwargs["top_p"] = float(top_p)
-            if max_tokens := os.getenv("KIMI_MODEL_MAX_TOKENS"):
-                gen_kwargs["max_tokens"] = int(max_tokens)
+            for env_name in (
+                "KIMI_MODEL_MAX_COMPLETION_TOKENS",
+                "KIMI_MODEL_MAX_TOKENS",
+            ):
+                raw_max_completion_tokens = os.getenv(env_name)
+                if not raw_max_completion_tokens:
+                    continue
+                try:
+                    max_completion_tokens = int(raw_max_completion_tokens)
+                except ValueError:
+                    continue
+                # ``None`` is an explicit opt-out marker consumed by KimiSoul. Kimi's
+                # request serializer omits it when no per-call override is supplied.
+                gen_kwargs["max_completion_tokens"] = (
+                    max_completion_tokens if max_completion_tokens > 0 else None
+                )
+                break
 
             if gen_kwargs:
                 chat_provider = chat_provider.with_generation_kwargs(**gen_kwargs)

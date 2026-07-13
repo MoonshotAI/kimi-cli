@@ -10,7 +10,7 @@ import base64
 import copy
 import json
 import mimetypes
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast
 
 import httpx
@@ -144,10 +144,15 @@ class GoogleGenAI:
         system_prompt: str,
         tools: Sequence[KosongTool],
         history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "GoogleGenAIStreamedMessage":
         contents = messages_to_google_genai_contents(history)
 
-        config = GenerateContentConfig(**self._generation_kwargs)
+        merged_kwargs: dict[str, Any] = dict(self._generation_kwargs)
+        if generation_overrides:
+            merged_kwargs.update(generation_overrides)
+        config = GenerateContentConfig(**merged_kwargs)
         config.system_instruction = system_prompt
         config.tools = [tool_to_google_genai(tool) for tool in tools]
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 import pytest
 from kosong.chat_provider import StreamedMessagePart, ThinkingEffort, TokenUsage
@@ -75,6 +75,8 @@ class _RepeatChatProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> _RepeatStream:
         self._n += 1
         tc = ToolCall(

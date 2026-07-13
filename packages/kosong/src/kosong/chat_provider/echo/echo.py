@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import AsyncIterator, Sequence
-from typing import TYPE_CHECKING, Self
+from collections.abc import AsyncIterator, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Self
 
 from kosong.chat_provider import (
     ChatProvider,
@@ -72,7 +72,10 @@ class EchoChatProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> EchoStreamedMessage:
+        del generation_overrides  # echo provider has no API to forward overrides to
         if not history:
             raise ChatProviderError("EchoChatProvider requires at least one message in history.")
         if history[-1].role != "user":
