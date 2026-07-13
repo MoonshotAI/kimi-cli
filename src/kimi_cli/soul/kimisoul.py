@@ -20,6 +20,7 @@ from kosong.chat_provider import (
     RetryableChatProvider,
 )
 from kosong.message import Message
+from kosong.tooling import Tool
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.approval_runtime import (
@@ -30,7 +31,12 @@ from kimi_cli.approval_runtime import (
 )
 from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.hooks.engine import HookEngine
-from kimi_cli.llm import ModelCapability, compute_max_completion_tokens
+from kimi_cli.llm import (
+    DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
+    ModelCapability,
+    compute_max_completion_tokens,
+    estimate_request_tokens,
+)
 from kimi_cli.notifications import (
     NotificationView,
     build_notification_message,
@@ -48,6 +54,8 @@ from kimi_cli.soul import (
 )
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import (
+    COMPACTION_SYSTEM_PROMPT,
+    Compaction,
     CompactionResult,
     SimpleCompaction,
     estimate_text_tokens,
@@ -178,7 +186,7 @@ class KimiSoul:
         self._approval = agent.runtime.approval
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
-        self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._compaction: Compaction = SimpleCompaction()  # TODO: maybe configurable and composable
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -1071,7 +1079,13 @@ class KimiSoul:
         # 2e.3. HISTORY NORMALIZATION
         # ═══════════════════════════════════════════════════════════════════════
         effective_history = normalize_history(self._context.history)
-        generation_overrides = self._compute_completion_overrides(chat_provider)
+        generation_overrides = self._compute_completion_overrides(
+            chat_provider,
+            system_prompt=self._agent.system_prompt,
+            tools=self._agent.toolset.tools,
+            history=effective_history,
+            input_tokens_floor=self._context.token_count_with_pending,
+        )
 
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.4. LLM CALL WITH RETRY
@@ -1224,7 +1238,15 @@ class KimiSoul:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
-    def _compute_completion_overrides(self, chat_provider: ChatProvider) -> dict[str, Any] | None:
+    def _compute_completion_overrides(
+        self,
+        chat_provider: ChatProvider,
+        *,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+        input_tokens_floor: int = 0,
+    ) -> dict[str, Any] | None:
         """Compute per-call generation overrides for the given chat provider.
 
         Returns a dict of per-call generation overrides forwarded to ``kosong.step``,
@@ -1247,9 +1269,13 @@ class KimiSoul:
             configured_budget = None
 
         assert self._runtime.llm is not None
+        estimated_input_tokens = estimate_request_tokens(system_prompt, tools, history)
+        input_tokens = max(input_tokens_floor, estimated_input_tokens)
+        if self._runtime.llm.max_context_size > 0:
+            input_tokens += DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN
         max_completion_tokens = compute_max_completion_tokens(
             max_context_size=self._runtime.llm.max_context_size,
-            input_tokens=self._context.token_count_with_pending,
+            input_tokens=input_tokens,
             response_budget=configured_budget,
             fallback_budget=self._loop_control.reserved_context_size,
         )
@@ -1299,9 +1325,19 @@ class KimiSoul:
         """
 
         chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
-        compaction_overrides = (
-            self._compute_completion_overrides(chat_provider) if chat_provider is not None else None
-        )
+        compaction_overrides = None
+        if chat_provider is not None and isinstance(self._compaction, SimpleCompaction):
+            compact_message, _ = self._compaction.prepare(
+                self._context.history,
+                custom_instruction=custom_instruction,
+            )
+            if compact_message is not None:
+                compaction_overrides = self._compute_completion_overrides(
+                    chat_provider,
+                    system_prompt=COMPACTION_SYSTEM_PROMPT,
+                    tools=(),
+                    history=[compact_message],
+                )
 
         async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:

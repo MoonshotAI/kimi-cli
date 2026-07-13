@@ -18,6 +18,7 @@ import kosong
 from kosong.message import Message, ToolCall
 from kosong.tooling import Tool, ToolError, ToolResult
 
+from kimi_cli.llm import estimate_message_tokens
 from kimi_cli.soul import LLMNotSet, wire_send
 from kimi_cli.soul.dynamic_injection import normalize_history
 from kimi_cli.soul.message import system_reminder
@@ -131,13 +132,8 @@ async def execute_side_question(
             return None, "LLM is not set."
 
         chat_provider = soul._runtime.llm.chat_provider  # pyright: ignore[reportPrivateUsage]
-        # Compute per-call completion overrides up front so /btw is subject to the same
-        # context-aware completion budget as KimiSoul's main step path. Without this the
-        # bare ``kosong.step`` call below would send a request with no completion cap on
-        # Kimi providers (the provider-level default was removed), so a side-question
-        # could run for hundreds of seconds and burn a large completion budget.
-        generation_overrides = soul._compute_completion_overrides(chat_provider)  # pyright: ignore[reportPrivateUsage]
         system_prompt, history, toolset = _build_btw_context(soul, question)
+        main_history_size = len(history) - 1
 
         text_chunks: list[str] = []
 
@@ -149,6 +145,16 @@ async def execute_side_question(
 
         # Multi-turn loop: give the LLM a second chance if it calls tools
         for turn in range(_BTW_MAX_TURNS):
+            local_history = history[main_history_size:]
+            generation_overrides = soul._compute_completion_overrides(  # pyright: ignore[reportPrivateUsage]
+                chat_provider,
+                system_prompt=system_prompt,
+                tools=toolset.tools,
+                history=history,
+                input_tokens_floor=(
+                    soul.context.token_count_with_pending + estimate_message_tokens(local_history)
+                ),
+            )
             result = await kosong.step(
                 chat_provider,
                 system_prompt,

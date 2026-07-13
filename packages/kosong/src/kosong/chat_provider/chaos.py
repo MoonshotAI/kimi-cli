@@ -118,9 +118,12 @@ class ChaosChatProvider:
         *,
         generation_overrides: Mapping[str, Any] | None = None,
     ) -> "ChaosStreamedMessage":
-        base_stream = await self._provider.generate(
-            system_prompt, tools, history, generation_overrides=generation_overrides
-        )
+        if not generation_overrides:
+            base_stream = await self._provider.generate(system_prompt, tools, history)
+        else:
+            base_stream = await self._provider.generate(
+                system_prompt, tools, history, generation_overrides=generation_overrides
+            )
         return ChaosStreamedMessage(base_stream, self._chaos_config)
 
     def _monkey_patch_client(self):

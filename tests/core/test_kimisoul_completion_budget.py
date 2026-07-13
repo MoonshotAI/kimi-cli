@@ -6,11 +6,17 @@ from typing import Any
 import pytest
 from kosong.chat_provider import APIConnectionError
 from kosong.chat_provider.kimi import Kimi
+from kosong.message import Message
+from kosong.tooling import Tool
 from kosong.tooling.empty import EmptyToolset
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider
-from kimi_cli.llm import LLM
+from kimi_cli.llm import (
+    DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
+    LLM,
+    estimate_request_tokens,
+)
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
@@ -44,6 +50,23 @@ def _make_kimi_llm(chat_provider: Kimi, *, max_context_size: int = 100_000) -> L
     )
 
 
+def _compute_overrides(
+    soul: KimiSoul,
+    chat_provider: Any,
+    *,
+    system_prompt: str = "Test prompt.",
+    tools: list[Tool] | None = None,
+    history: list[Message] | None = None,
+) -> dict[str, Any] | None:
+    return soul._compute_completion_overrides(
+        chat_provider,
+        system_prompt=system_prompt,
+        tools=tools or [],
+        history=history or [],
+        input_tokens_floor=soul.context.token_count_with_pending,
+    )
+
+
 @pytest.mark.asyncio
 async def test_dynamic_completion_budget_clamps_kimi_request(
     runtime: Runtime, tmp_path: Path
@@ -58,9 +81,9 @@ async def test_dynamic_completion_budget_clamps_kimi_request(
     soul = _make_soul(runtime, tmp_path)
     await soul.context.update_token_count(60_000)
 
-    overrides = soul._compute_completion_overrides(chat_provider)
+    overrides = _compute_overrides(soul, chat_provider)
 
-    assert overrides == {"max_completion_tokens": 40_000}
+    assert overrides == {"max_completion_tokens": 38_976}
 
 
 def test_dynamic_completion_budget_preserves_explicit_kimi_cap(
@@ -75,7 +98,7 @@ def test_dynamic_completion_budget_preserves_explicit_kimi_cap(
     runtime.llm = _make_kimi_llm(chat_provider)
     soul = _make_soul(runtime, tmp_path)
 
-    overrides = soul._compute_completion_overrides(chat_provider)
+    overrides = _compute_overrides(soul, chat_provider)
 
     assert overrides == {"max_completion_tokens": 1234}
 
@@ -94,9 +117,9 @@ async def test_dynamic_completion_budget_clamps_explicit_kimi_cap(
     soul = _make_soul(runtime, tmp_path)
     await soul.context.update_token_count(7_000)
 
-    overrides = soul._compute_completion_overrides(chat_provider)
+    overrides = _compute_overrides(soul, chat_provider)
 
-    assert overrides == {"max_completion_tokens": 1_192}
+    assert overrides == {"max_completion_tokens": 168}
 
 
 def test_dynamic_completion_budget_uses_full_context_without_explicit_cap(
@@ -111,7 +134,52 @@ def test_dynamic_completion_budget_uses_full_context_without_explicit_cap(
     runtime.llm = _make_kimi_llm(chat_provider, max_context_size=262_144)
     soul = _make_soul(runtime, tmp_path)
 
-    assert soul._compute_completion_overrides(chat_provider) == {"max_completion_tokens": 262_144}
+    request_tokens = estimate_request_tokens("Test prompt.", [], [])
+    assert _compute_overrides(soul, chat_provider) == {
+        "max_completion_tokens": 262_144 - request_tokens - DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN
+    }
+
+
+def test_dynamic_completion_budget_counts_full_first_request(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    chat_provider = Kimi(
+        model="kimi-k2",
+        base_url="https://api.test/v1",
+        api_key="test-key",
+        stream=False,
+    )
+    runtime.llm = _make_kimi_llm(chat_provider, max_context_size=8_192)
+    soul = _make_soul(runtime, tmp_path)
+    system_prompt = "system instruction " * 200
+    tools = [
+        Tool(
+            name="lookup",
+            description="Look up a value " * 40,
+            parameters={
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "search term"}},
+                "required": ["query"],
+            },
+        )
+    ]
+    history = [Message(role="user", content="hi")]
+
+    overrides = _compute_overrides(
+        soul,
+        chat_provider,
+        system_prompt=system_prompt,
+        tools=tools,
+        history=history,
+    )
+
+    assert overrides is not None
+    input_tokens = estimate_request_tokens(system_prompt, tools, history)
+    assert input_tokens > 0
+    assert (
+        input_tokens + DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN + overrides["max_completion_tokens"]
+        <= 8_192
+    )
 
 
 def test_dynamic_completion_budget_can_be_disabled(runtime: Runtime, tmp_path: Path) -> None:
@@ -124,7 +192,7 @@ def test_dynamic_completion_budget_can_be_disabled(runtime: Runtime, tmp_path: P
     runtime.llm = _make_kimi_llm(chat_provider)
     soul = _make_soul(runtime, tmp_path)
 
-    assert soul._compute_completion_overrides(chat_provider) is None
+    assert _compute_overrides(soul, chat_provider) is None
 
 
 def test_compute_completion_overrides_returns_none_for_non_kimi_provider(
@@ -151,7 +219,7 @@ def test_compute_completion_overrides_returns_none_for_non_kimi_provider(
 
     soul = _make_soul(runtime, tmp_path)
 
-    assert soul._compute_completion_overrides(_NotKimi()) is None  # type: ignore[arg-type]
+    assert _compute_overrides(soul, _NotKimi()) is None
 
 
 @pytest.mark.asyncio
@@ -181,7 +249,7 @@ async def test_compute_overrides_does_not_copy_chat_provider(
     soul = _make_soul(runtime, tmp_path)
     await soul.context.update_token_count(1_000)
 
-    overrides = soul._compute_completion_overrides(runtime.llm.chat_provider)
+    overrides = _compute_overrides(soul, runtime.llm.chat_provider)
 
     # The override path returns data, not a substitute provider.
     assert isinstance(overrides, dict)
@@ -198,6 +266,6 @@ async def test_compute_overrides_does_not_copy_chat_provider(
     assert isinstance(runtime_provider, Kimi)
     assert runtime_provider.client is chat_provider.client
 
-    overrides_after_recovery = soul._compute_completion_overrides(runtime_provider)
+    overrides_after_recovery = _compute_overrides(soul, runtime_provider)
     assert isinstance(overrides_after_recovery, dict)
     assert runtime_provider is chat_provider

@@ -14,6 +14,8 @@ from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import ContentPart, TextPart, ThinkPart
 
+COMPACTION_SYSTEM_PROMPT = "You are a helpful assistant that compacts conversation context."
+
 
 class CompactionResult(NamedTuple):
     messages: Sequence[Message]
@@ -130,7 +132,7 @@ class SimpleCompaction:
         logger.debug("Compacting context...")
         result = await kosong.step(
             chat_provider=llm.chat_provider,
-            system_prompt="You are a helpful assistant that compacts conversation context.",
+            system_prompt=COMPACTION_SYSTEM_PROMPT,
             toolset=EmptyToolset(),
             history=[compact_message],
             generation_overrides=generation_overrides,

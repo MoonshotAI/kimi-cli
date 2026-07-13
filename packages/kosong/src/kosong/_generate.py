@@ -53,9 +53,14 @@ async def generate(
     pending_part: StreamedMessagePart | None = None  # message part that is currently incomplete
 
     logger.trace("Generating with history: {history}", history=history)
-    stream = await chat_provider.generate(
-        system_prompt, tools, history, generation_overrides=generation_overrides
-    )
+    if not generation_overrides:
+        # Preserve the original three-argument provider API for third-party providers that do
+        # not use request-scoped overrides yet.
+        stream = await chat_provider.generate(system_prompt, tools, history)
+    else:
+        stream = await chat_provider.generate(
+            system_prompt, tools, history, generation_overrides=generation_overrides
+        )
     async for part in stream:
         logger.trace("Received part: {part}", part=part)
         if on_message_part:

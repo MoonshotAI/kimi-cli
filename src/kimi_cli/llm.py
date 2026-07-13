@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast, get_args
 
 from kosong.chat_provider import ChatProvider
+from kosong.message import (
+    AudioURLPart,
+    ImageURLPart,
+    Message,
+    TextPart,
+    ThinkPart,
+    VideoURLPart,
+)
+from kosong.tooling import Tool
 from pydantic import SecretStr
 
 from kimi_cli.constant import USER_AGENT
@@ -32,6 +42,8 @@ type ProviderType = Literal[
 type ModelCapability = Literal["image_in", "video_in", "thinking", "always_thinking"]
 ALL_MODEL_CAPABILITIES: set[ModelCapability] = set(get_args(ModelCapability.__value__))
 DEFAULT_UNKNOWN_CONTEXT_COMPLETION_TOKENS = 32_000
+DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN = 1_024
+MEDIA_TOKEN_ESTIMATE = 2_000
 
 
 @dataclass(slots=True)
@@ -62,6 +74,74 @@ def compute_max_completion_tokens(
     remaining = max(1, max_context_size - input_tokens)
     requested = response_budget if response_budget is not None else max_context_size
     return max(1, min(requested, remaining))
+
+
+def estimate_request_tokens(
+    system_prompt: str,
+    tools: Sequence[Tool],
+    history: Sequence[Message],
+) -> int:
+    """Estimate all token-bearing parts of a chat request.
+
+    The estimate is deliberately request-scoped: unlike ``Context.token_count_with_pending``,
+    it includes the system prompt, tool schemas, message metadata, tool calls, and media. Exact
+    tokenization is provider/model specific, so callers should still reserve a small safety
+    margin when using the result to derive a hard completion limit.
+    """
+    return (
+        _estimate_text_tokens(system_prompt)
+        + sum(_estimate_tool_tokens(tool) for tool in tools)
+        + sum(_estimate_message_tokens(message) for message in history)
+    )
+
+
+def estimate_message_tokens(messages: Sequence[Message]) -> int:
+    """Estimate token-bearing content for messages added outside the main context."""
+    return sum(_estimate_message_tokens(message) for message in messages)
+
+
+def _estimate_text_tokens(text: str) -> int:
+    ascii_count = sum(char.isascii() for char in text)
+    non_ascii_count = len(text) - ascii_count
+    return (ascii_count + 3) // 4 + non_ascii_count
+
+
+def _estimate_tool_tokens(tool: Tool) -> int:
+    return (
+        _estimate_text_tokens(tool.name)
+        + _estimate_text_tokens(tool.description)
+        + _estimate_text_tokens(
+            json.dumps(tool.parameters, ensure_ascii=False, separators=(",", ":"))
+        )
+    )
+
+
+def _estimate_message_tokens(message: Message) -> int:
+    total = _estimate_text_tokens(message.role)
+    if message.name:
+        total += _estimate_text_tokens(message.name)
+    if message.tool_call_id:
+        total += _estimate_text_tokens(message.tool_call_id)
+
+    for part in message.content:
+        if isinstance(part, TextPart):
+            total += _estimate_text_tokens(part.text)
+        elif isinstance(part, ThinkPart):
+            total += _estimate_text_tokens(part.think)
+        elif isinstance(part, (ImageURLPart, AudioURLPart, VideoURLPart)):
+            total += MEDIA_TOKEN_ESTIMATE
+        else:
+            total += _estimate_text_tokens(part.model_dump_json(exclude_none=True))
+
+    for tool_call in message.tool_calls or ():
+        total += _estimate_text_tokens(tool_call.id)
+        total += _estimate_text_tokens(tool_call.function.name)
+        total += _estimate_text_tokens(tool_call.function.arguments or "")
+        if tool_call.extras:
+            total += _estimate_text_tokens(
+                json.dumps(tool_call.extras, ensure_ascii=False, separators=(",", ":"))
+            )
+    return total
 
 
 def model_display_name(model_name: str | None, model: LLMModel | None = None) -> str:

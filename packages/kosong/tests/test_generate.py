@@ -1,12 +1,34 @@
 import asyncio
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from typing import Any, cast
 
 import pytest
 
 from kosong import generate
 from kosong.chat_provider import APIEmptyResponseError, StreamedMessagePart
 from kosong.chat_provider.mock import MockChatProvider
-from kosong.message import ImageURLPart, TextPart, ThinkPart, ToolCall, ToolCallPart
+from kosong.message import ImageURLPart, Message, TextPart, ThinkPart, ToolCall, ToolCallPart
+from kosong.tooling import Tool
+
+
+class _LegacyStream:
+    id = "legacy-response"
+    usage = None
+
+    async def __aiter__(self):
+        yield TextPart(text="legacy ok")
+
+
+class _LegacyProvider:
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> _LegacyStream:
+        del system_prompt, tools, history
+        return _LegacyStream()
 
 
 def test_generate():
@@ -41,6 +63,24 @@ def test_generate():
             function=ToolCall.FunctionBody(name="get_weather", arguments='{"city":"Beijing"}'),
         ),
     ]
+
+
+@pytest.mark.parametrize("generation_overrides", [None, {}])
+def test_generate_without_overrides_preserves_legacy_provider_signature(
+    generation_overrides: Mapping[str, Any] | None,
+) -> None:
+    result = asyncio.run(
+        generate(
+            cast(Any, _LegacyProvider()),
+            system_prompt="",
+            tools=[],
+            history=[],
+            generation_overrides=generation_overrides,
+        )
+    )
+
+    assert result.id == "legacy-response"
+    assert result.message.extract_text() == "legacy ok"
 
 
 def test_generate_with_callbacks():

@@ -456,6 +456,7 @@ class TestExecuteSideQuestion:
         soul._agent.system_prompt = "sys"
         soul._agent.toolset.tools = []
         soul.context.history = []
+        soul.context.token_count_with_pending = 100
 
         captured_overrides: list[object] = []
 
@@ -471,7 +472,55 @@ class TestExecuteSideQuestion:
         assert response == "ok"
         assert error is None
         assert captured_overrides == [{"max_completion_tokens": 4096}]
-        soul._compute_completion_overrides.assert_called_once_with(soul._runtime.llm.chat_provider)
+        soul._compute_completion_overrides.assert_called_once()
+        call = soul._compute_completion_overrides.call_args
+        assert call.args == (soul._runtime.llm.chat_provider,)
+        assert call.kwargs["system_prompt"] == "sys"
+        assert call.kwargs["history"][-1].role == "user"
+        assert call.kwargs["input_tokens_floor"] > 100
+
+    def test_recomputes_generation_overrides_after_tool_round(self):
+        soul = MagicMock()
+        soul._runtime.llm.chat_provider = MagicMock()
+        soul._compute_completion_overrides.side_effect = [
+            {"max_completion_tokens": 4096},
+            {"max_completion_tokens": 2048},
+        ]
+        soul._agent.system_prompt = "sys"
+        soul._agent.toolset.tools = []
+        soul.context.history = []
+        soul.context.token_count_with_pending = 100
+
+        captured_overrides: list[object] = []
+        call_count = 0
+
+        async def fake_step(provider, sys_prompt, toolset, history, **kw):
+            nonlocal call_count
+            call_count += 1
+            captured_overrides.append(kw.get("generation_overrides"))
+            if call_count == 1:
+                return _tool_call_result("Read")
+            if kw.get("on_message_part"):
+                kw["on_message_part"](TextPart(text="ok"))
+            return _text_result("ok")
+
+        with patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step):
+            response, error = asyncio.run(execute_side_question(soul, "hi"))
+
+        assert response == "ok"
+        assert error is None
+        assert captured_overrides == [
+            {"max_completion_tokens": 4096},
+            {"max_completion_tokens": 2048},
+        ]
+        assert soul._compute_completion_overrides.call_count == 2
+        first_floor = soul._compute_completion_overrides.call_args_list[0].kwargs[
+            "input_tokens_floor"
+        ]
+        second_floor = soul._compute_completion_overrides.call_args_list[1].kwargs[
+            "input_tokens_floor"
+        ]
+        assert second_floor > first_floor
 
 
 # ---------------------------------------------------------------------------
