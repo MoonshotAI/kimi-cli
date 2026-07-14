@@ -11,6 +11,7 @@ from kaos.path import KaosPath
 from kimi_cli.session import Session
 from kimi_cli.session_state import load_session_state, save_session_state
 from kimi_cli.web.api import sessions as sessions_api
+from kimi_cli.web.api.sessions import SESSION_TITLE_MAX_COMPLETION_TOKENS
 from kimi_cli.web.models import GenerateTitleRequest
 
 if TYPE_CHECKING:
@@ -114,3 +115,64 @@ async def test_generate_title_preserves_concurrent_manual_title(
     assert state.custom_title == "Manual Title"
     assert state.title_generated is True
     assert state.title_generate_attempts == 0
+
+
+@pytest.mark.anyio
+async def test_generate_title_caps_kimi_completion(
+    isolated_share_dir: Path,
+    work_dir: KaosPath,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from kosong.chat_provider.kimi import Kimi
+
+    session = await Session.create(work_dir)
+    chat_provider = Kimi(
+        model="kimi-k2",
+        base_url="https://api.test/v1",
+        api_key="test-key",
+        stream=False,
+    )
+    config = SimpleNamespace(
+        default_model="test-model",
+        models={"test-model": SimpleNamespace(provider="test-provider")},
+        providers={"test-provider": object()},
+    )
+    monkeypatch.setattr("kimi_cli.config.load_config", lambda: config)
+    monkeypatch.setattr(
+        "kimi_cli.llm.create_llm",
+        lambda provider_config, model_config, oauth=None: SimpleNamespace(
+            chat_provider=chat_provider
+        ),
+    )
+    monkeypatch.setattr("kimi_cli.auth.oauth.OAuthManager", _FakeOAuthManager)
+    request_provider = object()
+    captured_provider = None
+    captured_overrides = None
+
+    def fake_with_overrides(provider, overrides):
+        nonlocal captured_overrides
+        assert provider is chat_provider
+        captured_overrides = overrides
+        return request_provider
+
+    async def fake_generate(*, chat_provider, system_prompt, tools, history):
+        del system_prompt, tools, history
+        nonlocal captured_provider
+        captured_provider = chat_provider
+        return _FakeResult("Bounded Title")
+
+    monkeypatch.setattr("kimi_cli.llm.with_kimi_generation_overrides", fake_with_overrides)
+    monkeypatch.setattr("kosong.generate", fake_generate)
+
+    response = await sessions_api.generate_session_title(
+        UUID(session.id),
+        GenerateTitleRequest(
+            user_message="investigate a completion budget regression",
+            assistant_response="I will inspect the request construction.",
+        ),
+        runner=cast("KimiCLIRunner", _FakeRunner()),
+    )
+
+    assert response.title == "Bounded Title"
+    assert captured_provider is request_provider
+    assert captured_overrides == {"max_completion_tokens": SESSION_TITLE_MAX_COMPLETION_TOKENS}

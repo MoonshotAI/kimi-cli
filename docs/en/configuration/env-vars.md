@@ -17,7 +17,8 @@ The following environment variables take effect when using `kimi` type providers
 | `KIMI_MODEL_CAPABILITIES` | Model capabilities, comma-separated (e.g., `thinking,image_in`) |
 | `KIMI_MODEL_TEMPERATURE` | Generation parameter `temperature` |
 | `KIMI_MODEL_TOP_P` | Generation parameter `top_p` |
-| `KIMI_MODEL_MAX_TOKENS` | Generation parameter `max_tokens` |
+| `KIMI_MODEL_MAX_COMPLETION_TOKENS` | Explicit hard cap for `max_completion_tokens` |
+| `KIMI_MODEL_MAX_TOKENS` | Compatibility alias for `KIMI_MODEL_MAX_COMPLETION_TOKENS` |
 | `KIMI_MODEL_THINKING_KEEP` | Moonshot `thinking.keep` switch for preserved thinking (only applied when thinking mode is active) |
 
 ### `KIMI_BASE_URL`
@@ -76,13 +77,19 @@ Sets the generation parameter `top_p` (nucleus sampling), controlling output div
 export KIMI_MODEL_TOP_P="0.9"
 ```
 
-### `KIMI_MODEL_MAX_TOKENS`
+### `KIMI_MODEL_MAX_COMPLETION_TOKENS`
 
-Sets the generation parameter `max_tokens`, limiting the maximum tokens per response.
+Sets an explicit hard cap for the generation parameter `max_completion_tokens`. When unset,
+Kimi Code CLI uses the model's remaining context window. The value is dynamically clamped to
+`max_context_size - input_tokens` for every request.
 
 ```sh
-export KIMI_MODEL_MAX_TOKENS="4096"
+export KIMI_MODEL_MAX_COMPLETION_TOKENS="4096"
 ```
+
+`KIMI_MODEL_MAX_TOKENS` is still accepted. If both variables are set,
+`KIMI_MODEL_MAX_COMPLETION_TOKENS` takes precedence. Set either variable to `0` or a negative
+integer to disable completion-token clamping.
 
 ### `KIMI_MODEL_THINKING_KEEP`
 

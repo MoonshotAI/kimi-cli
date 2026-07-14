@@ -7,7 +7,7 @@ from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
 from pydantic import SecretStr
 
 from kimi_cli.config import LLMModel, LLMProvider
-from kimi_cli.llm import augment_provider_with_env_vars, create_llm
+from kimi_cli.llm import augment_provider_with_env_vars, compute_max_completion_tokens, create_llm
 
 
 def test_augment_provider_with_env_vars_kimi(monkeypatch):
@@ -74,9 +74,93 @@ def test_create_llm_kimi_model_parameters(monkeypatch):
             "base_url": "https://api.test/v1/",
             "temperature": 0.2,
             "top_p": 0.8,
-            "max_tokens": 1234,
+            "max_completion_tokens": 1234,
         }
     )
+
+
+def test_create_llm_kimi_prefers_max_completion_tokens_env(monkeypatch):
+    provider = LLMProvider(
+        type="kimi",
+        base_url="https://api.test/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="kimi",
+        model="kimi-base",
+        max_context_size=4096,
+        capabilities=None,
+    )
+
+    monkeypatch.setenv("KIMI_MODEL_MAX_TOKENS", "1234")
+    monkeypatch.setenv("KIMI_MODEL_MAX_COMPLETION_TOKENS", "5678")
+
+    llm = create_llm(provider, model)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.model_parameters["max_completion_tokens"] == 5678
+
+
+def test_compute_max_completion_tokens_uses_response_budget_when_it_fits():
+    assert (
+        compute_max_completion_tokens(
+            max_context_size=262_144,
+            input_tokens=20_000,
+            response_budget=50_000,
+        )
+        == 50_000
+    )
+
+
+def test_compute_max_completion_tokens_clamps_to_remaining_context():
+    assert (
+        compute_max_completion_tokens(
+            max_context_size=8_192,
+            input_tokens=7_000,
+            response_budget=50_000,
+        )
+        == 1_192
+    )
+
+
+def test_compute_max_completion_tokens_uses_remaining_context_without_hard_cap():
+    assert (
+        compute_max_completion_tokens(
+            max_context_size=262_144,
+            input_tokens=20_000,
+            response_budget=None,
+        )
+        == 242_144
+    )
+
+
+def test_compute_max_completion_tokens_uses_fallback_for_unknown_context():
+    assert (
+        compute_max_completion_tokens(
+            max_context_size=0,
+            input_tokens=20_000,
+            response_budget=None,
+            fallback_budget=50_000,
+        )
+        == 50_000
+    )
+
+
+def test_create_llm_kimi_non_positive_completion_cap_disables_clamping(monkeypatch):
+    provider = LLMProvider(
+        type="kimi",
+        base_url="https://api.test/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
+    monkeypatch.setenv("KIMI_MODEL_MAX_COMPLETION_TOKENS", "0")
+
+    llm = create_llm(provider, model)
+
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+    assert llm.chat_provider.model_parameters["max_completion_tokens"] is None
 
 
 def test_create_llm_echo_provider():

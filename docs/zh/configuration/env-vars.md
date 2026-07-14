@@ -17,7 +17,8 @@ Kimi Code CLI 支持通过环境变量覆盖配置或控制运行行为。本页
 | `KIMI_MODEL_CAPABILITIES` | 模型能力，逗号分隔（如 `thinking,image_in`） |
 | `KIMI_MODEL_TEMPERATURE` | 生成参数 `temperature` |
 | `KIMI_MODEL_TOP_P` | 生成参数 `top_p` |
-| `KIMI_MODEL_MAX_TOKENS` | 生成参数 `max_tokens` |
+| `KIMI_MODEL_MAX_COMPLETION_TOKENS` | `max_completion_tokens` 的显式硬上限 |
+| `KIMI_MODEL_MAX_TOKENS` | `KIMI_MODEL_MAX_COMPLETION_TOKENS` 的兼容别名 |
 | `KIMI_MODEL_THINKING_KEEP` | Moonshot `thinking.keep` 开关（Preserved Thinking），仅在 Thinking 模式下生效 |
 
 ### `KIMI_BASE_URL`
@@ -76,13 +77,19 @@ export KIMI_MODEL_TEMPERATURE="0.7"
 export KIMI_MODEL_TOP_P="0.9"
 ```
 
-### `KIMI_MODEL_MAX_TOKENS`
+### `KIMI_MODEL_MAX_COMPLETION_TOKENS`
 
-设置生成参数 `max_tokens`，限制单次回复的最大 token 数。
+设置生成参数 `max_completion_tokens` 的显式硬上限。未设置时，Kimi Code CLI 使用模型的
+剩余上下文窗口；每次请求都会将实际值动态限制为
+`max_context_size - input_tokens`。
 
 ```sh
-export KIMI_MODEL_MAX_TOKENS="4096"
+export KIMI_MODEL_MAX_COMPLETION_TOKENS="4096"
 ```
+
+`KIMI_MODEL_MAX_TOKENS` 仍可使用；如果两个环境变量都设置，优先使用
+`KIMI_MODEL_MAX_COMPLETION_TOKENS`。将任一变量设为 `0` 或负整数可禁用 completion token
+限制。
 
 ### `KIMI_MODEL_THINKING_KEEP`
 
@@ -189,4 +196,3 @@ export KIMI_CLI_PASTE_LINE_THRESHOLD="2"
 
 注意：两个阈值的判断逻辑是"满足任一即折叠"（字符数 **或** 行数），因此只需调低行数阈值即可。不建议将字符数阈值设为很小的值（如 `1`），否则所有非空粘贴（包括单行短文本）都会被折叠。
 :::
-
