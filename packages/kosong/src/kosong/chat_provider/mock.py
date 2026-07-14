@@ -1,6 +1,6 @@
 import copy
-from collections.abc import AsyncIterator, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Self
+from collections.abc import AsyncIterator, Sequence
+from typing import TYPE_CHECKING, Self
 
 from kosong.chat_provider import (
     ChatProvider,
@@ -45,11 +45,8 @@ class MockChatProvider(ChatProvider):
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        *,
-        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "MockStreamedMessage":
         """Always return the predefined message parts."""
-        del generation_overrides  # mock provider ignores per-call overrides
         return MockStreamedMessage(self._message_parts)
 
     def with_thinking(self, effort: ThinkingEffort) -> Self:

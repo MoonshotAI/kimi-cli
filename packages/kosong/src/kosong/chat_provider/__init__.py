@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, runtime_checkable
+from collections.abc import AsyncIterator, Sequence
+from typing import TYPE_CHECKING, Literal, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -40,20 +40,9 @@ class ChatProvider(Protocol):
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        *,
-        generation_overrides: Mapping[str, Any] | None = None,
     ) -> StreamedMessage:
         """
         Generate a new message based on the given system prompt, tools, and history.
-
-        Args:
-            system_prompt: The system prompt to use for generation.
-            tools: The tools available for the model to call.
-            history: The message history to use for generation.
-            generation_overrides: Optional per-call overrides merged on top of the provider's
-                generation kwargs without mutating provider state. Treat the mapping as
-                read-only and request-scoped — implementations must not alias it into any
-                long-lived state.
 
         Raises:
             APIConnectionError: If the API connection fails.

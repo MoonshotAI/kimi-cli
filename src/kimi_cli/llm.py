@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast, get_args
 
-from kosong.chat_provider import ChatProvider
+from kosong.chat_provider import ChatProvider, StreamedMessage, ThinkingEffort
 from kosong.message import (
     AudioURLPart,
     ImageURLPart,
@@ -61,6 +61,57 @@ class LLM:
         return self.chat_provider.model_name
 
 
+class _GenerationOverrideProvider(Protocol):
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
+    ) -> StreamedMessage: ...
+
+
+@dataclass(slots=True)
+class _KimiRequestChatProvider:
+    """Adapt a Kimi-backed provider to the standard provider interface for one request."""
+
+    _provider: ChatProvider
+    _generation_overrides: Mapping[str, Any]
+    name: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.name = self._provider.name
+
+    @property
+    def model_name(self) -> str:
+        return self._provider.model_name
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return self._provider.thinking_effort
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> StreamedMessage:
+        provider = cast(_GenerationOverrideProvider, self._provider)
+        return await provider.generate(
+            system_prompt,
+            tools,
+            history,
+            generation_overrides=self._generation_overrides,
+        )
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return type(self)(
+            self._provider.with_thinking(effort),
+            self._generation_overrides,
+        )
+
+
 def find_kimi_provider(chat_provider: ChatProvider) -> Kimi | None:
     """Return the Kimi provider backing a supported provider wrapper."""
     from kosong.chat_provider.chaos import ChaosChatProvider
@@ -70,6 +121,16 @@ def find_kimi_provider(chat_provider: ChatProvider) -> Kimi | None:
     while isinstance(provider, ChaosChatProvider):
         provider = provider.wrapped_provider
     return provider if isinstance(provider, Kimi) else None
+
+
+def with_kimi_generation_overrides(
+    chat_provider: ChatProvider,
+    generation_overrides: Mapping[str, Any] | None,
+) -> ChatProvider:
+    """Apply request-scoped generation overrides only to Kimi-backed providers."""
+    if not generation_overrides or find_kimi_provider(chat_provider) is None:
+        return chat_provider
+    return _KimiRequestChatProvider(chat_provider, dict(generation_overrides))
 
 
 def compute_max_completion_tokens(

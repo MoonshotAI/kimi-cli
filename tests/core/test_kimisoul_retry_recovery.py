@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
-from typing import Any, Self
+from typing import Self
 from unittest.mock import AsyncMock
 
 import pytest
@@ -75,7 +75,6 @@ class RecoveringSequenceProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        **_kwargs: Any,
     ) -> StaticStreamedMessage | PartialThenErrorStreamedMessage:
         self.generate_attempts += 1
         if self.generate_attempts == 1:
@@ -110,7 +109,6 @@ class AlwaysConnectionErrorProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        **_kwargs: Any,
     ) -> StaticStreamedMessage:
         self.generate_attempts += 1
         raise APIConnectionError("Connection error.")
@@ -144,7 +142,6 @@ class StatusErrorThenSuccessProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        **_kwargs: Any,
     ) -> StaticStreamedMessage:
         self.generate_attempts += 1
         if self.generate_attempts < 3:
@@ -179,7 +176,6 @@ class PartialStreamThenStatusErrorProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        **_kwargs: Any,
     ) -> StaticStreamedMessage | PartialThenErrorStreamedMessage:
         self.generate_attempts += 1
         if self.generate_attempts == 1:
@@ -238,7 +234,6 @@ class NonRetryableConnectionProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        **_kwargs: Any,
     ) -> StaticStreamedMessage:
         self.generate_attempts += 1
         if self.generate_attempts == 1:
@@ -269,7 +264,6 @@ class ConnectionThen401ThenSuccessProvider:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        **_kwargs: Any,
     ) -> StaticStreamedMessage:
         self.generate_attempts += 1
         if self.generate_attempts == 1:

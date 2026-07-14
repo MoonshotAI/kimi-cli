@@ -2,7 +2,7 @@ import json
 import os
 import random
 from collections.abc import AsyncIterator, Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import httpx
 from pydantic import BaseModel
@@ -26,6 +26,17 @@ if TYPE_CHECKING:
     ):
         _: ChatProvider = chaos
         _: RetryableChatProvider = chaos
+
+
+class _GenerationOverrideProvider(Protocol):
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
+    ) -> StreamedMessage: ...
 
 
 class ChaosConfig(BaseModel):
@@ -126,7 +137,8 @@ class ChaosChatProvider:
         if not generation_overrides:
             base_stream = await self._provider.generate(system_prompt, tools, history)
         else:
-            base_stream = await self._provider.generate(
+            provider = cast(_GenerationOverrideProvider, self._provider)
+            base_stream = await provider.generate(
                 system_prompt, tools, history, generation_overrides=generation_overrides
             )
         return ChaosStreamedMessage(base_stream, self._chaos_config)

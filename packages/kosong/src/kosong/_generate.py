@@ -1,6 +1,5 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from loguru import logger
 
@@ -23,7 +22,6 @@ async def generate(
     *,
     on_message_part: Callback[[StreamedMessagePart], None] | None = None,
     on_tool_call: Callback[[ToolCall], None] | None = None,
-    generation_overrides: Mapping[str, Any] | None = None,
 ) -> "GenerateResult":
     """
     Generate one message based on the given context.
@@ -36,7 +34,6 @@ async def generate(
         history: The message history to use for generation.
         on_message_part: An optional callback to be called for each raw message part.
         on_tool_call: An optional callback to be called for each complete tool call.
-        generation_overrides: Optional per-call overrides forwarded to ``chat_provider.generate``.
 
     Returns:
         A tuple of the generated message and the token usage (if available).
@@ -53,14 +50,7 @@ async def generate(
     pending_part: StreamedMessagePart | None = None  # message part that is currently incomplete
 
     logger.trace("Generating with history: {history}", history=history)
-    if not generation_overrides:
-        # Preserve the original three-argument provider API for third-party providers that do
-        # not use request-scoped overrides yet.
-        stream = await chat_provider.generate(system_prompt, tools, history)
-    else:
-        stream = await chat_provider.generate(
-            system_prompt, tools, history, generation_overrides=generation_overrides
-        )
+    stream = await chat_provider.generate(system_prompt, tools, history)
     async for part in stream:
         logger.trace("Received part: {part}", part=part)
         if on_message_part:

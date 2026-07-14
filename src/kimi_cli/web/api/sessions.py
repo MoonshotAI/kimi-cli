@@ -810,7 +810,11 @@ async def generate_session_title(
 
         from kimi_cli.auth.oauth import OAuthManager
         from kimi_cli.config import load_config
-        from kimi_cli.llm import create_llm, find_kimi_provider
+        from kimi_cli.llm import (
+            create_llm,
+            find_kimi_provider,
+            with_kimi_generation_overrides,
+        )
 
         config = load_config()
         model_name = config.default_model
@@ -837,7 +841,7 @@ Assistant: {(assistant_response or "")[:300]}
 
 Title:"""
 
-                    generate_kwargs: dict[str, Any] = {}
+                    title_generation_overrides = None
                     if kimi_provider := find_kimi_provider(llm.chat_provider):
                         title_completion_tokens = SESSION_TITLE_MAX_COMPLETION_TOKENS
                         configured_budget = kimi_provider.model_parameters.get(
@@ -847,16 +851,18 @@ Title:"""
                             title_completion_tokens = min(
                                 title_completion_tokens, configured_budget
                             )
-                        generate_kwargs["generation_overrides"] = {
+                        title_generation_overrides = {
                             "max_completion_tokens": title_completion_tokens
                         }
 
                     result = await generate(
-                        chat_provider=llm.chat_provider,
+                        chat_provider=with_kimi_generation_overrides(
+                            llm.chat_provider,
+                            title_generation_overrides,
+                        ),
                         system_prompt=system_prompt,
                         tools=[],
                         history=[Message(role="user", content=prompt)],
-                        **generate_kwargs,
                     )
 
                     generated_title = result.message.extract_text().strip()

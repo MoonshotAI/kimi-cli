@@ -18,7 +18,7 @@ import kosong
 from kosong.message import Message, ToolCall
 from kosong.tooling import Tool, ToolError, ToolResult
 
-from kimi_cli.llm import estimate_message_tokens
+from kimi_cli.llm import estimate_message_tokens, with_kimi_generation_overrides
 from kimi_cli.soul import LLMNotSet, wire_send
 from kimi_cli.soul.dynamic_injection import normalize_history
 from kimi_cli.soul.message import system_reminder
@@ -156,12 +156,11 @@ async def execute_side_question(
                 ),
             )
             result = await kosong.step(
-                chat_provider,
+                with_kimi_generation_overrides(chat_provider, generation_overrides),
                 system_prompt,
                 toolset,
                 history,
                 on_message_part=_on_part,
-                generation_overrides=generation_overrides,
             )
 
             # Check for text response — but only accept it if the LLM

@@ -1,6 +1,6 @@
 import copy
 import uuid
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Self, Unpack, cast
 
 import httpx
@@ -116,8 +116,6 @@ class OpenAILegacy:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        *,
-        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "OpenAILegacyStreamedMessage":
         messages: list[ChatCompletionMessageParam] = []
         if system_prompt:
@@ -127,8 +125,6 @@ class OpenAILegacy:
 
         generation_kwargs: dict[str, Any] = {}
         generation_kwargs.update(self._generation_kwargs)
-        if generation_overrides:
-            generation_kwargs.update(generation_overrides)
 
         reasoning_effort = self._reasoning_effort
         # Auto-enable reasoning_effort when the history contains ThinkPart but reasoning

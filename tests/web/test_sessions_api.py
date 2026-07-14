@@ -145,16 +145,23 @@ async def test_generate_title_caps_kimi_completion(
         ),
     )
     monkeypatch.setattr("kimi_cli.auth.oauth.OAuthManager", _FakeOAuthManager)
+    request_provider = object()
+    captured_provider = None
     captured_overrides = None
 
-    async def fake_generate(
-        *, chat_provider, system_prompt, tools, history, generation_overrides=None
-    ):
-        del chat_provider, system_prompt, tools, history
+    def fake_with_overrides(provider, overrides):
         nonlocal captured_overrides
-        captured_overrides = generation_overrides
+        assert provider is chat_provider
+        captured_overrides = overrides
+        return request_provider
+
+    async def fake_generate(*, chat_provider, system_prompt, tools, history):
+        del system_prompt, tools, history
+        nonlocal captured_provider
+        captured_provider = chat_provider
         return _FakeResult("Bounded Title")
 
+    monkeypatch.setattr("kimi_cli.llm.with_kimi_generation_overrides", fake_with_overrides)
     monkeypatch.setattr("kosong.generate", fake_generate)
 
     response = await sessions_api.generate_session_title(
@@ -167,4 +174,5 @@ async def test_generate_title_caps_kimi_completion(
     )
 
     assert response.title == "Bounded Title"
+    assert captured_provider is request_provider
     assert captured_overrides == {"max_completion_tokens": SESSION_TITLE_MAX_COMPLETION_TOKENS}

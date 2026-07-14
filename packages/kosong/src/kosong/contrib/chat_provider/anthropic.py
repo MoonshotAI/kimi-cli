@@ -281,8 +281,6 @@ class Anthropic:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        *,
-        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "AnthropicStreamedMessage":
         # https://docs.claude.com/en/api/messages#body-messages
         # Anthropic API does not support system roles, but just a system prompt.
@@ -343,8 +341,6 @@ class Anthropic:
                         pass
         generation_kwargs: dict[str, Any] = {}
         generation_kwargs.update(self._generation_kwargs)
-        if generation_overrides:
-            generation_kwargs.update(generation_overrides)
         betas = generation_kwargs.pop("beta_features", [])
         extra_headers = {
             **{"anthropic-beta": ",".join(str(e) for e in betas)},

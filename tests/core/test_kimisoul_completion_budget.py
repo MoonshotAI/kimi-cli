@@ -7,6 +7,7 @@ import pytest
 from kosong.chat_provider import APIConnectionError, ChatProvider
 from kosong.chat_provider.chaos import ChaosChatProvider, ChaosConfig
 from kosong.chat_provider.kimi import Kimi
+from kosong.chat_provider.mock import MockChatProvider, MockStreamedMessage
 from kosong.message import Message
 from kosong.tooling import Tool
 from kosong.tooling.empty import EmptyToolset
@@ -17,6 +18,7 @@ from kimi_cli.llm import (
     DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
     LLM,
     estimate_request_tokens,
+    with_kimi_generation_overrides,
 )
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import (
@@ -231,6 +233,66 @@ def test_compute_completion_overrides_returns_none_for_non_kimi_provider(
     assert _compute_overrides(soul, _NotKimi()) is None
 
 
+def test_request_overrides_leave_non_kimi_provider_untouched() -> None:
+    chat_provider = MockChatProvider([])
+
+    assert with_kimi_generation_overrides(chat_provider, None) is chat_provider
+    assert with_kimi_generation_overrides(chat_provider, {}) is chat_provider
+    assert (
+        with_kimi_generation_overrides(
+            chat_provider,
+            {"max_completion_tokens": 4096},
+        )
+        is chat_provider
+    )
+
+
+@pytest.mark.asyncio
+async def test_request_overrides_reach_kimi_and_chaos_kimi(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kimi_provider = Kimi(
+        model="kimi-k2",
+        base_url="https://api.test/v1",
+        api_key="test-key",
+        stream=False,
+    )
+    chaos_provider = ChaosChatProvider(
+        kimi_provider,
+        chaos_config=ChaosConfig(
+            error_probability=0,
+            corrupt_tool_call_probability=0,
+        ),
+    )
+    captured_overrides: list[Any] = []
+
+    async def fake_generate(
+        self: Kimi,
+        system_prompt: str,
+        tools: Any,
+        history: Any,
+        *,
+        generation_overrides: Any = None,
+    ) -> MockStreamedMessage:
+        del self, system_prompt, tools, history
+        captured_overrides.append(generation_overrides)
+        return MockStreamedMessage([])
+
+    monkeypatch.setattr(Kimi, "generate", fake_generate)
+
+    for provider in (kimi_provider, chaos_provider):
+        request_provider = with_kimi_generation_overrides(
+            provider,
+            {"max_completion_tokens": 4096},
+        )
+        await request_provider.generate("system", [], [])
+
+    assert captured_overrides == [
+        {"max_completion_tokens": 4096},
+        {"max_completion_tokens": 4096},
+    ]
+
+
 def test_dynamic_completion_budget_unwraps_chaos_kimi_provider(
     runtime: Runtime, tmp_path: Path
 ) -> None:
@@ -278,23 +340,28 @@ async def test_compaction_budget_reserves_next_main_request_overhead(
     await soul.context.append_message(original_messages)
     captured_overrides: dict[str, Any] | None = None
 
+    def fake_with_overrides(provider: ChatProvider, overrides: Any) -> ChatProvider:
+        nonlocal captured_overrides
+        captured_overrides = overrides
+        return provider
+
     async def fake_compact(
         messages: Any,
         llm: LLM,
         *,
         custom_instruction: str = "",
-        generation_overrides: Any = None,
     ) -> Any:
         del messages, llm, custom_instruction
-        nonlocal captured_overrides
-        captured_overrides = generation_overrides
-
         return CompactionResult(
             messages=[Message(role="user", content="summary")],
             usage=None,
         )
 
     monkeypatch.setattr(soul._compaction, "compact", fake_compact)
+    monkeypatch.setattr(
+        "kimi_cli.soul.kimisoul.with_kimi_generation_overrides",
+        fake_with_overrides,
+    )
     monkeypatch.setattr("kimi_cli.soul.kimisoul.wire_send", lambda _message: None)
 
     await soul.compact_context(manual=True)

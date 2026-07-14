@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -37,6 +37,7 @@ from kimi_cli.llm import (
     compute_max_completion_tokens,
     estimate_request_tokens,
     find_kimi_provider,
+    with_kimi_generation_overrides,
 )
 from kimi_cli.notifications import (
     NotificationView,
@@ -1088,6 +1089,7 @@ class KimiSoul:
             history=effective_history,
             input_tokens_floor=self._context.token_count_with_pending,
         )
+        request_chat_provider = with_kimi_generation_overrides(chat_provider, generation_overrides)
 
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.4. LLM CALL WITH RETRY
@@ -1100,13 +1102,12 @@ class KimiSoul:
             # ── 2e.4.2. kosong.step ───────────────────────────────────────────
             # run an LLM step (may be interrupted)
             return await kosong.step(
-                chat_provider,
+                request_chat_provider,
                 self._agent.system_prompt,
                 self._agent.toolset,
                 effective_history,
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
-                generation_overrides=generation_overrides,
             )
 
         max_attempts = self._loop_control.max_retries_per_step
@@ -1251,12 +1252,11 @@ class KimiSoul:
     ) -> dict[str, Any] | None:
         """Compute per-call generation overrides for the given chat provider.
 
-        Returns a dict of per-call generation overrides forwarded to ``kosong.step``,
-        or ``None`` if no overrides apply for the given provider. The chat provider
-        instance is not modified, so transport-level state (the live OpenAI client and
-        any in-flight OAuth token) stays attached to the single instance owned by
-        ``Runtime.llm`` — retry recovery in ``Kimi.on_retryable_error`` therefore
-        affects subsequent steps as intended.
+        Returns request-scoped Kimi generation overrides, or ``None`` if no overrides
+        apply for the given provider. The chat provider instance is not modified, so
+        transport-level state (the live OpenAI client and any in-flight OAuth token)
+        stays attached to the single instance owned by ``Runtime.llm`` — retry recovery
+        in ``Kimi.on_retryable_error`` therefore affects subsequent steps as intended.
         """
         kimi_provider = find_kimi_provider(chat_provider)
         if kimi_provider is None:
@@ -1374,11 +1374,17 @@ class KimiSoul:
         async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:
                 raise LLMNotSet()
+            compaction_llm = replace(
+                self._runtime.llm,
+                chat_provider=with_kimi_generation_overrides(
+                    self._runtime.llm.chat_provider,
+                    compaction_overrides,
+                ),
+            )
             return await self._compaction.compact(
                 self._context.history,
-                self._runtime.llm,
+                compaction_llm,
                 custom_instruction=custom_instruction,
-                generation_overrides=compaction_overrides,
             )
 
         start_time = time.monotonic()

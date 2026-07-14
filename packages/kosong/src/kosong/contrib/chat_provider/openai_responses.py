@@ -1,6 +1,6 @@
 import copy
 import uuid
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast, get_args
 
 import httpx
@@ -154,8 +154,6 @@ class OpenAIResponses:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
-        *,
-        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "OpenAIResponsesStreamedMessage":
         inputs: ResponseInputParam = []
         if system_prompt:
@@ -170,8 +168,6 @@ class OpenAIResponses:
 
         generation_kwargs: dict[str, Any] = {}
         generation_kwargs.update(self._generation_kwargs)
-        if generation_overrides:
-            generation_kwargs.update(generation_overrides)
         reasoning_effort = generation_kwargs.pop("reasoning_effort", None)
         if reasoning_effort is not None:
             generation_kwargs["reasoning"] = Reasoning(

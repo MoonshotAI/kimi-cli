@@ -443,13 +443,8 @@ class TestExecuteSideQuestion:
         assert chunks == ["chunk1", "chunk2"]
         assert response == "chunk1chunk2"
 
-    def test_forwards_generation_overrides_from_soul(self):
-        """Regression: /btw must forward the per-call completion budget to ``kosong.step``.
-
-        Without this, ``kosong.step`` is called with ``generation_overrides=None`` and the
-        Kimi provider sends an unbounded request because the provider-level default cap
-        was removed in this PR.
-        """
+    def test_applies_kimi_request_provider_from_soul(self):
+        """Regression: /btw must apply the per-call budget to its request provider."""
         soul = MagicMock()
         soul._runtime.llm.chat_provider = MagicMock()
         soul._compute_completion_overrides.return_value = {"max_completion_tokens": 4096}
@@ -458,20 +453,31 @@ class TestExecuteSideQuestion:
         soul.context.history = []
         soul.context.token_count_with_pending = 100
 
-        captured_overrides: list[object] = []
+        request_provider = MagicMock()
+        captured_providers: list[object] = []
 
         async def fake_step(provider, sys_prompt, toolset, history, **kw):
-            captured_overrides.append(kw.get("generation_overrides"))
+            captured_providers.append(provider)
             if kw.get("on_message_part"):
                 kw["on_message_part"](TextPart(text="ok"))
             return _text_result("ok")
 
-        with patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step):
+        with (
+            patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step),
+            patch(
+                "kimi_cli.soul.btw.with_kimi_generation_overrides",
+                return_value=request_provider,
+            ) as adapt_provider,
+        ):
             response, error = asyncio.run(execute_side_question(soul, "hi"))
 
         assert response == "ok"
         assert error is None
-        assert captured_overrides == [{"max_completion_tokens": 4096}]
+        assert captured_providers == [request_provider]
+        adapt_provider.assert_called_once_with(
+            soul._runtime.llm.chat_provider,
+            {"max_completion_tokens": 4096},
+        )
         soul._compute_completion_overrides.assert_called_once()
         call = soul._compute_completion_overrides.call_args
         assert call.args == (soul._runtime.llm.chat_provider,)
@@ -491,25 +497,33 @@ class TestExecuteSideQuestion:
         soul.context.history = []
         soul.context.token_count_with_pending = 100
 
-        captured_overrides: list[object] = []
+        request_providers = [MagicMock(), MagicMock()]
+        captured_providers: list[object] = []
         call_count = 0
 
         async def fake_step(provider, sys_prompt, toolset, history, **kw):
             nonlocal call_count
             call_count += 1
-            captured_overrides.append(kw.get("generation_overrides"))
+            captured_providers.append(provider)
             if call_count == 1:
                 return _tool_call_result("Read")
             if kw.get("on_message_part"):
                 kw["on_message_part"](TextPart(text="ok"))
             return _text_result("ok")
 
-        with patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step):
+        with (
+            patch("kimi_cli.soul.btw.kosong.step", side_effect=fake_step),
+            patch(
+                "kimi_cli.soul.btw.with_kimi_generation_overrides",
+                side_effect=request_providers,
+            ) as adapt_provider,
+        ):
             response, error = asyncio.run(execute_side_question(soul, "hi"))
 
         assert response == "ok"
         assert error is None
-        assert captured_overrides == [
+        assert captured_providers == request_providers
+        assert [call.args[1] for call in adapt_provider.call_args_list] == [
             {"max_completion_tokens": 4096},
             {"max_completion_tokens": 2048},
         ]
