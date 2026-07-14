@@ -4,6 +4,13 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+### Kimi no longer sends legacy `reasoning_effort` automatically
+
+Kimi thinking configuration now uses `thinking.type` exclusively. `Kimi.with_thinking(...)` no longer adds the legacy `reasoning_effort` parameter to requests.
+
+- **Affected**: Applications using Kosong's Kimi provider with older Kimi-compatible endpoints that require `reasoning_effort`
+- **Migration**: Update the endpoint to support `thinking.type`. If an older endpoint still requires the legacy parameter, pass it explicitly with `with_generation_kwargs(reasoning_effort="...")`
+
 ## 1.43.0
 
 ### MCP OAuth token cache moved to `~/.kimi/mcp-oauth/`

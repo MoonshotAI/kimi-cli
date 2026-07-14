@@ -4,12 +4,14 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
+import pytest
 import respx
 from common import COMMON_CASES, Case, make_chat_completion_response, run_test_cases
 from httpx import Response
 from inline_snapshot import snapshot
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
+from kosong.chat_provider import ThinkingEffort
 from kosong.chat_provider.kimi import Kimi, KimiStreamedMessage
 from kosong.message import Message, TextPart, ThinkPart, ToolCall
 from kosong.tooling import Tool
@@ -507,19 +509,68 @@ async def test_kimi_generation_overrides_take_precedence_over_provider_kwargs():
         assert provider.model_parameters["max_completion_tokens"] == 8000
 
 
-async def test_kimi_with_thinking():
+@pytest.mark.parametrize(
+    ("effort", "expected_type"),
+    [
+        ("off", "disabled"),
+        ("low", "enabled"),
+        ("medium", "enabled"),
+        ("high", "enabled"),
+        ("xhigh", "enabled"),
+        ("max", "enabled"),
+    ],
+)
+async def test_kimi_with_thinking_omits_legacy_reasoning_effort(
+    effort: ThinkingEffort,
+    expected_type: str,
+):
     with respx.mock(base_url="https://api.moonshot.ai") as mock:
         mock.post("/v1/chat/completions").mock(
             return_value=Response(200, json=make_chat_completion_response())
         )
         provider = Kimi(
             model="kimi-k2-turbo-preview", api_key="test-key", stream=False
-        ).with_thinking("high")
+        ).with_thinking(effort)
         stream = await provider.generate("", [], [Message(role="user", content="Think")])
         async for _ in stream:
             pass
         body = json.loads(mock.calls.last.request.content.decode())
-        assert body["reasoning_effort"] == snapshot("high")
+        assert "reasoning_effort" not in body
+        assert body["thinking"] == {"type": expected_type}
+        assert provider.thinking_effort == effort
+
+
+def test_kimi_thinking_effort_preserves_caller_value_without_mapping():
+    provider = Kimi(model="kimi-k2-turbo-preview", api_key="test-key", stream=False)
+
+    assert provider.thinking_effort is None
+    for configured, expected in (
+        (provider.with_thinking("off"), "off"),
+        (provider.with_thinking("low"), "low"),
+        (provider.with_thinking("medium"), "medium"),
+        (provider.with_thinking("high"), "high"),
+        (provider.with_thinking("xhigh"), "xhigh"),
+        (provider.with_thinking("max"), "max"),
+    ):
+        assert configured.thinking_effort == expected
+        assert "reasoning_effort" not in configured.model_parameters
+
+
+def test_kimi_explicit_legacy_reasoning_effort_is_independent_from_thinking_state():
+    provider = Kimi(
+        model="kimi-k2-turbo-preview", api_key="test-key", stream=False
+    ).with_generation_kwargs(reasoning_effort="medium")
+
+    assert provider.thinking_effort is None
+    assert provider.model_parameters["reasoning_effort"] == "medium"
+
+    configured = provider.with_thinking("high")
+    assert configured.thinking_effort == "high"
+    assert configured.model_parameters["reasoning_effort"] == "medium"
+
+    updated_legacy = configured.with_generation_kwargs(reasoning_effort="low")
+    assert updated_legacy.thinking_effort == "high"
+    assert updated_legacy.model_parameters["reasoning_effort"] == "low"
 
 
 async def test_kimi_with_extra_body_thinking_deep_merge():

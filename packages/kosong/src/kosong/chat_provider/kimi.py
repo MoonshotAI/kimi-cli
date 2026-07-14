@@ -96,7 +96,7 @@ class Kimi:
         stop: str | list[str] | None
         prompt_cache_key: str | None
         reasoning_effort: str | None
-        """Legacy thinking parameter. Use `extra_body.thinking` instead."""
+        """Legacy explicit passthrough. `with_thinking` uses `extra_body.thinking` instead."""
         extra_body: ExtraBody | None
 
     def __init__(
@@ -131,6 +131,8 @@ class Kimi:
         )
         """The underlying `AsyncOpenAI` client."""
         self._generation_kwargs: Kimi.GenerationKwargs = {}
+        self._thinking_effort: ThinkingEffort | None = None
+        """Thinking state kept separately from parameters serialized onto the wire."""
 
     @property
     def model_name(self) -> str:
@@ -138,18 +140,7 @@ class Kimi:
 
     @property
     def thinking_effort(self) -> ThinkingEffort | None:
-        reasoning_effort = self._generation_kwargs.get("reasoning_effort")
-        if reasoning_effort is None:
-            return None
-        match reasoning_effort:
-            case "low":
-                return "low"
-            case "medium":
-                return "medium"
-            case "high":
-                return "high"
-            case _:
-                return "off"
+        return self._thinking_effort
 
     async def generate(
         self,
@@ -202,23 +193,15 @@ class Kimi:
         return True
 
     def with_thinking(self, effort: ThinkingEffort) -> Self:
-        match effort:
-            case "off":
-                reasoning_effort = None
-            case "low":
-                reasoning_effort = "low"
-            case "medium":
-                reasoning_effort = "medium"
-            case "high" | "xhigh" | "max":
-                # Kimi's API caps at "high"; xhigh/max are Anthropic-specific.
-                reasoning_effort = "high"
-        return self.with_generation_kwargs(reasoning_effort=reasoning_effort).with_extra_body(
+        new_self = self.with_extra_body(
             {
                 "thinking": {
                     "type": "enabled" if effort != "off" else "disabled",
                 }
             }
         )
+        new_self._thinking_effort = effort
+        return new_self
 
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """
