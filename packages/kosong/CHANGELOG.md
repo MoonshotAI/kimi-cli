@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Kimi: Preserve empty-string `reasoning_content` as `ThinkPart(think="")` in both streaming and non-streaming responses — previously the truthy check dropped empty deltas, conflating "reasoned but empty" with "no reasoning at all"; the stored (empty) ThinkPart is what makes `_convert_message` emit `reasoning_content` on the next request, so preserved-thinking backends that require the field on every assistant message no longer 400 after a reason-free turn
+
 ## 0.53.0 (2026-04-28)
 
 - Kimi: Fix stale API key after OAuth token refresh — `on_retryable_error` now reads the current `api_key` from the live client instead of the cached `_api_key`, so that OAuth token refreshes applied via `client.api_key` are preserved when the client is rebuilt after a retryable error

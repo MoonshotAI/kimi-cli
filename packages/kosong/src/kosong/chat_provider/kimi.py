@@ -437,7 +437,8 @@ class KimiStreamedMessage:
         self._id = response.id
         self._usage = response.usage
         message = response.choices[0].message
-        if reasoning_content := getattr(message, "reasoning_content", None):
+        reasoning_content = getattr(message, "reasoning_content", None)
+        if reasoning_content is not None:
             assert isinstance(reasoning_content, str)
             yield ThinkPart(think=reasoning_content)
         if message.content:
@@ -469,8 +470,12 @@ class KimiStreamedMessage:
 
                 delta = chunk.choices[0].delta
 
-                # convert thinking content
-                if reasoning_content := getattr(delta, "reasoning_content", None):
+                # convert thinking content — an empty string means "reasoned
+                # but empty", not "no reasoning": keep it as a ThinkPart so
+                # the distinction round-trips to the server (preserved-thinking
+                # backends require reasoning_content on every assistant turn)
+                reasoning_content = getattr(delta, "reasoning_content", None)
+                if reasoning_content is not None:
                     assert isinstance(reasoning_content, str)
                     yield ThinkPart(think=reasoning_content)
 

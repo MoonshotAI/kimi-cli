@@ -1,13 +1,16 @@
 """Snapshot tests for Kimi chat provider."""
 
 import json
+from collections.abc import AsyncIterator
+from typing import Any
 
 import respx
 from common import COMMON_CASES, Case, make_chat_completion_response, run_test_cases
 from httpx import Response
 from inline_snapshot import snapshot
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
-from kosong.chat_provider.kimi import Kimi
+from kosong.chat_provider.kimi import Kimi, KimiStreamedMessage
 from kosong.message import Message, TextPart, ThinkPart, ToolCall
 from kosong.tooling import Tool
 
@@ -596,3 +599,94 @@ async def test_kimi_with_extra_body_non_thinking_key_shallow_merge():
             pass
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["custom"] == snapshot({"b": 2})
+
+
+def _make_chunk(delta: dict[str, Any], finish_reason: str | None = None) -> ChatCompletionChunk:
+    return ChatCompletionChunk.model_validate(
+        {
+            "id": "chatcmpl-test",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "kimi-k2-thinking",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+        }
+    )
+
+
+async def test_kimi_stream_preserves_empty_reasoning_delta():
+    """An empty-string ``reasoning_content`` delta means "reasoned but
+    empty", not "no reasoning" — it must surface as a ThinkPart so the
+    distinction round-trips to the server: preserved-thinking backends
+    require reasoning_content on every assistant message, and the stored
+    ThinkPart (even empty) is what makes _convert_message emit the field."""
+    chunks = [
+        _make_chunk({"reasoning_content": ""}),
+        _make_chunk(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "Shell_2",
+                        "type": "function",
+                        "function": {"name": "Shell", "arguments": "{}"},
+                    }
+                ]
+            },
+            finish_reason="stop",
+        ),
+    ]
+
+    async def _aiter() -> AsyncIterator[ChatCompletionChunk]:
+        for chunk in chunks:
+            yield chunk
+
+    stream = KimiStreamedMessage(_aiter())  # type: ignore[arg-type]
+    parts = [part async for part in stream]
+    assert parts[0] == ThinkPart(think="")
+    assert isinstance(parts[1], ToolCall)
+
+
+async def test_kimi_non_stream_preserves_empty_reasoning_content():
+    """Same distinction for the non-streaming path: ``reasoning_content: \"\"``
+    on the response message must yield an (empty) ThinkPart."""
+    response = ChatCompletion.model_validate(
+        {
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "kimi-k2-thinking",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Done.",
+                        "reasoning_content": "",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+    )
+    stream = KimiStreamedMessage(response)
+    parts = [part async for part in stream]
+    assert parts[0] == ThinkPart(think="")
+    assert parts[1] == TextPart(text="Done.")
+
+
+async def test_kimi_absent_reasoning_field_still_yields_no_thinkpart():
+    """A delta WITHOUT the reasoning_content field is the genuinely
+    reason-free case and must NOT fabricate a ThinkPart — the empty vs
+    absent distinction is exactly what preserved thinking relies on."""
+    chunks = [
+        _make_chunk({"content": "Done."}, finish_reason="stop"),
+    ]
+
+    async def _aiter() -> AsyncIterator[ChatCompletionChunk]:
+        for chunk in chunks:
+            yield chunk
+
+    stream = KimiStreamedMessage(_aiter())  # type: ignore[arg-type]
+    parts = [part async for part in stream]
+    assert parts == [TextPart(text="Done.")]
