@@ -81,9 +81,16 @@ async def compact(soul: KimiSoul, args: str):
 async def clear(soul: KimiSoul, args: str):
     """Clear the context"""
     logger.info("Running `/clear`")
-    await soul.context.clear()
+    rotated_file_path = await soul.context.clear()
     await soul.context.write_system_prompt(soul.agent.system_prompt)
-    wire_send(TextPart(text="The context has been cleared."))
+    wire_send(
+        TextPart(
+            text=(
+                "The context has been cleared. Previous history was rotated to "
+                f"{rotated_file_path.name}; `/undo` cannot restore turns from before `/clear`."
+            )
+        )
+    )
     snap = soul.status
     wire_send(
         StatusUpdate(
