@@ -123,7 +123,12 @@ async def main():
             assert api_key is not None, "Expect KIMI_API_KEY environment variable"
             model = model or "kimi-k2-turbo-preview"
 
-            chat_provider = Kimi(base_url=base_url, api_key=api_key, model=model)
+            # ``Kimi.generate`` no longer carries a built-in completion cap, so set a
+            # conservative default here to keep this developer-facing demo from running
+            # unbounded generations.
+            chat_provider = Kimi(
+                base_url=base_url, api_key=api_key, model=model
+            ).with_generation_kwargs(max_completion_tokens=8192)
         case "openai":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
 

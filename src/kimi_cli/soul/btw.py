@@ -18,6 +18,7 @@ import kosong
 from kosong.message import Message, ToolCall
 from kosong.tooling import Tool, ToolError, ToolResult
 
+from kimi_cli.llm import estimate_message_tokens, with_kimi_generation_overrides
 from kimi_cli.soul import LLMNotSet, wire_send
 from kimi_cli.soul.dynamic_injection import normalize_history
 from kimi_cli.soul.message import system_reminder
@@ -132,6 +133,7 @@ async def execute_side_question(
 
         chat_provider = soul._runtime.llm.chat_provider  # pyright: ignore[reportPrivateUsage]
         system_prompt, history, toolset = _build_btw_context(soul, question)
+        main_history_size = len(history) - 1
 
         text_chunks: list[str] = []
 
@@ -143,8 +145,18 @@ async def execute_side_question(
 
         # Multi-turn loop: give the LLM a second chance if it calls tools
         for turn in range(_BTW_MAX_TURNS):
-            result = await kosong.step(
+            local_history = history[main_history_size:]
+            generation_overrides = soul._compute_completion_overrides(  # pyright: ignore[reportPrivateUsage]
                 chat_provider,
+                system_prompt=system_prompt,
+                tools=toolset.tools,
+                history=history,
+                input_tokens_floor=(
+                    soul.context.token_count_with_pending + estimate_message_tokens(local_history)
+                ),
+            )
+            result = await kosong.step(
+                with_kimi_generation_overrides(chat_provider, generation_overrides),
                 system_prompt,
                 toolset,
                 history,

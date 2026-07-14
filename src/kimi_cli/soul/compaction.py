@@ -14,6 +14,9 @@ from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import ContentPart, TextPart, ThinkPart
 
+COMPACTION_SYSTEM_PROMPT = "You are a helpful assistant that compacts conversation context."
+COMPACTION_OUTPUT_PREFIX = "Previous context has been compacted. Here is the compaction output:"
+
 
 class CompactionResult(NamedTuple):
     messages: Sequence[Message]
@@ -75,7 +78,11 @@ def should_auto_compact(
 @runtime_checkable
 class Compaction(Protocol):
     async def compact(
-        self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
+        self,
+        messages: Sequence[Message],
+        llm: LLM,
+        *,
+        custom_instruction: str = "",
     ) -> CompactionResult:
         """
         Compact a sequence of messages into a new sequence of messages.
@@ -84,7 +91,6 @@ class Compaction(Protocol):
             messages (Sequence[Message]): The messages to compact.
             llm (LLM): The LLM to use for compaction.
             custom_instruction: Optional user instruction to guide compaction focus.
-
         Returns:
             CompactionResult: The compacted messages and token usage from the compaction LLM call.
 
@@ -105,18 +111,20 @@ class SimpleCompaction:
         self.max_preserved_messages = max_preserved_messages
 
     async def compact(
-        self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
+        self,
+        messages: Sequence[Message],
+        llm: LLM,
+        *,
+        custom_instruction: str = "",
     ) -> CompactionResult:
         compact_message, to_preserve = self.prepare(messages, custom_instruction=custom_instruction)
         if compact_message is None:
             return CompactionResult(messages=to_preserve, usage=None)
 
-        # Call kosong.step to get the compacted context
-        # TODO: set max completion tokens
         logger.debug("Compacting context...")
         result = await kosong.step(
             chat_provider=llm.chat_provider,
-            system_prompt="You are a helpful assistant that compacts conversation context.",
+            system_prompt=COMPACTION_SYSTEM_PROMPT,
             toolset=EmptyToolset(),
             history=[compact_message],
         )
@@ -127,9 +135,7 @@ class SimpleCompaction:
                 output=result.usage.output,
             )
 
-        content: list[ContentPart] = [
-            system("Previous context has been compacted. Here is the compaction output:")
-        ]
+        content: list[ContentPart] = [system(COMPACTION_OUTPUT_PREFIX)]
         compacted_msg = result.message
 
         # drop thinking parts if any

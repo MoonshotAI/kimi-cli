@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -16,9 +16,11 @@ from kosong.chat_provider import (
     APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
+    ChatProvider,
     RetryableChatProvider,
 )
 from kosong.message import Message
+from kosong.tooling import Tool
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.approval_runtime import (
@@ -29,7 +31,14 @@ from kimi_cli.approval_runtime import (
 )
 from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.hooks.engine import HookEngine
-from kimi_cli.llm import ModelCapability
+from kimi_cli.llm import (
+    DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
+    ModelCapability,
+    compute_max_completion_tokens,
+    estimate_request_tokens,
+    find_kimi_provider,
+    with_kimi_generation_overrides,
+)
 from kimi_cli.notifications import (
     NotificationView,
     build_notification_message,
@@ -47,6 +56,9 @@ from kimi_cli.soul import (
 )
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import (
+    COMPACTION_OUTPUT_PREFIX,
+    COMPACTION_SYSTEM_PROMPT,
+    Compaction,
     CompactionResult,
     SimpleCompaction,
     estimate_text_tokens,
@@ -177,7 +189,7 @@ class KimiSoul:
         self._approval = agent.runtime.approval
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
-        self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._compaction: Compaction = SimpleCompaction()  # TODO: maybe configurable and composable
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -1070,6 +1082,14 @@ class KimiSoul:
         # 2e.3. HISTORY NORMALIZATION
         # ═══════════════════════════════════════════════════════════════════════
         effective_history = normalize_history(self._context.history)
+        generation_overrides = self._compute_completion_overrides(
+            chat_provider,
+            system_prompt=self._agent.system_prompt,
+            tools=self._agent.toolset.tools,
+            history=effective_history,
+            input_tokens_floor=self._context.token_count_with_pending,
+        )
+        request_chat_provider = with_kimi_generation_overrides(chat_provider, generation_overrides)
 
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.4. LLM CALL WITH RETRY
@@ -1082,7 +1102,7 @@ class KimiSoul:
             # ── 2e.4.2. kosong.step ───────────────────────────────────────────
             # run an LLM step (may be interrupted)
             return await kosong.step(
-                chat_provider,
+                request_chat_provider,
                 self._agent.system_prompt,
                 self._agent.toolset,
                 effective_history,
@@ -1221,6 +1241,47 @@ class KimiSoul:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
+    def _compute_completion_overrides(
+        self,
+        chat_provider: ChatProvider,
+        *,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+        input_tokens_floor: int = 0,
+    ) -> dict[str, Any] | None:
+        """Compute per-call generation overrides for the given chat provider.
+
+        Returns request-scoped Kimi generation overrides, or ``None`` if no overrides
+        apply for the given provider. The chat provider instance is not modified, so
+        transport-level state (the live OpenAI client and any in-flight OAuth token)
+        stays attached to the single instance owned by ``Runtime.llm`` — retry recovery
+        in ``Kimi.on_retryable_error`` therefore affects subsequent steps as intended.
+        """
+        kimi_provider = find_kimi_provider(chat_provider)
+        if kimi_provider is None:
+            return None
+
+        parameters = kimi_provider.model_parameters
+        configured_budget = parameters.get("max_completion_tokens")
+        if "max_completion_tokens" in parameters and configured_budget is None:
+            return None
+        if type(configured_budget) is not int:
+            configured_budget = None
+
+        assert self._runtime.llm is not None
+        estimated_input_tokens = estimate_request_tokens(system_prompt, tools, history)
+        input_tokens = max(input_tokens_floor, estimated_input_tokens)
+        if self._runtime.llm.max_context_size > 0:
+            input_tokens += DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN
+        max_completion_tokens = compute_max_completion_tokens(
+            max_context_size=self._runtime.llm.max_context_size,
+            input_tokens=input_tokens,
+            response_budget=configured_budget,
+            fallback_budget=self._loop_control.reserved_context_size,
+        )
+        return {"max_completion_tokens": max_completion_tokens}
+
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
 
@@ -1265,12 +1326,65 @@ class KimiSoul:
         """
 
         chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
+        compaction_overrides = None
+        if chat_provider is not None and isinstance(self._compaction, SimpleCompaction):
+            compact_message, to_preserve = self._compaction.prepare(
+                self._context.history,
+                custom_instruction=custom_instruction,
+            )
+            if compact_message is not None:
+                post_compaction_history = [
+                    Message(
+                        role="user",
+                        content=[system(COMPACTION_OUTPUT_PREFIX)],
+                    ),
+                    *to_preserve,
+                ]
+                if self.is_root:
+                    active_task_snapshot = build_active_task_snapshot(
+                        self._runtime.background_tasks
+                    )
+                    if active_task_snapshot is not None:
+                        post_compaction_history.append(
+                            Message(
+                                role="user",
+                                content=[
+                                    system(
+                                        "The following background tasks are still active after "
+                                        "compaction. Use TaskList if you need to re-enumerate "
+                                        "them later."
+                                    ),
+                                    TextPart(text=active_task_snapshot),
+                                ],
+                            )
+                        )
+                post_compaction_input_tokens = estimate_request_tokens(
+                    self._agent.system_prompt,
+                    self._agent.toolset.tools,
+                    post_compaction_history,
+                )
+                compaction_overrides = self._compute_completion_overrides(
+                    chat_provider,
+                    system_prompt=COMPACTION_SYSTEM_PROMPT,
+                    tools=(),
+                    history=[compact_message],
+                    input_tokens_floor=post_compaction_input_tokens,
+                )
 
         async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:
                 raise LLMNotSet()
+            compaction_llm = replace(
+                self._runtime.llm,
+                chat_provider=with_kimi_generation_overrides(
+                    self._runtime.llm.chat_provider,
+                    compaction_overrides,
+                ),
+            )
             return await self._compaction.compact(
-                self._context.history, self._runtime.llm, custom_instruction=custom_instruction
+                self._context.history,
+                compaction_llm,
+                custom_instruction=custom_instruction,
             )
 
         start_time = time.monotonic()

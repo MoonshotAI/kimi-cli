@@ -2,7 +2,7 @@ import copy
 import mimetypes
 import os
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, Self, Unpack, cast
 
 import httpx
@@ -85,7 +85,9 @@ class Kimi:
         See https://platform.moonshot.ai/docs/api/chat#request-body.
         """
 
+        max_completion_tokens: int | None
         max_tokens: int | None
+        """Deprecated alias. Normalized to ``max_completion_tokens`` before requests."""
         temperature: float | None
         top_p: float | None
         n: int | None
@@ -145,17 +147,23 @@ class Kimi:
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "KimiStreamedMessage":
         messages: list[ChatCompletionMessageParam] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.extend(_convert_message(message) for message in history)
 
-        generation_kwargs: dict[str, Any] = {
-            # default kimi generation kwargs
-            "max_tokens": 32000,
-        }
-        generation_kwargs.update(self._generation_kwargs)
+        generation_kwargs: dict[str, Any] = dict(self._generation_kwargs)
+        if generation_overrides:
+            generation_kwargs.update(
+                _normalize_generation_kwargs(
+                    cast(Kimi.GenerationKwargs, dict(generation_overrides))
+                )
+            )
+        if generation_kwargs.get("max_completion_tokens") is None:
+            generation_kwargs.pop("max_completion_tokens", None)
 
         try:
             response = await self.client.chat.completions.create(
@@ -204,7 +212,7 @@ class Kimi:
         """
         new_self = copy.copy(self)
         new_self._generation_kwargs = copy.deepcopy(self._generation_kwargs)
-        new_self._generation_kwargs.update(kwargs)
+        new_self._generation_kwargs.update(_normalize_generation_kwargs(kwargs))
         return new_self
 
     def with_extra_body(self, extra_body: ExtraBody) -> Self:
@@ -285,6 +293,15 @@ type KimiFilePurpose = Literal["video", "image"]
 def _guess_filename(mime_type: str) -> str:
     extension = mimetypes.guess_extension(mime_type) or ".bin"
     return f"upload{extension}"
+
+
+def _normalize_generation_kwargs(kwargs: Kimi.GenerationKwargs) -> Kimi.GenerationKwargs:
+    normalized: dict[str, Any] = dict(kwargs)
+    if "max_tokens" in normalized:
+        max_tokens = normalized.pop("max_tokens")
+        if "max_completion_tokens" not in normalized:
+            normalized["max_completion_tokens"] = max_tokens
+    return cast(Kimi.GenerationKwargs, normalized)
 
 
 def _convert_message(message: Message) -> ChatCompletionMessageParam:
@@ -403,7 +420,8 @@ class KimiStreamedMessage:
         self._id = response.id
         self._usage = response.usage
         message = response.choices[0].message
-        if reasoning_content := getattr(message, "reasoning_content", None):
+        reasoning_content = getattr(message, "reasoning_content", None)
+        if reasoning_content is not None:
             assert isinstance(reasoning_content, str)
             yield ThinkPart(think=reasoning_content)
         if message.content:
@@ -435,8 +453,12 @@ class KimiStreamedMessage:
 
                 delta = chunk.choices[0].delta
 
-                # convert thinking content
-                if reasoning_content := getattr(delta, "reasoning_content", None):
+                # convert thinking content — an empty string means "reasoned
+                # but empty", not "no reasoning": keep it as a ThinkPart so
+                # the distinction round-trips to the server (preserved-thinking
+                # backends require reasoning_content on every assistant turn)
+                reasoning_content = getattr(delta, "reasoning_content", None)
+                if reasoning_content is not None:
                     assert isinstance(reasoning_content, str)
                     yield ThinkPart(think=reasoning_content)
 
@@ -492,7 +514,7 @@ if __name__ == "__main__":
         ]
         stream = await chat.with_generation_kwargs(
             temperature=0,
-            max_tokens=1000,
+            max_completion_tokens=1000,
         ).generate(system_prompt, [], history)
         async for part in stream:
             print(part.model_dump(exclude_none=True))
