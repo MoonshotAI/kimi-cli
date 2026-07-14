@@ -234,9 +234,9 @@ class ExitPlanMode(CallableTool2[Params]):
         if not answers:
             _track_telemetry("plan_resolved", outcome="dismissed")
             return ToolReturnValue(
-                is_error=False,
-                output="User dismissed without choosing. Plan mode remains active. "
-                "Continue working on your plan or call ExitPlanMode again when ready.",
+                is_error=True,
+                output="User dismissed the plan review without choosing. Plan mode remains active. "
+                "Do NOT proceed with implementation. Stop and wait for the user's next message.",
                 message="Dismissed",
                 display=[BriefDisplayBlock(text="Dismissed")],
             )
