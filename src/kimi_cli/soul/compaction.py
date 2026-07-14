@@ -181,7 +181,8 @@ class SimpleCompaction:
                 TextPart(text=f"## Message {i + 1}\nRole: {msg.role}\nContent:\n")
             )
             compact_message.content.extend(
-                part for part in msg.content if isinstance(part, TextPart)
+                part for part in msg.content
+                if isinstance(part, TextPart) and part.text.strip()
             )
         prompt_text = "\n" + prompts.COMPACT
         if custom_instruction:
@@ -192,4 +193,11 @@ class SimpleCompaction:
                 f"{custom_instruction}"
             )
         compact_message.content.append(TextPart(text=prompt_text))
+        # Defensive: if after filtering there are no non-empty text parts besides
+        # headers and the prompt, skip compaction to avoid API 400 "text content is empty".
+        if not any(
+            isinstance(p, TextPart) and p.text.strip()
+            for p in compact_message.content
+        ):
+            return self.PrepareResult(compact_message=None, to_preserve=messages)
         return self.PrepareResult(compact_message=compact_message, to_preserve=to_preserve)
