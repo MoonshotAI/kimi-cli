@@ -1,4 +1,5 @@
 import asyncio
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Self, override
@@ -21,6 +22,24 @@ from kimi_cli.utils.subprocess_env import get_noninteractive_env
 
 MAX_FOREGROUND_TIMEOUT = 5 * 60
 MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
+DEFAULT_TIMEOUT = 60
+
+LONG_RUNNING_COMMAND_TIMEOUTS: tuple[tuple[re.Pattern[str], int], ...] = (
+    (re.compile(r"\bgit\s+submodule\s+(?:deinit|update|sync)\b", re.I), 300),
+    (re.compile(r"\bgit\s+(?:clone|fetch)\b", re.I), 300),
+    (re.compile(r"\bgit\s+show\b.*\s--\s", re.I), 120),
+    (re.compile(r"\b(?:npm|yarn|pnpm)\s+(?:install|ci|run\s+build|build)\b", re.I), 180),
+    (re.compile(r"\b(?:docker|cargo)\s+build\b", re.I), 300),
+    (re.compile(r"\bmake(?:\s+-j\d*)?(?:\s|$)", re.I), 300),
+)
+
+
+def _effective_timeout(command: str, timeout: int, *, max_timeout: int) -> int:
+    normalized = " ".join(command.split())
+    for pattern, suggested_timeout in LONG_RUNNING_COMMAND_TIMEOUTS:
+        if pattern.search(normalized):
+            return min(max(timeout, suggested_timeout), max_timeout)
+    return timeout
 
 
 class Params(BaseModel):
@@ -30,7 +49,7 @@ class Params(BaseModel):
             "The timeout in seconds for the command to execute. "
             "If the command takes longer than this, it will be killed."
         ),
-        default=60,
+        default=DEFAULT_TIMEOUT,
         ge=1,
         le=MAX_BACKGROUND_TIMEOUT,
     )
@@ -88,6 +107,9 @@ class Shell(CallableTool2[Params]):
             return await self._run_in_background(params)
 
         command = self._preprocess_command(params.command)
+        timeout = _effective_timeout(
+            command, params.timeout, max_timeout=MAX_FOREGROUND_TIMEOUT
+        )
 
         result = await self._approval.request(
             self.name,
@@ -112,7 +134,7 @@ class Shell(CallableTool2[Params]):
             builder.write(line_str)
 
         try:
-            exitcode = await self._run_shell_command(command, stdout_cb, stderr_cb, params.timeout)
+            exitcode = await self._run_shell_command(command, stdout_cb, stderr_cb, timeout)
 
             if exitcode == 0:
                 return builder.ok("Command executed successfully.")
@@ -127,8 +149,8 @@ class Shell(CallableTool2[Params]):
                 )
         except TimeoutError:
             return builder.error(
-                f"Command killed by timeout ({params.timeout}s)",
-                brief=f"Killed by timeout ({params.timeout}s)",
+                f"Command killed by timeout ({timeout}s)",
+                brief=f"Killed by timeout ({timeout}s)",
             )
         except Exception as e:
             logger.error(
@@ -166,10 +188,13 @@ class Shell(CallableTool2[Params]):
             return result.rejection_error()
 
         try:
+            timeout = _effective_timeout(
+                command, params.timeout, max_timeout=MAX_BACKGROUND_TIMEOUT
+            )
             view = self._runtime.background_tasks.create_bash_task(
                 command=command,
                 description=params.description.strip(),
-                timeout_s=params.timeout,
+                timeout_s=timeout,
                 tool_call_id=tool_call.id,
                 shell_name="bash",
                 shell_path=str(self._shell_path),
