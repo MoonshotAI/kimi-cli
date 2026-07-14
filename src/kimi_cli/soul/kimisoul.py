@@ -505,6 +505,7 @@ class KimiSoul:
             context_tokens=token_count,
             max_context_tokens=max_size,
             mcp_status=self._mcp_status_snapshot(),
+            approval_mode=self._approval.get_approval_mode(),
         )
 
     @property
@@ -514,6 +515,11 @@ class KimiSoul:
     @property
     def runtime(self) -> Runtime:
         return self._runtime
+
+    def cycle_approval_mode(self) -> str:
+        """Cycle to the next approval mode and return the new mode name."""
+        new_mode = self._approval.cycle_approval_mode()
+        return new_mode
 
     @property
     def context(self) -> Context:

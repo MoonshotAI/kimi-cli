@@ -13,9 +13,14 @@ STATE_FILE_NAME = "state.json"
 
 
 class ApprovalStateData(BaseModel):
+    approval_mode: Literal["manual", "edits", "auto"] = "manual"
+    """Approval mode: manual, edits (auto-approve file ops), auto (auto-approve everything)."""
     yolo: bool = False
+    """Legacy flag, migrated to approval_mode='auto'. Kept for backward compat."""
     afk: bool = False
+    """Legacy flag, migrated to approval_mode='auto'. Kept for backward compat."""
     auto_approve_actions: set[str] = Field(default_factory=set)
+    """Legacy set, migrated to approval_mode='edits'. Kept for backward compat."""
 
 
 class TodoItemState(BaseModel):
@@ -96,6 +101,21 @@ def _migrate_legacy_metadata(session_dir: Path, state: SessionState) -> str:
     return "migrated" if changed else "no_change"
 
 
+def _migrate_legacy_approval_state(state: SessionState) -> None:
+    """Migrate legacy yolo/afk to approval_mode.
+
+    auto_approve_actions is intentionally NOT promoted to edits mode here.
+    The legacy set still works when approval_mode is manual (checked in
+    Approval.request), so promoting it would broaden the approval scope
+    and misrepresent the session state in the UI.
+    """
+    approval = state.approval
+    if approval.approval_mode != "manual":
+        return
+    if approval.yolo or approval.afk:
+        approval.approval_mode = "auto"
+
+
 def load_session_state(session_dir: Path) -> SessionState:
     state_file = session_dir / STATE_FILE_NAME
     if not state_file.exists():
@@ -110,6 +130,9 @@ def load_session_state(session_dir: Path) -> SessionState:
 
             track("session_load_failed", reason=type(e).__name__)
             state = SessionState()
+
+    # Migrate legacy approval flags to approval_mode
+    _migrate_legacy_approval_state(state)
 
     # One-time migration from legacy metadata.json (best-effort)
     migration = _migrate_legacy_metadata(session_dir, state)

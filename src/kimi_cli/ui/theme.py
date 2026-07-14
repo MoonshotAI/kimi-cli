@@ -142,6 +142,9 @@ class ToolbarColors:
     afk_label: str
     plan_label: str
     plan_prompt: str
+    manual_label: str
+    edits_label: str
+    auto_label: str
     cwd: str
     bg_tasks: str
     tip: str
@@ -153,6 +156,9 @@ _TOOLBAR_DARK = ToolbarColors(
     afk_label="bold fg:#ff8800",
     plan_label="bold fg:#00aaff",
     plan_prompt="fg:#00aaff",
+    manual_label="bold fg:#9ca3af",
+    edits_label="bold fg:#4ade80",
+    auto_label="bold fg:#fbbf24",
     cwd="fg:#666666",
     bg_tasks="fg:#888888",
     tip="fg:#555555",
@@ -164,6 +170,9 @@ _TOOLBAR_LIGHT = ToolbarColors(
     afk_label="bold fg:#c2410c",
     plan_label="bold fg:#2563eb",
     plan_prompt="fg:#2563eb",
+    manual_label="bold fg:#6b7280",
+    edits_label="bold fg:#16a34a",
+    auto_label="bold fg:#d97706",
     cwd="fg:#6b7280",
     bg_tasks="fg:#4b5563",
     tip="fg:#9ca3af",

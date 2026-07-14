@@ -274,23 +274,27 @@ class Runtime:
             additional_dirs_info = "\n\n".join(parts)
 
         # Merge invocation flags with persisted session state.
-        effective_yolo = yolo or session.state.approval.yolo
+        effective_mode = session.state.approval.approval_mode
+        if yolo or session.state.approval.yolo or session.state.approval.afk:
+            effective_mode = "auto"
         if afk and not session.state.approval.afk:
             session.state.approval.afk = True
             session.save_state()
-        saved_actions = set(session.state.approval.auto_approve_actions)
 
         def _on_approval_change() -> None:
+            session.state.approval.approval_mode = approval_state.approval_mode
+            # Also update legacy flags so older code reading them directly sees consistency.
             session.state.approval.yolo = approval_state.yolo
             session.state.approval.afk = approval_state.afk
             session.state.approval.auto_approve_actions = set(approval_state.auto_approve_actions)
             session.save_state()
 
         approval_state = ApprovalState(
-            yolo=effective_yolo,
+            approval_mode=effective_mode,
+            yolo=yolo or session.state.approval.yolo,
             afk=session.state.approval.afk,
             runtime_afk=runtime_afk,
-            auto_approve_actions=saved_actions,
+            auto_approve_actions=set(session.state.approval.auto_approve_actions),
             on_change=_on_approval_change,
         )
         notifications = NotificationManager(

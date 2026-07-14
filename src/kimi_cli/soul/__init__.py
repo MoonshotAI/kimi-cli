@@ -17,6 +17,7 @@ from kimi_cli.wire.types import ContentPart, MCPStatusSnapshot, WireMessage
 if TYPE_CHECKING:
     from kimi_cli.llm import LLM, ModelCapability
     from kimi_cli.soul.agent import Runtime
+    from kimi_cli.soul.approval import ApprovalMode
     from kimi_cli.utils.slashcmd import SlashCommand
 
 
@@ -98,6 +99,8 @@ class StatusSnapshot:
     """The maximum number of tokens the context can hold."""
     mcp_status: MCPStatusSnapshot | None = None
     """The current MCP startup snapshot, if MCP is configured."""
+    approval_mode: ApprovalMode = "manual"
+    """Approval mode: manual, edits (auto-approve file ops), auto (auto-approve everything)."""
 
 
 @runtime_checkable

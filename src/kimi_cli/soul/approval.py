@@ -17,6 +17,15 @@ from kimi_cli.wire.types import DisplayBlock
 
 type Response = Literal["approve", "approve_for_session", "reject"]
 
+# Actions that touch files but do not execute arbitrary shell commands.
+# Action strings passed by WriteFile and StrReplaceFile tools.
+_FILE_ACTIONS = frozenset({
+    "edit file",
+    "edit file outside of working directory",
+})
+
+type ApprovalMode = Literal["manual", "edits", "auto"]
+
 
 class ApprovalResult:
     """Result of an approval request. Behaves as bool for backward compatibility."""
@@ -59,18 +68,22 @@ class ApprovalState:
         afk: bool = False,
         runtime_afk: bool = False,
         auto_approve_actions: set[str] | None = None,
+        approval_mode: ApprovalMode = "manual",
         on_change: Callable[[], None] | None = None,
     ):
+        # Derive approval_mode from legacy flags if not explicitly provided.
+        if approval_mode == "manual" and (yolo or afk):
+            approval_mode = "auto"
+        elif approval_mode == "manual" and auto_approve_actions:
+            approval_mode = "edits"
+
+        self.approval_mode: ApprovalMode = approval_mode
+        """Current approval mode: manual, edits, or auto."""
+        # Keep legacy fields for backward compat with tests and external code.
         self.yolo = yolo
         self.afk = afk
-        """Persisted session flag. True when no user is present.
-
-        Implies auto-approve and is restored with the session.
-        """
         self.runtime_afk = runtime_afk
-        """Invocation-only afk flag, e.g. ``--afk`` or ``--print``. Not persisted."""
         self.auto_approve_actions: set[str] = auto_approve_actions or set()
-        """Set of action names that should automatically be approved."""
         self._on_change = on_change
 
     def notify_change(self) -> None:
@@ -101,7 +114,12 @@ class Approval:
         return self._runtime
 
     def set_yolo(self, yolo: bool) -> None:
+        """Legacy setter; maps to approval_mode for backward compat."""
         self._state.yolo = yolo
+        if yolo:
+            self._state.approval_mode = "auto"
+        elif self._state.approval_mode == "auto" and not self._state.afk:
+            self._state.approval_mode = "manual"
         self._state.notify_change()
 
     def set_afk(self, afk: bool) -> None:
@@ -112,6 +130,10 @@ class Approval:
         behavior via ``/afk``.
         """
         self._state.afk = afk
+        if afk:
+            self._state.approval_mode = "auto"
+        elif self._state.approval_mode == "auto" and not self._state.yolo:
+            self._state.approval_mode = "manual"
         if not afk:
             self._state.runtime_afk = False
         self._state.notify_change()
@@ -120,13 +142,30 @@ class Approval:
         """Toggle invocation-only afk mode without persisting it."""
         self._state.runtime_afk = afk
 
-    def is_auto_approve(self) -> bool:
-        """True when tool calls should be auto-approved.
+    def set_approval_mode(self, mode: ApprovalMode) -> None:
+        self._state.approval_mode = mode
+        self._state.yolo = mode == "auto"
+        self._state.afk = False
+        self._state.auto_approve_actions.clear()
+        self._state.notify_change()
 
-        Afk implies auto-approve, so this returns True whenever either the
-        explicit yolo flag or afk is set.
-        """
-        return self._state.yolo or self.is_afk()
+    def cycle_approval_mode(self) -> ApprovalMode:
+        """Cycle to the next approval mode (manual → edits → auto → manual)."""
+        match self._state.approval_mode:
+            case "manual":
+                new_mode = "edits"
+            case "edits":
+                new_mode = "auto"
+            case "auto":
+                new_mode = "manual"
+            case _:
+                new_mode = "manual"
+        self.set_approval_mode(new_mode)
+        return new_mode
+
+    def is_auto_approve(self) -> bool:
+        """True when tool calls should be auto-approved."""
+        return self._state.approval_mode == "auto" or self.is_afk()
 
     def is_yolo(self) -> bool:
         """True only when the user explicitly opted into yolo."""
@@ -147,6 +186,22 @@ class Approval:
     def is_runtime_afk(self) -> bool:
         """True only when afk came from this invocation."""
         return self._state.runtime_afk
+
+    def get_auto_approve_actions(self) -> set[str]:
+        """Return the set of action names that are auto-approved for this session."""
+        return set(self._state.auto_approve_actions)
+
+    def get_approval_mode(self) -> ApprovalMode:
+        """Return the current approval mode."""
+        return self._state.approval_mode
+
+    def _should_auto_approve(self, action: str) -> bool:
+        """Determine if an action should be auto-approved based on current mode."""
+        if self._state.approval_mode == "auto" or self.is_afk():
+            return True
+        if self._state.approval_mode == "edits":
+            return action in _FILE_ACTIONS
+        return False
 
     async def request(
         self,
@@ -182,13 +237,14 @@ class Approval:
             action=action,
             description=description,
         )
-        if self.is_auto_approve():
+
+        if self._should_auto_approve(action):
             from kimi_cli.telemetry import track
 
             track(
                 "tool_approved",
                 tool_name=tool_call.function.name,
-                approval_mode="afk" if self.is_afk() else "yolo",
+                approval_mode=self._state.approval_mode,
             )
             return ApprovalResult(approved=True)
 
@@ -245,8 +301,14 @@ class Approval:
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
                 )
-                self._state.auto_approve_actions.add(action)
-                self._state.notify_change()
+                # Promote approval mode based on action type to keep UX simple.
+                if action in _FILE_ACTIONS and self._state.approval_mode == "manual":
+                    self.set_approval_mode("edits")
+                elif self._state.approval_mode in ("manual", "edits"):
+                    self.set_approval_mode("auto")
+                else:
+                    self._state.auto_approve_actions.add(action)
+                    self._state.notify_change()
                 for pending in self._runtime.list_pending():
                     if pending.action == action:
                         self._runtime.resolve(pending.id, "approve")
