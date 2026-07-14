@@ -582,6 +582,28 @@ def kimi(
                 session = await Session.create(work_dir)
                 logger.info("Created new session: {session_id}", session_id=session.id)
 
+            # Refresh the terminal tab/window title with the live session
+            # context so users with many tabs can identify each one. Mirrors
+            # what Copilot CLI and Claude Code do; updates infrequently
+            # (here on session establishment, in soul/kimisoul.py after the
+            # auto-generated topic, and on /title).
+            from kimi_cli.utils.proctitle import update_terminal_title_for_session
+
+            # Skip the placeholder title that Session.refresh() assigns to
+            # empty sessions; otherwise every fresh tab would display the
+            # noisy and identical "Untitled" topic.
+            _initial_topic = session.state.custom_title or session.title or None
+            if _initial_topic == "Untitled":
+                _initial_topic = None
+            update_terminal_title_for_session(
+                # session.work_dir is canonicalized by Session.create / find /
+                # continue_; the raw CLI work_dir argument may still be a
+                # relative path like "." or "..", which would render as a
+                # useless tab title basename.
+                work_dir=str(session.work_dir),
+                topic=_initial_topic,
+            )
+
             nonlocal _latest_created_session
             _latest_created_session = session
 
