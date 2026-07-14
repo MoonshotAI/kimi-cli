@@ -6,7 +6,7 @@ import dataclasses
 import sys
 import time
 import warnings
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -135,7 +135,7 @@ class KimiCLI:
         ui_mode: str = "shell",
         # Extensions
         agent_file: Path | None = None,
-        mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
+        mcp_configs: Sequence[MCPConfig | dict[str, Any]] | None = None,
         skills_dirs: list[KaosPath] | None = None,
         # Loop control
         max_steps_per_turn: int | None = None,

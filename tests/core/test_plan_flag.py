@@ -329,7 +329,7 @@ class TestWebWorkerResumedDetection:
         with (
             patch("kimi_cli.web.runner.worker.load_session_by_id", return_value=fake_joint),
             patch(
-                "kimi_cli.web.runner.worker.get_global_mcp_config_file",
+                "kimi_cli.cli.mcp.get_global_mcp_config_file",
                 return_value=tmp_path / "no-mcp.json",
             ),
             patch.object(KimiCLI, "create", side_effect=spy_create),
@@ -363,7 +363,7 @@ class TestWebWorkerResumedDetection:
         with (
             patch("kimi_cli.web.runner.worker.load_session_by_id", return_value=fake_joint),
             patch(
-                "kimi_cli.web.runner.worker.get_global_mcp_config_file",
+                "kimi_cli.cli.mcp.get_global_mcp_config_file",
                 return_value=tmp_path / "no-mcp.json",
             ),
             patch.object(KimiCLI, "create", side_effect=spy_create),
