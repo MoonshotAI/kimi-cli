@@ -4,6 +4,13 @@
 
 ## 未发布
 
+### Kimi 不再自动发送旧版 `reasoning_effort`
+
+Kimi 的 Thinking 配置现在仅使用 `thinking.type`。`Kimi.with_thinking(...)` 不再自动把旧版 `reasoning_effort` 参数加入请求。
+
+- **受影响**：通过 Kosong 的 Kimi 供应商连接仍要求 `reasoning_effort` 的旧版 Kimi 兼容端点的应用
+- **迁移**：将端点升级为支持 `thinking.type`。如果旧版端点仍要求该参数，请通过 `with_generation_kwargs(reasoning_effort="...")` 显式传入
+
 ## 1.43.0
 
 ### MCP OAuth token 缓存迁移到 `~/.kimi/mcp-oauth/`

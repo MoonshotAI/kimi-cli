@@ -6,8 +6,8 @@ from kosong.chat_provider.kimi import Kimi
 from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
 from pydantic import SecretStr
 
-from kimi_cli.config import LLMModel, LLMProvider
-from kimi_cli.llm import augment_provider_with_env_vars, create_llm
+from kimi_cli.config import Config, LLMModel, LLMProvider
+from kimi_cli.llm import augment_provider_with_env_vars, clone_llm_with_model_alias, create_llm
 
 
 def test_augment_provider_with_env_vars_kimi(monkeypatch):
@@ -439,6 +439,8 @@ def test_create_llm_kimi_thinking_keep_not_set_omits_field(monkeypatch):
     thinking = extra_body.get("thinking") or {}
     assert "keep" not in thinking
     assert thinking.get("type") == "enabled"
+    assert llm.chat_provider.thinking_effort == "high"
+    assert "reasoning_effort" not in llm.chat_provider.model_parameters
 
 
 def test_create_llm_kimi_thinking_keep_empty_string_omits_field(monkeypatch):
@@ -502,6 +504,9 @@ def test_create_llm_kimi_thinking_keep_skipped_when_thinking_off(monkeypatch):
     extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
     thinking = extra_body.get("thinking") or {}
     assert "keep" not in thinking
+    assert thinking.get("type") == "disabled"
+    assert llm.chat_provider.thinking_effort == "off"
+    assert "reasoning_effort" not in llm.chat_provider.model_parameters
 
 
 def test_create_llm_kimi_thinking_keep_skipped_when_no_thinking_branch(monkeypatch):
@@ -519,6 +524,8 @@ def test_create_llm_kimi_thinking_keep_skipped_when_no_thinking_branch(monkeypat
     # with no thinking key. Both are acceptable; what must hold is "no keep".
     thinking = extra_body.get("thinking") or {}
     assert "keep" not in thinking
+    assert llm.chat_provider.thinking_effort is None
+    assert "reasoning_effort" not in llm.chat_provider.model_parameters
 
 
 def test_create_llm_kimi_thinking_keep_injected_on_explicit_thinking_true(monkeypatch):
@@ -542,3 +549,31 @@ def test_create_llm_kimi_thinking_keep_injected_on_explicit_thinking_true(monkey
     assert llm.chat_provider.model_parameters.get("extra_body") == snapshot(
         {"thinking": {"type": "enabled", "keep": "all"}}
     )
+    assert llm.chat_provider.thinking_effort == "high"
+    assert "reasoning_effort" not in llm.chat_provider.model_parameters
+
+
+def test_clone_llm_with_model_alias_preserves_kimi_thinking_off():
+    provider, model = _make_kimi_plain_model()
+    model.capabilities = {"thinking"}
+    llm = create_llm(provider, model, thinking=False)
+    assert llm is not None
+
+    target_model = model.model_copy(update={"model": "kimi-code"})
+    config = Config(
+        models={"target": target_model},
+        providers={"kimi": provider},
+    )
+    cloned = clone_llm_with_model_alias(
+        llm,
+        config,
+        "target",
+        session_id="test-session",
+        oauth=None,
+    )
+
+    assert cloned is not None
+    assert isinstance(cloned.chat_provider, Kimi)
+    assert cloned.chat_provider.thinking_effort == "off"
+    assert cloned.chat_provider.model_parameters["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert "reasoning_effort" not in cloned.chat_provider.model_parameters

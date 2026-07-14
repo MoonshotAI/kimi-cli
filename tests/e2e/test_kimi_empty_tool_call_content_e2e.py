@@ -223,6 +223,7 @@ async def _run_kimi_print_json(
     share_dir: Path,
     work_dir: Path,
     prompt: str,
+    thinking: bool | None = None,
 ) -> tuple[int, str, str]:
     env = os.environ.copy()
     env["KIMI_SHARE_DIR"] = str(share_dir)
@@ -230,7 +231,7 @@ async def _run_kimi_print_json(
     env["COLUMNS"] = "120"
     env["LINES"] = "40"
 
-    process = await asyncio.create_subprocess_exec(
+    args = [
         sys.executable,
         "-m",
         "kimi_cli.cli",
@@ -244,6 +245,12 @@ async def _run_kimi_print_json(
         str(config_path),
         "--work-dir",
         str(work_dir),
+    ]
+    if thinking is not None:
+        args.append("--thinking" if thinking else "--no-thinking")
+
+    process = await asyncio.create_subprocess_exec(
+        *args,
         cwd=str(_repo_root()),
         env=env,
         stdout=asyncio.subprocess.PIPE,
@@ -259,6 +266,20 @@ def _extract_final_message(stdout: str) -> dict[str, Any]:
     lines = [line for line in stdout.splitlines() if line.strip()]
     assert lines, "Expected at least one JSON line in stdout."
     return cast(dict[str, Any], json.loads(lines[-1]))
+
+
+def _assert_thinking_request_body(body: dict[str, Any], *, expected_type: str) -> None:
+    assert "reasoning_effort" not in body
+    assert body["thinking"] == {"type": expected_type}
+
+
+def _assert_session_artifacts(share_dir: Path) -> None:
+    context_files = list((share_dir / "sessions").rglob("context.jsonl"))
+    wire_files = list((share_dir / "sessions").rglob("wire.jsonl"))
+    assert len(context_files) == 1
+    assert len(wire_files) == 1
+    assert context_files[0].stat().st_size > 0
+    assert wire_files[0].stat().st_size > 0
 
 
 async def test_kimi_compat_endpoint_accepts_tool_call_history_without_empty_content(
@@ -288,6 +309,41 @@ async def test_kimi_compat_endpoint_accepts_tool_call_history_without_empty_cont
     }
 
     assert len(mock_kimi_compat_server.requests) == 2
+    for body in mock_kimi_compat_server.requests:
+        _assert_thinking_request_body(body, expected_type="disabled")
     assistant_message = _find_assistant_tool_call_message(mock_kimi_compat_server.requests[1])
     assert assistant_message is not None
     assert "content" not in assistant_message
+    _assert_session_artifacts(share_dir)
+
+
+async def test_kimi_thinking_uses_type_without_legacy_reasoning_effort(
+    tmp_path: Path, mock_kimi_compat_server: MockKimiCompatServer
+) -> None:
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    (work_dir / "sample.txt").write_text("hello from sample\n", encoding="utf-8")
+
+    share_dir = tmp_path / "share"
+    share_dir.mkdir()
+
+    config_path = tmp_path / "config.json"
+    _write_kimi_config(config_path, base_url=f"{mock_kimi_compat_server.base_url}/v1")
+
+    return_code, stdout, stderr = await _run_kimi_print_json(
+        config_path=config_path,
+        share_dir=share_dir,
+        work_dir=work_dir,
+        prompt="Read sample.txt with ReadFile and then confirm success.",
+        thinking=True,
+    )
+
+    assert return_code == 0, f"stdout:\n{stdout}\nstderr:\n{stderr}"
+    assert _extract_final_message(stdout) == {
+        "role": "assistant",
+        "content": "Read finished.",
+    }
+    assert len(mock_kimi_compat_server.requests) == 2
+    for body in mock_kimi_compat_server.requests:
+        _assert_thinking_request_body(body, expected_type="enabled")
+    _assert_session_artifacts(share_dir)
