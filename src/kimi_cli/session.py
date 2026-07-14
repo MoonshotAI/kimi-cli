@@ -286,7 +286,14 @@ class Session:
 
     @staticmethod
     async def continue_(work_dir: KaosPath) -> Session | None:
-        """Get the last session for a work directory."""
+        """Get the last session for a work directory.
+
+        Prefers the explicitly recorded ``last_session_id``. Falls back to the
+        most recently updated non-empty session on disk when that id is missing
+        or no longer resolves: ``last_session_id`` is only persisted on a clean
+        (SUCCESS) exit, so it can be lost after a Ctrl-C/crash even though the
+        conversation history still exists on disk. See #2222.
+        """
         work_dir = work_dir.canonical()
         logger.debug("Continuing session for work directory: {work_dir}", work_dir=work_dir)
 
@@ -295,15 +302,32 @@ class Session:
         if work_dir_meta is None:
             logger.debug("Work directory never been used")
             return None
-        if work_dir_meta.last_session_id is None:
-            logger.debug("Work directory never had a session")
-            return None
 
-        logger.debug(
-            "Found last session for work directory: {session_id}",
-            session_id=work_dir_meta.last_session_id,
-        )
-        return await Session.find(work_dir, work_dir_meta.last_session_id)
+        if work_dir_meta.last_session_id is not None:
+            session = await Session.find(work_dir, work_dir_meta.last_session_id)
+            if session is not None:
+                logger.debug(
+                    "Found last session for work directory: {session_id}",
+                    session_id=work_dir_meta.last_session_id,
+                )
+                return session
+            logger.debug(
+                "Recorded last session {session_id} no longer exists, falling back",
+                session_id=work_dir_meta.last_session_id,
+            )
+
+        # Fall back to the most recently updated non-empty session. Session.list
+        # is already sorted by updated_at (desc) and filters out empty sessions.
+        sessions = await Session.list(work_dir)
+        if sessions:
+            logger.debug(
+                "Continuing most recent session for work directory: {session_id}",
+                session_id=sessions[0].id,
+            )
+            return sessions[0]
+
+        logger.debug("Work directory has no resumable session")
+        return None
 
 
 def _migrate_session_context_file(work_dir_meta: WorkDirMeta, session_id: str) -> None:
