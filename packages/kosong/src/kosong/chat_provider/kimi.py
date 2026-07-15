@@ -166,7 +166,7 @@ class Kimi:
             generation_kwargs.pop("max_completion_tokens", None)
 
         try:
-            response = await self.client.chat.completions.create(
+            raw_response = await self.client.chat.completions.with_raw_response.create(
                 model=self.model,
                 messages=messages,
                 tools=(_convert_tool(tool) for tool in tools),
@@ -174,7 +174,12 @@ class Kimi:
                 stream_options={"include_usage": True} if self.stream else omit,
                 **generation_kwargs,
             )
-            return KimiStreamedMessage(response)
+            # The promise resolves as soon as response headers arrive (before the
+            # stream body), so the trace id is available even mid-stream.
+            # Note: LegacyAPIResponse.parse() is sync in openai SDK 2.x; it will
+            # become a coroutine in the next major version.
+            trace_id = raw_response.headers.get("x-trace-id")
+            return KimiStreamedMessage(raw_response.parse(), trace_id=trace_id)
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
 
@@ -372,13 +377,19 @@ def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
 class KimiStreamedMessage:
     """The streamed message of the Kimi chat provider."""
 
-    def __init__(self, response: ChatCompletion | AsyncStream[ChatCompletionChunk]):
+    def __init__(
+        self,
+        response: ChatCompletion | AsyncStream[ChatCompletionChunk],
+        *,
+        trace_id: str | None = None,
+    ):
         if isinstance(response, ChatCompletion):
             self._iter = self._convert_non_stream_response(response)
         else:
             self._iter = self._convert_stream_response(response)
         self._id: str | None = None
         self._usage: CompletionUsage | None = None
+        self._trace_id = trace_id
 
     def __aiter__(self) -> AsyncIterator[StreamedMessagePart]:
         return self
@@ -389,6 +400,10 @@ class KimiStreamedMessage:
     @property
     def id(self) -> str | None:
         return self._id
+
+    @property
+    def trace_id(self) -> str | None:
+        return self._trace_id
 
     @property
     def usage(self) -> TokenUsage | None:

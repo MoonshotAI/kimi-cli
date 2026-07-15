@@ -224,6 +224,13 @@ class TestAPIErrorClassification:
         et, _ = classify_api_error(self._mk_status_error(502))
         assert et == "5xx_server"
 
+    def test_529_maps_to_overloaded(self):
+        from kimi_cli.soul.kimisoul import classify_api_error
+
+        et, sc = classify_api_error(self._mk_status_error(529))
+        assert et == "overloaded"
+        assert sc == 529
+
     def test_400_maps_to_4xx_client(self):
         from kimi_cli.soul.kimisoul import classify_api_error
 
@@ -315,6 +322,43 @@ class TestAPIErrorClassification:
         event = _collect_events()[-1]
         assert event["properties"]["status_code"] == 503
         assert isinstance(event["properties"]["status_code"], int)
+
+
+class TestRetryableClassification:
+    """api_error.retryable follows the TS isRetryableGenerateError table."""
+
+    def _status(self, status: int):
+        from kosong.chat_provider import APIStatusError
+
+        return APIStatusError(status, "err")
+
+    def test_529_overloaded_is_retryable(self):
+        from kimi_cli.soul.kimisoul import is_retryable_api_error
+
+        assert is_retryable_api_error(self._status(529)) is True
+
+    def test_408_409_are_retryable(self):
+        from kimi_cli.soul.kimisoul import is_retryable_api_error
+
+        assert is_retryable_api_error(self._status(408)) is True
+        assert is_retryable_api_error(self._status(409)) is True
+
+    def test_400_is_not_retryable(self):
+        from kimi_cli.soul.kimisoul import is_retryable_api_error
+
+        assert is_retryable_api_error(self._status(400)) is False
+
+    def test_network_error_is_retryable(self):
+        from kosong.chat_provider import APIConnectionError
+
+        from kimi_cli.soul.kimisoul import is_retryable_api_error
+
+        assert is_retryable_api_error(APIConnectionError("lost")) is True
+
+    def test_non_provider_error_is_not_retryable(self):
+        from kimi_cli.soul.kimisoul import is_retryable_api_error
+
+        assert is_retryable_api_error(RuntimeError("x")) is False
 
 
 # ---------------------------------------------------------------------------
@@ -936,7 +980,7 @@ class TestCompactionTracking:
 
     @pytest.mark.asyncio
     async def test_auto_compaction_success_emits_event(self):
-        """Auto-triggered success: track has trigger_type=auto + after_tokens."""
+        """Auto-triggered success: track has source=auto + tokens_after."""
         soul = self._make_soul(before_tokens=12000, estimated_after=3000)
 
         with (
@@ -951,17 +995,20 @@ class TestCompactionTracking:
         assert len(calls) == 1
         args, kwargs = calls[0]
         assert args[0] == "compaction_finished"
-        assert kwargs["trigger_type"] == "auto"
-        assert kwargs["before_tokens"] == 12000
-        assert kwargs["after_tokens"] == 3000
+        assert kwargs["source"] == "auto"
+        assert kwargs["tokens_before"] == 12000
+        assert kwargs["tokens_after"] == 3000
         assert kwargs["duration_ms"] >= 0
         assert kwargs["retry_count"] == 0
-        assert "llm_input_tokens" not in kwargs
-        assert "llm_output_tokens" not in kwargs
+        assert kwargs["round"] == 1
+        assert "thinking_effort" in kwargs
+        assert "compacted_count" in kwargs
+        assert "input_tokens" not in kwargs
+        assert "output_tokens" not in kwargs
 
     @pytest.mark.asyncio
     async def test_manual_compaction_without_prompt_emits_event(self):
-        """/compact without instruction yields trigger_type=manual."""
+        """/compact without instruction yields source=manual."""
         soul = self._make_soul(before_tokens=8000, estimated_after=2000)
 
         with (
@@ -972,13 +1019,13 @@ class TestCompactionTracking:
 
         calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
-        assert calls[0][1]["trigger_type"] == "manual"
+        assert calls[0][1]["source"] == "manual"
         assert calls[0][1]["duration_ms"] >= 0
         assert calls[0][1]["retry_count"] == 0
 
     @pytest.mark.asyncio
     async def test_manual_compaction_with_prompt_emits_event(self):
-        """/compact with instruction yields trigger_type=manual-with-prompt."""
+        """/compact with instruction still yields source=manual (TS-aligned enum)."""
         soul = self._make_soul(before_tokens=8000, estimated_after=2000)
 
         with (
@@ -989,13 +1036,13 @@ class TestCompactionTracking:
 
         calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_finished"]
         assert len(calls) == 1
-        assert calls[0][1]["trigger_type"] == "manual-with-prompt"
+        assert calls[0][1]["source"] == "manual"
         assert calls[0][1]["duration_ms"] >= 0
         assert calls[0][1]["retry_count"] == 0
 
     @pytest.mark.asyncio
     async def test_compaction_failure_emits_event_then_reraises(self):
-        """On compaction failure: track compaction_failed (no after_tokens), then re-raise."""
+        """On compaction failure: track compaction_failed (no tokens_after), then re-raise."""
         soul = self._make_soul(before_tokens=50000, estimated_after=0)
         # Force the compaction to fail with a non-retryable error
         soul._run_with_connection_recovery = AsyncMock(side_effect=RuntimeError("compaction boom"))
@@ -1010,11 +1057,12 @@ class TestCompactionTracking:
         calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_failed"]
         assert len(calls) == 1
         kwargs = calls[0][1]
-        assert kwargs["trigger_type"] == "auto"
-        assert kwargs["before_tokens"] == 50000
-        assert "after_tokens" not in kwargs
+        assert kwargs["source"] == "auto"
+        assert kwargs["tokens_before"] == 50000
+        assert "tokens_after" not in kwargs
         assert kwargs["duration_ms"] >= 0
         assert kwargs["retry_count"] == 0
+        assert kwargs["round"] == 1
         assert kwargs["error_type"] == "RuntimeError"
 
 
@@ -1111,3 +1159,77 @@ class TestPlanLifecycleEvents:
         track("plan_enter_resolved", outcome="auto_approved")
         event = _collect_events()[-1]
         assert event["properties"]["outcome"] == "auto_approved"
+
+
+# ---------------------------------------------------------------------------
+# 9. Trace id holder (x-trace-id propagation)
+# ---------------------------------------------------------------------------
+
+
+class TestTraceIdHolder:
+    """Verify the two-level trace id holder used by trace_id event properties."""
+
+    def teardown_method(self):
+        from kimi_cli.telemetry import set_current_trace_id
+
+        set_current_trace_id(None, root=True)
+
+    def test_set_get_current_trace_id(self):
+        from kimi_cli.telemetry import get_current_trace_id, set_current_trace_id
+
+        set_current_trace_id("t-1")
+        assert get_current_trace_id() == "t-1"
+        set_current_trace_id(None)
+        assert get_current_trace_id() is None
+
+    def test_root_mirror_only_set_when_root(self):
+        from kimi_cli.telemetry import get_root_trace_id, set_current_trace_id
+
+        set_current_trace_id(None, root=True)
+        set_current_trace_id("t-sub", root=False)
+        assert get_root_trace_id() is None
+        set_current_trace_id("t-root", root=True)
+        assert get_root_trace_id() == "t-root"
+
+    @pytest.mark.asyncio
+    async def test_contextvar_propagates_to_child_tasks(self):
+        """Tool tasks created after the request see the request's trace id."""
+        import asyncio
+
+        from kimi_cli.telemetry import get_current_trace_id, set_current_trace_id
+
+        set_current_trace_id("t-parent")
+
+        async def child_read():
+            return get_current_trace_id()
+
+        assert await asyncio.create_task(child_read()) == "t-parent"
+
+    @pytest.mark.asyncio
+    async def test_contextvar_isolated_from_sibling_tasks(self):
+        """A subagent turn setting its own trace id must not affect the parent."""
+        import asyncio
+
+        from kimi_cli.telemetry import get_current_trace_id, set_current_trace_id
+
+        set_current_trace_id("t-parent")
+
+        async def child_set():
+            set_current_trace_id("t-child")
+            return get_current_trace_id()
+
+        assert await asyncio.create_task(child_set()) == "t-child"
+        assert get_current_trace_id() == "t-parent"
+
+
+class TestTurnEndedEvent:
+    """turn_ended fires with the TS-aligned property shape."""
+
+    def test_turn_ended_reason_enum(self):
+        for reason in ("completed", "cancelled", "failed"):
+            telemetry_mod._event_queue.clear()
+            track("turn_ended", reason=reason, duration_ms=1, mode="agent")
+            event = _collect_events()[-1]
+            assert event["event"] == "turn_ended"
+            assert event["properties"]["reason"] == reason
+            assert isinstance(event["properties"]["duration_ms"], int)

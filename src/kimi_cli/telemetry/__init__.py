@@ -24,6 +24,7 @@ import time
 import uuid
 from collections import deque
 from contextlib import suppress
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -47,6 +48,42 @@ _session_started_sessions: set[str] = set()
 """Session ids that already emitted the session_started event in this process."""
 _sink: EventSink | None = None
 _disabled: bool = False
+
+# ---------------------------------------------------------------------------
+# Current request trace id (x-trace-id response header)
+# ---------------------------------------------------------------------------
+#
+# Two-level holder mirroring the TS agent telemetry context:
+# - ``_trace_id_var`` is a ContextVar, so each turn task (foreground turn,
+#   subagent, background task) sees the trace id of its own latest LLM
+#   request, and tool tasks created after the request inherits it.
+# - ``_root_trace_id`` mirrors the root (foreground) agent's value so that UI
+#   code running outside the turn task (e.g. the shell live view handling
+#   ESC / question panels) can read it.
+_trace_id_var: ContextVar[str | None] = ContextVar("kimi_telemetry_trace_id", default=None)
+_root_trace_id: str | None = None
+
+
+def set_current_trace_id(trace_id: str | None, *, root: bool = False) -> None:
+    """Record the trace id of the latest LLM request in the current context.
+
+    Pass ``root=True`` only from the root agent so UI code can read the value
+    via ``get_root_trace_id`` outside the turn task's context.
+    """
+    global _root_trace_id
+    _trace_id_var.set(trace_id)
+    if root:
+        _root_trace_id = trace_id
+
+
+def get_current_trace_id() -> str | None:
+    """The trace id of the latest LLM request in the current task context."""
+    return _trace_id_var.get()
+
+
+def get_root_trace_id() -> str | None:
+    """The trace id of the root agent's latest LLM request (for UI emit points)."""
+    return _root_trace_id
 
 
 def set_context(*, device_id: str, session_id: str) -> None:

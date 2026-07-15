@@ -95,6 +95,15 @@ class StreamedMessage(Protocol):
         """The token usage of the streamed message."""
         ...
 
+    @property
+    def trace_id(self) -> str | None:
+        """The ``x-trace-id`` response header of the underlying request, if exposed.
+
+        Only providers talking to the KFC inference service (e.g. Kimi) return a
+        value; all other providers return None.
+        """
+        ...
+
 
 class TokenUsage(BaseModel):
     """Token usage statistics."""
@@ -156,11 +165,20 @@ class APIStatusError(ChatProviderError):
 
     status_code: int
     request_id: str | None
+    trace_id: str | None
 
-    def __init__(self, status_code: int, message: str, *, request_id: str | None = None):
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        *,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.request_id = request_id
+        self.trace_id = trace_id
 
 
 class APIEmptyResponseError(ChatProviderError):
@@ -183,5 +201,8 @@ def convert_httpx_error(error: httpx.HTTPError) -> ChatProviderError:
         return APIConnectionError(str(error))
     if isinstance(error, httpx.HTTPStatusError):
         req_id = error.response.headers.get("x-request-id")
-        return APIStatusError(error.response.status_code, str(error), request_id=req_id)
+        trace_id = error.response.headers.get("x-trace-id")
+        return APIStatusError(
+            error.response.status_code, str(error), request_id=req_id, trace_id=trace_id
+        )
     return ChatProviderError(f"HTTP error: {error}")

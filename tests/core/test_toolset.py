@@ -633,3 +633,111 @@ async def test_tool_call_repeat_telemetry_matches_kimi_code(
     assert [p["action"] for _, p in repeat_events] == ["none", "r1", "r1", "r2"]
     assert all(p["tool_name"] == "ToolA" for _, p in repeat_events)
     assert all(set(p) == {"tool_name", "repeat_count", "action"} for _, p in repeat_events)
+
+
+async def test_tool_call_dedup_detected_telemetry(monkeypatch: pytest.MonkeyPatch):
+    """tool_call_dedup_detected fires for same-step and cross-step duplicates."""
+    events: list[tuple[str, dict[str, object]]] = []
+
+    def fake_track(event: str, **props: object) -> None:
+        events.append((event, props))
+
+    monkeypatch.setattr("kimi_cli.telemetry.track", fake_track)
+
+    ts = _make_toolset()
+    args = '{"value":"x"}'
+
+    ts.begin_step([])
+    r1 = ts.handle(
+        ToolCall(id="tc-1", function=ToolCall.FunctionBody(name="ToolA", arguments=args))
+    )
+    r2 = ts.handle(
+        ToolCall(id="tc-2", function=ToolCall.FunctionBody(name="ToolA", arguments=args))
+    )
+    assert isinstance(r1, asyncio.Task) and isinstance(r2, asyncio.Task)
+    await asyncio.gather(r1, r2)
+    previous = ts.end_step()
+
+    ts.begin_step(previous)
+    r3 = ts.handle(
+        ToolCall(id="tc-3", function=ToolCall.FunctionBody(name="ToolA", arguments=args))
+    )
+    assert isinstance(r3, asyncio.Task)
+    await r3
+
+    dedup_events = [(e, p) for e, p in events if e == "tool_call_dedup_detected"]
+    assert [p["dup_type"] for _, p in dedup_events] == ["same_step", "cross_step"]
+    assert all(p["tool_name"] == "ToolA" for _, p in dedup_events)
+    assert all("args_hash" in p and "tool_call_id" in p for _, p in dedup_events)
+
+
+async def test_tool_call_error_uses_enum_and_error_class(monkeypatch: pytest.MonkeyPatch):
+    """tool_call error events use the TS error_type enum; class name goes to error_class."""
+    events: list[tuple[str, dict[str, object]]] = []
+
+    def fake_track(event: str, **props: object) -> None:
+        events.append((event, props))
+
+    monkeypatch.setattr("kimi_cli.telemetry.track", fake_track)
+
+    class FailingTool(CallableTool2[DummyParams]):
+        name: str = "FailingTool"
+        description: str = "always fails"
+        params: type[DummyParams] = DummyParams
+
+        async def __call__(self, params: DummyParams) -> ToolReturnValue:
+            raise ValueError("boom")
+
+    ts = _make_toolset()
+    ts.add(FailingTool())
+    ts.begin_step([])
+    result = ts.handle(
+        ToolCall(id="tc-f", function=ToolCall.FunctionBody(name="FailingTool", arguments="{}"))
+    )
+    assert isinstance(result, asyncio.Task)
+    await result
+
+    tool_call_events = [(e, p) for e, p in events if e == "tool_call"]
+    assert len(tool_call_events) == 1
+    props = tool_call_events[0][1]
+    assert props["outcome"] == "error"
+    assert props["error_type"] == "error"
+    assert props["error_class"] == "ValueError"
+
+
+async def test_tool_call_cancelled_outcome(monkeypatch: pytest.MonkeyPatch):
+    """Cancelling a running tool emits outcome=cancelled + error_type=cancelled."""
+    events: list[tuple[str, dict[str, object]]] = []
+
+    def fake_track(event: str, **props: object) -> None:
+        events.append((event, props))
+
+    monkeypatch.setattr("kimi_cli.telemetry.track", fake_track)
+
+    class SlowTool(CallableTool2[DummyParams]):
+        name: str = "SlowTool"
+        description: str = "never finishes"
+        params: type[DummyParams] = DummyParams
+
+        async def __call__(self, params: DummyParams) -> ToolReturnValue:
+            await asyncio.sleep(60)
+            return ToolOk(output="done")
+
+    ts = _make_toolset()
+    ts.add(SlowTool())
+    ts.begin_step([])
+    result = ts.handle(
+        ToolCall(id="tc-s", function=ToolCall.FunctionBody(name="SlowTool", arguments="{}"))
+    )
+    assert isinstance(result, asyncio.Task)
+    await asyncio.sleep(0)
+    result.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await result
+
+    tool_call_events = [(e, p) for e, p in events if e == "tool_call"]
+    assert len(tool_call_events) == 1
+    props = tool_call_events[0][1]
+    assert props["outcome"] == "cancelled"
+    assert props["error_type"] == "cancelled"
+    assert "error_class" not in props

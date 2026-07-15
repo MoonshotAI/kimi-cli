@@ -82,7 +82,10 @@ def convert_error(error: OpenAIError | httpx.HTTPError) -> ChatProviderError:
     match error:
         case openai.APIStatusError():
             req_id = error.response.headers.get("x-request-id")
-            return APIStatusError(error.status_code, error.message, request_id=req_id)
+            trace_id = error.response.headers.get("x-trace-id")
+            return APIStatusError(
+                error.status_code, error.message, request_id=req_id, trace_id=trace_id
+            )
         case openai.APITimeoutError():
             return APITimeoutError(error.message)
         case openai.APIConnectionError():
