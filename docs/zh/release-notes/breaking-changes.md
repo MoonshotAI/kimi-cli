@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## 1.49.0
+
 ### Kimi 不再自动发送旧版 `reasoning_effort`
 
 Kimi 的 Thinking 配置现在仅使用 `thinking.type`。`Kimi.with_thinking(...)` 不再自动把旧版 `reasoning_effort` 参数加入请求。

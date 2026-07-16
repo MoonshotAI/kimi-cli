@@ -11,7 +11,13 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+## 1.49.0 (2026-07-16)
+
+**Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns
+
+- LLM: Clamp the Kimi completion-token budget to the model's remaining context window — the CLI no longer sends a fixed `max_tokens=32000` but estimates the remaining context for each request and caps `max_completion_tokens` accordingly. Set the new `KIMI_MODEL_MAX_COMPLETION_TOKENS` env var for an explicit hard cap (`KIMI_MODEL_MAX_TOKENS` remains a compatibility alias; `0` or a negative value disables clamping)
 - Kosong: Stop Kimi from automatically sending the legacy `reasoning_effort` parameter when configuring thinking — requests now use `thinking.type` exclusively while preserving explicit legacy passthrough
+- Kosong: Fix empty-string `reasoning_content` from thinking models being dropped from history — a reply that reasoned but ended with empty reasoning was recorded as having no reasoning at all, so Preserved Thinking backends that require `reasoning_content` on every assistant message rejected the next request with a 400
 
 ## 1.47.0 (2026-06-05)
 

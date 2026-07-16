@@ -4,6 +4,8 @@ This page documents breaking changes in Kimi Code CLI releases and provides migr
 
 ## Unreleased
 
+## 1.49.0
+
 ### Kimi no longer sends legacy `reasoning_effort` automatically
 
 Kimi thinking configuration now uses `thinking.type` exclusively. `Kimi.with_thinking(...)` no longer adds the legacy `reasoning_effort` parameter to requests.
