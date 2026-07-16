@@ -167,22 +167,32 @@ class Kimi:
             generation_kwargs.pop("max_completion_tokens", None)
 
         try:
-            raw_response = await self.client.chat.completions.with_raw_response.create(
-                model=self.model,
-                messages=messages,
-                tools=(_convert_tool(tool) for tool in tools),
-                stream=self.stream,
-                stream_options={"include_usage": True} if self.stream else omit,
-                **generation_kwargs,
-            )
-            # The promise resolves as soon as response headers arrive (before the
-            # stream body), so the trace id is available even mid-stream.
-            # Note: LegacyAPIResponse.parse() is sync in openai SDK 2.x; it will
-            # become a coroutine in the next major version.
-            trace_id = raw_response.headers.get("x-trace-id")
-            parsed_response = raw_response.parse()
-            if inspect.isawaitable(parsed_response):
-                parsed_response = await parsed_response
+            if self.stream:
+                # ``with_raw_response`` eagerly reads the response body in the
+                # OpenAI SDK. Use the normal streaming path so callers receive
+                # the AsyncStream as soon as response headers arrive.
+                parsed_response = await cast(Any, self.client.chat.completions.create)(
+                    model=self.model,
+                    messages=messages,
+                    tools=(_convert_tool(tool) for tool in tools),
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    **generation_kwargs,
+                )
+                trace_id = parsed_response.response.headers.get("x-trace-id")
+            else:
+                raw_response = await self.client.chat.completions.with_raw_response.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=(_convert_tool(tool) for tool in tools),
+                    stream=False,
+                    stream_options=omit,
+                    **generation_kwargs,
+                )
+                trace_id = raw_response.headers.get("x-trace-id")
+                parsed_response = raw_response.parse()
+                if inspect.isawaitable(parsed_response):
+                    parsed_response = await parsed_response
             return KimiStreamedMessage(parsed_response, trace_id=trace_id)
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e

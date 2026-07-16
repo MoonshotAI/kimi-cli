@@ -87,7 +87,7 @@ async def test_kimi_trace_id_none_without_header():
 
 @pytest.mark.asyncio
 async def test_kimi_streaming_captures_trace_id():
-    """Streaming path: with_raw_response resolves at headers, parse() yields the stream."""
+    """Streaming path returns before the response body is consumed."""
     sse = (
         'data: {"id":"chatcmpl-x","object":"chat.completion.chunk","created":1,'
         '"model":"test-model","choices":[{"index":0,'
@@ -110,6 +110,33 @@ async def test_kimi_streaming_captures_trace_id():
         assert stream.trace_id == TRACE_ID
         parts = [part async for part in stream]
         assert parts
+
+
+@pytest.mark.asyncio
+async def test_kimi_streaming_uses_stream_response_headers():
+    class DelayedStream:
+        response = httpx.Response(200, headers={"x-trace-id": TRACE_ID})
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise AssertionError("the response body must not be consumed in generate")
+
+    class Completions:
+        async def create(self, **kwargs: Any):
+            assert kwargs["stream"] is True
+            return DelayedStream()
+
+    provider = Kimi(model="test-model", api_key="token", stream=True)
+    cast(Any, provider).client = type(
+        "FakeClient",
+        (),
+        {"chat": type("FakeChat", (), {"completions": Completions()})()},
+    )()
+
+    stream = await provider.generate("", [], [])
+    assert stream.trace_id == TRACE_ID
 
 
 @pytest.mark.asyncio
