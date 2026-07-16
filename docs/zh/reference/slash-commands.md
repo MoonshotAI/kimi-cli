@@ -299,7 +299,7 @@ Flow Skill 也可以通过 `/skill:<name>` 调用，此时作为普通 Skill 加
 任务浏览器每秒自动刷新，实时显示任务状态变化。
 
 ::: tip 提示
-后台任务通过 AI 使用 `Shell` 工具的 `run_in_background=true` 参数启动。当后台任务完成时，系统会自动通知 AI。
+后台任务通过 AI 使用 `Shell` 工具的 `run_in_background=true` 参数或 `Monitor` 工具启动。当后台任务完成或 Monitor 产生新的输出行时，系统会自动通知 AI。详见 [后台任务](../guides/interaction.md#后台任务)。
 :::
 
 ### `/yolo`

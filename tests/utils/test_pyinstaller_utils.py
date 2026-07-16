@@ -90,6 +90,7 @@ def test_pyinstaller_datas():
         ("src/kimi_cli/tools/background/list.md", "kimi_cli/tools/background"),
         ("src/kimi_cli/tools/background/output.md", "kimi_cli/tools/background"),
         ("src/kimi_cli/tools/background/stop.md", "kimi_cli/tools/background"),
+        ("src/kimi_cli/tools/monitor/monitor.md", "kimi_cli/tools/monitor"),
         (
             "src/kimi_cli/tools/file/glob.md",
             "kimi_cli/tools/file",
@@ -167,6 +168,7 @@ def test_pyinstaller_hiddenimports():
             "kimi_cli.tools.file.replace",
             "kimi_cli.tools.file.utils",
             "kimi_cli.tools.file.write",
+            "kimi_cli.tools.monitor",
             "kimi_cli.tools.plan",
             "kimi_cli.tools.plan.enter",
             "kimi_cli.tools.plan.heroes",

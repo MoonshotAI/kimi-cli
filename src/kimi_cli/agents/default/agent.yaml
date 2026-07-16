@@ -14,6 +14,7 @@ agent:
     - "kimi_cli.tools.background:TaskList"
     - "kimi_cli.tools.background:TaskOutput"
     - "kimi_cli.tools.background:TaskStop"
+    - "kimi_cli.tools.monitor:Monitor"
     - "kimi_cli.tools.file:ReadFile"
     - "kimi_cli.tools.file:ReadMediaFile"
     - "kimi_cli.tools.file:Glob"

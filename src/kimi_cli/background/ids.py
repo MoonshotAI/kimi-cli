@@ -10,6 +10,7 @@ _ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
 _TASK_ID_PREFIXES: dict[TaskKind, str] = {
     "bash": "bash",
     "agent": "agent",
+    "monitor": "monitor",
 }
 
 

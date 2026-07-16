@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-type TaskKind = Literal["bash", "agent"]
+type TaskKind = Literal["bash", "agent", "monitor"]
 type TaskStatus = Literal[
     "created",
     "starting",
@@ -51,6 +51,19 @@ class TaskSpec(BaseModel):
     cwd: str | None = None
     timeout_s: int | None = None
     kind_payload: dict[str, Any] | None = None
+
+
+class MonitorPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    batch_ms: int = 200
+    max_lines_per_window: int = 200
+    volume_window_s: float = 5.0
+    notify_offset: int = 0
+
+
+def monitor_payload(spec: TaskSpec) -> MonitorPayload:
+    return MonitorPayload.model_validate(spec.kind_payload or {})
 
 
 class TaskRuntime(BaseModel):

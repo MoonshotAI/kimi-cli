@@ -11,6 +11,11 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+**Highlights**: New `Monitor` tool streams background command output as notifications, with a volume cap that auto-stops runaway output.
+
+- Tool: Add `Monitor` tool — run a self-filtering shell command in the background and receive each stdout line as a notification; stop the monitor with `TaskStop` or let it time out
+- Core: Cap monitor notification volume — auto-stops a monitor if it emits more than 200 lines in a 5-second window and warns the user to restart with a tighter filter
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns
