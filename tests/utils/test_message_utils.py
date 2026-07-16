@@ -4,8 +4,31 @@ from __future__ import annotations
 
 from kosong.message import Message
 
-from kimi_cli.utils.message import message_stringify
+from kimi_cli.utils.message import message_stringify, user_input_to_text
 from kimi_cli.wire.types import ImageURLPart, TextPart
+
+
+def test_user_input_to_text_from_string():
+    """A plain string is returned unchanged."""
+    assert user_input_to_text("hello world") == "hello world"
+
+
+def test_user_input_to_text_from_content_parts():
+    """Structured content (e.g. from the shell UI) yields its text, not ''."""
+    user_input = [TextPart(text="hello"), TextPart(text="world")]
+    assert user_input_to_text(user_input) == "hello world"
+
+
+def test_user_input_to_text_ignores_non_text_parts():
+    """Non-text parts are skipped when extracting the text."""
+    image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.jpg"))
+    user_input = [TextPart(text="describe"), image_part, TextPart(text="this")]
+    assert user_input_to_text(user_input) == "describe this"
+
+
+def test_user_input_to_text_from_empty_parts():
+    """No text parts yields an empty string."""
+    assert user_input_to_text([]) == ""
 
 
 def test_extract_text_from_string_content():

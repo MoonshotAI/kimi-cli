@@ -78,6 +78,7 @@ from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.message import user_input_to_text
 from kimi_cli.utils.slashcmd import SlashCommand, parse_slash_command_call
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import (
@@ -617,7 +618,10 @@ class KimiSoul:
             # they are not user input, and a user-configured prompt-blocking
             # hook would drop the notification and hang the wait loop.
             if not skip_user_prompt_hook:
-                text_input_for_hook = user_input if isinstance(user_input, str) else ""
+                # user_input may be structured content (e.g. from the shell UI),
+                # not a plain str; extract its text so prompt-matching hooks see
+                # the actual prompt instead of an empty string.
+                text_input_for_hook = user_input_to_text(user_input)
 
                 hook_results = await self._hook_engine.trigger(
                     "UserPromptSubmit",
