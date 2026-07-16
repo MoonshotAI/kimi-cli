@@ -17,6 +17,16 @@ async def test_default_session_has_timeout():
         assert session.timeout.sock_connect == 15
 
 
+async def test_session_trusts_env_for_proxy():
+    """new_client_session() must honour HTTP(S)_PROXY env vars (trust_env=True).
+
+    Without this, tools like FetchURL/WebSearch can't reach the network behind a
+    proxy even though curl can. See #2455.
+    """
+    async with new_client_session() as session:
+        assert session.trust_env is True
+
+
 async def test_custom_timeout_override():
     """Callers can override the default timeout."""
     import aiohttp

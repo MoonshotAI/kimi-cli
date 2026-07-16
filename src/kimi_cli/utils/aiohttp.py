@@ -21,4 +21,7 @@ def new_client_session(
     return aiohttp.ClientSession(
         connector=aiohttp.TCPConnector(ssl=_ssl_context),
         timeout=timeout or _DEFAULT_TIMEOUT,
+        # Honour HTTP_PROXY/HTTPS_PROXY (and NO_PROXY) from the environment, like
+        # curl does. aiohttp ignores them unless trust_env is set.
+        trust_env=True,
     )
