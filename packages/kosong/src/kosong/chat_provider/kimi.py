@@ -1,4 +1,5 @@
 import copy
+import inspect
 import mimetypes
 import os
 import uuid
@@ -179,7 +180,10 @@ class Kimi:
             # Note: LegacyAPIResponse.parse() is sync in openai SDK 2.x; it will
             # become a coroutine in the next major version.
             trace_id = raw_response.headers.get("x-trace-id")
-            return KimiStreamedMessage(raw_response.parse(), trace_id=trace_id)
+            parsed_response = raw_response.parse()
+            if inspect.isawaitable(parsed_response):
+                parsed_response = await parsed_response
+            return KimiStreamedMessage(parsed_response, trace_id=trace_id)
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
 

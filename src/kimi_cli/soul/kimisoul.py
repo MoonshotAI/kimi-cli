@@ -260,7 +260,6 @@ class KimiSoul:
         self._last_tool_calls: list[tuple[str, str]] = []
         self._plan_mode: bool = self._runtime.session.state.plan_mode
         self._plan_session_id: str | None = self._runtime.session.state.plan_session_id
-        self._current_turn_id: str = ""
         self._root_trace_id: str | None = None
         # Pre-warm slug cache so the persisted slug survives process restarts
         if self._plan_session_id is not None and self._runtime.session.state.plan_slug is not None:
@@ -669,9 +668,6 @@ class KimiSoul:
         turn_finished = False
         interrupt_reason: str | None = None
         turn_t0 = time.monotonic()
-        # Reset per-turn state so slash-only / hook-blocked runs (which never
-        # reach _turn()) don't carry the previous turn's id into turn_ended.
-        self._current_turn_id = ""
         self._set_trace_id(None)
         if get_current_approval_source_or_none() is None:
             created_approval_source = ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
@@ -829,8 +825,6 @@ class KimiSoul:
                     duration_ms=int((time.monotonic() - turn_t0) * 1000),
                     mode="plan" if self._plan_mode else "agent",
                 )
-                if self._current_turn_id:
-                    _ended_kwargs["turn_id"] = self._current_turn_id
                 _ended_kwargs.update(_provider_telemetry_kwargs(self._runtime.llm))
                 if _tid := get_current_trace_id():
                     _ended_kwargs["trace_id"] = _tid
@@ -851,7 +845,6 @@ class KimiSoul:
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
-        self._current_turn_id = uuid.uuid4().hex
         self._last_tool_calls = []
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)

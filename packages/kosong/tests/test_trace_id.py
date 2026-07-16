@@ -6,9 +6,12 @@ paths) and propagated through ``generate``/``step`` results and the
 ``on_trace_id`` early callback.
 """
 
+from typing import Any, cast
+
 import httpx
 import pytest
 import respx
+from openai.types.chat import ChatCompletion
 
 import kosong
 from kosong.chat_provider import APIStatusError, StreamedMessage
@@ -45,6 +48,7 @@ def _completion_payload() -> dict[str, object]:
     return {
         "id": "chatcmpl-test",
         "object": "chat.completion",
+        "created": 1,
         "model": "test-model",
         "choices": [
             {
@@ -106,6 +110,34 @@ async def test_kimi_streaming_captures_trace_id():
         assert stream.trace_id == TRACE_ID
         parts = [part async for part in stream]
         assert parts
+
+
+@pytest.mark.asyncio
+async def test_kimi_accepts_async_raw_response_parse():
+    class AsyncRawResponse:
+        headers = {"x-trace-id": TRACE_ID}
+
+        async def parse(self):
+            return ChatCompletion.model_validate(_completion_payload())
+
+    class Completions:
+        class WithRawResponse:
+            async def create(self, **kwargs: Any):
+                return AsyncRawResponse()
+
+        with_raw_response = WithRawResponse()
+
+    provider = Kimi(model="test-model", api_key="token", stream=False)
+    cast(Any, provider).client = type(
+        "FakeClient",
+        (),
+        {"chat": type("FakeChat", (), {"completions": Completions()})()},
+    )()
+
+    stream = await provider.generate("", [], [])
+    assert stream.trace_id == TRACE_ID
+    parts = [part async for part in stream]
+    assert parts
 
 
 @pytest.mark.asyncio
