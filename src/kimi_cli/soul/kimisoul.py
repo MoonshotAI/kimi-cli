@@ -261,6 +261,7 @@ class KimiSoul:
         self._plan_mode: bool = self._runtime.session.state.plan_mode
         self._plan_session_id: str | None = self._runtime.session.state.plan_session_id
         self._current_turn_id: str = ""
+        self._root_trace_id: str | None = None
         # Pre-warm slug cache so the persisted slug survives process restarts
         if self._plan_session_id is not None and self._runtime.session.state.plan_slug is not None:
             from kimi_cli.tools.plan.heroes import seed_slug_cache
@@ -331,6 +332,18 @@ class KimiSoul:
     def is_subagent(self) -> bool:
         """Whether this soul is running as a subagent rather than the root session."""
         return self._runtime.role == "subagent"
+
+    @property
+    def root_trace_id(self) -> str | None:
+        """The latest LLM trace id for this root session, for UI events."""
+        return self._root_trace_id if self.is_root else None
+
+    def _set_trace_id(self, trace_id: str | None) -> None:
+        from kimi_cli.telemetry import set_current_trace_id
+
+        set_current_trace_id(trace_id)
+        if self.is_root:
+            self._root_trace_id = trace_id
 
     @property
     def plan_mode(self) -> bool:
@@ -659,9 +672,7 @@ class KimiSoul:
         # Reset per-turn state so slash-only / hook-blocked runs (which never
         # reach _turn()) don't carry the previous turn's id into turn_ended.
         self._current_turn_id = ""
-        from kimi_cli.telemetry import set_current_trace_id
-
-        set_current_trace_id(None, root=self.is_root)
+        self._set_trace_id(None)
         if get_current_approval_source_or_none() is None:
             created_approval_source = ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
             approval_source_token = set_current_approval_source(created_approval_source)
@@ -831,7 +842,7 @@ class KimiSoul:
                 )
             if approval_source_token is not None:
                 reset_current_approval_source(approval_source_token)
-            set_current_trace_id(None, root=self.is_root)
+            self._set_trace_id(None)
 
     async def _turn(self, user_message: Message) -> TurnOutcome:
         if self._runtime.llm is None:
@@ -1184,11 +1195,9 @@ class KimiSoul:
             input_tokens_floor=self._context.token_count_with_pending,
         )
         request_chat_provider = with_kimi_generation_overrides(chat_provider, generation_overrides)
-        from kimi_cli.telemetry import set_current_trace_id
-
         request_chat_provider = with_trace_callback(
             request_chat_provider,
-            lambda trace_id: set_current_trace_id(trace_id, root=self.is_root),
+            self._set_trace_id,
         )
 
         # ═══════════════════════════════════════════════════════════════════════
@@ -1480,11 +1489,9 @@ class KimiSoul:
                 self._runtime.llm.chat_provider,
                 compaction_overrides,
             )
-            from kimi_cli.telemetry import set_current_trace_id
-
             request_provider = with_trace_callback(
                 request_provider,
-                lambda trace_id: set_current_trace_id(trace_id, root=self.is_root),
+                self._set_trace_id,
             )
             compaction_llm = replace(
                 self._runtime.llm,
@@ -1570,9 +1577,7 @@ class KimiSoul:
                 failed_kwargs["trace_id"] = _exc_trace_id
             track("compaction_failed", **failed_kwargs)
             raise
-        from kimi_cli.telemetry import set_current_trace_id
-
-        set_current_trace_id(compaction_result.trace_id, root=self.is_root)
+        self._set_trace_id(compaction_result.trace_id)
         history_count_before = len(self._context.history)
         await self._context.clear()
         await self._context.write_system_prompt(self._agent.system_prompt)

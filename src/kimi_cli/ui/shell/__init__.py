@@ -842,6 +842,14 @@ class Shell:
 
         captured_view: _PromptLiveView | None = None
         pending: list[UserInput] = []  # queued messages being drained
+        get_trace_id: Callable[[], str | None] | None = None
+        if isinstance(self.soul, KimiSoul):
+            root_soul = self.soul
+
+            def get_root_trace_id() -> str | None:
+                return root_soul.root_trace_id
+
+            get_trace_id = get_root_trace_id
 
         try:
             snap = self.soul.status
@@ -871,6 +879,7 @@ class Shell:
                     cancel_event=cancel_event,
                     prompt_session=self._prompt_session,
                     steer=self.soul.steer if isinstance(self.soul, KimiSoul) else None,
+                    get_trace_id=get_trace_id,
                     btw_runner=self._make_btw_runner(),
                     bind_running_input=self._bind_running_input,
                     unbind_running_input=self._unbind_running_input,
@@ -924,6 +933,7 @@ class Shell:
                         cancel_event=cancel_event,
                         prompt_session=self._prompt_session,
                         steer=self.soul.steer if isinstance(self.soul, KimiSoul) else None,
+                        get_trace_id=get_trace_id,
                         btw_runner=self._make_btw_runner(),
                         bind_running_input=self._bind_running_input,
                         unbind_running_input=self._unbind_running_input,

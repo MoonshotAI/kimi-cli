@@ -37,7 +37,7 @@ def _reset_telemetry_state():
     telemetry_mod._session_started_sessions.clear()
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
-    telemetry_mod.set_current_trace_id(None, root=True)
+    telemetry_mod.set_current_trace_id(None)
     yield
     telemetry_mod._event_queue.clear()
     telemetry_mod._device_id = None
@@ -46,7 +46,7 @@ def _reset_telemetry_state():
     telemetry_mod._session_started_sessions.clear()
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
-    telemetry_mod.set_current_trace_id(None, root=True)
+    telemetry_mod.set_current_trace_id(None)
 
 
 def _collect_events() -> list[dict[str, Any]]:
@@ -1208,7 +1208,7 @@ class TestTraceIdHolder:
     def teardown_method(self):
         from kimi_cli.telemetry import set_current_trace_id
 
-        set_current_trace_id(None, root=True)
+        set_current_trace_id(None)
 
     def test_set_get_current_trace_id(self):
         from kimi_cli.telemetry import get_current_trace_id, set_current_trace_id
@@ -1218,14 +1218,21 @@ class TestTraceIdHolder:
         set_current_trace_id(None)
         assert get_current_trace_id() is None
 
-    def test_root_mirror_only_set_when_root(self):
-        from kimi_cli.telemetry import get_root_trace_id, set_current_trace_id
+    def test_ui_trace_getters_are_session_bound(self):
+        from kimi_cli.ui.shell.visualize._live_view import _LiveView
 
-        set_current_trace_id(None, root=True)
-        set_current_trace_id("t-sub", root=False)
-        assert get_root_trace_id() is None
-        set_current_trace_id("t-root", root=True)
-        assert get_root_trace_id() == "t-root"
+        trace_ids = {"a": "t-a", "b": "t-b"}
+        view_a = object.__new__(_LiveView)
+        view_a._get_trace_id = lambda: trace_ids["a"]
+        view_b = object.__new__(_LiveView)
+        view_b._get_trace_id = lambda: trace_ids["b"]
+
+        assert view_a._current_trace_id() == "t-a"
+        assert view_b._current_trace_id() == "t-b"
+
+        trace_ids["a"] = "t-a-next"
+        assert view_a._current_trace_id() == "t-a-next"
+        assert view_b._current_trace_id() == "t-b"
 
     @pytest.mark.asyncio
     async def test_contextvar_propagates_to_child_tasks(self):
