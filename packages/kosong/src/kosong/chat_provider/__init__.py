@@ -95,15 +95,6 @@ class StreamedMessage(Protocol):
         """The token usage of the streamed message."""
         ...
 
-    @property
-    def trace_id(self) -> str | None:
-        """The ``x-trace-id`` response header of the underlying request, if exposed.
-
-        Only providers talking to the KFC inference service (e.g. Kimi) return a
-        value; all other providers return None.
-        """
-        ...
-
 
 class TokenUsage(BaseModel):
     """Token usage statistics."""

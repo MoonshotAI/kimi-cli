@@ -10,8 +10,8 @@ from kimi_cli.soul.approval import Approval
 from kimi_cli.soul.toolset import current_tool_call
 
 
-def _tool_call(name: str = "Bash") -> ToolCall:
-    return ToolCall(id="tc-1", function=ToolCall.FunctionBody(name=name, arguments="{}"))
+def _tool_call(name: str = "Bash", *, call_id: str = "tc-1") -> ToolCall:
+    return ToolCall(id=call_id, function=ToolCall.FunctionBody(name=name, arguments="{}"))
 
 
 def _permission_events(mock_track) -> list:
@@ -161,3 +161,40 @@ async def test_session_cached_action_emits_auto_mode():
     assert kwargs["result"] == "approved"
     assert kwargs["permission_mode"] == "auto"
     assert kwargs["session_cache_written"] is False
+
+
+@pytest.mark.asyncio
+async def test_session_approval_marks_other_pending_requests_as_cache_approved():
+    approval = Approval()
+
+    async def request(call_id: str):
+        token = current_tool_call.set(_tool_call(call_id=call_id))
+        try:
+            return await approval.request("Bash", "bash:ls", "list files")
+        finally:
+            current_tool_call.reset(token)
+
+    with patch("kimi_cli.telemetry.track") as mock_track:
+        first = asyncio.create_task(request("tc-1"))
+        second = asyncio.create_task(request("tc-2"))
+        await asyncio.sleep(0)
+        pending = approval._runtime.list_pending()
+        assert len(pending) == 2
+        approval._runtime.resolve(pending[0].id, "approve_for_session")
+        await asyncio.gather(first, second)
+
+    calls = _permission_events(mock_track)
+    assert len(calls) == 2
+    event_props = [call[1] for call in calls]
+    assert any(
+        props["result"] == "approved_for_session"
+        and props["permission_mode"] == "manual"
+        and props["session_cache_written"] is True
+        for props in event_props
+    )
+    assert any(
+        props["result"] == "approved"
+        and props["permission_mode"] == "auto"
+        and props["session_cache_written"] is False
+        for props in event_props
+    )

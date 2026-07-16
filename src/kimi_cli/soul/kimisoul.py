@@ -34,11 +34,13 @@ from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.llm import (
     DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
+    LLM,
     ModelCapability,
     compute_max_completion_tokens,
     estimate_request_tokens,
     find_kimi_provider,
     with_kimi_generation_overrides,
+    with_trace_callback,
 )
 from kimi_cli.notifications import (
     NotificationView,
@@ -168,6 +170,40 @@ def is_retryable_api_error(e: Exception) -> bool:
     if isinstance(e, APIStatusError):
         return e.status_code in _RETRYABLE_STATUS_CODES
     return isinstance(e, ChatProviderError)
+
+
+def _provider_telemetry_kwargs(llm: LLM | None) -> dict[str, str]:
+    if llm is None or llm.provider_config is None:
+        return {}
+    provider_type = llm.provider_config.type
+    return {"provider_type": provider_type, "protocol": provider_type}
+
+
+def _track_api_error(
+    error: ChatProviderError,
+    *,
+    llm: LLM,
+    duration_ms: int,
+    input_tokens: int | None = None,
+) -> None:
+    from kimi_cli.telemetry import get_current_trace_id, track
+
+    error_type, status_code = classify_api_error(error)
+    properties: dict[str, Any] = {
+        "error_type": error_type,
+        "model": llm.model_name,
+        "retryable": is_retryable_api_error(error),
+        "duration_ms": duration_ms,
+        **_provider_telemetry_kwargs(llm),
+    }
+    if status_code is not None:
+        properties["status_code"] = status_code
+    if input_tokens is not None and input_tokens > 0:
+        properties["input_tokens"] = input_tokens
+    trace_id = getattr(error, "trace_id", None) or get_current_trace_id()
+    if trace_id:
+        properties["trace_id"] = trace_id
+    track("api_error", **properties)
 
 
 type StepStopReason = Literal["no_tool_calls", "tool_rejected", "tool_call_repeat"]
@@ -623,6 +659,9 @@ class KimiSoul:
         # Reset per-turn state so slash-only / hook-blocked runs (which never
         # reach _turn()) don't carry the previous turn's id into turn_ended.
         self._current_turn_id = ""
+        from kimi_cli.telemetry import set_current_trace_id
+
+        set_current_trace_id(None, root=self.is_root)
         if get_current_approval_source_or_none() is None:
             created_approval_source = ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
             approval_source_token = set_current_approval_source(created_approval_source)
@@ -668,7 +707,11 @@ class KimiSoul:
             turn_started = True
             from kimi_cli.telemetry import track as _track_telemetry
 
-            _track_telemetry("turn_started", mode="plan" if self._plan_mode else "agent")
+            _track_telemetry(
+                "turn_started",
+                mode="plan" if self._plan_mode else "agent",
+                **_provider_telemetry_kwargs(self._runtime.llm),
+            )
             user_message = Message(role="user", content=user_input)
             text_input = user_message.extract_text(" ").strip()
 
@@ -755,6 +798,7 @@ class KimiSoul:
                     mode="plan" if self._plan_mode else "agent",
                     at_step=getattr(self, "_current_step_no", 0),
                     interrupt_reason=interrupt_reason or "error",
+                    **_provider_telemetry_kwargs(self._runtime.llm),
                 )
                 if _tid := get_current_trace_id():
                     _interrupt_kwargs["trace_id"] = _tid
@@ -776,9 +820,7 @@ class KimiSoul:
                 )
                 if self._current_turn_id:
                     _ended_kwargs["turn_id"] = self._current_turn_id
-                if self._runtime.llm is not None and self._runtime.llm.provider_config is not None:
-                    _ended_kwargs["provider_type"] = self._runtime.llm.provider_config.type
-                    _ended_kwargs["protocol"] = self._runtime.llm.provider_config.type
+                _ended_kwargs.update(_provider_telemetry_kwargs(self._runtime.llm))
                 if _tid := get_current_trace_id():
                     _ended_kwargs["trace_id"] = _tid
                 _track_ended("turn_ended", **_ended_kwargs)
@@ -789,6 +831,7 @@ class KimiSoul:
                 )
             if approval_source_token is not None:
                 reset_current_approval_source(approval_source_token)
+            set_current_trace_id(None, root=self.is_root)
 
     async def _turn(self, user_message: Message) -> TurnOutcome:
         if self._runtime.llm is None:
@@ -1009,31 +1052,6 @@ class KimiSoul:
                 )
                 wire_send(StepInterrupted())
 
-                # Track API/step errors
-                from kimi_cli.telemetry import track
-
-                error_type, status_code = classify_api_error(e)
-                track_kwargs: dict[str, Any] = {
-                    "error_type": error_type,
-                    "retryable": is_retryable_api_error(e),
-                }
-                if status_code is not None:
-                    track_kwargs["status_code"] = status_code
-                # Enrich with context attached by _step() (model, duration, input_tokens)
-                _kimi_ctx = getattr(e, "_kimi_api_error_context", None)
-                if _kimi_ctx is not None:
-                    for key in (
-                        "model",
-                        "duration_ms",
-                        "input_tokens",
-                        "provider_type",
-                        "protocol",
-                        "trace_id",
-                    ):
-                        if key in _kimi_ctx:
-                            track_kwargs[key] = _kimi_ctx[key]
-                track("api_error", **track_kwargs)
-
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
@@ -1166,6 +1184,12 @@ class KimiSoul:
             input_tokens_floor=self._context.token_count_with_pending,
         )
         request_chat_provider = with_kimi_generation_overrides(chat_provider, generation_overrides)
+        from kimi_cli.telemetry import set_current_trace_id
+
+        request_chat_provider = with_trace_callback(
+            request_chat_provider,
+            lambda trace_id: set_current_trace_id(trace_id, root=self.is_root),
+        )
 
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.4. LLM CALL WITH RETRY
@@ -1174,11 +1198,12 @@ class KimiSoul:
             """Single LLM invocation (wrapped by retry + connection recovery)."""
             # ── 2e.4.1. Toolset begin_step ────────────────────────────────────
             if isinstance(self._agent.toolset, KimiToolset):
-                self._agent.toolset.begin_step(self._last_tool_calls)
+                self._agent.toolset.begin_step(
+                    self._last_tool_calls,
+                    step_no=self._current_step_no,
+                )
             # ── 2e.4.2. kosong.step ───────────────────────────────────────────
             # run an LLM step (may be interrupted)
-            from kimi_cli.telemetry import set_current_trace_id
-
             return await kosong.step(
                 request_chat_provider,
                 self._agent.system_prompt,
@@ -1186,9 +1211,6 @@ class KimiSoul:
                 effective_history,
                 on_message_part=wire_send,
                 on_tool_result=wire_send,
-                # Fired as soon as response headers arrive, before streaming —
-                # tool tasks spawned mid-stream therefore see the trace id.
-                on_trace_id=lambda tid: set_current_trace_id(tid, root=self.is_root),
             )
 
         max_attempts = self._loop_control.max_retries_per_step
@@ -1215,21 +1237,13 @@ class KimiSoul:
         try:
             result = await _kosong_step_with_retry()
         except Exception as _step_exc:
-            # Attach known context so the outer loop can enrich api_error telemetry
-            _ctx: dict[str, Any] = {
-                "model": self._runtime.llm.model_name,
-                "duration_ms": int((time.monotonic() - t0) * 1000),
-            }
-            if self._runtime.llm.provider_config is not None:
-                _ctx["provider_type"] = self._runtime.llm.provider_config.type
-                _ctx["protocol"] = self._runtime.llm.provider_config.type
-            if self._context.token_count > 0:
-                _ctx["input_tokens"] = self._context.token_count
-            # Trace id of the failed request (absent for network-layer errors,
-            # which never received response headers).
-            if isinstance(_step_exc, APIStatusError) and _step_exc.trace_id:
-                _ctx["trace_id"] = _step_exc.trace_id
-            _step_exc._kimi_api_error_context = _ctx  # type: ignore[attr-defined]
+            if isinstance(_step_exc, ChatProviderError):
+                _track_api_error(
+                    _step_exc,
+                    llm=self._runtime.llm,
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                    input_tokens=self._context.token_count,
+                )
             raise
 
         # ═══════════════════════════════════════════════════════════════════════
@@ -1462,12 +1476,19 @@ class KimiSoul:
         async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:
                 raise LLMNotSet()
+            request_provider = with_kimi_generation_overrides(
+                self._runtime.llm.chat_provider,
+                compaction_overrides,
+            )
+            from kimi_cli.telemetry import set_current_trace_id
+
+            request_provider = with_trace_callback(
+                request_provider,
+                lambda trace_id: set_current_trace_id(trace_id, root=self.is_root),
+            )
             compaction_llm = replace(
                 self._runtime.llm,
-                chat_provider=with_kimi_generation_overrides(
-                    self._runtime.llm.chat_provider,
-                    compaction_overrides,
-                ),
+                chat_provider=request_provider,
             )
             return await self._compaction.compact(
                 self._context.history,
@@ -1521,7 +1542,15 @@ class KimiSoul:
         try:
             compaction_result = await _compact_with_retry()
         except Exception as _compact_exc:
-            from kimi_cli.telemetry import track
+            from kimi_cli.telemetry import get_current_trace_id, track
+
+            if isinstance(_compact_exc, ChatProviderError) and self._runtime.llm is not None:
+                _track_api_error(
+                    _compact_exc,
+                    llm=self._runtime.llm,
+                    duration_ms=int((time.monotonic() - start_time) * 1000),
+                    input_tokens=before_tokens,
+                )
 
             failed_kwargs: dict[str, Any] = dict(
                 source="auto" if trigger_reason == "auto" else "manual",
@@ -1537,7 +1566,7 @@ class KimiSoul:
                 error_type=type(_compact_exc).__name__,
             )
             # Trace id of the failed compaction request (absent for network errors)
-            if _exc_trace_id := getattr(_compact_exc, "trace_id", None):
+            if _exc_trace_id := (getattr(_compact_exc, "trace_id", None) or get_current_trace_id()):
                 failed_kwargs["trace_id"] = _exc_trace_id
             track("compaction_failed", **failed_kwargs)
             raise

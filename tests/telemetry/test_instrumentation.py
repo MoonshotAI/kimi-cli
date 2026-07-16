@@ -37,6 +37,7 @@ def _reset_telemetry_state():
     telemetry_mod._session_started_sessions.clear()
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
+    telemetry_mod.set_current_trace_id(None, root=True)
     yield
     telemetry_mod._event_queue.clear()
     telemetry_mod._device_id = None
@@ -45,6 +46,7 @@ def _reset_telemetry_state():
     telemetry_mod._session_started_sessions.clear()
     telemetry_mod._sink = None
     telemetry_mod._disabled = False
+    telemetry_mod.set_current_trace_id(None, root=True)
 
 
 def _collect_events() -> list[dict[str, Any]]:
@@ -1065,6 +1067,40 @@ class TestCompactionTracking:
         assert kwargs["round"] == 1
         assert kwargs["error_type"] == "RuntimeError"
 
+    @pytest.mark.asyncio
+    async def test_compaction_api_failure_emits_complete_api_error(self):
+        from kosong.chat_provider import APIConnectionError
+
+        from kimi_cli.telemetry import set_current_trace_id
+
+        soul = self._make_soul(before_tokens=50000, estimated_after=0)
+        soul._runtime.llm.model_name = "test-model"
+        soul._runtime.llm.provider_config.type = "kimi"
+        soul._run_with_connection_recovery = AsyncMock(
+            side_effect=APIConnectionError("stream disconnected")
+        )
+        set_current_trace_id("trace-compaction")
+
+        with (
+            patch("kimi_cli.soul.kimisoul.wire_send"),
+            patch("kimi_cli.telemetry.track") as mock_track,
+            pytest.raises(APIConnectionError, match="stream disconnected"),
+        ):
+            await soul.compact_context()
+
+        api_calls = [c for c in mock_track.call_args_list if c[0][0] == "api_error"]
+        assert len(api_calls) == 1
+        api_kwargs = api_calls[0][1]
+        assert api_kwargs["model"] == "test-model"
+        assert api_kwargs["provider_type"] == "kimi"
+        assert api_kwargs["protocol"] == "kimi"
+        assert api_kwargs["duration_ms"] >= 0
+        assert api_kwargs["input_tokens"] == 50000
+        assert api_kwargs["trace_id"] == "trace-compaction"
+
+        compaction_calls = [c for c in mock_track.call_args_list if c[0][0] == "compaction_failed"]
+        assert compaction_calls[0][1]["trace_id"] == "trace-compaction"
+
 
 # ---------------------------------------------------------------------------
 # 8. Plan lifecycle events
@@ -1220,6 +1256,109 @@ class TestTraceIdHolder:
 
         assert await asyncio.create_task(child_set()) == "t-child"
         assert get_current_trace_id() == "t-parent"
+
+    @pytest.mark.asyncio
+    async def test_request_wrapper_clears_stale_trace_before_headers(self):
+        from collections.abc import Sequence
+        from typing import Self
+
+        from kosong.chat_provider import APIConnectionError, ThinkingEffort
+        from kosong.message import Message
+        from kosong.tooling import Tool
+
+        from kimi_cli.llm import with_trace_callback
+        from kimi_cli.telemetry import get_current_trace_id, set_current_trace_id
+
+        class FailingProvider:
+            name = "failing"
+
+            @property
+            def model_name(self) -> str:
+                return "failing"
+
+            @property
+            def thinking_effort(self) -> ThinkingEffort | None:
+                return None
+
+            async def generate(
+                self,
+                system_prompt: str,
+                tools: Sequence[Tool],
+                history: Sequence[Message],
+            ):
+                raise APIConnectionError("before headers")
+
+            def with_thinking(self, effort: ThinkingEffort) -> Self:
+                return self
+
+        set_current_trace_id("stale")
+        provider = with_trace_callback(FailingProvider(), set_current_trace_id)
+
+        with pytest.raises(APIConnectionError, match="before headers"):
+            await provider.generate("", [], [])
+
+        assert get_current_trace_id() is None
+
+    @pytest.mark.asyncio
+    async def test_request_wrapper_keeps_header_trace_for_stream_failure(self):
+        from collections.abc import AsyncIterator, Sequence
+        from typing import Self
+
+        from kosong.chat_provider import APIConnectionError, StreamedMessagePart, ThinkingEffort
+        from kosong.message import Message
+        from kosong.tooling import Tool
+
+        from kimi_cli.llm import with_trace_callback
+        from kimi_cli.telemetry import get_current_trace_id, set_current_trace_id
+
+        class FailingStream:
+            def __aiter__(self) -> AsyncIterator[StreamedMessagePart]:
+                return self
+
+            async def __anext__(self) -> StreamedMessagePart:
+                raise APIConnectionError("after headers")
+
+            @property
+            def id(self) -> str | None:
+                return None
+
+            @property
+            def usage(self):
+                return None
+
+            @property
+            def trace_id(self) -> str | None:
+                return "trace-current"
+
+        class StreamingProvider:
+            name = "streaming"
+
+            @property
+            def model_name(self) -> str:
+                return "streaming"
+
+            @property
+            def thinking_effort(self) -> ThinkingEffort | None:
+                return None
+
+            async def generate(
+                self,
+                system_prompt: str,
+                tools: Sequence[Tool],
+                history: Sequence[Message],
+            ) -> FailingStream:
+                return FailingStream()
+
+            def with_thinking(self, effort: ThinkingEffort) -> Self:
+                return self
+
+        provider = with_trace_callback(StreamingProvider(), set_current_trace_id)
+        stream = await provider.generate("", [], [])
+
+        with pytest.raises(APIConnectionError, match="after headers"):
+            await anext(stream.__aiter__())
+
+        assert get_current_trace_id() == "trace-current"
 
 
 class TestTurnEndedEvent:

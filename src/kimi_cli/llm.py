@@ -17,6 +17,7 @@ from kosong.message import (
     VideoURLPart,
 )
 from kosong.tooling import Tool
+from kosong.utils.aio import Callback, callback
 from pydantic import SecretStr
 
 from kimi_cli.constant import USER_AGENT
@@ -112,6 +113,43 @@ class _KimiRequestChatProvider:
         )
 
 
+@dataclass(slots=True)
+class _TraceCallbackChatProvider:
+    _provider: ChatProvider
+    _on_trace_id: Callback[[str | None], None]
+    name: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.name = self._provider.name
+
+    @property
+    def model_name(self) -> str:
+        return self._provider.model_name
+
+    @property
+    def thinking_effort(self) -> ThinkingEffort | None:
+        return self._provider.thinking_effort
+
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+    ) -> StreamedMessage:
+        await callback(self._on_trace_id, None)
+        try:
+            stream = await self._provider.generate(system_prompt, tools, history)
+        except BaseException as error:
+            if trace_id := getattr(error, "trace_id", None):
+                await callback(self._on_trace_id, trace_id)
+            raise
+        await callback(self._on_trace_id, getattr(stream, "trace_id", None))
+        return stream
+
+    def with_thinking(self, effort: ThinkingEffort) -> Self:
+        return type(self)(self._provider.with_thinking(effort), self._on_trace_id)
+
+
 def find_kimi_provider(chat_provider: ChatProvider) -> Kimi | None:
     """Return the Kimi provider backing a supported provider wrapper."""
     from kosong.chat_provider.chaos import ChaosChatProvider
@@ -131,6 +169,13 @@ def with_kimi_generation_overrides(
     if not generation_overrides or find_kimi_provider(chat_provider) is None:
         return chat_provider
     return _KimiRequestChatProvider(chat_provider, dict(generation_overrides))
+
+
+def with_trace_callback(
+    chat_provider: ChatProvider,
+    on_trace_id: Callback[[str | None], None],
+) -> ChatProvider:
+    return _TraceCallbackChatProvider(chat_provider, on_trace_id)
 
 
 def compute_max_completion_tokens(

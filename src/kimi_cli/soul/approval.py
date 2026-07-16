@@ -322,16 +322,19 @@ class Approval:
             raise
         from kimi_cli.telemetry import track
 
+        record = self._runtime.get_request(request_id)
+        approved_via_session_cache = bool(record and record.approved_via_session_cache)
+
         match response:
             case "approve":
                 track(
                     "tool_approved",
                     tool_name=tool_call.function.name,
-                    approval_mode="manual",
+                    approval_mode="auto_session" if approved_via_session_cache else "manual",
                 )
                 _track_permission_result(
                     tool_name=_tool_name,
-                    permission_mode="manual",
+                    permission_mode="auto" if approved_via_session_cache else "manual",
                     result="approved",
                     approval_surface=surface,
                     duration_ms=_elapsed_ms(),
@@ -358,7 +361,11 @@ class Approval:
                 self._state.notify_change()
                 for pending in self._runtime.list_pending():
                     if pending.action == action:
-                        self._runtime.resolve(pending.id, "approve")
+                        self._runtime.resolve(
+                            pending.id,
+                            "approve",
+                            approved_via_session_cache=True,
+                        )
                 return ApprovalResult(approved=True)
             case "reject":
                 track(

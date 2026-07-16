@@ -239,6 +239,7 @@ class KimiToolset:
         self._step_closed: bool = False
         self._dedup_triggered: bool = False
         self._force_stop_turn: bool = False
+        self._current_step_no: int = 0
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -276,8 +277,9 @@ class KimiToolset:
             tool.base for tool in self._tool_dict.values() if tool.name not in self._hidden_tools
         ]
 
-    def begin_step(self, previous_calls: list[tuple[str, str]]) -> None:
+    def begin_step(self, previous_calls: list[tuple[str, str]], *, step_no: int = 0) -> None:
         """Called before each step to set up deduplication state."""
+        self._current_step_no = step_no
         self._previous_step_calls = [
             _normalize_call_key(tool_name, arguments) for tool_name, arguments in previous_calls
         ]
@@ -366,6 +368,7 @@ class KimiToolset:
                     "tool_call_dedup_detected",
                     tool_call_id=tool_call.id,
                     tool_name=tool_name,
+                    step_no=self._current_step_no,
                     dup_type="same_step",
                     args_hash=_args_hash(canonical_args),
                     **_trace_id_kwargs(),
@@ -432,6 +435,7 @@ class KimiToolset:
                     "tool_call_dedup_detected",
                     tool_call_id=tool_call.id,
                     tool_name=tool_name,
+                    step_no=self._current_step_no,
                     dup_type="cross_step",
                     args_hash=_args_hash(canonical_args),
                     **_trace_id_kwargs(),

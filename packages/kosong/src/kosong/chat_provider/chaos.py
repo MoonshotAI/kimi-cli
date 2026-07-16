@@ -252,7 +252,7 @@ class ChaosStreamedMessage:
 
     @property
     def trace_id(self) -> str | None:
-        return self._wrapped.trace_id
+        return getattr(self._wrapped, "trace_id", None)
 
     def _should_corrupt_tool_call(self) -> bool:
         probability = self._config.corrupt_tool_call_probability

@@ -11,12 +11,34 @@ import pytest
 import respx
 
 import kosong
-from kosong.chat_provider import APIStatusError
+from kosong.chat_provider import APIStatusError, StreamedMessage
 from kosong.chat_provider.kimi import Kimi
 from kosong.tooling.empty import EmptyToolset
 
 TRACE_ID = "trace-abc-123"
 URL = "https://api.moonshot.ai/v1/chat/completions"
+
+
+class _LegacyStreamedMessage:
+    """Third-party stream shape from before trace metadata was introduced."""
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+    @property
+    def id(self) -> str | None:
+        return None
+
+    @property
+    def usage(self):
+        return None
+
+
+def test_trace_id_does_not_break_legacy_stream_protocol_compatibility():
+    assert isinstance(_LegacyStreamedMessage(), StreamedMessage)
 
 
 def _completion_payload() -> dict[str, object]:

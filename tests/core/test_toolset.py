@@ -647,7 +647,7 @@ async def test_tool_call_dedup_detected_telemetry(monkeypatch: pytest.MonkeyPatc
     ts = _make_toolset()
     args = '{"value":"x"}'
 
-    ts.begin_step([])
+    ts.begin_step([], step_no=4)
     r1 = ts.handle(
         ToolCall(id="tc-1", function=ToolCall.FunctionBody(name="ToolA", arguments=args))
     )
@@ -658,7 +658,7 @@ async def test_tool_call_dedup_detected_telemetry(monkeypatch: pytest.MonkeyPatc
     await asyncio.gather(r1, r2)
     previous = ts.end_step()
 
-    ts.begin_step(previous)
+    ts.begin_step(previous, step_no=5)
     r3 = ts.handle(
         ToolCall(id="tc-3", function=ToolCall.FunctionBody(name="ToolA", arguments=args))
     )
@@ -667,6 +667,7 @@ async def test_tool_call_dedup_detected_telemetry(monkeypatch: pytest.MonkeyPatc
 
     dedup_events = [(e, p) for e, p in events if e == "tool_call_dedup_detected"]
     assert [p["dup_type"] for _, p in dedup_events] == ["same_step", "cross_step"]
+    assert [p["step_no"] for _, p in dedup_events] == [4, 5]
     assert all(p["tool_name"] == "ToolA" for _, p in dedup_events)
     assert all("args_hash" in p and "tool_call_id" in p for _, p in dedup_events)
 
