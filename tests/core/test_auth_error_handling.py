@@ -74,6 +74,10 @@ class StaticStreamedMessage:
     def usage(self) -> TokenUsage | None:
         return None
 
+    @property
+    def trace_id(self) -> str | None:
+        return None
+
 
 class Auth401Provider:
     """A provider that always returns 401 Unauthorized."""

@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from kimi_cli.soul.agent import Runtime
 
 current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=None)
+_current_step_no: ContextVar[int | None] = ContextVar("current_step_no", default=None)
 
 _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default="")
 
@@ -73,12 +74,33 @@ def _get_session_id() -> str:
     return _current_session_id.get()
 
 
+def _trace_id_kwargs() -> dict[str, str]:
+    """``trace_id`` telemetry kwargs for the current request, empty when unavailable."""
+    from kimi_cli.telemetry import get_current_trace_id
+
+    if tid := get_current_trace_id():
+        return {"trace_id": tid}
+    return {}
+
+
+def _args_hash(canonical_args: str) -> str:
+    """Stable 8-char hash of canonical tool-call arguments (TS args_hash parity)."""
+    import hashlib
+
+    return hashlib.sha256(canonical_args.encode()).hexdigest()[:8]
+
+
 def get_current_tool_call_or_none() -> ToolCall | None:
     """
     Get the current tool call or None.
     Expect to be not None when called from a `__call__` method of a tool.
     """
     return current_tool_call.get()
+
+
+def get_current_step_no() -> int | None:
+    """Return the step number associated with the current tool task."""
+    return _current_step_no.get()
 
 
 type ToolType = CallableTool | CallableTool2[Any]
@@ -223,6 +245,7 @@ class KimiToolset:
         self._step_closed: bool = False
         self._dedup_triggered: bool = False
         self._force_stop_turn: bool = False
+        self._current_step_no: int = 0
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -260,8 +283,10 @@ class KimiToolset:
             tool.base for tool in self._tool_dict.values() if tool.name not in self._hidden_tools
         ]
 
-    def begin_step(self, previous_calls: list[tuple[str, str]]) -> None:
+    def begin_step(self, previous_calls: list[tuple[str, str]], *, step_no: int = 0) -> None:
         """Called before each step to set up deduplication state."""
+        self._current_step_no = step_no
+        _current_step_no.set(step_no)
         self._previous_step_calls = [
             _normalize_call_key(tool_name, arguments) for tool_name, arguments in previous_calls
         ]
@@ -344,10 +369,52 @@ class KimiToolset:
 
             # Same-step dedup: wait for the original task and copy its result.
             if call_key in self._current_step_tasks:
+                from kimi_cli.telemetry import track
+
+                track(
+                    "tool_call_dedup_detected",
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_name,
+                    step_no=self._current_step_no,
+                    dup_type="same_step",
+                    args_hash=_args_hash(canonical_args),
+                    **_trace_id_kwargs(),
+                )
                 original_task = self._current_step_tasks[call_key]
 
                 async def _await_dup() -> ToolResult:
-                    original_result = await original_task
+                    t0 = time.monotonic()
+                    try:
+                        original_result = await original_task
+                    except asyncio.CancelledError:
+                        track(
+                            "tool_call",
+                            tool_call_id=tool_call.id,
+                            tool_name=tool_name,
+                            outcome="cancelled",
+                            duration_ms=int((time.monotonic() - t0) * 1000),
+                            dup_type="same_step",
+                            error_type="cancelled",
+                            **_trace_id_kwargs(),
+                        )
+                        raise
+                    dup_error = (
+                        original_result.return_value
+                        if isinstance(original_result.return_value, ToolError)
+                        else None
+                    )
+                    dup_kwargs = {
+                        "tool_call_id": tool_call.id,
+                        "tool_name": tool_name,
+                        "outcome": "error" if dup_error is not None else "success",
+                        "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "dup_type": "same_step",
+                        **_trace_id_kwargs(),
+                    }
+                    if dup_error is not None:
+                        dup_kwargs["error_type"] = "error"
+                        dup_kwargs["error_class"] = type(dup_error).__name__
+                    track("tool_call", **dup_kwargs)
                     return ToolResult(
                         tool_call_id=tool_call.id,
                         return_value=original_result.return_value,
@@ -369,6 +436,16 @@ class KimiToolset:
                     tool_name=tool_name,
                     repeat_count=repeat_count,
                     action=action,
+                    **_trace_id_kwargs(),
+                )
+                track(
+                    "tool_call_dedup_detected",
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_name,
+                    step_no=self._current_step_no,
+                    dup_type="cross_step",
+                    args_hash=_args_hash(canonical_args),
+                    **_trace_id_kwargs(),
                 )
                 self._dedup_triggered = True
                 if action == "stop":
@@ -407,6 +484,20 @@ class KimiToolset:
                 t0 = time.monotonic()
                 try:
                     ret = await tool.call(arguments)
+                except asyncio.CancelledError:
+                    from kimi_cli.telemetry import track
+
+                    track(
+                        "tool_call",
+                        tool_call_id=tool_call.id,
+                        tool_name=tool_name,
+                        outcome="cancelled",
+                        duration_ms=int((time.monotonic() - t0) * 1000),
+                        dup_type="cross_step" if is_cross_step_dup else "normal",
+                        error_type="cancelled",
+                        **_trace_id_kwargs(),
+                    )
+                    raise
                 except Exception as e:
                     tool_elapsed = time.monotonic() - t0
                     logger.exception(
@@ -434,13 +525,16 @@ class KimiToolset:
                     )
                     from kimi_cli.telemetry import track
 
-                    _error_type = type(e).__name__
                     track(
                         "tool_call",
+                        tool_call_id=tool_call.id,
                         tool_name=tool_name,
                         outcome="error",
                         duration_ms=int(tool_elapsed * 1000),
-                        error_type=_error_type,
+                        error_type="error",
+                        error_class=type(e).__name__,
+                        dup_type="cross_step" if is_cross_step_dup else "normal",
+                        **_trace_id_kwargs(),
                     )
                     return ToolResult(
                         tool_call_id=tool_call.id,
@@ -459,19 +553,24 @@ class KimiToolset:
                 if isinstance(ret, ToolError):
                     _track_tool_call(
                         "tool_call",
+                        tool_call_id=tool_call.id,
                         tool_name=tool_name,
                         outcome="error",
                         duration_ms=int(tool_elapsed * 1000),
-                        error_type=type(ret).__name__,
+                        error_type="error",
+                        error_class=type(ret).__name__,
                         dup_type="cross_step" if is_cross_step_dup else "normal",
+                        **_trace_id_kwargs(),
                     )
                 else:
                     _track_tool_call(
                         "tool_call",
+                        tool_call_id=tool_call.id,
                         tool_name=tool_name,
                         outcome="success",
                         duration_ms=int(tool_elapsed * 1000),
                         dup_type="cross_step" if is_cross_step_dup else "normal",
+                        **_trace_id_kwargs(),
                     )
 
                 # --- PostToolUse (fire-and-forget) ---

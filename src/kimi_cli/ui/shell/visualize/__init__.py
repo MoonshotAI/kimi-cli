@@ -119,6 +119,7 @@ async def visualize(
     prompt_session: CustomPromptSession | None = None,
     steer: Callable[[str | list[ContentPart]], None] | None = None,
     btw_runner: BtwRunner | None = None,
+    get_trace_id: Callable[[], str | None] | None = None,
     bind_running_input: Callable[[Callable[[UserInput], None], Callable[[], None]], None]
     | None = None,
     unbind_running_input: Callable[[], None] | None = None,
@@ -139,6 +140,7 @@ async def visualize(
             steer=steer,
             btw_runner=btw_runner,
             cancel_event=cancel_event,
+            get_trace_id=get_trace_id,
             show_thinking_stream=show_thinking_stream,
         )
         prompt_session.attach_running_prompt(view)
@@ -150,7 +152,12 @@ async def visualize(
         if bind_running_input is not None:
             bind_running_input(view.handle_local_input, _cancel_running_input)
     else:
-        view = _LiveView(initial_status, cancel_event, show_thinking_stream=show_thinking_stream)
+        view = _LiveView(
+            initial_status,
+            cancel_event,
+            get_trace_id=get_trace_id,
+            show_thinking_stream=show_thinking_stream,
+        )
     if on_view_ready is not None:
         on_view_ready(view)
     try:

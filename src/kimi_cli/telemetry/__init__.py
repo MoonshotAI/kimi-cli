@@ -24,6 +24,7 @@ import time
 import uuid
 from collections import deque
 from contextlib import suppress
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -47,6 +48,27 @@ _session_started_sessions: set[str] = set()
 """Session ids that already emitted the session_started event in this process."""
 _sink: EventSink | None = None
 _disabled: bool = False
+
+# ---------------------------------------------------------------------------
+# Current request trace id (x-trace-id response header)
+# ---------------------------------------------------------------------------
+#
+# The ContextVar is intentionally the only process-global state here. Each
+# turn task (foreground turn, subagent, background task) sees the trace id of
+# its own latest LLM request, and tool tasks created after the request inherit
+# it. Root-session UI state is owned by KimiSoul and passed to the UI through
+# an explicit session-bound getter.
+_trace_id_var: ContextVar[str | None] = ContextVar("kimi_telemetry_trace_id", default=None)
+
+
+def set_current_trace_id(trace_id: str | None) -> None:
+    """Record the trace id of the latest LLM request in the current context."""
+    _trace_id_var.set(trace_id)
+
+
+def get_current_trace_id() -> str | None:
+    """The trace id of the latest LLM request in the current task context."""
+    return _trace_id_var.get()
 
 
 def set_context(*, device_id: str, session_id: str) -> None:

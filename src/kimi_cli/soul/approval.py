@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import time
 import uuid
 from collections.abc import Callable
-from typing import Literal
+from typing import Any, Literal
 
 from kimi_cli.approval_runtime import (
     ApprovalCancelledError,
@@ -10,12 +11,60 @@ from kimi_cli.approval_runtime import (
     ApprovalSource,
     get_current_approval_source_or_none,
 )
-from kimi_cli.soul.toolset import get_current_tool_call_or_none
+from kimi_cli.soul.toolset import get_current_step_no, get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import DisplayBlock
 
 type Response = Literal["approve", "approve_for_session", "reject"]
+
+# Maps DisplayBlock.type to the TS approval_surface vocabulary.
+_SURFACE_BY_BLOCK_TYPE = {
+    "shell": "command",
+    "diff": "diff",
+    "todo": "todo_list",
+    "background_task": "task",
+}
+
+
+def _approval_surface(display: list[DisplayBlock]) -> str:
+    if not display:
+        return "generic"
+    return _SURFACE_BY_BLOCK_TYPE.get(display[0].type, "generic")
+
+
+def _track_permission_result(
+    *,
+    step_no: int | None,
+    tool_name: str,
+    permission_mode: str,
+    result: str,
+    approval_surface: str,
+    duration_ms: int,
+    session_cache_written: bool,
+    has_feedback: bool,
+) -> None:
+    """Emit permission_approval_result (TS permissionGateService parity).
+
+    ``policy_name`` is always None — Python has no policy system.
+    """
+    from kimi_cli.telemetry import get_current_trace_id, track
+
+    kwargs: dict[str, Any] = dict(
+        policy_name=None,
+        tool_name=tool_name,
+        permission_mode=permission_mode,
+        result=result,
+        approval_surface=approval_surface,
+        duration_ms=duration_ms,
+        session_cache_written=session_cache_written,
+        has_feedback=has_feedback,
+    )
+    if step_no is not None:
+        kwargs["step_no"] = step_no
+    if tid := get_current_trace_id():
+        kwargs["trace_id"] = tid
+    track("permission_approval_result", **kwargs)
 
 
 class ApprovalResult:
@@ -175,6 +224,14 @@ class Approval:
         if tool_call is None:
             raise RuntimeError("Approval must be requested from a tool call.")
 
+        t0 = time.monotonic()
+        surface = _approval_surface(display or [])
+        _tool_name = tool_call.function.name
+        _step_no = get_current_step_no()
+
+        def _elapsed_ms() -> int:
+            return int((time.monotonic() - t0) * 1000)
+
         logger.debug(
             "{tool_name} ({tool_call_id}) requesting approval: {action} {description}",
             tool_name=tool_call.function.name,
@@ -190,6 +247,16 @@ class Approval:
                 tool_name=tool_call.function.name,
                 approval_mode="afk" if self.is_afk() else "yolo",
             )
+            _track_permission_result(
+                step_no=_step_no,
+                tool_name=_tool_name,
+                permission_mode="auto" if self.is_afk() else "yolo",
+                result="approved",
+                approval_surface=surface,
+                duration_ms=_elapsed_ms(),
+                session_cache_written=False,
+                has_feedback=False,
+            )
             return ApprovalResult(approved=True)
 
         if action in self._state.auto_approve_actions:
@@ -199,6 +266,16 @@ class Approval:
                 "tool_approved",
                 tool_name=tool_call.function.name,
                 approval_mode="auto_session",
+            )
+            _track_permission_result(
+                step_no=_step_no,
+                tool_name=_tool_name,
+                permission_mode="auto",
+                result="approved",
+                approval_surface=surface,
+                duration_ms=_elapsed_ms(),
+                session_cache_written=False,
+                has_feedback=False,
             )
             return ApprovalResult(approved=True)
 
@@ -228,15 +305,50 @@ class Approval:
                 approval_mode="cancelled",
             )
             record = self._runtime.get_request(request_id)
+            _track_permission_result(
+                step_no=_step_no,
+                tool_name=_tool_name,
+                permission_mode="manual",
+                result="cancelled",
+                approval_surface=surface,
+                duration_ms=_elapsed_ms(),
+                session_cache_written=False,
+                has_feedback=bool(record and record.feedback),
+            )
             return ApprovalResult(approved=False, feedback=record.feedback if record else "")
+        except Exception:
+            _track_permission_result(
+                step_no=_step_no,
+                tool_name=_tool_name,
+                permission_mode="manual",
+                result="error",
+                approval_surface=surface,
+                duration_ms=_elapsed_ms(),
+                session_cache_written=False,
+                has_feedback=False,
+            )
+            raise
         from kimi_cli.telemetry import track
+
+        record = self._runtime.get_request(request_id)
+        approved_via_session_cache = bool(record and record.approved_via_session_cache)
 
         match response:
             case "approve":
                 track(
                     "tool_approved",
                     tool_name=tool_call.function.name,
-                    approval_mode="manual",
+                    approval_mode="auto_session" if approved_via_session_cache else "manual",
+                )
+                _track_permission_result(
+                    step_no=_step_no,
+                    tool_name=_tool_name,
+                    permission_mode="auto" if approved_via_session_cache else "manual",
+                    result="approved",
+                    approval_surface=surface,
+                    duration_ms=_elapsed_ms(),
+                    session_cache_written=False,
+                    has_feedback=False,
                 )
                 return ApprovalResult(approved=True)
             case "approve_for_session":
@@ -245,11 +357,25 @@ class Approval:
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
                 )
+                _track_permission_result(
+                    step_no=_step_no,
+                    tool_name=_tool_name,
+                    permission_mode="manual",
+                    result="approved_for_session",
+                    approval_surface=surface,
+                    duration_ms=_elapsed_ms(),
+                    session_cache_written=True,
+                    has_feedback=False,
+                )
                 self._state.auto_approve_actions.add(action)
                 self._state.notify_change()
                 for pending in self._runtime.list_pending():
                     if pending.action == action:
-                        self._runtime.resolve(pending.id, "approve")
+                        self._runtime.resolve(
+                            pending.id,
+                            "approve",
+                            approved_via_session_cache=True,
+                        )
                 return ApprovalResult(approved=True)
             case "reject":
                 track(
@@ -257,11 +383,31 @@ class Approval:
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
                 )
+                _track_permission_result(
+                    step_no=_step_no,
+                    tool_name=_tool_name,
+                    permission_mode="manual",
+                    result="rejected",
+                    approval_surface=surface,
+                    duration_ms=_elapsed_ms(),
+                    session_cache_written=False,
+                    has_feedback=bool(feedback),
+                )
                 return ApprovalResult(approved=False, feedback=feedback)
             case _:
                 track(
                     "tool_rejected",
                     tool_name=tool_call.function.name,
                     approval_mode="manual",
+                )
+                _track_permission_result(
+                    step_no=_step_no,
+                    tool_name=_tool_name,
+                    permission_mode="manual",
+                    result="rejected",
+                    approval_surface=surface,
+                    duration_ms=_elapsed_ms(),
+                    session_cache_written=False,
+                    has_feedback=False,
                 )
                 return ApprovalResult(approved=False)

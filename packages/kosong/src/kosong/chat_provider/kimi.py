@@ -1,4 +1,5 @@
 import copy
+import inspect
 import mimetypes
 import os
 import uuid
@@ -166,15 +167,33 @@ class Kimi:
             generation_kwargs.pop("max_completion_tokens", None)
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=(_convert_tool(tool) for tool in tools),
-                stream=self.stream,
-                stream_options={"include_usage": True} if self.stream else omit,
-                **generation_kwargs,
-            )
-            return KimiStreamedMessage(response)
+            if self.stream:
+                # ``with_raw_response`` eagerly reads the response body in the
+                # OpenAI SDK. Use the normal streaming path so callers receive
+                # the AsyncStream as soon as response headers arrive.
+                parsed_response = await cast(Any, self.client.chat.completions.create)(
+                    model=self.model,
+                    messages=messages,
+                    tools=(_convert_tool(tool) for tool in tools),
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    **generation_kwargs,
+                )
+                trace_id = parsed_response.response.headers.get("x-trace-id")
+            else:
+                raw_response = await self.client.chat.completions.with_raw_response.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=(_convert_tool(tool) for tool in tools),
+                    stream=False,
+                    stream_options=omit,
+                    **generation_kwargs,
+                )
+                trace_id = raw_response.headers.get("x-trace-id")
+                parsed_response = raw_response.parse()
+                if inspect.isawaitable(parsed_response):
+                    parsed_response = await parsed_response
+            return KimiStreamedMessage(parsed_response, trace_id=trace_id)
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
 
@@ -372,13 +391,19 @@ def _convert_tool(tool: Tool) -> ChatCompletionToolParam:
 class KimiStreamedMessage:
     """The streamed message of the Kimi chat provider."""
 
-    def __init__(self, response: ChatCompletion | AsyncStream[ChatCompletionChunk]):
+    def __init__(
+        self,
+        response: ChatCompletion | AsyncStream[ChatCompletionChunk],
+        *,
+        trace_id: str | None = None,
+    ):
         if isinstance(response, ChatCompletion):
             self._iter = self._convert_non_stream_response(response)
         else:
             self._iter = self._convert_stream_response(response)
         self._id: str | None = None
         self._usage: CompletionUsage | None = None
+        self._trace_id = trace_id
 
     def __aiter__(self) -> AsyncIterator[StreamedMessagePart]:
         return self
@@ -389,6 +414,10 @@ class KimiStreamedMessage:
     @property
     def id(self) -> str | None:
         return self._id
+
+    @property
+    def trace_id(self) -> str | None:
+        return self._trace_id
 
     @property
     def usage(self) -> TokenUsage | None:

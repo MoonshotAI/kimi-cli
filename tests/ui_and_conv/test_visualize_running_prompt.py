@@ -43,6 +43,7 @@ async def test_visualize_uses_prompt_live_view_when_prompt_session_and_steer_are
             steer,
             btw_runner=None,
             cancel_event,
+            get_trace_id=None,
             show_thinking_stream=False,
         ):
             called.append(("init", initial_status, cancel_event))

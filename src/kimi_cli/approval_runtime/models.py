@@ -34,6 +34,7 @@ class ApprovalRequestRecord:
     resolved_at: float | None = None
     response: ApprovalResponseKind | None = None
     feedback: str = ""
+    approved_via_session_cache: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

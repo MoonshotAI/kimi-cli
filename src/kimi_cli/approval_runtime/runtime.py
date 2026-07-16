@@ -126,13 +126,21 @@ class ApprovalRuntime:
                 if request.status == "pending" and self._waiters.get(request_id) is waiter:
                     self._waiters.pop(request_id, None)
 
-    def resolve(self, request_id: str, response: ApprovalResponseKind, feedback: str = "") -> bool:
+    def resolve(
+        self,
+        request_id: str,
+        response: ApprovalResponseKind,
+        feedback: str = "",
+        *,
+        approved_via_session_cache: bool = False,
+    ) -> bool:
         request = self._requests.get(request_id)
         if request is None or request.status != "pending":
             return False
         request.status = "resolved"
         request.response = response
         request.feedback = feedback
+        request.approved_via_session_cache = approved_via_session_cache
         import time
 
         request.resolved_at = time.time()

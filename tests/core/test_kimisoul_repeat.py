@@ -55,6 +55,10 @@ class _RepeatStream:
     def usage(self) -> TokenUsage | None:
         return None
 
+    @property
+    def trace_id(self) -> str | None:
+        return None
+
 
 class _RepeatChatProvider:
     name = "repeat"

@@ -130,9 +130,11 @@ class _LiveView:
         initial_status: StatusUpdate,
         cancel_event: asyncio.Event | None = None,
         *,
+        get_trace_id: Callable[[], str | None] | None = None,
         show_thinking_stream: bool = False,
     ):
         self._cancel_event = cancel_event
+        self._get_trace_id = get_trace_id
         self._show_thinking_stream = show_thinking_stream
 
         self._mooning_spinner = Spinner("moon", "")
@@ -160,6 +162,9 @@ class _LiveView:
 
         self._need_recompose = False
         self._external_messages: Queue[WireMessage] = Queue()
+
+    def _current_trace_id(self) -> str | None:
+        return self._get_trace_id() if self._get_trace_id is not None else None
 
     def _reset_live_shape(self, live: Live) -> None:
         # Rich doesn't expose a public API to clear Live's cached render height.
@@ -553,7 +558,12 @@ class _LiveView:
         if all_done:
             from kimi_cli.telemetry import track
 
-            track("question_answered", method=method)
+            track(
+                "question_answered",
+                method=method,
+                answered=len(panel.get_answers()),
+                **({"trace_id": tid} if (tid := self._current_trace_id()) else {}),
+            )
             panel.request.resolve(panel.get_answers())
             self.show_next_question_request()
 
@@ -580,7 +590,10 @@ class _LiveView:
                 case KeyEvent.ESCAPE:
                     from kimi_cli.telemetry import track
 
-                    track("question_dismissed")
+                    track(
+                        "question_dismissed",
+                        **({"trace_id": tid} if (tid := self._current_trace_id()) else {}),
+                    )
                     self._current_question_panel.request.resolve({})
                     self.show_next_question_request()
                 case (
@@ -617,7 +630,13 @@ class _LiveView:
         if event == KeyEvent.ESCAPE and self._cancel_event is not None:
             from kimi_cli.telemetry import track
 
-            track("cancel")
+            track(
+                "cancel",
+                **{
+                    "from": "compacting" if self._compacting_spinner is not None else "streaming",
+                    **({"trace_id": tid} if (tid := self._current_trace_id()) else {}),
+                },
+            )
             self._cancel_event.set()
             return
 

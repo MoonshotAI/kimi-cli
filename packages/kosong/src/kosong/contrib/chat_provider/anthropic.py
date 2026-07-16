@@ -526,6 +526,10 @@ class AnthropicStreamedMessage:
         return self._id
 
     @property
+    def trace_id(self) -> str | None:
+        return None
+
+    @property
     def usage(self) -> TokenUsage | None:
         # https://docs.claude.com/en/docs/build-with-claude/prompt-caching#tracking-cache-performance
         return TokenUsage(

@@ -21,6 +21,7 @@ COMPACTION_OUTPUT_PREFIX = "Previous context has been compacted. Here is the com
 class CompactionResult(NamedTuple):
     messages: Sequence[Message]
     usage: TokenUsage | None
+    trace_id: str | None = None
 
     @property
     def estimated_token_count(self) -> int:
@@ -142,7 +143,9 @@ class SimpleCompaction:
         content.extend(part for part in compacted_msg.content if not isinstance(part, ThinkPart))
         compacted_messages: list[Message] = [Message(role="user", content=content)]
         compacted_messages.extend(to_preserve)
-        return CompactionResult(messages=compacted_messages, usage=result.usage)
+        return CompactionResult(
+            messages=compacted_messages, usage=result.usage, trace_id=result.trace_id
+        )
 
     class PrepareResult(NamedTuple):
         compact_message: Message | None
