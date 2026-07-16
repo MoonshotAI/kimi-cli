@@ -582,6 +582,25 @@ def kimi(
                 session = await Session.create(work_dir)
                 logger.info("Created new session: {session_id}", session_id=session.id)
 
+            # Make the live session externally observable. A small JSON
+            # status file under the session dir records the
+            # (pid, session_id, work_dir, ...) tuple so terminal
+            # multiplexers and IDE integrations can map a running process
+            # to its session even when it was started without
+            # --session/--resume.
+            import contextlib as _runtime_status_contextlib
+            import os as _runtime_status_os
+
+            from kimi_cli.runtime_status import write_runtime_status
+
+            with _runtime_status_contextlib.suppress(OSError):
+                write_runtime_status(
+                    session.dir,
+                    session_id=session.id,
+                    work_dir=str(work_dir),
+                    pid=_runtime_status_os.getpid(),
+                )
+
             nonlocal _latest_created_session
             _latest_created_session = session
 
@@ -682,6 +701,15 @@ def kimi(
                     r = Reload(session_id=session.id, prefill_text=e.prefill_text)
                     r.source_session = session
                     raise r from e
+                # Same-PID switch to a different session id (/new, /fork,
+                # /undo): drop the current session's runtime.json so it does
+                # not keep claiming this PID after the next iteration writes
+                # a fresh record for the new session.
+                if e.session_id != session.id:
+                    with contextlib.suppress(Exception):
+                        from kimi_cli.runtime_status import clear_runtime_status
+
+                        clear_runtime_status(session.dir)
                 e.source_session = session
                 raise
             except SwitchToWeb:
@@ -705,6 +733,12 @@ def kimi(
                         ),
                         timeout=5,
                     )
+
+                # NOTE: runtime.json is intentionally NOT cleared on exit.
+                # External observers must verify the recorded PID is alive,
+                # so a clean /quit and a force-kill leave the same on-disk
+                # state — the next session start (resume or fresh) will
+                # atomically overwrite the file with its own PID.
 
                 if not preserve_background_tasks:
                     await instance.shutdown_background_tasks()
