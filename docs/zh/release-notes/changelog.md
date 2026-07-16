@@ -4,7 +4,13 @@
 
 ## 未发布
 
+## 1.49.0 (2026-07-16)
+
+**亮点**：Kimi 供应商的补全 token 预算现在会根据模型剩余上下文窗口动态调整，减少长轮次中的上下文超限错误
+
+- LLM：将 Kimi 的补全 token 预算钳制在模型剩余上下文窗口内——CLI 不再固定发送 `max_tokens=32000`，而是按每次请求估算剩余上下文并据此设置 `max_completion_tokens` 上限。可通过新的环境变量 `KIMI_MODEL_MAX_COMPLETION_TOKENS` 设置显式硬上限（`KIMI_MODEL_MAX_TOKENS` 仍为兼容别名；设为 `0` 或负值可关闭钳制）
 - Kosong：配置 Thinking 模式时不再自动向 Kimi 请求发送旧版 `reasoning_effort` 参数——请求现在仅使用 `thinking.type`，同时保留显式传递旧版参数的兼容能力
+- Kosong：修复 Thinking 模型返回的空字符串 `reasoning_content` 被从历史中丢弃的问题——此前「思考过但内容为空」的回复会被当作「没有思考」，导致要求每条 Assistant 消息都携带 `reasoning_content` 的 Preserved Thinking 后端在下一次请求时返回 400
 
 ## 1.47.0 (2026-06-05)
 

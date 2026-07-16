@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+## 0.55.0 (2026-07-16)
+
 - Kimi: Stop automatically sending the legacy `reasoning_effort` parameter when configuring thinking — requests now use `thinking.type` exclusively while preserving explicit legacy passthrough
 - Kimi: Preserve empty-string `reasoning_content` as `ThinkPart(think="")` in both streaming and non-streaming responses — previously the truthy check dropped empty deltas, conflating "reasoned but empty" with "no reasoning at all"; the stored (empty) ThinkPart is what makes `_convert_message` emit `reasoning_content` on the next request, so preserved-thinking backends that require the field on every assistant message no longer 400 after a reason-free turn
+- Kimi: Add `GenerationKwargs.max_completion_tokens` and normalize the deprecated `max_tokens` alias to it before requests — the implicit `max_tokens=32000` default is no longer sent when the field is unset, so the server (or a per-request override) decides the budget
+- Kimi: Accept per-request `generation_overrides` in `generate()` — callers such as kimi-cli can now clamp `max_completion_tokens` for a single request without rebuilding the provider; the Chaos provider forwards overrides to the wrapped provider when present
+- Core: Expose the `x-trace-id` response header as `StreamedMessage.trace_id` and fire the new `on_trace_id` callback on `generate()` as soon as the header is available; `APIStatusError` now also carries `trace_id`
 
 ## 0.53.0 (2026-04-28)
 
