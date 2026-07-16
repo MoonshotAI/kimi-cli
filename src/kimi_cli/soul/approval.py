@@ -11,7 +11,7 @@ from kimi_cli.approval_runtime import (
     ApprovalSource,
     get_current_approval_source_or_none,
 )
-from kimi_cli.soul.toolset import get_current_tool_call_or_none
+from kimi_cli.soul.toolset import get_current_step_no, get_current_tool_call_or_none
 from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import DisplayBlock
@@ -35,6 +35,7 @@ def _approval_surface(display: list[DisplayBlock]) -> str:
 
 def _track_permission_result(
     *,
+    step_no: int | None,
     tool_name: str,
     permission_mode: str,
     result: str,
@@ -59,6 +60,8 @@ def _track_permission_result(
         session_cache_written=session_cache_written,
         has_feedback=has_feedback,
     )
+    if step_no is not None:
+        kwargs["step_no"] = step_no
     if tid := get_current_trace_id():
         kwargs["trace_id"] = tid
     track("permission_approval_result", **kwargs)
@@ -224,6 +227,7 @@ class Approval:
         t0 = time.monotonic()
         surface = _approval_surface(display or [])
         _tool_name = tool_call.function.name
+        _step_no = get_current_step_no()
 
         def _elapsed_ms() -> int:
             return int((time.monotonic() - t0) * 1000)
@@ -244,6 +248,7 @@ class Approval:
                 approval_mode="afk" if self.is_afk() else "yolo",
             )
             _track_permission_result(
+                step_no=_step_no,
                 tool_name=_tool_name,
                 permission_mode="auto" if self.is_afk() else "yolo",
                 result="approved",
@@ -263,6 +268,7 @@ class Approval:
                 approval_mode="auto_session",
             )
             _track_permission_result(
+                step_no=_step_no,
                 tool_name=_tool_name,
                 permission_mode="auto",
                 result="approved",
@@ -300,6 +306,7 @@ class Approval:
             )
             record = self._runtime.get_request(request_id)
             _track_permission_result(
+                step_no=_step_no,
                 tool_name=_tool_name,
                 permission_mode="manual",
                 result="cancelled",
@@ -311,6 +318,7 @@ class Approval:
             return ApprovalResult(approved=False, feedback=record.feedback if record else "")
         except Exception:
             _track_permission_result(
+                step_no=_step_no,
                 tool_name=_tool_name,
                 permission_mode="manual",
                 result="error",
@@ -333,6 +341,7 @@ class Approval:
                     approval_mode="auto_session" if approved_via_session_cache else "manual",
                 )
                 _track_permission_result(
+                    step_no=_step_no,
                     tool_name=_tool_name,
                     permission_mode="auto" if approved_via_session_cache else "manual",
                     result="approved",
@@ -349,6 +358,7 @@ class Approval:
                     approval_mode="manual",
                 )
                 _track_permission_result(
+                    step_no=_step_no,
                     tool_name=_tool_name,
                     permission_mode="manual",
                     result="approved_for_session",
@@ -374,6 +384,7 @@ class Approval:
                     approval_mode="manual",
                 )
                 _track_permission_result(
+                    step_no=_step_no,
                     tool_name=_tool_name,
                     permission_mode="manual",
                     result="rejected",
@@ -390,6 +401,7 @@ class Approval:
                     approval_mode="manual",
                 )
                 _track_permission_result(
+                    step_no=_step_no,
                     tool_name=_tool_name,
                     permission_mode="manual",
                     result="rejected",

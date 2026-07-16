@@ -7,7 +7,7 @@ import pytest
 from kosong.message import ToolCall
 
 from kimi_cli.soul.approval import Approval
-from kimi_cli.soul.toolset import current_tool_call
+from kimi_cli.soul.toolset import KimiToolset, current_tool_call
 
 
 def _tool_call(name: str = "Bash", *, call_id: str = "tc-1") -> ToolCall:
@@ -21,6 +21,7 @@ def _permission_events(mock_track) -> list:
 @pytest.mark.asyncio
 async def test_yolo_auto_approve_emits_permission_result():
     approval = Approval(yolo=True)
+    KimiToolset().begin_step([], step_no=3)
     token = current_tool_call.set(_tool_call())
     try:
         with patch("kimi_cli.telemetry.track") as mock_track:
@@ -35,6 +36,7 @@ async def test_yolo_auto_approve_emits_permission_result():
     assert kwargs["result"] == "approved"
     assert kwargs["permission_mode"] == "yolo"
     assert kwargs["tool_name"] == "Bash"
+    assert kwargs["step_no"] == 3
     assert kwargs["approval_surface"] == "generic"
     assert kwargs["session_cache_written"] is False
     assert kwargs["has_feedback"] is False

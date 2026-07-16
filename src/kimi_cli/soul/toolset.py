@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from kimi_cli.soul.agent import Runtime
 
 current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=None)
+_current_step_no: ContextVar[int | None] = ContextVar("current_step_no", default=None)
 
 _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default="")
 
@@ -95,6 +96,11 @@ def get_current_tool_call_or_none() -> ToolCall | None:
     Expect to be not None when called from a `__call__` method of a tool.
     """
     return current_tool_call.get()
+
+
+def get_current_step_no() -> int | None:
+    """Return the step number associated with the current tool task."""
+    return _current_step_no.get()
 
 
 type ToolType = CallableTool | CallableTool2[Any]
@@ -280,6 +286,7 @@ class KimiToolset:
     def begin_step(self, previous_calls: list[tuple[str, str]], *, step_no: int = 0) -> None:
         """Called before each step to set up deduplication state."""
         self._current_step_no = step_no
+        _current_step_no.set(step_no)
         self._previous_step_calls = [
             _normalize_call_key(tool_name, arguments) for tool_name, arguments in previous_calls
         ]
