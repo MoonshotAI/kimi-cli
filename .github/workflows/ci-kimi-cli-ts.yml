@@ -1,0 +1,134 @@
+name: CI - Kimi CLI (TypeScript)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  typecheck-and-test:
+    name: Typecheck & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: ./node_modules/.bin/tsc --noEmit --skipLibCheck
+
+      - name: Test
+        run: bun test
+
+  build-binaries:
+    name: Build Binary (${{ matrix.os }}-${{ matrix.arch }})
+    needs: typecheck-and-test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: bun-linux-x64
+            artifact: kimi-linux-x64
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: bun-linux-arm64
+            artifact: kimi-linux-arm64
+          - os: darwin
+            arch: x64
+            runner: macos-13
+            target: bun-darwin-x64
+            artifact: kimi-darwin-x64
+          - os: darwin
+            arch: arm64
+            runner: macos-14
+            target: bun-darwin-arm64
+            artifact: kimi-darwin-arm64
+          - os: windows
+            arch: x64
+            runner: windows-latest
+            target: bun-windows-x64
+            artifact: kimi-windows-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build standalone binary
+        run: bun build src/kimi_cli_ts/index.ts --compile --outfile dist/kimi --target=${{ matrix.target }}
+
+      - name: Verify binary (unix)
+        if: matrix.os != 'windows'
+        run: |
+          chmod +x dist/kimi
+          dist/kimi --version
+          dist/kimi --help
+
+      - name: Verify binary (windows)
+        if: matrix.os == 'windows'
+        run: |
+          dist\kimi.exe --version
+          dist\kimi.exe --help
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/kimi*
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build-binaries
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          for dir in artifacts/kimi-*; do
+            name=$(basename "$dir")
+            if [[ "$name" == *windows* ]]; then
+              (cd "$dir" && zip -r "../../release/${name}.zip" .)
+            else
+              chmod +x "$dir/kimi"
+              tar -czf "release/${name}.tar.gz" -C "$dir" kimi
+            fi
+          done
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: release/*
+          generate_release_notes: true
