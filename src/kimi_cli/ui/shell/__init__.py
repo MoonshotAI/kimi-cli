@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import shlex
 import time
 from collections import deque
@@ -63,6 +64,26 @@ from kimi_cli.wire.types import (
     StatusUpdate,
     WireMessage,
 )
+
+
+def _interactive_shell_executable() -> str | None:
+    if os.name == "nt":
+        return None
+    shell = os.environ.get("SHELL")
+    if not shell:
+        return None
+    if os.path.isfile(shell) and os.access(shell, os.X_OK):
+        return shell
+    return None
+
+
+def _shell_mode_subprocess_kwargs(stderr: Any | None) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {}
+    if stderr is not None:
+        kwargs["stderr"] = stderr
+    if executable := _interactive_shell_executable():
+        kwargs["executable"] = executable
+    return kwargs
 
 
 @dataclass(slots=True)
@@ -762,9 +783,7 @@ class Shell:
             # TODO: For the sake of simplicity, we now use `create_subprocess_shell`.
             # Later we should consider making this behave like a real shell.
             with open_original_stderr() as stderr:
-                kwargs: dict[str, Any] = {}
-                if stderr is not None:
-                    kwargs["stderr"] = stderr
+                kwargs = _shell_mode_subprocess_kwargs(stderr)
                 proc = await asyncio.create_subprocess_shell(command, env=get_clean_env(), **kwargs)
                 await proc.wait()
         except Exception as e:
