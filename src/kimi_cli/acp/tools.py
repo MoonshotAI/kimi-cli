@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import suppress
+import shlex
 
 import acp
 from kaos import get_current_kaos
@@ -88,8 +89,13 @@ class Terminal(CallableTool2[ShellParams]):
         timed_out = False
 
         try:
+            # Parse command string into command and args for ACP
+            parts = shlex.split(params.command)
+            cmd = parts[0] if parts else ""
+            args = parts[1:] if len(parts) > 1 else []
             resp = await self._acp_conn.create_terminal(
-                command=params.command,
+                command=cmd,
+                args=args,
                 session_id=self._acp_session_id,
                 output_byte_limit=builder.max_chars,
             )
