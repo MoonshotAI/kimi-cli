@@ -13,17 +13,13 @@ def server() -> ACPServer:
     """Create an ACPServer instance with mocked auth methods."""
     s = ACPServer()
     s._auth_methods = [
-        acp.schema.AuthMethod(
+        acp.schema.TerminalAuthMethod(
             id="login",
+            type="terminal",
             name="Test Login",
             description="Test description",
-            field_meta={
-                "terminal-auth": {
-                    "type": "terminal",
-                    "args": ["kimi", "login"],
-                    "env": {},
-                }
-            },
+            args=["login"],
+            env={},
         )
     ]
     return s

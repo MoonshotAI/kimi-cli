@@ -1015,8 +1015,23 @@ def term(
 
 
 @cli.command()
-def acp():
+def acp(
+    auth_command: Annotated[
+        str | None,
+        typer.Argument(
+            help="Internal terminal-auth command.",
+            show_default=False,
+            hidden=True,
+        ),
+    ] = None,
+):
     """Run Kimi Code CLI ACP server."""
+    if auth_command == "login":
+        login(json=False)
+        return
+    if auth_command is not None:
+        raise typer.BadParameter("Unknown ACP auth command")
+
     from kimi_cli.acp import acp_main
 
     acp_main()
