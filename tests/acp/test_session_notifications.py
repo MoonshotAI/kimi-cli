@@ -5,6 +5,7 @@ from pathlib import Path
 
 import acp
 import pytest
+from kosong.tooling import ToolOk, ToolResult
 from kosong.tooling.empty import EmptyToolset
 
 from kimi_cli.acp.session import ACPSession
@@ -14,7 +15,7 @@ from kimi_cli.soul import wire_send
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
-from kimi_cli.wire.types import Notification, TextPart, ToolCall, TurnBegin, TurnEnd
+from kimi_cli.wire.types import Notification, TextPart, ThinkPart, ToolCall, TurnBegin, TurnEnd
 
 
 class _FakeConn:
@@ -46,6 +47,21 @@ class _FakeCLI:
         yield TurnEnd()
 
 
+class _FakeStreamingCLI:
+    async def run(self, _user_input, _cancel_event):
+        yield TurnBegin(user_input=[TextPart(text="hello")])
+        yield ThinkPart(think="thinking")
+        yield TextPart(text="Hi mom")
+        yield TextPart(text=", what is for dinner?")
+        yield ToolCall(
+            id="call-dinner",
+            function=ToolCall.FunctionBody(name="ReadFile", arguments='{"path":"menu.txt"}'),
+        )
+        yield ToolResult(tool_call_id="call-dinner", return_value=ToolOk(output="pizza"))
+        yield TextPart(text="Tell Dad I said hi")
+        yield TurnEnd()
+
+
 @pytest.mark.asyncio
 async def test_acp_session_surfaces_notification_as_message_chunk() -> None:
     conn = _FakeConn()
@@ -62,6 +78,33 @@ async def test_acp_session_surfaces_notification_as_message_chunk() -> None:
     )
     assert "Task ID: b1234567" in notification_update.content.text
     assert text_update.content.text == "done"
+
+
+@pytest.mark.asyncio
+async def test_acp_session_assigns_message_ids_to_distinct_content_runs() -> None:
+    conn = _FakeConn()
+    session = ACPSession("session-1", _FakeStreamingCLI(), conn)  # type: ignore[arg-type]
+
+    response = await session.prompt([acp.text_block("hello")])
+
+    assert response.stop_reason == "end_turn"
+    chunks = [
+        update
+        for _, update in conn.updates
+        if update.session_update in {"agent_thought_chunk", "agent_message_chunk"}
+    ]
+    assert [chunk.content.text for chunk in chunks] == [
+        "thinking",
+        "Hi mom",
+        ", what is for dinner?",
+        "Tell Dad I said hi",
+    ]
+    assert chunks[0].message_id
+    assert chunks[1].message_id
+    assert chunks[1].message_id == chunks[2].message_id
+    assert chunks[3].message_id
+    assert chunks[3].message_id != chunks[1].message_id
+    assert chunks[0].message_id not in {chunks[1].message_id, chunks[3].message_id}
 
 
 class _BlockingApprovalConn(_FakeConn):
