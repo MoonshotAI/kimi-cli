@@ -100,6 +100,8 @@ Alias: `/status`
 This command only works with the Kimi Code platform.
 :::
 
+Request counts on membership pages are rough estimates derived from token consumption, not a fixed number of independent requests for each plan. Long context, large files, images, and tool output increase the cost of a turn, so use `/usage` as the source of truth for remaining quota.
+
 ### `/mcp`
 
 Display currently connected MCP servers and loaded tools. See [Model Context Protocol](../customization/mcp.md) for details.
