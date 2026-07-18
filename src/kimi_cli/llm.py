@@ -328,6 +328,7 @@ def create_llm(
     model: LLMModel,
     *,
     thinking: bool | None = None,
+    thinking_effort: ThinkingEffort | None = None,
     session_id: str | None = None,
     oauth: OAuthManager | None = None,
 ) -> LLM | None:
@@ -471,12 +472,31 @@ def create_llm(
 
     capabilities = derive_model_capabilities(model)
 
+    # An explicit effort implies the thinking switch when none was given: any level
+    # above "off" enables thinking, "off" disables it.
+    if thinking is None and thinking_effort is not None:
+        thinking = thinking_effort != "off"
+
     # Apply thinking if specified or if model always requires thinking
     thinking_on = "always_thinking" in capabilities or (
         thinking is True and "thinking" in capabilities
     )
     if thinking_on:
-        chat_provider = chat_provider.with_thinking("high")
+        effort: ThinkingEffort = (
+            thinking_effort if thinking_effort and thinking_effort != "off" else "high"
+        )
+        chat_provider = chat_provider.with_thinking(effort)
+        # Kimi serializes only ``thinking.type`` (upstream kosong behavior). Honor an
+        # *explicitly requested* effort via the legacy ``reasoning_effort`` passthrough
+        # so it actually reaches the server: the coding API honors low/medium/high
+        # (reduces reasoning) and silently ignores unknown values such as "max",
+        # falling back to the model default — which is its maximum thinking. The
+        # default path deliberately sends nothing so that default always applies.
+        if thinking_effort and provider.type == "kimi":
+            from kosong.chat_provider.kimi import Kimi
+
+            if isinstance(chat_provider, Kimi):
+                chat_provider = chat_provider.with_generation_kwargs(reasoning_effort=effort)
     elif thinking is False:
         chat_provider = chat_provider.with_thinking("off")
     # If thinking is None and model doesn't always think, leave as-is (default behavior)

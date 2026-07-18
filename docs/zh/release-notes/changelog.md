@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- Shell：新增 `/effort` 斜杠命令查看或切换思考档位（`off`/`low`/`medium`/`high`/`xhigh`/`max`）——无参数时弹出交互选择器，`/effort <档位>` 直接设置，`/effort default` 清除覆盖；档位按模型保存（无法匹配模型时回落到全局默认），选择具体档位会同步思考开关，保存后自动重载生效
+- Core：思考档位可配置——新增 `default_thinking_effort` 全局配置、`models.<name>.thinking_effort` 单模型配置与 `--thinking-effort` CLI 参数。CLI 参数会联动思考开关（`off` 即关闭思考），配置文件中的档位仅在思考开启时生效；Kimi 供应商下显式档位经旧版 `reasoning_effort` 透传，默认路径不发送任何 effort 参数，因此除非主动选择档位，否则始终应用模型自身默认（最大思考）
+
 ## 1.49.0 (2026-07-16)
 
 **亮点**：Kimi 供应商的补全 token 预算现在会根据模型剩余上下文窗口动态调整，减少长轮次中的上下文超限错误

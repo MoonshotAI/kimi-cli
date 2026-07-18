@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import kaos
 from kaos.path import KaosPath
+from kosong.chat_provider import ThinkingEffort
 from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
@@ -126,6 +127,7 @@ class KimiCLI:
         config: Config | Path | None = None,
         model_name: str | None = None,
         thinking: bool | None = None,
+        thinking_effort: ThinkingEffort | None = None,
         # Run mode
         yolo: bool = False,
         afk: bool = False,
@@ -230,8 +232,18 @@ class KimiCLI:
         assert model is not None
         env_overrides = augment_provider_with_env_vars(provider, model)
 
+        # An explicit --thinking-effort implies the thinking switch (a level above
+        # "off" enables thinking, "off" disables it) unless --thinking was given.
+        # Config-file levels never flip the switch — they apply when thinking is on.
+        if thinking is None and thinking_effort is not None:
+            thinking = thinking_effort != "off"
+
         # determine thinking mode
         thinking = config.default_thinking if thinking is None else thinking
+
+        # determine thinking effort: CLI > per-model config > global config
+        if thinking_effort is None:
+            thinking_effort = model.thinking_effort or config.default_thinking_effort
 
         # determine yolo mode
         yolo = yolo if yolo else config.default_yolo
@@ -244,6 +256,7 @@ class KimiCLI:
             provider,
             model,
             thinking=thinking,
+            thinking_effort=thinking_effort,
             session_id=session.id,
             oauth=oauth,
         )

@@ -598,6 +598,115 @@ def test_create_llm_kimi_thinking_keep_skipped_when_thinking_off(monkeypatch):
     assert "reasoning_effort" not in llm.chat_provider.model_parameters
 
 
+def _make_kimi_switchable_thinking_model() -> tuple[LLMProvider, LLMModel]:
+    """Helper: kimi provider + model with an explicit (switchable) thinking capability."""
+    provider = LLMProvider(
+        type="kimi",
+        base_url="https://api.test/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="kimi",
+        # no "thinking"/"reason" marker in the name, so derive_model_capabilities
+        # keeps exactly the explicit set below (switchable, not always-thinking)
+        model="kimi-switchable-toggle",
+        max_context_size=4096,
+        capabilities={"thinking"},
+    )
+    return provider, model
+
+
+def test_create_llm_thinking_effort_replaces_hardcoded_high():
+    """An explicit thinking_effort is applied to the provider instead of the
+    hardcoded default "high". For Kimi the wire still only carries thinking.type;
+    the level is kept as provider state."""
+    provider, model = _make_kimi_thinking_model()
+
+    llm = create_llm(provider, model, thinking_effort="max")
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.thinking_effort == "max"
+    extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
+    assert extra_body.get("thinking", {}).get("type") == "enabled"
+
+
+def test_create_llm_thinking_effort_implies_thinking_on():
+    """A non-off effort implies thinking on when thinking itself is not set."""
+    provider, model = _make_kimi_switchable_thinking_model()
+
+    llm = create_llm(provider, model, thinking_effort="low")
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.thinking_effort == "low"
+    extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
+    assert extra_body.get("thinking", {}).get("type") == "enabled"
+
+
+def test_create_llm_thinking_effort_off_disables_thinking():
+    """thinking_effort="off" implies thinking disabled when thinking is not set."""
+    provider, model = _make_kimi_switchable_thinking_model()
+
+    llm = create_llm(provider, model, thinking_effort="off")
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.thinking_effort == "off"
+    extra_body = llm.chat_provider.model_parameters.get("extra_body") or {}
+    assert extra_body.get("thinking", {}).get("type") == "disabled"
+
+
+def test_create_llm_explicit_thinking_false_wins_over_effort():
+    """An explicit thinking=False beats a non-off effort (switch over level)."""
+    provider, model = _make_kimi_switchable_thinking_model()
+
+    llm = create_llm(provider, model, thinking=False, thinking_effort="max")
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.thinking_effort == "off"
+
+
+def test_create_llm_kimi_explicit_effort_passes_through_as_reasoning_effort():
+    """An explicitly requested effort on a Kimi provider is forwarded via the
+    legacy ``reasoning_effort`` passthrough so the server can actually honor it."""
+    provider, model = _make_kimi_thinking_model()
+
+    llm = create_llm(provider, model, thinking_effort="low")
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.thinking_effort == "low"
+    assert llm.chat_provider.model_parameters.get("reasoning_effort") == "low"
+
+
+def test_create_llm_kimi_max_effort_passes_through_verbatim():
+    """ "max" is forwarded unchanged — the server is the source of truth (it
+    ignores unknown values and applies the model default = maximum thinking)."""
+    provider, model = _make_kimi_thinking_model()
+
+    llm = create_llm(provider, model, thinking_effort="max")
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.thinking_effort == "max"
+    assert llm.chat_provider.model_parameters.get("reasoning_effort") == "max"
+
+
+def test_create_llm_kimi_default_path_sends_no_reasoning_effort():
+    """With no explicit effort configured, no reasoning_effort is sent, so the
+    model's own default (its maximum thinking) applies."""
+    provider, model = _make_kimi_thinking_model()
+
+    llm = create_llm(provider, model, thinking=True)
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+
+    assert llm.chat_provider.thinking_effort == "high"
+    assert "reasoning_effort" not in llm.chat_provider.model_parameters
+
+
 def test_create_llm_kimi_thinking_keep_skipped_when_no_thinking_branch(monkeypatch):
     """When the model has no thinking capability and thinking is None, neither
     with_thinking branch runs — keep must also NOT be injected."""

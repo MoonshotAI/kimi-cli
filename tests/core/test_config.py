@@ -23,6 +23,7 @@ def test_default_config_dump():
         {
             "default_model": "",
             "default_thinking": False,
+            "default_thinking_effort": None,
             "default_yolo": False,
             "default_plan_mode": False,
             "default_editor": "",
@@ -97,6 +98,31 @@ def test_load_config_text_invalid():
 def test_load_config_invalid_ralph_iterations():
     with pytest.raises(ConfigError, match="max_ralph_iterations"):
         load_config_from_string('{"loop_control": {"max_ralph_iterations": -2}}')
+
+
+def test_load_config_default_thinking_effort():
+    config = load_config_from_string('default_thinking_effort = "max"\n')
+    assert config.default_thinking_effort == "max"
+
+
+def test_load_config_model_thinking_effort():
+    config = load_config_from_string(
+        '[providers."test-provider"]\n'
+        'type = "kimi"\n'
+        'base_url = "https://api.test/v1"\n'
+        'api_key = ""\n'
+        '[models."test/model"]\n'
+        'provider = "test-provider"\n'
+        'model = "test-model"\n'
+        "max_context_size = 100000\n"
+        'thinking_effort = "max"\n'
+    )
+    assert config.models["test/model"].thinking_effort == "max"
+
+
+def test_load_config_thinking_effort_invalid():
+    with pytest.raises(ConfigError, match="thinking_effort"):
+        load_config_from_string('default_thinking_effort = "ultra"\n')
 
 
 def test_load_config_reserved_context_size():
