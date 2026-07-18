@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+import pytest
 from inline_snapshot import snapshot
 from pydantic import BaseModel, Field
 
@@ -416,3 +417,16 @@ def test_nested_ref():
             "type": "object",
         }
     )
+
+
+def test_deref_circular_ref_raises():
+    """A self-referential schema cannot be fully inlined. Pydantic emits a
+    circular `$ref` for a recursive model, so `deref_json_schema` must raise a
+    clear error rather than recurse until the stack overflows."""
+
+    class Node(BaseModel):
+        value: str = Field(description="The node value.")
+        children: list[Node] = Field(default_factory=list)
+
+    with pytest.raises(ValueError, match=r"Circular \$ref"):
+        deref_json_schema(Node.model_json_schema())

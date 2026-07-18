@@ -43,17 +43,26 @@ def deref_json_schema(schema: JsonDict) -> JsonDict:
         except (KeyError, TypeError, ValueError):
             raise ValueError(f"Unable to resolve reference path: {pointer}") from None
 
-    def traverse(node: JsonType, root: JsonDict) -> JsonType:
-        """Recursively traverse every node to inline local references."""
+    def traverse(node: JsonType, root: JsonDict, seen: frozenset[str] = frozenset()) -> JsonType:
+        """Recursively traverse every node to inline local references.
+
+        ``seen`` holds the ``$ref`` targets currently being inlined along the
+        active chain. A self-referential schema (for example a ``$defs`` entry
+        that Pydantic emits for a recursive model) cannot be fully inlined, so
+        we raise a clear error instead of recursing until the stack overflows.
+        """
         if isinstance(node, dict):
             # Replace local ``$ref`` entries with their referenced payload.
             if "$ref" in node and isinstance(node["$ref"], str):
                 ref_path = node["$ref"]
                 if ref_path.startswith("#"):
+                    if ref_path in seen:
+                        msg = f"Circular $ref detected: {ref_path!r} cannot be inlined"
+                        raise ValueError(msg)
                     # Resolve the local reference target.
                     target = resolve_pointer(root, ref_path)
                     # Recursively inline the target in case it contains more refs.
-                    ref = traverse(target, root)
+                    ref = traverse(target, root, seen | {ref_path})
                     if not isinstance(ref, dict):
                         msg = "Local $ref must resolve to a JSON object"
                         raise TypeError(msg)
@@ -65,11 +74,11 @@ def deref_json_schema(schema: JsonDict) -> JsonDict:
                     return node
 
             # Traverse the remaining mapping entries.
-            return {k: traverse(v, root) for k, v in node.items()}
+            return {k: traverse(v, root, seen) for k, v in node.items()}
 
         elif isinstance(node, list):
             # Traverse list members (e.g. allOf, oneOf, items).
-            return [traverse(item, root) for item in node]
+            return [traverse(item, root, seen) for item in node]
 
         else:
             return node

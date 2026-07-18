@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Kosong: Fix `deref_json_schema` overflowing the stack on a circular `$ref`. A recursive tool parameter model (for example a Pydantic model that references itself) made schema dereferencing recurse until a `RecursionError`; it now raises a clear `ValueError` naming the circular reference
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns
