@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- ACP: `AskUserQuestion` now signals `QuestionNotSupported` instead of resolving an empty answer, so the model falls back to asking in plain text rather than seeing a phantom user dismissal
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns

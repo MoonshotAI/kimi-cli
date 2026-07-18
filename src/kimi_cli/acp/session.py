@@ -30,6 +30,7 @@ from kimi_cli.wire.types import (
     MCPLoadingEnd,
     Notification,
     PlanDisplay,
+    QuestionNotSupported,
     QuestionRequest,
     StatusUpdate,
     SteerInput,
@@ -209,10 +210,13 @@ class ACPSession:
                     case ToolCallRequest():
                         logger.warning("Unexpected ToolCallRequest in ACP session: {msg}", msg=msg)
                     case QuestionRequest():
+                        # Signal the tool that the client cannot render questions,
+                        # so it can tell the LLM to ask in plain text instead.
                         logger.warning(
-                            "QuestionRequest is unsupported in ACP session; resolving empty answer."
+                            "QuestionRequest is unsupported in ACP session; "
+                            "signaling QuestionNotSupported."
                         )
-                        msg.resolve({})
+                        msg.set_exception(QuestionNotSupported())
                     case _:
                         pass
         except LLMNotSet as e:
