@@ -22,6 +22,11 @@ def _clear_slug_cache():
     _slug_cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_plan_share_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("kimi_cli.tools.plan.heroes.get_share_dir", lambda: tmp_path)
+
+
 def _make_soul(runtime: Runtime, tmp_path: Path) -> KimiSoul:
     agent = Agent(
         name="Test Agent",
@@ -42,7 +47,6 @@ class TestPlanSlashCommand:
     async def test_plan_on(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -55,7 +59,6 @@ class TestPlanSlashCommand:
     async def test_plan_on_idempotent(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -68,7 +71,6 @@ class TestPlanSlashCommand:
     async def test_plan_off(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -83,7 +85,6 @@ class TestPlanSlashCommand:
     async def test_plan_off_idempotent(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -96,7 +97,6 @@ class TestPlanSlashCommand:
     async def test_plan_view_with_content(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -115,7 +115,6 @@ class TestPlanSlashCommand:
     async def test_plan_view_no_content(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -129,7 +128,6 @@ class TestPlanSlashCommand:
     async def test_plan_clear(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -149,7 +147,6 @@ class TestPlanSlashCommand:
     async def test_plan_toggle_on(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))
@@ -162,7 +159,6 @@ class TestPlanSlashCommand:
     async def test_plan_toggle_off(
         self, runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
         soul = _make_soul(runtime, tmp_path)
         sent: list[TextPart] = []
         monkeypatch.setattr("kimi_cli.soul.slash.wire_send", lambda msg: sent.append(msg))

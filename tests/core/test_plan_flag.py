@@ -261,8 +261,7 @@ class TestSchedulePlanActivationReminder:
         from kimi_cli.soul.context import Context
         from kimi_cli.soul.kimisoul import KimiSoul
 
-        # Redirect PLANS_DIR to tmp_path to avoid filesystem side effects
-        monkeypatch.setattr("kimi_cli.tools.plan.heroes.PLANS_DIR", tmp_path)
+        monkeypatch.setattr("kimi_cli.tools.plan.heroes.get_share_dir", lambda: tmp_path)
 
         agent = Agent(
             name="Test",
