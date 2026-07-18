@@ -5,6 +5,7 @@ import sys
 from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any, cast
 
+from kosong.chat_provider import ThinkingEffort
 from prompt_toolkit.shortcuts.choice_input import ChoiceInput
 
 from kimi_cli import logger
@@ -307,6 +308,139 @@ async def model(app: Shell, args: str):
         f"[green]Switched to {selected_display} "
         f"with thinking {'on' if new_thinking else 'off'}. "
         "Reloading...[/green]"
+    )
+    raise Reload(session_id=soul.runtime.session.id)
+
+
+_THINKING_EFFORT_LEVELS: tuple[str, ...] = ("off", "low", "medium", "high", "xhigh", "max")
+
+
+@registry.command
+async def effort(app: Shell, args: str):
+    """View or change the thinking effort level (off/low/medium/high/xhigh/max)"""
+    soul = ensure_kimi_soul(app)
+    if soul is None:
+        return
+    config = soul.runtime.config
+
+    if not config.is_from_default_location:
+        console.print(
+            "[yellow]Changing thinking effort requires the default config file; "
+            "restart without --config/--config-file.[/yellow]"
+        )
+        return
+
+    # Current effective effort (runtime) and the configured override (if any)
+    curr_effort = soul.runtime.llm.chat_provider.thinking_effort if soul.runtime.llm else None
+    curr_model_cfg = soul.runtime.llm.model_config if soul.runtime.llm else None
+    curr_model_name: str | None = None
+    if curr_model_cfg is not None:
+        for name, model_cfg in config.models.items():
+            if model_cfg == curr_model_cfg:
+                curr_model_name = name
+                break
+    configured_effort = (
+        curr_model_cfg.thinking_effort if curr_model_cfg is not None else None
+    ) or config.default_thinking_effort
+
+    from kimi_cli.llm import derive_model_capabilities
+
+    always_thinking = curr_model_cfg is not None and (
+        "always_thinking" in derive_model_capabilities(curr_model_cfg)
+    )
+
+    selected_effort: ThinkingEffort | None
+    arg = args.strip().lower()
+    if arg:
+        if arg in ("default", "unset", "clear"):
+            selected_effort = None
+        elif arg in _THINKING_EFFORT_LEVELS:
+            selected_effort = cast(ThinkingEffort, arg)
+        else:
+            console.print(
+                f"[red]Invalid effort level: {arg}[/red] "
+                f"(expected one of: {', '.join(_THINKING_EFFORT_LEVELS)}, default)"
+            )
+            return
+    else:
+        choices: list[tuple[str, str]] = [
+            (level, level + (" (current)" if level == curr_effort else ""))
+            for level in _THINKING_EFFORT_LEVELS
+        ]
+        choices.append(
+            (
+                "default",
+                "default (no explicit effort)"
+                + (" (current)" if configured_effort is None else ""),
+            )
+        )
+        try:
+            selection = await ChoiceInput(
+                message=(
+                    f"Thinking effort (current: {curr_effort or 'default'}; "
+                    "↑↓ navigate, Enter select, Ctrl+C cancel):"
+                ),
+                options=choices,
+                default=curr_effort or "default",
+            ).prompt_async()
+        except (EOFError, KeyboardInterrupt):
+            return
+        if not selection:
+            return
+        selected_effort = None if selection == "default" else cast(ThinkingEffort, selection)
+
+    if selected_effort == configured_effort:
+        console.print(
+            f"[yellow]Thinking effort is already {selected_effort or 'default'}.[/yellow]"
+        )
+        return
+
+    if selected_effort == "off" and always_thinking:
+        console.print("[yellow]This model always thinks; effort 'off' cannot disable it.[/yellow]")
+        return
+
+    # Save: prefer the per-model override when the current model is known, so the
+    # level stays attached to the model it was tuned for; otherwise set the global
+    # default. An explicitly chosen level also implies the thinking switch: keep
+    # default_thinking coherent so the level actually takes effect after reload.
+    switch_note = ""
+    try:
+        config_for_save = load_config()
+        if curr_model_name is not None and curr_model_name in config_for_save.models:
+            config_for_save.models[curr_model_name].thinking_effort = selected_effort
+            target = f"model {curr_model_name}"
+        else:
+            config_for_save.default_thinking_effort = selected_effort
+            target = "global default"
+        if selected_effort is not None and not always_thinking:
+            new_thinking = selected_effort != "off"
+            if config_for_save.default_thinking != new_thinking:
+                config_for_save.default_thinking = new_thinking
+                switch_note = f" Thinking switched {'on' if new_thinking else 'off'} to match."
+        save_config(config_for_save)
+    except (ConfigError, OSError) as exc:
+        console.print(f"[red]Failed to save config: {exc}[/red]")
+        return
+
+    # Keep the in-memory config in sync for this process
+    if curr_model_name is not None and curr_model_name in config.models:
+        config.models[curr_model_name].thinking_effort = selected_effort
+    else:
+        config.default_thinking_effort = selected_effort
+    if selected_effort is not None and not always_thinking:
+        config.default_thinking = selected_effort != "off"
+
+    note = ""
+    if selected_effort in ("xhigh", "max"):
+        note = (
+            "\n[dim]note: levels above high take effect only on providers that accept "
+            "them (e.g. Anthropic). Kimi forwards the level verbatim and the server "
+            "decides — unknown levels fall back to the model default, which is its "
+            "maximum thinking.[/dim]"
+        )
+    console.print(
+        f"[green]Thinking effort set to {selected_effort or 'default'} for {target}."
+        f"{switch_note} Reloading...[/green]{note}"
     )
     raise Reload(session_id=soul.runtime.session.id)
 

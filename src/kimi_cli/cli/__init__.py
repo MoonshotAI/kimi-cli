@@ -1,14 +1,28 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal, get_args
 
 import typer
+from kosong.chat_provider import ThinkingEffort
 
 if TYPE_CHECKING:
     from kimi_cli.session import Session
 
 from ._lazy_group import LazySubcommandGroup
+
+# typer cannot resolve kosong's PEP 695 `type ThinkingEffort = Literal[...]` alias
+# in option annotations (RuntimeError: Type not yet supported), so the levels are
+# spelled out inline at --thinking-effort below. The two definitions must not
+# drift — this assert fails at import time if kosong ever changes the set.
+assert set(get_args(ThinkingEffort.__value__)) == {
+    "off",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+}
 
 
 class Reload(Exception):
@@ -183,6 +197,18 @@ def kimi(
         typer.Option(
             "--thinking/--no-thinking",
             help="Enable thinking mode. Default: default thinking mode set in config file.",
+        ),
+    ] = None,
+    # NOTE: inline Literal mirrors kosong's ThinkingEffort (guarded above) —
+    # typer cannot resolve the PEP 695 alias in option annotations.
+    thinking_effort: Annotated[
+        Literal["off", "low", "medium", "high", "xhigh", "max"] | None,
+        typer.Option(
+            "--thinking-effort",
+            help=(
+                "Thinking effort level (off/low/medium/high/xhigh/max). "
+                "Implies --thinking unless 'off'. Default: high when thinking is on."
+            ),
         ),
     ] = None,
     # Run mode
@@ -621,6 +647,7 @@ def kimi(
                 config=config,
                 model_name=model_name,
                 thinking=thinking,
+                thinking_effort=thinking_effort,
                 yolo=yolo,
                 afk=afk,
                 runtime_afk=ui == "print",

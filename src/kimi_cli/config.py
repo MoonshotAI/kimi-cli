@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal, Self
 
 import tomlkit
+from kosong.chat_provider import ThinkingEffort
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -70,6 +71,14 @@ class LLMModel(BaseModel):
     """Model capabilities"""
     display_name: str | None = None
     """Human-readable model name (sourced from the provider's models API when available)"""
+    thinking_effort: ThinkingEffort | None = None
+    """Default thinking effort level for this model (off/low/medium/high/xhigh/max).
+    Overrides the global ``default_thinking_effort``. Applies when thinking mode is
+    enabled — a config-file level never flips the thinking switch on its own (the
+    ``/effort`` command and the ``--thinking-effort`` flag do). For Kimi models an
+    explicit level is forwarded as the legacy ``reasoning_effort`` passthrough
+    (low/medium/high reduce reasoning; unknown values such as "max" are ignored by
+    the server, which then applies the model default — its maximum thinking)."""
 
 
 class LoopControl(BaseModel):
@@ -198,6 +207,16 @@ class Config(BaseModel):
     )
     default_model: str = Field(default="", description="Default model to use")
     default_thinking: bool = Field(default=False, description="Default thinking mode")
+    default_thinking_effort: ThinkingEffort | None = Field(
+        default=None,
+        description=(
+            "Default thinking effort level (off/low/medium/high/xhigh/max) applied when "
+            "thinking mode is enabled; never flips the thinking switch on its own. "
+            "Overridden per model by models.<name>.thinking_effort and per run by "
+            "--thinking-effort (which does imply the switch). When unset, no effort "
+            "parameter is sent and the model's own default applies."
+        ),
+    )
     default_yolo: bool = Field(default=False, description="Default yolo (auto-approve) mode")
     skip_afk_prompt_injection: bool = Field(
         default=False,

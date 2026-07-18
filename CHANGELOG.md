@@ -11,6 +11,9 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Add `/effort` slash command to view or change the thinking effort level (`off`/`low`/`medium`/`high`/`xhigh`/`max`) — interactive picker when run without arguments, direct set via `/effort <level>`, and `/effort default` to clear the override; the level is saved per model (falling back to the global default), picking an explicit level also switches thinking on/off to match, and the change is applied on reload
+- Core: Add configurable thinking effort — `default_thinking_effort` config, per-model `thinking_effort`, and a `--thinking-effort` CLI flag. The CLI flag implies the thinking switch (`off` disables thinking) while config-file levels apply only when thinking is on; on Kimi providers an explicit level is forwarded via the legacy `reasoning_effort` passthrough while the default path sends nothing, so the model's own default (its maximum thinking) always applies unless you opt into a level
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns
