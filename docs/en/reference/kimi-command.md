@@ -161,6 +161,7 @@ When not specified, Kimi Code CLI automatically discovers user-level and project
 | [`kimi login`](#kimi-login) | Log in to your Kimi account |
 | [`kimi logout`](#kimi-logout) | Log out from your Kimi account |
 | [`kimi info`](./kimi-info.md) | Display version and protocol information |
+| [`kimi usage`](#kimi-usage) | Show Kimi Code quota usage |
 | [`kimi acp`](./kimi-acp.md) | Start multi-session ACP server |
 | [`kimi mcp`](./kimi-mcp.md) | Manage MCP server configuration |
 | [`kimi plugin`](../customization/plugins.md) | Manage plugins (Beta) |
@@ -202,6 +203,18 @@ kimi export [<session_id>] [-o <output_path>] [--yes]
 ::: info Added
 Added in version 1.20.
 :::
+
+### `kimi usage`
+
+Check Kimi Code platform quota usage non-interactively. By default, it prints the same terminal panel as `/usage` in shell mode; add `--json` to emit the raw JSON response for scripts, CI jobs, or monitoring widgets.
+
+```sh
+kimi usage [--json]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output the raw usage API response as JSON |
 
 ### `kimi vis`
 
