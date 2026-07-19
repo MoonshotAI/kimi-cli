@@ -42,6 +42,29 @@ class DummyToolB(CallableTool2[DummyParams]):
         return ToolOk(output="b")
 
 
+# A dummy tool mirroring SetTodoList's nested params (list[Todo]), used to
+# exercise the double-encoded-arguments fix end-to-end through KimiToolset.
+
+
+class DummyTodo(BaseModel):
+    title: str
+    status: str
+
+
+class DummyTodoParams(BaseModel):
+    todos: list[DummyTodo] | None = None
+
+
+class DummyTodoTool(CallableTool2[DummyTodoParams]):
+    name: str = "DummyTodo"
+    description: str = "Dummy todo tool mirroring SetTodoList"
+    params: type[DummyTodoParams] = DummyTodoParams
+
+    async def __call__(self, params: DummyTodoParams) -> ToolReturnValue:
+        titles = [t.title for t in (params.todos or [])]
+        return ToolOk(output=",".join(titles))
+
+
 def _make_toolset() -> KimiToolset:
     ts = KimiToolset()
     ts.add(DummyToolA())
@@ -172,6 +195,52 @@ async def test_nonexistent_tool_returns_not_found():
     result = ts.handle(tool_call)
     assert isinstance(result, ToolResult)
     assert isinstance(result.return_value, KosongToolNotFoundError)
+
+
+# --- double-encoded tool-call arguments (#2406) ---
+
+
+async def test_handle_unwraps_double_encoded_arguments():
+    """KimiToolset.handle must recursively unwrap double-encoded arguments.
+
+    Reproduces the exact reported shape: a ``list[Todo]`` param whose value
+    the provider returns as a JSON STRING (double-encoded). Before the fix
+    this surfaced as ``ToolValidateError`` ("Input should be a valid list");
+    after the fix the tool executes and returns ``ToolOk``.
+    """
+    ts = KimiToolset()
+    ts.add(DummyTodoTool())
+    ts.begin_step([])
+
+    inner = json.dumps([{"title": "x", "status": "in_progress"}])
+    arguments = json.dumps({"todos": inner})
+    tool_call = ToolCall(
+        id="tc-double",
+        function=ToolCall.FunctionBody(name="DummyTodo", arguments=arguments),
+    )
+    result = ts.handle(tool_call)
+    assert isinstance(result, asyncio.Task)
+    tr = await result
+    assert isinstance(tr.return_value, ToolOk)
+    assert tr.return_value.output == "x"
+
+
+async def test_handle_well_formed_args_unchanged():
+    """A normal single-encoded ToolCall must still execute correctly (regression)."""
+    ts = KimiToolset()
+    ts.add(DummyTodoTool())
+    ts.begin_step([])
+
+    arguments = json.dumps({"todos": [{"title": "a", "status": "pending"}]})
+    tool_call = ToolCall(
+        id="tc-well-formed",
+        function=ToolCall.FunctionBody(name="DummyTodo", arguments=arguments),
+    )
+    result = ts.handle(tool_call)
+    assert isinstance(result, asyncio.Task)
+    tr = await result
+    assert isinstance(tr.return_value, ToolOk)
+    assert tr.return_value.output == "a"
 
 
 # --- hide/unhide cycle ---
