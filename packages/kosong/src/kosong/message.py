@@ -104,6 +104,16 @@ class TextPart(ContentPart):
             self.text = "".join(self._merge_buf)
             self._merge_buf = None
 
+    @override
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        self.finalize_merge()
+        return super().model_dump(**kwargs)
+
+    @override
+    def model_dump_json(self, **kwargs: Any) -> str:
+        self.finalize_merge()
+        return super().model_dump_json(**kwargs)
+
 
 class ThinkPart(ContentPart):
     """
@@ -135,6 +145,16 @@ class ThinkPart(ContentPart):
         if self._merge_buf is not None:
             self.think = "".join(self._merge_buf)
             self._merge_buf = None
+
+    @override
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        self.finalize_merge()
+        return super().model_dump(**kwargs)
+
+    @override
+    def model_dump_json(self, **kwargs: Any) -> str:
+        self.finalize_merge()
+        return super().model_dump_json(**kwargs)
 
 
 class ImageURLPart(ContentPart):
@@ -248,6 +268,16 @@ class ToolCall(BaseModel, MergeableMixin):
             self.function.arguments = "".join(self._merge_buf)
             self._merge_buf = None
 
+    @override
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        self.finalize_merge()
+        return super().model_dump(**kwargs)
+
+    @override
+    def model_dump_json(self, **kwargs: Any) -> str:
+        self.finalize_merge()
+        return super().model_dump_json(**kwargs)
+
 
 class ToolCallPart(BaseModel, MergeableMixin):
     """A part of the tool call."""
@@ -277,6 +307,16 @@ class ToolCallPart(BaseModel, MergeableMixin):
         if self._merge_buf is not None:
             self.arguments_part = "".join(self._merge_buf)
             self._merge_buf = None
+
+    @override
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        self.finalize_merge()
+        return super().model_dump(**kwargs)
+
+    @override
+    def model_dump_json(self, **kwargs: Any) -> str:
+        self.finalize_merge()
+        return super().model_dump_json(**kwargs)
 
 
 type Role = Literal[
@@ -317,6 +357,7 @@ class Message(BaseModel):
     @field_serializer("content")
     def _serialize_content(self, content: list[ContentPart]) -> str | list[dict[str, Any]] | None:
         if len(content) == 1 and isinstance(content[0], TextPart):
+            content[0].finalize_merge()
             return content[0].text
         return [part.model_dump() for part in content]
 
@@ -352,4 +393,9 @@ class Message(BaseModel):
 
     def extract_text(self, sep: str = "") -> str:
         """Extract and concatenate all text parts in the message content."""
-        return sep.join(part.text for part in self.content if isinstance(part, TextPart))
+        texts: list[str] = []
+        for part in self.content:
+            if isinstance(part, TextPart):
+                part.finalize_merge()
+                texts.append(part.text)
+        return sep.join(texts)
