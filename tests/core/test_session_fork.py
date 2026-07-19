@@ -558,3 +558,25 @@ class TestTruncateContextAlignment:
         forked_context = (new_session.dir / "context.jsonl").read_text(encoding="utf-8")
         assert "turn two" in forked_context
         assert "turn three" not in forked_context
+
+    def test_slash_command_turns_do_not_consume_context_records(self, session_dir: Path):
+        """Wire-only turns (slash commands) must not shift the context cut (#1974)."""
+        wire_turns = ["real 0", "/usage", "/sessions", "real 1", "real 2"]
+        context_path = _write_raw_context(
+            session_dir,
+            [
+                _user_record("real 0"),
+                _assistant_record(),
+                _user_record("real 1"),
+                _assistant_record(),
+                _user_record("real 2"),
+                _assistant_record(),
+            ],
+        )
+
+        lines = truncate_context_at_turn(context_path, 3, turn_texts=wire_turns)
+
+        texts = "\n".join(lines)
+        assert "real 0" in texts
+        assert "real 1" in texts
+        assert "real 2" not in texts
