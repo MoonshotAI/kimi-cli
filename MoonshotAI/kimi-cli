@@ -1,0 +1,6 @@
+// Conceptual plugin pseudocode
+async function kimiPush(message = "kimi-cli") {
+    await exec("git add .");
+    await exec(`git commit -m "${message}"`);
+    await exec("git push");
+}
