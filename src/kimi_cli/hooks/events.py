@@ -188,3 +188,19 @@ def notification(
         "body": body,
         "severity": severity,
     }
+
+
+def message_display(
+    *,
+    session_id: str,
+    cwd: str,
+    message_id: str,
+    displayed_text: str,
+    is_final: bool,
+) -> dict[str, Any]:
+    return {
+        **_base("MessageDisplay", session_id, cwd),
+        "message_id": message_id,
+        "displayed_text": displayed_text,
+        "is_final": is_final,
+    }

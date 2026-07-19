@@ -20,7 +20,7 @@ Example use cases:
 
 ## Supported Hook Events
 
-Kimi Code CLI supports 13 lifecycle events:
+Kimi Code CLI supports 14 lifecycle events:
 
 | Event | Trigger | Matcher Filter | Available Context |
 |-------|---------|----------------|-------------------|
@@ -37,6 +37,33 @@ Kimi Code CLI supports 13 lifecycle events:
 | `PreCompact` | Before context compaction | Trigger reason | `trigger`, `token_count` |
 | `PostCompact` | After context compaction | Trigger reason | `trigger`, `estimated_token_count` |
 | `Notification` | When notification is delivered | Sink name | `sink`, `notification_type`, `title`, `body`, `severity` |
+| `MessageDisplay` | Repeatedly, as the assistant reply streams | None | `message_id`, `displayed_text`, `is_final` |
+
+### MessageDisplay (mid-turn streaming)
+
+`MessageDisplay` fires repeatedly as the assistant's reply streams — before `Stop`, which fires once at the end of the turn. Useful for live narration, incremental logging, or any consumer that wants to react to the reply as it's written rather than after the fact. This is a **fire-and-forget** event: hook output and exit codes are ignored.
+
+Event-specific fields:
+
+```json
+{
+  "message_id": "stable id for the whole streamed message",
+  "displayed_text": "the CUMULATIVE text streamed so far for this message (not a delta)",
+  "is_final": "true on the last firing for this message, false otherwise"
+}
+```
+
+`displayed_text` is cumulative rather than a delta, so hook scripts never need to reassemble chunks themselves — each firing carries the full text so far. Firing is debounced (at most every ~200ms) except for the final firing (`is_final: true`), which always fires once the message ends, so the reply's tail is never dropped waiting on the debounce window.
+
+Delivery semantics — what a hook script can rely on:
+
+- **Slow hooks see fewer, newer payloads.** At most one mid-stream hook execution per message is in flight at a time; while one runs, newer debounced payloads replace the queued one rather than piling up behind it. Lossless, since each payload carries the full cumulative text.
+- **`is_final` is never queued behind a stale delivery**, and always arrives before the `Stop` hook fires. The turn waits up to 5 seconds for the final delivery to complete; a slower hook still receives `is_final` first — only the wait for its completion is bounded.
+- **Cancellation suppresses `is_final`.** A turn cancelled before the final payload fires none — treat cancellation-silence as your flush/discard signal (e.g. a timeout fallback).
+- **`displayed_text` is provisional until `is_final`.** Treat intermediate payloads as display state, not as authoritative final content.
+- **A tool-using turn produces multiple messages.** Each model call gets its own `message_id` with its own `is_final: true` firing: the text before a tool call is one message, the continuation after the tool result is another. Model calls that produce no displayed text (tool-call-only) fire nothing.
+
+`MessageDisplay` fires on every surface (interactive shell, print/headless, ACP, wire, web) with the same payload contract, since all of them share the same streaming path.
 
 ## Configuring Hooks
 
@@ -72,7 +99,7 @@ command = ".kimi/hooks/check-complete.sh"
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `event` | Yes | — | Event type, must be one of the 13 supported events |
+| `event` | Yes | — | Event type, must be one of the 14 supported events |
 | `command` | Yes | — | Shell command to execute, receives JSON via stdin |
 | `matcher` | No | `""` | Regex filter, empty string matches all |
 | `timeout` | No | `30` | Timeout in seconds, fail-open on timeout |

@@ -16,6 +16,7 @@ HookEventType = Literal[
     "PreCompact",
     "PostCompact",
     "Notification",
+    "MessageDisplay",
 ]
 
 HOOK_EVENT_TYPES: list[str] = list(HookEventType.__args__)  # type: ignore[attr-defined]
