@@ -92,9 +92,11 @@ class Context:
         """Write the system prompt as the first record of the context file.
 
         If the file is empty, writes it directly. If the file already has content
-        (e.g. a legacy session without system prompt), prepends it atomically via a
-        temporary file to avoid corruption on crash and avoid loading the entire file
-        into memory.
+        (e.g. a legacy session, or a resumed session whose prompt is being
+        refreshed), rewrites it atomically via a temporary file, dropping any
+        previous ``_system_prompt`` record so the file always holds a single,
+        current system prompt. Restoration takes the last ``_system_prompt``
+        record, so a leftover stale record would win over the refreshed one.
         """
         prompt_line = json.dumps({"role": "_system_prompt", "content": prompt}) + "\n"
 
@@ -105,15 +107,19 @@ class Context:
 
             tmp_path = self._file_backend.with_suffix(".tmp")
             with (
-                tmp_path.open("w", encoding="utf-8") as tmp_f,
-                self._file_backend.open(encoding="utf-8") as src_f,
+                tmp_path.open("wb") as tmp_f,
+                self._file_backend.open("rb") as src_f,
             ):
-                tmp_f.write(prompt_line)
-                while True:
-                    chunk = src_f.read(64 * 1024)
-                    if not chunk:
-                        break
-                    tmp_f.write(chunk)
+                tmp_f.write(prompt_line.encode("utf-8"))
+                for raw_line in src_f:
+                    stripped = raw_line.strip()
+                    if stripped:
+                        try:
+                            if json.loads(stripped).get("role") == "_system_prompt":
+                                continue
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            pass
+                    tmp_f.write(raw_line)
             tmp_path.replace(self._file_backend)
 
         await asyncio.to_thread(_write_system_prompt_sync)

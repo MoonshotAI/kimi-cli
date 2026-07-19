@@ -365,6 +365,38 @@ async def test_revert_skips_truncated_utf8_line_before_checkpoint(tmp_path: Path
 
 
 @pytest.mark.asyncio
+async def test_write_system_prompt_replaces_existing_record(tmp_path: Path) -> None:
+    """Rewriting the prompt must drop the old record, not accumulate them (#2420).
+
+    Restoration takes the last ``_system_prompt`` record, so a leftover stale
+    record after the refreshed one would silently win on the next restore.
+    """
+    path = tmp_path / "context.jsonl"
+    msg = _message_dict("user", "Hello")
+    _write_lines(
+        path,
+        [
+            {"role": "_system_prompt", "content": "Stale prompt"},
+            msg,
+        ],
+    )
+
+    ctx = Context(file_backend=path)
+    await ctx.restore()
+    await ctx.write_system_prompt("Fresh prompt")
+
+    lines = _read_lines(path)
+    assert lines == [
+        {"role": "_system_prompt", "content": "Fresh prompt"},
+        msg,
+    ]
+
+    ctx2 = Context(file_backend=path)
+    await ctx2.restore()
+    assert ctx2.system_prompt == "Fresh prompt"
+
+
+@pytest.mark.asyncio
 async def test_write_system_prompt_then_restore(tmp_path: Path) -> None:
     path = tmp_path / "context.jsonl"
     path.touch()
