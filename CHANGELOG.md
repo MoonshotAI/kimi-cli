@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Kosong: Recursively unwrap double-encoded JSON in tool-call arguments so array/dict params (`SetTodoList.todos`, `ExitPlanMode.options`, `StrReplaceFile.edit`) validate correctly instead of failing with "Input should be a valid list" — shared helper now used by both kosong `SimpleToolset` and kimi-cli `KimiToolset` (#2406)
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns

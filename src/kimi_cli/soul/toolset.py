@@ -27,6 +27,7 @@ from kosong.tooling.error import (
     ToolRuntimeError,
 )
 from kosong.tooling.mcp import convert_mcp_content
+from kosong.utils.json_args import decode_tool_arguments
 from kosong.utils.typing import JsonType
 
 from kimi_cli import logger
@@ -352,7 +353,7 @@ class KimiToolset:
                 )
 
             try:
-                arguments: JsonType = json.loads(tool_call.function.arguments or "{}", strict=False)
+                arguments: JsonType = decode_tool_arguments(tool_call.function.arguments)
             except json.JSONDecodeError as e:
                 logger.warning(
                     "Tool call JSON parse error: {tool_name} (call_id={call_id}): {error}",
