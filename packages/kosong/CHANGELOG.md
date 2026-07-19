@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Core: Fix double-encoded tool-call arguments (the Moonshot API can return nested array/object params as JSON strings), which previously surfaced as Pydantic validation errors on tools like SetTodoList/ExitPlanMode/StrReplaceFile — `decode_tool_arguments` now only parses the outer payload for both `SimpleToolset` and kimi-cli's `KimiToolset`, and the shared `unwrap_double_encoded` helper is applied only when validation of the original arguments fails, so arbitrarily-nested double-encoding is fixed while string-typed params holding JSON text are never rewritten (#2406)
+
 ## 0.55.0 (2026-07-16)
 
 - Kimi: Stop automatically sending the legacy `reasoning_effort` parameter when configuring thinking — requests now use `thinking.type` exclusively while preserving explicit legacy passthrough

@@ -9,6 +9,7 @@ from pydantic.json_schema import GenerateJsonSchema
 from pydantic_core import core_schema
 
 from kosong.message import ContentPart, ToolCall
+from kosong.utils.json_args import unwrap_double_encoded
 from kosong.utils.jsonschema import deref_json_schema
 from kosong.utils.typing import JsonType
 
@@ -189,8 +190,17 @@ class CallableTool(Tool, ABC):
 
         try:
             jsonschema.validate(arguments, self.parameters)
-        except jsonschema.ValidationError as e:
-            return ToolValidateError(str(e))
+        except jsonschema.ValidationError:
+            # Providers like the Moonshot API may double-encode array/object
+            # parameters as JSON strings. Retry with those strings promoted to
+            # their parsed values. The original arguments are used untouched
+            # when they already validate, so string-typed parameters holding
+            # JSON text are never rewritten.
+            arguments = unwrap_double_encoded(arguments)
+            try:
+                jsonschema.validate(arguments, self.parameters)
+            except jsonschema.ValidationError as e:
+                return ToolValidateError(str(e))
 
         if isinstance(arguments, list):
             ret = await self.__call__(*arguments)
@@ -294,8 +304,16 @@ class CallableTool2[Params: BaseModel](ABC):
 
         try:
             params = self.params.model_validate(arguments)
-        except pydantic.ValidationError as e:
-            return ToolValidateError(str(e))
+        except pydantic.ValidationError:
+            # Providers like the Moonshot API may double-encode array/object
+            # parameters as JSON strings. Retry with those strings promoted to
+            # their parsed values. The original arguments are used untouched
+            # when they already validate, so string-typed parameters holding
+            # JSON text are never rewritten.
+            try:
+                params = self.params.model_validate(unwrap_double_encoded(arguments))
+            except pydantic.ValidationError as e:
+                return ToolValidateError(str(e))
 
         ret = await self.__call__(params)
         if not isinstance(ret, ToolReturnValue):  # type: ignore[reportUnnecessaryIsInstance]

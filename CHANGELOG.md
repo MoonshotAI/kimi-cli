@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Kosong: Fix tool-call argument double-encoding (Moonshot API) so array/dict params (`SetTodoList.todos`, `ExitPlanMode.options`, `StrReplaceFile.edit`) validate correctly instead of failing with "Input should be a valid list" — promotion of JSON strings happens only on a failed validation retry in both toolset paths, so str-typed params carrying JSON documents (e.g. WriteFile content) are never rewritten (#2406)
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns

@@ -276,6 +276,110 @@ def test_callable_tool_2():
     assert isinstance(asyncio.run(tool.call({"b": 2})), ToolValidateError)
 
 
+def test_callable_tool_2_double_encoded_arguments():
+    """Double-encoded array params are promoted on the validation retry (#2406)."""
+
+    class Todo(BaseModel):
+        title: str
+
+    class TestParams(BaseModel):
+        todos: list[Todo] | None = None
+
+    class TestTool(CallableTool2[TestParams]):
+        name: str = "test"
+        description: str = "This is a test tool"
+        params: type[TestParams] = TestParams
+
+        @override
+        async def __call__(self, params: TestParams) -> ToolReturnValue:
+            return ToolOk(output=",".join(t.title for t in params.todos or []))
+
+    tool = TestTool()
+    double_encoded = json.dumps([{"title": "x"}])
+    assert asyncio.run(tool.call({"todos": double_encoded})) == ToolOk(output="x")
+
+
+def test_callable_tool_2_string_param_holding_json_untouched():
+    """A str param whose content is valid JSON must reach the tool unchanged.
+
+    Regression: eager promotion of any JSON-looking string corrupted
+    str-typed params (e.g. writing a package.json) into dicts, failing
+    validation.
+    """
+
+    class TestParams(BaseModel):
+        content: str
+
+    class TestTool(CallableTool2[TestParams]):
+        name: str = "test"
+        description: str = "This is a test tool"
+        params: type[TestParams] = TestParams
+
+        @override
+        async def __call__(self, params: TestParams) -> ToolReturnValue:
+            return ToolOk(output=params.content)
+
+    tool = TestTool()
+    package_json = json.dumps({"name": "x"})
+    result = asyncio.run(tool.call({"content": package_json}))
+    assert result == ToolOk(output=package_json)
+
+
+def test_callable_tool_2_invalid_after_unwrap_still_fails():
+    class TestParams(BaseModel):
+        todos: list[str]
+
+    class TestTool(CallableTool2[TestParams]):
+        name: str = "test"
+        description: str = "This is a test tool"
+        params: type[TestParams] = TestParams
+
+        @override
+        async def __call__(self, params: TestParams) -> ToolReturnValue:
+            return ToolOk(output="ok")
+
+    tool = TestTool()
+    assert isinstance(asyncio.run(tool.call({"todos": "not json"})), ToolValidateError)
+
+
+def test_callable_tool_double_encoded_positional_argument():
+    """A double-encoded top-level array is promoted for positional unpacking."""
+
+    class TestTool(CallableTool):
+        name: str = "test"
+        description: str = "This is a test tool"
+        parameters: ParametersType = {
+            "type": "array",
+            "items": {"type": "string"},
+        }
+
+        @override
+        async def __call__(self, a: str, b: str) -> ToolReturnValue:
+            return ToolOk(output=f"Test tool called with {a} and {b}")
+
+    tool = TestTool()
+    double_encoded = json.dumps(["a", "b"])
+    assert asyncio.run(tool.call(double_encoded)) == ToolOk(output="Test tool called with a and b")
+
+
+def test_callable_tool_string_argument_holding_json_untouched():
+    class TestTool(CallableTool):
+        name: str = "test"
+        description: str = "This is a test tool"
+        parameters: ParametersType = {
+            "type": "object",
+            "properties": {"content": {"type": "string"}},
+        }
+
+        @override
+        async def __call__(self, content: str) -> ToolReturnValue:
+            return ToolOk(output=content)
+
+    tool = TestTool()
+    package_json = json.dumps({"name": "x"})
+    assert asyncio.run(tool.call({"content": package_json})) == ToolOk(output=package_json)
+
+
 def test_simple_toolset_sub():
     class TestParams(BaseModel):
         pass
