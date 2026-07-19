@@ -1839,3 +1839,114 @@ async def test_discover_subdir_skill_malformed_frontmatter_opener_not_used_as_de
     assert len(skills) == 1
     assert skills[0].description != "---"
     assert skills[0].description == "# Heading"
+
+
+# ---------------------------------------------------------------------------
+# #2491: plugins container must not leak stray top-level .md as skills
+# ---------------------------------------------------------------------------
+#
+# The plugins origin (`~/.kimi/plugins/`) is documented as a container of
+# independent plugin subdirectories (each a `plugin.json` + scripts). The
+# generic flat-`.md` Pass 2 was being applied to it too, so stray packaging
+# markdown (CHANGELOG.md, README.md) dropped directly at the container level
+# was discovered as skills. The per-root `skip_flat_md` flag scopes the flat
+# scan to non-plugin origins only.
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_plugins_root_skips_flat_md(tmp_path):
+    """At a plugins-shaped root with ``skip_flat_md=True``, only the
+    subdirectory form is discovered — stray top-level ``CHANGELOG.md`` and
+    ``README.md`` are ignored (F1/F2).
+    """
+    root = tmp_path / "plugins"
+    root.mkdir()
+
+    # Real plugin: subdir form with a SKILL.md (kimi-datasource happy path).
+    _write_skill(
+        root / "kimi-datasource",
+        "---\nname: kimi-datasource\ndescription: Datasource plugin\n---\n",
+    )
+
+    # Stray packaging markdown dropped at the container level (the leak).
+    (root / "CHANGELOG.md").write_text("# Changelog\nbody\n", encoding="utf-8")
+    (root / "README.md").write_text("# Read me\nbody\n", encoding="utf-8")
+
+    skills = await discover_skills(
+        KaosPath.unsafe_from_local_path(root), scope="extra", skip_flat_md=True
+    )
+
+    names = [s.name for s in skills]
+    assert names == ["kimi-datasource"]
+    assert "CHANGELOG" not in names
+    assert "README" not in names
+
+
+@pytest.mark.asyncio
+async def test_discover_skills_generic_root_keeps_flat_md(tmp_path):
+    """A generic skills root (default ``skip_flat_md=False``) still discovers
+    both forms — the fix must not weaken flat-``.md`` support for non-plugin
+    origins (F4/I4).
+    """
+    root = tmp_path / "skills"
+    root.mkdir()
+
+    _write_skill(
+        root / "kimi-datasource",
+        "---\nname: kimi-datasource\ndescription: Datasource plugin\n---\n",
+    )
+    (root / "CHANGELOG.md").write_text("# Changelog\nbody\n", encoding="utf-8")
+    (root / "README.md").write_text("# Read me\nbody\n", encoding="utf-8")
+
+    skills = await discover_skills(KaosPath.unsafe_from_local_path(root), scope="extra")
+
+    names = sorted(s.name for s in skills)
+    assert names == ["CHANGELOG", "README", "kimi-datasource"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_skills_roots_marks_plugins_root_skip_flat_md(monkeypatch, tmp_path):
+    """``resolve_skills_roots`` marks the plugins-origin root with
+    ``skip_flat_md=True`` and every other root with the default ``False``
+    (I2/I3). This keeps the scope label and priority position unchanged while
+    scoping the flat-``.md`` pass to non-plugin origins only.
+    """
+    import kimi_cli.skill as skill_mod
+
+    # Suppress built-in skills so the assertion list is tight and unambiguous.
+    monkeypatch.setattr(skill_mod, "_supports_builtin_skills", lambda: False)
+
+    # Deterministic, isolated home so find_user_skills_dirs can't see the real
+    # user dirs. Create one user skills dir so there's a concrete "other" root
+    # to assert carries the default skip_flat_md=False.
+    home_dir = tmp_path / "home"
+    user_brand = home_dir / ".kimi" / "skills"
+    user_brand.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    # Point the plugins container at a tmp dir holding a stray CHANGELOG.md
+    # (as a sibling of a plugin subdir) — this is the leak reproduction shape.
+    plugins_path = tmp_path / "plugins"
+    plugins_path.mkdir()
+    (plugins_path / "CHANGELOG.md").write_text("# Changelog\nbody\n", encoding="utf-8")
+    monkeypatch.setattr("kimi_cli.plugin.manager.get_plugins_dir", lambda: plugins_path)
+
+    work_dir = tmp_path / "project"
+    work_dir.mkdir()
+
+    scoped = await resolve_skills_roots(KaosPath.unsafe_from_local_path(work_dir))
+
+    # Exactly one root (the plugins container) and it is marked skip_flat_md.
+    plugins_root = KaosPath.unsafe_from_local_path(plugins_path)
+    plugins_entries = [s for s in scoped if s.root == plugins_root]
+    assert len(plugins_entries) == 1
+    assert plugins_entries[0].skip_flat_md is True
+    assert plugins_entries[0].scope == "extra"
+
+    # No other root carries skip_flat_md — generic origins keep flat-.md support.
+    others = [s for s in scoped if s.root != plugins_root]
+    user_root = KaosPath.unsafe_from_local_path(user_brand)
+    assert any(s.root == user_root for s in others), (
+        "expected the user-scope root to be present as a non-plugin root"
+    )
+    assert all(s.skip_flat_md is False for s in others)

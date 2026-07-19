@@ -38,6 +38,12 @@ class ScopedSkillsRoot:
 
     root: KaosPath
     scope: SkillScope
+    skip_flat_md: bool = False
+    """When True, only the subdirectory form
+    (``<root>/<name>/SKILL.md``) is discovered; flat ``.md`` files directly in
+    ``root`` are ignored. Used for the plugins container origin, where stray
+    packaging markdown (CHANGELOG.md, README.md) must not be treated as
+    skills."""
 
 
 def get_builtin_skills_dir() -> Path:
@@ -214,7 +220,7 @@ async def resolve_skills_roots(
     scoped: list[ScopedSkillsRoot] = []
     seen: set[str] = set()
 
-    def _append(root: KaosPath, scope: SkillScope) -> None:
+    def _append(root: KaosPath, scope: SkillScope, *, skip_flat_md: bool = False) -> None:
         # Dedupe so symlinks, ``..`` segments, and trailing slashes don't
         # produce phantom duplicate entries in the system prompt. Note that
         # ``KaosPath.canonical()`` only normalizes path segments; it does NOT
@@ -240,7 +246,7 @@ async def resolve_skills_roots(
         if key in seen:
             return
         seen.add(key)
-        scoped.append(ScopedSkillsRoot(root=canon, scope=scope))
+        scoped.append(ScopedSkillsRoot(root=canon, scope=scope, skip_flat_md=skip_flat_md))
 
     if skills_dirs:
         # --skills-dir overrides user/project auto-discovery, but runs at the
@@ -281,7 +287,7 @@ async def resolve_skills_roots(
     except OSError:
         plugins_is_dir = False
     if plugins_is_dir:
-        _append(KaosPath.unsafe_from_local_path(plugins_path), "extra")
+        _append(KaosPath.unsafe_from_local_path(plugins_path), "extra", skip_flat_md=True)
 
     if _supports_builtin_skills():
         _append(
@@ -332,7 +338,9 @@ async def discover_skills_from_roots(
     """
     skills_by_name: dict[str, Skill] = {}
     for scoped in scoped_roots:
-        for skill in await discover_skills(scoped.root, scope=scoped.scope):
+        for skill in await discover_skills(
+            scoped.root, scope=scoped.scope, skip_flat_md=scoped.skip_flat_md
+        ):
             skills_by_name.setdefault(normalize_skill_name(skill.name), skill)
     return sorted(skills_by_name.values(), key=lambda s: s.name)
 
@@ -428,6 +436,7 @@ async def discover_skills(
     skills_dir: KaosPath,
     *,
     scope: SkillScope,
+    skip_flat_md: bool = False,
 ) -> list[Skill]:
     """Discover all skills in the given directory.
 
@@ -444,6 +453,11 @@ async def discover_skills(
     *scope* is stamped onto each discovered :class:`Skill` so the system-prompt
     renderer can group skills by where they came from (user / project / extra /
     builtin).
+
+    *skip_flat_md* disables Pass 2 (the flat ``.md`` scan) for this root, so
+    only the subdirectory form is discovered. Used for the plugins container
+    origin, where stray packaging markdown (CHANGELOG.md, README.md) directly
+    in the container must not be treated as skills.
     """
     try:
         is_dir = await skills_dir.is_dir()
@@ -493,54 +507,59 @@ async def discover_skills(
         return sorted(skills_by_name.values(), key=lambda s: s.name)
 
     # Pass 2: flat ``.md`` form, skipping names already claimed by a subdir.
-    try:
-        async for entry in skills_dir.iterdir():
-            try:
-                if await entry.is_dir():
+    # Gated on ``skip_flat_md`` — the plugins container origin sets it True so
+    # stray packaging markdown (CHANGELOG.md, README.md) directly in the
+    # container is not treated as skills. Every other origin keeps the default
+    # (False) and runs both passes, preserving generic flat-``.md`` support.
+    if not skip_flat_md:
+        try:
+            async for entry in skills_dir.iterdir():
+                try:
+                    if await entry.is_dir():
+                        continue
+                except OSError as exc:
+                    logger.info(
+                        "Skipping unstattable entry {path}: {error}",
+                        path=entry,
+                        error=exc,
+                    )
                     continue
-            except OSError as exc:
-                logger.info(
-                    "Skipping unstattable entry {path}: {error}",
-                    path=entry,
-                    error=exc,
-                )
-                continue
-            if not entry.name.lower().endswith(".md"):
-                continue
-            # A bare ``SKILL.md`` at the top of skills_dir is a stray marker file,
-            # not a skill — it has no per-skill directory to associate with.
-            if entry.name.upper() == "SKILL.MD":
-                continue
+                if not entry.name.lower().endswith(".md"):
+                    continue
+                # A bare ``SKILL.md`` at the top of skills_dir is a stray marker file,
+                # not a skill — it has no per-skill directory to associate with.
+                if entry.name.upper() == "SKILL.MD":
+                    continue
 
-            try:
-                content = await entry.read_text(encoding="utf-8")
-                skill = parse_skill_text(
-                    content,
-                    dir_path=skills_dir,
-                    skill_md_file=entry,
-                    scope=scope,
-                    flat_file=entry,
-                )
-            except Exception as exc:
-                logger.info("Skipping invalid flat skill at {}: {}", entry, exc)
-                continue
+                try:
+                    content = await entry.read_text(encoding="utf-8")
+                    skill = parse_skill_text(
+                        content,
+                        dir_path=skills_dir,
+                        skill_md_file=entry,
+                        scope=scope,
+                        flat_file=entry,
+                    )
+                except Exception as exc:
+                    logger.info("Skipping invalid flat skill at {}: {}", entry, exc)
+                    continue
 
-            key = normalize_skill_name(skill.name)
-            if key in skills_by_name:
-                logger.warning(
-                    "Flat skill {flat} shadowed by subdirectory skill of the same "
-                    "name at {sub}; the subdirectory version is used.",
-                    flat=entry,
-                    sub=skills_by_name[key].dir,
-                )
-                continue
-            skills_by_name[key] = skill
-    except OSError as exc:
-        logger.warning(
-            "Failed to iterate skills directory for flat scan {path}: {error}",
-            path=skills_dir,
-            error=exc,
-        )
+                key = normalize_skill_name(skill.name)
+                if key in skills_by_name:
+                    logger.warning(
+                        "Flat skill {flat} shadowed by subdirectory skill of the same "
+                        "name at {sub}; the subdirectory version is used.",
+                        flat=entry,
+                        sub=skills_by_name[key].dir,
+                    )
+                    continue
+                skills_by_name[key] = skill
+        except OSError as exc:
+            logger.warning(
+                "Failed to iterate skills directory for flat scan {path}: {error}",
+                path=skills_dir,
+                error=exc,
+            )
 
     return sorted(skills_by_name.values(), key=lambda s: s.name)
 
