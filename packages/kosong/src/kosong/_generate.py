@@ -61,7 +61,7 @@ async def generate(
     async for part in stream:
         logger.trace("Received part: {part}", part=part)
         if on_message_part:
-            await callback(on_message_part, part.model_copy(deep=True))
+            await callback(on_message_part, _copy_stream_part(part))
 
         if pending_part is None:
             pending_part = part
@@ -117,7 +117,20 @@ class GenerateResult:
     """The ``x-trace-id`` response header of the request, if the provider exposes it."""
 
 
+def _copy_stream_part(part: StreamedMessagePart) -> StreamedMessagePart:
+    """Copy a stream delta for UI callbacks without a full deep copy.
+
+    Most parts only hold immutable strings. ``ToolCall`` nests a mutable
+    ``FunctionBody`` that later merges mutate, so that nested model is copied.
+    """
+    if isinstance(part, ToolCall):
+        return part.model_copy(update={"function": part.function.model_copy()})
+    return part.model_copy()
+
+
 def _message_append(message: Message, part: StreamedMessagePart) -> None:
+    # Flush buffered stream merges before the part becomes readable/persisted.
+    part.finalize_merge()
     match part:
         case ContentPart():
             message.content.append(part)

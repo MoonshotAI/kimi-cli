@@ -101,6 +101,9 @@ class WireSoulSide:
         buffer = self._merge_buffer
         if buffer is None:
             return
+        # merge_in_place may defer string joins into a private buffer; flush them
+        # before consumers (recorder, print UI, subagent transcripts) read fields.
+        buffer.finalize_merge()
         assert is_wire_message(buffer)
         self._send_merged(buffer)
         self._merge_buffer = None

@@ -1,7 +1,7 @@
 from abc import ABC
 from typing import Any, ClassVar, Literal, cast, override
 
-from pydantic import BaseModel, GetCoreSchemaHandler, field_serializer, field_validator
+from pydantic import BaseModel, GetCoreSchemaHandler, PrivateAttr, field_serializer, field_validator
 from pydantic_core import core_schema
 
 from kosong.utils.typing import JsonType
@@ -11,6 +11,14 @@ class MergeableMixin:
     def merge_in_place(self, other: Any) -> bool:
         """Merge the other part into the current part. Return True if the merge is successful."""
         return False
+
+    def finalize_merge(self) -> None:
+        """Flush deferred merge buffers into public fields.
+
+        Streaming merges buffer string chunks to avoid O(n²) concatenation; call this
+        before reading the accumulated text or persisting the part.
+        """
+        return
 
 
 class ContentPart(BaseModel, ABC, MergeableMixin):
@@ -79,13 +87,32 @@ class TextPart(ContentPart):
 
     type: str = "text"
     text: str
+    _merge_buf: list[str] | None = PrivateAttr(default=None)
 
     @override
     def merge_in_place(self, other: Any) -> bool:
         if not isinstance(other, TextPart):
             return False
-        self.text += other.text
+        if self._merge_buf is None:
+            self._merge_buf = [self.text]
+        self._merge_buf.append(other.text)
         return True
+
+    @override
+    def finalize_merge(self) -> None:
+        if self._merge_buf is not None:
+            self.text = "".join(self._merge_buf)
+            self._merge_buf = None
+
+    @override
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        self.finalize_merge()
+        return super().model_dump(**kwargs)
+
+    @override
+    def model_dump_json(self, **kwargs: Any) -> str:
+        self.finalize_merge()
+        return super().model_dump_json(**kwargs)
 
 
 class ThinkPart(ContentPart):
@@ -98,6 +125,7 @@ class ThinkPart(ContentPart):
     think: str
     encrypted: str | None = None
     """Encrypted thinking content, or signature."""
+    _merge_buf: list[str] | None = PrivateAttr(default=None)
 
     @override
     def merge_in_place(self, other: Any) -> bool:
@@ -105,10 +133,28 @@ class ThinkPart(ContentPart):
             return False
         if self.encrypted:
             return False
-        self.think += other.think
+        if self._merge_buf is None:
+            self._merge_buf = [self.think]
+        self._merge_buf.append(other.think)
         if other.encrypted:
             self.encrypted = other.encrypted
         return True
+
+    @override
+    def finalize_merge(self) -> None:
+        if self._merge_buf is not None:
+            self.think = "".join(self._merge_buf)
+            self._merge_buf = None
+
+    @override
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        self.finalize_merge()
+        return super().model_dump(**kwargs)
+
+    @override
+    def model_dump_json(self, **kwargs: Any) -> str:
+        self.finalize_merge()
+        return super().model_dump_json(**kwargs)
 
 
 class ImageURLPart(ContentPart):
@@ -198,16 +244,39 @@ class ToolCall(BaseModel, MergeableMixin):
     """The function body of the tool call."""
     extras: dict[str, JsonType] | None = None
     """Extra information about the tool call."""
+    _merge_buf: list[str] | None = PrivateAttr(default=None)
 
     @override
     def merge_in_place(self, other: Any) -> bool:
         if not isinstance(other, ToolCallPart):
             return False
-        if self.function.arguments is None:
-            self.function.arguments = other.arguments_part
+        piece = other.arguments_part
+        if self._merge_buf is None:
+            if self.function.arguments is None:
+                if piece is None:
+                    return True
+                self._merge_buf = [piece]
+            else:
+                self._merge_buf = [self.function.arguments, piece or ""]
         else:
-            self.function.arguments += other.arguments_part or ""
+            self._merge_buf.append(piece or "")
         return True
+
+    @override
+    def finalize_merge(self) -> None:
+        if self._merge_buf is not None:
+            self.function.arguments = "".join(self._merge_buf)
+            self._merge_buf = None
+
+    @override
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        self.finalize_merge()
+        return super().model_dump(**kwargs)
+
+    @override
+    def model_dump_json(self, **kwargs: Any) -> str:
+        self.finalize_merge()
+        return super().model_dump_json(**kwargs)
 
 
 class ToolCallPart(BaseModel, MergeableMixin):
@@ -215,16 +284,39 @@ class ToolCallPart(BaseModel, MergeableMixin):
 
     arguments_part: str | None = None
     """A part of the arguments of the tool call."""
+    _merge_buf: list[str] | None = PrivateAttr(default=None)
 
     @override
     def merge_in_place(self, other: Any) -> bool:
         if not isinstance(other, ToolCallPart):
             return False
-        if self.arguments_part is None:
-            self.arguments_part = other.arguments_part
+        piece = other.arguments_part
+        if self._merge_buf is None:
+            if self.arguments_part is None:
+                if piece is None:
+                    return True
+                self._merge_buf = [piece]
+            else:
+                self._merge_buf = [self.arguments_part, piece or ""]
         else:
-            self.arguments_part += other.arguments_part or ""
+            self._merge_buf.append(piece or "")
         return True
+
+    @override
+    def finalize_merge(self) -> None:
+        if self._merge_buf is not None:
+            self.arguments_part = "".join(self._merge_buf)
+            self._merge_buf = None
+
+    @override
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        self.finalize_merge()
+        return super().model_dump(**kwargs)
+
+    @override
+    def model_dump_json(self, **kwargs: Any) -> str:
+        self.finalize_merge()
+        return super().model_dump_json(**kwargs)
 
 
 type Role = Literal[
@@ -265,6 +357,7 @@ class Message(BaseModel):
     @field_serializer("content")
     def _serialize_content(self, content: list[ContentPart]) -> str | list[dict[str, Any]] | None:
         if len(content) == 1 and isinstance(content[0], TextPart):
+            content[0].finalize_merge()
             return content[0].text
         return [part.model_dump() for part in content]
 
@@ -300,4 +393,9 @@ class Message(BaseModel):
 
     def extract_text(self, sep: str = "") -> str:
         """Extract and concatenate all text parts in the message content."""
-        return sep.join(part.text for part in self.content if isinstance(part, TextPart))
+        texts: list[str] = []
+        for part in self.content:
+            if isinstance(part, TextPart):
+                part.finalize_merge()
+                texts.append(part.text)
+        return sep.join(texts)
