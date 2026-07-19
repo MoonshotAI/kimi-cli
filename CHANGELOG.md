@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Fixed `/undo` and `/fork` truncating the conversation context at the wrong turn in sessions that had been compacted or steered, which could silently keep turns the user rewound past (or drop turns they kept).
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns
