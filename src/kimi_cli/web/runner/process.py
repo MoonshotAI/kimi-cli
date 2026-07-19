@@ -500,9 +500,14 @@ class SessionProcess:
                     # Skip files that fail to decode - don't block the upload
                     pass
 
-        # Mark files as sent
+        # Mark files as sent and persist the marker so a restarted server
+        # does not attach previously sent uploads to the next prompt (#2413).
         for file in files:
             self._sent_files.add(file.name)
+        try:
+            sent_marker.write_text(json.dumps(sorted(self._sent_files)), encoding="utf-8")
+        except OSError:
+            logger.warning("Failed to persist uploads .sent marker", exc_info=True)
 
     async def _handle_in_message(self, message: JSONRPCInMessage) -> str | None:
         """Handle inbound message to worker, encoding uploaded files."""
