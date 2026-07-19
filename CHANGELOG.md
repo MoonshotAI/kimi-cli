@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Skills: Stop discovering stray top-level markdown files (e.g. a packaging-artifact CHANGELOG.md) in the plugins container (`~/.kimi/plugins/`) as skills — plugins are documented as independent subdirectories (`plugin.json` + scripts), so only the subdirectory form (`<plugin>/SKILL.md`) is honored at the plugins origin; generic skills roots keep their flat-`.md` support (#2491)
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns
