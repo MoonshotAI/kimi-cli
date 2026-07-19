@@ -20,7 +20,7 @@ Hook 是一种在特定事件发生时触发的机制。你可以配置一个 sh
 
 ## 支持的 Hook 事件
 
-Kimi Code CLI 支持 13 种生命周期事件：
+Kimi Code CLI 支持 14 种生命周期事件：
 
 | 事件 | 触发时机 | Matcher 过滤 | 可用上下文 |
 |------|----------|--------------|------------|
@@ -37,6 +37,33 @@ Kimi Code CLI 支持 13 种生命周期事件：
 | `PreCompact` | 上下文压缩前 | 触发原因 | `trigger`, `token_count` |
 | `PostCompact` | 上下文压缩后 | 触发原因 | `trigger`, `estimated_token_count` |
 | `Notification` | 通知发送到 sink 时 | sink 名称 | `sink`, `notification_type`, `title`, `body`, `severity` |
+| `MessageDisplay` | 助手回复流式输出时重复触发 | 无 | `message_id`, `displayed_text`, `is_final` |
+
+### MessageDisplay（流式回复期间触发）
+
+`MessageDisplay` 在助手回复流式输出过程中重复触发——而 `Stop` 仅在轮次结束时触发一次。适用于实时播报、增量日志，或任何希望在回复生成过程中（而非结束后）做出响应的消费方。这是一个 **fire-and-forget** 事件：hook 的输出与退出码会被忽略。
+
+事件特有字段：
+
+```json
+{
+  "message_id": "整条流式消息的稳定 id",
+  "displayed_text": "该消息截至目前已流式输出的累积文本（非增量）",
+  "is_final": "该消息最后一次触发时为 true，否则为 false"
+}
+```
+
+`displayed_text` 是累积文本而非增量，因此 hook 脚本无需自行拼接分块——每次触发都携带截至目前已流式输出的累积文本。触发经过防抖（至多约每 200ms 一次），但最后一次触发（`is_final: true`）除外——消息结束时总会触发，回复的尾部不会因等待防抖窗口而丢失。
+
+投递语义——hook 脚本可以依赖的保证：
+
+- **较慢的 hook 会看到更少、更新的负载。** 每条消息最多只有一个进行中的流式 hook 执行；执行期间，更新的防抖负载会替换排队中的旧负载，而不会堆积在其后。由于每个负载都携带完整累积文本，因此不会丢失信息。
+- **`is_final` 永远不会排在过期投递之后**，并且总是在 `Stop` hook 触发之前到达。轮次最多等待最终投递完成 5 秒；较慢的 hook 仍会先收到 `is_final`——只是对其完成的等待是有上限的。
+- **取消会抑制 `is_final`。** 在最终负载触发前被取消的轮次不会触发它——请把"取消即静默"视为 flush/丢弃信号（例如超时兜底）。
+- **在 `is_final` 之前，`displayed_text` 是临时的。** 请把中间负载视为显示状态，而非权威的最终内容。
+- **使用工具的轮次会产生多条消息。** 每次模型调用都有自己的 `message_id` 和对应的 `is_final: true` 触发：工具调用前的文本是一条消息，工具结果之后的续写是另一条。不产生显示文本的模型调用（仅工具调用）不会触发任何事件。
+
+`MessageDisplay` 在所有界面上都会触发（交互式 shell、print/headless、ACP、wire、web），且负载契约相同，因为它们共享同一条流式路径。
 
 ## 配置 Hooks
 
@@ -72,7 +99,7 @@ command = ".kimi/hooks/check-complete.sh"
 
 | 字段 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `event` | 是 | — | 事件类型，必须是上述 13 种之一 |
+| `event` | 是 | — | 事件类型，必须是上述 14 种之一 |
 | `command` | 是 | — | 要执行的 shell 命令，通过 stdin 接收 JSON 上下文 |
 | `matcher` | 否 | `""` | 正则表达式过滤，空字符串匹配所有 |
 | `timeout` | 否 | `30` | 超时时间（秒），超时后按 fail-open 处理 |

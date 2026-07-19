@@ -19,6 +19,7 @@ from kosong.chat_provider import (
     ChatProvider,
     ChatProviderError,
     RetryableChatProvider,
+    StreamedMessagePart,
 )
 from kosong.message import Message
 from kosong.tooling import Tool
@@ -32,6 +33,7 @@ from kimi_cli.approval_runtime import (
 )
 from kimi_cli.background import build_active_task_snapshot
 from kimi_cli.hooks.engine import HookEngine
+from kimi_cli.hooks.message_display import MessageDisplayDispatcher
 from kimi_cli.llm import (
     DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
     LLM,
@@ -1196,6 +1198,28 @@ class KimiSoul:
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.4. LLM CALL WITH RETRY
         # ═══════════════════════════════════════════════════════════════════════
+        # --- MessageDisplay hook ---
+        # One dispatcher per step (one model call): it mints the message_id,
+        # accumulates the reply's displayed text, and fires the hook debounced
+        # as the text streams plus once with is_final when the message ends —
+        # before the Stop hook, which only fires at the end of the whole turn.
+        # Spanning the retry wrapper keeps one message_id across attempts,
+        # matching how the UI merges the attempts' partial text.
+        message_display: MessageDisplayDispatcher | None = None
+        if self._hook_engine.has_hooks_for("MessageDisplay"):
+            message_display = MessageDisplayDispatcher(
+                self._hook_engine,
+                session_id=self._runtime.session.id,
+                cwd=str(Path.cwd()),
+            )
+
+        def _on_message_part(part: StreamedMessagePart) -> None:
+            wire_send(part)
+            # Only final-answer text counts as displayed; thinking and tool
+            # parts are different part types and never feed the accumulator.
+            if message_display is not None and isinstance(part, TextPart):
+                message_display.add_chunk(part.text)
+
         async def _run_step_once() -> StepResult:
             """Single LLM invocation (wrapped by retry + connection recovery)."""
             # ── 2e.4.1. Toolset begin_step ────────────────────────────────────
@@ -1211,7 +1235,7 @@ class KimiSoul:
                 self._agent.system_prompt,
                 self._agent.toolset,
                 effective_history,
-                on_message_part=wire_send,
+                on_message_part=_on_message_part,
                 on_tool_result=wire_send,
             )
 
@@ -1238,6 +1262,12 @@ class KimiSoul:
         t0 = time.monotonic()
         try:
             result = await _kosong_step_with_retry()
+        except asyncio.CancelledError:
+            # Turn cancelled mid-stream: the message is abandoned — no
+            # is_final payload, and no drain wait delaying the cancellation.
+            if message_display is not None:
+                message_display.abort()
+            raise
         except Exception as _step_exc:
             if isinstance(_step_exc, ChatProviderError):
                 _track_api_error(
@@ -1246,7 +1276,15 @@ class KimiSoul:
                     duration_ms=int((time.monotonic() - t0) * 1000),
                     input_tokens=self._context.token_count,
                 )
+            # The partial reply was already displayed; close the message out
+            # so consumers can finalize what was shown.
+            if message_display is not None:
+                await message_display.finish()
             raise
+        # is_final fires here, at the message boundary — before the Stop hook
+        # fires at the end of the turn in run().
+        if message_display is not None:
+            await message_display.finish()
 
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.5. USAGE & STATUS UPDATE
