@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Fixed resumed sessions keeping a stale frozen system prompt, so newly added skills, `AGENTS.md` edits, and prompt-affecting config changes now take effect after resume.
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns

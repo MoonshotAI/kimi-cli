@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import dataclasses
 import sys
 import time
 import warnings
@@ -305,9 +304,11 @@ class KimiCLI:
         context = Context(session.context_file)
         await context.restore()
 
-        if context.system_prompt is not None:
-            agent = dataclasses.replace(agent, system_prompt=context.system_prompt)
-        else:
+        if context.system_prompt != agent.system_prompt:
+            # A frozen prompt from a previous run can be stale: skills added to
+            # ~/.kimi/skills, AGENTS.md edits, or config changes would otherwise
+            # never reach a resumed session (#2420). Adopt the freshly generated
+            # prompt and persist it so the context file matches what is sent.
             await context.write_system_prompt(agent.system_prompt)
 
         soul = KimiSoul(agent, context=context)

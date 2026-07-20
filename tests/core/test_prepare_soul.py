@@ -82,14 +82,15 @@ async def test_prepare_soul_writes_prompt_file(runtime, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_prepare_soul_restores_system_prompt_on_resume(runtime, monkeypatch):
-    """When context already has a system prompt, prepare_soul uses it
-    instead of the agent's default."""
+async def test_prepare_soul_refreshes_stale_system_prompt_on_resume(runtime, monkeypatch):
+    """A frozen prompt differing from the freshly built one is replaced and
+    persisted on resume, so skills/AGENTS.md changes reach resumed subagents
+    (#2420)."""
     _register_coder(runtime)
     _patch_load_agent(monkeypatch, system_prompt="new system prompt")
     _create_instance(runtime, "aresume1")
 
-    # Pre-write a system prompt to simulate a previous run
+    # Pre-write a stale system prompt to simulate a previous run
     context = Context(runtime.subagent_store.context_path("aresume1"))
     await context.write_system_prompt("old system prompt")
 
@@ -97,7 +98,11 @@ async def test_prepare_soul_restores_system_prompt_on_resume(runtime, monkeypatc
     builder = SubagentBuilder(runtime)
     soul, _ = await prepare_soul(spec, runtime, builder, runtime.subagent_store)
 
-    assert soul.agent.system_prompt == "old system prompt"
+    assert soul.agent.system_prompt == "new system prompt"
+
+    restored = Context(runtime.subagent_store.context_path("aresume1"))
+    await restored.restore()
+    assert restored.system_prompt == "new system prompt"
 
 
 @pytest.mark.asyncio

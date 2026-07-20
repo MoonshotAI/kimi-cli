@@ -285,7 +285,8 @@ async def test_create_agent_task_persists_starting_state(runtime, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_background_agent_resume_restores_system_prompt_from_context(runtime, monkeypatch):
+async def test_background_agent_resume_refreshes_stale_system_prompt(runtime, monkeypatch):
+    """Resume adopts the freshly built prompt when the frozen one is stale (#2420)."""
     runtime.labor_market.add_builtin_type(
         AgentTypeDefinition(
             name="coder",
@@ -344,7 +345,7 @@ async def test_background_agent_resume_restores_system_prompt_from_context(runti
     task = runtime.background_tasks._live_agent_tasks[view.spec.id]
     await task
 
-    assert seen_prompts == ["old system prompt"]
+    assert seen_prompts == ["new system prompt"]
     record = runtime.subagent_store.require_instance("aexisting")
     assert record.status == "idle"
 
