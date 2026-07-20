@@ -9,7 +9,7 @@ implemented once.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from kimi_cli.soul.context import Context
@@ -61,10 +61,10 @@ async def prepare_soul(
     if on_stage:
         on_stage("context_restored")
 
-    # 3. System prompt: reuse persisted prompt on resume, persist on first run
-    if context.system_prompt is not None:
-        agent = replace(agent, system_prompt=context.system_prompt)
-    else:
+    # 3. System prompt: refresh a stale persisted prompt on resume (skills or
+    # AGENTS.md may have changed since the subagent last ran, #2420), persist
+    # on first run. Matches the root-session behavior in KimiCLI.create.
+    if context.system_prompt != agent.system_prompt:
         await context.write_system_prompt(agent.system_prompt)
     if on_stage:
         on_stage("context_ready")
