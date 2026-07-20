@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Tool: Fix StrReplaceFile reporting the wrong replacement count when edits are chained. The total was counted against the original file content, so a later edit whose target text was produced by an earlier edit was counted as zero; the count now tracks the running content
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns
