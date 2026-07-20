@@ -421,3 +421,162 @@ class TestForkSession:
         new_video = new_session.dir / "uploads" / "test.mp4"
         assert new_video.exists()
         assert new_video.read_text() == "fake video"
+
+
+# ---------------------------------------------------------------------------
+# Tests: wire/context turn alignment (compaction, steers)
+# ---------------------------------------------------------------------------
+
+
+def _user_record(text: str) -> str:
+    return Message(role="user", content=[TextPart(text=text)]).model_dump_json(exclude_none=True)
+
+
+def _assistant_record(text: str = "response") -> str:
+    return Message(role="assistant", content=text).model_dump_json(exclude_none=True)
+
+
+def _write_raw_context(session_dir: Path, records: list[str]) -> Path:
+    context_path = session_dir / "context.jsonl"
+    context_path.write_text("".join(r + "\n" for r in records), encoding="utf-8")
+    return context_path
+
+
+_COMPACTION_SUMMARY = (
+    "<system>Previous context has been compacted. Here is the compaction output:</system> "
+    "The user asked about turn one and got an answer."
+)
+
+
+class TestTruncateContextAlignment:
+    """Context truncation must align to wire turns, not count user records.
+
+    Compaction rewrites earlier turns into one user-role summary record, and
+    steers inject extra user-role records mid-turn, so positional counting
+    truncates at the wrong record.
+    """
+
+    def test_compaction_summary_not_counted_as_turn(self, session_dir: Path):
+        """Rewinding past a turn must drop it even after compaction."""
+        wire_turns = ["turn one", "turn two", "/compact", "turn three"]
+        context_path = _write_raw_context(
+            session_dir,
+            [
+                _user_record(_COMPACTION_SUMMARY),
+                _user_record("turn two"),
+                _assistant_record(),
+                _user_record("turn three"),
+                _assistant_record(),
+            ],
+        )
+
+        lines = truncate_context_at_turn(context_path, 2, turn_texts=wire_turns)
+
+        texts = "\n".join(lines)
+        assert "turn two" in texts
+        assert "compacted" in texts
+        assert "turn three" not in texts
+
+    def test_steer_message_not_counted_as_turn(self, session_dir: Path):
+        """A steer injected mid-turn must not shift the turn boundary."""
+        wire_turns = ["first", "second"]
+        context_path = _write_raw_context(
+            session_dir,
+            [
+                _user_record("first"),
+                _user_record("actually, focus on the tests"),
+                _assistant_record("steered response"),
+                _user_record("second"),
+                _assistant_record(),
+            ],
+        )
+
+        lines = truncate_context_at_turn(context_path, 0, turn_texts=wire_turns)
+
+        texts = "\n".join(lines)
+        assert "focus on the tests" in texts
+        assert "steered response" in texts
+        assert "second" not in texts
+
+    def test_duplicate_turn_texts_align_in_order(self, session_dir: Path):
+        wire_turns = ["continue", "continue"]
+        context_path = _write_raw_context(
+            session_dir,
+            [
+                _user_record("continue"),
+                _assistant_record("one"),
+                _user_record("continue"),
+                _assistant_record("two"),
+            ],
+        )
+
+        lines = truncate_context_at_turn(context_path, 0, turn_texts=wire_turns)
+
+        texts = "\n".join(lines)
+        assert '"one"' in texts
+        assert '"two"' not in texts
+
+    def test_positional_fallback_without_turn_texts(self, session_dir: Path):
+        """Without turn_texts the legacy positional behavior is unchanged."""
+        context_path = _write_context_file(session_dir, ["a", "b", "c"])
+
+        lines = truncate_context_at_turn(context_path, 1)
+
+        texts = "\n".join(lines)
+        assert '"b"' in texts
+        assert '"c"' not in texts
+
+    @pytest.mark.asyncio
+    async def test_fork_after_compaction_drops_undone_turn(
+        self, isolated_share_dir: Path, work_dir: KaosPath
+    ):
+        """End-to-end: forking past a post-compaction turn must not leak it."""
+        from kimi_cli.session import Session
+
+        source = await Session.create(work_dir=work_dir)
+        _write_wire_file(source.dir, ["turn one", "turn two", "/compact", "turn three"])
+        _write_raw_context(
+            source.dir,
+            [
+                _user_record(_COMPACTION_SUMMARY),
+                _user_record("turn two"),
+                _assistant_record(),
+                _user_record("turn three"),
+                _assistant_record(),
+            ],
+        )
+
+        new_id = await fork_session(
+            source_session_dir=source.dir,
+            work_dir=work_dir,
+            turn_index=2,
+            source_title="Compacted Session",
+        )
+
+        new_session = await Session.find(work_dir, new_id)
+        assert new_session is not None
+        forked_context = (new_session.dir / "context.jsonl").read_text(encoding="utf-8")
+        assert "turn two" in forked_context
+        assert "turn three" not in forked_context
+
+    def test_slash_command_turns_do_not_consume_context_records(self, session_dir: Path):
+        """Wire-only turns (slash commands) must not shift the context cut (#1974)."""
+        wire_turns = ["real 0", "/usage", "/sessions", "real 1", "real 2"]
+        context_path = _write_raw_context(
+            session_dir,
+            [
+                _user_record("real 0"),
+                _assistant_record(),
+                _user_record("real 1"),
+                _assistant_record(),
+                _user_record("real 2"),
+                _assistant_record(),
+            ],
+        )
+
+        lines = truncate_context_at_turn(context_path, 3, turn_texts=wire_turns)
+
+        texts = "\n".join(lines)
+        assert "real 0" in texts
+        assert "real 1" in texts
+        assert "real 2" not in texts

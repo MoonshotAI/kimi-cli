@@ -10,6 +10,7 @@ import json
 import mimetypes
 import re
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -169,21 +170,47 @@ def _is_checkpoint_user_message(record: dict[str, Any]) -> bool:
     return False
 
 
-def truncate_context_at_turn(context_path: Path, turn_index: int) -> list[str]:
+def truncate_context_at_turn(
+    context_path: Path,
+    turn_index: int,
+    turn_texts: Sequence[str] | None = None,
+) -> list[str]:
     """Read context.jsonl and return all lines up to and including the given turn.
 
     Turn detection is based on real user messages, excluding synthetic checkpoint
     user entries like ``<system>CHECKPOINT N</system>``.
 
+    ``turn_index`` counts *wire* turns, but the context file is not 1:1 with the
+    wire: compaction rewrites earlier turns into a single user-role summary,
+    steers and notifications append extra user-role messages, and slash-command
+    turns never touch the context at all. When ``turn_texts`` (the user text of
+    every wire turn, index-aligned, from :func:`enumerate_turns`) is provided,
+    context user records are aligned to wire turns by matching text, and records
+    that match no wire turn do not advance the turn counter. Plain positional
+    counting — kept as the fallback when ``turn_texts`` is None — treats every
+    user record as a turn boundary and truncates at the wrong record after any
+    compaction or steer, silently keeping turns the user rewound past (or
+    dropping turns they kept).
+
     Unlike wire truncation, this is best-effort: if context has fewer user turns
     than ``turn_index`` (e.g. slash-command turns that did not mutate context),
     return all available context lines instead of failing.
+
+    Known limitations of text alignment (both need an explicit turn-marker
+    record in context.jsonl to resolve, and both predate this alignment):
+
+    - A context-mutating slash turn (e.g. ``/init``) injects a user record
+      whose text differs from the wire turn text, so it cannot be attributed
+      to its (possibly cut) turn and is conservatively kept.
+    - A steer whose text is exactly equal to a later turn's user text is
+      indistinguishable from that turn's start and aligns to it.
     """
     if not context_path.exists():
         return []
 
     lines: list[str] = []
     current_turn = -1  # Will become 0 on first real user message
+    next_wire_turn = 0  # Alignment cursor into turn_texts
 
     with open(context_path, encoding="utf-8") as f:
         for line in f:
@@ -197,14 +224,39 @@ def truncate_context_at_turn(context_path: Path, turn_index: int) -> list[str]:
                 continue
 
             if record.get("role") == "user" and not _is_checkpoint_user_message(record):
-                current_turn += 1
-                if current_turn > turn_index:
-                    break
+                if turn_texts is None:
+                    current_turn += 1
+                    if current_turn > turn_index:
+                        break
+                else:
+                    matched = _match_wire_turn(record, turn_texts, next_wire_turn)
+                    if matched is not None:
+                        if matched > turn_index:
+                            break
+                        next_wire_turn = matched + 1
 
-            if current_turn <= turn_index:
-                lines.append(stripped)
+            lines.append(stripped)
 
     return lines
+
+
+def _match_wire_turn(
+    record: dict[str, Any], turn_texts: Sequence[str], next_wire_turn: int
+) -> int | None:
+    """Return the wire turn index a context user record starts, if any.
+
+    Scans forward from ``next_wire_turn`` (turns are consumed in order) and
+    matches by extracted user text. Records that match no remaining wire turn
+    (compaction summaries, steer injections, notification messages) return None.
+    """
+    content = record.get("content")
+    if not isinstance(content, str | list):
+        return None
+    text = _extract_user_text(cast("str | list[Any]", content)).strip()
+    for j in range(next_wire_turn, len(turn_texts)):
+        if text == turn_texts[j].strip():
+            return j
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +293,10 @@ async def fork_session(
 
     if turn_index is not None:
         truncated_wire_lines = truncate_wire_at_turn(wire_path, turn_index)
-        truncated_context_lines = truncate_context_at_turn(context_path, turn_index)
+        turn_texts = [turn.user_text for turn in enumerate_turns(wire_path)]
+        truncated_context_lines = truncate_context_at_turn(
+            context_path, turn_index, turn_texts=turn_texts
+        )
     else:
         # Copy all content
         truncated_wire_lines = _read_all_lines(wire_path)
