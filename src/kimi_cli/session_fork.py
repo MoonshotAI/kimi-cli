@@ -195,6 +195,15 @@ def truncate_context_at_turn(
     Unlike wire truncation, this is best-effort: if context has fewer user turns
     than ``turn_index`` (e.g. slash-command turns that did not mutate context),
     return all available context lines instead of failing.
+
+    Known limitations of text alignment (both need an explicit turn-marker
+    record in context.jsonl to resolve, and both predate this alignment):
+
+    - A context-mutating slash turn (e.g. ``/init``) injects a user record
+      whose text differs from the wire turn text, so it cannot be attributed
+      to its (possibly cut) turn and is conservatively kept.
+    - A steer whose text is exactly equal to a later turn's user text is
+      indistinguishable from that turn's start and aligns to it.
     """
     if not context_path.exists():
         return []
