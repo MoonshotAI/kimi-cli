@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Shell: Fix the shell tool blocking until the full command timeout when a detached child process inherits stdout/stderr, then wrongly reporting a timeout kill. The tool now returns shortly after the shell itself exits and drains remaining pipe output for a bounded grace period
+
 ## 1.49.0 (2026-07-16)
 
 **Highlights**: The completion-token budget for Kimi providers now adapts to the model's remaining context window, reducing context-length overflow errors on long turns
