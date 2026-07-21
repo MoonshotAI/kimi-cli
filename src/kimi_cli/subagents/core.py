@@ -74,7 +74,7 @@ async def prepare_soul(
     if spec.type_def.name == "explore" and not spec.resumed:
         from kimi_cli.subagents.git_context import collect_git_context
 
-        git_ctx = await collect_git_context(runtime.builtin_args.KIMI_WORK_DIR)
+        git_ctx = await collect_git_context(agent.runtime.builtin_args.KIMI_WORK_DIR)
         if git_ctx:
             prompt = f"{git_ctx}\n\n{prompt}"
 

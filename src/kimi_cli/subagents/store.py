@@ -19,6 +19,7 @@ class _AgentLaunchSpecPayload(BaseModel):
     subagent_type: str
     model_override: str | None
     effective_model: str | None
+    work_dir: str | None = None
     created_at: float
 
 
@@ -56,6 +57,7 @@ def _record_from_dict(data: dict[str, Any]) -> AgentInstanceRecord:
             subagent_type=payload.launch_spec.subagent_type,
             model_override=payload.launch_spec.model_override,
             effective_model=payload.launch_spec.effective_model,
+            work_dir=payload.launch_spec.work_dir,
             created_at=payload.launch_spec.created_at,
         ),
     )

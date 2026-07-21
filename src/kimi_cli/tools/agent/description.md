@@ -15,6 +15,7 @@ ${BUILTIN_AGENT_TYPES_MD}
 - Use `model` when you need to override the built-in type's default model or the parent agent's current model.
 - Use `resume` when you want to continue an existing instance instead of starting a new one.
 - If an existing subagent already has relevant context or the task is a continuation of its prior work, prefer `resume` over creating a new instance.
+- Use `work_dir` when the subagent should operate in a different directory than the parent agent's current working directory (e.g. a git worktree). Must be an absolute path.
 - Default to foreground execution. Use `run_in_background=true` only when the task can continue independently, you do not need the result immediately, and there is a clear benefit to returning control before it finishes.
 - Be explicit about whether the subagent should write code or only do research.
 - The subagent result is only visible to you. If the user should see it, summarize it yourself.

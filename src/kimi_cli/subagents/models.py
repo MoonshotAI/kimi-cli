@@ -39,6 +39,7 @@ class AgentLaunchSpec:
     subagent_type: str
     model_override: str | None
     effective_model: str | None
+    work_dir: str | None = None  # Optional working directory override for subagent
     created_at: float = field(default_factory=time.time)
 
 
