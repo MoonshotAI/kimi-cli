@@ -6,10 +6,19 @@ from typing import Any, cast
 import pytest
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.document import Document
+from rich.console import Group
 from rich.text import Text
 
 from kimi_cli.ui.shell.prompt import PromptMode, UserInput
 from kimi_cli.wire.types import ApprovalRequest, StatusUpdate, SteerInput, TextPart
+
+
+def _get_first_renderable_plain(text):
+    """Extract plain text from first renderable of a Group, or fallback to str."""
+    if isinstance(text, Group) and text.renderables:
+        return getattr(text.renderables[0], "plain", str(text.renderables[0]))
+    return getattr(text, "plain", str(text))
+
 
 shell_visualize = importlib.import_module("kimi_cli.ui.shell.visualize")
 # Sub-modules for monkeypatching internal names (Live, _keyboard_listener, console)
@@ -181,7 +190,7 @@ def test_live_view_renders_steer_input_as_user_echo(monkeypatch) -> None:
     monkeypatch.setattr(view, "cleanup", lambda *, is_interrupt: cleaned.append(is_interrupt))
 
     def _capture_print(*args, **_kwargs):
-        printed.append(getattr(args[0], "plain", str(args[0])) if args else "")
+        printed.append(_get_first_renderable_plain(args[0]) if args else "")
 
     monkeypatch.setattr(
         shell_visualize.console,
@@ -203,7 +212,7 @@ def test_live_view_flushes_current_output_before_printing_steer_input(monkeypatc
     monkeypatch.setattr(view, "flush_finished_tool_calls", lambda: order.append("flush_tools"))
 
     def _capture_print(*args, **_kwargs):
-        order.append(("print", getattr(args[0], "plain", str(args[0])) if args else ""))
+        order.append(("print", _get_first_renderable_plain(args[0]) if args else ""))
 
     monkeypatch.setattr(
         shell_visualize.console,
@@ -231,7 +240,7 @@ def test_prompt_live_view_handle_immediate_steer_prints_blank_line(monkeypatch) 
     printed: list[str] = []
 
     def _capture_print(*args, **_kwargs):
-        printed.append(getattr(args[0], "plain", str(args[0])) if args else "")
+        printed.append(_get_first_renderable_plain(args[0]) if args else "")
 
     monkeypatch.setattr(
         shell_visualize.console,
