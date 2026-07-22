@@ -342,6 +342,27 @@ async def test_openai_legacy_with_thinking():
         assert body["reasoning_effort"] == snapshot("high")
 
 
+async def test_openai_legacy_with_thinking_off_omits_reasoning_effort():
+    """`with_thinking("off")` must omit reasoning_effort from the payload rather than send
+    `reasoning_effort: null`, which strict OpenAI-compatible validators reject (HTTP 400) and
+    lenient backends treat as "reasoning on".
+
+    Reproduces: https://github.com/MoonshotAI/kimi-cli/issues/2465
+    """
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = OpenAILegacy(model="gpt-4.1", api_key="test-key", stream=False).with_thinking(
+            "off"
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "reasoning_effort" not in body
+
+
 async def test_openai_legacy_auto_reasoning_effort_when_history_has_think_part():
     """When reasoning_effort is not set but history contains ThinkPart and reasoning_key is
     configured, reasoning_effort should be auto-set to avoid server validation errors.
