@@ -5,10 +5,12 @@ import contextlib
 import importlib
 import inspect
 import json
+import re
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
@@ -60,6 +62,20 @@ current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=Non
 _current_step_no: ContextVar[int | None] = ContextVar("current_step_no", default=None)
 
 _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default="")
+
+_MOONSHOT_TOOL_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+
+def _safe_mcp_tool_name(server_name: str, tool_name: str) -> str:
+    """Return a stable Moonshot-compatible alias for an MCP tool name."""
+    if len(tool_name) <= 64 and _MOONSHOT_TOOL_NAME_RE.fullmatch(tool_name):
+        return tool_name
+
+    stem = re.sub(r"[^A-Za-z0-9_-]", "_", tool_name)
+    if not stem or not stem[0].isalpha() or not stem[0].isascii():
+        stem = f"m_{stem}"
+    digest = sha256(f"{server_name}\0{tool_name}".encode()).hexdigest()[:8]
+    return f"{stem[:55]}_{digest}"
 
 
 def set_session_id(sid: str) -> None:
@@ -915,7 +931,7 @@ class MCPTool[T: ClientTransport](CallableTool):
         **kwargs: Any,
     ):
         super().__init__(
-            name=mcp_tool.name,
+            name=_safe_mcp_tool_name(server_name, mcp_tool.name),
             description=(
                 f"This is an MCP (Model Context Protocol) tool from MCP server `{server_name}`.\n\n"
                 f"{mcp_tool.description or 'No description provided.'}"
