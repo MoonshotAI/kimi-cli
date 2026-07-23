@@ -16,6 +16,7 @@ from kosong.chat_provider import (
 )
 from kosong.message import Message
 from rich import print
+from rich.markup import escape
 
 from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import ExitCode, InputFormat, OutputFormat
@@ -88,7 +89,7 @@ class Print:
                 if command:
                     logger.info("Running agent with command: {command}", command=command)
                     if self.output_format == "text" and not self.final_only:
-                        print(command)
+                        print(escape(command))
                     runtime = self.soul.runtime if isinstance(self.soul, KimiSoul) else None
                     await run_soul(
                         self.soul,
