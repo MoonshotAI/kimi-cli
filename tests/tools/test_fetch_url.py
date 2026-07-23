@@ -12,8 +12,9 @@ import pytest_asyncio
 from aiohttp import web
 from inline_snapshot import snapshot
 from kosong.tooling import ToolReturnValue
+from trafilatura.settings import Document
 
-from kimi_cli.tools.web.fetch import FetchURL, Params
+from kimi_cli.tools.web.fetch import FetchURL, Params, _comments_duplicate_main_text
 
 
 class MockServerFactory(Protocol):
@@ -217,6 +218,60 @@ This is a markdown document.
     assert not result.is_error
     assert result.output == snapshot(complex_markdown)
     assert result.message == "The returned content is the full content of the page."
+
+
+def test_fetch_url_detects_duplicate_comment_text() -> None:
+    main_text = (
+        "The default parameter value for `optimizer` should probably be `adamw` "
+        "instead of `adamW` according to how `get_optimizer` is written."
+    )
+    duplicate_comments_text = """\
+The default parameter value for
+optimizer
+should probably beadamw
+instead ofadamW
+according to howget_optimizer
+is written."""
+    distinct_comments_text = "hi, thanks for bringing up. We fixed it now"
+
+    assert _comments_duplicate_main_text(main_text, duplicate_comments_text)
+    assert not _comments_duplicate_main_text(main_text, distinct_comments_text)
+
+
+async def test_fetch_url_accepts_comment_only_extraction(
+    fetch_url_tool: FetchURL,
+    mock_http_server: MockServerFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server_url = await mock_http_server("<html><body>placeholder</body></html>")
+
+    monkeypatch.setattr(
+        "kimi_cli.tools.web.fetch.trafilatura.bare_extraction",
+        lambda *args, **kwargs: Document(
+            title="Comment-only thread",
+            url=f"{server_url}/",
+            hostname="127.0.0.1",
+            text="",
+            comments="Only the comment thread contains useful content.",
+        ),
+    )
+
+    result = await fetch_url_tool(Params(url=f"{server_url}/"))
+
+    assert not result.is_error
+    assert (
+        result.message == "The returned content is the main text content extracted from the page."
+    )
+    assert result.output == snapshot(
+        f"""\
+---
+title: Comment-only thread
+url: {server_url}/
+hostname: 127.0.0.1
+---
+Only the comment thread contains useful content.\
+"""
+    )
 
 
 async def test_fetch_url_with_service(runtime) -> None:
