@@ -31,6 +31,7 @@ from kimi_cli.approval_runtime import (
     set_current_approval_source,
 )
 from kimi_cli.background import build_active_task_snapshot
+from kimi_cli.exception import MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
 from kimi_cli.llm import (
     DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
@@ -614,7 +615,13 @@ class KimiSoul:
         """Wait for any in-flight MCP startup to finish."""
         if not isinstance(self._agent.toolset, KimiToolset):
             return
-        await self._agent.toolset.wait_for_mcp_tools()
+        try:
+            await self._agent.toolset.wait_for_mcp_tools()
+        except MCPRuntimeError as exc:
+            logger.warning(
+                "MCP startup failed; continuing without unavailable servers: {error}",
+                error=exc,
+            )
 
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
