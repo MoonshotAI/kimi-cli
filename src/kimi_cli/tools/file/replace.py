@@ -78,12 +78,15 @@ class StrReplaceFile(CallableTool2[Params]):
             )
         return None
 
-    def _apply_edit(self, content: str, edit: Edit) -> str:
-        """Apply a single edit to the content."""
+    def _apply_edit(self, content: str, edit: Edit) -> tuple[str, int]:
+        """Apply a single edit, returning the new content and how many
+        replacements it made against the content passed in."""
         if edit.replace_all:
-            return content.replace(edit.old, edit.new)
+            count = content.count(edit.old)
+            return content.replace(edit.old, edit.new), count
         else:
-            return content.replace(edit.old, edit.new, 1)
+            count = 1 if edit.old in content else 0
+            return content.replace(edit.old, edit.new, 1), count
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -134,9 +137,14 @@ class StrReplaceFile(CallableTool2[Params]):
             original_content = content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
-            # Apply all edits
+            # Apply all edits, counting replacements as they actually happen.
+            # Edits apply sequentially, so a later edit sees the output of the
+            # earlier ones; counting against the running content keeps the
+            # reported total accurate when edits interact.
+            total_replacements = 0
             for edit in edits:
-                content = self._apply_edit(content, edit)
+                content, n_replacements = self._apply_edit(content, edit)
+                total_replacements += n_replacements
 
             # Check if any changes were made
             if content == original_content:
@@ -168,14 +176,6 @@ class StrReplaceFile(CallableTool2[Params]):
 
             # Write the modified content back to the file
             await p.write_text(content, errors="replace")
-
-            # Count changes for success message
-            total_replacements = 0
-            for edit in edits:
-                if edit.replace_all:
-                    total_replacements += original_content.count(edit.old)
-                else:
-                    total_replacements += 1 if edit.old in original_content else 0
 
             return ToolReturnValue(
                 is_error=False,
