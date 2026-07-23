@@ -196,3 +196,43 @@ async def test_exec_wait_timeout(local_kaos: LocalKaos):
         if process.returncode is None:
             await process.kill()
         await process.wait()
+
+
+async def test_kill_terminates_descendant_processes(local_kaos: LocalKaos, tmp_path: Path):
+    marker = tmp_path / "descendant-survived"
+    if os.name == "nt":
+        bash = Path(os.environ["PROGRAMFILES"]) / "Git" / "bin" / "bash.exe"
+        if not bash.exists():
+            pytest.skip("Git Bash is required for the Windows process-tree regression test")
+        marker_arg = marker.as_posix()
+        process = await local_kaos.exec(
+            str(bash),
+            "-c",
+            f'(sleep 0.5; echo alive > "{marker_arg}") & sleep 30',
+        )
+    else:
+        descendant_code = (
+            "import pathlib, sys, time; "
+            "time.sleep(0.5); "
+            "pathlib.Path(sys.argv[1]).write_text('alive', encoding='utf-8')"
+        )
+        parent_code = (
+            "import subprocess, sys, time; "
+            "subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]]); "
+            "time.sleep(30)"
+        )
+        process = await local_kaos.exec(
+            sys.executable,
+            "-c",
+            parent_code,
+            descendant_code,
+            str(marker),
+        )
+
+    await asyncio.sleep(0.1)
+    await process.kill()
+    await asyncio.wait_for(process.wait(), timeout=2)
+    await asyncio.gather(process.stdout.read(), process.stderr.read())
+    await asyncio.sleep(0.6)
+
+    assert not marker.exists()
