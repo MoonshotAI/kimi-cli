@@ -1250,6 +1250,16 @@ class CustomPromptSession:
         # Build key bindings
         _kb = KeyBindings()
 
+        # Windows Terminal can emit DEC application-keypad sequences while
+        # Num Lock is enabled. prompt_toolkit does not map these sequences to
+        # printable characters, so register them explicitly for the input
+        # buffer (SS3 ``p`` through ``y`` represent keypad 0 through 9).
+        for digit, suffix in enumerate("pqrstuvwxy"):
+
+            @_kb.add("escape", "O", suffix, eager=True)
+            def _insert_keypad_digit(event: KeyPressEvent, digit: int = digit) -> None:
+                event.current_buffer.insert_text(str(digit))
+
         def _accept_completion(buff: Buffer) -> None:
             """Accept the current or first completion, suppressing re-completion."""
             completion = buff.complete_state.current_completion  # type: ignore[union-attr]
