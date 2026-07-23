@@ -7,9 +7,23 @@ import os
 import sys
 import threading
 from collections.abc import Iterator
+from pathlib import Path
 from typing import IO
 
 from kimi_cli import logger
+from kimi_cli.share import get_share_dir
+
+
+def get_log_file_path() -> Path:
+    """Return a log path that is safe for concurrent Windows processes.
+
+    Windows does not allow Loguru to rename a file for rotation while another
+    process has it open. Other platforms retain the existing shared log.
+    """
+    logs_dir = get_share_dir() / "logs"
+    if sys.platform == "win32":
+        return logs_dir / f"kimi.{os.getpid()}.log"
+    return logs_dir / "kimi.log"
 
 
 class StderrRedirector:

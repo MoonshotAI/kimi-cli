@@ -22,7 +22,6 @@ from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.constant import VERSION
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
-from kimi_cli.share import get_share_dir
 from kimi_cli.soul import RunCancelled, run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
@@ -30,7 +29,12 @@ from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.aioqueue import QueueShutDown
 from kimi_cli.utils.envvar import get_env_bool
-from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
+from kimi_cli.utils.logging import (
+    get_log_file_path,
+    logger,
+    open_original_stderr,
+    redirect_stderr_to_logger,
+)
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, ContentPart, WireMessage
@@ -59,7 +63,7 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
     if debug:
         logger.enable("kosong")
     logger.add(
-        get_share_dir() / "logs" / "kimi.log",
+        get_log_file_path(),
         # FIXME: configure level for different modules
         level="TRACE" if debug else "INFO",
         format=(
