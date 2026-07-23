@@ -30,12 +30,52 @@ def test_message_with_single_part():
             "content": [
                 {
                     "type": "image_url",
-                    "image_url": {"url": "https://example.com/image.png", "id": None},
+                    "image_url": {"url": "https://example.com/image.png"},
                 }
             ],
         }
     )
     assert Message.model_validate(dumped) == message
+
+
+def test_exclude_none_applies_to_nested_media_content_parts():
+    message = Message(
+        role="user",
+        content=[
+            ImageURLPart(image_url=ImageURLPart.ImageURL(url="https://example.com/image.png")),
+            AudioURLPart(audio_url=AudioURLPart.AudioURL(url="https://example.com/audio.mp3")),
+            VideoURLPart(
+                video_url=VideoURLPart.VideoURL(
+                    url="https://example.com/video.mp4",
+                    id="video-1",
+                )
+            ),
+        ],
+    )
+
+    dumped_with_none = message.model_dump()
+    assert dumped_with_none["content"][0]["image_url"]["id"] is None
+
+    assert message.model_dump(exclude_none=True) == {
+        "role": "user",
+        "content": [
+            {
+                "type": "image_url",
+                "image_url": {"url": "https://example.com/image.png"},
+            },
+            {
+                "type": "audio_url",
+                "audio_url": {"url": "https://example.com/audio.mp3"},
+            },
+            {
+                "type": "video_url",
+                "video_url": {
+                    "url": "https://example.com/video.mp4",
+                    "id": "video-1",
+                },
+            },
+        ],
+    }
 
 
 def test_message_with_tool_calls():
@@ -107,22 +147,18 @@ def test_message_with_complex_content():
             "role": "user",
             "content": [
                 {"type": "text", "text": "Hello, world!"},
-                {
-                    "type": "think",
-                    "think": "I think I need to think about this.",
-                    "encrypted": None,
-                },
+                {"type": "think", "think": "I think I need to think about this."},
                 {
                     "type": "image_url",
-                    "image_url": {"url": "https://example.com/image.png", "id": None},
+                    "image_url": {"url": "https://example.com/image.png"},
                 },
                 {
                     "type": "audio_url",
-                    "audio_url": {"url": "https://example.com/audio.mp3", "id": None},
+                    "audio_url": {"url": "https://example.com/audio.mp3"},
                 },
                 {
                     "type": "video_url",
-                    "video_url": {"url": "https://example.com/video.mp4", "id": None},
+                    "video_url": {"url": "https://example.com/video.mp4"},
                 },
             ],
             "tool_calls": [
