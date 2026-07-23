@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import sys
+
 import pytest
 
 from kimi_cli.utils.server import (
@@ -10,6 +13,7 @@ from kimi_cli.utils.server import (
     get_address_family,
     get_network_addresses,
     is_local_host,
+    print_banner,
 )
 
 # ---------------------------------------------------------------------------
@@ -119,3 +123,17 @@ class TestGetNetworkAddresses:
     def test_no_loopback(self) -> None:
         for addr in get_network_addresses():
             assert not addr.startswith("127.")
+
+
+class TestPrintBanner:
+    def test_replaces_characters_unsupported_by_stdout_encoding(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        output = io.BytesIO()
+        stdout = io.TextIOWrapper(output, encoding="gbk", errors="strict")
+        monkeypatch.setattr(sys, "stdout", stdout)
+
+        print_banner(["<nowrap>  ➜  Local http://127.0.0.1:5495"])
+        stdout.flush()
+
+        assert "?" in output.getvalue().decode("gbk")
