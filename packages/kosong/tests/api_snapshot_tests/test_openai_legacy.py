@@ -57,7 +57,6 @@ async def test_openai_legacy_message_conversion():
                                     "type": "image_url",
                                     "image_url": {
                                         "url": "https://example.com/image.png",
-                                        "id": None,
                                     },
                                 },
                             ],
@@ -128,7 +127,6 @@ async def test_openai_legacy_message_conversion():
                                     "type": "image_url",
                                     "image_url": {
                                         "url": "https://example.com/image.png",
-                                        "id": None,
                                     },
                                 },
                             ],

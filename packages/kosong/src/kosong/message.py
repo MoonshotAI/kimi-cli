@@ -1,7 +1,13 @@
 from abc import ABC
 from typing import Any, ClassVar, Literal, cast, override
 
-from pydantic import BaseModel, GetCoreSchemaHandler, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    GetCoreSchemaHandler,
+    SerializerFunctionWrapHandler,
+    field_serializer,
+    field_validator,
+)
 from pydantic_core import core_schema
 
 from kosong.utils.typing import JsonType
@@ -262,11 +268,15 @@ class Message(BaseModel):
 
     partial: bool | None = None
 
-    @field_serializer("content")
-    def _serialize_content(self, content: list[ContentPart]) -> str | list[dict[str, Any]] | None:
+    @field_serializer("content", mode="wrap")
+    def _serialize_content(
+        self,
+        content: list[ContentPart],
+        serializer: SerializerFunctionWrapHandler,
+    ) -> str | list[dict[str, Any]] | None:
         if len(content) == 1 and isinstance(content[0], TextPart):
             return content[0].text
-        return [part.model_dump() for part in content]
+        return serializer(content)
 
     @field_validator("content", mode="before")
     @classmethod
