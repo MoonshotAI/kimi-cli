@@ -120,6 +120,34 @@ def test_scoped_walk_finds_late_alphabetical_dirs(tmp_path: Path):
     assert "zzz_target/important.py" in texts
 
 
+def test_unscoped_query_finds_match_beyond_candidate_limit(tmp_path: Path):
+    """A selective query must search past the first candidate page.
+
+    Regression test for #1610: non-git workspaces used the 1000-result
+    candidate limit as a scan limit, so a matching file sorted after those
+    entries could never be completed.
+    """
+    for index in range(1100):
+        (tmp_path / f"aaa_{index:04d}.txt").write_text("")
+    target = tmp_path / "zzz_unique_needle.txt"
+    target.write_text("find me")
+
+    completer = LocalFileMentionCompleter(tmp_path, limit=1000)
+
+    texts = _completion_texts(completer, "@needle")
+
+    assert target.name in texts
+
+
+def test_unscoped_query_cache_is_keyed_by_fragment(tmp_path: Path):
+    (tmp_path / "unique_needle.txt").write_text("")
+    (tmp_path / "unique_other.txt").write_text("")
+    completer = LocalFileMentionCompleter(tmp_path)
+
+    assert "unique_needle.txt" in _completion_texts(completer, "@needle")
+    assert "unique_other.txt" in _completion_texts(completer, "@other")
+
+
 def test_basename_prefix_is_ranked_first(tmp_path: Path):
     """Prefer basename prefix matches over cross-segment fuzzy matches.
 

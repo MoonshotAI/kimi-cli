@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from collections import deque
 from pathlib import Path
 
 _IGNORED_NAMES: frozenset[str] = frozenset(
@@ -293,10 +294,16 @@ def list_files_walk(
     scope: str | None = None,
     *,
     limit: int = 1000,
+    query: str | None = None,
+    scan_limit: int | None = None,
 ) -> list[str]:
     """List workspace paths via ``os.walk`` (fallback for non-git repos).
 
     When *scope* is given, the walk starts from that subdirectory.
+    When *query* is given, only fuzzy subsequence matches are returned.  The
+    scan remains bounded independently from the result limit so selective
+    queries can find entries beyond the first result page without turning a
+    completion request into an unbounded workspace walk.
     """
     resolved_root = root.resolve()
     walk_root = (root / scope).resolve() if scope else resolved_root
@@ -307,6 +314,15 @@ def list_files_walk(
             return []
     except (OSError, ValueError):
         return []
+
+    if query:
+        return _list_files_walk_query(
+            resolved_root,
+            walk_root,
+            query=query,
+            limit=limit,
+            scan_limit=scan_limit if scan_limit is not None else limit * 10,
+        )
 
     paths: list[str] = []
     try:
@@ -338,6 +354,52 @@ def list_files_walk(
                 break
     except OSError:
         pass
+
+    return paths
+
+
+def _list_files_walk_query(
+    resolved_root: Path,
+    walk_root: Path,
+    *,
+    query: str,
+    limit: int,
+    scan_limit: int,
+) -> list[str]:
+    """Return fuzzy matches from a bounded, lazy non-git workspace scan."""
+    normalized_query = query.casefold()
+    pending = deque([walk_root])
+    paths: list[str] = []
+    scanned = 0
+
+    def matches(path: str) -> bool:
+        chars = iter(path.casefold())
+        return all(any(char == candidate for candidate in chars) for char in normalized_query)
+
+    while pending and scanned < scan_limit and len(paths) < limit:
+        directory = pending.popleft()
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    scanned += 1
+                    if scanned > scan_limit:
+                        break
+                    if is_ignored(entry.name):
+                        continue
+                    try:
+                        relative = Path(entry.path).relative_to(resolved_root).as_posix()
+                        is_dir = entry.is_dir(follow_symlinks=False)
+                    except (OSError, ValueError):
+                        continue
+                    if is_dir:
+                        pending.append(Path(entry.path))
+                        relative += "/"
+                    if matches(relative):
+                        paths.append(relative)
+                        if len(paths) >= limit:
+                            break
+        except OSError:
+            continue
 
     return paths
 
