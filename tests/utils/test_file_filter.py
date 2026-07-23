@@ -95,7 +95,7 @@ class TestIgnoredDirFiltering:
     """Tracked ignored dirs must not leak into git results."""
 
     @pytest.mark.parametrize(
-        "dirname", ["node_modules", "vendor", "__pycache__", ".vscode", "dist"]
+        "dirname", ["node_modules", "__pycache__", ".vscode", "dist"]
     )
     def test_tracked_ignored_dir_filtered(self, tmp_path: Path, dirname: str) -> None:
         (tmp_path / "keep.py").write_text("")

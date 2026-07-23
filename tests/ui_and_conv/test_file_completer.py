@@ -160,13 +160,8 @@ def _init_git_repo(work_dir: Path) -> None:
         subprocess.run(cmd, cwd=work_dir, capture_output=True, check=True)
 
 
-def test_tracked_ignored_dirs_filtered_in_git_mode(tmp_path: Path):
-    """Tracked ``node_modules/`` and ``vendor/`` must still be filtered.
-
-    Regression test: ``git ls-files`` returns all tracked paths, so
-    directories in ``_IGNORED_NAMES`` were surfacing in completion when
-    they happened to be committed.
-    """
+def test_tracked_ignored_dirs_are_indexed_without_scanning_untracked_tree(tmp_path: Path):
+    """Tracked vendor files are explicit project inputs; untracked ones stay filtered."""
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("# app")
     nm = tmp_path / "node_modules" / "pkg"
@@ -181,14 +176,20 @@ def test_tracked_ignored_dirs_filtered_in_git_mode(tmp_path: Path):
     completer = LocalFileMentionCompleter(tmp_path)
 
     texts = _completion_texts(completer, "@nod")
-    assert not any("node_modules" in t for t in texts), (
-        f"node_modules should be filtered even if tracked, got: {texts}"
-    )
+    assert not any("node_modules" in text for text in texts)
 
     texts = _completion_texts(completer, "@ven")
-    assert not any("vendor" in t for t in texts), (
-        f"vendor should be filtered even if tracked, got: {texts}"
-    )
+    assert "vendor/dep.py" in texts
+
+    # Adding a large untracked dependency subtree must not expand candidates.
+    untracked = vendor / "generated"
+    untracked.mkdir()
+    for i in range(100):
+        (untracked / f"generated_{i}.py").write_text("# generated")
+
+    completer = LocalFileMentionCompleter(tmp_path)
+    texts = _completion_texts(completer, "@generated")
+    assert not any("generated_" in text for text in texts)
 
 
 def test_unstaged_rename_hides_deleted_path(tmp_path: Path):
