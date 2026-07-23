@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -111,6 +112,29 @@ class TestPrintRunExitCode:
         p = _make_print(soul, tmp_path)
         code = asyncio.run(p.run(command="hello"))
         assert code == ExitCode.SUCCESS
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "hello",
+            '* WRONG: `A[/login]` or `B[/ home]`\n* CORRECT: `A["/login"]`',
+        ],
+    )
+    def test_stdin_prompt_is_printed_literally_and_sent_unchanged(
+        self, command: str, tmp_path: Path, monkeypatch, capsys
+    ):
+        soul = _make_soul()
+        p = _make_print(soul, tmp_path)
+        run_soul = AsyncMock()
+        monkeypatch.setattr("kimi_cli.ui.print.run_soul", run_soul)
+        monkeypatch.setattr("sys.stdin", io.StringIO(command))
+
+        code = asyncio.run(p.run())
+
+        assert code == ExitCode.SUCCESS
+        assert capsys.readouterr().out.rstrip("\n") == command
+        assert run_soul.await_args is not None
+        assert run_soul.await_args.args[1] == command
 
     def test_llm_not_set_returns_failure(self, tmp_path: Path, monkeypatch):
         soul = _make_soul()
