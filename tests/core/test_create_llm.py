@@ -84,6 +84,46 @@ def test_create_llm_kimi_model_parameters(monkeypatch):
     )
 
 
+def test_create_llm_omits_prompt_cache_key_for_third_party_kimi_endpoint():
+    provider = LLMProvider(
+        type="kimi",
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key=SecretStr("test-key"),
+    )
+    model = LLMModel(
+        provider="nvidia",
+        model="meta/llama",
+        max_context_size=4096,
+    )
+
+    llm = create_llm(provider, model, session_id="session-123")
+
+    assert llm is not None
+    assert isinstance(llm.chat_provider, Kimi)
+    assert "prompt_cache_key" not in llm.chat_provider.model_parameters
+
+
+def test_create_llm_keeps_prompt_cache_key_for_moonshot_endpoints():
+    model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
+
+    for base_url in (
+        "https://api.kimi.com/coding/v1",
+        "https://api.moonshot.ai/v1",
+        "https://api.moonshot.cn/v1",
+    ):
+        provider = LLMProvider(
+            type="kimi",
+            base_url=base_url,
+            api_key=SecretStr("test-key"),
+        )
+
+        llm = create_llm(provider, model, session_id="session-123")
+
+        assert llm is not None
+        assert isinstance(llm.chat_provider, Kimi)
+        assert llm.chat_provider.model_parameters["prompt_cache_key"] == "session-123"
+
+
 def test_create_llm_kimi_prefers_max_completion_tokens_env(monkeypatch):
     provider = LLMProvider(
         type="kimi",
