@@ -205,6 +205,7 @@ class Runtime:
         if self.approval_runtime is None:
             self.approval_runtime = ApprovalRuntime()
         self.approval_runtime.bind_root_wire_hub(self.root_wire_hub)
+        self.approval_runtime.bind_notification_manager(self.notifications)
         self.approval.set_runtime(self.approval_runtime)
         self.background_tasks.bind_runtime(self)
 
