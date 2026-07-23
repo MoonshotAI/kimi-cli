@@ -145,7 +145,16 @@ def git_index_mtime(root: Path) -> float | None:
         return None
 
 
-def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[str]:
+def _decode_git_output(stdout: bytes | str | None) -> str:
+    """Decode git subprocess output without relying on the OS locale."""
+    if stdout is None:
+        return ""
+    if isinstance(stdout, bytes):
+        return stdout.decode("utf-8", errors="surrogateescape")
+    return stdout
+
+
+def _parse_ls_files_output(stdout: bytes | str | None, *, filter_ignored: bool = True) -> list[str]:
     """Parse NUL-delimited ``git ls-files -z`` output into paths with synthesised dirs.
 
     When *filter_ignored* is *True*, paths whose segments match
@@ -155,7 +164,8 @@ def _parse_ls_files_output(stdout: str, *, filter_ignored: bool = True) -> list[
     paths: list[str] = []
     seen_dirs: set[str] = set()
     ignored_prefixes: set[str] = set()
-    for entry in stdout.split("\0"):
+    decoded = _decode_git_output(stdout)
+    for entry in decoded.split("\0"):
         if not entry:
             continue
 
@@ -192,11 +202,10 @@ def _git_deleted_files(root: Path, scope: str | None = None) -> set[str]:
             cmd,
             cwd=root,
             capture_output=True,
-            text=True,
             timeout=_GIT_LS_FILES_TIMEOUT,
         )
         if result.returncode == 0:
-            return {e for e in result.stdout.split("\0") if e}
+            return {e for e in _decode_git_output(result.stdout).split("\0") if e}
     except Exception:
         pass
     return set()
@@ -235,7 +244,6 @@ def list_files_git(
             cmd,
             cwd=root,
             capture_output=True,
-            text=True,
             timeout=_GIT_LS_FILES_TIMEOUT,
         )
         if result.returncode != 0:
@@ -264,7 +272,6 @@ def list_files_git(
                 others_cmd,
                 cwd=root,
                 capture_output=True,
-                text=True,
                 timeout=_GIT_LS_FILES_TIMEOUT,
             )
             if others.returncode == 0:
