@@ -864,9 +864,9 @@ def kimi(
             # In debug mode, show full traceback for quick diagnosis.
             _emit_fatal_error(traceback.format_exc())
         else:
-            from kimi_cli.share import get_share_dir
+            from kimi_cli.utils.logging import get_log_file_path
 
-            log_path = get_share_dir() / "logs" / "kimi.log"
+            log_path = get_log_file_path()
             # In non-debug mode, print a concise error and point users to logs.
             _emit_fatal_error(
                 f"{exc}\n"
