@@ -5,11 +5,37 @@ from collections.abc import Sequence
 from pathlib import Path
 
 
+def _ensure_utf8_stdio() -> None:
+    """Use UTF-8 for the standard Windows text streams when they support it.
+
+    Git Bash may expose the Windows legacy code page (for example, cp936) to
+    Python.  The interactive UI contains characters outside those code pages,
+    so Rich can otherwise fail while rendering the welcome panel.  Redirected
+    and non-standard streams are deliberately left alone.
+    """
+    if sys.platform != "win32":
+        return
+
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, TypeError, ValueError):
+            # Some embedders expose text-like streams with a partial or locked
+            # reconfigure implementation. Preserve those streams as-is.
+            continue
+
+
 def _prog_name() -> str:
     return Path(sys.argv[0]).name or "kimi"
 
 
 def main(argv: Sequence[str] | None = None) -> int | str | None:
+    _ensure_utf8_stdio()
+
     from kimi_cli.telemetry.crash import install_crash_handlers, set_phase
     from kimi_cli.utils.proxy import normalize_proxy_env
 
