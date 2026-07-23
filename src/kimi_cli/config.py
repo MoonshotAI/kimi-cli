@@ -322,7 +322,7 @@ def load_config(config_file: Path | None = None) -> Config:
         return config
 
     try:
-        config_text = config_file.read_text(encoding="utf-8")
+        config_text = config_file.read_text(encoding="utf-8-sig")
         if config_file.suffix.lower() == ".json":
             data = json.loads(config_text)
         else:
