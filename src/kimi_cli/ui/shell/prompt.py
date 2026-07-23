@@ -647,6 +647,7 @@ class LocalFileMentionCompleter(Completer):
         self._cache_time: float = 0.0
         self._cached_paths: list[str] = []
         self._cache_scope: str | None = None
+        self._cache_query: str | None = None
         self._top_cache_time: float = 0.0
         self._top_cached_paths: list[str] = []
         self._fragment_hint: str | None = None
@@ -712,6 +713,8 @@ class LocalFileMentionCompleter(Completer):
         cache_valid = (
             now - self._cache_time <= self._refresh_interval and self._cache_scope == scope
         )
+        if cache_valid and self._is_git is False and scope is None:
+            cache_valid = self._cache_query == fragment
 
         # Invalidate on .git/index mtime change (like Claude Code).
         if cache_valid and self._is_git:
@@ -730,10 +733,16 @@ class LocalFileMentionCompleter(Completer):
             paths = list_files_git(self._root, scope)
             self._git_index_mtime = git_index_mtime(self._root)
         if paths is None:
-            paths = list_files_walk(self._root, scope, limit=self._limit)
+            paths = list_files_walk(
+                self._root,
+                scope,
+                limit=self._limit,
+                query=fragment if scope is None else None,
+            )
 
         self._cached_paths = paths
         self._cache_scope = scope
+        self._cache_query = fragment if self._is_git is False and scope is None else None
         self._cache_time = now
         return self._cached_paths
 
