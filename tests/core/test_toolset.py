@@ -16,6 +16,7 @@ from kimi_cli.soul.toolset import (
     _REMINDER_TEXT_3,
     KimiToolset,
     _build_repeat_reminder,
+    _mcp_log_text,
 )
 from kimi_cli.wire.types import ToolCall, ToolResult
 
@@ -51,6 +52,18 @@ def _make_toolset() -> KimiToolset:
 
 def _tool_names(ts: KimiToolset) -> set[str]:
     return {t.name for t in ts.tools}
+
+
+def test_mcp_log_text_accepts_non_mapping_payloads():
+    assert _mcp_log_text("server started") == "server started"
+    assert _mcp_log_text(None) == "None"
+    assert _mcp_log_text(["server", "started"]) == "['server', 'started']"
+
+
+def test_mcp_log_text_prefers_common_message_keys():
+    assert _mcp_log_text({"message": "ready", "extra": "ignored"}) == "ready"
+    assert _mcp_log_text({"msg": "ready"}) == "ready"
+    assert _mcp_log_text({"other": "payload"}) == "{'other': 'payload'}"
 
 
 # --- hide() ---

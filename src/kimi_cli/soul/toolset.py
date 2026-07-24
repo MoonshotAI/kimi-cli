@@ -98,6 +98,12 @@ def get_current_tool_call_or_none() -> ToolCall | None:
     return current_tool_call.get()
 
 
+def _mcp_log_text(data: Any) -> str:
+    if isinstance(data, dict):
+        return str(data.get("message") or data.get("msg") or data)
+    return str(data)
+
+
 def get_current_step_no() -> int | None:
     """Return the step number associated with the current tool task."""
     return _current_step_no.get()
@@ -752,10 +758,15 @@ class KimiToolset:
                 connected.
         """
         import fastmcp
+        from fastmcp.client.logging import LogMessage
         from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
 
         from kimi_cli.mcp_oauth import create_mcp_oauth, has_mcp_oauth_tokens
         from kimi_cli.ui.shell.prompt import toast
+
+        async def _mcp_log_handler(message: LogMessage) -> None:
+            """Route MCP server log notifications to loguru instead of rich stderr."""
+            logger.debug("MCP server log: {msg}", msg=_mcp_log_text(message.data))
 
         async def _check_oauth_tokens(server_url: str) -> bool:
             """Check if OAuth tokens exist for the server."""
@@ -857,7 +868,10 @@ class KimiToolset:
                         continue
                     server_config = server_config.model_copy(update={"auth": auth})
 
-                client = fastmcp.Client(MCPConfig(mcpServers={server_name: server_config}))
+                client = fastmcp.Client(
+                    MCPConfig(mcpServers={server_name: server_config}),
+                    log_handler=_mcp_log_handler,
+                )
                 self._mcp_servers[server_name] = MCPServerInfo(
                     status="pending", client=client, tools=[]
                 )
