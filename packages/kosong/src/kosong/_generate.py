@@ -9,7 +9,7 @@ from kosong.chat_provider import (
     StreamedMessagePart,
     TokenUsage,
 )
-from kosong.message import ContentPart, Message, ToolCall
+from kosong.message import ContentPart, Message, TextPart, ThinkPart, ToolCall
 from kosong.tooling import Tool
 from kosong.utils.aio import Callback, callback
 
@@ -22,6 +22,7 @@ async def generate(
     *,
     on_message_part: Callback[[StreamedMessagePart], None] | None = None,
     on_tool_call: Callback[[ToolCall], None] | None = None,
+    on_trace_id: Callback[[str | None], None] | None = None,
 ) -> "GenerateResult":
     """
     Generate one message based on the given context.
@@ -34,6 +35,8 @@ async def generate(
         history: The message history to use for generation.
         on_message_part: An optional callback to be called for each raw message part.
         on_tool_call: An optional callback to be called for each complete tool call.
+        on_trace_id: An optional callback fired with the request's ``x-trace-id``
+            response header as soon as it is available (before streaming starts).
 
     Returns:
         A tuple of the generated message and the token usage (if available).
@@ -51,6 +54,10 @@ async def generate(
 
     logger.trace("Generating with history: {history}", history=history)
     stream = await chat_provider.generate(system_prompt, tools, history)
+    if on_trace_id:
+        # getattr for robustness against third-party StreamedMessage
+        # implementations that predate the trace_id property.
+        await callback(on_trace_id, getattr(stream, "trace_id", None))
     async for part in stream:
         logger.trace("Received part: {part}", part=part)
         if on_message_part:
@@ -74,10 +81,25 @@ async def generate(
     if not message.content and not message.tool_calls:
         raise APIEmptyResponseError("The API returned an empty response.")
 
+    # A response with only ThinkPart (no TextPart, no tool calls) indicates an
+    # abnormal termination — typically a stream interruption or max_tokens
+    # exhaustion during reasoning.  The model should always produce visible
+    # output after thinking; a think-only response is never intentional.
+    has_think = any(isinstance(p, ThinkPart) for p in message.content)
+    has_text = any(isinstance(p, TextPart) and p.text.strip() for p in message.content)
+    if has_think and not has_text and not message.tool_calls:
+        raise APIEmptyResponseError(
+            "The API returned a response containing only thinking content "
+            "without any text or tool calls. This usually indicates the "
+            "stream was interrupted or the output token budget was exhausted "
+            "during reasoning."
+        )
+
     return GenerateResult(
         id=stream.id,
         message=message,
         usage=stream.usage,
+        trace_id=getattr(stream, "trace_id", None),
     )
 
 
@@ -91,6 +113,8 @@ class GenerateResult:
     """The generated message."""
     usage: TokenUsage | None
     """The token usage of the generated message."""
+    trace_id: str | None = None
+    """The ``x-trace-id`` response header of the request, if the provider exposes it."""
 
 
 def _message_append(message: Message, part: StreamedMessagePart) -> None:

@@ -742,6 +742,7 @@ def test_display_block_diff_write_file(tmp_path) -> None:
                         "new_text": "hello",
                         "old_start": 1,
                         "new_start": 1,
+                        "is_summary": False,
                     }
                 ],
             }
@@ -814,6 +815,7 @@ def test_display_block_diff_str_replace(tmp_path) -> None:
                         "new_text": "hi",
                         "old_start": 1,
                         "new_start": 1,
+                        "is_summary": False,
                     }
                 ],
             }
@@ -892,7 +894,7 @@ def test_display_block_todo(tmp_path) -> None:
                         "tool_call_id": "tc-1",
                         "return_value": {
                             "is_error": False,
-                            "output": "",
+                            "output": "Todo list updated",
                             "message": "Todo list updated",
                             "display": [
                                 {"type": "todo", "items": [{"title": "one", "status": "pending"}]}
@@ -1010,7 +1012,7 @@ def test_tool_call_part_streaming(tmp_path) -> None:
                         "tool_call_id": "tc-1",
                         "return_value": {
                             "is_error": False,
-                            "output": "",
+                            "output": "Todo list updated",
                             "message": "Todo list updated",
                             "display": [
                                 {"type": "todo", "items": [{"title": "a", "status": "pending"}]}

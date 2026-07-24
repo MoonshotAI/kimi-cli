@@ -38,7 +38,7 @@ shell UI, ACP server mode for IDE integrations, and MCP tool loading.
   Specs can `extend` base agents, select tools by import path, and register builtin subagent
   types via the `subagents` field. Subagent instances are persisted separately under the session
   directory and can be resumed by `agent_id`. System prompts live alongside specs; builtin args
-  include `KIMI_NOW`, `KIMI_WORK_DIR`, `KIMI_WORK_DIR_LS`, `KIMI_AGENTS_MD`, `KIMI_SKILLS`
+  include `KIMI_NOW`, `KIMI_WORK_DIR`, `KIMI_WORK_DIR_LS`, `KIMI_AGENTS_MD`, `KIMI_SKILLS`, `KIMI_OS`, `KIMI_SHELL`
   (this file is injected via `KIMI_AGENTS_MD`).
 - **Tooling**: `src/kimi_cli/soul/toolset.py` loads tools by import path, injects dependencies,
   and runs tool calls. Built-in tools live in `src/kimi_cli/tools/` (agent, shell, file, web,
@@ -132,9 +132,11 @@ and skill workflows.
 
 ## Release workflow
 
+For the full procedure, follow the `release` skill (`.agents/skills/release/SKILL.md`). The summary:
+
 1. Ensure `main` is up to date (pull latest).
 2. Create a release branch, e.g. `bump-0.68` or `bump-pykaos-0.5.3`.
-3. Update `CHANGELOG.md`: rename `[Unreleased]` to `[0.68] - YYYY-MM-DD`.
+3. Update `CHANGELOG.md`: add a new `## 0.68 (YYYY-MM-DD)` section below `## Unreleased` (do not rename `## Unreleased`).
 4. Update `pyproject.toml` version.
 5. Run `uv sync` to align `uv.lock`.
 6. Commit the branch and open a PR.

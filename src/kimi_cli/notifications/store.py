@@ -3,7 +3,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from kimi_cli.utils.io import atomic_json_write
+from kimi_cli.utils.logging import logger
 
 from .models import NotificationDelivery, NotificationEvent, NotificationView
 
@@ -80,7 +83,15 @@ class NotificationStore:
         path = self.delivery_path(notification_id)
         if not path.exists():
             return NotificationDelivery()
-        return NotificationDelivery.model_validate_json(path.read_text(encoding="utf-8"))
+        try:
+            return NotificationDelivery.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValidationError, ValueError, UnicodeDecodeError) as exc:
+            logger.warning(
+                "Failed to read notification delivery {path}; using defaults: {error}",
+                path=path,
+                error=exc,
+            )
+            return NotificationDelivery()
 
     def write_delivery(self, notification_id: str, delivery: NotificationDelivery) -> None:
         atomic_json_write(delivery.model_dump(mode="json"), self.delivery_path(notification_id))
@@ -92,8 +103,16 @@ class NotificationStore:
         )
 
     def list_views(self) -> list[NotificationView]:
-        views = [
-            self.merged_view(notification_id) for notification_id in self.list_notification_ids()
-        ]
+        views: list[NotificationView] = []
+        for notification_id in self.list_notification_ids():
+            try:
+                views.append(self.merged_view(notification_id))
+            except (OSError, ValidationError, ValueError, UnicodeDecodeError) as exc:
+                logger.warning(
+                    "Skipping invalid notification {notification_id} from {path}: {error}",
+                    notification_id=notification_id,
+                    path=self.root / notification_id / self.EVENT_FILE,
+                    error=exc,
+                )
         views.sort(key=lambda view: view.event.created_at, reverse=True)
         return views

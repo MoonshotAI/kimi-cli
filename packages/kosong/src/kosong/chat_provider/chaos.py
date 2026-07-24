@@ -1,8 +1,8 @@
 import json
 import os
 import random
-from collections.abc import AsyncIterator, Sequence
-from typing import TYPE_CHECKING, Any
+from collections.abc import AsyncIterator, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import httpx
 from pydantic import BaseModel
@@ -26,6 +26,17 @@ if TYPE_CHECKING:
     ):
         _: ChatProvider = chaos
         _: RetryableChatProvider = chaos
+
+
+class _GenerationOverrideProvider(Protocol):
+    async def generate(
+        self,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
+    ) -> StreamedMessage: ...
 
 
 class ChaosConfig(BaseModel):
@@ -110,13 +121,26 @@ class ChaosChatProvider:
         self.name: str = provider.name
         self._monkey_patch_client()
 
+    @property
+    def wrapped_provider(self) -> ChatProvider:
+        """Return the provider whose calls are wrapped by this chaos provider."""
+        return self._provider
+
     async def generate(
         self,
         system_prompt: str,
         tools: Sequence[Tool],
         history: Sequence[Message],
+        *,
+        generation_overrides: Mapping[str, Any] | None = None,
     ) -> "ChaosStreamedMessage":
-        base_stream = await self._provider.generate(system_prompt, tools, history)
+        if not generation_overrides:
+            base_stream = await self._provider.generate(system_prompt, tools, history)
+        else:
+            provider = cast(_GenerationOverrideProvider, self._provider)
+            base_stream = await provider.generate(
+                system_prompt, tools, history, generation_overrides=generation_overrides
+            )
         return ChaosStreamedMessage(base_stream, self._chaos_config)
 
     def _monkey_patch_client(self):
@@ -225,6 +249,10 @@ class ChaosStreamedMessage:
     @property
     def usage(self) -> TokenUsage | None:
         return self._wrapped.usage
+
+    @property
+    def trace_id(self) -> str | None:
+        return getattr(self._wrapped, "trace_id", None)
 
     def _should_corrupt_tool_call(self) -> bool:
         probability = self._config.corrupt_tool_call_probability

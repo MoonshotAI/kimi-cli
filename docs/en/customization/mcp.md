@@ -62,6 +62,8 @@ kimi mcp auth linear
 
 This will open a browser to complete the OAuth flow. After successful authorization, Kimi Code CLI will save the token for future use.
 
+MCP OAuth tokens are stored in `~/.kimi/mcp-oauth/`. After upgrading from older versions that used FastMCP 2.x, the old token cache is not migrated automatically; if `kimi mcp list` shows that an OAuth server needs authorization, run `kimi mcp auth <name>` again.
+
 **Test a server**
 
 ```sh
@@ -129,5 +131,5 @@ Content returned by MCP tools may contain malicious instructions attempting to t
 - Keep manual approval for high-risk operations
 
 ::: warning Note
-In YOLO mode, MCP tool operations will also be automatically approved. It's recommended to only use YOLO mode when you fully trust the MCP servers.
+In YOLO or AFK mode, MCP tool calls will also be automatically approved. Use these modes only when you fully trust the MCP servers.
 :::

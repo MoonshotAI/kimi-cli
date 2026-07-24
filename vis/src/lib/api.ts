@@ -2,9 +2,33 @@ import { apiCache } from "./cache.ts";
 
 const BASE = "/api/vis";
 
-async function fetchJSON<T>(path: string): Promise<T> {
+/** Simple concurrency limiter for batching API requests. */
+class ConcurrencyLimiter {
+  private running = 0;
+  private queue: (() => void)[] = [];
+
+  constructor(private maxConcurrent: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    while (this.running >= this.maxConcurrent) {
+      await new Promise<void>((resolve) => this.queue.push(resolve));
+    }
+    this.running++;
+    try {
+      return await fn();
+    } finally {
+      this.running--;
+      this.queue.shift()?.();
+    }
+  }
+}
+
+/** Limit concurrent summary requests to avoid overwhelming the backend. */
+const summaryLimiter = new ConcurrencyLimiter(3);
+
+async function fetchJSON<T>(path: string, timeoutMs = 30_000): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${BASE}${path}`, { signal: controller.signal });
     if (!res.ok) {
@@ -138,7 +162,7 @@ export interface ContextResponse {
 
 export function listSessions(forceRefresh = false): Promise<SessionInfo[]> {
   if (forceRefresh) apiCache.invalidate("sessions");
-  return apiCache.get("sessions", () => fetchJSON<SessionInfo[]>("/sessions"), 30_000);
+  return apiCache.get("sessions", () => fetchJSON<SessionInfo[]>("/sessions", 120_000), 30_000);
 }
 
 const CONTENT_PART_MAP: Record<string, string> = {
@@ -262,7 +286,9 @@ export function getSessionSummary(
 ): Promise<SessionSummary> {
   const key = `summary:${sessionId}`;
   if (forceRefresh) apiCache.invalidate(key);
-  return apiCache.get(key, () => fetchJSON<SessionSummary>(`/sessions/${sessionId}/summary`));
+  return apiCache.get(key, () =>
+    summaryLimiter.run(() => fetchJSON<SessionSummary>(`/sessions/${sessionId}/summary`)),
+  );
 }
 
 export async function importSession(file: File): Promise<{ session_id: string; work_dir_hash: string }> {

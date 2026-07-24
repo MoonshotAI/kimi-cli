@@ -87,6 +87,47 @@ def get_work_dir_for_hash(hash_dir_name: str) -> str | None:
     return None
 
 
+def _extract_title_from_wire(wire_path: Path, max_bytes: int = 8192) -> tuple[str, int]:
+    """Extract title and turn count from the beginning of wire.jsonl.
+
+    Only reads up to *max_bytes* to avoid blocking on large files.
+    Returns (title, turn_count).
+    """
+    title = ""
+    turn_count = 0
+    try:
+        with wire_path.open(encoding="utf-8") as f:
+            bytes_read = 0
+            for line in f:
+                bytes_read += len(line.encode("utf-8"))
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    parsed = parse_wire_file_line(line)
+                except Exception:
+                    continue
+                if isinstance(parsed, WireFileMetadata):
+                    continue
+                if parsed.message.type == "TurnBegin":
+                    turn_count += 1
+                    if turn_count == 1:
+                        user_input = parsed.message.payload.get("user_input", "")
+                        if isinstance(user_input, str):
+                            title = user_input[:100]
+                        elif isinstance(user_input, list) and user_input:
+                            first = user_input[0]
+                            if isinstance(first, dict):
+                                title = str(first.get("text", ""))[:100]
+                # Stop once we exceed the byte budget — title is extracted from
+                # the first TurnBegin so this is a hard upper bound on I/O.
+                if bytes_read > max_bytes:
+                    break
+    except Exception:
+        pass
+    return title, turn_count
+
+
 def _scan_session_dir(
     session_dir: Path,
     work_dir_hash: str,
@@ -102,53 +143,37 @@ def _scan_session_dir(
     context_path = session_dir / "context.jsonl"
     state_path = session_dir / "state.json"
 
+    wire_exists = wire_path.exists()
+    context_exists = context_path.exists()
+    state_exists = state_path.exists()
+
     # Get last updated time from most recent file
     mtimes: list[float] = []
-    for p in [wire_path, context_path, state_path]:
-        if p.exists():
-            mtimes.append(p.stat().st_mtime)
+    wire_size = context_size = state_size = 0
+    if wire_exists:
+        st = wire_path.stat()
+        mtimes.append(st.st_mtime)
+        wire_size = st.st_size
+    if context_exists:
+        st = context_path.stat()
+        mtimes.append(st.st_mtime)
+        context_size = st.st_size
+    if state_exists:
+        st = state_path.stat()
+        mtimes.append(st.st_mtime)
+        state_size = st.st_size
 
-    # Extract title and count turns from wire.jsonl
+    # Read title from SessionState (source of truth), fall back to wire-derived title
+    from kimi_cli.session_state import load_session_state
+
+    session_state = load_session_state(session_dir)
+
     title = ""
     turn_count = 0
-    if wire_path.exists():
-        try:
-            with wire_path.open(encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        parsed = parse_wire_file_line(line)
-                    except Exception:
-                        logger.debug("Skipped malformed line in %s", wire_path)
-                        continue
-                    if isinstance(parsed, WireFileMetadata):
-                        continue
-                    if parsed.message.type == "TurnBegin":
-                        turn_count += 1
-                        if turn_count == 1:
-                            user_input = parsed.message.payload.get("user_input", "")
-                            if isinstance(user_input, str):
-                                title = user_input[:100]
-                            elif isinstance(user_input, list) and user_input:
-                                first = user_input[0]
-                                if isinstance(first, dict):
-                                    title = str(first.get("text", ""))[:100]
-        except Exception:
-            pass
-
-    # File sizes (cheap stat calls)
-    wire_size = wire_path.stat().st_size if wire_path.exists() else 0
-    context_size = context_path.stat().st_size if context_path.exists() else 0
-    state_size = state_path.stat().st_size if state_path.exists() else 0
-
-    # Read metadata.json if it exists
-    metadata_info: dict[str, Any] | None = None
-    metadata_path = session_dir / "metadata.json"
-    if metadata_path.exists():
-        with contextlib.suppress(Exception):
-            metadata_info = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if wire_exists:
+        title, turn_count = _extract_title_from_wire(wire_path)
+    if session_state.custom_title:
+        title = session_state.custom_title
 
     # Count sub-agents
     subagent_count = 0
@@ -163,10 +188,10 @@ def _scan_session_dir(
         "work_dir_hash": work_dir_hash,
         "title": title,
         "last_updated": max(mtimes) if mtimes else 0,
-        "has_wire": wire_path.exists(),
-        "has_context": context_path.exists(),
-        "has_state": state_path.exists(),
-        "metadata": metadata_info,
+        "has_wire": wire_exists,
+        "has_context": context_exists,
+        "has_state": state_exists,
+        "metadata": session_state.model_dump(mode="json"),
         "wire_size": wire_size,
         "context_size": context_size,
         "state_size": state_size,
@@ -177,12 +202,10 @@ def _scan_session_dir(
     }
 
 
-@router.get("/sessions")
-def list_sessions() -> list[dict[str, Any]]:
-    """List all available sessions across all work directories."""
+def _list_sessions_sync() -> list[dict[str, Any]]:
+    """Synchronous session scanning — called from a thread pool."""
     results: list[dict[str, Any]] = []
 
-    # Scan normal sessions
     sessions_root = get_share_dir() / "sessions"
     if sessions_root.exists():
         for work_dir_hash_dir in sessions_root.iterdir():
@@ -194,7 +217,6 @@ def list_sessions() -> list[dict[str, Any]]:
                 if info:
                     results.append(info)
 
-    # Scan imported sessions
     imported_root = _get_imported_root()
     if imported_root.exists():
         for session_dir in imported_root.iterdir():
@@ -209,6 +231,15 @@ def list_sessions() -> list[dict[str, Any]]:
 
     results.sort(key=lambda s: s["last_updated"], reverse=True)
     return results
+
+
+@router.get("/sessions")
+async def list_sessions() -> list[dict[str, Any]]:
+    """List all available sessions across all work directories."""
+    import asyncio
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _list_sessions_sync)
 
 
 @router.get("/sessions/{work_dir_hash}/{session_id}/wire")

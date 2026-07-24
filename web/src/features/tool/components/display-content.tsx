@@ -372,6 +372,7 @@ type DiffDisplayData = {
   path: string;
   old_text: string;
   new_text: string;
+  is_summary?: boolean;
 };
 
 /**
@@ -486,6 +487,27 @@ function convertPatchToFile(
 /**
  * Renders diff content
  */
+/**
+ * Compact summary for diff blocks that are too large for inline rendering.
+ * Separate component to avoid hooks-order violations in DiffContent.
+ */
+const DiffSummaryContent = ({ data }: { data: DiffDisplayData }) => {
+  const { old_text: oldText, new_text: newText, path: filePath } = data;
+  return (
+    <div className="my-2 rounded-md border border-border/40 bg-card/20 px-3 py-2">
+      <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+        <span className="truncate flex-1">{filePath || "diff"}</span>
+        <span className="shrink-0 text-yellow-600 dark:text-yellow-400">
+          File too large for inline diff
+        </span>
+      </div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        {oldText} → {newText}
+      </div>
+    </div>
+  );
+};
+
 const DiffContent = ({ data }: { data: DiffDisplayData }) => {
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -884,7 +906,9 @@ const TextContent = ({ content }: { content: MCPTextData }) => {
     }
 
     if (isDiffDisplayData(parsed)) {
-      return <DiffContent data={parsed} />;
+      return parsed.is_summary
+        ? <DiffSummaryContent data={parsed} />
+        : <DiffContent data={parsed} />;
     }
 
     return <JSONContent data={parsed} />;
@@ -1144,7 +1168,9 @@ const DisplayItemRenderer = ({ item }: { item: DisplayItem }) => {
       // Handle diff display from edit_file tool
       // item itself contains old_text/new_text/path (DiffDisplayBlock from backend)
       if (isDiffDisplayData(item)) {
-        return <DiffContent data={item} />;
+        return item.is_summary
+          ? <DiffSummaryContent data={item} />
+          : <DiffContent data={item} />;
       }
       // Fallback to default renderer
       return (

@@ -1,4 +1,4 @@
-"""Tests for EnterPlanMode / ExitPlanMode yolo auto-approve behavior."""
+"""Tests for plan mode approval behavior under yolo and afk."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ async def test_enter_plan_yolo(enter_tool: EnterPlanMode):
         toggle_callback=_make_toggle(tracker),
         plan_file_path_getter=lambda: Path("/tmp/plan.md"),
         plan_mode_checker=lambda: False,
-        is_yolo=lambda: True,
+        is_auto_approve=lambda: True,
     )
 
     wire_token = _current_wire.set(None)
@@ -69,7 +69,7 @@ async def test_enter_plan_yolo_already_in_plan_mode(enter_tool: EnterPlanMode):
         toggle_callback=_make_toggle(tracker),
         plan_file_path_getter=lambda: Path("/tmp/plan.md"),
         plan_mode_checker=lambda: True,  # already in plan mode
-        is_yolo=lambda: True,
+        is_auto_approve=lambda: True,
     )
 
     result = await enter_tool(EnterParams())
@@ -78,8 +78,8 @@ async def test_enter_plan_yolo_already_in_plan_mode(enter_tool: EnterPlanMode):
     assert not tracker.get("called")
 
 
-async def test_enter_plan_is_yolo_none(enter_tool: EnterPlanMode):
-    """When is_yolo is not passed (backward compat), falls through to normal flow."""
+async def test_enter_plan_auto_approve_none(enter_tool: EnterPlanMode):
+    """When auto-approve checker is not passed, falls through to normal flow."""
     tracker: dict = {}
     enter_tool.bind(
         toggle_callback=_make_toggle(tracker),
@@ -112,7 +112,7 @@ async def test_enter_plan_yolo_dynamic_toggle(enter_tool: EnterPlanMode):
         toggle_callback=toggle,
         plan_file_path_getter=lambda: Path("/tmp/plan.md"),
         plan_mode_checker=lambda: plan_mode_state["active"],
-        is_yolo=lambda: yolo_state["enabled"],
+        is_auto_approve=lambda: yolo_state["enabled"],
     )
 
     # Call 1: yolo on -> auto-approve
@@ -140,8 +140,8 @@ async def test_enter_plan_yolo_dynamic_toggle(enter_tool: EnterPlanMode):
 # ---------------------------------------------------------------------------
 
 
-async def test_exit_plan_yolo(exit_tool: ExitPlanMode, tmp_path: Path):
-    """Yolo auto-approves the plan without wire or tool_call."""
+async def test_exit_plan_yolo_still_requires_user_approval(exit_tool: ExitPlanMode, tmp_path: Path):
+    """Yolo alone must not auto-approve plan approval."""
     tracker: dict = {}
     plan_file = tmp_path / "plan.md"
     plan_file.write_text("# Test Plan\n- Step 1\n- Step 2")
@@ -150,7 +150,30 @@ async def test_exit_plan_yolo(exit_tool: ExitPlanMode, tmp_path: Path):
         toggle_callback=_make_toggle(tracker),
         plan_file_path_getter=lambda: plan_file,
         plan_mode_checker=lambda: True,
-        is_yolo=lambda: True,
+        should_auto_approve_exit=lambda: False,
+    )
+
+    wire_token = _current_wire.set(None)
+    try:
+        result = await exit_tool(ExitParams())
+        assert result.is_error
+        assert "Wire" in result.message
+        assert not tracker.get("called")
+    finally:
+        _current_wire.reset(wire_token)
+
+
+async def test_exit_plan_afk_auto_approves(exit_tool: ExitPlanMode, tmp_path: Path):
+    """Afk auto-approves plan approval because no user is present."""
+    tracker: dict = {}
+    plan_file = tmp_path / "plan.md"
+    plan_file.write_text("# Test Plan\n- Step 1\n- Step 2")
+
+    exit_tool.bind(
+        toggle_callback=_make_toggle(tracker),
+        plan_file_path_getter=lambda: plan_file,
+        plan_mode_checker=lambda: True,
+        should_auto_approve_exit=lambda: True,
     )
 
     wire_token = _current_wire.set(None)
@@ -164,8 +187,8 @@ async def test_exit_plan_yolo(exit_tool: ExitPlanMode, tmp_path: Path):
         _current_wire.reset(wire_token)
 
 
-async def test_exit_plan_yolo_with_options(exit_tool: ExitPlanMode, tmp_path: Path):
-    """Yolo auto-approve works even when options are provided (options ignored)."""
+async def test_exit_plan_afk_auto_approve_with_options(exit_tool: ExitPlanMode, tmp_path: Path):
+    """Afk auto-approval works even when options are provided."""
     tracker: dict = {}
     plan_file = tmp_path / "plan.md"
     plan_file.write_text("# Plan\n## Option A\n## Option B")
@@ -174,7 +197,7 @@ async def test_exit_plan_yolo_with_options(exit_tool: ExitPlanMode, tmp_path: Pa
         toggle_callback=_make_toggle(tracker),
         plan_file_path_getter=lambda: plan_file,
         plan_mode_checker=lambda: True,
-        is_yolo=lambda: True,
+        should_auto_approve_exit=lambda: True,
     )
 
     result = await exit_tool(
@@ -189,14 +212,14 @@ async def test_exit_plan_yolo_with_options(exit_tool: ExitPlanMode, tmp_path: Pa
     assert tracker.get("called")
 
 
-async def test_exit_plan_yolo_no_plan_file(exit_tool: ExitPlanMode, tmp_path: Path):
-    """Yolo does NOT bypass the 'no plan file' guard."""
+async def test_exit_plan_auto_approve_no_plan_file(exit_tool: ExitPlanMode, tmp_path: Path):
+    """Auto-approve does NOT bypass the 'no plan file' guard."""
     tracker: dict = {}
     exit_tool.bind(
         toggle_callback=_make_toggle(tracker),
         plan_file_path_getter=lambda: tmp_path / "nonexistent.md",
         plan_mode_checker=lambda: True,
-        is_yolo=lambda: True,
+        should_auto_approve_exit=lambda: True,
     )
 
     result = await exit_tool(ExitParams())
@@ -205,8 +228,8 @@ async def test_exit_plan_yolo_no_plan_file(exit_tool: ExitPlanMode, tmp_path: Pa
     assert not tracker.get("called")
 
 
-async def test_exit_plan_yolo_empty_plan_file(exit_tool: ExitPlanMode, tmp_path: Path):
-    """Yolo does NOT bypass the 'empty plan file' guard."""
+async def test_exit_plan_auto_approve_empty_plan_file(exit_tool: ExitPlanMode, tmp_path: Path):
+    """Auto-approve does NOT bypass the 'empty plan file' guard."""
     tracker: dict = {}
     plan_file = tmp_path / "plan.md"
     plan_file.write_text("")
@@ -215,7 +238,7 @@ async def test_exit_plan_yolo_empty_plan_file(exit_tool: ExitPlanMode, tmp_path:
         toggle_callback=_make_toggle(tracker),
         plan_file_path_getter=lambda: plan_file,
         plan_mode_checker=lambda: True,
-        is_yolo=lambda: True,
+        should_auto_approve_exit=lambda: True,
     )
 
     result = await exit_tool(ExitParams())
@@ -223,14 +246,14 @@ async def test_exit_plan_yolo_empty_plan_file(exit_tool: ExitPlanMode, tmp_path:
     assert not tracker.get("called")
 
 
-async def test_exit_plan_yolo_not_in_plan_mode(exit_tool: ExitPlanMode, tmp_path: Path):
-    """Guard 'not in plan mode' fires before yolo check."""
+async def test_exit_plan_auto_approve_not_in_plan_mode(exit_tool: ExitPlanMode, tmp_path: Path):
+    """Guard 'not in plan mode' fires before auto-approve check."""
     tracker: dict = {}
     exit_tool.bind(
         toggle_callback=_make_toggle(tracker),
         plan_file_path_getter=lambda: tmp_path / "plan.md",
         plan_mode_checker=lambda: False,
-        is_yolo=lambda: True,
+        should_auto_approve_exit=lambda: True,
     )
 
     result = await exit_tool(ExitParams())
@@ -239,8 +262,8 @@ async def test_exit_plan_yolo_not_in_plan_mode(exit_tool: ExitPlanMode, tmp_path
     assert not tracker.get("called")
 
 
-async def test_exit_plan_is_yolo_none(exit_tool: ExitPlanMode, tmp_path: Path):
-    """When is_yolo is not passed (backward compat), falls through to normal flow."""
+async def test_exit_plan_auto_approve_none(exit_tool: ExitPlanMode, tmp_path: Path):
+    """When auto-approve checker is not passed, falls through to normal flow."""
     tracker: dict = {}
     plan_file = tmp_path / "plan.md"
     plan_file.write_text("# Plan content")

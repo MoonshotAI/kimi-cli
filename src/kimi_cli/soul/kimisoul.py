@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
-from functools import partial
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -16,9 +16,12 @@ from kosong.chat_provider import (
     APIEmptyResponseError,
     APIStatusError,
     APITimeoutError,
+    ChatProvider,
+    ChatProviderError,
     RetryableChatProvider,
 )
 from kosong.message import Message
+from kosong.tooling import Tool
 from tenacity import RetryCallState, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from kimi_cli.approval_runtime import (
@@ -28,7 +31,17 @@ from kimi_cli.approval_runtime import (
     set_current_approval_source,
 )
 from kimi_cli.background import build_active_task_snapshot
-from kimi_cli.llm import ModelCapability
+from kimi_cli.hooks.engine import HookEngine
+from kimi_cli.llm import (
+    DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN,
+    LLM,
+    ModelCapability,
+    compute_max_completion_tokens,
+    estimate_request_tokens,
+    find_kimi_provider,
+    with_kimi_generation_overrides,
+    with_trace_callback,
+)
 from kimi_cli.notifications import (
     NotificationView,
     build_notification_message,
@@ -46,6 +59,9 @@ from kimi_cli.soul import (
 )
 from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import (
+    COMPACTION_OUTPUT_PREFIX,
+    COMPACTION_SYSTEM_PROMPT,
+    Compaction,
     CompactionResult,
     SimpleCompaction,
     estimate_text_tokens,
@@ -57,8 +73,8 @@ from kimi_cli.soul.dynamic_injection import (
     DynamicInjectionProvider,
     normalize_history,
 )
+from kimi_cli.soul.dynamic_injections.afk_mode import AfkModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
-from kimi_cli.soul.dynamic_injections.yolo_mode import YoloModeInjectionProvider
 from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
@@ -77,6 +93,7 @@ from kimi_cli.wire.types import (
     SteerInput,
     StepBegin,
     StepInterrupted,
+    StepRetry,
     TextPart,
     ToolResult,
     TurnBegin,
@@ -94,7 +111,102 @@ FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
 
 
-type StepStopReason = Literal["no_tool_calls", "tool_rejected"]
+def classify_api_error(e: Exception) -> tuple[str, int | None]:
+    """Classify an LLM API exception into (error_type, status_code).
+
+    Exposed at module level so telemetry tests can import the real function
+    instead of duplicating the classification table.
+
+    Returns:
+        (error_type, status_code) where status_code is None for non-HTTP errors.
+    """
+    status_code: int | None = None
+    if isinstance(e, APIStatusError):
+        status = getattr(e, "status_code", getattr(e, "status", 0))
+        status_code = int(status) if status else None
+        if status == 429:
+            return "rate_limit", status_code
+        if status in (401, 403):
+            return "auth", status_code
+        if status == 529:
+            return "overloaded", status_code
+        if status >= 500:
+            return "5xx_server", status_code
+        if 400 <= status < 500:
+            msg_lower = str(e).lower()
+            if (
+                "context length" in msg_lower
+                or "context_length" in msg_lower
+                or "max tokens" in msg_lower
+                or "maximum context" in msg_lower
+                or "too many tokens" in msg_lower
+            ):
+                return "context_overflow", status_code
+            return "4xx_client", status_code
+        return "other", status_code
+    if isinstance(e, APIConnectionError):
+        return "network", None
+    if isinstance(e, (APITimeoutError, TimeoutError)):
+        return "timeout", None
+    if isinstance(e, APIEmptyResponseError):
+        return "empty_response", None
+    return "other", None
+
+
+_RETRYABLE_STATUS_CODES = frozenset({408, 409, 429, 500, 502, 503, 504, 529})
+
+
+def is_retryable_api_error(e: Exception) -> bool:
+    """Classify retryability for the ``api_error`` telemetry event.
+
+    Aligned with the TS ``isRetryableGenerateError``: the listed status codes
+    (including 529 overloaded) count as retryable, and any ChatProviderError
+    (network/timeout/empty-response) counts as retryable by the fallback rule.
+
+    Deliberately separate from ``KimiSoul._is_retryable_error``, which drives
+    the tenacity retry loop — the Python retry loop does not currently retry
+    408/409/529, but telemetry must report the TS-comparable value.
+    """
+    if isinstance(e, APIStatusError):
+        return e.status_code in _RETRYABLE_STATUS_CODES
+    return isinstance(e, ChatProviderError)
+
+
+def _provider_telemetry_kwargs(llm: LLM | None) -> dict[str, str]:
+    if llm is None or llm.provider_config is None:
+        return {}
+    provider_type = llm.provider_config.type
+    return {"provider_type": provider_type, "protocol": provider_type}
+
+
+def _track_api_error(
+    error: ChatProviderError,
+    *,
+    llm: LLM,
+    duration_ms: int,
+    input_tokens: int | None = None,
+) -> None:
+    from kimi_cli.telemetry import get_current_trace_id, track
+
+    error_type, status_code = classify_api_error(error)
+    properties: dict[str, Any] = {
+        "error_type": error_type,
+        "model": llm.model_name,
+        "retryable": is_retryable_api_error(error),
+        "duration_ms": duration_ms,
+        **_provider_telemetry_kwargs(llm),
+    }
+    if status_code is not None:
+        properties["status_code"] = status_code
+    if input_tokens is not None and input_tokens > 0:
+        properties["input_tokens"] = input_tokens
+    trace_id = getattr(error, "trace_id", None) or get_current_trace_id()
+    if trace_id:
+        properties["trace_id"] = trace_id
+    track("api_error", **properties)
+
+
+type StepStopReason = Literal["no_tool_calls", "tool_rejected", "tool_call_repeat"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +247,7 @@ class KimiSoul:
         self._approval = agent.runtime.approval
         self._context = context
         self._loop_control = agent.runtime.config.loop_control
-        self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+        self._compaction: Compaction = SimpleCompaction()  # TODO: maybe configurable and composable
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -145,8 +257,10 @@ class KimiSoul:
             self._checkpoint_with_user_message = False
 
         self._steer_queue: asyncio.Queue[str | list[ContentPart]] = asyncio.Queue()
+        self._last_tool_calls: list[tuple[str, str]] = []
         self._plan_mode: bool = self._runtime.session.state.plan_mode
         self._plan_session_id: str | None = self._runtime.session.state.plan_session_id
+        self._root_trace_id: str | None = None
         # Pre-warm slug cache so the persisted slug survives process restarts
         if self._plan_session_id is not None and self._runtime.session.state.plan_slug is not None:
             from kimi_cli.tools.plan.heroes import seed_slug_cache
@@ -157,9 +271,15 @@ class KimiSoul:
             self._ensure_plan_session_id()
         self._injection_providers: list[DynamicInjectionProvider] = [
             PlanModeInjectionProvider(),
-            YoloModeInjectionProvider(),
+            *(
+                []
+                if self._runtime.config.skip_afk_prompt_injection
+                else [AfkModeInjectionProvider()]
+            ),
         ]
-        if self._runtime.role == "root":
+        self._hook_engine: HookEngine = HookEngine()
+        self._stop_hook_active: bool = False
+        if self.is_root:
             self._runtime.notifications.ack_ids("llm", extract_notification_ids(context.history))
 
         # Bind plan mode state to tools that support it
@@ -184,13 +304,59 @@ class KimiSoul:
 
     @property
     def is_yolo(self) -> bool:
-        """Whether yolo (auto-approve / non-interactive) mode is enabled."""
+        """Whether explicit yolo mode is active."""
         return self._approval.is_yolo()
+
+    @property
+    def is_auto_approve(self) -> bool:
+        """Whether tool approvals are bypassed (explicit yolo, or implied by afk)."""
+        return self._approval.is_auto_approve()
+
+    @property
+    def is_afk(self) -> bool:
+        """Whether no user is present (away-from-keyboard)."""
+        return self._approval.is_afk()
+
+    @property
+    def is_afk_flag(self) -> bool:
+        """Whether persisted afk mode is active."""
+        return self._approval.is_afk_flag()
+
+    @property
+    def is_root(self) -> bool:
+        """Whether this soul is the root session rather than a subagent."""
+        return self._runtime.role == "root"
+
+    @property
+    def is_subagent(self) -> bool:
+        """Whether this soul is running as a subagent rather than the root session."""
+        return self._runtime.role == "subagent"
+
+    @property
+    def root_trace_id(self) -> str | None:
+        """The latest LLM trace id for this root session, for UI events."""
+        return self._root_trace_id if self.is_root else None
+
+    def _set_trace_id(self, trace_id: str | None) -> None:
+        from kimi_cli.telemetry import set_current_trace_id
+
+        set_current_trace_id(trace_id)
+        if self.is_root:
+            self._root_trace_id = trace_id
 
     @property
     def plan_mode(self) -> bool:
         """Whether plan mode (read-only research and planning) is active."""
         return self._plan_mode
+
+    @property
+    def hook_engine(self) -> HookEngine:
+        return self._hook_engine
+
+    def set_hook_engine(self, engine: HookEngine) -> None:
+        self._hook_engine = engine
+        if isinstance(self._agent.toolset, KimiToolset):
+            self._agent.toolset.set_hook_engine(engine)
 
     def add_injection_provider(self, provider: DynamicInjectionProvider) -> None:
         """Register an additional dynamic injection provider."""
@@ -210,6 +376,35 @@ class KimiSoul:
                     exc_info=True,
                 )
         return injections
+
+    async def _notify_injection_providers_compacted(self) -> None:
+        """Notify all injection providers that the context has been compacted.
+
+        Failures are isolated per-provider so a buggy third-party provider
+        cannot abort compaction (which would skip CompactionEnd wire events
+        and PostCompact telemetry).
+        """
+        for provider in self._injection_providers:
+            try:
+                await provider.on_context_compacted()
+            except Exception:
+                logger.warning(
+                    "injection provider %s on_context_compacted failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
+
+    async def notify_afk_changed(self, enabled: bool) -> None:
+        """Notify dynamic injection providers that afk mode changed."""
+        for provider in self._injection_providers:
+            try:
+                await provider.on_afk_changed(enabled)
+            except Exception:
+                logger.warning(
+                    "injection provider %s on_afk_changed failed",
+                    type(provider).__name__,
+                    exc_info=True,
+                )
 
     def _bind_plan_mode_tools(self) -> None:
         """Bind plan mode state to tools that support it."""
@@ -240,21 +435,32 @@ class KimiSoul:
 
         exit_tool = self._agent.toolset.find("ExitPlanMode")
         if isinstance(exit_tool, ExitPlanMode):
-            exit_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            exit_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                self._approval.is_afk,
+            )
 
         # EnterPlanMode has a special bind() method
         from kimi_cli.tools.plan.enter import EnterPlanMode
 
         enter_tool = self._agent.toolset.find("EnterPlanMode")
         if isinstance(enter_tool, EnterPlanMode):
-            enter_tool.bind(self.toggle_plan_mode, path_getter, checker, self._approval.is_yolo)
+            enter_tool.bind(
+                self.toggle_plan_mode,
+                path_getter,
+                checker,
+                self._approval.is_auto_approve,
+            )
 
-        # AskUserQuestion — bind yolo checker for auto-dismiss
+        # AskUserQuestion — bind afk checker for auto-dismiss.
+        # Yolo alone keeps the tool live; only afk (no user present) dismisses.
         from kimi_cli.tools.ask_user import AskUserQuestion
 
         ask_tool = self._agent.toolset.find("AskUserQuestion")
         if isinstance(ask_tool, AskUserQuestion):
-            ask_tool.bind_approval(self._approval.is_yolo)
+            ask_tool.bind_afk(self._approval.is_afk)
 
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
@@ -331,6 +537,16 @@ class KimiSoul:
         """
         return self._set_plan_mode(enabled, source="manual")
 
+    def schedule_plan_activation_reminder(self) -> None:
+        """Schedule a plan-mode activation reminder for the next turn.
+
+        Use this when plan mode is already active (e.g. restored session with
+        ``--plan`` flag) and ``_set_plan_mode`` would early-return because the
+        state hasn't actually changed.
+        """
+        if self._plan_mode:
+            self._pending_plan_activation_injection = True
+
     def consume_pending_plan_activation_injection(self) -> bool:
         """Consume the next-step activation reminder scheduled by a manual toggle."""
         if not self._plan_mode or not self._pending_plan_activation_injection:
@@ -353,7 +569,8 @@ class KimiSoul:
         max_size = self._runtime.llm.max_context_size if self._runtime.llm is not None else 0
         return StatusSnapshot(
             context_usage=self._context_usage,
-            yolo_enabled=self._approval.is_yolo(),
+            yolo_enabled=self._approval.is_yolo_flag(),
+            afk_enabled=self._approval.is_afk(),
             plan_mode=self._plan_mode,
             context_tokens=token_count,
             max_context_tokens=max_size,
@@ -410,6 +627,9 @@ class KimiSoul:
         """Drain the steer queue and inject as follow-up user messages.
 
         Returns True if any steers were consumed.
+
+        Note: /btw is intercepted at the UI layer (``classify_input``) before
+        reaching the steer queue, so it never appears here.
         """
         consumed = False
         while not self._steer_queue.empty():
@@ -436,17 +656,69 @@ class KimiSoul:
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
         return self._slash_commands
 
-    async def run(self, user_input: str | list[ContentPart]):
+    async def run(
+        self,
+        user_input: str | list[ContentPart],
+        *,
+        skip_user_prompt_hook: bool = False,
+    ):
         approval_source_token = None
+        created_approval_source: ApprovalSource | None = None
+        turn_started = False
+        turn_finished = False
+        interrupt_reason: str | None = None
+        turn_t0 = time.monotonic()
+        self._set_trace_id(None)
         if get_current_approval_source_or_none() is None:
-            approval_source_token = set_current_approval_source(
-                ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
-            )
+            created_approval_source = ApprovalSource(kind="foreground_turn", id=uuid.uuid4().hex)
+            approval_source_token = set_current_approval_source(created_approval_source)
         try:
             # Refresh OAuth tokens on each turn to avoid idle-time expirations.
             await self._runtime.oauth.ensure_fresh(self._runtime)
 
+            # Set session_id ContextVar for toolset hooks
+            from kimi_cli.soul.toolset import set_session_id
+
+            set_session_id(self._runtime.session.id)
+
+            from kimi_cli.hooks import events
+
+            # --- UserPromptSubmit hook ---
+            # Synthetic internal prompts (e.g. background-task notification
+            # follow-ups injected by ``Print`` after a bg task finishes or
+            # the wait ceiling is hit) must bypass ``UserPromptSubmit``:
+            # they are not user input, and a user-configured prompt-blocking
+            # hook would drop the notification and hang the wait loop.
+            if not skip_user_prompt_hook:
+                text_input_for_hook = user_input if isinstance(user_input, str) else ""
+
+                hook_results = await self._hook_engine.trigger(
+                    "UserPromptSubmit",
+                    matcher_value=text_input_for_hook,
+                    input_data=events.user_prompt_submit(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        prompt=text_input_for_hook,
+                    ),
+                )
+                for result in hook_results:
+                    if result.action == "block":
+                        wire_send(TurnBegin(user_input=user_input))
+                        turn_started = True
+                        wire_send(TextPart(text=result.reason or "Prompt blocked by hook."))
+                        wire_send(TurnEnd())
+                        turn_finished = True
+                        return
+
             wire_send(TurnBegin(user_input=user_input))
+            turn_started = True
+            from kimi_cli.telemetry import track as _track_telemetry
+
+            _track_telemetry(
+                "turn_started",
+                mode="plan" if self._plan_mode else "agent",
+                **_provider_telemetry_kwargs(self._runtime.llm),
+            )
             user_message = Message(role="user", content=user_input)
             text_input = user_message.extract_text(" ").strip()
 
@@ -468,10 +740,103 @@ class KimiSoul:
             else:
                 await self._turn(user_message)
 
+            # --- Stop hook (max 1 re-trigger to prevent infinite loop) ---
+            if not self._stop_hook_active:
+                stop_results = await self._hook_engine.trigger(
+                    "Stop",
+                    input_data=events.stop(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        stop_hook_active=False,
+                    ),
+                )
+                for result in stop_results:
+                    if result.action == "block" and result.reason:
+                        self._stop_hook_active = True
+                        try:
+                            await self._turn(Message(role="user", content=result.reason))
+                        finally:
+                            self._stop_hook_active = False
+                        break
+
             wire_send(TurnEnd())
+            turn_finished = True
+
+            # Auto-set title after first real turn (skip slash commands)
+            if not command_call:
+                session = self._runtime.session
+                if session.state.custom_title is None:
+                    from kimi_cli.utils.string import shorten
+
+                    title = shorten(
+                        Message(role="user", content=user_input).extract_text(" "),
+                        width=50,
+                    )
+                    if title:
+                        from kimi_cli.session_state import (
+                            load_session_state,
+                            save_session_state,
+                        )
+
+                        # Read-modify-write: load fresh state to avoid
+                        # overwriting concurrent web changes
+                        fresh = load_session_state(session.dir)
+                        if fresh.custom_title is None:
+                            fresh.custom_title = title
+                            save_session_state(fresh, session.dir)
+                        session.state.custom_title = fresh.custom_title
+        except MaxStepsReached:
+            interrupt_reason = "max_steps"
+            raise
+        except asyncio.CancelledError:
+            interrupt_reason = "user_cancelled"
+            raise
+        except Exception:
+            interrupt_reason = "error"
+            raise
         finally:
+            from kimi_cli.telemetry import get_current_trace_id
+
+            if turn_started and not turn_finished:
+                wire_send(TurnEnd())
+                from kimi_cli.telemetry import track as _track_telemetry
+
+                _interrupt_kwargs: dict[str, Any] = dict(
+                    mode="plan" if self._plan_mode else "agent",
+                    at_step=getattr(self, "_current_step_no", 0),
+                    interrupt_reason=interrupt_reason or "error",
+                    **_provider_telemetry_kwargs(self._runtime.llm),
+                )
+                if _tid := get_current_trace_id():
+                    _interrupt_kwargs["trace_id"] = _tid
+                _track_telemetry("turn_interrupted", **_interrupt_kwargs)
+            if turn_started:
+                # turn_ended fires unconditionally once a turn began (TS parity).
+                from kimi_cli.telemetry import track as _track_ended
+
+                _ended_kwargs: dict[str, Any] = dict(
+                    reason=(
+                        "completed"
+                        if turn_finished
+                        else "cancelled"
+                        if interrupt_reason == "user_cancelled"
+                        else "failed"
+                    ),
+                    duration_ms=int((time.monotonic() - turn_t0) * 1000),
+                    mode="plan" if self._plan_mode else "agent",
+                )
+                _ended_kwargs.update(_provider_telemetry_kwargs(self._runtime.llm))
+                if _tid := get_current_trace_id():
+                    _ended_kwargs["trace_id"] = _tid
+                _track_ended("turn_ended", **_ended_kwargs)
+            if created_approval_source is not None and self._runtime.approval_runtime is not None:
+                self._runtime.approval_runtime.cancel_by_source(
+                    created_approval_source.kind,
+                    created_approval_source.id,
+                )
             if approval_source_token is not None:
                 reset_current_approval_source(approval_source_token)
+            self._set_trace_id(None)
 
     async def _turn(self, user_message: Message) -> TurnOutcome:
         if self._runtime.llm is None:
@@ -480,6 +845,7 @@ class KimiSoul:
         if missing_caps := check_message(user_message, self._runtime.llm.capabilities):
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
+        self._last_tool_calls = []
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
         logger.debug("Appended user message to context")
@@ -551,6 +917,9 @@ class KimiSoul:
 
     def _make_skill_runner(self, skill: Skill) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
+            from kimi_cli.telemetry import track
+
+            track("skill_invoked", skill_name=_skill.name)
             skill_text = await read_skill_text(_skill)
             if skill_text is None:
                 wire_send(
@@ -566,13 +935,31 @@ class KimiSoul:
         return _run_skill
 
     async def _agent_loop(self) -> TurnOutcome:
-        """The main agent loop for one run."""
+        """The main agent loop for one run.
+
+        Lifecycle:
+            1. Turn Initialization   - clean up stale steers, load MCP tools.
+            2. Step Loop             - iterate until the turn stops or fails.
+               a. Step Guard         - enforce max-steps-per-turn limit.
+               b. Step Begin         - emit StepBegin wire event.
+               c. Context Compaction - auto-compact if context exceeds trigger ratio.
+               d. Checkpoint         - persist current state before calling LLM.
+               e. Step Execution     - run _step() (LLM call + tool execution).
+               f. Error Handling     - BackToTheFuture (revert) or fatal exception.
+               g. Outcome Resolution - steers / stop / continue.
+            3. Turn Resolution       - return TurnOutcome to the caller.
+        """
         assert self._runtime.llm is not None
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 1. TURN INITIALIZATION
+        # ═══════════════════════════════════════════════════════════════════════
 
         # Discard any stale steers from a previous turn.
         while not self._steer_queue.empty():
             self._steer_queue.get_nowait()
 
+        # ── 1a. MCP deferred loading ──────────────────────────────────────────
         if isinstance(self._agent.toolset, KimiToolset):
             await self.start_background_mcp_loading()
             loading = bool((snapshot := self._mcp_status_snapshot()) and snapshot.loading)
@@ -581,47 +968,123 @@ class KimiSoul:
                 wire_send(MCPLoadingBegin())
             try:
                 await self.wait_for_background_mcp_loading()
+                # Track MCP connection result
+                if loading:
+                    from kimi_cli.telemetry import track as _track_mcp
+
+                    mcp_snap = self._mcp_status_snapshot()
+                    if mcp_snap:
+                        if mcp_snap.connected > 0:
+                            _track_mcp(
+                                "mcp_connected",
+                                server_count=mcp_snap.connected,
+                                total_count=mcp_snap.total,
+                            )
+                        _failed = mcp_snap.total - mcp_snap.connected
+                        if _failed > 0:
+                            _track_mcp(
+                                "mcp_failed",
+                                failed_count=_failed,
+                                total_count=mcp_snap.total,
+                            )
             finally:
                 if loading:
                     wire_send(StatusUpdate(mcp_status=self._mcp_status_snapshot()))
                     wire_send(MCPLoadingEnd())
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2. STEP LOOP
+        # ═══════════════════════════════════════════════════════════════════════
         step_no = 0
+        self._current_step_no = 0
         while True:
             step_no += 1
+
+            # ── 2a. Step Guard ──────────────────────────────────────────────────
             if step_no > self._loop_control.max_steps_per_turn:
                 raise MaxStepsReached(self._loop_control.max_steps_per_turn)
 
+            self._current_step_no = step_no
+
+            # ── 2b. Step Begin ──────────────────────────────────────────────────
             wire_send(StepBegin(n=step_no))
             back_to_the_future: BackToTheFuture | None = None
             step_outcome: StepOutcome | None = None
+
             try:
-                # compact the context if needed
+                # ── 2c. Context Compaction ──────────────────────────────────────
                 if should_auto_compact(
-                    self._context.token_count,
+                    self._context.token_count_with_pending,
                     self._runtime.llm.max_context_size,
                     trigger_ratio=self._loop_control.compaction_trigger_ratio,
                     reserved_context_size=self._loop_control.reserved_context_size,
                 ):
                     logger.info("Context too long, compacting...")
-                    await self.compact_context()
+                    try:
+                        await self.compact_context()
+                    except Exception as compact_err:
+                        logger.error(
+                            "Context compaction failed at step {step_no}: {error_type}: {error}",
+                            step_no=step_no,
+                            error_type=type(compact_err).__name__,
+                            error=compact_err,
+                        )
+                        raise
 
+                # ── 2d. Checkpoint ──────────────────────────────────────────────
                 logger.debug("Beginning step {step_no}", step_no=step_no)
                 await self._checkpoint()
                 self._denwa_renji.set_n_checkpoints(self._context.n_checkpoints)
+
+                # ── 2e. Step Execution ──────────────────────────────────────────
                 step_outcome = await self._step()
+
             except BackToTheFuture as e:
+                # ── 2f-i. D-Mail revert signal ────────────────────────────────
                 back_to_the_future = e
-            except Exception:
-                # any other exception should interrupt the step
+
+            except Exception as e:
+                # ── 2f-ii. Fatal step error ───────────────────────────────────
+                req_id = getattr(e, "request_id", None)
+                logger.error(
+                    "Agent step {step_no} failed: {error_type}: {error}"
+                    + (" (request_id={request_id})" if req_id else ""),
+                    step_no=step_no,
+                    error_type=type(e).__name__,
+                    error=e,
+                    request_id=req_id,
+                )
                 wire_send(StepInterrupted())
+
+                # --- StopFailure hook ---
+                from kimi_cli.hooks import events as _hook_events
+
+                _hook_task = asyncio.create_task(
+                    self._hook_engine.trigger(
+                        "StopFailure",
+                        matcher_value=type(e).__name__,
+                        input_data=_hook_events.stop_failure(
+                            session_id=self._runtime.session.id,
+                            cwd=str(Path.cwd()),
+                            error_type=type(e).__name__,
+                            error_message=str(e),
+                        ),
+                    )
+                )
+                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 # break the agent loop
                 raise
 
+            # ── 2g. Outcome Resolution ──────────────────────────────────────────
             if step_outcome is not None:
+                # Step returned a stop reason -- check for steers before finishing.
                 has_steers = await self._consume_pending_steers()
                 if has_steers:
                     continue  # steers injected, force another LLM step
+
+                # ═══════════════════════════════════════════════════════════════
+                # 3. TURN RESOLUTION
+                # ═══════════════════════════════════════════════════════════════
                 final_message = (
                     step_outcome.assistant_message
                     if step_outcome.stop_reason == "no_tool_calls"
@@ -634,23 +1097,64 @@ class KimiSoul:
                 )
 
             if back_to_the_future is not None:
+                # Revert context to the checkpoint and inject D-Mail message.
                 await self._context.revert_to(back_to_the_future.checkpoint_id)
+                # KimiToolset.begin_step resets dedup/repeat state when the
+                # previous-call list is empty, so the next step starts clean.
+                self._last_tool_calls = []
                 await self._checkpoint()
                 await self._context.append_message(back_to_the_future.messages)
 
-            # Consume any pending steers between steps
+            # Consume any pending steers between steps before next iteration.
             await self._consume_pending_steers()
 
     async def _step(self) -> StepOutcome | None:
-        """Run a single step and return a stop outcome, or None to continue."""
+        """Run a single step and return a stop outcome, or None to continue.
+
+        This is the implementation of ``2e. Step Execution`` in ``_agent_loop``.
+
+        Sub-lifecycle (2e.x):
+            2e.1. Notification delivery  - push pending notifications (root only).
+            2e.2. Dynamic injection      - collect and append provider injections.
+            2e.3. History normalization  - merge adjacent user messages.
+            2e.4. LLM call with retry    - kosong.step + tenacity retry + recovery.
+               2e.4.1. Toolset begin_step- reset per-step dedup state.
+               2e.4.2. kosong.step       - actual LLM call (may be interrupted).
+            2e.5. Usage & status update  - track tokens, emit StatusUpdate.
+            2e.6. Tool execution         - wait for all tool results.
+            2e.7. Context growth         - append assistant + tool messages.
+            2e.8. Outcome resolution     - rejection / D-Mail / stop / continue.
+        """
         # already checked in `run`
         assert self._runtime.llm is not None
         chat_provider = self._runtime.llm.chat_provider
 
-        if self._runtime.role == "root":
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.1. NOTIFICATION DELIVERY (root role only)
+        # ═══════════════════════════════════════════════════════════════════════
+        if self.is_root:
 
             async def _append_notification(view: NotificationView) -> None:
                 await self._context.append_message(build_notification_message(view, self._runtime))
+                # --- Notification hook ---
+                from kimi_cli.hooks import events
+
+                _hook_task = asyncio.create_task(
+                    self._hook_engine.trigger(
+                        "Notification",
+                        matcher_value=view.event.type,
+                        input_data=events.notification(
+                            session_id=self._runtime.session.id,
+                            cwd=str(Path.cwd()),
+                            sink="llm",
+                            notification_type=view.event.type,
+                            title=view.event.title,
+                            body=view.event.body,
+                            severity=view.event.severity,
+                        ),
+                    )
+                )
+                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             await self._runtime.notifications.deliver_pending(
                 "llm",
@@ -659,7 +1163,9 @@ class KimiSoul:
                 on_notification=_append_notification,
             )
 
-        # Dynamic injection
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.2. DYNAMIC INJECTION
+        # ═══════════════════════════════════════════════════════════════════════
         injections = await self._collect_injections()
         if injections:
             combined_reminders = "\n".join(system_reminder(inj.content).text for inj in injections)
@@ -670,13 +1176,38 @@ class KimiSoul:
                 )
             )
 
-        # Normalize: merge adjacent user messages for clean API input
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.3. HISTORY NORMALIZATION
+        # ═══════════════════════════════════════════════════════════════════════
         effective_history = normalize_history(self._context.history)
+        generation_overrides = self._compute_completion_overrides(
+            chat_provider,
+            system_prompt=self._agent.system_prompt,
+            tools=self._agent.toolset.tools,
+            history=effective_history,
+            input_tokens_floor=self._context.token_count_with_pending,
+        )
+        request_chat_provider = with_kimi_generation_overrides(chat_provider, generation_overrides)
+        request_chat_provider = with_trace_callback(
+            request_chat_provider,
+            self._set_trace_id,
+        )
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.4. LLM CALL WITH RETRY
+        # ═══════════════════════════════════════════════════════════════════════
         async def _run_step_once() -> StepResult:
+            """Single LLM invocation (wrapped by retry + connection recovery)."""
+            # ── 2e.4.1. Toolset begin_step ────────────────────────────────────
+            if isinstance(self._agent.toolset, KimiToolset):
+                self._agent.toolset.begin_step(
+                    self._last_tool_calls,
+                    step_no=self._current_step_no,
+                )
+            # ── 2e.4.2. kosong.step ───────────────────────────────────────────
             # run an LLM step (may be interrupted)
             return await kosong.step(
-                chat_provider,
+                request_chat_provider,
                 self._agent.system_prompt,
                 self._agent.toolset,
                 effective_history,
@@ -684,11 +1215,17 @@ class KimiSoul:
                 on_tool_result=wire_send,
             )
 
+        max_attempts = self._loop_control.max_retries_per_step
+
+        def _before_step_retry_sleep(retry_state: RetryCallState) -> None:
+            self._retry_log("step", retry_state)
+            self._emit_step_retry(retry_state, max_attempts=max_attempts)
+
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
-            before_sleep=partial(self._retry_log, "step"),
+            before_sleep=_before_step_retry_sleep,
             wait=wait_exponential_jitter(initial=0.3, max=5, jitter=0.5),
-            stop=stop_after_attempt(self._loop_control.max_retries_per_step),
+            stop=stop_after_attempt(max_attempts),
             reraise=True,
         )
         async def _kosong_step_with_retry() -> StepResult:
@@ -698,43 +1235,74 @@ class KimiSoul:
                 chat_provider=chat_provider,
             )
 
-        result = await _kosong_step_with_retry()
-        logger.debug("Got step result: {result}", result=result)
-        status_update = StatusUpdate(
-            token_usage=result.usage, message_id=result.id, plan_mode=self._plan_mode
+        t0 = time.monotonic()
+        try:
+            result = await _kosong_step_with_retry()
+        except Exception as _step_exc:
+            if isinstance(_step_exc, ChatProviderError):
+                _track_api_error(
+                    _step_exc,
+                    llm=self._runtime.llm,
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                    input_tokens=self._context.token_count,
+                )
+            raise
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.5. USAGE & STATUS UPDATE
+        # ═══════════════════════════════════════════════════════════════════════
+        llm_elapsed = time.monotonic() - t0
+        usage = result.usage
+        logger.info(
+            "LLM step completed in {elapsed:.1f}s (input={input_tokens}, output={output_tokens})",
+            elapsed=llm_elapsed,
+            input_tokens=usage.input if usage else "?",
+            output_tokens=usage.output if usage else "?",
         )
-        if result.usage is not None:
+        status_update = StatusUpdate(
+            token_usage=usage, message_id=result.id, plan_mode=self._plan_mode
+        )
+        if usage is not None:
             # mark the token count for the context before the step
-            await self._context.update_token_count(result.usage.input)
+            await self._context.update_token_count(usage.input)
             snap = self.status
             status_update.context_usage = snap.context_usage
             status_update.context_tokens = snap.context_tokens
             status_update.max_context_tokens = snap.max_context_tokens
         wire_send(status_update)
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.6. TOOL EXECUTION
+        # ═══════════════════════════════════════════════════════════════════════
         # wait for all tool results (may be interrupted)
         plan_mode_before_tools = self._plan_mode
         results = await result.tool_results()
         logger.debug("Got tool results: {results}", results=results)
+
+        # Update dedup tracking for the next step
+        if isinstance(self._agent.toolset, KimiToolset):
+            self._last_tool_calls = self._agent.toolset.end_step()
 
         # If a tool (EnterPlanMode/ExitPlanMode) changed plan mode during execution,
         # send a corrected StatusUpdate so the client sees the up-to-date state.
         if self._plan_mode != plan_mode_before_tools:
             wire_send(StatusUpdate(plan_mode=self._plan_mode))
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.7. CONTEXT GROWTH
+        # ═══════════════════════════════════════════════════════════════════════
         # shield the context manipulation from interruption
         await asyncio.shield(self._grow_context(result, results))
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2e.8. OUTCOME RESOLUTION
+        # ═══════════════════════════════════════════════════════════════════════
         rejected_errors = [
             result.return_value
             for result in results
             if isinstance(result.return_value, ToolRejectedError)
         ]
-        if (
-            rejected_errors
-            and not any(e.has_feedback for e in rejected_errors)
-            and self._runtime.role != "subagent"
-        ):
+        if rejected_errors and not any(e.has_feedback for e in rejected_errors) and self.is_root:
             # Pure rejection (no user feedback) — stop the turn.
             # Subagents skip this so the LLM can see the rejection and try
             # an alternative approach instead of terminating immediately.
@@ -767,9 +1335,56 @@ class KimiSoul:
                 ],
             )
 
+        if isinstance(self._agent.toolset, KimiToolset) and self._agent.toolset.force_stop_turn:
+            from kimi_cli.telemetry import track
+
+            track("turn_force_stopped", reason="tool_call_repeat", step_no=self._current_step_no)
+            return StepOutcome(stop_reason="tool_call_repeat", assistant_message=result.message)
+
         if result.tool_calls:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
+
+    def _compute_completion_overrides(
+        self,
+        chat_provider: ChatProvider,
+        *,
+        system_prompt: str,
+        tools: Sequence[Tool],
+        history: Sequence[Message],
+        input_tokens_floor: int = 0,
+    ) -> dict[str, Any] | None:
+        """Compute per-call generation overrides for the given chat provider.
+
+        Returns request-scoped Kimi generation overrides, or ``None`` if no overrides
+        apply for the given provider. The chat provider instance is not modified, so
+        transport-level state (the live OpenAI client and any in-flight OAuth token)
+        stays attached to the single instance owned by ``Runtime.llm`` — retry recovery
+        in ``Kimi.on_retryable_error`` therefore affects subsequent steps as intended.
+        """
+        kimi_provider = find_kimi_provider(chat_provider)
+        if kimi_provider is None:
+            return None
+
+        parameters = kimi_provider.model_parameters
+        configured_budget = parameters.get("max_completion_tokens")
+        if "max_completion_tokens" in parameters and configured_budget is None:
+            return None
+        if type(configured_budget) is not int:
+            configured_budget = None
+
+        assert self._runtime.llm is not None
+        estimated_input_tokens = estimate_request_tokens(system_prompt, tools, history)
+        input_tokens = max(input_tokens_floor, estimated_input_tokens)
+        if self._runtime.llm.max_context_size > 0:
+            input_tokens += DEFAULT_COMPLETION_TOKEN_SAFETY_MARGIN
+        max_completion_tokens = compute_max_completion_tokens(
+            max_context_size=self._runtime.llm.max_context_size,
+            input_tokens=input_tokens,
+            response_budget=configured_budget,
+            fallback_budget=self._loop_control.reserved_context_size,
+        )
+        return {"max_completion_tokens": max_completion_tokens}
 
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
@@ -794,9 +1409,20 @@ class KimiSoul:
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
 
-    async def compact_context(self, custom_instruction: str = "") -> None:
+    async def compact_context(
+        self,
+        *,
+        manual: bool = False,
+        custom_instruction: str = "",
+    ) -> None:
         """
         Compact the context.
+
+        Args:
+            manual: Whether the compaction was explicitly requested by the user
+                (e.g. via the ``/compact`` slash command). When ``False``, the
+                compaction is treated as auto-triggered by the system.
+            custom_instruction: Optional user instruction to guide compaction focus.
 
         Raises:
             LLMNotSet: When the LLM is not set.
@@ -804,17 +1430,83 @@ class KimiSoul:
         """
 
         chat_provider = self._runtime.llm.chat_provider if self._runtime.llm is not None else None
+        compaction_overrides = None
+        if chat_provider is not None and isinstance(self._compaction, SimpleCompaction):
+            compact_message, to_preserve = self._compaction.prepare(
+                self._context.history,
+                custom_instruction=custom_instruction,
+            )
+            if compact_message is not None:
+                post_compaction_history = [
+                    Message(
+                        role="user",
+                        content=[system(COMPACTION_OUTPUT_PREFIX)],
+                    ),
+                    *to_preserve,
+                ]
+                if self.is_root:
+                    active_task_snapshot = build_active_task_snapshot(
+                        self._runtime.background_tasks
+                    )
+                    if active_task_snapshot is not None:
+                        post_compaction_history.append(
+                            Message(
+                                role="user",
+                                content=[
+                                    system(
+                                        "The following background tasks are still active after "
+                                        "compaction. Use TaskList if you need to re-enumerate "
+                                        "them later."
+                                    ),
+                                    TextPart(text=active_task_snapshot),
+                                ],
+                            )
+                        )
+                post_compaction_input_tokens = estimate_request_tokens(
+                    self._agent.system_prompt,
+                    self._agent.toolset.tools,
+                    post_compaction_history,
+                )
+                compaction_overrides = self._compute_completion_overrides(
+                    chat_provider,
+                    system_prompt=COMPACTION_SYSTEM_PROMPT,
+                    tools=(),
+                    history=[compact_message],
+                    input_tokens_floor=post_compaction_input_tokens,
+                )
 
         async def _run_compaction_once() -> CompactionResult:
             if self._runtime.llm is None:
                 raise LLMNotSet()
-            return await self._compaction.compact(
-                self._context.history, self._runtime.llm, custom_instruction=custom_instruction
+            request_provider = with_kimi_generation_overrides(
+                self._runtime.llm.chat_provider,
+                compaction_overrides,
             )
+            request_provider = with_trace_callback(
+                request_provider,
+                self._set_trace_id,
+            )
+            compaction_llm = replace(
+                self._runtime.llm,
+                chat_provider=request_provider,
+            )
+            return await self._compaction.compact(
+                self._context.history,
+                compaction_llm,
+                custom_instruction=custom_instruction,
+            )
+
+        start_time = time.monotonic()
+        retry_count = 0
+
+        def _retry_log_compaction(retry_state: RetryCallState) -> None:
+            nonlocal retry_count
+            retry_count = retry_state.attempt_number
+            self._retry_log("compaction", retry_state)
 
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
-            before_sleep=partial(self._retry_log, "compaction"),
+            before_sleep=_retry_log_compaction,
             wait=wait_exponential_jitter(initial=0.3, max=5, jitter=0.5),
             stop=stop_after_attempt(self._loop_control.max_retries_per_step),
             reraise=True,
@@ -826,15 +1518,67 @@ class KimiSoul:
                 chat_provider=chat_provider,
             )
 
+        if not manual:
+            trigger_reason = "auto"
+        elif custom_instruction:
+            trigger_reason = "manual-with-prompt"
+        else:
+            trigger_reason = "manual"
+        before_tokens = self._context.token_count
+        from kimi_cli.hooks import events
+
+        await self._hook_engine.trigger(
+            "PreCompact",
+            matcher_value=trigger_reason,
+            input_data=events.pre_compact(
+                session_id=self._runtime.session.id,
+                cwd=str(Path.cwd()),
+                trigger=trigger_reason,
+                token_count=before_tokens,
+            ),
+        )
+
         wire_send(CompactionBegin())
-        compaction_result = await _compact_with_retry()
+        try:
+            compaction_result = await _compact_with_retry()
+        except Exception as _compact_exc:
+            from kimi_cli.telemetry import get_current_trace_id, track
+
+            if isinstance(_compact_exc, ChatProviderError) and self._runtime.llm is not None:
+                _track_api_error(
+                    _compact_exc,
+                    llm=self._runtime.llm,
+                    duration_ms=int((time.monotonic() - start_time) * 1000),
+                    input_tokens=before_tokens,
+                )
+
+            failed_kwargs: dict[str, Any] = dict(
+                source="auto" if trigger_reason == "auto" else "manual",
+                tokens_before=before_tokens,
+                duration_ms=int((time.monotonic() - start_time) * 1000),
+                round=1,
+                retry_count=retry_count,
+                thinking_effort=(
+                    self._runtime.llm.chat_provider.thinking_effort or "unknown"
+                    if self._runtime.llm is not None
+                    else "unknown"
+                ),
+                error_type=type(_compact_exc).__name__,
+            )
+            # Trace id of the failed compaction request (absent for network errors)
+            if _exc_trace_id := (getattr(_compact_exc, "trace_id", None) or get_current_trace_id()):
+                failed_kwargs["trace_id"] = _exc_trace_id
+            track("compaction_failed", **failed_kwargs)
+            raise
+        self._set_trace_id(compaction_result.trace_id)
+        history_count_before = len(self._context.history)
         await self._context.clear()
         await self._context.write_system_prompt(self._agent.system_prompt)
         await self._checkpoint()
         await self._context.append_message(compaction_result.messages)
         estimated_token_count = compaction_result.estimated_token_count
 
-        if self._runtime.role == "root":
+        if self.is_root:
             active_task_snapshot = build_active_task_snapshot(self._runtime.background_tasks)
             if active_task_snapshot is not None:
                 active_task_message = Message(
@@ -853,7 +1597,51 @@ class KimiSoul:
         # Estimate token count so context_usage is not reported as 0%
         await self._context.update_token_count(estimated_token_count)
 
+        # Notify dynamic injection providers that history has been rebuilt so
+        # they can reset any one-shot throttling state. Failures are isolated
+        # per-provider so compaction completion (wire event + telemetry) is
+        # not affected by a buggy provider.
+        await self._notify_injection_providers_compacted()
+
         wire_send(CompactionEnd())
+
+        from kimi_cli.telemetry import track
+
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        track_kwargs = dict(
+            source="auto" if trigger_reason == "auto" else "manual",
+            tokens_before=before_tokens,
+            tokens_after=estimated_token_count,
+            duration_ms=duration_ms,
+            compacted_count=max(0, history_count_before - (len(compaction_result.messages) - 1)),
+            round=1,
+            retry_count=retry_count,
+            thinking_effort=(
+                self._runtime.llm.chat_provider.thinking_effort or "unknown"
+                if self._runtime.llm is not None
+                else "unknown"
+            ),
+        )
+        if compaction_result.usage is not None:
+            track_kwargs["input_tokens"] = compaction_result.usage.input
+            track_kwargs["output_tokens"] = compaction_result.usage.output
+        if compaction_result.trace_id is not None:
+            track_kwargs["trace_id"] = compaction_result.trace_id
+        track("compaction_finished", **track_kwargs)
+
+        _hook_task = asyncio.create_task(
+            self._hook_engine.trigger(
+                "PostCompact",
+                matcher_value=trigger_reason,
+                input_data=events.post_compact(
+                    session_id=self._runtime.session.id,
+                    cwd=str(Path.cwd()),
+                    trigger=trigger_reason,
+                    estimated_token_count=estimated_token_count,
+                ),
+            )
+        )
+        _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
@@ -875,10 +1663,52 @@ class KimiSoul:
         operation: Callable[[], Awaitable[Any]],
         *,
         chat_provider: object | None = None,
+        _auth_retried: bool = False,
+        _connection_retried: bool = False,
     ) -> Any:
         try:
             return await operation()
+        except APIStatusError as error:
+            if error.status_code != 401 or _auth_retried:
+                raise
+            # Only attempt refresh+retry when the active model's provider
+            # uses OAuth.  For plain API-key providers there is nothing
+            # to refresh and retrying would just add latency.
+            active_provider = (
+                self._runtime.config.providers.get(self._runtime.llm.model_config.provider)
+                if self._runtime.llm and self._runtime.llm.model_config
+                else None
+            )
+            if not (active_provider and active_provider.oauth):
+                raise
+            logger.warning(
+                "Received 401 during {name}, attempting token refresh",
+                name=name,
+            )
+            try:
+                await self._runtime.oauth.ensure_fresh(self._runtime, force=True)
+            except Exception as refresh_exc:
+                logger.exception("Token refresh failed after 401.")
+                raise error from refresh_exc
+            # Re-enter full recovery so that transient connection errors
+            # on the retry are still handled by on_retryable_error.
+            return await self._run_with_connection_recovery(
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=True,
+                _connection_retried=_connection_retried,
+            )
         except (APIConnectionError, APITimeoutError) as error:
+            if _connection_retried:
+                logger.warning(
+                    "Chat provider recovery exhausted for {name}: {error_type}: {error}",
+                    name=name,
+                    error_type=type(error).__name__,
+                    error=error,
+                )
+                error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
+                raise
             if not isinstance(chat_provider, RetryableChatProvider):
                 raise
             try:
@@ -891,27 +1721,55 @@ class KimiSoul:
                 )
                 raise
             if not recovered:
+                logger.warning(
+                    "Chat provider recovery not available for {name} after {error_type}.",
+                    name=name,
+                    error_type=type(error).__name__,
+                )
                 raise
             logger.info(
                 "Recovered chat provider during {name} after {error_type}; retrying once.",
                 name=name,
                 error_type=type(error).__name__,
             )
-            try:
-                return await operation()
-            except (APIConnectionError, APITimeoutError) as second_error:
-                second_error._kimi_recovery_exhausted = True  # type: ignore[attr-defined]
-                raise
+            # Re-enter the full recovery path so a 401 on the retry can still
+            # trigger OAuth refresh instead of bubbling straight to the user.
+            return await self._run_with_connection_recovery(
+                name,
+                operation,
+                chat_provider=chat_provider,
+                _auth_retried=_auth_retried,
+                _connection_retried=True,
+            )
 
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):
-        logger.info(
-            "Retrying {name} for the {n} time. Waiting {sleep} seconds.",
+        error = retry_state.outcome.exception() if retry_state.outcome else None
+        logger.warning(
+            "Retrying {name} for the {n} time (last error: {error_type}: {error}). "
+            "Waiting {sleep} seconds.",
             name=name,
             n=retry_state.attempt_number,
+            error_type=type(error).__name__ if error else "unknown",
+            error=error or "unknown",
             sleep=retry_state.next_action.sleep
             if retry_state.next_action is not None
             else "unknown",
+        )
+
+    def _emit_step_retry(self, retry_state: RetryCallState, *, max_attempts: int) -> None:
+        error = retry_state.outcome.exception() if retry_state.outcome else None
+        next_action = retry_state.next_action
+        wait_s = next_action.sleep if next_action is not None else 0.0
+        wire_send(
+            StepRetry(
+                n=self._current_step_no,
+                next_attempt=retry_state.attempt_number + 1,
+                max_attempts=max_attempts,
+                wait_s=wait_s,
+                error_type=type(error).__name__ if error else "unknown",
+                status_code=error.status_code if isinstance(error, APIStatusError) else None,
+            )
         )
 
 
@@ -983,6 +1841,10 @@ class FlowRunner:
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
             logger.warning("Agent flow {command} ignores args: {args}", command=command, args=args)
             return
+        if self._name:
+            from kimi_cli.telemetry import track
+
+            track("flow_invoked", flow_name=self._name)
 
         current_id = self._flow.begin_id
         moves = 0

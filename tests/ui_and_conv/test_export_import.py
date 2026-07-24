@@ -63,6 +63,32 @@ def _make_system_reminder_message(text: str = "Stay focused.") -> Message:
     return Message(role="user", content=[system_reminder(text)])
 
 
+def _make_notification_message(
+    notification_id: str = "n1",
+    category: str = "task",
+    type: str = "task.failed",
+) -> Message:
+    return Message(
+        role="user",
+        content=[
+            TextPart(
+                text=(
+                    f'<notification id="{notification_id}" category="{category}" '
+                    f'type="{type}" source_kind="background_task" source_id="b0y8z5bi0">\n'
+                    "Title: Background task failed\n"
+                    "Severity: error\n"
+                    "<task-notification>\n"
+                    "Task ID: b0y8z5bi0\n"
+                    "Task Type: bash\n"
+                    "Status: failed\n"
+                    "</task-notification>\n"
+                    "</notification>"
+                )
+            )
+        ],
+    )
+
+
 # ---------------------------------------------------------------------------
 # _stringify_content_parts
 # ---------------------------------------------------------------------------
@@ -527,6 +553,47 @@ class TestGroupIntoTurns:
         assert len(turns) == 1
         assert [msg.extract_text(" ") for msg in turns[0]] == ["Q1", "A1", "A2"]
 
+    def test_notifications_excluded_from_turns(self) -> None:
+        """Notification messages must be filtered out entirely during grouping."""
+        history = [
+            Message(role="user", content=[TextPart(text="Q1")]),
+            Message(role="assistant", content=[TextPart(text="A1")]),
+            _make_notification_message("n1"),
+            Message(role="assistant", content=[TextPart(text="A2")]),
+        ]
+
+        turns = _group_into_turns(history)
+
+        assert len(turns) == 1
+        assert [msg.extract_text(" ") for msg in turns[0]] == ["Q1", "A1", "A2"]
+
+    def test_leading_notifications_no_empty_turn(self) -> None:
+        """Notifications before the first real user message must not produce an empty turn."""
+        history = [
+            _make_notification_message("n1"),
+            _make_notification_message("n2"),
+            Message(role="user", content=[TextPart(text="Hello")]),
+            Message(role="assistant", content=[TextPart(text="Hi")]),
+        ]
+        turns = _group_into_turns(history)
+        assert len(turns) == 1
+        assert turns[0][0].role == "user"
+        assert turns[0][0].extract_text(" ") == "Hello"
+
+    def test_notification_between_turns_does_not_split(self) -> None:
+        """A notification between two turns should not create a spurious turn."""
+        history = [
+            Message(role="user", content=[TextPart(text="Q1")]),
+            Message(role="assistant", content=[TextPart(text="A1")]),
+            _make_notification_message("n1"),
+            Message(role="user", content=[TextPart(text="Q2")]),
+            Message(role="assistant", content=[TextPart(text="A2")]),
+        ]
+        turns = _group_into_turns(history)
+        assert len(turns) == 2
+        assert turns[0][0].extract_text(" ") == "Q1"
+        assert turns[1][0].extract_text(" ") == "Q2"
+
     def test_plain_steer_user_message_starts_new_turn(self) -> None:
         history = [
             Message(role="user", content=[TextPart(text="Q1")]),
@@ -670,6 +737,42 @@ class TestBuildExportMarkdown:
 
         assert "Never show this reminder." not in result
         assert "[USER]\nHello" in result
+
+    def test_stringify_context_history_skips_notifications(self) -> None:
+        history = [
+            _make_notification_message("n1"),
+            Message(role="user", content=[TextPart(text="Hello")]),
+            Message(role="assistant", content=[TextPart(text="Hi")]),
+        ]
+
+        result = stringify_context_history(history)
+
+        assert "<notification" not in result
+        assert "<task-notification>" not in result
+        assert "Background task failed" not in result
+        assert "[USER]\nHello" in result
+
+    def test_export_markdown_excludes_notifications(self) -> None:
+        """Notification messages must not appear in exported markdown."""
+        history = [
+            Message(role="user", content=[TextPart(text="Real question")]),
+            Message(role="assistant", content=[TextPart(text="Answer")]),
+            _make_notification_message("n1"),
+            Message(role="assistant", content=[TextPart(text="Follow-up")]),
+        ]
+        now = datetime(2026, 1, 1)
+
+        result = build_export_markdown(
+            session_id="s1",
+            work_dir="/w",
+            history=history,
+            token_count=100,
+            now=now,
+        )
+
+        assert "<notification" not in result
+        assert "<task-notification>" not in result
+        assert "Real question" in result
 
 
 # ---------------------------------------------------------------------------

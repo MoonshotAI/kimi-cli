@@ -20,6 +20,14 @@ from kimi_cli.ui.shell import slash as shell_slash
 from kimi_cli.wire.types import ApprovalRequest
 
 
+class _FakePlaceholderManager:
+    """Minimal placeholder manager stub — serialize_for_history is identity."""
+
+    @staticmethod
+    def serialize_for_history(text: str) -> str:
+        return text
+
+
 def _make_shell_app(runtime: Runtime, tmp_path: Path) -> SimpleNamespace:
     agent = Agent(
         name="Test Agent",
@@ -222,6 +230,9 @@ async def test_shell_background_approval_with_prompt_session_uses_prompt_modal(
         def invalidate(self) -> None:
             invalidations.append("invalidate")
 
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
+
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
@@ -286,6 +297,9 @@ async def test_shell_prompt_approval_modal_keeps_current_request_when_new_reques
 
         def invalidate(self) -> None:
             return None
+
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
 
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
@@ -359,6 +373,9 @@ async def test_shell_prompt_approval_modal_advances_fifo_after_current_response(
 
         def invalidate(self) -> None:
             return None
+
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
 
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
@@ -467,7 +484,7 @@ async def test_shell_routes_foreground_approval_to_active_live_view(
             request.resolve("approve")
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
         id="req-fg-1",
@@ -536,7 +553,7 @@ async def test_shell_foreground_subagent_approval_renders_subagent_metadata(
             self.requests.append(request)
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
         id="req-fg-subagent",
@@ -605,7 +622,7 @@ async def test_shell_queues_approval_until_sink_is_ready(
             self.requests.append(req)
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     # Setting sink flushes pending requests to it
     assert list(shell._pending_approval_requests) == []  # type: ignore[attr-defined]
@@ -643,7 +660,7 @@ async def test_shell_sink_approval_bridge_resolves_in_runtime(
                 msg.resolve("approve")
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
         id="req-bridge",
@@ -703,6 +720,9 @@ async def test_shell_background_approval_modal_includes_display_blocks(
 
         def invalidate(self) -> None:
             return None
+
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
 
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
@@ -779,6 +799,9 @@ async def test_shell_background_approval_renders_subagent_metadata(
         def invalidate(self) -> None:
             return None
 
+        def _get_placeholder_manager(self) -> _FakePlaceholderManager:
+            return _FakePlaceholderManager()
+
     shell._prompt_session = _PromptSession()  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
@@ -835,7 +858,7 @@ async def test_shell_sink_bridge_passes_feedback_to_runtime(
                 msg.resolve("reject", feedback="use rm -i instead")
 
     sink = _Sink()
-    shell._set_active_approval_sink(sink)  # type: ignore[attr-defined]
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
 
     request = ApprovalRequest(
         id="req-sink-fb",
@@ -856,3 +879,69 @@ async def test_shell_sink_bridge_passes_feedback_to_runtime(
     assert record.status == "resolved"
     assert record.response == "reject"
     assert record.feedback == "use rm -i instead"
+
+
+@pytest.mark.asyncio
+async def test_set_active_approval_sink_does_not_flush_in_interactive_mode(
+    runtime: Runtime,
+    tmp_path: Path,
+) -> None:
+    """In interactive mode (_prompt_session is set), pending approval requests
+    should NOT be flushed to the live view sink.  They must stay in the pending
+    queue so the prompt modal can present them to the user.
+
+    Regression test for: subagent WriteFile approval requests silently lost
+    when _set_active_approval_sink flushes to a _PromptLiveView that cannot
+    render approval modals.
+    """
+    agent = Agent(
+        name="Test Agent",
+        system_prompt="Test system prompt.",
+        toolset=EmptyToolset(),
+        runtime=runtime,
+    )
+    soul = KimiSoul(agent, context=Context(file_backend=tmp_path / "history.jsonl"))
+    shell = Shell(soul)
+
+    # Simulate interactive mode by setting _prompt_session
+    shell._prompt_session = Mock()  # type: ignore[attr-defined]
+
+    # Create a pending approval request in the runtime
+    runtime.approval_runtime.create_request(
+        request_id="req-interactive-flush",
+        tool_call_id="call-interactive-flush",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/test.txt",
+        display=[],
+        source=ApprovalSource(kind="foreground_turn", id="turn-interactive"),
+    )
+
+    # Queue an approval request (simulating what _handle_root_hub_message does)
+    request = ApprovalRequest(
+        id="req-interactive-flush",
+        tool_call_id="call-interactive-flush",
+        sender="WriteFile",
+        action="edit file",
+        description="Write file /tmp/test.txt",
+        source_kind="foreground_turn",
+        source_id="turn-interactive",
+    )
+    shell._queue_approval_request(request)  # type: ignore[attr-defined]
+    assert len(shell._pending_approval_requests) == 1  # type: ignore[attr-defined]
+
+    # Now set a sink — in interactive mode, this should NOT flush pending requests
+    class _Sink:
+        def __init__(self) -> None:
+            self.requests: list[ApprovalRequest] = []
+
+        def enqueue_external_message(self, req: ApprovalRequest) -> None:
+            self.requests.append(req)
+
+    sink = _Sink()
+    shell._set_active_view(sink)  # type: ignore[attr-defined]
+
+    # Requests must remain in pending queue for the prompt modal
+    assert len(shell._pending_approval_requests) == 1  # type: ignore[attr-defined]
+    # Sink should NOT have received any requests
+    assert sink.requests == []

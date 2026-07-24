@@ -47,6 +47,7 @@ interface SessionStatsData {
   durationSec: number;
   inputTokens: number;
   outputTokens: number;
+  cacheRate: number;
 }
 
 function computeStats(events: WireEvent[]): SessionStatsData {
@@ -57,6 +58,9 @@ function computeStats(events: WireEvent[]): SessionStatsData {
   let compactions = 0;
   let inputTokens = 0;
   let outputTokens = 0;
+  let totalCacheRead = 0;
+  let totalInputOther = 0;
+  let totalCacheCreation = 0;
 
   for (const e of events) {
     if (e.type === "TurnBegin") turns++;
@@ -69,6 +73,9 @@ function computeStats(events: WireEvent[]): SessionStatsData {
       if (tu) {
         inputTokens += (tu.input_other ?? 0) + (tu.input_cache_read ?? 0) + (tu.input_cache_creation ?? 0);
         outputTokens += tu.output ?? 0;
+        totalCacheRead += tu.input_cache_read ?? 0;
+        totalInputOther += tu.input_other ?? 0;
+        totalCacheCreation += tu.input_cache_creation ?? 0;
       }
     }
     // Count tokens from SubagentEvent-wrapped StatusUpdate
@@ -80,6 +87,9 @@ function computeStats(events: WireEvent[]): SessionStatsData {
         if (tu) {
           inputTokens += (tu.input_other ?? 0) + (tu.input_cache_read ?? 0) + (tu.input_cache_creation ?? 0);
           outputTokens += tu.output ?? 0;
+          totalCacheRead += tu.input_cache_read ?? 0;
+          totalInputOther += tu.input_other ?? 0;
+          totalCacheCreation += tu.input_cache_creation ?? 0;
         }
       }
     }
@@ -90,7 +100,10 @@ function computeStats(events: WireEvent[]): SessionStatsData {
       ? events[events.length - 1].timestamp - events[0].timestamp
       : 0;
 
-  return { turns, steps, toolCalls, errors, compactions, durationSec, inputTokens, outputTokens };
+  const totalInput = totalCacheRead + totalInputOther + totalCacheCreation;
+  const cacheRate = totalInput > 0 ? (totalCacheRead / totalInput) * 100 : 0;
+
+  return { turns, steps, toolCalls, errors, compactions, durationSec, inputTokens, outputTokens, cacheRate };
 }
 
 function formatDuration(sec: number): string {
@@ -246,6 +259,12 @@ function SessionStats({ sessionId, refreshKey }: { sessionId: string; refreshKey
           <span className="shrink-0">
             {formatTokens(stats.inputTokens)} in / {formatTokens(stats.outputTokens)} out
           </span>
+          {stats.cacheRate > 0 && (
+            <>
+              <span className="text-border">|</span>
+              <span className="shrink-0">{Math.round(stats.cacheRate)}% cache</span>
+            </>
+          )}
         </>
       )}
     </div>

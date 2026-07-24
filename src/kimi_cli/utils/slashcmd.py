@@ -11,6 +11,12 @@ class SlashCommand[F: Callable[..., None | Awaitable[None]]]:
     func: F
     aliases: list[str]
 
+    def display_name(self, trigger: str | None = None) -> str:
+        """/name for canonical triggers, /name (alias) for alias triggers."""
+        if trigger is not None and trigger != self.name and trigger in self.aliases:
+            return f"/{self.name} ({trigger})"
+        return f"/{self.name}"
+
     def slash_name(self):
         """/name (aliases)"""
         if self.aliases:
@@ -91,6 +97,21 @@ class SlashCommandRegistry[F: Callable[..., None | Awaitable[None]]]:
     def list_commands(self) -> list[SlashCommand[F]]:
         """Get all unique primary slash commands (without duplicating aliases)."""
         return list(self._commands.values())
+
+    def iter_command_entries(self) -> list[tuple[str, SlashCommand[F]]]:
+        """Get canonical and alias entries as (trigger, command) pairs."""
+        entries: list[tuple[str, SlashCommand[F]]] = []
+        for cmd in self._commands.values():
+            entries.append((cmd.name, cmd))
+            seen = {cmd.name}
+            for alias in cmd.aliases:
+                if alias in seen:
+                    continue
+                if self._command_aliases.get(alias) is not cmd:
+                    continue
+                entries.append((alias, cmd))
+                seen.add(alias)
+        return entries
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

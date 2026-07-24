@@ -179,16 +179,16 @@ async def test_ask_user_no_tool_call(ask_user_tool: AskUserQuestion):
 
 
 # ---------------------------------------------------------------------------
-# Yolo mode tests
+# Afk mode tests
 # ---------------------------------------------------------------------------
 
 
-async def test_ask_user_yolo_auto_dismiss():
-    """In yolo mode, auto-dismiss without wire or tool_call context (short-circuits everything)."""
+async def test_ask_user_afk_auto_dismiss():
+    """In afk mode, auto-dismiss without wire or tool_call context."""
     tool = AskUserQuestion()
-    tool.bind_approval(is_yolo=lambda: True)
+    tool.bind_afk(is_afk=lambda: True)
 
-    # Deliberately do NOT set wire or tool_call — yolo should short-circuit before needing them
+    # Deliberately do NOT set wire or tool_call — afk should short-circuit.
     wire_token = _current_wire.set(None)
     try:
         result = await tool(_make_params())
@@ -196,15 +196,15 @@ async def test_ask_user_yolo_auto_dismiss():
         assert isinstance(result.output, str)
         parsed = json.loads(result.output)
         assert parsed["answers"] == {}
-        assert "yolo" in parsed.get("note", "").lower()
+        assert "afk" in parsed.get("note", "").lower()
     finally:
         _current_wire.reset(wire_token)
 
 
 async def test_ask_user_unbound_falls_through():
-    """When bind_approval is never called (backward compat), falls through to normal flow."""
+    """When bind_afk is never called, falls through to normal flow."""
     tool = AskUserQuestion()
-    # Do NOT call bind_approval — _is_yolo stays None
+    # Do NOT call bind_afk — _is_afk stays None
 
     wire_token = _current_wire.set(None)
     tool_call = ToolCall(
@@ -221,22 +221,22 @@ async def test_ask_user_unbound_falls_through():
         _current_wire.reset(wire_token)
 
 
-async def test_ask_user_yolo_dynamic_toggle():
-    """When yolo is toggled off dynamically, tool should fall through to normal flow."""
-    yolo_state = {"enabled": True}
+async def test_ask_user_afk_dynamic_toggle():
+    """When afk is toggled off dynamically, tool falls through to normal flow."""
+    afk_state = {"enabled": True}
     tool = AskUserQuestion()
-    tool.bind_approval(is_yolo=lambda: yolo_state["enabled"])
+    tool.bind_afk(is_afk=lambda: afk_state["enabled"])
 
-    # First call: yolo on -> auto-dismiss
+    # First call: afk on -> auto-dismiss
     result = await tool(_make_params())
     assert not result.is_error
     assert isinstance(result.output, str)
-    assert "yolo" in result.output.lower()
+    assert "afk" in result.output.lower()
 
-    # Toggle yolo off
-    yolo_state["enabled"] = False
+    # Toggle afk off
+    afk_state["enabled"] = False
 
-    # Second call: yolo off -> needs wire (which isn't set -> error)
+    # Second call: afk off -> needs wire (which isn't set -> error)
     wire_token = _current_wire.set(None)
     tool_call = ToolCall(
         id="tc-toggle",
@@ -248,5 +248,43 @@ async def test_ask_user_yolo_dynamic_toggle():
         assert result.is_error
         assert "Wire" in result.message
     finally:
+        current_tool_call.reset(tc_token)
+        _current_wire.reset(wire_token)
+
+
+async def test_ask_user_yolo_only_does_not_dismiss():
+    """Yolo without afk must NOT auto-dismiss — the user is still at the terminal.
+
+    Regression for the bug where yolo blocked AskUserQuestion even in interactive
+    sessions. The tool must reach the Wire path so the shell can render a modal.
+    """
+    tool = AskUserQuestion()
+    tool.bind_afk(is_afk=lambda: False)
+
+    wire = Wire()
+    wire_token = _current_wire.set(wire)
+    tool_call = ToolCall(
+        id="tc-yolo-only",
+        function=ToolCall.FunctionBody(name="AskUserQuestion", arguments=None),
+    )
+    tc_token = current_tool_call.set(tool_call)
+
+    try:
+        params = _make_params()
+        tool_task = asyncio.create_task(tool(params))
+
+        ui_side = wire.ui_side(merge=False)
+        msg = await asyncio.wait_for(ui_side.receive(), timeout=2.0)
+        assert isinstance(msg, QuestionRequest)
+        assert msg.tool_call_id == "tc-yolo-only"
+
+        msg.resolve({"Which option?": "Option B"})
+        result = await asyncio.wait_for(tool_task, timeout=2.0)
+        assert not result.is_error
+        assert isinstance(result.output, str)
+        parsed = json.loads(result.output)
+        assert parsed == {"answers": {"Which option?": "Option B"}}
+    finally:
+        wire.shutdown()
         current_tool_call.reset(tc_token)
         _current_wire.reset(wire_token)

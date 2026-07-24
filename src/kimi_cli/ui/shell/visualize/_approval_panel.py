@@ -20,6 +20,8 @@ from kimi_cli.utils.rich.diff_render import (
     collect_diff_hunks,
     render_diff_panel,
     render_diff_preview,
+    render_diff_summary_panel,
+    render_diff_summary_preview,
 )
 from kimi_cli.utils.rich.syntax import KimiSyntax
 from kimi_cli.wire.types import (
@@ -41,6 +43,17 @@ class ApprovalContentBlock(NamedTuple):
     lines: int
     style: str = ""
     lexer: str = ""
+
+
+def _render_feedback_with_cursor(text: str, cursor: int | None) -> Text:
+    if cursor is None or cursor >= len(text):
+        return Text(text + "\u2588")
+    cursor = max(cursor, 0)
+    return Text.assemble(
+        Text(text[:cursor]),
+        Text(text[cursor], style="reverse"),
+        Text(text[cursor + 1 :]),
+    )
 
 
 class ApprovalRequestPanel:
@@ -94,16 +107,20 @@ class ApprovalRequestPanel:
                         break
                     diff_blocks.append(b)
                     idx += 1
-                hunks, added, removed = collect_diff_hunks(diff_blocks)
-                if hunks:
+                if any(b.is_summary for b in diff_blocks):
                     self._has_diff = True
-                    renderables, _remaining = render_diff_preview(
-                        path,
-                        hunks,
-                        added,
-                        removed,
-                    )
-                    self._preview_renderables.extend(renderables)
+                    self._preview_renderables.extend(render_diff_summary_preview(path, diff_blocks))
+                else:
+                    hunks, added, removed = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        self._has_diff = True
+                        renderables, _remaining = render_diff_preview(
+                            path,
+                            hunks,
+                            added,
+                            removed,
+                        )
+                        self._preview_renderables.extend(renderables)
             elif isinstance(block, ShellDisplayBlock):
                 text = block.command.rstrip("\n")
                 line_count = text.count("\n") + 1
@@ -143,7 +160,12 @@ class ApprovalRequestPanel:
         # P2: non-diff blocks may have been truncated
         self.has_expandable_content = self._has_diff or self._non_diff_truncated
 
-    def render(self, *, feedback_text: str | None = None) -> RenderableType:
+    def render(
+        self,
+        *,
+        feedback_text: str | None = None,
+        feedback_cursor: int | None = None,
+    ) -> RenderableType:
         """Render the approval menu as a bordered panel."""
         content_lines: list[RenderableType] = [
             Text.from_markup(
@@ -176,10 +198,14 @@ class ApprovalRequestPanel:
             is_feedback_option = i == self.FEEDBACK_OPTION_INDEX
             if i == self.selected_index:
                 if is_feedback_option and show_inline_feedback:
-                    input_display = escape(feedback_text) if feedback_text else ""
+                    input_display = _render_feedback_with_cursor(
+                        feedback_text or "", feedback_cursor
+                    )
                     lines.append(
-                        Text.from_markup(
-                            f"[cyan]\u2192 \\[{num}] Reject: {input_display}\u2588[/cyan]"
+                        Text.assemble(
+                            Text(f"\u2192 [{num}] Reject: "),
+                            input_display,
+                            style="cyan",
                         )
                     )
                 else:
@@ -199,8 +225,8 @@ class ApprovalRequestPanel:
 
         return Panel(
             Group(*lines),
-            border_style="bold yellow",
-            title="[bold yellow]\u26a0 ACTION REQUIRED[/bold yellow]",
+            border_style="yellow",
+            title="[bold]approval[/bold]",
             title_align="left",
             padding=(0, 1),
         )
@@ -280,10 +306,14 @@ def show_approval_in_pager(panel: ApprovalRequestPanel) -> None:
                         break
                     diff_blocks.append(b)
                     idx += 1
-                hunks, added, removed = collect_diff_hunks(diff_blocks)
-                if hunks:
-                    console.print(render_diff_panel(path, hunks, added, removed))
+                if any(b.is_summary for b in diff_blocks):
+                    console.print(render_diff_summary_panel(path, diff_blocks))
                     rendered_any = True
+                else:
+                    hunks, added, removed = collect_diff_hunks(diff_blocks)
+                    if hunks:
+                        console.print(render_diff_panel(path, hunks, added, removed))
+                        rendered_any = True
             elif isinstance(block, ShellDisplayBlock):
                 console.print(KimiSyntax(block.command.rstrip("\n"), block.language))
                 rendered_any = True
@@ -322,11 +352,13 @@ class ApprovalPromptDelegate:
         request: ApprovalRequest,
         *,
         on_response: Callable[[ApprovalRequest, ApprovalResponse.Kind, str], None],
-        buffer_text_provider: Callable[[], str] | None = None,
+        buffer_state_provider: Callable[[], tuple[str, int]] | None = None,
+        text_expander: Callable[[str], str] | None = None,
     ) -> None:
         self._panel = ApprovalRequestPanel(request)
         self._on_response = on_response
-        self._buffer_text_provider = buffer_text_provider
+        self._buffer_state_provider = buffer_state_provider
+        self._text_expander = text_expander
         self._feedback_draft: str = ""
 
     @property
@@ -338,14 +370,18 @@ class ApprovalPromptDelegate:
         self._feedback_draft = ""
 
     def _is_inline_feedback_active(self) -> bool:
-        return self._panel.is_feedback_selected and self._buffer_text_provider is not None
+        return self._panel.is_feedback_selected and self._buffer_state_provider is not None
 
     def render_running_prompt_body(self, columns: int) -> ANSI:
         feedback_text: str | None = None
-        if self._is_inline_feedback_active():
-            feedback_text = self._buffer_text_provider() if self._buffer_text_provider else ""
+        feedback_cursor: int | None = None
+        if self._is_inline_feedback_active() and self._buffer_state_provider is not None:
+            feedback_text, feedback_cursor = self._buffer_state_provider()
         body = render_to_ansi(
-            self._panel.render(feedback_text=feedback_text),
+            self._panel.render(
+                feedback_text=feedback_text,
+                feedback_cursor=feedback_cursor,
+            ),
             columns=columns,
         ).rstrip("\n")
         return ANSI(body)
@@ -392,6 +428,8 @@ class ApprovalPromptDelegate:
             if key == "enter" or mapped == KeyEvent.ENTER:
                 text = event.current_buffer.text.strip()
                 if text:
+                    if self._text_expander is not None:
+                        text = self._text_expander(text)
                     self._clear_buffer(event.current_buffer)
                     self._feedback_draft = ""
                     self._panel.request.resolve("reject")

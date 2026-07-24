@@ -342,3 +342,52 @@ def test_handle_bracketed_paste_keeps_normalized_text_in_shell_mode() -> None:
 
     assert buffer.inserted == ["line1\nline2\nline3"]
     assert app.invalidated is True
+
+
+async def test_question_delegate_expands_placeholders_on_submit() -> None:
+    """When submitting 'other' input in a question panel, pasted text
+    placeholders should be expanded to full text via text_expander."""
+    from unittest.mock import patch
+
+    from kimi_cli.ui.shell.visualize import QuestionPromptDelegate, QuestionRequestPanel
+    from kimi_cli.wire.types import QuestionItem, QuestionRequest
+
+    full_text = "\n".join([f"line{i}" for i in range(1, 20)])
+    expand_calls: list[str] = []
+
+    def fake_expander(text: str) -> str:
+        expand_calls.append(text)
+        return text.replace("[Pasted text #1 +19 lines]", full_text)
+
+    question = QuestionItem(question="Review?", options=[], other_label="Revise")
+    request = QuestionRequest(id="q1", tool_call_id="tc1", questions=[question])
+    panel = QuestionRequestPanel(request)
+
+    delegate = QuestionPromptDelegate(
+        panel,
+        on_advance=lambda: None,
+        on_invalidate=lambda: None,
+        text_expander=fake_expander,
+    )
+    # Select the "Other" option
+    panel.select_index(len(panel._options) - 1)
+
+    # Simulate submitting placeholder text via submit_other
+    submitted_texts: list[str] = []
+    original_submit_other = panel.submit_other
+
+    def capture_submit_other(text: str) -> bool:
+        submitted_texts.append(text)
+        return original_submit_other(text)
+
+    buffer = _DummyBuffer()
+    buffer.text = "prefix [Pasted text #1 +19 lines]"  # type: ignore[attr-defined]
+    buffer.set_document = lambda *a, **kw: None  # type: ignore[attr-defined]
+
+    with patch.object(panel, "submit_other", capture_submit_other):
+        delegate._submit_other_input(cast("Buffer", buffer))
+
+    assert len(expand_calls) == 1
+    assert expand_calls[0] == "prefix [Pasted text #1 +19 lines]"
+    assert len(submitted_texts) == 1
+    assert full_text in submitted_texts[0]

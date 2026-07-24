@@ -119,8 +119,21 @@ class TokenUsage(BaseModel):
         return self.input_other + self.input_cache_read + self.input_cache_creation
 
 
-type ThinkingEffort = Literal["off", "low", "medium", "high"]
-"""The effort level for thinking."""
+type ThinkingEffort = Literal["off", "low", "medium", "high", "xhigh", "max"]
+"""The effort level for thinking.
+
+Support for levels above ``high`` varies by provider:
+
+- **Anthropic**: ``xhigh`` is accepted only on Claude Opus 4.7; ``max`` is
+  accepted on Mythos, Opus 4.7/4.6, and Sonnet 4.6. Unsupported levels are
+  clamped down to ``high``.
+- **OpenAI**: ``xhigh`` is accepted natively for reasoning-capable models
+  after ``gpt-5.1-codex-max`` and passes through unchanged. ``max`` is
+  Anthropic-specific and clamps to ``xhigh`` (OpenAI's ceiling).
+- **Kimi**: requests only serialize thinking as enabled or disabled; the
+  caller-provided effort remains unchanged as provider state.
+- **Gemini**: ``xhigh`` and ``max`` clamp to ``high`` (no native support).
+"""
 
 
 class ChatProviderError(Exception):
@@ -142,10 +155,21 @@ class APIStatusError(ChatProviderError):
     """The error raised when the API returns a status code of 4xx or 5xx."""
 
     status_code: int
+    request_id: str | None
+    trace_id: str | None
 
-    def __init__(self, status_code: int, message: str):
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        *,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
+        self.request_id = request_id
+        self.trace_id = trace_id
 
 
 class APIEmptyResponseError(ChatProviderError):
@@ -167,5 +191,9 @@ def convert_httpx_error(error: httpx.HTTPError) -> ChatProviderError:
     if isinstance(error, (httpx.NetworkError, httpx.RemoteProtocolError)):
         return APIConnectionError(str(error))
     if isinstance(error, httpx.HTTPStatusError):
-        return APIStatusError(error.response.status_code, str(error))
+        req_id = error.response.headers.get("x-request-id")
+        trace_id = error.response.headers.get("x-trace-id")
+        return APIStatusError(
+            error.response.status_code, str(error), request_id=req_id, trace_id=trace_id
+        )
     return ChatProviderError(f"HTTP error: {error}")

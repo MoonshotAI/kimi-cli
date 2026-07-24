@@ -30,6 +30,69 @@ def test_load_system_prompt(system_prompt_file: Path, builtin_args: BuiltinSyste
     assert "test_value" in prompt
 
 
+def test_system_prompt_contains_platform_info(builtin_args: BuiltinSystemPromptArgs):
+    """System prompt should contain OS and shell information (issue #1649).
+
+    On Windows, the model needs to know it's on Windows so it doesn't
+    generate Linux commands. The platform info must be in the system prompt,
+    not just in tool descriptions.
+    """
+    from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+
+    prompt = _load_system_prompt(
+        DEFAULT_AGENT_FILE.parent / "system.md",
+        {"ROLE_ADDITIONAL": ""},
+        builtin_args,
+    )
+
+    # System prompt must include OS kind and shell info
+    assert builtin_args.KIMI_OS in prompt
+    assert builtin_args.KIMI_SHELL in prompt
+
+
+_WINDOWS_SHELL_HINT = "Use Unix shell syntax inside Shell commands"
+
+
+@pytest.mark.parametrize(
+    "os_kind, shell, expect_shell_hint",
+    [
+        ("Windows", r"bash (`C:\Program Files\Git\bin\bash.exe`)", True),
+        ("macOS", "bash (`/bin/bash`)", False),
+        ("Linux", "bash (`/usr/bin/bash`)", False),
+    ],
+    ids=["windows", "macos", "linux"],
+)
+def test_system_prompt_renders_os_and_shell(temp_work_dir, os_kind, shell, expect_shell_hint):
+    """Surface OS name and shell binary on every platform. On Windows, append a
+    one-line hint right after the Shell line so the model uses Unix syntax in
+    Shell commands (the only failure mode where path-form actually matters,
+    since file tools accept both forms)."""
+    from kimi_cli.agentspec import DEFAULT_AGENT_FILE
+
+    args = BuiltinSystemPromptArgs(
+        KIMI_NOW="1970-01-01T00:00:00+00:00",
+        KIMI_WORK_DIR=temp_work_dir,
+        KIMI_WORK_DIR_LS="Test ls content",
+        KIMI_AGENTS_MD="Test agents content",
+        KIMI_SKILLS="No skills found.",
+        KIMI_ADDITIONAL_DIRS_INFO="",
+        KIMI_OS=os_kind,
+        KIMI_SHELL=shell,
+    )
+    prompt = _load_system_prompt(
+        DEFAULT_AGENT_FILE.parent / "system.md",
+        {"ROLE_ADDITIONAL": ""},
+        args,
+    )
+
+    assert os_kind in prompt
+    assert shell in prompt
+    if expect_shell_hint:
+        assert _WINDOWS_SHELL_HINT in prompt
+    else:
+        assert _WINDOWS_SHELL_HINT not in prompt
+
+
 def test_load_system_prompt_allows_literal_dollar(builtin_args: BuiltinSystemPromptArgs):
     """System prompt should allow literal $ without template errors."""
     with tempfile.TemporaryDirectory() as tmpdir:

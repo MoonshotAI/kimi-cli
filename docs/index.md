@@ -6,23 +6,24 @@ hero:
   actions:
     - theme: brand
       text: 简体中文
-      link: /zh/
+      link: zh/
     - theme: alt
       text: English
-      link: /en/
+      link: en/
 ---
 
 <script setup>
 import { onMounted } from 'vue'
-import { useRouter } from 'vitepress'
+import { useRouter, withBase } from 'vitepress'
+
+const router = useRouter()
 
 onMounted(() => {
-  const router = useRouter()
   const lang = navigator.language || navigator.userLanguage
-  if (lang.startsWith('zh')) {
-    router.go('/zh/')
+  if (lang.startsWith('en')) {
+    router.go(withBase('/en/'))
   } else {
-    router.go('/en/')
+    router.go(withBase('/zh/'))
   }
 })
 </script>

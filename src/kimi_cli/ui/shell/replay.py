@@ -10,6 +10,7 @@ from typing import cast
 from kosong.message import ContentPart, Message
 from kosong.tooling import ToolError, ToolOk
 
+from kimi_cli.notifications.llm import is_notification_message
 from kimi_cli.soul.message import is_system_reminder_message
 from kimi_cli.ui.shell.console import console
 from kimi_cli.ui.shell.echo import render_user_echo
@@ -45,6 +46,7 @@ async def replay_recent_history(
     history: Sequence[Message],
     *,
     wire_file: WireFile | None = None,
+    show_thinking_stream: bool = False,
 ) -> None:
     """
     Replay the most recent user-initiated turns from the provided message history or wire file.
@@ -68,7 +70,11 @@ async def replay_recent_history(
         wire = Wire()
         console.print(render_user_echo(turn.user_message))
         ui_task = asyncio.create_task(
-            visualize(wire.ui_side(merge=False), initial_status=StatusUpdate())
+            visualize(
+                wire.ui_side(merge=False),
+                initial_status=StatusUpdate(),
+                show_thinking_stream=show_thinking_stream,
+            )
         )
         for event in turn.events:
             wire.soul_side.send(event)
@@ -160,6 +166,8 @@ def _is_user_message(message: Message) -> bool:
     if message.role != "user":
         return False
     if message.extract_text().startswith("<system>CHECKPOINT"):
+        return False
+    if is_notification_message(message):
         return False
     return not is_system_reminder_message(message)
 

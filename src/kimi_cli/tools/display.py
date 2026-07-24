@@ -13,6 +13,7 @@ class DiffDisplayBlock(DisplayBlock):
     new_text: str
     old_start: int = 1
     new_start: int = 1
+    is_summary: bool = False
 
 
 class TodoDisplayItem(BaseModel):

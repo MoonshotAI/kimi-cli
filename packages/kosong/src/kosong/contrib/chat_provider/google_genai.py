@@ -89,13 +89,15 @@ class GoogleGenAI:
         base_url: str | None = None,
         stream: bool = True,
         vertexai: bool | None = None,
+        default_headers: dict[str, str] | None = None,
         **client_kwargs: Any,
     ):
         self._model = model
         self._stream = stream
         self._base_url = base_url
+        http_options = HttpOptions(base_url=base_url, headers=default_headers)
         self._client: genai_client.Client = genai.Client(
-            http_options=HttpOptions(base_url=base_url),
+            http_options=http_options,
             api_key=api_key,
             vertexai=vertexai,
             **client_kwargs,
@@ -181,7 +183,8 @@ class GoogleGenAI:
                 case "medium":
                     # FIXME: medium not supported yet, use high
                     thinking_config.thinking_level = ThinkingLevel.HIGH
-                case "high":
+                case "high" | "xhigh" | "max":
+                    # xhigh/max are Anthropic-specific; degrade to HIGH for Gemini.
                     thinking_config.thinking_level = ThinkingLevel.HIGH
         else:
             match effort:
@@ -194,7 +197,8 @@ class GoogleGenAI:
                 case "medium":
                     thinking_config.thinking_budget = 4096
                     thinking_config.include_thoughts = True
-                case "high":
+                case "high" | "xhigh" | "max":
+                    # xhigh/max are Anthropic-specific; cap at Gemini's highest budget.
                     thinking_config.thinking_budget = 32_000
                     thinking_config.include_thoughts = True
 
@@ -244,6 +248,10 @@ class GoogleGenAIStreamedMessage:
     @property
     def id(self) -> str | None:
         return self._id
+
+    @property
+    def trace_id(self) -> str | None:
+        return None
 
     @property
     def usage(self) -> TokenUsage | None:

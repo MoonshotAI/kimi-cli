@@ -35,6 +35,8 @@ The `type` field in `providers` configuration specifies the API provider type. D
 | `gemini` | Google Gemini API |
 | `vertexai` | Google Vertex AI |
 
+All provider types support adding custom HTTP headers via the `custom_headers` field. See [Configuration files](./config-files.md) for details.
+
 ### `kimi`
 
 For connecting to Kimi API, including Kimi Code and Moonshot AI Open Platform.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 # ruff: noqa
 
+from dataclasses import replace
 import platform
 import pytest
 from inline_snapshot import snapshot
@@ -46,6 +47,21 @@ instance can preserve previous findings and work.
 - Default to foreground execution. Use `run_in_background=true` only when the task can continue independently, you do not need the result immediately, and there is a clear benefit to returning control before it finishes.
 - Be explicit about whether the subagent should write code or only do research.
 - The subagent result is only visible to you. If the user should see it, summarize it yourself.
+
+**Explore Agent — Preferred for Codebase Research**
+
+When you need to understand the codebase before making changes, fixing bugs, or planning features,
+prefer `subagent_type="explore"` over doing the search yourself. The explore agent is optimized for
+fast, read-only codebase investigation. Use it when:
+- Your task will clearly require more than 3 search queries
+- You need to understand how a module, feature, or code path works
+- You are about to enter plan mode and want to gather context first
+- You want to investigate multiple independent questions — launch multiple explore agents concurrently
+
+When calling explore, specify the desired thoroughness in the prompt:
+- "quick": targeted lookups — find a specific file, function, or config value
+- "medium": understand a module — how does auth work, what calls this API
+- "thorough": cross-cutting analysis — architecture overview, dependency mapping, multi-module investigation
 
 **When Not To Use Agent**
 
@@ -92,11 +108,17 @@ def test_set_todo_list_description(set_todo_list_tool: SetTodoList):
     """Test the description of SetTodoList tool."""
     assert set_todo_list_tool.base.description == snapshot(
         """\
-Update the whole todo list.
+Manage your todo list for tracking task progress.
 
 Todo list is a simple yet powerful tool to help you get things done. You typically want to use this tool when the given task involves multiple subtasks/milestones, or, multiple tasks are given in a single request. This tool can help you to break down the task and track the progress.
 
-This is the only todo list tool available to you. That said, each time you want to operate on the todo list, you need to update the whole. Make sure to maintain the todo items and their statuses properly.
+**Usage modes:**
+
+- **Update mode**: Pass `todos` to set the entire todo list. The previous list is replaced.
+- **Query mode**: Omit `todos` (or pass null) to retrieve the current todo list without changes.
+- **Clear mode**: Pass an empty array `[]` to clear all todos.
+
+This is the only todo list tool available to you. That said, each time you want to update the todo list, you need to provide the whole list. Make sure to maintain the todo items and their statuses properly.
 
 Once you finished a subtask/milestone, remember to update the todo list to reflect the progress. Also, you can give yourself a self-encouragement to keep you motivated.
 
@@ -107,6 +129,8 @@ Abusing this tool to track too small steps will just waste your time and make yo
 - When the user prompt is very specific and the only thing you need to do is brainlessly following the instructions. E.g. "Replace xxx to yyy in the file zzz", "Create a file xxx with content yyy."
 
 However, do not get stuck in a rut. Be flexible. Sometimes, you may try to use todo list at first, then realize the task is too simple and you can simply stop using it; or, sometimes, you may realize the task is complex after a few steps and then you can start using todo list to break it down.
+
+IMPORTANT: Do not call this tool repeatedly without making real progress on at least one task between calls. If you are unsure about the current state, use Query mode (omit `todos`) to check before updating. If you find yourself unable to advance any task with your available tools, inform the user about what is blocking you instead of replanning. Repeatedly updating the todo list without doing actual work is counterproductive.
 """
     )
 
@@ -221,6 +245,8 @@ Read text content from a file.
 - If you want to search for a certain content/pattern, prefer Grep tool over ReadFile.
 - Content will be returned with a line number before each line like `cat -n` format.
 - Use `line_offset` and `n_lines` parameters when you only need to read a part of the file.
+- Use negative `line_offset` to read from the end of the file (e.g. `line_offset=-100` reads the last 100 lines). This is useful for viewing the tail of log files. The absolute value cannot exceed 1000.
+- The tool always returns the total number of lines in the file in its message, which you can use to plan subsequent reads.
 - The maximum number of lines that can be read at once is 1000.
 - Any lines longer than 2000 characters will be truncated, ending with "...".
 """
@@ -249,11 +275,48 @@ Read media content from a file.
     )
 
 
-def test_glob_description(glob_tool: Glob):
+def test_glob_description(runtime):
     """Test the description of Glob tool."""
+    runtime.environment = replace(runtime.environment, os_kind="Linux")
+    glob_tool = Glob(runtime)
+    windows_path_hint = "On Windows, the `directory` parameter accepts both Windows native paths"
+
+    assert windows_path_hint not in glob_tool.base.description
     assert glob_tool.base.description == snapshot(
         """\
 Find files and directories using glob patterns. This tool supports standard glob syntax like `*`, `?`, and `**` for recursive searches.
+
+**When to use:**
+- Find files matching specific patterns (e.g., all Python files: `*.py`)
+- Search for files recursively in subdirectories (e.g., `src/**/*.js`)
+- Locate configuration files (e.g., `*.config.*`, `*.json`)
+- Find test files (e.g., `test_*.py`, `*_test.go`)
+
+**Example patterns:**
+- `*.py` - All Python files in current directory
+- `src/**/*.js` - All JavaScript files in src directory recursively
+- `test_*.py` - Python test files starting with "test_"
+- `*.config.{js,ts}` - Config files with .js or .ts extension
+
+**Bad example patterns:**
+- `**`, `**/*.py` - Any pattern starting with '**' will be rejected. Because it would recursively search all directories and subdirectories, which is very likely to yield large result that exceeds your context size. Always use more specific patterns like `src/**/*.py` instead.
+- `node_modules/**/*.js` - Although this does not start with '**', it would still highly possible to yield large result because `node_modules` is well-known to contain too many directories and files. Avoid recursively searching in such directories, other examples include `venv`, `.venv`, `__pycache__`, `target`. If you really need to search in a dependency, use more specific patterns like `node_modules/react/src/*` instead.
+"""
+    )
+
+
+def test_glob_description_on_windows(runtime):
+    """Test the Windows-specific description of Glob tool."""
+    runtime.environment = replace(runtime.environment, os_kind="Windows")
+    glob_tool = Glob(runtime)
+    windows_path_hint = "On Windows, the `directory` parameter accepts both Windows native paths"
+
+    assert windows_path_hint in glob_tool.base.description
+    assert glob_tool.base.description == snapshot(
+        """\
+Find files and directories using glob patterns. This tool supports standard glob syntax like `*`, `?`, and `**` for recursive searches.
+
+On Windows, the `directory` parameter accepts both Windows native paths (`C:\\Users\\foo`) and POSIX-style paths (`/c/Users/foo`, `/cygdrive/c/Users/foo`). Returned paths are in Windows native form with backslashes (NOT POSIX) — convert to forward slashes before using them in Shell commands.
 
 **When to use:**
 - Find files matching specific patterns (e.g., all Python files: `*.py`)
@@ -283,6 +346,7 @@ A powerful search tool based-on ripgrep.
 **Tips:**
 - ALWAYS use Grep tool instead of running `grep` or `rg` command with Shell tool.
 - Use the ripgrep pattern syntax, not grep syntax. E.g. you need to escape braces like `\\\\{` to search for `{`.
+- Hidden files (dotfiles like `.gitlab-ci.yml`, `.eslintrc.json`) are always searched. To also search files excluded by `.gitignore` (e.g. `node_modules`, build outputs), set `include_ignored` to `true`. Sensitive files (such as `.env`) are still skipped for safety, even when `include_ignored` is `true`.
 """
     )
 

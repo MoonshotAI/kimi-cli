@@ -5,11 +5,12 @@ import re
 from types import SimpleNamespace
 
 import pytest
+from kosong.chat_provider import APIConnectionError, APIStatusError, ChatProviderError
 from kosong.message import Message
 from kosong.tooling.empty import EmptyToolset
 
 from kimi_cli.approval_runtime import get_current_approval_source_or_none
-from kimi_cli.soul import MaxStepsReached
+from kimi_cli.soul import MaxStepsReached, RunCancelled
 from kimi_cli.soul.agent import Agent as SoulAgent
 from kimi_cli.subagents import AgentLaunchSpec, AgentTypeDefinition, ToolPolicy
 from kimi_cli.wire.types import ApprovalRequest, TextPart
@@ -342,7 +343,8 @@ async def test_agent_tool_marks_instance_failed_when_initial_run_raises(
     )
 
     assert result.is_error
-    assert result.brief == "Agent failed"
+    assert result.brief == "Agent run error"
+    assert "boom" in result.message
     records = [
         record
         for record in runtime.subagent_store.list_instances()
@@ -535,6 +537,146 @@ async def test_agent_tool_background_rejects_resume_when_instance_is_already_run
     assert result.brief == "Agent already running"
     assert "cannot be resumed concurrently" in result.message
     assert called is False
+
+
+async def test_agent_tool_background_resume_marks_running_before_dispatch(
+    agent_tool, runtime, monkeypatch
+):
+    """The instance must be running_background *before* create_agent_task returns
+    so that a concurrent resume sees the guard immediately."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    runtime.subagent_store.create_instance(
+        agent_id="aconcurr",
+        description="concurrency test",
+        launch_spec=AgentLaunchSpec(
+            agent_id="aconcurr",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+
+    status_during_create: list[str] = []
+
+    def fake_create_agent_task(**kwargs):
+        # Capture instance status at the moment create_agent_task is called.
+        record = runtime.subagent_store.require_instance("aconcurr")
+        status_during_create.append(record.status)
+        return SimpleNamespace(
+            spec=SimpleNamespace(id="a-task-c", kind="agent", description=kwargs["description"]),
+            runtime=SimpleNamespace(status="starting"),
+        )
+
+    monkeypatch.setattr(runtime.background_tasks, "create_agent_task", fake_create_agent_task)
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="concurrent resume",
+                prompt="do work",
+                resume="aconcurr",
+                run_in_background=True,
+            )
+        )
+
+    assert not result.is_error
+    # Instance must already be running_background when create_agent_task is called
+    assert status_during_create == ["running_background"]
+
+
+async def test_agent_tool_background_new_instance_marks_running_before_dispatch(
+    agent_tool, runtime, monkeypatch
+):
+    """A fresh (non-resume) background instance must also be running_background
+    before create_agent_task is called."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    status_during_create: list[str] = []
+    agent_ids_seen: list[str] = []
+
+    def fake_create_agent_task(**kwargs):
+        agent_id = kwargs["agent_id"]
+        agent_ids_seen.append(agent_id)
+        record = runtime.subagent_store.require_instance(agent_id)
+        status_during_create.append(record.status)
+        return SimpleNamespace(
+            spec=SimpleNamespace(id="a-task-n", kind="agent", description=kwargs["description"]),
+            runtime=SimpleNamespace(status="starting"),
+        )
+
+    monkeypatch.setattr(runtime.background_tasks, "create_agent_task", fake_create_agent_task)
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="fresh bg",
+                prompt="do work",
+                run_in_background=True,
+            )
+        )
+
+    assert not result.is_error
+    assert status_during_create == ["running_background"]
+
+
+async def test_agent_tool_background_rolls_back_status_on_dispatch_failure(
+    agent_tool, runtime, monkeypatch
+):
+    """If create_agent_task raises for a resumed instance, the instance status
+    must be rolled back to idle (not left as running_background)."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+    runtime.subagent_store.create_instance(
+        agent_id="arollbk1",
+        description="rollback test",
+        launch_spec=AgentLaunchSpec(
+            agent_id="arollbk1",
+            subagent_type="coder",
+            model_override=None,
+            effective_model=None,
+        ),
+    )
+
+    def fake_create_agent_task(**kwargs):
+        raise RuntimeError("Too many background tasks are already running.")
+
+    monkeypatch.setattr(runtime.background_tasks, "create_agent_task", fake_create_agent_task)
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="rollback resume",
+                prompt="continue work",
+                resume="arollbk1",
+                run_in_background=True,
+            )
+        )
+
+    assert result.is_error
+    # Instance must still exist (not deleted — it was a resume, not new)
+    record = runtime.subagent_store.require_instance("arollbk1")
+    # Status must be rolled back to idle, not stuck at running_background
+    assert record.status == "idle"
 
 
 async def test_agent_tool_background_rejects_missing_resume_instance(agent_tool, runtime):
@@ -927,3 +1069,543 @@ async def test_task_stop_kills_background_agent_waiting_for_approval(
     assert killed_view is not None
     assert killed_view.runtime.status == "killed"
     assert runtime.approval_runtime.list_pending() == []
+
+
+async def test_foreground_agent_explicit_timeout_returns_tool_error(
+    agent_tool, runtime, monkeypatch
+):
+    """When the model passes an explicit timeout for a foreground agent and the
+    subagent exceeds it, the tool should return a ToolError (not hang)."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul_hang(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        # Simulate a subagent that never finishes
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul_hang)
+
+    import time
+
+    params = agent_tool.params(
+        description="slow task",
+        prompt="do something slow",
+        timeout=30,
+    )
+    # Override to a short timeout so the test doesn't actually wait 30s
+    object.__setattr__(params, "timeout", 1)
+
+    start = time.monotonic()
+    result = await agent_tool(params)
+    elapsed = time.monotonic() - start
+
+    # Should be a ToolError, not a hang; and should finish quickly
+    assert result.is_error
+    assert "timed out" in result.message.lower()
+    assert "1s" in result.message  # Verify the correct timeout value is reported
+    assert elapsed < 5.0
+
+
+async def test_foreground_agent_internal_timeout_with_explicit_deadline(
+    agent_tool, runtime, monkeypatch
+):
+    """When an explicit timeout IS set but an internal TimeoutError fires first,
+    it should still be reported as a generic failure, not 'Agent timed out after Xs'."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul_internal_timeout(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        raise TimeoutError("aiohttp sock_read timeout")
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul_internal_timeout)
+
+    params = agent_tool.params(
+        description="internal timeout with deadline",
+        prompt="do something",
+        timeout=600,
+    )
+
+    result = await agent_tool(params)
+
+    assert result.is_error
+    # Must be generic failure, NOT "Agent timed out after 600s"
+    assert "agent timed out after" not in result.message.lower()
+    assert "aiohttp sock_read timeout" in result.message
+
+
+# ---------------------------------------------------------------------------
+# run_soul_checked exception handling — ChatProviderError / APIStatusError
+# are converted to SoulRunFailure with informative messages.
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_tool_returns_informative_error_when_chat_provider_fails(
+    agent_tool, runtime, monkeypatch
+):
+    """When run_soul raises ChatProviderError, the agent tool should return
+    a ToolError with the original error message — not 'Failed to run agent: ...'
+    with a potentially empty or cryptic str(exc)."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        raise ChatProviderError("Model overloaded, please retry")
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    result = await agent_tool(
+        agent_tool.params(
+            description="chat provider failure",
+            prompt="investigate bug",
+        )
+    )
+
+    assert result.is_error
+    # The error message should contain the original ChatProviderError message,
+    # and the brief should NOT be the generic "Agent failed".
+    assert "Model overloaded" in result.message
+    assert result.brief == "LLM provider error"
+
+    # Instance should be marked as failed
+    records = [
+        r
+        for r in runtime.subagent_store.list_instances()
+        if r.description == "chat provider failure"
+    ]
+    assert len(records) == 1
+    assert records[0].status == "failed"
+
+
+async def test_agent_tool_returns_informative_error_when_api_status_error(
+    agent_tool, runtime, monkeypatch
+):
+    """APIStatusError should include status_code in the error message."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        raise APIStatusError(429, "Rate limit exceeded")
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    result = await agent_tool(
+        agent_tool.params(
+            description="api status failure",
+            prompt="investigate bug",
+        )
+    )
+
+    assert result.is_error
+    assert "429" in result.message
+    assert "Rate limit exceeded" in result.message
+
+
+# ---------------------------------------------------------------------------
+# Defensive None check for final_response — returns ToolError instead of
+# crashing with AssertionError.
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_tool_returns_error_when_final_response_is_none(
+    agent_tool, runtime, monkeypatch
+):
+    """If run_with_summary_continuation returns (None, None) — an
+    impossible-in-theory but defensive scenario — the runner should return
+    a ToolError instead of crashing with AssertionError."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+
+    # Patch run_with_summary_continuation to return (None, None) — simulating
+    # the defensive scenario where final_response is None but failure is also None.
+    async def fake_run_with_summary(soul, prompt, ui_loop_fn, wire_path):
+        return None, None
+
+    monkeypatch.setattr(
+        "kimi_cli.subagents.runner.run_with_summary_continuation",
+        fake_run_with_summary,
+    )
+
+    result = await agent_tool(
+        agent_tool.params(
+            description="none response",
+            prompt="investigate bug",
+        )
+    )
+
+    assert result.is_error
+    assert result.message == "Agent completed but produced no output."
+
+
+# ---------------------------------------------------------------------------
+# RunCancelled sets killed status (not failed) — user Ctrl+C is a cancel,
+# not a failure.
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_tool_marks_instance_killed_when_run_cancelled(
+    agent_tool, runtime, monkeypatch
+):
+    """When RunCancelled is raised (user Ctrl+C), the instance should be
+    marked as 'killed', not 'failed'."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        raise RunCancelled()
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    # RunCancelled is caught by AgentTool and returned as ToolError,
+    # but the instance must be marked as "killed" (not "failed").
+    result = await agent_tool(
+        agent_tool.params(
+            description="user cancelled",
+            prompt="investigate bug",
+        )
+    )
+
+    assert result.is_error
+    records = [
+        r for r in runtime.subagent_store.list_instances() if r.description == "user cancelled"
+    ]
+    assert len(records) == 1
+    assert records[0].status == "killed"
+
+
+# ---------------------------------------------------------------------------
+# APIConnectionError goes through ChatProviderError branch
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_tool_returns_informative_error_when_api_connection_error(
+    agent_tool, runtime, monkeypatch
+):
+    """APIConnectionError (a subclass of ChatProviderError) should be caught by
+    the ChatProviderError handler in run_soul_checked and returned as a ToolError
+    with an informative message."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    async def fake_run_soul(
+        soul, user_input, ui_loop_fn, cancel_event, wire_file=None, runtime=None
+    ):
+        raise APIConnectionError("Connection refused")
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+    monkeypatch.setattr("kimi_cli.subagents.runner.run_soul", fake_run_soul)
+
+    result = await agent_tool(
+        agent_tool.params(
+            description="connection failure",
+            prompt="investigate bug",
+        )
+    )
+
+    assert result.is_error
+    assert "Connection refused" in result.message
+    assert result.brief == "LLM provider error"
+
+    records = [
+        r for r in runtime.subagent_store.list_instances() if r.description == "connection failure"
+    ]
+    assert len(records) == 1
+    assert records[0].status == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Background runner: final_response is None returns failure (not assertion crash)
+# ---------------------------------------------------------------------------
+
+
+async def test_background_agent_marks_failed_when_final_response_is_none(
+    agent_tool, runtime, monkeypatch
+):
+    """When the background agent's run_with_summary_continuation returns
+    (None, None), the task should be marked as failed — not crash with
+    AssertionError."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+
+    async def fake_run_with_summary(soul, prompt, ui_loop_fn, wire_path):
+        return None, None
+
+    monkeypatch.setattr(
+        "kimi_cli.background.agent_runner.run_with_summary_continuation",
+        fake_run_with_summary,
+    )
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="bg none response",
+                prompt="investigate bug",
+                run_in_background=True,
+            )
+        )
+
+    assert not result.is_error
+    task_id = _extract_task_id(result.output)
+    agent_id = _extract_agent_id(result.output)
+
+    waited = await runtime.background_tasks.wait(task_id, timeout_s=5)
+    assert waited.runtime.status == "failed"
+
+    record = runtime.subagent_store.require_instance(agent_id)
+    assert record.status == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Hook trigger exception in foreground runner — try scope covers pre-run code
+# ---------------------------------------------------------------------------
+
+
+async def test_foreground_runner_hook_trigger_exception_marks_instance_failed(
+    agent_tool, runtime, monkeypatch
+):
+    """When hook_engine.trigger(SubagentStart) raises inside the expanded try
+    block, the instance should be marked as 'failed' and the finally block
+    should not crash even if approval_source was already set."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+
+    # Make subagent_start (called to build input_data for the SubagentStart hook)
+    # raise an exception.  This triggers the except Exception branch inside the
+    # expanded try block, BEFORE run_with_summary_continuation is reached.
+    def exploding_subagent_start(**kwargs):
+        raise RuntimeError("hook input builder failed")
+
+    monkeypatch.setattr(
+        "kimi_cli.hooks.events.subagent_start",
+        exploding_subagent_start,
+    )
+
+    result = await agent_tool(
+        agent_tool.params(
+            description="hook failure",
+            prompt="investigate bug",
+        )
+    )
+
+    assert result.is_error
+    # The exception propagates through ForegroundSubagentRunner.run()'s
+    # except Exception → raise → AgentTool.__call__()'s except Exception.
+    assert "hook input builder failed" in result.message
+
+    # Instance must be marked as failed (not stuck in running_foreground).
+    records = [
+        r for r in runtime.subagent_store.list_instances() if r.description == "hook failure"
+    ]
+    assert len(records) == 1
+    assert records[0].status == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Background runner: RunCancelled sets killed status (not failed)
+# ---------------------------------------------------------------------------
+
+
+async def test_background_agent_marks_killed_when_run_cancelled(agent_tool, runtime, monkeypatch):
+    """When RunCancelled propagates in the background runner, the instance
+    should be marked as 'killed' and the task as 'killed' — not 'failed'."""
+    runtime.labor_market.add_builtin_type(
+        AgentTypeDefinition(
+            name="coder",
+            description="Good at general software engineering tasks.",
+            agent_file=runtime.subagent_store.root / "coder.yaml",
+            tool_policy=ToolPolicy(mode="inherit"),
+        )
+    )
+
+    async def fake_load_agent(agent_file, runtime, *, mcp_configs, start_mcp_loading=True):
+        return SoulAgent(
+            name=agent_file.stem,
+            system_prompt="Subagent system prompt",
+            toolset=EmptyToolset(),
+            runtime=runtime,
+        )
+
+    monkeypatch.setattr("kimi_cli.subagents.builder.load_agent", fake_load_agent)
+
+    async def fake_run_with_summary(soul, prompt, ui_loop_fn, wire_path):
+        raise RunCancelled()
+
+    monkeypatch.setattr(
+        "kimi_cli.background.agent_runner.run_with_summary_continuation",
+        fake_run_with_summary,
+    )
+
+    with tool_call_context("Agent"):
+        result = await agent_tool(
+            agent_tool.params(
+                description="bg run cancelled",
+                prompt="investigate bug",
+                run_in_background=True,
+            )
+        )
+
+    assert not result.is_error
+    task_id = _extract_task_id(result.output)
+    agent_id = _extract_agent_id(result.output)
+
+    # Poll for task completion — RunCancelled is re-raised from run(),
+    # so wait() may propagate the exception; use polling instead.
+    view = None
+    for _ in range(100):
+        view = runtime.background_tasks.get_task(task_id)
+        assert view is not None
+        if view.runtime.status in ("killed", "failed", "completed"):
+            break
+        await asyncio.sleep(0.05)
+
+    assert view is not None
+    assert view.runtime.status == "killed"
+
+    record = runtime.subagent_store.require_instance(agent_id)
+    assert record.status == "killed"

@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import sys
+import time
 import warnings
 from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
@@ -13,24 +15,39 @@ from kaos.path import KaosPath
 from pydantic import SecretStr
 
 from kimi_cli.agentspec import DEFAULT_AGENT_FILE
-from kimi_cli.auth.oauth import OAuthManager
+from kimi_cli.auth.oauth import KIMI_CODE_OAUTH_KEY, OAuthManager, get_device_id
+from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
+from kimi_cli.constant import VERSION
 from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
-from kimi_cli.soul import run_soul
+from kimi_cli.soul import RunCancelled, run_soul
 from kimi_cli.soul.agent import Runtime, load_agent
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
+from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.aioqueue import QueueShutDown
-from kimi_cli.utils.logging import logger, redirect_stderr_to_logger
+from kimi_cli.utils.envvar import get_env_bool
+from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
 from kimi_cli.utils.path import shorten_home
 from kimi_cli.wire import Wire, WireUISide
 from kimi_cli.wire.types import ApprovalRequest, ApprovalResponse, ContentPart, WireMessage
 
 if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
+
+
+def _patch_session_id(record: dict[str, Any]) -> None:
+    """Inject the current session ID (from ContextVar) into log records."""
+    try:
+        from kimi_cli.soul.toolset import get_session_id
+
+        sid = get_session_id()
+        record["extra"]["sid"] = sid if sid else ""
+    except Exception:
+        record["extra"].setdefault("sid", "")
 
 
 def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None:
@@ -45,11 +62,41 @@ def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None
         get_share_dir() / "logs" / "kimi.log",
         # FIXME: configure level for different modules
         level="TRACE" if debug else "INFO",
+        format=(
+            "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | "
+            "{name}:{function}:{line} | {extra[sid]} - {message}"
+        ),
         rotation="06:00",
         retention="10 days",
     )
+    logger.configure(extra={"sid": ""}, patcher=_patch_session_id)
     if redirect_stderr:
         redirect_stderr_to_logger()
+
+
+def _write_original_stderr(text: str) -> None:
+    """Write a user-facing notice to the terminal even if ``fd=2`` has been
+    redirected into the logger by ``redirect_stderr_to_logger``.
+
+    Falls back to ``sys.stderr`` when no redirector is installed (tests,
+    early-startup code paths), matching the semantics of ``_emit_fatal_error``
+    in ``cli/__init__.py``.
+    """
+    with open_original_stderr() as stream:
+        if stream is not None:
+            stream.write(text.encode("utf-8", errors="replace"))
+            stream.flush()
+            return
+    sys.stderr.write(text)
+
+
+async def _refresh_managed_models_silent(config: Config) -> None:
+    from kimi_cli.auth.platforms import refresh_managed_models
+
+    try:
+        await refresh_managed_models(config)
+    except Exception as exc:
+        logger.warning("Background managed-model refresh failed: {error}", error=exc)
 
 
 def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
@@ -81,6 +128,11 @@ class KimiCLI:
         thinking: bool | None = None,
         # Run mode
         yolo: bool = False,
+        afk: bool = False,
+        runtime_afk: bool = False,
+        plan_mode: bool = False,
+        resumed: bool = False,
+        ui_mode: str = "shell",
         # Extensions
         agent_file: Path | None = None,
         mcp_configs: list[MCPConfig] | list[dict[str, Any]] | None = None,
@@ -102,6 +154,11 @@ class KimiCLI:
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
+            afk (bool, optional): Invocation-level away-from-keyboard mode (no user is present
+                to answer questions or approve actions). Implies auto-approve. Defaults to False.
+            runtime_afk (bool, optional): Internal invocation-only afk overlay, used by print mode
+                so it stays non-interactive without changing persisted session afk. Defaults to
+                False.
             agent_file (Path | None, optional): Path to the agent file. Defaults to None.
             mcp_configs (list[MCPConfig | dict[str, Any]] | None, optional): MCP configs to load
                 MCP tools from. Defaults to None.
@@ -129,10 +186,15 @@ class KimiCLI:
             MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
                 connected.
         """
+        _create_t0 = time.monotonic()
+        _phase_timings_ms: dict[str, int] = {}
+
         if startup_progress is not None:
             startup_progress("Loading configuration...")
 
+        _phase_t = time.monotonic()
         config = config if isinstance(config, Config) else load_config(config)
+        _phase_timings_ms["config_ms"] = int((time.monotonic() - _phase_t) * 1000)
         if max_steps_per_turn is not None:
             config.loop_control.max_steps_per_turn = max_steps_per_turn
         if max_retries_per_step is not None:
@@ -141,7 +203,10 @@ class KimiCLI:
             config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
 
+        _phase_t = time.monotonic()
         oauth = OAuthManager(config)
+
+        bg_refresh_task = asyncio.create_task(_refresh_managed_models_silent(config))
 
         model: LLMModel | None = None
         provider: LLMProvider | None = None
@@ -171,6 +236,10 @@ class KimiCLI:
         # determine yolo mode
         yolo = yolo if yolo else config.default_yolo
 
+        # determine plan mode (only for new sessions, not restored)
+        if not resumed:
+            plan_mode = plan_mode if plan_mode else config.default_plan_mode
+
         llm = create_llm(
             provider,
             model,
@@ -192,11 +261,16 @@ class KimiCLI:
             llm,
             session,
             yolo,
+            afk=afk,
+            runtime_afk=runtime_afk,
             skills_dirs=skills_dirs,
         )
+        runtime.ui_mode = ui_mode
+        runtime.resumed = resumed
         runtime.notifications.recover()
         runtime.background_tasks.reconcile()
         _cleanup_stale_foreground_subagents(runtime)
+        _phase_timings_ms["init_ms"] = int((time.monotonic() - _phase_t) * 1000)
 
         # Refresh plugin configs with fresh credentials (e.g. OAuth tokens)
         try:
@@ -217,12 +291,14 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Loading agent...")
 
+        _phase_t = time.monotonic()
         agent = await load_agent(
             agent_file,
             runtime,
             mcp_configs=mcp_configs or [],
             start_mcp_loading=not defer_mcp_loading,
         )
+        _phase_timings_ms["mcp_ms"] = int((time.monotonic() - _phase_t) * 1000)
 
         if startup_progress is not None:
             startup_progress("Restoring conversation...")
@@ -235,17 +311,82 @@ class KimiCLI:
             await context.write_system_prompt(agent.system_prompt)
 
         soul = KimiSoul(agent, context=context)
-        return KimiCLI(soul, runtime, env_overrides)
+
+        # Activate plan mode if requested (for new sessions or --plan flag)
+        if plan_mode and not soul.plan_mode:
+            await soul.set_plan_mode_from_manual(True)
+        elif plan_mode and soul.plan_mode:
+            # Already in plan mode from restored session, trigger activation reminder
+            soul.schedule_plan_activation_reminder()
+
+        # Create and inject hook engine
+        from kimi_cli.hooks.engine import HookEngine
+
+        hook_engine = HookEngine(config.hooks, cwd=str(session.work_dir))
+        soul.set_hook_engine(hook_engine)
+        runtime.hook_engine = hook_engine
+
+        # --- Initialize telemetry ---
+        from kimi_cli.telemetry import attach_sink, set_context
+        from kimi_cli.telemetry import disable as disable_telemetry
+
+        telemetry_disabled = not config.telemetry or get_env_bool("KIMI_DISABLE_TELEMETRY")
+        if telemetry_disabled:
+            disable_telemetry()
+        else:
+            device_id = get_device_id()
+            set_context(device_id=device_id, session_id=session.id)
+            from kimi_cli.telemetry.sink import EventSink
+            from kimi_cli.telemetry.transport import AsyncTransport
+
+            def _get_token() -> str | None:
+                return oauth.get_cached_access_token(KIMI_CODE_OAUTH_KEY)
+
+            transport = AsyncTransport(device_id=device_id, get_access_token=_get_token)
+            sink = EventSink(
+                transport,
+                version=VERSION,
+                model=model.model if model else "",
+                ui_mode=ui_mode,
+            )
+            attach_sink(sink)
+
+        from kimi_cli.telemetry import track, track_session_started_once
+        from kimi_cli.telemetry.crash import install_asyncio_handler, set_phase
+
+        # App init finished — enter runtime phase and hook asyncio crashes.
+        install_asyncio_handler()
+        set_phase("runtime")
+
+        if ui_mode != "wire":
+            track_session_started_once(ui_mode=ui_mode, resumed=resumed)
+        track(
+            "started",
+            resumed=resumed,
+            yolo=runtime.approval.is_yolo(),
+            afk=runtime.approval.is_afk(),
+        )
+        track(
+            "startup_perf",
+            duration_ms=int((time.monotonic() - _create_t0) * 1000),
+            config_ms=_phase_timings_ms.get("config_ms", 0),
+            init_ms=_phase_timings_ms.get("init_ms", 0),
+            mcp_ms=_phase_timings_ms.get("mcp_ms", 0),
+        )
+
+        return KimiCLI(soul, runtime, env_overrides, bg_refresh_task)
 
     def __init__(
         self,
         _soul: KimiSoul,
         _runtime: Runtime,
         _env_overrides: dict[str, str],
+        _bg_refresh_task: asyncio.Task[None] | None = None,
     ) -> None:
         self._soul = _soul
         self._runtime = _runtime
         self._env_overrides = _env_overrides
+        self._bg_refresh_task = _bg_refresh_task
 
     @property
     def soul(self) -> KimiSoul:
@@ -257,13 +398,124 @@ class KimiCLI:
         """Get the Session instance."""
         return self._runtime.session
 
-    def shutdown_background_tasks(self) -> None:
-        """Kill active background tasks on exit, unless keep_alive_on_exit is configured."""
-        if self._runtime.config.background.keep_alive_on_exit:
+    async def shutdown_background_tasks(self) -> None:
+        """Kill active background tasks on exit, unless keep_alive_on_exit is configured.
+
+        Prints a stderr notice naming each task so the user knows what is being
+        terminated, waits out the configured kill grace period so SIGTERM can
+        take effect, then reconciles and reports any workers that ignored the
+        signal.
+
+        This runs on the CLI's hard-shutdown path, so every failure mode must
+        be contained: disk IO errors from ``list_tasks`` / ``reconcile`` or
+        store corruption must not propagate and replace the real exit code
+        with a traceback.
+        """
+        # Cancel the startup managed-model refresh task if it is still running
+        # so it does not outlive the CLI process.
+        if self._bg_refresh_task is not None and not self._bg_refresh_task.done():
+            self._bg_refresh_task.cancel()
+
+        # Close MCP client connections so stdio/WebSocket transports do not
+        # outlive the CLI process and trigger firewall warnings.
+        try:
+            toolset = self.soul.agent.toolset
+            if isinstance(toolset, KimiToolset):
+                await toolset.cleanup()
+        except (Exception, asyncio.CancelledError):
+            logger.warning("Error during toolset cleanup; continuing exit", exc_info=True)
+
+        bg_config = self._runtime.config.background
+        if bg_config.keep_alive_on_exit:
             return
-        killed = self._runtime.background_tasks.kill_all_active(reason="CLI session ended")
-        if killed:
-            logger.info("Stopped {n} background task(s) on exit: {ids}", n=len(killed), ids=killed)
+
+        try:
+            manager = self._runtime.background_tasks
+            active_views = [
+                v
+                for v in manager.list_tasks(status=None, limit=None)
+                if not is_terminal_status(v.runtime.status)
+            ]
+            if not active_views:
+                return
+
+            # Split by whether the task has already been kill-requested (e.g.
+            # by the ``--print`` timeout path which ran immediately before
+            # this shutdown).  For those:
+            #   - don't re-announce on stderr (user saw the timeout notice)
+            #   - don't re-kill with a generic reason, which would overwrite
+            #     the more specific ``kill_reason`` on disk
+            # We still reconcile + grace-wait for them so they reach terminal
+            # status before the process exits.
+            fresh_targets = [v for v in active_views if v.control.kill_requested_at is None]
+
+            if fresh_targets:
+                # Build and emit the kill notice via ``open_original_stderr``
+                # — ``sys.stderr.write`` alone would silently land in
+                # ``kimi.log`` because ``redirect_stderr_to_logger`` has
+                # replaced fd=2 with a pipe into the logger by this point.
+                lines = [f"\u26a0  Killing {len(fresh_targets)} background tasks:\n"]
+                for view in fresh_targets:
+                    description = view.spec.description or ""
+                    if len(description) > 60:
+                        description = description[:57] + "..."
+                    lines.append(f"  {view.spec.id}  {description}\n")
+                _write_original_stderr("".join(lines))
+
+                killed: list[str] = []
+                for view in fresh_targets:
+                    try:
+                        manager.kill(view.spec.id, reason="CLI session ended")
+                        killed.append(view.spec.id)
+                    except Exception:
+                        logger.exception(
+                            "Failed to kill task {task_id} during shutdown",
+                            task_id=view.spec.id,
+                        )
+                if killed:
+                    logger.info(
+                        "Stopped {n} background task(s) on exit: {ids}",
+                        n=len(killed),
+                        ids=killed,
+                    )
+
+            await asyncio.sleep(bg_config.kill_grace_period_ms / 1000)
+            manager.reconcile()
+            survivors = [
+                v
+                for v in manager.list_tasks(status=None, limit=None)
+                if not is_terminal_status(v.runtime.status)
+            ]
+            if survivors:
+                # Distinguish "worker is mid-shutdown" (kill request on record,
+                # SIGTERM delivered, worker just hasn't written terminal state
+                # yet) from a genuine leak (never got kill-requested, i.e.
+                # ``manager.kill`` raised).  Without this split, users saw
+                # ``killed N`` from the --print timeout path immediately
+                # followed by ``(N tasks still alive)`` here — a direct
+                # semantic contradiction.
+                terminating = [s for s in survivors if s.control.kill_requested_at is not None]
+                leaking = [s for s in survivors if s.control.kill_requested_at is None]
+                # Report leaks first — ``stop request failed`` is strictly
+                # more severe than ``still terminating`` (the latter will
+                # resolve on its own once the worker writes terminal state).
+                if leaking:
+                    _write_original_stderr(
+                        f"  ({len(leaking)} tasks still running; stop request failed)\n"
+                    )
+                if terminating:
+                    _write_original_stderr(f"  ({len(terminating)} tasks still terminating)\n")
+        except Exception:
+            logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
+
+    async def await_bg_tasks_shutdown(self, timeout: float = 2.0) -> None:
+        """Await completion of the model-refresh background task after cancellation."""
+        task = self._bg_refresh_task
+        if task is None or task.done():
+            return
+        # Best-effort cleanup — errors inside the task are already logged.
+        with contextlib.suppress(TimeoutError, asyncio.CancelledError, Exception):
+            await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
 
     @contextlib.asynccontextmanager
     async def _env(self) -> AsyncGenerator[None]:
@@ -394,32 +646,64 @@ class KimiCLI:
                     assert self._runtime.root_wire_hub is not None
                     self._runtime.root_wire_hub.unsubscribe(root_hub_queue)
 
+            run_cancel_event = asyncio.Event()
+
+            async def _mirror_external_cancel() -> None:
+                await cancel_event.wait()
+                run_cancel_event.set()
+
+            external_cancel_task = asyncio.create_task(
+                _mirror_external_cancel(),
+                name="cancel-event-mirror",
+            )
             soul_task = asyncio.create_task(
                 run_soul(
                     self.soul,
                     user_input,
                     _ui_loop_fn,
-                    cancel_event,
+                    run_cancel_event,
+                    self._runtime.session.wire_file,
                     runtime=self._runtime,
                 )
             )
 
+            wire_shut_down = False
             try:
                 wire_ui = await wire_future
                 while True:
                     msg = await wire_ui.receive()
                     yield msg
             except QueueShutDown:
+                wire_shut_down = True
                 pass
             finally:
                 # stop consuming Wire messages
                 stop_ui_loop.set()
+                cleanup_cancelled_run = False
+                if not wire_shut_down and not soul_task.done() and not cancel_event.is_set():
+                    cleanup_cancelled_run = True
+                    run_cancel_event.set()
                 # wait for the soul task to finish, or raise
-                await soul_task
+                try:
+                    await soul_task
+                except RunCancelled:
+                    if not cleanup_cancelled_run:
+                        raise
+                finally:
+                    external_cancel_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await external_cancel_task
 
-    async def run_shell(self, command: str | None = None) -> bool:
+    async def run_shell(
+        self, command: str | None = None, *, prefill_text: str | None = None
+    ) -> bool:
         """Run the Kimi Code CLI instance with shell UI."""
         from kimi_cli.ui.shell import Shell, WelcomeInfoItem
+
+        if command is None:
+            from kimi_cli.ui.shell.update import check_update_gate
+
+            check_update_gate()
 
         welcome_info = [
             WelcomeInfoItem(
@@ -463,35 +747,44 @@ class KimiCLI:
             welcome_info.append(
                 WelcomeInfoItem(
                     name="Model",
-                    value=model_display_name(self._soul.model_name),
+                    value=model_display_name(
+                        self._soul.model_name,
+                        self._runtime.llm.model_config if self._runtime.llm else None,
+                    ),
                     level=WelcomeInfoItem.Level.INFO,
                 )
             )
-            if self._soul.model_name not in (
+            model_name = self._soul.model_name
+            if model_name not in (
                 "kimi-for-coding",
                 "kimi-code",
-                "kimi-k2.5",
-                "kimi-k2-5",
-            ):
+            ) and not model_name.startswith("kimi-k2"):
                 welcome_info.append(
                     WelcomeInfoItem(
                         name="Tip",
-                        value="send /login to use our latest kimi-k2.5 model",
+                        value="send /login to use Kimi for Coding",
                         level=WelcomeInfoItem.Level.WARN,
                     )
                 )
+        from kimi_cli.ui.shell.migration_nudge import (
+            already_installed_text,
+            kimi_code_installed,
+            welcome_card_text,
+        )
+
         welcome_info.append(
             WelcomeInfoItem(
-                name="\nTip",
+                name="\n✨ Update",
                 value=(
-                    "Spot a bug or have feedback? Type /feedback right in this session"
-                    " — every report makes Kimi better."
+                    already_installed_text(sys.platform)
+                    if kimi_code_installed()
+                    else welcome_card_text()
                 ),
-                level=WelcomeInfoItem.Level.INFO,
+                level=WelcomeInfoItem.Level.WARN,
             )
         )
         async with self._env():
-            shell = Shell(self._soul, welcome_info=welcome_info)
+            shell = Shell(self._soul, welcome_info=welcome_info, prefill_text=prefill_text)
             return await shell.run(command)
 
     async def run_print(

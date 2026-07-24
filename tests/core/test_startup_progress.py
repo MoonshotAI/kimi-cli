@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -68,6 +70,7 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
         session=session,
         config=config,
         llm=None,
+        approval=SimpleNamespace(is_yolo=lambda: False, is_afk=lambda: False),
         notifications=SimpleNamespace(recover=lambda: None),
         background_tasks=SimpleNamespace(reconcile=lambda: None),
     )
@@ -93,7 +96,15 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
     monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
-    monkeypatch.setattr(app_module, "KimiSoul", lambda agent, context: (agent, context))
+
+    class _FakeSoul:
+        def __init__(self, agent, context):
+            pass
+
+        def set_hook_engine(self, engine):
+            pass
+
+    monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
 
     cli = await KimiCLI.create(session, config=config, startup_progress=phases.append)
 
@@ -108,6 +119,46 @@ async def test_kimi_cli_create_reports_startup_phases(session, config, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_run_shell_adds_kimi_code_migration_card(runtime, monkeypatch) -> None:
+    from kimi_cli.ui.shell import WelcomeInfoItem
+
+    # Not installed -> the welcome screen shows the upgrade card (deterministic).
+    monkeypatch.setattr(
+        "kimi_cli.ui.shell.migration_nudge.kimi_code_installed", lambda home=None: False
+    )
+
+    captured: dict[str, object] = {}
+
+    class FakeShell:
+        def __init__(self, soul, *, welcome_info=None, prefill_text=None) -> None:
+            captured["soul"] = soul
+            captured["welcome_info"] = list(welcome_info or [])
+            captured["prefill_text"] = prefill_text
+
+        async def run(self, command: str | None = None) -> bool:
+            captured["command"] = command
+            return True
+
+    @contextlib.asynccontextmanager
+    async def fake_env():
+        yield
+
+    monkeypatch.setattr("kimi_cli.ui.shell.Shell", FakeShell)
+
+    soul = SimpleNamespace(model_name="kimi-code", name="Kimi Code CLI")
+    cli = KimiCLI(soul, runtime, {})  # type: ignore[arg-type]
+    monkeypatch.setattr(cli, "_env", fake_env)
+
+    assert await cli.run_shell(command="status") is True
+
+    welcome_info = cast("list[WelcomeInfoItem]", captured["welcome_info"])
+    tip = welcome_info[-1]
+    assert tip.name == "\n✨ Update"
+    assert tip.level == WelcomeInfoItem.Level.WARN
+    assert "/upgrade" in str(tip.value)
+
+
+@pytest.mark.asyncio
 async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
     session, config, monkeypatch
 ) -> None:
@@ -116,6 +167,7 @@ async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
         session=session,
         config=config,
         llm=None,
+        approval=SimpleNamespace(is_yolo=lambda: False, is_afk=lambda: False),
         notifications=SimpleNamespace(recover=lambda: None),
         background_tasks=SimpleNamespace(reconcile=lambda: None),
         subagent_store=SimpleNamespace(
@@ -149,7 +201,15 @@ async def test_kimi_cli_create_cleans_stale_running_foreground_subagents(
     monkeypatch.setattr(app_module.Runtime, "create", fake_runtime_create)
     monkeypatch.setattr(app_module, "load_agent", fake_load_agent)
     monkeypatch.setattr(app_module, "Context", lambda _path: fake_context)
-    monkeypatch.setattr(app_module, "KimiSoul", lambda agent, context: (agent, context))
+
+    class _FakeSoul:
+        def __init__(self, agent, context):
+            pass
+
+        def set_hook_engine(self, engine):
+            pass
+
+    monkeypatch.setattr(app_module, "KimiSoul", _FakeSoul)
 
     await KimiCLI.create(session, config=config)
 

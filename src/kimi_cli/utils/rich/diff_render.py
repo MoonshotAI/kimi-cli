@@ -14,21 +14,12 @@ from enum import Enum, auto
 
 from rich.console import RenderableType
 from rich.panel import Panel
-from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 
 from kimi_cli.tools.display import DiffDisplayBlock
+from kimi_cli.ui.theme import get_diff_colors
 from kimi_cli.utils.rich.syntax import KimiSyntax
-
-# ---------------------------------------------------------------------------
-# Style constants
-# ---------------------------------------------------------------------------
-
-_ADD_BG = Style(bgcolor="#12261e")
-_DEL_BG = Style(bgcolor="#2d1214")
-_ADD_HL = Style(bgcolor="#1a4a2e")  # deeper green for inline word-level changes
-_DEL_HL = Style(bgcolor="#5c1a1d")  # deeper red for inline word-level changes
 
 _INLINE_DIFF_MIN_RATIO = 0.5  # skip inline diff when lines are too dissimilar
 
@@ -148,8 +139,46 @@ def _make_highlighter(path: str) -> KimiSyntax:
 
 def _highlight(highlighter: KimiSyntax, code: str) -> Text:
     t = highlighter.highlight(code)
-    t.rstrip()
+    # Pygments appends a trailing newline (ensurenl=True); strip only that,
+    # not trailing whitespace which may be meaningful in diffs.
+    if t.plain.endswith("\n"):
+        t.right_crop(1)
     return t
+
+
+def _build_offset_map(raw: str, rendered: str, tab_size: int) -> list[int]:
+    """Build a mapping from raw-string indices to rendered-string indices.
+
+    The highlighter expands tabs via ``str.expandtabs(tab_size)`` before
+    tokenising.  We replicate the same column-aware expansion that the
+    Python builtin defines (the only parameter is *tab_size*; the behaviour
+    is fully specified in the language docs and has no external
+    configurability).
+
+    Returns a list of length ``len(raw) + 1`` where ``result[i]`` is the
+    rendered offset corresponding to raw position *i*.
+    """
+    if raw == rendered:
+        return list(range(len(raw) + 1))
+    offsets: list[int] = []
+    col = 0
+    for ch in raw:
+        offsets.append(col)
+        if ch == "\t":
+            col += tab_size - (col % tab_size)
+        else:
+            col += 1
+    offsets.append(col)
+    if col != len(rendered):
+        # The highlighter transformed the text in a way we didn't expect.
+        # Return a bounded, monotonic best-effort map so inline stylizing
+        # can proceed without crashing or producing out-of-range offsets.
+        rendered_len = len(rendered)
+        raw_len = len(raw)
+        if raw_len == 0:
+            return [rendered_len]
+        return [(i * rendered_len) // raw_len for i in range(raw_len)] + [rendered_len]
+    return offsets
 
 
 def _apply_inline_diff(
@@ -161,20 +190,28 @@ def _apply_inline_diff(
 
     Modifies DiffLine.content in place for paired lines.
     """
+    colors = get_diff_colors()
+    tab_size = highlighter.tab_size
     paired = min(len(del_lines), len(add_lines))
     for j in range(paired):
         old_code = del_lines[j].code
         new_code = add_lines[j].code
+        old_text = _highlight(highlighter, old_code)
+        new_text = _highlight(highlighter, new_code)
+        # Store highlighted content even when skipping inline pairing,
+        # so _highlight_hunk's second pass doesn't re-highlight these lines.
+        del_lines[j].content = old_text
+        add_lines[j].content = new_text
         sm = SequenceMatcher(None, old_code, new_code)
         if sm.ratio() < _INLINE_DIFF_MIN_RATIO:
             continue
-        old_text = _highlight(highlighter, old_code)
-        new_text = _highlight(highlighter, new_code)
+        old_map = _build_offset_map(old_code, old_text.plain, tab_size)
+        new_map = _build_offset_map(new_code, new_text.plain, tab_size)
         for op, i1, i2, j1, j2 in sm.get_opcodes():
             if op in ("delete", "replace"):
-                old_text.stylize(_DEL_HL, i1, i2)
+                old_text.stylize(colors.del_hl, old_map[i1], old_map[i2])
             if op in ("insert", "replace"):
-                new_text.stylize(_ADD_HL, j1, j2)
+                new_text.stylize(colors.add_hl, new_map[j1], new_map[j2])
         del_lines[j].content = old_text
         del_lines[j].is_inline_paired = True
         add_lines[j].content = new_text
@@ -296,6 +333,7 @@ def render_diff_panel(
     table.add_column(width=3, no_wrap=True)
     table.add_column(ratio=1)
 
+    colors = get_diff_colors()
     for hunk_idx, hunk in enumerate(hunks):
         if hunk_idx > 0:
             table.add_row(Text("⋮", style="dim"), Text(""), Text(""))
@@ -307,14 +345,14 @@ def render_diff_panel(
                     Text(str(dl.new_num)),
                     Text(" + ", style="green"),
                     dl.content,
-                    style=_ADD_BG,
+                    style=colors.add_bg,
                 )
             elif dl.kind == DiffLineKind.DELETE:
                 table.add_row(
                     Text(str(dl.old_num)),
                     Text(" - ", style="red"),
                     dl.content,
-                    style=_DEL_BG,
+                    style=colors.del_bg,
                 )
             else:
                 table.add_row(
@@ -389,3 +427,55 @@ def render_diff_preview(
         result.append(Text(f"... {remaining} more lines (ctrl-e to expand)", style="dim italic"))
 
     return result, remaining
+
+
+# ---------------------------------------------------------------------------
+# Public: summary renderers for huge files
+# ---------------------------------------------------------------------------
+
+
+def _summary_description(blocks: list[DiffDisplayBlock]) -> str:
+    """Build a human-readable size description from summary blocks."""
+    block = blocks[0]
+    if block.old_text == "(0 lines)":
+        return f"New file with {block.new_text.strip('()')}"
+    if block.old_text == block.new_text:
+        return block.old_text.strip("()")
+    return f"{block.old_text.strip('()')} \u2192 {block.new_text.strip('()')}"
+
+
+def render_diff_summary_panel(
+    path: str,
+    blocks: list[DiffDisplayBlock],
+) -> RenderableType:
+    """Render a summary panel for files too large for inline diff."""
+    title = Text()
+    title.append(" ")
+    title.append(path)
+    title.append(" ")
+
+    body = Text()
+    body.append("File too large for inline diff", style="dim italic")
+    body.append("\n")
+    body.append(_summary_description(blocks), style="dim")
+
+    return Panel(
+        body,
+        title=title,
+        title_align="left",
+        border_style="dim",
+        padding=(1, 2),
+    )
+
+
+def render_diff_summary_preview(
+    path: str,
+    blocks: list[DiffDisplayBlock],
+) -> list[RenderableType]:
+    """Render a compact summary preview for approval panels."""
+    header = Text()
+    header.append(path)
+    desc = Text()
+    summary = _summary_description(blocks)
+    desc.append(f"  File too large for inline diff ({summary})", style="dim italic")
+    return [header, desc]

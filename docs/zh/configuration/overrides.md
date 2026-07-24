@@ -35,9 +35,13 @@ Kimi Code CLI 的配置可以通过多种方式设置，不同来源的配置按
 | --- | --- |
 | `--thinking` | 启用 thinking 模式 |
 | `--no-thinking` | 禁用 thinking 模式 |
-| `--yolo, --yes, -y` | 自动批准所有操作 |
+| `--yolo, --yes, -y` | 自动批准所有工具调用（用户仍可回应 `AskUserQuestion`） |
+| `--afk` | Away-from-keyboard：自动批准所有工具调用，并自动 dismiss `AskUserQuestion` |
+| `--plan` | 以计划模式启动 |
 
 `--thinking` / `--no-thinking` 会覆盖上次会话保存的 thinking 状态。如果不指定，使用上次会话的状态。
+
+`--plan` 对新会话启用计划模式；恢复已有会话时强制开启计划模式。也可以在配置文件中设置 `default_plan_mode = true` 让新会话默认进入计划模式。
 
 ## 环境变量覆盖
 
@@ -87,4 +91,3 @@ max_context_size = 262144
 | `KIMI_API_KEY=sk-env kimi` | 配置文件 | 环境变量 | 配置文件 |
 | `kimi --model other` | 配置文件 | 配置文件 | CLI 参数 |
 | `KIMI_MODEL_NAME=k2 kimi` | 配置文件 | 配置文件 | 环境变量 |
-
