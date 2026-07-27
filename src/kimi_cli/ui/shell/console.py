@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import pydoc
 import re
+import sys
 
 from rich.console import Console, PagerContext, RenderableType
 from rich.pager import Pager
@@ -73,6 +75,30 @@ class _KimiConsole(Console):
             pager = _KimiPager()
         return super().pager(pager=pager, styles=styles, links=links)
 
+
+def _ensure_utf8_stdio() -> None:
+    """Force UTF-8 on stdout/stderr so box-drawing glyphs don't crash the CLI.
+
+    The welcome banner and status messages use characters such as ``▐`` (U+2590)
+    and ``✓`` (U+2713). On Windows the standard streams default to the system
+    locale encoding (e.g. GBK/cp936), which cannot represent them, so the first
+    write raises ``UnicodeEncodeError`` and the CLI dies before it starts.
+
+    UTF-8 is understood by the terminals we target, so re-encoding is preferable
+    to dropping the glyphs. ``errors="replace"`` remains as a last resort for
+    anything UTF-8 still can't carry (e.g. lone surrogates).
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        # Detached or already-closed streams can't be reconfigured; the banner is
+        # not worth failing startup over.
+        with contextlib.suppress(OSError, ValueError):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+_ensure_utf8_stdio()
 
 console = _KimiConsole(highlight=False, theme=NEUTRAL_MARKDOWN_THEME)
 
