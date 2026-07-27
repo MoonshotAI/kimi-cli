@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import json
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
 from inline_snapshot import snapshot
 from kosong.chat_provider.echo import EchoChatProvider
 from kosong.chat_provider.kimi import Kimi
 from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
+from kosong.message import Message
 from pydantic import SecretStr
 
 from kimi_cli.config import Config, LLMModel, LLMProvider
@@ -105,6 +113,120 @@ def test_create_llm_kimi_prefers_max_completion_tokens_env(monkeypatch):
     assert isinstance(llm.chat_provider, Kimi)
 
     assert llm.chat_provider.model_parameters["max_completion_tokens"] == 5678
+
+
+def _chat_completion_response() -> dict[str, object]:
+    return {
+        "id": "chatcmpl-test",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "test-model",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+
+
+@contextmanager
+def _fake_chat_endpoint(
+    *, accept_prompt_cache_key: bool
+) -> Iterator[tuple[str, list[dict[str, object]]]]:
+    requests: list[dict[str, object]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers["Content-Length"])
+            body = json.loads(self.rfile.read(length))
+            requests.append(body)
+            if not accept_prompt_cache_key and "prompt_cache_key" in body:
+                status = 400
+                response = {
+                    "error": {"message": "Validation: Unsupported parameter(s): `prompt_cache_key`"}
+                }
+            else:
+                status = 200
+                response = _chat_completion_response()
+            encoded = json.dumps(response).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host = server.server_address[0]
+        port = server.server_address[1]
+        yield f"http://{host}:{port}/v1", requests
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+@pytest.mark.asyncio
+async def test_create_llm_kimi_can_disable_prompt_cache_key_for_third_party(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    with _fake_chat_endpoint(accept_prompt_cache_key=False) as (base_url, requests):
+        provider = LLMProvider(
+            type="kimi",
+            base_url=base_url,
+            api_key=SecretStr("test-key"),
+            prompt_cache_key=False,
+        )
+        model = LLMModel(
+            provider="nvidia",
+            model="nvidia-model",
+            max_context_size=4096,
+        )
+        llm = create_llm(provider, model, session_id="session-123")
+        assert llm is not None
+        assert isinstance(llm.chat_provider, Kimi)
+        llm.chat_provider.stream = False
+
+        await llm.chat_provider.generate("", [], [Message(role="user", content="hello")])
+
+    assert len(requests) == 1
+    assert "prompt_cache_key" not in requests[0]
+
+
+@pytest.mark.asyncio
+async def test_create_llm_kimi_sends_prompt_cache_key_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    with _fake_chat_endpoint(accept_prompt_cache_key=True) as (base_url, requests):
+        provider = LLMProvider(
+            type="kimi",
+            base_url=base_url,
+            api_key=SecretStr("test-key"),
+        )
+        model = LLMModel(
+            provider="managed:kimi-code",
+            model="kimi-for-coding",
+            max_context_size=4096,
+        )
+        llm = create_llm(provider, model, session_id="session-123")
+        assert llm is not None
+        assert isinstance(llm.chat_provider, Kimi)
+        llm.chat_provider.stream = False
+
+        await llm.chat_provider.generate("", [], [Message(role="user", content="hello")])
+
+    assert len(requests) == 1
+    assert requests[0]["prompt_cache_key"] == "session-123"
 
 
 def test_compute_max_completion_tokens_uses_response_budget_when_it_fits():

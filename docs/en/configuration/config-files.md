@@ -100,6 +100,7 @@ tool_call_timeout_ms = 60000
 | `api_key` | `string` | Yes | API key |
 | `env` | `table` | No | Environment variables to set before creating provider instance |
 | `custom_headers` | `table` | No | Custom HTTP headers to attach to requests |
+| `prompt_cache_key` | `boolean` | No | Send the session ID as `prompt_cache_key` for `kimi` providers (default: `true`). Set to `false` for compatible APIs that reject this parameter |
 
 Example:
 
@@ -109,6 +110,8 @@ type = "kimi"
 base_url = "https://api.moonshot.cn/v1"
 api_key = "sk-xxx"
 custom_headers = { "X-Custom-Header" = "value" }
+# For third-party Kimi-compatible APIs that reject prompt_cache_key:
+# prompt_cache_key = false
 ```
 
 ### `models`
