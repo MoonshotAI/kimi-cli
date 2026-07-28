@@ -1059,19 +1059,16 @@ class KimiSoul:
                 # --- StopFailure hook ---
                 from kimi_cli.hooks import events as _hook_events
 
-                _hook_task = asyncio.create_task(
-                    self._hook_engine.trigger(
-                        "StopFailure",
-                        matcher_value=type(e).__name__,
-                        input_data=_hook_events.stop_failure(
-                            session_id=self._runtime.session.id,
-                            cwd=str(Path.cwd()),
-                            error_type=type(e).__name__,
-                            error_message=str(e),
-                        ),
-                    )
+                self._hook_engine.fire_and_forget_trigger(
+                    "StopFailure",
+                    matcher_value=type(e).__name__,
+                    input_data=_hook_events.stop_failure(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        error_type=type(e).__name__,
+                        error_message=str(e),
+                    ),
                 )
-                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 # break the agent loop
                 raise
 
@@ -1139,22 +1136,19 @@ class KimiSoul:
                 # --- Notification hook ---
                 from kimi_cli.hooks import events
 
-                _hook_task = asyncio.create_task(
-                    self._hook_engine.trigger(
-                        "Notification",
-                        matcher_value=view.event.type,
-                        input_data=events.notification(
-                            session_id=self._runtime.session.id,
-                            cwd=str(Path.cwd()),
-                            sink="llm",
-                            notification_type=view.event.type,
-                            title=view.event.title,
-                            body=view.event.body,
-                            severity=view.event.severity,
-                        ),
-                    )
+                self._hook_engine.fire_and_forget_trigger(
+                    "Notification",
+                    matcher_value=view.event.type,
+                    input_data=events.notification(
+                        session_id=self._runtime.session.id,
+                        cwd=str(Path.cwd()),
+                        sink="llm",
+                        notification_type=view.event.type,
+                        title=view.event.title,
+                        body=view.event.body,
+                        severity=view.event.severity,
+                    ),
                 )
-                _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
             await self._runtime.notifications.deliver_pending(
                 "llm",
@@ -1629,19 +1623,16 @@ class KimiSoul:
             track_kwargs["trace_id"] = compaction_result.trace_id
         track("compaction_finished", **track_kwargs)
 
-        _hook_task = asyncio.create_task(
-            self._hook_engine.trigger(
-                "PostCompact",
-                matcher_value=trigger_reason,
-                input_data=events.post_compact(
-                    session_id=self._runtime.session.id,
-                    cwd=str(Path.cwd()),
-                    trigger=trigger_reason,
-                    estimated_token_count=estimated_token_count,
-                ),
-            )
+        self._hook_engine.fire_and_forget_trigger(
+            "PostCompact",
+            matcher_value=trigger_reason,
+            input_data=events.post_compact(
+                session_id=self._runtime.session.id,
+                cwd=str(Path.cwd()),
+                trigger=trigger_reason,
+                estimated_token_count=estimated_token_count,
+            ),
         )
-        _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
