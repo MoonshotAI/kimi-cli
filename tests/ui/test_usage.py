@@ -4,7 +4,14 @@ import pytest
 from rich.console import Console
 from rich.segment import Segment
 
-from kimi_cli.ui.shell.usage import UsageRow, _format_row, _ratio_color, _remaining_quota, _to_int
+from kimi_cli.ui.shell.usage import (
+    UsageRow,
+    _format_reset_time,
+    _format_row,
+    _ratio_color,
+    _remaining_quota,
+    _to_int,
+)
 
 
 def _render_segments(row: UsageRow, label_width: int = 6) -> list[Segment]:
@@ -105,9 +112,28 @@ def test_format_row_handles_no_remaining_quota(used: int, limit: int) -> None:
 
 
 def test_format_row_renders_reset_hint() -> None:
-    row = UsageRow(label="Weekly", used=30, limit=100, reset_hint="resets in 1h")
+    row = UsageRow(label="Weekly", used=30, limit=100, reset_hint="resets 08-01 09:00 (in 1h)")
 
-    assert "resets in 1h" in _plain_text(_render_segments(row))
+    assert "resets 08-01 09:00 (in 1h)" in _plain_text(_render_segments(row))
+
+
+def test_format_reset_time_shows_absolute_local_time() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    future = datetime.now(UTC) + timedelta(hours=1)
+    hint = _format_reset_time(future.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+    assert hint.startswith("resets ")
+    assert future.astimezone().strftime("%m-%d %H:%M") in hint
+    assert "(in " in hint
+
+
+def test_format_reset_time_handles_past_timestamp() -> None:
+    assert _format_reset_time("2020-01-01T00:00:00Z") == "reset"
+
+
+def test_format_reset_time_falls_back_on_invalid_value() -> None:
+    assert _format_reset_time("not-a-timestamp") == "resets at not-a-timestamp"
 
 
 @pytest.mark.parametrize("value", ["42", 42, 42.0])
