@@ -194,13 +194,16 @@ def _reset_hint(data: Mapping[str, Any]) -> str | None:
     for key in ("reset_in", "resetIn", "ttl", "window"):
         seconds = _to_int(data.get(key))
         if seconds:
-            return f"resets in {format_duration(seconds)}"
+            from datetime import UTC, datetime, timedelta
+
+            reset_at = datetime.now(UTC) + timedelta(seconds=seconds)
+            return _format_reset_hint(reset_at, seconds)
 
     return None
 
 
 def _format_reset_time(val: str) -> str:
-    """Format ISO timestamp to a readable duration."""
+    """Format ISO timestamp to an absolute local time with a relative duration hint."""
     from datetime import UTC, datetime
 
     try:
@@ -211,14 +214,18 @@ def _format_reset_time(val: str) -> str:
             frac = frac[:6]  # Keep only microseconds
             val = f"{base}.{frac}Z"
         dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
-        now = datetime.now(UTC)
-        delta = dt - now
-
-        if delta.total_seconds() <= 0:
-            return "reset"
-        return f"resets in {format_duration(int(delta.total_seconds()))}"
+        delta = dt - datetime.now(UTC)
+        return _format_reset_hint(dt, int(delta.total_seconds()))
     except (ValueError, TypeError):
         return f"resets at {val}"
+
+
+def _format_reset_hint(dt: datetime, seconds: int) -> str:
+    """Show the absolute local reset time, with the relative duration as a hint."""
+    if seconds <= 0:
+        return "reset"
+    local_dt = dt.astimezone()
+    return f"resets {local_dt.strftime('%m-%d %H:%M')} (in {format_duration(seconds)})"
 
 
 def _to_int(value: Any) -> int | None:
