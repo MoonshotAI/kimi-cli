@@ -267,6 +267,10 @@ class KimiToolset:
         self._hook_engine = engine
 
     def add(self, tool: ToolType) -> None:
+        if tool.name in self._tool_dict and isinstance(tool, MCPTool):
+            raise ValueError(
+                f"MCP tool name conflict: runtime name `{tool.name}` is already registered"
+            )
         self._tool_dict[tool.name] = tool
 
     def hide(self, tool_name: str) -> bool:
@@ -811,6 +815,16 @@ class KimiToolset:
                         server_info.tools.append(
                             MCPTool(server_name, tool, client, runtime=runtime)
                         )
+
+                registered_names = set(self._tool_dict)
+                pending_names: set[str] = set()
+                for tool in server_info.tools:
+                    if tool.name in registered_names or tool.name in pending_names:
+                        raise ValueError(
+                            f"MCP tool name conflict: runtime name `{tool.name}` "
+                            "is already registered"
+                        )
+                    pending_names.add(tool.name)
 
                 for tool in server_info.tools:
                     self.add(tool)
