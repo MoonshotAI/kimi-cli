@@ -18,6 +18,7 @@ from kosong.tooling.error import (
     ToolNotFoundError,
     ToolParseError,
     ToolRuntimeError,
+    ToolValidateError,
 )
 from kosong.utils.json_args import decode_tool_arguments
 from kosong.utils.typing import JsonType
@@ -119,16 +120,37 @@ class SimpleToolset:
 
         tool = self._tool_dict[tool_call.function.name]
 
+        # Parse raw arguments; empty/None coerces to "{}" to preserve historical guard.
+        raw = tool_call.function.arguments
+        if raw is None or raw == "":
+            raw = "{}"
+
+        # Strict parse first (no recursive unwrapping of inner JSON strings).
         try:
-            arguments: JsonType = decode_tool_arguments(tool_call.function.arguments)
+            arguments_strict: JsonType = json.loads(raw, strict=False)
         except json.JSONDecodeError as e:
             return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 
         async def _call():
+            # First attempt with strict arguments.
             try:
-                ret = await tool.call(arguments)
-                return ToolResult(tool_call_id=tool_call.id, return_value=ret)
+                ret = await tool.call(arguments_strict)
             except Exception as e:
-                return ToolResult(tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e)))
+                return ToolResult(
+                    tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e))
+                )
+
+            # If validation failed, the inner values may be double-encoded.
+            # Retry with recursive unwrapping before giving up.
+            if isinstance(ret, ToolValidateError):
+                arguments = decode_tool_arguments(tool_call.function.arguments)
+                try:
+                    ret = await tool.call(arguments)
+                except Exception as e:
+                    return ToolResult(
+                        tool_call_id=tool_call.id, return_value=ToolRuntimeError(str(e))
+                    )
+
+            return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 
         return asyncio.create_task(_call())

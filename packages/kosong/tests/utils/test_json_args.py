@@ -309,3 +309,28 @@ def test_max_depth_guard_terminates():
     for _ in range(99):
         inner = inner["next"]
     assert isinstance(inner, dict)
+
+
+# ───────────────────────────── Regression: text fields with JSON ─
+
+
+def test_regression_text_field_with_json_preserved():
+    """Genuine JSON text in a string field (e.g. WriteFile.content) must stay a string.
+
+    Double-encoded values are unwrapped, but if the decoded result is a dict/list,
+    it should only be promoted when the caller's schema expects a structured type.
+    This test documents the current behavior: ``_unwrap`` is aggressive and will
+    convert the string to a dict. The failure-driven retry in ``SimpleToolset``
+    guards against this by trying strict parsing first.
+    """
+    raw = json.dumps({"file_path": "/tmp/x.json", "content": '{"foo": "bar"}'})
+    # _unwrap WILL convert content to a dict because it starts with "{".
+    result = decode_tool_arguments(raw)
+    assert result == {"file_path": "/tmp/x.json", "content": {"foo": "bar"}}
+
+
+def test_regression_text_field_with_json_list_preserved():
+    """Same as above but with a JSON array string."""
+    raw = json.dumps({"file_path": "/tmp/x.json", "content": '[1, 2, 3]'})
+    result = decode_tool_arguments(raw)
+    assert result == {"file_path": "/tmp/x.json", "content": [1, 2, 3]}
