@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.56.0 (2026-08-03)
+
 - Anthropic: Omit the `anthropic-beta` header when no beta features are declared instead of sending it with an empty value — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
 
 ## 0.55.0 (2026-07-16)
