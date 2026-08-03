@@ -341,11 +341,13 @@ class Anthropic:
                         pass
         generation_kwargs: dict[str, Any] = {}
         generation_kwargs.update(self._generation_kwargs)
-        betas = generation_kwargs.pop("beta_features", [])
-        extra_headers = {
-            **{"anthropic-beta": ",".join(str(e) for e in betas)},
-            **(generation_kwargs.pop("extra_headers", {})),
-        }
+        betas: list[BetaFeatures] = generation_kwargs.pop("beta_features", None) or []
+        extra_headers: dict[str, str] = {}
+        if betas:
+            # Only declare the header when there are betas to send. An empty
+            # `anthropic-beta` value is rejected by some backends.
+            extra_headers["anthropic-beta"] = ",".join(str(e) for e in betas)
+        extra_headers.update(generation_kwargs.pop("extra_headers", {}))
 
         tools_ = [_convert_tool(tool) for tool in tools]
         if tools:

@@ -516,9 +516,45 @@ async def test_anthropic_opus_46_adaptive_thinking():
         body = json.loads(mock.calls.last.request.content.decode())
         assert body["thinking"] == snapshot({"type": "adaptive", "display": "summarized"})
         assert body["output_config"] == snapshot({"effort": "high"})
-        # Adaptive thinking should not include interleaved-thinking beta header
-        beta_header = mock.calls.last.request.headers.get("anthropic-beta", "")
-        assert "interleaved-thinking-2025-05-14" not in beta_header
+        # Adaptive thinking removes the interleaved-thinking beta; with no betas
+        # left, the header must be omitted rather than sent with an empty value.
+        assert "anthropic-beta" not in mock.calls.last.request.headers
+
+
+async def test_anthropic_beta_header_omitted_when_empty():
+    """The anthropic-beta header is sent only when beta features are declared."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        # Default construction declares the interleaved-thinking beta.
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        assert (
+            mock.calls.last.request.headers["anthropic-beta"] == "interleaved-thinking-2025-05-14"
+        )
+
+        # An emptied beta list must not produce an empty header value.
+        provider = provider.with_generation_kwargs(beta_features=[])
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        assert "anthropic-beta" not in mock.calls.last.request.headers
+
+        # User-supplied extra headers still win over the generated one.
+        provider = provider.with_generation_kwargs(
+            beta_features=["interleaved-thinking-2025-05-14"],
+            extra_headers={"anthropic-beta": "custom-beta"},
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        assert mock.calls.last.request.headers["anthropic-beta"] == "custom-beta"
 
 
 async def test_anthropic_opus_46_thinking_off():

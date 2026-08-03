@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Kosong：当没有声明任何 beta 特性时不再发送值为空的 `anthropic-beta` 请求头——adaptive thinking 会移除 interleaved-thinking beta，此前会留下一个空值请求头，部分后端会拒绝该请求
+
 ## 1.49.0 (2026-07-16)
 
 **亮点**：Kimi 供应商的补全 token 预算现在会根据模型剩余上下文窗口动态调整，减少长轮次中的上下文超限错误
