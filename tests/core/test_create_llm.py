@@ -110,6 +110,9 @@ def test_create_llm_keeps_prompt_cache_key_for_moonshot_endpoints():
         "https://api.kimi.com/coding/v1",
         "https://api.moonshot.ai/v1",
         "https://api.moonshot.cn/v1",
+        # scheme-less forms are accepted by the OpenAI-compatible clients too
+        "api.moonshot.ai/v1",
+        "api.kimi.com/coding/v1",
     ):
         provider = LLMProvider(
             type="kimi",

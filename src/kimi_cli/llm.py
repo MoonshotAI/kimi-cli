@@ -326,7 +326,13 @@ def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> 
 
 
 def _supports_prompt_cache_key(base_url: str) -> bool:
-    return urlparse(base_url).hostname in MOONSHOT_API_HOSTS
+    url = base_url.strip()
+    if "//" not in url:
+        # urlparse() only fills in `hostname` when a netloc is present, so a
+        # scheme-less base_url such as "api.moonshot.ai/v1" parses entirely as
+        # a path. Give it a netloc before parsing.
+        url = f"//{url}"
+    return urlparse(url).hostname in MOONSHOT_API_HOSTS
 
 
 def create_llm(
