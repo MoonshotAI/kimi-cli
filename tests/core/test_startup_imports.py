@@ -153,6 +153,30 @@ print("ok")
     assert proc.stdout.strip() == "ok"
 
 
+def test_package_entrypoint_sets_ai_agent_marker() -> None:
+    proc = _run_python(
+        """
+import io
+import os
+from contextlib import redirect_stdout
+
+from kimi_cli.__main__ import main
+
+os.environ.pop("AI_AGENT", None)
+with redirect_stdout(io.StringIO()):
+    main(["--version"])
+assert os.environ["AI_AGENT"] == "kimi"
+
+os.environ["AI_AGENT"] = "wrapper"
+with redirect_stdout(io.StringIO()):
+    main(["--version"])
+assert os.environ["AI_AGENT"] == "wrapper"
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"
+
+
 def test_package_entrypoint_falls_back_to_cli_for_commands() -> None:
     proc = _run_python(
         """
