@@ -20,6 +20,12 @@ _PYINSTALLER_LD_VARS = [
 ]
 
 
+def ensure_ai_agent_env() -> None:
+    """Identify Kimi CLI to subprocesses unless a wrapper already did so."""
+    if not os.environ.get("AI_AGENT", "").strip():
+        os.environ["AI_AGENT"] = "kimi"
+
+
 def get_clean_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
     """
     Get a clean environment suitable for spawning subprocesses.

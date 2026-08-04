@@ -228,3 +228,33 @@ print("ok")
 """
     )
     assert proc.stdout.strip() == "ok"
+
+
+def test_cli_module_entrypoint_sets_ai_agent_marker() -> None:
+    proc = _run_python(
+        """
+import os
+
+import kimi_cli.cli.__main__ as cli_main
+
+seen = []
+
+def fake_cli(*_args, **_kwargs):
+    seen.append(os.environ["AI_AGENT"])
+
+cli_main.cli = fake_cli
+
+os.environ.pop("AI_AGENT", None)
+cli_main.main([])
+
+os.environ["AI_AGENT"] = "  "
+cli_main.main([])
+
+os.environ["AI_AGENT"] = "wrapper"
+cli_main.main([])
+
+assert seen == ["kimi", "kimi", "wrapper"]
+print("ok")
+"""
+    )
+    assert proc.stdout.strip() == "ok"

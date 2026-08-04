@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -11,11 +10,11 @@ def _prog_name() -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int | str | None:
-    if not os.environ.get("AI_AGENT", "").strip():
-        os.environ["AI_AGENT"] = "kimi"
-
     from kimi_cli.telemetry.crash import install_crash_handlers, set_phase
     from kimi_cli.utils.proxy import normalize_proxy_env
+    from kimi_cli.utils.subprocess_env import ensure_ai_agent_env
+
+    ensure_ai_agent_env()
 
     # Install excepthook before anything else so startup-phase crashes are captured.
     install_crash_handlers()

@@ -10,6 +10,9 @@ def main(argv: Sequence[str] | None = None) -> int | str | None:
     from kimi_cli.telemetry.crash import install_crash_handlers, set_phase
     from kimi_cli.utils.environment import GitBashNotFoundError
     from kimi_cli.utils.proxy import normalize_proxy_env
+    from kimi_cli.utils.subprocess_env import ensure_ai_agent_env
+
+    ensure_ai_agent_env()
 
     # Same entry treatment as kimi_cli.__main__: install excepthook before
     # anything else so startup-phase crashes in subcommand subprocesses
