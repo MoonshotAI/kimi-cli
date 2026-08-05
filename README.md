@@ -61,6 +61,8 @@ Then you can create Kimi CLI threads in IDE's agent panel.
 
 ![](./docs/media/acp-integration.gif)
 
+If you prefer talking to Kimi CLI with your voice, [qwen-audio-agent](https://github.com/QwenAudio/qwen-audio-agent) is an open-source full-duplex voice runtime that launches Kimi CLI as an ACP agent, so you can have spoken conversations with it on macOS (desktop app, TUI, and web UI).
+
 ### Zsh integration
 
 You can use Kimi CLI together with Zsh, to empower your shell experience with AI agent capabilities.
