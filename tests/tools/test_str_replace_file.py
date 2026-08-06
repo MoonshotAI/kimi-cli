@@ -266,3 +266,45 @@ async def test_replace_preserves_invalid_utf8_bytes_outside_edit(
     assert out == b"ALPHA\nbeta \xff gamma\ndelta\n"
     assert b"\xef\xbf\xbd" not in out  # U+FFFD as UTF-8
     assert len(out) == len(original) + (len(b"ALPHA") - len(b"alpha"))
+
+
+async def test_replace_multiline_crlf_file(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """Multi-line edits must match CRLF files (model always supplies LF)."""
+    file_path = temp_work_dir / "crlf.txt"
+    original = b"Line 1\r\nLine 2\r\nLine 3\r\n"
+    await file_path.write_bytes(original)
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="Line 2\nLine 3", new="Modified 2\nModified 3"),
+        )
+    )
+
+    assert not result.is_error
+    out = await file_path.read_bytes()
+    assert out == b"Line 1\r\nModified 2\r\nModified 3\r\n"
+    # Non-edited region stays bit-identical (CRLF preserved)
+    assert out.startswith(b"Line 1\r\n")
+
+
+async def test_replace_preserves_invalid_utf8_with_crlf_multiline(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """CRLF multi-line edit must not corrupt invalid UTF-8 elsewhere."""
+    file_path = temp_work_dir / "mixed-crlf.bin"
+    original = b"head\r\nkeep \xff me\r\ntail\r\n"
+    await file_path.write_bytes(original)
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="head\nkeep", new="HEAD\nKEEP"),
+        )
+    )
+    assert not result.is_error
+    out = await file_path.read_bytes()
+    assert out == b"HEAD\r\nKEEP \xff me\r\ntail\r\n"
+    assert b"\xef\xbf\xbd" not in out

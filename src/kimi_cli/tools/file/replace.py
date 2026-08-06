@@ -85,17 +85,41 @@ class StrReplaceFile(CallableTool2[Params]):
         else:
             return content.replace(edit.old, edit.new, 1)
 
+    @staticmethod
+    def _detect_line_ending(content: bytes) -> bytes:
+        """Return the file's dominant newline bytes (CRLF if any, else LF).
+
+        ReadFile exposes lines with universal newlines, so the model always
+        supplies ``\\n`` in multi-line ``old``/``new``. Byte matching must
+        re-apply the on-disk ending or CRLF files reject every multi-line edit.
+        """
+        if b"\r\n" in content:
+            return b"\r\n"
+        return b"\n"
+
+    @staticmethod
+    def _encode_edit_text(text: str, line_ending: bytes) -> bytes:
+        """Encode model text as UTF-8 using the file's on-disk newlines."""
+        # Model / tool JSON always uses LF; normalize any mixed endings first.
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        encoded = normalized.encode("utf-8")
+        if line_ending == b"\r\n":
+            return encoded.replace(b"\n", b"\r\n")
+        return encoded
+
     def _apply_edit_bytes(self, content: bytes, edit: Edit) -> bytes:
         """Apply a single edit on raw bytes so non-UTF-8 regions stay intact.
 
-        ``old``/``new`` come from the model as Unicode and are encoded as UTF-8.
+        ``old``/``new`` come from the model as Unicode and are encoded as UTF-8,
+        with newlines rewritten to match the file's dominant line ending.
         Searching/replacing in the raw byte stream avoids the
         decode(errors=replace) → edit → re-encode round-trip that permanently
         rewrites invalid sequences (e.g. ``\\xff`` → U+FFFD / ``EF BF BD``)
         far from the requested edit (#2591).
         """
-        old_b = edit.old.encode("utf-8")
-        new_b = edit.new.encode("utf-8")
+        line_ending = self._detect_line_ending(content)
+        old_b = self._encode_edit_text(edit.old, line_ending)
+        new_b = self._encode_edit_text(edit.new, line_ending)
         if not old_b:
             return content
         if edit.replace_all:
@@ -190,9 +214,10 @@ class StrReplaceFile(CallableTool2[Params]):
             await p.write_bytes(raw)
 
             # Count changes for success message (byte-accurate for the edit strings)
+            line_ending = self._detect_line_ending(original_raw)
             total_replacements = 0
             for edit in edits:
-                old_b = edit.old.encode("utf-8")
+                old_b = self._encode_edit_text(edit.old, line_ending)
                 if not old_b:
                     continue
                 if edit.replace_all:
