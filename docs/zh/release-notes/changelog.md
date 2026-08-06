@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- Core：当工具返回模型未声明支持的图片或视频时继续当前轮次——省略不受支持的媒体并附上说明，而不再在工具已执行后中途中止任务（#2588）
+- Core：在 `LLMNotSupported` 错误中给出配置修复提示——告知用户在 `config.toml` 的 `[models.<alias>]` 中添加 `capabilities = ["image_in"]`（或类似能力），或设置 `KIMI_MODEL_CAPABILITIES`（#2588）
 - Kosong：当没有声明任何 beta 特性时不再发送值为空的 `anthropic-beta` 请求头——adaptive thinking 会移除 interleaved-thinking beta，此前会留下一个空值请求头，部分后端会拒绝该请求
 
 ## 1.49.0 (2026-07-16)

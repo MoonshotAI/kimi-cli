@@ -75,7 +75,13 @@ from kimi_cli.soul.dynamic_injection import (
 )
 from kimi_cli.soul.dynamic_injections.afk_mode import AfkModeInjectionProvider
 from kimi_cli.soul.dynamic_injections.plan_mode import PlanModeInjectionProvider
-from kimi_cli.soul.message import check_message, system, system_reminder, tool_result_to_message
+from kimi_cli.soul.message import (
+    check_message,
+    omit_unsupported_media,
+    system,
+    system_reminder,
+    tool_result_to_message,
+)
 from kimi_cli.soul.slash import registry as soul_slash_registry
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.tools.dmail import NAME as SendDMail_NAME
@@ -1391,13 +1397,19 @@ class KimiSoul:
 
         assert self._runtime.llm is not None
         tool_messages = [tool_result_to_message(tr) for tr in tool_results]
+        # Drop unsupported media from tool results instead of aborting mid-task
+        # after the tool has already run (see #2588). User-provided media still
+        # raises LLMNotSupported via check_message on the turn/steer paths.
+        rewritten: list[Message] = []
         for tm in tool_messages:
-            if missing_caps := check_message(tm, self._runtime.llm.capabilities):
+            omitted_msg, omitted_caps = omit_unsupported_media(tm, self._runtime.llm.capabilities)
+            if omitted_caps:
                 logger.warning(
-                    "Tool result message requires unsupported capabilities: {caps}",
-                    caps=missing_caps,
+                    "Omitting unsupported media from tool result (missing capabilities: {caps})",
+                    caps=omitted_caps,
                 )
-                raise LLMNotSupported(self._runtime.llm, list(missing_caps))
+            rewritten.append(omitted_msg)
+        tool_messages = rewritten
 
         await self._context.append_message(result.message)
         if result.usage is not None:

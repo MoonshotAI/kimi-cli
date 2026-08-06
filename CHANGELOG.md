@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Continue the turn when a tool returns image or video the model is not declared to support — omit the unsupported media with a note instead of aborting mid-task after the tool has already run (#2588)
+- Core: Include the config remedy in `LLMNotSupported` errors — tell users to add `capabilities = ["image_in"]` (or similar) to `[models.<alias>]` in `config.toml`, or set `KIMI_MODEL_CAPABILITIES` (#2588)
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
 
 ## 1.49.0 (2026-07-16)
