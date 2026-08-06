@@ -79,11 +79,31 @@ class StrReplaceFile(CallableTool2[Params]):
         return None
 
     def _apply_edit(self, content: str, edit: Edit) -> str:
-        """Apply a single edit to the content."""
+        """Apply a single edit to the content (string form; for display/tests)."""
         if edit.replace_all:
             return content.replace(edit.old, edit.new)
         else:
             return content.replace(edit.old, edit.new, 1)
+
+    def _apply_edit_bytes(self, content: bytes, edit: Edit) -> bytes:
+        """Apply a single edit on raw bytes so non-UTF-8 regions stay intact.
+
+        ``old``/``new`` come from the model as Unicode and are encoded as UTF-8.
+        Searching/replacing in the raw byte stream avoids the
+        decode(errors=replace) → edit → re-encode round-trip that permanently
+        rewrites invalid sequences (e.g. ``\\xff`` → U+FFFD / ``EF BF BD``)
+        far from the requested edit (#2591).
+        """
+        old_b = edit.old.encode("utf-8")
+        new_b = edit.new.encode("utf-8")
+        if not old_b:
+            return content
+        if edit.replace_all:
+            return content.replace(old_b, new_b)
+        idx = content.find(old_b)
+        if idx < 0:
+            return content
+        return content[:idx] + new_b + content[idx + len(old_b) :]
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -128,23 +148,24 @@ class StrReplaceFile(CallableTool2[Params]):
                     brief="Invalid path",
                 )
 
-            # Read the file content
-            content = await p.read_text(errors="replace")
-
-            original_content = content
+            # Read raw bytes so non-UTF-8 sequences outside the edit are preserved
+            # (#2591 / same whole-file rewrite class as #2191).
+            raw = await p.read_bytes()
+            original_raw = raw
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
-            # Apply all edits
             for edit in edits:
-                content = self._apply_edit(content, edit)
+                raw = self._apply_edit_bytes(raw, edit)
 
-            # Check if any changes were made
-            if content == original_content:
+            if raw == original_raw:
                 return ToolError(
                     message="No replacements were made. The old string was not found in the file.",
                     brief="No replacements made",
                 )
 
+            # Diff is display-only: lossy decode is fine for the approval UI.
+            original_content = original_raw.decode("utf-8", errors="replace")
+            content = raw.decode("utf-8", errors="replace")
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
                 str(p), original_content, content
             )
@@ -166,16 +187,18 @@ class StrReplaceFile(CallableTool2[Params]):
                 if not result:
                     return result.rejection_error()
 
-            # Write the modified content back to the file
-            await p.write_text(content, errors="replace")
+            await p.write_bytes(raw)
 
-            # Count changes for success message
+            # Count changes for success message (byte-accurate for the edit strings)
             total_replacements = 0
             for edit in edits:
+                old_b = edit.old.encode("utf-8")
+                if not old_b:
+                    continue
                 if edit.replace_all:
-                    total_replacements += original_content.count(edit.old)
+                    total_replacements += original_raw.count(old_b)
                 else:
-                    total_replacements += 1 if edit.old in original_content else 0
+                    total_replacements += 1 if old_b in original_raw else 0
 
             return ToolReturnValue(
                 is_error=False,

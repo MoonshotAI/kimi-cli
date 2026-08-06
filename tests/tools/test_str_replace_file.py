@@ -246,3 +246,23 @@ async def test_replace_empty_strings(
     assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello !"
+
+
+async def test_replace_preserves_invalid_utf8_bytes_outside_edit(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """Invalid UTF-8 far from the edit must not become U+FFFD (#2591)."""
+    file_path = temp_work_dir / "mixed.bin"
+    # 25 bytes: valid text with a lone 0xff between spaces
+    original = b"alpha\nbeta \xff gamma\ndelta\n"
+    await file_path.write_bytes(original)
+
+    result = await str_replace_file_tool(
+        Params(path=str(file_path), edit=Edit(old="alpha", new="ALPHA"))
+    )
+
+    assert not result.is_error
+    out = await file_path.read_bytes()
+    assert out == b"ALPHA\nbeta \xff gamma\ndelta\n"
+    assert b"\xef\xbf\xbd" not in out  # U+FFFD as UTF-8
+    assert len(out) == len(original) + (len(b"ALPHA") - len(b"alpha"))
