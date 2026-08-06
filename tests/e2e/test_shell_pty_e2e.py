@@ -368,6 +368,66 @@ def test_shell_ctrl_c_from_idle_prompt_after_completed_turn_shows_tip(tmp_path: 
         shell.close()
 
 
+def test_shell_shift_enter_inserts_newline(tmp_path: Path) -> None:
+    """Shift+Enter should insert a newline instead of submitting the message."""
+    config_path = write_scripted_config(tmp_path, ["text: First turn finished."])
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        turn_mark = shell.mark()
+        shell.send_text("hello")
+        shell.send_key("s_enter")
+        shell.send_text("world")
+        shell.send_key("enter")
+        shell.read_until_contains("First turn finished.", after=turn_mark, timeout=15.0)
+        prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=prompt_mark)
+
+        assert list_turn_begin_inputs(home_dir, work_dir) == ["hello\nworld"]
+    finally:
+        shell.close()
+
+
+def test_shell_alt_enter_inserts_newline(tmp_path: Path) -> None:
+    """Alt+Enter (xterm modifyOtherKeys sequence) should insert a newline."""
+    config_path = write_scripted_config(tmp_path, ["text: First turn finished."])
+    work_dir = make_work_dir(tmp_path)
+    home_dir = make_home_dir(tmp_path)
+    shell = start_shell_pty(
+        config_path=config_path,
+        work_dir=work_dir,
+        home_dir=home_dir,
+        yolo=True,
+    )
+
+    try:
+        shell.read_until_contains("Welcome to Kimi Code CLI!")
+        _read_until_prompt(shell, after=shell.mark())
+
+        turn_mark = shell.mark()
+        shell.send_text("hello")
+        shell.send_key("alt_enter")
+        shell.send_text("world")
+        shell.send_key("enter")
+        shell.read_until_contains("First turn finished.", after=turn_mark, timeout=15.0)
+        prompt_mark = shell.mark()
+        _read_until_prompt(shell, after=prompt_mark)
+
+        assert list_turn_begin_inputs(home_dir, work_dir) == ["hello\nworld"]
+    finally:
+        shell.close()
+
+
 def test_shell_question_roundtrip_with_other_answer(tmp_path: Path) -> None:
     question_payload = [
         {

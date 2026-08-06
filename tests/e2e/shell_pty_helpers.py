@@ -147,7 +147,10 @@ class ShellPTYProcess:
             "right": b"\x1b[C",
             "ctrl_c": b"\x03",
             "ctrl_d": b"\x04",
+            "alt_enter": b"\x1b[27;3;13~",
+            "ctrl_j": b"\x0a",
             "ctrl_x": b"\x18",
+            "s_enter": b"\x1b[27;2;13~",
         }
         payload = key_map.get(key)
         if payload is None:
