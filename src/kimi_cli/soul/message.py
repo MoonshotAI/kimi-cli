@@ -90,3 +90,48 @@ def check_message(
         elif isinstance(part, ThinkPart):
             capabilities_needed.add("thinking")
     return capabilities_needed - model_capabilities
+
+
+def omit_unsupported_media(
+    message: Message, model_capabilities: set[ModelCapability]
+) -> tuple[Message, set[ModelCapability]]:
+    """Replace unsupported image/video parts with a short text note.
+
+    Used for tool results so a missing ``image_in``/``video_in`` capability does
+    not abort the run after the tool has already executed. Returns the (possibly
+    rewritten) message and the set of capabilities that were omitted.
+    """
+    omitted = set[ModelCapability]()
+    new_content: list[ContentPart] = []
+    for part in message.content:
+        if isinstance(part, ImageURLPart) and "image_in" not in model_capabilities:
+            omitted.add("image_in")
+            new_content.append(
+                system(
+                    "Image omitted: model has no image_in capability. "
+                    'Add capabilities = ["image_in"] to [models.<alias>] in config.toml.'
+                )
+            )
+        elif isinstance(part, VideoURLPart) and "video_in" not in model_capabilities:
+            omitted.add("video_in")
+            new_content.append(
+                system(
+                    "Video omitted: model has no video_in capability. "
+                    'Add capabilities = ["video_in"] to [models.<alias>] in config.toml.'
+                )
+            )
+        else:
+            new_content.append(part)
+
+    if not omitted:
+        return message, omitted
+
+    return (
+        Message(
+            role=message.role,
+            content=new_content,
+            tool_calls=message.tool_calls,
+            tool_call_id=message.tool_call_id,
+        ),
+        omitted,
+    )

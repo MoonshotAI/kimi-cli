@@ -34,9 +34,12 @@ class LLMNotSupported(Exception):
         self.llm = llm
         self.capabilities = capabilities
         capabilities_str = "capability" if len(capabilities) == 1 else "capabilities"
+        caps_list = ", ".join(f'"{cap}"' for cap in capabilities)
         super().__init__(
             f"LLM model '{llm.model_name}' does not support required {capabilities_str}: "
-            f"{', '.join(capabilities)}."
+            f"{', '.join(capabilities)}. "
+            f"Add capabilities = [{caps_list}] to [models.<alias>] in config.toml "
+            f"(or set KIMI_MODEL_CAPABILITIES)."
         )
 
 

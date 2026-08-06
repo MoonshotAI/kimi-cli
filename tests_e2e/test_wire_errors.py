@@ -164,7 +164,11 @@ def test_llm_not_supported(tmp_path) -> None:
             {
                 "error": {
                     "code": -32002,
-                    "message": "LLM model 'scripted_echo' does not support required capability: image_in.",
+                    "message": (
+                        "LLM model 'scripted_echo' does not support required capability: "
+                        'image_in. Add capabilities = ["image_in"] to [models.<alias>] in '
+                        "config.toml (or set KIMI_MODEL_CAPABILITIES)."
+                    ),
                     "data": None,
                 }
             }

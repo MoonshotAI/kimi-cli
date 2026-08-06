@@ -133,11 +133,15 @@ Indicates the model always uses thinking mode and cannot be disabled. For exampl
 
 ### `image_in`
 
-When image input capability is enabled, you can paste images in conversations (`Ctrl-V`).
+When image input capability is enabled, you can paste images in conversations (`Ctrl-V`), and the agent can send image content returned by tools (including MCP tools) to the model.
+
+If the model is not declared with `image_in` and a tool returns an image, Kimi Code CLI omits that image, continues the turn with a short note, and tells you to add `capabilities = ["image_in"]` under `[models.<alias>]` (or set `KIMI_MODEL_CAPABILITIES`). User-pasted images still require `image_in` and fail with that guidance if it is missing.
+
+Custom model aliases (for example local `openai_legacy` gateways) do not get `image_in` from name-based auto-detection — declare `capabilities` explicitly when the model can accept images.
 
 ### `video_in`
 
-When video input capability is enabled, you can send video content in conversations.
+When video input capability is enabled, you can send video content in conversations. Tool-returned video is handled the same way as images: without `video_in`, the video is omitted and the turn continues with a note naming the config fix.
 
 ## Search and fetch services
 

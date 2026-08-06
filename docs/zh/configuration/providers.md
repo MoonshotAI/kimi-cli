@@ -133,11 +133,15 @@ capabilities = ["thinking", "image_in"]
 
 ### `image_in`
 
-启用图片输入能力后，可以在对话中粘贴图片（`Ctrl-V`）。
+启用图片输入能力后，可以在对话中粘贴图片（`Ctrl-V`），代理也可以将工具（包括 MCP 工具）返回的图片内容发给模型。
+
+如果模型未声明 `image_in`，而工具返回了图片，Kimi Code CLI 会省略该图片、以简短说明继续当前轮次，并提示你在 `[models.<alias>]` 下添加 `capabilities = ["image_in"]`（或设置 `KIMI_MODEL_CAPABILITIES`）。用户粘贴的图片仍然需要 `image_in`；缺失时会报错并给出同样的配置指引。
+
+自定义模型别名（例如本地 `openai_legacy` 网关）不会通过名称自动检测获得 `image_in`——当模型可以接受图片时，请显式声明 `capabilities`。
 
 ### `video_in`
 
-启用视频输入能力后，可以在对话中发送视频内容。
+启用视频输入能力后，可以在对话中发送视频内容。工具返回的视频与图片处理方式相同：缺少 `video_in` 时会省略视频，并以说明配置修复方式的提示继续当前轮次。
 
 ## 搜索和抓取服务
 

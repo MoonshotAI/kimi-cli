@@ -40,7 +40,12 @@ When using `Ctrl-V` to paste an image, if you see "Current model does not suppor
 Solutions:
 
 - **Switch to an image-capable model**: Use a model that supports the `image_in` capability.
+- **Declare capabilities on custom aliases**: For local or OpenAI-compatible models under your own alias, add `capabilities = ["image_in"]` to `[models.<alias>]` in `config.toml` (or set `KIMI_MODEL_CAPABILITIES`). Name-based auto-detection does not cover arbitrary aliases.
 - **Check clipboard content**: Make sure the clipboard contains actual image data, not just a file path to an image.
+
+### Tool or MCP screenshot is omitted / capability error
+
+If a tool (including an MCP tool) returns an image but the selected model has no `image_in` capability, Kimi Code CLI omits the image, continues the turn, and points you at adding `capabilities = ["image_in"]` to the model entry. User-provided images still error with the same config guidance.
 
 ### Working directory deleted or removed
 

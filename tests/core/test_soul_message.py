@@ -5,7 +5,12 @@ from kosong.message import Message
 from kosong.tooling import ToolError, ToolOk
 
 from kimi_cli.llm import ModelCapability
-from kimi_cli.soul.message import check_message, system, tool_result_to_message
+from kimi_cli.soul.message import (
+    check_message,
+    omit_unsupported_media,
+    system,
+    tool_result_to_message,
+)
 from kimi_cli.wire.types import (
     AudioURLPart,
     ImageURLPart,
@@ -331,3 +336,51 @@ def test_check_message_with_text_only():
     missing_capabilities = check_message(message, model_capabilities)
 
     assert missing_capabilities == set()
+
+
+def test_omit_unsupported_media_replaces_image_when_missing_capability():
+    image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="data:image/png;base64,AAA"))
+    message = Message(
+        role="tool",
+        content=[system("screenshot captured"), image_part],
+        tool_call_id="call_1",
+    )
+
+    rewritten, omitted = omit_unsupported_media(message, set())
+
+    assert omitted == {"image_in"}
+    assert rewritten.tool_call_id == "call_1"
+    assert rewritten.content == [
+        system("screenshot captured"),
+        system(
+            "Image omitted: model has no image_in capability. "
+            'Add capabilities = ["image_in"] to [models.<alias>] in config.toml.'
+        ),
+    ]
+    assert check_message(rewritten, set()) == set()
+
+
+def test_omit_unsupported_media_keeps_image_when_capability_present():
+    image_part = ImageURLPart(image_url=ImageURLPart.ImageURL(url="data:image/png;base64,AAA"))
+    message = Message(role="tool", content=[image_part], tool_call_id="call_1")
+
+    rewritten, omitted = omit_unsupported_media(message, {"image_in"})
+
+    assert omitted == set()
+    assert rewritten is message
+
+
+def test_omit_unsupported_media_replaces_video_when_missing_capability():
+    video_part = VideoURLPart(video_url=VideoURLPart.VideoURL(url="https://example.com/v.mp4"))
+    message = Message(role="tool", content=[video_part], tool_call_id="call_1")
+
+    rewritten, omitted = omit_unsupported_media(message, set())
+
+    assert omitted == {"video_in"}
+    assert rewritten.content == [
+        system(
+            "Video omitted: model has no video_in capability. "
+            'Add capabilities = ["video_in"] to [models.<alias>] in config.toml.'
+        )
+    ]
+    assert check_message(rewritten, set()) == set()
