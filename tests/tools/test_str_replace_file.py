@@ -248,6 +248,20 @@ async def test_replace_empty_strings(
     assert await file_path.read_text() == "Hello !"
 
 
+async def test_replace_rejects_empty_old_string(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """Empty old is not a valid edit (Copilot review on byte-path semantics)."""
+    file_path = temp_work_dir / "test.txt"
+    await file_path.write_text("hello")
+
+    result = await str_replace_file_tool(Params(path=str(file_path), edit=Edit(old="", new="x")))
+
+    assert result.is_error
+    assert "cannot be empty" in result.message
+    assert await file_path.read_text() == "hello"
+
+
 async def test_replace_preserves_invalid_utf8_bytes_outside_edit(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):

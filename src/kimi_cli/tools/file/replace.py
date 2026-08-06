@@ -179,6 +179,15 @@ class StrReplaceFile(CallableTool2[Params]):
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
             for edit in edits:
+                # Empty old is invalid: str.replace("", ...) is not a meaningful
+                # edit, and the byte path intentionally no-ops on empty needles.
+                if edit.old == "":
+                    return ToolError(
+                        message="The old string to replace cannot be empty.",
+                        brief="Empty old string",
+                    )
+
+            for edit in edits:
                 raw = self._apply_edit_bytes(raw, edit)
 
             if raw == original_raw:
