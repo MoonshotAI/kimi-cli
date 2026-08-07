@@ -304,6 +304,27 @@ async def test_replace_multiline_crlf_file(
     assert out.startswith(b"Line 1\r\n")
 
 
+async def test_replace_multiline_mostly_lf_with_stray_crlf(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """A stray CRLF must not force whole-file CRLF rewriting of old/new (Copilot)."""
+    file_path = temp_work_dir / "mostly-lf.txt"
+    # Three LF newlines dominate a single CRLF elsewhere in the file.
+    original = b"Line 1\nLine 2\nLine 3\ntrailer\r\n"
+    await file_path.write_bytes(original)
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=Edit(old="Line 2\nLine 3", new="Modified 2\nModified 3"),
+        )
+    )
+
+    assert not result.is_error
+    out = await file_path.read_bytes()
+    assert out == b"Line 1\nModified 2\nModified 3\ntrailer\r\n"
+
+
 async def test_replace_preserves_invalid_utf8_with_crlf_multiline(
     str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
 ):

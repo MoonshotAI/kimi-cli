@@ -87,13 +87,20 @@ class StrReplaceFile(CallableTool2[Params]):
 
     @staticmethod
     def _detect_line_ending(content: bytes) -> bytes:
-        """Return the file's dominant newline bytes (CRLF if any, else LF).
+        """Return the file's dominant newline bytes by counting occurrences.
 
         ReadFile exposes lines with universal newlines, so the model always
         supplies ``\\n`` in multi-line ``old``/``new``. Byte matching must
         re-apply the on-disk ending or CRLF files reject every multi-line edit.
+
+        Dominance is by count (not “any CRLF wins”): a mostly-LF file with a
+        stray ``\\r\\n`` keeps LF so multi-line ``old`` still matches.
+        Ties prefer LF.
         """
-        if b"\r\n" in content:
+        crlf = content.count(b"\r\n")
+        # Newlines that are not the second byte of a CRLF pair.
+        lf_only = content.count(b"\n") - crlf
+        if crlf > lf_only:
             return b"\r\n"
         return b"\n"
 
