@@ -304,6 +304,16 @@ rl.on("close", () => {
 }
 ```
 
+## Security and persistent data
+
+Plugin tools run as local subprocesses with the current user's file and network access. Before installing a third-party plugin, inspect the `command` entries in `plugin.json` and the scripts they execute, and install only code you trust. A tool's stdout is returned to the agent, so external content returned by a plugin should also be treated as untrusted data rather than instructions.
+
+When `inject` is used, Kimi Code CLI writes credentials to the plugin's `config_file` and provides current values through environment variables when a tool runs. Do not log these environment variables or commit an injected configuration file to version control. Declare only the mappings the plugin actually needs.
+
+Reinstalling a plugin with the same name replaces its entire installed directory under `~/.kimi/plugins/<plugin-name>/`. A plugin that needs to preserve state across upgrades should store user data in a separate data directory and provide clear ways to inspect, export, and delete it.
+
+Plugins that store sessions, source code, or user input should also document the data location, retention period, deletion procedure, and network transmission behavior. Tool descriptions should state the effects of write operations so users can make an informed approval decision.
+
 ## Plugin installation location
 
 Plugins are installed in the `~/.kimi/plugins/` directory. Each plugin is an independent subdirectory containing the complete `plugin.json` and script files.
