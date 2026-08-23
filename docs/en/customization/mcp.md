@@ -133,3 +133,33 @@ Content returned by MCP tools may contain malicious instructions attempting to t
 ::: warning Note
 In YOLO or AFK mode, MCP tool calls will also be automatically approved. Use these modes only when you fully trust the MCP servers.
 :::
+
+
+## Build Remote Agent (phone pairing)
+
+Pair a phone running [Build Remote Agent](https://grokbuildremote.com/) to this Kimi Code CLI session. Protocol `gbr/1`. Phone is spectator + veto, not orchestrator.
+
+Independent product by Linespotting AB. Not affiliated with xAI or SpaceX.
+
+```bash
+curl -fsSL https://grokbuildremote.com/install.sh | bash
+gbr-agent version          # v0.6.0+
+gbr-agent pair && gbr-agent run
+git clone https://github.com/LinespottingOrg/GrokBuildRemote-Agents.git
+cd GrokBuildRemote-Agents/mcp/gbr-mcp && npm install
+```
+
+Add the local stdio MCP server (loopback only). Never put mailbox keys in MCP config.
+
+```sh
+kimi mcp add --transport stdio gbr -- node /path/to/GrokBuildRemote-Agents/mcp/gbr-mcp/bin/gbr-mcp.js
+```
+
+Attach the Bot API directly:
+
+```sh
+curl -sS http://127.0.0.1:8788/health
+curl -sS http://127.0.0.1:8788/v1/sessions
+```
+
+Phone: Build Remote Agent → scan the QR from `gbr-agent pair` (or type the 8-char code). Unpair in Settings before changing PCs.
