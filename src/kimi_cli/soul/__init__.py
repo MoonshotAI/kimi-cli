@@ -212,12 +212,12 @@ async def run_soul(
     notification_task = asyncio.create_task(_pump_notifications_to_wire(runtime, wire))
 
     cancel_event_task = asyncio.create_task(cancel_event.wait())
-    await asyncio.wait(
-        [soul_task, cancel_event_task],
-        return_when=asyncio.FIRST_COMPLETED,
-    )
-
     try:
+        await asyncio.wait(
+            [soul_task, cancel_event_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
         if cancel_event.is_set():
             logger.debug("Cancelling the run task")
             soul_task.cancel()
@@ -232,6 +232,12 @@ async def run_soul(
                 await cancel_event_task
             soul_task.result()  # this will raise if any exception was raised in the run task
     finally:
+        pending_tasks = [task for task in (soul_task, cancel_event_task) if not task.done()]
+        for task in pending_tasks:
+            task.cancel()
+        for task in pending_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         notification_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await notification_task
