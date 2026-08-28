@@ -2412,7 +2412,7 @@ crypto = [
 
 [[package]]
 name = "pykaos"
-version = "0.9.0"
+version = "0.10.0"
 source = { editable = "packages/kaos" }
 dependencies = [
     { name = "aiofiles" },
