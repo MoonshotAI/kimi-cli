@@ -246,3 +246,56 @@ async def test_replace_empty_strings(
     assert not result.is_error
     assert "successfully edited" in result.message
     assert await file_path.read_text() == "Hello !"
+
+
+async def test_replace_rejects_empty_old_string(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """An empty `old` would silently insert `new` via str.replace() rather than
+    match nothing, so it must be rejected instead of corrupting the file."""
+    file_path = temp_work_dir / "test.txt"
+    original_content = "Hello world!"
+    await file_path.write_text(original_content)
+
+    result = await str_replace_file_tool(
+        Params(path=str(file_path), edit=Edit(old="", new="X"))
+    )
+
+    assert result.is_error
+    assert "old" in result.message and "empty" in result.message
+    assert await file_path.read_text() == original_content  # Content unchanged
+
+
+async def test_replace_rejects_empty_old_string_replace_all(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """Same guard applies when replace_all is set."""
+    file_path = temp_work_dir / "test.txt"
+    original_content = "Hello world!"
+    await file_path.write_text(original_content)
+
+    result = await str_replace_file_tool(
+        Params(path=str(file_path), edit=Edit(old="", new="X", replace_all=True))
+    )
+
+    assert result.is_error
+    assert await file_path.read_text() == original_content  # Content unchanged
+
+
+async def test_replace_rejects_empty_old_string_in_list(
+    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+):
+    """An empty `old` anywhere in a list of edits aborts the whole call."""
+    file_path = temp_work_dir / "test.txt"
+    original_content = "Hello world!"
+    await file_path.write_text(original_content)
+
+    result = await str_replace_file_tool(
+        Params(
+            path=str(file_path),
+            edit=[Edit(old="Hello", new="Hi"), Edit(old="", new="X")],
+        )
+    )
+
+    assert result.is_error
+    assert await file_path.read_text() == original_content  # Content unchanged
