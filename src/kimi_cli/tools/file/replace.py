@@ -134,6 +134,18 @@ class StrReplaceFile(CallableTool2[Params]):
             original_content = content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
+            # An empty `old` makes str.replace() insert `new` at every position
+            # instead of matching nothing, silently mangling the file. Reject it.
+            for edit in edits:
+                if not edit.old:
+                    return ToolError(
+                        message=(
+                            "The `old` string cannot be empty. "
+                            "Give the exact text to replace, or use WriteFile to insert text."
+                        ),
+                        brief="Empty old string",
+                    )
+
             # Apply all edits
             for edit in edits:
                 content = self._apply_edit(content, edit)
