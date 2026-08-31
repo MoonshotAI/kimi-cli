@@ -1511,12 +1511,13 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
         else:
             rows.append(Text(f"{item.name}: {item.value}", style=item.level.value))
 
-    if LATEST_VERSION_FILE.exists():
+    if not get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
         from kimi_cli.constant import VERSION as current_version
+        from kimi_cli.telemetry import track
         from kimi_cli.ui.shell.update import SKIPPED_VERSION_FILE
-        from kimi_cli.utils.envvar import get_env_bool
 
-        if not get_env_bool("KIMI_CLI_NO_AUTO_UPDATE"):
+        update_prompted = False
+        if LATEST_VERSION_FILE.exists():
             try:
                 latest_version = LATEST_VERSION_FILE.read_text(encoding="utf-8").strip()
             except OSError:
@@ -1531,15 +1532,27 @@ def _print_welcome_info(name: str, info_items: list[WelcomeInfoItem]) -> None:
                 except OSError:
                     skipped = ""
                 if skipped != latest_version:
+                    update_prompted = True
                     rows.append(
                         Text.from_markup(
                             f"\n[yellow]New version available: {latest_version}. "
                             f"Please run `{_update_mod.UPGRADE_COMMAND}` to upgrade.[/yellow]"
                         )
                     )
-                    from kimi_cli.telemetry import track
-
                     track("update_prompted", current=current_version, latest=latest_version)
+
+        if not update_prompted:
+            # No pending Python update (or it was skipped): surface the deprecation notice.
+            tips = _update_mod.load_cached_tips()
+            if tips is not None and _update_mod.should_show_migration(tips, current_version):
+                notice = _update_mod.pick_localized(tips.message)
+                rows.append(
+                    Text.assemble(
+                        ("\n⚠ kimi-cli is no longer maintained. ", "bold red"),
+                        (notice, "red"),
+                    )
+                )
+                track("migration_prompted", current=current_version, target=tips.migration_version)
 
     console.print(
         Panel(

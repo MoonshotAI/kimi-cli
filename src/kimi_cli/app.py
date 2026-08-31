@@ -703,7 +703,7 @@ class KimiCLI:
         if command is None:
             from kimi_cli.ui.shell.update import check_update_gate
 
-            check_update_gate()
+            await check_update_gate()
 
         welcome_info = [
             WelcomeInfoItem(
