@@ -12,7 +12,10 @@
     "format": "biome check --write .",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
     "@codemirror/lang-yaml": "^6.1.2",
@@ -73,6 +76,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.8",
+    "@playwright/test": "^1.58.2",
     "@types/js-md5": "^0.8.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.10.1",
