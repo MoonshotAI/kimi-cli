@@ -70,6 +70,8 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
 
+For a custom OpenAI-compatible service, set `base_url` to the API root (for example, `https://gateway.example/v1`), not an individual request path such as `/chat/completions`. Set the model's `model` field to an ID accepted by the service. For `openai_legacy` and `openai_responses` providers, non-empty `OPENAI_BASE_URL` and `OPENAI_API_KEY` environment variables override the corresponding configuration fields; see [Environment variables](./env-vars.md).
+
 ### `anthropic`
 
 For connecting to Anthropic Claude API.

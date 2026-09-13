@@ -70,6 +70,8 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
 
+配置自定义 OpenAI 兼容服务时，`base_url` 应填写 API 根地址（例如 `https://gateway.example/v1`），不要填写 `/chat/completions` 等具体请求路径。模型配置中的 `model` 应使用服务端接受的模型 ID。对于 `openai_legacy` 和 `openai_responses` 供应商，非空的 `OPENAI_BASE_URL` 和 `OPENAI_API_KEY` 环境变量会覆盖对应配置项，详见[环境变量](./env-vars.md)。
+
 ### `anthropic`
 
 用于连接 Anthropic Claude API。
