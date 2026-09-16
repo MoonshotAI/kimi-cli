@@ -16,11 +16,40 @@ def _event(command: str = "git status") -> dict:
     return {"hook_event_name": "PreToolUse", "tool_name": "Shell", "tool_input": {"command": command}}
 
 
-@pytest.mark.parametrize(("returncode", "decision", "expected"), [(0, "benign", 0), (0, "review", 2), (1, "", 2)])
-def test_guard_decisions(monkeypatch, returncode: int, decision: str, expected: int) -> None:
+def _verdict(*, explicitly_benign: bool, minimum_action: str) -> str:
+    benign = "true" if explicitly_benign else "false"
+    return (
+        '{"classification":{"explicitly_benign":'
+        f'{benign}}},"minimum_action":"{minimum_action}"}}'
+    )
+
+
+@pytest.mark.parametrize(
+    ("returncode", "explicitly_benign", "minimum_action", "expected"),
+    [
+        (0, True, "allow", 0),
+        (0, False, "allow", 2),
+        (0, True, "review", 2),
+        (1, True, "allow", 2),
+    ],
+)
+def test_guard_decisions(
+    monkeypatch,
+    returncode: int,
+    explicitly_benign: bool,
+    minimum_action: str,
+    expected: int,
+) -> None:
     monkeypatch.setattr(module.shutil, "which", lambda _: "/usr/bin/hol-guard")
-    output = f'{{"decision":"{decision}"}}' if decision else ""
-    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=returncode, stdout=output))
+    output = _verdict(
+        explicitly_benign=explicitly_benign,
+        minimum_action=minimum_action,
+    )
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=returncode, stdout=output),
+    )
     assert module.evaluate(_event()) == expected
 
 
