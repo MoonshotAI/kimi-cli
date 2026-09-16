@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Fail-closed HOL Guard gate for Kimi Code CLI Shell calls."""
-
 import json
 import shutil
 import subprocess
 import sys
-from typing import Any
 
 _GUARD_TIMEOUT_SECONDS = 8
 
@@ -15,21 +13,18 @@ def _block(reason: str) -> int:
     return 2
 
 
-def evaluate(event: dict[str, Any]) -> int:
+def evaluate(event: dict) -> int:
     if event.get("hook_event_name") != "PreToolUse" or event.get("tool_name") != "Shell":
         return 0
-
     tool_input = event.get("tool_input")
     if not isinstance(tool_input, dict):
         return _block("missing Shell tool input")
     command = tool_input.get("command")
     if not isinstance(command, str) or not command.strip():
         return _block("missing Shell command")
-
     executable = shutil.which("hol-guard")
     if not executable:
         return _block("hol-guard is not installed")
-
     try:
         completed = subprocess.run(
             [executable, "command", "test", command, "--json"],
@@ -43,21 +38,16 @@ def evaluate(event: dict[str, Any]) -> int:
         verdict = json.loads(completed.stdout)
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
         return _block("Guard evaluation failed")
-
     if not isinstance(verdict, dict):
         return _block("Guard returned malformed output")
     classification = verdict.get("classification")
     if not isinstance(classification, dict):
         return _block("Guard returned malformed output")
-
     explicitly_benign = classification.get("explicitly_benign") is True
     minimum_action = verdict.get("minimum_action")
     if explicitly_benign and minimum_action == "allow":
         return 0
-    return _block(
-        f"minimum_action={minimum_action or 'unknown'}, "
-        f"explicitly_benign={explicitly_benign}"
-    )
+    return _block(f"minimum_action={minimum_action or 'unknown'}, explicitly_benign={explicitly_benign}")
 
 
 def main() -> int:
