@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-
 _PATH = Path(__file__).parents[2] / "examples" / "hooks" / "hol_guard_pre_tool.py"
 _spec = importlib.util.spec_from_file_location("hol_guard_pre_tool", _PATH)
 assert _spec and _spec.loader
@@ -16,40 +15,15 @@ def _event(command: str = "git status") -> dict:
     return {"hook_event_name": "PreToolUse", "tool_name": "Shell", "tool_input": {"command": command}}
 
 
-def _verdict(*, explicitly_benign: bool, minimum_action: str) -> str:
-    benign = "true" if explicitly_benign else "false"
-    return (
-        '{"classification":{"explicitly_benign":'
-        f'{benign}}},"minimum_action":"{minimum_action}"}}'
-    )
-
-
-@pytest.mark.parametrize(
-    ("returncode", "explicitly_benign", "minimum_action", "expected"),
-    [
-        (0, True, "allow", 0),
-        (0, False, "allow", 2),
-        (0, True, "review", 2),
-        (1, True, "allow", 2),
-    ],
-)
-def test_guard_decisions(
-    monkeypatch,
-    returncode: int,
-    explicitly_benign: bool,
-    minimum_action: str,
-    expected: int,
-) -> None:
+@pytest.mark.parametrize(("returncode", "output", "expected"), [
+    (0, '{"classification":{"explicitly_benign":true},"minimum_action":"allow"}', 0),
+    (0, '{"classification":{"explicitly_benign":false},"minimum_action":"allow"}', 2),
+    (0, '{"classification":{"explicitly_benign":true},"minimum_action":"review"}', 2),
+    (1, "", 2),
+])
+def test_guard_decisions(monkeypatch, returncode: int, output: str, expected: int) -> None:
     monkeypatch.setattr(module.shutil, "which", lambda _: "/usr/bin/hol-guard")
-    output = _verdict(
-        explicitly_benign=explicitly_benign,
-        minimum_action=minimum_action,
-    )
-    monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        lambda *args, **kwargs: SimpleNamespace(returncode=returncode, stdout=output),
-    )
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=returncode, stdout=output))
     assert module.evaluate(_event()) == expected
 
 
