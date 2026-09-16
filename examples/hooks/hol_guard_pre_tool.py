@@ -8,7 +8,6 @@ import sys
 from typing import Any
 
 _GUARD_TIMEOUT_SECONDS = 8
-_ALLOWED_DECISIONS = {"allow", "benign"}
 
 
 def _block(reason: str) -> int:
@@ -47,10 +46,18 @@ def evaluate(event: dict[str, Any]) -> int:
 
     if not isinstance(verdict, dict):
         return _block("Guard returned malformed output")
-    decision = str(verdict.get("decision", "")).lower()
-    if decision in _ALLOWED_DECISIONS:
+    classification = verdict.get("classification")
+    if not isinstance(classification, dict):
+        return _block("Guard returned malformed output")
+
+    explicitly_benign = classification.get("explicitly_benign") is True
+    minimum_action = verdict.get("minimum_action")
+    if explicitly_benign and minimum_action == "allow":
         return 0
-    return _block(f"decision was {decision or 'unknown'}")
+    return _block(
+        f"minimum_action={minimum_action or 'unknown'}, "
+        f"explicitly_benign={explicitly_benign}"
+    )
 
 
 def main() -> int:
