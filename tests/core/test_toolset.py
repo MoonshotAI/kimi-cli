@@ -488,11 +488,18 @@ async def _run_consecutive(
                 function=ToolCall.FunctionBody(name=tool, arguments=args),
             )
         )
-        assert isinstance(result, asyncio.Task)
-        last = await result
+        last = await result if isinstance(result, asyncio.Task) else result
         previous_calls = ts.end_step()
     assert last is not None
     return last
+
+
+def _result_text(result: ToolResult) -> str:
+    if isinstance(result.return_value, ToolError):
+        return result.return_value.message
+    output = result.return_value.output
+    assert isinstance(output, str)
+    return output
 
 
 def test_build_repeat_reminder_tiers():
@@ -556,8 +563,7 @@ async def test_cross_step_duplicate_injects_reminder_on_every_repeat(
 ):
     ts = _make_toolset()
     tr = await _run_consecutive(ts, streak)
-    output = tr.return_value.output
-    assert isinstance(output, str)
+    output = _result_text(tr)
     assert "system-reminder" in output
     assert expected_fragment in output
 
@@ -581,18 +587,17 @@ async def test_cross_step_duplicate_force_stops_turn_at_twelve():
     ts = _make_toolset()
     tr = await _run_consecutive(ts, 12)
     assert ts.force_stop_turn is True
-    output = tr.return_value.output
-    assert isinstance(output, str)
+    assert isinstance(tr.return_value, ToolError)
+    output = _result_text(tr)
     assert "stuck in a dead end" in output
 
 
-async def test_force_stop_does_not_mark_result_as_error():
+async def test_force_stop_blocks_the_repeated_tool_call():
     ts = _make_toolset()
     tr = await _run_consecutive(ts, 12)
     assert ts.force_stop_turn is True
-    assert not isinstance(tr.return_value, ToolError)
-    assert isinstance(tr.return_value.output, str)
-    assert tr.return_value.output.startswith("a")
+    assert isinstance(tr.return_value, ToolError)
+    assert tr.return_value.brief == "Repeated tool call limit reached"
 
 
 async def test_force_stop_resets_each_step():

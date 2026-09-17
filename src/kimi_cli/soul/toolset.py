@@ -450,6 +450,13 @@ class KimiToolset:
                 self._dedup_triggered = True
                 if action == "stop":
                     self._force_stop_turn = True
+                    return ToolResult(
+                        tool_call_id=tool_call.id,
+                        return_value=ToolError(
+                            message=reminder_text or _REMINDER_TEXT_3,
+                            brief="Repeated tool call limit reached",
+                        ),
+                    )
 
             tool = self._tool_dict[tool_name]
 
