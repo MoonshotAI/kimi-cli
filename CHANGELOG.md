@@ -11,6 +11,8 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+- Core: Fix `UserPromptSubmit` hook receiving an empty string when user input is a list of `ContentPart` objects — the hook now correctly extracts concatenated text content instead of treating non-string input as empty
+
 ## 1.50.0 (2026-09-02)
 
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject

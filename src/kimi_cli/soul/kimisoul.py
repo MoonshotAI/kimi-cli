@@ -689,16 +689,17 @@ class KimiSoul:
             # the wait ceiling is hit) must bypass ``UserPromptSubmit``:
             # they are not user input, and a user-configured prompt-blocking
             # hook would drop the notification and hang the wait loop.
-            if not skip_user_prompt_hook:
-                text_input_for_hook = user_input if isinstance(user_input, str) else ""
+            user_message = Message(role="user", content=user_input)
+            text_input = user_message.extract_text(" ").strip()
 
+            if not skip_user_prompt_hook:
                 hook_results = await self._hook_engine.trigger(
                     "UserPromptSubmit",
-                    matcher_value=text_input_for_hook,
+                    matcher_value=text_input,
                     input_data=events.user_prompt_submit(
                         session_id=self._runtime.session.id,
                         cwd=str(Path.cwd()),
-                        prompt=text_input_for_hook,
+                        prompt=text_input,
                     ),
                 )
                 for result in hook_results:
@@ -719,8 +720,6 @@ class KimiSoul:
                 mode="plan" if self._plan_mode else "agent",
                 **_provider_telemetry_kwargs(self._runtime.llm),
             )
-            user_message = Message(role="user", content=user_input)
-            text_input = user_message.extract_text(" ").strip()
 
             if command_call := parse_slash_command_call(text_input):
                 command = self._find_slash_command(command_call.name)

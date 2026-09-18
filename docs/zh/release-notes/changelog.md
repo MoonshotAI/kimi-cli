@@ -4,6 +4,7 @@
 
 ## 未发布
 
+- Core：修复 `UserPromptSubmit` hook 在用户输入为 `ContentPart` 列表时收到空字符串的问题——hook 现在会正确提取并拼接文本内容，而非将非字符串输入视为空值
 - Kosong：当没有声明任何 beta 特性时不再发送值为空的 `anthropic-beta` 请求头——adaptive thinking 会移除 interleaved-thinking beta，此前会留下一个空值请求头，部分后端会拒绝该请求
 
 ## 1.49.0 (2026-07-16)

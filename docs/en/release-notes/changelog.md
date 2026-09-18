@@ -4,6 +4,7 @@ This page documents the changes in each Kimi Code CLI release.
 
 ## Unreleased
 
+- Core: Fix `UserPromptSubmit` hook receiving an empty string when user input is a list of `ContentPart` objects — the hook now correctly extracts concatenated text content instead of treating non-string input as empty
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject
 
 ## 1.49.0 (2026-07-16)
