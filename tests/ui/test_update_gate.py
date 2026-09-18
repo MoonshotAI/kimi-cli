@@ -16,9 +16,11 @@ class TestCheckUpdateGate:
     def _setup(self, tmp_path, monkeypatch):
         self.latest_file = tmp_path / "latest_version.txt"
         self.skipped_file = tmp_path / "skipped_version.txt"
+        self.tips_file = tmp_path / "kimi_code_tips.json"
 
         monkeypatch.setattr("kimi_cli.ui.shell.update.LATEST_VERSION_FILE", self.latest_file)
         monkeypatch.setattr("kimi_cli.ui.shell.update.SKIPPED_VERSION_FILE", self.skipped_file)
+        monkeypatch.setattr("kimi_cli.ui.shell.update.KIMI_CODE_TIPS_FILE", self.tips_file)
         monkeypatch.setattr("kimi_cli.constant.VERSION", "1.2.3")
 
         # Ensure stdin.isatty() returns True by default
@@ -32,74 +34,84 @@ class TestCheckUpdateGate:
         self._run_gate_mock = MagicMock()
         monkeypatch.setattr("kimi_cli.ui.shell.update._run_update_gate", self._run_gate_mock)
 
-    def test_skips_when_auto_update_disabled(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_skips_when_auto_update_disabled(self, monkeypatch):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("2.0.0")
         monkeypatch.setenv("KIMI_CLI_NO_AUTO_UPDATE", "1")
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_not_called()
 
-    def test_skips_when_stdin_not_tty(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_skips_when_stdin_not_tty(self, monkeypatch):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("2.0.0")
         monkeypatch.setattr("sys.stdin", MagicMock(isatty=MagicMock(return_value=False)))
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_not_called()
 
-    def test_skips_when_stdout_not_tty(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_skips_when_stdout_not_tty(self, monkeypatch):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("2.0.0")
         monkeypatch.setattr("sys.stdout", MagicMock(isatty=MagicMock(return_value=False)))
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_not_called()
 
-    def test_skips_when_no_version_file(self):
+    @pytest.mark.asyncio
+    async def test_skips_when_no_version_file(self):
         from kimi_cli.ui.shell.update import check_update_gate
 
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_not_called()
 
-    def test_skips_when_up_to_date(self):
+    @pytest.mark.asyncio
+    async def test_skips_when_up_to_date(self):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("1.2.3")
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_not_called()
 
-    def test_skips_when_older_version(self):
+    @pytest.mark.asyncio
+    async def test_skips_when_older_version(self):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("1.0.0")
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_not_called()
 
-    def test_triggers_when_newer_version(self):
+    @pytest.mark.asyncio
+    async def test_triggers_when_newer_version(self):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("1.5.0")
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_called_once_with("1.2.3", "1.5.0")
 
-    def test_skips_when_version_is_skipped(self):
+    @pytest.mark.asyncio
+    async def test_skips_when_version_is_skipped(self):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("1.5.0")
         self.skipped_file.write_text("1.5.0")
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_not_called()
 
-    def test_triggers_when_older_version_skipped(self):
+    @pytest.mark.asyncio
+    async def test_triggers_when_older_version_skipped(self):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("1.5.0")
         self.skipped_file.write_text("1.3.0")
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_called_once_with("1.2.3", "1.5.0")
 
-    def test_skips_when_latest_file_unreadable(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_skips_when_latest_file_unreadable(self, monkeypatch):
         from kimi_cli.ui.shell.update import check_update_gate
 
         self.latest_file.write_text("2.0.0")
@@ -109,22 +121,23 @@ class TestCheckUpdateGate:
                 exists=MagicMock(return_value=True), read_text=MagicMock(side_effect=OSError)
             ),
         )
-        check_update_gate()
+        await check_update_gate()
         self._run_gate_mock.assert_not_called()
 
-    def test_triggers_when_skipped_file_unreadable(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_triggers_when_skipped_file_unreadable(self, monkeypatch):
         from kimi_cli.ui.shell.update import check_update_gate
 
-        self.latest_file.write_text("2.0.0")
-        self.skipped_file.write_text("2.0.0")
+        self.latest_file.write_text("1.5.0")
+        self.skipped_file.write_text("1.5.0")
         monkeypatch.setattr(
             "kimi_cli.ui.shell.update.SKIPPED_VERSION_FILE",
             MagicMock(
                 exists=MagicMock(return_value=True), read_text=MagicMock(side_effect=OSError)
             ),
         )
-        check_update_gate()
-        self._run_gate_mock.assert_called_once_with("1.2.3", "2.0.0")
+        await check_update_gate()
+        self._run_gate_mock.assert_called_once_with("1.2.3", "1.5.0")
 
 
 # ---------------------------------------------------------------------------
@@ -340,9 +353,11 @@ class TestPrintWelcomeInfoSkipsVersion:
     def _setup(self, tmp_path, monkeypatch):
         self.latest_file = tmp_path / "latest_version.txt"
         self.skipped_file = tmp_path / "skipped_version.txt"
+        self.tips_file = tmp_path / "kimi_code_tips.json"
 
         monkeypatch.setattr("kimi_cli.ui.shell.LATEST_VERSION_FILE", self.latest_file)
         monkeypatch.setattr("kimi_cli.ui.shell.update.SKIPPED_VERSION_FILE", self.skipped_file)
+        monkeypatch.setattr("kimi_cli.ui.shell.update.KIMI_CODE_TIPS_FILE", self.tips_file)
         monkeypatch.setattr("kimi_cli.constant.VERSION", "1.2.3")
         monkeypatch.setattr("kimi_cli.ui.shell.console", MagicMock())
 
