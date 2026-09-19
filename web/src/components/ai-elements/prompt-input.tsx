@@ -962,7 +962,12 @@ export const PromptInputTextarea = forwardRef<
       }
 
       if (e.key === "Enter") {
-        if (isComposing || e.nativeEvent.isComposing) {
+        if (
+          isComposing ||
+          e.nativeEvent.isComposing ||
+          // WebKit can report an IME Enter keydown with keyCode 229 only.
+          e.nativeEvent.keyCode === 229
+        ) {
           return;
         }
         if (e.shiftKey) {
