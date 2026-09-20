@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- LLM：向 OpenCode Go（`*.opencode.ai`）发送稳定的 `x-opencode-session` 请求头，避免 Chat Completions 请求因缺少该头被 HTTP 400 拒绝。值为当前 Kimi 会话 id；若已在 `custom_headers` 里显式设置则保持不变。
+
 ## 1.51.0 (2026-09-21)
 
 **亮点**：Kimi CLI 已归档，不再维护，这是最后一个版本。请迁移至 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)，详见 [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)

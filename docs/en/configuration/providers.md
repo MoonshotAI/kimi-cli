@@ -59,6 +59,8 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
 
+Hosts on `opencode.ai` (OpenCode Go) also receive a stable `x-opencode-session` header set to the current session id. Set `custom_headers` with `x-opencode-session` if you need a different value.
+
 ### `openai_responses`
 
 For OpenAI Responses API (newer API format).

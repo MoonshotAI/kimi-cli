@@ -59,6 +59,8 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxx"
 ```
 
+`opencode.ai`（OpenCode Go）主机会自动附带稳定的 `x-opencode-session`，值为当前会话 id。若要改用其它值，在 `custom_headers` 里自行设置该头即可。
+
 ### `openai_responses`
 
 用于 OpenAI Responses API（较新的 API 格式）。
