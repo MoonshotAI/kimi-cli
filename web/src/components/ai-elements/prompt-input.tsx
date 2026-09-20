@@ -962,7 +962,8 @@ export const PromptInputTextarea = forwardRef<
       }
 
       if (e.key === "Enter") {
-        if (isComposing || e.nativeEvent.isComposing) {
+        // WebKit may clear isComposing before keydown; 229 is the IME fallback.
+        if (isComposing || e.nativeEvent.isComposing || e.keyCode === 229) {
           return;
         }
         if (e.shiftKey) {
