@@ -1,9 +1,10 @@
 [project]
 name = "kimi-cli"
 version = "1.50.0"
-description = "Kimi Code CLI is your next CLI agent."
+description = "[Archived] Legacy Python Kimi CLI, no longer maintained. Use Kimi Code CLI instead: https://github.com/MoonshotAI/kimi-code"
 readme = "README.md"
 requires-python = ">=3.12"
+classifiers = ["Development Status :: 7 - Inactive"]
 dependencies = [
     "agent-client-protocol==0.8.0",
     "aiofiles>=24.0,<26.0",
@@ -37,6 +38,11 @@ dependencies = [
     "keyring>=25.7.0",
     "setproctitle>=1.3.0",
 ]
+
+[project.urls]
+"Kimi Code CLI" = "https://github.com/MoonshotAI/kimi-code"
+"Migration Guide" = "https://moonshotai.github.io/kimi-code/en/guides/migration"
+Source = "https://github.com/MoonshotAI/kimi-cli"
 
 [dependency-groups]
 dev = [

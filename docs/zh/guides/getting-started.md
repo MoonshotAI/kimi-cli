@@ -1,5 +1,9 @@
 # 开始使用
 
+::: danger 本项目已归档
+Kimi CLI 已停止维护，不再提供任何更新和安全修复，旧版将无法继续使用。请改为安装 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)，详见[迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)。
+:::
+
 ## Kimi Code CLI 是什么
 
 Kimi Code CLI 是一个运行在终端中的 AI Agent，帮助你完成软件开发任务和终端操作。它可以阅读和编辑代码、执行 Shell 命令、搜索和抓取网页，并在执行过程中自主规划和调整行动。

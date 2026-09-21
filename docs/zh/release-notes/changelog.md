@@ -4,6 +4,13 @@
 
 ## 未发布
 
+**亮点**：Kimi CLI 已归档，不再维护，这是最后一个版本。请迁移至 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)，详见[迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)
+
+- Build：将 `kimi-cli` 及本仓库中的所有包标记为已归档——此后不再发布新版本、Bug 修复或安全更新
+- Build：PyPI 上的 `kimi-code` 包不再安装旧版 CLI——运行 `kimi-code` 时改为打印新版 Kimi Code CLI 的安装说明，并以状态码 1 退出
+
+## 1.50.0 (2026-09-02)
+
 - Kosong：当没有声明任何 beta 特性时不再发送值为空的 `anthropic-beta` 请求头——adaptive thinking 会移除 interleaved-thinking beta，此前会留下一个空值请求头，部分后端会拒绝该请求
 
 ## 1.49.0 (2026-07-16)

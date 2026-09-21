@@ -4,6 +4,13 @@
 
 ## 未发布
 
+### PyPI 上的 `kimi-code` 包不再安装 Kimi CLI
+
+PyPI 上的 `kimi-code` 包原本是 Kimi CLI 的别名，现在改为一个占位包：运行时只打印新版 Kimi Code CLI 的安装说明，并以状态码 1 退出。Kimi CLI 本身已归档，不再维护。
+
+- **受影响**：通过 PyPI 上的 `kimi-code` 包安装 Kimi CLI 的用户（例如 `uv tool install kimi-code`）
+- **迁移**：使用 `curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash`（Windows：`irm https://code.kimi.com/kimi-code/install.ps1 | iex`）安装 Kimi Code CLI，然后运行 `kimi migrate` 迁移配置和会话。详见[迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)
+
 ## 1.49.0
 
 ### Kimi 不再自动发送旧版 `reasoning_effort`

@@ -1,5 +1,8 @@
 # Kimi SDK
 
+> [!CAUTION]
+> **Archived: no longer maintained.** This package was developed in the [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) monorepo, which has been archived. Published versions remain available on PyPI, but there will be no further releases, bug fixes, or security updates. The source code remains available under the Apache License 2.0.
+
 Kimi SDK provides a convenient way to access the Kimi API and build agent workflows in Python.
 
 ## Installation

@@ -11,6 +11,11 @@ Only write entries that are worth mentioning to users.
 
 ## Unreleased
 
+**Highlights**: Kimi CLI is archived and no longer maintained, and this is the final release. Please migrate to [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code); see the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration)
+
+- Build: Mark `kimi-cli` and all packages in this repository as archived — no further releases, bug fixes, or security updates are planned
+- Build: Stop installing the legacy CLI from the `kimi-code` package on PyPI — running `kimi-code` now prints instructions for installing the new Kimi Code CLI and exits with status 1
+
 ## 1.50.0 (2026-09-02)
 
 - Kosong: Stop sending an empty `anthropic-beta` header when no beta features are declared — adaptive thinking removes the interleaved-thinking beta, which previously left an empty header value that some backends reject

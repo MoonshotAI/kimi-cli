@@ -1,9 +1,8 @@
 # Security Policy
 
-## Supported Versions
-
-Currently, Kimi CLI only provides security support for the latest version.
+This project has been archived and is no longer maintained. **No version of Kimi CLI (Python), kosong, pykaos, or kimi-sdk receives security updates.** We strongly recommend migrating to [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code). See the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration).
 
 ## Reporting a Vulnerability
 
-Please report a vulnerability via the [MoonshotAI/kimi-cli - Security](https://github.com/MoonshotAI/kimi-cli/security) page, or open an [issue](https://github.com/MoonshotAI/kimi-cli/issues) if it can be published publicly.
+- For vulnerabilities in Kimi Code CLI, please follow its [security policy](https://github.com/MoonshotAI/kimi-code/security/policy).
+- Vulnerabilities that affect only this archived project will not be fixed. If you believe an issue also affects Kimi Code CLI or other Moonshot AI services, please report it privately through the channel above, or email code@moonshot.ai with "[security]" in the subject.
