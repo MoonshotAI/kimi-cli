@@ -20,7 +20,8 @@
 - `prompt_capabilities`: `embedded_context=False`, `image=True`, `audio=False`.
 - `mcp_capabilities`: `http=True`, `sse=False`.
 - Single-session: `load_session=False`, no session list capabilities.
-- Multi-session: `load_session=True`, `session_capabilities.list` supported.
+- Multi-session: `load_session=True`, `session_capabilities.list` supported, and
+  `session_capabilities._meta.kimi.sessionHistoryReplay=True`.
 - `auth_methods=[]` (no authentication methods advertised).
 
 ## Session lifecycle (implemented behavior)
@@ -31,8 +32,14 @@
   - MCP servers passed by ACP are converted via `acp_mcp_servers_to_mcp_config`.
 - `session/load`
   - Multi-session only: loads by `Session.find`, then builds `KimiCLI` and `ACPSession`.
-  - No history replay yet (TODO).
+  - Replays persisted `wire.jsonl` history as ACP `session/update` notifications, falls back to
+    context text history for older sessions without wire history, and returns initial modes/models
+    state plus title metadata in `_meta.kimi.session`.
+  - Sends `SessionInfoUpdate` with title/updatedAt before replaying history.
   - Single-session: not implemented.
+- `session/resume`
+  - Multi-session only: returns initial modes/models state plus title metadata in
+    `_meta.kimi.session`, and sends `SessionInfoUpdate` with title/updatedAt.
 - `session/list`
   - Multi-session only: lists sessions via `Session.list`, no pagination.
   - Single-session: not implemented.
@@ -54,6 +61,9 @@
   - `TodoDisplayBlock` is converted into `AgentPlanUpdate`.
 - Available commands:
   - `AvailableCommandsUpdate` is sent right after session creation.
+- Session metadata:
+  - `SessionInfoUpdate` is sent after prompt completion when Kimi auto-generates a title, and
+    during `session/load`/`session/resume` so clients can hydrate title/updatedAt.
 
 ## Prompt/content conversion
 - Incoming prompt blocks:
@@ -71,10 +81,14 @@
     then releases the terminal handle.
 - Approval requests in the core tool system are bridged to ACP
   `session/request_permission` with allow-once/allow-always/reject options.
+- Permission mode switching is exposed through ACP `session/set_mode`.
+  - `default` asks for permissions as needed.
+  - `yolo` toggles Kimi's persisted yolo approval state and resolves pending approvals.
 
 ## Current gaps / not implemented
 - `authenticate` method (not used by current Zed ACP client).
-- `session/set_mode` and `session/set_model` (no multi-mode/model switching in kimi-cli).
+- `session/set_model` currently supports configured Kimi models, but there is no agent/model
+  provider discovery beyond the local config.
 - `ext_method` / `ext_notification` for custom ACP extensions are stubbed.
 - Single-session server does not implement `session/load` or `session/list`.
 

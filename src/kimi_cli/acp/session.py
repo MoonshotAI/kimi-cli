@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
+from datetime import datetime
 
 import acp
 import streamingjson  # type: ignore[reportMissingTypeStubs]
@@ -19,13 +20,14 @@ from kimi_cli.app import KimiCLI
 from kimi_cli.soul import LLMNotSet, LLMNotSupported, MaxStepsReached, RunCancelled
 from kimi_cli.tools import extract_key_argument
 from kimi_cli.utils.logging import logger
-from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import (
     ApprovalRequest,
     ApprovalResponse,
+    AudioURLPart,
     CompactionBegin,
     CompactionEnd,
     ContentPart,
+    ImageURLPart,
     MCPLoadingBegin,
     MCPLoadingEnd,
     Notification,
@@ -76,6 +78,44 @@ def should_hide_terminal_output(tool_call_id: str) -> bool:
     return calls is not None and tool_call_id in calls
 
 
+def _content_part_to_acp_block(part: ContentPart) -> ACPContentBlock:
+    if isinstance(part, TextPart):
+        return acp.schema.TextContentBlock(type="text", text=part.text)
+    if isinstance(part, ImageURLPart):
+        mime_type, data = _split_data_url(part.image_url.url)
+        if data is not None:
+            return acp.schema.ImageContentBlock(type="image", mime_type=mime_type, data=data)
+        return acp.schema.ResourceContentBlock(
+            type="resource_link",
+            uri=part.image_url.url,
+            name="image",
+            mime_type=mime_type,
+        )
+    if isinstance(part, AudioURLPart):
+        mime_type, data = _split_data_url(part.audio_url.url)
+        if data is not None:
+            return acp.schema.AudioContentBlock(type="audio", mime_type=mime_type, data=data)
+        return acp.schema.ResourceContentBlock(
+            type="resource_link",
+            uri=part.audio_url.url,
+            name="audio",
+            mime_type=mime_type,
+        )
+
+    logger.warning("Unsupported replay user content part: {part}", part=part)
+    return acp.schema.TextContentBlock(type="text", text=f"[{part.__class__.__name__}]")
+
+
+def _split_data_url(url: str) -> tuple[str, str | None]:
+    if not url.startswith("data:"):
+        return "application/octet-stream", None
+    header, sep, data = url.partition(",")
+    if not sep or ";base64" not in header:
+        return "application/octet-stream", None
+    mime_type = header.removeprefix("data:").removesuffix(";base64")
+    return mime_type or "application/octet-stream", data
+
+
 class _ToolCallState:
     """Manages the state of a single tool call for streaming updates."""
 
@@ -117,7 +157,21 @@ class _TurnState:
         self.tool_calls: dict[str, _ToolCallState] = {}
         """Map of tool call ID (LLM-side ID) to tool call state."""
         self.last_tool_call: _ToolCallState | None = None
+        self.content_run_kind: str | None = None
+        """The active ACP content run kind: `message` or `thought`."""
+        self.content_run_message_id: str | None = None
+        """Stable ACP message ID for the current contiguous content run."""
         self.cancel_event = asyncio.Event()
+
+    def reset_content_run(self) -> None:
+        self.content_run_kind = None
+        self.content_run_message_id = None
+
+    def content_run_id(self, kind: str) -> str:
+        if self.content_run_kind != kind or self.content_run_message_id is None:
+            self.content_run_kind = kind
+            self.content_run_message_id = str(uuid.uuid4())
+        return self.content_run_message_id
 
 
 class ACPSession:
@@ -162,29 +216,32 @@ class ACPSession:
             async for msg in self._cli.run(user_input, self._turn_state.cancel_event):
                 match msg:
                     case TurnBegin():
-                        pass
+                        self._reset_content_run()
                     case SteerInput():
-                        pass
+                        self._reset_content_run()
                     case TurnEnd():
-                        pass
+                        self._reset_content_run()
                     case StepBegin():
-                        pass
+                        self._reset_content_run()
                     case StepInterrupted():
+                        self._reset_content_run()
                         break
                     case StepRetry():
-                        pass
+                        self._reset_content_run()
                     case CompactionBegin():
-                        pass
+                        self._reset_content_run()
                     case CompactionEnd():
-                        pass
+                        self._reset_content_run()
                     case MCPLoadingBegin():
-                        pass
+                        self._reset_content_run()
                     case MCPLoadingEnd():
-                        pass
+                        self._reset_content_run()
                     case StatusUpdate():
-                        pass
+                        self._reset_content_run()
                     case Notification():
+                        self._reset_content_run()
                         await self._send_notification(msg)
+                        self._reset_content_run()
                     case ThinkPart(think=think):
                         await self._send_thinking(think)
                     case TextPart(text=text):
@@ -245,64 +302,140 @@ class ACPSession:
                 reset_current_kaos(kaos_token)
             _terminal_tool_call_ids.reset(terminal_tool_calls_token)
             _current_turn_id.reset(token)
+        await self.send_session_info_update()
         return acp.PromptResponse(stop_reason="end_turn")
 
-    async def replay_history(self, wire_file: WireFile) -> None:
-        """Replay persisted wire history to an ACP client during session/load."""
-        token = _current_turn_id.set(None)
-        terminal_tool_calls_token = _terminal_tool_call_ids.set(set())
+    async def replay_history(self) -> int:
+        """Replay persisted wire history as ACP session updates."""
+        old_turn_state = self._turn_state
+        turn_token: Token[str | None] | None = None
+        replayed_updates = 0
+        self._turn_state = None
         try:
-            async for record in wire_file.iter_records():
-                wire_msg = record.to_wire_message()
-                match wire_msg:
-                    case TurnBegin(user_input=user_input) | SteerInput(user_input=user_input):
+            async for record in self._cli.soul.runtime.session.wire_file.iter_records():
+                msg = record.to_wire_message()
+                match msg:
+                    case TurnBegin(user_input=user_input):
+                        if turn_token is not None:
+                            _current_turn_id.reset(turn_token)
                         self._turn_state = _TurnState()
-                        _current_turn_id.set(self._turn_state.id)
-                        await self._send_user_input(user_input)
+                        turn_token = _current_turn_id.set(self._turn_state.id)
+                        replayed_updates += await self._send_user_input(user_input)
+                    case SteerInput(user_input=user_input):
+                        if turn_token is None:
+                            turn_token = self._begin_replay_turn()
+                        self._reset_content_run()
+                        replayed_updates += await self._send_user_input(user_input)
                     case TurnEnd() | StepInterrupted():
+                        if turn_token is not None:
+                            _current_turn_id.reset(turn_token)
+                            turn_token = None
                         self._turn_state = None
-                        _current_turn_id.set(None)
                     case StepBegin():
-                        pass
-                    case CompactionBegin() | CompactionEnd():
-                        pass
-                    case MCPLoadingBegin() | MCPLoadingEnd():
-                        pass
-                    case StatusUpdate():
-                        pass
-                    case Notification():
-                        await self._send_notification(wire_msg)
+                        if turn_token is None:
+                            turn_token = self._begin_replay_turn()
                     case ThinkPart(think=think):
+                        if turn_token is None:
+                            turn_token = self._begin_replay_turn()
                         await self._send_thinking(think)
+                        replayed_updates += 1
                     case TextPart(text=text):
+                        if turn_token is None:
+                            turn_token = self._begin_replay_turn()
                         await self._send_text(text)
+                        replayed_updates += 1
                     case ContentPart():
-                        await self._send_text(f"[{wire_msg.__class__.__name__}]")
+                        if turn_token is None:
+                            turn_token = self._begin_replay_turn()
+                        logger.warning("Unsupported replay content part: {part}", part=msg)
+                        await self._send_text(f"[{msg.__class__.__name__}]")
+                        replayed_updates += 1
                     case ToolCall():
-                        self._ensure_turn_state()
-                        await self._send_tool_call(wire_msg)
+                        if turn_token is None:
+                            turn_token = self._begin_replay_turn()
+                        await self._send_tool_call(msg)
+                        replayed_updates += 1
                     case ToolCallPart():
                         if self._turn_state is not None:
-                            await self._send_tool_call_part(wire_msg)
+                            await self._send_tool_call_part(msg)
+                            replayed_updates += 1
                     case ToolResult():
                         if self._turn_state is not None:
-                            await self._send_tool_result(wire_msg)
-                    case PlanDisplay():
-                        pass
-                    case ApprovalResponse() | SubagentEvent():
-                        pass
-                    case ApprovalRequest() | ToolCallRequest() | QuestionRequest():
-                        pass
+                            await self._send_tool_result(msg)
+                            replayed_updates += 1
+                    case Notification():
+                        if turn_token is None:
+                            turn_token = self._begin_replay_turn()
+                        self._reset_content_run()
+                        await self._send_notification(msg)
+                        self._reset_content_run()
+                        replayed_updates += 1
                     case _:
                         pass
-        except Exception:
-            logger.exception(
-                "Failed to replay ACP session history from {file}:", file=wire_file.path
-            )
         finally:
-            self._turn_state = None
-            _terminal_tool_call_ids.reset(terminal_tool_calls_token)
-            _current_turn_id.reset(token)
+            if turn_token is not None:
+                _current_turn_id.reset(turn_token)
+            self._turn_state = old_turn_state
+        if replayed_updates == 0:
+            replayed_updates = await self._replay_context_history()
+        return replayed_updates
+
+    def _begin_replay_turn(self) -> Token[str | None]:
+        self._turn_state = _TurnState()
+        return _current_turn_id.set(self._turn_state.id)
+
+    async def _replay_context_history(self) -> int:
+        old_turn_state = self._turn_state
+        turn_token: Token[str | None] | None = None
+        replayed_updates = 0
+        self._turn_state = None
+        try:
+            for message in self._cli.soul.context.history:
+                if turn_token is not None:
+                    _current_turn_id.reset(turn_token)
+                turn_token = self._begin_replay_turn()
+
+                if message.role == "user":
+                    replayed_updates += await self._send_user_input(list(message.content))
+                elif message.role == "assistant":
+                    for part in message.content:
+                        if isinstance(part, ThinkPart):
+                            await self._send_thinking(part.think)
+                        elif isinstance(part, TextPart):
+                            await self._send_text(part.text)
+                        else:
+                            logger.warning("Unsupported context replay part: {part}", part=part)
+                            await self._send_text(f"[{part.__class__.__name__}]")
+                        replayed_updates += 1
+        finally:
+            if turn_token is not None:
+                _current_turn_id.reset(turn_token)
+            self._turn_state = old_turn_state
+        return replayed_updates
+
+    async def _send_user_input(self, user_input: str | list[ContentPart]) -> int:
+        blocks: list[ACPContentBlock]
+        if isinstance(user_input, str):
+            blocks = [acp.schema.TextContentBlock(type="text", text=user_input)]
+        else:
+            blocks = [_content_part_to_acp_block(part) for part in user_input]
+
+        for block in blocks:
+            await self._send_user_block(block)
+        return len(blocks)
+
+    async def _send_user_block(self, block: ACPContentBlock) -> None:
+        if not self._id or not self._conn:
+            return
+
+        await self._conn.session_update(
+            session_id=self._id,
+            update=acp.schema.UserMessageChunk(
+                content=block,
+                message_id=self._content_run_id("user"),
+                session_update="user_message_chunk",
+            ),
+        )
 
     async def cancel(self) -> None:
         if self._turn_state is None:
@@ -311,31 +444,40 @@ class ACPSession:
 
         self._turn_state.cancel_event.set()
 
-    def _ensure_turn_state(self) -> None:
-        if self._turn_state is None:
-            self._turn_state = _TurnState()
-            _current_turn_id.set(self._turn_state.id)
-
-    async def _send_user_input(self, user_input: str | list[ContentPart]) -> None:
+    async def send_session_info_update(self) -> None:
+        """Send current session metadata, including title, if available."""
         if not self._id or not self._conn:
             return
 
-        parts = [TextPart(text=user_input)] if isinstance(user_input, str) else user_input
-        for part in parts:
-            if isinstance(part, TextPart):
-                content: ACPContentBlock = acp.schema.TextContentBlock(type="text", text=part.text)
-            else:
-                logger.warning("Unsupported replay user input part: {part}", part=part)
-                content = acp.schema.TextContentBlock(
-                    type="text", text=f"[{part.__class__.__name__}]"
-                )
-            await self._conn.session_update(
-                session_id=self._id,
-                update=acp.schema.UserMessageChunk(
-                    content=content,
-                    session_update="user_message_chunk",
-                ),
-            )
+        try:
+            session = self._cli.soul.runtime.session
+        except AttributeError:
+            return
+        title = session.state.custom_title or session.title
+        updated_at = (
+            datetime.fromtimestamp(session.context_file.stat().st_mtime).astimezone().isoformat()
+            if session.context_file.exists()
+            else None
+        )
+        if title == "Untitled" and updated_at is None:
+            return
+
+        await self._conn.session_update(
+            session_id=self._id,
+            update=acp.schema.SessionInfoUpdate(
+                session_update="session_info_update",
+                title=title if title != "Untitled" else None,
+                updated_at=updated_at,
+            ),
+        )
+
+    def _reset_content_run(self) -> None:
+        if self._turn_state is not None:
+            self._turn_state.reset_content_run()
+
+    def _content_run_id(self, kind: str) -> str:
+        assert self._turn_state is not None
+        return self._turn_state.content_run_id(kind)
 
     async def _send_thinking(self, think: str):
         """Send thinking content to client."""
@@ -346,6 +488,7 @@ class ACPSession:
             self._id,
             acp.schema.AgentThoughtChunk(
                 content=acp.schema.TextContentBlock(type="text", text=think),
+                message_id=self._content_run_id("thought"),
                 session_update="agent_thought_chunk",
             ),
         )
@@ -359,6 +502,7 @@ class ACPSession:
             session_id=self._id,
             update=acp.schema.AgentMessageChunk(
                 content=acp.schema.TextContentBlock(type="text", text=text),
+                message_id=self._content_run_id("message"),
                 session_update="agent_message_chunk",
             ),
         )
@@ -376,6 +520,7 @@ class ACPSession:
         assert self._turn_state is not None
         if not self._id or not self._conn:
             return
+        self._reset_content_run()
 
         # Create and store tool call state
         state = _ToolCallState(tool_call)
@@ -437,6 +582,7 @@ class ACPSession:
         assert self._turn_state is not None
         if not self._id or not self._conn:
             return
+        self._reset_content_run()
 
         tool_ret = result.return_value
 
@@ -502,33 +648,60 @@ class ACPSession:
                     )
                 )
 
-            # Send permission request and wait for response
+            # Send permission request and wait for response. Also watch the
+            # local request object so protocol-level mode switches can resolve
+            # a pending approval without waiting for the client dialog.
             logger.debug("Requesting permission for action: {action}", action=request.action)
-            response = await self._conn.request_permission(
-                [
-                    acp.schema.PermissionOption(
-                        option_id="approve",
-                        name="Approve once",
-                        kind="allow_once",
+            permission_task = asyncio.create_task(
+                self._conn.request_permission(
+                    [
+                        acp.schema.PermissionOption(
+                            option_id="approve",
+                            name="Approve once",
+                            kind="allow_once",
+                        ),
+                        acp.schema.PermissionOption(
+                            option_id="approve_for_session",
+                            name="Approve for this session",
+                            kind="allow_always",
+                        ),
+                        acp.schema.PermissionOption(
+                            option_id="reject",
+                            name="Reject",
+                            kind="reject_once",
+                        ),
+                    ],
+                    self._id,
+                    acp.schema.ToolCallUpdate(
+                        tool_call_id=state.acp_tool_call_id,
+                        title=state.get_title(),
+                        content=content,
                     ),
-                    acp.schema.PermissionOption(
-                        option_id="approve_for_session",
-                        name="Approve for this session",
-                        kind="allow_always",
-                    ),
-                    acp.schema.PermissionOption(
-                        option_id="reject",
-                        name="Reject",
-                        kind="reject_once",
-                    ),
-                ],
-                self._id,
-                acp.schema.ToolCallUpdate(
-                    tool_call_id=state.acp_tool_call_id,
-                    title=state.get_title(),
-                    content=content,
-                ),
+                )
             )
+
+            async def wait_for_local_resolution() -> ApprovalResponse.Kind:
+                return await asyncio.shield(request.wait())
+
+            request_task = asyncio.create_task(wait_for_local_resolution())
+            done, pending = await asyncio.wait(
+                {permission_task, request_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+
+            if permission_task not in done:
+                resolved_response = request_task.result()
+                logger.debug(
+                    "Permission request resolved externally: {response}",
+                    response=resolved_response,
+                )
+                return
+
+            response = permission_task.result()
             logger.debug("Received permission response: {response}", response=response)
 
             # Process the outcome
