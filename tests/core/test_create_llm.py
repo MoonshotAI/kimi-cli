@@ -21,12 +21,7 @@ def test_augment_provider_with_env_vars_kimi(monkeypatch):
         base_url="https://original.test/v1",
         api_key=SecretStr("orig-key"),
     )
-    model = LLMModel(
-        provider="kimi",
-        model="kimi-base",
-        max_context_size=4096,
-        capabilities=None,
-    )
+    model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
 
     monkeypatch.setenv("KIMI_BASE_URL", "https://env.test/v1")
     monkeypatch.setenv("KIMI_API_KEY", "env-key")
@@ -51,6 +46,23 @@ def test_augment_provider_with_env_vars_kimi(monkeypatch):
             capabilities={"image_in", "thinking"},
         )
     )
+
+
+def test_augment_provider_with_env_vars_uses_explicit_env_without_process_mutation(monkeypatch):
+    provider = LLMProvider(
+        type="kimi", base_url="https://original.test/v1", api_key=SecretStr("orig-key")
+    )
+    model = LLMModel(provider="kimi", model="kimi-base", max_context_size=4096)
+    monkeypatch.setenv("KIMI_API_KEY", "process-key")
+
+    augment_provider_with_env_vars(
+        provider,
+        model,
+        {"KIMI_API_KEY": "local-key", "KIMI_MODEL_NAME": "local-model"},
+    )
+
+    assert provider.api_key.get_secret_value() == "local-key"
+    assert model.model == "local-model"
 
 
 def test_create_llm_kimi_model_parameters(monkeypatch):

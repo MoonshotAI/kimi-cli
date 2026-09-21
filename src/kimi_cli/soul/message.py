@@ -16,14 +16,20 @@ from kimi_cli.wire.types import (
 )
 
 
+# 本模块提供消息构造与转换的辅助函数：把字符串包装成 system/system-reminder
+# 文本部件，把工具结果转成 tool 消息，以及按消息内容检测所需的模型能力。
+
+# 把字符串包装成 <system> 文本部件。
 def system(message: str) -> ContentPart:
     return TextPart(text=f"<system>{message}</system>")
 
 
+# 把字符串包装成 <system-reminder> 文本部件。
 def system_reminder(message: str) -> TextPart:
     return TextPart(text=f"<system-reminder>\n{message}\n</system-reminder>")
 
 
+# 判断一条消息是否为内部 system-reminder 类型的 user 消息。
 def is_system_reminder_message(message: Message) -> bool:
     """Check whether a message is an internal system-reminder user message."""
     if message.role != "user" or len(message.content) != 1:
@@ -32,6 +38,7 @@ def is_system_reminder_message(message: Message) -> bool:
     return isinstance(part, TextPart) and part.text.strip().startswith("<system-reminder>")
 
 
+# 把工具结果转换为一条 tool 角色消息（含错误/输出内容的规范化处理）。
 def tool_result_to_message(tool_result: ToolResult) -> Message:
     """Convert a tool result to a message."""
     if tool_result.return_value.is_error:
@@ -62,6 +69,7 @@ def tool_result_to_message(tool_result: ToolResult) -> Message:
     )
 
 
+# 把输出（str / 单个部件 / 部件序列）统一展开为部件列表。
 def _output_to_content_parts(
     output: str | ContentPart | Sequence[ContentPart],
 ) -> list[ContentPart]:
@@ -77,6 +85,7 @@ def _output_to_content_parts(
     return content
 
 
+# 检测消息内容所需的模型能力，返回缺失的能力集合。
 def check_message(
     message: Message, model_capabilities: set[ModelCapability]
 ) -> set[ModelCapability]:

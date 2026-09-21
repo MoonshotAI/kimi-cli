@@ -14,15 +14,20 @@ from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import ContentPart, TextPart, ThinkPart
 
+# 本模块实现上下文压缩（compaction）：当历史过长时，用一次 LLM 调用把较早的
+# 消息压缩成摘要，同时保留末尾若干条消息，从而在控制 token 的同时尽量不丢信息。
+
 COMPACTION_SYSTEM_PROMPT = "You are a helpful assistant that compacts conversation context."
 COMPACTION_OUTPUT_PREFIX = "Previous context has been compacted. Here is the compaction output:"
 
 
+# 压缩结果：压缩后的消息序列 + 本次压缩 LLM 调用的用量与 trace_id。
 class CompactionResult(NamedTuple):
     messages: Sequence[Message]
     usage: TokenUsage | None
     trace_id: str | None = None
 
+    # 估算压缩后消息的 token 数；有真实用量时优先用用量，其余按文本长度估算。
     @property
     def estimated_token_count(self) -> int:
         """Estimate the token count of the compacted messages.
@@ -45,6 +50,7 @@ class CompactionResult(NamedTuple):
         return estimate_text_tokens(self.messages)
 
 
+# 按文本长度粗略估算 token 数（约 4 字符 / token）。
 def estimate_text_tokens(messages: Sequence[Message]) -> int:
     """Estimate tokens from message text content using a character-based heuristic."""
     total_chars = 0
@@ -57,6 +63,7 @@ def estimate_text_tokens(messages: Sequence[Message]) -> int:
     return total_chars // 4
 
 
+# 判断是否应触发自动压缩：按占用比例或按保留空间任一条件先满足即触发。
 def should_auto_compact(
     token_count: int,
     max_context_size: int,
@@ -76,6 +83,7 @@ def should_auto_compact(
     )
 
 
+# 压缩器的协议：实现 compact 即可被 KimiSoul 调用。
 @runtime_checkable
 class Compaction(Protocol):
     async def compact(
@@ -107,10 +115,12 @@ if TYPE_CHECKING:
         _: Compaction = simple
 
 
+# 简单压缩实现：压缩除末尾保留消息外的全部历史，并拼接摘要。
 class SimpleCompaction:
     def __init__(self, max_preserved_messages: int = 2) -> None:
         self.max_preserved_messages = max_preserved_messages
 
+    # 执行压缩：准备输入 -> 调用压缩 LLM -> 拼装「摘要 + 保留消息」。
     async def compact(
         self,
         messages: Sequence[Message],
@@ -147,10 +157,12 @@ class SimpleCompaction:
             messages=compacted_messages, usage=result.usage, trace_id=result.trace_id
         )
 
+    # prepare 的返回类型：待压缩消息（可为 None）+ 需保留的尾部消息。
     class PrepareResult(NamedTuple):
         compact_message: Message | None
         to_preserve: Sequence[Message]
 
+    # 把历史拆分为「待压缩部分」与「末尾保留部分」，并构造压缩输入消息。
     def prepare(
         self, messages: Sequence[Message], *, custom_instruction: str = ""
     ) -> PrepareResult:
@@ -160,6 +172,7 @@ class SimpleCompaction:
         history = list(messages)
         preserve_start_index = len(history)
         n_preserved = 0
+        # 从末尾向前数出要保留的 user/assistant 消息。
         for index in range(len(history) - 1, -1, -1):
             if history[index].role in {"user", "assistant"}:
                 n_preserved += 1

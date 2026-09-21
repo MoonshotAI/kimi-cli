@@ -30,8 +30,10 @@ if TYPE_CHECKING:
 
     from kimi_cli.soul.kimisoul import KimiSoul
 
+# 副问题（/btw）最多允许的回合数。
 _BTW_MAX_TURNS = 2
 
+# 注入给副问题 LLM 调用的 system-reminder，约束其只做纯文本回答、不调用工具。
 SIDE_QUESTION_SYSTEM_REMINDER = """\
 This is a side question from the user. Answer directly in a single response.
 
@@ -51,6 +53,7 @@ IMPORTANT:
 # ---------------------------------------------------------------------------
 
 
+# 暴露与主 agent 相同的工具定义（命中 prompt cache），但拒绝一切工具调用。
 class _DenyAllToolset:
     """A toolset that exposes the same tool definitions as the agent (for prompt
     cache matching) but rejects every tool call with an error message."""
@@ -62,6 +65,7 @@ class _DenyAllToolset:
     def tools(self) -> list[Tool]:
         return self._tools
 
+    # 任何工具调用都返回「禁用」错误。
     def handle(self, tool_call: ToolCall) -> ToolResult:
         return ToolResult(
             tool_call_id=tool_call.id,
@@ -77,6 +81,7 @@ class _DenyAllToolset:
 # ---------------------------------------------------------------------------
 
 
+# 构造与主 agent 对齐的 (system_prompt, history, toolset)，以复用 prompt cache。
 def _build_btw_context(soul: KimiSoul, question: str) -> tuple[str, list[Message], _DenyAllToolset]:
     """Build (system_prompt, history, toolset) aligned with the main agent.
 
@@ -99,6 +104,7 @@ def _build_btw_context(soul: KimiSoul, question: str) -> tuple[str, list[Message
 # ---------------------------------------------------------------------------
 
 
+# 执行副问题，返回 (response, error)；最多运行 _BTW_MAX_TURNS 步。
 async def execute_side_question(
     soul: KimiSoul,
     question: str,
@@ -137,6 +143,7 @@ async def execute_side_question(
 
         text_chunks: list[str] = []
 
+        # 流式收集文本片段并回调给调用方。
         def _on_part(part: StreamedMessagePart) -> None:
             if isinstance(part, TextPart) and part.text:
                 text_chunks.append(part.text)
@@ -203,6 +210,7 @@ async def execute_side_question(
         logger.warning("Side question failed: {error}", error=e)
         return None, str(e)
     finally:
+        # 无论成败都上报一次 tool_call 遥测事件。
         elapsed = time.monotonic() - t0
         kwargs: dict[str, bool | int | float | str | None] = {
             "tool_name": "btw",
@@ -215,6 +223,7 @@ async def execute_side_question(
         track("tool_call", **kwargs)
 
 
+# 把 ToolResult 转为用于历史拼接的 tool 消息。
 def _tool_result_to_message(tool_result: ToolResult) -> Message:
     """Convert a ToolResult to a tool-result Message for history."""
     content = tool_result.return_value.message or "Tool call denied."
@@ -230,6 +239,7 @@ def _tool_result_to_message(tool_result: ToolResult) -> Message:
 # ---------------------------------------------------------------------------
 
 
+# 通过 wire 事件流执行副问题（供 Web UI / 非交互场景）。
 async def run_side_question(soul: KimiSoul, question: str) -> None:
     """Execute a side question via wire events."""
     if soul._runtime.llm is None:  # pyright: ignore[reportPrivateUsage]

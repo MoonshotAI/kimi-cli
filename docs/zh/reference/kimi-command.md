@@ -30,8 +30,9 @@ kimi [OPTIONS] COMMAND [ARGS]
 |------|------|
 | `--config STRING` | 加载 TOML/JSON 配置字符串 |
 | `--config-file PATH` | 加载配置文件（默认 `~/.kimi/config.toml`） |
+| `--env-file PATH` | 加载仅用于本次运行 LLM 配置的 dotenv 文件；默认自动读取工作目录的 `.env`（如果存在） |
 
-`--config` 和 `--config-file` 互斥。配置字符串和文件均支持 TOML 和 JSON 格式。详见 [配置文件](../configuration/config-files.md)。
+`--config` 和 `--config-file` 互斥。配置字符串和文件均支持 TOML 和 JSON 格式。详见 [配置文件](../configuration/config-files.md)。项目根目录 `.env` 中的 `KIMI_CONFIG_FILE` 可提供未显式指定时的默认配置文件。
 
 ## 模型选择
 

@@ -10,12 +10,16 @@ from kimi_cli.soul.dynamic_injection import DynamicInjection, DynamicInjectionPr
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
 
+# 本模块在 plan 模式（只读研究 + 写计划文件）下周期性注入提醒，
+# 约束 agent 不得改动系统，只能写计划文件，并以 ExitPlanMode 结束回合。
+
 # Inject a reminder every N assistant turns.
 _TURN_INTERVAL = 5
 # Every N-th reminder is the full version; others are sparse.
 _FULL_EVERY_N = 5
 
 
+# 周期性注入 plan 模式只读提醒的 Provider。
 class PlanModeInjectionProvider(DynamicInjectionProvider):
     """Periodically injects read-only reminders while plan mode is active.
 
@@ -27,6 +31,7 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
     def __init__(self) -> None:
         self._inject_count: int = 0
 
+    # 返回本步骤要注入的 plan 模式提醒；仅主 agent 注入，子 agent 不注入。
     async def get_injections(
         self,
         history: Sequence[Message],
@@ -98,6 +103,7 @@ class PlanModeInjectionProvider(DynamicInjectionProvider):
         return [DynamicInjection(type="plan_mode", content=content)]
 
 
+# 判断一条消息是否包含 plan 模式提醒（按稳定的前缀匹配）。
 def _has_plan_reminder(msg: Message) -> bool:
     """Check whether a message contains a plan mode reminder.
 
@@ -114,6 +120,7 @@ def _has_plan_reminder(msg: Message) -> bool:
     return False
 
 
+# 生成完整的 plan 模式只读提醒。
 def _full_reminder(
     plan_file_path: str | None = None,
     plan_exists: bool = False,
@@ -185,6 +192,7 @@ def _full_reminder(
     return "\n".join(lines)
 
 
+# 生成精简版 plan 模式提醒。
 def _sparse_reminder(plan_file_path: str | None = None) -> str:
     parts = [
         "Plan mode still active (see full instructions earlier).",
@@ -210,6 +218,7 @@ def _sparse_reminder(plan_file_path: str | None = None) -> str:
     return " ".join(parts)
 
 
+# 生成重入 plan 模式（已有计划文件）时的一次性提醒。
 def _reentry_reminder(plan_file_path: str | None = None) -> str:
     """One-shot reminder when re-entering plan mode with an existing plan."""
     lines = [

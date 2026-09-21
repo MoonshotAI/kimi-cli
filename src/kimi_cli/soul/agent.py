@@ -43,6 +43,20 @@ if TYPE_CHECKING:
     from fastmcp.mcp_config import MCPConfig
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 模块概述
+# ─────────────────────────────────────────────────────────────────────────────
+# 本模块定义 agent 的核心数据结构与装配流程。
+# 职责：
+#   1. Runtime 数据类：持有一次会话共享的运行时组件（配置/LLM/审批/后台任务/技能/子代理等）。
+#   2. BuiltinSystemPromptArgs：注入系统提示词模板的内置变量（KIMI_NOW / KIMI_WORK_DIR 等）。
+#   3. load_agent：从 agent spec（YAML）装配出可运行的 Agent（系统提示词 + 工具集 + 运行时）。
+#   4. load_agents_md：从项目根到工作目录发现并合并 AGENTS.md（预算截断、叶优先）。
+#   5. _load_system_prompt：用 Jinja2 渲染系统提示词模板（${var} 语法）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# 内置系统提示词参数：渲染系统提示词模板时可用的占位变量。
 @dataclass(frozen=True, slots=True, kw_only=True)
 class BuiltinSystemPromptArgs:
     """Builtin system prompt arguments."""
@@ -65,9 +79,11 @@ class BuiltinSystemPromptArgs:
     """The shell executable used by the Shell tool, e.g. 'bash (`/bin/bash`)'."""
 
 
+# AGENTS.md 合并内容的最大字节数（32 KiB）。
 _AGENTS_MD_MAX_BYTES = 32 * 1024  # 32 KiB
 
 
+# 返回从 project_root 到 work_dir（含）的目录列表，方向为根→叶。
 async def _dirs_root_to_leaf(work_dir: KaosPath, project_root: KaosPath) -> list[KaosPath]:
     """Return the list of directories from *project_root* down to *work_dir* (inclusive)."""
     dirs: list[KaosPath] = []
@@ -84,6 +100,9 @@ async def _dirs_root_to_leaf(work_dir: KaosPath, project_root: KaosPath) -> list
     return dirs
 
 
+# 从项目根到 work_dir 发现并合并 AGENTS.md：
+# 每级目录依次检查 .kimi/AGENTS.md（优先）与 AGENTS.md / agents.md（大小写互斥，大写优先），
+# 根→叶拼接，总大小受 _AGENTS_MD_MAX_BYTES 限制，预算"叶优先"分配避免深层文件被截断。
 async def load_agents_md(work_dir: KaosPath) -> str | None:
     """Discover and merge ``AGENTS.md`` files from the project root down to *work_dir*.
 
@@ -168,6 +187,7 @@ async def load_agents_md(work_dir: KaosPath) -> str | None:
     return "\n\n".join(parts) if parts else None
 
 
+# Agent 运行时：持有一次会话共享的所有组件，通过 Runtime.create 构建，子代理用 copy_for_subagent 克隆。
 @dataclass(slots=True, kw_only=True)
 class Runtime:
     """Agent runtime."""
@@ -197,6 +217,7 @@ class Runtime:
     hook_engine: Any = None
     """HookEngine instance, set by KimiCLI after soul creation."""
 
+    # 补齐可选组件（subagent_store / root_wire_hub / approval_runtime）并做相互绑定。
     def __post_init__(self) -> None:
         if self.subagent_store is None:
             self.subagent_store = SubagentStore(self.session)
@@ -208,6 +229,8 @@ class Runtime:
         self.approval.set_runtime(self.approval_runtime)
         self.background_tasks.bind_runtime(self)
 
+    # 静态工厂：并发收集目录列表/AGENTS.md/环境 → 发现并格式化技能 → 恢复额外目录 →
+    # 合并审批状态 → 组装内置参数，最终返回根 Runtime。
     @staticmethod
     async def create(
         config: Config,
@@ -219,6 +242,7 @@ class Runtime:
         runtime_afk: bool = False,
         skills_dirs: list[KaosPath] | None = None,
     ) -> Runtime:
+        # 并发收集三类信息：工作目录列表、AGENTS.md、运行环境探测。
         ls_output, agents_md, environment = await asyncio.gather(
             list_directory(session.work_dir),
             load_agents_md(session.work_dir),
@@ -226,6 +250,7 @@ class Runtime:
         )
 
         # Discover and format skills (grouped by scope for the system prompt).
+        # 解析技能根目录并按作用域分组发现技能。
         scoped_roots = await resolve_skills_roots(
             session.work_dir,
             skills_dirs=skills_dirs,
@@ -240,6 +265,7 @@ class Runtime:
         skills_formatted = format_skills_for_prompt(skills)
 
         # Restore additional directories from session state, pruning stale entries
+        # 从会话状态恢复额外目录，剔除已不存在的目录并回写状态。
         additional_dirs: list[KaosPath] = []
         pruned = False
         valid_dir_strs: list[str] = []
@@ -259,6 +285,7 @@ class Runtime:
             session.save_state()
 
         # Format additional dirs info for system prompt
+        # 把额外目录列表格式化进系统提示词。
         additional_dirs_info = ""
         if additional_dirs:
             parts: list[str] = []
@@ -274,12 +301,14 @@ class Runtime:
             additional_dirs_info = "\n\n".join(parts)
 
         # Merge invocation flags with persisted session state.
+        # 合并命令行标志与持久化会话状态（yolo / afk / 自动批准动作）。
         effective_yolo = yolo or session.state.approval.yolo
         if afk and not session.state.approval.afk:
             session.state.approval.afk = True
             session.save_state()
         saved_actions = set(session.state.approval.auto_approve_actions)
 
+        # 审批状态变化时回写会话状态。
         def _on_approval_change() -> None:
             session.state.approval.yolo = approval_state.yolo
             session.state.approval.afk = approval_state.afk
@@ -336,6 +365,7 @@ class Runtime:
             role="root",
         )
 
+    # 克隆运行时给子代理：独立 DenwaRenji，共享审批/通知/技能/额外目录等，角色设为 subagent。
     def copy_for_subagent(
         self,
         *,
@@ -369,6 +399,7 @@ class Runtime:
         )
 
 
+# 加载完成的 agent：名称 + 系统提示词 + 工具集 + 运行时。
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Agent:
     """The loaded agent."""
@@ -380,6 +411,8 @@ class Agent:
     """Each agent has its own runtime, which should be derived from its main agent."""
 
 
+# 从 agent spec 文件装配 Agent：加载 spec → 系统提示词 → 注册内置 subagent 类型 →
+# 加载工具（含插件工具）→ 处理 MCP 配置（后台加载或延迟）。
 async def load_agent(
     agent_file: Path,
     runtime: Runtime,
@@ -402,6 +435,7 @@ async def load_agent(
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
 
+    # 渲染系统提示词模板（内置参数 + spec 自定义参数）。
     system_prompt = _load_system_prompt(
         agent_spec.system_prompt_path,
         agent_spec.system_prompt_args,
@@ -410,6 +444,7 @@ async def load_agent(
 
     # Register built-in subagent types before loading tools because some tools render
     # descriptions from the labor market on initialization.
+    # 先注册内置 subagent 类型，因为部分工具初始化时会从 labor market 渲染描述。
     for subagent_name, subagent_spec in agent_spec.subagents.items():
         logger.debug(
             "Registering builtin subagent type: {subagent_name}", subagent_name=subagent_name
@@ -431,6 +466,7 @@ async def load_agent(
             )
         )
 
+    # 构建工具集，并注入工具依赖（KimiToolset / Runtime / Config / Session 等）。
     toolset = KimiToolset()
     tool_deps = {
         KimiToolset: toolset,
@@ -451,6 +487,7 @@ async def load_agent(
     toolset.load_tools(tools, tool_deps)
 
     # Load plugin tools
+    # 加载插件工具，重名时跳过并告警。
     from kimi_cli.plugin.manager import get_plugins_dir
     from kimi_cli.plugin.tool import load_plugin_tools
 
@@ -464,6 +501,7 @@ async def load_agent(
             continue
         toolset.add(plugin_tool)
 
+    # 处理 MCP 配置：校验后按 start_mcp_loading 决定后台加载或延迟加载。
     if mcp_configs:
         validated_mcp_configs: list[MCPConfig] = []
         if mcp_configs:
@@ -491,6 +529,7 @@ async def load_agent(
     )
 
 
+# 用 Jinja2 渲染系统提示词模板：${var} 语法、StrictUndefined 严格检查，错误统一转 SystemPromptTemplateError。
 def _load_system_prompt(
     path: Path, args: dict[str, str], builtin_args: BuiltinSystemPromptArgs
 ) -> str:

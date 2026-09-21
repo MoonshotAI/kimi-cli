@@ -10,8 +10,12 @@ from kimi_cli.soul.dynamic_injection import DynamicInjection, DynamicInjectionPr
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
 
+# 本模块在 afk（away-from-keyboard，用户离开键盘）模式下注入提醒，
+# 告知 agent 当前无人应答、所有工具调用会被自动批准、不得调用 AskUserQuestion。
+
 _AFK_INJECTION_TYPE = "afk_mode"
 
+# 进入 afk 模式时注入的完整引导提示词。
 _AFK_PROMPT_ROOT = (
     "You are running in afk mode. No user is present to answer "
     "questions or approve actions. All tool calls are auto-approved by "
@@ -25,6 +29,7 @@ _AFK_PROMPT_ROOT = (
     "decisions to a human."
 )
 
+# 退出 afk 模式时追加到上下文的提醒。
 AFK_DISABLED_REMINDER = (
     "Afk mode is now disabled. The user is back at the terminal and CAN answer "
     "AskUserQuestion.\n"
@@ -37,12 +42,14 @@ AFK_DISABLED_REMINDER = (
 )
 
 
+# 仅在 afk 模式下注入一次 afk 引导的 Provider。
 class AfkModeInjectionProvider(DynamicInjectionProvider):
     """Injects afk (away-from-keyboard) guidance when no user is present."""
 
     def __init__(self) -> None:
         self._injected: bool = False
 
+    # 判断是否处于 afk 模式（且非子 agent），满足条件则注入一次。
     async def get_injections(
         self,
         history: Sequence[Message],
@@ -62,11 +69,13 @@ class AfkModeInjectionProvider(DynamicInjectionProvider):
         self._injected = True
         return [DynamicInjection(type=_AFK_INJECTION_TYPE, content=_AFK_PROMPT_ROOT)]
 
+    # 上下文压缩后重置，允许下一步重新注入 afk 约束。
     async def on_context_compacted(self) -> None:
         # Compaction rewrites history; the prior afk reminder may have been
         # summarized away, so let the next afk step restate the constraint.
         self._injected = False
 
+    # afk 切换后重置，使下一步可注入最新的 afk 引导。
     async def on_afk_changed(self, enabled: bool) -> None:
         # A runtime toggle changes the latest truth about user presence.
         # Re-arm so the next LLM step can inject the current afk guidance.

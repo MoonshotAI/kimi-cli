@@ -1,3 +1,15 @@
+"""Kimi CLI 的 Typer 命令行定义与主命令回调。
+
+本模块是 ``kimi`` / ``kimi-cli`` 命令的“大脑”：
+- 定义主命令 ``kimi()`` 的完整参数面（--session/--model/--yolo/--print 等）；
+- 负责解析这些参数、做互斥校验，解析出 work_dir / config / MCP 配置；
+- 通过 ``_run()`` 定位会话、构造 ``KimiCLI``，再按 UI 模式分发到
+  shell / print / acp / wire；
+- 通过异常（Reload / SwitchToWeb / SwitchToVis）实现运行中的模式切换；
+- 注册 login / logout / term / acp 等子命令（info/export/mcp/plugin/vis/web
+  由 ``LazySubcommandGroup`` 懒加载，见 _lazy_group.py）。
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,6 +21,13 @@ if TYPE_CHECKING:
     from kimi_cli.session import Session
 
 from ._lazy_group import LazySubcommandGroup
+
+# ==========================================================================
+# 运行中的“模式切换”采用异常控制流实现：
+# 当用户在交互界面里输入 /reload、/model、/new，或请求切换到 web / vis 界面时，
+# UI 层会抛出下面这些异常；_run() 的 match ui 分支与 _reload_loop 捕获后，
+# 用新参数重建 KimiCLI 实例，从而在“进程不退出”的前提下完成切换。
+# ==========================================================================
 
 
 class Reload(Exception):
@@ -37,6 +56,8 @@ class SwitchToVis(Exception):
         self.session_id = session_id
 
 
+# 主 Typer 应用。使用 LazySubcommandGroup：info/export/mcp/plugin/vis/web 这几个
+# 重量级子命令只在真正被调用时才 import（见 _lazy_group.py），加快 --help 与启动速度。
 cli = typer.Typer(
     cls=LazySubcommandGroup,
     epilog="""\b\
@@ -47,6 +68,8 @@ LLM friendly version: https://moonshotai.github.io/kimi-cli/llms.txt""",
     help="Kimi, your next CLI agent.",
 )
 
+# UI 模式：shell（交互式 TUI，默认）、print（非交互）、acp（IDE 协议服务器）、
+# wire（stdio 事件流，实验性）。决定 _run() 最后分发到哪个前端。
 UIMode = Literal["shell", "print", "acp", "wire"]
 
 
@@ -66,6 +89,7 @@ def _strip_session_id_suffix(title: str, session_id: str) -> str:
     return title.rsplit(suffix, 1)[0] if title.endswith(suffix) else title
 
 
+# --version/-V 的回调。is_eager=True 表示参数一出现就执行、不再继续解析其它参数。
 def _version_callback(value: bool) -> None:
     if value:
         from kimi_cli.constant import get_version
@@ -74,6 +98,8 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+# 主命令回调。invoke_without_command=True 意味着即使不带子命令也会执行它；
+# 当带子命令时（如 `kimi mcp list`），函数开头就 return，把控制权让给子命令。
 @cli.callback(invoke_without_command=True)
 def kimi(
     ctx: typer.Context,
@@ -168,6 +194,17 @@ def kimi(
             dir_okay=False,
             readable=True,
             help="Config TOML/JSON file to load. Default: ~/.kimi/config.toml.",
+        ),
+    ] = None,
+    env_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--env-file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Dotenv file for local LLM settings. Default: <work-dir>/.env if present.",
         ),
     ] = None,
     model_name: Annotated[
@@ -364,6 +401,7 @@ def kimi(
     ] = None,
 ):
     """Kimi, your next CLI agent."""
+    # ---- 从这一行往下是回调主体：校验参数 → 解析配置 → 交给 _reload_loop ----
     import asyncio
     import contextlib
     import json
@@ -387,6 +425,7 @@ def kimi(
     from kimi_cli.metadata import load_metadata, save_metadata
     from kimi_cli.session import Session
     from kimi_cli.ui.shell.startup import ShellStartupProgress
+    from kimi_cli.utils.dotenv import load_dotenv_values
     from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
 
     from .mcp import get_global_mcp_config_file
@@ -397,6 +436,8 @@ def kimi(
     # MCP server stderr noise is captured into logs from the start.
     enable_logging(debug, redirect_stderr=False)
 
+    # 把致命错误写到“原始 stderr”（即使 fd=2 已被重定向到日志文件），
+    # 保证用户在终端上一定能看到错误信息。
     def _emit_fatal_error(message: str) -> None:
         # Prefer writing to the original stderr fd even if we later redirect fd=2.
         # This ensures fatal errors are visible to the user.
@@ -417,6 +458,8 @@ def kimi(
         if session_id is None:
             _picker_mode = True
 
+    # --quiet 是 `--print --output-format text --final-message-only` 的快捷写法；
+    # 与 ACP/Wire UI 冲突时直接报错。
     if quiet:
         if acp_mode or wire_mode:
             raise typer.BadParameter(
@@ -432,6 +475,7 @@ def kimi(
         output_format = "text"
         final_message_only = True
 
+    # 互斥参数校验：下面每组内最多只能同时启用一个。
     conflict_option_sets = [
         {
             "--print": print_mode,
@@ -459,6 +503,7 @@ def kimi(
                 param_hint=active_options[0],
             )
 
+    # --agent 是内置 spec 的快捷名，翻译成对应的 agent 文件路径。
     if agent is not None:
         match agent:
             case "default":
@@ -466,6 +511,7 @@ def kimi(
             case "okabe":
                 agent_file = OKABE_AGENT_FILE
 
+    # 由命令行标志决定本次运行的 UI 模式（shell 为默认）。
     ui: UIMode = "shell"
     if print_mode:
         ui = "print"
@@ -500,6 +546,11 @@ def kimi(
             param_hint="--session",
         )
 
+    # 解析工作目录：--work-dir 指定，否则取当前目录（KaosPath 是 kaos 库的路径抽象）。
+    work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
+
+    # 解析配置：优先级 --config(内联字符串) > --config-file(路径) >
+    # 项目 .env 里的 KIMI_CONFIG_FILE > 默认 ~/.kimi/config.toml。
     config: Config | Path | None = None
     if config_string is not None:
         config_string = config_string.strip()
@@ -511,7 +562,22 @@ def kimi(
             raise typer.BadParameter(str(e), param_hint="--config") from e
     elif config_file is not None:
         config = config_file
+    else:
+        project_env_file = Path(str(work_dir)) / ".env"
+        project_env = load_dotenv_values(project_env_file if project_env_file.is_file() else None)
+        if project_config := project_env.get("KIMI_CONFIG_FILE"):
+            config_path = Path(project_config).expanduser()
+            if not config_path.is_absolute():
+                config_path = Path(str(work_dir)) / config_path
+            config_path = config_path.resolve(strict=False)
+            if not config_path.is_file():
+                raise typer.BadParameter(
+                    f"Project config file not found: {config_path}", param_hint="KIMI_CONFIG_FILE"
+                )
+            config = config_path
 
+    # 汇总 MCP 配置：来自 --mcp-config-file（文件）与 --mcp-config（内联 JSON）；
+    # 未显式给出时回退到全局默认 MCP 配置文件。
     file_configs = list(mcp_config_file or [])
     raw_mcp_config = list(mcp_config or [])
 
@@ -535,8 +601,6 @@ def kimi(
     if local_skills_dir:
         skills_dirs = [KaosPath.unsafe_from_local_path(p) for p in local_skills_dir]
 
-    work_dir = KaosPath.unsafe_from_local_path(local_work_dir) if local_work_dir else KaosPath.cwd()
-
     # Tracks the most recently created/loaded session so that _reload_loop's
     # exception handler can clean it up even when _run() fails before returning.
     _latest_created_session: Session | None = None
@@ -548,6 +612,7 @@ def kimi(
         Returns:
             The session and the exit code (0 = success, 1 = failure, 75 = retryable).
         """
+        # 仅 shell UI 需要启动进度条；print/acp/wire 不需要。
         startup_progress = ShellStartupProgress(enabled=ui == "shell")
         try:
             startup_progress.update("Preparing session...")
@@ -555,6 +620,8 @@ def kimi(
             # Track if we're resuming an existing session (vs creating new)
             resumed = False
 
+            # 定位会话：--session <id> 恢复指定会话 / --continue 恢复上次会话 /
+            # 否则创建新会话。resumed 标志区分“恢复”与“全新启动”。
             if session_id is not None:
                 session = await Session.find(work_dir, session_id)
                 if session is None:
@@ -616,9 +683,12 @@ def kimi(
             # the saved original stderr fd.
             redirect_stderr_to_logger()
 
+            # 核心装配：加载配置 → 建 LLM → 构建 Runtime → 加载 Agent → 恢复 Context
+            # → 构造 KimiSoul → 挂 hooks/telemetry。所有模块在这里接线（见 app.py）。
             instance = await KimiCLI.create(
                 session,
                 config=config,
+                env_file=env_file,
                 model_name=model_name,
                 thinking=thinking,
                 yolo=yolo,
@@ -654,6 +724,8 @@ def kimi(
             # stderr noise is captured into logs without hiding startup failures.
             redirect_stderr_to_logger()
             preserve_background_tasks = False
+            # 按 UI 模式分发到对应前端；前端可能抛 Reload / SwitchToWeb /
+            # SwitchToVis 异常来请求切换运行方式。
             try:
                 match ui:
                     case "shell":
@@ -808,6 +880,7 @@ def kimi(
                         await _delete_empty_session(_latest_created_session)
             raise
 
+    # --session 不带值 = 进入“会话选择器”模式，交互式挑选一个历史会话恢复。
     if _picker_mode:
         from prompt_toolkit.shortcuts.choice_input import ChoiceInput
         from rich.console import Console
@@ -845,6 +918,7 @@ def kimi(
 
         session_id = asyncio.run(_pick_session())
 
+    # 主循环：_reload_loop 会反复调用 _run()，直到进程真正结束，或切换到 web/vis。
     try:
         switch_target, exit_code = asyncio.run(_reload_loop(session_id))
     except (typer.BadParameter, typer.Exit):
@@ -900,6 +974,10 @@ def kimi(
     elif exit_code != ExitCode.SUCCESS:
         raise typer.Exit(code=exit_code)
 
+
+# --------------------------------------------------------------------------
+# 子命令：登录 / 登出（OAuth 设备码流程）
+# --------------------------------------------------------------------------
 
 @cli.command()
 def login(
@@ -1004,6 +1082,7 @@ def logout(
         raise typer.Exit(code=1)
 
 
+# 启动 Toad TUI（一个基于 Kimi CLI ACP server 的交互式终端界面）。
 @cli.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def term(
     ctx: typer.Context,
@@ -1014,6 +1093,7 @@ def term(
     run_term(ctx)
 
 
+# 以 ACP server 模式运行，供 IDE（如 Zed / JetBrains）集成；等价于主命令 --acp。
 @cli.command()
 def acp():
     """Run Kimi Code CLI ACP server."""
@@ -1022,6 +1102,7 @@ def acp():
     acp_main()
 
 
+# 内部隐藏命令：后台任务 worker 子进程的入口（由 BackgroundTaskManager spawn）。
 @cli.command(name="__background-task-worker", hidden=True)
 def background_task_worker(
     task_dir: Annotated[Path, typer.Option("--task-dir")],
@@ -1050,6 +1131,7 @@ def background_task_worker(
     )
 
 
+# 内部隐藏命令：web worker 子进程的入口（由 web 后端为每个会话 spawn）。
 @cli.command(name="__web-worker", hidden=True)
 def web_worker(session_id: str) -> None:
     """Run web worker subprocess (internal)."""
@@ -1072,6 +1154,7 @@ def web_worker(session_id: str) -> None:
     asyncio.run(run_worker(parsed_session_id))
 
 
+# 便于 `python -m kimi_cli.cli` 直接运行调试。
 if __name__ == "__main__":
     import sys
 

@@ -273,29 +273,32 @@ def model_display_name(model_name: str | None, model: LLMModel | None = None) ->
     return model_name
 
 
-def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> dict[str, str]:
+def augment_provider_with_env_vars(
+    provider: LLMProvider, model: LLMModel, env: Mapping[str, str] | None = None
+) -> dict[str, str]:
     """Override provider/model settings from environment variables.
 
     Returns:
         Mapping of environment variables that were applied.
     """
     applied: dict[str, str] = {}
+    env = os.environ if env is None else env
 
     match provider.type:
         case "kimi":
-            if base_url := os.getenv("KIMI_BASE_URL"):
+            if base_url := env.get("KIMI_BASE_URL"):
                 provider.base_url = base_url
                 applied["KIMI_BASE_URL"] = base_url
-            if api_key := os.getenv("KIMI_API_KEY"):
+            if api_key := env.get("KIMI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
                 applied["KIMI_API_KEY"] = "******"
-            if model_name := os.getenv("KIMI_MODEL_NAME"):
+            if model_name := env.get("KIMI_MODEL_NAME"):
                 model.model = model_name
                 applied["KIMI_MODEL_NAME"] = model_name
-            if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
+            if max_context_size := env.get("KIMI_MODEL_MAX_CONTEXT_SIZE"):
                 model.max_context_size = int(max_context_size)
                 applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = max_context_size
-            if capabilities := os.getenv("KIMI_MODEL_CAPABILITIES"):
+            if capabilities := env.get("KIMI_MODEL_CAPABILITIES"):
                 caps_lower = (cap.strip().lower() for cap in capabilities.split(",") if cap.strip())
                 model.capabilities = set(
                     cast(ModelCapability, cap)
@@ -304,9 +307,9 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
                 )
                 applied["KIMI_MODEL_CAPABILITIES"] = capabilities
         case "openai_legacy" | "openai_responses":
-            if base_url := os.getenv("OPENAI_BASE_URL"):
+            if base_url := env.get("OPENAI_BASE_URL"):
                 provider.base_url = base_url
-            if api_key := os.getenv("OPENAI_API_KEY"):
+            if api_key := env.get("OPENAI_API_KEY"):
                 provider.api_key = SecretStr(api_key)
         case _:
             pass
@@ -330,7 +333,9 @@ def create_llm(
     thinking: bool | None = None,
     session_id: str | None = None,
     oauth: OAuthManager | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> LLM | None:
+    env = os.environ if env is None else env
     if provider.type not in {"_echo", "_scripted_echo"} and (
         not provider.base_url or not model.model
     ):
@@ -360,15 +365,15 @@ def create_llm(
             gen_kwargs: Kimi.GenerationKwargs = {}
             if session_id:
                 gen_kwargs["prompt_cache_key"] = session_id
-            if temperature := os.getenv("KIMI_MODEL_TEMPERATURE"):
+            if temperature := env.get("KIMI_MODEL_TEMPERATURE"):
                 gen_kwargs["temperature"] = float(temperature)
-            if top_p := os.getenv("KIMI_MODEL_TOP_P"):
+            if top_p := env.get("KIMI_MODEL_TOP_P"):
                 gen_kwargs["top_p"] = float(top_p)
             for env_name in (
                 "KIMI_MODEL_MAX_COMPLETION_TOKENS",
                 "KIMI_MODEL_MAX_TOKENS",
             ):
-                raw_max_completion_tokens = os.getenv(env_name)
+                raw_max_completion_tokens = env.get(env_name)
                 if not raw_max_completion_tokens:
                     continue
                 try:
@@ -488,7 +493,7 @@ def create_llm(
         from kosong.chat_provider.kimi import Kimi
 
         if isinstance(chat_provider, Kimi) and (
-            thinking_keep := os.getenv("KIMI_MODEL_THINKING_KEEP")
+            thinking_keep := env.get("KIMI_MODEL_THINKING_KEEP")
         ):
             chat_provider = chat_provider.with_extra_body({"thinking": {"keep": thinking_keep}})
 

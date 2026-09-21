@@ -17,6 +17,11 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import next_available_rotation
 
 
+# 本模块实现会话上下文（Context）的持久化：以 JSONL 文件为后端，
+# 按行写入 system_prompt / 消息 / token 用量 / 检查点等记录，
+# 支持从文件恢复、检查点回退与清理，并维护 token 计数估算。
+
+# 会话上下文：内存历史 + JSONL 文件后端的持久化。
 class Context:
     def __init__(self, file_backend: Path):
         self._file_backend = file_backend
@@ -27,6 +32,7 @@ class Context:
         """The ID of the next checkpoint, starting from 0, incremented after each checkpoint."""
         self._system_prompt: str | None = None
 
+    # 从文件后端恢复上下文（逐行解析记录）。
     async def restore(self) -> bool:
         logger.debug("Restoring context from file: {file_backend}", file_backend=self._file_backend)
         if self._history:
@@ -88,6 +94,7 @@ class Context:
     def file_backend(self) -> Path:
         return self._file_backend
 
+    # 把系统提示词作为文件首条记录写入（空文件直接写，非空则通过临时文件原子前置）。
     async def write_system_prompt(self, prompt: str) -> None:
         """Write the system prompt as the first record of the context file.
 
@@ -98,6 +105,7 @@ class Context:
         """
         prompt_line = json.dumps({"role": "_system_prompt", "content": prompt}) + "\n"
 
+        # 同步文件写入逻辑，放入线程池执行以避免阻塞事件循环。
         def _write_system_prompt_sync() -> None:
             if not self._file_backend.exists() or self._file_backend.stat().st_size == 0:
                 self._file_backend.write_text(prompt_line, encoding="utf-8")
@@ -120,6 +128,7 @@ class Context:
 
         self._system_prompt = prompt
 
+    # 创建一个检查点记录，并可选地追加一条 CHECKPOINT 消息。
     async def checkpoint(self, add_user_message: bool):
         checkpoint_id = self._next_checkpoint_id
         self._next_checkpoint_id += 1
@@ -132,6 +141,7 @@ class Context:
                 Message(role="user", content=[system(f"CHECKPOINT {checkpoint_id}")])
             )
 
+    # 回退到指定检查点：旋转文件后端，仅恢复该检查点之前的内容。
     async def revert_to(self, checkpoint_id: int):
         """
         Revert the context to the specified checkpoint.
@@ -199,6 +209,7 @@ class Context:
 
         self._pending_token_estimate = estimate_text_tokens(messages_after_last_usage)
 
+    # 清空上下文（旋转文件后端并重置所有内存状态）。
     async def clear(self):
         """
         Clear the context history.
@@ -229,6 +240,7 @@ class Context:
         self._next_checkpoint_id = 0
         self._system_prompt = None
 
+    # 追加消息到内存历史，并同步写入文件后端。
     async def append_message(self, message: Message | Sequence[Message]):
         logger.debug("Appending message(s) to context: {message}", message=message)
         messages = [message] if isinstance(message, Message) else message
@@ -239,6 +251,7 @@ class Context:
             for message in messages:
                 await f.write(message.model_dump_json(exclude_none=True) + "\n")
 
+    # 更新权威 token 计数（来自 LLM 用量的真实值），并落盘。
     async def update_token_count(self, token_count: int):
         logger.debug("Updating token count in context: {token_count}", token_count=token_count)
         self._token_count = token_count
@@ -247,6 +260,7 @@ class Context:
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
             await f.write(json.dumps({"role": "_usage", "token_count": token_count}) + "\n")
 
+    # 解析一行 JSONL，失败时告警并返回 None。
     def _parse_context_line(
         self,
         line: str,
@@ -273,6 +287,7 @@ class Context:
             return None
         return cast(dict[str, Any], line_json)
 
+    # 把一条记录应用到上下文状态，返回该行是否应保留（用于回退时重写文件）。
     def _apply_context_record(
         self,
         line_json: dict[str, Any],

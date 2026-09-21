@@ -1,3 +1,14 @@
+"""应用层装配与运行入口。
+
+本模块把 CLI 层解析好的参数真正“组装”成一个可运行的 agent：
+- ``KimiCLI.create`` 是核心装配流程（配置 → OAuth → LLM → Runtime → Agent →
+  Context → KimiSoul → hooks → telemetry），几乎所有模块都在这里接线；
+- ``KimiCLI.run`` 把 soul 的 Wire 输出桥接到外部调用方（UI 层 / 测试），并负责
+  把审批请求等“轮外”消息从 RootWireHub 投影到当前 wire；
+- ``run_shell`` / ``run_print`` / ``run_acp`` / ``run_wire_stdio`` 是四种前端
+  入口，供 ``cli/__init__.py`` 的 match ui 分发调用。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +17,7 @@ import dataclasses
 import sys
 import time
 import warnings
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +40,7 @@ from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.soul.toolset import KimiToolset
 from kimi_cli.utils.aioqueue import QueueShutDown
+from kimi_cli.utils.dotenv import load_llm_env
 from kimi_cli.utils.envvar import get_env_bool
 from kimi_cli.utils.logging import logger, open_original_stderr, redirect_stderr_to_logger
 from kimi_cli.utils.path import shorten_home
@@ -50,6 +62,8 @@ def _patch_session_id(record: dict[str, Any]) -> None:
         record["extra"].setdefault("sid", "")
 
 
+# 配置 loguru 全局日志：写入 ~/.kimi/logs/kimi.log（debug 时开 TRACE 并启用 kosong 日志），
+# 可选地把进程 fd=2（stderr）重定向到日志文件。
 def enable_logging(debug: bool = False, *, redirect_stderr: bool = True) -> None:
     # NOTE: stderr redirection is implemented by swapping the process-level fd=2 (dup2).
     # That can hide Click/Typer error output during CLI startup, so some entrypoints delay
@@ -90,6 +104,7 @@ def _write_original_stderr(text: str) -> None:
     sys.stderr.write(text)
 
 
+# 后台静默刷新“托管模型”列表（来自平台的模型目录），失败只告警、不影响启动。
 async def _refresh_managed_models_silent(config: Config) -> None:
     from kimi_cli.auth.platforms import refresh_managed_models
 
@@ -99,6 +114,7 @@ async def _refresh_managed_models_silent(config: Config) -> None:
         logger.warning("Background managed-model refresh failed: {error}", error=exc)
 
 
+# 启动时清理上次异常退出遗留的“前台”子 agent 实例，把它们标记为 failed。
 def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
     subagent_store = getattr(runtime, "subagent_store", None)
     if subagent_store is None:
@@ -118,12 +134,15 @@ def _cleanup_stale_foreground_subagents(runtime: Runtime) -> None:
 
 
 class KimiCLI:
-    @staticmethod
-    async def create(
+    """一次可运行的 agent 实例；由 CLI 层构造，UI 层持有并调用其 run_* 方法。"""
+
+    @staticmethod 
+    async def create( # Agent启动的入口
         session: Session,
         *,
         # Basic configuration
         config: Config | Path | None = None,
+        env_file: Path | None = None,
         model_name: str | None = None,
         thinking: bool | None = None,
         # Run mode
@@ -151,6 +170,8 @@ class KimiCLI:
             session (Session): A session created by `Session.create` or `Session.continue_`.
             config (Config | Path | None, optional): Configuration to use, or path to config file.
                 Defaults to None.
+            env_file (Path | None, optional): Dotenv file used only for LLM settings. When unset,
+                use ``.env`` in the session work directory if it exists.
             model_name (str | None, optional): Name of the model to use. Defaults to None.
             thinking (bool | None, optional): Whether to enable thinking mode. Defaults to None.
             yolo (bool, optional): Approve all actions without confirmation. Defaults to False.
@@ -186,12 +207,16 @@ class KimiCLI:
             MCPRuntimeError(KimiCLIException, RuntimeError): When any MCP server cannot be
                 connected.
         """
+        # ==== 阶段 1：加载配置 ====
+        # _create_t0 / _phase_timings_ms 用于记录各阶段耗时，上报 startup_perf 事件。
         _create_t0 = time.monotonic()
         _phase_timings_ms: dict[str, int] = {}
 
         if startup_progress is not None:
             startup_progress("Loading configuration...")
 
+        # 加载配置（CLI 层可能只给了一个路径）；把命令行 --max-steps-per-turn
+        # 等循环控制参数覆盖回写进 config.loop_control。
         _phase_t = time.monotonic()
         config = config if isinstance(config, Config) else load_config(config)
         _phase_timings_ms["config_ms"] = int((time.monotonic() - _phase_t) * 1000)
@@ -203,11 +228,15 @@ class KimiCLI:
             config.loop_control.max_ralph_iterations = max_ralph_iterations
         logger.info("Loaded config: {config}", config=config)
 
+        # ==== 阶段 2：OAuth 认证与后台模型刷新 ====
         _phase_t = time.monotonic()
         oauth = OAuthManager(config)
 
         bg_refresh_task = asyncio.create_task(_refresh_managed_models_silent(config))
 
+        # ==== 阶段 3：解析模型与提供商 ====
+        # 优先用命令行 --model；否则用 config.default_model；都没有则用空占位
+        # （后续会提示用户 /login）。
         model: LLMModel | None = None
         provider: LLMProvider | None = None
 
@@ -225,11 +254,21 @@ class KimiCLI:
             model = LLMModel(provider="", model="", max_context_size=100_000)
             provider = LLMProvider(type="kimi", base_url="", api_key=SecretStr(""))
 
+        # ==== 阶段 4：环境变量覆盖 ====
+        # 加载会话工作目录下的 .env（或 --env-file），再让 KIMI_BASE_URL /
+        # KIMI_API_KEY / KIMI_MODEL_NAME 等环境变量覆盖上面的配置。
         # try overwrite with environment variables
         assert provider is not None
         assert model is not None
-        env_overrides = augment_provider_with_env_vars(provider, model)
+        default_env_file = Path(str(session.work_dir)) / ".env"
+        selected_env_file = env_file or (default_env_file if default_env_file.is_file() else None)
+        llm_env: Mapping[str, str] = load_llm_env(selected_env_file)
+        if selected_env_file is not None:
+            logger.info("Loaded local LLM environment from: {file}", file=selected_env_file)
+        env_overrides = augment_provider_with_env_vars(provider, model, llm_env)
 
+        # ==== 阶段 5：确定 thinking / yolo / plan mode ====
+        # 命令行未显式指定时，回退到配置默认值。
         # determine thinking mode
         thinking = config.default_thinking if thinking is None else thinking
 
@@ -240,12 +279,16 @@ class KimiCLI:
         if not resumed:
             plan_mode = plan_mode if plan_mode else config.default_plan_mode
 
+        # ==== 阶段 6：创建 LLM ====
+        # 按 provider 类型构造 kosong ChatProvider，包成 LLM（含能力集与上下文上限）；
+        # 未配置 base_url/model 时返回 None（等待 /login）。
         llm = create_llm(
             provider,
             model,
             thinking=thinking,
             session_id=session.id,
             oauth=oauth,
+            env=llm_env,
         )
         if llm is not None:
             logger.info("Using LLM provider: {provider}", provider=provider)
@@ -255,6 +298,10 @@ class KimiCLI:
         if startup_progress is not None:
             startup_progress("Scanning workspace...")
 
+        # ==== 阶段 7：构建 Runtime ====
+        # Runtime 是本次运行的全部上下文：采集 KIMI_* 内置参数、发现 skills、
+        # 恢复 additional dirs、装配 approval / notifications / background_tasks /
+        # subagent_store / approval_runtime / root_wire_hub。
         runtime = await Runtime.create(
             config,
             oauth,
@@ -272,6 +319,8 @@ class KimiCLI:
         _cleanup_stale_foreground_subagents(runtime)
         _phase_timings_ms["init_ms"] = int((time.monotonic() - _phase_t) * 1000)
 
+        # ==== 阶段 8：刷新插件配置 ====
+        # 用最新凭据（如 OAuth token）刷新插件配置。
         # Refresh plugin configs with fresh credentials (e.g. OAuth tokens)
         try:
             from kimi_cli.plugin.manager import (
@@ -286,6 +335,9 @@ class KimiCLI:
         except Exception:
             logger.debug("Failed to refresh plugin configs, skipping")
 
+        # ==== 阶段 9：加载 Agent ====
+        # 解析 agent spec YAML → 渲染系统提示词 → 注册内置 subagent → 加载内置工具
+        # → 追加 plugin 工具 → 加载 MCP 工具（可延迟到 shell 就绪，见 defer_mcp_loading）。
         if agent_file is None:
             agent_file = DEFAULT_AGENT_FILE
         if startup_progress is not None:
@@ -302,6 +354,8 @@ class KimiCLI:
 
         if startup_progress is not None:
             startup_progress("Restoring conversation...")
+        # ==== 阶段 10：恢复会话上下文 ====
+        # 从 context.jsonl 恢复消息历史；历史里若已有系统提示词则沿用，否则写入新的。
         context = Context(session.context_file)
         await context.restore()
 
@@ -310,8 +364,10 @@ class KimiCLI:
         else:
             await context.write_system_prompt(agent.system_prompt)
 
-        soul = KimiSoul(agent, context=context)
+        # ==== 阶段 11：构造 KimiSoul（主循环） ====
+        soul = KimiSoul(agent, context=context) # * 核心
 
+        # ==== 阶段 12：激活 plan mode（如请求） ====
         # Activate plan mode if requested (for new sessions or --plan flag)
         if plan_mode and not soul.plan_mode:
             await soul.set_plan_mode_from_manual(True)
@@ -319,6 +375,8 @@ class KimiCLI:
             # Already in plan mode from restored session, trigger activation reminder
             soul.schedule_plan_activation_reminder()
 
+        # ==== 阶段 13：Hook 引擎 ====
+        # 从 config.hooks 构造引擎并注入 soul（拦截/放行用户输入、工具调用等事件）。
         # Create and inject hook engine
         from kimi_cli.hooks.engine import HookEngine
 
@@ -326,6 +384,9 @@ class KimiCLI:
         soul.set_hook_engine(hook_engine)
         runtime.hook_engine = hook_engine
 
+        # ==== 阶段 14：Telemetry ====
+        # 可被 KIMI_DISABLE_TELEMETRY 或 config.telemetry 关闭；否则挂载事件 sink，
+        # 用 OAuth token 鉴权的异步传输器上报事件。
         # --- Initialize telemetry ---
         from kimi_cli.telemetry import attach_sink, set_context
         from kimi_cli.telemetry import disable as disable_telemetry
@@ -354,6 +415,8 @@ class KimiCLI:
         from kimi_cli.telemetry import track, track_session_started_once
         from kimi_cli.telemetry.crash import install_asyncio_handler, set_phase
 
+        # ==== 阶段 15：收尾 ====
+        # 初始化完成，进入 runtime 阶段；hook asyncio 崩溃并上报 started / startup_perf。
         # App init finished — enter runtime phase and hook asyncio crashes.
         install_asyncio_handler()
         set_phase("runtime")
@@ -398,6 +461,7 @@ class KimiCLI:
         """Get the Session instance."""
         return self._runtime.session
 
+    # 硬退出路径：取消后台模型刷新、关闭 MCP 连接，并按配置杀掉仍在跑的后台任务。
     async def shutdown_background_tasks(self) -> None:
         """Kill active background tasks on exit, unless keep_alive_on_exit is configured.
 
@@ -508,6 +572,7 @@ class KimiCLI:
         except Exception:
             logger.warning("Error during background task shutdown; continuing exit", exc_info=True)
 
+    # 等待后台模型刷新任务被取消后退出（尽力而为，超时不阻塞）。
     async def await_bg_tasks_shutdown(self, timeout: float = 2.0) -> None:
         """Await completion of the model-refresh background task after cancellation."""
         task = self._bg_refresh_task
@@ -517,6 +582,8 @@ class KimiCLI:
         with contextlib.suppress(TimeoutError, asyncio.CancelledError, Exception):
             await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
 
+    # 运行期环境上下文：把 kaos 的当前目录切到会话 work_dir，并在 OAuth token 的
+    # 自动刷新（refreshing 上下文）下执行包体。
     @contextlib.asynccontextmanager
     async def _env(self) -> AsyncGenerator[None]:
         original_cwd = KaosPath.cwd()
@@ -553,6 +620,8 @@ class KimiCLI:
             MaxStepsReached: When the maximum number of steps is reached.
             RunCancelled: When the run is cancelled by the cancel event.
         """
+        # 无 UI 的 run：产出 Wire 消息流。_ui_loop_fn 订阅 RootWireHub，把审批等
+        # “轮外”消息桥接到当前 wire；soul 任务结束后关闭 wire 并等待 UI 循环退出。
         async with self._env():
             wire_future = asyncio.Future[WireUISide]()
             stop_ui_loop = asyncio.Event()
@@ -694,6 +763,7 @@ class KimiCLI:
                     with contextlib.suppress(asyncio.CancelledError):
                         await external_cancel_task
 
+    # 交互式 TUI 前端：构造欢迎信息（目录/会话/模型/更新提示）后启动 Shell。
     async def run_shell(
         self, command: str | None = None, *, prefill_text: str | None = None
     ) -> bool:
@@ -787,6 +857,7 @@ class KimiCLI:
             shell = Shell(self._soul, welcome_info=welcome_info, prefill_text=prefill_text)
             return await shell.run(command)
 
+    # 非交互前端：输入/输出支持 text 或 stream-json，用于脚本化调用。
     async def run_print(
         self,
         input_format: InputFormat,
@@ -808,6 +879,7 @@ class KimiCLI:
             )
             return await print_.run(command)
 
+    # ACP 服务器前端（IDE 集成，如 Zed / JetBrains）。
     async def run_acp(self) -> None:
         """Run the Kimi Code CLI instance as ACP server."""
         from kimi_cli.ui.acp import ACP
@@ -816,6 +888,7 @@ class KimiCLI:
             acp = ACP(self._soul)
             await acp.run()
 
+    # Wire 服务器前端：在 stdio 上承载 Wire 消息流（实验性）。
     async def run_wire_stdio(self) -> None:
         """Run the Kimi Code CLI instance as Wire server over stdio."""
         from kimi_cli.wire.server import WireServer

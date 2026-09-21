@@ -23,6 +23,9 @@ from kimi_cli.wire.types import StatusUpdate, TextPart
 if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
 
+# 本模块注册 KimiSoul 级 slash 命令（/init、/compact、/clear、/yolo、/afk、
+# /plan、/add-dir、/export、/import），每个命令通过 registry 装饰器注册。
+
 type SoulSlashCmdFunc = Callable[[KimiSoul, str], None | Awaitable[None]]
 """
 A function that runs as a KimiSoul-level slash command.
@@ -34,11 +37,13 @@ Raises:
 registry = SlashCommandRegistry[SoulSlashCmdFunc]()
 
 
+# /init：分析代码库并生成 AGENTS.md 文件。
 @registry.command
 async def init(soul: KimiSoul, args: str):
     """Analyze the codebase and generate an `AGENTS.md` file"""
     from kimi_cli.soul.kimisoul import KimiSoul
 
+    # 在临时上下文中运行一个独立的 KimiSoul 来执行 INIT 提示词。
     with tempfile.TemporaryDirectory() as temp_dir:
         tmp_context = Context(file_backend=Path(temp_dir) / "context.jsonl")
         tmp_soul = KimiSoul(soul.agent, context=tmp_context)
@@ -56,6 +61,7 @@ async def init(soul: KimiSoul, args: str):
     track("init_complete")
 
 
+# /compact：手动触发上下文压缩，可附加自定义聚焦说明。
 @registry.command
 async def compact(soul: KimiSoul, args: str):
     """Compact the context (optionally with a custom focus, e.g. /compact keep db discussions)"""
@@ -77,6 +83,7 @@ async def compact(soul: KimiSoul, args: str):
     )
 
 
+# /clear（别名 /reset）：清空上下文并重新写入系统提示词。
 @registry.command(aliases=["reset"])
 async def clear(soul: KimiSoul, args: str):
     """Clear the context"""
@@ -94,6 +101,7 @@ async def clear(soul: KimiSoul, args: str):
     )
 
 
+# /yolo：切换 YOLO 模式（自动批准所有动作）。
 @registry.command
 async def yolo(soul: KimiSoul, args: str):
     """Toggle YOLO mode (auto-approve all actions)"""
@@ -122,6 +130,7 @@ async def yolo(soul: KimiSoul, args: str):
         wire_send(TextPart(text="You only live once! All actions will be auto-approved."))
 
 
+# /afk：切换 afk 模式（自动驳回 AskUserQuestion、自动批准工具调用）。
 @registry.command
 async def afk(soul: KimiSoul, args: str):
     """Toggle afk mode (auto-dismiss AskUserQuestion, auto-approve tool calls)"""
@@ -156,6 +165,7 @@ async def afk(soul: KimiSoul, args: str):
         )
 
 
+# /plan：切换 plan 模式，支持 on/off/view/clear 子命令。
 @registry.command
 async def plan(soul: KimiSoul, args: str):
     """Toggle plan mode. Usage: /plan [on|off|view|clear]"""
@@ -197,6 +207,7 @@ async def plan(soul: KimiSoul, args: str):
         wire_send(StatusUpdate(plan_mode=soul.plan_mode))
 
 
+# /add-dir：向工作区添加额外目录。
 @registry.command(name="add-dir")
 async def add_dir(soul: KimiSoul, args: str):
     """Add a directory to the workspace. Usage: /add-dir <path>. Run without args to list added dirs"""  # noqa: E501
@@ -272,6 +283,7 @@ async def add_dir(soul: KimiSoul, args: str):
     logger.info("Added additional directory: {path}", path=path)
 
 
+# /export：把当前会话上下文导出为 Markdown 文件。
 @registry.command
 async def export(soul: KimiSoul, args: str):
     """Export current session context to a markdown file"""
@@ -300,6 +312,7 @@ async def export(soul: KimiSoul, args: str):
     )
 
 
+# /import：从文件或会话 ID 导入上下文。
 @registry.command(name="import")
 async def import_context(soul: KimiSoul, args: str):
     """Import context from a file or session ID"""

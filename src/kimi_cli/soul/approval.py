@@ -16,6 +16,9 @@ from kimi_cli.tools.utils import ToolRejectedError
 from kimi_cli.utils.logging import logger
 from kimi_cli.wire.types import DisplayBlock
 
+# 本模块是审批系统的 soul 侧门面：面向工具提供 request 接口，
+# 在自动批准（yolo/afk/会话缓存）与人工批准之间分流，并上报遥测。
+
 type Response = Literal["approve", "approve_for_session", "reject"]
 
 # Maps DisplayBlock.type to the TS approval_surface vocabulary.
@@ -27,12 +30,14 @@ _SURFACE_BY_BLOCK_TYPE = {
 }
 
 
+# 由展示块推导审批表面类型（用于遥测）。
 def _approval_surface(display: list[DisplayBlock]) -> str:
     if not display:
         return "generic"
     return _SURFACE_BY_BLOCK_TYPE.get(display[0].type, "generic")
 
 
+# 上报 permission_approval_result 遥测事件（与 TS permissionGateService 对齐）。
 def _track_permission_result(
     *,
     step_no: int | None,
@@ -67,6 +72,7 @@ def _track_permission_result(
     track("permission_approval_result", **kwargs)
 
 
+# 审批结果：包含 approved 标志与可选反馈，行为上可当作 bool 使用。
 class ApprovalResult:
     """Result of an approval request. Behaves as bool for backward compatibility."""
 
@@ -76,9 +82,11 @@ class ApprovalResult:
         self.approved = approved
         self.feedback = feedback
 
+    # 使 `if not result:` 直接按 approved 判断。
     def __bool__(self) -> bool:
         return self.approved
 
+    # 构造被拒绝时的 ToolRejectedError（含反馈或子 agent 专用提示）。
     def rejection_error(self) -> ToolRejectedError:
         if self.feedback:
             return ToolRejectedError(
@@ -101,6 +109,7 @@ class ApprovalResult:
         return ToolRejectedError()
 
 
+# 审批状态：yolo/afk/自动批准动作集合等可变状态。
 class ApprovalState:
     def __init__(
         self,
@@ -122,11 +131,13 @@ class ApprovalState:
         """Set of action names that should automatically be approved."""
         self._on_change = on_change
 
+    # 触发状态变更回调（如刷新 UI 状态栏）。
     def notify_change(self) -> None:
         if self._on_change is not None:
             self._on_change()
 
 
+# 审批门面：持有审批状态与运行时队列，向工具提供 request 接口。
 class Approval:
     def __init__(
         self,
@@ -138,6 +149,7 @@ class Approval:
         self._state = state or ApprovalState(yolo=yolo)
         self._runtime = runtime or ApprovalRuntime()
 
+    # 创建一个共享同一审批状态与运行时的子审批实例。
     def share(self) -> Approval:
         """Create a new approval queue that shares approval state."""
         return Approval(state=self._state, runtime=self._runtime)
@@ -149,10 +161,12 @@ class Approval:
     def runtime(self) -> ApprovalRuntime:
         return self._runtime
 
+    # 设置 yolo 标志并通知变更。
     def set_yolo(self, yolo: bool) -> None:
         self._state.yolo = yolo
         self._state.notify_change()
 
+    # 切换持久化 afk 模式；关闭时同时清除本次调用级 afk 覆盖。
     def set_afk(self, afk: bool) -> None:
         """Toggle persisted afk (away-from-keyboard) mode.
 
@@ -165,10 +179,12 @@ class Approval:
             self._state.runtime_afk = False
         self._state.notify_change()
 
+    # 切换本次调用级 afk 模式（不持久化）。
     def set_runtime_afk(self, afk: bool) -> None:
         """Toggle invocation-only afk mode without persisting it."""
         self._state.runtime_afk = afk
 
+    # 是否应自动批准工具调用（yolo 或 afk 任一成立）。
     def is_auto_approve(self) -> bool:
         """True when tool calls should be auto-approved.
 
@@ -177,26 +193,32 @@ class Approval:
         """
         return self._state.yolo or self.is_afk()
 
+    # 用户是否显式开启 yolo。
     def is_yolo(self) -> bool:
         """True only when the user explicitly opted into yolo."""
         return self._state.yolo
 
+    # 同 is_yolo（保留的别名）。
     def is_yolo_flag(self) -> bool:
         """True only when the user explicitly opted into yolo (not via afk)."""
         return self.is_yolo()
 
+    # 是否处于 afk（无人在场）状态。
     def is_afk(self) -> bool:
         """True when no user is present (away-from-keyboard)."""
         return self._state.afk or self._state.runtime_afk
 
+    # 是否仅持久化 afk 生效。
     def is_afk_flag(self) -> bool:
         """True only when persisted afk mode is active."""
         return self._state.afk
 
+    # 是否仅本次调用级 afk 生效。
     def is_runtime_afk(self) -> bool:
         """True only when afk came from this invocation."""
         return self._state.runtime_afk
 
+    # 请求批准：自动批准直接返回，否则把请求提交到运行时队列等待人工响应。
     async def request(
         self,
         sender: str,
@@ -239,6 +261,7 @@ class Approval:
             action=action,
             description=description,
         )
+        # 自动批准路径：yolo / afk。
         if self.is_auto_approve():
             from kimi_cli.telemetry import track
 
@@ -259,6 +282,7 @@ class Approval:
             )
             return ApprovalResult(approved=True)
 
+        # 会话级自动批准路径：动作已在 auto_approve_actions 集合中。
         if action in self._state.auto_approve_actions:
             from kimi_cli.telemetry import track
 
@@ -279,6 +303,7 @@ class Approval:
             )
             return ApprovalResult(approved=True)
 
+        # 人工批准路径：创建请求并等待运行时队列返回响应。
         request_id = str(uuid.uuid4())
         display_blocks = display or []
         source = get_current_approval_source_or_none() or ApprovalSource(
@@ -352,6 +377,7 @@ class Approval:
                 )
                 return ApprovalResult(approved=True)
             case "approve_for_session":
+                # 批准并缓存该动作：后续同 action 的请求自动通过。
                 track(
                     "tool_approved",
                     tool_name=tool_call.function.name,

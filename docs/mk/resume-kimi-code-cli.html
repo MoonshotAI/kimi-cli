@@ -1,0 +1,649 @@
+<!-- @dsCard group="秋招简历" -->
+<title>Kimi Code CLI — 秋招项目简历</title>
+
+<main class="resume">
+  <!-- Hero -->
+  <header class="hero">
+    <div class="hero-badge">秋招项目经历</div>
+    <h1>Kimi Code CLI</h1>
+    <p class="hero-sub">为开源 Coding Agent 构建项目知识层与多 Agent 协作运行时</p>
+    <div class="hero-meta">
+      <span class="meta-chip">核心开发者</span>
+      <span class="meta-dot">·</span>
+      <span>2025.06 — 至今</span>
+    </div>
+  </header>
+
+  <!-- STAR 主体 -->
+  <section class="section">
+    <h2 class="section-title">
+      <span class="title-icon">S</span>
+      背景 Situation
+    </h2>
+    <div class="card">
+      <p>Kimi Code CLI 是一个终端里的 AI Coding Agent，具备异步主循环、会话持久化、子 Agent、后台任务、审批和事件驱动 UI 等能力。但在大型仓库长期开发场景中暴露出两个瓶颈：</p>
+      <ul class="bullet-list">
+        <li><strong>知识断层：</strong>每个新会话都要重新搜索代码，历史架构决策、工程约束和踩坑经验无法跨会话复用。</li>
+        <li><strong>协作缺失：</strong>虽能并发启动子 Agent，但缺乏任务依赖、消息通信、共享工件和失败恢复机制，多 Agent 各自为战。</li>
+      </ul>
+      <div class="scale-note">
+        <span class="scale-icon">📐</span>
+        代码规模背景：运行时 Python ~6.6 万行，测试 ~6.4 万行（来自仓库调研快照，非个人产出）
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">
+      <span class="title-icon">T</span>
+      任务 Task
+    </h2>
+    <div class="card">
+      <p class="task-lead">在不另建旁路 Agent 系统的前提下，基于现有 Runtime 和 Session 基础设施，完成两项核心改造：</p>
+      <div class="two-col">
+        <div class="task-item">
+          <h3>知识平面</h3>
+          <p>设计并实现统一项目知识层，让 Agent 能够增量索引代码结构、持久化工程记忆，并在推理前注入经过时效性校验的 Context Pack。</p>
+        </div>
+        <div class="task-item">
+          <h3>协作平面</h3>
+          <p>在现有子 Agent 和后台任务之上构建 Agent Teams 协作运行时，实现任务 DAG 编排、成员消息、共享工件、预算调度和崩溃恢复。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">
+      <span class="title-icon">A</span>
+      行动 Action
+    </h2>
+
+    <div class="action-phase">
+      <div class="phase-marker">Phase 1</div>
+      <h3>代码级调研与架构设计</h3>
+      <ul>
+        <li>阅读并梳理全部运行时代码（CLI 入口 → Agent 主循环 → Session 持久化 → 子 Agent → 后台任务 → 审批 → Wire 事件链路），建立完整调用链认知。</li>
+        <li>识别现有系统的边界与复用点：<code>KimiSoul</code> 主循环、<code>SubagentStore</code> 持久化、<code>BackgroundTaskManager</code> 调度、<code>ApprovalRuntime</code> 审批、<code>Wire</code> 事件流。</li>
+        <li>输出"Repo Intelligence + Persistent Memory + Agent Teams"方案设计，包含数据模型、接入点、状态机、测试矩阵、评测指标和分阶段开发计划。</li>
+      </ul>
+    </div>
+
+    <div class="action-phase">
+      <div class="phase-marker">Phase 2</div>
+      <h3>知识层原型实现</h3>
+      <ul>
+        <li>使用 <strong>Tree-sitter</strong> 构建 Python 符号、引用与模块依赖的增量索引，支持按 commit 跟踪代码变更。</li>
+        <li>以 <strong>SQLite + FTS5</strong> 持久化四类工程记忆：架构决策、工程约束、编码偏好、验证经验，每条记忆绑定来源 commit、blob hash 和符号引用。</li>
+        <li>实现 <strong>Knowledge Orchestrator</strong>：在 Agent 推理前并行召回代码事实和历史记忆，去重、冲突标记、来源追踪，按 Token 预算合成临时 Context Pack（不永久写入会话历史）。</li>
+        <li>基于 Git blob 和符号存在性实现记忆失效检测：召回时自动标记 valid / possibly_stale / stale / conflicted。</li>
+      </ul>
+    </div>
+
+    <div class="action-phase">
+      <div class="phase-marker">Phase 3</div>
+      <h3>Agent Teams 协作运行时</h3>
+      <ul>
+        <li>建立 <strong>Team / Member / Task DAG</strong> 领域模型与持久化状态机，复用现有 Subagent、BackgroundTaskManager 和 ApprovalRuntime 基础设施。</li>
+        <li>实现 <strong>Mailbox</strong> 消息系统，支持成员间结构化消息传递与事件驱动通知。</li>
+        <li>设计 <strong>Artifact Index</strong>，仅保存工件元数据与引用，避免冗余存储。</li>
+        <li>实现 <strong>预算传播与取消级联</strong>：超限或异常时沿任务依赖图向上传播取消信号。</li>
+        <li>采用<strong>单写者策略</strong>避免多 Agent 文件写冲突，后续预留 worktree 隔离扩展点。</li>
+      </ul>
+    </div>
+
+    <div class="action-phase">
+      <div class="phase-marker">Phase 4</div>
+      <h3>测试与质量保障</h3>
+      <ul>
+        <li>覆盖分支切换、代码删除、过期记忆、Agent 异常退出、依赖失败、并发写冲突等场景的单元测试和端到端测试。</li>
+        <li>建设可复现的效果评测脚本，固定仓库、固定任务、固定模型和固定预算下对比 baseline 和 candidate 的表现。</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">
+      <span class="title-icon">R</span>
+      成果 Result
+    </h2>
+    <div class="card">
+      <table class="metrics-table">
+        <thead>
+          <tr><th>指标</th><th>Baseline</th><th>Candidate</th><th>解释</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>首次定位正确文件耗时</td><td class="na">—</td><td class="na">—</td><td>知识层是否减少盲目探索</td></tr>
+          <tr><td>Grep / ReadFile 调用数</td><td class="na">—</td><td class="na">—</td><td>Repo map 是否减少重复读取</td></tr>
+          <tr><td>输入 Token 消耗</td><td class="na">—</td><td class="na">—</td><td>Context Pack 是否节省上下文</td></tr>
+          <tr><td>最终任务成功率</td><td class="na">—</td><td class="na">—</td><td>优化不能只降低成本</td></tr>
+          <tr><td>过期记忆误用率</td><td class="na">—</td><td class="na">—</td><td>失效机制是否可靠</td></tr>
+          <tr><td>Team 关键路径耗时</td><td class="na">—</td><td class="na">—</td><td>并行是否真正缩短交付时间</td></tr>
+        </tbody>
+      </table>
+      <div class="metric-note">
+        ⚠️ 评测指标需来自固定任务集的实际实验，不可用预期值代替。秋招前应至少完成知识层或 Agent Teams 闭环之一。
+      </div>
+    </div>
+  </section>
+
+  <!-- 技术栈 -->
+  <section class="section">
+    <h2 class="section-title">技术栈</h2>
+    <div class="tag-cloud">
+      <span class="tag tag-lang">Python</span>
+      <span class="tag tag-lang">asyncio</span>
+      <span class="tag tag-db">SQLite / FTS5</span>
+      <span class="tag tag-tool">Tree-sitter</span>
+      <span class="tag tag-fw">Pydantic</span>
+      <span class="tag tag-fw">Typer</span>
+      <span class="tag tag-tool">Git</span>
+      <span class="tag tag-lang">pytest</span>
+      <span class="tag tag-arch">Event-Driven</span>
+      <span class="tag tag-arch">Multi-Agent</span>
+      <span class="tag tag-arch">DAG Scheduling</span>
+      <span class="tag tag-arch">Token Budget</span>
+    </div>
+  </section>
+
+  <!-- 关键代码位置 -->
+  <section class="section">
+    <h2 class="section-title">关键代码位置</h2>
+    <div class="code-refs">
+      <a class="code-ref" href="#">
+        <code>src/kimi_cli/soul/kimisoul.py</code>
+        <span>Agent 主循环</span>
+      </a>
+      <a class="code-ref" href="#">
+        <code>src/kimi_cli/session.py</code>
+        <span>会话持久化</span>
+      </a>
+      <a class="code-ref" href="#">
+        <code>src/kimi_cli/subagents/store.py</code>
+        <span>子 Agent 持久化</span>
+      </a>
+      <a class="code-ref" href="#">
+        <code>src/kimi_cli/tools/agent/</code>
+        <span>多 Agent 执行</span>
+      </a>
+      <a class="code-ref" href="#">
+        <code>src/kimi_cli/background/</code>
+        <span>后台任务管理</span>
+      </a>
+      <a class="code-ref" href="#">
+        <code>src/kimi_cli/approval_runtime/</code>
+        <span>安全审批</span>
+      </a>
+      <a class="code-ref" href="#">
+        <code>src/kimi_cli/wire/</code>
+        <span>事件驱动 UI</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- 面试准备 -->
+  <section class="section">
+    <h2 class="section-title">面试核心表达</h2>
+    <blockquote>
+      <p>我没有简单加入向量数据库或批量启动多个 Agent，而是先划清事实、记忆、编排和执行的边界。代码索引只保存可验证的当前事实，长期记忆保存决策和经验，Team Scheduler 只处理任务状态与资源约束，LLM 负责语义判断但不充当唯一状态机。</p>
+    </blockquote>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">高频追问速答</h2>
+    <dl class="faq">
+      <dt>为什么不用向量数据库？</dt>
+      <dd>MVP 的决策和符号名称对关键词检索较友好，SQLite/FTS5 部署零成本、可离线、易调试。先建立召回基线，语义召回不足时再引入 embedding。</dd>
+      <dt>知识为什么不直接写进 Context？</dt>
+      <dd>Repo 快照随 HEAD 变化，永久追加会导致旧快照重复加载且难以判废。正确做法是临时合成 effective history，原始会话只存真实交互。</dd>
+      <dt>Agent Teams 和并发子 Agent 区别？</dt>
+      <dd>并发只解决同时运行；Teams 还要解决任务分配、依赖就绪、结果路由、失败传播、工件共享、写权限、预算和恢复。本质上是 LLM 驱动 + 确定性状态机约束的协作运行时。</dd>
+      <dt>多 Agent 写冲突怎么办？</dt>
+      <dd>MVP 单写者策略：探索/评审可并行，仅一个 coder 持有写租约。后续引入 worktree 隔离 + 集成合并。</dd>
+    </dl>
+  </section>
+
+  <footer class="resume-footer">
+    <p>基于 <a href="https://github.com/MoonshotAI/kimi-code">Kimi Code CLI</a> 开源项目 · 简历内容需与实际代码和测试结果一致</p>
+  </footer>
+</main>
+
+<style>
+  /* ===== Token System ===== */
+  :root {
+    --c-bg:         #f8f9fc;
+    --c-surface:    #ffffff;
+    --c-surface-alt:#eef1f7;
+    --c-text:       #1e293b;
+    --c-text-muted: #64748b;
+    --c-accent:     #2563eb;
+    --c-accent-dim: #3b82f6;
+    --c-border:     #e2e8f0;
+    --c-badge:      #eff6ff;
+    --c-badge-text: #1d4ed8;
+    --c-code-bg:    #f1f5f9;
+    --c-tag-lang:   #dcfce7;
+    --c-tag-lang-t: #166534;
+    --c-tag-db:     #fef3c7;
+    --c-tag-db-t:   #92400e;
+    --c-tag-fw:     #ede9fe;
+    --c-tag-fw-t:   #6b21a8;
+    --c-tag-tool:   #fce7f3;
+    --c-tag-tool-t: #9d174d;
+    --c-tag-arch:   #e0f2fe;
+    --c-tag-arch-t: #075985;
+    --c-na:         #94a3b8;
+    --shadow:       0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    --shadow-lg:    0 4px 16px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.04);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --c-bg:         #0f172a;
+      --c-surface:    #1e293b;
+      --c-surface-alt:#1a2332;
+      --c-text:       #e2e8f0;
+      --c-text-muted: #94a3b8;
+      --c-accent:     #60a5fa;
+      --c-accent-dim: #3b82f6;
+      --c-border:     #334155;
+      --c-badge:      #1e3a5f;
+      --c-badge-text: #93c5fd;
+      --c-code-bg:    #1a2332;
+      --c-tag-lang:   #14532d;
+      --c-tag-lang-t: #86efac;
+      --c-tag-db:     #713f12;
+      --c-tag-db-t:   #fde68a;
+      --c-tag-fw:     #3b0764;
+      --c-tag-fw-t:   #c4b5fd;
+      --c-tag-tool:   #4a0e2e;
+      --c-tag-tool-t: #f9a8d4;
+      --c-tag-arch:   #0c4a6e;
+      --c-tag-arch-t: #7dd3fc;
+      --c-na:         #475569;
+      --shadow:       0 1px 3px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.15);
+      --shadow-lg:    0 4px 16px rgba(0,0,0,.25), 0 2px 4px rgba(0,0,0,.15);
+    }
+  }
+  :root[data-theme="dark"] {
+    --c-bg:         #0f172a;
+    --c-surface:    #1e293b;
+    --c-surface-alt:#1a2332;
+    --c-text:       #e2e8f0;
+    --c-text-muted: #94a3b8;
+    --c-accent:     #60a5fa;
+    --c-accent-dim: #3b82f6;
+    --c-border:     #334155;
+    --c-badge:      #1e3a5f;
+    --c-badge-text: #93c5fd;
+    --c-code-bg:    #1a2332;
+    --c-tag-lang:   #14532d;
+    --c-tag-lang-t: #86efac;
+    --c-tag-db:     #713f12;
+    --c-tag-db-t:   #fde68a;
+    --c-tag-fw:     #3b0764;
+    --c-tag-fw-t:   #c4b5fd;
+    --c-tag-tool:   #4a0e2e;
+    --c-tag-tool-t: #f9a8d4;
+    --c-tag-arch:   #0c4a6e;
+    --c-tag-arch-t: #7dd3fc;
+    --c-na:         #475569;
+    --shadow:       0 1px 3px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.15);
+    --shadow-lg:    0 4px 16px rgba(0,0,0,.25), 0 2px 4px rgba(0,0,0,.15);
+  }
+
+  /* ===== Reset ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--c-accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ===== Layout ===== */
+  .resume {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 48px 24px 64px;
+  }
+
+  /* ===== Hero ===== */
+  .hero {
+    text-align: center;
+    padding: 40px 0 48px;
+  }
+  .hero-badge {
+    display: inline-block;
+    background: var(--c-badge);
+    color: var(--c-badge-text);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 16px;
+    border-radius: 20px;
+    letter-spacing: .02em;
+    margin-bottom: 20px;
+  }
+  .hero h1 {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1.15;
+    margin-bottom: 12px;
+    text-wrap: balance;
+  }
+  .hero-sub {
+    font-size: 17px;
+    color: var(--c-text-muted);
+    max-width: 540px;
+    margin: 0 auto 20px;
+    text-wrap: balance;
+  }
+  .hero-meta {
+    font-size: 14px;
+    color: var(--c-text-muted);
+  }
+  .meta-chip {
+    display: inline-block;
+    background: var(--c-surface-alt);
+    padding: 2px 12px;
+    border-radius: 12px;
+    font-weight: 500;
+  }
+  .meta-dot { margin: 0 8px; }
+
+  /* ===== Sections ===== */
+  .section { margin-bottom: 36px; }
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    letter-spacing: -.01em;
+  }
+  .title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--c-accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  /* ===== Cards ===== */
+  .card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 10px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .card p { margin-bottom: 12px; }
+  .card p:last-child { margin-bottom: 0; }
+
+  .bullet-list {
+    list-style: none;
+    padding-left: 0;
+    display: grid;
+    gap: 8px;
+  }
+  .bullet-list li {
+    padding-left: 20px;
+    position: relative;
+  }
+  .bullet-list li::before {
+    content: "•";
+    position: absolute;
+    left: 4px;
+    color: var(--c-accent);
+    font-weight: bold;
+  }
+
+  .scale-note {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: var(--c-surface-alt);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--c-text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .scale-icon { font-size: 16px; }
+
+  /* ===== Task Two-Column ===== */
+  .task-lead { margin-bottom: 16px; }
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .task-item {
+    background: var(--c-surface-alt);
+    border-radius: 8px;
+    padding: 16px;
+    border-left: 3px solid var(--c-accent);
+  }
+  .task-item h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .task-item p {
+    font-size: 14px;
+    color: var(--c-text-muted);
+    margin: 0;
+  }
+
+  /* ===== Action Phases ===== */
+  .action-phase {
+    margin-bottom: 24px;
+    padding-left: 20px;
+    border-left: 2px solid var(--c-border);
+    position: relative;
+  }
+  .phase-marker {
+    position: absolute;
+    left: -10px;
+    top: 0;
+    background: var(--c-accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 10px;
+    letter-spacing: .04em;
+  }
+  .action-phase h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    padding-top: 2px;
+  }
+  .action-phase ul {
+    list-style: none;
+    display: grid;
+    gap: 6px;
+    padding: 0;
+  }
+  .action-phase li {
+    padding-left: 18px;
+    position: relative;
+    font-size: 14px;
+  }
+  .action-phase li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--c-text-muted);
+    font-size: 12px;
+  }
+  .action-phase code {
+    background: var(--c-code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: .9em;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  }
+
+  /* ===== Metrics Table ===== */
+  .metrics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  .metrics-table thead th {
+    text-align: left;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--c-border);
+    color: var(--c-text-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .metrics-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .metrics-table tbody tr:last-child td { border-bottom: none; }
+  .metrics-table .na {
+    color: var(--c-na);
+    font-style: italic;
+  }
+  .metric-note {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .metric-note {
+      background: #422006;
+      color: #fde68a;
+    }
+  }
+  :root[data-theme="dark"] .metric-note {
+    background: #422006;
+    color: #fde68a;
+  }
+
+  /* ===== Tags ===== */
+  .tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tag {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    letter-spacing: .01em;
+  }
+  .tag-lang { background: var(--c-tag-lang); color: var(--c-tag-lang-t); }
+  .tag-db   { background: var(--c-tag-db);   color: var(--c-tag-db-t);   }
+  .tag-fw   { background: var(--c-tag-fw);   color: var(--c-tag-fw-t);   }
+  .tag-tool { background: var(--c-tag-tool); color: var(--c-tag-tool-t); }
+  .tag-arch { background: var(--c-tag-arch); color: var(--c-tag-arch-t); }
+
+  /* ===== Code Refs ===== */
+  .code-refs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+  }
+  .code-ref {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: border-color .15s;
+    box-shadow: var(--shadow);
+  }
+  .code-ref:hover {
+    border-color: var(--c-accent);
+    text-decoration: none;
+  }
+  .code-ref code {
+    font-size: 13px;
+    color: var(--c-text);
+  }
+  .code-ref span {
+    font-size: 12px;
+    color: var(--c-text-muted);
+  }
+
+  /* ===== Blockquote ===== */
+  blockquote {
+    background: var(--c-surface);
+    border-left: 4px solid var(--c-accent);
+    padding: 20px 24px;
+    border-radius: 0 10px 10px 0;
+    box-shadow: var(--shadow);
+  }
+  blockquote p {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--c-text-muted);
+    font-style: italic;
+  }
+
+  /* ===== FAQ ===== */
+  .faq { display: grid; gap: 16px; }
+  .faq dt {
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .faq dd {
+    margin-left: 0;
+    padding: 12px 16px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--c-text-muted);
+    box-shadow: var(--shadow);
+  }
+
+  /* ===== Footer ===== */
+  .resume-footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--c-border);
+    text-align: center;
+    font-size: 13px;
+    color: var(--c-text-muted);
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 640px) {
+    .resume { padding: 24px 16px 40px; }
+    .hero h1 { font-size: 28px; }
+    .two-col { grid-template-columns: 1fr; }
+    .code-refs { grid-template-columns: 1fr; }
+    .hero { padding: 24px 0 32px; }
+  }
+</style>

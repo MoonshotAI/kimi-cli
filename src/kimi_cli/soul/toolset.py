@@ -56,6 +56,10 @@ if TYPE_CHECKING:
 
     from kimi_cli.soul.agent import Runtime
 
+# 本模块实现 KimiToolset：代理 agent 的工具集合。它负责按 import path 加载内置工具、
+# 惰性连接 MCP 工具、按步骤执行工具并注入 Pre/PostToolUse 钩子，同时在执行层
+# 做跨步骤的重复调用检测（去重），向 LLM 追加「重复调用」提醒以避免死循环。
+
 current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=None)
 _current_step_no: ContextVar[int | None] = ContextVar("current_step_no", default=None)
 
@@ -74,6 +78,7 @@ def _get_session_id() -> str:
     return _current_session_id.get()
 
 
+# 当前请求的 trace_id 遥测参数；不可用时返回空字典。
 def _trace_id_kwargs() -> dict[str, str]:
     """``trace_id`` telemetry kwargs for the current request, empty when unavailable."""
     from kimi_cli.telemetry import get_current_trace_id
@@ -83,6 +88,7 @@ def _trace_id_kwargs() -> dict[str, str]:
     return {}
 
 
+# 计算规范化参数的稳定 8 位哈希（与 TS args_hash 对齐）。
 def _args_hash(canonical_args: str) -> str:
     """Stable 8-char hash of canonical tool-call arguments (TS args_hash parity)."""
     import hashlib
@@ -90,6 +96,7 @@ def _args_hash(canonical_args: str) -> str:
     return hashlib.sha256(canonical_args.encode()).hexdigest()[:8]
 
 
+# 获取当前工具调用；在工具的 __call__ 中调用时应非 None。
 def get_current_tool_call_or_none() -> ToolCall | None:
     """
     Get the current tool call or None.
@@ -98,6 +105,7 @@ def get_current_tool_call_or_none() -> ToolCall | None:
     return current_tool_call.get()
 
 
+# 返回与当前工具任务关联的步骤号。
 def get_current_step_no() -> int | None:
     """Return the step number associated with the current tool task."""
     return _current_step_no.get()
@@ -113,6 +121,7 @@ if TYPE_CHECKING:
         _: Toolset = kimi_toolset
 
 
+# 第一次重复提醒（完全相同的工具调用）。
 _REMINDER_TEXT_1 = (
     "\n\n<system-reminder>\n"
     "You are repeating the exact same tool call with identical parameters."
@@ -122,6 +131,7 @@ _REMINDER_TEXT_1 = (
 )
 
 
+# 构造第二次重复提醒（含工具名、重复次数与参数）。
 def _make_reminder_text_2(tool_name: str, repeat_count: int, canonical_args: str) -> str:
     return (
         "\n\n<system-reminder>\n"
@@ -138,6 +148,7 @@ def _make_reminder_text_2(tool_name: str, repeat_count: int, canonical_args: str
     )
 
 
+# 第三次（死循环）提醒：要求停止一切工具调用并返回文本总结。
 _REMINDER_TEXT_3 = (
     "\n\n<system-reminder>\n"
     "You are stuck in a dead end and have repeatedly made the same function call without "
@@ -150,6 +161,7 @@ _REMINDER_TEXT_3 = (
 )
 
 
+# 触发各级提醒/强制停止的重复次数阈值。
 _REPEAT_REMINDER_1_START = 3
 _REPEAT_REMINDER_2_START = 5
 _REPEAT_REMINDER_3_START = 8
@@ -158,6 +170,7 @@ _REPEAT_FORCE_STOP_STREAK = 12
 type RepeatAction = Literal["none", "r1", "r2", "r3", "stop"]
 
 
+# 按连续重复次数选择要执行的去重动作与提醒文本。
 def _build_repeat_reminder(
     streak: int, tool_name: str, canonical_args: str
 ) -> tuple[RepeatAction, str | None]:
@@ -172,6 +185,7 @@ def _build_repeat_reminder(
     return "none", None
 
 
+# 递归地对 JSON 值排序（dict 按 key 排序、list 递归），用于参数规范化。
 def _sort_json_value(value: object) -> object:
     if isinstance(value, list):
         return [_sort_json_value(item) for item in cast("list[object]", value)]
@@ -181,6 +195,7 @@ def _sort_json_value(value: object) -> object:
     return value
 
 
+# 把工具参数规范化为稳定的 JSON 字符串。
 def _canonical_tool_arguments(arguments: Any) -> str:
     try:
         return json.dumps(
@@ -192,6 +207,7 @@ def _canonical_tool_arguments(arguments: Any) -> str:
         return str(arguments)
 
 
+# 把（可能是字符串形式的）参数解析后规范化。
 def _canonical_tool_arguments_text(arguments: str) -> str:
     try:
         return _canonical_tool_arguments(json.loads(arguments, strict=False))
@@ -199,10 +215,12 @@ def _canonical_tool_arguments_text(arguments: str) -> str:
         return arguments
 
 
+# 由工具名 + 规范化参数构造去重用的调用键。
 def _normalize_call_key(tool_name: str, arguments: str) -> ToolCallKey:
     return (tool_name, _canonical_tool_arguments_text(arguments))
 
 
+# 把去重提醒文本追加到 ToolReturnValue 的输出上。
 def _append_reminder_to_return_value(
     return_value: Any, reminder_text: str = _REMINDER_TEXT_1
 ) -> Any:
@@ -226,6 +244,7 @@ def _append_reminder_to_return_value(
     return return_value.model_copy(update={"output": new_output})
 
 
+# 工具集合：管理内置工具、MCP 工具、步骤级去重与钩子触发。
 class KimiToolset:
     def __init__(self) -> None:
         self._tool_dict: dict[str, ToolType] = {}
@@ -250,9 +269,11 @@ class KimiToolset:
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
 
+    # 注册一个工具。
     def add(self, tool: ToolType) -> None:
         self._tool_dict[tool.name] = tool
 
+    # 从 LLM 工具列表中隐藏某工具，成功则返回 True。
     def hide(self, tool_name: str) -> bool:
         """Hide a tool from the LLM tool list. Returns True if the tool exists."""
         if tool_name in self._tool_dict:
@@ -260,10 +281,12 @@ class KimiToolset:
             return True
         return False
 
+    # 恢复被隐藏的工具。
     def unhide(self, tool_name: str) -> None:
         """Restore a hidden tool to the LLM tool list."""
         self._hidden_tools.discard(tool_name)
 
+    # 按名称或类型查找工具。
     @overload
     def find(self, tool_name_or_type: str) -> ToolType | None: ...
     @overload
@@ -277,12 +300,14 @@ class KimiToolset:
                     return tool
         return None
 
+    # 返回当前对 LLM 可见的工具列表（已隐藏的除外）。
     @property
     def tools(self) -> list[Tool]:
         return [
             tool.base for tool in self._tool_dict.values() if tool.name not in self._hidden_tools
         ]
 
+    # 每步开始前调用：初始化去重状态并承接上一步的调用记录。
     def begin_step(self, previous_calls: list[tuple[str, str]], *, step_no: int = 0) -> None:
         """Called before each step to set up deduplication state."""
         self._current_step_no = step_no
@@ -304,6 +329,7 @@ class KimiToolset:
             if self._consecutive_key is None and self._consecutive_count == 0:
                 self._advance_consecutive_streak(self._previous_step_calls)
 
+    # 每步结束后调用：推进连续重复计数并返回本步的调用记录。
     def end_step(self) -> list[tuple[str, str]]:
         """Called after each step to capture the calls made in this step."""
         if not self._step_closed:
@@ -312,6 +338,7 @@ class KimiToolset:
             self._step_closed = True
         return list(self._current_step_calls)
 
+    # 推进「连续相同调用」计数（用于判断重复）。
     def _advance_consecutive_streak(self, calls: list[ToolCallKey]) -> None:
         for call_key in calls:
             if call_key == self._consecutive_key:
@@ -320,6 +347,7 @@ class KimiToolset:
                 self._consecutive_key = call_key
                 self._consecutive_count = 1
 
+    # 预测某个调用在本步结束后会达到的连续重复次数。
     def _projected_streak_for_call(self, call_index: int) -> int:
         consecutive_key = self._consecutive_key
         consecutive_count = self._consecutive_count
@@ -331,15 +359,18 @@ class KimiToolset:
                 consecutive_count = 1
         return consecutive_count
 
+    # 本步是否拦截过跨步重复调用。
     @property
     def dedup_triggered(self) -> bool:
         """Whether a cross-step duplicate was blocked in the current step."""
         return self._dedup_triggered
 
+    # 是否应强制结束本回合（触发了死循环停止）。
     @property
     def force_stop_turn(self) -> bool:
         return self._force_stop_turn
 
+    # 处理一次工具调用：查表、解析参数、去重、执行并注入钩子，返回结果（可能是 task）。
     def handle(self, tool_call: ToolCall) -> HandleResult:
         token = current_tool_call.set(tool_call)
         try:
@@ -382,6 +413,7 @@ class KimiToolset:
                 )
                 original_task = self._current_step_tasks[call_key]
 
+                # 等待原始任务完成后复用其结果。
                 async def _await_dup() -> ToolResult:
                     t0 = time.monotonic()
                     try:
@@ -422,6 +454,7 @@ class KimiToolset:
 
                 return asyncio.create_task(_await_dup())
 
+            # 跨步重复检测：若本调用在历史中已出现，则按连续次数附加提醒。
             is_cross_step_dup = call_key in self._seen_call_keys
             reminder_text: str | None = None
             if is_cross_step_dup:
@@ -453,6 +486,7 @@ class KimiToolset:
 
             tool = self._tool_dict[tool_name]
 
+            # 实际执行工具：触发 PreToolUse 钩子 -> 调用 -> 触发 PostToolUse 钩子。
             async def _call():
                 tool_input_dict = arguments if isinstance(arguments, dict) else {}
 
@@ -595,6 +629,7 @@ class KimiToolset:
             task = asyncio.create_task(_call())
             if reminder_text is not None:
 
+                # 包一层，在工具结果返回后追加去重提醒文本。
                 async def _wrap_with_reminder(
                     inner_task: asyncio.Task[ToolResult],
                     text: str,
@@ -612,6 +647,7 @@ class KimiToolset:
         finally:
             current_tool_call.reset(token)
 
+    # 注册一个外部（wire 侧）工具。
     def register_external_tool(
         self,
         name: str,
@@ -638,6 +674,7 @@ class KimiToolset:
         """Get MCP servers info."""
         return self._mcp_servers
 
+    # 返回当前 MCP 启动状态的只读快照。
     def mcp_status_snapshot(self) -> MCPStatusSnapshot | None:
         """Return a read-only snapshot of current MCP startup state."""
         if not self._mcp_servers:
@@ -659,14 +696,17 @@ class KimiToolset:
             servers=servers,
         )
 
+    # 暂存 MCP 配置，供之后在后台启动加载。
     def defer_mcp_tool_loading(self, mcp_configs: list[MCPConfig], runtime: Runtime) -> None:
         """Store MCP configs for a later background startup."""
         self._deferred_mcp_load = (list(mcp_configs), runtime)
 
+    # 是否配置了但尚未开始的 MCP 加载。
     def has_deferred_mcp_tools(self) -> bool:
         """Return True when MCP loading is configured but has not started yet."""
         return self._deferred_mcp_load is not None
 
+    # 启动暂存的 MCP 加载（后台执行），返回是否真的启动了。
     async def start_deferred_mcp_tool_loading(self) -> bool:
         """Start any deferred MCP loading in the background."""
         if self._deferred_mcp_load is None:
@@ -680,6 +720,7 @@ class KimiToolset:
         await self.load_mcp_tools(mcp_configs, runtime, in_background=True)
         return True
 
+    # 按 import path 加载一批工具并注入依赖。
     def load_tools(self, tool_paths: list[str], dependencies: dict[type[Any], Any]) -> None:
         """
         Load tools from paths like `kimi_cli.tools.shell:Shell`.
@@ -706,6 +747,7 @@ class KimiToolset:
         if bad_tools:
             raise InvalidToolError(f"Invalid tools: {bad_tools}")
 
+    # 加载单个工具：导入模块 -> 取类 -> 按构造签名注入依赖。
     @staticmethod
     def _load_tool(tool_path: str, dependencies: dict[type[Any], Any]) -> ToolType | None:
         logger.debug("Loading tool: {tool_path}", tool_path=tool_path)
@@ -741,6 +783,7 @@ class KimiToolset:
         return tool_cls(*args)
 
     # TODO(rc): remove `in_background` parameter and always load in background
+    # 加载 MCP 工具：处理 OAuth、连接服务器、列出并注册工具。
     async def load_mcp_tools(
         self, mcp_configs: list[MCPConfig], runtime: Runtime, in_background: bool = True
     ) -> None:
@@ -867,10 +910,12 @@ class KimiToolset:
         else:
             await _connect()
 
+    # 后台 MCP 加载任务是否仍在运行。
     def has_pending_mcp_tools(self) -> bool:
         """Return True if the background MCP tool-loading task is still running."""
         return self._mcp_loading_task is not None and not self._mcp_loading_task.done()
 
+    # 等待后台 MCP 加载完成。
     async def wait_for_mcp_tools(self) -> None:
         """Wait for background MCP tool loading to finish."""
         task = self._mcp_loading_task
@@ -882,6 +927,7 @@ class KimiToolset:
             if self._mcp_loading_task is task and task.done():
                 self._mcp_loading_task = None
 
+    # 清理资源：取消后台加载、关闭 MCP 客户端。
     async def cleanup(self) -> None:
         """Cleanup any resources held by the toolset."""
         self._deferred_mcp_load = None
@@ -897,6 +943,7 @@ class KimiToolset:
                     logger.warning("Failed to close MCP client", exc_info=True)
 
 
+# 单个 MCP 服务器的连接状态与工具列表。
 @dataclass(slots=True)
 class MCPServerInfo:
     status: Literal["pending", "connecting", "connected", "failed", "unauthorized"]
@@ -904,6 +951,7 @@ class MCPServerInfo:
     tools: list[MCPTool[Any]]
 
 
+# 包装一个 MCP 工具为 kimi 工具，执行前走审批、执行时透传到 MCP 客户端。
 class MCPTool[T: ClientTransport](CallableTool):
     def __init__(
         self,
@@ -929,6 +977,7 @@ class MCPTool[T: ClientTransport](CallableTool):
         self._timeout = timedelta(milliseconds=runtime.config.mcp.client.tool_call_timeout_ms)
         self._action_name = f"mcp:{mcp_tool.name}"
 
+    # 请求审批后调用 MCP 客户端执行工具，并转换结果。
     async def __call__(self, *args: Any, **kwargs: Any) -> ToolReturnValue:
         description = f"Call MCP tool `{self._mcp_tool.name}`."
         result = await self._runtime.approval.request(self.name, self._action_name, description)
@@ -974,6 +1023,7 @@ class MCPTool[T: ClientTransport](CallableTool):
             raise
 
 
+# 外部（wire 侧）工具：把调用转发给 wire 等待外部执行结果。
 class WireExternalTool(CallableTool):
     def __init__(self, *, name: str, description: str, parameters: dict[str, Any]) -> None:
         super().__init__(
@@ -1023,6 +1073,7 @@ class WireExternalTool(CallableTool):
 MCP_MAX_OUTPUT_CHARS = 100_000
 
 
+# 返回媒体部件（图片/音频/视频）的数据大小，非媒体返回 None。
 def _media_part_size(part: ContentPart) -> int | None:
     """Return the payload size of a media part, or ``None`` for non-media parts."""
     if isinstance(part, ImageURLPart):
@@ -1034,6 +1085,7 @@ def _media_part_size(part: ContentPart) -> int | None:
     return None
 
 
+# 把 MCP 工具结果转换为 kosong 返回值，并对文本/媒体执行共享字符预算截断。
 def convert_mcp_tool_result(result: CallToolResult) -> ToolReturnValue:
     """Convert MCP tool result to kosong tool return value.
 

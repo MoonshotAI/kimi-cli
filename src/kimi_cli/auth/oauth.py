@@ -47,6 +47,19 @@ if TYPE_CHECKING:
     from kimi_cli.soul.agent import Runtime
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 模块概述
+# ─────────────────────────────────────────────────────────────────────────────
+# 本模块实现 Kimi Code CLI 的 OAuth 设备授权（Device Flow）登录与令牌管理。
+# 职责：
+#   1. 设备授权登录（login_kimi_code）与登出（logout_kimi_code），异步生成器逐步下发事件。
+#   2. 令牌持久化：文件（推荐）与 keyring（弃用，自动迁移），原子写 + 600 权限。
+#   3. 令牌刷新（OAuthManager.ensure_fresh / _refresh_tokens）：临近过期自动刷新，
+#      用进程内 asyncio.Lock + 跨进程文件锁协调多实例并发，避免重复刷新。
+#   4. 401 处理与拒绝记忆（_REJECTED_REFRESH_TOKENS tombstone），避免死循环重试。
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 KIMI_CODE_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
 KIMI_CODE_OAUTH_KEY = "oauth/kimi-code"
 DEFAULT_OAUTH_HOST = "https://auth.kimi.com"
@@ -59,6 +72,7 @@ _CROSS_PROCESS_LOCK_RETRIES = 5
 _RETRYABLE_REFRESH_STATUSES = {429, 500, 502, 503, 504}
 
 
+# 动态刷新阈值（秒）：取 max(300, expires_in * 0.5)，避免过早刷新。
 def _refresh_threshold(expires_in: float) -> float:
     """Return the dynamic refresh threshold in seconds."""
     if expires_in > 0:
@@ -66,18 +80,22 @@ def _refresh_threshold(expires_in: float) -> float:
     return MIN_REFRESH_THRESHOLD_SECONDS
 
 
+# OAuth 流程错误基类。
 class OAuthError(RuntimeError):
     """OAuth flow error."""
 
 
+# OAuth 凭据被拒绝。
 class OAuthUnauthorized(OAuthError):
     """OAuth credentials rejected."""
 
 
+# 刷新时遇到瞬态 HTTP 错误（5xx / 429）。
 class _RetryableRefreshError(OAuthError):
     """Transient HTTP error during token refresh (5xx / 429)."""
 
 
+# 设备授权过期。
 class OAuthDeviceExpired(OAuthError):
     """Device authorization expired."""
 
@@ -85,6 +103,7 @@ class OAuthDeviceExpired(OAuthError):
 OAuthEventKind = Literal["info", "error", "waiting", "verification_url", "success"]
 
 
+# 登录/登出流程中下发给 UI 的事件（类型 + 消息 + 可选数据）。
 @dataclass(slots=True, frozen=True)
 class OAuthEvent:
     type: OAuthEventKind
@@ -102,6 +121,7 @@ class OAuthEvent:
         return json.dumps(payload, ensure_ascii=False)
 
 
+# OAuth 令牌：access/refresh token、过期时间、scope、token 类型等。
 @dataclass(slots=True)
 class OAuthToken:
     access_token: str
@@ -111,6 +131,7 @@ class OAuthToken:
     token_type: str
     expires_in: float = 0.0
 
+    # 从 token 响应 JSON 构造（expires_at = 当前时间 + expires_in）。
     @classmethod
     def from_response(cls, payload: dict[str, Any]) -> OAuthToken:
         expires_in = float(payload["expires_in"])
@@ -133,6 +154,7 @@ class OAuthToken:
             "expires_in": self.expires_in,
         }
 
+    # 从持久化 JSON 构造（字段缺失时容错为默认值）。
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> OAuthToken:
         expires_at_value = payload.get("expires_at")
@@ -146,6 +168,7 @@ class OAuthToken:
         )
 
 
+# 被服务器拒绝的 refresh token 状态（含可重试时间点）。
 @dataclass(slots=True)
 class _RejectedRefreshState:
     refresh_token: str
@@ -165,9 +188,11 @@ class _RejectedRefreshState:
 # independently on its first attempt, and the tombstone auto-clears when the
 # on-disk refresh_token differs from the rejected one (i.e. another process
 # successfully rotated, or /login atomically rewrote the file).
+# 进程级"拒绝记忆"：记录最近被服务器拒绝的 refresh token，避免反复用同一失效 token 重试。
 _REJECTED_REFRESH_TOKENS: dict[str, _RejectedRefreshState] = {}
 
 
+# 设备授权流程响应（user_code / device_code / 验证 URI / 过期与轮询间隔）。
 @dataclass(slots=True)
 class DeviceAuthorization:
     user_code: str
@@ -178,19 +203,23 @@ class DeviceAuthorization:
     interval: int
 
 
+# 返回 OAuth 服务地址（环境变量优先，默认 DEFAULT_OAUTH_HOST）。
 def _oauth_host() -> str:
     return os.getenv("KIMI_CODE_OAUTH_HOST") or os.getenv("KIMI_OAUTH_HOST") or DEFAULT_OAUTH_HOST
 
 
+# 设备 id 文件路径。
 def _device_id_path() -> Path:
     return get_share_dir() / "device_id"
 
 
+# 将文件权限设为 600（仅属主可读写）。
 def _ensure_private_file(path: Path) -> None:
     with suppress(OSError):
         os.chmod(path, 0o600)
 
 
+# 生成设备型号字符串（macOS / Windows / 其他，含版本与架构）。
 def _device_model() -> str:
     system = platform.system()
     arch = platform.machine() or ""
@@ -225,6 +254,7 @@ def _device_model() -> str:
     return "Unknown"
 
 
+# 读取或生成持久化设备 id；首次生成时埋点 first_launch。
 def get_device_id() -> str:
     path = _device_id_path()
     if path.exists():
@@ -238,6 +268,7 @@ def get_device_id() -> str:
     return device_id
 
 
+# 把 header 值转 ASCII（无法编码时忽略非 ASCII 字符，空则回退 fallback）。
 def _ascii_header_value(value: str, *, fallback: str = "unknown") -> str:
     try:
         value.encode("ascii")
@@ -247,6 +278,7 @@ def _ascii_header_value(value: str, *, fallback: str = "unknown") -> str:
         return sanitized or fallback
 
 
+# 构造公共请求头（平台/版本/设备名/型号/系统版本/设备 id）。
 def _common_headers() -> dict[str, str]:
     device_name = platform.node() or socket.gethostname()
     device_model = _device_model()
@@ -261,22 +293,26 @@ def _common_headers() -> dict[str, str]:
     return {key: _ascii_header_value(value) for key, value in headers.items()}
 
 
+# 凭据目录（share/credentials）。
 def _credentials_dir() -> Path:
     path = get_share_dir() / "credentials"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
+# 凭据文件路径（<name>.json）。
 def _credentials_path(key: str) -> Path:
     name = key.removeprefix("oauth/").split("/")[-1] or key
     return _credentials_dir() / f"{name}.json"
 
 
+# 跨进程锁文件路径（<name>.lock）。
 def _credentials_lock_path(key: str) -> Path:
     name = key.removeprefix("oauth/").split("/")[-1] or key
     return _credentials_dir() / f"{name}.lock"
 
 
+# 跨进程文件锁：Unix 用 fcntl.flock，Windows 用 msvcrt.locking，协调多个 kimi-cli 实例的刷新。
 class _CrossProcessLock:
     """File-based lock that coordinates token refresh across kimi-cli processes.
 
@@ -287,6 +323,7 @@ class _CrossProcessLock:
         self._path = _credentials_lock_path(key)
         self._fd: int | None = None
 
+    # 尝试获取锁：成功返回 True，竞争返回 False，无法打开锁文件抛 OSError。
     def _acquire(self) -> bool:
         """Acquire the lock.
 
@@ -313,6 +350,7 @@ class _CrossProcessLock:
             self._fd = None
             return False
 
+    # 释放锁。
     def release(self) -> None:
         if self._fd is not None:
             try:
@@ -327,6 +365,7 @@ class _CrossProcessLock:
                     os.close(self._fd)
                 self._fd = None
 
+    # 带重试地异步获取锁：多次尝试，间隔随机退避；打不开锁文件则永久失败回退为无锁刷新。
     async def acquire_with_retry(self) -> bool:
         for _attempt in range(_CROSS_PROCESS_LOCK_RETRIES):
             try:
@@ -343,6 +382,7 @@ class _CrossProcessLock:
         except OSError:
             return False
 
+    # 异步上下文管理器入口：返回是否成功拿到锁。
     async def __aenter__(self) -> bool:
         return await self.acquire_with_retry()
 
@@ -350,6 +390,7 @@ class _CrossProcessLock:
         self.release()
 
 
+# 从 keyring 读取 token（旧存储方式）。
 def _load_from_keyring(key: str) -> OAuthToken | None:
     try:
         raw = keyring.get_password(KEYRING_SERVICE, key)
@@ -368,6 +409,7 @@ def _load_from_keyring(key: str) -> OAuthToken | None:
     return OAuthToken.from_dict(payload)
 
 
+# 从 keyring 删除 token。
 def _delete_from_keyring(key: str) -> None:
     try:
         keyring.delete_password(KEYRING_SERVICE, key)
@@ -375,6 +417,7 @@ def _delete_from_keyring(key: str) -> None:
         return
 
 
+# 从文件读取 token（缺失/损坏返回 None）。
 def _load_from_file(key: str) -> OAuthToken | None:
     path = _credentials_path(key)
     if not path.exists():
@@ -389,6 +432,7 @@ def _load_from_file(key: str) -> OAuthToken | None:
     return OAuthToken.from_dict(payload)
 
 
+# 原子写 token 到文件：临时文件 + fsync + os.replace + chmod 600，失败清理临时文件。
 def _save_to_file(key: str, token: OAuthToken) -> None:
     path = _credentials_path(key)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
@@ -412,12 +456,14 @@ def _save_to_file(key: str, token: OAuthToken) -> None:
         raise
 
 
+# 删除 token 文件。
 def _delete_from_file(key: str) -> None:
     path = _credentials_path(key)
     if path.exists():
         path.unlink()
 
 
+# 加载 token：优先文件；keyring 旧存储则读取后迁移到文件并删除 keyring 副本。
 def load_tokens(ref: OAuthRef) -> OAuthToken | None:
     file_token = _load_from_file(ref.key)
     if file_token is not None:
@@ -437,6 +483,7 @@ def load_tokens(ref: OAuthRef) -> OAuthToken | None:
     return token
 
 
+# 保存 token（keyring 已弃用，统一存文件），返回可能修正后的 OAuthRef。
 def save_tokens(ref: OAuthRef, token: OAuthToken) -> OAuthRef:
     if ref.storage == "keyring":
         logger.warning("Keyring storage is deprecated; saving OAuth tokens to file.")
@@ -445,12 +492,14 @@ def save_tokens(ref: OAuthRef, token: OAuthToken) -> OAuthRef:
     return ref
 
 
+# 删除 token（同时清理 keyring 与文件）。
 def delete_tokens(ref: OAuthRef) -> None:
     if ref.storage == "keyring":
         _delete_from_keyring(ref.key)
     _delete_from_file(ref.key)
 
 
+# 发起设备授权请求，返回 DeviceAuthorization。
 async def request_device_authorization() -> DeviceAuthorization:
     async with (
         new_client_session() as session,
@@ -474,6 +523,7 @@ async def request_device_authorization() -> DeviceAuthorization:
     )
 
 
+# 轮询设备授权 token 端点，返回 (HTTP 状态, 响应数据)；5xx 直接抛错。
 async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[str, Any]]:
     try:
         async with (
@@ -500,6 +550,7 @@ async def _request_device_token(auth: DeviceAuthorization) -> tuple[int, dict[st
     return status, data
 
 
+# 用 refresh_token 换新 token：最多重试 max_retries 次，401/403 抛 OAuthUnauthorized。
 async def refresh_token(refresh_token: str, *, max_retries: int = 3) -> OAuthToken:
     last_exc: Exception | None = None
     for attempt in range(max_retries):
@@ -546,6 +597,7 @@ async def refresh_token(refresh_token: str, *, max_retries: int = 3) -> OAuthTok
     raise OAuthError("Token refresh failed after retries.") from last_exc
 
 
+# 选择默认模型与思考开关：取第一个模型，依据 capabilities 判断是否 thinking。
 def _select_default_model_and_thinking(models: list[ModelInfo]) -> tuple[ModelInfo, bool] | None:
     if not models:
         return None
@@ -555,6 +607,7 @@ def _select_default_model_and_thinking(models: list[ModelInfo]) -> tuple[ModelIn
     return selected_model, thinking
 
 
+# 把登录结果写回 config：注册 provider、替换 kimi-code 模型、设置默认模型与思考、配置搜索/抓取服务。
 def _apply_kimi_code_config(
     config: Config,
     *,
@@ -607,6 +660,7 @@ def _apply_kimi_code_config(
         )
 
 
+# 设备授权登录流程：异步生成器，逐步 yield 事件（错误/验证链接/等待/成功）。
 async def login_kimi_code(
     config: Config, *, open_browser: bool = True
 ) -> AsyncIterator[OAuthEvent]:
@@ -713,6 +767,7 @@ async def login_kimi_code(
     return
 
 
+# 登出流程：删除 token 与 config 中的 provider/model/服务配置。
 async def logout_kimi_code(config: Config) -> AsyncIterator[OAuthEvent]:
     if not config.is_from_default_location:
         yield OAuthEvent(
@@ -747,6 +802,7 @@ async def logout_kimi_code(config: Config) -> AsyncIterator[OAuthEvent]:
     return
 
 
+# OAuth 管理器：缓存 access token，用进程内锁 + 跨进程锁协调刷新，并把 token 注入运行时 LLM client。
 class OAuthManager:
     def __init__(self, config: Config) -> None:
         self._config = config
@@ -756,6 +812,7 @@ class OAuthManager:
         self._migrate_oauth_storage()
         self._load_initial_tokens()
 
+    # 遍历配置中所有 OAuth 引用（provider + search/fetch 服务）。
     def _iter_oauth_refs(self) -> list[OAuthRef]:
         refs: list[OAuthRef] = []
         for provider in self._config.providers.values():
@@ -769,6 +826,7 @@ class OAuthManager:
                 refs.append(service.oauth)
         return refs
 
+    # 把 keyring 存储迁移到文件，必要时保存 config。
     def _migrate_oauth_storage(self) -> None:
         migrated_keys: set[str] = set()
         changed = False
@@ -797,12 +855,14 @@ class OAuthManager:
         if changed and self._config.is_from_default_location:
             save_config(self._config)
 
+    # 启动时加载并缓存 token（被拒的跳过）。
     def _load_initial_tokens(self) -> None:
         for ref in self._iter_oauth_refs():
             token = load_tokens(ref)
             if token and not self._should_suppress_persisted_token(ref, token):
                 self._cache_access_token(ref, token)
 
+    # 查询某 refresh token 是否在拒绝 tombstone 中（token 已轮换则清除记忆）。
     def _rejected_refresh_state(
         self, ref: OAuthRef, refresh_token: str | None
     ) -> _RejectedRefreshState | None:
@@ -814,13 +874,16 @@ class OAuthManager:
             return None
         return state
 
+    # 是否应抑制持久化 token（该 refresh token 在拒绝列表内）。
     def _should_suppress_persisted_token(self, ref: OAuthRef, token: OAuthToken) -> bool:
         return self._rejected_refresh_state(ref, token.refresh_token) is not None
 
+    # 被拒 token 是否已过冷却期可重试。
     def _can_retry_rejected_refresh_token(self, ref: OAuthRef, refresh_token: str | None) -> bool:
         state = self._rejected_refresh_state(ref, refresh_token)
         return state is None or time.time() >= state.retry_after
 
+    # 将 refresh token 记入拒绝 tombstone 并设冷却时间（默认 300s）。
     def _mark_refresh_token_rejected(self, ref: OAuthRef, refresh_token: str) -> None:
         if not refresh_token:
             return
@@ -829,22 +892,27 @@ class OAuthManager:
             retry_after=time.time() + UNAUTHORIZED_REFRESH_RETRY_COOLDOWN_SECONDS,
         )
 
+    # 清除某 key 的拒绝 tombstone。
     def _clear_rejected_refresh_token(self, ref: OAuthRef) -> None:
         _REJECTED_REFRESH_TOKENS.pop(ref.key, None)
 
+    # 缓存 access token（空则清除缓存）。
     def _cache_access_token(self, ref: OAuthRef, token: OAuthToken) -> None:
         if not token.access_token:
             self._access_tokens.pop(ref.key, None)
             return
         self._access_tokens[ref.key] = token.access_token
 
+    # 取缓存 access token（无则 None）。
     def get_cached_access_token(self, key: str) -> str | None:
         """Get a cached access token by key, or None if not available."""
         return self._access_tokens.get(key)
 
+    # 公共请求头。
     def common_headers(self) -> dict[str, str]:
         return _common_headers()
 
+    # 解析 api key：优先 OAuth access token，否则回退配置的静态 api_key。
     def resolve_api_key(self, api_key: SecretStr, oauth: OAuthRef | None) -> str:
         if oauth:
             token = self._access_tokens.get(oauth.key)
@@ -862,6 +930,7 @@ class OAuthManager:
             )
         return api_key.get_secret_value()
 
+    # 找到 kimi-code 的 OAuthRef（provider 或 search/fetch 服务）。
     def _kimi_code_ref(self) -> OAuthRef | None:
         provider_key = managed_provider_key(KIMI_CODE_PLATFORM_ID)
         provider = self._config.providers.get(provider_key)
@@ -875,6 +944,7 @@ class OAuthManager:
                 return service.oauth
         return None
 
+    # 加载持久化 token、缓存、临近过期则刷新；runtime 传入时原地更新 LLM client 的 key。
     async def ensure_fresh(self, runtime: Runtime | None = None, *, force: bool = False) -> None:
         """Load persisted tokens, cache them, and refresh if close to expiry.
 
@@ -904,6 +974,7 @@ class OAuthManager:
                 self._apply_access_token(runtime, token.access_token)
         await self._refresh_tokens(ref, token, runtime, force=force)
 
+    # 异步上下文管理器：周期刷新 token（处理睡眠唤醒），退出时取消后台刷新任务。
     @asynccontextmanager
     async def refreshing(self, runtime: Runtime) -> AsyncIterator[None]:
         stop_event = asyncio.Event()
@@ -948,6 +1019,7 @@ class OAuthManager:
             with suppress(asyncio.CancelledError):
                 await refresh_task
 
+    # 核心刷新逻辑：进程内锁 + 跨进程锁，多重检查后 refresh_token 换新，处理 401 与网络错误。
     async def _refresh_tokens(
         self,
         ref: OAuthRef,
@@ -1070,6 +1142,7 @@ class OAuthManager:
             finally:
                 xlock.release()
 
+    # 把 access token 应用到运行时 LLM client（Kimi provider；空则回退静态 api_key）。
     def _apply_access_token(self, runtime: Runtime | None, access_token: str) -> None:
         if runtime is None:
             return

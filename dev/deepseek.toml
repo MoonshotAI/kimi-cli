@@ -1,0 +1,24 @@
+# Project-local DeepSeek configuration.
+# Secrets and endpoint overrides belong in ../.env, not in this file.
+
+default_model = "deepseek-v4-flash"
+default_thinking = false
+
+[providers.deepseek]
+type = "openai_legacy"
+base_url = "https://api.deepseek.com"
+api_key = ""
+# DeepSeek returns reasoning text in this OpenAI-compatible response field.
+reasoning_key = "reasoning_content"
+
+[models.deepseek-v4-flash]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+max_context_size = 1000000
+capabilities = ["thinking"]
+
+[models.deepseek-v4-pro]
+provider = "deepseek"
+model = "deepseek-v4-pro"
+max_context_size = 1000000
+capabilities = ["thinking"]

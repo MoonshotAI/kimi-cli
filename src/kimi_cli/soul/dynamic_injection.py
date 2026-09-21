@@ -13,6 +13,11 @@ if TYPE_CHECKING:
     from kimi_cli.soul.kimisoul import KimiSoul
 
 
+# 本模块定义「动态注入」框架：在每次 LLM 步骤前，向历史中注入一段
+# 与当前运行时状态相关的提示词（如 plan 模式提醒、afk 模式提醒）。
+# 各 Provider 自行决定节流策略，由 KimiSoul 在每步统一收集并合并。
+
+# 一段待注入的动态提示内容。
 @dataclass(frozen=True, slots=True)
 class DynamicInjection:
     """A dynamic prompt content to be injected before an LLM step."""
@@ -21,6 +26,7 @@ class DynamicInjection:
     content: str  # text content (will be wrapped in <system-reminder> tags)
 
 
+# 动态注入 Provider 的抽象基类。
 class DynamicInjectionProvider(ABC):
     """Base class for dynamic injection providers.
 
@@ -29,6 +35,7 @@ class DynamicInjectionProvider(ABC):
     (context_usage, runtime, config, etc.).
     """
 
+    # 返回本步骤要注入的提示列表；实现类负责自身的节流。
     @abstractmethod
     async def get_injections(
         self,
@@ -36,6 +43,7 @@ class DynamicInjectionProvider(ABC):
         soul: KimiSoul,
     ) -> list[DynamicInjection]: ...
 
+    # 上下文压缩后回调：历史被重写，之前的注入可能被摘要吞掉，需重置节流状态。
     async def on_context_compacted(self) -> None:
         """Called after the context is compacted (history is rebuilt).
 
@@ -45,6 +53,7 @@ class DynamicInjectionProvider(ABC):
         """
         return None
 
+    # afk 模式切换时回调：重置节流，使新状态下的提醒可再次注入。
     async def on_afk_changed(self, enabled: bool) -> None:
         """Called when afk mode is toggled at runtime.
 
@@ -55,6 +64,7 @@ class DynamicInjectionProvider(ABC):
         return None
 
 
+# 合并相邻的 user 消息，得到干净的 API 输入序列。
 def normalize_history(history: Sequence[Message]) -> list[Message]:
     """Merge adjacent user messages to produce a clean API input sequence.
 

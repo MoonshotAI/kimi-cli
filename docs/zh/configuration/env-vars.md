@@ -2,6 +2,24 @@
 
 Kimi Code CLI 支持通过环境变量覆盖配置或控制运行行为。本页列出所有支持的环境变量。
 
+## 项目本地 `.env`
+
+启动 CLI 时，若工作目录中存在 `.env`，Kimi Code CLI 会读取其中的变量作为本次运行的 LLM
+配置覆盖。它不会修改进程环境变量、`~/.kimi/config.toml` 或其他项目；`.env` 中的值优先于
+启动 CLI 的环境变量。也可通过 `--env-file PATH` 指定其他文件。
+
+在 `.env` 中设置 `KIMI_CONFIG_FILE` 可让项目默认使用指定的 TOML/JSON 配置文件，无需每次
+传入 `--config-file`。相对路径以工作目录为基准；显式传入的 `--config` 或 `--config-file`
+优先于该设置。
+
+```sh
+# 项目根目录/.env（应保持在 .gitignore 中）
+KIMI_API_KEY=sk-xxx
+KIMI_BASE_URL=https://api.moonshot.cn/v1
+KIMI_MODEL_NAME=kimi-k2-thinking-turbo
+KIMI_CONFIG_FILE=dev/kimi.toml
+```
+
 关于环境变量如何覆盖配置文件的详细说明，请参阅 [配置覆盖](./overrides.md)。
 
 ## Kimi 环境变量

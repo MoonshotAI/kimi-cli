@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from kimi_cli.utils.slashcmd import SlashCommand
 
 
+# 本模块是 soul 包的对外门面：定义 Soul 协议、异常、状态快照，
+# 并提供 run_soul 把 KimiSoul 连接到 UI 循环与 Wire 事件流上运行。
+
+# LLM 未配置时抛出。
 class LLMNotSet(Exception):
     """Raised when the LLM is not set."""
 
@@ -27,6 +31,7 @@ class LLMNotSet(Exception):
         super().__init__("LLM not set")
 
 
+# LLM 缺少所需能力时抛出。
 class LLMNotSupported(Exception):
     """Raised when the LLM does not have required capabilities."""
 
@@ -40,6 +45,7 @@ class LLMNotSupported(Exception):
         )
 
 
+# 达到最大步数时抛出。
 class MaxStepsReached(Exception):
     """Raised when the maximum number of steps is reached."""
 
@@ -51,6 +57,7 @@ class MaxStepsReached(Exception):
         self.n_steps = n_steps
 
 
+# 把 token 数格式化为紧凑字符串，如 28.5k、128k、1.2m。
 def format_token_count(n: int) -> str:
     """Format token count as compact string, e.g. 28.5k, 128k, 1.2m."""
     suffix = ""
@@ -68,6 +75,7 @@ def format_token_count(n: int) -> str:
     return f"{compact}{suffix}"
 
 
+# 格式化上下文占用状态字符串，用于状态栏展示。
 def format_context_status(
     context_usage: float,
     context_tokens: int = 0,
@@ -82,6 +90,7 @@ def format_context_status(
     return f"context: {bounded:.1%}"
 
 
+# soul 当前状态的不可变快照，供 UI 展示。
 @dataclass(frozen=True, slots=True)
 class StatusSnapshot:
     context_usage: float
@@ -100,6 +109,7 @@ class StatusSnapshot:
     """The current MCP startup snapshot, if MCP is configured."""
 
 
+# soul 的结构化协议：任何 agent 核心循环实现都应满足。
 @runtime_checkable
 class Soul(Protocol):
     @property
@@ -172,10 +182,12 @@ type UILoopFn = Callable[[Wire], Coroutine[Any, Any, None]]
 """A long-running async function to visualize the agent behavior."""
 
 
+# run 被取消事件取消时抛出。
 class RunCancelled(Exception):
     """The run was cancelled by the cancel event."""
 
 
+# 运行 soul 的编排函数：用 Wire 把 soul.run 与 UI 循环连接起来。
 async def run_soul(
     soul: Soul,
     user_input: str | list[ContentPart],
@@ -211,6 +223,7 @@ async def run_soul(
     )
     notification_task = asyncio.create_task(_pump_notifications_to_wire(runtime, wire))
 
+    # 等待 soul 运行完成或取消事件触发，二者谁先完成谁返回。
     cancel_event_task = asyncio.create_task(cancel_event.wait())
     await asyncio.wait(
         [soul_task, cancel_event_task],
@@ -232,6 +245,7 @@ async def run_soul(
                 await cancel_event_task
             soul_task.result()  # this will raise if any exception was raised in the run task
     finally:
+        # 收尾：停掉通知泵、冲刷一次通知、关闭 wire 并等待 UI 循环退出。
         notification_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await notification_task
@@ -257,6 +271,7 @@ async def run_soul(
 _current_wire = ContextVar[Wire | None]("current_wire", default=None)
 
 
+# 获取当前 wire；agent 循环内调用时应非 None。
 def get_wire_or_none() -> Wire | None:
     """
     Get the current wire or None.
@@ -265,6 +280,7 @@ def get_wire_or_none() -> Wire | None:
     return _current_wire.get()
 
 
+# 向当前 wire 发送一条消息（soul 侧的「print」）。
 def wire_send(msg: WireMessage) -> None:
     """
     Send a wire message to the current wire.
@@ -276,6 +292,7 @@ def wire_send(msg: WireMessage) -> None:
     wire.soul_side.send(msg)
 
 
+# 周期性地把待发通知投递到 wire。
 async def _pump_notifications_to_wire(runtime: Runtime | None, wire: Wire) -> None:
     while True:
         try:
@@ -287,6 +304,7 @@ async def _pump_notifications_to_wire(runtime: Runtime | None, wire: Wire) -> No
         await asyncio.sleep(1.0)
 
 
+# 投递一批待发通知到 wire（仅 root 角色）。
 async def _deliver_notifications_to_wire_once(runtime: Runtime | None, wire: Wire) -> None:
     if runtime is None or runtime.role != "root":
         return

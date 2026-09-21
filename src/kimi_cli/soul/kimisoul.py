@@ -106,11 +106,28 @@ if TYPE_CHECKING:
         _: Soul = soul
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 模块概述
+# ─────────────────────────────────────────────────────────────────────────────
+# 本模块是 Kimi Code CLI 的"灵魂"（Soul）主循环实现。
+# 职责：
+#   1. 接收用户输入（文本或 ContentPart），处理 slash 命令 / 技能 / 流程（flow）。
+#   2. 驱动一轮（turn）内的 step 循环：调用 LLM → 执行工具 → 追加上下文 → 判断是否继续。
+#   3. 上下文超限时自动压缩（compaction），并对 API 错误做重试与连接恢复。
+#   4. 通过 Wire 流式输出事件，并埋点 telemetry。
+# 核心类：
+#   - KimiSoul       单会话主循环（核心入口 run / _turn / _agent_loop / _step）。
+#   - FlowRunner     节点图流程执行器（技能 flow 与 ralph 自动循环）。
+#   - BackToTheFuture 上下文回溯异常（D-Mail 机制）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 SKILL_COMMAND_PREFIX = "skill:"
 FLOW_COMMAND_PREFIX = "flow:"
 DEFAULT_MAX_FLOW_MOVES = 1000
 
 
+# 把 LLM API 异常归类为 (错误类型, 状态码)，供遥测与重试判断使用。
 def classify_api_error(e: Exception) -> tuple[str, int | None]:
     """Classify an LLM API exception into (error_type, status_code).
 
@@ -156,6 +173,7 @@ def classify_api_error(e: Exception) -> tuple[str, int | None]:
 _RETRYABLE_STATUS_CODES = frozenset({408, 409, 429, 500, 502, 503, 504, 529})
 
 
+# 判断 API 错误是否"可重试"，与 TS 端 isRetryableGenerateError 对齐，供遥测上报使用。
 def is_retryable_api_error(e: Exception) -> bool:
     """Classify retryability for the ``api_error`` telemetry event.
 
@@ -172,6 +190,7 @@ def is_retryable_api_error(e: Exception) -> bool:
     return isinstance(e, ChatProviderError)
 
 
+# 提取 provider_type / protocol 遥测字段（LLM 缺失时返回空 dict）。
 def _provider_telemetry_kwargs(llm: LLM | None) -> dict[str, str]:
     if llm is None or llm.provider_config is None:
         return {}
@@ -179,6 +198,7 @@ def _provider_telemetry_kwargs(llm: LLM | None) -> dict[str, str]:
     return {"provider_type": provider_type, "protocol": provider_type}
 
 
+# 上报 api_error 遥测事件（错误类型、模型、可重试性、耗时、状态码、trace_id 等）。
 def _track_api_error(
     error: ChatProviderError,
     *,
@@ -206,9 +226,11 @@ def _track_api_error(
     track("api_error", **properties)
 
 
+# step（单步）的停止原因字面量类型。
 type StepStopReason = Literal["no_tool_calls", "tool_rejected", "tool_call_repeat"]
 
 
+# 单步执行结果：停止原因 + 助手消息。
 @dataclass(frozen=True, slots=True)
 class StepOutcome:
     stop_reason: StepStopReason
@@ -218,6 +240,7 @@ class StepOutcome:
 type TurnStopReason = StepStopReason
 
 
+# 单轮执行结果：停止原因 + 最终消息（可能为 None）+ 已执行步数。
 @dataclass(frozen=True, slots=True)
 class TurnOutcome:
     stop_reason: TurnStopReason
@@ -228,6 +251,7 @@ class TurnOutcome:
 class KimiSoul:
     """The soul of Kimi Code CLI."""
 
+    # 初始化 Soul：绑定 agent/runtime/context，装配压缩器、动态注入 provider、hook 引擎与 slash 命令。
     def __init__(
         self,
         agent: Agent,
@@ -288,55 +312,66 @@ class KimiSoul:
         self._slash_commands = self._build_slash_commands()
         self._slash_command_map = self._index_slash_commands(self._slash_commands)
 
+    # 代理名称。
     @property
     def name(self) -> str:
         return self._agent.name
 
+    # 当前模型名（未配置 LLM 时为空串）。
     @property
     def model_name(self) -> str:
         return self._runtime.llm.chat_provider.model_name if self._runtime.llm else ""
 
+    # 当前模型能力集（未配置 LLM 时为 None）。
     @property
     def model_capabilities(self) -> set[ModelCapability] | None:
         if self._runtime.llm is None:
             return None
         return self._runtime.llm.capabilities
 
+    # 是否显式开启 yolo（自动批准）模式。
     @property
     def is_yolo(self) -> bool:
         """Whether explicit yolo mode is active."""
         return self._approval.is_yolo()
 
+    # 工具审批是否被绕过（显式 yolo，或 afk 隐含）。
     @property
     def is_auto_approve(self) -> bool:
         """Whether tool approvals are bypassed (explicit yolo, or implied by afk)."""
         return self._approval.is_auto_approve()
 
+    # 用户是否不在场（away-from-keyboard）。
     @property
     def is_afk(self) -> bool:
         """Whether no user is present (away-from-keyboard)."""
         return self._approval.is_afk()
 
+    # 持久化的 afk 模式是否激活。
     @property
     def is_afk_flag(self) -> bool:
         """Whether persisted afk mode is active."""
         return self._approval.is_afk_flag()
 
+    # 是否为根会话（而非子代理）。
     @property
     def is_root(self) -> bool:
         """Whether this soul is the root session rather than a subagent."""
         return self._runtime.role == "root"
 
+    # 是否以子代理身份运行。
     @property
     def is_subagent(self) -> bool:
         """Whether this soul is running as a subagent rather than the root session."""
         return self._runtime.role == "subagent"
 
+    # 根会话最近一次 LLM trace id（仅根会话返回，用于 UI 事件）。
     @property
     def root_trace_id(self) -> str | None:
         """The latest LLM trace id for this root session, for UI events."""
         return self._root_trace_id if self.is_root else None
 
+    # 设置当前 trace id（写入 telemetry ContextVar，根会话额外缓存）。
     def _set_trace_id(self, trace_id: str | None) -> None:
         from kimi_cli.telemetry import set_current_trace_id
 
@@ -344,24 +379,29 @@ class KimiSoul:
         if self.is_root:
             self._root_trace_id = trace_id
 
+    # 是否处于 plan 模式（只读研究与规划）。
     @property
     def plan_mode(self) -> bool:
         """Whether plan mode (read-only research and planning) is active."""
         return self._plan_mode
 
+    # hook 引擎。
     @property
     def hook_engine(self) -> HookEngine:
         return self._hook_engine
 
+    # 替换 hook 引擎并同步给工具集（若为 KimiToolset）。
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
         if isinstance(self._agent.toolset, KimiToolset):
             self._agent.toolset.set_hook_engine(engine)
 
+    # 注册一个额外的动态注入 provider。
     def add_injection_provider(self, provider: DynamicInjectionProvider) -> None:
         """Register an additional dynamic injection provider."""
         self._injection_providers.append(provider)
 
+    # 从所有 provider 收集动态注入，单个失败隔离、不影响其余。
     async def _collect_injections(self) -> list[DynamicInjection]:
         """Collect dynamic injections from all registered providers."""
         injections: list[DynamicInjection] = []
@@ -377,6 +417,7 @@ class KimiSoul:
                 )
         return injections
 
+    # 通知各 provider 上下文已压缩，失败逐个隔离，避免中断压缩流程。
     async def _notify_injection_providers_compacted(self) -> None:
         """Notify all injection providers that the context has been compacted.
 
@@ -394,6 +435,7 @@ class KimiSoul:
                     exc_info=True,
                 )
 
+    # 通知各 provider afk 模式已变化。
     async def notify_afk_changed(self, enabled: bool) -> None:
         """Notify dynamic injection providers that afk mode changed."""
         for provider in self._injection_providers:
@@ -406,6 +448,7 @@ class KimiSoul:
                     exc_info=True,
                 )
 
+    # 把 plan 模式状态（checker/path_getter/afk 检查）绑定到支持它的工具上。
     def _bind_plan_mode_tools(self) -> None:
         """Bind plan mode state to tools that support it."""
         if not isinstance(self._agent.toolset, KimiToolset):
@@ -462,6 +505,7 @@ class KimiSoul:
         if isinstance(ask_tool, AskUserQuestion):
             ask_tool.bind_afk(self._approval.is_afk)
 
+    # 首次激活时分配稳定的 plan 会话 id，并计算/持久化 slug 以跨进程存活。
     def _ensure_plan_session_id(self) -> None:
         """Allocate a stable plan session ID on first activation."""
         if self._plan_session_id is None:
@@ -476,6 +520,7 @@ class KimiSoul:
             self._runtime.session.state.plan_slug = slug
             self._runtime.session.save_state()
 
+    # 更新 plan 模式状态（手动或工具触发），并持久化到会话状态以跨进程存活。
     def _set_plan_mode(self, enabled: bool, *, source: Literal["manual", "tool"]) -> bool:
         """Update plan mode state for either manual or tool-driven toggles."""
         if enabled == self._plan_mode:
@@ -494,6 +539,7 @@ class KimiSoul:
         self._runtime.session.save_state()
         return self._plan_mode
 
+    # 返回当前会话的 plan 文件路径（无 plan 会话时为 None）。
     def get_plan_file_path(self) -> Path | None:
         """Get the plan file path for the current session."""
         if self._plan_session_id is None:
@@ -502,6 +548,7 @@ class KimiSoul:
 
         return get_plan_file_path(self._plan_session_id)
 
+    # 读取当前 plan 文件内容。
     def read_current_plan(self) -> str | None:
         """Read the current plan file content."""
         if self._plan_session_id is None:
@@ -510,12 +557,14 @@ class KimiSoul:
 
         return read_plan_file(self._plan_session_id)
 
+    # 删除当前 plan 文件。
     def clear_current_plan(self) -> None:
         """Delete the current plan file."""
         path = self.get_plan_file_path()
         if path and path.exists():
             path.unlink()
 
+    # 工具触发切换 plan 模式，返回新状态（工具不隐藏，而是在调用时检查并拒绝）。
     async def toggle_plan_mode(self) -> bool:
         """Toggle plan mode on/off. Returns the new state.
 
@@ -525,10 +574,12 @@ class KimiSoul:
         """
         return self._set_plan_mode(not self._plan_mode, source="tool")
 
+    # UI/手动入口（slash 命令、快捷键）切换 plan 模式。
     async def toggle_plan_mode_from_manual(self) -> bool:
         """Toggle plan mode from UI/manual entry points (slash command, keybinding)."""
         return self._set_plan_mode(not self._plan_mode, source="manual")
 
+    # UI/手动入口将 plan 模式设为指定状态（直接给定目标值，避免竞态）。
     async def set_plan_mode_from_manual(self, enabled: bool) -> bool:
         """Set plan mode to a specific state from UI/manual entry points.
 
@@ -537,6 +588,7 @@ class KimiSoul:
         """
         return self._set_plan_mode(enabled, source="manual")
 
+    # 安排下一轮注入 plan 模式激活提醒（状态未变化、_set_plan_mode 提前返回时使用）。
     def schedule_plan_activation_reminder(self) -> None:
         """Schedule a plan-mode activation reminder for the next turn.
 
@@ -547,6 +599,7 @@ class KimiSoul:
         if self._plan_mode:
             self._pending_plan_activation_injection = True
 
+    # 消费手动切换排队的激活提醒（仅在 plan 模式且有待消费提醒时返回 True）。
     def consume_pending_plan_activation_injection(self) -> bool:
         """Consume the next-step activation reminder scheduled by a manual toggle."""
         if not self._plan_mode or not self._pending_plan_activation_injection:
@@ -554,6 +607,7 @@ class KimiSoul:
         self._pending_plan_activation_injection = False
         return True
 
+    # 是否开启思考（thinking）模式；未配置 LLM 或未设置 effort 时为 None。
     @property
     def thinking(self) -> bool | None:
         """Whether thinking mode is enabled."""
@@ -563,6 +617,7 @@ class KimiSoul:
             return thinking_effort != "off"
         return None
 
+    # 构造状态快照：上下文占用、yolo/afk/plan 状态、token 数、MCP 状态。
     @property
     def status(self) -> StatusSnapshot:
         token_count = self._context.token_count
@@ -577,52 +632,63 @@ class KimiSoul:
             mcp_status=self._mcp_status_snapshot(),
         )
 
+    # 返回 Agent。
     @property
     def agent(self) -> Agent:
         return self._agent
 
+    # 返回 Runtime。
     @property
     def runtime(self) -> Runtime:
         return self._runtime
 
+    # 返回 Context。
     @property
     def context(self) -> Context:
         return self._context
 
+    # 上下文占用比例（token_count / max_context_size）。
     @property
     def _context_usage(self) -> float:
         if self._runtime.llm is not None:
             return self._context.token_count / self._runtime.llm.max_context_size
         return 0.0
 
+    # 返回会话的 WireFile。
     @property
     def wire_file(self) -> WireFile:
         return self._runtime.session.wire_file
 
+    # MCP 状态快照（非 KimiToolset 时返回 None）。
     def _mcp_status_snapshot(self):
         if not isinstance(self._agent.toolset, KimiToolset):
             return None
         return self._agent.toolset.mcp_status_snapshot()
 
+    # 启动延迟的 MCP 工具加载（不暴露 toolset 内部），返回是否有延迟加载。
     async def start_background_mcp_loading(self) -> bool:
         """Start deferred MCP loading, if any, without exposing toolset internals."""
         if not isinstance(self._agent.toolset, KimiToolset):
             return False
         return await self._agent.toolset.start_deferred_mcp_tool_loading()
 
+    # 等待在途的 MCP 启动完成。
     async def wait_for_background_mcp_loading(self) -> None:
         """Wait for any in-flight MCP startup to finish."""
         if not isinstance(self._agent.toolset, KimiToolset):
             return
         await self._agent.toolset.wait_for_mcp_tools()
 
+    # 对上下文做检查点（checkpoint）。
     async def _checkpoint(self):
         await self._context.checkpoint(self._checkpoint_with_user_message)
 
+    # 将一条 steer 消息排队，注入当前轮。
     def steer(self, content: str | list[ContentPart]) -> None:
         """Queue a steer message for injection into the current turn."""
         self._steer_queue.put_nowait(content)
 
+    # 清空 steer 队列并作为后续 user 消息注入，返回是否消费过（/btw 已在 UI 层拦截）。
     async def _consume_pending_steers(self) -> bool:
         """Drain the steer queue and inject as follow-up user messages.
 
@@ -639,6 +705,7 @@ class KimiSoul:
             consumed = True
         return consumed
 
+    # 把单条 steer 作为普通后续 user 消息注入上下文（做能力校验）。
     async def _inject_steer(self, content: str | list[ContentPart]) -> None:
         """Inject a single steer as a regular follow-up user message."""
         parts = cast(
@@ -652,10 +719,13 @@ class KimiSoul:
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
         await self._context.append_message(message)
 
+    # 可用 slash 命令列表。
     @property
     def available_slash_commands(self) -> list[SlashCommand[Any]]:
         return self._slash_commands
 
+    # 一轮（turn）入口：刷新 OAuth、触发 UserPromptSubmit/Stop hook、处理命令，最后执行 _turn，
+    # 并在 finally 中统一收尾（补发 TurnEnd、遥测 turn_interrupted/turn_ended、取消审批源）。
     async def run(
         self,
         user_input: str | list[ContentPart],
@@ -838,6 +908,7 @@ class KimiSoul:
                 reset_current_approval_source(approval_source_token)
             self._set_trace_id(None)
 
+    # 执行一轮：校验能力、做检查点、追加 user 消息，进入 _agent_loop。
     async def _turn(self, user_message: Message) -> TurnOutcome:
         if self._runtime.llm is None:
             raise LLMNotSet()
@@ -851,6 +922,7 @@ class KimiSoul:
         logger.debug("Appended user message to context")
         return await self._agent_loop()
 
+    # 构建 slash 命令列表（内置注册表 + 标准技能 skill:* + 流程技能 flow:*）。
     def _build_slash_commands(self) -> list[SlashCommand[Any]]:
         commands: list[SlashCommand[Any]] = list(soul_slash_registry.list_commands())
         seen_names = {cmd.name for cmd in commands}
@@ -901,6 +973,7 @@ class KimiSoul:
 
         return commands
 
+    # 把命令列表（含别名）索引成 dict。
     @staticmethod
     def _index_slash_commands(
         commands: list[SlashCommand[Any]],
@@ -912,9 +985,11 @@ class KimiSoul:
                 indexed[alias] = command
         return indexed
 
+    # 按名称/别名查找 slash 命令。
     def _find_slash_command(self, name: str) -> SlashCommand[Any] | None:
         return self._slash_command_map.get(name)
 
+    # 生成技能 slash 命令的执行器闭包：读取技能文本（可追加用户请求）后作为新 turn 执行。
     def _make_skill_runner(self, skill: Skill) -> Callable[[KimiSoul, str], None | Awaitable[None]]:
         async def _run_skill(soul: KimiSoul, args: str, *, _skill: Skill = skill) -> None:
             from kimi_cli.telemetry import track
@@ -934,6 +1009,8 @@ class KimiSoul:
         _run_skill.__doc__ = skill.description
         return _run_skill
 
+    # 单轮主循环：初始化（清理过期 steer、加载 MCP 工具）→ step 循环
+    #（守卫/压缩/检查点/执行/错误处理/结果解析）→ 轮结束并返回 TurnOutcome。
     async def _agent_loop(self) -> TurnOutcome:
         """The main agent loop for one run.
 
@@ -1108,6 +1185,7 @@ class KimiSoul:
             # Consume any pending steers between steps before next iteration.
             await self._consume_pending_steers()
 
+    # 执行单步：通知投递 → 动态注入 → 历史归一化 → LLM 调用+重试 → 工具执行 → 上下文增长 → 结果解析。
     async def _step(self) -> StepOutcome | None:
         """Run a single step and return a stop outcome, or None to continue.
 
@@ -1345,6 +1423,7 @@ class KimiSoul:
             return None
         return StepOutcome(stop_reason="no_tool_calls", assistant_message=result.message)
 
+    # 计算每次调用的生成覆盖参数（主要是 max_completion_tokens），不改动 chat_provider 实例本身。
     def _compute_completion_overrides(
         self,
         chat_provider: ChatProvider,
@@ -1386,6 +1465,7 @@ class KimiSoul:
         )
         return {"max_completion_tokens": max_completion_tokens}
 
+    # 把助手消息与工具结果追加进上下文（工具结果能力校验失败则抛 LLMNotSupported）。
     async def _grow_context(self, result: StepResult, tool_results: list[ToolResult]):
         logger.debug("Growing context with result: {result}", result=result)
 
@@ -1409,6 +1489,7 @@ class KimiSoul:
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
 
+    # 压缩上下文：准备压缩消息 → 重试调用 → 清空重建历史 → 恢复活跃后台任务快照 → 发事件与遥测。
     async def compact_context(
         self,
         *,
@@ -1643,6 +1724,7 @@ class KimiSoul:
         )
         _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
+    # 判断异常是否可重试（网络/超时/空响应/特定状态码 429/5xx）。
     @staticmethod
     def _is_retryable_error(exception: BaseException) -> bool:
         if isinstance(exception, (APIConnectionError, APITimeoutError)):
@@ -1657,6 +1739,7 @@ class KimiSoul:
             504,  # Gateway Timeout
         )
 
+    # 带连接恢复的执行包装：401 时刷新 OAuth 后重试，连接错误时调用 on_retryable_error 恢复后重试一次。
     async def _run_with_connection_recovery(
         self,
         name: str,
@@ -1742,6 +1825,7 @@ class KimiSoul:
                 _connection_retried=True,
             )
 
+    # 记录重试日志（第几次、上次错误、等待秒数）。
     @staticmethod
     def _retry_log(name: str, retry_state: RetryCallState):
         error = retry_state.outcome.exception() if retry_state.outcome else None
@@ -1757,6 +1841,7 @@ class KimiSoul:
             else "unknown",
         )
 
+    # 发送 StepRetry 事件（当前步、下次尝试、最大尝试、等待秒数、错误信息）。
     def _emit_step_retry(self, retry_state: RetryCallState, *, max_attempts: int) -> None:
         error = retry_state.outcome.exception() if retry_state.outcome else None
         next_action = retry_state.next_action
@@ -1773,6 +1858,7 @@ class KimiSoul:
         )
 
 
+# 需要回溯到历史检查点（D-Mail 机制）时抛出的异常，主循环捕获后回滚上下文并注入 D-Mail 消息。
 class BackToTheFuture(Exception):
     """
     Raise when we need to revert the context to a previous checkpoint.
@@ -1784,6 +1870,7 @@ class BackToTheFuture(Exception):
         self.messages = messages
 
 
+# 节点图流程执行器：按 flow 定义的节点与边推进，用于技能 flow 与 ralph 自动循环。
 class FlowRunner:
     def __init__(
         self,
@@ -1796,6 +1883,7 @@ class FlowRunner:
         self._name = name
         self._max_moves = max_moves
 
+    # 构造 ralph 自动循环：同一 prompt 反复投喂，直到模型选择 STOP，返回对应 FlowRunner。
     @staticmethod
     def ralph_loop(
         user_message: Message,
@@ -1836,6 +1924,7 @@ class FlowRunner:
         max_moves = total_runs
         return FlowRunner(flow, max_moves=max_moves)
 
+    # 沿流程节点图推进直到 END 或超过 max_moves，累计步数并做上限检查。
     async def run(self, soul: KimiSoul, args: str) -> None:
         if args.strip():
             command = f"/{FLOW_COMMAND_PREFIX}{self._name}" if self._name else "/flow"
@@ -1876,6 +1965,7 @@ class FlowRunner:
             moves += 1
             current_id = next_id
 
+    # 执行单个流程节点；decision 节点解析 <choice> 结果匹配出边，无效选择则追加提示重试。
     async def _execute_flow_node(
         self,
         soul: KimiSoul,
@@ -1923,6 +2013,7 @@ class FlowRunner:
                 "Reply with one of the choices using <choice>...</choice>."
             )
 
+    # 构建节点提示词：decision 节点附带可选分支列表，并要求以 <choice>...</choice> 回复。
     @staticmethod
     def _build_flow_prompt(node: FlowNode, edges: list[FlowEdge]) -> str | list[ContentPart]:
         if node.kind != "decision":
@@ -1943,6 +2034,7 @@ class FlowRunner:
         ]
         return "\n".join(lines)
 
+    # 用选择结果精确匹配出边（无匹配或为空返回 None）。
     @staticmethod
     def _match_flow_edge(edges: list[FlowEdge], choice: str | None) -> str | None:
         if not choice:
@@ -1952,6 +2044,7 @@ class FlowRunner:
                 return edge.dst
         return None
 
+    # 执行一次流程内子 turn：发 TurnBegin/TurnEnd，调用 soul._turn 并返回 TurnOutcome。
     @staticmethod
     async def _flow_turn(
         soul: KimiSoul,
