@@ -262,8 +262,21 @@ def mcp_list():
             if transport == "streamable-http":
                 transport = "http"
             line = f"{name} ({transport}): {server['url']}"
-            if server.get("scopes") and server.get("auth") == "oauth":
-                line += f" [scopes: {', '.join(server['scopes'])}]"
+            if server.get("scopes") is not None and server.get("auth") == "oauth":
+                from kimi_cli.mcp_oauth import validate_mcp_scopes
+
+                try:
+                    scopes = validate_mcp_scopes(server["scopes"])
+                except ValueError:
+                    typer.echo(
+                        f"Invalid OAuth scopes for MCP server '{name}': "
+                        "expected a list of strings.",
+                        err=True,
+                    )
+                    line += " [invalid scopes]"
+                else:
+                    if scopes:
+                        line += f" [scopes: {', '.join(scopes)}]"
             if server.get("auth") == "oauth" and not _has_oauth_tokens(server["url"]):
                 line += " [authorization required - run: kimi mcp auth " + name + "]"
         else:

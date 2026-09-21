@@ -55,7 +55,7 @@ async def has_mcp_oauth_tokens(server_url: str) -> bool:
         return False
 
 
-def _validate_scopes(scopes: object | None) -> list[str] | None:
+def validate_mcp_scopes(scopes: object | None) -> list[str] | None:
     if scopes is None:
         return None
     if not isinstance(scopes, list):
@@ -71,7 +71,7 @@ def _validate_scopes(scopes: object | None) -> list[str] | None:
 def create_mcp_oauth(server_url: str, scopes: object | None = None) -> OAuth:
     from fastmcp.client.auth.oauth import OAuth
 
-    validated_scopes = _validate_scopes(scopes)
+    validated_scopes = validate_mcp_scopes(scopes)
 
     class _PatchedOAuth(OAuth):
         """Apply compatibility workarounds for MCP OAuth providers.
@@ -91,6 +91,11 @@ def create_mcp_oauth(server_url: str, scopes: object | None = None) -> OAuth:
             if response.status_code == 201:
                 response.status_code = 200
             await super()._handle_token_response(response)
+
+        async def _handle_refresh_response(self, response: Any) -> bool:
+            if response.status_code == 201:
+                response.status_code = 200
+            return await super()._handle_refresh_response(response)
 
     return _PatchedOAuth(
         mcp_url=server_url,
