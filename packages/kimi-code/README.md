@@ -19,7 +19,7 @@ irm https://code.kimi.com/kimi-code/install.ps1 | iex
 
 Also available via Homebrew (`brew install kimi-code`) and npm (`npm install -g @moonshot-ai/kimi-code`).
 
-Then uninstall this package: `uv tool uninstall kimi-code` (or `pip uninstall kimi-code`).
+Then uninstall this package: `uv tool uninstall kimi-code` (or `pip uninstall kimi-code kimi-cli`, since pip does not remove the legacy `kimi-cli` dependency automatically).
 
 Migration guide: [English](https://moonshotai.github.io/kimi-code/en/guides/migration) | [中文](https://moonshotai.github.io/kimi-code/zh/guides/migration)
 

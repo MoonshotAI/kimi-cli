@@ -4,7 +4,7 @@
 
 ## 未发布
 
-**亮点**：Kimi CLI 已归档，不再维护，这是最后一个版本。请迁移至 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)，详见[迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)
+**亮点**：Kimi CLI 已归档，不再维护，这是最后一个版本。请迁移至 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code)，详见 [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)
 
 - Build：将 `kimi-cli` 及本仓库中的所有包标记为已归档——此后不再发布新版本、Bug 修复或安全更新
 - Build：PyPI 上的 `kimi-code` 包不再安装旧版 CLI——运行 `kimi-code` 时改为打印新版 Kimi Code CLI 的安装说明，并以状态码 1 退出

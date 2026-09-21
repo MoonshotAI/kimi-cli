@@ -17,7 +17,12 @@ function applyHtmlClass(active: boolean) {
 }
 
 onMounted(() => {
-  dismissed.value = localStorage.getItem(STORAGE_KEY) === '1'
+  try {
+    dismissed.value = localStorage.getItem(STORAGE_KEY) === '1'
+  } catch {
+    // Storage blocked by browser settings: keep showing the archive notice.
+    dismissed.value = false
+  }
   hydrated.value = true
 })
 

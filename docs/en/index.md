@@ -9,8 +9,8 @@ hero:
       text: Go to Kimi Code (Recommended)
       link: https://github.com/MoonshotAI/kimi-code
     - theme: alt
-      text: Stay with Kimi Code CLI
-      link: /en/guides/getting-started
+      text: Migration Guide
+      link: https://moonshotai.github.io/kimi-code/en/guides/migration
 ---
 
-> **Kimi Code CLI is evolving into [Kimi Code](https://github.com/MoonshotAI/kimi-code)** — the next-generation terminal AI agent from the same team, with a smoother experience. Installing Kimi Code **automatically migrates** your configuration and sessions. This project will be gradually wound down; the docs and existing installations remain available.
+> **Kimi CLI has been archived and is no longer maintained.** It has been replaced by [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code), the next-generation terminal AI agent from the same team. Existing installations will stop working, so please migrate as soon as possible. Your config and sessions can be migrated automatically; see the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration).

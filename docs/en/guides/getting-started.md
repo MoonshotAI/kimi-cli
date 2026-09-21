@@ -1,7 +1,7 @@
 # Getting Started
 
-::: danger This project is archived
-Kimi CLI is no longer maintained and will stop working. It receives no further updates or security fixes. Please install [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) instead; see the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration).
+::: danger Warning
+**This project is archived.** Kimi CLI is no longer maintained and will stop working. It receives no further updates or security fixes. Please install [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) instead; see the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration).
 :::
 
 ## What is Kimi Code CLI
@@ -28,51 +28,23 @@ If you encounter issues or have suggestions, please provide feedback on [GitHub 
 
 ## Installation
 
-::: tip
-Kimi Code CLI is evolving into [Kimi Code](https://github.com/MoonshotAI/kimi-code). Installing Kimi Code **automatically migrates** your configuration and sessions. New users are encouraged to install Kimi Code directly; the instructions below still work, and existing users don't need to migrate immediately.
-:::
-
-Run the installation script to complete the installation. The script will first install [uv](https://docs.astral.sh/uv/) (a Python package manager), then install Kimi Code CLI via uv:
+Kimi CLI is archived and should no longer be installed. Install [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) instead:
 
 ```sh
 # Linux / macOS
-curl -LsSf https://code.kimi.com/install.sh | bash
+curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression
+irm https://code.kimi.com/kimi-code/install.ps1 | iex
 ```
 
-Verify the installation:
+If you have used Kimi CLI before, Kimi Code CLI offers to migrate your config, MCP servers, and sessions on first launch, or you can run `kimi migrate` at any time. See the [migration guide](https://moonshotai.github.io/kimi-code/en/guides/migration) for details.
 
-```sh
-kimi --version
-```
+## Uninstall
 
-::: tip
-Due to macOS security checks, the first run of the `kimi` command may take longer. You can add your terminal application in "System Settings → Privacy & Security → Developer Tools" to speed up subsequent launches.
-:::
-
-If you already have uv installed, you can also run:
-
-```sh
-uv tool install --python 3.13 kimi-cli
-```
-
-::: tip
-Kimi Code CLI supports Python 3.12–3.14, with Python 3.13 recommended.
-:::
-
-## Upgrade and uninstall
-
-Upgrade to the latest version:
-
-```sh
-uv tool upgrade kimi-cli --no-cache
-```
-
-Uninstall Kimi Code CLI:
+After migrating to Kimi Code CLI, uninstall Kimi CLI:
 
 ```sh
 uv tool uninstall kimi-cli

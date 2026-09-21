@@ -16,7 +16,7 @@ Install Kimi Code CLI:
   macOS / Linux:  curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
   Windows:        irm https://code.kimi.com/kimi-code/install.ps1 | iex
 
-Then uninstall this package:  uv tool uninstall kimi-code   (or: pip uninstall kimi-code)
+Then uninstall this package:  uv tool uninstall kimi-code   (or: pip uninstall kimi-code kimi-cli)
 Migration guide: https://moonshotai.github.io/kimi-code/en/guides/migration
 
 PyPI 上的 kimi-code 是已停止维护的旧版包，并不是新版 Kimi Code CLI。

@@ -9,7 +9,7 @@
 > - Existing installations are no longer supported and will stop working. Please migrate as soon as possible.
 > - Please file issues, feature requests, and security reports for Kimi Code CLI at [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code).
 >
-> 本项目已归档，不再维护。Python 版 Kimi CLI 已由 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) 取代，旧版将无法继续使用，请参考[迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)尽快升级。
+> 本项目已归档，不再维护。Python 版 Kimi CLI 已由 [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) 取代，旧版将无法继续使用，请参考 [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration) 尽快升级。
 
 ## Migrate to Kimi Code CLI
 

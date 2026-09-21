@@ -239,23 +239,6 @@ jobs:
             --pyproject packages/kimi-code/pyproject.toml \
             --expected-version "${{ steps.version.outputs.head_version }}"
 
-      - name: Check kimi-code dependency pin
-        if: steps.version.outputs.bump == 'true'
-        shell: python
-        run: |
-          import tomllib
-          from pathlib import Path
-
-          expected_version = "${{ steps.version.outputs.head_version }}"
-          data = tomllib.loads(Path("packages/kimi-code/pyproject.toml").read_text())
-          deps = data["project"]["dependencies"]
-          expected = f"kimi-cli=={expected_version}"
-          if expected not in deps:
-              raise SystemExit(
-                  "kimi-code must depend on "
-                  f"{expected}, got: {deps}"
-              )
-
   nix-test:
     strategy:
       fail-fast: true

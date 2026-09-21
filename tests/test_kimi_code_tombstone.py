@@ -23,6 +23,8 @@ def test_main_prints_install_instructions_and_fails(capsys: pytest.CaptureFixtur
     assert "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash" in err
     assert "irm https://code.kimi.com/kimi-code/install.ps1 | iex" in err
     assert "https://moonshotai.github.io/kimi-code/en/guides/migration" in err
+    # pip does not remove the orphaned kimi-cli dependency (and its `kimi` executable).
+    assert "pip uninstall kimi-code kimi-cli" in err
 
 
 def test_package_no_longer_installs_legacy_cli() -> None:

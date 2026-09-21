@@ -9,8 +9,8 @@ hero:
       text: 前往 Kimi Code（推荐）
       link: https://github.com/MoonshotAI/kimi-code
     - theme: alt
-      text: 继续使用 Kimi Code CLI
-      link: /zh/guides/getting-started
+      text: 迁移指南
+      link: https://moonshotai.github.io/kimi-code/zh/guides/migration
 ---
 
-> **Kimi Code CLI 已升级为 [Kimi Code](https://github.com/MoonshotAI/kimi-code)** —— 这是我们打造的下一代终端 AI Agent，由同一团队带来更顺滑的体验。安装 Kimi Code 即可**自动迁移**你的配置与会话。本项目将逐步停止维护，文档与已安装版本仍可正常使用。
+> **Kimi CLI 已归档，不再维护**。它已由同一团队打造的新一代终端 AI Agent [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code) 取代。已安装的旧版将无法继续使用，请尽快迁移，配置与会话可以自动迁移，详见 [迁移指南](https://moonshotai.github.io/kimi-code/zh/guides/migration)。
